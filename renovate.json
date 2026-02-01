@@ -1,25 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    ":disableDependencyDashboard",
-    ":rebaseStalePrs"
-  ],
-  "addLabels": [
-    "dependencies"
-  ],
-  "rollbackPrs": true,
-  "ignorePaths": [
-    "**/node_modules/**"
-  ],
-  "timezone": "America/New_York",
-  "packageRules": [
-    {
-      "description": "Group GitHub Actions updates together",
-      "matchManagers": ["github-actions"],
-      "groupName": "GitHub Actions",
-      "schedule": ["before 6am on monday"],
-      "pinDigests": true
-    }
+    "github>jellyrock/.github//renovate/default"
   ]
 }
