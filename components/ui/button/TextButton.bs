@@ -7,6 +7,7 @@ sub init()
 
   m.top.observeField("enabled", "onEnabledChanged")
   m.top.observeField("background", "onBackgroundChanged")
+  m.top.observeField("border", "onBorderChanged")
   m.top.observeField("textColor", "onTextColorChanged")
   m.top.observeField("text", "onTextChanged")
   m.top.observeField("padding", "onPaddingChanged")
@@ -26,6 +27,7 @@ sub applyTheme()
 
   ' Set default colors
   m.top.background = constants.colorBackgroundSecondary
+  m.top.border = constants.colorBackgroundSecondary
   m.top.textColor = constants.colorTextPrimary
   m.top.focusBorder = constants.colorPrimary
   m.top.focusBackground = constants.colorBackgroundSecondary
@@ -34,32 +36,38 @@ end sub
 
 sub onFocusChanged()
   if m.top.hasFocus()
-    ' Button border - change to focus color
     if m.top.enableBorder
       m.buttonBorder.blendColor = m.top.focusBorder
     else
-      ' Border disabled - ensure it stays invisible
       m.buttonBorder.blendColor = m.top.background
     end if
-    ' Button background
     m.buttonBackground.blendColor = m.top.focusBackground
-    ' Button text
     m.buttonText.color = m.top.textFocusColor
   else
-    ' Button border - match background color
-    m.buttonBorder.blendColor = m.top.background
-    ' Button background
+    if m.top.enableBorder
+      m.buttonBorder.blendColor = m.top.border
+    else
+      m.buttonBorder.blendColor = m.top.background
+    end if
     m.buttonBackground.blendColor = m.top.background
-    ' Button text
     m.buttonText.color = m.top.textColor
   end if
 end sub
 
 sub onBackgroundChanged()
   m.buttonBackground.blendColor = m.top.background
-  ' Border matches background when not focused OR when borders are disabled
-  if not m.top.hasFocus() or not m.top.enableBorder
-    m.buttonBorder.blendColor = m.top.background
+  if not m.top.hasFocus()
+    if m.top.enableBorder
+      m.buttonBorder.blendColor = m.top.border
+    else
+      m.buttonBorder.blendColor = m.top.background
+    end if
+  end if
+end sub
+
+sub onBorderChanged()
+  if not m.top.hasFocus() and m.top.enableBorder
+    m.buttonBorder.blendColor = m.top.border
   end if
 end sub
 
@@ -124,7 +132,15 @@ sub setSizeAndCenterText()
 
   setFocusBorderSize()
 
-  ' Show the button now that it's properly sized
+  ' Apply initial colors before showing
+  m.buttonBackground.blendColor = m.top.background
+  m.buttonText.color = m.top.textColor
+  if m.top.enableBorder
+    m.buttonBorder.blendColor = m.top.border
+  else
+    m.buttonBorder.blendColor = m.top.background
+  end if
+
   m.buttonBackground.visible = true
   m.buttonBorder.visible = true
   m.buttonText.visible = true
@@ -154,9 +170,11 @@ sub onEnabledChanged()
 
   if m.top.enabled
     m.top.background = constants.colorBackgroundSecondary
+    m.top.border = constants.colorBackgroundSecondary
     m.top.textColor = constants.colorTextPrimary
   else
     m.top.background = constants.colorBackgroundPrimary
+    m.top.border = constants.colorBackgroundPrimary
     m.top.textColor = constants.colorTextDisabled
   end if
 end sub
