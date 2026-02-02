@@ -297,7 +297,13 @@ sub optionDialog(title, message, buttons)
   dialog.observeField("buttonSelected", "optionSelected")
   dialog.observeField("wasClosed", "optionClosed")
   dialog.title = title
-  dialog.message = [message]
+  if message = invalid
+    dialog.message = invalid
+  else if type(message) = "roArray"
+    dialog.message = message
+  else
+    dialog.message = [message]
+  end if
   dialog.buttons = buttons
 
   m.scene.dialog = dialog
