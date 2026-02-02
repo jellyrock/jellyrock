@@ -9,6 +9,10 @@
           key="[0.0, 1.0]"
           keyValue="[[0, 972], [0, 402]]"
           fieldToInterp="extrasGrp.translation" />
+        <ColorFieldInterpolator
+          id="colorSlider"
+          key="[0.0, 1.0]"
+          fieldToInterp="extrasGrp.color" />
       </Animation>
     </Rectangle>
   </children>
