@@ -170,9 +170,11 @@ sub onEnabledChanged()
 
   if m.top.enabled
     m.top.background = constants.colorBackgroundSecondary
+    m.top.border = constants.colorBackgroundSecondary
     m.top.textColor = constants.colorTextPrimary
   else
     m.top.background = constants.colorBackgroundPrimary
+    m.top.border = constants.colorBackgroundPrimary
     m.top.textColor = constants.colorTextDisabled
   end if
 end sub
