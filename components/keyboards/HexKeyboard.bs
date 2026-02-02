@@ -7,8 +7,6 @@ sub init()
   m.resetButton.border = globalConstants.colorBackgroundPrimary
   m.resetButton.background = globalConstants.colorBackgroundPrimary
   m.resetButton.focusBackground = globalConstants.colorBackgroundPrimary
-  ' m.resetButton.textColor = globalConstants.colorTextSecondary
-  ' m.resetButton.textFocusColor = globalConstants.colorTextSecondary
 
   m.top.keyGrid.enableRenderTracking = true
   m.top.keyGrid.observeField("renderTracking", "onKeyGridRendered")
