@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <component name="HexKeyboard" extends="DynamicCustomKeyboard">
+  <children>
+    <TextButton id="resetButton" text="Reset" />
+  </children>
   <interface>
     <function name="keySelected" />
     <field id="submit" type="bool" alwaysNotify="true" />
     <field id="escape" type="string" alwaysNotify="true" />
+    <field id="reset" type="bool" alwaysNotify="true" />
   </interface>
 </component>

@@ -31,6 +31,7 @@ sub init()
 
   m.hexSetting.observeField("submit", "onHexKeyGridSubmit")
   m.hexSetting.observeField("escape", "onHexKeyGridEscape")
+  m.hexSetting.observeField("reset", "onHexResetRequested")
 
   m.settingsMenu.setFocus(true)
   m.settingsMenu.observeField("itemFocused", "settingFocused")
@@ -87,6 +88,51 @@ sub onHexKeyGridEscape()
   if m.hexSetting.escape = "left" or m.hexSetting.escape = "back"
     m.settingsMenu.setFocus(true)
   end if
+end sub
+
+' Called when reset button is selected in HexKeyboard
+sub onHexResetRequested()
+  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Yes"), tr("No")])
+  m.global.sceneManager.observeField("dataReturned", "onResetDialogResponse")
+end sub
+
+' Handle user response from reset confirmation dialog
+sub onResetDialogResponse()
+  m.global.sceneManager.unobserveField("dataReturned")
+
+  returnData = m.global.sceneManager.returnData
+  if not isValid(returnData) then return
+
+  ' User selected "No" or closed dialog
+  if returnData.indexSelected <> 0
+    m.hexSetting.findNode("resetButton").setFocus(true)
+    return
+  end if
+
+  ' User confirmed reset - get default value from config tree
+  selectedSetting = m.userLocation.peek().children[m.settingsMenu.itemFocused]
+  configEntry = findConfigTreeKey(selectedSetting.settingName, m.configTree)
+
+  if not isValid(configEntry) or not isValid(configEntry.default)
+    m.log.warn("Could not find default value for setting", selectedSetting.settingName)
+    m.hexSetting.findNode("resetButton").setFocus(true)
+    return
+  end if
+
+  defaultValue = configEntry.default
+
+  ' Track if theme color changed (requires UI refresh on exit)
+  if selectedSetting.settingName.left(12) = "uiThemeColor"
+    m.themeColorsChanged = true
+  end if
+
+  ' Update node field - observer handles registry persistence
+  user.settings.Save(selectedSetting.settingName, defaultValue)
+
+  ' Update the UI
+  m.hexSetting.text = defaultValue
+
+  m.hexSetting.findNode("resetButton").setFocus(true)
 end sub
 
 sub LoadMenu(configSection)

@@ -7,6 +7,7 @@
   </children>
   <interface>
     <field id="background" type="color" value="" />
+    <field id="border" type="color" value="" />
     <field id="focusBackground" type="color" value="" />
     <field id="focusBorder" type="color" value="" />
     <field id="textColor" type="color" value="" />
