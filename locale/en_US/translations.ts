@@ -116,6 +116,10 @@
       <translation>AppearsOn</translation>
     </message>
     <message>
+      <source>Are you sure? This will reset the setting to its default value.</source>
+      <translation>Are you sure? This will reset the setting to its default value.</translation>
+    </message>
+    <message>
       <source>Artists</source>
       <translation>Artists</translation>
     </message>
@@ -743,6 +747,10 @@
       <translation>Next Up</translation>
     </message>
     <message>
+      <source>No</source>
+      <translation>No</translation>
+    </message>
+    <message>
       <source>No Chapter Data Found</source>
       <translation>No Chapter Data Found</translation>
       <extracomment>Message shown in OSD when no chapter data is returned by the API</extracomment>
@@ -951,6 +959,14 @@
     <message>
       <source>Replace Roku&apos;s system font with the fallback font provided by the Jellyfin server. Fallback fonts must be configured and enabled by the server admin for this to work. JellyRock will need to be restarted.</source>
       <translation>Replace Roku&apos;s system font with the fallback font provided by the Jellyfin server. Fallback fonts must be configured and enabled by the server admin for this to work. JellyRock will need to be restarted.</translation>
+    </message>
+    <message>
+      <source>Reset</source>
+      <translation>Reset</translation>
+    </message>
+    <message>
+      <source>Reset Setting</source>
+      <translation>Reset Setting</translation>
     </message>
     <message>
       <source>Resumable</source>
@@ -1424,6 +1440,10 @@
       <source>Years</source>
       <translation>Years</translation>
       <extracomment>Used in Filter menu</extracomment>
+    </message>
+    <message>
+      <source>Yes</source>
+      <translation>Yes</translation>
     </message>
     <message>
       <source>yesterday</source>
