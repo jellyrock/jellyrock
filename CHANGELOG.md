@@ -9,7 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- add customizable theme colors user setting ([#309](https://github.com/jellyrock/jellyrock/pull/309))
+- add customizable theme color user settings ([#309](https://github.com/jellyrock/jellyrock/pull/309))
+
+### Changed
+
+-  feat(HexKeyboard): add reset button for custom theme color settings  ([#310](https://github.com/jellyrock/jellyrock/pull/310))
 
 ## [1.10.0](https://github.com/cewert/jellyrock/compare/v1.9.1...v1.10.0) - 2026-01-29
 
