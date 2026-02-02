@@ -297,7 +297,7 @@ sub optionDialog(title, message, buttons)
   dialog.observeField("buttonSelected", "optionSelected")
   dialog.observeField("wasClosed", "optionClosed")
   dialog.title = title
-  dialog.message = message
+  dialog.message = [message]
   dialog.buttons = buttons
 
   m.scene.dialog = dialog
