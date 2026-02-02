@@ -1,0 +1,7 @@
+
+sub init()
+  globalConstants = m.global.constants
+
+  extrasGrp = m.top.findNode("extrasGrp")
+  extrasGrp.color = globalConstants.colorBlack + globalConstants.alpha30
+end sub
