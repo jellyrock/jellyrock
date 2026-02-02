@@ -93,12 +93,12 @@ end sub
 ' Called when reset button is selected in HexKeyboard
 sub onHexResetRequested()
   m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Yes"), tr("No")])
-  m.global.sceneManager.observeField("dataReturned", "onResetDialogResponse")
+  m.global.sceneManager.observeFieldScoped("dataReturned", "onResetDialogResponse")
 end sub
 
 ' Handle user response from reset confirmation dialog
 sub onResetDialogResponse()
-  m.global.sceneManager.unobserveField("dataReturned")
+  m.global.sceneManager.unobserveFieldScoped("dataReturned")
 
   returnData = m.global.sceneManager.returnData
   if not isValid(returnData) then return
