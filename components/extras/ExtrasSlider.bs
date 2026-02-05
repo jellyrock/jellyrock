@@ -3,11 +3,11 @@ sub init()
   globalConstants = m.global.constants
 
   extrasGrp = m.top.findNode("extrasGrp")
-  extrasGrp.color = globalConstants.colorBlack + globalConstants.alpha30
+  extrasGrp.color = globalConstants.colorBlack + globalConstants.alpha60
 
   ' Set color interpolator keyValue: start color -> background primary
   colorSlider = m.top.findNode("colorSlider")
-  startColor = globalConstants.colorBlack + globalConstants.alpha30
+  startColor = globalConstants.colorBlack + globalConstants.alpha60
   endColor = globalConstants.colorBackgroundPrimary
   colorSlider.keyValue = [startColor, endColor]
 end sub

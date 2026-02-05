@@ -1,30 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="MovieDetails" extends="JRScreen">
   <children>
-    <LayoutGroup layoutDirection="vert" translation="[96, 114]" itemSpacings="[8]" id="details">
-      <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="infoGroup" />
-      <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="directorGenreGroup" />
+    <Gradient id="itemTextGradient" width="1920" height="0" rotateDegrees="180" translation="[0, 0]" />
 
-      <LayoutGroup layoutDirection="horiz">
-        <LabelPrimaryMedium id="video_codec" vertAlign="bottom" height="39" />
-        <LabelPrimarySmallest id="video_codec_count" vertAlign="top" />
+    <LayoutGroup id="itemDetails" layoutDirection="vert" vertAlignment="bottom" itemSpacings="[24]" translation="[96, 775]" enableRenderTracking="true">
+      <LayoutGroup layoutDirection="vert">
+        <LabelPrimaryLargest id="videoTitle" bold="true" />
+        <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="infoGroup" />
+        <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="directorGenreGroup" />
       </LayoutGroup>
 
-      <LayoutGroup layoutDirection="horiz">
-        <LabelPrimaryMedium id="audio_codec" vertAlign="bottom" height="39" />
-        <LabelPrimarySmallest id="audio_codec_count" vertAlign="top" />
+      <LayoutGroup id="itemDescription" layoutDirection="vert" itemSpacings="[15]">
+        <LabelSecondaryMedium id="tagline" bold="true" />
+        <LabelSecondaryMedium id="overview" wrap="true" width="1100" maxLines="2" lineSpacing="3" />
       </LayoutGroup>
 
-      <JRButtonGroup id="buttons">
-        <IconButton id="playButton" icon="pkg:/images/icons/play.png" text="Play" />
-        <IconButton id="watchedButton" icon="pkg:/images/icons/check.png" text="Watched" />
-        <IconButton id="favoriteButton" icon="pkg:/images/icons/heart.png" text="Favorite" />
-      </JRButtonGroup>
-
-      <LabelPrimaryMedium id="tagline" />
-      <LabelPrimaryMedium id="overview" wrap="true" maxLines="8" />
+      <LayoutGroup id="itemTracks" layoutDirection="horiz" itemSpacings="[15]">
+        <LayoutGroup id="videoTrack" layoutDirection="horiz" itemSpacings="[6]">
+          <LabelSecondarySmaller id="video_codec" vertAlign="bottom" />
+          <LabelSecondarySmallest id="video_codec_count" vertAlign="top" />
+        </LayoutGroup>
+        <LayoutGroup id="audioTrack" layoutDirection="horiz" itemSpacings="[6]">
+          <LabelSecondarySmaller id="audio_codec" vertAlign="bottom" />
+          <LabelSecondarySmallest id="audio_codec_count" vertAlign="top" />
+        </LayoutGroup>
+        <LayoutGroup id="subtitleTrack" layoutDirection="horiz"></LayoutGroup>
+      </LayoutGroup>
     </LayoutGroup>
+
     <MovieOptions id="movieOptions" visible="false" />
+
+    <JRButtonGroup id="buttons" translation="[90, 800]">
+      <IconButton id="playButton" icon="pkg:/images/icons/play.png" text="Play" />
+      <IconButton id="watchedButton" icon="pkg:/images/icons/check.png" text="Watched" />
+      <IconButton id="favoriteButton" icon="pkg:/images/icons/heart.png" text="Favorite" />
+    </JRButtonGroup>
+    <!-- Movie logo - positioned 5% from right edge, bottom-aligned with button group -->
+    <Poster id="movieLogo" />
 
     <!-- "Cast and Crew" row -->
     <extrasSlider id="movieExtras" />
