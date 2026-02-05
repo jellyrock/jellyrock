@@ -14,7 +14,6 @@ sub init()
   m.infoGroup = m.top.findNode("infoGroup")
 
   m.itemDescription = m.top.findNode("itemDescription")
-  m.tagline = m.top.findNode("tagline")
 
   m.buttonGrp = m.top.findNode("buttons")
   m.buttonGrp.callFunc("focus")
@@ -41,6 +40,18 @@ sub init()
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
+
+  ' Observe overhang clock for dynamic "Ends At" updates (only when clock is visible)
+  m.endsAtNode = invalid
+  if not m.global.user.settings.uiDesignHideClock
+    overhang = m.top.getScene().findNode("overhang")
+    if isValid(overhang)
+      m.clock = overhang.findNode("clock")
+      if isValid(m.clock)
+        m.clock.observeField("minutes", "onClockMinuteChanged")
+      end if
+    end if
+  end if
 end sub
 
 ' OnScreenShown: Callback function when view is presented on screen
@@ -221,6 +232,52 @@ sub displayDirectorGenreNode(node as object)
   m.directorGenreGroup.appendChild(node)
 end sub
 
+' createTaglineLabel: Create a tagline label node
+' @return Configured LabelSecondaryMedium node (bold)
+function createTaglineLabel() as object
+  labelNode = CreateObject("roSGNode", "LabelSecondaryMedium")
+  labelNode.id = "tagline"
+  labelNode.bold = true
+  return labelNode
+end function
+
+' createOverviewLabel: Create an overview label node
+' @return Configured LabelSecondaryMedium node (wrapped, width-limited)
+function createOverviewLabel() as object
+  labelNode = CreateObject("roSGNode", "LabelSecondaryMedium")
+  labelNode.id = "overview"
+  labelNode.wrap = true
+  labelNode.width = 1100
+  labelNode.maxLines = 2
+  labelNode.lineSpacing = 3
+  return labelNode
+end function
+
+' populateDescriptionGroup: Dynamically populate tagline and overview labels
+sub populateDescriptionGroup()
+  ' Clear existing nodes
+  m.itemDescription.removeChildrenIndex(m.itemDescription.getChildCount(), 0)
+
+  itemData = m.top.itemContent.json
+  userSettings = m.global.user.settings
+
+  ' 1. Tagline (if enabled in settings and data exists)
+  if userSettings.uiDetailsHideTagline = false
+    if isValid(itemData.taglines) and itemData.taglines.count() > 0 and isValidAndNotEmpty(itemData.taglines[0])
+      taglineLabel = createTaglineLabel()
+      taglineLabel.text = itemData.taglines[0]
+      m.itemDescription.appendChild(taglineLabel)
+    end if
+  end if
+
+  ' 2. Overview (if data exists)
+  if isValid(itemData.overview) and isValidAndNotEmpty(itemData.overview)
+    overviewLabel = createOverviewLabel()
+    overviewLabel.text = itemData.overview
+    m.itemDescription.appendChild(overviewLabel)
+  end if
+end sub
+
 ' populateInfoGroup: Dynamically populate info and director/genre groups
 sub populateInfoGroup()
   ' Clear existing nodes
@@ -228,6 +285,7 @@ sub populateInfoGroup()
   m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
+  m.endsAtNode = invalid
 
   itemData = m.top.itemContent.json
   userSettings = m.global.user.settings
@@ -274,11 +332,11 @@ sub populateInfoGroup()
     displayInfoNode(runtimeNode)
   end if
 
-  ' 6. Ends At
-  if type(itemData.RunTimeTicks) = "LongInteger" and userSettings.uiDesignHideClock <> true
-    endsAtNode = createInfoLabel("ends-at")
-    endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
-    displayInfoNode(endsAtNode)
+  ' 6. Ends At (only shown when clock is visible in overhang)
+  if type(itemData.RunTimeTicks) = "LongInteger" and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
   end if
 
   ' 7. Aired (Episodes only)
@@ -328,7 +386,6 @@ sub itemContentChanged()
   end if
 
   if isValid(item) and isValid(item.json)
-    userSettings = m.global.user.settings
     itemData = item.json
     m.top.id = itemData.id
 
@@ -345,17 +402,11 @@ sub itemContentChanged()
     ' Populate info rows dynamically
     populateInfoGroup()
 
-    ' Handle all "As Is" fields
-    setFieldText("videoTitle", itemData.name)
-    setFieldText("overview", itemData.overview)
+    ' Populate description group (tagline and overview) dynamically
+    populateDescriptionGroup()
 
-    if userSettings.uiDetailsHideTagline = false
-      if itemData.taglines.count() > 0
-        setFieldText("tagline", itemData.taglines[0])
-      end if
-    else
-      m.itemDescription.removeChild(m.tagline)
-    end if
+    ' Handle video title
+    setFieldText("videoTitle", itemData.name)
 
     updateFavoriteButton()
     updateWatchedButton()
@@ -520,6 +571,13 @@ function getEndTime() as string
 
   return formatTime(date)
 end function
+
+' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes
+'
+sub onClockMinuteChanged()
+  if not isValid(m.endsAtNode) then return
+  m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+end sub
 
 sub updateFavoriteButton()
   fave = m.top.itemContent.favorite

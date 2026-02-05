@@ -10,10 +10,7 @@
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="directorGenreGroup" />
       </LayoutGroup>
 
-      <LayoutGroup id="itemDescription" layoutDirection="vert" itemSpacings="[15]">
-        <LabelPrimaryMedium id="tagline" bold="true" />
-        <LabelPrimaryMedium id="overview" wrap="true" width="1100" maxLines="2" lineSpacing="3" />
-      </LayoutGroup>
+      <LayoutGroup id="itemDescription" layoutDirection="vert" itemSpacings="[15]" />
 
       <LayoutGroup id="itemTracks" layoutDirection="horiz" itemSpacings="[15]">
         <LayoutGroup id="videoTrack" layoutDirection="horiz" itemSpacings="[6]">
