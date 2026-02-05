@@ -40,6 +40,18 @@ sub init()
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
+
+  ' Observe overhang clock for dynamic "Ends At" updates (only when clock is visible)
+  m.endsAtNode = invalid
+  if not m.global.user.settings.uiDesignHideClock
+    overhang = m.top.getScene().findNode("overhang")
+    if isValid(overhang)
+      m.clock = overhang.findNode("clock")
+      if isValid(m.clock)
+        m.clock.observeField("minutes", "onClockMinuteChanged")
+      end if
+    end if
+  end if
 end sub
 
 ' OnScreenShown: Callback function when view is presented on screen
@@ -273,6 +285,7 @@ sub populateInfoGroup()
   m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
+  m.endsAtNode = invalid
 
   itemData = m.top.itemContent.json
   userSettings = m.global.user.settings
@@ -319,11 +332,11 @@ sub populateInfoGroup()
     displayInfoNode(runtimeNode)
   end if
 
-  ' 6. Ends At
-  if type(itemData.RunTimeTicks) = "LongInteger" and userSettings.uiDesignHideClock <> true
-    endsAtNode = createInfoLabel("ends-at")
-    endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
-    displayInfoNode(endsAtNode)
+  ' 6. Ends At (only shown when clock is visible in overhang)
+  if type(itemData.RunTimeTicks) = "LongInteger" and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
   end if
 
   ' 7. Aired (Episodes only)
@@ -558,6 +571,13 @@ function getEndTime() as string
 
   return formatTime(date)
 end function
+
+' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes
+'
+sub onClockMinuteChanged()
+  if not isValid(m.endsAtNode) then return
+  m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+end sub
 
 sub updateFavoriteButton()
   fave = m.top.itemContent.favorite
