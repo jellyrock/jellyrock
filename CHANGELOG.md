@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - refactor MovieDetails layout ([#314](https://github.com/jellyrock/jellyrock/pull/314))
 
+### Fixed
+
+- thshowDetails focus bug and extraSlider alignment ([a593435](https://github.com/jellyrock/jellyrock/commit/a593435))
+
 ### Dependencies
 
 - Update actions/cache action to v5.0.3 ([#313](https://github.com/jellyrock/jellyrock/pull/313))
