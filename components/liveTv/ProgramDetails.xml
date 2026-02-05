@@ -51,7 +51,7 @@
       <LabelPrimaryLarge id="noInfoChannelName" bold="true" />
       <LabelPrimarySmall text="No schedule information" />
     </LayoutGroup>
-    <Animation id="focusAnimation" duration="0.66" repeat="false" easeFunction="linear">
+    <Animation id="focusAnimation" duration="0.2" repeat="false" easeFunction="linear">
       <FloatFieldInterpolator id="buttonsFocusAnimationOpacity" key="[0.0, 1]" fieldToInterp="buttons.opacity" />
     </Animation>
   </children>

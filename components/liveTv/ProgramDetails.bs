@@ -90,6 +90,8 @@ sub programUpdated()
   m.overview.maxLines = m.maxDetailLines
   prog = m.top.programDetails
 
+  m.buttons.buttonFocused = 0
+
   ' If no program selected, hide details view
   if not isValid(prog)
     channelUpdated()
@@ -264,8 +266,12 @@ sub focusChanged()
 end sub
 
 sub onAnimationComplete()
-  if m.focusAnimation.state = "stopped" and m.top.hasFocus = false
-    m.overview.maxLines = m.maxPreviewLines
+  if m.focusAnimation.state = "stopped"
+    if m.top.hasFocus = false
+      m.overview.maxLines = m.maxPreviewLines
+    else if m.top.hasFocus = true
+      m.buttons.callFunc("focus")
+    end if
   end if
 end sub
 
