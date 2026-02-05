@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- livetv guide focus bug and speed up animation ([fd67594](https://github.com/jellyrock/jellyrock/commit/fd67594))
 - thshowDetails focus bug and extraSlider alignment ([a593435](https://github.com/jellyrock/jellyrock/commit/a593435))
 
 ### Dependencies
