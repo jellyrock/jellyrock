@@ -11,8 +11,8 @@
       </LayoutGroup>
 
       <LayoutGroup id="itemDescription" layoutDirection="vert" itemSpacings="[15]">
-        <LabelSecondaryMedium id="tagline" bold="true" />
-        <LabelSecondaryMedium id="overview" wrap="true" width="1100" maxLines="2" lineSpacing="3" />
+        <LabelPrimaryMedium id="tagline" bold="true" />
+        <LabelPrimaryMedium id="overview" wrap="true" width="1100" maxLines="2" lineSpacing="3" />
       </LayoutGroup>
 
       <LayoutGroup id="itemTracks" layoutDirection="horiz" itemSpacings="[15]">
