@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- refactor MovieDetails layout ([#314](https://github.com/jellyrock/jellyrock/pull/314))
+
 ### Dependencies
 
 - Update actions/cache action to v5.0.3 ([#313](https://github.com/jellyrock/jellyrock/pull/313))
