@@ -36,6 +36,9 @@ JellyRock requires **Roku OS 11** or later.
   <a href="docs/screenshots/libraryGrid.png" target="_blank" title="Library grid">
     <img src="docs/screenshots/libraryGrid.png" width="400" alt="Library grid" />
   </a>
+  <a href="docs/screenshots/movieDetails.png" target="_blank" title="Movie Details">
+    <img src="docs/screenshots/movieDetails.png" width="400" alt="Movie Details" />
+  </a>
   <a href="docs/screenshots/osd.png" target="_blank" title="On-Screen Display(OSD)">
     <img src="docs/screenshots/osd.png" width="400" alt="On-Screen Display(OSD)" />
   </a>
