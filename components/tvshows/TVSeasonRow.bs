@@ -13,7 +13,7 @@ sub updateSize()
   itemHeight = 320 ' width * 1.5 + text
 
   m.top.showRowLabel = [false]
-  m.top.translation = [0, 610]
+  m.top.translation = [0, 575]
   ' rows take up full width of the screen
   m.top.itemSize = [1920, (itemHeight + 40)]
   ' size of the item in the row

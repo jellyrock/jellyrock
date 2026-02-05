@@ -7,7 +7,7 @@ sub init()
   m.log = log.Logger("TVShowDetails")
   m.top.optionsAvailable = false
   main = m.top.findNode("toplevel")
-  main.translation = [96, 175]
+  main.translation = [96, 150]
   m.tvshowPoster = m.top.findNode("tvshowPoster")
   m.extrasSlider = m.top.findNode("tvSeasonExtras")
   m.getShuffleEpisodesTask = createObject("roSGNode", "getShuffleEpisodesTask")
@@ -42,9 +42,24 @@ sub OnScreenShown()
 
   ' Restore focus for scene navigation
   if isValid(m.top.lastFocus)
-    m.top.lastFocus.setFocus(true)
+    ' Check if the focus target has a ready field (e.g., TextButton) and is not yet ready
+    if m.top.lastFocus.hasField("ready") and not m.top.lastFocus.ready
+      ' Component not ready yet, observe and set focus when ready
+      m.top.lastFocus.observeField("ready", "onLastFocusReady")
+    else
+      ' Component is ready or doesn't need readiness check, set focus immediately
+      m.top.lastFocus.setFocus(true)
+    end if
   else
     m.top.setFocus(true)
+  end if
+end sub
+
+sub onLastFocusReady()
+  ' Called when the last focus target becomes ready
+  if isValid(m.top.lastFocus) and m.top.lastFocus.ready
+    m.top.lastFocus.unobserveField("ready")
+    m.top.lastFocus.setFocus(true)
   end if
 end sub
 
