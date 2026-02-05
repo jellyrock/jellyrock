@@ -233,18 +233,18 @@ sub displayDirectorGenreNode(node as object)
 end sub
 
 ' createTaglineLabel: Create a tagline label node
-' @return Configured LabelPrimaryMedium node (bold)
+' @return Configured LabelSecondaryMedium node (bold)
 function createTaglineLabel() as object
-  labelNode = CreateObject("roSGNode", "LabelPrimaryMedium")
+  labelNode = CreateObject("roSGNode", "LabelSecondaryMedium")
   labelNode.id = "tagline"
   labelNode.bold = true
   return labelNode
 end function
 
 ' createOverviewLabel: Create an overview label node
-' @return Configured LabelPrimaryMedium node (wrapped, width-limited)
+' @return Configured LabelSecondaryMedium node (wrapped, width-limited)
 function createOverviewLabel() as object
-  labelNode = CreateObject("roSGNode", "LabelPrimaryMedium")
+  labelNode = CreateObject("roSGNode", "LabelSecondaryMedium")
   labelNode.id = "overview"
   labelNode.wrap = true
   labelNode.width = 1100
