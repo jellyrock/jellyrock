@@ -14,7 +14,6 @@ sub init()
   m.infoGroup = m.top.findNode("infoGroup")
 
   m.itemDescription = m.top.findNode("itemDescription")
-  m.tagline = m.top.findNode("tagline")
 
   m.buttonGrp = m.top.findNode("buttons")
   m.buttonGrp.callFunc("focus")
@@ -221,6 +220,52 @@ sub displayDirectorGenreNode(node as object)
   m.directorGenreGroup.appendChild(node)
 end sub
 
+' createTaglineLabel: Create a tagline label node
+' @return Configured LabelPrimaryMedium node (bold)
+function createTaglineLabel() as object
+  labelNode = CreateObject("roSGNode", "LabelPrimaryMedium")
+  labelNode.id = "tagline"
+  labelNode.bold = true
+  return labelNode
+end function
+
+' createOverviewLabel: Create an overview label node
+' @return Configured LabelPrimaryMedium node (wrapped, width-limited)
+function createOverviewLabel() as object
+  labelNode = CreateObject("roSGNode", "LabelPrimaryMedium")
+  labelNode.id = "overview"
+  labelNode.wrap = true
+  labelNode.width = 1100
+  labelNode.maxLines = 2
+  labelNode.lineSpacing = 3
+  return labelNode
+end function
+
+' populateDescriptionGroup: Dynamically populate tagline and overview labels
+sub populateDescriptionGroup()
+  ' Clear existing nodes
+  m.itemDescription.removeChildrenIndex(m.itemDescription.getChildCount(), 0)
+
+  itemData = m.top.itemContent.json
+  userSettings = m.global.user.settings
+
+  ' 1. Tagline (if enabled in settings and data exists)
+  if userSettings.uiDetailsHideTagline = false
+    if isValid(itemData.taglines) and itemData.taglines.count() > 0 and isValidAndNotEmpty(itemData.taglines[0])
+      taglineLabel = createTaglineLabel()
+      taglineLabel.text = itemData.taglines[0]
+      m.itemDescription.appendChild(taglineLabel)
+    end if
+  end if
+
+  ' 2. Overview (if data exists)
+  if isValid(itemData.overview) and isValidAndNotEmpty(itemData.overview)
+    overviewLabel = createOverviewLabel()
+    overviewLabel.text = itemData.overview
+    m.itemDescription.appendChild(overviewLabel)
+  end if
+end sub
+
 ' populateInfoGroup: Dynamically populate info and director/genre groups
 sub populateInfoGroup()
   ' Clear existing nodes
@@ -328,7 +373,6 @@ sub itemContentChanged()
   end if
 
   if isValid(item) and isValid(item.json)
-    userSettings = m.global.user.settings
     itemData = item.json
     m.top.id = itemData.id
 
@@ -345,17 +389,11 @@ sub itemContentChanged()
     ' Populate info rows dynamically
     populateInfoGroup()
 
-    ' Handle all "As Is" fields
-    setFieldText("videoTitle", itemData.name)
-    setFieldText("overview", itemData.overview)
+    ' Populate description group (tagline and overview) dynamically
+    populateDescriptionGroup()
 
-    if userSettings.uiDetailsHideTagline = false
-      if itemData.taglines.count() > 0
-        setFieldText("tagline", itemData.taglines[0])
-      end if
-    else
-      m.itemDescription.removeChild(m.tagline)
-    end if
+    ' Handle video title
+    setFieldText("videoTitle", itemData.name)
 
     updateFavoriteButton()
     updateWatchedButton()
