@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- movie description alignment and `Ends At` text ([#317](https://github.com/jellyrock/jellyrock/pull/317))
+- MovieDetails description alignment and `Ends At` text ([#317](https://github.com/jellyrock/jellyrock/pull/317))
 
 ## [1.12.0](https://github.com/jellyrock/jellyrock/compare/v1.11.0...v1.12.0) - 2026-02-05
 
