@@ -1,0 +1,73 @@
+sub init()
+  m.background = m.top.findNode("background")
+  m.focusBorder = m.top.findNode("focusBorder")
+  m.label = m.top.findNode("label")
+
+  m.top.observeField("focusedChild", "onFocusChanged")
+end sub
+
+' Updates the label text when the text field changes
+sub onTextChanged()
+  m.label.text = m.top.text
+end sub
+
+' Resizes background, border, and label when width or height changes
+sub onSizeChanged()
+  componentWidth = m.top.width
+  componentHeight = m.top.height
+
+  m.background.width = componentWidth
+  m.background.height = componentHeight
+
+  m.focusBorder.width = componentWidth
+  m.focusBorder.height = componentHeight
+
+  ' Inset label with 30px padding on all sides
+  labelPadding = 30
+  m.label.translation = [labelPadding, labelPadding]
+  m.label.width = componentWidth - (labelPadding * 2)
+  m.label.height = componentHeight - (labelPadding * 2)
+end sub
+
+' Passes horizAlign through to the internal label
+sub onHorizAlignChanged()
+  m.label.horizAlign = m.top.horizAlign
+end sub
+
+' Passes vertAlign through to the internal label
+sub onVertAlignChanged()
+  m.label.vertAlign = m.top.vertAlign
+end sub
+
+' Shows or hides the 9patch focus border based on focus state
+sub onFocusChanged()
+  if m.top.hasFocus()
+    m.focusBorder.blendColor = m.global.constants.colorPrimary
+    m.focusBorder.visible = true
+  else
+    m.focusBorder.visible = false
+  end if
+end sub
+
+' Opens an OverviewDialog pushed onto the scene stack
+sub openOverviewDialog()
+  dialog = createObject("roSGNode", "OverviewDialog")
+
+  if m.top.dialogTitle <> ""
+    dialog.title = m.top.dialogTitle
+  end if
+
+  dialog.overview = m.label.text
+  m.global.sceneManager.callFunc("pushScene", dialog)
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  if key = "OK"
+    openOverviewDialog()
+    return true
+  end if
+
+  return false
+end function

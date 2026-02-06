@@ -132,18 +132,12 @@ sub setSizeAndCenterText()
 
   setFocusBorderSize()
 
-  ' Apply initial colors before showing
-  m.buttonBackground.blendColor = m.top.background
-  m.buttonText.color = m.top.textColor
-  if m.top.enableBorder
-    m.buttonBorder.blendColor = m.top.border
-  else
-    m.buttonBorder.blendColor = m.top.background
-  end if
-
   m.buttonBackground.visible = true
   m.buttonBorder.visible = true
   m.buttonText.visible = true
+
+  ' Apply colors based on current focus state (focus may have been set before render)
+  onFocusChanged()
 
   ' Signal that the button is ready (sized and visible)
   m.top.ready = true

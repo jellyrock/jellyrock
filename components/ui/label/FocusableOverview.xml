@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FocusableOverview: Reusable focusable text box with 9patch focus border.
+     Shows overview/description text with ellipsis. When focused, displays a
+     themed border. Pressing OK opens an OverviewDialog to read the full text. -->
+<component name="FocusableOverview" extends="Group" focusable="true">
+  <children>
+    <RectangleBackgroundSecondary id="background" />
+    <Poster id="focusBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+    <LabelPrimaryMedium id="label" wrap="true" ellipsisText="..." />
+  </children>
+  <interface>
+    <field id="text" type="string" onChange="onTextChanged" />
+    <field id="dialogTitle" type="string" value="" />
+    <field id="width" type="integer" onChange="onSizeChanged" />
+    <field id="height" type="integer" onChange="onSizeChanged" />
+    <field id="horizAlign" type="string" onChange="onHorizAlignChanged" />
+    <field id="vertAlign" type="string" onChange="onVertAlignChanged" />
+  </interface>
+</component>
