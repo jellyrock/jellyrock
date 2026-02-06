@@ -116,6 +116,10 @@
       <translation>AppearsOn</translation>
     </message>
     <message>
+      <source>Are you sure you want to delete this item? This action cannot be undone.</source>
+      <translation>Are you sure you want to delete this item? This action cannot be undone.</translation>
+    </message>
+    <message>
       <source>Are you sure? This will reset the setting to its default value.</source>
       <translation>Are you sure? This will reset the setting to its default value.</translation>
     </message>
@@ -329,6 +333,10 @@
       <source>Default view for Movie Libraries.</source>
       <translation>Default view for Movie Libraries.</translation>
       <extracomment>Settings Menu - Description for option</extracomment>
+    </message>
+    <message>
+      <source>Delete</source>
+      <translation>Delete</translation>
     </message>
     <message>
       <source>Delete Saved</source>
