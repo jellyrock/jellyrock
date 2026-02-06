@@ -1,5 +1,3 @@
-import "pkg:/source/utils/misc.bs"
-
 sub init()
   m.background = m.top.findNode("background")
   m.focusBorder = m.top.findNode("focusBorder")
