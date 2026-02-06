@@ -963,9 +963,10 @@ sub Main (args as dynamic) as void
       popupNode = msg.getRoSGNode()
       stopLoadingSpinner()
       if isValid(popupNode) and isValid(popupNode.returnData)
+        print "popupNode.returnData = ", popupNode.returnData
         ' Handle delete confirmation dialog
         if isValid(m.pendingDeleteItemId)
-          if popupNode.returnData.indexSelected = 1
+          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Delete")
             ' User confirmed deletion
             api.items.DeleteByID(m.pendingDeleteItemId)
             m.pendingDeleteItemId = invalid

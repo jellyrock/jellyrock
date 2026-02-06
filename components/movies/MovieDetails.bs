@@ -737,10 +737,13 @@ sub updateOptionsButtonVisibility()
     m.buttonGrp.removeChild(m.optionsButton)
     m.optionsButton = invalid
 
-    ' Adjust focus index if user was on a button after the removed button
+    ' Adjust focus: if user was on a button after the removed button, shift focus back (clamped to 0)
     if isValid(currentFocusIndex) and isValid(optionsButtonIndex) and currentFocusIndex > optionsButtonIndex
-      m.buttonGrp.buttonFocused = currentFocusIndex - 1
+      focusIndex = currentFocusIndex - 1
+      if focusIndex < 0 then focusIndex = 0
+      m.buttonGrp.buttonFocused = focusIndex
     end if
+    m.buttonGrp.callFunc("focus")
   end if
 end sub
 
@@ -784,10 +787,13 @@ sub manageDeleteButton()
     m.buttonGrp.removeChild(m.deleteButton)
     m.deleteButton = invalid
 
-    ' If user was focused on the delete button, move focus to previous button
+    ' Adjust focus: if user was on or after delete button, shift focus back (clamped to 0)
     if isValid(currentFocusIndex) and isValid(deleteButtonIndex) and currentFocusIndex >= deleteButtonIndex
-      m.buttonGrp.buttonFocused = currentFocusIndex - 1
+      focusIndex = currentFocusIndex - 1
+      if focusIndex < 0 then focusIndex = 0
+      m.buttonGrp.buttonFocused = focusIndex
     end if
+    m.buttonGrp.callFunc("focus")
   end if
 end sub
 
