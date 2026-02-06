@@ -799,6 +799,10 @@
       <translation>Override web client audio preference. When enabled, use the IsDefault flag to select audio track. When disabled, prefer language match and ignore IsDefault.</translation>
     </message>
     <message>
+      <source>Overview</source>
+      <translation>Overview</translation>
+    </message>
+    <message>
       <source>Panel/card background color. Default: 161B22</source>
       <translation>Panel/card background color. Default: 161B22</translation>
     </message>
@@ -882,10 +886,6 @@
     <message>
       <source>Preserve DoVi</source>
       <translation>Preserve DoVi</translation>
-    </message>
-    <message>
-      <source>Press &apos;Back&apos; to Close</source>
-      <translation>Press &apos;Back&apos; to Close</translation>
     </message>
     <message>
       <source>Primary</source>
