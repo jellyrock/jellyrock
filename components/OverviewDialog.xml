@@ -1,14 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="OverviewDialog" extends="StandardDialog">
-  <interface>
-    <field id="Title" type="string" onchange="setTitle" />
-    <field id="Overview" type="string" onChange="setOverview" />
-  </interface>
+<!-- OverviewDialog: Custom full-screen overlay for reading long overview text.
+     Pushed onto scene stack via SceneManager. Supports vertical scrolling. -->
+<component name="OverviewDialog" extends="JRGroup" focusable="true">
   <children>
-    <StdDlgTitleArea id="titleArea" />
-    <StdDlgContentArea id="contentArea">
-      <StdDlgTextItem id="description"
-        namedTextStyle="normal" />
-    </StdDlgContentArea>
+    <!-- Dimmed background overlay -->
+    <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />
+
+    <!-- Dialog box -->
+    <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+
+    <!-- Title -->
+    <LabelPrimaryLarge id="titleLabel" bold="true" />
+
+    <!-- Separator line below title -->
+    <Rectangle id="separator" height="2" />
+
+    <!-- Scrollable text area (clippingRect constrains visible area) -->
+    <Group id="textClip" focusable="true">
+      <LabelPrimaryMedium id="overviewText" wrap="true" />
+    </Group>
+
+    <!-- Scroll position indicator -->
+    <Rectangle id="scrollTrack" width="4" opacity="0.3" />
+    <Rectangle id="scrollThumb" width="4" />
+
+    <!-- OK button -->
+    <TextButton id="okButton" text="OK" />
   </children>
+  <interface>
+    <field id="title" type="string" onChange="onTitleChanged" />
+    <field id="overview" type="string" onChange="onOverviewChanged" />
+  </interface>
 </component>

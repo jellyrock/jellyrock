@@ -1,16 +1,213 @@
-sub setTitle()
-  m.top.findNode("titleArea").primaryTitle = m.top.title
+import "pkg:/source/utils/misc.bs"
+
+' Layout constants
+const DIALOG_WIDTH = 1600
+const DIALOG_HEIGHT = 850
+const DIALOG_PADDING = 40
+const TITLE_HEIGHT = 50
+const SEPARATOR_Y = 80
+const TEXT_TOP = 115
+const BUTTON_HEIGHT = 60
+const BUTTON_BOTTOM_MARGIN = 30
+const SCROLL_STEP = 150
+
+sub init()
+  constants = m.global.constants
+
+  ' Dialog position (centered on screen)
+  dialogX = (1920 - DIALOG_WIDTH) / 2
+  dialogY = (1080 - DIALOG_HEIGHT) / 2
+
+  ' Background
+  m.dialogBackground = m.top.findNode("dialogBackground")
+  m.dialogBackground.translation = [dialogX, dialogY]
+  m.dialogBackground.width = DIALOG_WIDTH
+  m.dialogBackground.height = DIALOG_HEIGHT
+  m.dialogBackground.blendColor = constants.colorBackgroundPrimary
+
+  ' Title
+  m.titleLabel = m.top.findNode("titleLabel")
+  m.titleLabel.translation = [dialogX + DIALOG_PADDING, dialogY + 25]
+  m.titleLabel.width = DIALOG_WIDTH - (DIALOG_PADDING * 2)
+  m.titleLabel.height = TITLE_HEIGHT
+  m.titleLabel.vertAlign = "center"
+
+  ' Separator
+  separator = m.top.findNode("separator")
+  separator.translation = [dialogX + DIALOG_PADDING, dialogY + SEPARATOR_Y]
+  separator.width = DIALOG_WIDTH - (DIALOG_PADDING * 2)
+  separator.color = constants.colorSecondary
+
+  ' Calculate text area dimensions
+  buttonAreaHeight = BUTTON_HEIGHT + BUTTON_BOTTOM_MARGIN + DIALOG_PADDING
+  m.textAreaHeight = DIALOG_HEIGHT - TEXT_TOP - buttonAreaHeight
+  textAreaWidth = DIALOG_WIDTH - (DIALOG_PADDING * 2) - 20 ' 20px for scrollbar
+
+  ' Scrollable text area with clipping
+  m.textClip = m.top.findNode("textClip")
+  m.textClip.translation = [dialogX + DIALOG_PADDING, dialogY + TEXT_TOP]
+  m.textClip.clippingRect = [0, 0, textAreaWidth, m.textAreaHeight]
+
+  m.overviewText = m.top.findNode("overviewText")
+  m.overviewText.width = textAreaWidth
+  m.overviewText.maxLines = 500
+
+  ' Scroll position indicator
+  scrollTrackX = dialogX + DIALOG_WIDTH - DIALOG_PADDING - 4
+  m.scrollTrack = m.top.findNode("scrollTrack")
+  m.scrollTrack.translation = [scrollTrackX, dialogY + TEXT_TOP]
+  m.scrollTrack.height = m.textAreaHeight
+  m.scrollTrack.color = constants.colorTextPrimary
+
+  m.scrollThumb = m.top.findNode("scrollThumb")
+  m.scrollThumb.translation = [scrollTrackX, dialogY + TEXT_TOP]
+  m.scrollThumb.color = constants.colorPrimary
+  m.scrollThumb.visible = false
+  m.scrollTrack.visible = false
+
+  ' OK button (centered at bottom)
+  m.okButton = m.top.findNode("okButton")
+  m.okButton.minWidth = 200
+  m.okButton.translation = [dialogX + (DIALOG_WIDTH / 2) - 100, dialogY + DIALOG_HEIGHT - BUTTON_HEIGHT - BUTTON_BOTTOM_MARGIN]
+
+  ' Observe focus changes to show/hide scrollbar
+  m.top.observeField("focusedChild", "onFocusChanged")
+
+  ' Scroll state
+  m.scrollPosition = 0
+  m.maxScroll = 0
+  m.scrollBoundsCalculated = false
 end sub
 
-sub setOverview()
-  m.top.findNode("description").text = m.top.overview
+sub onTitleChanged()
+  m.titleLabel.text = m.top.title
+end sub
+
+sub onOverviewChanged()
+  ' Enable render tracking and set up observer BEFORE setting text
+  ' This ensures we catch all render state transitions including "full"
+  m.overviewText.enableRenderTracking = true
+  m.overviewText.observeField("renderTracking", "onTextRendered")
+
+  ' Now set the text
+  m.overviewText.text = m.top.overview
+end sub
+
+' Once the text has rendered, calculate scroll bounds and scrollbar
+sub onTextRendered()
+  ' Don't check for "full" - the observer may not fire again after "partial"
+  ' The textHeight=0 guard in calculateScrollBounds handles unrendered text
+  calculateScrollBounds()
+end sub
+
+sub calculateScrollBounds()
+  if m.scrollBoundsCalculated then return
+
+  boundingRect = m.overviewText.localBoundingRect()
+  textHeight = boundingRect.height
+
+  ' If text height is 0, it hasn't rendered yet
+  if textHeight = 0 then return
+
+  m.scrollBoundsCalculated = true
+
+  if textHeight > m.textAreaHeight
+    m.maxScroll = textHeight - m.textAreaHeight
+    thumbRatio = m.textAreaHeight / textHeight
+    m.scrollThumb.height = m.textAreaHeight * thumbRatio
+    ' Scrollable content: show scrollbar and focus text area
+    m.scrollTrack.visible = true
+    m.scrollThumb.visible = true
+    m.textClip.setFocus(true)
+  else
+    ' Non-scrollable content: hide scrollbar and focus OK button
+    m.maxScroll = 0
+    m.scrollTrack.visible = false
+    m.scrollThumb.visible = false
+    m.okButton.setFocus(true)
+  end if
+end sub
+
+' Updates the scroll thumb position to reflect the current scroll position
+sub updateScrollThumb()
+  if m.maxScroll <= 0 then return
+
+  scrollRatio = m.scrollPosition / m.maxScroll
+  trackRange = m.textAreaHeight - m.scrollThumb.height
+  thumbY = m.scrollTrack.translation[1] + (trackRange * scrollRatio)
+  m.scrollThumb.translation = [m.scrollTrack.translation[0], thumbY]
+end sub
+
+sub onFocusChanged()
+  ' Only show scrollbar when textClip has focus - don't hide it otherwise
+  ' This prevents race conditions during initial focus setup
+  if m.textClip.hasFocus()
+    calculateScrollBounds()
+    if m.maxScroll > 0
+      m.scrollTrack.visible = true
+      m.scrollThumb.visible = true
+    end if
+  end if
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
-  if press = false then return false
+  if not press then return false
 
-  if key = "OK" and m.top.findNode("contentArea").isInFocusChain()
-    m.top.close = true
+  if key = "back"
+    m.global.sceneManager.callfunc("popScene")
+    return true
+  end if
+
+  if key = "OK"
+    if m.okButton.hasFocus()
+      m.global.sceneManager.callfunc("popScene")
+      return true
+    end if
+    m.okButton.setFocus(true)
+    return true
+  end if
+
+  if key = "down"
+    if m.okButton.hasFocus() then return true
+
+    calculateScrollBounds()
+
+    if m.maxScroll > 0 and m.scrollPosition < m.maxScroll
+      m.scrollPosition = m.scrollPosition + SCROLL_STEP
+      if m.scrollPosition > m.maxScroll
+        m.scrollPosition = m.maxScroll
+      end if
+      m.overviewText.translation = [0, -m.scrollPosition]
+      updateScrollThumb()
+      return true
+    end if
+
+    m.okButton.setFocus(true)
+    return true
+  end if
+
+  if key = "up"
+    if m.okButton.hasFocus()
+      ' Only move back to text area if there's scrollable content
+      if m.maxScroll > 0
+        m.textClip.setFocus(true)
+      end if
+      return true
+    end if
+
+    calculateScrollBounds()
+
+    if m.scrollPosition > 0
+      m.scrollPosition = m.scrollPosition - SCROLL_STEP
+      if m.scrollPosition < 0
+        m.scrollPosition = 0
+      end if
+      m.overviewText.translation = [0, -m.scrollPosition]
+      updateScrollThumb()
+      return true
+    end if
+    ' At top of scroll, consume event to prevent bubbling
+    return true
   end if
 
   return false
