@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Add `FocusableOverview` component and improve PersonDetails readability ([#318](https://github.com/jellyrock/jellyrock/pull/318))
+
 ### Fixed
 
 - MovieDetails description alignment and `Ends At` text ([#317](https://github.com/jellyrock/jellyrock/pull/317))
