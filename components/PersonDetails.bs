@@ -4,18 +4,17 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.dscr = m.top.findNode("description")
-  m.vidsList = m.top.findNode("extrasGrid")
-  m.btnGrp = m.top.findNode("buttons")
-  m.btnGrp.observeField("escape", "onButtonGroupEscaped")
+  m.description = m.top.findNode("description")
+  m.videosList = m.top.findNode("extrasGrid")
+  m.buttonGroup = m.top.findNode("buttons")
+  m.buttonGroup.observeField("escape", "onButtonGroupEscaped")
   m.favoriteButton = m.top.findNode("favoriteButton")
   m.extrasGrp = m.top.findNode("extrasGrp")
   m.extrasGrp.opacity = 1.0
-  createDialogPallete()
   m.top.optionsAvailable = false
 
   ' Set initial focus for scene navigation
-  m.top.lastFocus = m.dscr
+  m.top.lastFocus = m.description
 end sub
 
 sub OnScreenShown()
@@ -39,15 +38,16 @@ sub loadPerson()
   ' Always set transparent backdrop for person screens
   ' Prevents stale movie/TV backdrops from persisting
   m.global.sceneManager.callFunc("setBackgroundImage", "")
-  name = m.top.findNode("name")
-  name.Text = itemData.Name
+  nameLabel = m.top.findNode("name")
+  nameLabel.Text = itemData.Name
+
   if isValid(itemData.PremiereDate) and itemData.PremiereDate <> ""
     lifeStringLabel = createObject("rosgnode", "LabelPrimarySmallest")
     lifeStringLabel.id = "premierDate"
     lifeStringLabel.bold = true
     lifeStringLabel.height = "100"
     lifeStringLabel.vertAlign = "bottom"
-    name.vertAlign = "top"
+    nameLabel.vertAlign = "top"
     m.top.findNode("title_rectangle").appendChild(lifeStringLabel)
     birthDate = CreateObject("roDateTime")
     birthDate.FromISO8601String(itemData.PremiereDate)
@@ -71,47 +71,37 @@ sub loadPerson()
     lifeString = lifeString + " * " + tr("Age") + ": " + stri(age)
     lifeStringLabel.Text = lifeString
   end if
+
+  ' Set description text and dialog title for the FocusableOverview component
+  m.description.dialogTitle = itemData.Name
   if isValid(itemData.Overview) and itemData.Overview <> ""
-    m.dscr.text = itemData.Overview
+    m.description.text = itemData.Overview
   else
-    m.dscr.text = tr("Biographical information for this person is not currently available.")
-    m.dscr.horizAlign = "center"
-    m.dscr.vertAlign = "center"
+    m.description.text = tr("Biographical information for this person is not currently available.")
+    m.description.horizAlign = "center"
+    m.description.vertAlign = "center"
   end if
+
   if isValid(item.posterURL) and item.posterURL <> ""
     m.top.findnode("personImage").uri = item.posterURL
   else
     m.top.findnode("personImage").uri = "pkg:/images/icons/baseline_person_white_48dp.png"
   end if
-  m.vidsList.callFunc("loadPersonVideos", m.top.Id)
+  m.videosList.callFunc("loadPersonVideos", m.top.Id)
 
   setFavoriteColor()
-  if not m.favoriteButton.hasFocus() then dscrShowFocus()
-end sub
-
-sub dscrShowFocus()
-  m.dscr.setFocus(true)
-  m.dscr.opacity = 1.0
-  m.top.findNode("dscrBorder").color = m.global.constants.colorPrimary
+  if not m.favoriteButton.hasFocus() then m.description.setFocus(true)
 end sub
 
 sub onButtonGroupEscaped()
-  key = m.btnGrp.escape
+  key = m.buttonGroup.escape
   if key = "down"
-    dscrShowFocus()
+    m.description.setFocus(true)
   end if
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
-
-  if key = "OK"
-    if m.dscr.hasFocus()
-      createFullDscrDlg()
-      return true
-    end if
-    return false
-  end if
 
   if key = "back"
     m.global.sceneManager.callfunc("popScene")
@@ -119,30 +109,26 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   if key = "down"
-    if m.dscr.hasFocus()
-      m.dscr.opacity = 0.6
-      m.top.findNode("dscrBorder").color = m.global.constants.colorBackgroundSecondary
-      m.vidsList.setFocus(true)
+    if m.description.isInFocusChain()
+      m.videosList.setFocus(true)
       m.top.findNode("VertSlider").reverse = false
       m.top.findNode("colorSlider").reverse = false
       m.top.findNode("pplAnime").control = "start"
       return true
     else if m.favoriteButton.hasFocus()
       m.favoriteButton.setFocus(false)
-      dscrShowFocus()
+      m.description.setFocus(true)
       return true
     end if
   else if key = "up"
-    if m.dscr.hasFocus()
+    if m.description.isInFocusChain()
       m.favoriteButton.setFocus(true)
-      m.dscr.opacity = 0.6
-      m.top.findNode("dscrBorder").color = m.global.constants.colorBackgroundSecondary
       return true
-    else if m.vidsList.isInFocusChain() and m.vidsList.itemFocused = 0
+    else if m.videosList.isInFocusChain() and m.videosList.itemFocused = 0
       m.top.findNode("VertSlider").reverse = true
       m.top.findNode("colorSlider").reverse = true
       m.top.findNode("pplAnime").control = "start"
-      dscrShowFocus()
+      m.description.setFocus(true)
       return true
     end if
   end if
@@ -150,40 +136,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 sub setFavoriteColor()
-  fave = m.top.itemContent.favorite
-  fave_button = m.top.findNode("favoriteButton")
-  if isValid(fave) and fave
-    fave_button.textColor = "#269926ff"
-    fave_button.text = tr("Favorite")
+  isFavorite = m.top.itemContent.favorite
+  favoriteBtn = m.top.findNode("favoriteButton")
+  if isValid(isFavorite) and isFavorite
+    favoriteBtn.textColor = "#269926ff"
+    favoriteBtn.text = tr("Favorite")
   else
-    fave_button.text = tr("Set Favorite")
+    favoriteBtn.text = tr("Set Favorite")
   end if
 end sub
-
-sub createFullDscrDlg()
-  dlg = CreateObject("roSGNode", "OverviewDialog")
-  dlg.Title = m.top.itemContent.json.Name
-  dlg.width = 1290
-  dlg.palette = m.dlgPalette
-  dlg.overview = m.dscr.text
-  m.fullDscrDlg = dlg
-  m.top.getScene().dialog = dlg
-
-end sub
-
-sub createDialogPallete()
-  m.dlgPalette = createObject("roSGNode", "RSGPalette")
-  m.dlgPalette.colors = {
-    DialogBackgroundColor: "0x262828FF",
-    DialogItemColor: "0x00EF00FF",
-    DialogTextColor: "0xb0b0b0FF",
-    DialogFocusColor: "0xcececeFF",
-    DialogFocusItemColor: "0x202020FF",
-    DialogSecondaryTextColor: "0xf8f8f8ff",
-    DialogSecondaryItemColor: "0xcc7ecc4D",
-    DialogInputFieldColor: "0x80FF8080",
-    KeyboardDialogColor: "0x80FF804D",
-    DialogFootprintColor: "0x80FF804D"
-  }
-end sub
-
