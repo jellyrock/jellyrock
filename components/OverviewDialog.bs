@@ -52,6 +52,9 @@ sub init()
   m.overviewText = m.top.findNode("overviewText")
   m.overviewText.width = textAreaWidth
   m.overviewText.maxLines = 500
+  ' Enable render tracking once - observer fires when text is set/changed
+  m.overviewText.enableRenderTracking = true
+  m.overviewText.observeField("renderTracking", "onTextRendered")
 
   ' Scroll position indicator
   scrollTrackX = dialogX + DIALOG_WIDTH - DIALOG_PADDING - SCROLLBAR_THUMB_WIDTH
@@ -88,12 +91,6 @@ sub onTitleChanged()
 end sub
 
 sub onOverviewChanged()
-  ' Enable render tracking and set up observer BEFORE setting text
-  ' This ensures we catch all render state transitions including "full"
-  m.overviewText.enableRenderTracking = true
-  m.overviewText.observeField("renderTracking", "onTextRendered")
-
-  ' Now set the text
   m.overviewText.text = m.top.overview
 end sub
 
