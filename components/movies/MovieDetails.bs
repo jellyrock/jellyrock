@@ -30,8 +30,9 @@ sub init()
   ' Observe renderTracking to update gradient after layout is calculated
   m.itemDetails.observeField("renderTracking", "onItemDetailsRendered")
 
-  ' Options button will be created dynamically as needed
+  ' Options and delete buttons will be created dynamically as needed
   m.optionsButton = invalid
+  m.deleteButton = invalid
 
   m.isFirstRun = true
   m.allowButtonUpdates = true ' Allow button updates on init and when returning to screen
@@ -418,6 +419,7 @@ sub itemContentChanged()
     ' Prevents button changes during playback transition
     if m.allowButtonUpdates
       manageResumeButton()
+      manageDeleteButton()
       m.allowButtonUpdates = false ' Disable until next OnScreenShown
     end if
   end if
@@ -735,10 +737,13 @@ sub updateOptionsButtonVisibility()
     m.buttonGrp.removeChild(m.optionsButton)
     m.optionsButton = invalid
 
-    ' Adjust focus index if user was on a button after the removed button
+    ' Adjust focus: if user was on a button after the removed button, shift focus back (clamped to 0)
     if isValid(currentFocusIndex) and isValid(optionsButtonIndex) and currentFocusIndex > optionsButtonIndex
-      m.buttonGrp.buttonFocused = currentFocusIndex - 1
+      focusIndex = currentFocusIndex - 1
+      if focusIndex < 0 then focusIndex = 0
+      m.buttonGrp.buttonFocused = focusIndex
     end if
+    m.buttonGrp.callFunc("focus")
   end if
 end sub
 
@@ -755,6 +760,42 @@ function getButtonIndex(buttonId as string) as integer
   end for
   return -1
 end function
+
+' manageDeleteButton: Add or remove Delete button based on server CanDelete permission
+' CanDelete is computed server-side and accounts for global, folder-specific, and admin permissions
+'
+sub manageDeleteButton()
+  canDelete = false
+  if isValid(m.top.itemContent) and isValid(m.top.itemContent.json)
+    canDelete = m.top.itemContent.json.CanDelete = true
+  end if
+
+  buttonExists = isValid(m.deleteButton)
+
+  if canDelete and not buttonExists
+    ' Create and append delete button at end of button group (destructive action goes last)
+    m.deleteButton = CreateObject("roSGNode", "IconButton")
+    m.deleteButton.id = "deleteButton"
+    m.deleteButton.icon = "pkg:/images/icons/delete.png"
+    m.deleteButton.text = tr("Delete")
+    m.buttonGrp.appendChild(m.deleteButton)
+  else if not canDelete and buttonExists
+    ' Remove delete button and adjust focus if needed
+    currentFocusIndex = m.buttonGrp.buttonFocused
+    deleteButtonIndex = getButtonIndex("deleteButton")
+
+    m.buttonGrp.removeChild(m.deleteButton)
+    m.deleteButton = invalid
+
+    ' Adjust focus: if user was on or after delete button, shift focus back (clamped to 0)
+    if isValid(currentFocusIndex) and isValid(deleteButtonIndex) and currentFocusIndex >= deleteButtonIndex
+      focusIndex = currentFocusIndex - 1
+      if focusIndex < 0 then focusIndex = 0
+      m.buttonGrp.buttonFocused = focusIndex
+    end if
+    m.buttonGrp.callFunc("focus")
+  end if
+end sub
 
 function round(f as float) as integer
   ' BrightScript only has a "floor" round

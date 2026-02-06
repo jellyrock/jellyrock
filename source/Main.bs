@@ -765,6 +765,12 @@ sub Main (args as dynamic) as void
             favoriteButton.selected = true
           end if
         end if
+      else if btn.id = "deleteButton"
+        print "deleteButton pressed"
+        if isValid(group) and isValid(group.itemContent) and isValid(group.itemContent.json)
+          m.pendingDeleteItemId = group.itemContent.json.id
+          m.global.sceneManager.callFunc("optionDialog", tr("Delete"), [tr("Are you sure you want to delete this item? This action cannot be undone.")], [tr("Cancel"), tr("Delete")])
+        end if
       else if btn.id = "playAll"
         print "playAll button pressed"
         ' User has selected playlist of of audio they want us to play
@@ -957,47 +963,60 @@ sub Main (args as dynamic) as void
       popupNode = msg.getRoSGNode()
       stopLoadingSpinner()
       if isValid(popupNode) and isValid(popupNode.returnData)
-        selectedItem = m.global.queueManager.callFunc("getHold")
-        m.global.queueManager.callFunc("clearHold")
+        print "popupNode.returnData = ", popupNode.returnData
+        ' Handle delete confirmation dialog
+        if isValid(m.pendingDeleteItemId)
+          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Delete")
+            ' User confirmed deletion
+            api.items.DeleteByID(m.pendingDeleteItemId)
+            m.pendingDeleteItemId = invalid
+            m.global.sceneManager.callFunc("popScene")
+          else
+            ' User cancelled or dialog closed
+            m.pendingDeleteItemId = invalid
+          end if
+        else
+          selectedItem = m.global.queueManager.callFunc("getHold")
+          m.global.queueManager.callFunc("clearHold")
 
-        if isValidAndNotEmpty(selectedItem) and isValid(selectedItem[0])
-          if popupNode.returnData.indexselected = 0
-            'Resume video from resume point
-            startLoadingSpinner()
-            startingPoint = 0
+          if isValidAndNotEmpty(selectedItem) and isValid(selectedItem[0])
+            if popupNode.returnData.indexselected = 0
+              'Resume video from resume point
+              startLoadingSpinner()
+              startingPoint = 0
 
-            if isValid(selectedItem[0].UserData) and isValid(selectedItem[0].UserData.PlaybackPositionTicks)
-              if selectedItem[0].UserData.PlaybackPositionTicks > 0
-                startingPoint = selectedItem[0].UserData.PlaybackPositionTicks
+              if isValid(selectedItem[0].UserData) and isValid(selectedItem[0].UserData.PlaybackPositionTicks)
+                if selectedItem[0].UserData.PlaybackPositionTicks > 0
+                  startingPoint = selectedItem[0].UserData.PlaybackPositionTicks
+                end if
               end if
-            end if
 
-            selectedItem[0].startingPoint = startingPoint
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", selectedItem[0])
-            m.global.queueManager.callFunc("playQueue")
-          else if popupNode.returnData.indexselected = 1
-            'Start Over from beginning selected, set position to 0
-            startLoadingSpinner()
-            selectedItem[0].startingPoint = 0
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", selectedItem[0])
-            m.global.queueManager.callFunc("playQueue")
-          else if popupNode.returnData.indexselected = 2
-            ' User chose Go to series
-            CreateSeriesDetailsGroup(selectedItem[0].SeriesId)
-          else if popupNode.returnData.indexselected = 3
-            ' User chose Go to season
-            if isValid(selectedItem[0].SeriesId) and isValid(selectedItem[0].seasonID)
-              CreateSeasonDetailsGroupByID(selectedItem[0].SeriesId, selectedItem[0].seasonID)
-            else
-              stopLoadingSpinner()
-              message_dialog(tr("Error loading Season"))
+              selectedItem[0].startingPoint = startingPoint
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("push", selectedItem[0])
+              m.global.queueManager.callFunc("playQueue")
+            else if popupNode.returnData.indexselected = 1
+              'Start Over from beginning selected, set position to 0
+              startLoadingSpinner()
+              selectedItem[0].startingPoint = 0
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("push", selectedItem[0])
+              m.global.queueManager.callFunc("playQueue")
+            else if popupNode.returnData.indexselected = 2
+              ' User chose Go to series
+              CreateSeriesDetailsGroup(selectedItem[0].SeriesId)
+            else if popupNode.returnData.indexselected = 3
+              ' User chose Go to season
+              if isValid(selectedItem[0].SeriesId) and isValid(selectedItem[0].seasonID)
+                CreateSeasonDetailsGroupByID(selectedItem[0].SeriesId, selectedItem[0].seasonID)
+              else
+                stopLoadingSpinner()
+                message_dialog(tr("Error loading Season"))
+              end if
+            else if popupNode.returnData.indexselected = 4
+              ' User chose Go to episode
+              CreateMovieDetailsGroup(selectedItem[0])
             end if
-
-          else if popupNode.returnData.indexselected = 4
-            ' User chose Go to episode
-            CreateMovieDetailsGroup(selectedItem[0])
           end if
         end if
       end if
