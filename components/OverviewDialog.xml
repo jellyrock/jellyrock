@@ -13,7 +13,7 @@
     <LabelPrimaryLarge id="titleLabel" bold="true" />
 
     <!-- Separator line below title -->
-    <Rectangle id="separator" height="2" />
+    <Rectangle id="separator" height="3" />
 
     <!-- Scrollable text area (clippingRect constrains visible area) -->
     <Group id="textClip" focusable="true">
@@ -21,8 +21,8 @@
     </Group>
 
     <!-- Scroll position indicator -->
-    <Rectangle id="scrollTrack" width="4" opacity="0.3" />
-    <Rectangle id="scrollThumb" width="4" />
+    <Rectangle id="scrollTrack" width="3" />
+    <Rectangle id="scrollThumb" width="12" />
 
     <!-- OK button -->
     <TextButton id="okButton" text="OK" />

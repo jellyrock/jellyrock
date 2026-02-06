@@ -2,14 +2,16 @@ import "pkg:/source/utils/misc.bs"
 
 ' Layout constants
 const DIALOG_WIDTH = 1600
-const DIALOG_HEIGHT = 850
+const DIALOG_HEIGHT = 760
 const DIALOG_PADDING = 40
 const TITLE_HEIGHT = 50
 const SEPARATOR_Y = 80
 const TEXT_TOP = 115
 const BUTTON_HEIGHT = 60
-const BUTTON_BOTTOM_MARGIN = 30
+const BUTTON_TOP_MARGIN = 20
 const SCROLL_STEP = 150
+const SCROLLBAR_THUMB_WIDTH = 12
+const SCROLLBAR_TRACK_WIDTH = 3
 
 sub init()
   constants = m.global.constants
@@ -36,12 +38,11 @@ sub init()
   separator = m.top.findNode("separator")
   separator.translation = [dialogX + DIALOG_PADDING, dialogY + SEPARATOR_Y]
   separator.width = DIALOG_WIDTH - (DIALOG_PADDING * 2)
-  separator.color = constants.colorSecondary
+  separator.color = constants.colorBackgroundSecondary
 
-  ' Calculate text area dimensions
-  buttonAreaHeight = BUTTON_HEIGHT + BUTTON_BOTTOM_MARGIN + DIALOG_PADDING
-  m.textAreaHeight = DIALOG_HEIGHT - TEXT_TOP - buttonAreaHeight
-  textAreaWidth = DIALOG_WIDTH - (DIALOG_PADDING * 2) - 20 ' 20px for scrollbar
+  ' Calculate text area dimensions (button is now outside dialog)
+  m.textAreaHeight = DIALOG_HEIGHT - TEXT_TOP - DIALOG_PADDING
+  textAreaWidth = DIALOG_WIDTH - (DIALOG_PADDING * 2) - SCROLLBAR_THUMB_WIDTH - 8 ' scrollbar + margin
 
   ' Scrollable text area with clipping
   m.textClip = m.top.findNode("textClip")
@@ -53,22 +54,25 @@ sub init()
   m.overviewText.maxLines = 500
 
   ' Scroll position indicator
-  scrollTrackX = dialogX + DIALOG_WIDTH - DIALOG_PADDING - 4
+  scrollTrackX = dialogX + DIALOG_WIDTH - DIALOG_PADDING - SCROLLBAR_THUMB_WIDTH
+  scrollThumbX = scrollTrackX + (SCROLLBAR_THUMB_WIDTH - SCROLLBAR_TRACK_WIDTH) / 2
   m.scrollTrack = m.top.findNode("scrollTrack")
-  m.scrollTrack.translation = [scrollTrackX, dialogY + TEXT_TOP]
+  m.scrollTrack.translation = [scrollThumbX, dialogY + TEXT_TOP]
   m.scrollTrack.height = m.textAreaHeight
-  m.scrollTrack.color = constants.colorTextPrimary
+  m.scrollTrack.width = SCROLLBAR_TRACK_WIDTH
+  m.scrollTrack.color = constants.colorBackgroundSecondary
 
   m.scrollThumb = m.top.findNode("scrollThumb")
   m.scrollThumb.translation = [scrollTrackX, dialogY + TEXT_TOP]
-  m.scrollThumb.color = constants.colorPrimary
+  m.scrollThumb.width = SCROLLBAR_THUMB_WIDTH
+  m.scrollThumb.color = constants.colorBackgroundSecondary
   m.scrollThumb.visible = false
   m.scrollTrack.visible = false
 
-  ' OK button (centered at bottom)
+  ' OK button (centered below dialog)
   m.okButton = m.top.findNode("okButton")
   m.okButton.minWidth = 200
-  m.okButton.translation = [dialogX + (DIALOG_WIDTH / 2) - 100, dialogY + DIALOG_HEIGHT - BUTTON_HEIGHT - BUTTON_BOTTOM_MARGIN]
+  m.okButton.translation = [dialogX + (DIALOG_WIDTH / 2) - 100, dialogY + DIALOG_HEIGHT + BUTTON_TOP_MARGIN]
 
   ' Observe focus changes to show/hide scrollbar
   m.top.observeField("focusedChild", "onFocusChanged")
@@ -119,12 +123,14 @@ sub calculateScrollBounds()
     m.scrollTrack.visible = true
     m.scrollThumb.visible = true
     m.textClip.setFocus(true)
+    updateScrollbarFocus(true)
   else
     ' Non-scrollable content: hide scrollbar and focus OK button
     m.maxScroll = 0
     m.scrollTrack.visible = false
     m.scrollThumb.visible = false
     m.okButton.setFocus(true)
+    updateScrollbarFocus(false)
   end if
 end sub
 
@@ -135,18 +141,29 @@ sub updateScrollThumb()
   scrollRatio = m.scrollPosition / m.maxScroll
   trackRange = m.textAreaHeight - m.scrollThumb.height
   thumbY = m.scrollTrack.translation[1] + (trackRange * scrollRatio)
-  m.scrollThumb.translation = [m.scrollTrack.translation[0], thumbY]
+  m.scrollThumb.translation = [m.scrollThumb.translation[0], thumbY]
 end sub
 
 sub onFocusChanged()
-  ' Only show scrollbar when textClip has focus - don't hide it otherwise
-  ' This prevents race conditions during initial focus setup
   if m.textClip.hasFocus()
     calculateScrollBounds()
     if m.maxScroll > 0
       m.scrollTrack.visible = true
       m.scrollThumb.visible = true
     end if
+    updateScrollbarFocus(true)
+  else
+    updateScrollbarFocus(false)
+  end if
+end sub
+
+' Updates scrollbar thumb color based on focus state
+sub updateScrollbarFocus(isFocused as boolean)
+  constants = m.global.constants
+  if isFocused
+    m.scrollThumb.color = constants.colorPrimary
+  else
+    m.scrollThumb.color = constants.colorBackgroundSecondary
   end if
 end sub
 
@@ -164,6 +181,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
     m.okButton.setFocus(true)
+    updateScrollbarFocus(false)
     return true
   end if
 
@@ -183,6 +201,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
 
     m.okButton.setFocus(true)
+    updateScrollbarFocus(false)
     return true
   end if
 
@@ -191,6 +210,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' Only move back to text area if there's scrollable content
       if m.maxScroll > 0
         m.textClip.setFocus(true)
+        updateScrollbarFocus(true)
       end if
       return true
     end if
