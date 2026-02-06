@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- add Delete button to MovieDetails based on server permissions ([#321](https://github.com/jellyrock/jellyrock/pull/321))
+
 ## [1.12.1](https://github.com/jellyrock/jellyrock/compare/v1.12.0...v1.12.1) - 2026-02-06
 
 ### Added
