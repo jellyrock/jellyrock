@@ -25,7 +25,7 @@
         <LayoutGroup id="vertSpacer" layoutDirection="vert" itemSpacings="[24]">
           <LayoutGroup id="dataGroup" layoutDirection="vert">
             <FocusableOverview id="description"
-              width="1322" height="645" />
+              width="1322" height="645" showBackground="true" />
           </LayoutGroup>
         </LayoutGroup>
       </LayoutGroup>

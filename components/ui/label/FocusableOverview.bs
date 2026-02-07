@@ -1,7 +1,19 @@
+import "pkg:/source/utils/misc.bs"
+
+const LABEL_PADDING = 30
+const FOCUS_BORDER_PADDING = 12
+
 sub init()
   m.background = m.top.findNode("background")
+  m.background.visible = false ' No background by default
   m.focusBorder = m.top.findNode("focusBorder")
+  m.contentGroup = m.top.findNode("contentGroup")
   m.label = m.top.findNode("label")
+  m.taglineLabel = invalid
+
+  ' Track content renders for auto-sizing when height is not explicitly set
+  m.contentGroup.enableRenderTracking = true
+  m.contentGroup.observeField("renderTracking", "onContentRendered")
 
   m.top.observeField("focusedChild", "onFocusChanged")
 end sub
@@ -11,22 +23,129 @@ sub onTextChanged()
   m.label.text = m.top.text
 end sub
 
-' Resizes background, border, and label when width or height changes
+' Dynamically creates or removes the tagline label based on tagline text
+sub onTaglineChanged()
+  tagline = m.top.tagline
+
+  if isValidAndNotEmpty(tagline)
+    if not isValid(m.taglineLabel)
+      ' Create tagline label dynamically and insert before description label
+      m.taglineLabel = CreateObject("roSGNode", "LabelSecondaryMedium")
+      m.taglineLabel.bold = true
+      m.taglineLabel.wrap = true
+      m.taglineLabel.lineSpacing = 0
+      m.taglineLabel.ellipsisText = "..."
+      m.taglineLabel.width = m.label.width
+      if m.top.taglineMaxLines > 0
+        m.taglineLabel.maxLines = m.top.taglineMaxLines
+      end if
+      m.contentGroup.insertChild(m.taglineLabel, 0)
+    end if
+    m.taglineLabel.text = tagline
+  else
+    ' Remove tagline label when text is cleared
+    if isValid(m.taglineLabel)
+      m.contentGroup.removeChild(m.taglineLabel)
+      m.taglineLabel = invalid
+    end if
+  end if
+end sub
+
+' Sets maxLines on the description label
+sub onMaxLinesChanged()
+  m.label.maxLines = m.top.maxLines
+end sub
+
+' Sets maxLines on the tagline label (if it exists)
+sub onTaglineMaxLinesChanged()
+  if isValid(m.taglineLabel)
+    m.taglineLabel.maxLines = m.top.taglineMaxLines
+  end if
+end sub
+
+' Sizes the focus border based on background dimensions
+' When showBackground is true (e.g., PersonDetails), border matches background exactly
+' since content padding already provides breathing room.
+' When showBackground is false (e.g., MovieDetails), border expands outward so it
+' doesn't overlap flush text content.
+sub updateFocusBorderLayout()
+  ' Only expand outward when focused and no background padding exists
+  ' Invisible nodes still affect layout in SceneGraph, so the border must
+  ' match the background when unfocused to avoid unwanted layout shifts
+  if not m.top.showBackground and m.top.hasFocus()
+    p = FOCUS_BORDER_PADDING
+    m.focusBorder.translation = [-p, -p]
+    m.focusBorder.width = m.background.width + (p * 2)
+    m.focusBorder.height = m.background.height + (p * 2)
+  else
+    m.focusBorder.translation = [0, 0]
+    m.focusBorder.width = m.background.width
+    m.focusBorder.height = m.background.height
+  end if
+end sub
+
+' Resizes background, border, and content when width or height changes
 sub onSizeChanged()
   componentWidth = m.top.width
   componentHeight = m.top.height
 
   m.background.width = componentWidth
-  m.background.height = componentHeight
 
-  m.focusBorder.width = componentWidth
-  m.focusBorder.height = componentHeight
+  ' Apply padding only when background is shown (e.g., PersonDetails)
+  ' Without background, content is flush for alignment with sibling elements
+  if m.top.showBackground
+    padding = LABEL_PADDING
+  else
+    padding = 0
+  end if
 
-  ' Inset label with 30px padding on all sides
-  labelPadding = 30
-  m.label.translation = [labelPadding, labelPadding]
-  m.label.width = componentWidth - (labelPadding * 2)
-  m.label.height = componentHeight - (labelPadding * 2)
+  m.contentGroup.translation = [padding, padding]
+  labelWidth = componentWidth - (padding * 2)
+  m.label.width = labelWidth
+
+  if isValid(m.taglineLabel)
+    m.taglineLabel.width = labelWidth
+  end if
+
+  ' Fixed height mode: explicitly set background, border, and label heights
+  ' Auto-size mode (height=0): heights are set by onContentRendered instead
+  if componentHeight > 0
+    m.background.height = componentHeight
+
+    ' Only set explicit label height when maxLines is not specified
+    ' This preserves clipping behavior for consumers like PersonDetails
+    if m.top.maxLines = 0
+      m.label.height = componentHeight - (padding * 2)
+    end if
+  end if
+
+  updateFocusBorderLayout()
+end sub
+
+' Auto-sizes background and border height based on rendered content
+' Only active when height is not explicitly set (height=0)
+sub onContentRendered()
+  if m.top.height > 0 then return ' Fixed height mode
+
+  contentRect = m.contentGroup.localBoundingRect()
+  contentHeight = contentRect.height
+  if contentHeight = 0 then return ' Not rendered yet
+
+  if m.top.showBackground
+    padding = LABEL_PADDING
+  else
+    padding = 0
+  end if
+
+  totalHeight = contentHeight + (padding * 2)
+  m.background.height = totalHeight
+  updateFocusBorderLayout()
+end sub
+
+' Toggles the background rectangle and recalculates layout padding
+sub onShowBackgroundChanged()
+  m.background.visible = m.top.showBackground
+  onSizeChanged()
 end sub
 
 ' Passes horizAlign through to the internal label
@@ -47,14 +166,20 @@ sub onFocusChanged()
   else
     m.focusBorder.visible = false
   end if
+  updateFocusBorderLayout()
 end sub
 
 ' Opens an OverviewDialog pushed onto the scene stack
+' Passes tagline separately so the dialog can style it distinctly
 sub openOverviewDialog()
   dialog = createObject("roSGNode", "OverviewDialog")
 
   if m.top.dialogTitle <> ""
     dialog.title = m.top.dialogTitle
+  end if
+
+  if isValidAndNotEmpty(m.top.tagline)
+    dialog.tagline = m.top.tagline
   end if
 
   dialog.overview = m.label.text
