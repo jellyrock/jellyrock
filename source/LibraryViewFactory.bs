@@ -62,8 +62,8 @@ function DeterminePresenterType(libraryItem as object) as string
     return "livetv"
   end if
 
-  ' Photo libraries (photos, photoalbum, homevideos)
-  if collectionType = "photos" or collectionType = "photoalbum" or collectionType = "homevideos"
+  ' Photo libraries - homevideos excluded since it's mixed-content (folders, videos, photos)
+  if collectionType = "photos" or collectionType = "photoalbum"
     return "photo"
   end if
 
