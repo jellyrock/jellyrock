@@ -25,15 +25,17 @@
       </LayoutGroup>
     </LayoutGroup>
 
-    <MovieOptions id="movieOptions" visible="false" />
-
     <JRButtonGroup id="buttons" translation="[90, 800]">
       <IconButton id="playButton" icon="pkg:/images/icons/play.png" text="Play" />
       <IconButton id="watchedButton" icon="pkg:/images/icons/check.png" text="Watched" />
       <IconButton id="favoriteButton" icon="pkg:/images/icons/heart.png" text="Favorite" />
     </JRButtonGroup>
+
     <!-- Movie logo - positioned 5% from right edge, bottom-aligned with button group -->
     <Poster id="movieLogo" />
+
+    <!-- Components above this ^ will be rendered under the MovieOptions popup -->
+    <MovieOptions id="movieOptions" visible="false" />
 
     <!-- "Cast and Crew" row -->
     <extrasSlider id="movieExtras" />
