@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - add Delete button to MovieDetails based on server permissions ([#321](https://github.com/jellyrock/jellyrock/pull/321))
 
+### Fixed
+
+- exclude homevideos from photo presenter mapping ([82b3ab1](https://github.com/jellyrock/jellyrock/commit/82b3ab1))
+
 ## [1.12.1](https://github.com/jellyrock/jellyrock/compare/v1.12.0...v1.12.1) - 2026-02-06
 
 ### Added
