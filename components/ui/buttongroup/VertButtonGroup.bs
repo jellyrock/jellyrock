@@ -6,6 +6,7 @@ sub init()
   m.top.itemSpacings = 15
 
   m.top.buttonFocused = 0
+  m.top.observeField("focusedChild", "onGroupFocusChanged")
 end sub
 
 ' center the button group horizontally
