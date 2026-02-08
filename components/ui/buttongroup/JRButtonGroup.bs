@@ -3,7 +3,7 @@ import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.top.layoutDirection = "horiz"
-  m.top.itemSpacings = 24
+  m.top.itemSpacings = 18
 
   m.top.buttonFocused = 0
 

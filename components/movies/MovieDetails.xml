@@ -29,6 +29,7 @@
       <IconButton id="playButton" icon="pkg:/images/icons/play.png" text="Play" />
       <IconButton id="watchedButton" icon="pkg:/images/icons/check.png" text="Watched" />
       <IconButton id="favoriteButton" icon="pkg:/images/icons/heart.png" text="Favorite" />
+      <IconButton id="refreshButton" icon="pkg:/images/icons/refresh.png" text="Refresh" />
     </JRButtonGroup>
 
     <!-- Movie logo - positioned 5% from right edge, bottom-aligned with button group -->

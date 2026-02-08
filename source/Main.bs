@@ -715,45 +715,15 @@ sub Main (args as dynamic) as void
           group.lastFocus.setFocus(true)
         end if
       else if btn.id = "watchedButton"
-        print "watchedButton pressed"
         movie = group.itemContent
-        watchedButton = group.findNode("watchedButton")
-        if isValid(movie) and isValid(movie.watched) and isValid(movie.id) and isValid(watchedButton)
-          if movie.watched
+        if isValid(movie) and isValid(movie.id)
+          if isValid(movie.watched) and movie.watched
             UnmarkItemWatched(movie.id)
-            movie.watched = false
-            watchedButton.selected = false
           else
             MarkItemWatched(movie.id)
-            movie.watched = true
-            watchedButton.selected = true
-
-            ' Remove Resume button when marking as watched (MovieDetails only)
-            if group.subtype() = "MovieDetails"
-              buttons = group.findNode("buttons")
-              if isValid(buttons)
-                resumeButton = buttons.findNode("resumeButton")
-                if isValid(resumeButton)
-                  ' Reset tick values before removing
-                  resumeButton.playbackPositionTicks = 0
-                  resumeButton.runtimeTicks = 0
-                  buttons.removeChild(resumeButton)
-
-                  ' Adjust focus index since we removed button at index 0
-                  ' All other buttons shifted left by 1, so decrement focus index
-                  if buttons.buttonFocused > 0
-                    buttons.buttonFocused = buttons.buttonFocused - 1
-                  end if
-                  ' Focus the target button directly (setFocus on the group doesn't reliably
-                  ' update visuals when focus is already on a sibling child)
-                  focusTarget = buttons.getChild(buttons.buttonFocused)
-                  if isValid(focusTarget)
-                    focusTarget.setFocus(true)
-                  end if
-                end if
-              end if
-            end if
           end if
+          ' Refresh from server to get authoritative state
+          group.refreshMovieDetailsData = not group.refreshMovieDetailsData
         end if
       else if btn.id = "favoriteButton"
         print "favoriteButton pressed"
@@ -769,6 +739,11 @@ sub Main (args as dynamic) as void
             movie.favorite = true
             favoriteButton.selected = true
           end if
+        end if
+      else if btn.id = "refreshButton"
+        ' Trigger data refresh for the current screen
+        if isValid(group)
+          group.refreshMovieDetailsData = not group.refreshMovieDetailsData
         end if
       else if btn.id = "deleteButton"
         print "deleteButton pressed"
