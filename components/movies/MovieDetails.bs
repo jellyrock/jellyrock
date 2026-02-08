@@ -4,6 +4,8 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
+const ITEM_DETAILS_TOP_Y = 230
+
 sub init()
   m.log = log.Logger("MovieDetails")
   m.extrasGrp = m.top.findnode("extrasGrp")
@@ -14,6 +16,8 @@ sub init()
   m.infoGroup = m.top.findNode("infoGroup")
 
   m.itemDescription = m.top.findNode("itemDescription")
+  m.itemDescriptionWasVisible = false
+
 
   m.buttonGrp = m.top.findNode("buttons")
   m.buttonGrp.setFocus(true)
@@ -29,6 +33,12 @@ sub init()
 
   ' Observe renderTracking to update gradient after layout is calculated
   m.itemDetails.observeField("renderTracking", "onItemDetailsRendered")
+
+  ' itemDetails slide animation - synced with extras slider
+  m.itemTracks = m.top.findNode("itemTracks")
+  m.itemDetailsSlider = m.top.findNode("itemDetailsSlider")
+  m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
+  m.extrasActive = false
 
   ' Options and delete buttons will be created dynamically as needed
   m.optionsButton = invalid
@@ -430,6 +440,11 @@ sub itemContentChanged()
 
   m.buttonGrp.visible = true
   stopLoadingSpinner()
+
+  ' Re-hide description and tracks if extras slider is still active (e.g., returning from sub-screen)
+  if m.extrasActive
+    activateExtras()
+  end if
 end sub
 
 sub SetUpVideoOptions(streams)
@@ -663,7 +678,29 @@ sub onLogoLoadStatusChanged()
 end sub
 
 sub onItemDetailsRendered()
+  if m.itemDetails.renderTracking = "none" then return
+
   updateTextGradient()
+  updateItemDetailsAnimationTarget()
+end sub
+
+' updateItemDetailsAnimationTarget: Recalculate the itemDetails slide animation target
+' Computes the translation Y that positions the top edge of itemDetails at ITEM_DETAILS_TOP_Y
+' Only recalculates when itemDetails is at its rest position (not during extras view)
+'
+sub updateItemDetailsAnimationTarget()
+  if m.extrasActive then return
+
+  itemDetailsRect = m.itemDetails.boundingRect()
+  ' Delta = distance from translation point to top edge of bounding rect
+  ' This accounts for vertAlignment="bottom" positioning
+  currentTransY = m.itemDetails.translation[1]
+  delta = currentTransY - itemDetailsRect.y
+  targetTransY = ITEM_DETAILS_TOP_Y + delta
+
+  startTransX = m.itemDetails.translation[0]
+  startTransY = m.itemDetails.translation[1]
+  m.itemDetailsSliderInterp.keyValue = [[startTransX, startTransY], [startTransX, targetTransY]]
 end sub
 
 sub updateTextGradient()
@@ -764,6 +801,25 @@ function getButtonIndex(buttonId as string) as integer
   end for
   return -1
 end function
+
+' activateExtras: Hide description and tracks when entering extras view
+' Saves current description visibility for later restoration
+'
+sub activateExtras()
+  m.itemDescriptionWasVisible = m.itemDescription.visible
+  m.itemDescription.visible = false
+  m.itemTracks.visible = false
+  m.extrasActive = true
+end sub
+
+' deactivateExtras: Restore description and tracks when leaving extras view
+' Restores description to its pre-extras visibility state
+'
+sub deactivateExtras()
+  m.itemDescription.visible = m.itemDescriptionWasVisible
+  m.itemTracks.visible = true
+  m.extrasActive = false
+end sub
 
 ' focusButtonGroupChild: Focus the button at the current buttonFocused index
 ' Directly sets focus on the child rather than the group to reliably update
@@ -885,6 +941,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "down" and m.buttonGrp.isInFocusChain()
     m.top.lastFocus = m.extrasGrid
     m.extrasGrid.setFocus(true)
+
+    activateExtras()
+
+    ' Animate itemDetails to top (synced with extras slider)
+    m.itemDetailsSliderInterp.reverse = false
+    m.itemDetailsSlider.control = "start"
+
+    ' Extras slider animation
     m.top.findNode("VertSlider").reverse = false
     m.top.findNode("colorSlider").reverse = false
     m.top.findNode("pplAnime").control = "start"
@@ -895,6 +959,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "up" and m.top.findNode("extrasGrid").isInFocusChain()
     if m.extrasGrid.itemFocused = 0
       m.top.lastFocus = m.buttonGrp
+
+      deactivateExtras()
+
+      ' Animate itemDetails back to rest position (synced with extras slider)
+      m.itemDetailsSliderInterp.reverse = true
+      m.itemDetailsSlider.control = "start"
+
+      ' Extras slider animation
       m.top.findNode("VertSlider").reverse = true
       m.top.findNode("colorSlider").reverse = true
       m.top.findNode("pplAnime").control = "start"

@@ -34,6 +34,15 @@
     <!-- Movie logo - positioned 5% from right edge, bottom-aligned with button group -->
     <Poster id="movieLogo" />
 
+    <!-- itemDetails slide animation - synced with extras slider -->
+    <Animation id="itemDetailsSlider" duration="0.4" repeat="false">
+      <Vector2DFieldInterpolator
+        id="itemDetailsSliderInterp"
+        key="[0.0, 1.0]"
+        keyValue="[[96, 775], [96, 775]]"
+        fieldToInterp="itemDetails.translation" />
+    </Animation>
+
     <!-- Components above this ^ will be rendered under the MovieOptions popup -->
     <MovieOptions id="movieOptions" visible="false" />
 
