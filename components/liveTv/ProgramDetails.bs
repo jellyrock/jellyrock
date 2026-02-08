@@ -253,7 +253,7 @@ sub focusChanged()
   if m.top.hasFocus = true
     m.overview.maxLines = m.maxDetailLines
     m.buttonsFocusAnimationOpacity.keyValue = [0, 1]
-    m.buttons.callFunc("focus") ' JRButtonGroup handles button focus
+    m.buttons.setFocus(true)
   else
     m.top.watchSelectedChannel = false
     m.top.recordSelectedChannel = false
@@ -270,7 +270,7 @@ sub onAnimationComplete()
     if m.top.hasFocus = false
       m.overview.maxLines = m.maxPreviewLines
     else if m.top.hasFocus = true
-      m.buttons.callFunc("focus")
+      m.buttons.setFocus(true)
     end if
   end if
 end sub

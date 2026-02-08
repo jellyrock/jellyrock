@@ -16,7 +16,7 @@ sub init()
   m.itemDescription = m.top.findNode("itemDescription")
 
   m.buttonGrp = m.top.findNode("buttons")
-  m.buttonGrp.callFunc("focus")
+  m.buttonGrp.setFocus(true)
   m.top.lastFocus = m.buttonGrp
 
   ' Movie logo - positioned in bottom right
@@ -150,7 +150,12 @@ sub manageResumeButton()
           m.buttonGrp.buttonFocused = 0
         end if
 
-        m.buttonGrp.callFunc("focus")
+        ' Focus the target button directly (setFocus on the group doesn't reliably
+        ' update visuals when focus is already on a sibling child)
+        focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
+        if isValid(focusTarget)
+          focusTarget.setFocus(true)
+        end if
       else
         ' Resume button already exists, update its tick values (data may have refreshed)
         resumeButton.playbackPositionTicks = m.top.itemContent.json.UserData.PlaybackPositionTicks
@@ -187,7 +192,12 @@ sub removeResumeButtonWithFocus(resumeButton as object)
   else
     m.buttonGrp.buttonFocused = 0
   end if
-  m.buttonGrp.callFunc("focus")
+  ' Focus the target button directly (setFocus on the group doesn't reliably
+  ' update visuals when focus is already on a sibling child)
+  focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
+  if isValid(focusTarget)
+    focusTarget.setFocus(true)
+  end if
 end sub
 
 ' createInfoLabel: Create a label for the info/director rows
@@ -747,7 +757,12 @@ sub updateOptionsButtonVisibility()
       if focusIndex < 0 then focusIndex = 0
       m.buttonGrp.buttonFocused = focusIndex
     end if
-    m.buttonGrp.callFunc("focus")
+    ' Focus the target button directly (setFocus on the group doesn't reliably
+    ' update visuals when focus is already on a sibling child)
+    focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
+    if isValid(focusTarget)
+      focusTarget.setFocus(true)
+    end if
   end if
 end sub
 
@@ -797,7 +812,12 @@ sub manageDeleteButton()
       if focusIndex < 0 then focusIndex = 0
       m.buttonGrp.buttonFocused = focusIndex
     end if
-    m.buttonGrp.callFunc("focus")
+    ' Focus the target button directly (setFocus on the group doesn't reliably
+    ' update visuals when focus is already on a sibling child)
+    focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
+    if isValid(focusTarget)
+      focusTarget.setFocus(true)
+    end if
   end if
 end sub
 
@@ -822,7 +842,7 @@ sub audioOptionsClosed()
     setFieldText("audio_codec", tr("Audio") + ": " + m.top.itemContent.json.mediaStreams[m.top.selectedAudioStreamIndex].displayTitle)
   end if
 
-  m.buttonGrp.callFunc("focus")
+  m.buttonGrp.setFocus(true)
 end sub
 
 ' Check if options were updated and if any reloding is needed...
@@ -848,7 +868,7 @@ sub videoOptionsClosed()
     m.top.observeField("itemContent", "itemContentChanged")
   end if
 
-  m.buttonGrp.callFunc("focus")
+  m.buttonGrp.setFocus(true)
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
@@ -886,7 +906,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       m.top.findNode("VertSlider").reverse = true
       m.top.findNode("colorSlider").reverse = true
       m.top.findNode("pplAnime").control = "start"
-      m.buttonGrp.callFunc("focus")
+      m.buttonGrp.setFocus(true)
       return true
     end if
   end if

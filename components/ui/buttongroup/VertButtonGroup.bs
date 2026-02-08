@@ -16,17 +16,6 @@ sub center()
   m.top.translation = [(1920 - buttonsBoundingRect.width) / 2, m.top.translation[1]]
 end sub
 
-' Use instead of setFocus(true)
-sub focus()
-  m.top.setFocus(true)
-  if m.top.buttonFocused <> invalid
-    button = m.top.getChild(m.top.buttonFocused)
-    if button <> invalid
-      button.setFocus(true)
-    end if
-  end if
-end sub
-
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 

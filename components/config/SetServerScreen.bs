@@ -129,7 +129,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   if key = "OK" and m.serverPicker.hasFocus()
     m.top.serverUrl = m.serverPicker.content.getChild(m.serverPicker.itemFocused).baseUrl
-    m.buttons.callFunc("focus")
+    m.buttons.setFocus(true)
     'if the user pressed the down key and we are already at the last child of server picker, then change focus to the url textbox
   else if key = "down" and m.serverPicker.hasFocus() and m.serverPicker.content.getChildCount() > 0 and m.serverPicker.itemFocused = m.serverPicker.content.getChildCount() - 1
     m.serverUrlContainer.setFocus(true)
@@ -156,7 +156,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.serverUrlContainer.setFocus(true)
     'focus the submit button from serverUrl
   else if key = "down" and m.serverUrlContainer.hasFocus()
-    m.buttons.callFunc("focus")
+    m.buttons.setFocus(true)
   else if key = "options"
     if m.serverPicker.itemFocused >= 0 and m.serverPicker.itemFocused < m.serverPicker.content.getChildCount()
       serverName = m.serverPicker.content.getChild(m.serverPicker.itemFocused).name

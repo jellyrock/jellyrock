@@ -781,7 +781,7 @@ end sub
 ' exitScrubMode: Moves player out of scrub mode state,  resets back to standard play mode
 '
 sub exitScrubMode()
-  m.buttons.callFunc("focus")
+  m.buttons.setFocus(true)
   m.thumb.setFocus(false)
 
   if m.seekPosition.visible

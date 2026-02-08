@@ -744,7 +744,12 @@ sub Main (args as dynamic) as void
                   if buttons.buttonFocused > 0
                     buttons.buttonFocused = buttons.buttonFocused - 1
                   end if
-                  buttons.callFunc("focus")
+                  ' Focus the target button directly (setFocus on the group doesn't reliably
+                  ' update visuals when focus is already on a sibling child)
+                  focusTarget = buttons.getChild(buttons.buttonFocused)
+                  if isValid(focusTarget)
+                    focusTarget.setFocus(true)
+                  end if
                 end if
               end if
             end if
