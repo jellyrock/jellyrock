@@ -698,7 +698,9 @@ sub updateItemDetailsAnimationTarget()
   delta = currentTransY - itemDetailsRect.y
   targetTransY = ITEM_DETAILS_TOP_Y + delta
 
-  m.itemDetailsSliderInterp.keyValue = [[96, 775], [96, targetTransY]]
+  startTransX = m.itemDetails.translation[0]
+  startTransY = m.itemDetails.translation[1]
+  m.itemDetailsSliderInterp.keyValue = [[startTransX, startTransY], [startTransX, targetTransY]]
 end sub
 
 sub updateTextGradient()
