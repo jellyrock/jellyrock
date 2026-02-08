@@ -12,7 +12,6 @@ const SCROLL_STEP = 150
 const SCROLLBAR_THUMB_WIDTH = 12
 const SCROLLBAR_TRACK_WIDTH = 3
 const SCROLLBAR_MARGIN = 8
-const TAGLINE_SPACING = 20
 
 sub init()
   constants = m.global.constants
@@ -152,9 +151,8 @@ sub calculateScrollBounds()
   textHeight = overviewHeight
   if isValid(m.taglineText)
     taglineRect = m.taglineText.localBoundingRect()
-    taglineHeight = taglineRect.height
-    if taglineHeight = 0 then return ' Tagline hasn't rendered yet
-    textHeight = taglineHeight + TAGLINE_SPACING + overviewHeight
+    if taglineRect.height = 0 then return ' Tagline hasn't rendered yet
+    textHeight = m.scrollContent.localBoundingRect().height
   end if
 
   m.scrollBoundsCalculated = true
