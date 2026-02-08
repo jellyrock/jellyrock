@@ -4,6 +4,8 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
+const ITEM_DETAILS_TOP_Y = 230
+
 sub init()
   m.log = log.Logger("MovieDetails")
   m.extrasGrp = m.top.findnode("extrasGrp")
@@ -14,6 +16,8 @@ sub init()
   m.infoGroup = m.top.findNode("infoGroup")
 
   m.itemDescription = m.top.findNode("itemDescription")
+  m.itemDescriptionWasVisible = false
+
 
   m.buttonGrp = m.top.findNode("buttons")
   m.buttonGrp.setFocus(true)
@@ -31,7 +35,6 @@ sub init()
   m.itemDetails.observeField("renderTracking", "onItemDetailsRendered")
 
   ' itemDetails slide animation - synced with extras slider
-  m.ITEM_DETAILS_TOP_Y = 230
   m.itemTracks = m.top.findNode("itemTracks")
   m.itemDetailsSlider = m.top.findNode("itemDetailsSlider")
   m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
@@ -440,9 +443,7 @@ sub itemContentChanged()
 
   ' Re-hide description and tracks if extras slider is still active (e.g., returning from sub-screen)
   if m.extrasActive
-    m.itemDescriptionWasVisible = m.itemDescription.visible
-    m.itemDescription.visible = false
-    m.itemTracks.visible = false
+    activateExtras()
   end if
 end sub
 
@@ -677,12 +678,14 @@ sub onLogoLoadStatusChanged()
 end sub
 
 sub onItemDetailsRendered()
+  if m.itemDetails.renderTracking = "none" then return
+
   updateTextGradient()
   updateItemDetailsAnimationTarget()
 end sub
 
 ' updateItemDetailsAnimationTarget: Recalculate the itemDetails slide animation target
-' Computes the translation Y that positions the top edge of itemDetails at Y=135
+' Computes the translation Y that positions the top edge of itemDetails at ITEM_DETAILS_TOP_Y
 ' Only recalculates when itemDetails is at its rest position (not during extras view)
 '
 sub updateItemDetailsAnimationTarget()
@@ -693,7 +696,7 @@ sub updateItemDetailsAnimationTarget()
   ' This accounts for vertAlignment="bottom" positioning
   currentTransY = m.itemDetails.translation[1]
   delta = currentTransY - itemDetailsRect.y
-  targetTransY = m.ITEM_DETAILS_TOP_Y + delta
+  targetTransY = ITEM_DETAILS_TOP_Y + delta
 
   m.itemDetailsSliderInterp.keyValue = [[96, 775], [96, targetTransY]]
 end sub
@@ -796,6 +799,25 @@ function getButtonIndex(buttonId as string) as integer
   end for
   return -1
 end function
+
+' activateExtras: Hide description and tracks when entering extras view
+' Saves current description visibility for later restoration
+'
+sub activateExtras()
+  m.itemDescriptionWasVisible = m.itemDescription.visible
+  m.itemDescription.visible = false
+  m.itemTracks.visible = false
+  m.extrasActive = true
+end sub
+
+' deactivateExtras: Restore description and tracks when leaving extras view
+' Restores description to its pre-extras visibility state
+'
+sub deactivateExtras()
+  m.itemDescription.visible = m.itemDescriptionWasVisible
+  m.itemTracks.visible = true
+  m.extrasActive = false
+end sub
 
 ' focusButtonGroupChild: Focus the button at the current buttonFocused index
 ' Directly sets focus on the child rather than the group to reliably update
@@ -918,11 +940,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.top.lastFocus = m.extrasGrid
     m.extrasGrid.setFocus(true)
 
-    ' Hide description and tracks while extras is active
-    m.itemDescriptionWasVisible = m.itemDescription.visible
-    m.itemDescription.visible = false
-    m.itemTracks.visible = false
-    m.extrasActive = true
+    activateExtras()
 
     ' Animate itemDetails to top (synced with extras slider)
     m.itemDetailsSliderInterp.reverse = false
@@ -940,10 +958,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     if m.extrasGrid.itemFocused = 0
       m.top.lastFocus = m.buttonGrp
 
-      ' Restore description and tracks visibility
-      m.itemDescription.visible = m.itemDescriptionWasVisible
-      m.itemTracks.visible = true
-      m.extrasActive = false
+      deactivateExtras()
 
       ' Animate itemDetails back to rest position (synced with extras slider)
       m.itemDetailsSliderInterp.reverse = true
