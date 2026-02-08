@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- animate MovieDetails info with extras slider ([#324](https://github.com/jellyrock/jellyrock/pull/324))
 - FocusableOverview for MovieDetails  ([#322](https://github.com/jellyrock/jellyrock/pull/322))
 - add Delete button to MovieDetails based on server permissions ([#321](https://github.com/jellyrock/jellyrock/pull/321))
 
