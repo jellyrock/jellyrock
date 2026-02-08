@@ -30,6 +30,13 @@ sub init()
   ' Observe renderTracking to update gradient after layout is calculated
   m.itemDetails.observeField("renderTracking", "onItemDetailsRendered")
 
+  ' itemDetails slide animation - synced with extras slider
+  m.ITEM_DETAILS_TOP_Y = 230
+  m.itemTracks = m.top.findNode("itemTracks")
+  m.itemDetailsSlider = m.top.findNode("itemDetailsSlider")
+  m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
+  m.extrasActive = false
+
   ' Options and delete buttons will be created dynamically as needed
   m.optionsButton = invalid
   m.deleteButton = invalid
@@ -430,6 +437,13 @@ sub itemContentChanged()
 
   m.buttonGrp.visible = true
   stopLoadingSpinner()
+
+  ' Re-hide description and tracks if extras slider is still active (e.g., returning from sub-screen)
+  if m.extrasActive
+    m.itemDescriptionWasVisible = m.itemDescription.visible
+    m.itemDescription.visible = false
+    m.itemTracks.visible = false
+  end if
 end sub
 
 sub SetUpVideoOptions(streams)
@@ -664,6 +678,24 @@ end sub
 
 sub onItemDetailsRendered()
   updateTextGradient()
+  updateItemDetailsAnimationTarget()
+end sub
+
+' updateItemDetailsAnimationTarget: Recalculate the itemDetails slide animation target
+' Computes the translation Y that positions the top edge of itemDetails at Y=135
+' Only recalculates when itemDetails is at its rest position (not during extras view)
+'
+sub updateItemDetailsAnimationTarget()
+  if m.extrasActive then return
+
+  itemDetailsRect = m.itemDetails.boundingRect()
+  ' Delta = distance from translation point to top edge of bounding rect
+  ' This accounts for vertAlignment="bottom" positioning
+  currentTransY = m.itemDetails.translation[1]
+  delta = currentTransY - itemDetailsRect.y
+  targetTransY = m.ITEM_DETAILS_TOP_Y + delta
+
+  m.itemDetailsSliderInterp.keyValue = [[96, 775], [96, targetTransY]]
 end sub
 
 sub updateTextGradient()
@@ -885,6 +917,18 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "down" and m.buttonGrp.isInFocusChain()
     m.top.lastFocus = m.extrasGrid
     m.extrasGrid.setFocus(true)
+
+    ' Hide description and tracks while extras is active
+    m.itemDescriptionWasVisible = m.itemDescription.visible
+    m.itemDescription.visible = false
+    m.itemTracks.visible = false
+    m.extrasActive = true
+
+    ' Animate itemDetails to top (synced with extras slider)
+    m.itemDetailsSliderInterp.reverse = false
+    m.itemDetailsSlider.control = "start"
+
+    ' Extras slider animation
     m.top.findNode("VertSlider").reverse = false
     m.top.findNode("colorSlider").reverse = false
     m.top.findNode("pplAnime").control = "start"
@@ -895,6 +939,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "up" and m.top.findNode("extrasGrid").isInFocusChain()
     if m.extrasGrid.itemFocused = 0
       m.top.lastFocus = m.buttonGrp
+
+      ' Restore description and tracks visibility
+      m.itemDescription.visible = m.itemDescriptionWasVisible
+      m.itemTracks.visible = true
+      m.extrasActive = false
+
+      ' Animate itemDetails back to rest position (synced with extras slider)
+      m.itemDetailsSliderInterp.reverse = true
+      m.itemDetailsSlider.control = "start"
+
+      ' Extras slider animation
       m.top.findNode("VertSlider").reverse = true
       m.top.findNode("colorSlider").reverse = true
       m.top.findNode("pplAnime").control = "start"
