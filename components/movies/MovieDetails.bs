@@ -150,12 +150,7 @@ sub manageResumeButton()
           m.buttonGrp.buttonFocused = 0
         end if
 
-        ' Focus the target button directly (setFocus on the group doesn't reliably
-        ' update visuals when focus is already on a sibling child)
-        focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
-        if isValid(focusTarget)
-          focusTarget.setFocus(true)
-        end if
+        focusButtonGroupChild()
       else
         ' Resume button already exists, update its tick values (data may have refreshed)
         resumeButton.playbackPositionTicks = m.top.itemContent.json.UserData.PlaybackPositionTicks
@@ -192,12 +187,7 @@ sub removeResumeButtonWithFocus(resumeButton as object)
   else
     m.buttonGrp.buttonFocused = 0
   end if
-  ' Focus the target button directly (setFocus on the group doesn't reliably
-  ' update visuals when focus is already on a sibling child)
-  focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
-  if isValid(focusTarget)
-    focusTarget.setFocus(true)
-  end if
+  focusButtonGroupChild()
 end sub
 
 ' createInfoLabel: Create a label for the info/director rows
@@ -757,12 +747,7 @@ sub updateOptionsButtonVisibility()
       if focusIndex < 0 then focusIndex = 0
       m.buttonGrp.buttonFocused = focusIndex
     end if
-    ' Focus the target button directly (setFocus on the group doesn't reliably
-    ' update visuals when focus is already on a sibling child)
-    focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
-    if isValid(focusTarget)
-      focusTarget.setFocus(true)
-    end if
+    focusButtonGroupChild()
   end if
 end sub
 
@@ -779,6 +764,18 @@ function getButtonIndex(buttonId as string) as integer
   end for
   return -1
 end function
+
+' focusButtonGroupChild: Focus the button at the current buttonFocused index
+' Directly sets focus on the child rather than the group to reliably update
+' visuals when focus is already on a sibling child.
+'
+sub focusButtonGroupChild()
+  focusIndex = m.buttonGrp.buttonFocused
+  if not isValid(focusIndex) or focusIndex < 0 or focusIndex >= m.buttonGrp.getChildCount()
+    return
+  end if
+  m.buttonGrp.getChild(focusIndex).setFocus(true)
+end sub
 
 ' manageDeleteButton: Add or remove Delete button based on server CanDelete permission
 ' CanDelete is computed server-side and accounts for global, folder-specific, and admin permissions
@@ -812,12 +809,7 @@ sub manageDeleteButton()
       if focusIndex < 0 then focusIndex = 0
       m.buttonGrp.buttonFocused = focusIndex
     end if
-    ' Focus the target button directly (setFocus on the group doesn't reliably
-    ' update visuals when focus is already on a sibling child)
-    focusTarget = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
-    if isValid(focusTarget)
-      focusTarget.setFocus(true)
-    end if
+    focusButtonGroupChild()
   end if
 end sub
 
