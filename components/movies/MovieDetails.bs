@@ -67,11 +67,16 @@ sub OnScreenShown()
   end if
   ' If itemContent not loaded, backdrop will be set in itemContentChanged()
 
-  ' set focus to button group
+  ' Restore focus to last focused element
   if m.extrasGrp.opacity = 1
     m.top.lastFocus.setFocus(true)
   else
-    m.buttonGrp.setFocus(true)
+    ' Use lastFocus to return to description after OverviewDialog closes
+    if isValid(m.top.lastFocus) and m.top.lastFocus.visible
+      m.top.lastFocus.setFocus(true)
+    else
+      m.buttonGrp.setFocus(true)
+    end if
   end if
 
   if m.isFirstRun
@@ -233,49 +238,48 @@ sub displayDirectorGenreNode(node as object)
   m.directorGenreGroup.appendChild(node)
 end sub
 
-' createTaglineLabel: Create a tagline label node
-' @return Configured LabelSecondaryMedium node (bold)
-function createTaglineLabel() as object
-  labelNode = CreateObject("roSGNode", "LabelSecondaryMedium")
-  labelNode.id = "tagline"
-  labelNode.bold = true
-  return labelNode
-end function
-
-' createOverviewLabel: Create an overview label node
-' @return Configured LabelSecondaryMedium node (wrapped, width-limited)
-function createOverviewLabel() as object
-  labelNode = CreateObject("roSGNode", "LabelSecondaryMedium")
-  labelNode.id = "overview"
-  labelNode.wrap = true
-  labelNode.width = 1100
-  labelNode.maxLines = 2
-  labelNode.lineSpacing = 3
-  return labelNode
-end function
-
-' populateDescriptionGroup: Dynamically populate tagline and overview labels
+' populateDescriptionGroup: Set FocusableOverview text with tagline and overview
 sub populateDescriptionGroup()
-  ' Clear existing nodes
-  m.itemDescription.removeChildrenIndex(m.itemDescription.getChildCount(), 0)
-
   itemData = m.top.itemContent.json
   userSettings = m.global.user.settings
+
+  hasTagline = false
+  hasOverview = false
 
   ' 1. Tagline (if enabled in settings and data exists)
   if userSettings.uiDetailsHideTagline = false
     if isValid(itemData.taglines) and itemData.taglines.count() > 0 and isValidAndNotEmpty(itemData.taglines[0])
-      taglineLabel = createTaglineLabel()
-      taglineLabel.text = itemData.taglines[0]
-      m.itemDescription.appendChild(taglineLabel)
+      m.itemDescription.tagline = itemData.taglines[0]
+      m.itemDescription.taglineMaxLines = 2
+      hasTagline = true
     end if
+  end if
+
+  if not hasTagline
+    m.itemDescription.tagline = ""
   end if
 
   ' 2. Overview (if data exists)
   if isValid(itemData.overview) and isValidAndNotEmpty(itemData.overview)
-    overviewLabel = createOverviewLabel()
-    overviewLabel.text = itemData.overview
-    m.itemDescription.appendChild(overviewLabel)
+    m.itemDescription.text = itemData.overview
+    hasOverview = true
+  else
+    m.itemDescription.text = ""
+  end if
+
+  ' Adjust description maxLines based on tagline presence
+  if hasTagline
+    m.itemDescription.maxLines = 2
+  else
+    m.itemDescription.maxLines = 4
+  end if
+
+  ' Set dialog title and visibility
+  if hasTagline or hasOverview
+    m.itemDescription.dialogTitle = itemData.name
+    m.itemDescription.visible = true
+  else
+    m.itemDescription.visible = false
   end if
 end sub
 
@@ -853,8 +857,19 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "OK" and isValid(m.optionsButton) and m.optionsButton.isInFocusChain()
     m.options.visible = true
     m.options.setFocus(true)
+    return true
   end if
 
+  if not press then return false
+
+  ' DOWN: itemDescription -> buttonGrp
+  if key = "down" and m.itemDescription.isInFocusChain()
+    m.top.lastFocus = m.buttonGrp
+    m.buttonGrp.setFocus(true)
+    return true
+  end if
+
+  ' DOWN: buttonGrp -> extrasGrid
   if key = "down" and m.buttonGrp.isInFocusChain()
     m.top.lastFocus = m.extrasGrid
     m.extrasGrid.setFocus(true)
@@ -864,6 +879,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
+  ' UP: extrasGrid -> buttonGrp
   if key = "up" and m.top.findNode("extrasGrid").isInFocusChain()
     if m.extrasGrid.itemFocused = 0
       m.top.lastFocus = m.buttonGrp
@@ -875,7 +891,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
   end if
 
-  if not press then return false
+  ' UP: buttonGrp -> itemDescription (if visible)
+  if key = "up" and m.buttonGrp.isInFocusChain()
+    if m.itemDescription.visible
+      m.top.lastFocus = m.itemDescription
+      m.itemDescription.setFocus(true)
+      return true
+    end if
+  end if
 
   if key = "back"
     if m.options.visible = true

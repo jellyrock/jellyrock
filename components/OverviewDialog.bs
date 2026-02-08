@@ -32,7 +32,6 @@ sub init()
   m.titleLabel.translation = [dialogX + DIALOG_PADDING, dialogY + 25]
   m.titleLabel.width = DIALOG_WIDTH - (DIALOG_PADDING * 2)
   m.titleLabel.height = TITLE_HEIGHT
-  m.titleLabel.vertAlign = "center"
 
   ' Separator
   separator = m.top.findNode("separator")
@@ -42,15 +41,18 @@ sub init()
 
   ' Calculate text area dimensions (button is now outside dialog)
   m.textAreaHeight = DIALOG_HEIGHT - TEXT_TOP - DIALOG_PADDING
-  textAreaWidth = DIALOG_WIDTH - (DIALOG_PADDING * 2) - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
+  m.textAreaWidth = DIALOG_WIDTH - (DIALOG_PADDING * 2) - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
 
   ' Scrollable text area with clipping
   m.textClip = m.top.findNode("textClip")
   m.textClip.translation = [dialogX + DIALOG_PADDING, dialogY + TEXT_TOP]
-  m.textClip.clippingRect = [0, 0, textAreaWidth, m.textAreaHeight]
+  m.textClip.clippingRect = [0, 0, m.textAreaWidth, m.textAreaHeight]
+
+  m.scrollContent = m.top.findNode("scrollContent")
+  m.taglineText = invalid
 
   m.overviewText = m.top.findNode("overviewText")
-  m.overviewText.width = textAreaWidth
+  m.overviewText.width = m.textAreaWidth
   m.overviewText.maxLines = 500
   ' Enable render tracking once - observer fires when text is set/changed
   m.overviewText.enableRenderTracking = true
@@ -94,6 +96,42 @@ sub onOverviewChanged()
   m.overviewText.text = m.top.overview
 end sub
 
+' Dynamically creates or removes the tagline label based on tagline text
+sub onTaglineChanged()
+  tagline = m.top.tagline
+
+  if isValidAndNotEmpty(tagline)
+    if not isValid(m.taglineText)
+      ' Create tagline label dynamically and insert before overview text
+      m.taglineText = CreateObject("roSGNode", "LabelPrimaryMedium")
+      m.taglineText.bold = true
+      m.taglineText.wrap = true
+      m.taglineText.width = m.textAreaWidth
+      m.taglineText.maxLines = 500
+      m.taglineText.enableRenderTracking = true
+      m.taglineText.observeField("renderTracking", "onTaglineRendered")
+      m.scrollContent.insertChild(m.taglineText, 0)
+    end if
+    m.taglineText.text = tagline
+  else
+    if isValid(m.taglineText)
+      m.scrollContent.removeChild(m.taglineText)
+      m.taglineText = invalid
+      ' Reset scroll state to recalculate without tagline
+      m.scrollBoundsCalculated = false
+      m.scrollPosition = 0
+      m.scrollContent.translation = [0, 0]
+      updateScrollThumb()
+    end if
+  end if
+end sub
+
+' Tagline has rendered, recalculate scroll bounds to include tagline height
+sub onTaglineRendered()
+  m.scrollBoundsCalculated = false
+  calculateScrollBounds()
+end sub
+
 ' Once the text has rendered, calculate scroll bounds and scrollbar
 sub onTextRendered()
   ' Don't check for "full" - the observer may not fire again after "partial"
@@ -104,11 +142,19 @@ end sub
 sub calculateScrollBounds()
   if m.scrollBoundsCalculated then return
 
-  boundingRect = m.overviewText.localBoundingRect()
-  textHeight = boundingRect.height
+  overviewRect = m.overviewText.localBoundingRect()
+  overviewHeight = overviewRect.height
 
-  ' If text height is 0, it hasn't rendered yet
-  if textHeight = 0 then return
+  ' If overview height is 0, it hasn't rendered yet
+  if overviewHeight = 0 then return
+
+  ' Calculate total content height including tagline if present
+  textHeight = overviewHeight
+  if isValid(m.taglineText)
+    taglineRect = m.taglineText.localBoundingRect()
+    if taglineRect.height = 0 then return ' Tagline hasn't rendered yet
+    textHeight = m.scrollContent.localBoundingRect().height
+  end if
 
   m.scrollBoundsCalculated = true
 
@@ -192,7 +238,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       if m.scrollPosition > m.maxScroll
         m.scrollPosition = m.maxScroll
       end if
-      m.overviewText.translation = [0, -m.scrollPosition]
+      m.scrollContent.translation = [0, -m.scrollPosition]
       updateScrollThumb()
       return true
     end if
@@ -219,7 +265,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       if m.scrollPosition < 0
         m.scrollPosition = 0
       end if
-      m.overviewText.translation = [0, -m.scrollPosition]
+      m.scrollContent.translation = [0, -m.scrollPosition]
       updateScrollThumb()
       return true
     end if

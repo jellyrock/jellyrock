@@ -10,14 +10,17 @@
     <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
 
     <!-- Title -->
-    <LabelPrimaryLarge id="titleLabel" bold="true" />
+    <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
 
     <!-- Separator line below title -->
-    <Rectangle id="separator" height="3" />
+    <Rectangle id="separator" height="6" />
 
     <!-- Scrollable text area (clippingRect constrains visible area) -->
     <Group id="textClip" focusable="true">
-      <LabelPrimaryMedium id="overviewText" wrap="true" />
+      <!-- Tagline label is created dynamically only when tagline text is provided -->
+      <LayoutGroup id="scrollContent" layoutDirection="vert" itemSpacings="[20]">
+        <LabelPrimaryMedium id="overviewText" wrap="true" />
+      </LayoutGroup>
     </Group>
 
     <!-- Scroll position indicator -->
@@ -29,6 +32,7 @@
   </children>
   <interface>
     <field id="title" type="string" onChange="onTitleChanged" />
+    <field id="tagline" type="string" onChange="onTaglineChanged" />
     <field id="overview" type="string" onChange="onOverviewChanged" />
   </interface>
 </component>

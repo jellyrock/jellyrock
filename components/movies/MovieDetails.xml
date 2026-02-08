@@ -3,14 +3,14 @@
   <children>
     <Gradient id="itemTextGradient" width="1920" height="0" rotateDegrees="180" translation="[0, 0]" />
 
-    <LayoutGroup id="itemDetails" layoutDirection="vert" vertAlignment="bottom" itemSpacings="[24]" translation="[96, 775]" enableRenderTracking="true">
+    <LayoutGroup id="itemDetails" layoutDirection="vert" vertAlignment="bottom" itemSpacings="[12]" translation="[96, 775]" enableRenderTracking="true">
       <LayoutGroup layoutDirection="vert">
         <LabelPrimaryLargest id="videoTitle" bold="true" />
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="infoGroup" />
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="directorGenreGroup" />
       </LayoutGroup>
 
-      <LayoutGroup id="itemDescription" layoutDirection="vert" itemSpacings="[15]" />
+      <FocusableOverview id="itemDescription" width="1200" visible="false" />
 
       <LayoutGroup id="itemTracks" layoutDirection="horiz" itemSpacings="[15]">
         <LayoutGroup id="videoTrack" layoutDirection="horiz" itemSpacings="[6]">
