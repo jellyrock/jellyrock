@@ -58,7 +58,7 @@ sub OnScreenShown()
 
   if m.sectionScroller.displayedIndex = 0
     ' User is on the top section with artist info and buttons
-    m.buttonGrp.callFunc("focus")
+    m.buttonGrp.setFocus(true)
     m.top.lastFocus = m.buttonGrp
   else
     ' User is scrolled down into albums/appearsOn section

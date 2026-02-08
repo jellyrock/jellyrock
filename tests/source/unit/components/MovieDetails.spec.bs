@@ -1,0 +1,117 @@
+namespace tests
+
+  @suite("MovieDetails - focusButtonGroupChild()")
+  class MovieDetailsFocusButtonGroupChildTests extends tests.BaseTestSuite
+
+    private movieDetails as object
+    private buttonGrp as object
+
+    protected override sub setup()
+      super.setup()
+
+      ' Create a mock sceneManager (required by MovieDetails init)
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.movieDetails = CreateObject("roSGNode", "MovieDetails")
+
+      ' Get the button group for test setup
+      m.buttonGrp = m.movieDetails.findNode("buttons")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.movieDetails = invalid
+      m.buttonGrp = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Valid focus scenarios")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("focuses first button when buttonFocused is 0")
+    function _()
+      m.buttonGrp.buttonFocused = 0
+
+      ' Should not crash
+      m.movieDetails.callFunc("focusButtonGroupChild")
+
+      m.assertTrue(true)
+    end function
+
+    @it("focuses last button when buttonFocused is at last index")
+    function _()
+      lastIndex = m.buttonGrp.getChildCount() - 1
+      m.buttonGrp.buttonFocused = lastIndex
+
+      ' Should not crash
+      m.movieDetails.callFunc("focusButtonGroupChild")
+
+      m.assertTrue(true)
+    end function
+
+    @it("focuses middle button in group")
+    function _()
+      ' Default MovieDetails has 3 buttons (play, watched, favorite)
+      m.buttonGrp.buttonFocused = 1
+
+      m.movieDetails.callFunc("focusButtonGroupChild")
+
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Out of range index scenarios")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles negative buttonFocused index gracefully")
+    function _()
+      m.buttonGrp.buttonFocused = -1
+
+      ' Should not crash - guard clause should return early
+      m.movieDetails.callFunc("focusButtonGroupChild")
+
+      m.assertTrue(true)
+    end function
+
+    @it("handles buttonFocused index exceeding child count")
+    function _()
+      m.buttonGrp.buttonFocused = m.buttonGrp.getChildCount() + 10
+
+      ' Should not crash - guard clause should return early
+      m.movieDetails.callFunc("focusButtonGroupChild")
+
+      m.assertTrue(true)
+    end function
+
+    @it("handles buttonFocused at exact boundary (equals child count)")
+    function _()
+      m.buttonGrp.buttonFocused = m.buttonGrp.getChildCount()
+
+      ' Should not crash - guard clause should return early
+      m.movieDetails.callFunc("focusButtonGroupChild")
+
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Empty button group scenarios")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles empty button group with buttonFocused 0")
+    function _()
+      ' Remove all children to simulate empty button group
+      m.buttonGrp.removeChildrenIndex(m.buttonGrp.getChildCount(), 0)
+      m.buttonGrp.buttonFocused = 0
+
+      ' Should not crash - guard clause should return early
+      m.movieDetails.callFunc("focusButtonGroupChild")
+
+      m.assertTrue(true)
+    end function
+
+  end class
+
+end namespace

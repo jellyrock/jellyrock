@@ -2,6 +2,5 @@
 <component name="JRButtonGroup" extends="ButtonGroup">
   <interface>
     <function name="center" />
-    <function name="focus" />
   </interface>
 </component>
