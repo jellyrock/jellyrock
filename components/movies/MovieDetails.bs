@@ -852,14 +852,15 @@ sub videoOptionsClosed()
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
-  if not press then return false
-
   ' Due to the way the button pressed event works, need to catch the release for the button as the press is being sent
   ' directly to the main loop.  Will get this sorted in the layout update for Movie Details
   if key = "OK" and isValid(m.optionsButton) and m.optionsButton.isInFocusChain()
     m.options.visible = true
     m.options.setFocus(true)
+    return true
   end if
+
+  if not press then return false
 
   ' DOWN: itemDescription -> buttonGrp
   if key = "down" and m.itemDescription.isInFocusChain()
