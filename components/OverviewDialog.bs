@@ -121,6 +121,7 @@ sub onTaglineChanged()
       m.scrollBoundsCalculated = false
       m.scrollPosition = 0
       m.scrollContent.translation = [0, 0]
+      updateScrollThumb()
     end if
   end if
 end sub
