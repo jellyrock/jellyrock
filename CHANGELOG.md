@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - FocusableOverview for MovieDetails  ([#322](https://github.com/jellyrock/jellyrock/pull/322))
 - add Delete button to MovieDetails based on server permissions ([#321](https://github.com/jellyrock/jellyrock/pull/321))
 
+### Changed
+
+- remove redundant JRButtonGroup focus() helper ([#323](https://github.com/jellyrock/jellyrock/pull/323))
+
 ### Fixed
 
 - movieDetails options button dialog ([c0a339e](https://github.com/jellyrock/jellyrock/commit/c0a339e))
