@@ -663,9 +663,9 @@ sub setDateAdded(itemData as object)
     m.dateCreatedLabel.text = tr("Added") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
 
     ' Position at bottom right: screen is 1920x1080, with 96px padding
-    ' Calculate Y position: align with button group bottom
+    ' Calculate Y position: align with button group bottom using actual layout metrics
     buttonRect = m.buttonGrp.boundingRect()
-    buttonBottom = 800 + buttonRect.height
+    buttonBottom = buttonRect.y + buttonRect.height
 
     ' Calculate X position: right edge minus padding
     labelWidth = m.dateCreatedLabel.boundingRect().width
