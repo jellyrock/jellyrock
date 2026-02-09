@@ -60,6 +60,10 @@
       <translation>8k</translation>
     </message>
     <message>
+      <source>Added</source>
+      <translation>Added</translation>
+    </message>
+    <message>
       <source>Additional Parts</source>
       <translation>Additional Parts</translation>
       <extracomment>Additional parts of a video</extracomment>
