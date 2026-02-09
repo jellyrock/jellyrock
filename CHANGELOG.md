@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- prevent OverviewDialog from triggering MovieDetails data refresh ([db2616c](https://github.com/jellyrock/jellyrock/commit/db2616c))
 - movieDetails options button dialog ([c0a339e](https://github.com/jellyrock/jellyrock/commit/c0a339e))
 - exclude homevideos from photo presenter mapping ([82b3ab1](https://github.com/jellyrock/jellyrock/commit/82b3ab1))
 
