@@ -32,8 +32,11 @@
       <IconButton id="refreshButton" icon="pkg:/images/icons/refresh.png" text="Refresh" />
     </JRButtonGroup>
 
-    <!-- Movie logo - positioned 5% from right edge, bottom-aligned with button group -->
-    <Poster id="movieLogo" />
+    <!-- Movie logo - positioned 5% from right edge -->
+    <Poster id="movieLogo" visible="false" />
+
+    <!-- Date added label - positioned at bottom right corner -->
+    <LabelDisabledSmaller id="dateCreatedLabel" width="450" horizAlign="right" visible="false" />
 
     <!-- itemDetails slide animation - synced with extras slider -->
     <Animation id="itemDetailsSlider" duration="0.4" repeat="false">

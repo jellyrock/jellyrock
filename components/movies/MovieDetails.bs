@@ -23,9 +23,12 @@ sub init()
   m.buttonGrp.setFocus(true)
   m.top.lastFocus = m.buttonGrp
 
-  ' Movie logo - positioned in bottom right
+  ' Movie logo - positioned at fixed Y position
   m.movieLogo = m.top.findNode("movieLogo")
   m.movieLogo.observeField("loadStatus", "onLogoLoadStatusChanged")
+
+  ' Date added label - positioned at bottom right
+  m.dateCreatedLabel = m.top.findNode("dateCreatedLabel")
 
   ' Gradient overlay - dynamically sized to span from itemDetails to extrasSlider
   m.itemTextGradient = m.top.findNode("itemTextGradient")
@@ -408,6 +411,9 @@ sub itemContentChanged()
     ' Set movie logo if available
     setMovieLogo(itemData)
 
+    ' Set date added label if available
+    setDateAdded(itemData)
+
     ' Set default video source if user hasn't selected one yet
     if m.top.selectedVideoStreamId = "" and isValid(itemData.MediaSources)
       m.top.selectedVideoStreamId = itemData.MediaSources[0].id
@@ -629,7 +635,7 @@ sub setMovieLogo(itemData as object)
   ' Check if logo image tag exists
   if isValid(itemData.ImageTags) and isValidAndNotEmpty(itemData.ImageTags.Logo)
     imgParams = {
-      maxHeight: 300,
+      maxHeight: 212,
       maxWidth: 500,
       quality: 90,
       tag: itemData.ImageTags.Logo
@@ -638,12 +644,42 @@ sub setMovieLogo(itemData as object)
     m.movieLogo.uri = logoUrl
   else
     ' No logo available, hide the poster
+    m.movieLogo.visible = false
     m.movieLogo.uri = ""
+
   end if
 end sub
 
-' onLogoLoadStatusChanged: Position the logo after it loads
-' Positions logo 5% from right edge, bottom-aligned with button group
+' setDateAdded: Set date added label text and position
+' Positions label at bottom right corner of screen with 96px padding
+' @param itemData - The item JSON data containing DateCreated
+'
+sub setDateAdded(itemData as object)
+  if not isValid(m.dateCreatedLabel) then return
+
+  if isValid(itemData.DateCreated)
+    ' Set the date and time text
+    dateAdded = CreateObject("roDateTime")
+    dateAdded.FromISO8601String(itemData.DateCreated)
+    dateAdded.toLocalTime()
+    m.dateCreatedLabel.text = tr("Added") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
+
+    ' Position at bottom right: screen is 1920x1080, with 96px padding
+    ' Label has fixed width with horizAlign="right" for text alignment
+    ' Translation is left edge, so: rightEdge - padding - width
+    buttonRect = m.buttonGrp.boundingRect()
+    buttonBottom = buttonRect.y + buttonRect.height
+
+    m.dateCreatedLabel.translation = [1920 - 96 - 450, buttonBottom - 30]
+    m.dateCreatedLabel.visible = true
+  else
+    ' Hide label if no date data available
+    m.dateCreatedLabel.visible = false
+  end if
+end sub
+
+' onLogoLoadStatusChanged: Position the logo with fixed Y coordinate and make it visible
+' Positions logo 5% from right edge at fixed Y=648
 '
 sub onLogoLoadStatusChanged()
   if not isValid(m.movieLogo) then return
@@ -659,17 +695,17 @@ sub onLogoLoadStatusChanged()
       rightEdge = 1920 * 0.95
       logoX = rightEdge - logoWidth
 
-      ' Calculate Y position: bottom-aligned with button group
-      ' Button group is at Y=800, get its actual height using boundingRect
-      buttonRect = m.buttonGrp.boundingRect()
-      buttonBottom = 800 + buttonRect.height
-      logoY = buttonBottom - logoHeight
+      ' Fixed Y position
+      logoY = 648
 
+      ' Position logo before making it visible to prevent glitches
       m.movieLogo.translation = [logoX, logoY]
+      m.movieLogo.visible = true
     end if
   else if m.movieLogo.loadStatus = "failed"
     ' Logo failed to load, ensure it's hidden
     m.movieLogo.uri = ""
+    m.movieLogo.visible = false
   end if
 end sub
 
