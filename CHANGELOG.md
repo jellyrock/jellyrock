@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Add Date Added Display to MovieDetails Screen ([#329](https://github.com/jellyrock/jellyrock/pull/329))
+
 ### Dependencies
 
 - Actions/checkout digest to de0fac2 ([#328](https://github.com/jellyrock/jellyrock/pull/328))
