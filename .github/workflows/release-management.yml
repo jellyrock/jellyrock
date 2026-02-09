@@ -252,7 +252,8 @@ jobs:
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
 
   create-draft-release:
-    needs: [validate-and-prepare, update-version-files, create-release-pr]
+    needs: [validate-and-prepare, update-version-files]
+    if: always() && needs.validate-and-prepare.result == 'success' && needs.update-version-files.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release branch
