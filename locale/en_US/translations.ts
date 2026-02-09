@@ -947,6 +947,10 @@
       <translation>Record Series</translation>
     </message>
     <message>
+      <source>Refresh</source>
+      <translation>Refresh</translation>
+    </message>
+    <message>
       <source>RELEASE_DATE</source>
       <translation>Release Date</translation>
     </message>
