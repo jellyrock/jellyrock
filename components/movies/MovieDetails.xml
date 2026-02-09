@@ -36,7 +36,7 @@
     <Poster id="movieLogo" visible="false" />
 
     <!-- Date added label - positioned at bottom right corner -->
-    <LabelDisabledSmaller id="dateCreatedLabel" horizAlign="right" visible="false" />
+    <LabelDisabledSmaller id="dateCreatedLabel" width="450" horizAlign="right" visible="false" />
 
     <!-- itemDetails slide animation - synced with extras slider -->
     <Animation id="itemDetailsSlider" duration="0.4" repeat="false">
