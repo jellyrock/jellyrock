@@ -91,8 +91,11 @@ sub OnScreenShown()
   if m.isFirstRun
     m.isFirstRun = false
   else
-    ' Trigger data refresh when returning to screen
-    m.top.refreshMovieDetailsData = not m.top.refreshMovieDetailsData
+    ' don't refresh when closing OverviewDialog
+    if not isValid(m.top.lastFocus) or m.top.lastFocus.id <> "itemDescription"
+      ' refresh screen when returning to it
+      m.top.refreshMovieDetailsData = not m.top.refreshMovieDetailsData
+    end if
   end if
 end sub
 
