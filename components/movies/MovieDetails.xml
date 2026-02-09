@@ -32,7 +32,7 @@
       <IconButton id="refreshButton" icon="pkg:/images/icons/refresh.png" text="Refresh" />
     </JRButtonGroup>
 
-    <!-- Movie logo - positioned 5% from right edge, top-aligned with itemDescription -->
+    <!-- Movie logo - positioned 5% from right edge -->
     <Poster id="movieLogo" visible="false" />
 
     <!-- Date added label - positioned at bottom right corner -->

@@ -644,7 +644,9 @@ sub setMovieLogo(itemData as object)
     m.movieLogo.uri = logoUrl
   else
     ' No logo available, hide the poster
+    m.movieLogo.visible = false
     m.movieLogo.uri = ""
+
   end if
 end sub
 
