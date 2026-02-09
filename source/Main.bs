@@ -717,6 +717,7 @@ sub Main (args as dynamic) as void
       else if btn.id = "watchedButton"
         movie = group.itemContent
         if isValid(movie) and isValid(movie.id)
+          startLoadingSpinner()
           if isValid(movie.watched) and movie.watched
             UnmarkItemWatched(movie.id)
           else
@@ -730,6 +731,7 @@ sub Main (args as dynamic) as void
         movie = group.itemContent
         favoriteButton = group.findNode("favoriteButton")
         if isValid(movie) and isValid(movie.favorite) and isValid(movie.id) and isValid(favoriteButton)
+          startLoadingSpinner()
           if movie.favorite
             UnmarkItemFavorite(movie.id)
             movie.favorite = false
@@ -739,6 +741,7 @@ sub Main (args as dynamic) as void
             movie.favorite = true
             favoriteButton.selected = true
           end if
+          stopLoadingSpinner()
         end if
       else if btn.id = "refreshButton"
         ' Trigger data refresh for the current screen
