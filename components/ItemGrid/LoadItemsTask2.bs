@@ -34,7 +34,7 @@ sub loadItems()
   if m.top.ItemType = "LogoImage"
     logoImageExists = api.items.HeadImageURLByName(m.top.itemId, "logo")
     if logoImageExists
-      m.top.content = [api.items.GetImageURL(m.top.itemId, "logo", 0, { "maxHeight": 500, "maxWidth": 500, "quality": "90" })]
+      m.top.content = [api.items.GetImageURL(m.top.itemId, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })]
     else
       m.top.content = []
     end if
