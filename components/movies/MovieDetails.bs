@@ -45,7 +45,6 @@ sub init()
   m.deleteButton = invalid
 
   m.isFirstRun = true
-  m.allowButtonUpdates = true ' Allow button updates on init and when returning to screen
   m.top.observeField("itemContent", "itemContentChanged")
 
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
@@ -93,7 +92,6 @@ sub OnScreenShown()
     m.isFirstRun = false
   else
     ' Trigger data refresh when returning to screen
-    m.allowButtonUpdates = true ' Allow button updates for upcoming data refresh
     m.top.refreshMovieDetailsData = not m.top.refreshMovieDetailsData
   end if
 end sub
@@ -429,13 +427,8 @@ sub itemContentChanged()
     SetUpAudioOptions(itemData.mediaStreams)
     updateOptionsButtonVisibility()
 
-    ' Only manage resume button when explicitly allowed (initial load or returning to screen)
-    ' Prevents button changes during playback transition
-    if m.allowButtonUpdates
-      manageResumeButton()
-      manageDeleteButton()
-      m.allowButtonUpdates = false ' Disable until next OnScreenShown
-    end if
+    manageResumeButton()
+    manageDeleteButton()
   end if
 
   m.buttonGrp.visible = true
