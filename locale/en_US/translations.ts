@@ -124,6 +124,10 @@
       <translation>Are you sure you want to delete this item? This action cannot be undone.</translation>
     </message>
     <message>
+      <source>Are you sure you want to exit JellyRock?</source>
+      <translation>Are you sure you want to exit JellyRock?</translation>
+    </message>
+    <message>
       <source>Are you sure? This will reset the setting to its default value.</source>
       <translation>Are you sure? This will reset the setting to its default value.</translation>
     </message>
@@ -470,6 +474,14 @@
     <message>
       <source>Error:</source>
       <translation>Error:</translation>
+    </message>
+    <message>
+      <source>Exit</source>
+      <translation>Exit</translation>
+    </message>
+    <message>
+      <source>Exit JellyRock</source>
+      <translation>Exit JellyRock</translation>
     </message>
     <message>
       <source>Extras</source>
