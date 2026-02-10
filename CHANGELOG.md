@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- add exit confirmation dialog when pressing back on home screen ([#330](https://github.com/jellyrock/jellyrock/pull/330))
 - Add Date Added Display to MovieDetails Screen ([#329](https://github.com/jellyrock/jellyrock/pull/329))
 
 ### Dependencies
