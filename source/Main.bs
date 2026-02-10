@@ -947,8 +947,15 @@ sub Main (args as dynamic) as void
       stopLoadingSpinner()
       if isValid(popupNode) and isValid(popupNode.returnData)
         print "popupNode.returnData = ", popupNode.returnData
-        ' Handle delete confirmation dialog
-        if isValid(m.pendingDeleteItemId)
+        ' Handle exit confirmation dialog
+        if m.global.sceneManager.pendingExitConfirmation = true
+          m.global.sceneManager.pendingExitConfirmation = false
+          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Exit")
+            ' User confirmed exit
+            m.scene.exit = true
+          end if
+          ' Handle delete confirmation dialog
+        else if isValid(m.pendingDeleteItemId)
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Delete")
             ' User confirmed deletion
             api.items.DeleteByID(m.pendingDeleteItemId)

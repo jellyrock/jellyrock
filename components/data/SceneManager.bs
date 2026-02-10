@@ -70,6 +70,13 @@ end sub
 
 ' Remove the current group and load the last group from the stack
 sub popScene()
+  ' If this is the last scene on the stack, show exit confirmation instead of immediately exiting
+  if m.groups.count() <= 1
+    optionDialog(tr("Exit JellyRock"), [tr("Are you sure you want to exit JellyRock?")], [tr("Cancel"), tr("Exit")])
+    m.top.pendingExitConfirmation = true
+    return
+  end if
+
   group = m.groups.pop()
   if isValid(group)
     if group.isSubType("JRGroup")
