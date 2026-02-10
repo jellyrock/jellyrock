@@ -21,5 +21,6 @@
     <field id="currentUser" type="string" onChange="updateUser" />
     <field id="returnData" type="assocarray" />
     <field id="dataReturned" type="boolean" />
+    <field id="pendingExitConfirmation" type="boolean" value="false" />
   </interface>
 </component>
