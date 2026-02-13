@@ -1,7 +1,7 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
-import "pkg:/source/utils/mediaDisplayTitle.bs"
 
 ' Play Audio
 sub CreateAudioPlayerView()
