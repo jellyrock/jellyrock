@@ -749,11 +749,6 @@
       <translation>My Media</translation>
     </message>
     <message>
-      <source>N/A</source>
-      <translation>N/A</translation>
-      <extracomment>Abbreviation for not available</extracomment>
-    </message>
-    <message>
       <source>Networks</source>
       <translation>Networks</translation>
     </message>
@@ -787,6 +782,14 @@
       <source>NO_ITEMS</source>
       <translation>This %1 contains no items</translation>
       <extracomment>Message displayed in Item Grid when no item to display. %1 is container type (e.g. Boxset, Collection, Folder, etc)</extracomment>
+    </message>
+    <message>
+      <source>None</source>
+      <translation>None</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>Off</translation>
     </message>
     <message>
       <source>Off - Attempt to direct play all resolutions</source>
@@ -1246,6 +1249,10 @@
     <message>
       <source>Submit</source>
       <translation>Submit</translation>
+    </message>
+    <message>
+      <source>Subtitles</source>
+      <translation>Subtitles</translation>
     </message>
     <message>
       <source>Sunday</source>
