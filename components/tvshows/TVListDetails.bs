@@ -1,6 +1,7 @@
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 
 sub init()
   m.title = m.top.findNode("title")
@@ -120,8 +121,8 @@ sub itemContentChanged()
 
         ' Find first video stream - MediaStreams[0] might be subtitle/audio
         videoStream = getFirstVideoStream(itemData.MediaSources[i].MediaStreams)
-        if isValid(videoStream) and isValid(videoStream.DisplayTitle)
-          m.videoCodec.text = m.videoCodec.text + videoStream.DisplayTitle
+        if isValid(videoStream)
+          m.videoCodec.text = m.videoCodec.text + formatVideoDisplayTitle(videoStream)
         else
           m.videoCodec.text = m.videoCodec.text + tr("N/A")
         end if
@@ -146,7 +147,7 @@ sub SetupAudioDisplay(mediaStreams as object, selectedAudioStreamIndex as intege
         else
           audioIdx = i
         end if
-        m.top.findNode("audio_codec").text = tr("Audio") + ": " + mediaStreams[audioIdx].DisplayTitle
+        m.top.findNode("audio_codec").text = tr("Audio") + ": " + formatAudioDisplayTitle(mediaStreams[audioIdx])
       end if
       if isValid(audioIdx) then exit for
     end for

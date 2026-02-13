@@ -1,6 +1,7 @@
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
@@ -434,6 +435,7 @@ sub itemContentChanged()
     updateWatchedButton()
     SetUpVideoOptions(itemData.mediaSources)
     SetUpAudioOptions(itemData.mediaStreams)
+    SetUpSubtitleDisplay(itemData.mediaStreams, m.top.selectedAudioStreamIndex)
     updateOptionsButtonVisibility()
 
     manageResumeButton()
@@ -462,7 +464,7 @@ sub SetUpVideoOptions(streams)
         if codecDetailsSet = false
           for index = 0 to streams[i].mediaStreams.Count() - 1
             if streams[i].mediaStreams[index].Type = "Video"
-              setFieldText("video_codec", tr("Video") + ": " + streams[i].mediaStreams[index].displayTitle)
+              setFieldText("video_codec", tr("Video") + ": " + formatVideoDisplayTitle(streams[i].mediaStreams[index]))
               codecDetailsSet = true
               exit for
             end if
@@ -471,8 +473,8 @@ sub SetUpVideoOptions(streams)
 
         ' Find first video stream - MediaStreams[0] might be subtitle/audio
         videoStream = getFirstVideoStream(streams[i].mediaStreams)
-        if isValid(videoStream) and isValid(videoStream.displayTitle)
-          codec = videoStream.displayTitle
+        if isValid(videoStream)
+          codec = formatVideoDisplayTitle(videoStream)
         else
           codec = tr("N/A")
         end if
@@ -503,7 +505,7 @@ sub SetUpAudioOptions(streams)
 
   for i = 0 to streams.Count() - 1
     if streams[i].Type = "Audio"
-      tracks.push({ "Title": streams[i].displayTitle, "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = i, "StreamIndex": i })
+      tracks.push({ "Title": formatAudioDisplayTitle(streams[i]), "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = i, "StreamIndex": i })
     end if
   end for
 
@@ -517,6 +519,49 @@ sub SetUpAudioOptions(streams)
   end if
   options.audios = tracks
   m.options.options = options
+end sub
+
+' SetUpSubtitleDisplay: Display the subtitle stream that will be auto-selected during playback
+' Uses findDefaultSubtitleStreamIndex() to match the same selection logic as playback
+' (subtitle mode, language preference, text-only preference, smart mode audio matching).
+' Shows "+N" count if multiple subtitle tracks exist.
+'
+' @param {object} streams - Array of MediaStream objects (all types: video, audio, subtitle)
+' @param {integer} selectedAudioStreamIndex - Server-side index of the selected audio stream
+sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
+  if not isValid(streams) then return
+
+  ' Count subtitle streams and find the one that playback would auto-select
+  subtitleCount = 0
+  for i = 0 to streams.count() - 1
+    if isValid(streams[i].Type) and LCase(streams[i].Type) = "subtitle"
+      subtitleCount++
+    end if
+  end for
+
+  if subtitleCount = 0
+    setFieldText("subtitle_codec", tr("Subtitles") + ": " + tr("None"))
+    return
+  end if
+
+  ' Use the same selection logic as playback to determine which subtitle to display
+  selectedIndex = findDefaultSubtitleStreamIndex(streams, selectedAudioStreamIndex)
+
+  if selectedIndex >= 0
+    ' Find the stream object with the selected index
+    for i = 0 to streams.count() - 1
+      if isValid(streams[i].index) and streams[i].index = selectedIndex
+        setFieldText("subtitle_codec", tr("Subtitles") + ": " + formatSubtitleDisplayTitle(streams[i]))
+        exit for
+      end if
+    end for
+  else
+    setFieldText("subtitle_codec", tr("Subtitles") + ": " + tr("Off"))
+  end if
+
+  if subtitleCount > 1
+    m.top.findNode("subtitle_codec_count").text = "+" + stri(subtitleCount - 1).trim()
+  end if
 end sub
 
 sub SetDefaultAudioTrack(itemData)
@@ -552,8 +597,8 @@ sub SetDefaultAudioTrack(itemData)
   m.top.selectedAudioStreamIndex = selectedIndex
 
   ' Update UI with audio codec information
-  if isValid(defaultAudioStream) and isValid(defaultAudioStream.displayTitle)
-    setFieldText("audio_codec", tr("Audio") + ": " + defaultAudioStream.displayTitle)
+  if isValid(defaultAudioStream)
+    setFieldText("audio_codec", tr("Audio") + ": " + formatAudioDisplayTitle(defaultAudioStream))
   end if
 end sub
 
@@ -919,7 +964,7 @@ end function
 sub audioOptionsClosed()
   if m.options.audioStreamIndex <> m.top.selectedAudioStreamIndex
     m.top.selectedAudioStreamIndex = m.options.audioStreamIndex
-    setFieldText("audio_codec", tr("Audio") + ": " + m.top.itemContent.json.mediaStreams[m.top.selectedAudioStreamIndex].displayTitle)
+    setFieldText("audio_codec", tr("Audio") + ": " + formatAudioDisplayTitle(m.top.itemContent.json.mediaStreams[m.top.selectedAudioStreamIndex]))
   end if
 
   m.buttonGrp.setFocus(true)

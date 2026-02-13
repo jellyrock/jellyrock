@@ -1,4 +1,5 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 
 sub init()
   m.rows = m.top.findNode("tvEpisodeRow")
@@ -25,8 +26,8 @@ sub SetUpVideoOptions(streams as object)
       ' Find first video stream - MediaStreams[0] might be subtitle/audio
       videoCodec = ""
       videoStream = getFirstVideoStream(streams[i].mediaStreams)
-      if isValid(videoStream) and isValid(videoStream.displayTitle)
-        videoCodec = videoStream.displayTitle
+      if isValid(videoStream)
+        videoCodec = formatVideoDisplayTitle(videoStream)
       else
         videoCodec = tr("N/A")
       end if
@@ -56,7 +57,7 @@ sub SetUpAudioOptions(streams as object)
   for i = 0 to streams.Count() - 1
     if streams[i].Type = "Audio"
       tracks.push({
-        "Title": streams[i].displayTitle,
+        "Title": formatAudioDisplayTitle(streams[i]),
         "Description": streams[i].Title,
         "Selected": m.top.objects.items[m.currentSelected].selectedAudioStreamIndex = i,
         "StreamIndex": i
