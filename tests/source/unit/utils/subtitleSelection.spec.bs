@@ -298,6 +298,23 @@ namespace tests
       m.assertEqual(result, 3)
     end function
 
+    @it("forced text sub selected over default text sub regardless of MediaStreams order")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      ' Default sub appears BEFORE forced sub in MediaStreams order
+      ' Without bucketed text sorting, the default sub would be picked instead of forced
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: true, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 4, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' Forced text sub (index 3) should be selected even though default text sub (index 2) comes first
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Real-world scenarios")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

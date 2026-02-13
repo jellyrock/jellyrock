@@ -187,7 +187,7 @@ end function
 
 'Checks available subtitle tracks and puts subtitles in forced, default, and non-default/forced but preferred language at the top
 function sortSubtitles(MediaStreams)
-  tracks = { "forced": [], "default": [], "normal": [], "text": [] }
+  tracks = { "forced": [], "default": [], "normal": [], "textForced": [], "textDefault": [], "textNormal": [] }
   ' ONE rendezvous to get user node
   localUser = m.global.user
   prefered_lang = localUser.config.subtitleLanguagePreference
@@ -211,23 +211,26 @@ function sortSubtitles(MediaStreams)
 
       if stream.IsForced = true
         trackType = "forced"
+        textType = "textForced"
       else if stream.IsDefault = true
         trackType = "default"
+        textType = "textDefault"
       else
         trackType = "normal"
+        textType = "textNormal"
       end if
 
       if prefered_lang <> "" and prefered_lang = stream.Track.Language
         tracks[trackType].unshift(stream)
 
         if stream.IsTextSubtitleStream
-          tracks["text"].unshift(stream)
+          tracks[textType].unshift(stream)
         end if
       else
         tracks[trackType].push(stream)
 
         if stream.IsTextSubtitleStream
-          tracks["text"].push(stream)
+          tracks[textType].push(stream)
         end if
       end if
     end if
@@ -236,5 +239,9 @@ function sortSubtitles(MediaStreams)
   tracks["default"].append(tracks["normal"])
   tracks["forced"].append(tracks["default"])
 
-  return { "all": tracks["forced"], "text": tracks["text"] }
+  ' Merge text buckets with same priority ordering: forced > default > normal
+  tracks["textDefault"].append(tracks["textNormal"])
+  tracks["textForced"].append(tracks["textDefault"])
+
+  return { "all": tracks["forced"], "text": tracks["textForced"] }
 end function
