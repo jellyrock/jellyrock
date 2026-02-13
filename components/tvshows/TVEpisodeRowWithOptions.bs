@@ -1,3 +1,4 @@
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -19,25 +20,19 @@ end sub
 ' List of video versions to choose from
 sub SetUpVideoOptions(streams as object)
   videos = []
+  hasMultipleSources = streams.Count() > 1
 
   for i = 0 to streams.Count() - 1
     if LCase(streams[i].VideoType) = "videofile"
-      ' Find first video stream - MediaStreams[0] might be subtitle/audio
-      videoCodec = ""
-      videoStream = getFirstVideoStream(streams[i].mediaStreams)
-      if isValid(videoStream) and isValid(videoStream.displayTitle)
-        videoCodec = videoStream.displayTitle
-      else
-        videoCodec = tr("N/A")
-      end if
+      codec = formatVideoSourceTitle(streams[i], hasMultipleSources)
 
       ' Create options for user to switch between video tracks
       videos.push({
-        "Title": streams[i].Name,
+        "Title": codec,
         "Description": tr("Video"),
         "Selected": m.top.objects.items[m.currentSelected].selectedVideoStreamId = streams[i].id,
         "StreamID": streams[i].id,
-        "video_codec": videoCodec
+        "video_codec": codec
       })
     end if
   end for
@@ -56,7 +51,7 @@ sub SetUpAudioOptions(streams as object)
   for i = 0 to streams.Count() - 1
     if streams[i].Type = "Audio"
       tracks.push({
-        "Title": streams[i].displayTitle,
+        "Title": formatAudioDisplayTitle(streams[i]),
         "Description": streams[i].Title,
         "Selected": m.top.objects.items[m.currentSelected].selectedAudioStreamIndex = i,
         "StreamIndex": i

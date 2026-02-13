@@ -230,6 +230,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   if m.playbackInfo.MediaSources.Count() > 0
     for each mediaSource in m.playbackInfo.MediaSources
       print "mediaSource =", mediaSource
+      ' for each mediaStream in mediaSource.MediaStreams
+      '   print "mediaStream =", mediaStream
+      ' end for
     end for
   end if
 

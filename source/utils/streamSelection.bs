@@ -473,3 +473,174 @@ function findDirectPlayableStreamByChannelCount(audioStreams as object, targetCh
 
   return invalid
 end function
+
+' findDefaultSubtitleStreamIndex: Determine which subtitle stream will be auto-selected during playback
+' Mirrors the selection logic in defaultSubtitleTrackFromVid() and sortSubtitles() (Subtitles.bs)
+' for use on the render thread without requiring playback-specific dependencies (buildURL, etc.)
+'
+' Selection logic (by subtitleMode):
+'   "none"      → No subtitles
+'   "default"   → First forced or default subtitle matching preferred language
+'   "always"    → First non-forced subtitle matching preferred language; fallback to forced/default
+'   "onlyforced"→ First forced subtitle matching preferred language
+'   "smart"     → First non-forced subtitle when audio language differs from preference; fallback to forced/default
+'
+' Priority ordering: forced > default > normal; preferred language first within each category
+' Text subtitles are tried first; non-text only used when playbackSubsOnlyText is false
+'
+' @param {object} mediaStreams - Array of MediaStream objects from Jellyfin API (all types: video, audio, subtitle)
+' @param {integer} selectedAudioStreamIndex - Server-side index of the selected audio stream (for Smart mode)
+' @returns {integer} - Server-side stream index of the selected subtitle, or -1 if none
+function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStreamIndex as integer) as integer
+  if not isValid(mediaStreams) or mediaStreams.Count() = 0 then return -1
+
+  ' ONE rendezvous to get user node
+  localUser = m.global.user
+  subtitleMode = isValid(localUser.config.subtitleMode) ? LCase(localUser.config.subtitleMode) : ""
+
+  if subtitleMode = "none" then return -1
+
+  prefLang = localUser.config.subtitleLanguagePreference ?? ""
+
+  ' Sort subtitles into priority buckets: forced > default > normal
+  ' Within each bucket, preferred language entries come first
+  ' Mirrors sortSubtitles() in Subtitles.bs without URL building
+  forced = []
+  default = []
+  normal = []
+  textForced = []
+  textDefault = []
+  textNormal = []
+
+  for each stream in mediaStreams
+    if not isValid(stream.Type) or LCase(stream.Type) <> "subtitle" then continue for
+    if not isValid(stream.index) then continue for
+
+    isText = stream.IsTextSubtitleStream ?? false
+    isForced = stream.IsForced ?? false
+    isDefault = stream.IsDefault ?? false
+    lang = stream.Language ?? ""
+
+    entry = { lang: lang, isForced: isForced, isDefault: isDefault, isText: isText, index: stream.index }
+
+    if isForced
+      if prefLang <> "" and prefLang = lang
+        forced.unshift(entry)
+        if isText then textForced.unshift(entry)
+      else
+        forced.push(entry)
+        if isText then textForced.push(entry)
+      end if
+    else if isDefault
+      if prefLang <> "" and prefLang = lang
+        default.unshift(entry)
+        if isText then textDefault.unshift(entry)
+      else
+        default.push(entry)
+        if isText then textDefault.push(entry)
+      end if
+    else
+      if prefLang <> "" and prefLang = lang
+        normal.unshift(entry)
+        if isText then textNormal.unshift(entry)
+      else
+        normal.push(entry)
+        if isText then textNormal.push(entry)
+      end if
+    end if
+  end for
+
+  ' Merge buckets: forced > default > normal (same order as sortSubtitles)
+  default.append(normal)
+  forced.append(default)
+  allSorted = forced
+
+  textDefault.append(textNormal)
+  textForced.append(textDefault)
+  textSorted = textForced
+
+  ' Find selected audio language (for Smart mode)
+  selectedAudioLanguage = ""
+  for each stream in mediaStreams
+    if isValid(stream.index) and stream.index = selectedAudioStreamIndex and isValid(stream.Type) and LCase(stream.Type) = "audio"
+      selectedAudioLanguage = stream.Language ?? ""
+      exit for
+    end if
+  end for
+
+  ' Try text subtitles first (same as defaultSubtitleTrackFromVid)
+  result = selectSubtitleByMode(textSorted, subtitleMode, prefLang, selectedAudioLanguage, true)
+  if result >= 0 then return result
+
+  ' If not text-only mode, try all subtitles
+  if not localUser.settings.playbackSubsOnlyText
+    result = selectSubtitleByMode(allSorted, subtitleMode, prefLang, selectedAudioLanguage, false)
+    if result >= 0 then return result
+  end if
+
+  return -1
+end function
+
+' selectSubtitleByMode: Apply subtitle mode selection logic to sorted subtitle entries
+' Mirrors defaultSubtitleTrack() in Subtitles.bs
+'
+' @param {object} sortedEntries - Array of sorted subtitle entries from findDefaultSubtitleStreamIndex
+' @param {string} subtitleMode - Lowercase subtitle mode ("default", "always", "onlyforced", "smart")
+' @param {string} prefLang - Preferred subtitle language (ISO 639-2 code, e.g., "eng")
+' @param {string} selectedAudioLanguage - Language of the selected audio stream
+' @param {boolean} requireText - If true, only consider text subtitle entries
+' @returns {integer} - Server-side stream index of the selected subtitle, or -1 if none
+function selectSubtitleByMode(sortedEntries as object, subtitleMode as string, prefLang as string, selectedAudioLanguage as string, requireText as boolean) as integer
+  if not isValid(sortedEntries) or sortedEntries.Count() = 0 then return -1
+
+  ' Smart mode is only active when audio language differs from subtitle preference
+  allowSmartMode = false
+  if selectedAudioLanguage <> ""
+    allowSmartMode = selectedAudioLanguage <> prefLang
+  end if
+
+  ' Primary pass: match by mode with language filter
+  for each entry in sortedEntries
+    if requireText and not entry.isText then continue for
+
+    ' Language match check
+    languageMatch = true
+    if prefLang <> ""
+      languageMatch = (prefLang = entry.lang)
+    end if
+
+    if languageMatch
+      if subtitleMode = "default" and (entry.isForced or entry.isDefault)
+        return entry.index
+      else if subtitleMode = "always" and not entry.isForced
+        return entry.index
+      else if subtitleMode = "onlyforced" and entry.isForced
+        return entry.index
+      else if subtitleMode = "smart" and allowSmartMode and not entry.isForced
+        return entry.index
+      end if
+    end if
+  end for
+
+  ' "always" fallback: if no full (non-forced) subtitles found, fall back to forced/default
+  if subtitleMode = "always"
+    for each entry in sortedEntries
+      if requireText and not entry.isText then continue for
+      if entry.isForced or entry.isDefault
+        return entry.index
+      end if
+    end for
+  end if
+
+  ' "smart" fallback: fall back to forced/default (ignoring language preference)
+  if subtitleMode = "smart" and allowSmartMode
+    for each entry in sortedEntries
+      if requireText and not entry.isText then continue for
+      if entry.isForced or entry.isDefault
+        return entry.index
+      end if
+    end for
+  end if
+
+  return -1
+end function

@@ -1,4 +1,5 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 
@@ -56,7 +57,7 @@ sub onSelectAudioPressed()
       "Index": item.Index,
       "IsExternal": item.IsExternal,
       "Track": {
-        "description": item.DisplayTitle
+        "description": formatAudioDisplayTitle(item)
       },
       "Type": "audioselection"
     }

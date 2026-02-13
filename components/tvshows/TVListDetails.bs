@@ -1,4 +1,5 @@
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
@@ -114,17 +115,10 @@ sub itemContentChanged()
   ' Display current video_codec and check if there is more than one video to choose from...
   m.videoCodec.visible = false
   if isValid(itemData.MediaSources)
+    hasMultipleSources = itemData.MediaSources.Count() > 1
     for i = 0 to itemData.MediaSources.Count() - 1
       if item.selectedVideoStreamId = itemData.MediaSources[i].id and isValid(itemData.MediaSources[i].MediaStreams)
-        m.videoCodec.text = tr("Video") + ": "
-
-        ' Find first video stream - MediaStreams[0] might be subtitle/audio
-        videoStream = getFirstVideoStream(itemData.MediaSources[i].MediaStreams)
-        if isValid(videoStream) and isValid(videoStream.DisplayTitle)
-          m.videoCodec.text = m.videoCodec.text + videoStream.DisplayTitle
-        else
-          m.videoCodec.text = m.videoCodec.text + tr("N/A")
-        end if
+        m.videoCodec.text = tr("Video") + ": " + formatVideoSourceTitle(itemData.MediaSources[i], hasMultipleSources)
 
         SetupAudioDisplay(itemData.MediaSources[i].MediaStreams, item.selectedAudioStreamIndex)
         exit for
@@ -146,7 +140,7 @@ sub SetupAudioDisplay(mediaStreams as object, selectedAudioStreamIndex as intege
         else
           audioIdx = i
         end if
-        m.top.findNode("audio_codec").text = tr("Audio") + ": " + mediaStreams[audioIdx].DisplayTitle
+        m.top.findNode("audio_codec").text = tr("Audio") + ": " + formatAudioDisplayTitle(mediaStreams[audioIdx])
       end if
       if isValid(audioIdx) then exit for
     end for

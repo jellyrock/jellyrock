@@ -1,0 +1,449 @@
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+
+namespace tests
+
+  @suite("mediaDisplayTitle - Video and Audio Display Title Formatters")
+  class MediaDisplayTitleTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getVideoResolutionLabel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns 4K for width >= 3800 or height >= 2000")
+    @params(3840, 2160, false, "4K")
+    @params(3800, 1608, false, "4K")
+    @params(1920, 2000, false, "4K")
+    @params(7680, 4320, false, "4K")
+    function _(width, height, isInterlaced, expected)
+      m.assertEqual(getVideoResolutionLabel(width, height, isInterlaced), expected)
+    end function
+
+    @it("4K never gets p or i suffix")
+    @params(3840, 2160, true, "4K")
+    @params(3840, 2160, false, "4K")
+    function _(width, height, isInterlaced, expected)
+      m.assertEqual(getVideoResolutionLabel(width, height, isInterlaced), expected)
+    end function
+
+    @it("returns 1440p or 1440i for width >= 2500 or height >= 1400")
+    @params(2560, 1440, false, "1440p")
+    @params(2500, 1080, false, "1440p")
+    @params(1920, 1400, false, "1440p")
+    @params(2560, 1440, true, "1440i")
+    function _(width, height, isInterlaced, expected)
+      m.assertEqual(getVideoResolutionLabel(width, height, isInterlaced), expected)
+    end function
+
+    @it("returns 1080p or 1080i for width >= 1800 or height >= 1000")
+    @params(1920, 1080, false, "1080p")
+    @params(1800, 900, false, "1080p")
+    @params(1440, 1000, false, "1080p")
+    @params(1920, 1080, true, "1080i")
+    function _(width, height, isInterlaced, expected)
+      m.assertEqual(getVideoResolutionLabel(width, height, isInterlaced), expected)
+    end function
+
+    @it("returns 720p or 720i for width >= 1200 or height >= 700")
+    @params(1280, 720, false, "720p")
+    @params(1200, 600, false, "720p")
+    @params(960, 700, false, "720p")
+    @params(1280, 720, true, "720i")
+    function _(width, height, isInterlaced, expected)
+      m.assertEqual(getVideoResolutionLabel(width, height, isInterlaced), expected)
+    end function
+
+    @it("returns 480p or 480i for width >= 700 or height >= 400")
+    @params(720, 480, false, "480p")
+    @params(700, 300, false, "480p")
+    @params(640, 400, false, "480p")
+    @params(720, 480, true, "480i")
+    function _(width, height, isInterlaced, expected)
+      m.assertEqual(getVideoResolutionLabel(width, height, isInterlaced), expected)
+    end function
+
+    @it("returns empty string below all thresholds")
+    @params(320, 240, false, "")
+    @params(640, 360, false, "")
+    @params(0, 0, false, "")
+    function _(width, height, isInterlaced, expected)
+      m.assertEqual(getVideoResolutionLabel(width, height, isInterlaced), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatAudioChannels()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts channel count to display format")
+    @params(1, "1.0")
+    @params(2, "2.0")
+    @params(3, "2.1")
+    @params(4, "3.1")
+    @params(6, "5.1")
+    @params(8, "7.1")
+    function _(channels, expected)
+      m.assertEqual(formatAudioChannels(channels), expected)
+    end function
+
+    @it("returns empty string for invalid channel count")
+    @params(0, "")
+    @params(-1, "")
+    function _(channels, expected)
+      m.assertEqual(formatAudioChannels(channels), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatVideoDisplayTitle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("formats standard 4K HDR10 video")
+    function _()
+      stream = { Width: 3840, Height: 1608, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "4K HEVC HDR10")
+    end function
+
+    @it("formats standard 1080p SDR video")
+    function _()
+      stream = { Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "1080p H264")
+    end function
+
+    @it("formats interlaced 1080i video")
+    function _()
+      stream = { Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: true, VideoRange: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "1080i H264")
+    end function
+
+    @it("formats 720p video")
+    function _()
+      stream = { Width: 1280, Height: 720, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "720p H264")
+    end function
+
+    @it("formats 480p video")
+    function _()
+      stream = { Width: 720, Height: 480, Codec: "mpeg2", IsInterlaced: false, VideoRange: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "480p MPEG2")
+    end function
+
+    @it("omits resolution when below all thresholds")
+    function _()
+      stream = { Width: 320, Height: 240, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "H264")
+    end function
+
+    @it("shows generic HDR when VideoRangeType is Unknown")
+    function _()
+      stream = { Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "Unknown" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "4K HEVC HDR")
+    end function
+
+    @it("shows generic HDR when VideoRangeType is missing")
+    function _()
+      stream = { Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "4K HEVC HDR")
+    end function
+
+    @it("shows HDR10+ for HDR10Plus range type")
+    function _()
+      stream = { Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10Plus" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "4K HEVC HDR10+")
+    end function
+
+    @it("shows HLG for HLG range type")
+    function _()
+      stream = { Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HLG" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "4K HEVC HLG")
+    end function
+
+    @it("shows DV for Dolby Vision range types")
+    @params("DOVI")
+    @params("DOVIWithHDR10")
+    @params("DOVIWithSDR")
+    @params("DOVIWithHLG")
+    @params("DOVIWithEL")
+    @params("DOVIWithHDR10Plus")
+    function _(rangeType)
+      stream = { Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: rangeType }
+      m.assertEqual(formatVideoDisplayTitle(stream), "4K HEVC DV")
+    end function
+
+    @it("does not show HDR suffix for SDR content")
+    function _()
+      stream = { Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR", VideoRangeType: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "1080p H264")
+    end function
+
+    @it("does not show HDR suffix when VideoRange is Unknown")
+    function _()
+      stream = { Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "Unknown" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "1080p H264")
+    end function
+
+    @it("handles missing codec gracefully")
+    function _()
+      stream = { Width: 1920, Height: 1080, IsInterlaced: false, VideoRange: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "1080p")
+    end function
+
+    @it("handles missing dimensions gracefully")
+    function _()
+      stream = { Codec: "h264", VideoRange: "SDR" }
+      m.assertEqual(formatVideoDisplayTitle(stream), "H264")
+    end function
+
+    @it("returns N/A for invalid stream")
+    function _()
+      m.assertEqual(formatVideoDisplayTitle(invalid), "N/A")
+    end function
+
+    @it("returns N/A for empty stream with no usable fields")
+    function _()
+      stream = {}
+      m.assertEqual(formatVideoDisplayTitle(stream), "N/A")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatAudioDisplayTitle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses ChannelLayout directly when available")
+    function _()
+      stream = { Language: "eng", Codec: "aac", ChannelLayout: "stereo", Channels: 2, IsDefault: true }
+      m.assertEqual(formatAudioDisplayTitle(stream), "English AAC stereo (default)")
+    end function
+
+    @it("uses ChannelLayout for 7.1 surround")
+    function _()
+      stream = { Language: "eng", Codec: "dts", ChannelLayout: "7.1", Channels: 8, IsDefault: true }
+      m.assertEqual(formatAudioDisplayTitle(stream), "English DTS 7.1 (default)")
+    end function
+
+    @it("uses ChannelLayout for 5.1 surround without default")
+    function _()
+      stream = { Language: "eng", Codec: "ac3", ChannelLayout: "5.1", Channels: 6, IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "English AC3 5.1")
+    end function
+
+    @it("falls back to Channels when ChannelLayout is missing")
+    function _()
+      stream = { Language: "spa", Codec: "eac3", Channels: 2, IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "Spanish; Castilian EAC3 2.0")
+    end function
+
+    @it("falls back to Channels when ChannelLayout is empty")
+    function _()
+      stream = { Language: "eng", Codec: "ac3", ChannelLayout: "", Channels: 6, IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "English AC3 5.1")
+    end function
+
+    @it("omits language when missing")
+    function _()
+      stream = { Codec: "aac", ChannelLayout: "stereo", IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "AAC stereo")
+    end function
+
+    @it("omits channels when both ChannelLayout and Channels are missing")
+    function _()
+      stream = { Language: "eng", Codec: "aac", IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "English AAC")
+    end function
+
+    @it("omits channels when ChannelLayout is missing and Channels is zero")
+    function _()
+      stream = { Language: "eng", Codec: "aac", Channels: 0, IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "English AAC")
+    end function
+
+    @it("returns N/A for invalid stream")
+    function _()
+      m.assertEqual(formatAudioDisplayTitle(invalid), "N/A")
+    end function
+
+    @it("returns N/A for empty stream with no usable fields")
+    function _()
+      stream = {}
+      m.assertEqual(formatAudioDisplayTitle(stream), "N/A")
+    end function
+
+    @it("handles mono audio via Channels fallback")
+    function _()
+      stream = { Language: "eng", Codec: "aac", Channels: 1, IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "English AAC 1.0")
+    end function
+
+    @it("omits language for und (Undefined)")
+    function _()
+      stream = { Language: "und", Codec: "aac", ChannelLayout: "stereo", IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "AAC stereo")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatSubtitleDisplayTitle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("formats subtitle with language, codec, and default flag")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsDefault: true }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (default)")
+    end function
+
+    @it("formats subtitle without default flag")
+    function _()
+      stream = { Language: "spa", Codec: "PGSSUB", IsDefault: false }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "Spanish; Castilian PGSSUB")
+    end function
+
+    @it("formats ASS subtitle")
+    function _()
+      stream = { Language: "jpn", Codec: "ass", IsDefault: false }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "Japanese ASS")
+    end function
+
+    @it("omits language when missing")
+    function _()
+      stream = { Codec: "subrip", IsDefault: false }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "SUBRIP")
+    end function
+
+    @it("omits codec when missing")
+    function _()
+      stream = { Language: "eng", IsDefault: true }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English (default)")
+    end function
+
+    @it("returns N/A for invalid stream")
+    function _()
+      m.assertEqual(formatSubtitleDisplayTitle(invalid), "N/A")
+    end function
+
+    @it("returns N/A for empty stream with no usable fields")
+    function _()
+      stream = {}
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "N/A")
+    end function
+
+    @it("formats forced subtitle with (forced) suffix")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsForced: true, IsDefault: false }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (forced)")
+    end function
+
+    @it("forced takes precedence over default")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsForced: true, IsDefault: true }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (forced)")
+    end function
+
+    @it("falls back to raw code for unknown language")
+    function _()
+      stream = { Language: "xyz", Codec: "subrip", IsDefault: false }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "xyz SUBRIP")
+    end function
+
+    @it("omits language for und (Undefined)")
+    function _()
+      stream = { Language: "und", Codec: "subrip", IsDefault: false }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "SUBRIP")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveLanguageName()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resolves known language codes to full names")
+    @params("eng", "English")
+    @params("spa", "Spanish; Castilian")
+    @params("jpn", "Japanese")
+    @params("fre", "French")
+    @params("ger", "German")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("returns raw code for unknown languages")
+    function _()
+      m.assertEqual(resolveLanguageName("xyz"), "xyz")
+    end function
+
+    @it("returns empty string for empty input")
+    function _()
+      m.assertEqual(resolveLanguageName(""), "")
+    end function
+
+    @it("handles uppercase input codes")
+    function _()
+      m.assertEqual(resolveLanguageName("ENG"), "English")
+    end function
+
+    @it("returns empty string for und (Undefined)")
+    @params("und")
+    @params("UND")
+    @params("Und")
+    function _(code)
+      m.assertEqual(resolveLanguageName(code), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatVideoSourceTitle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("formats single source without name prefix")
+    function _()
+      source = { Name: "[B&W]", mediaStreams: [{ Type: "Video", Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }] }
+      m.assertEqual(formatVideoSourceTitle(source, false), "1080p H264")
+    end function
+
+    @it("prepends source name when multiple sources exist")
+    function _()
+      source = { Name: "[B&W]", mediaStreams: [{ Type: "Video", Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "[B&W] 1080p H264")
+    end function
+
+    @it("does not prepend when name is empty")
+    function _()
+      source = { Name: "", mediaStreams: [{ Type: "Video", Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "4K HEVC HDR10")
+    end function
+
+    @it("does not prepend when name is invalid")
+    function _()
+      source = { mediaStreams: [{ Type: "Video", Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "1080p H264")
+    end function
+
+    @it("skips non-video streams to find video stream")
+    function _()
+      source = {
+        Name: "[HDR]",
+        mediaStreams: [
+          { Type: "Audio", Codec: "aac", Language: "eng" },
+          { Type: "Video", Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10" }
+        ]
+      }
+      m.assertEqual(formatVideoSourceTitle(source, true), "[HDR] 4K HEVC HDR10")
+    end function
+
+    @it("returns N/A when no video stream found")
+    function _()
+      source = { Name: "[B&W]", mediaStreams: [{ Type: "Audio", Codec: "aac" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "N/A")
+    end function
+
+    @it("returns N/A for invalid mediaSource")
+    function _()
+      m.assertEqual(formatVideoSourceTitle(invalid, true), "N/A")
+    end function
+
+    @it("returns N/A when mediaStreams is invalid")
+    function _()
+      source = { Name: "[B&W]" }
+      m.assertEqual(formatVideoSourceTitle(source, true), "N/A")
+    end function
+
+  end class
+
+end namespace
