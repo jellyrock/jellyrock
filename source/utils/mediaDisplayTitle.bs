@@ -1,0 +1,231 @@
+import "pkg:/source/utils/languages.bs"
+
+' getVideoResolutionLabel: Determine resolution label from video dimensions
+' Resolution thresholds check width OR height (either can qualify)
+' 4K never gets p/i suffix. All other resolutions get "p" or "i" based on interlacing.
+'
+' @param {integer} width - Video width in pixels
+' @param {integer} height - Video height in pixels
+' @param {boolean} isInterlaced - Whether the video is interlaced
+' @returns {string} - Resolution label (e.g., "4K", "1080p", "720i") or "" if below all thresholds
+function getVideoResolutionLabel(width as integer, height as integer, isInterlaced as boolean) as string
+  ' 4K: Width >= 3800 OR Height >= 2000 (no p/i suffix)
+  if width >= 3800 or height >= 2000
+    return "4K"
+  end if
+
+  ' Determine scan type suffix for non-4K resolutions
+  suffix = "p"
+  if isInterlaced then suffix = "i"
+
+  ' 1440: Width >= 2500 OR Height >= 1400
+  if width >= 2500 or height >= 1400
+    return "1440" + suffix
+  end if
+
+  ' 1080: Width >= 1800 OR Height >= 1000
+  if width >= 1800 or height >= 1000
+    return "1080" + suffix
+  end if
+
+  ' 720: Width >= 1200 OR Height >= 700
+  if width >= 1200 or height >= 700
+    return "720" + suffix
+  end if
+
+  ' 480: Width >= 700 OR Height >= 400
+  if width >= 700 or height >= 400
+    return "480" + suffix
+  end if
+
+  ' Below all thresholds
+  return ""
+end function
+
+' resolveLanguageName: Convert a 3-letter ISO 639-2 language code to its full display name
+' Uses getSubtitleLanguages() from Subtitles.bs as the lookup table.
+' Falls back to the raw code if not found in the lookup table.
+'
+' @param {string} langCode - 3-letter ISO 639-2 language code (e.g., "eng", "spa")
+' @returns {string} - Full language name (e.g., "English", "Spanish") or raw code if unknown
+function resolveLanguageName(langCode as string) as string
+  if langCode = "" then return ""
+
+  languages = getSubtitleLanguages()
+  lowerCode = LCase(langCode)
+
+  if languages.doesExist(lowerCode)
+    return languages[lowerCode]
+  end if
+
+  return langCode
+end function
+
+' formatAudioChannels: Convert channel count integer to display format
+' Ignores ChannelLayout field since it can return inconsistent strings (e.g., "stereo")
+'
+' @param {integer} channels - Number of audio channels
+' @returns {string} - Channel layout string (e.g., "2.0", "5.1", "7.1") or "" if invalid/zero
+function formatAudioChannels(channels as integer) as string
+  if channels <= 0 then return ""
+
+  if channels <= 2
+    return channels.toStr().trim() + ".0"
+  end if
+
+  ' For > 2 channels: (channels - 1).1 (e.g., 6 -> "5.1", 8 -> "7.1")
+  return (channels - 1).toStr().trim() + ".1"
+end function
+
+' formatVideoDisplayTitle: Build a display title for a video stream
+' Format: "RESOLUTION CODEC" or "RESOLUTION CODEC RANGETYPE" (when HDR)
+'
+' @param {object} stream - Video MediaStream object from Jellyfin API
+' @returns {string} - Formatted display title (e.g., "4K HEVC HDR10") or "N/A" if insufficient data
+function formatVideoDisplayTitle(stream as object) as string
+  if not isValid(stream) then return "N/A"
+
+  parts = []
+
+  ' 1. Resolution label
+  width = 0
+  height = 0
+  isInterlaced = false
+  if isValid(stream.Width) then width = stream.Width
+  if isValid(stream.Height) then height = stream.Height
+  if isValid(stream.IsInterlaced) then isInterlaced = stream.IsInterlaced
+
+  resolutionLabel = getVideoResolutionLabel(width, height, isInterlaced)
+  if resolutionLabel <> ""
+    parts.push(resolutionLabel)
+  end if
+
+  ' 2. Codec (uppercase)
+  if isValid(stream.Codec) and stream.Codec <> ""
+    parts.push(UCase(stream.Codec))
+  end if
+
+  ' 3. HDR info - only when VideoRange = "HDR" (case-insensitive)
+  if isValid(stream.VideoRange) and LCase(stream.VideoRange) = "hdr"
+    hdrLabel = "HDR"
+
+    if isValid(stream.VideoRangeType) and stream.VideoRangeType <> "" and LCase(stream.VideoRangeType) <> "unknown"
+      rangeTypeLower = LCase(stream.VideoRangeType)
+
+      if rangeTypeLower = "hdr10"
+        hdrLabel = "HDR10"
+      else if rangeTypeLower = "hdr10plus"
+        hdrLabel = "HDR10+"
+      else if rangeTypeLower = "hlg"
+        hdrLabel = "HLG"
+      else if rangeTypeLower.left(4) = "dovi"
+        ' All Dolby Vision variants: DOVI, DOVIWithSDR, DOVIWithHDR10, DOVIWithHLG, etc.
+        hdrLabel = "DV"
+
+        if isValid(stream.DvProfile)
+          doviProfile = stream.DvProfile.toStr().trim()
+          if doviProfile <> "" and doviProfile <> "0"
+            hdrLabel = hdrLabel + " " + doviProfile
+
+            if isValid(stream.DvBlSignalCompatibilityId)
+              doviCompatId = stream.DvBlSignalCompatibilityId.toStr().trim()
+              if doviCompatId <> "" and doviCompatId <> "0"
+                hdrLabel = hdrLabel + "." + doviCompatId
+              end if
+            end if
+          end if
+        end if
+      else
+        ' Unrecognized HDR type - show raw value as-is
+        hdrLabel = stream.VideoRangeType
+      end if
+    end if
+
+    parts.push(hdrLabel)
+  end if
+
+  ' If no parts could be assembled, return "N/A"
+  if parts.count() = 0 then return "N/A"
+
+  return parts.join(" ")
+end function
+
+' formatAudioDisplayTitle: Build a display title for an audio stream
+' Format: "Language CODEC CHANNELS" or "Language CODEC CHANNELS (default)"
+'
+' @param {object} stream - Audio MediaStream object from Jellyfin API
+' @returns {string} - Formatted display title (e.g., "English AAC 2.0 (default)") or "N/A" if insufficient data
+function formatAudioDisplayTitle(stream as object) as string
+  if not isValid(stream) then return "N/A"
+
+  parts = []
+
+  ' 1. Language (full name from ISO 639-2 code)
+  if isValid(stream.Language) and stream.Language <> ""
+    parts.push(resolveLanguageName(stream.Language))
+  end if
+
+  ' 2. Codec (uppercase)
+  if isValid(stream.Codec) and stream.Codec <> ""
+    parts.push(UCase(stream.Codec))
+  end if
+
+  ' 3. Channel layout (prefer ChannelLayout from server, fall back to computing from Channels)
+  channelLabel = ""
+  if isValid(stream.ChannelLayout) and stream.ChannelLayout <> ""
+    channelLabel = stream.ChannelLayout
+  else if isValid(stream.Channels)
+    channelLabel = formatAudioChannels(stream.Channels)
+  end if
+  if channelLabel <> ""
+    parts.push(channelLabel)
+  end if
+
+  ' If no parts could be assembled, return "N/A"
+  if parts.count() = 0 then return "N/A"
+
+  result = parts.join(" ")
+
+  ' 4. Default suffix
+  if isValid(stream.IsDefault) and stream.IsDefault = true
+    result = result + " (default)"
+  end if
+
+  return result
+end function
+
+' formatSubtitleDisplayTitle: Build a display title for a subtitle stream
+' Format: "Language CODEC", "Language CODEC (forced)", or "Language CODEC (default)"
+' Forced takes precedence over default if both are set.
+'
+' @param {object} stream - Subtitle MediaStream object from Jellyfin API
+' @returns {string} - Formatted display title (e.g., "English SUBRIP (forced)") or "N/A" if insufficient data
+function formatSubtitleDisplayTitle(stream as object) as string
+  if not isValid(stream) then return "N/A"
+
+  parts = []
+
+  ' 1. Language (full name from ISO 639-2 code)
+  if isValid(stream.Language) and stream.Language <> ""
+    parts.push(resolveLanguageName(stream.Language))
+  end if
+
+  ' 2. Codec (uppercase)
+  if isValid(stream.Codec) and stream.Codec <> ""
+    parts.push(UCase(stream.Codec))
+  end if
+
+  ' If no parts could be assembled, return "N/A"
+  if parts.count() = 0 then return "N/A"
+
+  result = parts.join(" ")
+
+  ' 3. Forced/Default suffix
+  if isValid(stream.IsForced) and stream.IsForced = true
+    result = result + " (forced)"
+  else if isValid(stream.IsDefault) and stream.IsDefault = true
+    result = result + " (default)"
+  end if
+
+  return result
+end function
