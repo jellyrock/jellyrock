@@ -1,9 +1,13 @@
 ' getSubtitleLanguages: Returns a lookup table mapping ISO 639-2 three-letter
 ' language codes to their full display names.
+' Cached on the caller's m scope after first build to avoid reallocating
+' the ~490-entry table on every call.
 '
 ' @returns {object} - AssocArray of language code to display name mappings
 function getSubtitleLanguages()
-  return {
+  if isValid(m._languageCache) then return m._languageCache
+
+  m._languageCache = {
     "aar": "Afar",
     "abk": "Abkhazian",
     "ace": "Achinese",
@@ -493,4 +497,6 @@ function getSubtitleLanguages()
     "zxx": "No linguistic content; Not applicable",
     "zza": "Zaza; Dimili; Dimli; Kirdki; Kirmanjki; Zazaki"
   }
+
+  return m._languageCache
 end function

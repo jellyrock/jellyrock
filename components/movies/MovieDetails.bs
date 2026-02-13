@@ -515,6 +515,10 @@ end sub
 ' @param {object} streams - Array of MediaStream objects (all types: video, audio, subtitle)
 ' @param {integer} selectedAudioStreamIndex - Server-side index of the selected audio stream
 sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
+  ' Clear any previous subtitle count badge
+  subtitleCountNode = m.top.findNode("subtitle_codec_count")
+  if isValid(subtitleCountNode) then subtitleCountNode.text = ""
+
   if not isValid(streams) then return
 
   ' Count subtitle streams and find the one that playback would auto-select
