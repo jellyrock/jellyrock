@@ -1,0 +1,357 @@
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  @suite("streamSelection - findDefaultSubtitleStreamIndex()")
+  class SubtitleSelectionTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+      ' Default user config for most tests
+      m.global.user.config.subtitleMode = "Default"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      m.global.user.settings.playbackSubsOnlyText = false
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Edge cases")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns -1 when streams is invalid")
+    function _()
+      result = findDefaultSubtitleStreamIndex(invalid, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    @it("returns -1 when streams is empty array")
+    function _()
+      result = findDefaultSubtitleStreamIndex([], 1)
+      m.assertEqual(result, -1)
+    end function
+
+    @it("returns -1 when no subtitle streams exist")
+    function _()
+      streams = [
+        { Type: "Video", index: 0 },
+        { Type: "Audio", index: 1, Language: "eng" }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    @it("returns -1 when subtitle streams have no index field")
+    function _()
+      streams = [
+        { Type: "Subtitle", Language: "eng", IsDefault: true, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleMode = none")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns -1 regardless of available subtitles")
+    function _()
+      m.global.user.config.subtitleMode = "None"
+      streams = [
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: true, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleMode = default")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("selects forced subtitle matching preferred language")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    @it("selects default subtitle matching preferred language")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: true, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    @it("ignores non-forced non-default subtitles")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    @it("ignores subtitle with wrong language when preference is set")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "spa", IsDefault: true, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    @it("selects any language when preference is empty")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      m.global.user.config.subtitleLanguagePreference = ""
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "spa", IsDefault: true, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleMode = always")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("selects first non-forced subtitle matching preferred language")
+    function _()
+      m.global.user.config.subtitleMode = "Always"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+    end function
+
+    @it("falls back to forced/default when no non-forced subtitles exist")
+    function _()
+      m.global.user.config.subtitleMode = "Always"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleMode = onlyforced")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("selects forced subtitle matching preferred language")
+    function _()
+      m.global.user.config.subtitleMode = "OnlyForced"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: true, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+    end function
+
+    @it("returns -1 when no forced subtitles exist")
+    function _()
+      m.global.user.config.subtitleMode = "OnlyForced"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: true, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleMode = smart")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("selects subtitle when audio language differs from preference")
+    function _()
+      m.global.user.config.subtitleMode = "Smart"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Audio", index: 1, Language: "jpn" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' Audio is Japanese, subtitle preference is English -> smart mode activates
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    @it("returns -1 when audio language matches subtitle preference")
+    function _()
+      m.global.user.config.subtitleMode = "Smart"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' Audio is English, subtitle preference is English -> smart mode does not activate
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    @it("falls back to forced/default when no non-forced match in smart mode")
+    function _()
+      m.global.user.config.subtitleMode = "Smart"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Audio", index: 1, Language: "jpn" },
+        { Type: "Subtitle", index: 2, Language: "spa", IsDefault: true, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' Audio differs from preference, no English subs but Spanish default exists -> fallback
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Text vs non-text subtitle preference")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("prefers text subtitles over non-text")
+    function _()
+      m.global.user.config.subtitleMode = "Always"
+      m.global.user.settings.playbackSubsOnlyText = false
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: false },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' Text subtitle (index 3) should be preferred because text is tried first
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+    end function
+
+    @it("returns only text subtitles when playbackSubsOnlyText is true")
+    function _()
+      m.global.user.config.subtitleMode = "Always"
+      m.global.user.settings.playbackSubsOnlyText = true
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: false }
+      ]
+      ' Only non-text subtitle available but text-only mode is on -> no match
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, -1)
+    end function
+
+    @it("falls back to non-text when no text subtitles match and playbackSubsOnlyText is false")
+    function _()
+      m.global.user.config.subtitleMode = "Always"
+      m.global.user.settings.playbackSubsOnlyText = false
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: false }
+      ]
+      ' No text subs, but text-only mode is off -> should fall back to non-text
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Language priority ordering")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("prioritizes preferred language within forced subtitles")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "spa", IsDefault: false, IsForced: true, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true }
+      ]
+      ' Both forced, but English matches preference -> prioritized
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+    end function
+
+    @it("forced subtitles come before default subtitles")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: true, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true }
+      ]
+      ' Forced (index 3) takes priority over default (index 2) in sort order
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Real-world scenarios")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("anime with Japanese audio and English forced subtitles in default mode")
+    function _()
+      m.global.user.config.subtitleMode = "Default"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Video", index: 0 },
+        { Type: "Audio", index: 1, Language: "jpn" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' Default mode: should pick forced English subtitle
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 2)
+    end function
+
+    @it("movie with multiple subtitle languages in always mode")
+    function _()
+      m.global.user.config.subtitleMode = "Always"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Video", index: 0 },
+        { Type: "Audio", index: 1, Language: "eng" },
+        { Type: "Subtitle", index: 2, Language: "spa", IsDefault: false, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 4, Language: "fra", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' Always mode: should pick English full subtitle (language match)
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+    end function
+
+    @it("foreign film in smart mode selects subtitles when audio differs")
+    function _()
+      m.global.user.config.subtitleMode = "Smart"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+      streams = [
+        { Type: "Video", index: 0 },
+        { Type: "Audio", index: 1, Language: "fra" },
+        { Type: "Audio", index: 2, Language: "eng" },
+        { Type: "Subtitle", index: 3, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      ' French audio selected, English subtitle preference -> smart mode activates
+      result = findDefaultSubtitleStreamIndex(streams, 1)
+      m.assertEqual(result, 3)
+
+      ' English audio selected -> smart mode does not activate
+      result = findDefaultSubtitleStreamIndex(streams, 2)
+      m.assertEqual(result, -1)
+    end function
+
+  end class
+
+end namespace
