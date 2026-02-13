@@ -43,7 +43,7 @@ function getVideoResolutionLabel(width as integer, height as integer, isInterlac
 end function
 
 ' resolveLanguageName: Convert a 3-letter ISO 639-2 language code to its full display name
-' Uses getSubtitleLanguages() from Subtitles.bs as the lookup table.
+' Uses getSubtitleLanguages() from languages.bs as the lookup table.
 ' Falls back to the raw code if not found in the lookup table.
 '
 ' @param {string} langCode - 3-letter ISO 639-2 language code (e.g., "eng", "spa")
