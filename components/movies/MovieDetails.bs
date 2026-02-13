@@ -454,35 +454,21 @@ end sub
 sub SetUpVideoOptions(streams)
   videos = []
   codecDetailsSet = false
+  hasMultipleSources = streams.Count() > 1
 
   for i = 0 to streams.Count() - 1
     if streams[i].VideoType = "VideoFile"
-      codec = ""
-      if isValid(streams[i].mediaStreams) and streams[i].mediaStreams.Count() > 0
+      codec = formatVideoSourceTitle(streams[i], hasMultipleSources)
 
-        ' find the first (default) video track to get the codec for the details screen
-        if codecDetailsSet = false
-          for index = 0 to streams[i].mediaStreams.Count() - 1
-            if streams[i].mediaStreams[index].Type = "Video"
-              setFieldText("video_codec", tr("Video") + ": " + formatVideoDisplayTitle(streams[i].mediaStreams[index]))
-              codecDetailsSet = true
-              exit for
-            end if
-          end for
-        end if
-
-        ' Find first video stream - MediaStreams[0] might be subtitle/audio
-        videoStream = getFirstVideoStream(streams[i].mediaStreams)
-        if isValid(videoStream)
-          codec = formatVideoDisplayTitle(videoStream)
-        else
-          codec = tr("N/A")
-        end if
+      ' Set the codec for the details screen from the first video source
+      if not codecDetailsSet
+        setFieldText("video_codec", tr("Video") + ": " + codec)
+        codecDetailsSet = true
       end if
 
       ' Create options for user to switch between video tracks
       videos.push({
-        "Title": streams[i].Name,
+        "Title": codec,
         "Description": tr("Video"),
         "Selected": m.top.selectedVideoStreamId = streams[i].id,
         "StreamID": streams[i].id,

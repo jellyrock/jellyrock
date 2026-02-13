@@ -20,25 +20,19 @@ end sub
 ' List of video versions to choose from
 sub SetUpVideoOptions(streams as object)
   videos = []
+  hasMultipleSources = streams.Count() > 1
 
   for i = 0 to streams.Count() - 1
     if LCase(streams[i].VideoType) = "videofile"
-      ' Find first video stream - MediaStreams[0] might be subtitle/audio
-      videoCodec = ""
-      videoStream = getFirstVideoStream(streams[i].mediaStreams)
-      if isValid(videoStream)
-        videoCodec = formatVideoDisplayTitle(videoStream)
-      else
-        videoCodec = tr("N/A")
-      end if
+      codec = formatVideoSourceTitle(streams[i], hasMultipleSources)
 
       ' Create options for user to switch between video tracks
       videos.push({
-        "Title": streams[i].Name,
+        "Title": codec,
         "Description": tr("Video"),
         "Selected": m.top.objects.items[m.currentSelected].selectedVideoStreamId = streams[i].id,
         "StreamID": streams[i].id,
-        "video_codec": videoCodec
+        "video_codec": codec
       })
     end if
   end for

@@ -275,6 +275,12 @@ namespace tests
       m.assertEqual(formatAudioDisplayTitle(stream), "English AAC 1.0")
     end function
 
+    @it("omits language for und (Undefined)")
+    function _()
+      stream = { Language: "und", Codec: "aac", ChannelLayout: "stereo", IsDefault: false }
+      m.assertEqual(formatAudioDisplayTitle(stream), "AAC stereo")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("formatSubtitleDisplayTitle()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -338,6 +344,12 @@ namespace tests
       m.assertEqual(formatSubtitleDisplayTitle(stream), "xyz SUBRIP")
     end function
 
+    @it("omits language for und (Undefined)")
+    function _()
+      stream = { Language: "und", Codec: "subrip", IsDefault: false }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "SUBRIP")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("resolveLanguageName()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -365,6 +377,71 @@ namespace tests
     @it("handles uppercase input codes")
     function _()
       m.assertEqual(resolveLanguageName("ENG"), "English")
+    end function
+
+    @it("returns empty string for und (Undefined)")
+    @params("und")
+    @params("UND")
+    @params("Und")
+    function _(code)
+      m.assertEqual(resolveLanguageName(code), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatVideoSourceTitle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("formats single source without name prefix")
+    function _()
+      source = { Name: "[B&W]", mediaStreams: [{ Type: "Video", Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }] }
+      m.assertEqual(formatVideoSourceTitle(source, false), "1080p H264")
+    end function
+
+    @it("prepends source name when multiple sources exist")
+    function _()
+      source = { Name: "[B&W]", mediaStreams: [{ Type: "Video", Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "[B&W] 1080p H264")
+    end function
+
+    @it("does not prepend when name is empty")
+    function _()
+      source = { Name: "", mediaStreams: [{ Type: "Video", Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "4K HEVC HDR10")
+    end function
+
+    @it("does not prepend when name is invalid")
+    function _()
+      source = { mediaStreams: [{ Type: "Video", Width: 1920, Height: 1080, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "1080p H264")
+    end function
+
+    @it("skips non-video streams to find video stream")
+    function _()
+      source = {
+        Name: "[HDR]",
+        mediaStreams: [
+          { Type: "Audio", Codec: "aac", Language: "eng" },
+          { Type: "Video", Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10" }
+        ]
+      }
+      m.assertEqual(formatVideoSourceTitle(source, true), "[HDR] 4K HEVC HDR10")
+    end function
+
+    @it("returns N/A when no video stream found")
+    function _()
+      source = { Name: "[B&W]", mediaStreams: [{ Type: "Audio", Codec: "aac" }] }
+      m.assertEqual(formatVideoSourceTitle(source, true), "N/A")
+    end function
+
+    @it("returns N/A for invalid mediaSource")
+    function _()
+      m.assertEqual(formatVideoSourceTitle(invalid, true), "N/A")
+    end function
+
+    @it("returns N/A when mediaStreams is invalid")
+    function _()
+      source = { Name: "[B&W]" }
+      m.assertEqual(formatVideoSourceTitle(source, true), "N/A")
     end function
 
   end class
