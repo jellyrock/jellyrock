@@ -122,7 +122,7 @@ function getSupportedPassthruCodecs(di as object, channelCount as integer) as ob
   supportedCodecs = []
 
   for each codec in surroundOutputCodecs
-    if getActualCodecSupport(codec, channelCount, di)
+    if di.CanDecodeAudio({ Codec: codec, ChCnt: channelCount, PassThru: 1 }).Result
       supportedCodecs.push(codec)
     end if
   end for

@@ -305,6 +305,24 @@ namespace tests
       m.assertArrayCount(result, 0, "Should return empty for 8ch when only 6ch supported")
     end function
 
+    @it("returns empty when device can native decode but has no passthrough")
+    function _()
+      ' Regression: Roku Ultra can natively decode ac3/eac3 6ch (outputs stereo PCM)
+      ' but has no receiver/soundbar for passthrough. getSupportedPassthruCodecs must
+      ' only detect actual passthrough, not native decode capability.
+      mockDi = {
+        CanDecodeAudio: function(params as object) as object
+          if params.DoesExist("PassThru") and params.PassThru = 1
+            return { Result: false } ' No passthrough (no receiver/soundbar)
+          end if
+          return { Result: true } ' Native decode supported
+        end function
+      }
+
+      result = getSupportedPassthruCodecs(mockDi, 6)
+      m.assertArrayCount(result, 0, "Should return empty when only native decode is available (no passthrough)")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Helper Functions")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
