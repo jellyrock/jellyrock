@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - custom media track formatting and subtitle display ([#333](https://github.com/jellyrock/jellyrock/pull/333))
 
+### Fixed
+
+- on-device decode setting ignored when no receiver connected ([#334](https://github.com/jellyrock/jellyrock/pull/334))
+
 ## [1.14.0](https://github.com/jellyrock/jellyrock/compare/v1.13.0...v1.14.0) - 2026-02-10
 
 ### Added
