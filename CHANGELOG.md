@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - on-device decode setting ignored when no receiver connected ([#334](https://github.com/jellyrock/jellyrock/pull/334))
 
+### Dependencies
+
+- Update markdownlint-cli2 from v0.20.0 to v0.21.0 ([#335](https://github.com/jellyrock/jellyrock/pull/335))
+
 ## [1.14.0](https://github.com/jellyrock/jellyrock/compare/v1.13.0...v1.14.0) - 2026-02-10
 
 ### Added
