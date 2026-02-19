@@ -13,10 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- prevent h264 playback failures due to resolution ([bf7d4e2](https://github.com/jellyrock/jellyrock/commit/bf7d4e2))
 - on-device decode setting ignored when no receiver connected ([#334](https://github.com/jellyrock/jellyrock/pull/334))
 
 ### Dependencies
 
+- Update rimraf from v6.1.2 to v6.1.3 ([#336](https://github.com/jellyrock/jellyrock/pull/336))
 - Update markdownlint-cli2 from v0.20.0 to v0.21.0 ([#335](https://github.com/jellyrock/jellyrock/pull/335))
 
 ## [1.14.0](https://github.com/jellyrock/jellyrock/compare/v1.13.0...v1.14.0) - 2026-02-10
