@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - custom media track formatting and subtitle display ([#333](https://github.com/jellyrock/jellyrock/pull/333))
 
+### Changed
+
+- lower video playbackTimer from 30 to 10 seconds ([f1191d1](https://github.com/jellyrock/jellyrock/commit/f1191d1))
+
 ### Fixed
 
 - VP9 HDR playback and add Dolby Vision Profile 7 support ([ef25339](https://github.com/jellyrock/jellyrock/commit/ef25339))
