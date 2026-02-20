@@ -422,10 +422,10 @@ function getTranscodingProfiles() as object
       "SegmentLength": 6
     }
 
-    ' Add height restriction if configured
-    maxHeightArray = getMaxHeightArray(true)
-    if maxHeightArray.count() > 0
-      profile.Conditions = [maxHeightArray]
+    ' Add resolution restriction if configured
+    resolutionConditions = getResolutionConditions(true)
+    if resolutionConditions.count() > 0
+      profile.Conditions = resolutionConditions
     end if
 
     transcodingProfiles.push(profile)
@@ -455,7 +455,7 @@ function getCodecProfiles() as object
     "av1": {}
   }
   di = CreateObject("roDeviceInfo")
-  maxHeightArray = getMaxHeightArray()
+  resolutionConditions = getResolutionConditions()
 
   ' ========================================
   ' DETECT SURROUND PASSTHROUGH SUPPORT
@@ -736,9 +736,7 @@ function getCodecProfiles() as object
   end if
 
   ' set max resolution
-  if maxHeightArray.count() > 0
-    h264ProfileArray.Conditions.push(maxHeightArray)
-  end if
+  h264ProfileArray.Conditions.Append(resolutionConditions)
 
   ' set bitrate restrictions based on user settings
   bitRateArray = GetBitRateLimit("h264")
@@ -772,9 +770,7 @@ function getCodecProfiles() as object
     }
 
     ' set max resolution
-    if maxHeightArray.count() > 0
-      mpeg2ProfileArray.Conditions.push(maxHeightArray)
-    end if
+    mpeg2ProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
     bitRateArray = GetBitRateLimit("mpeg2")
@@ -824,9 +820,7 @@ function getCodecProfiles() as object
     }
 
     ' set max resolution
-    if maxHeightArray.count() > 0
-      av1ProfileArray.Conditions.push(maxHeightArray)
-    end if
+    av1ProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
     bitRateArray = GetBitRateLimit("av1")
@@ -889,9 +883,7 @@ function getCodecProfiles() as object
     end if
 
     ' set max resolution
-    if maxHeightArray.count() > 0
-      hevcProfileArray.Conditions.push(maxHeightArray)
-    end if
+    hevcProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
     bitRateArray = GetBitRateLimit("h265")
@@ -929,9 +921,7 @@ function getCodecProfiles() as object
     }
 
     ' set max resolution
-    if maxHeightArray.count() > 0
-      vp9ProfileArray.Conditions.push(maxHeightArray)
-    end if
+    vp9ProfileArray.Conditions.Append(resolutionConditions)
 
     ' set bitrate restrictions based on user settings
     bitRateArray = GetBitRateLimit("vp9")
@@ -1024,35 +1014,89 @@ function GetBitRateLimit(codec as string) as object
   return {}
 end function
 
-function getMaxHeightArray(isRequired = false as boolean) as object
+function getResolutionConditions(isRequired = false as boolean) as object
   userMaxHeight = m.global.user.settings.playbackResolutionMax
   if userMaxHeight = invalid or userMaxHeight = "" then userMaxHeight = "auto"
-  if userMaxHeight = "off" then return {}
+  if userMaxHeight = "off" then return []
 
-  deviceMaxHeight = m.global.device.videoHeight
+  globalDevice = m.global.device ' cache - accessed twice below
+  deviceMaxHeight = globalDevice.videoHeight
 
   maxVideoHeight = 1080 ' default to 1080p in case all our validation checks fail
+  maxVideoWidth = 1920
 
   if userMaxHeight = "auto"
     if isValid(deviceMaxHeight) and deviceMaxHeight <> 0 and deviceMaxHeight > maxVideoHeight
       maxVideoHeight = deviceMaxHeight
+      maxVideoWidth = globalDevice.videoWidth ' paired width for device's native video mode
     end if
   else
     userMaxHeight = userMaxHeight.ToInt()
     if isValid(userMaxHeight) and userMaxHeight > 0 and userMaxHeight < maxVideoHeight
       maxVideoHeight = userMaxHeight
+      ' Settings only stores height, so derive the paired 16:9 width
+      ' (same standard resolution pairs as SaveDeviceToGlobal in globals.bs)
+      heightToWidth = {
+        "480": 720,
+        "576": 720,
+        "720": 1280,
+        "1080": 1920,
+        "2160": 3840,
+        "4320": 7680
+      }
+      mappedWidth = heightToWidth[maxVideoHeight.toStr()]
+      maxVideoWidth = isValid(mappedWidth) ? mappedWidth : int(maxVideoHeight * 16 / 9)
     end if
   end if
 
-  return {
-    "Condition": "LessThanEqual",
-    "Property": "Height",
-    "Value": maxVideoHeight.toStr(),
-    "IsRequired": isRequired
-  }
+  return [
+    {
+      "Condition": "LessThanEqual",
+      "Property": "Height",
+      "Value": maxVideoHeight.toStr(),
+      "IsRequired": isRequired
+    },
+    {
+      "Condition": "LessThanEqual",
+      "Property": "Width",
+      "Value": maxVideoWidth.toStr(),
+      "IsRequired": isRequired
+    }
+  ]
 end function
 
-' Recieves and returns an assArray of supported profiles and levels for each video codec
+' Apply a paired Height + Width resolution cap to a codec profile's Conditions.
+' No-ops if a Height condition at or below maxHeight already exists.
+' @param codecProfile {object} - The codec profile AA containing a Conditions array
+' @param maxHeight {integer} - The max height to cap at (e.g. 1080)
+' @param maxWidth {integer} - The max width to cap at (e.g. 1920)
+' @param isRequired {boolean} - Whether the condition is required for direct play
+sub applyResolutionCapToProfile(codecProfile as object, maxHeight as integer, maxWidth as integer, isRequired = false as boolean)
+  if not isValid(codecProfile) or not isValid(codecProfile.Conditions) then return
+
+  for each condition in codecProfile.Conditions
+    if isValid(condition.Property) and condition.Property = "Height"
+      if condition.Value.toInt() <= maxHeight
+        return ' Resolution cap already present
+      end if
+    end if
+  end for
+
+  codecProfile.Conditions.push({
+    "Condition": "LessThanEqual",
+    "Property": "Height",
+    "Value": maxHeight.toStr(),
+    "IsRequired": isRequired
+  })
+  codecProfile.Conditions.push({
+    "Condition": "LessThanEqual",
+    "Property": "Width",
+    "Value": maxWidth.toStr(),
+    "IsRequired": isRequired
+  })
+end sub
+
+' Receives and returns an assArray of supported profiles and levels for each video codec
 function updateProfileArray(profileArray as object, videoCodec as string, videoProfile as string, profileLevel = "" as string) as object
   ' validate params
   if not isValid(profileArray) then return {}

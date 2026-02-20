@@ -420,6 +420,100 @@ namespace tests
       m.assertEqual(result.Count(), 0, "Should return empty object for invalid input")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyResolutionCapToProfile()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds Height and Width conditions when no cap exists")
+    function _()
+      codecProfile = { "Codec": "h264", "Conditions": [] }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920)
+
+      m.assertArrayCount(codecProfile.Conditions, 2, "Should add 2 conditions")
+      m.assertEqual(codecProfile.Conditions[0].Property, "Height", "First condition should be Height")
+      m.assertEqual(codecProfile.Conditions[0].Value, "1080", "Height value should be 1080")
+      m.assertEqual(codecProfile.Conditions[1].Property, "Width", "Second condition should be Width")
+      m.assertEqual(codecProfile.Conditions[1].Value, "1920", "Width value should be 1920")
+    end function
+
+    @it("no-ops when a Height condition at or below maxHeight already exists")
+    function _()
+      codecProfile = {
+        "Codec": "h264",
+        "Conditions": [{ "Property": "Height", "Value": "1080", "Condition": "LessThanEqual", "IsRequired": false }]
+      }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920)
+
+      m.assertArrayCount(codecProfile.Conditions, 1, "Should not add duplicate conditions")
+    end function
+
+    @it("no-ops when an existing Height condition is below maxHeight")
+    function _()
+      codecProfile = {
+        "Codec": "h264",
+        "Conditions": [{ "Property": "Height", "Value": "720", "Condition": "LessThanEqual", "IsRequired": false }]
+      }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920)
+
+      m.assertArrayCount(codecProfile.Conditions, 1, "Should not add when a stricter cap already exists")
+    end function
+
+    @it("adds cap when existing Height condition is above maxHeight")
+    function _()
+      ' Device-level cap is 2160 (4K Roku), but H264 needs to be capped at 1080
+      codecProfile = {
+        "Codec": "h264",
+        "Conditions": [{ "Property": "Height", "Value": "2160", "Condition": "LessThanEqual", "IsRequired": false }]
+      }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920)
+
+      m.assertArrayCount(codecProfile.Conditions, 3, "Should add Height and Width on top of existing 4K cap")
+      m.assertEqual(codecProfile.Conditions[1].Property, "Height", "Added Height condition")
+      m.assertEqual(codecProfile.Conditions[1].Value, "1080")
+      m.assertEqual(codecProfile.Conditions[2].Property, "Width", "Added Width condition")
+      m.assertEqual(codecProfile.Conditions[2].Value, "1920")
+    end function
+
+    @it("respects isRequired parameter")
+    function _()
+      codecProfile = { "Codec": "h264", "Conditions": [] }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920, true)
+
+      m.assertTrue(codecProfile.Conditions[0].IsRequired, "Height condition should be required")
+      m.assertTrue(codecProfile.Conditions[1].IsRequired, "Width condition should be required")
+    end function
+
+    @it("defaults isRequired to false")
+    function _()
+      codecProfile = { "Codec": "h264", "Conditions": [] }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920)
+
+      m.assertFalse(codecProfile.Conditions[0].IsRequired, "Height condition should not be required by default")
+      m.assertFalse(codecProfile.Conditions[1].IsRequired, "Width condition should not be required by default")
+    end function
+
+    @it("handles invalid codecProfile gracefully")
+    function _()
+      ' Should not throw
+      applyResolutionCapToProfile(invalid, 1080, 1920)
+      m.assertTrue(true, "Should handle invalid codecProfile without error")
+    end function
+
+    @it("handles missing Conditions array gracefully")
+    function _()
+      codecProfile = { "Codec": "h264" }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920)
+
+      m.assertFalse(codecProfile.DoesExist("Conditions"), "Should not create Conditions when missing")
+    end function
+
   end class
 
 end namespace

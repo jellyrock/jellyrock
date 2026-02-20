@@ -92,39 +92,31 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
   end if
 
-  ' Cap H264 codec profile to 1080p when the source video is H264.
+  ' Cap H264 codec profile when the source video is H264.
   ' Applied dynamically here rather than in the static device profile so it doesn't
   ' interfere with non-H264 content (e.g. HEVC DoVi remux needs unrestricted resolution).
+  ' 1080p (1920x1080) is the H264 hardware ceiling on all Roku devices, but a lower
+  ' user resolution cap is respected if set.
   if isValid(mediaStreams)
     for each stream in mediaStreams
       if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) = "h264"
         if isValid(postData.DeviceProfile.CodecProfiles)
-          for each codecProfile in postData.DeviceProfile.CodecProfiles
-            if isValid(codecProfile.Codec) and LCase(codecProfile.Codec) = "h264" and isValid(codecProfile.Conditions)
-              ' Check if a Height condition already exists at or below 1080
-              hasHeightCap = false
-              for each condition in codecProfile.Conditions
-                if isValid(condition.Property) and condition.Property = "Height"
-                  if condition.Value.toInt() <= 1080
-                    hasHeightCap = true
-                  end if
-                end if
-              end for
+          ' Start from the H264 hardware ceiling, then clamp down to the user's cap if lower
+          h264CapHeight = 1080
+          h264CapWidth = 1920
+          userResConditions = getResolutionConditions()
+          for each condition in userResConditions
+            if condition.Property = "Height" and condition.Value.toInt() < h264CapHeight
+              h264CapHeight = condition.Value.toInt()
+            end if
+            if condition.Property = "Width" and condition.Value.toInt() < h264CapWidth
+              h264CapWidth = condition.Value.toInt()
+            end if
+          end for
 
-              if not hasHeightCap
-                codecProfile.Conditions.push({
-                  "Condition": "LessThanEqual",
-                  "Property": "Height",
-                  "Value": "1080",
-                  "IsRequired": false
-                })
-                codecProfile.Conditions.push({
-                  "Condition": "LessThanEqual",
-                  "Property": "Width",
-                  "Value": "1920",
-                  "IsRequired": false
-                })
-              end if
+          for each codecProfile in postData.DeviceProfile.CodecProfiles
+            if isValid(codecProfile.Codec) and LCase(codecProfile.Codec) = "h264"
+              applyResolutionCapToProfile(codecProfile, h264CapHeight, h264CapWidth)
             end if
           end for
         end if
