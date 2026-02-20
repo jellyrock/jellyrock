@@ -536,15 +536,15 @@ namespace tests
     @describe("calculateOptimalTranscodingParams() - Buffer Protection")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("uses max segment length for low bitrate (10 Mbps) on normal device")
+    @it("uses preferred segment length (6s) for low bitrate (10 Mbps) on normal device")
     function _()
       ' 10 Mbps, 2 hour movie, normal buffer (31,616,000 bytes)
       ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
-      ' maxSegDuration = floor(94,848,000 / 10,000,000) = 9 → no clamping needed (cap is 9)
+      ' rawMaxSegDuration = floor(94,848,000 / 10,000,000) = 9 → buffer supports 6s
       ' minSegDuration = ceil(7200 / 5000) = 2
-      ' min(2) <= max(9) → no conflict
+      ' rawMax(9) >= preferred(6) and min(2) <= preferred(6) → use preferred
       result = calculateOptimalTranscodingParams(10000000&, 7200, 31616000&)
-      m.assertEqual(result.segmentLength, 9, "Should use max segment length for low bitrate")
+      m.assertEqual(result.segmentLength, 6, "Should use preferred 6s segment length")
       m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
     end function
 

@@ -1210,7 +1210,8 @@ end function
 ' 1. Buffer: (bitrate × segmentDuration) / 8 ≤ bufferSize × BUFFER_SAFETY_FACTOR
 ' 2. Playlist: videoDuration / segmentDuration ≤ MAX_HLS_PLAYLIST_ENTRIES
 '
-' Prefers the largest possible segment length (1-9) to minimize playlist size.
+' Targets 6s segments for optimal startup and seek performance. Goes shorter if the buffer
+' forces it, or longer (up to 9s) only when the playlist constraint requires it.
 ' Only reduces bitrate as a last resort when no segment length satisfies both constraints.
 '
 ' @param {LongInteger} bitrateBps - Source media total bitrate in bits per second
@@ -1245,27 +1246,37 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
     minSegDuration = (videoDurationSeconds + MAX_HLS_PLAYLIST_ENTRIES - 1) \ MAX_HLS_PLAYLIST_ENTRIES
   end if
 
-  ' Clamp to valid range [1, 9]
+  ' Clamp maxSegDuration to valid range [1, 9] (buffer upper bound)
   maxSegDuration = rawMaxSegDuration
   if maxSegDuration > 9 then maxSegDuration = 9
   if maxSegDuration < 1 then maxSegDuration = 1
   if minSegDuration < 1 then minSegDuration = 1
 
-  ' Happy path: both constraints satisfied AND 1s segments actually fit in the buffer.
-  ' rawMaxSegDuration < 1 means the source bitrate overflows the buffer even at 1s segments,
-  ' so skip the happy path and fall through to bitrate reduction regardless.
-  if rawMaxSegDuration >= 1 and minSegDuration <= maxSegDuration
+  ' Prefer 6s segments. Only deviate when forced by a constraint.
+
+  ' Case 1: 6s satisfies both constraints (buffer supports it, playlist doesn't require longer).
+  if rawMaxSegDuration >= 6 and minSegDuration <= 6
+    return { segmentLength: 6, maxBitrate: 0& }
+  end if
+
+  ' Case 2: Buffer forces shorter than 6s, and the shorter length satisfies the playlist constraint.
+  ' No bitrate reduction needed; source bitrate already fits the smaller segments.
+  if rawMaxSegDuration >= 1 and rawMaxSegDuration < 6 and minSegDuration <= maxSegDuration
     return { segmentLength: maxSegDuration, maxBitrate: 0& }
   end if
 
-  ' Conflict: min segment (playlist) > max segment (buffer)
-  ' Need to reduce bitrate so that minSegDuration-sized segments fit in the buffer
+  ' Case 3+: Playlist forces longer than 6s, or source bitrate overflows even 1s segments.
+  ' Use minSegDuration (capped at 9s). Content over ~12.5h (45,000s) cannot satisfy the
+  ' playlist constraint within this range, but that duration is beyond expected use.
   segmentLength = minSegDuration
-  ' Cap at 9s: content longer than MAX_HLS_PLAYLIST_ENTRIES × 9 = 45,000s (~12.5h) cannot
-  ' satisfy the playlist constraint within this range. That duration is beyond expected use.
   if segmentLength > 9 then segmentLength = 9
 
-  ' Calculate the maximum bitrate that fits in the per-segment budget at this segment length
+  ' No bitrate reduction needed if the buffer supports this length at source bitrate.
+  if rawMaxSegDuration >= segmentLength
+    return { segmentLength: segmentLength, maxBitrate: 0& }
+  end if
+
+  ' Buffer overflow: reduce bitrate to fit segmentLength-sized segments in the per-segment budget.
   ' Formula: maxBitrate = (segmentBudget × 8) / segmentDuration
   maxBitrate& = (segmentBudget& * 8&) \ segmentLength
 
