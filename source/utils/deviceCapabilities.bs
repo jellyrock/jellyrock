@@ -1233,7 +1233,9 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
 
   ' Calculate max segment duration that fits in the per-segment budget
   ' Formula: maxDuration = (segmentBudget × 8) / bitrate
-  maxSegDuration = Int((segmentBudget& * 8.0) / bitrateBps)
+  ' Preserve raw (pre-clamp) value: a result of 0 means even a 1s segment overflows
+  ' the buffer at the source bitrate, and must be treated as infeasible (bitrate reduction needed).
+  rawMaxSegDuration = Int((segmentBudget& * 8.0) / bitrateBps)
 
   ' Calculate min segment duration to keep playlist within entry limit
   ' Formula: minDuration = ceil(videoDuration / maxPlaylistEntries)
@@ -1244,12 +1246,15 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   end if
 
   ' Clamp to valid range [1, 6]
+  maxSegDuration = rawMaxSegDuration
   if maxSegDuration > 6 then maxSegDuration = 6
   if maxSegDuration < 1 then maxSegDuration = 1
   if minSegDuration < 1 then minSegDuration = 1
 
-  ' Happy path: both constraints can be satisfied
-  if minSegDuration <= maxSegDuration
+  ' Happy path: both constraints satisfied AND 1s segments actually fit in the buffer.
+  ' rawMaxSegDuration < 1 means the source bitrate overflows the buffer even at 1s segments,
+  ' so skip the happy path and fall through to bitrate reduction regardless.
+  if rawMaxSegDuration >= 1 and minSegDuration <= maxSegDuration
     return { segmentLength: maxSegDuration, maxBitrate: 0& }
   end if
 

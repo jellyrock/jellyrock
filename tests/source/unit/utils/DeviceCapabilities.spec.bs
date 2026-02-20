@@ -528,6 +528,19 @@ namespace tests
         result = getDeviceBufferSize()
         m.assertEqual(result, 31616000&, "Should return normal buffer size (31,616,000 bytes)")
       end function
+      @it("reduces bitrate for short high-bitrate video (rawMaxSegDuration=0, no playlist conflict)")
+      function _()
+        ' 150 Mbps, 10 min (600s), low memory buffer (20,553,728 bytes)
+        ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
+        ' rawMaxSegDuration = floor(61,661,184 / 150,000,000) = 0
+        ' A raw value of 0 means even a 1s segment overflows the buffer at source bitrate.
+        ' Must force bitrate reduction even though playlist has no conflict (minSegDuration = 1).
+        ' minSegDuration = 1 (600 < 5000)
+        ' segmentLength = 1, maxBitrate = (7,707,648 * 8) \ 1 = 61,661,184
+        result = calculateOptimalTranscodingParams(150000000&, 600, 20553728&)
+        m.assertEqual(result.segmentLength, 1, "Should use 1-second segments")
+        m.assertEqual(result.maxBitrate, 61661184&, "Should reduce bitrate to fit 1s segments in buffer budget")
+      end function
 
       '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
       @describe("calculateOptimalTranscodingParams() - Buffer Protection")
