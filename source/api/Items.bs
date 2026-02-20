@@ -14,6 +14,47 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   }
   postData.DeviceProfile = getDeviceProfile()
 
+  ' Dynamically adjust transcoding segment length and bitrate based on the video's
+  ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
+  ' and playlist-too-large errors during HLS playback.
+  if isValid(videoMetadata) and isValid(videoMetadata.json) and isValid(videoMetadata.json.MediaSources) and isValid(videoMetadata.json.MediaSources[0])
+    mediaSource = videoMetadata.json.MediaSources[0]
+    sourceBitrate& = 0
+    videoDurationSeconds = 0
+
+    if isValid(mediaSource.Bitrate)
+      sourceBitrate& = mediaSource.Bitrate
+    end if
+
+    if isValid(mediaSource.RunTimeTicks) and mediaSource.RunTimeTicks > 0
+      videoDurationSeconds = mediaSource.RunTimeTicks / 10000000
+    end if
+
+    if sourceBitrate& > 0 and videoDurationSeconds > 0
+      bufferSize& = getDeviceBufferSize()
+      transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&)
+
+      ' Apply optimized segment length to all video transcoding profiles
+      if isValid(postData.DeviceProfile.TranscodingProfiles)
+        for each profile in postData.DeviceProfile.TranscodingProfiles
+          if isValid(profile.Type) and profile.Type = "Video"
+            profile.SegmentLength = transcodingParams.segmentLength
+          end if
+        end for
+      end if
+
+      ' Reduce max streaming bitrate only when segment length alone isn't enough.
+      ' Never set MaxStreamingBitrate below the source bitrate + 10% headroom - doing
+      ' so would cause Jellyfin to reject a remux/direct-stream as exceeding the limit.
+      if transcodingParams.maxBitrate > 0
+        minAllowedBitrate& = sourceBitrate& * 1.1
+        if transcodingParams.maxBitrate >= minAllowedBitrate&
+          postData.DeviceProfile.MaxStreamingBitrate = transcodingParams.maxBitrate
+        end if
+      end if
+    end if
+  end if
+
   if subtitleTrackIndex <> SubtitleSelection.none and subtitleTrackIndex <> SubtitleSelection.notset
     postData.SubtitleStreamIndex = subtitleTrackIndex
   end if

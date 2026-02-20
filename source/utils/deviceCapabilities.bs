@@ -1,6 +1,33 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/utils/misc.bs"
 
+' ========================================
+' VIDEO BUFFER PROTECTION CONSTANTS
+' ========================================
+' Roku devices have fixed-size video buffers that cannot be configured.
+' HLS segments exceeding the buffer size cause fatal playback errors.
+' These constants are used to dynamically adjust transcoding parameters per-video.
+
+' Video buffer size for 512MB RAM devices (from error logs: max_wrap_allocation)
+const DEVICE_BUFFER_SIZE_LOW_MEMORY = 20553728
+
+' Video buffer size for all other devices (from error logs: entire buffer size)
+const DEVICE_BUFFER_SIZE_NORMAL = 31616000
+
+' Percentage of buffer available for segment data (leaves room for metadata/overhead).
+' Combined with BUFFER_SEGMENT_COUNT=2, each segment is allocated 37.5% of the total buffer.
+const BUFFER_SAFETY_FACTOR = 0.75
+
+' Number of segments the buffer must hold simultaneously.
+' Roku's player buffers multiple segments for look-ahead playback.
+' The buffer must fit at least this many segments concurrently.
+const BUFFER_SEGMENT_COUNT = 2
+
+' Max HLS playlist entries before Roku's MPR rejects the playlist as too large.
+' Exact Roku limit is undocumented - this is a conservative estimate.
+' Tune this value based on testing if "mpr playlist file is too large" errors occur.
+const MAX_HLS_PLAYLIST_ENTRIES = 5000
+
 ' Returns the Device Capabilities for Roku.
 ' Also prints out the device profile for debugging
 function getDeviceCapabilities() as object
@@ -1160,4 +1187,80 @@ function canPlay4k() as boolean
   end if
 
   return true
+end function
+
+' ========================================
+' VIDEO BUFFER PROTECTION FUNCTIONS
+' ========================================
+
+' Returns the device's video buffer size in bytes.
+' 512MB RAM devices have a smaller buffer than all other devices.
+' @return {LongInteger} Buffer size in bytes
+function getDeviceBufferSize() as longinteger
+  if checkIsLowMemoryDevice(m.global.device.model)
+    return DEVICE_BUFFER_SIZE_LOW_MEMORY
+  end if
+
+  return DEVICE_BUFFER_SIZE_NORMAL
+end function
+
+' Calculates optimal HLS transcoding parameters to prevent buffer overflow and playlist errors.
+'
+' Solves two constraints simultaneously:
+' 1. Buffer: (bitrate × segmentDuration) / 8 ≤ bufferSize × BUFFER_SAFETY_FACTOR
+' 2. Playlist: videoDuration / segmentDuration ≤ MAX_HLS_PLAYLIST_ENTRIES
+'
+' Prefers the largest possible segment length (1-6) to minimize playlist size.
+' Only reduces bitrate as a last resort when no segment length satisfies both constraints.
+'
+' @param {LongInteger} bitrateBps - Source media total bitrate in bits per second
+' @param {Integer} videoDurationSeconds - Video duration in seconds
+' @param {LongInteger} bufferSizeBytes - Device video buffer size in bytes
+' @return {Object} { segmentLength: Integer, maxBitrate: LongInteger }
+'         segmentLength: optimal HLS segment duration (1-6 seconds)
+'         maxBitrate: max streaming bitrate in bps (0 = no reduction needed)
+function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurationSeconds as integer, bufferSizeBytes as longinteger) as object
+  defaultResult = { segmentLength: 6, maxBitrate: 0& }
+
+  ' Guard: invalid inputs - return defaults
+  if bitrateBps <= 0 or videoDurationSeconds <= 0 or bufferSizeBytes <= 0
+    return defaultResult
+  end if
+
+  ' Calculate per-segment budget: buffer must hold BUFFER_SEGMENT_COUNT segments simultaneously
+  ' (Roku buffers multiple segments for look-ahead playback)
+  segmentBudget& = (bufferSizeBytes * BUFFER_SAFETY_FACTOR) / BUFFER_SEGMENT_COUNT
+
+  ' Calculate max segment duration that fits in the per-segment budget
+  ' Formula: maxDuration = (segmentBudget × 8) / bitrate
+  maxSegDuration = Int((segmentBudget& * 8.0) / bitrateBps)
+
+  ' Calculate min segment duration to keep playlist within entry limit
+  ' Formula: minDuration = ceil(videoDuration / maxPlaylistEntries)
+  minSegDuration = 1
+  if videoDurationSeconds > MAX_HLS_PLAYLIST_ENTRIES
+    ' Ceiling division without floating point: (a + b - 1) / b
+    minSegDuration = (videoDurationSeconds + MAX_HLS_PLAYLIST_ENTRIES - 1) \ MAX_HLS_PLAYLIST_ENTRIES
+  end if
+
+  ' Clamp to valid range [1, 6]
+  if maxSegDuration > 6 then maxSegDuration = 6
+  if maxSegDuration < 1 then maxSegDuration = 1
+  if minSegDuration < 1 then minSegDuration = 1
+
+  ' Happy path: both constraints can be satisfied
+  if minSegDuration <= maxSegDuration
+    return { segmentLength: maxSegDuration, maxBitrate: 0& }
+  end if
+
+  ' Conflict: min segment (playlist) > max segment (buffer)
+  ' Need to reduce bitrate so that minSegDuration-sized segments fit in the buffer
+  segmentLength = minSegDuration
+  if segmentLength > 6 then segmentLength = 6
+
+  ' Calculate the maximum bitrate that fits in the per-segment budget at this segment length
+  ' Formula: maxBitrate = (segmentBudget × 8) / segmentDuration
+  maxBitrate& = (segmentBudget& * 8.0) / segmentLength
+
+  return { segmentLength: segmentLength, maxBitrate: maxBitrate& }
 end function
