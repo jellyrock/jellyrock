@@ -548,11 +548,10 @@ namespace tests
       ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
       ' maxSegDuration = floor(94,848,000 / 94,852,604) = 0 → clamped to 1
       ' minSegDuration = ceil(5804 / 5000) = 2
-      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = 94,848,000 / 2 = 47,424,000
+      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (11,856,000 * 8) \ 2 = 47,424,000
       result = calculateOptimalTranscodingParams(94852604&, 5804, 31616000&)
       m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
-      m.assertTrue(result.maxBitrate > 0, "Should require bitrate reduction")
-      m.assertTrue(result.maxBitrate < 94852604, "Max bitrate should be less than source")
+      m.assertEqual(result.maxBitrate, 47424000&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
     end function
 
     @it("reduces bitrate for 95 Mbps on low memory device when playlist limit reached")
@@ -561,11 +560,10 @@ namespace tests
       ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
       ' maxSegDuration = floor(61,661,184 / 94,852,604) = 0 → clamped to 1
       ' minSegDuration = ceil(5804 / 5000) = 2
-      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = 61,661,184 / 2 = 30,830,592
+      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (7,707,648 * 8) \ 2 = 30,830,592
       result = calculateOptimalTranscodingParams(94852604&, 5804, 20553728&)
       m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
-      m.assertTrue(result.maxBitrate > 0, "Should require bitrate reduction")
-      m.assertTrue(result.maxBitrate < 94852604, "Max bitrate should be less than source")
+      m.assertEqual(result.maxBitrate, 30830592&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
     end function
 
     @it("reduces bitrate for extreme bitrate (200 Mbps) on low memory device")
@@ -574,10 +572,10 @@ namespace tests
       ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
       ' maxSegDuration = floor(61,661,184 / 200,000,000) = 0 → clamped to 1
       ' minSegDuration = ceil(5400 / 5000) = 2
-      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = 61,661,184 / 2 = 30,830,592
+      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (7,707,648 * 8) \ 2 = 30,830,592
       result = calculateOptimalTranscodingParams(200000000&, 5400, 20553728&)
-      m.assertTrue(result.maxBitrate > 0, "Should require bitrate reduction for extreme bitrate")
-      m.assertTrue(result.maxBitrate < 200000000, "Max bitrate should be less than source")
+      m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
+      m.assertEqual(result.maxBitrate, 30830592&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
     end function
 
     @it("handles very long video (24h) by increasing segment length for playlist limit")
@@ -586,10 +584,10 @@ namespace tests
       ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
       ' maxSegDuration = floor(94,848,000 / 20,000,000) = 4
       ' minSegDuration = ceil(86400 / 5000) = 18
-      ' Conflict: min(18) > max(4) → segmentLength = 18, capped to 6, maxBitrate = 94,848,000 / 6 = 15,808,000
+      ' Conflict: min(18) > max(4) → segmentLength = 18, capped to 6, maxBitrate = (11,856,000 * 8) \ 6 = 15,808,000
       result = calculateOptimalTranscodingParams(20000000&, 86400, 31616000&)
       m.assertEqual(result.segmentLength, 6, "Should cap segment length at 6 for very long video")
-      m.assertTrue(result.maxBitrate > 0, "Should require bitrate reduction for very long video")
+      m.assertEqual(result.maxBitrate, 15808000&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
     end function
 
     @it("returns defaults for invalid bitrate (0)")

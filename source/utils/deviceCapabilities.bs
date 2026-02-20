@@ -1260,7 +1260,7 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
 
   ' Calculate the maximum bitrate that fits in the per-segment budget at this segment length
   ' Formula: maxBitrate = (segmentBudget × 8) / segmentDuration
-  maxBitrate& = (segmentBudget& * 8.0) / segmentLength
+  maxBitrate& = (segmentBudget& * 8&) \ segmentLength
 
   return { segmentLength: segmentLength, maxBitrate: maxBitrate& }
 end function

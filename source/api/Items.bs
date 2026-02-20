@@ -27,7 +27,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
 
     if isValid(mediaSource.RunTimeTicks) and mediaSource.RunTimeTicks > 0
-      videoDurationSeconds = mediaSource.RunTimeTicks / 10000000
+      videoDurationSeconds = Int(mediaSource.RunTimeTicks / 10000000)
     end if
 
     if sourceBitrate& > 0 and videoDurationSeconds > 0
@@ -47,7 +47,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
       ' Never set MaxStreamingBitrate below the source bitrate + 10% headroom - doing
       ' so would cause Jellyfin to reject a remux/direct-stream as exceeding the limit.
       if transcodingParams.maxBitrate > 0
-        minAllowedBitrate& = sourceBitrate& * 1.1
+        minAllowedBitrate& = sourceBitrate& * 11& \ 10&
         if transcodingParams.maxBitrate >= minAllowedBitrate&
           postData.DeviceProfile.MaxStreamingBitrate = transcodingParams.maxBitrate
         end if

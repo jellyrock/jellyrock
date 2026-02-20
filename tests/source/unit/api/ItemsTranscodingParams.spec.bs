@@ -1,0 +1,148 @@
+import "pkg:/source/api/Items.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("Items.bs - Transcoding Params Math")
+  class ItemsTranscodingParamsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("RunTimeTicks → videoDurationSeconds conversion (Int() truncation)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts exact-second tick value to integer seconds")
+    function _()
+      ' GIVEN: A 90-minute movie (exactly 5400 seconds of ticks)
+      runTimeTicks& = 54000000000&
+      ' WHEN: Convert using Int() — BrightScript's \ operator truncates LongInteger to 32-bit
+      '       before dividing, causing overflow for tick values > ~21,474 seconds.
+      '       Int(x / y) is the correct approach: divides first (Float), then floors.
+      videoDurationSeconds = Int(runTimeTicks& / 10000000)
+      ' THEN: Result is exactly 5400 with no fractional part
+      m.assertEqual(videoDurationSeconds, 5400, "Exact-second duration should convert cleanly")
+    end function
+
+    @it("truncates sub-second tick remainder without rounding up")
+    function _()
+      ' GIVEN: A duration of 5403 seconds and 750 milliseconds worth of ticks
+      ' (5403.75 * 10,000,000 = 54,037,500,000)
+      runTimeTicks& = 54037500000&
+      ' WHEN: Convert using Int()
+      videoDurationSeconds = Int(runTimeTicks& / 10000000)
+      ' THEN: Int() floors toward negative infinity — for positive values this is truncation.
+      '       5403.75 floors to 5403, never rounds to 5404.
+      m.assertEqual(videoDurationSeconds, 5403, "Sub-second remainder must truncate, not round")
+    end function
+
+    @it("truncates .999 second remainder (worst case rounding scenario)")
+    function _()
+      ' GIVEN: A duration of 7199 seconds and 999 milliseconds (just under 2 hours)
+      ' (7199.999 * 10,000,000 = 71,999,990,000)
+      runTimeTicks& = 71999990000&
+      ' WHEN: Convert using Int()
+      videoDurationSeconds = Int(runTimeTicks& / 10000000)
+      ' THEN: 7199.999 must floor to 7199, not round to 7200
+      m.assertEqual(videoDurationSeconds, 7199, "Near-whole-second value must truncate, not round to next second")
+    end function
+
+    @it("produces an integer result (type-safe for calculateOptimalTranscodingParams)")
+    function _()
+      ' GIVEN: A non-round tick value
+      runTimeTicks& = 58045000000&
+      ' WHEN: Convert using Int()
+      videoDurationSeconds = Int(runTimeTicks& / 10000000)
+      ' THEN: Result is a whole number (5804), matching the integer parameter type
+      m.assertEqual(videoDurationSeconds, 5804, "Result must be whole seconds with no fractional component")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("minAllowedBitrate guard math (integer 10% headroom)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("computes 10% headroom exactly for a round bitrate")
+    function _()
+      ' GIVEN: 10 Mbps source
+      sourceBitrate& = 10000000&
+      ' WHEN: Compute minimum allowed bitrate (10% headroom via integer math)
+      minAllowedBitrate& = sourceBitrate& * 11& \ 10&
+      ' THEN: Exactly 11,000,000 — no floating-point error
+      m.assertEqual(minAllowedBitrate&, 11000000&, "10% headroom on 10 Mbps should be exactly 11,000,000")
+    end function
+
+    @it("computes 10% headroom exactly for a high precision bitrate (95 Mbps)")
+    function _()
+      ' GIVEN: ~95 Mbps source (94,852,604 bps — 9 significant digits, exceeds Float precision)
+      sourceBitrate& = 94852604&
+      ' WHEN: Compute minimum allowed bitrate using integer math
+      minAllowedBitrate& = sourceBitrate& * 11& \ 10&
+      ' THEN: floor(94,852,604 * 1.1) = floor(104,337,864.4) = 104,337,864
+      ' Integer path: 94,852,604 * 11 = 1,043,378,644 \ 10 = 104,337,864 (exact)
+      m.assertEqual(minAllowedBitrate&, 104337864&, "10% headroom for 95 Mbps must be exact (no Float rounding)")
+    end function
+
+    @it("computes 10% headroom exactly for an extreme bitrate (200 Mbps)")
+    function _()
+      ' GIVEN: 200 Mbps source
+      sourceBitrate& = 200000000&
+      ' WHEN: Compute minimum allowed bitrate using integer math
+      minAllowedBitrate& = sourceBitrate& * 11& \ 10&
+      ' THEN: Exactly 220,000,000
+      m.assertEqual(minAllowedBitrate&, 220000000&, "10% headroom on 200 Mbps should be exactly 220,000,000")
+    end function
+
+    @it("allows MaxStreamingBitrate when maxBitrate meets the 10% headroom threshold exactly")
+    function _()
+      ' GIVEN: sourceBitrate = 10 Mbps, maxBitrate = exactly 11 Mbps (= 110%)
+      sourceBitrate& = 10000000&
+      maxBitrate& = 11000000&
+      ' WHEN: Apply the guard
+      minAllowedBitrate& = sourceBitrate& * 11& \ 10&
+      guardPasses = maxBitrate& >= minAllowedBitrate&
+      ' THEN: Boundary condition — exactly at threshold, guard must pass
+      m.assertTrue(guardPasses, "maxBitrate at exactly 110% of source must pass the guard")
+    end function
+
+    @it("blocks MaxStreamingBitrate when maxBitrate is 1 bps below the threshold")
+    function _()
+      ' GIVEN: sourceBitrate = 10 Mbps, maxBitrate = 10,999,999 (1 bps under 11 Mbps)
+      sourceBitrate& = 10000000&
+      maxBitrate& = 10999999&
+      ' WHEN: Apply the guard
+      minAllowedBitrate& = sourceBitrate& * 11& \ 10&
+      guardPasses = maxBitrate& >= minAllowedBitrate&
+      ' THEN: Guard must block — maxBitrate is below the minimum safe headroom
+      m.assertFalse(guardPasses, "maxBitrate 1 bps below threshold must not pass the guard")
+    end function
+
+    @it("allows MaxStreamingBitrate when maxBitrate is 1 bps above the threshold")
+    function _()
+      ' GIVEN: sourceBitrate = 10 Mbps, maxBitrate = 11,000,001 (1 bps over 11 Mbps)
+      sourceBitrate& = 10000000&
+      maxBitrate& = 11000001&
+      ' WHEN: Apply the guard
+      minAllowedBitrate& = sourceBitrate& * 11& \ 10&
+      guardPasses = maxBitrate& >= minAllowedBitrate&
+      ' THEN: Guard must pass — maxBitrate clears the minimum safe headroom
+      m.assertTrue(guardPasses, "maxBitrate 1 bps above threshold must pass the guard")
+    end function
+
+    @it("blocks MaxStreamingBitrate when maxBitrate equals source bitrate (no headroom)")
+    function _()
+      ' GIVEN: sourceBitrate = 94,852,604 bps (~95 Mbps), maxBitrate = same as source
+      ' This represents a proposed cap that would reject the source as too large.
+      sourceBitrate& = 94852604&
+      maxBitrate& = 94852604&
+      ' WHEN: Apply the guard
+      minAllowedBitrate& = sourceBitrate& * 11& \ 10&
+      guardPasses = maxBitrate& >= minAllowedBitrate&
+      ' THEN: Guard must block — capping at source bitrate leaves no headroom for Jellyfin
+      m.assertFalse(guardPasses, "maxBitrate equal to source bitrate must not pass the guard (insufficient headroom)")
+    end function
+
+  end class
+
+end namespace
