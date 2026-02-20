@@ -1210,14 +1210,14 @@ end function
 ' 1. Buffer: (bitrate × segmentDuration) / 8 ≤ bufferSize × BUFFER_SAFETY_FACTOR
 ' 2. Playlist: videoDuration / segmentDuration ≤ MAX_HLS_PLAYLIST_ENTRIES
 '
-' Prefers the largest possible segment length (1-6) to minimize playlist size.
+' Prefers the largest possible segment length (1-9) to minimize playlist size.
 ' Only reduces bitrate as a last resort when no segment length satisfies both constraints.
 '
 ' @param {LongInteger} bitrateBps - Source media total bitrate in bits per second
 ' @param {Integer} videoDurationSeconds - Video duration in seconds
 ' @param {LongInteger} bufferSizeBytes - Device video buffer size in bytes
 ' @return {Object} { segmentLength: Integer, maxBitrate: LongInteger }
-'         segmentLength: optimal HLS segment duration (1-6 seconds)
+'         segmentLength: optimal HLS segment duration (1-9 seconds)
 '         maxBitrate: max streaming bitrate in bps (0 = no reduction needed)
 function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurationSeconds as integer, bufferSizeBytes as longinteger) as object
   defaultResult = { segmentLength: 6, maxBitrate: 0& }
@@ -1245,9 +1245,9 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
     minSegDuration = (videoDurationSeconds + MAX_HLS_PLAYLIST_ENTRIES - 1) \ MAX_HLS_PLAYLIST_ENTRIES
   end if
 
-  ' Clamp to valid range [1, 6]
+  ' Clamp to valid range [1, 9]
   maxSegDuration = rawMaxSegDuration
-  if maxSegDuration > 6 then maxSegDuration = 6
+  if maxSegDuration > 9 then maxSegDuration = 9
   if maxSegDuration < 1 then maxSegDuration = 1
   if minSegDuration < 1 then minSegDuration = 1
 
@@ -1261,7 +1261,7 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   ' Conflict: min segment (playlist) > max segment (buffer)
   ' Need to reduce bitrate so that minSegDuration-sized segments fit in the buffer
   segmentLength = minSegDuration
-  if segmentLength > 6 then segmentLength = 6
+  if segmentLength > 9 then segmentLength = 9
 
   ' Calculate the maximum bitrate that fits in the per-segment budget at this segment length
   ' Formula: maxBitrate = (segmentBudget × 8) / segmentDuration

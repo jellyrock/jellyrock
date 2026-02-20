@@ -512,157 +512,151 @@ namespace tests
       applyResolutionCapToProfile(codecProfile, 1080, 1920)
 
       m.assertFalse(codecProfile.DoesExist("Conditions"), "Should not create Conditions when missing")
-      @describe("getDeviceBufferSize()")
-      '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    end function
 
-      @it("returns low memory buffer size when isLowMemoryDevice is true")
-      function _()
-        m.global.device.isLowMemoryDevice = true
-        result = getDeviceBufferSize()
-        m.assertEqual(result, 20553728&, "Should return low memory buffer size (20,553,728 bytes)")
-      end function
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getDeviceBufferSize()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-      @it("returns normal buffer size when isLowMemoryDevice is false")
-      function _()
-        m.global.device.isLowMemoryDevice = false
-        result = getDeviceBufferSize()
-        m.assertEqual(result, 31616000&, "Should return normal buffer size (31,616,000 bytes)")
-      end function
-      @it("reduces bitrate for short high-bitrate video (rawMaxSegDuration=0, no playlist conflict)")
-      function _()
-        ' 150 Mbps, 10 min (600s), low memory buffer (20,553,728 bytes)
-        ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
-        ' rawMaxSegDuration = floor(61,661,184 / 150,000,000) = 0
-        ' A raw value of 0 means even a 1s segment overflows the buffer at source bitrate.
-        ' Must force bitrate reduction even though playlist has no conflict (minSegDuration = 1).
-        ' minSegDuration = 1 (600 < 5000)
-        ' segmentLength = 1, maxBitrate = (7,707,648 * 8) \ 1 = 61,661,184
-        result = calculateOptimalTranscodingParams(150000000&, 600, 20553728&)
-        m.assertEqual(result.segmentLength, 1, "Should use 1-second segments")
-        m.assertEqual(result.maxBitrate, 61661184&, "Should reduce bitrate to fit 1s segments in buffer budget")
-      end function
+    @it("returns low memory buffer size when isLowMemoryDevice is true")
+    function _()
+      m.global.device.isLowMemoryDevice = true
+      result = getDeviceBufferSize()
+      m.assertEqual(result, 20553728&, "Should return low memory buffer size (20,553,728 bytes)")
+    end function
 
-      '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-      @describe("calculateOptimalTranscodingParams() - Buffer Protection")
-      '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @it("returns normal buffer size when isLowMemoryDevice is false")
+    function _()
+      m.global.device.isLowMemoryDevice = false
+      result = getDeviceBufferSize()
+      m.assertEqual(result, 31616000&, "Should return normal buffer size (31,616,000 bytes)")
+    end function
 
-      @it("uses max segment length for low bitrate (10 Mbps) on normal device")
-      function _()
-        ' 10 Mbps, 2 hour movie, normal buffer (31,616,000 bytes)
-        ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
-        ' maxSegDuration = floor(94,848,000 / 10,000,000) = 9 → clamped to 6
-        ' minSegDuration = ceil(7200 / 5000) = 2
-        ' min(2) <= max(6) → no conflict
-        result = calculateOptimalTranscodingParams(10000000&, 7200, 31616000&)
-        m.assertEqual(result.segmentLength, 6, "Should use max segment length for low bitrate")
-        m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
-      end function
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("calculateOptimalTranscodingParams() - Buffer Protection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-      @it("uses max segment length for low bitrate (10 Mbps) on low memory device")
-      function _()
-        ' 10 Mbps, 2 hour movie, low memory buffer (20,553,728 bytes)
-        ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
-        ' maxSegDuration = floor(61,661,184 / 10,000,000) = 6 → no clamping needed
-        ' minSegDuration = ceil(7200 / 5000) = 2
-        ' min(2) <= max(6) → no conflict
-        result = calculateOptimalTranscodingParams(10000000&, 7200, 20553728&)
-        m.assertEqual(result.segmentLength, 6, "Should use max segment length for low bitrate")
-        m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
-      end function
+    @it("uses max segment length for low bitrate (10 Mbps) on normal device")
+    function _()
+      ' 10 Mbps, 2 hour movie, normal buffer (31,616,000 bytes)
+      ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
+      ' maxSegDuration = floor(94,848,000 / 10,000,000) = 9 → no clamping needed (cap is 9)
+      ' minSegDuration = ceil(7200 / 5000) = 2
+      ' min(2) <= max(9) → no conflict
+      result = calculateOptimalTranscodingParams(10000000&, 7200, 31616000&)
+      m.assertEqual(result.segmentLength, 9, "Should use max segment length for low bitrate")
+      m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
+    end function
 
-      @it("reduces segment length and bitrate for 95 Mbps on normal device")
-      function _()
-        ' ~95 Mbps, ~97 min movie (5804 seconds), normal buffer (31,616,000 bytes)
-        ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
-        ' maxSegDuration = floor(94,848,000 / 94,852,604) = 0 → clamped to 1
-        ' minSegDuration = ceil(5804 / 5000) = 2
-        ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (11,856,000 * 8) \ 2 = 47,424,000
-        result = calculateOptimalTranscodingParams(94852604&, 5804, 31616000&)
-        m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
-        m.assertEqual(result.maxBitrate, 47424000&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
-      end function
+    @it("uses max segment length for low bitrate (10 Mbps) on low memory device")
+    function _()
+      ' 10 Mbps, 2 hour movie, low memory buffer (20,553,728 bytes)
+      ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
+      ' maxSegDuration = floor(61,661,184 / 10,000,000) = 6 → no clamping needed
+      ' minSegDuration = ceil(7200 / 5000) = 2
+      ' min(2) <= max(6) → no conflict
+      result = calculateOptimalTranscodingParams(10000000&, 7200, 20553728&)
+      m.assertEqual(result.segmentLength, 6, "Should use max segment length for low bitrate")
+      m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
+    end function
 
-      @it("reduces bitrate for 95 Mbps on low memory device when playlist limit reached")
-      function _()
-        ' ~95 Mbps, ~97 min movie (5804 seconds), low memory buffer (20,553,728 bytes)
-        ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
-        ' maxSegDuration = floor(61,661,184 / 94,852,604) = 0 → clamped to 1
-        ' minSegDuration = ceil(5804 / 5000) = 2
-        ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (7,707,648 * 8) \ 2 = 30,830,592
-        result = calculateOptimalTranscodingParams(94852604&, 5804, 20553728&)
-        m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
-        m.assertEqual(result.maxBitrate, 30830592&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
-      end function
+    @it("reduces segment length and bitrate for 95 Mbps on normal device")
+    function _()
+      ' ~95 Mbps, ~97 min movie (5804 seconds), normal buffer (31,616,000 bytes)
+      ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
+      ' maxSegDuration = floor(94,848,000 / 94,852,604) = 0 → clamped to 1
+      ' minSegDuration = ceil(5804 / 5000) = 2
+      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (11,856,000 * 8) \ 2 = 47,424,000
+      result = calculateOptimalTranscodingParams(94852604&, 5804, 31616000&)
+      m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
+      m.assertEqual(result.maxBitrate, 47424000&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
+    end function
 
-      @it("reduces bitrate for extreme bitrate (200 Mbps) on low memory device")
-      function _()
-        ' 200 Mbps, 90 min movie, low memory buffer (20,553,728 bytes)
-        ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
-        ' maxSegDuration = floor(61,661,184 / 200,000,000) = 0 → clamped to 1
-        ' minSegDuration = ceil(5400 / 5000) = 2
-        ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (7,707,648 * 8) \ 2 = 30,830,592
-        result = calculateOptimalTranscodingParams(200000000&, 5400, 20553728&)
-        m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
-        m.assertEqual(result.maxBitrate, 30830592&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
-      end function
+    @it("reduces bitrate for 95 Mbps on low memory device when playlist limit reached")
+    function _()
+      ' ~95 Mbps, ~97 min movie (5804 seconds), low memory buffer (20,553,728 bytes)
+      ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
+      ' maxSegDuration = floor(61,661,184 / 94,852,604) = 0 → clamped to 1
+      ' minSegDuration = ceil(5804 / 5000) = 2
+      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (7,707,648 * 8) \ 2 = 30,830,592
+      result = calculateOptimalTranscodingParams(94852604&, 5804, 20553728&)
+      m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
+      m.assertEqual(result.maxBitrate, 30830592&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
+    end function
 
-      @it("handles very long video (24h) by increasing segment length for playlist limit")
-      function _()
-        ' 20 Mbps, 24 hours (86400s), normal buffer (31,616,000 bytes)
-        ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
-        ' maxSegDuration = floor(94,848,000 / 20,000,000) = 4
-        ' minSegDuration = ceil(86400 / 5000) = 18
-        ' Conflict: min(18) > max(4) → segmentLength = 18, capped to 6, maxBitrate = (11,856,000 * 8) \ 6 = 15,808,000
-        result = calculateOptimalTranscodingParams(20000000&, 86400, 31616000&)
-        m.assertEqual(result.segmentLength, 6, "Should cap segment length at 6 for very long video")
-        m.assertEqual(result.maxBitrate, 15808000&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
-      end function
+    @it("reduces bitrate for extreme bitrate (200 Mbps) on low memory device")
+    function _()
+      ' 200 Mbps, 90 min movie, low memory buffer (20,553,728 bytes)
+      ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
+      ' maxSegDuration = floor(61,661,184 / 200,000,000) = 0 → clamped to 1
+      ' minSegDuration = ceil(5400 / 5000) = 2
+      ' Conflict: min(2) > max(1) → segmentLength=2, maxBitrate = (7,707,648 * 8) \ 2 = 30,830,592
+      result = calculateOptimalTranscodingParams(200000000&, 5400, 20553728&)
+      m.assertEqual(result.segmentLength, 2, "Should use minSegDuration of 2")
+      m.assertEqual(result.maxBitrate, 30830592&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
+    end function
 
-      @it("returns defaults for invalid bitrate (0)")
-      function _()
-        result = calculateOptimalTranscodingParams(0&, 7200, 31616000&)
-        m.assertEqual(result.segmentLength, 6, "Should return default segment length")
-        m.assertEqual(result.maxBitrate, 0&, "Should return default maxBitrate")
-      end function
+    @it("handles very long video (24h) by increasing segment length for playlist limit")
+    function _()
+      ' 20 Mbps, 24 hours (86400s), normal buffer (31,616,000 bytes)
+      ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
+      ' maxSegDuration = floor(94,848,000 / 20,000,000) = 4
+      ' minSegDuration = ceil(86400 / 5000) = 18
+      ' Conflict: min(18) > max(4) → segmentLength = 18, capped to 9, maxBitrate = (11,856,000 * 8) \ 9 = 10,538,666
+      ' Note: 86400 / 9 = 9600 entries still exceeds MAX_HLS_PLAYLIST_ENTRIES (5000), but content
+      ' this long (>12.5h) is not expected in practice; the cap handles all realistic use cases.
+      result = calculateOptimalTranscodingParams(20000000&, 86400, 31616000&)
+      m.assertEqual(result.segmentLength, 9, "Should cap segment length at 9 for very long video")
+      m.assertEqual(result.maxBitrate, 10538666&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
+    end function
 
-      @it("returns defaults for invalid duration (0)")
-      function _()
-        result = calculateOptimalTranscodingParams(20000000&, 0, 31616000&)
-        m.assertEqual(result.segmentLength, 6, "Should return default segment length")
-        m.assertEqual(result.maxBitrate, 0&, "Should return default maxBitrate")
-      end function
+    @it("returns defaults for invalid bitrate (0)")
+    function _()
+      result = calculateOptimalTranscodingParams(0&, 7200, 31616000&)
+      m.assertEqual(result.segmentLength, 6, "Should return default segment length")
+      m.assertEqual(result.maxBitrate, 0&, "Should return default maxBitrate")
+    end function
 
-      @it("returns defaults for negative bitrate")
-      function _()
-        result = calculateOptimalTranscodingParams(-1&, 7200, 31616000&)
-        m.assertEqual(result.segmentLength, 6, "Should return default segment length")
-        m.assertEqual(result.maxBitrate, 0&, "Should return default maxBitrate")
-      end function
+    @it("returns defaults for invalid duration (0)")
+    function _()
+      result = calculateOptimalTranscodingParams(20000000&, 0, 31616000&)
+      m.assertEqual(result.segmentLength, 6, "Should return default segment length")
+      m.assertEqual(result.maxBitrate, 0&, "Should return default maxBitrate")
+    end function
 
-      @it("returns segment length 1 for short high-bitrate video (no playlist issue)")
-      function _()
-        ' 150 Mbps, 10 min (600s), low memory buffer (20,553,728 bytes)
-        ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
-        ' maxSegDuration = floor(61,661,184 / 150,000,000) = 0 → clamped to 1
-        ' minSegDuration = 1 (600 < 5000)
-        ' min(1) <= max(1) → no conflict, no bitrate reduction
-        result = calculateOptimalTranscodingParams(150000000&, 600, 20553728&)
-        m.assertEqual(result.segmentLength, 1, "Should use 1-second segments for short high-bitrate video")
-        m.assertEqual(result.maxBitrate, 0&, "Should not need bitrate reduction for short video")
-      end function
+    @it("returns defaults for negative bitrate")
+    function _()
+      result = calculateOptimalTranscodingParams(-1&, 7200, 31616000&)
+      m.assertEqual(result.segmentLength, 6, "Should return default segment length")
+      m.assertEqual(result.maxBitrate, 0&, "Should return default maxBitrate")
+    end function
 
-      @it("reduces segment length without bitrate reduction for medium bitrate (20 Mbps) on normal device")
-      function _()
-        ' 20 Mbps, 2 hours, normal buffer (31,616,000 bytes)
-        ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
-        ' maxSegDuration = floor(94,848,000 / 20,000,000) = 4
-        ' minSegDuration = ceil(7200 / 5000) = 2
-        ' min(2) <= max(4) → no conflict, segmentLength=4
-        result = calculateOptimalTranscodingParams(20000000&, 7200, 31616000&)
-        m.assertEqual(result.segmentLength, 4, "Should reduce segment length to 4 for medium bitrate")
-        m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
-      end function
+    @it("reduces bitrate for short high-bitrate video (rawMaxSegDuration=0, no playlist conflict)")
+    function _()
+      ' 150 Mbps, 10 min (600s), low memory buffer (20,553,728 bytes)
+      ' segmentBudget = (20,553,728 * 0.75) / 2 = 7,707,648 bytes → 61,661,184 bits
+      ' rawMaxSegDuration = floor(61,661,184 / 150,000,000) = 0
+      ' A raw value of 0 means even a 1s segment overflows the buffer at source bitrate.
+      ' Must force bitrate reduction even though playlist has no conflict (minSegDuration = 1).
+      ' minSegDuration = 1 (600 < 5000)
+      ' segmentLength = 1, maxBitrate = (7,707,648 * 8) \ 1 = 61,661,184
+      result = calculateOptimalTranscodingParams(150000000&, 600, 20553728&)
+      m.assertEqual(result.segmentLength, 1, "Should use 1-second segments")
+      m.assertEqual(result.maxBitrate, 61661184&, "Should reduce bitrate to fit 1s segments in buffer budget")
+    end function
 
-    end class
+    @it("reduces segment length without bitrate reduction for medium bitrate (20 Mbps) on normal device")
+    function _()
+      ' 20 Mbps, 2 hours, normal buffer (31,616,000 bytes)
+      ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
+      ' maxSegDuration = floor(94,848,000 / 20,000,000) = 4
+      ' minSegDuration = ceil(7200 / 5000) = 2
+      ' min(2) <= max(4) → no conflict, segmentLength=4
+      result = calculateOptimalTranscodingParams(20000000&, 7200, 31616000&)
+      m.assertEqual(result.segmentLength, 4, "Should reduce segment length to 4 for medium bitrate")
+      m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
+    end function
 
-  end namespace
+  end class
+
+end namespace
