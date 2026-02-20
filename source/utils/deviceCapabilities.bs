@@ -1096,7 +1096,7 @@ sub applyResolutionCapToProfile(codecProfile as object, maxHeight as integer, ma
   })
 end sub
 
-' Recieves and returns an assArray of supported profiles and levels for each video codec
+' Receives and returns an assArray of supported profiles and levels for each video codec
 function updateProfileArray(profileArray as object, videoCodec as string, videoProfile as string, profileLevel = "" as string) as object
   ' validate params
   if not isValid(profileArray) then return {}
