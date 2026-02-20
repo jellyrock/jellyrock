@@ -1197,7 +1197,7 @@ end function
 ' 512MB RAM devices have a smaller buffer than all other devices.
 ' @return {LongInteger} Buffer size in bytes
 function getDeviceBufferSize() as longinteger
-  if checkIsLowMemoryDevice(m.global.device.model)
+  if m.global.device.isLowMemoryDevice
     return DEVICE_BUFFER_SIZE_LOW_MEMORY
   end if
 
