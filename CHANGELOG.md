@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- dynamic HLS segment length to prevent buffer overflow ([#338](https://github.com/jellyrock/jellyrock/pull/338))
 - custom media track formatting and subtitle display ([#333](https://github.com/jellyrock/jellyrock/pull/333))
 
 ### Changed
