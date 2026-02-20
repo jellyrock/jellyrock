@@ -720,18 +720,6 @@ function getCodecProfiles() as object
         "Property": "VideoRangeType",
         "Value": h264VideoRangeTypes,
         "IsRequired": false
-      },
-      {
-        "Condition": "LessThanEqual",
-        "Property": "Height",
-        "Value": "1080",
-        "IsRequired": true
-      },
-      {
-        "Condition": "LessThanEqual",
-        "Property": "Width",
-        "Value": "1920",
-        "IsRequired": true
       }
 
     ]
