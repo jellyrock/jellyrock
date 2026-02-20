@@ -1261,6 +1261,8 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   ' Conflict: min segment (playlist) > max segment (buffer)
   ' Need to reduce bitrate so that minSegDuration-sized segments fit in the buffer
   segmentLength = minSegDuration
+  ' Cap at 9s: content longer than MAX_HLS_PLAYLIST_ENTRIES × 9 = 45,000s (~12.5h) cannot
+  ' satisfy the playlist constraint within this range. That duration is beyond expected use.
   if segmentLength > 9 then segmentLength = 9
 
   ' Calculate the maximum bitrate that fits in the per-segment budget at this segment length

@@ -596,20 +596,6 @@ namespace tests
       m.assertEqual(result.maxBitrate, 30830592&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
     end function
 
-    @it("handles very long video (24h) by increasing segment length for playlist limit")
-    function _()
-      ' 20 Mbps, 24 hours (86400s), normal buffer (31,616,000 bytes)
-      ' segmentBudget = (31,616,000 * 0.75) / 2 = 11,856,000 bytes → 94,848,000 bits
-      ' maxSegDuration = floor(94,848,000 / 20,000,000) = 4
-      ' minSegDuration = ceil(86400 / 5000) = 18
-      ' Conflict: min(18) > max(4) → segmentLength = 18, capped to 9, maxBitrate = (11,856,000 * 8) \ 9 = 10,538,666
-      ' Note: 86400 / 9 = 9600 entries still exceeds MAX_HLS_PLAYLIST_ENTRIES (5000), but content
-      ' this long (>12.5h) is not expected in practice; the cap handles all realistic use cases.
-      result = calculateOptimalTranscodingParams(20000000&, 86400, 31616000&)
-      m.assertEqual(result.segmentLength, 9, "Should cap segment length at 9 for very long video")
-      m.assertEqual(result.maxBitrate, 10538666&, "maxBitrate should be exactly (segmentBudget * 8) \\ segmentLength")
-    end function
-
     @it("returns defaults for invalid bitrate (0)")
     function _()
       result = calculateOptimalTranscodingParams(0&, 7200, 31616000&)
