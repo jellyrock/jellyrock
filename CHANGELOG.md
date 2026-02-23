@@ -19,9 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - enforce paired Height+Width resolution caps across all codec profiles ([#339](https://github.com/jellyrock/jellyrock/pull/339))
-- prevent h264 playback failures due to resolution ([54d1a32](https://github.com/jellyrock/jellyrock/commit/54d1a32))
+- prevent h264 playback failures due to resolution ([bf7d4e2](https://github.com/jellyrock/jellyrock/commit/bf7d4e2)) ([54d1a32](https://github.com/jellyrock/jellyrock/commit/54d1a32))
 - VP9 HDR playback and add Dolby Vision Profile 7 support ([ef25339](https://github.com/jellyrock/jellyrock/commit/ef25339))
-- prevent h264 playback failures due to resolution ([bf7d4e2](https://github.com/jellyrock/jellyrock/commit/bf7d4e2))
 - on-device decode setting ignored when no receiver connected ([#334](https://github.com/jellyrock/jellyrock/pull/334))
 
 ### Dependencies
