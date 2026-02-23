@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Dependencies
+
+- Actions/stale digest to b5d41d4 ([#340](https://github.com/jellyrock/jellyrock/pull/340))
+
 ## [1.15.0](https://github.com/jellyrock/jellyrock/compare/v1.14.0...v1.15.0) - 2026-02-23
 
 ### Added
