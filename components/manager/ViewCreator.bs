@@ -230,6 +230,8 @@ end sub
 ' Playback state change event handlers
 sub onStateChange()
   if LCase(m.view.state) = "finished"
+    ' Don't pop the scene mid-retry; the DoVi fallback calls stop which can fire "finished".
+    if isValid(m.view.isRetrying) and m.view.isRetrying then return
     sceneManager = m.global.sceneManager
     queueManager = m.global.queueManager
 

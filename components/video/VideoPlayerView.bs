@@ -512,6 +512,8 @@ sub onVideoContentLoaded()
   m.LoadMetaDataTask.unobserveField("content")
   m.LoadMetaDataTask.control = "STOP"
 
+  m.top.isRetrying = false
+
   videoContent = m.LoadMetaDataTask.content
   m.LoadMetaDataTask.content = []
 
@@ -537,6 +539,11 @@ sub onVideoContentLoaded()
   m.chapters = videoContent[0].chapters
   m.top.showID = videoContent[0].showID
   m.top.cachedPlaybackInfo = videoContent[0].playbackInfo
+  m.top.doviDirectPlayFallbackAvailable = isValid(videoContent[0].doviDirectPlayFallbackAvailable) and videoContent[0].doviDirectPlayFallbackAvailable
+
+  ' Reset bypass flag so subsequent reloads (audio/subtitle changes) re-evaluate DoVi naturally.
+  ' It will be set back to true by the error handler if another buffer overflow occurs.
+  m.LoadMetaDataTask.bypassDoviPreservation = false
 
   if isValidAndNotEmpty(videoContent[0].json)
     m.osd.json = formatJson(videoContent[0].json)
@@ -892,7 +899,25 @@ sub onState()
 
     print m.top.errorInfo
 
-    if not m.playReported and m.top.transcodeAvailable
+    ' Detect a Roku video buffer overflow (buffer:loop: source) caused by DoVi transcoding.
+    ' When DoVi preservation forced a transcode and the HLS segments overflow the device buffer,
+    ' retry with direct play by bypassing the DoVi container profile injection.
+    isBufferLoopError = isValid(m.top.errorInfo) and isValid(m.top.errorInfo.source) and m.top.errorInfo.source = "buffer:loop:"
+
+    if isBufferLoopError and m.top.doviDirectPlayFallbackAvailable
+      m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
+      m.top.doviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
+      m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
+      ' Prevents ViewCreator popping the scene when stop causes Roku to fire "finished".
+      m.top.isRetrying = true
+      m.top.control = "stop"
+      m.LoadMetaDataTask.bypassDoviPreservation = true
+      m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
+      m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
+      m.LoadMetaDataTask.itemId = m.currentItem.id
+      m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+      m.LoadMetaDataTask.control = "RUN"
+    else if not m.playReported and m.top.transcodeAvailable
       m.log.info("retrying with transcoding", m.currentItem.id, m.top.SelectedSubtitle, m.top.audioIndex)
       m.top.retryWithTranscoding = true ' If playback was not reported, retry with transcoding
     else
