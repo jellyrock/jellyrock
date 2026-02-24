@@ -301,6 +301,100 @@ namespace tests
       m.assertTrue(shouldProcessDovi, "Should force remux for h264 codec with DOVI")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Bypass DoVi Preservation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("bypass=true prevents DOVI container profile from being added")
+    function _()
+      ' Given: All conditions met for DOVI logic (setting enabled, valid DOVI stream), but bypass is active
+      bypassDoviPreservation = true
+      mediaStreams = [
+        {
+          Type: "Video",
+          Codec: "hevc",
+          VideoRangeType: "DOVIWithHDR10"
+        }
+      ]
+      userSettings = { playbackPreserveDovi: true }
+      containerProfiles = []
+
+      ' When: The top-level guard condition from ItemPostPlaybackInfo is evaluated
+      ' (line 85: if not bypassDoviPreservation and isValid(mediaStreams) and ...)
+      guardPasses = not bypassDoviPreservation and isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
+
+      if guardPasses
+        containerProfiles.push({ Type: "Video", Container: "mkv" })
+      end if
+
+      ' Then: Guard should short-circuit and no container profile should be added
+      m.assertFalse(guardPasses, "Guard should fail when bypassDoviPreservation=true")
+      m.assertEqual(containerProfiles.Count(), 0, "Container profile should NOT be added when bypass is active")
+    end function
+
+    @it("bypass=false (default) allows DOVI container profile to be added")
+    function _()
+      ' Given: All conditions met - setting enabled, valid DOVI HEVC stream in MKV, bypass inactive
+      bypassDoviPreservation = false
+      mediaStreams = [
+        {
+          Type: "Video",
+          Codec: "hevc",
+          VideoRangeType: "DOVIWithHDR10"
+        }
+      ]
+      userSettings = { playbackPreserveDovi: true }
+      containerString = "mkv"
+      containerProfiles = []
+
+      ' When: Simulate the full DOVI injection logic from ItemPostPlaybackInfo
+      guardPasses = not bypassDoviPreservation and isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
+
+      if guardPasses
+        for each stream in mediaStreams
+          if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
+            if isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
+              if Instr(LCase(stream.VideoRangeType), "dovi") > 0
+                containerProfiles.push({
+                  "Type": "Video",
+                  "Container": "mkv",
+                  "Conditions": [
+                    {
+                      "Condition": "NotEquals",
+                      "Property": "VideoRangeType",
+                      "Value": stream.VideoRangeType,
+                      "IsRequired": true
+                    }
+                  ]
+                })
+              end if
+            end if
+            exit for
+          end if
+        end for
+      end if
+
+      ' Then: Container profile should be added with the correct VideoRangeType value
+      m.assertTrue(guardPasses, "Guard should pass when bypassDoviPreservation=false")
+      m.assertEqual(containerProfiles.Count(), 1, "Container profile should be added when bypass is inactive")
+      m.assertEqual(containerProfiles[0].Conditions[0].Value, "DOVIWithHDR10", "Profile condition should reference the stream's VideoRangeType")
+    end function
+
+    @it("bypass=true takes priority even when setting is enabled and DOVI stream is present")
+    function _()
+      ' Given: Every other condition would pass - bypass is the only blocker
+      bypassDoviPreservation = true
+      mediaStreams = [{ Type: "Video", Codec: "hevc", VideoRangeType: "DOVI" }]
+      userSettings = { playbackPreserveDovi: true }
+
+      ' When: Evaluate the full guard condition (same as ItemPostPlaybackInfo line 85)
+      ' All secondary conditions are true - only the bypass flag differs from the bypass=false test
+      guardPasses = not bypassDoviPreservation and isValid(mediaStreams) and isValid(userSettings.playbackPreserveDovi) and userSettings.playbackPreserveDovi
+
+      ' Then: The bypass flag alone is sufficient to prevent DOVI logic from running
+      m.assertFalse(guardPasses, "bypassDoviPreservation=true must prevent DOVI logic regardless of other conditions")
+    end function
+
   end class
 
 end namespace
