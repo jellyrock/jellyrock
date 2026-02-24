@@ -1,0 +1,62 @@
+namespace tests
+
+  @suite("Items - applyMediaSourceToPostData()")
+  class ItemsApplyMediaSourceTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Non-live content (mediaSourceId provided)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets MediaSourceId when mediaSourceId is not empty")
+    function _()
+      postData = {}
+      applyMediaSourceToPostData(postData, "source-abc123", false)
+      m.assertEqual(postData.MediaSourceId, "source-abc123")
+    end function
+
+    @it("does not set EnableDirectPlay when mediaSourceId is not empty")
+    function _()
+      postData = {}
+      applyMediaSourceToPostData(postData, "source-abc123", false)
+      m.assertFalse(postData.doesExist("EnableDirectPlay"))
+    end function
+
+    @it("does not set EnableDirectPlay even when forceTranscoding=true for non-live content")
+    function _()
+      postData = {}
+      applyMediaSourceToPostData(postData, "source-abc123", true)
+      m.assertFalse(postData.doesExist("EnableDirectPlay"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Live TV (empty mediaSourceId)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not set MediaSourceId for live TV")
+    function _()
+      postData = {}
+      applyMediaSourceToPostData(postData, "", false)
+      m.assertFalse(postData.doesExist("MediaSourceId"))
+    end function
+
+    @it("does not disable direct play on the first live TV attempt (forceTranscoding=false)")
+    function _()
+      postData = {}
+      applyMediaSourceToPostData(postData, "", false)
+      m.assertFalse(postData.doesExist("EnableDirectPlay"))
+    end function
+
+    @it("disables direct play on live TV retry (forceTranscoding=true)")
+    function _()
+      postData = {}
+      applyMediaSourceToPostData(postData, "", true)
+      m.assertFalse(postData.EnableDirectPlay)
+    end function
+
+  end class
+
+end namespace

@@ -299,11 +299,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   if video.directPlaySupported
     video.isTranscoded = false
     setupVideoContentWithAuth(video, mediaSourceId, audio_stream_idx)
-    ' Live direct play may fail on Roku if the server overestimates compatibility.
-    ' Flag that a transcode retry is available so VideoPlayerView can fall back.
-    if meta.live
-      video.transcodeAvailable = true
-    end if
+    applyLiveDirectPlayFallback(video, meta)
   else
     if not isValid(m.playbackInfo.MediaSources[0].TranscodingUrl)
       ' If server does not provide a transcode URL, display a message to the user
@@ -428,20 +424,6 @@ sub addSubtitlesToVideo(video, meta)
   video.fullSubtitleData = safesubs
 end sub
 
-'
-' Extract array of Transcode Reasons from the content URL
-' @returns Array of Strings
-function getTranscodeReasons(url as string) as object
-
-  regex = CreateObject("roRegex", "&TranscodeReasons=([^&]*)", "")
-  match = regex.Match(url)
-
-  if match.count() > 1
-    return match[1].Split(",")
-  end if
-
-  return []
-end function
 
 function directPlaySupported(meta as object) as boolean
   devinfo = CreateObject("roDeviceInfo")
