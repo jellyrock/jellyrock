@@ -20,6 +20,12 @@
     <field id="retryWithTranscoding" type="boolean" value="false" />
     <field id="isTranscoded" type="boolean" />
     <field id="transcodeReasons" type="array" />
+    <!-- Set when DoVi preservation forced a transcode (VideoRangeTypeNotSupported).
+         On a buffer:loop: error the player retries with bypassDoviPreservation=true
+         to allow the server to grant direct play instead. -->
+    <field id="doviDirectPlayFallbackAvailable" type="boolean" value="false" />
+    <!-- Prevents ViewCreator from popping the scene during a DoVi fallback retry. -->
+    <field id="isRetrying" type="boolean" value="false" />
 
     <field id="videoId" type="string" />
     <field id="mediaSourceId" type="string" />

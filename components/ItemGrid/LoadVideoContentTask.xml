@@ -21,5 +21,8 @@
     <!-- Total records available from server-->
     <field id="totalRecordCount" type="int" value="-1" />
     <field id="content" type="array" />
+    <!-- When true, skips the DoVi container profile injection in ItemPostPlaybackInfo,
+         allowing the server to re-evaluate direct play without DoVi preservation constraints. -->
+    <field id="bypassDoviPreservation" type="boolean" value="false" />
   </interface>
 </component>

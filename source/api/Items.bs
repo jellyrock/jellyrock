@@ -4,7 +4,7 @@ import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
-function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.none as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic)
+function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.none as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean)
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -80,8 +80,9 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   end if
 
   ' DOVI not supported using MKV container, so force remux for DOVI content
-  ' Only run DOVI logic if the user setting exists and is enabled
-  if isValid(mediaStreams) and isValid(globalUser.settings.playbackPreserveDovi) and globalUser.settings.playbackPreserveDovi
+  ' Only run DOVI logic if the user setting exists and is enabled, and caller has not bypassed it
+  ' (bypassDoviPreservation is set when retrying after a buffer overflow to allow direct play)
+  if not bypassDoviPreservation and isValid(mediaStreams) and isValid(globalUser.settings.playbackPreserveDovi) and globalUser.settings.playbackPreserveDovi
     ' Check if device supports DOVI before proceeding
     deviceSupportsDovi = false
     di = CreateObject("roDeviceInfo")
