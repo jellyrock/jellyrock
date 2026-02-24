@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- auto-retry with direct play on DoVi buffer overflow ([#343](https://github.com/jellyrock/jellyrock/pull/343))
+
 ### Dependencies
 
 - Actions/stale digest to b5d41d4 ([#340](https://github.com/jellyrock/jellyrock/pull/340))
