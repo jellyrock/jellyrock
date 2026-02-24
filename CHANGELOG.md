@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- auto-retry with transcode on live-stream direct-play failure ([#344](https://github.com/jellyrock/jellyrock/pull/344))
+
 ### Fixed
 
 - auto-retry with direct play on DoVi buffer overflow ([#343](https://github.com/jellyrock/jellyrock/pull/343))
