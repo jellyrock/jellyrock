@@ -4,7 +4,7 @@ import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
-function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.none as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean)
+function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.none as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -59,16 +59,14 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     postData.SubtitleStreamIndex = subtitleTrackIndex
   end if
 
-  ' Note: Jellyfin v10.9+ now remuxs LiveTV and does not allow DirectPlay anymore.
-  ' Because of this, we need to tell the server "EnableDirectPlay = false" so that we receive the
-  ' transcoding URL (which is just a remux and not a transcode; unless it is)
-  ' The web handles this by disabling EnableDirectPlay on a Retry, but we don't currently Retry a Live
-  ' TV stream, thus we just turn it off on the first try here.
   if mediaSourceId <> ""
     postData.MediaSourceId = mediaSourceId
   else
-    ' No mediaSourceId? Must be LiveTV...
-    postData.EnableDirectPlay = false
+    ' No mediaSourceId means LiveTV. Only disable direct play on retry so the first attempt
+    ' lets the server evaluate whether direct play is possible (matching web client behaviour).
+    if forceTranscoding
+      postData.EnableDirectPlay = false
+    end if
   end if
 
   mediaStreams = invalid

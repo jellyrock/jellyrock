@@ -540,10 +540,11 @@ sub onVideoContentLoaded()
   m.top.showID = videoContent[0].showID
   m.top.cachedPlaybackInfo = videoContent[0].playbackInfo
   m.top.doviDirectPlayFallbackAvailable = isValid(videoContent[0].doviDirectPlayFallbackAvailable) and videoContent[0].doviDirectPlayFallbackAvailable
+  m.top.transcodeAvailable = isValid(videoContent[0].transcodeAvailable) and videoContent[0].transcodeAvailable
 
-  ' Reset bypass flag so subsequent reloads (audio/subtitle changes) re-evaluate DoVi naturally.
-  ' It will be set back to true by the error handler if another buffer overflow occurs.
+  ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
   m.LoadMetaDataTask.bypassDoviPreservation = false
+  m.LoadMetaDataTask.forceTranscoding = false
 
   if isValidAndNotEmpty(videoContent[0].json)
     m.osd.json = formatJson(videoContent[0].json)
@@ -877,6 +878,24 @@ sub onTrickPlayBarTextChange()
   end if
 end sub
 
+' retryPlayback: Re-runs the content loader from the current position with updated task flags.
+' Used by error handlers to retry without exiting the player.
+' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
+' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
+sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
+  m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
+  ' Prevents ViewCreator popping the scene when stop causes Roku to fire "finished".
+  m.top.isRetrying = true
+  m.top.control = "stop"
+  m.LoadMetaDataTask.bypassDoviPreservation = bypassDovi
+  m.LoadMetaDataTask.forceTranscoding = forceTranscode
+  m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
+  m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
+  m.LoadMetaDataTask.itemId = m.currentItem.id
+  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  m.LoadMetaDataTask.control = "RUN"
+end sub
+
 '
 ' When Video Player state changes
 sub onState()
@@ -907,19 +926,11 @@ sub onState()
     if isBufferLoopError and m.top.doviDirectPlayFallbackAvailable
       m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
       m.top.doviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
-      m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
-      ' Prevents ViewCreator popping the scene when stop causes Roku to fire "finished".
-      m.top.isRetrying = true
-      m.top.control = "stop"
-      m.LoadMetaDataTask.bypassDoviPreservation = true
-      m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
-      m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
-      m.LoadMetaDataTask.itemId = m.currentItem.id
-      m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-      m.LoadMetaDataTask.control = "RUN"
+      retryPlayback(true, false)
     else if not m.playReported and m.top.transcodeAvailable
-      m.log.info("retrying with transcoding", m.currentItem.id, m.top.SelectedSubtitle, m.top.audioIndex)
-      m.top.retryWithTranscoding = true ' If playback was not reported, retry with transcoding
+      m.log.warn("Direct play failed; falling back to transcode", m.currentItem.id)
+      m.top.transcodeAvailable = false ' prevent retry loop if transcode also fails
+      retryPlayback(false, true)
     else
       ' If an error was encountered, stop timers and display dialog
       m.top.unobserveField("state")
