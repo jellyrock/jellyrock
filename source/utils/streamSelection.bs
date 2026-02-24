@@ -644,3 +644,32 @@ function selectSubtitleByMode(sortedEntries as object, subtitleMode as string, p
 
   return -1
 end function
+
+' getTranscodeReasons: Extracts the transcode reason codes from a Jellyfin transcoding URL.
+' The server embeds reasons as a comma-separated TranscodeReasons query parameter.
+' Used to detect VideoLevelNotSupported so a direct-play fallback can be attempted.
+'
+' @param {string} url - The transcoding URL containing TranscodeReasons
+' @returns {object} Array of reason strings, or empty array if param not present
+function getTranscodeReasons(url as string) as object
+  regex = CreateObject("roRegex", "[?&]TranscodeReasons=([^&]*)", "")
+  match = regex.Match(url)
+
+  if match.count() > 1
+    return match[1].Split(",")
+  end if
+
+  return []
+end function
+
+' applyLiveDirectPlayFallback: Flags that a transcode retry is available for live streams
+' attempting direct play. Live direct play may fail on Roku if the server overestimates
+' compatibility. VideoPlayerView observes transcodeAvailable to retry with transcoding on error.
+'
+' @param {object} video - Video object to update
+' @param {object} meta - Video metadata containing the live stream flag
+sub applyLiveDirectPlayFallback(video as object, meta as object)
+  if meta.live
+    video.transcodeAvailable = true
+  end if
+end sub

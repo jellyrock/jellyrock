@@ -1,0 +1,56 @@
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  @suite("streamSelection - getTranscodeReasons()")
+  class GetTranscodeReasonsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("URL parsing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("extracts a single transcode reason from a URL")
+    function _()
+      url = "http://server/video/stream?MaxStreamingBitrate=20000000&TranscodeReasons=VideoLevelNotSupported"
+      result = getTranscodeReasons(url)
+      m.assertArrayCount(result, 1)
+      m.assertArrayContains(result, "VideoLevelNotSupported")
+    end function
+
+    @it("extracts multiple transcode reasons from a URL")
+    function _()
+      url = "http://server/video/stream?TranscodeReasons=VideoCodecNotSupported,AudioCodecNotSupported"
+      result = getTranscodeReasons(url)
+      m.assertArrayCount(result, 2)
+      m.assertArrayContains(result, "VideoCodecNotSupported")
+      m.assertArrayContains(result, "AudioCodecNotSupported")
+    end function
+
+    @it("returns empty array when URL has no TranscodeReasons param")
+    function _()
+      url = "http://server/video/stream?MaxStreamingBitrate=20000000"
+      result = getTranscodeReasons(url)
+      m.assertArrayCount(result, 0)
+    end function
+
+    @it("returns empty array for an empty URL")
+    function _()
+      result = getTranscodeReasons("")
+      m.assertArrayCount(result, 0)
+    end function
+
+    @it("returns only VideoLevelNotSupported for the H264/HEVC direct-play fallback path")
+    function _()
+      url = "http://server/video/stream?TranscodeReasons=VideoLevelNotSupported&AudioStreamIndex=1"
+      result = getTranscodeReasons(url)
+      m.assertArrayCount(result, 1)
+      m.assertArrayContains(result, "VideoLevelNotSupported")
+    end function
+
+  end class
+
+end namespace

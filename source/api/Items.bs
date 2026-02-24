@@ -4,7 +4,7 @@ import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
-function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.none as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean)
+function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.none as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -59,17 +59,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     postData.SubtitleStreamIndex = subtitleTrackIndex
   end if
 
-  ' Note: Jellyfin v10.9+ now remuxs LiveTV and does not allow DirectPlay anymore.
-  ' Because of this, we need to tell the server "EnableDirectPlay = false" so that we receive the
-  ' transcoding URL (which is just a remux and not a transcode; unless it is)
-  ' The web handles this by disabling EnableDirectPlay on a Retry, but we don't currently Retry a Live
-  ' TV stream, thus we just turn it off on the first try here.
-  if mediaSourceId <> ""
-    postData.MediaSourceId = mediaSourceId
-  else
-    ' No mediaSourceId? Must be LiveTV...
-    postData.EnableDirectPlay = false
-  end if
+  applyMediaSourceToPostData(postData, mediaSourceId, forceTranscoding)
 
   mediaStreams = invalid
   if isValid(videoMetadata) and isValid(videoMetadata.json) and isValid(videoMetadata.json.MediaStreams)
@@ -691,6 +681,24 @@ function TVSeasonExtras(seasonId as string) as dynamic
   ' Build that data format that the TVEpisodeRow expects
   return { Items: results }
 end function
+
+' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
+' Live TV is detected by an empty mediaSourceId. On the first attempt, direct play is not disabled
+' so the server can evaluate compatibility (matching web client behaviour). On retry,
+' forceTranscoding=true sets EnableDirectPlay=false so the server provides a transcode URL instead.
+'
+' @param {object} postData - The request body assoc array to modify
+' @param {string} mediaSourceId - Media source ID, or "" for live TV
+' @param {boolean} forceTranscoding - True when retrying with forced transcoding
+sub applyMediaSourceToPostData(postData as object, mediaSourceId as string, forceTranscoding as boolean)
+  if mediaSourceId <> ""
+    postData.MediaSourceId = mediaSourceId
+  else
+    if forceTranscoding
+      postData.EnableDirectPlay = false
+    end if
+  end if
+end sub
 
 ' Removes AAC from the device profile codec list to prevent stereo downmix of multichannel audio.
 ' Also handles unsupported AAC profiles (Main, HE-AAC).

@@ -24,5 +24,9 @@
     <!-- When true, skips the DoVi container profile injection in ItemPostPlaybackInfo,
          allowing the server to re-evaluate direct play without DoVi preservation constraints. -->
     <field id="bypassDoviPreservation" type="boolean" value="false" />
+    <!-- When true, forces the transcode path and disables direct play for this load.
+         Set by VideoPlayerView when retrying after a direct-play failure (VideoLevelNotSupported
+         or live-stream direct-play error) so the server returns a transcoding URL instead. -->
+    <field id="forceTranscoding" type="boolean" value="false" />
   </interface>
 </component>
