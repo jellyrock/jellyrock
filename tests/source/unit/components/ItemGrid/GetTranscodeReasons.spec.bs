@@ -2,7 +2,7 @@ import "pkg:/source/utils/streamSelection.bs"
 
 namespace tests
 
-  @suite("LoadVideoContentTask - getTranscodeReasons()")
+  @suite("streamSelection - getTranscodeReasons()")
   class GetTranscodeReasonsTests extends tests.BaseTestSuite
 
     protected override function setup()
