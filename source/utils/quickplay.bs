@@ -21,7 +21,7 @@ namespace quickplay
 
   ' A single video file.
   sub video(itemNode as object)
-    if not isValid(itemNode) or not isValid(itemNode.id) or itemNode.id = "" or not isValid(itemNode.json) then return
+    if not isValid(itemNode) or not isValid(itemNode.id) or itemNode.id = "" then return
 
     ' Create a queue-specific item to avoid modifying the UI node
     ' This prevents the quickPlayNode field observer from firing twice
@@ -31,28 +31,17 @@ namespace quickplay
     ' Get user session for audio selection
     localUser = m.global.user
 
-    ' Extract MediaStreams from itemNode
-    mediaStreams = invalid
-    if isValid(itemNode.json.MediaStreams)
-      mediaStreams = itemNode.json.MediaStreams
-    else if isValid(itemNode.json.MediaSources) and isValid(itemNode.json.MediaSources[0]) and isValid(itemNode.json.MediaSources[0].MediaStreams)
-      mediaStreams = itemNode.json.MediaSources[0].MediaStreams
-    end if
-
-    ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
-    playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-
-    ' Use new comprehensive audio selection logic
+    ' audioStreams is pre-filtered to audio-only by the transformer.
+    ' findBestAudioStreamIndex filters by Type="audio" internally, so passing
+    ' pre-filtered audio streams works correctly.
     audioStreamIndex = 0
-    if isValid(mediaStreams)
-      audioStreamIndex = findBestAudioStreamIndex(mediaStreams, playDefault, localUser.config.audioLanguagePreference)
+    if isValidAndNotEmpty(itemNode.audioStreams)
+      playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
+      audioStreamIndex = findBestAudioStreamIndex(itemNode.audioStreams, playDefault, localUser.config.audioLanguagePreference)
     end if
 
-    ' resume playback if possible
-    playbackPosition = 0&
-    if isValid(itemNode.json.UserData) and isValid(itemNode.json.UserData.PlaybackPositionTicks)
-      playbackPosition = itemNode.json.UserData.PlaybackPositionTicks
-    end if
+    ' Resume position from typed field; startingPoint is computed here, not stored on node
+    playbackPosition = itemNode.playbackPositionTicks
 
     queueItem.selectedAudioStreamIndex = audioStreamIndex
     queueItem.startingPoint = playbackPosition
@@ -73,7 +62,7 @@ namespace quickplay
 
   ' A single music video file.
   sub musicVideo(itemNode as object)
-    if not isValid(itemNode) or not isValid(itemNode.id) or not isValid(itemNode.json) then return
+    if not isValid(itemNode) or not isValidAndNotEmpty(itemNode.id) then return
 
     ' Create a queue-specific item to avoid modifying the UI node
     queueItem = nodeHelpers.createQueueItem(itemNode)
@@ -364,7 +353,13 @@ namespace quickplay
     globalUser = m.global.user
     if not isValid(itemNode) or not isValid(itemNode.id) then return
 
-    unwatchedData = api.shows.GetEpisodes(itemNode.json.SeriesId, {
+    ' seriesId: JellyfinBaseItem typed field; legacy TVSeasonData stores it in json.SeriesId
+    seriesId = itemNode.seriesId
+    if not isValidAndNotEmpty(seriesId) and isValid(itemNode.json)
+      seriesId = itemNode.json.SeriesId ?? ""
+    end if
+
+    unwatchedData = api.shows.GetEpisodes(seriesId, {
       "seasonId": itemNode.id,
       "userid": globalUser.id,
       "limit": 2000,
@@ -469,28 +464,31 @@ namespace quickplay
 
   ' Quick Play A TVChannel
   sub tvChannel(itemNode as object)
-    if not isValid(itemNode) or not isValid(itemNode.id)
-      print "ERROR: quickplay.tvChannel() - missing ChannelId"
+    if not isValid(itemNode) or not isValidAndNotEmpty(itemNode.id)
+      print "ERROR: quickplay.tvChannel() - missing itemNode or id"
       stopLoadingSpinner()
       return
     end if
 
-    ' Push TV channel to queue
-    ' Keep loading spinner active until video content loads
-    m.global.queueManager.callFunc("push", itemNode.json)
+    ' Push TV channel queue item — keep spinner active until video content loads
+    m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(itemNode))
   end sub
 
   ' Quick Play A Live Program
   sub program(itemNode as object)
-    if not isValid(itemNode) or not isValid(itemNode.json) or not isValid(itemNode.json.ChannelId)
+    if not isValid(itemNode) or not isValidAndNotEmpty(itemNode.channelId)
       print "ERROR: quickplay.program() - missing ChannelId"
       stopLoadingSpinner()
       return
     end if
 
-    ' Push program to queue - playQueue is called by Main.bs after this returns
-    ' Keep loading spinner active until video content loads
-    m.global.queueManager.callFunc("push", itemNode.json)
+    ' Play the channel this program is on, not the program itself.
+    ' Override id and type on the queue item so the playback pipeline targets the channel.
+    ' Keep spinner active until video content loads.
+    queueItem = nodeHelpers.createQueueItem(itemNode)
+    queueItem.id = itemNode.channelId
+    queueItem.type = "TvChannel"
+    m.global.queueManager.callFunc("push", queueItem)
   end sub
 
   ' Quick Play A Playlist.
@@ -531,13 +529,15 @@ namespace quickplay
       "EnableTotalRecordCount": false
     }
     ' modify api query based on folder type
-    folderType = Lcase(itemNode.json.type)
+    ' After transformer fix: Genre/MusicGenre/Studio items have type="Folder" and
+    ' folderType="Genre"/"MusicGenre"/"Studio". Plain folders have folderType="".
+    folderType = Lcase(itemNode.folderType)
     print "folderType=", folderType
     if folderType = "studio"
       paramArray["studioIds"] = itemNode.id
     else if folderType = "genre"
       paramArray["genreIds"] = itemNode.id
-      if isValid(itemNode.json.MovieCount) and itemNode.json.MovieCount > 0
+      if itemNode.movieCount > 0
         paramArray["includeItemTypes"] = "Movie"
       end if
     else if folderType = "musicgenre"
@@ -553,7 +553,7 @@ namespace quickplay
       paramArray["parentId"] = itemNode.id
     end if
     ' look for tv series instead of video files
-    if isValid(itemNode.json.SeriesCount) and itemNode.json.SeriesCount > 0
+    if itemNode.seriesCount > 0
       paramArray["includeItemTypes"] = "Series"
       paramArray.Delete("videoTypes")
     end if
@@ -562,8 +562,8 @@ namespace quickplay
     print "folderData=", folderData
 
     if isValid(folderData) and isValidAndNotEmpty(folderData.items)
-      if isValid(itemNode.json.SeriesCount) and itemNode.json.SeriesCount > 0
-        if itemNode.json.SeriesCount = 1
+      if itemNode.seriesCount > 0
+        if itemNode.seriesCount = 1
           quickplay.series(folderData.items[0])
         else
           quickplay.multipleSeries(folderData.items)

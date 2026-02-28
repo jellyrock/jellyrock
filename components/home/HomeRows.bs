@@ -721,7 +721,8 @@ sub updateBackdropForFocusedItem()
   ' Passing "" explicitly removes the previous backdrop (photos, channels, etc.)
   backdropUrl = ""
   if isValid(focusedItem)
-    backdropUrl = getItemBackdropUrl(focusedItem)
+    deviceRes = m.global.device.uiResolution
+    backdropUrl = getItemBackdropUrl(focusedItem, { width: deviceRes[0], height: deviceRes[1] })
   end if
   m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
 end sub

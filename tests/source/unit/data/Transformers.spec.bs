@@ -1697,6 +1697,74 @@ namespace tests
       m.assertEqual(result.folderType, "") ' "" default; use isFolder=false to know it's not a folder
     end function
 
+    @it("Genre item: type=Folder, folderType=Genre (resolved design decision)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "g1", Type: "Genre", Name: "Action", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "Genre")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("MusicGenre item: type=Folder, folderType=MusicGenre")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "mg1", Type: "MusicGenre", Name: "Jazz", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "MusicGenre")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("Studio item: type=Folder, folderType=Studio")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "s1", Type: "Studio", Name: "Warner Bros", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "Studio")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("plain Folder item: type=Folder, folderType empty (no CollectionType)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "f1", Type: "Folder", Name: "My Folder", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("CollectionFolder with movies CollectionType: folderType=movies")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "lib1", Type: "CollectionFolder", Name: "Movies",
+        IsFolder: true, CollectionType: "movies"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "CollectionFolder")
+      m.assertEqual(result.folderType, "movies")
+      m.assertEqual(result.isFolder, true)
+    end function
+
     @it("transforms music fields for Audio type")
     function _()
       transformer = new JellyfinDataTransformer()

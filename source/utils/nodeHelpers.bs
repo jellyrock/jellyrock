@@ -1,23 +1,26 @@
 ' Node utility functions for creating and copying SGNodes
 namespace nodeHelpers
 
-  ' createQueueItem: Create a queue-compatible item from any source node
+  ' createQueueItem: Create a minimal queue item AA from a JellyfinBaseItem node.
   '
-  ' Extracts only the essential fields needed for playback queue items,
-  ' avoiding issues with cloning complex UI components like SearchData, GridData, etc.
+  ' The queue item is a thin AA containing only what VideoPlayerView and QueueManager need.
+  ' LoadVideoContentTask re-fetches all metadata server-side via ItemMetaData(), so the
+  ' queue item does NOT need to carry full json — eliminating the deep-copy perf problem.
   '
-  ' @param sourceNode - The source node (any type) to extract data from
+  ' @param sourceNode - JellyfinBaseItem node to extract fields from
   ' @returns Associative array with essential fields, or invalid if sourceNode is invalid
   '
-  ' Essential fields copied:
-  '   - id: Item identifier (required)
-  '   - type: Media type (required)
-  '   - json: Full Jellyfin metadata (required)
+  ' Fields populated from typed node fields:
+  '   - id: Item identifier (required for playback)
+  '   - type: Media type (required for queue routing)
   '   - title: Display title (optional)
-  '   - mediaSourceId: Media source ID (optional)
-  '   - RunTimeTicks: Runtime duration (optional)
+  '   - mediaSourceId: Media source hint (optional)
+  '   - runTimeTicks: Runtime duration (optional, only when > 0)
+  '   - seriesId: Series ID for episode navigation in resume dialog (optional)
+  '   - seasonId: Season ID for episode navigation in resume dialog (optional)
+  '   - playbackPositionTicks: Saved resume position (optional, only when > 0)
   '
-  ' Additional fields can be set later by quickplay (selectedAudioStreamIndex, startingPoint)
+  ' Callers set startingPoint and selectedAudioStreamIndex on the returned AA after creation.
   '
   function createQueueItem(sourceNode as object) as object
     if not isValid(sourceNode)
@@ -25,36 +28,24 @@ namespace nodeHelpers
       return invalid
     end if
 
-    ' Create a simple associative array for queue storage
-    ' The queue accepts both SGNodes and associative arrays (see QueueManager.getItemType)
-    ' Using an AA avoids issues with cloning complex UI component nodes
+    ' Thin AA — only fields the queue infrastructure actually reads
     queueItem = {}
 
-    ' Copy essential fields that queue items need
-    ' Required fields
-    if isValidAndNotEmpty(sourceNode.id)
-      queueItem.id = sourceNode.id
+    if isValidAndNotEmpty(sourceNode.id) then queueItem.id = sourceNode.id
+    if isValidAndNotEmpty(sourceNode.type) then queueItem.type = sourceNode.type
+    if isValidAndNotEmpty(sourceNode.title) then queueItem.title = sourceNode.title
+    if isValidAndNotEmpty(sourceNode.mediaSourceId) then queueItem.mediaSourceId = sourceNode.mediaSourceId
+    if isValid(sourceNode.runTimeTicks) and sourceNode.runTimeTicks > 0
+      queueItem.runTimeTicks = sourceNode.runTimeTicks
     end if
 
-    if isValidAndNotEmpty(sourceNode.type)
-      queueItem.type = sourceNode.type
-    end if
+    ' Episode navigation fields used by the resume dialog handler
+    if isValidAndNotEmpty(sourceNode.seriesId) then queueItem.seriesId = sourceNode.seriesId
+    if isValidAndNotEmpty(sourceNode.seasonId) then queueItem.seasonId = sourceNode.seasonId
 
-    if isValid(sourceNode.json)
-      queueItem.json = sourceNode.json
-    end if
-
-    ' Optional fields (if they exist on source)
-    if isValidAndNotEmpty(sourceNode.title)
-      queueItem.title = sourceNode.title
-    end if
-
-    if isValidAndNotEmpty(sourceNode.mediaSourceId)
-      queueItem.mediaSourceId = sourceNode.mediaSourceId
-    end if
-
-    if isValid(sourceNode.RunTimeTicks)
-      queueItem.RunTimeTicks = sourceNode.RunTimeTicks
+    ' Resume position — stored so the resume dialog can read it without the original node
+    if isValid(sourceNode.playbackPositionTicks) and sourceNode.playbackPositionTicks > 0
+      queueItem.playbackPositionTicks = sourceNode.playbackPositionTicks
     end if
 
     return queueItem

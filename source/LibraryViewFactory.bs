@@ -32,15 +32,8 @@ end function
 function DeterminePresenterType(libraryItem as object) as string
   if not isValid(libraryItem) then return "generic"
 
-  collectionType = ""
-  if isValid(libraryItem.collectionType)
-    collectionType = LCase(libraryItem.collectionType)
-  end if
-
-  jsonType = ""
-  if isValid(libraryItem.json) and isValid(libraryItem.json.type)
-    jsonType = LCase(libraryItem.json.type)
-  end if
+  collectionType = LCase(libraryItem.collectionType)
+  folderType = LCase(libraryItem.folderType)
 
   ' Movie library or movie genre
   if collectionType = "movies"
@@ -68,13 +61,13 @@ function DeterminePresenterType(libraryItem as object) as string
   end if
 
   ' Genre folder - check what type of content it contains
-  if jsonType = "genre"
+  if folderType = "genre"
     ' Check if it's a movie genre (has movies)
-    if isValid(libraryItem.json.MovieCount) and libraryItem.json.MovieCount > 0
+    if libraryItem.movieCount > 0
       return "movie"
     end if
     ' Check if it's a TV show genre (has series)
-    if isValid(libraryItem.json.SeriesCount) and libraryItem.json.SeriesCount > 0
+    if libraryItem.seriesCount > 0
       return "tvshow"
     end if
     ' Default genre to generic
@@ -82,13 +75,13 @@ function DeterminePresenterType(libraryItem as object) as string
   end if
 
   ' Studio folder - check what type of content it contains
-  if jsonType = "studio"
+  if folderType = "studio"
     ' Check movie count first since studios are more common in movie libraries
-    if isValid(libraryItem.json.MovieCount) and libraryItem.json.MovieCount > 0
+    if libraryItem.movieCount > 0
       return "movie"
     end if
     ' Check for TV series (Networks)
-    if isValid(libraryItem.json.SeriesCount) and libraryItem.json.SeriesCount > 0
+    if libraryItem.seriesCount > 0
       return "tvshow"
     end if
     ' Default to generic if no content counts available
@@ -96,7 +89,7 @@ function DeterminePresenterType(libraryItem as object) as string
   end if
 
   ' Music genre folder
-  if jsonType = "musicgenre"
+  if folderType = "musicgenre"
     return "music"
   end if
 

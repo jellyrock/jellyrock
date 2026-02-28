@@ -50,9 +50,18 @@ class JellyfinDataTransformer
       item.playlistItemId = apiData.PlaylistItemId ?? ""
       item.displayOrder = apiData.DisplayOrder ?? ""
       item.isFolder = apiData.IsFolder ?? false
-      ' folderType only applies to folder items; leave at XML default for non-folders
+      ' folderType only applies to folder items; leave at XML default for non-folders.
+      ' Resolved design decision: Genre/MusicGenre/Studio items are folder sub-types —
+      ' keep item.type = "Folder" for routing and store the real API type in folderType.
+      ' CollectionFolder and plain Folder items use CollectionType (e.g. "movies", "music").
       if isValid(apiData.IsFolder) and apiData.IsFolder = true
-        item.folderType = apiData.CollectionType ?? ""
+        apiItemType = apiData.Type ?? ""
+        if apiItemType = "Genre" or apiItemType = "MusicGenre" or apiItemType = "Studio"
+          item.type = "Folder"
+          item.folderType = apiItemType
+        else
+          item.folderType = apiData.CollectionType ?? ""
+        end if
       end if
       item.isPlaceHolder = apiData.IsPlaceHolder ?? false
       item.path = apiData.Path ?? ""

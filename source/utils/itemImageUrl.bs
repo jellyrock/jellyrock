@@ -123,18 +123,14 @@ end function
 function getItemBackdropUrl(item as object, size = imageSize.BACKDROP as object) as string
   if not isValid(item) then return ""
 
-  imgParams = { maxWidth: size.width, maxHeight: size.height }
-
   ' 1. Item's own backdrop
   if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
-    imgParams.tag = item.backdropImageTags[0]
-    return ImageURL(item.id, "Backdrop", imgParams)
+    return ImageURL(item.id, "Backdrop", { tag: item.backdropImageTags[0], maxHeight: size.height, maxWidth: size.width })
   end if
 
   ' 2. Parent backdrop (for episodes/seasons)
   if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
-    imgParams.tag = item.parentBackdropImageTags[0]
-    return ImageURL(item.parentBackdropItemId, "Backdrop", imgParams)
+    return ImageURL(item.parentBackdropItemId, "Backdrop", { tag: item.parentBackdropImageTags[0], maxHeight: size.height, maxWidth: size.width })
   end if
 
   return ""

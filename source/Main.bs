@@ -251,13 +251,13 @@ sub Main (args as dynamic) as void
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Folder" and selectedItem.json.type = "Genre"
+        else if selectedItemType = "Folder" and selectedItem.folderType = "Genre"
           ' User clicked on a genre folder
           group = CreateLibraryView(selectedItem)
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Folder" and selectedItem.json.type = "MusicGenre"
+        else if selectedItemType = "Folder" and selectedItem.folderType = "MusicGenre"
           group = CreateLibraryView(selectedItem)
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
@@ -269,35 +269,28 @@ sub Main (args as dynamic) as void
           m.global.sceneManager.callFunc("pushScene", group)
         else if selectedItemType = "Episode" or LCase(selectedItemType) = "recording"
           ' User has selected a TV episode or Recording they want us to play
-          audio_stream_idx = 0
-          if isValid(selectedItem.selectedAudioStreamIndex) and selectedItem.selectedAudioStreamIndex > 0
-            audio_stream_idx = selectedItem.selectedAudioStreamIndex
-          end if
+          queueItem = nodeHelpers.createQueueItem(selectedItem)
+          if not isValid(queueItem) then return
 
-          ' Cache reference to prevent multiple field accesses
-          itemData = selectedItem.json
-          itemData.selectedAudioStreamIndex = audio_stream_idx
-          ' Display playback options dialog
-          if isValid(itemData) and isValid(itemData.userdata) and isValid(itemData.userdata.PlaybackPositionTicks)
-            if itemData.userdata.PlaybackPositionTicks > 0
-              m.global.queueManager.callFunc("hold", itemData)
-              playbackOptionDialog(itemData.userdata.PlaybackPositionTicks, itemData)
-            else
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("push", itemData)
-              m.global.queueManager.callFunc("playQueue")
-            end if
+          ' selectedAudioStreamIndex: 0 = auto-select (Phase 4 will carry user-chosen track)
+          queueItem.selectedAudioStreamIndex = 0
+
+          ' Display playback options dialog if there is a saved resume position
+          if selectedItem.playbackPositionTicks > 0
+            m.global.queueManager.callFunc("hold", queueItem)
+            playbackOptionDialog(selectedItem.playbackPositionTicks, queueItem)
           else
+            queueItem.startingPoint = 0
             m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", itemData)
+            m.global.queueManager.callFunc("push", queueItem)
             m.global.queueManager.callFunc("playQueue")
           end if
 
         else if selectedItemType = "Series"
-          group = CreateSeriesDetailsGroup(selectedItem.json.id)
+          group = CreateSeriesDetailsGroup(selectedItem.id)
         else if selectedItemType = "Season"
-          if isValid(selectedItem.json) and isValid(selectedItem.json.SeriesId) and isValid(selectedItem.id)
-            group = CreateSeasonDetailsGroupByID(selectedItem.json.SeriesId, selectedItem.id)
+          if isValidAndNotEmpty(selectedItem.seriesId) and isValidAndNotEmpty(selectedItem.id)
+            group = CreateSeasonDetailsGroupByID(selectedItem.seriesId, selectedItem.id)
           else
             stopLoadingSpinner()
             message_dialog(tr("Error loading Season"))
@@ -314,46 +307,28 @@ sub Main (args as dynamic) as void
           dialog.title = tr("Loading Channel Data")
           m.scene.dialog = dialog
 
-          ' Cache reference to prevent multiple field accesses
-          itemData = selectedItem.json
+          queueItem = nodeHelpers.createQueueItem(selectedItem)
 
-          ' User selected a program. Play the channel the program is on
+          ' User selected a program — play the channel the program is on instead
           if LCase(selectedItemType) = "program"
-            itemData.id = itemData.ChannelId
+            queueItem.id = selectedItem.channelId
+            queueItem.type = "TvChannel"
           end if
 
-          ' Display playback options dialog
-          showPlaybackOptionDialog = false
-
-          if isValid(itemData)
-            if isValid(itemData.userdata)
-              if isValid(itemData.userdata.PlaybackPositionTicks)
-                if itemData.userdata.PlaybackPositionTicks > 0
-                  showPlaybackOptionDialog = true
-                end if
-              end if
-            end if
-          end if
-
-          if showPlaybackOptionDialog
+          ' Display playback options dialog if there is a saved resume position
+          if selectedItem.playbackPositionTicks > 0
             dialog.close = true
-            m.global.queueManager.callFunc("hold", itemData)
-            playbackOptionDialog(itemData.userdata.PlaybackPositionTicks, itemData)
+            m.global.queueManager.callFunc("hold", queueItem)
+            playbackOptionDialog(selectedItem.playbackPositionTicks, queueItem)
           else
             m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", itemData)
+            m.global.queueManager.callFunc("push", queueItem)
             m.global.queueManager.callFunc("playQueue")
             dialog.close = true
           end if
 
         else if selectedItemType = "Photo"
-          ' only handle selection if it's from the home screen
-          if selectedItem.isSubType("HomeData")
-            print "a photo was selected from the home screen"
-            print "selectedItem=", selectedItem
-
-            quickplay.photo(selectedItem)
-          end if
+          quickplay.photo(selectedItem)
         else if selectedItemType = "PhotoAlbum"
           print "a photo album was selected"
           print "selectedItem=", selectedItem
@@ -373,21 +348,21 @@ sub Main (args as dynamic) as void
             m.global.sceneManager.callfunc("pushScene", photoPlayer)
           end if
         else if selectedItemType = "MusicArtist"
-          group = CreateArtistView(selectedItem.json)
+          group = CreateArtistView(selectedItem)
           if not isValid(group)
             stopLoadingSpinner()
             message_dialog(tr("Unable to find any albums or songs belonging to this artist"))
           end if
         else if selectedItemType = "MusicAlbum"
-          group = CreateAlbumView(selectedItem.json)
+          group = CreateAlbumView(selectedItem)
         else if selectedItemType = "MusicVideo"
           group = CreateMovieDetailsGroup(selectedItem)
         else if selectedItemType = "Playlist"
-          group = CreatePlaylistView(selectedItem.json)
+          group = CreatePlaylistView(selectedItem)
         else if selectedItemType = "Audio"
           m.global.queueManager.callFunc("clear")
           m.global.queueManager.callFunc("resetShuffle")
-          m.global.queueManager.callFunc("push", selectedItem.json)
+          m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(selectedItem))
           m.global.queueManager.callFunc("playQueue")
         else
           ' TODO - switch on more node types
@@ -975,10 +950,8 @@ sub Main (args as dynamic) as void
               startLoadingSpinner()
               startingPoint = 0
 
-              if isValid(selectedItem[0].UserData) and isValid(selectedItem[0].UserData.PlaybackPositionTicks)
-                if selectedItem[0].UserData.PlaybackPositionTicks > 0
-                  startingPoint = selectedItem[0].UserData.PlaybackPositionTicks
-                end if
+              if isValid(selectedItem[0].playbackPositionTicks) and selectedItem[0].playbackPositionTicks > 0
+                startingPoint = selectedItem[0].playbackPositionTicks
               end if
 
               selectedItem[0].startingPoint = startingPoint
