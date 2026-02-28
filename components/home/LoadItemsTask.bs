@@ -2,6 +2,7 @@ import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
 import "pkg:/source/api/sdk.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
@@ -12,6 +13,7 @@ end sub
 
 sub loadItems()
   globalUser = m.global.user
+  m.transformer = JellyfinDataTransformer()
 
   results = []
 
@@ -25,9 +27,7 @@ sub loadItems()
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #525)
         if item.CollectionType <> "books"
-          tmp = CreateObject("roSGNode", "HomeData")
-          tmp.json = item
-          results.push(tmp)
+          results.push(m.transformer.transformBaseItem(item))
         end if
       end for
     end if
@@ -51,9 +51,7 @@ sub loadItems()
         for each item in data
           ' Skip Books for now as we don't support it (issue #525)
           if item.Type <> "Book"
-            tmp = CreateObject("roSGNode", "HomeData")
-            tmp.json = item
-            results.push(tmp)
+            results.push(m.transformer.transformBaseItem(item))
           end if
         end for
       end if
@@ -92,9 +90,7 @@ sub loadItems()
     data = getJson(resp)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
-        tmp = CreateObject("roSGNode", "HomeData")
-        tmp.json = item
-        results.push(tmp)
+        results.push(m.transformer.transformBaseItem(item))
       end for
     end if
     ' Load Continue Watching
@@ -116,9 +112,7 @@ sub loadItems()
         for each item in data.Items
           ' Skip Books for now as we don't support it (issue #558)
           if item.Type <> "Book"
-            tmp = CreateObject("roSGNode", "HomeData")
-            tmp.json = item
-            results.push(tmp)
+            results.push(m.transformer.transformBaseItem(item))
           end if
         end for
       end if
@@ -142,17 +136,7 @@ sub loadItems()
         ' Skip Books for now as we don't support it (issue #558)
         ' also skip songs since there is limited space
         if not (item.Type = "Book" or item.Type = "Audio")
-          tmp = CreateObject("roSGNode", "HomeData")
-
-          params = {}
-          if isValidAndNotEmpty(item.PrimaryImageTag)
-            params["Tags"] = item.PrimaryImageTag
-          end if
-          params["MaxWidth"] = 234
-          params["MaxHeight"] = 330
-          tmp.posterURL = ImageUrl(item.Id, "Primary", params)
-          tmp.json = item
-          results.push(tmp)
+          results.push(m.transformer.transformBaseItem(item))
         end if
       end for
     end if
@@ -172,10 +156,7 @@ sub loadItems()
     data = getJson(resp)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
-        tmp = CreateObject("roSGNode", "HomeData")
-        item.ImageURL = ImageURL(item.Id)
-        tmp.json = item
-        results.push(tmp)
+        results.push(m.transformer.transformBaseItem(item))
       end for
     end if
 

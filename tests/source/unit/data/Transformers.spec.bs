@@ -1256,6 +1256,67 @@ namespace tests
       m.assertEqual(result.subtitle, "")
     end function
 
+    @it("computes Photo subtitle with year and album")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "p1", Type: "Photo", Name: "Sunset", ProductionYear: 2022, Album: "Summer Trip" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2022 - Summer Trip")
+    end function
+
+    @it("computes Photo subtitle with year only when no album")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "p1", Type: "Photo", Name: "Sunset", ProductionYear: 2022 }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2022")
+    end function
+
+    @it("computes Photo subtitle with album only when no year")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "p1", Type: "Photo", Name: "Sunset", Album: "Summer Trip" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "Summer Trip")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - item.title (ContentNode compatibility)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets item.title equal to item.name for ContentNode compatibility")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "m1", Type: "Movie", Name: "Test Movie" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.title, "Test Movie")
+      m.assertEqual(result.title, result.name)
+    end function
+
+    @it("sets item.title to empty string when Name is missing")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "m1", Type: "Movie" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.title, "")
+      m.assertEqual(result.name, "")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("JellyfinDataTransformer - media sources & streams")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -37,6 +37,9 @@ class JellyfinDataTransformer
       item.id = apiData.Id ?? ""
       item.type = apiData.Type ?? ""
       item.name = apiData.Name ?? ""
+      ' Populate ContentNode's built-in title field so RSG components that read title natively
+      ' (e.g. future JRContentItem migration) work without render-thread mutations.
+      item.title = item.name
       item.originalTitle = apiData.OriginalTitle ?? ""
       item.sortName = apiData.SortName ?? ""
       item.etag = apiData.Etag ?? ""
@@ -631,11 +634,16 @@ class JellyfinDataTransformer
       return apiData.SeriesName ?? ""
 
     else if itemType = "Photo"
+      parts = []
       year = apiData.ProductionYear
       if isValid(year) and year > 0
-        return str(year).trim()
+        parts.push(str(year).trim())
       end if
-      return ""
+      album = apiData.Album ?? ""
+      if isValidAndNotEmpty(album)
+        parts.push(album.trim())
+      end if
+      return parts.join(" - ")
 
     end if
 
