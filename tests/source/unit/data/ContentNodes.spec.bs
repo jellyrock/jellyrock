@@ -6,31 +6,36 @@ namespace tests
     @describe("JellyfinBaseItem")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("creates with default values")
+    @it("id is the loading sentinel; all scalar fields have explicit zero-value defaults")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
 
+      ' id="" (ContentNode default) = not yet loaded. This is the only sentinel we use.
       m.assertEqual(item.id, "")
+
+      ' RSG typed fields default to their zero values when not set by the transformer.
       m.assertEqual(item.type, "")
       m.assertEqual(item.name, "")
       m.assertEqual(item.isWatched, false)
       m.assertEqual(item.runTimeTicks, 0&)
       m.assertEqual(item.communityRating, 0.0)
+      m.assertEqual(item.subtitle, "")
+      m.assertEqual(item.primaryImageTag, "")
     end function
 
     @it("uses id as sentinel value for loading state")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
 
-      ' id="" means not loaded
+      ' id="" (ContentNode default) means not loaded - check with isValidAndNotEmpty
       m.assertEqual(item.id, "")
+      m.assertFalse(isValidAndNotEmpty(item.id))
 
-      ' Set id = item is loaded
+      ' After transformer sets id, item is considered loaded
       item.id = "test123"
       item.name = "Test"
 
-      ' Item is valid with id
-      m.assertNotEqual(item.id, "")
+      m.assertTrue(isValidAndNotEmpty(item.id))
     end function
 
     @it("accepts field assignments")

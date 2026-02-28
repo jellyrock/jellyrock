@@ -1,0 +1,343 @@
+import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/constants/imageSize.bs"
+
+namespace tests
+  @suite("itemImageUrl - Image URL generation utility")
+  class ItemImageUrlTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getItemImageUrl - base function")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns Primary URL when tag present")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.primaryImageTag = "ptag"
+
+      url = getItemImageUrl(item, "Primary", imageSize.POSTER_LG)
+
+      m.assertTrue(isValidAndNotEmpty(url))
+      m.assertTrue(url.Instr("item1") > -1)
+      m.assertTrue(url.Instr("ptag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    @it("returns Thumb URL when tag present")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.thumbImageTag = "ttag"
+
+      url = getItemImageUrl(item, "Thumb", imageSize.WIDE_MD)
+
+      m.assertTrue(isValidAndNotEmpty(url))
+      m.assertTrue(url.Instr("ttag") > -1)
+      m.assertTrue(url.Instr("Thumb") > -1)
+    end function
+
+    @it("returns Logo URL when tag present")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.logoImageTag = "ltag"
+
+      url = getItemImageUrl(item, "Logo", imageSize.LOGO)
+
+      m.assertTrue(isValidAndNotEmpty(url))
+      m.assertTrue(url.Instr("ltag") > -1)
+      m.assertTrue(url.Instr("Logo") > -1)
+    end function
+
+    @it("returns Backdrop URL when tag present")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.backdropImageTags = ["btag1", "btag2"]
+
+      url = getItemImageUrl(item, "Backdrop", imageSize.BACKDROP)
+
+      m.assertTrue(isValidAndNotEmpty(url))
+      m.assertTrue(url.Instr("btag1") > -1)
+      m.assertTrue(url.Instr("Backdrop") > -1)
+    end function
+
+    @it("returns empty string for unknown image type")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.primaryImageTag = "ptag"
+
+      url = getItemImageUrl(item, "Art", imageSize.DEFAULT)
+
+      m.assertEqual(url, "")
+    end function
+
+    @it("returns empty string when tag missing for requested type")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      ' No primaryImageTag set
+
+      url = getItemImageUrl(item, "Primary", imageSize.POSTER_LG)
+
+      m.assertEqual(url, "")
+    end function
+
+    @it("returns empty string for invalid item")
+    function _()
+      url = getItemImageUrl(invalid, "Primary", imageSize.POSTER_LG)
+      m.assertEqual(url, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getItemPosterUrl - poster with fallback chain")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses primary image tag")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.primaryImageTag = "primary123"
+
+      url = getItemPosterUrl(item)
+
+      m.assertTrue(url.Instr("primary123") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    @it("falls back to parent primary when no primary")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.parentPrimaryImageTag = "parentTag"
+      item.parentPrimaryImageItemId = "season1"
+
+      url = getItemPosterUrl(item)
+
+      m.assertTrue(url.Instr("season1") > -1)
+      m.assertTrue(url.Instr("parentTag") > -1)
+    end function
+
+    @it("falls back to series primary when no primary or parent primary")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.seriesPrimaryImageTag = "seriesTag"
+      item.seriesId = "series1"
+
+      url = getItemPosterUrl(item)
+
+      m.assertTrue(url.Instr("series1") > -1)
+      m.assertTrue(url.Instr("seriesTag") > -1)
+    end function
+
+    @it("returns empty string when no poster images available")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+
+      url = getItemPosterUrl(item)
+
+      m.assertEqual(url, "")
+    end function
+
+    @it("respects custom size parameter")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.primaryImageTag = "tag1"
+
+      url = getItemPosterUrl(item, imageSize.POSTER_SM)
+
+      m.assertTrue(isValidAndNotEmpty(url))
+      m.assertTrue(url.Instr("180") > -1)  ' POSTER_SM width
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getItemWidePosterUrl - wide/landscape with fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses thumb image tag")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.thumbImageTag = "thumb123"
+
+      url = getItemWidePosterUrl(item)
+
+      m.assertTrue(url.Instr("thumb123") > -1)
+      m.assertTrue(url.Instr("Thumb") > -1)
+    end function
+
+    @it("falls back to backdrop when no thumb")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.backdropImageTags = ["backdrop1"]
+
+      url = getItemWidePosterUrl(item)
+
+      m.assertTrue(url.Instr("backdrop1") > -1)
+      m.assertTrue(url.Instr("Backdrop") > -1)
+    end function
+
+    @it("falls back to parent thumb")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.parentThumbImageTag = "pthumb"
+      item.parentThumbItemId = "series1"
+
+      url = getItemWidePosterUrl(item)
+
+      m.assertTrue(url.Instr("pthumb") > -1)
+      m.assertTrue(url.Instr("series1") > -1)
+    end function
+
+    @it("falls back to parent backdrop")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.parentBackdropImageTags = ["pback"]
+      item.parentBackdropItemId = "series1"
+
+      url = getItemWidePosterUrl(item)
+
+      m.assertTrue(url.Instr("pback") > -1)
+      m.assertTrue(url.Instr("series1") > -1)
+    end function
+
+    @it("returns empty string when no wide images available")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+
+      url = getItemWidePosterUrl(item)
+
+      m.assertEqual(url, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getItemThumbnailUrl - delegates to widePosterUrl")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns same URL as getItemWidePosterUrl with WIDE_SM size")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.thumbImageTag = "thumb1"
+
+      thumbUrl = getItemThumbnailUrl(item)
+      wideUrl = getItemWidePosterUrl(item, imageSize.WIDE_SM)
+
+      m.assertEqual(thumbUrl, wideUrl)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getItemBackdropUrl - backdrop with fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses item's own backdrop")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+      item.backdropImageTags = ["back1", "back2"]
+
+      url = getItemBackdropUrl(item)
+
+      m.assertTrue(url.Instr("back1") > -1)
+      m.assertTrue(url.Instr("Backdrop") > -1)
+    end function
+
+    @it("falls back to parent backdrop")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.parentBackdropImageTags = ["parentBack"]
+      item.parentBackdropItemId = "series1"
+
+      url = getItemBackdropUrl(item)
+
+      m.assertTrue(url.Instr("parentBack") > -1)
+      m.assertTrue(url.Instr("series1") > -1)
+    end function
+
+    @it("returns empty string when no backdrop available")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "item1"
+
+      url = getItemBackdropUrl(item)
+
+      m.assertEqual(url, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getProgramImageUrl - program with channel fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses program's own primary image first")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.id = "prog1"
+      program.primaryImageTag = "progtag"
+
+      channel = CreateObject("roSGNode", "JellyfinBaseItem")
+      channel.id = "chan1"
+      channel.primaryImageTag = "chantag"
+
+      url = getProgramImageUrl(program, channel)
+
+      m.assertTrue(url.Instr("progtag") > -1)
+      m.assertTrue(url.Instr("prog1") > -1)
+    end function
+
+    @it("falls back to channel image when program has none")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.id = "prog1"
+      ' No primaryImageTag
+
+      channel = CreateObject("roSGNode", "JellyfinBaseItem")
+      channel.id = "chan1"
+      channel.primaryImageTag = "chantag"
+
+      url = getProgramImageUrl(program, channel)
+
+      m.assertTrue(url.Instr("chantag") > -1)
+      m.assertTrue(url.Instr("chan1") > -1)
+    end function
+
+    @it("returns empty string when both program and channel have no image")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.id = "prog1"
+
+      channel = CreateObject("roSGNode", "JellyfinBaseItem")
+      channel.id = "chan1"
+
+      url = getProgramImageUrl(program, channel)
+
+      m.assertEqual(url, "")
+    end function
+
+    @it("handles invalid channel gracefully")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.id = "prog1"
+      program.primaryImageTag = "progtag"
+
+      url = getProgramImageUrl(program, invalid)
+
+      m.assertTrue(url.Instr("progtag") > -1)
+    end function
+
+    @it("handles both invalid items gracefully")
+    function _()
+      url = getProgramImageUrl(invalid, invalid)
+      m.assertEqual(url, "")
+    end function
+
+  end class
+end namespace

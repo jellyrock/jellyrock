@@ -1,0 +1,168 @@
+import "pkg:/source/api/Image.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/constants/imageSize.bs"
+
+' Generate an image URL from a JellyfinBaseItem for a specific image type.
+' This is the base function used by the typed convenience functions below.
+' @param item - JellyfinBaseItem content node
+' @param imageType - Jellyfin image type string: "Primary", "Thumb", "Logo", "Backdrop"
+' @param size - Size constant from imageSize namespace, e.g. imageSize.POSTER_LG
+' @returns Full image URL string, or "" if no tag is available for that type
+function getItemImageUrl(item as object, imageType = "Primary" as string, size = imageSize.DEFAULT as object) as string
+  if not isValid(item) then return ""
+
+  imgParams = { maxWidth: size.width, maxHeight: size.height }
+
+  if imageType = "Primary"
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams.tag = item.primaryImageTag
+      return ImageURL(item.id, "Primary", imgParams)
+    end if
+  else if imageType = "Thumb"
+    if isValidAndNotEmpty(item.thumbImageTag)
+      imgParams.tag = item.thumbImageTag
+      return ImageURL(item.id, "Thumb", imgParams)
+    end if
+  else if imageType = "Logo"
+    if isValidAndNotEmpty(item.logoImageTag)
+      imgParams.tag = item.logoImageTag
+      return ImageURL(item.id, "Logo", imgParams)
+    end if
+  else if imageType = "Backdrop"
+    if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
+      imgParams.tag = item.backdropImageTags[0]
+      return ImageURL(item.id, "Backdrop", imgParams)
+    end if
+  end if
+
+  return ""
+end function
+
+' Generate a poster (portrait) URL with fallback chain.
+' Fallback order: item primary → parent primary → series primary
+' @param item - JellyfinBaseItem content node
+' @param size - Size constant from imageSize namespace (default: imageSize.POSTER_LG)
+' @returns Full image URL string, or "" if no image is available
+function getItemPosterUrl(item as object, size = imageSize.POSTER_LG as object) as string
+  if not isValid(item) then return ""
+
+  imgParams = { maxWidth: size.width, maxHeight: size.height }
+
+  ' 1. Item's own primary image
+  if isValidAndNotEmpty(item.primaryImageTag)
+    imgParams.tag = item.primaryImageTag
+    return ImageURL(item.id, "Primary", imgParams)
+  end if
+
+  ' 2. Parent's primary image (episodes/seasons use season/series poster)
+  if isValidAndNotEmpty(item.parentPrimaryImageTag) and isValidAndNotEmpty(item.parentPrimaryImageItemId)
+    imgParams.tag = item.parentPrimaryImageTag
+    return ImageURL(item.parentPrimaryImageItemId, "Primary", imgParams)
+  end if
+
+  ' 3. Series primary image (for episodes without a season poster)
+  if isValidAndNotEmpty(item.seriesPrimaryImageTag) and isValidAndNotEmpty(item.seriesId)
+    imgParams.tag = item.seriesPrimaryImageTag
+    return ImageURL(item.seriesId, "Primary", imgParams)
+  end if
+
+  return ""
+end function
+
+' Generate a wide/landscape URL with fallback chain.
+' Fallback order: item thumb → item backdrop → parent thumb → parent backdrop
+' @param item - JellyfinBaseItem content node
+' @param size - Size constant from imageSize namespace (default: imageSize.WIDE_MD)
+' @returns Full image URL string, or "" if no image is available
+function getItemWidePosterUrl(item as object, size = imageSize.WIDE_MD as object) as string
+  if not isValid(item) then return ""
+
+  imgParams = { maxWidth: size.width, maxHeight: size.height }
+
+  ' 1. Item's own thumb image
+  if isValidAndNotEmpty(item.thumbImageTag)
+    imgParams.tag = item.thumbImageTag
+    return ImageURL(item.id, "Thumb", imgParams)
+  end if
+
+  ' 2. Item's own backdrop
+  if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
+    imgParams.tag = item.backdropImageTags[0]
+    return ImageURL(item.id, "Backdrop", imgParams)
+  end if
+
+  ' 3. Parent thumb (e.g. series thumb for episodes)
+  if isValidAndNotEmpty(item.parentThumbImageTag) and isValidAndNotEmpty(item.parentThumbItemId)
+    imgParams.tag = item.parentThumbImageTag
+    return ImageURL(item.parentThumbItemId, "Thumb", imgParams)
+  end if
+
+  ' 4. Parent backdrop
+  if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
+    imgParams.tag = item.parentBackdropImageTags[0]
+    return ImageURL(item.parentBackdropItemId, "Backdrop", imgParams)
+  end if
+
+  return ""
+end function
+
+' Generate a thumbnail URL (wide, smaller size).
+' Delegates to getItemWidePosterUrl with a smaller default size.
+' @param item - JellyfinBaseItem content node
+' @param size - Size constant from imageSize namespace (default: imageSize.WIDE_SM)
+' @returns Full image URL string, or "" if no image is available
+function getItemThumbnailUrl(item as object, size = imageSize.WIDE_SM as object) as string
+  return getItemWidePosterUrl(item, size)
+end function
+
+' Generate a full backdrop URL with fallback chain.
+' Fallback order: item backdrop → parent backdrop
+' @param item - JellyfinBaseItem content node
+' @param size - Size constant from imageSize namespace (default: imageSize.BACKDROP)
+' @returns Full image URL string, or "" if no image is available
+function getItemBackdropUrl(item as object, size = imageSize.BACKDROP as object) as string
+  if not isValid(item) then return ""
+
+  imgParams = { maxWidth: size.width, maxHeight: size.height }
+
+  ' 1. Item's own backdrop
+  if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
+    imgParams.tag = item.backdropImageTags[0]
+    return ImageURL(item.id, "Backdrop", imgParams)
+  end if
+
+  ' 2. Parent backdrop (for episodes/seasons)
+  if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
+    imgParams.tag = item.parentBackdropImageTags[0]
+    return ImageURL(item.parentBackdropItemId, "Backdrop", imgParams)
+  end if
+
+  return ""
+end function
+
+' Generate an image URL for a Live TV program, falling back to the channel image.
+' Accommodates the two-phase load constraint: program and channel are separate API calls.
+' @param programItem - JellyfinBaseItem for the program
+' @param channelItem - JellyfinBaseItem for the channel (may be invalid if not yet loaded)
+' @param size - Size constant from imageSize namespace (default: imageSize.WIDE_MD)
+' @returns Full image URL string, or "" if no image is available
+function getProgramImageUrl(programItem as object, channelItem as object, size = imageSize.WIDE_MD as object) as string
+  ' 1. Program's own primary image
+  if isValid(programItem)
+    url = getItemPosterUrl(programItem, size)
+    if isValidAndNotEmpty(url)
+      return url
+    end if
+  end if
+
+  ' 2. Channel's primary image as fallback
+  if isValid(channelItem)
+    imgParams = { maxWidth: size.width, maxHeight: size.height }
+    if isValidAndNotEmpty(channelItem.primaryImageTag)
+      imgParams.tag = channelItem.primaryImageTag
+      return ImageURL(channelItem.id, "Primary", imgParams)
+    end if
+  end if
+
+  return ""
+end function

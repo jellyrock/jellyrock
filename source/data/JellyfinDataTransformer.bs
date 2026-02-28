@@ -1,24 +1,26 @@
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/utils/misc.bs"
 
-' Transforms Jellyfin API responses to content nodes
-' Handles server version differences automatically
+' Transforms Jellyfin API responses to JellyfinBaseItem content nodes.
+' Follows the type defaults pattern: fields have XML-declared defaults ("", 0, false).
+' See JellyfinBaseItem.xml for field documentation and the full defaults pattern description.
 class JellyfinDataTransformer
 
   sub new()
   end sub
 
-  ' Transform BaseItemDto to JellyfinBaseItem content node
-  ' Server version is automatically retrieved from m.global.server.version
-  ' Only pass serverVersion explicitly for testing or when global session isn't available
-  function transformBaseItem(apiData as object, serverVersion = "" as string) as object
+  ' Transform a BaseItemDto to a JellyfinBaseItem content node.
+  ' @param apiData - Raw BaseItemDto assocarray from the Jellyfin API
+  ' @param serverVersion - Server version string (auto-detected from global session if omitted)
+  ' @param preferredSubtitleLanguage - BCP-47 language code for subtitle sort priority (e.g. "eng")
+  ' @returns JellyfinBaseItem node, or invalid if apiData is invalid
+  function transformBaseItem(apiData as object, serverVersion = "" as string, preferredSubtitleLanguage = "" as string) as object
     if not isValid(apiData)
       return invalid
     end if
 
     ' Get server version from global session if not provided
-    ' Note: In classes, we can't access m.global directly, so serverVersion must be passed explicitly
-    ' or retrieved from GetGlobalAA() at call time
+    ' Note: In classes, m.global is not available; use GetGlobalAA() pattern
     if not isValidAndNotEmpty(serverVersion)
       globalAA = GetGlobalAA()
       if isValid(globalAA) and isValid(globalAA.session) and isValid(globalAA.session.server) and isValidAndNotEmpty(globalAA.session.server.version)
@@ -31,68 +33,189 @@ class JellyfinDataTransformer
     try
       item = CreateObject("roSGNode", "JellyfinBaseItem")
 
-      ' Core identity fields
+      ' ── Core identity ──
       item.id = apiData.Id ?? ""
       item.type = apiData.Type ?? ""
       item.name = apiData.Name ?? ""
       item.originalTitle = apiData.OriginalTitle ?? ""
       item.sortName = apiData.SortName ?? ""
+      item.etag = apiData.Etag ?? ""
+      item.mediaType = apiData.MediaType ?? ""
+      item.extraType = apiData.ExtraType ?? ""
+      item.locationType = apiData.LocationType ?? ""
+      item.sourceType = apiData.SourceType ?? ""
+      item.playlistItemId = apiData.PlaylistItemId ?? ""
+      item.displayOrder = apiData.DisplayOrder ?? ""
+      item.isFolder = apiData.IsFolder ?? false
+      ' folderType only applies to folder items; leave at XML default for non-folders
+      if isValid(apiData.IsFolder) and apiData.IsFolder = true
+        item.folderType = apiData.CollectionType ?? ""
+      end if
+      item.isPlaceHolder = apiData.IsPlaceHolder ?? false
+      item.path = apiData.Path ?? ""
 
-      ' Parent/Container info
+      ' ── Parent/Container ──
       item.serverId = apiData.ServerId ?? ""
       item.parentId = apiData.ParentId ?? ""
       item.channelId = apiData.ChannelId ?? ""
       item.collectionType = apiData.CollectionType ?? ""
 
-      ' Media metadata
-      item.overview = apiData.Overview ?? ""
-      item.tagline = apiData.Tagline ?? ""
-      item.runTimeTicks = apiData.RunTimeTicks ?? 0
+      ' ── Dates & Timing ──
       item.premiereDate = apiData.PremiereDate ?? ""
       item.endDate = apiData.EndDate ?? ""
-      item.productionYear = apiData.ProductionYear ?? 0
+      item.dateCreated = apiData.DateCreated ?? ""
+      item.dateLastMediaAdded = apiData.DateLastMediaAdded ?? ""
+      item.airTime = apiData.AirTime ?? ""
+      if isValid(apiData.AirDays)
+        item.airDays = apiData.AirDays
+      end if
 
-      ' Ratings
+      ' ── Media Metadata ──
+      item.overview = apiData.Overview ?? ""
+      if isValid(apiData.Taglines)
+        item.taglines = apiData.Taglines
+      end if
+      item.runTimeTicks = apiData.RunTimeTicks ?? 0
+      item.cumulativeRunTimeTicks = apiData.CumulativeRunTimeTicks ?? 0
+      item.productionYear = apiData.ProductionYear ?? 0
+      if isValid(apiData.ProductionLocations)
+        item.productionLocations = apiData.ProductionLocations
+      end if
+      item.videoType = apiData.VideoType ?? ""
+      item.aspectRatio = apiData.AspectRatio ?? ""
+      item.isHD = apiData.IsHD ?? false
+      item.hasSubtitles = apiData.HasSubtitles ?? false
+      item.status = apiData.Status ?? ""
+
+      ' ── Ratings ──
       item.officialRating = apiData.OfficialRating ?? ""
+      item.customRating = apiData.CustomRating ?? ""
       item.communityRating = apiData.CommunityRating ?? 0.0
       item.criticRating = apiData.CriticRating ?? 0.0
 
-      ' Arrays (handle missing gracefully)
+      ' ── Genres, Studios, Tags ──
       if isValid(apiData.Genres)
         item.genres = apiData.Genres
       end if
+      if isValid(apiData.GenreItems)
+        item.genreItems = apiData.GenreItems
+      end if
       if isValid(apiData.Studios)
-        item.studios = m.extractStudioNames(apiData.Studios)
+        item.studios = m.extractNamedItemNames(apiData.Studios)
+        item.studioItems = m.extractNamedItems(apiData.Studios)
       end if
       if isValid(apiData.Tags)
         item.tags = apiData.Tags
       end if
 
-      ' Transform user data (most important for UI state)
+      ' ── People ──
+      if isValid(apiData.People)
+        item.people = apiData.People
+      end if
+
+      ' ── External IDs & Links ──
+      if isValid(apiData.ProviderIds)
+        item.providerIds = apiData.ProviderIds
+      end if
+      if isValid(apiData.ExternalUrls)
+        item.externalUrls = apiData.ExternalUrls
+      end if
+      if isValid(apiData.RemoteTrailers)
+        item.remoteTrailers = apiData.RemoteTrailers
+      end if
+
+      ' ── Permissions ──
+      item.canDelete = apiData.CanDelete ?? false
+      item.canDownload = apiData.CanDownload ?? false
+
+      ' ── Child/Item Counts ──
+      if isValid(apiData.ChildCount)
+        item.childCount = apiData.ChildCount
+      end if
+      if isValid(apiData.RecursiveItemCount)
+        item.recursiveItemCount = apiData.RecursiveItemCount
+      end if
+      if isValid(apiData.SpecialFeatureCount)
+        item.specialFeatureCount = apiData.SpecialFeatureCount
+      end if
+      if isValid(apiData.LocalTrailerCount)
+        item.localTrailerCount = apiData.LocalTrailerCount
+      end if
+      if isValid(apiData.TrailerCount)
+        item.trailerCount = apiData.TrailerCount
+      end if
+      if isValid(apiData.MovieCount)
+        item.movieCount = apiData.MovieCount
+      end if
+      if isValid(apiData.SeriesCount)
+        item.seriesCount = apiData.SeriesCount
+      end if
+      if isValid(apiData.EpisodeCount)
+        item.episodeCount = apiData.EpisodeCount
+      end if
+      if isValid(apiData.SongCount)
+        item.songCount = apiData.SongCount
+      end if
+      if isValid(apiData.AlbumCount)
+        item.albumCount = apiData.AlbumCount
+      end if
+      if isValid(apiData.MusicVideoCount)
+        item.musicVideoCount = apiData.MusicVideoCount
+      end if
+      if isValid(apiData.ProgramCount)
+        item.programCount = apiData.ProgramCount
+      end if
+      if isValid(apiData.PartCount)
+        item.partCount = apiData.PartCount
+      end if
+      if isValid(apiData.MediaSourceCount)
+        item.mediaSourceCount = apiData.MediaSourceCount
+      end if
+
+      ' ── Type-specific fields ──
+      itemType = item.type
+      if itemType = "Episode"
+        m.transformEpisodeFields(item, apiData)
+      else if itemType = "Season"
+        m.transformSeasonFields(item, apiData)
+      else if itemType = "Series"
+        m.transformSeriesFields(item, apiData)
+      else if itemType = "Program" or itemType = "Recording"
+        m.transformProgramFields(item, apiData)
+      else if itemType = "MusicAlbum" or itemType = "Audio" or itemType = "MusicArtist" or itemType = "MusicVideo"
+        m.transformMusicFields(item, apiData)
+      end if
+
+      ' ── User data (flattened for performance; fields stay invalid if UserData absent) ──
       m.transformUserDataFields(item, apiData.UserData)
 
-      ' Type-specific transformations
-      if apiData.Type = "Episode"
-        m.transformEpisodeFields(item, apiData)
-      else if apiData.Type = "Series"
-        m.transformSeriesFields(item, apiData)
-      else if apiData.Type = "Program"
-        m.transformProgramFields(item, apiData)
-      end if
-
-      ' Store image tags only (URLs generated on-demand in components)
+      ' ── Image tags (URLs generated on-demand by itemImageUrl utility) ──
       m.transformImageTags(item, apiData)
 
-      ' Store media sources for playback (if present)
-      if isValid(apiData.MediaSources)
-        item.mediaSourcesData = { mediaSources: apiData.MediaSources }
+      ' ── Media sources & streams ──
+      if isValid(apiData.MediaSources) and apiData.MediaSources.Count() > 0
+        m.transformMediaSources(item, apiData.MediaSources, preferredSubtitleLanguage)
       end if
 
-      ' Set loading state
-      item.isLoaded = true
-      item.loadedAt = CreateObject("roDateTime").AsSeconds()
+      ' ── Chapters ──
+      if isValid(apiData.Chapters)
+        m.transformChapters(item, apiData.Chapters)
+      end if
 
-      ' Metadata
+      ' ── Trickplay ──
+      if isValid(apiData.Trickplay)
+        m.transformTrickplay(item, apiData.Trickplay)
+      end if
+
+      ' ── Media attachments ──
+      if isValid(apiData.MediaAttachments)
+        m.transformMediaAttachments(item, apiData.MediaAttachments)
+      end if
+
+      ' ── Pre-compute subtitle display text ──
+      item.subtitle = m.computeSubtitle(apiData)
+
+      ' ── Metadata ──
       item.serverVersion = serverVersion
       #if debug
         item.rawApiData = apiData
@@ -102,18 +225,23 @@ class JellyfinDataTransformer
       return item
 
     catch error
+      print "[JellyfinDataTransformer] transformBaseItem error: "; error.message
       return invalid
     end try
   end function
 
-  ' Transform array of BaseItemDto objects
-  ' Server version is automatically retrieved from global session
-  function transformBaseItemArray(apiArray as object, serverVersion = "" as string) as object
+  ' Transform an array of BaseItemDto objects.
+  ' Skips invalid entries silently.
+  ' @param apiArray - Array of BaseItemDto assocArrays
+  ' @param serverVersion - Server version (auto-detected if omitted)
+  ' @param preferredSubtitleLanguage - Language code for subtitle sort preference
+  ' @returns Array of JellyfinBaseItem nodes (may be shorter than input if entries were invalid)
+  function transformBaseItemArray(apiArray as object, serverVersion = "" as string, preferredSubtitleLanguage = "" as string) as object
     if not isValid(apiArray) or apiArray.Count() = 0
       return []
     end if
 
-    ' Get server version from global session if not provided
+    ' Resolve server version once for all items
     if not isValidAndNotEmpty(serverVersion)
       globalAA = GetGlobalAA()
       if isValid(globalAA) and isValid(globalAA.session) and isValid(globalAA.session.server) and isValidAndNotEmpty(globalAA.session.server.version)
@@ -125,7 +253,7 @@ class JellyfinDataTransformer
 
     results = []
     for each apiItem in apiArray
-      transformedItem = m.transformBaseItem(apiItem, serverVersion)
+      transformedItem = m.transformBaseItem(apiItem, serverVersion, preferredSubtitleLanguage)
       if isValid(transformedItem)
         results.push(transformedItem)
       end if
@@ -134,30 +262,96 @@ class JellyfinDataTransformer
     return results
   end function
 
-  ' Transform user data fields onto item (flattened for performance)
+  ' Populate media segments from a separate API call result.
+  ' This is a sanctioned post-transformation mutation: data arrives via a separate API call.
+  ' @param item - JellyfinBaseItem node (already transformed)
+  ' @param segmentsResponse - Response body from GET /MediaSegments/{itemId}
+  sub populateMediaSegments(item as object, segmentsResponse as object)
+    if not isValid(item) or not isValid(segmentsResponse)
+      return
+    end if
+
+    segments = segmentsResponse.Items ?? []
+    item.mediaSegments = segments
+
+    hasIntro = false
+    hasOutro = false
+    for each segment in segments
+      segType = segment.Type ?? ""
+      if segType = "Intro"
+        hasIntro = true
+      else if segType = "Outro"
+        hasOutro = true
+      end if
+    end for
+
+    item.hasIntro = hasIntro
+    item.hasOutro = hasOutro
+  end sub
+
+  ' Populate theme songs from a separate API call result.
+  ' @param item - JellyfinBaseItem node (already transformed)
+  ' @param response - Response from GET /Items/{id}/ThemeSongs
+  sub populateThemeSongs(item as object, response as object)
+    if not isValid(item) or not isValid(response)
+      return
+    end if
+    item.themeSongs = response.Items ?? []
+  end sub
+
+  ' Populate theme videos from a separate API call result.
+  ' @param item - JellyfinBaseItem node (already transformed)
+  ' @param response - Response from GET /Items/{id}/ThemeVideos
+  sub populateThemeVideos(item as object, response as object)
+    if not isValid(item) or not isValid(response)
+      return
+    end if
+    item.themeVideos = response.Items ?? []
+  end sub
+
+  ' Populate lyrics from a separate API call result.
+  ' @param item - JellyfinBaseItem node (already transformed)
+  ' @param response - LyricDto response from GET /Audio/{itemId}/Lyrics
+  sub populateLyrics(item as object, response as object)
+    if not isValid(item) or not isValid(response)
+      return
+    end if
+    item.lyricsData = response
+  end sub
+
+  ' ── Private helpers ──────────────────────────────────────────────────────────
+
+  ' Transform user data fields onto item (flattened for performance).
+  ' If UserData is absent from the API response, all user data fields stay at their XML defaults (false, 0, "").
   private sub transformUserDataFields(item as object, userData as object)
     if not isValid(userData)
       return
     end if
 
-    ' Core user data
     item.playbackPositionTicks = userData.PlaybackPositionTicks ?? 0
     item.playedPercentage = userData.PlayedPercentage ?? 0.0
     item.isWatched = userData.Played ?? false
     item.isFavorite = userData.IsFavorite ?? false
     item.playCount = userData.PlayCount ?? 0
     item.lastPlayedDate = userData.LastPlayedDate ?? ""
+    item.userRating = userData.Rating ?? 0.0
+    item.playAccess = userData.PlayAccess ?? ""
 
-    ' Derived fields
+    ' Likes: only set when explicitly present (null = no opinion → stays at XML default false)
+    if isValid(userData.Likes)
+      item.userLikes = userData.Likes
+    end if
+
+    ' Derived: resumable if has position and not fully watched
     item.isResumable = (item.playbackPositionTicks > 0) and (not item.isWatched)
 
-    ' Unplayed count for series
+    ' Unplayed count for series/seasons
     if isValid(userData.UnplayedItemCount)
       item.unplayedItemCount = userData.UnplayedItemCount
     end if
   end sub
 
-  ' Transform episode-specific fields
+  ' Transform episode-specific fields.
   private sub transformEpisodeFields(item as object, apiData as object)
     item.seriesId = apiData.SeriesId ?? ""
     item.seriesName = apiData.SeriesName ?? ""
@@ -166,42 +360,133 @@ class JellyfinDataTransformer
     item.episodeTitle = apiData.EpisodeTitle ?? ""
     item.indexNumber = apiData.IndexNumber ?? 0
     item.parentIndexNumber = apiData.ParentIndexNumber ?? 0
+    if isValid(apiData.IndexNumberEnd)
+      item.indexNumberEnd = apiData.IndexNumberEnd
+    end if
+    if isValid(apiData.AirsBeforeSeasonNumber)
+      item.airsBeforeSeasonNumber = apiData.AirsBeforeSeasonNumber
+    end if
+    if isValid(apiData.AirsAfterSeasonNumber)
+      item.airsAfterSeasonNumber = apiData.AirsAfterSeasonNumber
+    end if
+    if isValid(apiData.AirsBeforeEpisodeNumber)
+      item.airsBeforeEpisodeNumber = apiData.AirsBeforeEpisodeNumber
+    end if
   end sub
 
-  ' Transform series-specific fields
+  ' Transform season-specific fields.
+  private sub transformSeasonFields(item as object, apiData as object)
+    item.seriesId = apiData.SeriesId ?? ""
+    item.seriesName = apiData.SeriesName ?? ""
+    item.indexNumber = apiData.IndexNumber ?? 0
+    if isValid(apiData.SeriesStudio)
+      item.seriesStudio = apiData.SeriesStudio
+    end if
+  end sub
+
+  ' Transform series-specific fields.
   private sub transformSeriesFields(item as object, apiData as object)
-    ' Series-specific handling if needed
+    item.seriesStudio = apiData.SeriesStudio ?? ""
+    item.status = apiData.Status ?? ""
+    if isValid(apiData.AirDays)
+      item.airDays = apiData.AirDays
+    end if
+    item.airTime = apiData.AirTime ?? ""
   end sub
 
-  ' Transform program (Live TV) specific fields
+  ' Transform program/recording (Live TV) specific fields.
   private sub transformProgramFields(item as object, apiData as object)
     item.channelName = apiData.ChannelName ?? ""
+    item.channelNumber = apiData.ChannelNumber ?? ""
+    item.channelType = apiData.ChannelType ?? ""
     item.isLive = apiData.IsLive ?? false
     item.isNews = apiData.IsNews ?? false
     item.isSports = apiData.IsSports ?? false
     item.isKids = apiData.IsKids ?? false
     item.isPremiere = apiData.IsPremiere ?? false
+    item.isRepeat = apiData.IsRepeat ?? false
+    item.isMovie = apiData.IsMovie ?? false
+    item.isSeries = apiData.IsSeries ?? false
+    item.audio = apiData.Audio ?? ""
+    item.programId = apiData.ProgramId ?? ""
+    item.seriesTimerId = apiData.SeriesTimerId ?? ""
+    item.timerId = apiData.TimerId ?? ""
+    if isValid(apiData.CompletionPercentage)
+      item.completionPercentage = apiData.CompletionPercentage
+    end if
+    ' Episode/series context within a program
+    item.seriesId = apiData.SeriesId ?? ""
+    item.seriesName = apiData.SeriesName ?? ""
+    item.seasonId = apiData.SeasonId ?? ""
+    item.episodeTitle = apiData.EpisodeTitle ?? ""
+    if isValid(apiData.IndexNumber)
+      item.indexNumber = apiData.IndexNumber
+    end if
+    if isValid(apiData.ParentIndexNumber)
+      item.parentIndexNumber = apiData.ParentIndexNumber
+    end if
   end sub
 
-  ' Store image tags only - URLs generated on-demand
+  ' Transform music-specific fields (Audio, MusicAlbum, MusicArtist, MusicVideo).
+  private sub transformMusicFields(item as object, apiData as object)
+    item.albumArtist = apiData.AlbumArtist ?? ""
+    item.albumName = apiData.Album ?? ""
+    item.albumId = apiData.AlbumId ?? ""
+    if isValid(apiData.Artists)
+      item.artists = apiData.Artists
+    end if
+    if isValid(apiData.ArtistItems)
+      item.artistItems = apiData.ArtistItems
+    end if
+    if isValid(apiData.AlbumArtists)
+      item.albumArtists = apiData.AlbumArtists
+    end if
+    if isValid(apiData.NormalizationGain)
+      item.normalizationGain = apiData.NormalizationGain
+    end if
+    item.hasLyrics = apiData.HasLyrics ?? false
+    ' Track/disc position
+    if isValid(apiData.IndexNumber)
+      item.indexNumber = apiData.IndexNumber
+    end if
+    if isValid(apiData.ParentIndexNumber)
+      item.parentIndexNumber = apiData.ParentIndexNumber
+    end if
+  end sub
+
+  ' Store image tags only - URLs are generated on-demand by the itemImageUrl utility.
   private sub transformImageTags(item as object, apiData as object)
-    ' Primary image tag
     if isValid(apiData.ImageTags)
       item.primaryImageTag = apiData.ImageTags.Primary ?? ""
       item.thumbImageTag = apiData.ImageTags.Thumb ?? ""
       item.logoImageTag = apiData.ImageTags.Logo ?? ""
     end if
 
-    ' Backdrop image tags
+    if isValid(apiData.PrimaryImageAspectRatio)
+      item.primaryImageAspectRatio = apiData.PrimaryImageAspectRatio
+    end if
+
     if isValid(apiData.BackdropImageTags) and apiData.BackdropImageTags.Count() > 0
       item.backdropImageTags = apiData.BackdropImageTags
     end if
 
-    ' Parent/fallback image tags (for episodes, music, etc.)
+    if isValid(apiData.ScreenshotImageTags) and apiData.ScreenshotImageTags.Count() > 0
+      item.screenshotImageTags = apiData.ScreenshotImageTags
+    end if
+
+    if isValid(apiData.ImageBlurHashes)
+      item.imageBlurHashes = apiData.ImageBlurHashes
+    end if
+
+    ' Parent/fallback image tags (for episodes, seasons, music, etc.)
     item.parentPrimaryImageTag = apiData.ParentPrimaryImageTag ?? ""
     item.parentPrimaryImageItemId = apiData.ParentPrimaryImageItemId ?? ""
     item.parentThumbImageTag = apiData.ParentThumbImageTag ?? ""
     item.parentThumbItemId = apiData.ParentThumbItemId ?? ""
+    item.parentLogoImageTag = apiData.ParentLogoImageTag ?? ""
+    item.parentLogoItemId = apiData.ParentLogoItemId ?? ""
+    item.parentArtImageTag = apiData.ParentArtImageTag ?? ""
+    item.parentArtItemId = apiData.ParentArtItemId ?? ""
 
     if isValid(apiData.ParentBackdropImageTags) and apiData.ParentBackdropImageTags.Count() > 0
       item.parentBackdropImageTags = apiData.ParentBackdropImageTags
@@ -209,24 +494,235 @@ class JellyfinDataTransformer
     end if
 
     item.seriesPrimaryImageTag = apiData.SeriesPrimaryImageTag ?? ""
+    item.seriesThumbImageTag = apiData.SeriesThumbImageTag ?? ""
+    item.channelPrimaryImageTag = apiData.ChannelPrimaryImageTag ?? ""
+    item.albumPrimaryImageTag = apiData.AlbumPrimaryImageTag ?? ""
   end sub
 
-  ' Extract studio names from Studios array (can be objects or strings)
-  private function extractStudioNames(studios as object) as object
-    if not isValid(studios) or studios.Count() = 0
-      return []
+  ' Process MediaSources array: normalize container, filter/sort streams, set counts.
+  ' @param item - JellyfinBaseItem node being populated
+  ' @param mediaSources - MediaSources array from the API response
+  ' @param preferredSubtitleLanguage - BCP-47 language code for subtitle sort priority
+  private sub transformMediaSources(item as object, mediaSources as object, preferredSubtitleLanguage as string)
+    ' Store raw data for full playback info access (source switching, etc.)
+    item.mediaSourcesData = { mediaSources: mediaSources }
+    item.hasMultipleVideoSources = mediaSources.Count() > 1
+
+    ' Use the first (default) media source for primary metadata
+    firstSource = mediaSources[0]
+    if not isValid(firstSource)
+      return
     end if
 
-    names = []
-    for each studio in studios
-      if type(studio) = "roAssociativeArray" and isValid(studio.Name)
-        names.push(studio.Name)
-      else if type(studio) = "String" or type(studio) = "roString"
-        names.push(studio)
+    item.mediaSourceId = firstSource.Id ?? ""
+    item.mediaSourceProtocol = firstSource.Protocol ?? ""
+    item.supportsDirectPlay = firstSource.SupportsDirectPlay ?? false
+    ' NOTE: Call module-level normalizeContainer(), not m.normalizeContainer().
+    ' BrightScript does not reliably propagate `m` (the class instance) into private subs
+    ' invoked via method dispatch. Module-level functions avoid this entirely.
+    item.container = JDT_normalizeContainer(firstSource.Container ?? "")
+
+    if not isValid(firstSource.MediaStreams)
+      return
+    end if
+
+    videoStreams = []
+    audioStreams = []
+    rawSubtitleStreams = []
+
+    for each stream in firstSource.MediaStreams
+      streamType = stream.Type ?? ""
+      if streamType = "Video"
+        videoStreams.push(stream)
+      else if streamType = "Audio"
+        audioStreams.push(stream)
+      else if streamType = "Subtitle"
+        rawSubtitleStreams.push(stream)
       end if
     end for
 
+    item.videoStreams = videoStreams
+    item.audioStreams = audioStreams
+    item.subtitleStreams = JDT_sortSubtitleStreams(rawSubtitleStreams, preferredSubtitleLanguage)
+    item.videoStreamCount = videoStreams.Count()
+    item.audioStreamCount = audioStreams.Count()
+    item.subtitleStreamCount = rawSubtitleStreams.Count()
+  end sub
+
+
+  ' Map Chapters array to item fields.
+  private sub transformChapters(item as object, chapters as object)
+    item.chapters = chapters
+    item.chapterCount = chapters.Count()
+  end sub
+
+  ' Store trickplay data for consumption by the video player.
+  private sub transformTrickplay(item as object, trickplayApiData as object)
+    item.trickplayData = trickplayApiData
+  end sub
+
+  ' Store media attachments (embedded fonts, cover art, etc.).
+  private sub transformMediaAttachments(item as object, attachments as object)
+    item.mediaAttachments = attachments
+  end sub
+
+  ' Pre-compute the subtitle display string shown as secondary text on cards/lists.
+  ' @param apiData - Raw BaseItemDto assocarray
+  ' @returns Pre-formatted subtitle string, or "" if not applicable
+  private function computeSubtitle(apiData as object) as string
+    itemType = apiData.Type ?? ""
+
+    if itemType = "Episode"
+      s = apiData.ParentIndexNumber
+      e = apiData.IndexNumber
+      episodeName = apiData.Name ?? ""
+      if not isValid(s) or not isValid(e)
+        return episodeName
+      end if
+      result = "S" + s.toStr() + "E" + e.toStr()
+      if isValidAndNotEmpty(episodeName)
+        result += " - " + episodeName
+      end if
+      return result
+
+    else if itemType = "Movie" or itemType = "Video" or itemType = "MusicVideo"
+      parts = []
+      year = apiData.ProductionYear
+      rating = apiData.OfficialRating ?? ""
+      if isValid(year) and year > 0
+        parts.push(str(year).trim())
+      end if
+      if isValidAndNotEmpty(rating)
+        parts.push(rating)
+      end if
+      return parts.join(" • ")
+
+    else if itemType = "Series"
+      year = apiData.ProductionYear
+      if not isValid(year) or year = 0
+        return ""
+      end if
+      yearStr = str(year).trim()
+      status = apiData.Status ?? ""
+      endDate = apiData.EndDate ?? ""
+      if status = "Ended" and isValidAndNotEmpty(endDate) and endDate.Len() >= 4
+        return yearStr + " - " + left(endDate, 4)
+      end if
+      return yearStr + " - Present"
+
+    else if itemType = "MusicAlbum" or itemType = "Audio"
+      return apiData.AlbumArtist ?? ""
+
+    else if itemType = "BoxSet" or itemType = "PhotoAlbum"
+      count = apiData.ChildCount ?? 0
+      if count = 1
+        return "1 item"
+      end if
+      return str(count).trim() + " items"
+
+    else if itemType = "Program" or itemType = "Recording"
+      episodeTitle = apiData.EpisodeTitle ?? ""
+      if isValidAndNotEmpty(episodeTitle)
+        return episodeTitle
+      end if
+      return apiData.ChannelName ?? ""
+
+    else if itemType = "Season"
+      return apiData.SeriesName ?? ""
+
+    else if itemType = "Photo"
+      year = apiData.ProductionYear
+      if isValid(year) and year > 0
+        return str(year).trim()
+      end if
+      return ""
+
+    end if
+
+    return ""
+  end function
+
+
+  ' Extract name strings from a NameGuidPair array (or plain string array).
+  private function extractNamedItemNames(items as object) as object
+    if not isValid(items) or items.Count() = 0
+      return []
+    end if
+    names = []
+    for each it in items
+      if type(it) = "roAssociativeArray" and isValid(it.Name)
+        names.push(it.Name)
+      else if type(it) = "String" or type(it) = "roString"
+        names.push(it)
+      end if
+    end for
     return names
   end function
 
+  ' Extract NameGuidPair AAs from an array (filters out plain strings).
+  private function extractNamedItems(items as object) as object
+    if not isValid(items) or items.Count() = 0
+      return []
+    end if
+    result = []
+    for each it in items
+      if type(it) = "roAssociativeArray"
+        result.push(it)
+      end if
+    end for
+    return result
+  end function
+
 end class
+
+' ── Module-level helpers ──────────────────────────────────────────────────────
+' These are intentionally outside the class. BrightScript does not reliably
+' propagate `m` (the class instance) into private subs invoked via method
+' dispatch, so any helper called from a private sub must be a plain function.
+
+' Normalize container format strings (m4v/mov → mp4).
+function JDT_normalizeContainer(container as string) as string
+  if not isValidAndNotEmpty(container)
+    return ""
+  end if
+  c = LCase(container)
+  if c = "m4v" or c = "mov"
+    return "mp4"
+  end if
+  return c
+end function
+
+' Sort subtitle streams: forced > default > normal, preferred language first within each group.
+' Ports the ordering logic from Subtitles.bs sortSubtitles() for use at transform time.
+' @param streams - Array of subtitle MediaStream AAs
+' @param preferredLanguage - BCP-47 language code (e.g. "eng"), or "" for no preference
+' @returns Sorted subtitle stream array
+function JDT_sortSubtitleStreams(streams as object, preferredLanguage as string) as object
+  if not isValid(streams) or streams.Count() = 0
+    return []
+  end if
+
+  forced = []
+  default_ = []
+  normal = []
+
+  for each stream in streams
+    lang = stream.Language ?? ""
+    isForced = stream.IsForced ?? false
+    isDefault = stream.IsDefault ?? false
+    isPreferred = isValidAndNotEmpty(preferredLanguage) and lang = preferredLanguage
+
+    if isForced
+      if isPreferred then forced.unshift(stream) else forced.push(stream)
+    else if isDefault
+      if isPreferred then default_.unshift(stream) else default_.push(stream)
+    else
+      if isPreferred then normal.unshift(stream) else normal.push(stream)
+    end if
+  end for
+
+  ' Merge: forced > default > normal
+  default_.append(normal)
+  forced.append(default_)
+  return forced
+end function
