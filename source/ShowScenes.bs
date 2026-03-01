@@ -758,12 +758,7 @@ function CreateArtistView(artist as object) as dynamic
     group.pageContent = ItemMetaData(artist.id)
     group.musicArtistAlbumData = musicData
     group.musicArtistAppearsOnData = appearsOnData
-    ' artist.name: JellyfinBaseItem typed field; legacy nodes store name in json.name
-    artistName = artist.name
-    if not isValidAndNotEmpty(artistName) and isValid(artist.json)
-      artistName = artist.json.name ?? ""
-    end if
-    group.artistOverview = ArtistOverview(artistName)
+    group.artistOverview = ArtistOverview(artist.name)
 
     group.observeField("musicAlbumSelected", m.port)
     group.observeField("playArtistSelected", m.port)

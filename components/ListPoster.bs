@@ -1,4 +1,4 @@
-import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -13,16 +13,7 @@ sub init()
 end sub
 
 sub updateSize()
-  image = invalid
-  if isValid(m.top.itemContent) and isValid(m.top.itemContent.image)
-    image = m.top.itemContent.image
-  end if
-
-  if not isValid(image)
-    m.backdrop.visible = true
-  else
-    m.backdrop.visible = false
-  end if
+  ' Backdrop visibility is controlled in itemContentChanged() based on whether a poster URL is available.
 
   ' TODO - abstract this in case the parent doesnt have itemSize
   maxSize = m.top.getParent().itemSize
@@ -47,29 +38,25 @@ end sub
 
 sub itemContentChanged() as void
   itemData = m.top.itemContent
-  if not isValid(itemData) then return
+  if not isValidAndNotEmpty(itemData.id) then return
 
   m.title.text = itemData.title
   userSettings = m.global.user.settings
 
   if not userSettings.uiTvShowsDisableUnwatchedCount
-    if isValid(itemData.json.UserData) and isValid(itemData.json.UserData.UnplayedItemCount)
-      if itemData.json.UserData.UnplayedItemCount > 0
-        m.poster.unplayedCount = itemData.json.UserData.UnplayedItemCount
-      end if
+    if itemData.unplayedItemCount > 0
+      m.poster.unplayedCount = itemData.unplayedItemCount
     end if
   end if
 
-  if isValid(itemData.json) and isValid(itemData.json.UserData) and isValid(itemData.json.UserData.Played) and itemData.json.UserData.Played
+  if itemData.isWatched
     m.poster.isWatched = true
   end if
 
-  if itemData.json.lookup("Type") = "Episode" and isValid(itemData.json.IndexNumber)
-    m.title.text = StrI(itemData.json.IndexNumber) + ". " + m.title.text
-
-    m.series.text = itemData.json.Series
-    m.series.visible = true
-  else if itemData.json.lookup("Type") = "MusicAlbum"
+  itemType = itemData.type
+  if itemType = "Episode" and itemData.indexNumber > 0
+    m.title.text = StrI(itemData.indexNumber) + ". " + m.title.text
+  else if itemType = "MusicAlbum"
     m.title.font = "font:SmallestSystemFont"
     m.staticTitle.font = "font:SmallestSystemFont"
   else
@@ -77,17 +64,16 @@ sub itemContentChanged() as void
   end if
   m.staticTitle.text = m.title.text
 
-  imageUrl = itemData.posterURL
+  posterUri = getItemPosterUrl(itemData)
 
   if userSettings.uiTvShowsBlurUnwatched
-    if itemData.json.lookup("Type") = "Episode" and isValid(itemData.json.userdata)
-      if not itemData.json.userdata.played
-        imageUrl = imageUrl + "&blur=15"
-      end if
+    if itemType = "Episode" and not itemData.isWatched
+      posterUri = posterUri + "&blur=15"
     end if
   end if
 
-  m.poster.uri = imageUrl
+  m.backdrop.visible = not isValidAndNotEmpty(posterUri)
+  m.poster.uri = posterUri
 
   updateSize()
 end sub

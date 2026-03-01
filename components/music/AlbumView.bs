@@ -1,3 +1,4 @@
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -28,9 +29,7 @@ sub OnScreenShown()
   ' Set backdrop from album data (only if pageContent is already loaded)
   ' This handles the case when returning to an already-loaded screen
   if isValid(m.top.pageContent)
-    if isValid(m.top.pageContent.backdropUrl)
-      m.global.sceneManager.callFunc("setBackgroundImage", m.top.pageContent.backdropUrl)
-    end if
+    m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(m.top.pageContent))
   end if
   ' If pageContent not loaded, backdrop will be set in pageContentChanged()
 
@@ -45,37 +44,27 @@ end sub
 ' Set values for displayed values on screen
 sub pageContentChanged()
   item = m.top.pageContent
+  if not isValid(item) then return
 
   ' Set backdrop from album's artist backdrop
-  if isValid(item) and isValid(item.backdropUrl)
-    m.global.sceneManager.callFunc("setBackgroundImage", item.backdropUrl)
+  m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(item))
+
+  posterUrl = getItemPosterUrl(item)
+  if isValidAndNotEmpty(posterUrl)
+    m.albumCover.uri = posterUrl
   end if
 
-  setPosterImage(item.posterURL)
-  setScreenTitle(item.json)
-  setOnScreenTextValues(item.json)
+  setScreenTitle(item)
+  setOnScreenTextValues(item)
 end sub
 
-' Set poster image on screen
-sub setPosterImage(posterURL)
-  if isValid(posterURL)
-    m.albumCover.uri = posterURL
-  end if
-end sub
-
-' Set screen's title text
-sub setScreenTitle(json)
+' Set screen's title text to "Artist / Album" when both available
+sub setScreenTitle(item as object)
   newTitle = ""
-  if isValid(json)
-    if isValid(json.AlbumArtist)
-      newTitle = json.AlbumArtist
-    end if
-    if isValid(json.AlbumArtist) and isValid(json.name)
-      newTitle = newTitle + " / "
-    end if
-    if isValid(json.name)
-      newTitle = newTitle + json.name
-    end if
+  if item.albumArtist <> "" and item.name <> ""
+    newTitle = item.albumArtist + " / " + item.name
+  else if item.name <> ""
+    newTitle = item.name
   end if
   m.top.overhangTitle = newTitle
 end sub
@@ -88,29 +77,25 @@ sub adjustScreenForNoOverview()
 end sub
 
 ' Populate on screen text variables
-sub setOnScreenTextValues(json)
-  if isValid(json)
-    if isValid(json.overview) and json.overview <> ""
-      ' We have overview text
-      setFieldTextValue("overview", json.overview)
-    else
-      ' We don't have overview text
-      adjustScreenForNoOverview()
-    end if
+sub setOnScreenTextValues(item as object)
+  if item.overview <> ""
+    setFieldTextValue("overview", item.overview)
+  else
+    adjustScreenForNoOverview()
+  end if
 
-    setFieldTextValue("numberofsongs", stri(json.ChildCount) + " Tracks")
+  setFieldTextValue("numberofsongs", stri(item.childCount) + " Tracks")
 
-    if type(json.ProductionYear) = "roInt"
-      setFieldTextValue("released", "Released " + stri(json.ProductionYear))
-    end if
+  if item.productionYear > 0
+    setFieldTextValue("released", "Released " + stri(item.productionYear))
+  end if
 
-    if json.genres.count() > 0
-      setFieldTextValue("genres", json.genres.join(", "))
-    end if
+  if item.genres.count() > 0
+    setFieldTextValue("genres", item.genres.join(", "))
+  end if
 
-    if type(json.RunTimeTicks) = "LongInteger"
-      setFieldTextValue("runtime", stri(getMinutes(json.RunTimeTicks)) + " mins")
-    end if
+  if item.runTimeTicks > 0
+    setFieldTextValue("runtime", stri(getMinutes(item.runTimeTicks)) + " mins")
   end if
 end sub
 

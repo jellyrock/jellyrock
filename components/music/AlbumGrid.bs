@@ -1,3 +1,4 @@
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -18,15 +19,16 @@ function getData()
   for each album in albumData.items
     gridAlbum = CreateObject("roSGNode", "ContentNode")
 
-    if not isValid(album.posterURL) or album.posterURL = ""
-      album.posterURL = "pkg:/images/icons/album.png"
+    posterUrl = getItemPosterUrl(album)
+    if not isValidAndNotEmpty(posterUrl)
+      posterUrl = "pkg:/images/icons/album.png"
     end if
 
     gridAlbum.shortdescriptionline1 = album.title
-    gridAlbum.HDGRIDPOSTERURL = album.posterURL
-    gridAlbum.hdposterurl = album.posterURL
-    gridAlbum.SDGRIDPOSTERURL = album.posterURL
-    gridAlbum.sdposterurl = album.posterURL
+    gridAlbum.HDGRIDPOSTERURL = posterUrl
+    gridAlbum.hdposterurl = posterUrl
+    gridAlbum.SDGRIDPOSTERURL = posterUrl
+    gridAlbum.sdposterurl = posterUrl
 
     data.appendChild(gridAlbum)
   end for

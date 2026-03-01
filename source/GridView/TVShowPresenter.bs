@@ -156,14 +156,15 @@ class TVShowPresenter extends GridPresenterBase
     end if
 
     ' Handle network/studio parent items (user clicked on a network)
-    if isValid(parentItem) and isValid(parentItem.json) and isValid(parentItem.json.type)
-      if parentItem.json.type = "Studio"
+    if isValid(parentItem) and isValidAndNotEmpty(parentItem.type)
+      if parentItem.type = "Studio"
         task.studioIds = parentItem.id
-        task.itemId = parentItem.parentFolder
+        task.itemId = parentItem.parentId
         task.genreIds = ""
-      else if parentItem.json.type = "Genre"
+      else if parentItem.type = "Genre" or (parentItem.type = "Folder" and parentItem.folderType = "Genre")
+        ' Genre items from /Genres have IsFolder=true so transformer sets type="Folder"+folderType="Genre"
         task.genreIds = parentItem.id
-        task.itemId = parentItem.parentFolder
+        task.itemId = parentItem.parentId
         task.studioIds = ""
       end if
     end if

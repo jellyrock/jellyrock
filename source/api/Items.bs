@@ -252,12 +252,10 @@ function searchMedia(query as string)
 
     if not isValid(data) then return []
 
+    transformer = JellyfinDataTransformer()
     results = []
     for each item in data.Items
-      tmp = CreateObject("roSGNode", "SearchData")
-      tmp.image = PosterImage(item.id)
-      tmp.json = item
-      results.push(tmp)
+      results.push(transformer.transformBaseItem(item))
     end for
     data.Items = results
     return data
@@ -296,12 +294,10 @@ function MusicAlbumList(id as string)
   })
 
   data = getJson(resp)
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicAlbumData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -320,12 +316,10 @@ function AppearsOnList(id as string)
   })
 
   data = getJson(resp)
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicAlbumData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -353,11 +347,9 @@ function GetSongsByArtist(id as string, params = {} as object)
   if not isValid(data.Items) then return invalid
   if data.Items.Count() = 0 then return invalid
 
+  transformer = JellyfinDataTransformer()
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicAlbumData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -377,11 +369,9 @@ function PlaylistItemList(id as string)
   if not isValid(data.Items) then return invalid
   if data.Items.Count() = 0 then return invalid
 
+  transformer = JellyfinDataTransformer()
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "PlaylistData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -405,11 +395,9 @@ function MusicSongList(id as string)
   if not isValid(data.Items) then return invalid
   if data.Items.Count() = 0 then return invalid
 
+  transformer = JellyfinDataTransformer()
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicSongData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -524,12 +512,10 @@ function TVSeasons(id as string) as dynamic
   ' validate data
   if not isValid(data) or not isValid(data.Items) then return invalid
 
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "TVSeasonData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data

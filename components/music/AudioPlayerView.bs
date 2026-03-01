@@ -1,7 +1,7 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -545,28 +545,27 @@ sub onAudioStreamLoaded()
     useMetaTask = false
     currentItem = m.queueManager.callFunc("getCurrentItem")
 
-    if not isValid(currentItem.RunTimeTicks)
+    if not isValid(currentItem.runTimeTicks) or currentItem.runTimeTicks = 0
       useMetaTask = true
     end if
 
-    if not isValid(currentItem.AlbumArtist)
+    if not isValidAndNotEmpty(currentItem.albumArtist)
       useMetaTask = true
     end if
 
-    if not isValid(currentItem.name)
+    if not isValidAndNotEmpty(currentItem.name)
       useMetaTask = true
     end if
 
-    if not isValid(currentItem.Artists)
+    if not isValid(currentItem.artists) or currentItem.artists.count() = 0
       useMetaTask = true
     end if
 
     ' Set backdrop immediately from available data (will be set once in onMetaDataLoaded if useMetaTask = true)
     if not useMetaTask
       ' We have all data, set backdrop now from parent backdrop
-      if isValid(currentItem.ParentBackdropItemId) and isValid(currentItem.ParentBackdropImageTags) and currentItem.ParentBackdropImageTags.count() > 0
-        localDevice = m.global.device
-        backdropUri = ImageURL(currentItem.ParentBackdropItemId, "Backdrop", { "maxHeight": localDevice.uiResolution[1], "maxWidth": localDevice.uiResolution[0], "tag": currentItem.ParentBackdropImageTags[0] })
+      backdropUri = getItemBackdropUrl(currentItem)
+      if isValidAndNotEmpty(backdropUri)
         m.log.info("Backdrop change (immediate): old=", m.currentBackdropUrl, "new=", backdropUri)
         m.currentBackdropUrl = backdropUri
         m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
@@ -584,13 +583,11 @@ sub onAudioStreamLoaded()
       m.LoadMetaDataTask.control = "RUN"
     else
 
-      ' poster image
-      if isValid(currentItem.AlbumId) and isValid(currentItem.AlbumPrimaryImageTag) and currentItem.AlbumPrimaryImageTag <> ""
-        ' use primary album image
-        setPosterImage(ImageURL(currentItem.AlbumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.AlbumPrimaryImageTag }))
-      else if isValid(currentItem.ImageTags) and currentItem.ImageTags["Primary"] <> invalid
-        ' use primary poster image
-        setPosterImage(ImageURL(currentItem.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.ImageTags["Primary"] }))
+      ' poster image — prefer album art, fall back to song primary, then placeholder
+      if isValidAndNotEmpty(currentItem.albumId) and isValidAndNotEmpty(currentItem.albumPrimaryImageTag)
+        setPosterImage(ImageURL(currentItem.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.albumPrimaryImageTag }))
+      else if isValidAndNotEmpty(currentItem.primaryImageTag)
+        setPosterImage(ImageURL(currentItem.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.primaryImageTag }))
       else
         ' no poster available, show placeholder image
         setPosterImage("pkg:/images/icons/album.png")
@@ -598,10 +595,10 @@ sub onAudioStreamLoaded()
 
       setScreenTitle(currentItem)
       setOnScreenTextValues(currentItem)
-      m.songDuration = currentItem.RunTimeTicks / 10000000.0
+      m.songDuration = currentItem.runTimeTicks / 10000000.0
 
       ' Update displayed total audio length
-      m.totalLengthTimestamp.text = ticksToHuman(currentItem.RunTimeTicks)
+      m.totalLengthTimestamp.text = ticksToHuman(currentItem.runTimeTicks)
     end if
 
     m.audioPlayer.content = data
@@ -613,51 +610,37 @@ end sub
 sub onMetaDataLoaded()
   data = m.LoadMetaDataTask.content[0]
   m.LoadMetaDataTask.unobserveField("content")
-  if isValid(data) and data.count() > 0 and isValid(data.json)
-    ' Set backdrop with fallback strategy: artist backdrop → parent backdrop → clear
-    backdropSet = false
-    localDevice = m.global.device
+  if not isValidAndNotEmpty(data.id) then return
 
-    ' Try artist backdrop first (preferred)
-    if isValid(data.json.ArtistItems) and isValid(data.json.ArtistItems[0]) and isValid(data.json.ArtistItems[0].id)
-      artist = data.json.ArtistItems[0]
-      if isValid(artist.BackdropImageTags) and artist.BackdropImageTags.count() > 0
-        backdropUri = ImageURL(artist.id, "Backdrop", { "maxHeight": localDevice.uiResolution[1], "maxWidth": localDevice.uiResolution[0], "tag": artist.BackdropImageTags[0] })
-        m.log.info("Backdrop change (artist): old=", m.currentBackdropUrl, "new=", backdropUri)
-        m.currentBackdropUrl = backdropUri
-        m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
-        backdropSet = true
-      end if
-    end if
+  ' Set backdrop from item or parent backdrop (NameGuidPair artist items have no BackdropImageTags)
+  backdropUri = getItemBackdropUrl(data)
+  if isValidAndNotEmpty(backdropUri)
+    m.log.info("Backdrop change (parent): old=", m.currentBackdropUrl, "new=", backdropUri)
+    m.currentBackdropUrl = backdropUri
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
+  else
+    m.log.info("Backdrop change (clear): old=", m.currentBackdropUrl, "new=(empty)")
+    m.currentBackdropUrl = ""
+    m.global.sceneManager.callFunc("setBackgroundImage", "")
+  end if
 
-    ' Fall back to parent backdrop if no artist backdrop
-    if not backdropSet
-      if isValid(data.json.ParentBackdropItemId) and isValid(data.json.ParentBackdropImageTags) and data.json.ParentBackdropImageTags.count() > 0
-        backdropUri = ImageURL(data.json.ParentBackdropItemId, "Backdrop", { "maxHeight": localDevice.uiResolution[1], "maxWidth": localDevice.uiResolution[0], "tag": data.json.ParentBackdropImageTags[0] })
-        m.log.info("Backdrop change (parent): old=", m.currentBackdropUrl, "new=", backdropUri)
-        m.currentBackdropUrl = backdropUri
-        m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
-        backdropSet = true
-      end if
-    end if
+  ' poster image — prefer album art, fall back to song primary, then placeholder
+  if isValidAndNotEmpty(data.albumId) and isValidAndNotEmpty(data.albumPrimaryImageTag)
+    setPosterImage(ImageURL(data.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": data.albumPrimaryImageTag }))
+  else if isValidAndNotEmpty(data.primaryImageTag)
+    setPosterImage(ImageURL(data.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": data.primaryImageTag }))
+  else
+    setPosterImage("pkg:/images/icons/album.png")
+  end if
 
-    ' Clear backdrop if no valid source found
-    if not backdropSet
-      m.log.info("Backdrop change (clear): old=", m.currentBackdropUrl, "new=(empty)")
-      m.currentBackdropUrl = ""
-      m.global.sceneManager.callFunc("setBackgroundImage", "")
-    end if
+  setScreenTitle(data)
+  setOnScreenTextValues(data)
 
-    setPosterImage(data.posterURL)
-    setScreenTitle(data.json)
-    setOnScreenTextValues(data.json)
+  if data.runTimeTicks > 0
+    m.songDuration = data.runTimeTicks / 10000000.0
 
-    if isValid(data.json.RunTimeTicks)
-      m.songDuration = data.json.RunTimeTicks / 10000000.0
-
-      ' Update displayed total audio length
-      m.totalLengthTimestamp.text = ticksToHuman(data.json.RunTimeTicks)
-    end if
+    ' Update displayed total audio length
+    m.totalLengthTimestamp.text = ticksToHuman(data.runTimeTicks)
   end if
 end sub
 
@@ -682,36 +665,34 @@ sub setPosterImage(posterURL)
   end if
 end sub
 
-' Set screen's title text
-sub setScreenTitle(json)
+' Set screen's title text to "Artist / Song" when both are available,
+' just song name if no album artist, or empty string to reset the title.
+sub setScreenTitle(item as object)
   newTitle = ""
-  if isValid(json)
-    if isValid(json.AlbumArtist)
-      newTitle = json.AlbumArtist
-    end if
-    if isValid(json.AlbumArtist) and isValid(json.name)
-      newTitle = newTitle + " / "
-    end if
-    if isValid(json.name)
-      newTitle = newTitle + json.name
-    end if
+  if item.albumArtist <> "" and item.name <> ""
+    newTitle = item.albumArtist + " / " + item.name
+  else if item.name <> ""
+    newTitle = item.name
   end if
 
+  ' Always assign — resets title when newTitle is ""
   if m.top.overhangTitle <> newTitle
     m.top.overhangTitle = newTitle
   end if
 end sub
 
 ' Populate on screen text variables
-sub setOnScreenTextValues(json)
-  if isValid(json)
-    if m.playlistTypeCount = 1
-      setTrackNumberDisplay()
-    end if
-
-    setFieldTextValue("artist", json.Artists[0])
-    setFieldTextValue("song", json.name)
+sub setOnScreenTextValues(item as object)
+  if m.playlistTypeCount = 1
+    setTrackNumberDisplay()
   end if
+
+  artistName = ""
+  if item.artists.count() > 0
+    artistName = item.artists[0]
+  end if
+  setFieldTextValue("artist", artistName)
+  setFieldTextValue("song", item.name)
 end sub
 
 ' processScrubAction: Handles +/- seeking for the audio trickplay bar

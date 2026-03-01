@@ -157,11 +157,8 @@ namespace quickplay
   sub boxset(itemNode as object)
     if not isValid(itemNode) or not isValid(itemNode.id) then return
 
-    ' ONE rendezvous to get user ID
-    userId = m.global.user.id
-
     data = api.items.GetByQuery({
-      "userid": userId,
+      "userid": m.global.user.id,
       "parentid": itemNode.id,
       "limit": 2000,
       "EnableTotalRecordCount": false
@@ -353,11 +350,7 @@ namespace quickplay
     globalUser = m.global.user
     if not isValid(itemNode) or not isValid(itemNode.id) then return
 
-    ' seriesId: JellyfinBaseItem typed field; legacy TVSeasonData stores it in json.SeriesId
     seriesId = itemNode.seriesId
-    if not isValidAndNotEmpty(seriesId) and isValid(itemNode.json)
-      seriesId = itemNode.json.SeriesId ?? ""
-    end if
 
     unwatchedData = api.shows.GetEpisodes(seriesId, {
       "seasonId": itemNode.id,

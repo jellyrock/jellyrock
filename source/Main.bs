@@ -119,11 +119,6 @@ sub Main (args as dynamic) as void
         itemType = invalid
         if isValid(itemNode.type) and itemNode.type <> ""
           itemType = Lcase(itemNode.type)
-        else
-          ' grab type from json and convert to lowercase
-          if isValid(itemNode.json) and isValid(itemNode.json.type)
-            itemType = Lcase(itemNode.json.type)
-          end if
         end if
 
         ' can't play the item without knowing what type it is
@@ -198,9 +193,14 @@ sub Main (args as dynamic) as void
 
               data = api.users.GetItem(m.global.user.id, currentEpisode.id)
               if isValid(data)
-                currentScene.objects.Items[i].json = data
+                ' Update playback position on the JellyfinBaseItem node
+                positionTicks = 0
                 if isValid(data.UserData) and isValid(data.UserData.PlaybackPositionTicks)
-                  m.global.queueManager.callFunc("setTopStartingPoint", data.UserData.PlaybackPositionTicks)
+                  positionTicks = data.UserData.PlaybackPositionTicks
+                end if
+                currentScene.objects.Items[i].playbackPositionTicks = positionTicks
+                if positionTicks > 0
+                  m.global.queueManager.callFunc("setTopStartingPoint", positionTicks)
                 end if
               end if
               exit for
@@ -247,18 +247,20 @@ sub Main (args as dynamic) as void
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Folder" and selectedItem.folderType = "Genre"
-          ' User clicked on a genre folder
+        else if selectedItemType = "Genre" or selectedItemType = "MusicGenre" or (selectedItemType = "Folder" and (selectedItem.folderType = "Genre" or selectedItem.folderType = "MusicGenre"))
+          ' User clicked on a genre/music-genre — open scoped library view
           group = CreateLibraryView(selectedItem)
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Folder" and selectedItem.folderType = "MusicGenre"
+        else if selectedItemType = "Studio"
+          ' Studio items from /Studios endpoint have IsFolder=false so type="Studio" directly.
+          ' Route to a library view scoped to that studio (presenter inferred via collectionType).
           group = CreateLibraryView(selectedItem)
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "UserView" or selectedItemType = "Folder" or selectedItemType = "Channel" or selectedItemType = "Boxset"
+        else if selectedItemType = "UserView" or selectedItemType = "Folder" or selectedItemType = "Channel" or selectedItemType = "BoxSet"
           group = CreateLibraryView(selectedItem)
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
@@ -515,45 +517,36 @@ sub Main (args as dynamic) as void
       else if node.type = "Movie"
         group = CreateMovieDetailsGroup(node)
       else if node.type = "MusicArtist"
-        group = CreateArtistView(node.json)
+        group = CreateArtistView(node)
       else if node.type = "MusicAlbum"
-        group = CreateAlbumView(node.json)
+        group = CreateAlbumView(node)
       else if node.type = "MusicVideo"
         group = CreateMovieDetailsGroup(node)
       else if node.type = "Audio"
         m.global.queueManager.callFunc("clear")
         m.global.queueManager.callFunc("resetShuffle")
-        m.global.queueManager.callFunc("push", node.json)
+        m.global.queueManager.callFunc("push", node)
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Person"
         group = CreatePersonView(node)
       else if node.type = "TvChannel"
         m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("push", node.json)
+        m.global.queueManager.callFunc("push", node)
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Episode"
-        ' Cache reference to prevent multiple field accesses
-        itemData = node.json
         ' Show playback options dialog if episode has resume position
-        if isValid(itemData) and isValid(itemData.UserData) and isValid(itemData.UserData.PlaybackPositionTicks)
-          if itemData.UserData.PlaybackPositionTicks > 0
-            m.global.queueManager.callFunc("hold", itemData)
-            playbackOptionDialog(itemData.UserData.PlaybackPositionTicks, itemData)
-          else
-            ' No resume position, play from beginning via queue
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", itemData)
-            m.global.queueManager.callFunc("playQueue")
-          end if
+        if node.playbackPositionTicks > 0
+          m.global.queueManager.callFunc("hold", node)
+          playbackOptionDialog(node.playbackPositionTicks, node)
         else
-          ' No UserData, play from beginning via queue
+          ' No resume position, play from beginning via queue
           m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("push", itemData)
+          m.global.queueManager.callFunc("push", node)
           m.global.queueManager.callFunc("playQueue")
         end if
       else if LCase(node.type) = "recording"
         m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("push", node.json)
+        m.global.queueManager.callFunc("push", node)
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Audio"
         selectedIndex = msg.getData()

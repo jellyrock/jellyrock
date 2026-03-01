@@ -60,36 +60,36 @@ function DeterminePresenterType(libraryItem as object) as string
     return "photo"
   end if
 
-  ' Genre folder - check what type of content it contains
+  ' Studio items with IsFolder=false arrive with type="Studio" directly (not via folderType).
+  ' collectionType is set by LoadItemsTask2 based on the content being fetched.
+  if LCase(libraryItem.type) = "studio"
+    if collectionType = "movies" then return "movie"
+    if collectionType = "tvshows" then return "tvshow"
+    return "movie"  ' default: studios are most commonly in movie libraries
+  end if
+
+  ' Genre folder - use collectionType set by LoadItemsTask2 first, fall back to item counts
   if folderType = "genre"
-    ' Check if it's a movie genre (has movies)
-    if libraryItem.movieCount > 0
-      return "movie"
-    end if
-    ' Check if it's a TV show genre (has series)
-    if libraryItem.seriesCount > 0
-      return "tvshow"
-    end if
-    ' Default genre to generic
+    if collectionType = "movies" then return "movie"
+    if collectionType = "music" then return "music"
+    if collectionType = "tvshows" then return "tvshow"
+    ' Fallback for server responses that include item counts
+    if libraryItem.movieCount > 0 then return "movie"
+    if libraryItem.seriesCount > 0 then return "tvshow"
     return "generic"
   end if
 
-  ' Studio folder - check what type of content it contains
+  ' Studio folder (IsFolder=true) - use collectionType first, fall back to item counts
   if folderType = "studio"
-    ' Check movie count first since studios are more common in movie libraries
-    if libraryItem.movieCount > 0
-      return "movie"
-    end if
-    ' Check for TV series (Networks)
-    if libraryItem.seriesCount > 0
-      return "tvshow"
-    end if
-    ' Default to generic if no content counts available
-    return "generic"
+    if collectionType = "movies" then return "movie"
+    if collectionType = "tvshows" then return "tvshow"
+    if libraryItem.movieCount > 0 then return "movie"
+    if libraryItem.seriesCount > 0 then return "tvshow"
+    return "movie"  ' default studios to movie
   end if
 
-  ' Music genre folder
-  if folderType = "musicgenre"
+  ' Music genre — either via folderType (when IsFolder=true) or raw type (when IsFolder is absent)
+  if folderType = "musicgenre" or LCase(libraryItem.type) = "musicgenre"
     return "music"
   end if
 

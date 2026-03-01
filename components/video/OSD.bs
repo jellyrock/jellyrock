@@ -94,6 +94,8 @@ sub onItemDataChanged()
   ' Runtime
   if item.runTimeTicks > 0
     m.top.runTimeMinutes = ticksToMinutes(item.runTimeTicks)
+  else
+    m.top.runTimeMinutes = 0
   end if
 
   ' TODO Phase 6: Live TV CurrentProgram override for runTimeTicks/runTimeMinutes
