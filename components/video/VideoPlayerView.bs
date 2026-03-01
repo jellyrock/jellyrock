@@ -546,13 +546,14 @@ sub onVideoContentLoaded()
   m.LoadMetaDataTask.bypassDoviPreservation = false
   m.LoadMetaDataTask.forceTranscoding = false
 
-  if isValidAndNotEmpty(videoContent[0].json)
-    m.osd.json = formatJson(videoContent[0].json)
+  ' Pass JellyfinBaseItem node to OSD for typed field access
+  if isValid(videoContent[0].meta)
+    m.osd.itemData = videoContent[0].meta
   end if
 
   ' Attempt to add logo to OSD
   if isValidAndNotEmpty(videoContent[0].logoImage)
-    m.osd.logoImage = videoContent[0].logoImage
+    m.osd.videoLogo = videoContent[0].logoImage
   end if
 
   populateChapterMenu()

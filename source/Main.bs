@@ -312,10 +312,15 @@ sub Main (args as dynamic) as void
           end if
 
           ' Display playback options dialog if there is a saved resume position
-          if selectedItem.playbackPositionTicks > 0
+          ' Guard: ChannelData (Phase 6) doesn't have playbackPositionTicks field
+          resumeTicks = 0
+          if isValid(selectedItem.playbackPositionTicks)
+            resumeTicks = selectedItem.playbackPositionTicks
+          end if
+          if resumeTicks > 0
             dialog.close = true
             m.global.queueManager.callFunc("hold", queueItem)
-            playbackOptionDialog(selectedItem.playbackPositionTicks, queueItem)
+            playbackOptionDialog(resumeTicks, queueItem)
           else
             m.global.queueManager.callFunc("clear")
             m.global.queueManager.callFunc("push", queueItem)

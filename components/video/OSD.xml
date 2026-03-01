@@ -52,41 +52,29 @@
     <Timer id="inactivityTimer" duration="1" repeat="true" />
   </children>
   <interface>
-    <field id="type" type="string" value="" />
+    <!-- Item data node (JellyfinBaseItem) - read-only source for all media metadata.
+         OSD reads typed fields directly: type, name, seriesName, officialRating, etc.
+         Set by VideoPlayerView when video content loads. -->
+    <field id="itemData" type="node" onChange="onItemDataChanged" />
+
+    <!-- Presentation state computed from itemData in onItemDataChanged() -->
     <field id="isMovie" type="boolean" value="false" />
     <field id="isSeries" type="boolean" value="false" />
-    <field id="videoTitle" type="string" value="" />
-    <field id="seasonNumber" type="integer" />
-    <field id="episodeNumber" type="integer" />
-    <field id="episodeNumberEnd" type="integer" />
-    <field id="seriesName" type="string" value="" />
-    <field id="overview" type="string" value="" />
-    <field id="seriesStudio" type="string" value="" />
-    <!-- eg. TV-PG -->
-    <field id="officialRating" type="string" value="" />
-    <!-- eg. 7.3 (out of 10) -->
-    <field id="communityRating" type="float" />
-    <!-- eg. 95 (out of 100) -->
-    <field id="criticRating" type="float" />
-    <!-- eg. "2011-01-17T00:00:00.0000000Z" -->
-    <field id="premiereDate" type="string" value="" />
-    <field id="productionYear" type="integer" />
-    <field id="hasSubtitles" type="boolean" value="false" />
     <field id="hasChapters" type="boolean" value="false" />
-    <field id="runTimeTicks" type="longinteger" />
+    <field id="numAudioStreams" type="integer" />
     <field id="runTimeMinutes" type="integer" />
+
+    <!-- Playback state (set by VideoPlayerView) -->
     <field id="videoLogo" type="string" value="" />
     <field id="inactiveTimeout" type="integer" />
     <field id="progressPercentage" type="float" />
     <field id="positionTime" type="float" />
     <field id="remainingPositionTime" type="float" />
-    <field id="numVideoStreams" type="integer" />
-    <field id="numAudioStreams" type="integer" />
-    <field id="currentProgram" type="string" />
     <field id="playbackState" type="string" value="" alwaysNotify="true" />
+
+    <!-- Actions/UI state -->
     <field id="action" type="string" alwaysNotify="true" />
     <field id="showChapterList" type="boolean" alwaysNotify="true" />
     <field id="hasFocus" type="boolean" alwaysNotify="true" />
-    <field id="json" type="string" onChange="setFields" />
   </interface>
 </component>

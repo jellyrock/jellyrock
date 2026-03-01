@@ -16,7 +16,7 @@ sub init()
   if isValid(m.clock)
     m.clock.observeField("minutes", "setEndsAtText")
   end if
-  m.top.observeField("json", "setFields")
+  m.top.observeField("itemData", "onItemDataChanged")
   m.top.observeField("visible", "onVisibleChanged")
   m.top.observeField("hasFocus", "onFocusChanged")
   m.top.observeField("progressPercentage", "onProgressPercentageChanged")
@@ -32,179 +32,72 @@ sub init()
   m.buttonMenuLeft.buttonFocused = m.defaultButtonIndex
 end sub
 
-' setFields: Parses video metadata from JSON and populates OSD component fields
+' onItemDataChanged: Reads typed fields from JellyfinBaseItem node and populates OSD display.
 '
-' This function processes video data to populate all OSD display fields including title,
-' ratings, runtime, and content type classification (isMovie/isSeries flags).
+' Replaces the old JSON-parsing setFields(). The item node is immutable - all metadata
+' is read directly from typed fields (item.type, item.name, item.communityRating, etc.)
 '
-' Content Type Detection:
-' The isMovie and isSeries flags determine which user settings control ratings display:
+' Content Type Detection (isMovie/isSeries):
+' These flags determine which user settings control ratings display:
 ' - isMovie=true: Uses uiMoviesShowRatings setting
 ' - isSeries=true: Uses uiTvShowsDisableCommunityRating setting
 '
 ' Detection Priority (applied in order):
-' 1. API flags: Uses IsMovie/IsSeries from Jellyfin server if provided
+' 1. API flags: Uses isMovie/isSeries from JellyfinBaseItem if provided
 ' 2. Flag validation: Ensures mutual exclusivity (both cannot be true)
 ' 3. Type-based: Recording types always classified as series content
-' 4. Metadata heuristic: Presence of SeriesName/SeasonNumber indicates series
+' 4. Metadata heuristic: Presence of seriesName/parentIndexNumber indicates series
 ' 5. Default fallback: Assumes movie content if no other indicators
 '
 ' @return {void}
-sub setFields()
-  if not isValid(m.top.json) or m.top.json = "" then return
+sub onItemDataChanged()
+  item = m.top.itemData
+  if not isValid(item) or not isValidAndNotEmpty(item.id) then return
 
-  videoData = parseJson(m.top.json)
-  ' print "OSD videoData = ", videoData
-  mediaStreams = videoData.MediaStreams
-  m.top.json = ""
+  ' Cache item reference for use in display methods
+  m.itemData = item
 
-  if isValid(videoData.Type)
-    m.top.type = videoData.Type
+  itemType = item.type
+
+  ' Determine isMovie/isSeries flags for ratings display settings
+  ' TODO Phase 6: For TvChannel/Program types, isMovie/isSeries should come from CurrentProgram data
+  isMovieFlag = item.isMovie
+  isSeriesFlag = item.isSeries
+
+  ' Validate mutual exclusivity: both flags cannot be true
+  if isMovieFlag and isSeriesFlag
+    ' API provided conflicting flags - prioritize isSeries as it's more specific
+    isMovieFlag = false
   end if
 
-  ' Set isMovie and isSeries flags using the following priority:
-  ' 1. API flags (IsMovie, IsSeries) from Jellyfin server if available
-  ' 2. Type-based detection for Recording types (treated as series-like content)
-  ' 3. Heuristic fallback using series/episode metadata presence
-  '
-  ' Note: These flags are mutually exclusive - content cannot be both a movie and series.
-  ' Recording types are consistently treated as series content throughout the codebase
-  ' (see OSD.bs:297, Main.bs:266, backdropUtils.bs:33, etc.)
-  '
-  ' For TvChannel and Program types, check CurrentProgram if available; for others, check top-level
-  checkData = invalid
-  if (m.top.type = "TvChannel" or m.top.type = "Program" or m.top.type = "LiveTvProgram") and isValid(videoData.CurrentProgram)
-    checkData = videoData.CurrentProgram
-  else
-    checkData = videoData
-  end if
-
-  if isValid(checkData)
-    ' Try using API flags first
-    if isValid(checkData.IsMovie)
-      m.top.isMovie = checkData.IsMovie
-    end if
-    if isValid(checkData.IsSeries)
-      m.top.isSeries = checkData.IsSeries
-    end if
-
-    ' Validate mutual exclusivity: both flags cannot be true
-    if m.top.isMovie and m.top.isSeries
-      ' API provided conflicting flags - prioritize IsSeries as it's more specific
-      m.top.isMovie = false
-    end if
-
-    ' Fallback heuristic: if no flags provided, infer from metadata
-    if not m.top.isMovie and not m.top.isSeries
-      ' Recording types are episode-like content (same as Episode handling elsewhere)
-      if m.top.type = "Recording"
-        m.top.isSeries = true
-        ' If it has series/episode metadata, it's a series
-      else if isValid(checkData.SeriesName) or isValid(checkData.SeasonNumber) or isValid(checkData.ParentIndexNumber)
-        m.top.isSeries = true
-        ' Otherwise, assume it's movie content
-      else
-        m.top.isMovie = true
-      end if
+  ' Fallback heuristic: if no flags provided, infer from metadata
+  if not isMovieFlag and not isSeriesFlag
+    ' Recording types are episode-like content (same as Episode handling elsewhere)
+    if itemType = "Recording"
+      isSeriesFlag = true
+    else if isValidAndNotEmpty(item.seriesName) or item.parentIndexNumber > 0
+      isSeriesFlag = true
+    else
+      isMovieFlag = true
     end if
   end if
 
-  if isValid(videoData.logoImage) and videoData.logoImage <> ""
-    m.top.videoLogo = videoData.logoImage
+  m.top.isMovie = isMovieFlag
+  m.top.isSeries = isSeriesFlag
+
+  ' Chapters
+  m.top.hasChapters = item.chapterCount > 0
+
+  ' Stream counts - read pre-computed values from item node
+  m.top.numAudioStreams = item.audioStreamCount
+
+  ' Runtime
+  if item.runTimeTicks > 0
+    m.top.runTimeMinutes = ticksToMinutes(item.runTimeTicks)
   end if
 
-  if isValid(videoData.Name)
-    m.top.videoTitle = videoData.Name
-  end if
-
-  if isValid(videoData.Overview)
-    m.top.overview = videoData.Overview
-  end if
-
-  if isValid(videoData.SeriesStudio)
-    m.top.seriesStudio = videoData.SeriesStudio
-  end if
-
-  if isValid(videoData.HasSubtitles)
-    m.top.hasSubtitles = videoData.HasSubtitles
-  end if
-
-  if isValid(videoData.Chapters) and videoData.Chapters.Count() > 0
-    m.top.hasChapters = true
-  end if
-
-  if isValid(videoData.SeriesName)
-    m.top.seriesName = videoData.SeriesName
-  end if
-
-  if isValid(videoData.ParentIndexNumber)
-    m.top.seasonNumber = videoData.ParentIndexNumber
-  end if
-
-  if isValid(videoData.IndexNumber)
-    m.top.episodeNumber = videoData.IndexNumber
-  end if
-
-  if isValid(videoData.IndexNumberEnd)
-    m.top.episodeNumberEnd = videoData.IndexNumberEnd
-  end if
-
-  ' For TvChannel/Program, ratings come from CurrentProgram; for others, top-level
-  if (m.top.type = "TvChannel" or m.top.type = "Program" or m.top.type = "LiveTvProgram") and isValid(videoData.CurrentProgram)
-    if isValid(videoData.CurrentProgram.CommunityRating)
-      m.top.communityRating = videoData.CurrentProgram.CommunityRating
-    end if
-    if isValid(videoData.CurrentProgram.CriticRating)
-      m.top.criticRating = videoData.CurrentProgram.CriticRating
-    end if
-  else
-    if isValid(videoData.CommunityRating)
-      m.top.communityRating = videoData.CommunityRating
-    end if
-    if isValid(videoData.CriticRating)
-      m.top.criticRating = videoData.CriticRating
-    end if
-  end if
-
-  if isValid(videoData.OfficialRating)
-    m.top.officialRating = videoData.OfficialRating
-  end if
-
-  if isValid(videoData.PremiereDate)
-    m.top.premiereDate = videoData.PremiereDate
-  end if
-
-  if isValid(videoData.RunTimeTicks)
-    m.top.runTimeTicks = videoData.RunTimeTicks
-    m.top.runTimeMinutes = ticksToMinutes(m.top.runTimeTicks)
-  end if
-
-  if isValid(videoData.ProductionYear)
-    m.top.productionYear = videoData.ProductionYear
-  end if
-
-  if isValid(videoData.CurrentProgram)
-    m.top.runTimeTicks = videoData.CurrentProgram.RunTimeTicks
-    m.top.runTimeMinutes = ticksToMinutes(m.top.runTimeTicks)
-
-    m.top.currentProgram = FormatJson(videoData.CurrentProgram)
-  end if
-
-  numVideoStreams = 0
-  numAudioStreams = 0
-
-  if isValid(mediaStreams)
-    for each stream in mediaStreams
-      if stream.Type = "Video"
-        numVideoStreams++
-      else if stream.Type = "Audio"
-        numAudioStreams++
-      end if
-    end for
-  end if
-
-  m.top.numVideoStreams = numVideoStreams
-  m.top.numAudioStreams = numAudioStreams
+  ' TODO Phase 6: Live TV CurrentProgram override for runTimeTicks/runTimeMinutes
+  ' When currentProgram data is available on JellyfinBaseItem, override here.
 
   setButtonStates()
   populateData()
@@ -241,7 +134,7 @@ sub setButtonStates()
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showAudioMenu"))
   end if
   ' Subtitles
-  if not m.top.hasSubtitles
+  if not m.itemData.hasSubtitles
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showSubtitleMenu"))
   end if
   ' Chapters
@@ -258,20 +151,10 @@ sub setEndsAtText()
     return
   end if
 
-  ' if type is tvchannel, set endsAtTime to current program enddate
-  if m.top.type = "TvChannel" and m.top.currentProgram <> ""
-    currentProgram = ParseJson(m.top.currentProgram)
-    if isValid(currentProgram.EndDate) and currentProgram.EndDate <> ""
-      ' Parse the EndDate and format as time only
-      endDateTime = CreateObject("roDateTime")
-      endDateTime.fromISO8601String(currentProgram.EndDate)
-      endDateTime.toLocalTime()
-      m.endsAtTime.text = formatTime(endDateTime)
-      return
-    end if
-  end if
+  ' TODO Phase 6: Live TV "ends at" time from CurrentProgram.EndDate
+  ' When currentProgram data is available on JellyfinBaseItem, restore TvChannel EndDate display here.
 
-  ' for all other types, calculate endsAtTime based on remainingPositionTime
+  ' Calculate endsAtTime based on remainingPositionTime
   date = CreateObject("roDateTime")
   endTime = int(m.top.remainingPositionTime)
   date.fromSeconds(date.asSeconds() + endTime)
@@ -283,38 +166,15 @@ end sub
 sub setVideoLogoGroup()
   m.videoLogo.uri = m.top.videoLogo
 
-  if m.top.currentProgram = "" then return
-  currentProgram = ParseJson(m.top.currentProgram)
-
-  if isValidAndNotEmpty(currentProgram) and m.top.type = "TvChannel"
-    ' set video title to current program name
-    if isValid(currentProgram.ImageTags) and isValidAndNotEmpty(currentProgram.ImageTags.Primary)
-      imgParams = {
-        maxHeight: 300,
-        maxWidth: 500,
-        quality: 90,
-        tag: currentProgram.ImageTags.Primary
-      }
-
-      m.videoLogo.uri = buildURL(Substitute("/items/{0}/images/Primary/0", currentProgram.id), imgParams)
-    else
-      ' Set empty URI when no valid program image tags exist
-      m.videoLogo.uri = ""
-    end if
-  end if
+  ' TODO Phase 6: Live TV channel logo from CurrentProgram image tags
+  ' When currentProgram data is available on JellyfinBaseItem, restore TvChannel logo override here.
 end sub
 
 sub setVideoTitle()
-  m.videoTitle.text = m.top.videoTitle
+  m.videoTitle.text = m.itemData.name
 
-  if m.top.currentProgram = "" then return
-  currentProgram = ParseJson(m.top.currentProgram)
-
-  if isValidAndNotEmpty(currentProgram) and m.top.type = "TvChannel"
-    if isValid(currentProgram.Name)
-      m.videoTitle.text = currentProgram.Name
-    end if
-  end if
+  ' TODO Phase 6: Live TV channel title from CurrentProgram.Name
+  ' When currentProgram data is available on JellyfinBaseItem, restore TvChannel title override here.
 end sub
 
 sub setVideoSubTitle()
@@ -322,39 +182,41 @@ sub setVideoSubTitle()
   m.videoSubtitleGroup.removeChildrenIndex(m.videoSubtitleGroup.getChildCount(), 0)
 
   airDateNodeCreated = false
+  item = m.itemData
+  itemType = item.type
 
   ' EPISODE
-  if m.top.type = "Episode" or m.top.type = "Recording"
+  if itemType = "Episode" or itemType = "Recording"
     ' Title
-    if m.top.seriesName <> ""
-      m.videoTitle.text = m.top.seriesName
+    if isValidAndNotEmpty(item.seriesName)
+      m.videoTitle.text = item.seriesName
     end if
 
     ' episodeInfo
     episodeInfoText = ""
     '
     ' Season number
-    if isValid(m.top.seasonNumber)
-      episodeInfoText = episodeInfoText + `${tr("S")}${m.top.seasonNumber}`
+    if item.parentIndexNumber > 0
+      episodeInfoText = episodeInfoText + `${tr("S")}${item.parentIndexNumber}`
     else
       episodeInfoText = episodeInfoText + `${tr("S")}?`
     end if
     ' Episode number
-    if isValid(m.top.episodeNumber)
-      episodeInfoText = episodeInfoText + `${tr("E")}${m.top.episodeNumber}`
+    if item.indexNumber > 0
+      episodeInfoText = episodeInfoText + `${tr("E")}${item.indexNumber}`
     else
       episodeInfoText = episodeInfoText + `${tr("E")}??`
     end if
     ' Episode number end
-    if isValid(m.top.episodeNumberEnd) and m.top.episodeNumberEnd <> 0 and m.top.episodeNumberEnd > m.top.episodeNumber
+    if item.indexNumberEnd > 0 and item.indexNumberEnd > item.indexNumber
       ' add entry for every episode eg. S6:E1E2
-      for i = m.top.episodeNumber + 1 to m.top.episodeNumberEnd
-        episodeInfoText = episodeInfoText + `${tr("E")}${m.top.episodeNumberEnd}`
+      for i = item.indexNumber + 1 to item.indexNumberEnd
+        episodeInfoText = episodeInfoText + `${tr("E")}${item.indexNumberEnd}`
       end for
     end if
     ' Episode name
-    if isValid(m.top.videoTitle) and m.top.videoTitle <> ""
-      episodeInfoText = episodeInfoText + ` - ${m.top.videoTitle}`
+    if isValidAndNotEmpty(item.name)
+      episodeInfoText = episodeInfoText + ` - ${item.name}`
     end if
 
     if episodeInfoText <> ""
@@ -362,38 +224,19 @@ sub setVideoSubTitle()
       episodeInfoNode.text = episodeInfoText
       displaySubtitleNode(episodeInfoNode)
     end if
-  else if m.top.type = "Movie"
+  else if itemType = "Movie"
     ' videoAirDate
-    if isValid(m.top.productionYear) and m.top.productionYear > 0
+    if item.productionYear > 0
       airDateNodeCreated = true
 
       productionYearNode = createSubtitleLabelNode("productionYear")
-      productionYearNode.text = m.top.productionYear.toStr().trim()
+      productionYearNode.text = item.productionYear.toStr().trim()
 
       displaySubtitleNode(productionYearNode)
     end if
-  else if m.top.type = "TvChannel"
-    ' TvChannel
-    if isValid(m.top.currentProgram) and m.top.currentProgram <> ""
-      currentProgram = ParseJson(m.top.currentProgram)
-
-      if isValidAndNotEmpty(currentProgram)
-        ' Channel Number i.e. "CH 300"
-        if isValid(currentProgram.ChannelNumber) and currentProgram.ChannelNumber <> ""
-          currentChannelNumber = createSubtitleLabelNode("currentChannelNumber")
-          currentChannelNumber.text = tr("CH") + ` ${currentProgram.ChannelNumber}`
-
-          displaySubtitleNode(currentChannelNumber)
-        end if
-        ' Channel Name
-        if isValid(currentProgram.Name)
-          currentChannelName = createSubtitleLabelNode("currentChannelName")
-          currentChannelName.text = currentProgram.ChannelName
-
-          displaySubtitleNode(currentChannelName)
-        end if
-      end if
-    end if
+  else if itemType = "TvChannel"
+    ' TODO Phase 6: Live TV channel number/name from CurrentProgram data
+    ' When currentProgram data is available on JellyfinBaseItem, restore channel info display here.
   end if
 
   ' append these to all video types
@@ -401,9 +244,9 @@ sub setVideoSubTitle()
   userSettings = m.global.user.settings
 
   ' Official Rating
-  if isValid(m.top.officialRating) and m.top.officialRating <> ""
+  if isValidAndNotEmpty(item.officialRating)
     officialRatingNode = createSubtitleLabelNode("officialRating")
-    officialRatingNode.text = m.top.officialRating
+    officialRatingNode.text = item.officialRating
     displaySubtitleNode(officialRatingNode)
   end if
 
@@ -422,33 +265,35 @@ sub setVideoSubTitle()
 
   if showRatings
     ' communityRating (star + rating)
-    if isValid(m.top.communityRating) and m.top.communityRating <> 0
+    ' TODO Phase 6: For TvChannel/Program, communityRating should come from CurrentProgram
+    if item.communityRating <> 0
       communityRatingNode = CreateObject("roSGNode", "CommunityRating")
       communityRatingNode.id = "communityRating"
-      communityRatingNode.rating = m.top.communityRating
+      communityRatingNode.rating = item.communityRating
       communityRatingNode.iconSize = 30
       displaySubtitleNode(communityRatingNode)
     end if
 
     ' criticRating (tomato + rating)
-    if isValid(m.top.criticRating) and m.top.criticRating <> 0
+    ' TODO Phase 6: For TvChannel/Program, criticRating should come from CurrentProgram
+    if item.criticRating <> 0
       criticRatingNode = CreateObject("roSGNode", "CriticRating")
       criticRatingNode.id = "criticRating"
-      criticRatingNode.rating = m.top.criticRating
+      criticRatingNode.rating = item.criticRating
       criticRatingNode.iconSize = 30
       displaySubtitleNode(criticRatingNode)
     end if
   end if
 
   ' videoAirDate if needed
-  if not airDateNodeCreated and isValid(m.top.premiereDate) and m.top.premiereDate <> ""
+  if not airDateNodeCreated and isValidAndNotEmpty(item.premiereDate)
     premiereDateNode = createSubtitleLabelNode("videoAirDate")
-    premiereDateNode.text = formatIsoDateVideo(m.top.premiereDate)
+    premiereDateNode.text = formatIsoDateVideo(item.premiereDate)
     displaySubtitleNode(premiereDateNode)
   end if
 
   ' videoRunTime
-  if isValid(m.top.runTimeMinutes) and m.top.runTimeMinutes <> 0
+  if m.top.runTimeMinutes <> 0
     runTimeNode = createSubtitleLabelNode("videoRunTime")
 
     if m.top.runTimeMinutes < 2
@@ -465,7 +310,12 @@ end sub
 
 sub onProgressPercentageChanged()
   ' change progress bar for live tv
-  if m.top.type = "TvChannel"
+  itemType = ""
+  if isValid(m.itemData)
+    itemType = m.itemData.type
+  end if
+
+  if itemType = "TvChannel"
     m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
     m.videoRemainingTime.text = tr("LIVE")
     m.progressBar.width = m.progressBarBackground.width ' set to full width

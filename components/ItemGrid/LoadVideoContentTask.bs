@@ -249,6 +249,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
 
   video.container = meta.container
 
+  ' Pass JellyfinBaseItem node for OSD to read typed fields directly
+  video.meta = meta
+
   if not isValid(m.playbackInfo.MediaSources[0])
     m.playbackInfo = { MediaSources: meta.mediaSourcesData.mediaSources ?? [] }
   end if
