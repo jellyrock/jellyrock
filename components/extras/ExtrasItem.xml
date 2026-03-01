@@ -3,6 +3,7 @@
   <interface>
     <field id="itemContent" type="node" onChange="showContent" />
     <field id="itemHasFocus" type="boolean" onChange="focusChanged" />
+    <field id="width" type="float" value="234" onChange="showContent" />
   </interface>
   <children>
     <LayoutGroup layoutDirection="vert">

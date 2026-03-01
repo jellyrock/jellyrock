@@ -1,6 +1,7 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -32,16 +33,15 @@ end sub
 
 sub loadPerson()
   item = m.top.itemContent
-  itemData = item.json
-  m.top.Id = itemData.id
+  m.top.Id = item.id
 
   ' Always set transparent backdrop for person screens
   ' Prevents stale movie/TV backdrops from persisting
   m.global.sceneManager.callFunc("setBackgroundImage", "")
   nameLabel = m.top.findNode("name")
-  nameLabel.Text = itemData.Name
+  nameLabel.Text = item.name
 
-  if isValid(itemData.PremiereDate) and itemData.PremiereDate <> ""
+  if isValidAndNotEmpty(item.premiereDate)
     lifeStringLabel = createObject("rosgnode", "LabelPrimarySmallest")
     lifeStringLabel.id = "premierDate"
     lifeStringLabel.bold = true
@@ -50,12 +50,12 @@ sub loadPerson()
     nameLabel.vertAlign = "top"
     m.top.findNode("title_rectangle").appendChild(lifeStringLabel)
     birthDate = CreateObject("roDateTime")
-    birthDate.FromISO8601String(itemData.PremiereDate)
+    birthDate.FromISO8601String(item.premiereDate)
     deathDate = CreateObject("roDatetime")
     lifeString = tr("Born") + ": " + birthDate.AsDateString("short-month-no-weekday")
 
-    if isValid(itemData.EndDate) and itemData.EndDate <> ""
-      deathDate.FromISO8601String(itemData.EndDate)
+    if isValidAndNotEmpty(item.endDate)
+      deathDate.FromISO8601String(item.endDate)
       lifeString = lifeString + " * " + tr("Died") + ": " + deathDate.AsDateString("short-month-no-weekday")
 
     end if
@@ -73,20 +73,17 @@ sub loadPerson()
   end if
 
   ' Set description text and dialog title for the FocusableOverview component
-  m.description.dialogTitle = itemData.Name
-  if isValid(itemData.Overview) and itemData.Overview <> ""
-    m.description.text = itemData.Overview
+  m.description.dialogTitle = item.name
+  if isValidAndNotEmpty(item.overview)
+    m.description.text = item.overview
   else
     m.description.text = tr("Biographical information for this person is not currently available.")
     m.description.horizAlign = "center"
     m.description.vertAlign = "center"
   end if
 
-  if isValid(item.posterURL) and item.posterURL <> ""
-    m.top.findnode("personImage").uri = item.posterURL
-  else
-    m.top.findnode("personImage").uri = "pkg:/images/icons/baseline_person_white_48dp.png"
-  end if
+  posterSize = imageSize.POSTER_LG
+  m.top.findnode("personImage").uri = getItemPosterUrl(item, posterSize)
   m.videosList.callFunc("loadPersonVideos", m.top.Id)
 
   setFavoriteColor()
@@ -136,9 +133,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 sub setFavoriteColor()
-  isFavorite = m.top.itemContent.favorite
   favoriteBtn = m.top.findNode("favoriteButton")
-  if isValid(isFavorite) and isFavorite
+  if m.top.itemContent.isFavorite
     favoriteBtn.textColor = "#269926ff"
     favoriteBtn.text = tr("Favorite")
   else

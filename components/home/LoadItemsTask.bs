@@ -163,52 +163,25 @@ sub loadItems()
     ' Extract array of persons from Views and download full metadata for each
   else if m.top.itemsToLoad = "people"
     for each person in m.top.peopleList
-      tmp = CreateObject("roSGNode", "ExtrasData")
-      tmp.Id = person.Id
-      tmp.labelText = person.Name
-      params = {}
-      if isValidAndNotEmpty(person.PrimaryImageTag)
-        params["Tags"] = person.PrimaryImageTag
-      end if
-      params["MaxWidth"] = 234
-      params["MaxHeight"] = 330
-      tmp.posterURL = ImageUrl(person.Id, "Primary", params)
-      tmp.json = person
-      results.push(tmp)
+      node = m.transformer.transformPerson(person)
+      if isValid(node) then results.push(node)
     end for
   else if m.top.itemsToLoad = "specialfeatures"
-    params = {}
     url = Substitute("Users/{0}/Items/{1}/SpecialFeatures", globalUser.id, m.top.itemId)
-    resp = APIRequest(url, params)
+    resp = APIRequest(url)
     data = getJson(resp)
     if isValid(data) and data.count() > 0
       for each specfeat in data
-        tmp = CreateObject("roSGNode", "ExtrasData")
-        results.push(tmp)
-        params = {}
-        if isValid(specfeat.ImageTags) and isValidAndNotEmpty(specfeat.ImageTags.Primary)
-          params["Tags"] = specfeat.ImageTags.Primary
-        end if
-        params["MaxWidth"] = 450
-        params["MaxHeight"] = 402
-        tmp.posterURL = ImageUrl(specfeat.Id, "Primary", params)
-        tmp.json = specfeat
+        node = m.transformer.transformBaseItem(specfeat)
+        if isValid(node) then results.push(node)
       end for
     end if
   else if m.top.itemsToLoad = "additionalparts"
     additionalParts = api.videos.GetAdditionalParts(m.top.itemId)
     if isValid(additionalParts)
       for each part in additionalParts.items
-        tmp = CreateObject("roSGNode", "ExtrasData")
-        params = {}
-        if isValid(part.ImageTags) and isValidAndNotEmpty(part.ImageTags.Primary)
-          params["Tags"] = part.ImageTags.Primary
-        end if
-        params["MaxWidth"] = 450
-        params["MaxHeight"] = 402
-        tmp.posterURL = ImageUrl(part.Id, "Primary", params)
-        tmp.json = part
-        results.push(tmp)
+        node = m.transformer.transformBaseItem(part)
+        if isValid(node) then results.push(node)
       end for
     end if
   else if m.top.itemsToLoad = "likethis"
@@ -218,22 +191,16 @@ sub loadItems()
     data = getJson(resp)
     if isValid(data) and isValid(data.Items)
       for each item in data.items
-        tmp = CreateObject("roSGNode", "ExtrasData")
-        params = {}
-        if isValidAndNotEmpty(item.PrimaryImageTag)
-          params["Tags"] = item.PrimaryImageTag
-        end if
-        tmp.posterURL = ImageUrl(item.Id, "Primary", params)
-        tmp.json = item
-        results.push(tmp)
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
       end for
     end if
   else if m.top.itemsToLoad = "personMovies"
-    getPersonVideos("Movie", results, {})
+    getPersonVideos("Movie", results)
   else if m.top.itemsToLoad = "personTVShows"
-    getPersonVideos("Episode", results, { MaxWidth: 502, MaxHeight: 300 })
+    getPersonVideos("Episode", results)
   else if m.top.itemsToLoad = "personSeries"
-    getPersonVideos("Series", results, {})
+    getPersonVideos("Series", results)
   else if m.top.itemsToLoad = "metaData"
     results.push(ItemMetaData(m.top.itemId))
   else if m.top.itemsToLoad = "audioStream"
@@ -246,22 +213,15 @@ sub loadItems()
 
 end sub
 
-sub getPersonVideos(videoType, dest, dimens)
+sub getPersonVideos(videoType as string, dest as object)
   params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
   url = Substitute("Users/{0}/Items", m.global.user.id)
   resp = APIRequest(url, params)
   data = getJson(resp)
   if isValid(data) and data.count() > 0
     for each item in data.items
-      tmp = CreateObject("roSGNode", "ExtrasData")
-      imgParms = {}
-      if isValid(item.ImageTags) and isValidAndNotEmpty(item.ImageTags.Primary)
-        imgParms["Tags"] = item.ImageTags.Primary
-      end if
-      imgParms.append(dimens)
-      tmp.posterURL = ImageUrl(item.Id, "Primary", imgParms)
-      tmp.json = item
-      dest.push(tmp)
+      node = m.transformer.transformBaseItem(item)
+      if isValid(node) then dest.push(node)
     end for
   end if
 end sub

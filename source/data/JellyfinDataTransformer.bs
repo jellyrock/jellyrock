@@ -690,6 +690,31 @@ class JellyfinDataTransformer
     return result
   end function
 
+  ' Transform a BaseItemPerson (from a parent item's People array) to a JellyfinBaseItem node.
+  ' BaseItemPerson has {Id, Name, Type: "Actor"/"Director"/etc, Role, PrimaryImageTag}.
+  ' Note: PrimaryImageTag is set directly (NOT nested under ImageTags like a BaseItemDto).
+  ' Subtitle is pre-computed: "as {Role}" for actors, "{Type}" for others.
+  ' @param person - Raw BaseItemPerson assocarray from a parent item's People array
+  ' @returns JellyfinBaseItem node, or invalid if person is invalid
+  function transformPerson(person as object) as object
+    if not isValid(person) then return invalid
+    item = CreateObject("roSGNode", "JellyfinBaseItem")
+    item.id = person.Id ?? ""
+    item.name = person.Name ?? ""
+    item.title = item.name
+    item.type = "Person"
+    item.primaryImageTag = person.PrimaryImageTag ?? ""
+    ' Pre-compute subtitle: "as {Role}" for actors, "{Type}" for non-actors
+    personType = person.Type ?? ""
+    role = person.Role ?? ""
+    if LCase(personType) = "actor" and isValidAndNotEmpty(role)
+      item.subtitle = "as " + role
+    else if isValidAndNotEmpty(personType)
+      item.subtitle = personType
+    end if
+    return item
+  end function
+
 end class
 
 ' ── Module-level helpers ──────────────────────────────────────────────────────

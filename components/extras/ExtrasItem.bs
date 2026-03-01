@@ -1,3 +1,4 @@
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -26,12 +27,16 @@ sub showContent()
 
   if isValid(m.top.itemContent)
     cont = m.top.itemContent
-    m.name.text = cont.labelText
-    m.name.maxWidth = cont.imageWidth
-    m.role.maxWidth = cont.imageWidth
-    m.posterImg.uri = cont.posterUrl
-    m.posterImg.width = cont.imageWidth
-    m.role.Text = cont.subTitle
+    ' width is declared in ExtrasItem.xml (default 234) and set by RowList per rowItemSize.
+    ' Using a declared field guarantees it is never Invalid (unlike m.top.width on Group nodes).
+    slotWidth = m.top.width
+    m.name.text = cont.name
+    m.name.maxWidth = slotWidth
+    m.role.maxWidth = slotWidth
+    posterSize = { width: int(slotWidth), height: int(slotWidth * 1.41) }
+    m.posterImg.uri = getItemPosterUrl(cont, posterSize)
+    m.posterImg.width = slotWidth
+    m.role.text = cont.subtitle
   else
     m.role.text = tr("Unknown")
     m.posterImg.uri = "pkg:/images/icons/baseline_person_white_48dp.png"

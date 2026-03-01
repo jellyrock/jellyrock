@@ -76,21 +76,25 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     return
   end if
 
-  video.json = meta.json
-
   queueManager = m.global.queueManager
   userSession = m.global.user
   userSettings = userSession.settings
+
+  ' Cache mediaSourcesData.mediaSources once — accessed frequently below
+  mediaSources = invalid
+  if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
+    mediaSources = meta.mediaSourcesData.mediaSources
+  end if
 
   ' Re-determine audio stream index if no manual selection was made
   ' Task field = 0 means no manual selection (default value)
   ' Task field > 0 means user manually selected from MovieDetails/TVListDetails - preserve it
   if m.top.selectedAudioStreamIndex = 0
-    if isValid(meta.json) and isValid(meta.json.MediaStreams)
+    if isValid(mediaSources) and isValid(mediaSources[0].MediaStreams)
       ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
       playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
 
-      audio_stream_idx = findBestAudioStreamIndex(meta.json.MediaStreams, playDefault, userSession.config.audioLanguagePreference)
+      audio_stream_idx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, userSession.config.audioLanguagePreference)
     else
       ' MediaStreams not available - keep existing behavior of using 0
       ' This should never happen since ItemMetaData() just fetched metadata
@@ -99,18 +103,18 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   end if
 
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
-  if isValidAndNotEmpty(meta.json.MediaSources)
-    if isValid(meta.json.MediaSources[0].RunTimeTicks)
-      if meta.json.MediaSources[0].RunTimeTicks = 0
+  if isValid(mediaSources) and isValidAndNotEmpty(mediaSources)
+    if isValid(mediaSources[0].RunTimeTicks)
+      if mediaSources[0].RunTimeTicks = 0
         video.length = 0
       else
-        video.length = meta.json.MediaSources[0].RunTimeTicks / 10000000
+        video.length = mediaSources[0].RunTimeTicks / 10000000
       end if
     end if
 
     ' Find first video stream - MediaStreams[0] might be subtitle/audio
-    if isValid(meta.json.MediaSources[0].MediaStreams)
-      videoStream = getFirstVideoStream(meta.json.MediaSources[0].MediaStreams)
+    if isValid(mediaSources[0].MediaStreams)
+      videoStream = getFirstVideoStream(mediaSources[0].MediaStreams)
       if isValid(videoStream) and isValid(videoStream.Width) and isValid(videoStream.Height)
         video.MaxVideoDecodeResolution = [videoStream.Width, videoStream.Height]
       end if
@@ -121,60 +125,50 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   videotype = LCase(meta.type)
 
   ' Check for any Live TV streams or Recordings coming from other places other than the TV Guide
-  if videotype = "recording" or (isValid(meta.json) and isValid(meta.json.ChannelId))
-    if isValid(meta.json.EpisodeTitle)
-      meta.title = meta.json.EpisodeTitle
-    else if isValid(meta.json.Name)
-      meta.title = meta.json.Name
-    end if
-    meta.live = true
-    if LCase(meta.json.type) = "program"
-      video.id = meta.json.ChannelId
+  isLive = false
+  titleOverride = ""
+  if videotype = "recording" or isValidAndNotEmpty(meta.channelId)
+    if isValidAndNotEmpty(meta.episodeTitle)
+      titleOverride = meta.episodeTitle
     else
-      video.id = meta.json.id
+      titleOverride = meta.name
+    end if
+    isLive = true
+    if LCase(meta.type) = "program"
+      video.id = meta.channelId
+    else
+      video.id = meta.id
     end if
   end if
 
-  if videotype = "tvchannel" and isValid(meta.json) and isValid(meta.json.CurrentProgram)
-    if isValid(meta.json.CurrentProgram.Name)
-      meta.title = `${meta.title}: ${meta.json.CurrentProgram.Name}`
-    end if
-    if isValid(meta.json.CurrentProgram.ParentIndexNumber)
-      video.seasonNumber = meta.json.CurrentProgram.ParentIndexNumber
-    end if
-    if isValid(meta.json.CurrentProgram.IndexNumber)
-      video.episodeNumber = meta.json.CurrentProgram.IndexNumber
-    end if
-    if isValid(meta.json.CurrentProgram.IndexNumberEnd)
-      video.episodeNumberEnd = meta.json.CurrentProgram.IndexNumberEnd
-    end if
-  end if
+  ' TVChannel CurrentProgram fields (live program title/episode info) deferred to Phase 6
+  ' meta.json.CurrentProgram is not a typed field on JellyfinBaseItem
 
-  video.chapters = meta.json.Chapters
-  video.title = meta.title
-  video.showID = meta.showID
+  video.chapters = meta.chapters
+  video.title = isValidAndNotEmpty(titleOverride) ? titleOverride : meta.title
+  video.showID = meta.seriesId
 
   logoLookupID = video.id
 
   if videotype = "episode" or videotype = "series"
     video.content.contenttype = "episode"
-    video.seasonNumber = meta.json.ParentIndexNumber
-    video.episodeNumber = meta.json.IndexNumber
-    video.episodeNumberEnd = meta.json.IndexNumberEnd
+    video.seasonNumber = meta.parentIndexNumber
+    video.episodeNumber = meta.indexNumber
+    video.episodeNumberEnd = meta.indexNumberEnd
 
-    if isValid(meta.showID)
-      logoLookupID = meta.showID
+    if isValidAndNotEmpty(meta.seriesId)
+      logoLookupID = meta.seriesId
     end if
   end if
 
   logoImageExists = api.items.HeadImageURLByName(logoLookupID, "logo")
   if logoImageExists
-    video.json.logoImage = api.items.GetImageURL(logoLookupID, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })
+    video.logoImage = api.items.GetImageURL(logoLookupID, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })
   end if
 
   if LCase(m.top.itemType) = "episode"
     if userSettings.playbackPlayNextEpisode = "enabled" or userSettings.playbackPlayNextEpisode = "webclient" and userSession.config.enableNextEpisodeAutoPlay
-      addNextEpisodesToQueue(video.showID)
+      addNextEpisodesToQueue(meta.seriesId)
     end if
   end if
 
@@ -196,16 +190,14 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   video.content.PlayStart = int(playbackPosition / 10000000)
 
   ' Build complete trickplay config using utility function for fail-fast validation
-  ' meta.json contains the API response with Trickplay field from ItemMetaData() call
-  ' video.id matches the ID used to fetch metadata and matches Trickplay data structure
-  if isValidAndNotEmpty(meta.json.Trickplay)
+  ' meta.trickplayData is the pre-extracted Trickplay AA from the transformer
+  if isValidAndNotEmpty(meta.trickplayData)
     deviceWidth = m.global.device.videoWidth
     if not isValid(deviceWidth) or deviceWidth = 0
       deviceWidth = 1920 ' Default to FHD if not available
     end if
 
-    ' Pass meta.json (contains .Trickplay), video.id, device width, and initial position
-    trickplayConfig = trickplay.buildConfigFromMetadata(meta.json, video.id, deviceWidth, int(playbackPosition / 10000000))
+    trickplayConfig = trickplay.buildConfigFromMetadata(meta.trickplayData, video.id, deviceWidth, int(playbackPosition / 10000000))
 
     if isValid(trickplayConfig)
       video.content.trickplayMetadata = trickplayConfig
@@ -216,7 +208,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   end if
 
   if not isValid(mediaSourceId) then mediaSourceId = video.id
-  if meta.live then mediaSourceId = ""
+  if isLive then mediaSourceId = ""
 
   ' Call ItemPostPlaybackInfo ONCE with final subtitle_idx
   m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audio_stream_idx, subtitle_idx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
@@ -250,19 +242,19 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
 
   video.PlaySessionId = m.playbackInfo.PlaySessionId
 
-  if meta.live
+  if isLive
     video.content.live = true
     video.content.StreamFormat = "hls"
   end if
 
-  video.container = getContainerType(meta)
+  video.container = meta.container
 
   if not isValid(m.playbackInfo.MediaSources[0])
-    m.playbackInfo = meta.json
+    m.playbackInfo = { MediaSources: meta.mediaSourcesData.mediaSources ?? [] }
   end if
 
   addAudioStreamsToVideo(video)
-  if meta.live
+  if isLive
     video.transcodeParams = {
       "MediaSourceId": m.playbackInfo.MediaSources[0].Id,
       "LiveStreamId": m.playbackInfo.MediaSources[0].LiveStreamId,
@@ -278,7 +270,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   ' artifacts. If the user preference is set, and the only reason the server says we need to
   ' transcode is that the Encoding Level is not supported, then try to direct play but silently
   ' fall back to the transcode if that fails.
-  if m.playbackInfo.MediaSources[0].MediaStreams.Count() > 0 and meta.live = false
+  if m.playbackInfo.MediaSources[0].MediaStreams.Count() > 0 and not isLive
     ' Find first video stream - MediaStreams[0] might be subtitle/audio
     videoStream = getFirstVideoStream(m.playbackInfo.MediaSources[0].MediaStreams)
     if isValid(videoStream) and isValid(videoStream.codec)
@@ -427,13 +419,21 @@ end sub
 
 function directPlaySupported(meta as object) as boolean
   devinfo = CreateObject("roDeviceInfo")
-  if isValid(meta.json.MediaSources[0]) and meta.json.MediaSources[0].SupportsDirectPlay = false
+  mediaSources = invalid
+  if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
+    mediaSources = meta.mediaSourcesData.mediaSources
+  end if
+  if not isValid(mediaSources) then return false
+  mediaSource = mediaSources[0]
+  if not isValid(mediaSource) then return false
+
+  if isValid(mediaSource.SupportsDirectPlay) and mediaSource.SupportsDirectPlay = false
     return false
   end if
 
   ' Get the first video stream instead of blindly using MediaStreams[0]
   ' which could be a subtitle or audio stream
-  videoStream = getFirstVideoStream(meta.json.MediaStreams)
+  videoStream = getFirstVideoStream(mediaSource.MediaStreams)
   if not isValid(videoStream)
     return false
   end if
@@ -442,12 +442,12 @@ function directPlaySupported(meta as object) as boolean
   if isValid(videoStream.Profile) and videoStream.Profile.len() > 0
     streamInfo.Profile = LCase(videoStream.Profile)
   end if
-  if isValid(meta.json.MediaSources[0].container) and meta.json.MediaSources[0].container.len() > 0
-    'CanDecodeVideo() requires the .container to be format: “mp4”, “hls”, “mkv”, “ism”, “dash”, “ts” if its to direct stream
-    if meta.json.MediaSources[0].container = "mov"
+  if isValid(mediaSource.container) and mediaSource.container.len() > 0
+    'CanDecodeVideo() requires the .container to be format: "mp4", "hls", "mkv", "ism", "dash", "ts" if its to direct stream
+    if mediaSource.container = "mov"
       streamInfo.Container = "mp4"
     else
-      streamInfo.Container = meta.json.MediaSources[0].container
+      streamInfo.Container = mediaSource.container
     end if
   end if
 
@@ -456,19 +456,6 @@ function directPlaySupported(meta as object) as boolean
 
 end function
 
-function getContainerType(meta as object) as string
-  ' Determine the file type of the video file source
-  if not isValid(meta.json.mediaSources) then return ""
-
-  container = meta.json.mediaSources[0].container
-  if not isValid(container)
-    container = ""
-  else if container = "m4v" or container = "mov"
-    container = "mp4"
-  end if
-
-  return container
-end function
 
 ' Add next episodes to the playback queue
 sub addNextEpisodesToQueue(showID)
@@ -495,7 +482,7 @@ sub addNextEpisodesToQueue(showID)
       ' Override showID value since it's for the intro video
       meta = ItemMetaData(videoID)
       if isValid(meta)
-        showID = meta.showID
+        showID = meta.seriesId
       end if
     end if
   end if

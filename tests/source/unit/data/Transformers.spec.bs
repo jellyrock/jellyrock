@@ -1834,5 +1834,65 @@ namespace tests
       m.assertEqual(result.channelPrimaryImageTag, "chantag")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer.transformPerson")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for invalid input")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      m.assertInvalid(transformer.transformPerson(invalid))
+    end function
+
+    @it("sets type to Person")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "tag1" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.type, "Person")
+    end function
+
+    @it("sets id and name from person data")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "tag1" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.id, "p1")
+      m.assertEqual(result.name, "Jane Smith")
+      m.assertEqual(result.title, "Jane Smith")
+    end function
+
+    @it("sets primaryImageTag directly (not nested under ImageTags)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "directTag" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.primaryImageTag, "directTag")
+    end function
+
+    @it("sets subtitle as 'as {Role}' for actor with role")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.subtitle, "as Hero")
+    end function
+
+    @it("sets subtitle to Type for actor without role")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.subtitle, "Actor")
+    end function
+
+    @it("sets subtitle to Type for non-actor (e.g. Director)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p2", Name: "John Doe", Type: "Director" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.subtitle, "Director")
+    end function
+
   end class
 end namespace

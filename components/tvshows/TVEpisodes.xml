@@ -13,7 +13,7 @@
     <field id="refreshSeasonDetailsData" type="bool" alwaysNotify="true" />
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="quickPlayNode" type="node" />
-    <field id="seasonData" type="assocarray" />
+    <field id="seasonData" type="node" />
     <field id="objects" alias="picker.objects" />
     <field id="episodeObjects" type="assocarray" />
     <field id="extrasObjects" type="assocarray" onChange="setExtraButtonVisibility" />

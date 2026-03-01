@@ -31,17 +31,14 @@ end sub
 sub updateSeason()
   if not isValid(m.top.seasonData) then return
 
-  if isValid(m.top.seasonData.UserData)
-    userData = m.top.seasonData.UserData
-    if isValid(userData.UnplayedItemCount)
-      m.poster.unplayedCount = userData.UnplayedItemCount
-    end if
+  if m.top.seasonData.unplayedItemCount > 0
+    m.poster.unplayedCount = m.top.seasonData.unplayedItemCount
   end if
 
   imgParams = { "maxHeight": 450, "maxWidth": 300 }
-  m.poster.uri = ImageURL(m.top.seasonData.Id, "Primary", imgParams)
+  m.poster.uri = ImageURL(m.top.seasonData.id, "Primary", imgParams)
   m.shuffle.visible = true
-  m.top.overhangTitle = m.top.seasonData.SeriesName + " - " + m.top.seasonData.name
+  m.top.overhangTitle = m.top.seasonData.seriesName + " - " + m.top.seasonData.name
 
   ' Set season/series backdrop
   setSeasonBackdrop()
@@ -58,18 +55,20 @@ sub setSeasonBackdrop()
   backdropWidth = localDevice.uiResolution[0]
   backdropHeight = localDevice.uiResolution[1]
 
+  seasonData = m.top.seasonData
+
   ' Priority 1: Try season's own backdrop first
-  if isValid(m.top.seasonData.BackdropImageTags) and isValidAndNotEmpty(m.top.seasonData.BackdropImageTags[0])
-    backdropParams = { "tag": m.top.seasonData.BackdropImageTags[0], "maxHeight": backdropHeight, "maxWidth": backdropWidth }
-    backdropUrl = ImageURL(m.top.seasonData.Id, "Backdrop", backdropParams)
+  if isValidAndNotEmpty(seasonData.backdropImageTags) and isValidAndNotEmpty(seasonData.backdropImageTags[0])
+    backdropParams = { "tag": seasonData.backdropImageTags[0], "maxHeight": backdropHeight, "maxWidth": backdropWidth }
+    backdropUrl = ImageURL(seasonData.id, "Backdrop", backdropParams)
     m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
     return
   end if
 
   ' Priority 2: Fallback to parent series backdrop
-  if isValid(m.top.seasonData.ParentBackdropImageTags) and isValidAndNotEmpty(m.top.seasonData.ParentBackdropImageTags[0]) and isValid(m.top.seasonData.SeriesId)
-    backdropParams = { "tag": m.top.seasonData.ParentBackdropImageTags[0], "maxHeight": backdropHeight, "maxWidth": backdropWidth }
-    backdropUrl = ImageURL(m.top.seasonData.SeriesId, "Backdrop", backdropParams)
+  if isValidAndNotEmpty(seasonData.parentBackdropImageTags) and isValidAndNotEmpty(seasonData.parentBackdropImageTags[0]) and isValidAndNotEmpty(seasonData.seriesId)
+    backdropParams = { "tag": seasonData.parentBackdropImageTags[0], "maxHeight": backdropHeight, "maxWidth": backdropWidth }
+    backdropUrl = ImageURL(seasonData.seriesId, "Backdrop", backdropParams)
     m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
     return
   end if
