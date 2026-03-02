@@ -82,8 +82,16 @@ sub loadPerson()
     m.description.vertAlign = "center"
   end if
 
-  posterSize = imageSize.POSTER_LG
-  m.top.findnode("personImage").uri = getItemPosterUrl(item, posterSize)
+  personImage = m.top.findnode("personImage")
+  ' Clear any existing URI to avoid stale images when reusing this screen
+  personImage.uri = ""
+  posterUrl = getItemPosterUrl(item, imageSize.POSTER_LG)
+  if isValidAndNotEmpty(posterUrl)
+    personImage.uri = posterUrl
+  else
+    ' Fallback to person silhouette when no primary image is available
+    personImage.uri = "pkg:/images/icons/baseline_person_white_48dp.png"
+  end if
   m.videosList.callFunc("loadPersonVideos", m.top.Id)
 
   setFavoriteColor()
