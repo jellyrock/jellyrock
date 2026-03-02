@@ -135,24 +135,40 @@ sub itemContentChanged()
   end if
 end sub
 
-' Display current audio_codec and check if there is more than one audio track to choose from...
+' Display current audio_codec and check if there is more than one audio track to choose from.
+' @param {object} mediaStreams - Array of all media streams from Jellyfin (mixed types)
+' @param {integer} selectedAudioStreamIndex - Jellyfin server-side stream.index value (NOT an array position)
 sub SetupAudioDisplay(mediaStreams as object, selectedAudioStreamIndex as integer)
-  audioIdx = invalid
+  selectedStream = invalid
+  firstAudioStream = invalid
+
   if isValid(mediaStreams)
     for i = 0 to mediaStreams.Count() - 1
-      if LCase(mediaStreams[i].Type) = "audio" and not isValid(audioIdx)
-        if selectedAudioStreamIndex > 0 and selectedAudioStreamIndex < mediaStreams.Count()
-          audioIdx = selectedAudioStreamIndex
-        else
-          audioIdx = i
+      stream = mediaStreams[i]
+      if LCase(stream.Type) = "audio"
+        ' Track the first audio stream as fallback for when selectedAudioStreamIndex = 0
+        ' or does not match any stream (defensive guard for malformed metadata)
+        if not isValid(firstAudioStream)
+          firstAudioStream = stream
         end if
-        m.top.findNode("audio_codec").text = tr("Audio") + ": " + formatAudioDisplayTitle(mediaStreams[audioIdx])
+
+        ' Match on Jellyfin server-side stream.index — NOT array position.
+        ' MediaStream.index values include all stream types and are non-contiguous
+        ' relative to the audio-only subset, so array indexing would be wrong.
+        if isValid(stream.index) and stream.index = selectedAudioStreamIndex
+          selectedStream = stream
+        end if
       end if
-      if isValid(audioIdx) then exit for
     end for
   end if
 
-  if isValid(audioIdx)
+  ' Fall back to first audio stream when no index match found
+  if not isValid(selectedStream)
+    selectedStream = firstAudioStream
+  end if
+
+  if isValid(selectedStream)
+    m.top.findNode("audio_codec").text = tr("Audio") + ": " + formatAudioDisplayTitle(selectedStream)
     m.top.findNode("audio_codec").visible = true
     DisplayAudioAvailable(mediaStreams)
   else
