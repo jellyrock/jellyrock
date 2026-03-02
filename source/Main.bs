@@ -267,8 +267,19 @@ sub Main (args as dynamic) as void
           queueItem = nodeHelpers.createQueueItem(selectedItem)
           if not isValid(queueItem) then return
 
-          ' selectedAudioStreamIndex: 0 = auto-select (Phase 4 will carry user-chosen track)
-          queueItem.selectedAudioStreamIndex = 0
+          ' Carry stream selections from the TVEpisodes options dialog if present.
+          ' Episodes launched from Home/search won't have these fields, so guard with doesExist().
+          ' -1 = no user selection; fall back to 0 so ItemPostPlaybackInfo auto-selects.
+          episodeScene = msg.getRoSGNode()
+          userAudioIdx = -1
+          if isValid(episodeScene) and episodeScene.doesExist("selectedAudioStreamIndex")
+            userAudioIdx = episodeScene.selectedAudioStreamIndex
+          end if
+          queueItem.selectedAudioStreamIndex = userAudioIdx >= 0 ? userAudioIdx : 0
+
+          if isValid(episodeScene) and episodeScene.doesExist("selectedVideoStreamId") and isValidAndNotEmpty(episodeScene.selectedVideoStreamId)
+            queueItem.id = episodeScene.selectedVideoStreamId
+          end if
 
           ' Display playback options dialog if there is a saved resume position
           if selectedItem.playbackPositionTicks > 0

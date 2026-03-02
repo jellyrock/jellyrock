@@ -30,8 +30,22 @@ sub itemContentChanged()
     m.top.selectedVideoStreamId = mediaSources[0].id
   end if
 
-  ' Default audio stream: derive best track from full media streams
-  if m.top.selectedAudioStreamIndex = 0
+  ' Observe the row ContentNode so the audio label updates when the user picks a track.
+  ' Clean up the previous observer when this renderer is recycled onto a new item.
+  if isValid(m.rowContentNode)
+    m.rowContentNode.unobserveField("audioSelectionIndex")
+    m.rowContentNode = invalid
+  end if
+  rowNode = isValid(item) ? item.getParent() : invalid
+  if isValid(rowNode) and rowNode.doesExist("audioSelectionIndex")
+    m.rowContentNode = rowNode
+    m.rowContentNode.observeField("audioSelectionIndex", "onRowAudioSelectionChanged")
+  end if
+
+  ' Use stored user selection if present, otherwise auto-detect.
+  if isValid(m.rowContentNode) and m.rowContentNode.audioSelectionIndex >= 0
+    m.top.selectedAudioStreamIndex = m.rowContentNode.audioSelectionIndex
+  else if m.top.selectedAudioStreamIndex = 0
     SetDefaultAudioTrack(mediaSources)
   end if
 
@@ -133,6 +147,34 @@ sub itemContentChanged()
     m.videoCodec.visible = true
     DisplayVideoAvailable(mediaSources)
   end if
+end sub
+
+' onRowAudioSelectionChanged: Fires when the user picks a track from the options dialog.
+' Fires when TVEpisodeRowWithOptions writes a new audio selection to the row ContentNode.
+sub onRowAudioSelectionChanged()
+  if not isValid(m.rowContentNode) then return
+  newIndex = m.rowContentNode.audioSelectionIndex
+  if newIndex < 0 then return ' -1 = no user selection, ignore
+  m.top.selectedAudioStreamIndex = newIndex
+end sub
+
+' Re-renders the audio label when selectedAudioStreamIndex changes.
+sub onSelectedAudioStreamIndexChanged()
+  item = m.top.itemContent
+  if not isValid(item) then return
+
+  mediaSources = invalid
+  if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
+    mediaSources = item.mediaSourcesData.mediaSources
+  end if
+  if not isValid(mediaSources) then return
+
+  for i = 0 to mediaSources.Count() - 1
+    if m.top.selectedVideoStreamId = mediaSources[i].id and isValid(mediaSources[i].MediaStreams)
+      SetupAudioDisplay(mediaSources[i].MediaStreams, m.top.selectedAudioStreamIndex)
+      exit for
+    end if
+  end for
 end sub
 
 ' Display current audio_codec and check if there is more than one audio track to choose from.

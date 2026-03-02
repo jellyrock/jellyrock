@@ -45,6 +45,8 @@ function setData()
 
   for each item in m.top.objects.items
     row = data.CreateChild("ContentNode")
+    row.addField("audioSelectionIndex", "integer", true) ' -1 = auto; >= 0 = user-chosen server index
+    row.audioSelectionIndex = -1
     row.appendChild(item)
   end for
 

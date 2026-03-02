@@ -494,7 +494,12 @@ sub SetUpAudioOptions(streams)
 
   for i = 0 to streams.Count() - 1
     if streams[i].Type = "Audio"
-      tracks.push({ "Title": formatAudioDisplayTitle(streams[i]), "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = i, "StreamIndex": i })
+      ' Use server-side stream.index (not loop position) for both the pre-selection check
+      ' and the StreamIndex value carried to MovieOptions / audioOptionsClosed.
+      ' Jellyfin indices span all stream types and must match what ItemPostPlaybackInfo expects.
+      if isValid(streams[i].index)
+        tracks.push({ "Title": formatAudioDisplayTitle(streams[i]), "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = streams[i].index, "StreamIndex": streams[i].index })
+      end if
     end if
   end for
 
