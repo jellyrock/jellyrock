@@ -10,6 +10,7 @@ import "pkg:/source/utils/misc.bs"
 ' @returns Full image URL string, or "" if no tag is available for that type
 function getItemImageUrl(item as object, imageType = "Primary" as string, size = imageSize.DEFAULT as object) as string
   if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.id) then return ""
 
   imgParams = { maxWidth: size.width, maxHeight: size.height }
 
@@ -45,6 +46,7 @@ end function
 ' @returns Full image URL string, or "" if no image is available
 function getItemPosterUrl(item as object, size = imageSize.POSTER_LG as object) as string
   if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.id) then return ""
 
   imgParams = { maxWidth: size.width, maxHeight: size.height }
 
@@ -76,6 +78,7 @@ end function
 ' @returns Full image URL string, or "" if no image is available
 function getItemWidePosterUrl(item as object, size = imageSize.WIDE_MD as object) as string
   if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.id) then return ""
 
   imgParams = { maxWidth: size.width, maxHeight: size.height }
 
@@ -122,6 +125,7 @@ end function
 ' @returns Full image URL string, or "" if no image is available
 function getItemBackdropUrl(item as object, size as object) as string
   if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.id) then return ""
 
   ' 1. Item's own backdrop
   if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
@@ -146,6 +150,7 @@ end function
 ' @returns Full image URL string, or "" if no image is available
 function getItemParentBackdropUrl(item as object, size as object) as string
   if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.id) then return ""
 
   ' 1. Parent (series) backdrop first - matches what the parent detail screen shows
   if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
@@ -168,7 +173,7 @@ end function
 ' @returns Full image URL string, or "" if no image is available
 function getProgramImageUrl(programItem as object, channelItem as object, size = imageSize.WIDE_MD as object) as string
   ' 1. Program's own primary image
-  if isValid(programItem)
+  if isValid(programItem) and isValidAndNotEmpty(programItem.id)
     url = getItemPosterUrl(programItem, size)
     if isValidAndNotEmpty(url)
       return url
@@ -176,7 +181,7 @@ function getProgramImageUrl(programItem as object, channelItem as object, size =
   end if
 
   ' 2. Channel's primary image as fallback
-  if isValid(channelItem)
+  if isValid(channelItem) and isValidAndNotEmpty(channelItem.id)
     imgParams = { maxWidth: size.width, maxHeight: size.height }
     if isValidAndNotEmpty(channelItem.primaryImageTag)
       imgParams.tag = channelItem.primaryImageTag

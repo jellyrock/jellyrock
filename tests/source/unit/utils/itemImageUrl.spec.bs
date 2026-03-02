@@ -89,7 +89,16 @@ namespace tests
       url = getItemImageUrl(invalid, "Primary", imageSize.POSTER_LG)
       m.assertEqual(url, "")
     end function
+    @it("returns empty string for unloaded sentinel node (id is empty)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" is the unloaded sentinel; tag is present so only the id guard prevents URL generation
+      item.primaryImageTag = "ptag"
 
+      url = getItemImageUrl(item, "Primary", imageSize.POSTER_LG)
+
+      m.assertEqual(url, "")
+    end function
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getItemPosterUrl - poster with fallback chain")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -153,7 +162,16 @@ namespace tests
       m.assertTrue(isValidAndNotEmpty(url))
       m.assertTrue(url.Instr("180") > -1) ' POSTER_SM width
     end function
+    @it("returns empty string for unloaded sentinel node (id is empty)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" is the unloaded sentinel; tag is present so only the id guard prevents URL generation
+      item.primaryImageTag = "ptag"
 
+      url = getItemPosterUrl(item)
+
+      m.assertEqual(url, "")
+    end function
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getItemWidePosterUrl - wide/landscape with fallback")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -217,7 +235,16 @@ namespace tests
 
       m.assertEqual(url, "")
     end function
+    @it("returns empty string for unloaded sentinel node (id is empty)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" is the unloaded sentinel; tag is present so only the id guard prevents URL generation
+      item.thumbImageTag = "ttag"
 
+      url = getItemWidePosterUrl(item)
+
+      m.assertEqual(url, "")
+    end function
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getItemThumbnailUrl - delegates to widePosterUrl")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -272,7 +299,16 @@ namespace tests
 
       m.assertEqual(url, "")
     end function
+    @it("returns empty string for unloaded sentinel node (id is empty)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" is the unloaded sentinel; tag is present so only the id guard prevents URL generation
+      item.backdropImageTags = ["btag"]
 
+      url = getItemBackdropUrl(item, { width: 1920, height: 1080 })
+
+      m.assertEqual(url, "")
+    end function
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getProgramImageUrl - program with channel fallback")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -338,7 +374,36 @@ namespace tests
       url = getProgramImageUrl(invalid, invalid)
       m.assertEqual(url, "")
     end function
+    @it("skips unloaded program sentinel and falls through to channel")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" sentinel: tag present but program node unloaded
+      program.primaryImageTag = "progtag"
 
+      channel = CreateObject("roSGNode", "JellyfinBaseItem")
+      channel.id = "chan1"
+      channel.primaryImageTag = "chantag"
+
+      url = getProgramImageUrl(program, channel)
+
+      m.assertTrue(url.Instr("chantag") > -1)
+      m.assertTrue(url.Instr("chan1") > -1)
+      m.assertFalse(url.Instr("progtag") > -1)
+    end function
+
+    @it("returns empty string when channel is unloaded sentinel node (id is empty)")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' No program images
+
+      channel = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" sentinel: tag present but channel node unloaded
+      channel.primaryImageTag = "chantag"
+
+      url = getProgramImageUrl(program, channel)
+
+      m.assertEqual(url, "")
+    end function
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getItemParentBackdropUrl - parent-first backdrop")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -388,6 +453,17 @@ namespace tests
     @it("returns empty string for invalid item")
     function _()
       url = getItemParentBackdropUrl(invalid, { width: 1920, height: 1080 })
+      m.assertEqual(url, "")
+    end function
+
+    @it("returns empty string for unloaded sentinel node (id is empty)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" is the unloaded sentinel; tag is present so only the id guard prevents URL generation
+      item.backdropImageTags = ["btag"]
+
+      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
+
       m.assertEqual(url, "")
     end function
 
