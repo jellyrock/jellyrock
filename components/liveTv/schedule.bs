@@ -86,7 +86,7 @@ sub onChannelsLoaded()
       gridData.appendChild(item)
       m.channelIndex[item.id] = counter
       counter = counter + 1
-      channelIdList = channelIdList + item.Id + ","
+      channelIdList = channelIdList + item.id + ","
     end for
     m.scheduleGrid.content = gridData
 
