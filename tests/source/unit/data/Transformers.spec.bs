@@ -1534,7 +1534,7 @@ namespace tests
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
-      m.assertInvalid(result.chapters)    ' array field
+      m.assertInvalid(result.chapters) ' array field
       m.assertEqual(result.chapterCount, 0) ' integer field defaults to 0
     end function
 

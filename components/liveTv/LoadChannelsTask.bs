@@ -1,8 +1,8 @@
 import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/Image.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/data/JellyfinDataTransformer.bs"
-import "pkg:/source/api/Image.bs"
 
 sub init()
   m.top.functionName = "loadChannels"

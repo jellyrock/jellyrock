@@ -65,7 +65,7 @@ function DeterminePresenterType(libraryItem as object) as string
   if LCase(libraryItem.type) = "studio"
     if collectionType = "movies" then return "movie"
     if collectionType = "tvshows" then return "tvshow"
-    return "movie"  ' default: studios are most commonly in movie libraries
+    return "movie" ' default: studios are most commonly in movie libraries
   end if
 
   ' Genre folder - use collectionType set by LoadItemsTask2 first, fall back to item counts
@@ -85,7 +85,7 @@ function DeterminePresenterType(libraryItem as object) as string
     if collectionType = "tvshows" then return "tvshow"
     if libraryItem.movieCount > 0 then return "movie"
     if libraryItem.seriesCount > 0 then return "tvshow"
-    return "movie"  ' default studios to movie
+    return "movie" ' default studios to movie
   end if
 
   ' Music genre — either via folderType (when IsFolder=true) or raw type (when IsFolder is absent)

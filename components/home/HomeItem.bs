@@ -130,7 +130,7 @@ sub itemContentChanged()
   ' Try the program's own primary image; fall back to the channel's primary image.
   if itemData.type = "Program"
     m.itemText.text = itemData.name
-    m.itemTextExtra.text = itemData.subtitle  ' pre-computed: episodeTitle or channelName
+    m.itemTextExtra.text = itemData.subtitle ' pre-computed: episodeTitle or channelName
 
     posterUri = getItemPosterUrl(itemData, imageSize.POSTER_SM)
     if posterUri = "" and isValidAndNotEmpty(itemData.channelId) and isValidAndNotEmpty(itemData.channelPrimaryImageTag)

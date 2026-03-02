@@ -328,7 +328,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 120)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 120)
 
       m.assertNotInvalid(result)
       m.assertEqual(result.videoID, "my-video")
@@ -346,14 +346,14 @@ namespace tests
     @it("returns invalid for missing trickplay data")
     function _()
       itemMeta = { Trickplay: invalid }
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
     @it("returns invalid for empty trickplay data")
     function _()
       itemMeta = { Trickplay: {} }
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -376,7 +376,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -396,7 +396,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -416,7 +416,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -436,7 +436,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -456,7 +456,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -476,7 +476,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -496,7 +496,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
       m.assertInvalid(result)
     end function
 
@@ -516,7 +516,7 @@ namespace tests
         }
       }
 
-      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay,"my-video", 1920, 0)
+      result = trickplay.buildConfigFromMetadata(itemMeta.Trickplay, "my-video", 1920, 0)
 
       m.assertNotInvalid(result)
       ' int(val()) converts string "640" to Integer 640

@@ -1,5 +1,5 @@
-import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 
 namespace tests
   @suite("itemImageUrl - Image URL generation utility")
@@ -151,7 +151,7 @@ namespace tests
       url = getItemPosterUrl(item, imageSize.POSTER_SM)
 
       m.assertTrue(isValidAndNotEmpty(url))
-      m.assertTrue(url.Instr("180") > -1)  ' POSTER_SM width
+      m.assertTrue(url.Instr("180") > -1) ' POSTER_SM width
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
