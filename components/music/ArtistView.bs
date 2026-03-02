@@ -1,3 +1,5 @@
+import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -52,8 +54,9 @@ end sub
 
 sub OnScreenShown()
   ' Restore backdrop when returning to this screen
-  if isValid(m.top.pageContent) and isValid(m.top.pageContent.backdropUrl)
-    m.global.sceneManager.callFunc("setBackgroundImage", m.top.pageContent.backdropUrl)
+  if isValid(m.top.pageContent)
+    deviceRes = m.global.device.uiResolution
+    m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(m.top.pageContent, { width: deviceRes[0], height: deviceRes[1] }))
   end if
 
   if m.sectionScroller.displayedIndex = 0
@@ -134,19 +137,17 @@ sub pageContentChanged()
   item = m.top.pageContent
 
   ' Set backdrop using app-wide BackdropFader via sceneManager
-  if isValid(item) and isValid(item.backdropUrl)
-    m.global.sceneManager.callFunc("setBackgroundImage", item.backdropUrl)
-  end if
+  deviceRes = m.global.device.uiResolution
+  m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(item, { width: deviceRes[0], height: deviceRes[1] }))
 
   ' Populate scene data
-  setScreenTitle(item.json)
-  setPosterImage(item.posterURL)
+  setScreenTitle(item)
+  size = imageSize.SQUARE_LG
+  setPosterImage(getItemPosterUrl(item, size))
 end sub
 
-sub setScreenTitle(json)
-  if isValid(json)
-    m.top.overhangTitle = json.name
-  end if
+sub setScreenTitle(item as object)
+  m.top.overhangTitle = item.name
 end sub
 
 sub setPosterImage(posterURL)
