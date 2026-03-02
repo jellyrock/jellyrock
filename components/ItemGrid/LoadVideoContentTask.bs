@@ -252,8 +252,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   ' Pass JellyfinBaseItem node for OSD to read typed fields directly
   video.meta = meta
 
-  if not isValid(m.playbackInfo.MediaSources[0])
-    m.playbackInfo = { MediaSources: meta.mediaSourcesData.mediaSources ?? [] }
+  ' All downstream code requires MediaSources[0] — fail fast if it's missing
+  if not isValid(m.playbackInfo.MediaSources) or m.playbackInfo.MediaSources.Count() = 0 or not isValid(m.playbackInfo.MediaSources[0])
+    video.errorMsg = "Error loading playback info: no valid media source returned"
+    video.content = invalid
+    return
   end if
 
   addAudioStreamsToVideo(video)
