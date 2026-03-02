@@ -165,7 +165,7 @@ jobs:
           fi
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: ${{ steps.context.outputs.artifact_name }}
           path: ${{ github.workspace }}/build
@@ -186,7 +186,7 @@ jobs:
 
       - name: Upload ZIP artifact
         if: ${{ inputs.upload_zip == 'true' || steps.context.outputs.build_context == 'version_branch' || (steps.context.outputs.build_context == 'main_branch' && inputs.create_github_release == true) }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: ${{ steps.context.outputs.zip_name }}
           path: ${{ github.workspace }}/out/${{ steps.context.outputs.zip_name }}
