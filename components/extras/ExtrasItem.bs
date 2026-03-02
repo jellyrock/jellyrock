@@ -30,7 +30,9 @@ sub showContent()
     ' width is declared in ExtrasItem.xml (default 234) and set by RowList per rowItemSize.
     ' Using a declared field guarantees it is never Invalid (unlike m.top.width on Group nodes).
     slotWidth = m.top.width
-    m.name.text = cont.name
+    ' Episodes: show series name as primary title (matches HomeItem behavior).
+    ' The pre-computed subtitle already contains "S{x}E{y} - {episodeName}".
+    m.name.text = (cont.type = "Episode") ? cont.seriesName : cont.name
     m.name.maxWidth = slotWidth
     m.role.maxWidth = slotWidth
     posterSize = { width: int(slotWidth), height: int(slotWidth * 1.41) }
