@@ -2,6 +2,7 @@ import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/sdk.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -44,37 +45,19 @@ sub updateSeason()
   setSeasonBackdrop()
 end sub
 
-' setSeasonBackdrop: Sets backdrop for season view
-' Priority 1: Season's own backdrop
-' Priority 2: Parent series backdrop
-' Priority 3: Transparent (no backdrop available)
+' setSeasonBackdrop: Sets backdrop for season view, always preferring the series (parent)
+' backdrop over the season's own to maintain visual continuity with TVShowDetails.
+' This prevents flickering when navigating Series Details → Season, because both screens
+' resolve to the same series backdrop URL and BackdropFader de-duplicates the transition.
 sub setSeasonBackdrop()
   if not isValid(m.top.seasonData) then return
 
   localDevice = m.global.device
-  backdropWidth = localDevice.uiResolution[0]
-  backdropHeight = localDevice.uiResolution[1]
+  size = { width: localDevice.uiResolution[0], height: localDevice.uiResolution[1] }
 
-  seasonData = m.top.seasonData
-
-  ' Priority 1: Try season's own backdrop first
-  if isValidAndNotEmpty(seasonData.backdropImageTags) and isValidAndNotEmpty(seasonData.backdropImageTags[0])
-    backdropParams = { "tag": seasonData.backdropImageTags[0], "maxHeight": backdropHeight, "maxWidth": backdropWidth }
-    backdropUrl = ImageURL(seasonData.id, "Backdrop", backdropParams)
-    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
-    return
-  end if
-
-  ' Priority 2: Fallback to parent series backdrop
-  if isValidAndNotEmpty(seasonData.parentBackdropImageTags) and isValidAndNotEmpty(seasonData.parentBackdropImageTags[0]) and isValidAndNotEmpty(seasonData.seriesId)
-    backdropParams = { "tag": seasonData.parentBackdropImageTags[0], "maxHeight": backdropHeight, "maxWidth": backdropWidth }
-    backdropUrl = ImageURL(seasonData.seriesId, "Backdrop", backdropParams)
-    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
-    return
-  end if
-
-  ' No backdrop available - set transparent
-  m.global.sceneManager.callFunc("setBackgroundImage", "")
+  ' getItemParentBackdropUrl: parent (series) backdrop first, season own backdrop as fallback
+  backdropUrl = getItemParentBackdropUrl(m.top.seasonData, size)
+  m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
 end sub
 
 ' get the currently focused item

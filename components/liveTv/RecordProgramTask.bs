@@ -12,13 +12,13 @@ sub RecordOrCancelProgram()
   if isValid(m.top.programDetails)
     ' Are we setting up a recording or canceling one?
     TimerId = invalid
-    if isValid(m.top.programDetails.json.TimerId) and m.top.programDetails.json.TimerId <> ""
-      TimerId = m.top.programDetails.json.TimerId
+    if isValidAndNotEmpty(m.top.programDetails.timerId)
+      TimerId = m.top.programDetails.timerId
     end if
 
     if not isValid(TimerId)
       ' Setting up a recording...
-      programId = m.top.programDetails.Id
+      programId = m.top.programDetails.id
 
       ' Get Live TV default params from server...
       url = "LiveTv/Timers/Defaults"
@@ -46,7 +46,7 @@ sub RecordOrCancelProgram()
     else
       ' Cancelling a recording...
       if m.top.recordSeries = true
-        TimerId = m.top.programDetails.json.SeriesTimerId
+        TimerId = m.top.programDetails.seriesTimerId
         url = Substitute("LiveTv/SeriesTimers/{0}", TimerId)
       else
         url = Substitute("LiveTv/Timers/{0}", TimerId)

@@ -28,6 +28,9 @@ sub init()
   m.top.lastFocus = m.scheduleGrid
 
   m.channelIndex = {}
+  ' Track which program IDs have been fully loaded to avoid redundant API requests.
+  ' Used instead of a .fullyLoaded field on the (immutable) JellyfinBaseItem node.
+  m.fullyLoadedProgramIds = {}
 end sub
 
 sub OnScreenShown()
@@ -81,7 +84,7 @@ sub onChannelsLoaded()
   if m.LoadChannelsTask.channels.count() > 0
     for each item in m.LoadChannelsTask.channels
       gridData.appendChild(item)
-      m.channelIndex[item.Id] = counter
+      m.channelIndex[item.id] = counter
       counter = counter + 1
       channelIdList = channelIdList + item.Id + ","
     end for
@@ -119,14 +122,7 @@ sub onScheduleLoaded()
 
   for each item in m.LoadScheduleTask.schedule
 
-    channel = m.scheduleGrid.content.GetChild(m.channelIndex[item.ChannelId])
-
-    if channel.PosterUrl <> ""
-      item.channelLogoUri = channel.PosterUrl
-    end if
-    if channel.Title <> ""
-      item.channelName = channel.Title
-    end if
+    channel = m.scheduleGrid.content.GetChild(m.channelIndex[item.channelId])
 
     channel.appendChild(item)
   end for
@@ -160,8 +156,8 @@ sub onProgramFocused()
 
   prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
 
-  if isValid(prog) and prog.fullyLoaded = false
-    m.LoadProgramDetailsTask.programId = prog.Id
+  if isValid(prog) and not isValid(m.fullyLoadedProgramIds[prog.id])
+    m.LoadProgramDetailsTask.programId = prog.id
     m.LoadProgramDetailsTask.channelIndex = m.scheduleGrid.programFocusedDetails.focusChannelIndex
     m.LoadProgramDetailsTask.programIndex = m.scheduleGrid.programFocusedDetails.focusIndex
     m.LoadProgramDetailsTask.control = "RUN"
@@ -173,14 +169,19 @@ end sub
 ' Update the Program Details with full information
 sub onProgramDetailsLoaded()
   if not isValid(m.LoadProgramDetailsTask.programDetails) then return
-  channel = m.scheduleGrid.content.GetChild(m.LoadProgramDetailsTask.programDetails.channelIndex)
 
-  ' If TV Show does not have its own image, use the channel logo
-  if not isValid(m.LoadProgramDetailsTask.programDetails.PosterUrl) or m.LoadProgramDetailsTask.programDetails.PosterUrl = ""
-    m.LoadProgramDetailsTask.programDetails.PosterUrl = channel.PosterUrl
-  end if
+  programDetails = m.LoadProgramDetailsTask.programDetails
+  channel = m.scheduleGrid.content.GetChild(programDetails.channelIndex)
 
-  channel.ReplaceChild(m.LoadProgramDetailsTask.programDetails, m.LoadProgramDetailsTask.programDetails.programIndex)
+  ' Replace the lightweight schedule item in the TimeGrid with the fully-loaded node
+  channel.ReplaceChild(programDetails.item, programDetails.programIndex)
+
+  ' Track this program as fully loaded to prevent redundant API requests on re-focus
+  m.fullyLoadedProgramIds[programDetails.item.id] = true
+
+  ' Update the details pane immediately so the user sees full program data
+  m.detailsPane.programDetails = programDetails.item
+
   m.LoadProgramDetailsTask.programDetails = invalid
   m.scheduleGrid.showLoadingDataFeedback = false
 end sub
@@ -286,7 +287,7 @@ sub onRecordOperationDone()
     ' reload the entire grid...
     channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
     prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
-    m.LoadProgramDetailsTask.programId = prog.Id
+    m.LoadProgramDetailsTask.programId = prog.id
     m.LoadProgramDetailsTask.channelIndex = m.scheduleGrid.programFocusedDetails.focusChannelIndex
     m.LoadProgramDetailsTask.programIndex = m.scheduleGrid.programFocusedDetails.focusIndex
     m.LoadProgramDetailsTask.control = "RUN"

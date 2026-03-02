@@ -1,5 +1,7 @@
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/constants/imageSize.bs"
 
 sub init()
 
@@ -76,9 +78,9 @@ sub channelUpdated()
     m.top.findNode("noInfoChannelName").text = m.top.channel.Title
     m.channelName.text = m.top.channel.Title
     if not isValid(m.top.programDetails)
-      m.image.uri = m.top.channel.posterURL
+      m.image.uri = getItemImageUrl(m.top.channel, "Primary", imageSize.POSTER_MD)
     end if
-    m.favorite.visible = m.top.channel.favorite
+    m.favorite.visible = m.top.channel.isFavorite
   end if
 end sub
 
@@ -101,7 +103,7 @@ sub programUpdated()
   end if
 
   m.programName.text = prog.Title
-  m.overview.text = prog.description
+  m.overview.text = prog.overview
 
   m.episodeDetailsGroup.removeChildrenIndex(m.episodeDetailsGroup.getChildCount(), 0)
 
@@ -112,8 +114,8 @@ sub programUpdated()
   end if
 
   ' Episode Number
-  if prog.seasonNumber > 0 and prog.episodeNumber > 0
-    m.episodeNumber.text = "S" + StrI(prog.seasonNumber).trim() + ":E" + StrI(prog.episodeNumber).trim()
+  if prog.parentIndexNumber > 0 and prog.indexNumber > 0
+    m.episodeNumber.text = "S" + StrI(prog.parentIndexNumber).trim() + ":E" + StrI(prog.indexNumber).trim()
     if prog.episodeTitle <> "" then m.episodeNumber.text = m.episodeNumber.text + " -" ' Add a Dash if showing Episode Number and Title
     m.episodeDetailsGroup.appendChild(m.episodeNumber)
   end if
@@ -130,14 +132,14 @@ sub programUpdated()
   now = createObject("roDateTime")
   startDate = createObject("roDateTime")
   endDate = createObject("roDateTime")
-  startDate.FromISO8601String(prog.StartDate)
-  endDate.FromISO8601String(prog.EndDate)
+  startDate.FromISO8601String(prog.startDate)
+  endDate.FromISO8601String(prog.endDate)
 
   day = getRelativeDayName(startDate)
 
   ' Get Start Date in local timezone for display to user
   localStartDate = createObject("roDateTime")
-  localStartDate.FromISO8601String(prog.StartDate)
+  localStartDate.FromISO8601String(prog.startDate)
   localStartDate.ToLocalTime()
 
   if startDate.AsSeconds() < now.AsSeconds() and endDate.AsSeconds() > now.AsSeconds()
@@ -160,11 +162,11 @@ sub programUpdated()
     end if
   end if
 
-  m.image.uri = prog.PosterURL
+  m.image.uri = getItemImageUrl(prog, "Primary", imageSize.POSTER_MD)
 
   ' If currently being recorded, change button to "Stop Recording"
-  if isValid(prog.json.TimerId)
-    if isValid(prog.json.SeriesTimerId)
+  if isValidAndNotEmpty(prog.timerId)
+    if isValidAndNotEmpty(prog.seriesTimerId)
       updateLabels(tr("Cancel Recording"), tr("Cancel Series Recording"))
     else
       updateLabels(tr("Cancel Recording"), tr("Record Series"))
@@ -174,7 +176,7 @@ sub programUpdated()
   end if
 
   ' If not a series, hide Record Series button (doesn't make sense for non-series content)
-  if prog.json.isSeries <> true ' could be invalid or false
+  if prog.isSeries <> true ' could be invalid or false
     m.recordSeriesButton.visible = false
     m.recordSeriesButton.enabled = false
   else

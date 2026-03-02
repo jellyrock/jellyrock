@@ -136,6 +136,30 @@ function getItemBackdropUrl(item as object, size = imageSize.BACKDROP as object)
   return ""
 end function
 
+' Generate a backdrop URL that prefers the parent (series/show) backdrop over the item's own.
+' Use this for sub-item views (season episode lists, etc.) to maintain visual continuity
+' with the parent detail screen. Both screens will resolve to the same series backdrop URL,
+' which lets BackdropFader deduplicate the transition and avoid flickering.
+' Fallback order: parent backdrop → item's own backdrop
+' @param item - JellyfinBaseItem content node (typically a Season)
+' @param size - Size constant from imageSize namespace (default: imageSize.BACKDROP)
+' @returns Full image URL string, or "" if no image is available
+function getItemParentBackdropUrl(item as object, size = imageSize.BACKDROP as object) as string
+  if not isValid(item) then return ""
+
+  ' 1. Parent (series) backdrop first - matches what the parent detail screen shows
+  if isValid(item.parentBackdropImageTags) and item.parentBackdropImageTags.Count() > 0 and isValidAndNotEmpty(item.parentBackdropItemId)
+    return ImageURL(item.parentBackdropItemId, "Backdrop", { tag: item.parentBackdropImageTags[0], maxHeight: size.height, maxWidth: size.width })
+  end if
+
+  ' 2. Fall back to item's own backdrop if no parent backdrop exists
+  if isValid(item.backdropImageTags) and item.backdropImageTags.Count() > 0
+    return ImageURL(item.id, "Backdrop", { tag: item.backdropImageTags[0], maxHeight: size.height, maxWidth: size.width })
+  end if
+
+  return ""
+end function
+
 ' Generate an image URL for a Live TV program, falling back to the channel image.
 ' Accommodates the two-phase load constraint: program and channel are separate API calls.
 ' @param programItem - JellyfinBaseItem for the program

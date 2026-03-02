@@ -69,7 +69,10 @@ sub onSearchItemFocused()
     focusedItem = rowContent.getChild(m.searchSelect.rowItemFocused[1])
 
     if isValid(focusedItem) and isValidAndNotEmpty(focusedItem.id)
-      backdropUrl = getItemBackdropUrl(focusedItem)
+      ' Pass device resolution so the URL matches other screens showing the same item,
+      ' allowing BackdropFader to deduplicate and avoid unnecessary reloads/flicker.
+      deviceRes = m.global.device.uiResolution
+      backdropUrl = getItemBackdropUrl(focusedItem, { width: deviceRes[0], height: deviceRes[1] })
       m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
     else
       ' Item has no backdrop - set transparent

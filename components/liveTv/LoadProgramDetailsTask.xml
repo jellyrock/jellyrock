@@ -5,6 +5,6 @@
     <field id="programId" type="string" />
     <field id="ChannelIndex" type="integer" />
     <field id="ProgramIndex" type="integer" />
-    <field id="programDetails" type="node" />
+    <field id="programDetails" type="assocarray" />
   </interface>
 </component>

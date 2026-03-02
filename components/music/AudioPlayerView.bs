@@ -564,7 +564,8 @@ sub onAudioStreamLoaded()
     ' Set backdrop immediately from available data (will be set once in onMetaDataLoaded if useMetaTask = true)
     if not useMetaTask
       ' We have all data, set backdrop now from parent backdrop
-      backdropUri = getItemBackdropUrl(currentItem)
+      deviceRes = m.global.device.uiResolution
+      backdropUri = getItemBackdropUrl(currentItem, { width: deviceRes[0], height: deviceRes[1] })
       if isValidAndNotEmpty(backdropUri)
         m.log.info("Backdrop change (immediate): old=", m.currentBackdropUrl, "new=", backdropUri)
         m.currentBackdropUrl = backdropUri
@@ -613,7 +614,8 @@ sub onMetaDataLoaded()
   if not isValidAndNotEmpty(data.id) then return
 
   ' Set backdrop from item or parent backdrop (NameGuidPair artist items have no BackdropImageTags)
-  backdropUri = getItemBackdropUrl(data)
+  deviceRes = m.global.device.uiResolution
+  backdropUri = getItemBackdropUrl(data, { width: deviceRes[0], height: deviceRes[1] })
   if isValidAndNotEmpty(backdropUri)
     m.log.info("Backdrop change (parent): old=", m.currentBackdropUrl, "new=", backdropUri)
     m.currentBackdropUrl = backdropUri

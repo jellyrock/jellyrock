@@ -74,6 +74,7 @@ class JellyfinDataTransformer
 
       ' ── Dates & Timing ──
       item.premiereDate = apiData.PremiereDate ?? ""
+      item.startDate = apiData.StartDate ?? ""
       item.endDate = apiData.EndDate ?? ""
       item.dateCreated = apiData.DateCreated ?? ""
       item.dateLastMediaAdded = apiData.DateLastMediaAdded ?? ""
@@ -437,6 +438,23 @@ class JellyfinDataTransformer
     if isValid(apiData.ParentIndexNumber)
       item.parentIndexNumber = apiData.ParentIndexNumber
     end if
+
+    ' ── ContentNode built-ins for Roku TimeGrid positioning ──
+    ' TimeGrid reads PlayStart (epoch seconds) and PlayDuration (seconds) from ContentNode.
+    ' Programs use StartDate/EndDate for broadcast times (distinct from media PremiereDate).
+    if isValidAndNotEmpty(item.startDate)
+      startDt = createObject("roDateTime")
+      startDt.FromISO8601String(item.startDate)
+      item.PlayStart = startDt.AsSeconds()
+      if isValidAndNotEmpty(item.endDate)
+        endDt = createObject("roDateTime")
+        endDt.FromISO8601String(item.endDate)
+        item.PlayDuration = endDt.AsSeconds() - item.PlayStart
+      end if
+    end if
+
+    ' ContentNode description built-in (Roku standard), used by ProgramDetails overview display
+    item.live = item.isLive
   end sub
 
   ' Transform music-specific fields (Audio, MusicAlbum, MusicArtist, MusicVideo).

@@ -1,7 +1,9 @@
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/constants/imageSize.bs"
 
 sub init()
   m.title = m.top.findNode("title")
@@ -14,20 +16,31 @@ end sub
 
 sub itemContentChanged()
   item = m.top.itemContent
-  itemData = item.json
   userSettings = m.global.user.settings
 
-  ' Set default video source if user hasn't selected one yet
-  if item.selectedVideoStreamId = "" and isValid(itemData.MediaSources)
-    item.selectedVideoStreamId = itemData.MediaSources[0].id
+  ' Derive stream selection state onto component fields (not the immutable item node).
+  ' Re-derive on every item change since this renderer is recycled across episodes.
+  mediaSources = invalid
+  if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
+    mediaSources = item.mediaSourcesData.mediaSources
   end if
 
-  if isValid(itemData.parentIndexNumber) and itemData.parentIndexNumber = 0
+  ' Default video source: use pre-computed mediaSourceId from transformer
+  if not isValidAndNotEmpty(m.top.selectedVideoStreamId) and isValid(mediaSources)
+    m.top.selectedVideoStreamId = mediaSources[0].id
+  end if
+
+  ' Default audio stream: derive best track from full media streams
+  if m.top.selectedAudioStreamIndex = 0
+    SetDefaultAudioTrack(mediaSources)
+  end if
+
+  if item.parentIndexNumber = 0
     indexNumber = `${tr("Special")} - `
-  else if isValid(itemData.indexNumber)
-    indexNumber = `${itemData.indexNumber}. `
-    if isValid(itemData.indexNumberEnd)
-      indexNumber = `${itemData.indexNumber}-${itemData.indexNumberEnd}. `
+  else if item.indexNumber > 0
+    indexNumber = `${item.indexNumber}. `
+    if item.indexNumberEnd > 0
+      indexNumber = `${item.indexNumber}-${item.indexNumberEnd}. `
     end if
   else
     indexNumber = ""
@@ -35,26 +48,26 @@ sub itemContentChanged()
   m.title.text = indexNumber + item.title
   m.overview.text = item.overview
 
-  if isValid(itemData.PremiereDate)
+  if isValidAndNotEmpty(item.premiereDate)
     airDate = CreateObject("roDateTime")
-    airDate.FromISO8601String(itemData.PremiereDate)
+    airDate.FromISO8601String(item.premiereDate)
     m.top.findNode("aired").text = airDate.AsDateString("short-month-no-weekday")
   end if
 
-  imageUrl = item.posterURL
+  posterUri = getItemImageUrl(item, "Primary", imageSize.WIDE_SM)
 
   if userSettings.uiTvShowsBlurUnwatched = true
-    if itemData.lookup("Type") = "Episode"
-      if not itemData.userdata.played
-        imageUrl = imageUrl + "&blur=15"
+    if item.type = "Episode"
+      if not item.isWatched
+        posterUri = posterUri + "&blur=15"
       end if
     end if
   end if
 
-  m.poster.uri = imageUrl
+  m.poster.uri = posterUri
 
-  if type(itemData.RunTimeTicks) = "roInt" or type(itemData.RunTimeTicks) = "LongInteger"
-    runTime = getRuntime()
+  if item.runTimeTicks > 0
+    runTime = getRuntime(item.runTimeTicks)
     if runTime < 2
       m.top.findNode("runtime").text = "1 " + tr("min")
     else
@@ -62,12 +75,12 @@ sub itemContentChanged()
     end if
 
     if userSettings.uiDesignHideClock <> true
-      m.top.findNode("endtime").text = tr("Ends at %1").Replace("%1", getEndTime())
+      m.top.findNode("endtime").text = tr("Ends at %1").Replace("%1", getEndTime(item.runTimeTicks))
     end if
   end if
 
   if userSettings.uiTvShowsDisableCommunityRating = false
-    if isValid(itemData.communityRating)
+    if item.communityRating > 0
       if not isValid(m.communityRating)
         m.communityRating = CreateObject("roSGNode", "CommunityRating")
         m.communityRating.id = "communityRating"
@@ -84,7 +97,7 @@ sub itemContentChanged()
         end if
       end if
 
-      m.communityRating.rating = itemData.communityRating
+      m.communityRating.rating = item.communityRating
       m.infoBar.insertChild(m.communityRating, 1)
     else
       if isValid(m.communityRating)
@@ -98,34 +111,27 @@ sub itemContentChanged()
   end if
 
   ' Mark as watched
-  if isValid(itemData.UserData) and isValid(itemData.UserData.Played)
-    m.poster.isWatched = itemData.UserData.Played
-  end if
+  m.poster.isWatched = item.isWatched
 
   ' Update progress bar
-  if isValid(itemData.UserData) and isValidAndNotEmpty(itemData.UserData.PlayedPercentage)
-    m.poster.playedPercentage = itemData.UserData.PlayedPercentage
-  end if
-
-  ' Set default audio track if not manually selected
-  if item.selectedAudioStreamIndex = 0
-    SetDefaultAudioTrack(itemData, item)
+  if item.playedPercentage > 0
+    m.poster.playedPercentage = item.playedPercentage
   end if
 
   ' Display current video_codec and check if there is more than one video to choose from...
   m.videoCodec.visible = false
-  if isValid(itemData.MediaSources)
-    hasMultipleSources = itemData.MediaSources.Count() > 1
-    for i = 0 to itemData.MediaSources.Count() - 1
-      if item.selectedVideoStreamId = itemData.MediaSources[i].id and isValid(itemData.MediaSources[i].MediaStreams)
-        m.videoCodec.text = tr("Video") + ": " + formatVideoSourceTitle(itemData.MediaSources[i], hasMultipleSources)
+  if isValid(mediaSources)
+    hasMultipleSources = mediaSources.Count() > 1
+    for i = 0 to mediaSources.Count() - 1
+      if m.top.selectedVideoStreamId = mediaSources[i].id and isValid(mediaSources[i].MediaStreams)
+        m.videoCodec.text = tr("Video") + ": " + formatVideoSourceTitle(mediaSources[i], hasMultipleSources)
 
-        SetupAudioDisplay(itemData.MediaSources[i].MediaStreams, item.selectedAudioStreamIndex)
+        SetupAudioDisplay(mediaSources[i].MediaStreams, m.top.selectedAudioStreamIndex)
         exit for
       end if
     end for
     m.videoCodec.visible = true
-    DisplayVideoAvailable(itemData.MediaSources)
+    DisplayVideoAvailable(mediaSources)
   end if
 end sub
 
@@ -182,31 +188,34 @@ sub DisplayAudioAvailable(streams as object)
   end if
 end sub
 
-function getRuntime() as integer
-  itemData = m.top.itemContent.json
-
+' @param {longinteger} runTimeTicks - item.runTimeTicks
+' @return {integer} runtime in minutes
+function getRuntime(runTimeTicks as longinteger) as integer
   ' A tick is .1ms, so 1/10,000,000 for ticks to seconds,
   ' then 1/60 for seconds to minutess... 1/600,000,000
-  return int(itemData.RunTimeTicks / 600000000.0)
+  return int(runTimeTicks / 600000000.0)
 end function
 
-function getEndTime() as string
-  itemData = m.top.itemContent.json
+' @param {longinteger} runTimeTicks - item.runTimeTicks
+' @return {string} formatted end time
+function getEndTime(runTimeTicks as longinteger) as string
   date = CreateObject("roDateTime")
-  duration_s = int(itemData.RunTimeTicks / 10000000.0)
+  duration_s = int(runTimeTicks / 10000000.0)
   date.fromSeconds(date.asSeconds() + duration_s)
   date.toLocalTime()
 
   return formatTime(date)
 end function
 
-sub SetDefaultAudioTrack(itemData as object, item as object)
-  ' Extract MediaStreams from itemData
+' SetDefaultAudioTrack: Selects and stores the best audio track for display.
+' Reads full MediaStreams from the first media source to match server stream indices.
+' Stores result in m.top.selectedAudioStreamIndex (component field, not the item node).
+'
+' @param {object} mediaSources - item.mediaSourcesData.mediaSources array, or invalid
+sub SetDefaultAudioTrack(mediaSources as dynamic)
   mediaStreams = invalid
-  if isValid(itemData.mediaStreams)
-    mediaStreams = itemData.mediaStreams
-  else if isValid(itemData.MediaSources) and isValid(itemData.MediaSources[0]) and isValid(itemData.MediaSources[0].MediaStreams)
-    mediaStreams = itemData.MediaSources[0].MediaStreams
+  if isValid(mediaSources) and isValid(mediaSources[0]) and isValid(mediaSources[0].MediaStreams)
+    mediaStreams = mediaSources[0].MediaStreams
   end if
 
   if not isValid(mediaStreams) then return
@@ -220,8 +229,8 @@ sub SetDefaultAudioTrack(itemData as object, item as object)
   ' Use new comprehensive audio selection logic
   selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, localUser.config.audioLanguagePreference)
 
-  ' Set the selected audio stream index on the item node
-  item.selectedAudioStreamIndex = selectedIndex
+  ' Store on component field, not the immutable item node
+  m.top.selectedAudioStreamIndex = selectedIndex
 end sub
 
 sub focusChanged()

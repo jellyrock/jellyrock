@@ -54,6 +54,7 @@
     <!-- DATES & TIMING       -->
     <!-- ==================== -->
     <field id="premiereDate" type="string" value="" />
+    <field id="startDate" type="string" value="" />    <!-- StartDate: recording/program broadcast start time (distinct from PremiereDate) -->
     <field id="endDate" type="string" value="" />
     <field id="dateCreated" type="string" value="" />
     <field id="dateLastMediaAdded" type="string" value="" />
