@@ -64,12 +64,7 @@ sub Main (args as dynamic) as void
   ' Check if we were sent content to play with the startup command (Deep Link)
   if isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
 
-    deepLinkVideo = {
-      id: args.contentId,
-      type: "video"
-    }
-
-    m.global.queueManager.callFunc("push", deepLinkVideo)
+    m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: args.contentId, type: "video" }))
     m.global.queueManager.callFunc("playQueue")
   end if
 
@@ -533,35 +528,36 @@ sub Main (args as dynamic) as void
       else if node.type = "Audio"
         m.global.queueManager.callFunc("clear")
         m.global.queueManager.callFunc("resetShuffle")
-        m.global.queueManager.callFunc("push", node)
+        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Person"
         group = CreatePersonView(node)
       else if node.type = "TvChannel"
         m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("push", node)
+        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Episode"
         ' Show playback options dialog if episode has resume position
+        queueItem = nodeHelpers.createQueueItem(node)
         if node.playbackPositionTicks > 0
-          m.global.queueManager.callFunc("hold", node)
-          playbackOptionDialog(node.playbackPositionTicks, node)
+          m.global.queueManager.callFunc("hold", queueItem)
+          playbackOptionDialog(node.playbackPositionTicks, queueItem)
         else
           ' No resume position, play from beginning via queue
           m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("push", node)
+          m.global.queueManager.callFunc("push", queueItem)
           m.global.queueManager.callFunc("playQueue")
         end if
       else if LCase(node.type) = "recording"
         m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("push", node)
+        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Audio"
         selectedIndex = msg.getData()
         screenContent = msg.getRoSGNode()
         m.global.queueManager.callFunc("clear")
         m.global.queueManager.callFunc("resetShuffle")
-        m.global.queueManager.callFunc("push", screenContent.albumData.items[node.id])
+        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(screenContent.albumData.items[node.id]))
         m.global.queueManager.callFunc("playQueue")
       else
         ' TODO - switch on more node types
@@ -914,13 +910,8 @@ sub Main (args as dynamic) as void
       if msg.IsInput()
         info = msg.GetInfo()
         if info.DoesExist("mediatype") and info.DoesExist("contentid")
-          inputEventVideo = {
-            id: info.contentId,
-            type: "video"
-          }
-
           m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("push", inputEventVideo)
+          m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: info.contentId, type: "video" }))
           m.global.queueManager.callFunc("playQueue")
         end if
       end if

@@ -8,9 +8,8 @@ namespace quickplay
   ' Also shuffles the playlist if asked
   sub pushToQueue(queueArray as object, shufflePlay = false as boolean)
     if isValidAndNotEmpty(queueArray)
-      ' load everything
       for each item in queueArray
-        m.global.queueManager.callFunc("push", item)
+        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(item))
       end for
       ' shuffle the playlist if asked
       if shufflePlay and m.global.queueManager.callFunc("getCount") > 1
@@ -193,7 +192,7 @@ namespace quickplay
 
     if isValid(data) and isValidAndNotEmpty(data.Items)
       ' there are unwatched episodes
-      m.global.queueManager.callFunc("push", data.Items[0])
+      m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[0]))
     else
       ' next up check was empty
       ' check for a resumable episode
@@ -209,10 +208,11 @@ namespace quickplay
       print "resumeitems data=", data
       if isValid(data) and isValidAndNotEmpty(data.Items)
         ' play the resumable episode
+        queueItem = nodeHelpers.createQueueItem(data.Items[0])
         if isValid(data.Items[0].UserData) and isValid(data.Items[0].UserData.PlaybackPositionTicks)
-          data.Items[0].startingPoint = data.Items[0].userdata.PlaybackPositionTicks
+          queueItem.startingPoint = data.Items[0].UserData.PlaybackPositionTicks
         end if
-        m.global.queueManager.callFunc("push", data.Items[0])
+        m.global.queueManager.callFunc("push", queueItem)
       else
         ' shuffle all episodes
         data = api.shows.GetEpisodes(itemNode.id, {
@@ -362,12 +362,13 @@ namespace quickplay
     if isValid(unwatchedData) and isValidAndNotEmpty(unwatchedData.Items)
       ' find the first unwatched episode
       firstUnwatchedEpisodeIndex = invalid
+      resumePosition = 0
       for each item in unwatchedData.Items
         if isValid(item.UserData)
           if isValid(item.UserData.Played) and item.UserData.Played = false
             firstUnwatchedEpisodeIndex = isValid(item.IndexNumber) ? item.IndexNumber - 1 : 0
             if isValid(item.UserData.PlaybackPositionTicks)
-              item.startingPoint = item.UserData.PlaybackPositionTicks
+              resumePosition = item.UserData.PlaybackPositionTicks
             end if
             exit for
           end if
@@ -377,7 +378,9 @@ namespace quickplay
       if isValid(firstUnwatchedEpisodeIndex)
         ' add the first unwatched episode and the rest of the season to a playlist
         for i = firstUnwatchedEpisodeIndex to unwatchedData.Items.count() - 1
-          m.global.queueManager.callFunc("push", unwatchedData.Items[i])
+          queueItem = nodeHelpers.createQueueItem(unwatchedData.Items[i])
+          if i = firstUnwatchedEpisodeIndex then queueItem.startingPoint = resumePosition
+          m.global.queueManager.callFunc("push", queueItem)
         end for
       else
         ' try to find a "continue watching" episode
@@ -394,10 +397,11 @@ namespace quickplay
         if isValid(continueData) and isValidAndNotEmpty(continueData.Items)
           ' play the resumable episode
           for each item in continueData.Items
+            queueItem = nodeHelpers.createQueueItem(item)
             if isValid(item.UserData) and isValid(item.UserData.PlaybackPositionTicks)
-              item.startingPoint = item.userdata.PlaybackPositionTicks
+              queueItem.startingPoint = item.UserData.PlaybackPositionTicks
             end if
-            m.global.queueManager.callFunc("push", item)
+            m.global.queueManager.callFunc("push", queueItem)
           end for
         else
           ' play the whole season in order

@@ -1,24 +1,34 @@
 ' Node utility functions for creating and copying SGNodes
 namespace nodeHelpers
 
-  ' createQueueItem: Create a minimal queue item AA from a JellyfinBaseItem node.
+  ' createQueueItem: Create a queue item AA from a source item.
   '
   ' The queue item is a thin AA containing only what VideoPlayerView and QueueManager need.
   ' LoadVideoContentTask re-fetches all metadata server-side via ItemMetaData(), so the
-  ' queue item does NOT need to carry full json — eliminating the deep-copy perf problem.
+  ' queue item does NOT need to carry full data — eliminating the deep-copy perf problem.
   '
-  ' @param sourceNode - JellyfinBaseItem node to extract fields from
-  ' @returns Associative array with essential fields, or invalid if sourceNode is invalid
+  ' Accepts either a JellyfinBaseItem node (typed camelCase fields) or a raw Jellyfin API
+  ' response AA (PascalCase fields). BrightScript AA lookup is case-insensitive, so field
+  ' access works identically for both — e.g. sourceNode.backdropImageTags finds
+  ' BackdropImageTags on a raw API AA and backdropImageTags on a typed node.
   '
-  ' Fields populated from typed node fields:
+  ' @param sourceNode - JellyfinBaseItem node or raw Jellyfin API response AA
+  ' @returns Associative array with guaranteed field contract, or invalid if sourceNode is invalid
+  '
+  ' Fields always present in the returned AA (guaranteed contract):
+  '   - backdropImageTags: Array of backdrop image tags (empty array = no backdrop)
+  '   - parentBackdropImageTags: Array of parent backdrop tags (empty array = none)
+  '   - parentBackdropItemId: Parent item ID for parent backdrops (empty string = none)
+  '
+  ' Fields present only when non-empty / non-zero:
   '   - id: Item identifier (required for playback)
   '   - type: Media type (required for queue routing)
-  '   - title: Display title (optional)
-  '   - mediaSourceId: Media source hint (optional)
-  '   - runTimeTicks: Runtime duration (optional, only when > 0)
-  '   - seriesId: Series ID for episode navigation in resume dialog (optional)
-  '   - seasonId: Season ID for episode navigation in resume dialog (optional)
-  '   - playbackPositionTicks: Saved resume position (optional, only when > 0)
+  '   - title: Display title
+  '   - mediaSourceId: Media source hint
+  '   - runTimeTicks: Runtime duration
+  '   - seriesId: Series ID for episode navigation in resume dialog
+  '   - seasonId: Season ID for episode navigation in resume dialog
+  '   - playbackPositionTicks: Saved resume position
   '
   ' Callers set startingPoint and selectedAudioStreamIndex on the returned AA after creation.
   '
@@ -47,6 +57,12 @@ namespace nodeHelpers
     if isValid(sourceNode.playbackPositionTicks) and sourceNode.playbackPositionTicks > 0
       queueItem.playbackPositionTicks = sourceNode.playbackPositionTicks
     end if
+
+    ' Backdrop fields — always set to guarantee callers can check .Count() without isValid().
+    ' Empty array/string = no backdrop available for this item.
+    queueItem.backdropImageTags = isValid(sourceNode.backdropImageTags) ? sourceNode.backdropImageTags : []
+    queueItem.parentBackdropImageTags = isValid(sourceNode.parentBackdropImageTags) ? sourceNode.parentBackdropImageTags : []
+    queueItem.parentBackdropItemId = isValidAndNotEmpty(sourceNode.parentBackdropItemId) ? sourceNode.parentBackdropItemId : ""
 
     return queueItem
   end function

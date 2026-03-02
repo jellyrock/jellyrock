@@ -256,7 +256,10 @@ namespace tests
         runTimeTicks: 27540000000&,
         seriesId: "series-xyz",
         seasonId: "season-xyz",
-        playbackPositionTicks: 9000000000&
+        playbackPositionTicks: 9000000000&,
+        backdropImageTags: ["tag-abc"],
+        parentBackdropImageTags: [],
+        parentBackdropItemId: ""
       })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
@@ -269,10 +272,13 @@ namespace tests
       m.assertEqual(queueItem.seriesId, "series-xyz")
       m.assertEqual(queueItem.seasonId, "season-xyz")
       m.assertEqual(queueItem.playbackPositionTicks, 9000000000&)
+      m.assertEqual(queueItem.backdropImageTags, ["tag-abc"])
+      m.assertEqual(queueItem.parentBackdropImageTags, [])
+      m.assertEqual(queueItem.parentBackdropItemId, "")
       m.assertFalse(queueItem.DoesExist("json"))
     end function
 
-    @it("only copies the 8 specific fields, ignoring all others")
+    @it("only copies the expected fields, ignoring all others")
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
@@ -371,6 +377,109 @@ namespace tests
       ' Original source should not have these fields added
       m.assertInvalid(sourceNode.selectedAudioStreamIndex)
       m.assertInvalid(sourceNode.startingPoint)
+    end function
+
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("createQueueItem(sourceNode) - backdrop fields (guaranteed contract)")
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("always sets backdropImageTags even when source has none")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "movie-123"
+      sourceNode.addFields({ type: "Movie" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      ' Field must always exist — callers rely on .Count() without isValid()
+      m.assertTrue(queueItem.DoesExist("backdropImageTags"))
+      m.assertEqual(queueItem.backdropImageTags.Count(), 0)
+    end function
+
+    @it("always sets parentBackdropImageTags even when source has none")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-123"
+      sourceNode.addFields({ type: "Episode" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertTrue(queueItem.DoesExist("parentBackdropImageTags"))
+      m.assertEqual(queueItem.parentBackdropImageTags.Count(), 0)
+    end function
+
+    @it("always sets parentBackdropItemId even when source has none")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-123"
+      sourceNode.addFields({ type: "Episode" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertTrue(queueItem.DoesExist("parentBackdropItemId"))
+      m.assertEqual(queueItem.parentBackdropItemId, "")
+    end function
+
+    @it("copies backdropImageTags from source when present")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "movie-123"
+      sourceNode.addFields({ type: "Movie", backdropImageTags: ["tag-aaa", "tag-bbb"] })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.backdropImageTags, ["tag-aaa", "tag-bbb"])
+    end function
+
+    @it("copies parentBackdropImageTags and parentBackdropItemId from source when present")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({
+        type: "Episode",
+        parentBackdropImageTags: ["parent-tag"],
+        parentBackdropItemId: "series-789"
+      })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.parentBackdropImageTags, ["parent-tag"])
+      m.assertEqual(queueItem.parentBackdropItemId, "series-789")
+    end function
+
+    @it("works with a raw API associative array (PascalCase fields)")
+    function _()
+      ' Simulates a Jellyfin API response item — BrightScript AA lookup is case-insensitive
+      ' so camelCase access finds PascalCase keys
+      rawApiItem = {
+        Id: "movie-abc",
+        Type: "Movie",
+        Name: "Test Movie",
+        BackdropImageTags: ["api-tag-1"],
+        ParentBackdropItemId: ""
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertEqual(queueItem.id, "movie-abc")
+      m.assertEqual(queueItem.type, "Movie")
+      ' backdropImageTags always present
+      m.assertTrue(queueItem.DoesExist("backdropImageTags"))
+      m.assertEqual(queueItem.backdropImageTags, ["api-tag-1"])
+    end function
+
+    @it("raw API item with no backdrop fields produces empty arrays")
+    function _()
+      rawApiItem = {
+        Id: "ep-xyz",
+        Type: "Episode"
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertEqual(queueItem.backdropImageTags.Count(), 0)
+      m.assertEqual(queueItem.parentBackdropImageTags.Count(), 0)
+      m.assertEqual(queueItem.parentBackdropItemId, "")
     end function
 
   end class

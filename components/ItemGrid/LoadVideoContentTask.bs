@@ -8,6 +8,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/Subtitles.bs"
@@ -505,7 +506,7 @@ sub addNextEpisodesToQueue(showID)
   if isValid(data) and data.Items.Count() > 1
     ' Start at index 1 to skip the current episode
     for i = 1 to data.Items.Count() - 1
-      queueManager.callFunc("push", data.Items[i])
+      queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[i]))
     end for
   end if
 end sub
