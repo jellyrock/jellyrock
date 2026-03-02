@@ -55,7 +55,7 @@ namespace tests
       item.id = "item1"
       item.backdropImageTags = ["btag1", "btag2"]
 
-      url = getItemImageUrl(item, "Backdrop", imageSize.BACKDROP)
+      url = getItemImageUrl(item, "Backdrop", { width: 1280, height: 720 })
 
       m.assertTrue(isValidAndNotEmpty(url))
       m.assertTrue(url.Instr("btag1") > -1)
@@ -244,7 +244,7 @@ namespace tests
       item.id = "item1"
       item.backdropImageTags = ["back1", "back2"]
 
-      url = getItemBackdropUrl(item)
+      url = getItemBackdropUrl(item, { width: 1920, height: 1080 })
 
       m.assertTrue(url.Instr("back1") > -1)
       m.assertTrue(url.Instr("Backdrop") > -1)
@@ -257,7 +257,7 @@ namespace tests
       item.parentBackdropImageTags = ["parentBack"]
       item.parentBackdropItemId = "series1"
 
-      url = getItemBackdropUrl(item)
+      url = getItemBackdropUrl(item, { width: 1920, height: 1080 })
 
       m.assertTrue(url.Instr("parentBack") > -1)
       m.assertTrue(url.Instr("series1") > -1)
@@ -268,7 +268,7 @@ namespace tests
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "item1"
 
-      url = getItemBackdropUrl(item)
+      url = getItemBackdropUrl(item, { width: 1920, height: 1080 })
 
       m.assertEqual(url, "")
     end function
@@ -354,7 +354,7 @@ namespace tests
       item.parentBackdropImageTags = ["seriesBack"]
       item.parentBackdropItemId = "series1"
 
-      url = getItemParentBackdropUrl(item)
+      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
 
       m.assertTrue(url.Instr("seriesBack") > -1, "should use parent tag")
       m.assertTrue(url.Instr("series1") > -1, "should use parent item ID")
@@ -368,7 +368,7 @@ namespace tests
       item.backdropImageTags = ["seasonBack"]
       ' No parentBackdropImageTags / parentBackdropItemId
 
-      url = getItemParentBackdropUrl(item)
+      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
 
       m.assertTrue(url.Instr("seasonBack") > -1, "should fall back to item tag")
       m.assertTrue(url.Instr("season1") > -1, "should use item ID")
@@ -380,14 +380,14 @@ namespace tests
       item.id = "season1"
       ' No backdrops at all
 
-      url = getItemParentBackdropUrl(item)
+      url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
 
       m.assertEqual(url, "")
     end function
 
     @it("returns empty string for invalid item")
     function _()
-      url = getItemParentBackdropUrl(invalid)
+      url = getItemParentBackdropUrl(invalid, { width: 1920, height: 1080 })
       m.assertEqual(url, "")
     end function
 

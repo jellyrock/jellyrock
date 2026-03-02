@@ -59,22 +59,30 @@ namespace tests
       m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
     end function
 
-    @it("does nothing when itemNode.id is invalid")
-    function doNothingWhenIdInvalid()
-      itemNode = CreateObject("roSGNode", "ContentNode")
-      itemNode.addFields({
-        json: { Name: "Test" }
-      })
+    @it("does nothing when itemNode.id is empty (unloaded node sentinel)")
+    function doNothingWhenIdEmpty()
+      ' A fresh JellyfinBaseItem has id="" — the unloaded sentinel
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       quickplay.video(itemNode)
       m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
     end function
 
-    @it("does nothing when itemNode.json is invalid")
-    function doNothingWhenJsonInvalid()
-      itemNode = CreateObject("roSGNode", "ContentNode")
-      itemNode.id = "test-123"
+    @it("creates queue item with audio index 0 when item has no audioStreams")
+    function createsQueueItemNoAudioStreams()
+      ' Only id is required — function guards on id, not on json or audioStreams
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
+      itemNode.id = "test-no-streams"
+      itemNode.type = "Movie"
+      itemNode.name = "Test Movie"
+      itemNode.title = "Test Movie"
+      ' No audioStreams set — defaults to empty array
+
       quickplay.video(itemNode)
-      m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
+
+      m.assertEqual(m.global.queueManager.callFunc("getCount"), 1)
+      queueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
+      m.assertNotInvalid(queueItem)
+      m.assertEqual(queueItem.selectedAudioStreamIndex, 0)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -83,13 +91,13 @@ namespace tests
 
     @it("creates queue item from valid movie node")
     function createsQueueItemFromValidMovie()
-      ' Load mock data from JSON file
       mockData = MockDataLoader.LoadItem("movie-quickplay-basic")
 
-      ' Use MovieData which has all fields defined in XML (matches production)
-      itemNode = CreateObject("roSGNode", "MovieData")
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       itemNode.id = mockData.id
-      itemNode.json = mockData
+      itemNode.type = mockData.type
+      itemNode.name = mockData.name
+      itemNode.title = mockData.name
 
       quickplay.video(itemNode)
 
@@ -103,68 +111,66 @@ namespace tests
 
     @it("does not modify original UI node")
     function doesNotModifyOriginalNode()
-      ' Load mock data and modify for this test
       mockData = MockDataLoader.LoadItem("movie-quickplay-resumable")
-      ' Modify the existing UserData object's property using bracket notation
-      userData = mockData.UserData
-      userData["PlaybackPositionTicks"] = 15260000000&
 
-      ' Use MovieData which has all fields defined in XML (matches production)
-      itemNode = CreateObject("roSGNode", "MovieData")
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       itemNode.id = mockData.id
-      itemNode.json = mockData
-      itemNode.startingPoint = 0
-      itemNode.selectedAudioStreamIndex = 0
+      itemNode.type = mockData.type
+      itemNode.name = mockData.name
+      itemNode.title = mockData.name
+      itemNode.playbackPositionTicks = 15260000000&
 
       quickplay.video(itemNode)
 
       ' Verify original node was not modified by quickplay
-      m.assertEqual(itemNode.startingPoint, 0&)
-      m.assertEqual(itemNode.selectedAudioStreamIndex, 0)
+      ' createQueueItem returns a thin AA, so the original node is never written to
+      m.assertEqual(itemNode.playbackPositionTicks, 15260000000&)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("resume position and audio stream handling")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("sets resume position from userdata on queue item")
+    @it("sets resume position from playbackPositionTicks on queue item")
     function setsResumePositionOnQueueItem()
-      ' Load mock data from JSON file
       mockData = MockDataLoader.LoadItem("movie-quickplay-resumable")
 
-      ' Use MovieData which has all fields defined in XML (matches production)
-      itemNode = CreateObject("roSGNode", "MovieData")
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       itemNode.id = mockData.id
-      itemNode.json = mockData
-      itemNode.startingPoint = 0
+      itemNode.type = mockData.type
+      itemNode.name = mockData.name
+      itemNode.title = mockData.name
+      ' PlaybackPositionTicks from UserData in mock: 30000000000
+      itemNode.playbackPositionTicks = mockData.UserData.PlaybackPositionTicks
 
       quickplay.video(itemNode)
 
       queueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
-      ' Queue item should have resume position
+      ' Queue item should have resume position from playbackPositionTicks
       m.assertEqual(queueItem.startingPoint, 30000000000&)
-      ' Original should still be 0
-      m.assertEqual(itemNode.startingPoint, 0&)
+      ' Original node should be unchanged
+      m.assertEqual(itemNode.playbackPositionTicks, 30000000000&)
     end function
 
     @it("sets default audio stream on queue item")
     function setsDefaultAudioStreamOnQueueItem()
-      ' Load mock data from JSON file
       mockData = MockDataLoader.LoadItem("movie-quickplay-multi-audio")
 
-      ' Use MovieData which has all fields defined in XML (matches production)
-      itemNode = CreateObject("roSGNode", "MovieData")
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       itemNode.id = mockData.id
-      itemNode.json = mockData
-      itemNode.selectedAudioStreamIndex = 0
+      itemNode.type = mockData.type
+      itemNode.name = mockData.name
+      itemNode.title = mockData.name
+      ' Pre-filtered audio streams (what the transformer would produce)
+      itemNode.audioStreams = mockData.MediaStreams
 
       quickplay.video(itemNode)
 
       queueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
-      ' Queue item should have audio stream set (by streamSelection logic)
+      ' Queue item should have an audio stream index selected by streamSelection logic
       m.assertNotInvalid(queueItem.selectedAudioStreamIndex)
-      ' Original should be unchanged
-      m.assertEqual(itemNode.selectedAudioStreamIndex, 0)
+      ' Original node's audioStreams should be unchanged
+      m.assertNotInvalid(itemNode.audioStreams)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -173,29 +179,25 @@ namespace tests
 
     @it("creates independent queue item that can be modified without affecting UI")
     function createsIndependentQueueItem()
-      ' Load mock data from JSON file
       mockData = MockDataLoader.LoadItem("movie-quickplay-independent")
 
-      ' Use MovieData which has all fields defined in XML (matches production)
-      itemNode = CreateObject("roSGNode", "MovieData")
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
       itemNode.id = mockData.id
-      itemNode.json = mockData
+      itemNode.type = mockData.type
+      itemNode.name = mockData.name
       itemNode.title = mockData.name
-      itemNode.startingPoint = 0
-      itemNode.selectedAudioStreamIndex = 0
 
       quickplay.video(itemNode)
 
       queueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
 
-      ' Modify queue item further
+      ' Modify the queue item (it's a thin AA, not the original node)
       queueItem.startingPoint = 99999999999&
       queueItem.selectedAudioStreamIndex = 5
       queueItem.title = "Modified Title"
 
-      ' Original should be completely unchanged
-      m.assertEqual(itemNode.startingPoint, 0&)
-      m.assertEqual(itemNode.selectedAudioStreamIndex, 0)
+      ' Original node should be completely unchanged
+      m.assertEqual(itemNode.id, mockData.id)
       m.assertEqual(itemNode.title, mockData.name)
     end function
   end class
