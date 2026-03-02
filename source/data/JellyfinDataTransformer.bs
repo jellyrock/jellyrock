@@ -37,8 +37,8 @@ class JellyfinDataTransformer
       item.id = apiData.Id ?? ""
       item.type = apiData.Type ?? ""
       item.name = apiData.Name ?? ""
-      ' Populate ContentNode's built-in title field so RSG components that read title natively
-      ' (e.g. future JRContentItem migration) work without render-thread mutations.
+      ' Mirror name into ContentNode's built-in title field so RSG list components (LabelList,
+      ' RowList, etc.) can consume JellyfinBaseItem nodes directly without render-thread mapping.
       item.title = item.name
       item.originalTitle = apiData.OriginalTitle ?? ""
       item.sortName = apiData.SortName ?? ""
