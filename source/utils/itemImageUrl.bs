@@ -118,9 +118,9 @@ end function
 ' Generate a full backdrop URL with fallback chain.
 ' Fallback order: item backdrop → parent backdrop
 ' @param item - JellyfinBaseItem content node
-' @param size - Size constant from imageSize namespace (default: imageSize.BACKDROP)
+' @param size - { width, height } object; use device UI resolution (m.global.device.uiResolution)
 ' @returns Full image URL string, or "" if no image is available
-function getItemBackdropUrl(item as object, size = imageSize.BACKDROP as object) as string
+function getItemBackdropUrl(item as object, size as object) as string
   if not isValid(item) then return ""
 
   ' 1. Item's own backdrop
@@ -142,9 +142,9 @@ end function
 ' which lets BackdropFader deduplicate the transition and avoid flickering.
 ' Fallback order: parent backdrop → item's own backdrop
 ' @param item - JellyfinBaseItem content node (typically a Season)
-' @param size - Size constant from imageSize namespace (default: imageSize.BACKDROP)
+' @param size - { width, height } object; use device UI resolution (m.global.device.uiResolution)
 ' @returns Full image URL string, or "" if no image is available
-function getItemParentBackdropUrl(item as object, size = imageSize.BACKDROP as object) as string
+function getItemParentBackdropUrl(item as object, size as object) as string
   if not isValid(item) then return ""
 
   ' 1. Parent (series) backdrop first - matches what the parent detail screen shows

@@ -21,9 +21,6 @@ namespace imageSize
   const SQUARE_MD = { width: 323, height: 323 } ' Music album/artist grid
   const SQUARE_LG = { width: 440, height: 440 } ' Music detail screens
 
-  ' ── Backdrop (full-screen) ──
-  const BACKDROP = { width: 1280, height: 720 }
-
   ' ── Logo ──
   const LOGO = { width: 500, height: 212 }
   const LOGO_OSD = { width: 500, height: 300 }
