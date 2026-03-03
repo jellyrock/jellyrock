@@ -38,7 +38,7 @@ end sub
 
 sub itemContentChanged() as void
   itemData = m.top.itemContent
-  if not isValidAndNotEmpty(itemData.id) then return
+  if not isValid(itemData) or not isValidAndNotEmpty(itemData.id) then return
 
   m.title.text = itemData.title
   userSettings = m.global.user.settings
