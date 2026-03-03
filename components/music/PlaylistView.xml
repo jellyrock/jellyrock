@@ -4,7 +4,7 @@
     <LayoutGroup id="toplevel" layoutDirection="vert" itemSpacings="[-10]">
       <LayoutGroup id="main_group" layoutDirection="horiz" itemSpacings="[15]">
         <LayoutGroup layoutDirection="vert" itemSpacings="[15]">
-          <Poster id="albumCover" width="450" height="450" />
+          <Poster id="albumCover" width="450" height="450" loadWidth="450" loadHeight="450" loadDisplayMode="limitSize" />
           <LabelPrimaryMedium id="numberofsongs" width="450" height="25" />
           <LabelPrimaryMedium id="genres" width="450" height="25" />
           <LabelPrimaryMedium id="runtime" width="450" height="25" />

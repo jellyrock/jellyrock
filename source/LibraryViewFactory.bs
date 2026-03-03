@@ -32,15 +32,8 @@ end function
 function DeterminePresenterType(libraryItem as object) as string
   if not isValid(libraryItem) then return "generic"
 
-  collectionType = ""
-  if isValid(libraryItem.collectionType)
-    collectionType = LCase(libraryItem.collectionType)
-  end if
-
-  jsonType = ""
-  if isValid(libraryItem.json) and isValid(libraryItem.json.type)
-    jsonType = LCase(libraryItem.json.type)
-  end if
+  collectionType = LCase(libraryItem.collectionType)
+  folderType = LCase(libraryItem.folderType)
 
   ' Movie library or movie genre
   if collectionType = "movies"
@@ -67,36 +60,36 @@ function DeterminePresenterType(libraryItem as object) as string
     return "photo"
   end if
 
-  ' Genre folder - check what type of content it contains
-  if jsonType = "genre"
-    ' Check if it's a movie genre (has movies)
-    if isValid(libraryItem.json.MovieCount) and libraryItem.json.MovieCount > 0
-      return "movie"
-    end if
-    ' Check if it's a TV show genre (has series)
-    if isValid(libraryItem.json.SeriesCount) and libraryItem.json.SeriesCount > 0
-      return "tvshow"
-    end if
-    ' Default genre to generic
+  ' Studio items with IsFolder=false arrive with type="Studio" directly (not via folderType).
+  ' collectionType is set by LoadItemsTask2 based on the content being fetched.
+  if LCase(libraryItem.type) = "studio"
+    if collectionType = "movies" then return "movie"
+    if collectionType = "tvshows" then return "tvshow"
+    return "movie" ' default: studios are most commonly in movie libraries
+  end if
+
+  ' Genre folder - use collectionType set by LoadItemsTask2 first, fall back to item counts
+  if folderType = "genre"
+    if collectionType = "movies" then return "movie"
+    if collectionType = "music" then return "music"
+    if collectionType = "tvshows" then return "tvshow"
+    ' Fallback for server responses that include item counts
+    if libraryItem.movieCount > 0 then return "movie"
+    if libraryItem.seriesCount > 0 then return "tvshow"
     return "generic"
   end if
 
-  ' Studio folder - check what type of content it contains
-  if jsonType = "studio"
-    ' Check movie count first since studios are more common in movie libraries
-    if isValid(libraryItem.json.MovieCount) and libraryItem.json.MovieCount > 0
-      return "movie"
-    end if
-    ' Check for TV series (Networks)
-    if isValid(libraryItem.json.SeriesCount) and libraryItem.json.SeriesCount > 0
-      return "tvshow"
-    end if
-    ' Default to generic if no content counts available
-    return "generic"
+  ' Studio folder (IsFolder=true) - use collectionType first, fall back to item counts
+  if folderType = "studio"
+    if collectionType = "movies" then return "movie"
+    if collectionType = "tvshows" then return "tvshow"
+    if libraryItem.movieCount > 0 then return "movie"
+    if libraryItem.seriesCount > 0 then return "tvshow"
+    return "movie" ' default studios to movie
   end if
 
-  ' Music genre folder
-  if jsonType = "musicgenre"
+  ' Music genre — either via folderType (when IsFolder=true) or raw type (when IsFolder is absent)
+  if folderType = "musicgenre" or LCase(libraryItem.type) = "musicgenre"
     return "music"
   end if
 

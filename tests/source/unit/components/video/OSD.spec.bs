@@ -1,0 +1,196 @@
+namespace tests
+
+  @suite("OSD - onItemDataChanged()")
+  class OSDItemDataTests extends tests.BaseTestSuite
+
+    private osd as object
+
+    protected override sub setup()
+      super.setup()
+
+      ' OSD.init() calls m.global.queueManager via setButtonStates()
+      ' Create a mock QueueManager so setting itemData doesn't crash
+      if not m.global.doesExist("queueManager")
+        m.global.addField("queueManager", "node", false)
+      end if
+      queueMgr = CreateObject("roSGNode", "QueueManager")
+      m.global.queueManager = queueMgr
+
+      ' SceneManager is required by JRScreen (OSD's parent)
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.osd = CreateObject("roSGNode", "OSD")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.osd = invalid
+    end sub
+
+    ' Helper to create a JellyfinBaseItem node with specific fields
+    private function createItem(fields as object) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields(fields)
+      return item
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isMovie / isSeries flag detection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets isMovie=true when item.isMovie is true")
+    function _()
+      item = m.createItem({ id: "test-1", type: "Movie", isMovie: true })
+      m.osd.itemData = item
+
+      m.assertTrue(m.osd.isMovie)
+      m.assertFalse(m.osd.isSeries)
+    end function
+
+    @it("sets isSeries=true when item.isSeries is true")
+    function _()
+      item = m.createItem({ id: "test-2", type: "Episode", isSeries: true })
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.isMovie)
+      m.assertTrue(m.osd.isSeries)
+    end function
+
+    @it("resolves conflicting flags by prioritizing isSeries")
+    function _()
+      item = m.createItem({ id: "test-3", type: "Movie", isMovie: true, isSeries: true })
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.isMovie)
+      m.assertTrue(m.osd.isSeries)
+    end function
+
+    @it("falls back to isMovie=true for Movie type with no flags")
+    function _()
+      item = m.createItem({ id: "test-4", type: "Movie" })
+      m.osd.itemData = item
+
+      m.assertTrue(m.osd.isMovie)
+      m.assertFalse(m.osd.isSeries)
+    end function
+
+    @it("falls back to isSeries=true for Recording type")
+    function _()
+      item = m.createItem({ id: "test-5", type: "Recording" })
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.isMovie)
+      m.assertTrue(m.osd.isSeries)
+    end function
+
+    @it("falls back to isSeries=true when seriesName is present")
+    function _()
+      item = m.createItem({ id: "test-6", type: "Episode", seriesName: "Breaking Bad" })
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.isMovie)
+      m.assertTrue(m.osd.isSeries)
+    end function
+
+    @it("falls back to isSeries=true when parentIndexNumber is set")
+    function _()
+      item = m.createItem({ id: "test-7", type: "Episode", parentIndexNumber: 3 })
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.isMovie)
+      m.assertTrue(m.osd.isSeries)
+    end function
+
+    @it("falls back to isMovie=true for unknown type with no series metadata")
+    function _()
+      item = m.createItem({ id: "test-8", type: "Video" })
+      m.osd.itemData = item
+
+      m.assertTrue(m.osd.isMovie)
+      m.assertFalse(m.osd.isSeries)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Chapter and stream count fields")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets hasChapters=true when chapterCount > 0")
+    function _()
+      item = m.createItem({ id: "test-9", type: "Movie", chapterCount: 5 })
+      m.osd.itemData = item
+
+      m.assertTrue(m.osd.hasChapters)
+    end function
+
+    @it("sets hasChapters=false when chapterCount is 0")
+    function _()
+      item = m.createItem({ id: "test-10", type: "Movie", chapterCount: 0 })
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.hasChapters)
+    end function
+
+    @it("sets numAudioStreams from item.audioStreamCount")
+    function _()
+      item = m.createItem({ id: "test-11", type: "Movie", audioStreamCount: 3 })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.numAudioStreams, 3)
+    end function
+
+    @it("sets numAudioStreams=0 when no audio streams")
+    function _()
+      item = m.createItem({ id: "test-12", type: "Movie" })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.numAudioStreams, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Runtime computation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("computes runTimeMinutes from runTimeTicks")
+    function _()
+      ' 90 minutes = 90 * 60 * 10000000 = 54000000000
+      item = m.createItem({ id: "test-13", type: "Movie", runTimeTicks: 54000000000& })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.runTimeMinutes, 90)
+    end function
+
+    @it("sets runTimeMinutes=0 when runTimeTicks is 0")
+    function _()
+      item = m.createItem({ id: "test-14", type: "Movie" })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.runTimeMinutes, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Guard clauses")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not crash when itemData is set to invalid")
+    function _()
+      m.osd.itemData = invalid
+
+      ' Should not crash - guard clause should return early
+      m.assertTrue(true)
+    end function
+
+    @it("does not crash when item has empty id")
+    function _()
+      item = m.createItem({ type: "Movie" })
+      m.osd.itemData = item
+
+      ' Should not crash - guard clause should return early (id = "" default)
+      m.assertTrue(true)
+    end function
+
+  end class
+
+end namespace

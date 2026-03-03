@@ -1,4 +1,5 @@
-import "pkg:/source/utils/config.bs"
+import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -36,29 +37,37 @@ sub itemContentChanged()
   itemData = m.top.itemContent
 
   if not isValid(itemData) then return
+  if not isValidAndNotEmpty(itemData.id) then return
+
   userSettings = m.global.user.settings
 
-  if isValid(itemData.json)
-    if not userSettings.uiTvShowsDisableUnwatchedCount
-      if isValid(itemData.json.UserData)
-        if isValid(itemData.json.UserData.Played) and itemData.json.UserData.Played = true
-          m.itemPoster.isWatched = true
-        else if isValid(itemData.json.UserData.UnplayedItemCount) and itemData.json.UserData.UnplayedItemCount > 0
-          m.itemPoster.unplayedCount = itemData.json.UserData.UnplayedItemCount
-        end if
-      end if
+  if not userSettings.uiTvShowsDisableUnwatchedCount
+    if itemData.isWatched
+      m.itemPoster.isWatched = true
+    else if itemData.unplayedItemCount > 0
+      m.itemPoster.unplayedCount = itemData.unplayedItemCount
     end if
   end if
 
-  m.itemPoster.uri = itemData.PosterUrl
-  m.posterText.text = itemData.title
-  m.title.text = itemData.title
-
-  'If Poster not loaded, ensure "blue box" is shown until loaded
-  if m.itemPoster.loadStatus <> "ready"
+  if LCase(itemData.type) = "genre" or LCase(itemData.folderType) = "genre"
+    ' "View All [Genre]" items always display as backdrop-with-text — never load an image.
+    ' Force the no-image fallback state immediately so it looks intentional, not like a load failure.
+    ' Check both type and folderType: if Jellyfin returns IsFolder=false/absent the transformer
+    ' leaves type="Genre" and folderType="", so we must match on type directly.
+    m.itemPoster.uri = ""
     m.backdrop.visible = true
     m.posterText.visible = true
+  else
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    'If Poster not loaded, ensure "blue box" is shown until loaded
+    if m.itemPoster.loadStatus <> "ready"
+      m.backdrop.visible = true
+      m.posterText.visible = true
+    end if
   end if
+
+  m.posterText.text = itemData.title
+  m.title.text = itemData.title
 end sub
 
 sub focusChanged()

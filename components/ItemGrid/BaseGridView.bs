@@ -5,6 +5,7 @@
 
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
@@ -15,6 +16,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -70,6 +72,10 @@ sub init()
   ' TV Guide state (LiveTV only)
   m.tvGuide = invalid
   m.channelFocused = invalid
+
+  ' Cache device backdrop size once for all getItemBackdropUrl() calls
+  device = m.global.device
+  m.backdropSize = { width: device.uiResolution[0], height: device.uiResolution[1] }
 
   m.log.debug("end init()")
 end sub
@@ -211,8 +217,8 @@ sub loadInitialItems()
   m.log.debug("start loadInitialItems()")
   prepareDataLoad(false)
 
-  if isValid(m.top.parentItem.json) and m.top.parentItem.json.Type = "CollectionFolder"
-    m.top.HomeLibraryItem = m.top.parentItem.Id
+  if m.top.parentItem.type = "CollectionFolder"
+    m.top.HomeLibraryItem = m.top.parentItem.id
   end if
 
   ' Load saved display settings
@@ -329,11 +335,7 @@ sub configureBackdrop()
     m.presentationBackdrop.visible = true
 
     ' Set initial backdrop from parent item
-    if isValid(m.top.parentItem.backdropUrl)
-      m.presentationBackdrop.uri = m.top.parentItem.backdropUrl
-    else
-      m.presentationBackdrop.uri = ""
-    end if
+    m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
 
     ' Show presentation info if presenter supports it
     showInfo = m.presenter.shouldShowPresentationInfo(m.view)
@@ -343,9 +345,7 @@ sub configureBackdrop()
     m.presentationBackdrop.visible = false
     m.presentationInfo.visible = false
 
-    if isValid(m.top.parentItem.backdropUrl)
-      m.global.sceneManager.callFunc("setBackgroundImage", m.top.parentItem.backdropUrl)
-    end if
+    m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(m.top.parentItem, m.backdropSize))
   end if
 end sub
 
@@ -406,14 +406,17 @@ sub ItemDataLoaded(msg)
 
   ' Route to genre rowlist for movies/TV, but use regular grid for music
   if m.loadItemsTask.view = "Genres"
-    ' Check if this is music genres (MusicGenre) or movie/TV genres (Genre)
-    ' Must check json.Type since the node Type gets overridden to "Folder"
+    ' Check if this is music genres (MusicGenre) or movie/TV genres (Genre).
+    ' Movie/TV genre items are plain ContentNode row containers (no typed fields),
+    ' so guard LCase() with isValid() to avoid a type mismatch crash.
     isMusicGenre = false
     if itemData.Count() > 0 and isValid(itemData[0])
-      if isValid(itemData[0].json) and isValid(itemData[0].json.Type)
-        if itemData[0].json.Type = "MusicGenre"
-          isMusicGenre = true
-        end if
+      itemType = ""
+      itemFolderType = ""
+      if isValid(itemData[0].type) then itemType = LCase(itemData[0].type)
+      if isValid(itemData[0].folderType) then itemFolderType = LCase(itemData[0].folderType)
+      if itemType = "musicgenre" or itemFolderType = "musicgenre"
+        isMusicGenre = true
       end if
     end if
 
@@ -472,7 +475,7 @@ sub ItemDataLoaded(msg)
   ' If there are no items to display, show message
   if m.loadedItems = 0
     m.presentationInfo.visible = false
-    m.emptyText.text = tr("NO_ITEMS").Replace("%1", m.top.parentItem.Type)
+    m.emptyText.text = tr("NO_ITEMS").Replace("%1", m.top.parentItem.type)
     m.emptyText.visible = true
   end if
 
@@ -545,7 +548,7 @@ end sub
 sub updateBackdropForFocusedItem()
   if not isValid(m.selectedFavoriteItem) then return
 
-  backdropUrl = m.selectedFavoriteItem.backdropUrl
+  backdropUrl = getItemBackdropUrl(m.selectedFavoriteItem, m.backdropSize)
 
   if isValid(m.presenter)
     backdropMode = m.presenter.getBackdropMode()
@@ -586,10 +589,7 @@ sub onGenreItemFocused()
   if not isValid(focusedItem) then return
 
   ' Update backdrop with focused item's backdrop
-  backdropUrl = focusedItem.backdropUrl
-  if isValid(backdropUrl)
-    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
-  end if
+  m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(focusedItem, m.backdropSize))
 end sub
 
 function getItemFocused()
@@ -862,10 +862,10 @@ end sub
 ' ============================================================================
 
 function getCollectionType() as string
-  if not isValid(m.top.parentItem.collectionType)
-    return LCase(m.top.parentItem.Type)
+  if not isValidAndNotEmpty(m.top.parentItem.collectionType)
+    return LCase(m.top.parentItem.type)
   else
-    return LCase(m.top.parentItem.CollectionType)
+    return LCase(m.top.parentItem.collectionType)
   end if
 end function
 

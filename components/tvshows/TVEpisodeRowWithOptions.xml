@@ -8,5 +8,6 @@
     <field id="objects" type="assocarray" onChange="setupRows" />
     <field id="itemSelected" type="integer" />
     <field id="doneLoading" type="boolean" />
+    <function name="getStreamSelection" />
   </interface>
 </component>

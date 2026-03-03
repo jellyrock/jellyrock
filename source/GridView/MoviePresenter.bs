@@ -85,7 +85,7 @@ class MoviePresenter extends GridPresenterBase
     }
 
     ' Adjust options for specific views
-    if isValid(parentItem) and isValid(parentItem.json) and parentItem.json.type = "Genre"
+    if isValid(parentItem) and parentItem.type = "Genre"
       ' Genre view has limited options
       options.views = [
         { "Title": tr("Movies (Presentation)"), "Name": "Movies" },
@@ -176,14 +176,16 @@ class MoviePresenter extends GridPresenterBase
     end if
 
     ' Handle genre/studio parent items
-    if isValid(parentItem) and isValid(parentItem.json) and isValid(parentItem.json.type)
-      if parentItem.json.type = "Studio"
+    if isValid(parentItem) and isValidAndNotEmpty(parentItem.type)
+      if parentItem.type = "Studio"
         task.studioIds = parentItem.id
-        task.itemId = parentItem.parentFolder
+        task.itemId = parentItem.parentId
         task.genreIds = ""
-      else if parentItem.json.type = "Genre"
+      else if parentItem.type = "Genre" or (parentItem.type = "Folder" and parentItem.folderType = "Genre")
+        ' Current Jellyfin returns genre items with IsFolder=false, so type="Genre" is the normal path.
+        ' The Folder+folderType branch is a defensive fallback for server configurations that return IsFolder=true.
         task.genreIds = parentItem.id
-        task.itemId = parentItem.parentFolder
+        task.itemId = parentItem.parentId
         task.studioIds = ""
       end if
     end if
@@ -216,10 +218,7 @@ class MoviePresenter extends GridPresenterBase
 
   override sub onItemFocused(item as object, _currentView as string)
     if not isValid(m.view) or not isValid(item) then return
-
-    ' Extract item data
-    itemData = item.json
-    if not isValid(itemData) then return
+    if not isValidAndNotEmpty(item.id) then return
 
     ' Get info nodes from view
     infoGroup = m.view.top.findNode("presentationInfo")
@@ -235,8 +234,8 @@ class MoviePresenter extends GridPresenterBase
     if isValid(movieLogo) then movieLogo.visible = false
 
     ' Set movie title
-    if isValid(itemData.Name) and isValid(selectedMovieName)
-      selectedMovieName.text = itemData.Name
+    if isValid(selectedMovieName)
+      selectedMovieName.text = item.name
     end if
 
     ' Dynamically populate movieInfoGroup with available metadata
@@ -246,42 +245,42 @@ class MoviePresenter extends GridPresenterBase
       m.dividerCount = 0
 
       ' Production Year
-      if isValid(itemData.ProductionYear)
+      if item.productionYear > 0
         yearNode = m.createInfoLabelNode("selectedMovieProductionYear")
-        yearNode.text = str(itemData.ProductionYear).trim()
+        yearNode.text = str(item.productionYear).trim()
         m.displayInfoNode(movieInfoGroup, yearNode)
       end if
 
       ' Official Rating
-      if isValid(itemData.OfficialRating) and itemData.OfficialRating <> ""
+      if isValidAndNotEmpty(item.officialRating)
         ratingNode = m.createInfoLabelNode("selectedMovieOfficialRating")
-        ratingNode.text = itemData.OfficialRating
+        ratingNode.text = item.officialRating
         m.displayInfoNode(movieInfoGroup, ratingNode)
       end if
 
       ' Community Rating (if enabled)
       if m.view.global.user.settings.uiMoviesShowRatings
-        if isValid(itemData.CommunityRating)
+        if item.communityRating > 0
           communityRating = CreateObject("roSGNode", "CommunityRating")
           communityRating.id = "communityRatingDisplay"
-          communityRating.rating = itemData.CommunityRating
+          communityRating.rating = item.communityRating
           communityRating.iconSize = 28
           m.displayInfoNode(movieInfoGroup, communityRating)
         end if
 
         ' Critic Rating (if enabled)
-        if isValid(itemData.CriticRating)
+        if item.criticRating > 0
           criticRating = CreateObject("roSGNode", "CriticRating")
           criticRating.id = "criticRatingDisplay"
-          criticRating.rating = itemData.CriticRating
+          criticRating.rating = item.criticRating
           criticRating.iconSize = 28
           m.displayInfoNode(movieInfoGroup, criticRating)
         end if
       end if
 
       ' Runtime
-      if type(itemData.RunTimeTicks) = "LongInteger"
-        runtime = int(itemData.RunTimeTicks / 600000000.0 + 0.5) ' Round to nearest minute
+      if item.runTimeTicks > 0
+        runtime = int(item.runTimeTicks / 600000000.0 + 0.5) ' Round to nearest minute
         runtimeNode = m.createInfoLabelNode("runtime")
         runtimeNode.text = str(runtime).trim() + " mins"
         m.displayInfoNode(movieInfoGroup, runtimeNode)
@@ -294,14 +293,14 @@ class MoviePresenter extends GridPresenterBase
       movieGenresGroup.removeChildrenIndex(movieGenresGroup.getChildCount(), 0)
 
       ' Add genres concatenated with " / "
-      if isValid(itemData.genres) and itemData.genres.count() > 0
+      if item.genres.count() > 0
         genreNode = CreateObject("roSGNode", "LabelPrimaryMedium")
         genreNode.id = "movieGenres"
         genreNode.horizAlign = "left"
         genreNode.vertAlign = "center"
         genreNode.width = 900
         genreNode.height = 0
-        genreNode.text = itemData.genres.join(" / ")
+        genreNode.text = item.genres.join(" / ")
         genreNode.bold = true
         movieGenresGroup.appendChild(genreNode)
       end if
@@ -313,16 +312,16 @@ class MoviePresenter extends GridPresenterBase
       movieDescriptionGroup.removeChildrenIndex(movieDescriptionGroup.getChildCount(), 0)
 
       ' Tagline (stored in taglines array)
-      if isValid(itemData.taglines) and itemData.taglines.count() > 0 and itemData.taglines[0] <> ""
+      if item.taglines.count() > 0 and item.taglines[0] <> ""
         taglineNode = CreateObject("roSGNode", "LabelPrimaryMedium")
         taglineNode.id = "selectedMovieTagline"
         taglineNode.width = 900
-        taglineNode.text = itemData.taglines[0]
+        taglineNode.text = item.taglines[0]
         movieDescriptionGroup.appendChild(taglineNode)
       end if
 
       ' Overview
-      if isValid(itemData.Overview) and itemData.Overview <> ""
+      if isValidAndNotEmpty(item.overview)
         overviewNode = CreateObject("roSGNode", "LabelPrimarySmall")
         overviewNode.id = "selectedMovieOverview"
         overviewNode.wrap = true
@@ -330,13 +329,13 @@ class MoviePresenter extends GridPresenterBase
         overviewNode.height = 250
         overviewNode.width = 800
         overviewNode.ellipsisText = "..."
-        overviewNode.text = itemData.Overview
+        overviewNode.text = item.overview
         movieDescriptionGroup.appendChild(overviewNode)
       end if
     end if
 
-    ' Load logo (use uppercase Id to match raw API JSON)
-    m.loadLogo(itemData.Id)
+    ' Load logo
+    m.loadLogo(item.id)
   end sub
 
   ' Load movie logo image

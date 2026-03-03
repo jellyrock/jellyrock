@@ -1,8 +1,10 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -66,8 +68,12 @@ sub onSearchItemFocused()
   if isValid(rowContent)
     focusedItem = rowContent.getChild(m.searchSelect.rowItemFocused[1])
 
-    if isValid(focusedItem) and isValid(focusedItem.backdropUrl) and focusedItem.backdropUrl <> ""
-      m.global.sceneManager.callFunc("setBackgroundImage", focusedItem.backdropUrl)
+    if isValid(focusedItem) and isValidAndNotEmpty(focusedItem.id)
+      ' Pass device resolution so the URL matches other screens showing the same item,
+      ' allowing BackdropFader to deduplicate and avoid unnecessary reloads/flicker.
+      deviceRes = m.global.device.uiResolution
+      backdropUrl = getItemBackdropUrl(focusedItem, { width: deviceRes[0], height: deviceRes[1] })
+      m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
     else
       ' Item has no backdrop - set transparent
       m.global.sceneManager.callFunc("setBackgroundImage", "")

@@ -1,0 +1,35 @@
+' @fileoverview Shape-based image size constants for use with itemImageUrl utility functions.
+' Usage: getItemPosterUrl(item, imageSize.POSTER_LG)
+'
+' Sizes are { width, height } AAs. Pass directly to getItem*Url() functions.
+' Follow-up task: audit whether the number of distinct sizes per shape can be reduced.
+
+namespace imageSize
+
+  ' ── Poster (portrait, ~2:3) ──
+  const POSTER_SM = { width: 180, height: 270 } ' Home row movie posters
+  const POSTER_MD = { width: 264, height: 396 } ' Standard grid items
+  const POSTER_LG = { width: 295, height: 440 } ' Detail screens
+
+  ' ── Wide (landscape, ~16:9) ──
+  const WIDE_SM = { width: 450, height: 300 } ' Episode carousel
+  const WIDE_MD = { width: 464, height: 261 } ' Home row episodes/series
+  const WIDE_LG = { width: 464, height: 331 } ' Wide poster variant
+
+  ' ── Square (1:1) ──
+  const SQUARE_SM = { width: 280, height: 280 } ' Music genre grid
+  const SQUARE_MD = { width: 323, height: 323 } ' Music album/artist grid
+  const SQUARE_LG = { width: 440, height: 440 } ' Music detail screens
+
+  ' ── Logo ──
+  const LOGO = { width: 500, height: 212 }
+  const LOGO_OSD = { width: 500, height: 300 }
+
+  ' ── Special ──
+  const AVATAR = { width: 300, height: 300 }
+  const AUDIO_ART = { width: 500, height: 500 } ' Now Playing album art
+
+  ' ── Fallback ──
+  const DEFAULT = { width: 196, height: 384 }
+
+end namespace

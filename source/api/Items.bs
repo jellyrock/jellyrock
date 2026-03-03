@@ -1,5 +1,6 @@
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/sdk.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
@@ -17,8 +18,8 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   ' Dynamically adjust transcoding segment length and bitrate based on the video's
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
   ' and playlist-too-large errors during HLS playback.
-  if isValid(videoMetadata) and isValid(videoMetadata.json) and isValid(videoMetadata.json.MediaSources) and isValid(videoMetadata.json.MediaSources[0])
-    mediaSource = videoMetadata.json.MediaSources[0]
+  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources)
+    mediaSource = videoMetadata.mediaSourcesData.mediaSources[0]
     sourceBitrate& = 0
     videoDurationSeconds = 0
 
@@ -62,11 +63,11 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   applyMediaSourceToPostData(postData, mediaSourceId, forceTranscoding)
 
   mediaStreams = invalid
-  if isValid(videoMetadata) and isValid(videoMetadata.json) and isValid(videoMetadata.json.MediaStreams)
-    mediaStreams = videoMetadata.json.MediaStreams
+  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources) and isValid(videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams)
+    mediaStreams = videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams
     ' print "ItemPostPlaybackInfo videoMetadata =", videoMetadata
-    ' print "ItemPostPlaybackInfo videoMetadata.json =", videoMetadata.json
-    ' print "ItemPostPlaybackInfo videoMetadata.json.MediaStreams =", videoMetadata.json.MediaStreams
+    ' print "ItemPostPlaybackInfo videoMetadata.mediaSourcesData =", videoMetadata.mediaSourcesData
+    ' print "ItemPostPlaybackInfo mediaStreams =", mediaStreams
   end if
 
   ' DOVI not supported using MKV container, so force remux for DOVI content
@@ -92,12 +93,9 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
         ' Note: don't force remux on AV1 codec - see #194
         if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
           ' Determine container string
-          ' NOTE: remove once #107 is completed and metadata location is standardized
           containerString = invalid
           if isValid(videoMetadata.container)
             containerString = LCase(videoMetadata.container)
-          else if isValid(videoMetadata.json) and isValid(videoMetadata.json.Container)
-            containerString = LCase(videoMetadata.json.Container)
           end if
 
           if isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
@@ -251,12 +249,10 @@ function searchMedia(query as string)
 
     if not isValid(data) then return []
 
+    transformer = JellyfinDataTransformer()
     results = []
     for each item in data.Items
-      tmp = CreateObject("roSGNode", "SearchData")
-      tmp.image = PosterImage(item.id)
-      tmp.json = item
-      results.push(tmp)
+      results.push(transformer.transformBaseItem(item))
     end for
     data.Items = results
     return data
@@ -264,104 +260,14 @@ function searchMedia(query as string)
   return []
 end function
 
-' MetaData about an item
+' MetaData about an item — returns a JellyfinBaseItem node.
 function ItemMetaData(id as string)
   url = Substitute("Users/{0}/Items/{1}", m.global.user.id, id)
   resp = APIRequest(url, { "fields": "Chapters,Trickplay" })
   data = getJson(resp)
   if not isValid(data) then return invalid
-
-  imgParams = {}
-  if data.type <> "Audio"
-    if isValid(data.UserData) and isValid(data.UserData.PlayedPercentage)
-      param = { "PercentPlayed": data.UserData.PlayedPercentage }
-      imgParams.Append(param)
-    end if
-  end if
-  if data.type = "Movie" or data.type = "MusicVideo"
-    tmp = CreateObject("roSGNode", "MovieData")
-    tmp.image = PosterImage(data.id, imgParams)
-    tmp.json = data
-    return tmp
-  else if data.type = "Series"
-    tmp = CreateObject("roSGNode", "SeriesData")
-    tmp.image = PosterImage(data.id)
-    tmp.json = data
-    return tmp
-  else if data.type = "Episode"
-    tmp = CreateObject("roSGNode", "TVEpisodeData")
-    tmp.image = PosterImage(data.id, imgParams)
-    tmp.json = data
-    return tmp
-  else if data.type = "Recording"
-    tmp = CreateObject("roSGNode", "RecordingData")
-    tmp.image = PosterImage(data.id, imgParams)
-    tmp.json = data
-    return tmp
-  else if data.type = "BoxSet" or data.type = "Playlist"
-    tmp = CreateObject("roSGNode", "CollectionData")
-    tmp.image = PosterImage(data.id, imgParams)
-    tmp.json = data
-    return tmp
-  else if data.type = "Season"
-    tmp = CreateObject("roSGNode", "TVSeasonData")
-    tmp.image = PosterImage(data.id)
-    tmp.json = data
-    return tmp
-  else if data.type = "Video"
-    tmp = CreateObject("roSGNode", "VideoData")
-    tmp.json = data
-    return tmp
-  else if data.type = "Trailer"
-    tmp = CreateObject("roSGNode", "VideoData")
-    tmp.json = data
-    return tmp
-  else if data.type = "TvChannel" or data.type = "Program"
-    tmp = CreateObject("roSGNode", "ChannelData")
-    tmp.image = PosterImage(data.id)
-    tmp.isFavorite = data.UserData.isFavorite
-    tmp.json = data
-    return tmp
-  else if data.type = "Person"
-    tmp = CreateObject("roSGNode", "PersonData")
-    tmp.image = PosterImage(data.id, { "MaxWidth": 300, "MaxHeight": 450 })
-    tmp.json = data
-    return tmp
-  else if data.type = "MusicArtist"
-    ' User clicked on an artist and wants to see the list of their albums
-    tmp = CreateObject("roSGNode", "MusicArtistData")
-    tmp.image = PosterImage(data.id)
-    tmp.json = data
-    return tmp
-  else if data.type = "MusicAlbum"
-    ' User clicked on an album and wants to see the list of songs
-    tmp = CreateObject("roSGNode", "MusicAlbumSongListData")
-    tmp.image = PosterImage(data.id)
-    tmp.json = data
-    return tmp
-  else if data.type = "Audio"
-    ' User clicked on a song and wants it to play
-    tmp = CreateObject("roSGNode", "MusicSongData")
-
-    ' Try using song's parent for poster image
-    tmp.image = PosterImage(data.ParentId, { "MaxWidth": 500, "MaxHeight": 500 })
-
-    ' Song's parent poster image is no good, try using the song's poster image
-    if not isValid(tmp.image)
-      tmp.image = PosterImage(data.id, { "MaxWidth": 500, "MaxHeight": 500 })
-    end if
-
-    tmp.json = data
-    return tmp
-  else if data.type = "Recording"
-    ' We know it's "Recording", but we don't do any special preprocessing
-    ' for this data type at the moment, so just return the json.
-    return data
-  else
-    print "Items.brs::ItemMetaData processed unhandled type: " data.type
-    ' Return json if we don't know what it is
-    return data
-  end if
+  transformer = JellyfinDataTransformer()
+  return transformer.transformBaseItem(data)
 end function
 
 ' Music Artist Data
@@ -385,12 +291,10 @@ function MusicAlbumList(id as string)
   })
 
   data = getJson(resp)
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicAlbumData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -409,12 +313,10 @@ function AppearsOnList(id as string)
   })
 
   data = getJson(resp)
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicAlbumData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -442,11 +344,9 @@ function GetSongsByArtist(id as string, params = {} as object)
   if not isValid(data.Items) then return invalid
   if data.Items.Count() = 0 then return invalid
 
+  transformer = JellyfinDataTransformer()
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicAlbumData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -466,11 +366,9 @@ function PlaylistItemList(id as string)
   if not isValid(data.Items) then return invalid
   if data.Items.Count() = 0 then return invalid
 
+  transformer = JellyfinDataTransformer()
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "PlaylistData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -494,11 +392,9 @@ function MusicSongList(id as string)
   if not isValid(data.Items) then return invalid
   if data.Items.Count() = 0 then return invalid
 
+  transformer = JellyfinDataTransformer()
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "MusicSongData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -613,12 +509,10 @@ function TVSeasons(id as string) as dynamic
   ' validate data
   if not isValid(data) or not isValid(data.Items) then return invalid
 
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "TVSeasonData")
-    tmp.image = PosterImage(item.id)
-    tmp.json = item
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -627,25 +521,14 @@ end function
 ' Returns a list of TV Shows for a given TV Show and season
 ' Accepts strings for the TV Show Id and the season Id
 function TVEpisodes(showId as string, seasonId as string) as dynamic
-  ' Get and validate data
-  data = api.shows.GetEpisodes(showId, { "seasonId": seasonId, "UserId": m.global.user.id, "fields": "MediaStreams,MediaSources" })
+  ' Request Overview in fields to avoid per-episode ItemMetaData() API calls
+  data = api.shows.GetEpisodes(showId, { "seasonId": seasonId, "UserId": m.global.user.id, "fields": "MediaStreams,MediaSources,Overview" })
   if not isValid(data) or not isValid(data.Items) then return invalid
 
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
-    tmp = CreateObject("roSGNode", "TVEpisodeData")
-    tmp.image = PosterImage(item.id, { "maxWidth": 400, "maxheight": 250 })
-    if isValid(tmp.image)
-      tmp.image.posterDisplayMode = "scaleToZoom"
-    end if
-    tmp.json = item
-    tmpMetaData = ItemMetaData(item.id)
-
-    ' validate meta data
-    if isValid(tmpMetaData) and isValid(tmpMetaData.overview)
-      tmp.overview = tmpMetaData.overview
-    end if
-    results.push(tmp)
+    results.push(transformer.transformBaseItem(item))
   end for
   data.Items = results
   return data
@@ -658,27 +541,16 @@ function TVSeasonExtras(seasonId as string) as dynamic
   data = api.users.GetSpecialFeatures(m.global.user.id, seasonId)
   if not isValid(data) then return invalid
 
+  transformer = JellyfinDataTransformer()
   results = []
   for each item in data
-    tmp = CreateObject("roSGNode", "TVEpisodeData")
-    tmp.image = PosterImage(item.id, { "maxWidth": 400, "maxheight": 250 })
-    if isValid(tmp.image)
-      tmp.image.posterDisplayMode = "scaleToZoom"
-    end if
-    tmp.json = item
-
+    node = transformer.transformBaseItem(item)
     ' Force item type to Video so episode auto queue is not attempted
-    tmp.type = "Video"
-    tmpMetaData = ItemMetaData(item.id)
-
-    ' Validate meta data
-    if isValid(tmpMetaData) and isValid(tmpMetaData.overview)
-      tmp.overview = tmpMetaData.overview
-    end if
-    results.push(tmp)
+    node.type = "Video"
+    results.push(node)
   end for
 
-  ' Build that data format that the TVEpisodeRow expects
+  ' Build the data format that the TVEpisodeRow expects
   return { Items: results }
 end function
 

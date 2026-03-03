@@ -76,22 +76,7 @@ class GenericPresenter extends GridPresenterBase
   ' Check if parent item is a boxset
   private function isBoxsetItem(parentItem as object) as boolean
     if not isValid(parentItem) then return false
-
-    ' Check json.type
-    if isValid(parentItem.json) and isValid(parentItem.json.type)
-      if LCase(parentItem.json.type) = "boxset"
-        return true
-      end if
-    end if
-
-    ' Check node type directly
-    if isValid(parentItem.type)
-      if LCase(parentItem.type) = "boxset"
-        return true
-      end if
-    end if
-
-    return false
+    return LCase(parentItem.type) = "boxset"
   end function
 
   ' Standard grid layout

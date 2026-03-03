@@ -26,10 +26,7 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test Movie" }
-      })
+      sourceNode.addFields({ type: "Movie" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
@@ -48,10 +45,7 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "movie-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" }
-      })
+      sourceNode.addFields({ type: "Movie" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
@@ -62,52 +56,23 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Episode",
-        json: { name: "Test" }
-      })
+      sourceNode.addFields({ type: "Episode" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
       m.assertEqual(queueItem.type, "Episode")
     end function
 
-    @it("copies json field when present")
-    function _()
-      jsonData = {
-        id: "123",
-        name: "Test Movie",
-        MediaStreams: [{ index: 0 }]
-      }
-
-      sourceNode = CreateObject("roSGNode", "ContentNode")
-      sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: jsonData
-      })
-
-      queueItem = nodeHelpers.createQueueItem(sourceNode)
-
-      m.assertNotInvalid(queueItem.json)
-      m.assertEqual(queueItem.json.id, "123")
-      m.assertEqual(queueItem.json.name, "Test Movie")
-      m.assertNotInvalid(queueItem.json.MediaStreams)
-    end function
-
     @it("handles missing id field gracefully")
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
-      ' Don't set id, leave it as default empty string
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" }
-      })
+      ' Don't set id — ContentNode defaults to empty string
+      sourceNode.addFields({ type: "Movie" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
       m.assertNotInvalid(queueItem)
-      ' id will be empty string (ContentNode default), and won't be copied due to isValidAndNotEmpty check
+      ' id is empty string so isValidAndNotEmpty fails — should not be copied
       m.assertFalse(queueItem.DoesExist("id"))
     end function
 
@@ -115,32 +80,13 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        json: { name: "Test" }
-      })
-      ' type field doesn't exist on sourceNode
+      ' type field not added
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
       m.assertNotInvalid(queueItem)
       ' type should not exist in the AA
       m.assertFalse(queueItem.DoesExist("type"))
-    end function
-
-    @it("handles missing json field gracefully")
-    function _()
-      sourceNode = CreateObject("roSGNode", "ContentNode")
-      sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie"
-      })
-      ' json field doesn't exist on sourceNode
-
-      queueItem = nodeHelpers.createQueueItem(sourceNode)
-
-      m.assertNotInvalid(queueItem)
-      ' json should not exist in the AA
-      m.assertFalse(queueItem.DoesExist("json"))
     end function
 
     '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -151,11 +97,7 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" },
-        title: "Movie Title"
-      })
+      sourceNode.addFields({ type: "Movie", title: "Movie Title" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
@@ -166,46 +108,33 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" },
-        mediaSourceId: "source-456"
-      })
+      sourceNode.addFields({ type: "Movie", mediaSourceId: "source-456" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
       m.assertEqual(queueItem.mediaSourceId, "source-456")
     end function
 
-    @it("copies RunTimeTicks field when present")
+    @it("copies runTimeTicks field when > 0")
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" },
-        RunTimeTicks: 36000000000&
-      })
+      sourceNode.addFields({ type: "Movie", runTimeTicks: 36000000000& })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
-      m.assertEqual(queueItem.RunTimeTicks, 36000000000&)
+      m.assertEqual(queueItem.runTimeTicks, 36000000000&)
     end function
 
-    @it("omits title when not present")
+    @it("omits title when empty (default)")
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" }
-      })
-      ' Explicitly clear title if ContentNode has default
-      sourceNode.title = ""
+      sourceNode.addFields({ type: "Movie", title: "" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
-      ' Title should not exist in queue item when source has empty string (isValidAndNotEmpty check)
+      ' title is empty string so isValidAndNotEmpty fails — should not be copied
       m.assertFalse(queueItem.DoesExist("title"))
     end function
 
@@ -213,64 +142,176 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" }
-      })
+      sourceNode.addFields({ type: "Movie" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
       m.assertFalse(queueItem.DoesExist("mediaSourceId"))
     end function
 
-    @it("omits RunTimeTicks when not present")
+    @it("omits runTimeTicks when = 0 (default)")
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" }
-      })
+      sourceNode.addFields({ type: "Movie", runTimeTicks: 0& })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
-      m.assertFalse(queueItem.DoesExist("RunTimeTicks"))
+      m.assertFalse(queueItem.DoesExist("runTimeTicks"))
+    end function
+
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("createQueueItem(sourceNode) - episode navigation fields")
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("copies seriesId when present and non-empty")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({ type: "Episode", seriesId: "series-789" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.seriesId, "series-789")
+    end function
+
+    @it("omits seriesId when empty (default)")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({ type: "Episode", seriesId: "" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertFalse(queueItem.DoesExist("seriesId"))
+    end function
+
+    @it("copies seasonId when present and non-empty")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({ type: "Episode", seasonId: "season-123" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.seasonId, "season-123")
+    end function
+
+    @it("omits seasonId when empty (default)")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({ type: "Episode", seasonId: "" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertFalse(queueItem.DoesExist("seasonId"))
+    end function
+
+    @it("copies playbackPositionTicks when > 0")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({ type: "Episode", playbackPositionTicks: 6000000000& })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.playbackPositionTicks, 6000000000&)
+    end function
+
+    @it("omits playbackPositionTicks when = 0 (default)")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({ type: "Episode", playbackPositionTicks: 0& })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertFalse(queueItem.DoesExist("playbackPositionTicks"))
+    end function
+
+    @it("json field is never copied")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "test-123"
+      sourceNode.addFields({ type: "Movie", json: { name: "Test", id: "test-123" } })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertFalse(queueItem.DoesExist("json"))
     end function
 
     '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("createQueueItem(sourceNode) - all fields together")
     '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("copies all fields when all are present")
+    @it("copies all fields when all are present on a full episode node")
     function _()
-      jsonData = {
-        id: "jellyfin-123",
-        name: "The Matrix",
-        MediaStreams: [{ type: "Video" }, { type: "Audio" }]
-      }
-
       sourceNode = CreateObject("roSGNode", "ContentNode")
-      sourceNode.id = "test-123"
+      sourceNode.id = "ep-001"
       sourceNode.addFields({
-        type: "Movie",
-        json: jsonData,
-        title: "The Matrix",
+        type: "Episode",
+        title: "Pilot",
         mediaSourceId: "source-abc",
-        RunTimeTicks: 82140000000&
+        runTimeTicks: 27540000000&,
+        seriesId: "series-xyz",
+        seasonId: "season-xyz",
+        playbackPositionTicks: 9000000000&,
+        backdropImageTags: ["tag-abc"],
+        parentBackdropImageTags: [],
+        parentBackdropItemId: ""
       })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
-      ' Verify all required fields
+      m.assertEqual(queueItem.id, "ep-001")
+      m.assertEqual(queueItem.type, "Episode")
+      m.assertEqual(queueItem.title, "Pilot")
+      m.assertEqual(queueItem.mediaSourceId, "source-abc")
+      m.assertEqual(queueItem.runTimeTicks, 27540000000&)
+      m.assertEqual(queueItem.seriesId, "series-xyz")
+      m.assertEqual(queueItem.seasonId, "season-xyz")
+      m.assertEqual(queueItem.playbackPositionTicks, 9000000000&)
+      m.assertEqual(queueItem.backdropImageTags, ["tag-abc"])
+      m.assertEqual(queueItem.parentBackdropImageTags, [])
+      m.assertEqual(queueItem.parentBackdropItemId, "")
+      m.assertFalse(queueItem.DoesExist("json"))
+    end function
+
+    @it("only copies the expected fields, ignoring all others")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "test-123"
+      sourceNode.addFields({
+        type: "Movie",
+        title: "Test Title",
+        mediaSourceId: "source-123",
+        runTimeTicks: 1000&,
+        seriesId: "",
+        seasonId: "",
+        playbackPositionTicks: 0&,
+        ' Extra fields that should NOT be copied
+        extraField1: "should not copy",
+        extraField2: 12345,
+        focusable: true,
+        visible: false
+      })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      ' Should have the expected fields
       m.assertEqual(queueItem.id, "test-123")
       m.assertEqual(queueItem.type, "Movie")
-      m.assertNotInvalid(queueItem.json)
-      m.assertEqual(queueItem.json.name, "The Matrix")
+      m.assertEqual(queueItem.title, "Test Title")
+      m.assertEqual(queueItem.mediaSourceId, "source-123")
+      m.assertEqual(queueItem.runTimeTicks, 1000&)
 
-      ' Verify all optional fields
-      m.assertEqual(queueItem.title, "The Matrix")
-      m.assertEqual(queueItem.mediaSourceId, "source-abc")
-      m.assertEqual(queueItem.RunTimeTicks, 82140000000&)
+      ' Should NOT have extra fields
+      m.assertFalse(queueItem.DoesExist("extraField1"))
+      m.assertFalse(queueItem.DoesExist("extraField2"))
+      m.assertFalse(queueItem.DoesExist("focusable"))
+      m.assertFalse(queueItem.DoesExist("visible"))
+      m.assertFalse(queueItem.DoesExist("json"))
     end function
 
     '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -281,11 +322,7 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "original-id"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Original" },
-        title: "Original Title"
-      })
+      sourceNode.addFields({ type: "Movie", title: "Original Title" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
@@ -304,11 +341,7 @@ namespace tests
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" },
-        title: "Original"
-      })
+      sourceNode.addFields({ type: "Movie", title: "Original" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
@@ -324,86 +357,18 @@ namespace tests
     end function
 
     '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("createQueueItem(sourceNode) - ignores extra fields")
+    @describe("createQueueItem(sourceNode) - caller mutations")
     '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("only copies the 6 specific fields, ignoring all others")
+    @it("allows startingPoint and selectedAudioStreamIndex to be set after creation")
     function _()
       sourceNode = CreateObject("roSGNode", "ContentNode")
       sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" },
-        title: "Test Title",
-        mediaSourceId: "source-123",
-        RunTimeTicks: 1000&,
-        ' Extra fields that should NOT be copied
-        extraField1: "should not copy",
-        extraField2: 12345,
-        focusable: true,
-        visible: false
-      })
+      sourceNode.addFields({ type: "Movie" })
 
       queueItem = nodeHelpers.createQueueItem(sourceNode)
 
-      ' Should have the 6 expected fields
-      m.assertEqual(queueItem.id, "test-123")
-      m.assertEqual(queueItem.type, "Movie")
-      m.assertNotInvalid(queueItem.json)
-      m.assertEqual(queueItem.title, "Test Title")
-      m.assertEqual(queueItem.mediaSourceId, "source-123")
-      m.assertEqual(queueItem.RunTimeTicks, 1000&)
-
-      ' Should NOT have extra fields
-      m.assertFalse(queueItem.DoesExist("extraField1"))
-      m.assertFalse(queueItem.DoesExist("extraField2"))
-      m.assertFalse(queueItem.DoesExist("focusable"))
-      m.assertFalse(queueItem.DoesExist("visible"))
-    end function
-
-    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("createQueueItem(sourceNode) - real-world scenarios")
-    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("handles SearchData node from search results")
-    function _()
-      ' Simulate a SearchData node with complex structure
-      sourceNode = CreateObject("roSGNode", "ContentNode")
-      sourceNode.id = "episode-123"
-      sourceNode.addFields({
-        type: "Episode",
-        json: {
-          id: "episode-123",
-          name: "Pilot",
-          SeriesName: "Test Show",
-          MediaStreams: [{ type: "Video" }],
-          UserData: { PlaybackPositionTicks: 0& }
-        },
-        title: "Pilot"
-      })
-
-      queueItem = nodeHelpers.createQueueItem(sourceNode)
-
-      m.assertNotInvalid(queueItem)
-      m.assertEqual(queueItem.id, "episode-123")
-      m.assertEqual(queueItem.type, "Episode")
-      m.assertEqual(queueItem.title, "Pilot")
-      m.assertNotInvalid(queueItem.json)
-      m.assertEqual(queueItem.json.SeriesName, "Test Show")
-    end function
-
-    @it("allows additional fields to be set after creation")
-    function _()
-      sourceNode = CreateObject("roSGNode", "ContentNode")
-      sourceNode.id = "test-123"
-      sourceNode.addFields({
-        type: "Movie",
-        json: { name: "Test" }
-      })
-
-      queueItem = nodeHelpers.createQueueItem(sourceNode)
-
-      ' These fields are set by quickplay after createQueueItem
+      ' These fields are set by quickplay / Main.bs after createQueueItem
       queueItem.selectedAudioStreamIndex = 2
       queueItem.startingPoint = 15000000000&
 
@@ -412,6 +377,141 @@ namespace tests
       ' Original source should not have these fields added
       m.assertInvalid(sourceNode.selectedAudioStreamIndex)
       m.assertInvalid(sourceNode.startingPoint)
+    end function
+
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("createQueueItem(sourceNode) - backdrop fields (guaranteed contract)")
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("always sets backdropImageTags even when source has none")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "movie-123"
+      sourceNode.addFields({ type: "Movie" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      ' Field must always exist — callers rely on .Count() without isValid()
+      m.assertTrue(queueItem.DoesExist("backdropImageTags"))
+      m.assertEqual(queueItem.backdropImageTags.Count(), 0)
+    end function
+
+    @it("always sets parentBackdropImageTags even when source has none")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-123"
+      sourceNode.addFields({ type: "Episode" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertTrue(queueItem.DoesExist("parentBackdropImageTags"))
+      m.assertEqual(queueItem.parentBackdropImageTags.Count(), 0)
+    end function
+
+    @it("always sets parentBackdropItemId even when source has none")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-123"
+      sourceNode.addFields({ type: "Episode" })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertTrue(queueItem.DoesExist("parentBackdropItemId"))
+      m.assertEqual(queueItem.parentBackdropItemId, "")
+    end function
+
+    @it("copies backdropImageTags from source when present")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "movie-123"
+      sourceNode.addFields({ type: "Movie", backdropImageTags: ["tag-aaa", "tag-bbb"] })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.backdropImageTags, ["tag-aaa", "tag-bbb"])
+    end function
+
+    @it("copies parentBackdropImageTags and parentBackdropItemId from source when present")
+    function _()
+      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode.id = "ep-456"
+      sourceNode.addFields({
+        type: "Episode",
+        parentBackdropImageTags: ["parent-tag"],
+        parentBackdropItemId: "series-789"
+      })
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.parentBackdropImageTags, ["parent-tag"])
+      m.assertEqual(queueItem.parentBackdropItemId, "series-789")
+    end function
+
+    @it("works with a raw API associative array (PascalCase fields)")
+    function _()
+      ' Simulates a Jellyfin API response item — BrightScript AA lookup is case-insensitive
+      ' so camelCase access finds PascalCase keys
+      rawApiItem = {
+        Id: "movie-abc",
+        Type: "Movie",
+        Name: "Test Movie",
+        BackdropImageTags: ["api-tag-1"],
+        ParentBackdropItemId: ""
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertEqual(queueItem.id, "movie-abc")
+      m.assertEqual(queueItem.type, "Movie")
+      ' backdropImageTags always present
+      m.assertTrue(queueItem.DoesExist("backdropImageTags"))
+      m.assertEqual(queueItem.backdropImageTags, ["api-tag-1"])
+    end function
+
+    @it("raw API item with no backdrop fields produces empty arrays")
+    function _()
+      rawApiItem = {
+        Id: "ep-xyz",
+        Type: "Episode"
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertEqual(queueItem.backdropImageTags.Count(), 0)
+      m.assertEqual(queueItem.parentBackdropImageTags.Count(), 0)
+      m.assertEqual(queueItem.parentBackdropItemId, "")
+    end function
+
+    @it("raw API item extracts playbackPositionTicks from nested UserData")
+    function _()
+      rawApiItem = {
+        Id: "ep-xyz",
+        Type: "Episode",
+        UserData: {
+          PlaybackPositionTicks: 12000000000&,
+          Played: false
+        }
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertEqual(queueItem.playbackPositionTicks, 12000000000&)
+    end function
+
+    @it("raw API item with zero UserData.PlaybackPositionTicks omits field")
+    function _()
+      rawApiItem = {
+        Id: "ep-xyz",
+        Type: "Episode",
+        UserData: {
+          PlaybackPositionTicks: 0&,
+          Played: true
+        }
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertFalse(queueItem.DoesExist("playbackPositionTicks"))
     end function
 
   end class

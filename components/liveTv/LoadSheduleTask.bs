@@ -1,4 +1,5 @@
 import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -33,16 +34,16 @@ sub loadSchedule()
 
   results = []
 
+  transformer = JellyfinDataTransformer()
   for each item in data.Items
-    program = createObject("roSGNode", "ScheduleProgramData")
-    program.json = item
-    ' Are we currently recording this program?
-    if isValid(program.json.TimerId) and program.json.TimerId <> ""
-      program.hdSmallIconUrl = "pkg:/images/red.png"
+    node = transformer.transformBaseItem(item)
+    ' Set hdSmallIconUrl for TimeGrid recording indicator (ContentNode built-in read by Roku TimeGrid)
+    if isValidAndNotEmpty(node.timerId)
+      node.hdsmalliconurl = "pkg:/images/red.png"
     else
-      program.hdSmallIconUrl = invalid
+      node.hdsmalliconurl = ""
     end if
-    results.push(program)
+    results.push(node)
   end for
 
 

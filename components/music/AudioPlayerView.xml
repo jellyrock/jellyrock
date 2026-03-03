@@ -34,7 +34,7 @@
       <LabelPrimarySmallest text="0:00" id="seekTimestamp" width="110" height="40" horizAlign="center" vertAlign="center" />
     </Rectangle>
     <Rectangle id="screenSaverBackground" width="1920" height="1080" color="#000000" visible="false" />
-    <Poster id="screenSaverAlbumCover" width="500" height="500" translation="[960,575]" opacity="0" />
+    <Poster id="screenSaverAlbumCover" width="500" height="500" loadWidth="500" loadHeight="500" loadDisplayMode="limitSize" translation="[960,575]" opacity="0" />
     <Poster id="PosterOne" width="389" height="104" translation="[960,540]" opacity="0" />
 
     <Animation id="screenSaverAlbumCoverFadeIn" duration="4" repeat="false" easeFunction="linear">

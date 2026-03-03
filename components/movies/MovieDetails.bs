@@ -1,6 +1,7 @@
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
@@ -73,10 +74,10 @@ end sub
 sub OnScreenShown()
   ' Set backdrop from movie data (only if itemContent is already loaded)
   ' This handles the case when returning to an already-loaded screen
-  if isValid(m.top.itemContent)
-    if isValid(m.top.itemContent.backdropUrl)
-      m.global.sceneManager.callFunc("setBackgroundImage", m.top.itemContent.backdropUrl)
-    end if
+  if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
+    device = m.global.device
+    backdropUrl = getItemBackdropUrl(m.top.itemContent, { width: device.uiResolution[0], height: device.uiResolution[1] })
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
   end if
   ' If itemContent not loaded, backdrop will be set in itemContentChanged()
 
@@ -125,15 +126,16 @@ end sub
 sub manageResumeButton()
   resumeButton = m.top.findNode("resumeButton")
 
-  if isValid(m.top.itemContent) and isValid(m.top.itemContent.json) and isValid(m.top.itemContent.json.UserData)
+  if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
+    item = m.top.itemContent
     ' Validate RunTimeTicks before proceeding - required for progress bar calculation
-    if not isValid(m.top.itemContent.json.RunTimeTicks) or m.top.itemContent.json.RunTimeTicks <= 0
+    if item.runTimeTicks <= 0
       ' Invalid runtime, remove resume button if present and exit
       removeResumeButtonWithFocus(resumeButton)
       return
     end if
 
-    if isValid(m.top.itemContent.json.UserData.PlaybackPositionTicks) and m.top.itemContent.json.UserData.PlaybackPositionTicks > 0
+    if item.playbackPositionTicks > 0
       ' Add resume button if not already present
       if not isValid(resumeButton)
         ' Capture current focus state before modifying button group
@@ -147,8 +149,8 @@ sub manageResumeButton()
         resumeButton.id = "resumeButton"
         resumeButton.icon = "pkg:/images/icons/resume.png"
         resumeButton.text = tr("Resume")
-        resumeButton.playbackPositionTicks = m.top.itemContent.json.UserData.PlaybackPositionTicks
-        resumeButton.runtimeTicks = m.top.itemContent.json.RunTimeTicks
+        resumeButton.playbackPositionTicks = item.playbackPositionTicks
+        resumeButton.runtimeTicks = item.runTimeTicks
 
         ' Insert at index 0 (first position)
         m.buttonGrp.insertChild(resumeButton, 0)
@@ -168,8 +170,8 @@ sub manageResumeButton()
         focusButtonGroupChild()
       else
         ' Resume button already exists, update its tick values (data may have refreshed)
-        resumeButton.playbackPositionTicks = m.top.itemContent.json.UserData.PlaybackPositionTicks
-        resumeButton.runtimeTicks = m.top.itemContent.json.RunTimeTicks
+        resumeButton.playbackPositionTicks = item.playbackPositionTicks
+        resumeButton.runtimeTicks = item.runTimeTicks
       end if
     else
       ' Remove resume button if present
@@ -255,7 +257,7 @@ end sub
 
 ' populateDescriptionGroup: Set FocusableOverview text with tagline and overview
 sub populateDescriptionGroup()
-  itemData = m.top.itemContent.json
+  item = m.top.itemContent
   userSettings = m.global.user.settings
 
   hasTagline = false
@@ -263,8 +265,8 @@ sub populateDescriptionGroup()
 
   ' 1. Tagline (if enabled in settings and data exists)
   if userSettings.uiDetailsHideTagline = false
-    if isValid(itemData.taglines) and itemData.taglines.count() > 0 and isValidAndNotEmpty(itemData.taglines[0])
-      m.itemDescription.tagline = itemData.taglines[0]
+    if item.taglines.count() > 0 and isValidAndNotEmpty(item.taglines[0])
+      m.itemDescription.tagline = item.taglines[0]
       m.itemDescription.taglineMaxLines = 2
       hasTagline = true
     end if
@@ -275,8 +277,8 @@ sub populateDescriptionGroup()
   end if
 
   ' 2. Overview (if data exists)
-  if isValid(itemData.overview) and isValidAndNotEmpty(itemData.overview)
-    m.itemDescription.text = itemData.overview
+  if isValidAndNotEmpty(item.overview)
+    m.itemDescription.text = item.overview
     hasOverview = true
   else
     m.itemDescription.text = ""
@@ -291,7 +293,7 @@ sub populateDescriptionGroup()
 
   ' Set dialog title and visibility
   if hasTagline or hasOverview
-    m.itemDescription.dialogTitle = itemData.name
+    m.itemDescription.dialogTitle = item.name
     m.itemDescription.visible = true
   else
     m.itemDescription.visible = false
@@ -307,62 +309,60 @@ sub populateInfoGroup()
   m.directorGenreDividerCount = 0
   m.endsAtNode = invalid
 
-  itemData = m.top.itemContent.json
+  item = m.top.itemContent
   userSettings = m.global.user.settings
-
-  ' print "itemData:", itemData
 
   ' === ROW 1: Info Group ===
   ' Order: year, officialRating, communityRating, criticRating, runtime, ends-at
 
   ' 1. Release Year
-  if isValid(itemData.productionYear) and itemData.Type <> "Episode"
+  if item.productionYear > 0 and item.type <> "Episode"
     yearNode = createInfoLabel("releaseYear")
-    yearNode.text = itemData.productionYear.toStr().trim()
+    yearNode.text = stri(item.productionYear).trim()
     displayInfoNode(yearNode)
   end if
 
   ' 2. Official Rating (PG, R, etc.)
-  if isValid(itemData.officialRating)
+  if isValidAndNotEmpty(item.officialRating)
     ratingNode = createInfoLabel("officialRating")
-    ratingNode.text = itemData.officialRating
+    ratingNode.text = item.officialRating
     displayInfoNode(ratingNode)
   end if
 
   ' 3. Community Rating (star + number)
-  if userSettings.uiMoviesShowRatings and isValid(itemData.CommunityRating)
+  if userSettings.uiMoviesShowRatings and item.communityRating > 0
     communityRatingNode = CreateObject("roSGNode", "CommunityRating")
     communityRatingNode.id = "communityRating"
-    communityRatingNode.rating = itemData.CommunityRating
+    communityRatingNode.rating = item.communityRating
     displayInfoNode(communityRatingNode)
   end if
 
   ' 4. Critic Rating (tomato + number)
-  if userSettings.uiMoviesShowRatings and isValid(itemData.CriticRating)
+  if userSettings.uiMoviesShowRatings and item.criticRating > 0
     criticRatingNode = CreateObject("roSGNode", "CriticRating")
     criticRatingNode.id = "criticRating"
-    criticRatingNode.rating = itemData.CriticRating
+    criticRatingNode.rating = item.criticRating
     displayInfoNode(criticRatingNode)
   end if
 
   ' 5. Runtime
-  if type(itemData.RunTimeTicks) = "LongInteger"
+  if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
     runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
     displayInfoNode(runtimeNode)
   end if
 
   ' 6. Ends At (only shown when clock is visible in overhang)
-  if type(itemData.RunTimeTicks) = "LongInteger" and not userSettings.uiDesignHideClock
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
     displayInfoNode(m.endsAtNode)
   end if
 
   ' 7. Aired (Episodes only)
-  if isValid(itemData.PremiereDate) and itemData.Type = "Episode"
+  if isValidAndNotEmpty(item.premiereDate) and item.type = "Episode"
     airDate = CreateObject("roDateTime")
-    airDate.FromISO8601String(itemData.PremiereDate)
+    airDate.FromISO8601String(item.premiereDate)
     airedNode = createInfoLabel("aired")
     airedNode.text = tr("Aired") + ": " + airDate.AsDateString("short-month-no-weekday")
     displayInfoNode(airedNode)
@@ -372,16 +372,16 @@ sub populateInfoGroup()
   ' Order: genres first, then director(s)
 
   ' 1. Genres (concatenated with " / ")
-  if isValid(itemData.genres) and itemData.genres.count() > 0
+  if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
-    genreNode.text = itemData.genres.join(" / ")
+    genreNode.text = item.genres.join(" / ")
     displayDirectorGenreNode(genreNode)
   end if
 
   ' 2. Director(s)
   directors = []
-  if isValid(itemData.people)
-    for each person in itemData.people
+  if isValid(item.people)
+    for each person in item.people
       if person.type = "Director"
         directors.push(person.name)
       end if
@@ -395,47 +395,50 @@ sub populateInfoGroup()
 end sub
 
 sub itemContentChanged()
-  ' Updates video metadata
   item = m.top.itemContent
 
   ' Set backdrop from movie data
-  if isValid(item) and isValid(item.backdropUrl) and item.backdropUrl <> ""
-    m.global.sceneManager.callFunc("setBackgroundImage", item.backdropUrl)
+  if isValid(item) and isValidAndNotEmpty(item.id)
+    device = m.global.device
+    backdropUrl = getItemBackdropUrl(item, { width: device.uiResolution[0], height: device.uiResolution[1] })
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
   else
     m.global.sceneManager.callFunc("setBackgroundImage", "")
   end if
 
-  if isValid(item) and isValid(item.json)
-    itemData = item.json
-    m.top.id = itemData.id
+  if isValid(item) and isValidAndNotEmpty(item.id)
+    m.top.id = item.id
 
-    ' Set movie logo if available
-    setMovieLogo(itemData)
-
-    ' Set date added label if available
-    setDateAdded(itemData)
+    setMovieLogo(item)
+    setDateAdded(item)
 
     ' Set default video source if user hasn't selected one yet
-    if m.top.selectedVideoStreamId = "" and isValid(itemData.MediaSources)
-      m.top.selectedVideoStreamId = itemData.MediaSources[0].id
+    if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
+      m.top.selectedVideoStreamId = item.mediaSourceId
     end if
 
-    SetDefaultAudioTrack(itemData)
+    ' Extract streams from first media source for audio/subtitle/options setup
+    allStreams = []
+    mediaSources = invalid
+    if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
+      mediaSources = item.mediaSourcesData.mediaSources
+      if isValid(mediaSources[0].MediaStreams)
+        allStreams = mediaSources[0].MediaStreams
+      end if
+    end if
 
-    ' Populate info rows dynamically
+    SetDefaultAudioTrack(allStreams)
+
     populateInfoGroup()
-
-    ' Populate description group (tagline and overview) dynamically
     populateDescriptionGroup()
 
-    ' Handle video title
-    setFieldText("videoTitle", itemData.name)
+    setFieldText("videoTitle", item.name)
 
     updateFavoriteButton()
     updateWatchedButton()
-    SetUpVideoOptions(itemData.mediaSources)
-    SetUpAudioOptions(itemData.mediaStreams)
-    SetUpSubtitleDisplay(itemData.mediaStreams, m.top.selectedAudioStreamIndex)
+    SetUpVideoOptions(mediaSources ?? [])
+    SetUpAudioOptions(allStreams)
+    SetUpSubtitleDisplay(allStreams, m.top.selectedAudioStreamIndex)
     updateOptionsButtonVisibility()
 
     manageResumeButton()
@@ -491,7 +494,12 @@ sub SetUpAudioOptions(streams)
 
   for i = 0 to streams.Count() - 1
     if streams[i].Type = "Audio"
-      tracks.push({ "Title": formatAudioDisplayTitle(streams[i]), "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = i, "StreamIndex": i })
+      ' Use server-side stream.index (not loop position) for both the pre-selection check
+      ' and the StreamIndex value carried to MovieOptions / audioOptionsClosed.
+      ' Jellyfin indices span all stream types and must match what ItemPostPlaybackInfo expects.
+      if isValid(streams[i].index)
+        tracks.push({ "Title": formatAudioDisplayTitle(streams[i]), "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = streams[i].index, "StreamIndex": streams[i].index })
+      end if
     end if
   end for
 
@@ -554,15 +562,7 @@ sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
   end if
 end sub
 
-sub SetDefaultAudioTrack(itemData)
-  ' Extract MediaStreams from itemData
-  mediaStreams = invalid
-  if isValid(itemData.mediaStreams)
-    mediaStreams = itemData.mediaStreams
-  else if isValid(itemData.MediaSources) and isValid(itemData.MediaSources[0]) and isValid(itemData.MediaSources[0].MediaStreams)
-    mediaStreams = itemData.MediaSources[0].MediaStreams
-  end if
-
+sub SetDefaultAudioTrack(mediaStreams as object)
   if not isValid(mediaStreams) then return
 
   ' Get user settings for audio selection
@@ -611,19 +611,14 @@ sub setFieldText(field, value)
 end sub
 
 function getRuntime() as integer
-
-  itemData = m.top.itemContent.json
-
   ' A tick is .1ms, so 1/10,000,000 for ticks to seconds,
   ' then 1/60 for seconds to minutess... 1/600,000,000
-  return round(itemData.RunTimeTicks / 600000000.0)
+  return round(m.top.itemContent.runTimeTicks / 600000000.0)
 end function
 
 function getEndTime() as string
-  itemData = m.top.itemContent.json
-
   date = CreateObject("roDateTime")
-  duration_s = int(itemData.RunTimeTicks / 10000000.0)
+  duration_s = int(m.top.itemContent.runTimeTicks / 10000000.0)
   date.fromSeconds(date.asSeconds() + duration_s)
   date.toLocalTime()
 
@@ -638,7 +633,7 @@ sub onClockMinuteChanged()
 end sub
 
 sub updateFavoriteButton()
-  fave = m.top.itemContent.favorite
+  fave = m.top.itemContent.isFavorite
   favoriteButton = m.top.findNode("favoriteButton")
   if isValid(favoriteButton)
     if isValid(fave) and fave
@@ -650,7 +645,7 @@ sub updateFavoriteButton()
 end sub
 
 sub updateWatchedButton()
-  watched = m.top.itemContent.watched
+  watched = m.top.itemContent.isWatched
   watchedButton = m.top.findNode("watchedButton")
   if isValid(watchedButton)
     if watched
@@ -662,40 +657,36 @@ sub updateWatchedButton()
 end sub
 
 ' setMovieLogo: Set the movie logo image URL if available
-' @param itemData - The item JSON data containing ImageTags
+' @param item - JellyfinBaseItem node
 '
-sub setMovieLogo(itemData as object)
+sub setMovieLogo(item as object)
   if not isValid(m.movieLogo) then return
 
-  ' Check if logo image tag exists
-  if isValid(itemData.ImageTags) and isValidAndNotEmpty(itemData.ImageTags.Logo)
+  if isValidAndNotEmpty(item.logoImageTag)
     imgParams = {
       maxHeight: 212,
       maxWidth: 500,
       quality: 90,
-      tag: itemData.ImageTags.Logo
+      tag: item.logoImageTag
     }
-    logoUrl = ImageURL(itemData.id, "Logo", imgParams)
-    m.movieLogo.uri = logoUrl
+    m.movieLogo.uri = ImageURL(item.id, "Logo", imgParams)
   else
-    ' No logo available, hide the poster
     m.movieLogo.visible = false
     m.movieLogo.uri = ""
-
   end if
 end sub
 
 ' setDateAdded: Set date added label text and position
 ' Positions label at bottom right corner of screen with 96px padding
-' @param itemData - The item JSON data containing DateCreated
+' @param item - JellyfinBaseItem node
 '
-sub setDateAdded(itemData as object)
+sub setDateAdded(item as object)
   if not isValid(m.dateCreatedLabel) then return
 
-  if isValid(itemData.DateCreated)
+  if isValidAndNotEmpty(item.dateCreated)
     ' Set the date and time text
     dateAdded = CreateObject("roDateTime")
-    dateAdded.FromISO8601String(itemData.DateCreated)
+    dateAdded.FromISO8601String(item.dateCreated)
     dateAdded.toLocalTime()
     m.dateCreatedLabel.text = tr("Added") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
 
@@ -905,8 +896,8 @@ end sub
 '
 sub manageDeleteButton()
   canDelete = false
-  if isValid(m.top.itemContent) and isValid(m.top.itemContent.json)
-    canDelete = m.top.itemContent.json.CanDelete = true
+  if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
+    canDelete = m.top.itemContent.canDelete = true
   end if
 
   buttonExists = isValid(m.deleteButton)
@@ -954,7 +945,12 @@ end function
 sub audioOptionsClosed()
   if m.options.audioStreamIndex <> m.top.selectedAudioStreamIndex
     m.top.selectedAudioStreamIndex = m.options.audioStreamIndex
-    setFieldText("audio_codec", tr("Audio") + ": " + formatAudioDisplayTitle(m.top.itemContent.json.mediaStreams[m.top.selectedAudioStreamIndex]))
+    for each stream in m.top.itemContent.audioStreams
+      if stream.index = m.top.selectedAudioStreamIndex
+        setFieldText("audio_codec", tr("Audio") + ": " + formatAudioDisplayTitle(stream))
+        exit for
+      end if
+    end for
   end if
 
   m.buttonGrp.setFocus(true)
@@ -965,21 +961,18 @@ sub videoOptionsClosed()
   if m.options.videoStreamId <> m.top.selectedVideoStreamId
     m.top.selectedVideoStreamId = m.options.videoStreamId
     setFieldText("video_codec", tr("Video") + ": " + m.options.video_codec)
-    ' Because the video stream has changed (i.e. the actual video)... we need to reload the audio stream choices for that video
-    m.top.unobservefield("itemContent")
-    itemData = m.top.itemContent.json
-    for each mediaSource in itemData.mediaSources
+    ' Video stream changed — reload audio/subtitle options for the selected source
+    m.top.unobserveField("itemContent")
+    mediaSources = m.top.itemContent.mediaSourcesData.mediaSources
+    for each mediaSource in mediaSources
       if mediaSource.id = m.top.selectedVideoStreamId
-        itemData.mediaStreams = []
-        for i = 0 to mediaSource.mediaStreams.Count() - 1
-          itemData.mediaStreams.push(mediaSource.mediaStreams[i])
-        end for
-        SetDefaultAudioTrack(itemData)
-        SetUpAudioOptions(itemData.mediaStreams)
+        streams = mediaSource.MediaStreams ?? []
+        SetDefaultAudioTrack(streams)
+        SetUpAudioOptions(streams)
+        SetUpSubtitleDisplay(streams, m.top.selectedAudioStreamIndex)
         exit for
       end if
     end for
-    m.top.itemContent.json = itemData
     m.top.observeField("itemContent", "itemContentChanged")
   end if
 

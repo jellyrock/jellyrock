@@ -9,6 +9,7 @@ sub init()
   m.loadingText = m.top.findNode("loadingText")
   m.spinner = m.top.findNode("spinner")
   m.imageFader = m.top.findNode("imageFader")
+  m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -82,6 +83,10 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
 
   ' Only update URI if backdrops are enabled (performance optimization)
   if m.top.showBackdrop
+    ' Skip if URI has not changed - BackdropFader would deduplicate anyway, but skipping here
+    ' avoids the field assignment and unnecessary observer call entirely.
+    if m.lastBackdropUri = uri then return
+    m.lastBackdropUri = uri
     m.imageFader.isAnimated = isAnimated
     m.imageFader.uri = uri
   end if

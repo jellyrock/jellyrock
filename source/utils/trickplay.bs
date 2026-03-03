@@ -129,35 +129,35 @@ namespace trickplay
     return (index * interval) / 1000.0
   end function
 
-  ' buildConfigFromMetadata: Extracts and validates trickplay config from item metadata
+  ' buildConfigFromMetadata: Extracts and validates trickplay config from item trickplay data
   '
   ' Provides fail-fast validation at config creation time rather than at usage time.
   ' Reusable across all content types (movies, episodes, live TV, recordings, etc.)
   '
-  ' @param {object} itemMeta - Item metadata from ItemMetaData()
+  ' @param {object} trickplayData - item.trickplayData AA ({mediaSourceId: {width: TrickplayInfoDto}})
   ' @param {string} videoID - Video item ID
   ' @param {integer} deviceWidth - Device max video width for resolution selection
   ' @param {integer} initialPosition - Starting playback position in seconds
   ' @return {dynamic} - Valid config object or invalid if trickplay unavailable/invalid
-  function buildConfigFromMetadata(itemMeta as object, videoID as string, deviceWidth as integer, initialPosition as integer) as dynamic
-    if not isValid(itemMeta) then return invalid
-    if not isValidAndNotEmpty(itemMeta.Trickplay) then return invalid
+  function buildConfigFromMetadata(trickplayData as object, videoID as string, deviceWidth as integer, initialPosition as integer) as dynamic
+    if not isValid(trickplayData) then return invalid
+    if not isValidAndNotEmpty(trickplayData) then return invalid
 
-    ' Get first video ID key from Trickplay data
-    trickplayData = invalid
-    for each videoKey in itemMeta.Trickplay
-      trickplayData = itemMeta.Trickplay[videoKey]
+    ' Get first video ID key from trickplay data
+    resolutionData = invalid
+    for each videoKey in trickplayData
+      resolutionData = trickplayData[videoKey]
       exit for
     end for
 
-    if not isValid(trickplayData) then return invalid
+    if not isValid(resolutionData) then return invalid
 
     ' Select best resolution based on device
-    bestWidthKey = selectBestResolution(trickplayData, deviceWidth)
+    bestWidthKey = selectBestResolution(resolutionData, deviceWidth)
     if not isValid(bestWidthKey) then return invalid
-    if not trickplayData.doesExist(bestWidthKey) then return invalid
+    if not resolutionData.doesExist(bestWidthKey) then return invalid
 
-    widthConfig = trickplayData[bestWidthKey]
+    widthConfig = resolutionData[bestWidthKey]
 
     ' Build config object
     config = {

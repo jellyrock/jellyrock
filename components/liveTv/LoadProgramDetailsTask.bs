@@ -1,4 +1,5 @@
 import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -26,20 +27,24 @@ sub loadProgramDetails()
     return
   end if
 
-  program = createObject("roSGNode", "ScheduleProgramData")
-  program.json = data
-  program.channelIndex = channelIndex
-  program.programIndex = programIndex
-  program.fullyLoaded = true
-  ' Are we currently recording this program?
-  if isValid(program.json.TimerId) and program.json.TimerId <> ""
-    ' This is needed here because the callee (onProgramDetailsLoaded) replaces the grid item with
-    ' this newly created item from the server, without this, the red icon
-    ' disappears when the user focuses on the program in question
-    program.hdSmallIconUrl = "pkg:/images/red.png"
+  transformer = JellyfinDataTransformer()
+  node = transformer.transformBaseItem(data)
+  ' Set hdSmallIconUrl for TimeGrid recording indicator (ContentNode built-in read by Roku TimeGrid).
+  ' Must be set again here because ReplaceChild() in schedule.bs replaces the lightweight schedule
+  ' item with this fully-loaded node, so the indicator must be preserved.
+  if isValidAndNotEmpty(node.timerId)
+    node.hdsmalliconurl = "pkg:/images/red.png"
   else
-    program.hdSmallIconUrl = invalid
+    node.hdsmalliconurl = ""
   end if
-  m.top.programDetails = program
+
+  ' Return as an AA wrapper so schedule.bs knows which grid cell to update without
+  ' relying on mutable .channelIndex / .programIndex fields on the node itself
+  m.top.programDetails = {
+    item: node,
+    channelIndex: channelIndex,
+    programIndex: programIndex,
+    isRecording: isValidAndNotEmpty(node.timerId)
+  }
 
 end sub

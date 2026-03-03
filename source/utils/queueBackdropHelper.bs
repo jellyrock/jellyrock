@@ -1,7 +1,7 @@
 ' queueBackdropHelper.bs
 ' Utility function for updating backdrop based on current queue item
 
-import "pkg:/source/utils/backdropUtils.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 
 ' updateQueueBackdrop: Updates backdrop based on current queue item
 ' Should be called whenever queue position changes or playback starts
@@ -17,8 +17,12 @@ sub updateQueueBackdrop()
     return
   end if
 
-  ' Generate backdrop URL from current item
-  backdropUrl = getBackdropUrl(currentItem.json, m.global.device.uiResolution)
+  ' Build size from device resolution
+  uiResolution = m.global.device.uiResolution
+  backdropSize = { width: uiResolution[0], height: uiResolution[1] }
+
+  ' Generate backdrop URL from current item typed fields
+  backdropUrl = getItemBackdropUrl(currentItem, backdropSize)
 
   if backdropUrl = "" or not isValid(backdropUrl)
     ' Clear backdrop if none available

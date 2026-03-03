@@ -31,16 +31,19 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   end if
 
   if not isValid(meta) then return SubtitleSelection.none
-  if not isValid(meta.json) then return SubtitleSelection.none
-  if not isValidAndNotEmpty(meta.json.MediaSources) then return SubtitleSelection.none
-  if not isValidAndNotEmpty(meta.json.MediaSources[0].MediaStreams) then return SubtitleSelection.none
+  mediaSources = invalid
+  if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
+    mediaSources = meta.mediaSourcesData.mediaSources
+  end if
+  if not isValid(mediaSources) or not isValidAndNotEmpty(mediaSources[0].MediaStreams) then return SubtitleSelection.none
+  allStreams = mediaSources[0].MediaStreams
 
-  subtitles = sortSubtitles(meta.json.MediaSources[0].MediaStreams)
+  subtitles = sortSubtitles(allStreams)
 
   selectedAudioLanguage = ""
   ' Find the audio stream with the matching Jellyfin index
   audioMediaStream = invalid
-  for each stream in meta.json.MediaSources[0].MediaStreams
+  for each stream in allStreams
     if isValid(stream.index) and stream.index = selectedAudioIndex
       audioMediaStream = stream
       exit for

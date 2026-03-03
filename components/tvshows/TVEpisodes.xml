@@ -13,7 +13,11 @@
     <field id="refreshSeasonDetailsData" type="bool" alwaysNotify="true" />
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="quickPlayNode" type="node" />
-    <field id="seasonData" type="assocarray" />
+    <!-- Phase 4: per-episode stream selections set before selectedItem fires -->
+    <!-- -1 = no user selection (auto-select); ≥ 0 = server-side stream.index -->
+    <field id="selectedAudioStreamIndex" type="integer" value="-1" />
+    <field id="selectedVideoStreamId" type="string" value="" />
+    <field id="seasonData" type="node" />
     <field id="objects" alias="picker.objects" />
     <field id="episodeObjects" type="assocarray" />
     <field id="extrasObjects" type="assocarray" onChange="setExtraButtonVisibility" />

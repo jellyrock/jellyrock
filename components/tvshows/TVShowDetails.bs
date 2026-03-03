@@ -1,6 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/backdropUtils.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -31,13 +31,13 @@ end sub
 sub OnScreenShown()
   ' Set backdrop from series data
   ' This handles the case when returning to an already-loaded screen
-  if isValid(m.top.itemContent)
-    if isValid(m.top.itemContent.backdropUrl)
-      m.global.sceneManager.callFunc("setBackgroundImage", m.top.itemContent.backdropUrl)
-      m.log.info("backdropUrl set to", m.top.itemContent.backdropUrl)
-    end if
+  if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
+    device = m.global.device
+    backdropUrl = getItemBackdropUrl(m.top.itemContent, { width: device.uiResolution[0], height: device.uiResolution[1] })
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
+    m.log.info("backdrop set for", m.top.itemContent.id)
   else
-    m.log.info("cannot set backdropUrl, m.top.itemContent is invalid")
+    m.log.info("cannot set backdrop, m.top.itemContent is invalid")
   end if
 
   ' Restore focus for scene navigation
@@ -64,77 +64,56 @@ sub onLastFocusReady()
 end sub
 
 sub itemContentChanged()
-  ' Updates video metadata
-  ' TODO - make things use item rather than itemData
   item = m.top.itemContent
-  print "[TVShowDetails] itemContentChanged called"
-  if not isValid(item) then return
-
-  itemData = item.json
+  if not isValid(item) or not isValidAndNotEmpty(item.id) then return
 
   ' Set backdrop from series data
-  print "[TVShowDetails] backdropUrl in itemContentChanged: "; item.backdropUrl
-  if isValid(item.backdropUrl)
-    print "[TVShowDetails] Setting backdrop: "; item.backdropUrl
-    m.global.sceneManager.callFunc("setBackgroundImage", item.backdropUrl)
-  else
-    print "[TVShowDetails] backdropUrl not valid, setting empty"
-    m.global.sceneManager.callFunc("setBackgroundImage", "")
-  end if
+  device = m.global.device
+  backdropUrl = getItemBackdropUrl(item, { width: device.uiResolution[0], height: device.uiResolution[1] })
+  m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
 
-  m.tvshowPoster.uri = m.top.itemContent.posterURL
+  posterSize = imageSize.POSTER_LG
+  m.tvshowPoster.uri = getItemPosterUrl(item, posterSize)
 
-  ' Handle all "As Is" fields
-  m.top.overhangTitle = itemData.name
+  m.top.overhangTitle = item.name
 
-  'Check production year, if invalid remove label
-  if isValid(itemData.productionYear)
-    setFieldText("releaseYear", itemData.productionYear)
+  if item.productionYear > 0
+    setFieldText("releaseYear", stri(item.productionYear).trim())
   else
     m.top.findNode("main_group").removeChild(m.top.findNode("releaseYear"))
   end if
 
-  'Check officialRating, if invalid remove label
-  if isValid(itemData.officialRating)
-    setFieldText("officialRating", itemData.officialRating)
+  if isValidAndNotEmpty(item.officialRating)
+    setFieldText("officialRating", item.officialRating)
   else
     m.top.findNode("main_group").removeChild(m.top.findNode("officialRating"))
   end if
 
-  'Check communityRating, if invalid remove label
-  if isValid(itemData.communityRating)
+  if item.communityRating > 0
     m.top.findNode("star").visible = true
-    setFieldText("communityRating", int(itemData.communityRating * 10) / 10)
+    setFieldText("communityRating", int(item.communityRating * 10) / 10)
   else
     m.top.findNode("main_group").removeChild(m.top.findNode("communityRating"))
     m.top.findNode("main_group").removeChild(m.top.findNode("star"))
     m.top.findNode("star").visible = false
   end if
 
-  setFieldText("overview", itemData.overview)
+  setFieldText("overview", item.overview)
 
-  if type(itemData.RunTimeTicks) = "LongInteger"
+  if item.runTimeTicks > 0
     setFieldText("runtime", stri(getRuntime()) + " mins")
   end if
 
-  'History feild is set via the function getHistory()
   setFieldText("history", getHistory())
 
-  'Check genres, if invalid remove label
-  if itemData.genres.count() > 0
-    setFieldText("genres", itemData.genres.join(", "))
+  if item.genres.count() > 0
+    setFieldText("genres", item.genres.join(", "))
   else
     m.top.findNode("main_group").removeChild(m.top.findNode("genres"))
   end if
 
-  'We don't display Directors in the show page. Might want to remove this.
-  for each person in itemData.people
-    if person.type = "Director"
-      exit for
-    end if
-  end for
-  if itemData.taglines.count() > 0
-    setFieldText("tagline", itemData.taglines[0])
+  if item.taglines.count() > 0
+    setFieldText("tagline", item.taglines[0])
   else
     m.top.findNode("main_group").removeChild(m.top.findNode("tagline"))
   end if
@@ -157,18 +136,14 @@ sub setFieldText(field, value)
 end sub
 
 function getRuntime() as integer
-  itemData = m.top.itemContent.json
-
   ' A tick is .1ms, so 1/10,000,000 for ticks to seconds,
   ' then 1/60 for seconds to minutess... 1/600,000,000
-  return round(itemData.RunTimeTicks / 600000000.0)
+  return round(m.top.itemContent.runTimeTicks / 600000000.0)
 end function
 
 function getEndTime() as string
-  itemData = m.top.itemContent.json
-
   date = CreateObject("roDateTime")
-  duration_s = int(itemData.RunTimeTicks / 10000000.0)
+  duration_s = int(m.top.itemContent.runTimeTicks / 10000000.0)
   date.fromSeconds(date.asSeconds() + duration_s)
   date.toLocalTime()
 
@@ -176,25 +151,23 @@ function getEndTime() as string
 end function
 
 function getHistory() as string
-  itemData = m.top.itemContent.json
+  item = m.top.itemContent
   ' Aired Fridays at 9:30 PM on ABC (US)
 
   airwords = invalid
   studio = invalid
-  if itemData.status = "Ended"
+  if item.status = "Ended"
     verb = "Aired"
   else
     verb = "Airs"
   end if
 
-  airdays = itemData.airdays
-  airtime = itemData.airtime
-  if isValid(airtime) and airdays.count() = 1
-    airwords = airdays[0] + " at " + airtime
+  if isValidAndNotEmpty(item.airTime) and item.airDays.count() = 1
+    airwords = item.airDays[0] + " at " + item.airTime
   end if
 
-  if itemData.studios.count() > 0
-    studio = itemData.studios[0].name
+  if item.studios.count() > 0
+    studio = item.studios[0]
   end if
 
   if not isValid(studio) and not isValid(airwords)
@@ -253,8 +226,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   if key = "options"
     if m.overview.isTextEllipsized
-      if isAllValid([m.top.itemContent.json.name, m.top.itemContent.json.overview])
-        m.global.sceneManager.callFunc("standardDialog", m.top.itemContent.json.name, { data: ["<p>" + m.top.itemContent.json.overview + "</p>"] })
+      item = m.top.itemContent
+      if isValid(item) and isValidAndNotEmpty(item.name) and isValidAndNotEmpty(item.overview)
+        m.global.sceneManager.callFunc("standardDialog", item.name, { data: ["<p>" + item.overview + "</p>"] })
         return true
       end if
     end if

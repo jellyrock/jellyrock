@@ -38,7 +38,7 @@ end sub
 
 sub loadParts(data as object)
   m.top.parentId = data.id
-  m.people = data.People
+  m.people = data.people
   m.LoadAdditionalPartsTask.itemId = m.top.parentId
   m.LoadAdditionalPartsTask.control = "RUN"
 end sub
@@ -57,7 +57,7 @@ sub onAdditionalPartsLoaded()
   data = CreateObject("roSGNode", "ContentNode") ' The row Node
   m.top.content = data
   if isValid(parts) and parts.count() > 0
-    row = buildRow(tr("Additional Parts"), parts, 464)
+    row = buildRow(tr("Additional Parts"), parts)
     addRowSize([464, 291])
     m.top.content.appendChild(row)
     m.top.rowItemSize = [[464, 291]]
@@ -77,12 +77,6 @@ sub onPeopleLoaded()
     row = m.top.content.createChild("ContentNode")
     row.Title = tr("Cast & Crew")
     for each person in people
-      if person.json.type = "Actor" and isValid(person.json.Role) and person.json.Role.ToStr().Trim() <> ""
-        person.subTitle = "as " + person.json.Role
-      else
-        person.subTitle = person.json.Type
-      end if
-      person.Type = "Person"
       row.appendChild(person)
     end for
   end if
@@ -97,16 +91,6 @@ sub onLikeThisLoaded()
     row = m.top.content.createChild("ContentNode")
     row.Title = tr("More Like This")
     for each item in data
-      item.Id = item.json.Id
-      item.labelText = item.json.Name
-      if isValid(item.json.ProductionYear)
-        item.subTitle = stri(item.json.ProductionYear)
-      else if isValid(item.json.PremiereDate)
-        premierYear = CreateObject("roDateTime")
-        premierYear.FromISO8601String(item.json.PremiereDate)
-        item.subTitle = stri(premierYear.GetYear())
-      end if
-      item.Type = item.json.Type
       row.appendChild(item)
     end for
     addRowSize([234, 396])
@@ -124,11 +108,6 @@ function onSpecialFeaturesLoaded()
     row.Title = tr("Special Features")
     for each item in data
       m.top.visible = true
-      item.Id = item.json.Id
-      item.labelText = item.json.Name
-      item.subTitle = ""
-      item.Type = item.json.Type
-      item.imageWidth = 450
       row.appendChild(item)
     end for
     addRowSize([462, 372])
@@ -145,10 +124,6 @@ sub onMoviesLoaded()
     row = rlContent.createChild("ContentNode")
     row.title = tr("Movies")
     for each mov in data
-      mov.Id = mov.json.Id
-      mov.labelText = mov.json.Name
-      mov.subTitle = mov.json.ProductionYear
-      mov.Type = mov.json.Type
       row.appendChild(mov)
     end for
     m.top.rowItemSize = [[234, 396]]
@@ -163,7 +138,7 @@ sub onShowsLoaded()
   data = m.LoadShowsTask.content
   m.LoadShowsTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    row = buildRow("TV Shows", data, 502)
+    row = buildRow("TV Shows", data)
     addRowSize([502, 396])
     m.top.content.appendChild(row)
   end if
@@ -183,28 +158,10 @@ sub onSeriesLoaded()
   m.top.visible = true
 end sub
 
-function buildRow(rowTitle as string, items, imgWdth = 0)
+function buildRow(rowTitle as string, items)
   row = CreateObject("roSGNode", "ContentNode")
   row.Title = tr(rowTitle)
   for each mov in items
-    if LCase(mov.json.type) = "episode"
-      if isAllValid([mov.json.SeriesName, mov.json.ParentIndexNumber, mov.json.IndexNumber, mov.json.Name])
-        mov.labelText = mov.json.SeriesName
-        mov.subTitle = `S${mov.json.ParentIndexNumber}:E${mov.json.IndexNumber} - ${mov.json.Name}`
-      else
-        mov.labelText = mov.json.Name
-        mov.subTitle = mov.json.ProductionYear
-      end if
-    else
-      mov.labelText = mov.json.Name
-      mov.subTitle = mov.json.ProductionYear
-    end if
-
-    mov.Id = mov.json.Id
-    mov.Type = mov.json.Type
-    if imgWdth > 0
-      mov.imageWidth = imgWdth
-    end if
     row.appendChild(mov)
   end for
   return row

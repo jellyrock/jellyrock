@@ -15,8 +15,8 @@ namespace tests
     private function createMetaWithSubtitles(streams as object) as object
       return {
         id: "test-video-id",
-        json: {
-          MediaSources: [
+        mediaSourcesData: {
+          mediaSources: [
             {
               MediaStreams: streams
             }
@@ -35,40 +35,38 @@ namespace tests
       m.assertEqual(result, SubtitleSelection.none)
     end function
 
-    @it("returns SubtitleSelection.none when meta.json is invalid")
+    @it("returns SubtitleSelection.none when mediaSourcesData is missing")
     function _()
       meta = { id: "test-id" }
       result = defaultSubtitleTrackFromVid(meta, 1)
       m.assertEqual(result, SubtitleSelection.none)
     end function
 
-    @it("returns SubtitleSelection.none when mediaSources is invalid")
+    @it("returns SubtitleSelection.none when mediaSources is missing")
     function _()
       meta = {
         id: "test-id",
-        json: {}
+        mediaSourcesData: {}
       }
       result = defaultSubtitleTrackFromVid(meta, 1)
       m.assertEqual(result, SubtitleSelection.none)
     end function
 
-    @it("returns SubtitleSelection.none when MediaSources is empty array")
+    @it("returns SubtitleSelection.none when mediaSources is empty array")
     function _()
       meta = {
         id: "test-id",
-        json: { MediaSources: [] }
+        mediaSourcesData: { mediaSources: [] }
       }
       result = defaultSubtitleTrackFromVid(meta, 1)
       m.assertEqual(result, SubtitleSelection.none)
     end function
 
-    @it("returns SubtitleSelection.none when MediaStreams is invalid")
+    @it("returns SubtitleSelection.none when MediaStreams is missing")
     function _()
       meta = {
         id: "test-id",
-        json: {
-          MediaSources: [{}]
-        }
+        mediaSourcesData: { mediaSources: [{}] }
       }
       result = defaultSubtitleTrackFromVid(meta, 1)
       m.assertEqual(result, SubtitleSelection.none)

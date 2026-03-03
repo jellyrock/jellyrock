@@ -12,10 +12,10 @@ sub itemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
   m.itemText.text = itemData.title
-  if itemData.trackNumber <> 0
-    m.trackNumber.text = itemData.trackNumber
+  if itemData.indexNumber <> 0
+    m.trackNumber.text = itemData.indexNumber
   end if
-  m.tracklength.text = ticksToHuman(itemData.length)
+  m.tracklength.text = ticksToHuman(itemData.runTimeTicks)
 end sub
 
 sub focusChanged()

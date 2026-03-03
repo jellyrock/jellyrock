@@ -1,4 +1,5 @@
-import "pkg:/source/utils/config.bs"
+import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -37,24 +38,29 @@ sub itemContentChanged()
 
   if not isValid(itemData) then return
 
-  ' Check if we need to show a fallback icon (only when no PosterUrl)
+  ' Check if we need to show a fallback icon (only when no poster image available)
   showFallbackIcon = false
   fallbackIconUri = ""
 
-  if not isValid(itemData.PosterUrl) or itemData.PosterUrl = ""
-    if LCase(itemData.type) = "musicalbum"
+  posterUrl = getItemPosterUrl(itemData)
+
+  if not isValidAndNotEmpty(posterUrl)
+    itemType = LCase(itemData.type)
+    folderType = LCase(itemData.folderType)
+
+    if itemType = "musicalbum"
       fallbackIconUri = "pkg:/images/icons/album.png"
       showFallbackIcon = true
-    else if LCase(itemData.type) = "musicartist"
+    else if itemType = "musicartist"
       fallbackIconUri = "pkg:/images/icons/missingArtist.png"
       showFallbackIcon = true
-    else if LCase(itemData.json.type) = "musicgenre"
+    else if itemType = "musicgenre" or folderType = "musicgenre"
       fallbackIconUri = "pkg:/images/icons/musicFolder.png"
       showFallbackIcon = true
     end if
   end if
 
-  m.itemPoster.uri = itemData.PosterUrl
+  m.itemPoster.uri = posterUrl
   m.posterText.text = itemData.title
 
   'If Poster not loaded, show colored backdrop
@@ -64,7 +70,9 @@ sub itemContentChanged()
     if showFallbackIcon
       m.itemPoster.uri = fallbackIconUri
       m.itemPoster.blendColor = m.global.constants.colorTextSecondary
-      m.itemPoster.loadDisplayMode = "scaleToFit"
+      m.itemPoster.loadWidth = 280
+      m.itemPoster.loadHeight = 280
+      m.itemPoster.loadDisplayMode = "limitSize"
     end if
   end if
   if m.top.itemHasFocus then focusChanged()
@@ -89,9 +97,9 @@ end sub
 'Hide backdrop when real poster loaded (not fallback icon)
 sub onPosterLoadStatusChanged()
   if m.itemPoster.loadStatus = "ready"
-    ' Only hide backdrop if we loaded an actual poster image (has PosterUrl)
+    ' Only hide backdrop if we loaded an actual poster image
     itemData = m.top.itemContent
-    if isValid(itemData) and isValid(itemData.PosterUrl) and itemData.PosterUrl <> ""
+    if isValid(itemData) and isValidAndNotEmpty(getItemPosterUrl(itemData))
       m.backdrop.visible = false
       m.itemPoster.blendColor = "0xFFFFFFFF" ' Reset to white
       ' Restore original display mode if parent specifies one

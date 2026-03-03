@@ -133,7 +133,7 @@ namespace tests
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
-      ' Should have default values
+      ' UserData absent → user data fields stay at RSG zero-value defaults
       m.assertEqual(result.isWatched, false)
       m.assertEqual(result.isFavorite, false)
       m.assertEqual(result.playbackPositionTicks, 0&)
@@ -961,6 +961,937 @@ namespace tests
       m.assertTrue(logoURL <> "")
       m.assertTrue(logoURL.Instr("testItem123") > -1)
       m.assertTrue(logoURL.Instr("logoTag101") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - Three-State Pattern")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fields not in API response stay at RSG defaults")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      ' Minimal item - only id/type/name provided
+      apiData = { Id: "item1", Type: "Movie", Name: "Test" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      ' Fields explicitly set by transformer (type=Movie)
+      m.assertEqual(result.id, "item1")
+      m.assertEqual(result.type, "Movie")
+      m.assertEqual(result.subtitle, "") ' no year or rating → empty string explicitly set
+
+      ' String fields the transformer never sets stay at "" (RSG default)
+      m.assertEqual(result.primaryImageTag, "")
+
+      ' type="array"/assocarray fields the transformer never sets stay invalid
+      ' type="stringarray" fields (e.g. backdropImageTags) default to [] not invalid
+      m.assertEqual(result.backdropImageTags.Count(), 0)
+      m.assertInvalid(result.videoStreams)
+      m.assertInvalid(result.audioStreams)
+      m.assertInvalid(result.chapters)
+      m.assertInvalid(result.trickplayData)
+
+      ' Series/episode string fields not set for Movie type stay at ""
+      m.assertEqual(result.seriesId, "")
+      m.assertEqual(result.seasonId, "")
+    end function
+
+    @it("transformer explicitly sets fields to empty string when API returns null")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      ' Item with explicit null-ish values
+      apiData = {
+        Id: "item1",
+        Type: "Movie",
+        Name: "Test",
+        OfficialRating: "",
+        Overview: ""
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      ' These are explicitly set to "" by transformer
+      m.assertEqual(result.officialRating, "")
+      m.assertEqual(result.overview, "")
+    end function
+
+    @it("user data fields stay at RSG defaults when UserData key absent from response")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "item1", Type: "Movie", Name: "Test" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.isWatched, false)
+      m.assertEqual(result.isFavorite, false)
+      m.assertEqual(result.playbackPositionTicks, 0&)
+      m.assertEqual(result.playedPercentage, 0.0)
+      m.assertEqual(result.isResumable, false)
+      m.assertEqual(result.playCount, 0)
+    end function
+
+    @it("user data fields are explicitly set when UserData present")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "item1",
+        Type: "Movie",
+        Name: "Test",
+        UserData: {
+          Played: false,
+          IsFavorite: false,
+          PlaybackPositionTicks: 0,
+          PlayCount: 0
+        }
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      ' Explicitly set to false/0 by transformer (not invalid)
+      m.assertEqual(result.isWatched, false)
+      m.assertEqual(result.isFavorite, false)
+      m.assertEqual(result.playbackPositionTicks, 0&)
+      m.assertEqual(result.playCount, 0)
+      m.assertEqual(result.isResumable, false)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - subtitle computation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("computes Episode subtitle with season and episode numbers")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "ep1", Type: "Episode", Name: "Pilot",
+        ParentIndexNumber: 1, IndexNumber: 1
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "S1E1 - Pilot")
+    end function
+
+    @it("computes Episode subtitle with double-digit numbers")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "ep1", Type: "Episode", Name: "The Finale",
+        ParentIndexNumber: 3, IndexNumber: 12
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "S3E12 - The Finale")
+    end function
+
+    @it("computes Movie subtitle with year and rating")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test Movie",
+        ProductionYear: 2023, OfficialRating: "PG-13"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2023 • PG-13")
+    end function
+
+    @it("computes Movie subtitle with year only when no rating")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test Movie",
+        ProductionYear: 2023
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2023")
+    end function
+
+    @it("computes Movie subtitle with rating only when no year")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test Movie",
+        OfficialRating: "R"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "R")
+    end function
+
+    @it("computes Series subtitle continuing")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "s1", Type: "Series", Name: "Test Series",
+        ProductionYear: 2020, Status: "Continuing"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2020 - Present")
+    end function
+
+    @it("computes Series subtitle ended with end year")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "s1", Type: "Series", Name: "Test Series",
+        ProductionYear: 2018, Status: "Ended", EndDate: "2022-05-20T00:00:00Z"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2018 - 2022")
+    end function
+
+    @it("computes MusicAlbum subtitle with album artist")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "a1", Type: "MusicAlbum", Name: "Dark Side",
+        AlbumArtist: "Pink Floyd"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "Pink Floyd")
+    end function
+
+    @it("computes Season subtitle with series name")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "sn1", Type: "Season", Name: "Season 1",
+        SeriesName: "Breaking Bad"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "Breaking Bad")
+    end function
+
+    @it("computes BoxSet subtitle with item count")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "bs1", Type: "BoxSet", Name: "Marvel Collection",
+        ChildCount: 5
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "5 items")
+    end function
+
+    @it("computes BoxSet subtitle singular")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "bs1", Type: "BoxSet", Name: "Solo",
+        ChildCount: 1
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "1 item")
+    end function
+
+    @it("computes Program subtitle preferring episode title over channel name")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "p1", Type: "Program", Name: "The Tonight Show",
+        EpisodeTitle: "With Guest Star", ChannelName: "NBC"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "With Guest Star")
+    end function
+
+    @it("computes Program subtitle falling back to channel name")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "p1", Type: "Program", Name: "News At 9",
+        ChannelName: "ABC"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "ABC")
+    end function
+
+    @it("returns empty subtitle for unknown types")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "x1", Type: "UserView", Name: "Movies" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "")
+    end function
+
+    @it("computes Photo subtitle with year and album")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "p1", Type: "Photo", Name: "Sunset", ProductionYear: 2022, Album: "Summer Trip" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2022 - Summer Trip")
+    end function
+
+    @it("computes Photo subtitle with year only when no album")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "p1", Type: "Photo", Name: "Sunset", ProductionYear: 2022 }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "2022")
+    end function
+
+    @it("computes Photo subtitle with album only when no year")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "p1", Type: "Photo", Name: "Sunset", Album: "Summer Trip" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "Summer Trip")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - item.title (ContentNode compatibility)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets item.title equal to item.name for ContentNode compatibility")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "m1", Type: "Movie", Name: "Test Movie" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.title, "Test Movie")
+      m.assertEqual(result.title, result.name)
+    end function
+
+    @it("sets item.title to empty string when Name is missing")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "m1", Type: "Movie" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.title, "")
+      m.assertEqual(result.name, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - media sources & streams")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("filters streams into video/audio/subtitle buckets")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{
+          Id: "src1",
+          Container: "mkv",
+          Protocol: "File",
+          SupportsDirectPlay: true,
+          MediaStreams: [
+            { Type: "Video", Index: 0, Codec: "h264" },
+            { Type: "Audio", Index: 1, Codec: "aac", Language: "eng" },
+            { Type: "Audio", Index: 2, Codec: "ac3", Language: "fre" },
+            { Type: "Subtitle", Index: 3, Language: "eng", IsDefault: true, IsForced: false },
+            { Type: "Subtitle", Index: 4, Language: "fre", IsDefault: false, IsForced: false }
+          ]
+        }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.videoStreamCount, 1)
+      m.assertEqual(result.audioStreamCount, 2)
+      m.assertEqual(result.subtitleStreamCount, 2)
+      m.assertEqual(result.videoStreams.Count(), 1)
+      m.assertEqual(result.audioStreams.Count(), 2)
+      m.assertEqual(result.subtitleStreams.Count(), 2)
+    end function
+
+    @it("normalizes container: mkv stays mkv")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{ Id: "src1", Container: "mkv", MediaStreams: [] }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.container, "mkv")
+    end function
+
+    @it("normalizes container: m4v → mp4")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{ Id: "src1", Container: "m4v", MediaStreams: [] }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.container, "mp4")
+    end function
+
+    @it("normalizes container: mov → mp4")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{ Id: "src1", Container: "mov", MediaStreams: [] }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.container, "mp4")
+    end function
+
+    @it("normalizes container: MKV (uppercase) → mkv")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{ Id: "src1", Container: "MKV", MediaStreams: [] }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.container, "mkv")
+    end function
+
+    @it("sorts subtitles: forced > default > normal")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{
+          Id: "src1", Container: "mkv",
+          MediaStreams: [
+            { Type: "Subtitle", Index: 0, Language: "eng", IsDefault: false, IsForced: false },
+            { Type: "Subtitle", Index: 1, Language: "eng", IsDefault: true, IsForced: false },
+            { Type: "Subtitle", Index: 2, Language: "eng", IsDefault: false, IsForced: true }
+          ]
+        }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      streams = result.subtitleStreams
+      m.assertEqual(streams.Count(), 3)
+      m.assertEqual(streams[0].Index, 2) ' forced first
+      m.assertEqual(streams[1].Index, 1) ' default second
+      m.assertEqual(streams[2].Index, 0) ' normal last
+    end function
+
+    @it("sorts subtitles: preferred language unshifted to front within group")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{
+          Id: "src1", Container: "mkv",
+          MediaStreams: [
+            { Type: "Subtitle", Index: 0, Language: "fre", IsDefault: false, IsForced: false },
+            { Type: "Subtitle", Index: 1, Language: "eng", IsDefault: false, IsForced: false },
+            { Type: "Subtitle", Index: 2, Language: "spa", IsDefault: false, IsForced: false }
+          ]
+        }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0", "eng")
+
+      streams = result.subtitleStreams
+      m.assertEqual(streams[0].Index, 1) ' eng preferred → front of normal group
+    end function
+
+    @it("hasMultipleVideoSources is true when multiple sources present")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [
+          { Id: "src1", Container: "mkv", MediaStreams: [] },
+          { Id: "src2", Container: "mp4", MediaStreams: [] }
+        ]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.hasMultipleVideoSources, true)
+    end function
+
+    @it("hasMultipleVideoSources is false with single source")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        MediaSources: [{ Id: "src1", Container: "mkv", MediaStreams: [] }]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.hasMultipleVideoSources, false)
+    end function
+
+    @it("video/audio/subtitle stream fields stay at defaults when no MediaSources")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "m1", Type: "Movie", Name: "Test" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertInvalid(result.videoStreams)
+      m.assertInvalid(result.audioStreams)
+      m.assertInvalid(result.subtitleStreams)
+      m.assertEqual(result.container, "")
+      m.assertInvalid(result.mediaSourcesData)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - chapters and trickplay")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("transforms chapters array and sets count")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        Chapters: [
+          { StartPositionTicks: 0, Name: "Opening" },
+          { StartPositionTicks: 5000000000, Name: "Act 1" },
+          { StartPositionTicks: 15000000000, Name: "Act 2" }
+        ]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.chapterCount, 3)
+      m.assertEqual(result.chapters.Count(), 3)
+      m.assertEqual(result.chapters[0].Name, "Opening")
+      m.assertEqual(result.chapters[1].StartPositionTicks, 5000000000.0) ' API sends large ticks as Double
+    end function
+
+    @it("chapters stay at defaults when not in API response")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "m1", Type: "Movie", Name: "Test" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertInvalid(result.chapters) ' array field
+      m.assertEqual(result.chapterCount, 0) ' integer field defaults to 0
+    end function
+
+    @it("stores trickplay data as-is")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      trickplayPayload = { "media-source-id": { "10": { TileWidth: 10, TileHeight: 10, Width: 150 } } }
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        Trickplay: trickplayPayload
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertNotInvalid(result.trickplayData)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - populate*() methods")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("populateMediaSegments sets segments and derives hasIntro/hasOutro")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+
+      segmentsResponse = {
+        Items: [
+          { Id: "seg1", Type: "Intro", StartTicks: 0, EndTicks: 3000000000 },
+          { Id: "seg2", Type: "Outro", StartTicks: 50000000000, EndTicks: 55000000000 }
+        ]
+      }
+
+      transformer.populateMediaSegments(item, segmentsResponse)
+
+      m.assertEqual(item.mediaSegments.Count(), 2)
+      m.assertEqual(item.hasIntro, true)
+      m.assertEqual(item.hasOutro, true)
+    end function
+
+    @it("populateMediaSegments: hasIntro false when no Intro segment")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+
+      segmentsResponse = {
+        Items: [
+          { Id: "seg1", Type: "Outro", StartTicks: 50000000000, EndTicks: 55000000000 }
+        ]
+      }
+
+      transformer.populateMediaSegments(item, segmentsResponse)
+
+      m.assertEqual(item.hasIntro, false)
+      m.assertEqual(item.hasOutro, true)
+    end function
+
+    @it("populateMediaSegments handles empty Items array")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+
+      transformer.populateMediaSegments(item, { Items: [] })
+
+      m.assertEqual(item.mediaSegments.Count(), 0)
+      m.assertEqual(item.hasIntro, false)
+      m.assertEqual(item.hasOutro, false)
+    end function
+
+    @it("populateThemeSongs sets array from Items")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+
+      transformer.populateThemeSongs(item, { Items: [{ Id: "song1" }, { Id: "song2" }] })
+
+      m.assertEqual(item.themeSongs.Count(), 2)
+    end function
+
+    @it("populateThemeVideos sets array from Items")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+
+      transformer.populateThemeVideos(item, { Items: [{ Id: "vid1" }] })
+
+      m.assertEqual(item.themeVideos.Count(), 1)
+    end function
+
+    @it("populateLyrics sets lyricsData directly")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "audio1"
+
+      lyricsPayload = { Metadata: { Artist: "Test" }, Lyrics: [{ Text: "La la la", Start: 0 }] }
+
+      transformer.populateLyrics(item, lyricsPayload)
+
+      m.assertNotInvalid(item.lyricsData)
+    end function
+
+    @it("populate methods handle invalid inputs gracefully")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+
+      ' Should not throw
+      transformer.populateMediaSegments(item, invalid)
+      transformer.populateThemeSongs(item, invalid)
+      transformer.populateThemeVideos(item, invalid)
+      transformer.populateLyrics(item, invalid)
+      transformer.populateMediaSegments(invalid, { Items: [] })
+
+      m.assertNotInvalid(item) ' item still valid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - new field coverage")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("transforms folderType only for folder items")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      folderData = {
+        Id: "lib1", Type: "CollectionFolder", Name: "Movies",
+        IsFolder: true, CollectionType: "movies"
+      }
+
+      result = transformer.transformBaseItem(folderData, "10.8.0")
+
+      m.assertEqual(result.isFolder, true)
+      m.assertEqual(result.folderType, "movies")
+    end function
+
+    @it("folderType is empty for non-folder items; check isFolder to discriminate")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      movieData = { Id: "m1", Type: "Movie", Name: "Test", IsFolder: false }
+
+      result = transformer.transformBaseItem(movieData, "10.8.0")
+
+      m.assertEqual(result.isFolder, false)
+      m.assertEqual(result.folderType, "") ' "" default; use isFolder=false to know it's not a folder
+    end function
+
+    @it("Genre item: type=Folder, folderType=Genre (resolved design decision)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "g1", Type: "Genre", Name: "Action", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "Genre")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("MusicGenre item: type=Folder, folderType=MusicGenre")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "mg1", Type: "MusicGenre", Name: "Jazz", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "MusicGenre")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("Studio item: type=Folder, folderType=Studio")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "s1", Type: "Studio", Name: "Warner Bros", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "Studio")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("plain Folder item: type=Folder, folderType empty (no CollectionType)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "f1", Type: "Folder", Name: "My Folder", IsFolder: true }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "Folder")
+      m.assertEqual(result.folderType, "")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("CollectionFolder with movies CollectionType: folderType=movies")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "lib1", Type: "CollectionFolder", Name: "Movies",
+        IsFolder: true, CollectionType: "movies"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "CollectionFolder")
+      m.assertEqual(result.folderType, "movies")
+      m.assertEqual(result.isFolder, true)
+    end function
+
+    @it("transforms music fields for Audio type")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "t1", Type: "Audio", Name: "Song Title",
+        AlbumArtist: "The Beatles",
+        Album: "Abbey Road",
+        AlbumId: "album123",
+        Artists: ["The Beatles"],
+        IndexNumber: 3,
+        ParentIndexNumber: 1,
+        HasLyrics: true
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.albumArtist, "The Beatles")
+      m.assertEqual(result.albumName, "Abbey Road")
+      m.assertEqual(result.albumId, "album123")
+      m.assertEqual(result.artists.Count(), 1)
+      m.assertEqual(result.indexNumber, 3)
+      m.assertEqual(result.parentIndexNumber, 1)
+      m.assertEqual(result.hasLyrics, true)
+    end function
+
+    @it("transforms studioItems as NameGuidPair array")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        Studios: [
+          { Name: "Warner Bros", Id: "studio1" },
+          { Name: "Universal", Id: "studio2" }
+        ]
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.studios.Count(), 2)
+      m.assertEqual(result.studios[0], "Warner Bros")
+      m.assertEqual(result.studioItems.Count(), 2)
+      m.assertEqual(result.studioItems[0].Name, "Warner Bros")
+      m.assertEqual(result.studioItems[0].Id, "studio1")
+    end function
+
+    @it("transforms new image tag fields")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "m1", Type: "Movie", Name: "Test",
+        ImageTags: { Primary: "ptag", Thumb: "ttag", Logo: "ltag" },
+        SeriesThumbImageTag: "sthumb",
+        AlbumPrimaryImageTag: "albumtag",
+        ChannelPrimaryImageTag: "chantag"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.primaryImageTag, "ptag")
+      m.assertEqual(result.thumbImageTag, "ttag")
+      m.assertEqual(result.logoImageTag, "ltag")
+      m.assertEqual(result.seriesThumbImageTag, "sthumb")
+      m.assertEqual(result.albumPrimaryImageTag, "albumtag")
+      m.assertEqual(result.channelPrimaryImageTag, "chantag")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer.transformPerson")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for invalid input")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      m.assertInvalid(transformer.transformPerson(invalid))
+    end function
+
+    @it("sets type to Person")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "tag1" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.type, "Person")
+    end function
+
+    @it("sets id and name from person data")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "tag1" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.id, "p1")
+      m.assertEqual(result.name, "Jane Smith")
+      m.assertEqual(result.title, "Jane Smith")
+    end function
+
+    @it("sets primaryImageTag directly (not nested under ImageTags)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "directTag" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.primaryImageTag, "directTag")
+    end function
+
+    @it("sets subtitle as 'as {Role}' for actor with role")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.subtitle, "as Hero")
+    end function
+
+    @it("sets subtitle to Type for actor without role")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.subtitle, "Actor")
+    end function
+
+    @it("sets subtitle to Type for non-actor (e.g. Director)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      person = { Id: "p2", Name: "John Doe", Type: "Director" }
+      result = transformer.transformPerson(person)
+      m.assertEqual(result.subtitle, "Director")
     end function
 
   end class

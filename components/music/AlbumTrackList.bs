@@ -13,8 +13,7 @@ function getData()
   data = CreateObject("roSGNode", "ContentNode")
 
   for each song in albumData.items
-    songcontent = data.createChild("MusicSongData")
-    songcontent.json = song.json
+    data.appendChild(song)
   end for
 
   m.top.content = data

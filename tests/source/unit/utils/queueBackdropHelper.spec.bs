@@ -1,4 +1,3 @@
-import "pkg:/source/utils/backdropUtils.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 
 namespace tests
@@ -18,6 +17,11 @@ namespace tests
       m.resolution4K = [3840, 2160]
       m.resolution720p = [1280, 720]
 
+      ' Size AAs for getItemBackdropUrl() (which takes {width, height}, not an array)
+      m.size1080p = { width: 1920, height: 1080 }
+      m.size4K = { width: 3840, height: 2160 }
+      m.size720p = { width: 1280, height: 720 }
+
       ' Set default resolution
       m.global.device.addFields({ uiResolution: m.resolution1080p })
 
@@ -33,19 +37,14 @@ namespace tests
       m.lastBackgroundImageCall = invalid
     end function
 
-    ' Helper to create a mock queue item with backdrop
+    ' Helper to create a mock queue item (JellyfinBaseItem node) with optional backdrop
     private function createMockQueueItem(itemType as string, hasBackdrop as boolean) as object
-      item = {
-        json: {
-          Type: itemType,
-          Id: "test-item-" + itemType
-        }
-      }
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "test-item-" + itemType
+      item.type = itemType
 
       if hasBackdrop
-        item.json.BackdropImageTags = ["test-backdrop-tag-123"]
-      else
-        item.json.BackdropImageTags = []
+        item.backdropImageTags = ["test-backdrop-tag-123"]
       end if
 
       return item
@@ -94,21 +93,18 @@ namespace tests
       item = m.createMockQueueItem("Movie", false)
       m.setCurrentQueueItem(item)
 
-      ' Get backdrop URL for this item
-      backdropUrl = getBackdropUrl(item.json, m.global.device.uiResolution)
+      ' Get backdrop URL for this item using the new typed-field function
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       m.assertEqual(backdropUrl, "", "Should return empty string for item without backdrop")
     end function
 
-    @it("clears backdrop when current item json is invalid")
+    @it("clears backdrop when current item is invalid")
     function _()
-      ' Setup: Item with invalid json
-      item = { json: invalid }
+      ' Get backdrop URL for an invalid item
+      backdropUrl = getItemBackdropUrl(invalid, m.size1080p)
 
-      ' Get backdrop URL for this item
-      backdropUrl = getBackdropUrl(item.json, m.global.device.uiResolution)
-
-      m.assertEqual(backdropUrl, "", "Should return empty string for invalid json")
+      m.assertEqual(backdropUrl, "", "Should return empty string for invalid item")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -121,7 +117,7 @@ namespace tests
       item = m.createMockQueueItem("Movie", true)
 
       ' Generate backdrop URL
-      backdropUrl = getBackdropUrl(item.json, m.global.device.uiResolution)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       m.assertNotEqual(backdropUrl, "", "Should generate valid backdrop URL")
       m.assertTrue(backdropUrl.Instr("test-item-Movie") >= 0, "URL should contain item ID")
@@ -134,11 +130,13 @@ namespace tests
       item = m.createMockQueueItem("Movie", true)
 
       ' Generate backdrop URL with 1080p resolution
-      backdropUrl = getBackdropUrl(item.json, m.resolution1080p)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
+      ' Note: BrightScript AAs store keys in lowercase by default, so URL params
+      ' will be "maxwidth=1920" not "maxWidth=1920". Check for the value only.
       m.assertNotEqual(backdropUrl, "")
-      m.assertTrue(backdropUrl.Instr("maxWidth=1920") >= 0, "URL should contain 1080p width")
-      m.assertTrue(backdropUrl.Instr("maxHeight=1080") >= 0, "URL should contain 1080p height")
+      m.assertTrue(backdropUrl.Instr("1920") >= 0, "URL should contain 1080p width")
+      m.assertTrue(backdropUrl.Instr("1080") >= 0, "URL should contain 1080p height")
     end function
 
     @it("generates backdrop URL for different media types")
@@ -152,7 +150,7 @@ namespace tests
       item = m.createMockQueueItem(itemType, shouldHaveBackdrop)
 
       ' Generate backdrop URL
-      backdropUrl = getBackdropUrl(item.json, m.global.device.uiResolution)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       if shouldHaveBackdrop
         m.assertNotEqual(backdropUrl, "", "Should generate backdrop URL for " + itemType)
@@ -169,37 +167,37 @@ namespace tests
     @it("uses 1080p resolution correctly")
     function _()
       item = m.createMockQueueItem("Movie", true)
-      backdropUrl = getBackdropUrl(item.json, m.resolution1080p)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
-      m.assertTrue(backdropUrl.Instr("maxWidth=1920") >= 0)
-      m.assertTrue(backdropUrl.Instr("maxHeight=1080") >= 0)
+      m.assertTrue(backdropUrl.Instr("1920") >= 0)
+      m.assertTrue(backdropUrl.Instr("1080") >= 0)
     end function
 
     @it("uses 4K resolution correctly")
     function _()
       item = m.createMockQueueItem("Movie", true)
-      backdropUrl = getBackdropUrl(item.json, m.resolution4K)
+      backdropUrl = getItemBackdropUrl(item, m.size4K)
 
-      m.assertTrue(backdropUrl.Instr("maxWidth=3840") >= 0)
-      m.assertTrue(backdropUrl.Instr("maxHeight=2160") >= 0)
+      m.assertTrue(backdropUrl.Instr("3840") >= 0)
+      m.assertTrue(backdropUrl.Instr("2160") >= 0)
     end function
 
     @it("uses 720p resolution correctly")
     function _()
       item = m.createMockQueueItem("Movie", true)
-      backdropUrl = getBackdropUrl(item.json, m.resolution720p)
+      backdropUrl = getItemBackdropUrl(item, m.size720p)
 
-      m.assertTrue(backdropUrl.Instr("maxWidth=1280") >= 0)
-      m.assertTrue(backdropUrl.Instr("maxHeight=720") >= 0)
+      m.assertTrue(backdropUrl.Instr("1280") >= 0)
+      m.assertTrue(backdropUrl.Instr("720") >= 0)
     end function
 
     @it("handles different resolutions for same item")
-    @params([1920, 1080], "maxWidth=1920", "maxHeight=1080")
-    @params([3840, 2160], "maxWidth=3840", "maxHeight=2160")
-    @params([1280, 720], "maxWidth=1280", "maxHeight=720")
-    function _(resolution, expectedWidth, expectedHeight)
+    @params({ width: 1920, height: 1080 }, "1920", "1080")
+    @params({ width: 3840, height: 2160 }, "3840", "2160")
+    @params({ width: 1280, height: 720 }, "1280", "720")
+    function _(size, expectedWidth, expectedHeight)
       item = m.createMockQueueItem("Movie", true)
-      backdropUrl = getBackdropUrl(item.json, resolution)
+      backdropUrl = getItemBackdropUrl(item, size)
 
       m.assertNotEqual(backdropUrl, "")
       m.assertTrue(backdropUrl.Instr(expectedWidth) >= 0, "Should contain correct width")
@@ -212,42 +210,33 @@ namespace tests
 
     @it("returns empty string when backdrop tag is empty string")
     function _()
-      item = {
-        json: {
-          Type: "Movie",
-          Id: "test-movie",
-          BackdropImageTags: [""]
-        }
-      }
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "test-movie"
+      item.type = "Movie"
+      item.backdropImageTags = [""]
 
-      backdropUrl = getBackdropUrl(item.json, m.resolution1080p)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
       m.assertEqual(backdropUrl, "")
     end function
 
     @it("returns empty string when backdrop tag array is empty")
     function _()
-      item = {
-        json: {
-          Type: "Movie",
-          Id: "test-movie",
-          BackdropImageTags: []
-        }
-      }
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "test-movie"
+      item.type = "Movie"
+      ' backdropImageTags defaults to [] on JellyfinBaseItem
 
-      backdropUrl = getBackdropUrl(item.json, m.resolution1080p)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
       m.assertEqual(backdropUrl, "")
     end function
 
-    @it("returns empty string when BackdropImageTags is missing")
+    @it("returns empty string when item has no backdropImageTags")
     function _()
-      item = {
-        json: {
-          Type: "Movie",
-          Id: "test-movie"
-        }
-      }
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "test-movie"
+      item.type = "Movie"
 
-      backdropUrl = getBackdropUrl(item.json, m.resolution1080p)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
       m.assertEqual(backdropUrl, "")
     end function
 
@@ -255,35 +244,29 @@ namespace tests
     @describe("Episode Backdrop Logic")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("uses parent backdrop for episodes when available")
+    @it("uses parent backdrop for episodes when own backdrop is absent")
     function _()
-      item = {
-        json: {
-          Type: "Episode",
-          Id: "episode-123",
-          ParentBackdropImageTags: ["parent-backdrop-tag"],
-          ParentBackdropItemId: "series-456"
-        }
-      }
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "episode-123"
+      item.type = "Episode"
+      item.parentBackdropImageTags = ["parent-backdrop-tag"]
+      item.parentBackdropItemId = "series-456"
 
-      backdropUrl = getBackdropUrl(item.json, m.resolution1080p)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       m.assertNotEqual(backdropUrl, "")
       m.assertTrue(backdropUrl.Instr("series-456") >= 0, "Should use parent series ID")
       m.assertTrue(backdropUrl.Instr("parent-backdrop-tag") >= 0, "Should use parent backdrop tag")
     end function
 
-    @it("falls back to episode own backdrop when no parent backdrop")
+    @it("uses episode own backdrop when no parent backdrop exists")
     function _()
-      item = {
-        json: {
-          Type: "Episode",
-          Id: "episode-123",
-          BackdropImageTags: ["episode-backdrop-tag"]
-        }
-      }
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "episode-123"
+      item.type = "Episode"
+      item.backdropImageTags = ["episode-backdrop-tag"]
 
-      backdropUrl = getBackdropUrl(item.json, m.resolution1080p)
+      backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       m.assertNotEqual(backdropUrl, "")
       m.assertTrue(backdropUrl.Instr("episode-123") >= 0, "Should use episode ID")

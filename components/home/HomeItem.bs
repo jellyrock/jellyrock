@@ -1,7 +1,9 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -63,10 +65,12 @@ sub itemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
 
-  itemData.Title = itemData.name ' Temporarily required while we move from "HomeItem" to "JRContentItem"
-
   globalUser = m.global.user
   userSettings = globalUser.settings
+
+  ' Cache POSTER_SM locally — BrighterScript cannot chain .field access directly on
+  ' namespace constants (e.g. imageSize.POSTER_SM.width), so we assign first.
+  posterSmSize = imageSize.POSTER_SM
 
   ' validate to prevent crash
   if not isValid(m.itemPoster) then initItemPoster()
@@ -75,262 +79,207 @@ sub itemContentChanged()
   if not isValid(m.backdrop) then initBackdrop()
   if not isValid(m.itemIcon) then initItemIcon()
 
-  m.itemPoster.width = itemData.imageWidth
-  m.itemText.maxWidth = itemData.imageWidth
-  m.itemTextExtra.width = itemData.imageWidth
+  ' Read slot width from the HomeRow content node (parent of itemContent).
+  ' m.top.width (set by RowList) is not guaranteed to be current when itemContentChanged
+  ' fires — Roku may set itemContent before updating width on the item component.
+  ' HomeRow.imageWidth is set before items are appended and is always reliable.
+  rowNode = itemData.getParent()
+  slotWidth = (isValid(rowNode) and rowNode.imageWidth > 0) ? rowNode.imageWidth : m.top.width
+  m.itemPoster.width = slotWidth
+  m.itemText.maxWidth = slotWidth
+  m.itemTextExtra.maxWidth = slotWidth
   m.itemTextExtra.visible = true
   m.itemTextExtra.text = ""
-  m.backdrop.width = itemData.imageWidth
+  m.backdrop.width = slotWidth
 
-  if isValid(itemData.iconUrl) and itemData.iconUrl <> ""
+  if isValidAndNotEmpty(itemData.iconUrl)
     m.itemIcon.uri = itemData.iconUrl
   end if
 
-  if isValid(itemData.isWatched) and itemData.isWatched
+  if itemData.isWatched
     m.itemPoster.isWatched = true
   else
     if LCase(itemData.type) = "series"
       if isValid(userSettings)
         unwatchedEpisodeCountSetting = userSettings.uiTvShowsDisableUnwatchedCount
         if isValid(unwatchedEpisodeCountSetting) and not unwatchedEpisodeCountSetting
-          if isValid(itemData.json.UserData) and isValid(itemData.json.UserData.UnplayedItemCount)
-            m.itemPoster.unplayedCount = itemData.json.UserData.UnplayedItemCount
+          if itemData.unplayedItemCount > 0
+            m.itemPoster.unplayedCount = itemData.unplayedItemCount
           end if
         end if
       end if
     end if
   end if
 
-  ' Format the Data based on the type of Home Data
+  ' Format the data based on item type
   if itemData.type = "CollectionFolder" or itemData.type = "UserView" or itemData.type = "Channel"
     initBackdropText()
     backdropText = m.top.findNode("backdropText")
     backdropText.width = m.backdrop.width - 18
     backdropText.text = itemData.name
-    m.itemPoster.uri = itemData.widePosterURL
-    return
-  end if
-
-  if itemData.type = "UserView"
-    m.itemPoster.width = "96"
-    m.itemPoster.height = "96"
-    m.itemPoster.translation = "[192, 88]"
-    m.itemText.text = itemData.name
-    m.itemPoster.uri = itemData.widePosterURL
+    ' Libraries only have Primary images — not Thumb or Backdrop.
+    ' getItemWidePosterUrl (thumb/backdrop chain) always returns "" for these items.
+    m.itemPoster.uri = getItemImageUrl(itemData, "Primary", imageSize.WIDE_MD)
     return
   end if
 
   m.itemTextExtra.visible = true
 
-  ' "Program" is from clicking on an "On Now" item on the Home Screen
+  ' "Program" is from the "On Now" row on the Home Screen.
+  ' On Now always renders at MOVIE_POSTER (portrait) slot size.
+  ' Try the program's own primary image; fall back to the channel's primary image.
   if itemData.type = "Program"
-    m.itemText.Text = itemData.json.name
-    m.itemTextExtra.Text = itemData.json.ChannelName
-    if itemData.usePoster
-      m.itemPoster.uri = itemData.thumbnailURL
-    else
-      m.itemPoster.uri = ImageURL(itemData.json.ChannelId)
+    m.itemText.text = itemData.name
+    m.itemTextExtra.text = itemData.subtitle ' pre-computed: episodeTitle or channelName
+
+    posterUri = getItemPosterUrl(itemData, imageSize.POSTER_SM)
+    if posterUri = "" and isValidAndNotEmpty(itemData.channelId) and isValidAndNotEmpty(itemData.channelPrimaryImageTag)
+      posterUri = ImageURL(itemData.channelId, "Primary", { tag: itemData.channelPrimaryImageTag, maxWidth: posterSmSize.width, maxHeight: posterSmSize.height })
     end if
+    m.itemPoster.uri = posterUri
     m.itemPoster.loadDisplayMode = "scaleToFill"
-
-    ' Set Episode title if available
-    if isValid(itemData.json.EpisodeTitle)
-      m.itemTextExtra.text = itemData.json.EpisodeTitle
-    end if
-
     return
   end if
 
   if itemData.type = "Episode" or LCase(itemData.type) = "recording"
-    m.itemText.text = itemData.json.SeriesName
-
-    m.itemPoster.playedPercentage = itemData.PlayedPercentage
+    m.itemText.text = itemData.seriesName
+    m.itemPoster.playedPercentage = itemData.playedPercentage
 
     if isValid(userSettings)
       if userSettings.uiGeneralEpisodeImages = "webclient"
         tmpSetting = globalUser.config.useEpisodeImagesInNextUpAndResume
         if isValid(tmpSetting) and tmpSetting
-          m.itemPoster.uri = itemData.thumbnailURL
+          m.itemPoster.uri = getItemThumbnailUrl(itemData, imageSize.WIDE_MD)
         else
-          m.itemPoster.uri = itemData.widePosterURL
+          m.itemPoster.uri = getItemWidePosterUrl(itemData, imageSize.WIDE_MD)
         end if
       else if userSettings.uiGeneralEpisodeImages = "show"
-        m.itemPoster.uri = itemData.widePosterURL
+        m.itemPoster.uri = getItemWidePosterUrl(itemData, imageSize.WIDE_MD)
       else if userSettings.uiGeneralEpisodeImages = "episode"
-        m.itemPoster.uri = itemData.thumbnailURL
+        m.itemPoster.uri = getItemThumbnailUrl(itemData, imageSize.WIDE_MD)
       end if
     else
       ' use show image if user settings are invalid for some reason
-      m.itemPoster.uri = itemData.widePosterURL
+      m.itemPoster.uri = getItemWidePosterUrl(itemData, imageSize.WIDE_MD)
     end if
 
-    ' Set Series and Episode Number for Extra Text
-    extraPrefix = ""
-    if isValid(itemData.json.ParentIndexNumber)
-      extraPrefix = "S" + StrI(itemData.json.ParentIndexNumber).trim()
-    end if
-    if isValid(itemData.json.IndexNumber)
-      extraPrefix = extraPrefix + "E" + StrI(itemData.json.IndexNumber).trim()
-    end if
-    if extraPrefix.len() > 0
-      extraPrefix = extraPrefix + " - "
-    end if
-
-    m.itemTextExtra.text = extraPrefix + itemData.name
+    ' subtitle is pre-computed: "S1E2 - Episode Title"
+    m.itemTextExtra.text = itemData.subtitle
     return
   end if
 
   if itemData.type = "Movie" or itemData.type = "MusicVideo"
     m.itemText.text = itemData.name
+    m.itemPoster.playedPercentage = itemData.playedPercentage
 
-    m.itemPoster.playedPercentage = itemData.PlayedPercentage
-
-    ' Use best image, but fallback to secondary if it's empty
-    if (itemData.imageWidth = 180 and itemData.posterURL <> "") or itemData.thumbnailURL = ""
-      m.itemPoster.uri = itemData.posterURL
+    ' Use poster for portrait-sized slots, wide image for landscape slots
+    if slotWidth = posterSmSize.width
+      m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.POSTER_SM)
     else
-      m.itemPoster.uri = itemData.thumbnailURL
-    end if
-
-    ' Set Release Year and Age Rating for Extra Text
-    textExtra = ""
-    if isValid(itemData.json.ProductionYear)
-      textExtra = StrI(itemData.json.ProductionYear).trim()
-    end if
-    if isValid(itemData.json.OfficialRating)
-      if textExtra <> ""
-        textExtra = textExtra + " • " + itemData.json.OfficialRating
-      else
-        textExtra = itemData.json.OfficialRating
+      posterUri = getItemWidePosterUrl(itemData, imageSize.WIDE_MD)
+      if posterUri = ""
+        posterUri = getItemPosterUrl(itemData, imageSize.POSTER_SM)
       end if
+      m.itemPoster.uri = posterUri
     end if
-    m.itemTextExtra.text = textExtra
 
+    ' subtitle is pre-computed: "2024 • PG-13"
+    m.itemTextExtra.text = itemData.subtitle
     return
   end if
 
   if itemData.type = "Video"
     m.itemText.text = itemData.name
+    m.itemPoster.playedPercentage = itemData.playedPercentage
 
-    m.itemPoster.playedPercentage = itemData.PlayedPercentage
-
-    if itemData.imageWidth = 180
-      m.itemPoster.uri = itemData.posterURL
+    if slotWidth = posterSmSize.width
+      m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.POSTER_SM)
     else
-      m.itemPoster.uri = itemData.thumbnailURL
+      m.itemPoster.uri = getItemWidePosterUrl(itemData, imageSize.WIDE_MD)
     end if
-
     return
   end if
 
   if itemData.type = "BoxSet"
     m.itemText.text = itemData.name
-    m.itemPoster.uri = itemData.posterURL
-
-    ' Set small text to number of items in the collection
-    if isValid(itemData.json) and isValid(itemData.json.ChildCount)
-      m.itemTextExtra.text = StrI(itemData.json.ChildCount).trim() + " item"
-      if itemData.json.ChildCount > 1
-        m.itemTextExtra.text += "s"
-      end if
-    end if
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.POSTER_MD)
+    ' subtitle is pre-computed: "N items"
+    m.itemTextExtra.text = itemData.subtitle
     return
   end if
 
   if itemData.type = "Series"
-
     m.itemText.text = itemData.name
 
-    if itemData.usePoster = true
-      if itemData.imageWidth = 180
-        m.itemPoster.uri = itemData.posterURL
-      else
-        m.itemPoster.uri = itemData.widePosterURL
-      end if
+    ' Use poster for portrait-sized slots, wide image for landscape slots
+    if slotWidth = posterSmSize.width
+      m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.POSTER_SM)
     else
-      m.itemPoster.uri = itemData.thumbnailURL
+      posterUri = getItemWidePosterUrl(itemData, imageSize.WIDE_MD)
+      if posterUri = ""
+        posterUri = getItemPosterUrl(itemData, imageSize.POSTER_SM)
+      end if
+      m.itemPoster.uri = posterUri
     end if
 
-    textExtra = ""
-    if isValid(itemData.json.ProductionYear)
-      textExtra = StrI(itemData.json.ProductionYear).trim()
-    end if
-
-    ' Set Years Run for Extra Text
-    if itemData.json.Status = "Continuing"
-      textExtra = textExtra + " - Present"
-    else if itemData.json.Status = "Ended" and isValid(itemData.json.EndDate)
-      textExtra = textExtra + " - " + LEFT(itemData.json.EndDate, 4)
-    end if
-    m.itemTextExtra.text = textExtra
-
+    ' subtitle is pre-computed: "2020 - Present" or "2020 - 2024"
+    m.itemTextExtra.text = itemData.subtitle
     return
   end if
 
   if itemData.type = "MusicAlbum"
     m.itemText.text = itemData.name
-    m.itemTextExtra.text = itemData.json.AlbumArtist
-    m.itemPoster.uri = itemData.posterURL
+    ' subtitle is pre-computed: albumArtist
+    m.itemTextExtra.text = itemData.subtitle
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.SQUARE_MD)
     return
   end if
 
   if itemData.type = "MusicArtist"
     m.itemText.text = itemData.name
-    m.itemTextExtra.text = itemData.json.AlbumArtist
-    m.itemPoster.uri = ImageURL(itemData.id)
+    m.itemTextExtra.text = itemData.subtitle
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.SQUARE_MD)
     return
   end if
 
   if itemData.type = "Audio"
     m.itemText.text = itemData.name
-    m.itemTextExtra.text = itemData.json.AlbumArtist
-    m.itemPoster.uri = ImageURL(itemData.id)
+    ' subtitle is pre-computed: albumArtist
+    m.itemTextExtra.text = itemData.subtitle
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.SQUARE_MD)
     return
   end if
 
+  ' TvChannel: secondary text intentionally blank (no meaningful subtitle for a channel card).
+  ' Note: previously read itemData.json.AlbumArtist here — a copy-paste bug from MusicArtist.
+  ' AlbumArtist is never populated for TvChannels; the visual result was always empty.
   if itemData.type = "TvChannel"
     m.itemText.text = itemData.name
-    m.itemTextExtra.text = itemData.json.AlbumArtist
-    m.itemPoster.uri = ImageURL(itemData.id)
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.WIDE_MD)
     return
   end if
 
   if itemData.type = "Season"
-    m.itemText.text = itemData.json.SeriesName
+    ' subtitle is pre-computed: seriesName
+    m.itemText.text = itemData.subtitle
     m.itemTextExtra.text = itemData.name
-    m.itemPoster.uri = ImageURL(itemData.id)
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.POSTER_MD)
     return
   end if
 
   if itemData.type = "Photo"
     m.itemText.text = itemData.name
-    m.itemPoster.uri = ImageURL(itemData.id)
-
-    ' subtext
-    if isValidAndNotEmpty(itemData.json)
-      if isValid(itemData.json.ProductionYear)
-        m.itemTextExtra.text = itemData.json.ProductionYear.ToStr().trim()
-      end if
-      if isValidAndNotEmpty(itemData.json.Album)
-        if m.itemTextExtra.text = ""
-          m.itemTextExtra.text = tr("Album") + ": " + itemData.json.Album.trim()
-        else
-          m.itemTextExtra.text = m.itemTextExtra.text + " - " + tr("Album") + ": " + itemData.json.Album.trim()
-        end if
-      end if
-    end if
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.WIDE_MD)
+    ' subtitle is pre-computed: "2024" or "2024 - My Album"
+    m.itemTextExtra.text = itemData.subtitle
     return
   end if
 
   if itemData.type = "PhotoAlbum"
     m.itemText.text = itemData.name
-    m.itemPoster.uri = ImageURL(itemData.id)
-
-    ' subtext
-    if isValid(itemData.json.ChildCount)
-      m.itemTextExtra.text = itemData.json.ChildCount.ToStr().trim() + " items"
-    end if
-
+    m.itemPoster.uri = getItemPosterUrl(itemData, imageSize.WIDE_MD)
+    ' subtitle is pre-computed: "N items"
+    m.itemTextExtra.text = itemData.subtitle
     return
   end if
 
@@ -341,8 +290,10 @@ end sub
 sub focusChanged()
   if m.top.itemHasFocus = true
     m.itemText.repeatCount = -1
+    m.itemTextExtra.repeatCount = -1
   else
     m.itemText.repeatCount = 0
+    m.itemTextExtra.repeatCount = 0
   end if
 end sub
 

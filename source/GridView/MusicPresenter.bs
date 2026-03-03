@@ -22,9 +22,11 @@ class MusicPresenter extends GridPresenterBase
     }
 
     ' Special case: Genre folders only show Albums view
+    ' Handles both MusicGenre (from /MusicGenres endpoint) and plain Genre items
+    ' from /Genres endpoint that were tagged with collectionType="music" in LoadItemsTask2
     isMusicGenre = false
-    if isValid(parentItem) and isValid(parentItem.json) and isValid(parentItem.json.type)
-      isMusicGenre = LCase(parentItem.json.type) = "musicgenre"
+    if isValid(parentItem)
+      isMusicGenre = LCase(parentItem.type) = "musicgenre" or LCase(parentItem.folderType) = "musicgenre" or (LCase(parentItem.folderType) = "genre" and LCase(parentItem.collectionType) = "music")
     end if
 
     if isMusicGenre
@@ -123,15 +125,19 @@ class MusicPresenter extends GridPresenterBase
     viewLower = LCase(currentView)
 
     ' Special case: Music genre folders load albums
+    ' Handles both MusicGenre (from /MusicGenres endpoint) and plain Genre items
+    ' from /Genres endpoint that were tagged with collectionType="music" in LoadItemsTask2
     isMusicGenre = false
-    if isValid(parentItem) and isValid(parentItem.json) and isValid(parentItem.json.type)
-      isMusicGenre = LCase(parentItem.json.type) = "musicgenre"
+    if isValid(parentItem)
+      isMusicGenre = LCase(parentItem.type) = "musicgenre" or LCase(parentItem.folderType) = "musicgenre" or (LCase(parentItem.folderType) = "genre" and LCase(parentItem.collectionType) = "music")
     end if
 
     if isMusicGenre
       task.itemType = "MusicAlbum"
       task.genreIds = parentItem.id
-      task.itemId = parentItem.parentFolder
+      ' Clear parentId — genreIds alone scopes the result; parentItem.parentId from
+      ' the /Genres API response is unreliable (virtual folder ID, not library ID)
+      task.itemId = ""
       task.view = "Artists"
       task.additionalFields = "Genres"
       return

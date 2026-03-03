@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<component name="SeriesData" extends="JRContentItem">
-  <interface>
-    <field id="overview" type="string" />
-    <field id="seasons" type="assocarray" />
-    <field id="nextup" type="assocarray" />
-    <field id="image" type="node" onChange="setPoster" />
-  </interface>
-</component>

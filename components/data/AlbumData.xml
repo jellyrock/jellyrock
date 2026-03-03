@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<component name="AlbumData" extends="ContentNode">
-  <interface>
-    <field id="title" type="string" />
-    <field id="json" type="assocarray" onChange="setFields" />
-  </interface>
-</component>

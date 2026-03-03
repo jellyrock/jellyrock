@@ -1,23 +1,36 @@
 ' Node utility functions for creating and copying SGNodes
 namespace nodeHelpers
 
-  ' createQueueItem: Create a queue-compatible item from any source node
+  ' createQueueItem: Create a queue item AA from a source item.
   '
-  ' Extracts only the essential fields needed for playback queue items,
-  ' avoiding issues with cloning complex UI components like SearchData, GridData, etc.
+  ' The queue item is a thin AA containing only what VideoPlayerView and QueueManager need.
+  ' LoadVideoContentTask re-fetches all metadata server-side via ItemMetaData(), so the
+  ' queue item does NOT need to carry full data — eliminating the deep-copy perf problem.
   '
-  ' @param sourceNode - The source node (any type) to extract data from
-  ' @returns Associative array with essential fields, or invalid if sourceNode is invalid
+  ' Accepts either a JellyfinBaseItem node (typed camelCase fields) or a raw Jellyfin API
+  ' response AA (PascalCase fields). BrightScript AA lookup is case-insensitive, so field
+  ' access works identically for both — e.g. sourceNode.backdropImageTags finds
+  ' BackdropImageTags on a raw API AA and backdropImageTags on a typed node.
   '
-  ' Essential fields copied:
-  '   - id: Item identifier (required)
-  '   - type: Media type (required)
-  '   - json: Full Jellyfin metadata (required)
-  '   - title: Display title (optional)
-  '   - mediaSourceId: Media source ID (optional)
-  '   - RunTimeTicks: Runtime duration (optional)
+  ' @param sourceNode - JellyfinBaseItem node or raw Jellyfin API response AA
+  ' @returns Associative array with guaranteed field contract, or invalid if sourceNode is invalid
   '
-  ' Additional fields can be set later by quickplay (selectedAudioStreamIndex, startingPoint)
+  ' Fields always present in the returned AA (guaranteed contract):
+  '   - backdropImageTags: Array of backdrop image tags (empty array = no backdrop)
+  '   - parentBackdropImageTags: Array of parent backdrop tags (empty array = none)
+  '   - parentBackdropItemId: Parent item ID for parent backdrops (empty string = none)
+  '
+  ' Fields present only when non-empty / non-zero:
+  '   - id: Item identifier (required for playback)
+  '   - type: Media type (required for queue routing)
+  '   - title: Display title
+  '   - mediaSourceId: Media source hint
+  '   - runTimeTicks: Runtime duration
+  '   - seriesId: Series ID for episode navigation in resume dialog
+  '   - seasonId: Season ID for episode navigation in resume dialog
+  '   - playbackPositionTicks: Saved resume position
+  '
+  ' Callers set startingPoint and selectedAudioStreamIndex on the returned AA after creation.
   '
   function createQueueItem(sourceNode as object) as object
     if not isValid(sourceNode)
@@ -25,37 +38,37 @@ namespace nodeHelpers
       return invalid
     end if
 
-    ' Create a simple associative array for queue storage
-    ' The queue accepts both SGNodes and associative arrays (see QueueManager.getItemType)
-    ' Using an AA avoids issues with cloning complex UI component nodes
+    ' Thin AA — only fields the queue infrastructure actually reads
     queueItem = {}
 
-    ' Copy essential fields that queue items need
-    ' Required fields
-    if isValidAndNotEmpty(sourceNode.id)
-      queueItem.id = sourceNode.id
+    if isValidAndNotEmpty(sourceNode.id) then queueItem.id = sourceNode.id
+    if isValidAndNotEmpty(sourceNode.type) then queueItem.type = sourceNode.type
+    if isValidAndNotEmpty(sourceNode.title) then queueItem.title = sourceNode.title
+    if isValidAndNotEmpty(sourceNode.mediaSourceId) then queueItem.mediaSourceId = sourceNode.mediaSourceId
+    if isValid(sourceNode.runTimeTicks) and sourceNode.runTimeTicks > 0
+      queueItem.runTimeTicks = sourceNode.runTimeTicks
     end if
 
-    if isValidAndNotEmpty(sourceNode.type)
-      queueItem.type = sourceNode.type
-    end if
+    ' Episode navigation fields used by the resume dialog handler
+    if isValidAndNotEmpty(sourceNode.seriesId) then queueItem.seriesId = sourceNode.seriesId
+    if isValidAndNotEmpty(sourceNode.seasonId) then queueItem.seasonId = sourceNode.seasonId
 
-    if isValid(sourceNode.json)
-      queueItem.json = sourceNode.json
+    ' Resume position — stored so the resume dialog can read it without the original node.
+    ' Typed nodes: transformer populates playbackPositionTicks from UserData.
+    ' Raw API AAs: fall back to UserData.PlaybackPositionTicks (nested).
+    positionTicks = 0
+    if isValid(sourceNode.playbackPositionTicks) and sourceNode.playbackPositionTicks > 0
+      positionTicks = sourceNode.playbackPositionTicks
+    else if isValid(sourceNode.UserData) and isValid(sourceNode.UserData.PlaybackPositionTicks)
+      positionTicks = sourceNode.UserData.PlaybackPositionTicks
     end if
+    if positionTicks > 0 then queueItem.playbackPositionTicks = positionTicks
 
-    ' Optional fields (if they exist on source)
-    if isValidAndNotEmpty(sourceNode.title)
-      queueItem.title = sourceNode.title
-    end if
-
-    if isValidAndNotEmpty(sourceNode.mediaSourceId)
-      queueItem.mediaSourceId = sourceNode.mediaSourceId
-    end if
-
-    if isValid(sourceNode.RunTimeTicks)
-      queueItem.RunTimeTicks = sourceNode.RunTimeTicks
-    end if
+    ' Backdrop fields — always set to guarantee callers can check .Count() without isValid().
+    ' Empty array/string = no backdrop available for this item.
+    queueItem.backdropImageTags = isValid(sourceNode.backdropImageTags) ? sourceNode.backdropImageTags : []
+    queueItem.parentBackdropImageTags = isValid(sourceNode.parentBackdropImageTags) ? sourceNode.parentBackdropImageTags : []
+    queueItem.parentBackdropItemId = isValidAndNotEmpty(sourceNode.parentBackdropItemId) ? sourceNode.parentBackdropItemId : ""
 
     return queueItem
   end function

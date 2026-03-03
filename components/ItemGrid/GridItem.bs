@@ -1,5 +1,6 @@
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -37,113 +38,70 @@ sub itemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
 
-  if isValid(itemData.watched)
-    m.itemPoster.isWatched = itemData.watched
+  if itemData.isWatched
+    m.itemPoster.isWatched = true
   end if
 
-  if isValid(itemData.json) and isValid(itemData.json.UserData)
-    if isValid(itemData.json.UserData.UnplayedItemCount)
-      m.itemPoster.unplayedCount = itemData.json.UserData.UnplayedItemCount
-    end if
+  if itemData.unplayedItemCount > 0
+    m.itemPoster.unplayedCount = itemData.unplayedItemCount
   end if
 
-  if itemData.type = "Movie"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
-  else if itemData.type = "Series"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
-  else if itemData.type = "Boxset"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
-  else if itemData.type = "TvChannel"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
-  else if itemData.type = "Folder"
-    m.itemPoster.uri = itemData.PosterUrl
-    'm.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
+  itemType = LCase(itemData.type)
+
+  if itemType = "movie" or itemType = "musicvideo"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "series"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "boxset"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "tvchannel"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "folder" or itemType = "collectionfolder" or itemType = "channelfolderitem" or itemType = "photoalbum"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
     m.itemPoster.loadDisplayMode = m.itemGrid.imageDisplayMode
-
-    ' MusicGenre folders need square 1:1 sizing
-    if isValid(itemData.json) and isValid(itemData.json.type) and itemData.json.type = "MusicGenre"
-      m.itemPoster.height = 323
-      m.itemPoster.width = 323
-      m.itemPoster.loadWidth = 323
-      m.itemPoster.loadHeight = 323
-      m.itemPoster.loadDisplayMode = "scaleToFit"
-
-      m.itemText.translation = [0, m.itemPoster.translation[1] + m.itemPoster.height + 18]
-      m.itemText.maxWidth = 323
-
-      m.backdrop.height = 323
-      m.backdrop.width = 323
-
-      m.posterText.height = 313
-      m.posterText.width = 313
-    end if
-  else if itemData.type = "Video"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
-  else if itemData.type = "Playlist"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
-  else if itemData.type = "Photo"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    m.itemText.text = itemData.Title
-  else if itemData.type = "Episode"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemIcon.uri = itemData.iconUrl
-    if isValid(itemData.json) and isValid(itemData.json.SeriesName)
-      m.itemText.text = itemData.json.SeriesName + " - " + itemData.Title
+  else if itemType = "genre" or itemType = "studio"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "musicgenre"
+    ' Music genres use square 1:1 sizing
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+    setSquarePosterLayout()
+    m.itemPoster.loadDisplayMode = "scaleToFit"
+  else if itemType = "video" or itemType = "recording"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "playlist"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "photo"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+  else if itemType = "episode"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    if isValidAndNotEmpty(itemData.seriesName)
+      m.itemText.text = itemData.seriesName + " - " + itemData.title
     else
-      m.itemText.text = itemData.Title
+      m.itemText.text = itemData.title
     end if
-  else if itemData.type = "MusicArtist"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemText.text = itemData.Title
-
-    m.itemPoster.height = 323
-    m.itemPoster.width = 323
-    ' Optimize texture memory: load at display size even though URL requests 440x440
-    m.itemPoster.loadWidth = 323
-    m.itemPoster.loadHeight = 323
+  else if itemType = "musicartist"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+    setSquarePosterLayout()
     m.itemPoster.loadDisplayMode = "limitSize"
-
-    m.itemText.translation = [0, m.itemPoster.translation[1] + m.itemPoster.height + 18]
-    m.itemText.maxWidth = 323
-
-    m.backdrop.height = 323
-    m.backdrop.width = 323
-
-    m.posterText.height = 313
-    m.posterText.width = 313
-  else if isValid(itemData.json.type) and itemData.json.type = "MusicAlbum"
-    m.itemPoster.uri = itemData.PosterUrl
-    m.itemText.text = itemData.Title
-
-    m.itemPoster.height = 323
-    m.itemPoster.width = 323
-    ' Optimize texture memory: load at display size even though URL requests 440x440
-    m.itemPoster.loadWidth = 323
-    m.itemPoster.loadHeight = 323
+  else if itemType = "musicalbum"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
+    setSquarePosterLayout()
     m.itemPoster.loadDisplayMode = "limitSize"
-
-    m.itemText.translation = [0, m.itemPoster.translation[1] + m.itemPoster.height + 18]
-    m.itemText.maxWidth = 323
-
-    m.backdrop.height = 323
-    m.backdrop.width = 323
-
-    m.posterText.height = 313
-    m.posterText.width = 313
+  else if itemType = "audio"
+    m.itemPoster.uri = getItemPosterUrl(itemData)
+    m.itemText.text = itemData.title
   else
     m.log.warn("Unhandled Grid Item Type", itemData.type)
   end if
@@ -156,6 +114,23 @@ sub itemContentChanged()
 
   m.posterText.text = m.itemText.text
 
+end sub
+
+' Apply square 323x323 layout for music items (artists, albums, genres)
+sub setSquarePosterLayout()
+  m.itemPoster.height = 323
+  m.itemPoster.width = 323
+  m.itemPoster.loadWidth = 323
+  m.itemPoster.loadHeight = 323
+
+  m.itemText.translation = [0, m.itemPoster.translation[1] + m.itemPoster.height + 18]
+  m.itemText.maxWidth = 323
+
+  m.backdrop.height = 323
+  m.backdrop.width = 323
+
+  m.posterText.height = 313
+  m.posterText.width = 313
 end sub
 
 ' Enable title scrolling based on item focus
