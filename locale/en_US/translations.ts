@@ -78,10 +78,6 @@
       <extracomment>Aired date label</extracomment>
     </message>
     <message>
-      <source>Album</source>
-      <translation>Album</translation>
-    </message>
-    <message>
       <source>Album Artists</source>
       <translation>Album Artists</translation>
     </message>
