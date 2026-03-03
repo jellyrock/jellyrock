@@ -182,7 +182,8 @@ class MoviePresenter extends GridPresenterBase
         task.itemId = parentItem.parentId
         task.genreIds = ""
       else if parentItem.type = "Genre" or (parentItem.type = "Folder" and parentItem.folderType = "Genre")
-        ' Genre items from /Genres have IsFolder=true so transformer sets type="Folder"+folderType="Genre"
+        ' Current Jellyfin returns genre items with IsFolder=false, so type="Genre" is the normal path.
+        ' The Folder+folderType branch is a defensive fallback for server configurations that return IsFolder=true.
         task.genreIds = parentItem.id
         task.itemId = parentItem.parentId
         task.studioIds = ""
