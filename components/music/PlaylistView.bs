@@ -75,6 +75,8 @@ end sub
 sub setPosterImage(posterURL)
   if isValidAndNotEmpty(posterURL)
     m.albumCover.uri = posterURL
+  else
+    m.albumCover.uri = "pkg:/images/icons/playlist.png"
   end if
 end sub
 

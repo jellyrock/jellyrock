@@ -55,6 +55,8 @@ sub pageContentChanged()
   posterUrl = getItemPosterUrl(item)
   if isValidAndNotEmpty(posterUrl)
     m.albumCover.uri = posterUrl
+  else
+    m.albumCover.uri = "pkg:/images/icons/album.png"
   end if
 
   setScreenTitle(item)
