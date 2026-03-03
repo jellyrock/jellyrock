@@ -53,10 +53,16 @@ namespace nodeHelpers
     if isValidAndNotEmpty(sourceNode.seriesId) then queueItem.seriesId = sourceNode.seriesId
     if isValidAndNotEmpty(sourceNode.seasonId) then queueItem.seasonId = sourceNode.seasonId
 
-    ' Resume position — stored so the resume dialog can read it without the original node
+    ' Resume position — stored so the resume dialog can read it without the original node.
+    ' Typed nodes: transformer populates playbackPositionTicks from UserData.
+    ' Raw API AAs: fall back to UserData.PlaybackPositionTicks (nested).
+    positionTicks = 0
     if isValid(sourceNode.playbackPositionTicks) and sourceNode.playbackPositionTicks > 0
-      queueItem.playbackPositionTicks = sourceNode.playbackPositionTicks
+      positionTicks = sourceNode.playbackPositionTicks
+    else if isValid(sourceNode.UserData) and isValid(sourceNode.UserData.PlaybackPositionTicks)
+      positionTicks = sourceNode.UserData.PlaybackPositionTicks
     end if
+    if positionTicks > 0 then queueItem.playbackPositionTicks = positionTicks
 
     ' Backdrop fields — always set to guarantee callers can check .Count() without isValid().
     ' Empty array/string = no backdrop available for this item.

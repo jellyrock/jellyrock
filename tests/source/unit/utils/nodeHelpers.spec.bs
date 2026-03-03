@@ -482,6 +482,38 @@ namespace tests
       m.assertEqual(queueItem.parentBackdropItemId, "")
     end function
 
+    @it("raw API item extracts playbackPositionTicks from nested UserData")
+    function _()
+      rawApiItem = {
+        Id: "ep-xyz",
+        Type: "Episode",
+        UserData: {
+          PlaybackPositionTicks: 12000000000&,
+          Played: false
+        }
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertEqual(queueItem.playbackPositionTicks, 12000000000&)
+    end function
+
+    @it("raw API item with zero UserData.PlaybackPositionTicks omits field")
+    function _()
+      rawApiItem = {
+        Id: "ep-xyz",
+        Type: "Episode",
+        UserData: {
+          PlaybackPositionTicks: 0&,
+          Played: true
+        }
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertFalse(queueItem.DoesExist("playbackPositionTicks"))
+    end function
+
   end class
 
 end namespace
