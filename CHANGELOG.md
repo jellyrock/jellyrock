@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- universal JellyfinBaseItem ContentNode ([#349](https://github.com/jellyrock/jellyrock/pull/349))
+
 ### Dependencies
 
 - Update actions/upload-artifact action to v7 ([#348](https://github.com/jellyrock/jellyrock/pull/348))
