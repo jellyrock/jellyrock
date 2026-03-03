@@ -70,7 +70,9 @@ sub itemContentChanged()
     if showFallbackIcon
       m.itemPoster.uri = fallbackIconUri
       m.itemPoster.blendColor = m.global.constants.colorTextSecondary
-      m.itemPoster.loadDisplayMode = "scaleToFit"
+      m.itemPoster.loadWidth = 280
+      m.itemPoster.loadHeight = 280
+      m.itemPoster.loadDisplayMode = "limitSize"
     end if
   end if
   if m.top.itemHasFocus then focusChanged()
