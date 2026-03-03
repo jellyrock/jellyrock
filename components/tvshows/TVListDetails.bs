@@ -45,7 +45,7 @@ sub itemContentChanged()
   ' Use stored user selection if present, otherwise auto-detect.
   if isValid(m.rowContentNode) and m.rowContentNode.audioSelectionIndex >= 0
     m.top.selectedAudioStreamIndex = m.rowContentNode.audioSelectionIndex
-  else if m.top.selectedAudioStreamIndex = 0
+  else if m.top.selectedAudioStreamIndex < 0
     SetDefaultAudioTrack(mediaSources)
   end if
 
