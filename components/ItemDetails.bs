@@ -543,7 +543,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupSeries: Info rows for Series
-' Row 1: Year Range · Official Rating · Community Rating
+' Row 1: Year Range · Official Rating · Community Rating · Runtime · Ends At (only when avg episode runtime is available)
 ' Row 2: Genres · Air schedule/Status
 sub populateInfoGroupSeries(item as object, userSettings as object)
   ' Year range: "{productionYear} - {endYear}" or "{productionYear} - Present"
@@ -580,6 +580,13 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
     runtimeNode = createInfoLabel("runtime")
     runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
     displayInfoNode(runtimeNode)
+  end if
+
+  ' "Ends At" is only meaningful when we have a valid avg episode runtime to calculate with
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
   end if
 
   if item.genres.count() > 0
