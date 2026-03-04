@@ -3,11 +3,13 @@ import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
 import "pkg:/source/api/sdk.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = log.Logger("LoadItemsTask")
   m.top.functionName = "loadItems"
 end sub
 
@@ -211,13 +213,14 @@ sub loadItems()
     end if
   else if m.top.itemsToLoad = "seasonEpisodes"
     ' itemId = seriesId, metadata.seasonId = season to load
-    seasonId = ""
-    if isValid(m.top.metadata) and isValidAndNotEmpty(m.top.metadata.seasonId)
-      seasonId = m.top.metadata.seasonId
+    if not isValid(m.top.metadata) or not isValidAndNotEmpty(m.top.metadata.seasonId)
+      m.log.warn("seasonEpisodes requested but metadata.seasonId is missing or empty; skipping GetEpisodes call")
+      m.top.content = results
+      return
     end if
     data = api.shows.GetEpisodes(m.top.itemId, {
       UserId: globalUser.id,
-      SeasonId: seasonId,
+      SeasonId: m.top.metadata.seasonId,
       Fields: "PrimaryImageAspectRatio,Overview",
       EnableImages: true
     })

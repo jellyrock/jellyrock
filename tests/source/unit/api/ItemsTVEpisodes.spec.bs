@@ -1,0 +1,28 @@
+namespace tests
+
+  @suite("Items - TVEpisodes()")
+  class ItemsTVEpisodesTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("seasonId guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when seasonId is an empty string")
+    function _()
+      result = TVEpisodes("show-id-123", "")
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when seasonId is a whitespace-only string")
+    function _()
+      result = TVEpisodes("show-id-123", "   ")
+      m.assertInvalid(result)
+    end function
+
+  end class
+
+end namespace
