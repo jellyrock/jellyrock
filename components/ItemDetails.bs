@@ -6,7 +6,10 @@ import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
-const ITEM_DETAILS_TOP_Y = 230
+' Y translation extrasGrp reaches after sliding open (ExtrasSlider.xml VertSlider end keyValue)
+const EXTRAS_GRP_TARGET_Y = 378
+' Gap between bottom of itemInfoRows and top of extras pane when extras are open
+const ITEM_DETAILS_EXTRAS_PADDING = 6
 
 sub init()
   m.log = log.Logger("ItemDetails")
@@ -1007,20 +1010,21 @@ sub onItemDetailsRendered()
   updateItemDetailsAnimationTarget()
 end sub
 
-' updateItemDetailsAnimationTarget: Recalculate the itemDetails slide animation target
-' Computes the translation Y that positions the top edge of itemDetails at ITEM_DETAILS_TOP_Y
-' Only recalculates when itemDetails is at its rest position (not during extras view)
+' updateItemDetailsAnimationTarget: Slide itemDetails so the bottom of itemInfoRows sits just
+' above the extras pane. boundingRect() on a child returns LOCAL coords relative to the parent's
+' translation point, so we use translation[1] (not boundingRect().y) as the screen origin.
 sub updateItemDetailsAnimationTarget()
   if m.extrasActive then return
 
-  itemDetailsRect = m.itemDetails.boundingRect()
   currentTransY = m.itemDetails.translation[1]
-  delta = currentTransY - itemDetailsRect.y
-  targetTransY = ITEM_DETAILS_TOP_Y + delta
+  itemInfoRowsLocalRect = m.itemInfoRows.boundingRect()
+  screenBottomOfInfoRows = currentTransY + itemInfoRowsLocalRect.y + itemInfoRowsLocalRect.height
+
+  dY = (EXTRAS_GRP_TARGET_Y - ITEM_DETAILS_EXTRAS_PADDING) - screenBottomOfInfoRows
+  targetTransY = currentTransY + dY
 
   startTransX = m.itemDetails.translation[0]
-  startTransY = m.itemDetails.translation[1]
-  m.itemDetailsSliderInterp.keyValue = [[startTransX, startTransY], [startTransX, targetTransY]]
+  m.itemDetailsSliderInterp.keyValue = [[startTransX, currentTransY], [startTransX, targetTransY]]
 end sub
 
 sub updateTextGradient()
