@@ -970,13 +970,17 @@ sub Main (args as dynamic) as void
               MarkItemWatched(m.pendingWatchedItemId)
             end if
             m.pendingWatchedItemId = invalid
+            m.pendingWatchedIsCurrentlyWatched = invalid
             activeGroup = m.global.sceneManager.callFunc("getActiveScene")
             if isValid(activeGroup)
               activeGroup.refreshItemDetailsData = not activeGroup.refreshItemDetailsData
+            else
+              stopLoadingSpinner()
             end if
           else
             ' User cancelled
             m.pendingWatchedItemId = invalid
+            m.pendingWatchedIsCurrentlyWatched = invalid
           end if
         else
           selectedItem = m.global.queueManager.callFunc("getHold")
