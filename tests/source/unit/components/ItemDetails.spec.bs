@@ -1,29 +1,29 @@
 namespace tests
 
-  @suite("MovieDetails - focusButtonGroupChild()")
-  class MovieDetailsFocusButtonGroupChildTests extends tests.BaseTestSuite
+  @suite("ItemDetails - focusButtonGroupChild()")
+  class ItemDetailsFocusButtonGroupChildTests extends tests.BaseTestSuite
 
-    private movieDetails as object
+    private itemDetails as object
     private buttonGrp as object
 
     protected override sub setup()
       super.setup()
 
-      ' Create a mock sceneManager (required by MovieDetails init)
+      ' Create a mock sceneManager (required by ItemDetails init)
       if not m.global.doesExist("sceneManager")
         m.global.addField("sceneManager", "node", false)
         m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
       end if
 
-      m.movieDetails = CreateObject("roSGNode", "MovieDetails")
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
 
       ' Get the button group for test setup
-      m.buttonGrp = m.movieDetails.findNode("buttons")
+      m.buttonGrp = m.itemDetails.findNode("buttons")
     end sub
 
     protected override sub teardown()
       super.teardown()
-      m.movieDetails = invalid
+      m.itemDetails = invalid
       m.buttonGrp = invalid
     end sub
 
@@ -36,7 +36,7 @@ namespace tests
       m.buttonGrp.buttonFocused = 0
 
       ' Should not crash
-      m.movieDetails.callFunc("focusButtonGroupChild")
+      m.itemDetails.callFunc("focusButtonGroupChild")
 
       m.assertTrue(true)
     end function
@@ -47,17 +47,17 @@ namespace tests
       m.buttonGrp.buttonFocused = lastIndex
 
       ' Should not crash
-      m.movieDetails.callFunc("focusButtonGroupChild")
+      m.itemDetails.callFunc("focusButtonGroupChild")
 
       m.assertTrue(true)
     end function
 
     @it("focuses middle button in group")
     function _()
-      ' Default MovieDetails has 3 buttons (play, watched, favorite)
+      ' Default ItemDetails has 4 buttons (play, watched, favorite, refresh)
       m.buttonGrp.buttonFocused = 1
 
-      m.movieDetails.callFunc("focusButtonGroupChild")
+      m.itemDetails.callFunc("focusButtonGroupChild")
 
       m.assertTrue(true)
     end function
@@ -71,7 +71,7 @@ namespace tests
       m.buttonGrp.buttonFocused = -1
 
       ' Should not crash - guard clause should return early
-      m.movieDetails.callFunc("focusButtonGroupChild")
+      m.itemDetails.callFunc("focusButtonGroupChild")
 
       m.assertTrue(true)
     end function
@@ -81,7 +81,7 @@ namespace tests
       m.buttonGrp.buttonFocused = m.buttonGrp.getChildCount() + 10
 
       ' Should not crash - guard clause should return early
-      m.movieDetails.callFunc("focusButtonGroupChild")
+      m.itemDetails.callFunc("focusButtonGroupChild")
 
       m.assertTrue(true)
     end function
@@ -91,7 +91,7 @@ namespace tests
       m.buttonGrp.buttonFocused = m.buttonGrp.getChildCount()
 
       ' Should not crash - guard clause should return early
-      m.movieDetails.callFunc("focusButtonGroupChild")
+      m.itemDetails.callFunc("focusButtonGroupChild")
 
       m.assertTrue(true)
     end function
@@ -107,7 +107,7 @@ namespace tests
       m.buttonGrp.buttonFocused = 0
 
       ' Should not crash - guard clause should return early
-      m.movieDetails.callFunc("focusButtonGroupChild")
+      m.itemDetails.callFunc("focusButtonGroupChild")
 
       m.assertTrue(true)
     end function
