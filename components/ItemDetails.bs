@@ -47,6 +47,7 @@ sub init()
   m.itemDetailsSlider = m.top.findNode("itemDetailsSlider")
   m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
   m.extrasActive = false
+  m.animationTargetCalculated = false
 
   ' Inner group: title + infoGroup + directorGenreGroup (never changes during activate/deactivate)
   ' Used to compute the correct animation target height when extras are shown
@@ -636,6 +637,7 @@ function getHistory() as string
 end function
 
 sub itemContentChanged()
+  m.animationTargetCalculated = false
   item = m.top.itemContent
 
   if isValid(item) and isValidAndNotEmpty(item.id)
@@ -1007,7 +1009,11 @@ end sub
 sub onItemDetailsRendered()
   if m.itemDetails.renderTracking = "none" then return
   updateTextGradient()
-  updateItemDetailsAnimationTarget()
+  ' Only calculate animation target once per content load — itemInfoRows height is stable after metadata is set.
+  if not m.animationTargetCalculated
+    m.animationTargetCalculated = true
+    updateItemDetailsAnimationTarget()
+  end if
 end sub
 
 ' updateItemDetailsAnimationTarget: Slide itemDetails so the bottom of itemInfoRows sits just
