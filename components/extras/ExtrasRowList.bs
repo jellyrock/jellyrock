@@ -6,7 +6,7 @@ sub init()
   m.top.observeField("rowItemSelected", "onRowItemSelected")
   m.top.observeField("rowItemFocused", "onRowItemFocused")
 
-  ' Set up all Tasks
+  ' Set up all tasks
   m.LoadPeopleTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadPeopleTask.itemsToLoad = "people"
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
@@ -19,12 +19,20 @@ sub init()
   m.LoadAdditionalPartsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadAdditionalPartsTask.itemsToLoad = "additionalparts"
   m.LoadAdditionalPartsTask.observeField("content", "onAdditionalPartsLoaded")
+  m.LoadSeasonsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadSeasonsTask.itemsToLoad = "seasons"
+  m.LoadSeasonsTask.observeField("content", "onSeasonsLoaded")
   m.LoadMoviesTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadMoviesTask.itemsToLoad = "personMovies"
   m.LoadShowsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadShowsTask.itemsToLoad = "personTVShows"
   m.LoadSeriesTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadSeriesTask.itemsToLoad = "personSeries"
+
+  ' Season episodes task (Episode only — loads all episodes from the current season)
+  m.LoadSeasonEpisodesTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadSeasonEpisodesTask.itemsToLoad = "seasonEpisodes"
+  m.LoadSeasonEpisodesTask.observeField("content", "onSeasonEpisodesLoaded")
 end sub
 
 sub updateSize()
@@ -36,11 +44,46 @@ sub updateSize()
   m.top.vertFocusAnimationStyle = "fixedFocus"
 end sub
 
+' loadParts: Start the extras loading chain appropriate for the item type.
+'
+' Chain by type:
+'   Movie / Video / Recording → AdditionalParts → People → LikeThis → SpecialFeatures
+'   MusicVideo / Episode      → People → LikeThis
+'   Series                    → Seasons → People → LikeThis
+'
+' m.top.type must be set before calling this function (done by ShowScenes.bs).
 sub loadParts(data as object)
   m.top.parentId = data.id
   m.people = data.people
-  m.LoadAdditionalPartsTask.itemId = m.top.parentId
-  m.LoadAdditionalPartsTask.control = "RUN"
+
+  itemType = m.top.type
+
+  if itemType = "Series"
+    ' Initialize content node and default row size; seasons will be prepended in onSeasonsLoaded
+    m.top.content = CreateObject("roSGNode", "ContentNode")
+    m.top.rowItemSize = [[234, 396]]
+    m.LoadSeasonsTask.itemId = m.top.parentId
+    m.LoadSeasonsTask.control = "RUN"
+  else if itemType = "Episode"
+    ' Load all episodes from the same season; "More from Season X" row is prepended in onSeasonEpisodesLoaded
+    m.currentEpisodeId = data.id
+    m.currentEpisodeSeasonNumber = data.parentIndexNumber
+    m.top.content = CreateObject("roSGNode", "ContentNode")
+    m.top.rowItemSize = [[234, 396]]
+    m.LoadSeasonEpisodesTask.itemId = data.seriesId
+    m.LoadSeasonEpisodesTask.metadata = { seasonId: data.seasonId }
+    m.LoadSeasonEpisodesTask.control = "RUN"
+  else if itemType = "MusicVideo"
+    ' Skip AdditionalParts and SpecialFeatures
+    m.top.content = CreateObject("roSGNode", "ContentNode")
+    m.top.rowItemSize = [[234, 396]]
+    m.LoadPeopleTask.peopleList = m.people
+    m.LoadPeopleTask.control = "RUN"
+  else
+    ' Movie, Video, Recording: full chain starting with AdditionalParts
+    m.LoadAdditionalPartsTask.itemId = m.top.parentId
+    m.LoadAdditionalPartsTask.control = "RUN"
+  end if
 end sub
 
 sub loadPersonVideos(personId)
@@ -50,11 +93,75 @@ sub loadPersonVideos(personId)
   m.LoadMoviesTask.control = "RUN"
 end sub
 
+' onSeasonsLoaded: Build "Seasons" row then chain to People (Series only)
+sub onSeasonsLoaded()
+  seasons = m.LoadSeasonsTask.content
+  m.LoadSeasonsTask.unobserveField("content")
+
+  if isValid(seasons) and seasons.count() > 0
+    row = buildRow(tr("Seasons"), seasons)
+    m.top.content.appendChild(row)
+  end if
+
+  m.LoadPeopleTask.peopleList = m.people
+  m.LoadPeopleTask.control = "RUN"
+end sub
+
+' onSeasonEpisodesLoaded: Build "More from Season X" row with current episode first,
+' then episodes that follow it in order, then episodes that precede it (wrapping around).
+' E.g. viewing ep 3 of 9 → [3, 4, 5, 6, 7, 8, 9, 1, 2]
+sub onSeasonEpisodesLoaded()
+  episodes = m.LoadSeasonEpisodesTask.content
+  m.LoadSeasonEpisodesTask.unobserveField("content")
+
+  if isValid(episodes) and episodes.count() > 0
+    ' Split into: current episode, episodes after it, episodes before it
+    current = invalid
+    before = []
+    after = []
+    foundCurrent = false
+    for each ep in episodes
+      if ep.id = m.currentEpisodeId
+        current = ep
+        foundCurrent = true
+      else if foundCurrent
+        after.push(ep)
+      else
+        before.push(ep)
+      end if
+    end for
+
+    orderedEpisodes = []
+    if isValid(current) then orderedEpisodes.push(current)
+    for each ep in after
+      orderedEpisodes.push(ep)
+    end for
+    for each ep in before
+      orderedEpisodes.push(ep)
+    end for
+
+    if orderedEpisodes.count() > 0
+      if isValid(m.currentEpisodeSeasonNumber) and m.currentEpisodeSeasonNumber > 0
+        rowTitle = tr("More from Season %1").Replace("%1", stri(m.currentEpisodeSeasonNumber).trim())
+      else
+        rowTitle = tr("More Episodes")
+      end if
+      row = buildRow(rowTitle, orderedEpisodes)
+      ' Wide landscape size for episode thumbnails; subsequent rows use portrait [234, 396]
+      m.top.rowItemSize = [[464, 396], [234, 396]]
+      m.top.content.appendChild(row)
+    end if
+  end if
+
+  m.LoadPeopleTask.peopleList = m.people
+  m.LoadPeopleTask.control = "RUN"
+end sub
+
 sub onAdditionalPartsLoaded()
   parts = m.LoadAdditionalPartsTask.content
   m.LoadAdditionalPartsTask.unobserveField("content")
 
-  data = CreateObject("roSGNode", "ContentNode") ' The row Node
+  data = CreateObject("roSGNode", "ContentNode") ' The row node
   m.top.content = data
   if isValid(parts) and parts.count() > 0
     row = buildRow(tr("Additional Parts"), parts)
@@ -95,9 +202,13 @@ sub onLikeThisLoaded()
     end for
     addRowSize([234, 396])
   end if
-  ' Special Features next...
-  m.SpecialFeaturesTask.itemId = m.top.parentId
-  m.SpecialFeaturesTask.control = "RUN"
+
+  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, or Series
+  itemType = m.top.type
+  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series"
+    m.SpecialFeaturesTask.itemId = m.top.parentId
+    m.SpecialFeaturesTask.control = "RUN"
+  end if
 end sub
 
 function onSpecialFeaturesLoaded()

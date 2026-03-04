@@ -25,6 +25,9 @@ sub showContent()
   if not isValid(m.name) then initName()
   if not isValid(m.role) then initRole()
 
+  ' Clear previous item's watched badge and progress bar
+  if isValid(m.posterImg) then m.posterImg.callFunc("resetBadge")
+
   if isValid(m.top.itemContent)
     cont = m.top.itemContent
     ' width is declared in ExtrasItem.xml (default 234) and set by RowList per rowItemSize.
@@ -35,9 +38,23 @@ sub showContent()
     m.name.text = (cont.type = "Episode") ? cont.seriesName : cont.name
     m.name.maxWidth = slotWidth
     m.role.maxWidth = slotWidth
-    posterSize = { width: int(slotWidth), height: int(slotWidth * 1.41) }
+    posterWidth = int(slotWidth)
+    posterHeight = int(m.posterImg.height)
+    posterSize = { width: posterWidth, height: posterHeight }
+    ' Set display and decode dimensions BEFORE uri — Roku uses loadWidth/loadHeight at fetch time.
+    ' Override JRPoster's default scaleToZoom so mismatched aspect ratios show black bars.
+    m.posterImg.width = posterWidth
+    m.posterImg.loadWidth = posterWidth
+    m.posterImg.loadHeight = posterHeight
+    ' m.posterImg.loadDisplayMode = "scaleToFit"
     m.posterImg.uri = getItemPosterUrl(cont, posterSize)
-    m.posterImg.width = slotWidth
+    ' Watched badge and progress bar (mirrors HomeItem behavior)
+    if cont.isWatched
+      m.posterImg.isWatched = true
+    else if cont.type = "Series" and cont.unplayedItemCount > 0
+      m.posterImg.unplayedCount = cont.unplayedItemCount
+    end if
+    m.posterImg.playedPercentage = cont.playedPercentage
     m.role.text = cont.subtitle
   else
     m.role.text = tr("Unknown")

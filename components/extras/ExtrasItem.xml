@@ -7,7 +7,7 @@
   </interface>
   <children>
     <LayoutGroup layoutDirection="vert">
-      <Poster id="posterImg" width="234" height="300" translation="[8,243]" failedBitmapUri="pkg:/images/icons/baseline_person_white_48dp.png" />
+      <JRPoster id="posterImg" width="234" height="300" loadWidth="234" loadHeight="300" translation="[8,243]" failedBitmapUri="pkg:/images/icons/baseline_person_white_48dp.png" />
       <ScrollingLabelSecondarySmall id="pLabel" bold="true" horizAlign="center" vertAlign="bottom" height="48" repeatCount="0" />
       <ScrollingLabelSecondarySmall id="SubTitle" bold="true" horizAlign="center" vertAlign="center" height="32" repeatCount="0" />
     </LayoutGroup>

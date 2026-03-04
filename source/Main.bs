@@ -207,7 +207,7 @@ sub Main (args as dynamic) as void
       end if
 
       stopLoadingSpinner()
-    else if isNodeEvent(msg, "refreshMovieDetailsData")
+    else if isNodeEvent(msg, "refreshItemDetailsData")
       startLoadingSpinner()
 
       currentScene = m.global.sceneManager.callFunc("getActiveScene")
@@ -258,37 +258,9 @@ sub Main (args as dynamic) as void
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
         else if selectedItemType = "Episode" or LCase(selectedItemType) = "recording"
-          ' User has selected a TV episode or Recording they want us to play
-          queueItem = nodeHelpers.createQueueItem(selectedItem)
-          if not isValid(queueItem) then return
-
-          ' Carry stream selections from the TVEpisodes options dialog if present.
-          ' Episodes launched from Home/search won't have these fields, so guard with doesExist().
-          ' -1 = no user selection; fall back to 0 so ItemPostPlaybackInfo auto-selects.
-          episodeScene = msg.getRoSGNode()
-          userAudioIdx = -1
-          if isValid(episodeScene) and episodeScene.doesExist("selectedAudioStreamIndex")
-            userAudioIdx = episodeScene.selectedAudioStreamIndex
-          end if
-          queueItem.selectedAudioStreamIndex = userAudioIdx >= 0 ? userAudioIdx : 0
-
-          if isValid(episodeScene) and episodeScene.doesExist("selectedVideoStreamId") and isValidAndNotEmpty(episodeScene.selectedVideoStreamId)
-            queueItem.id = episodeScene.selectedVideoStreamId
-          end if
-
-          ' Display playback options dialog if there is a saved resume position
-          if selectedItem.playbackPositionTicks > 0
-            m.global.queueManager.callFunc("hold", queueItem)
-            playbackOptionDialog(selectedItem.playbackPositionTicks, queueItem)
-          else
-            queueItem.startingPoint = 0
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", queueItem)
-            m.global.queueManager.callFunc("playQueue")
-          end if
-
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Series"
-          group = CreateSeriesDetailsGroup(selectedItem.id)
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Season"
           if isValidAndNotEmpty(selectedItem.seriesId) and isValidAndNotEmpty(selectedItem.id)
             group = CreateSeasonDetailsGroupByID(selectedItem.seriesId, selectedItem.id)
@@ -297,11 +269,12 @@ sub Main (args as dynamic) as void
             message_dialog(tr("Error loading Season"))
           end if
         else if selectedItemType = "Movie"
-          ' open movie detail page
-          group = CreateMovieDetailsGroup(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Person"
           CreatePersonView(selectedItem)
-        else if selectedItemType = "TvChannel" or selectedItemType = "Video" or selectedItemType = "Program"
+        else if selectedItemType = "Video"
+          group = CreateItemDetailsGroup(selectedItem)
+        else if selectedItemType = "TvChannel" or selectedItemType = "Program"
           ' User selected a Live TV channel / program
           ' Show Channel Loading spinner
           dialog = createObject("roSGNode", "ProgressDialog")
@@ -362,7 +335,7 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "MusicAlbum"
           group = CreateAlbumView(selectedItem)
         else if selectedItemType = "MusicVideo"
-          group = CreateMovieDetailsGroup(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Playlist"
           group = CreatePlaylistView(selectedItem)
         else if selectedItemType = "Audio"
@@ -380,22 +353,12 @@ sub Main (args as dynamic) as void
       ' If you select a movie from ANYWHERE, follow this flow
       startLoadingSpinner()
       node = getMsgPicker(msg, "picker")
-      group = CreateMovieDetailsGroup(node)
+      group = CreateItemDetailsGroup(node)
     else if isNodeEvent(msg, "seriesSelected")
       ' If you select a TV Series from ANYWHERE, follow this flow
       startLoadingSpinner()
       node = getMsgPicker(msg, "picker")
-      group = CreateSeriesDetailsGroup(node.id)
-    else if isNodeEvent(msg, "seasonSelected")
-      ' If you select a TV Season from ANYWHERE, follow this flow
-      startLoadingSpinner()
-      ptr = msg.getData()
-      ' ptr is for [row, col] of selected item... but we only have 1 row
-      series = msg.getRoSGNode()
-      if isValid(ptr) and ptr.count() >= 2 and isValid(ptr[1]) and isValid(series) and isValid(series.seasonData) and isValid(series.seasonData.items)
-        node = series.seasonData.items[ptr[1]]
-        group = CreateSeasonDetailsGroup(series.itemContent, node)
-      end if
+      group = CreateItemDetailsGroup(node)
     else if isNodeEvent(msg, "musicAlbumSelected")
       ' If you select a Music Album from ANYWHERE, follow this flow
       startLoadingSpinner()
@@ -516,15 +479,15 @@ sub Main (args as dynamic) as void
       ' TODO - swap this based on target.mediatype
       ' types: [ Series (Show), Episode, Movie, Audio, Person, Studio, MusicArtist, Recording ]
       if node.type = "Series"
-        group = CreateSeriesDetailsGroup(node.id)
+        group = CreateItemDetailsGroup(node)
       else if node.type = "Movie"
-        group = CreateMovieDetailsGroup(node)
+        group = CreateItemDetailsGroup(node)
       else if node.type = "MusicArtist"
         group = CreateArtistView(node)
       else if node.type = "MusicAlbum"
         group = CreateAlbumView(node)
       else if node.type = "MusicVideo"
-        group = CreateMovieDetailsGroup(node)
+        group = CreateItemDetailsGroup(node)
       else if node.type = "Audio"
         m.global.queueManager.callFunc("clear")
         m.global.queueManager.callFunc("resetShuffle")
@@ -537,21 +500,9 @@ sub Main (args as dynamic) as void
         m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Episode"
-        ' Show playback options dialog if episode has resume position
-        queueItem = nodeHelpers.createQueueItem(node)
-        if node.playbackPositionTicks > 0
-          m.global.queueManager.callFunc("hold", queueItem)
-          playbackOptionDialog(node.playbackPositionTicks, queueItem)
-        else
-          ' No resume position, play from beginning via queue
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("push", queueItem)
-          m.global.queueManager.callFunc("playQueue")
-        end if
+        group = CreateItemDetailsGroup(node)
       else if LCase(node.type) = "recording"
-        m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
-        m.global.queueManager.callFunc("playQueue")
+        group = CreateItemDetailsGroup(node)
       else if node.type = "Audio"
         selectedIndex = msg.getData()
         screenContent = msg.getRoSGNode()
@@ -588,30 +539,53 @@ sub Main (args as dynamic) as void
         end if
 
         if isValid(group.itemContent)
-          queueItem = nodeHelpers.createQueueItem(group.itemContent)
-          if not isValid(queueItem) then return
-          queueItem.selectedAudioStreamIndex = audio_stream_idx
-          ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
-          if isValidAndNotEmpty(group.selectedVideoStreamId)
-            queueItem.id = group.selectedVideoStreamId
-          end if
-
-          ' MovieDetails: Play button always starts from beginning (Resume button handles resume)
-          ' Other screens: Show playback options dialog if resumable
-          if group.subtype() = "MovieDetails"
-            queueItem.startingPoint = 0
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", queueItem)
-            m.global.queueManager.callFunc("playQueue")
-          else
-            ' Display playback options dialog
-            if group.itemContent.playbackPositionTicks > 0
-              m.global.queueManager.callFunc("hold", queueItem)
-              playbackOptionDialog(group.itemContent.playbackPositionTicks, queueItem)
+          ' Series on ItemDetails: "Play All" queues all episodes from the beginning
+          if group.subtype() = "ItemDetails" and group.itemContent.type = "Series"
+            allEpData = api.shows.GetEpisodes(group.itemContent.id, {
+              UserId: m.global.user.id,
+              SortBy: "IndexNumber,SortName",
+              SortOrder: "Ascending"
+            })
+            if isValid(allEpData) and isValid(allEpData.Items) and allEpData.Items.count() > 0
+              ' Exclude Season 0 (Specials) from Play All
+              regularEps = []
+              for each ep in allEpData.Items
+                if isValid(ep.ParentIndexNumber) and ep.ParentIndexNumber > 0
+                  regularEps.push(ep)
+                end if
+              end for
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("set", regularEps)
+              m.global.queueManager.callFunc("playQueue")
             else
+              stopLoadingSpinner()
+            end if
+          else
+            queueItem = nodeHelpers.createQueueItem(group.itemContent)
+            if not isValid(queueItem) then return
+            queueItem.selectedAudioStreamIndex = audio_stream_idx
+            ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
+            if isValidAndNotEmpty(group.selectedVideoStreamId)
+              queueItem.id = group.selectedVideoStreamId
+            end if
+
+            ' ItemDetails: Play button always starts from beginning (Resume button handles resume)
+            ' Other screens: Show playback options dialog if resumable
+            if group.subtype() = "ItemDetails"
+              queueItem.startingPoint = 0
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("push", queueItem)
               m.global.queueManager.callFunc("playQueue")
+            else
+              ' Display playback options dialog
+              if group.itemContent.playbackPositionTicks > 0
+                m.global.queueManager.callFunc("hold", queueItem)
+                playbackOptionDialog(group.itemContent.playbackPositionTicks, queueItem)
+              else
+                m.global.queueManager.callFunc("clear")
+                m.global.queueManager.callFunc("push", queueItem)
+                m.global.queueManager.callFunc("playQueue")
+              end if
             end if
           end if
         end if
@@ -630,7 +604,7 @@ sub Main (args as dynamic) as void
       else if btn.id = "resumeButton"
         if not isValid(group) then return
 
-        ' User chose Resume button from movie detail view
+        ' User chose Resume button from detail view
         startLoadingSpinner()
         ' Check if a specific Audio Stream was selected
         audio_stream_idx = 0
@@ -639,24 +613,37 @@ sub Main (args as dynamic) as void
         end if
 
         if isValid(group.itemContent)
-          queueItem = nodeHelpers.createQueueItem(group.itemContent)
-          if not isValid(queueItem) then return
-          queueItem.selectedAudioStreamIndex = audio_stream_idx
-          ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
-          if isValidAndNotEmpty(group.selectedVideoStreamId)
-            queueItem.id = group.selectedVideoStreamId
-          end if
-
-          ' Set starting point to saved position
-          if group.itemContent.playbackPositionTicks > 0
-            queueItem.startingPoint = group.itemContent.playbackPositionTicks
+          ' Series on ItemDetails: resume the next-up episode stored on the component
+          if group.subtype() = "ItemDetails" and group.itemContent.type = "Series"
+            nextEp = group.nextUpEpisode
+            if isValid(nextEp) and isValidAndNotEmpty(nextEp.id)
+              queueItem = nodeHelpers.createQueueItem(nextEp)
+              if not isValid(queueItem) then return
+              queueItem.startingPoint = nextEp.playbackPositionTicks
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("push", queueItem)
+              m.global.queueManager.callFunc("playQueue")
+            end if
           else
-            queueItem.startingPoint = 0
-          end if
+            queueItem = nodeHelpers.createQueueItem(group.itemContent)
+            if not isValid(queueItem) then return
+            queueItem.selectedAudioStreamIndex = audio_stream_idx
+            ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
+            if isValidAndNotEmpty(group.selectedVideoStreamId)
+              queueItem.id = group.selectedVideoStreamId
+            end if
 
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("push", queueItem)
-          m.global.queueManager.callFunc("playQueue")
+            ' Set starting point to saved position
+            if group.itemContent.playbackPositionTicks > 0
+              queueItem.startingPoint = group.itemContent.playbackPositionTicks
+            else
+              queueItem.startingPoint = 0
+            end if
+
+            m.global.queueManager.callFunc("clear")
+            m.global.queueManager.callFunc("push", queueItem)
+            m.global.queueManager.callFunc("playQueue")
+          end if
         end if
 
         if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "main_group"
@@ -693,16 +680,30 @@ sub Main (args as dynamic) as void
           group.lastFocus.setFocus(true)
         end if
       else if btn.id = "watchedButton"
-        movie = group.itemContent
-        if isValid(movie) and isValidAndNotEmpty(movie.id)
-          startLoadingSpinner()
-          if movie.isWatched
-            UnmarkItemWatched(movie.id)
+        item = group.itemContent
+        if isValid(item) and isValidAndNotEmpty(item.id)
+          ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of files)
+          if item.type = "Series"
+            m.pendingWatchedItemId = item.id
+            m.pendingWatchedIsCurrentlyWatched = item.isWatched
+            if item.isWatched
+              confirmMsg = tr("Mark all episodes in this series as unwatched?")
+              confirmBtn = tr("Mark Unwatched")
+            else
+              confirmMsg = tr("Mark all episodes in this series as watched?")
+              confirmBtn = tr("Mark Watched")
+            end if
+            m.global.sceneManager.callFunc("optionDialog", tr("Watched"), [confirmMsg], [tr("Cancel"), confirmBtn])
           else
-            MarkItemWatched(movie.id)
+            startLoadingSpinner()
+            if item.isWatched
+              UnmarkItemWatched(item.id)
+            else
+              MarkItemWatched(item.id)
+            end if
+            ' Refresh from server to get authoritative state
+            group.refreshItemDetailsData = not group.refreshItemDetailsData
           end if
-          ' Refresh from server to get authoritative state
-          group.refreshMovieDetailsData = not group.refreshMovieDetailsData
         end if
       else if btn.id = "favoriteButton"
         print "favoriteButton pressed"
@@ -724,7 +725,27 @@ sub Main (args as dynamic) as void
       else if btn.id = "refreshButton"
         ' Trigger data refresh for the current screen
         if isValid(group)
-          group.refreshMovieDetailsData = not group.refreshMovieDetailsData
+          group.refreshItemDetailsData = not group.refreshItemDetailsData
+        end if
+      else if btn.id = "shuffleButton"
+        ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added
+        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
+          startLoadingSpinner()
+          item = group.itemContent
+          shuffleItems = invalid
+
+          if item.type = "Series"
+            shuffleData = api.shows.GetEpisodes(item.id, { UserId: m.global.user.id, SortBy: "Random", Limit: 200 })
+            if isValid(shuffleData) then shuffleItems = shuffleData.Items
+          end if
+
+          if isValid(shuffleItems) and shuffleItems.count() > 0
+            m.global.queueManager.callFunc("clear")
+            m.global.queueManager.callFunc("set", shuffleItems)
+            m.global.queueManager.callFunc("playQueue")
+          else
+            stopLoadingSpinner()
+          end if
         end if
       else if btn.id = "deleteButton"
         print "deleteButton pressed"
@@ -938,6 +959,25 @@ sub Main (args as dynamic) as void
             ' User cancelled or dialog closed
             m.pendingDeleteItemId = invalid
           end if
+          ' Handle watched confirmation dialog (Series only)
+        else if isValid(m.pendingWatchedItemId)
+          if popupNode.returnData.indexSelected = 1
+            ' User confirmed — mark/unmark all episodes
+            startLoadingSpinner()
+            if m.pendingWatchedIsCurrentlyWatched
+              UnmarkItemWatched(m.pendingWatchedItemId)
+            else
+              MarkItemWatched(m.pendingWatchedItemId)
+            end if
+            m.pendingWatchedItemId = invalid
+            activeGroup = m.global.sceneManager.callFunc("getActiveScene")
+            if isValid(activeGroup)
+              activeGroup.refreshItemDetailsData = not activeGroup.refreshItemDetailsData
+            end if
+          else
+            ' User cancelled
+            m.pendingWatchedItemId = invalid
+          end if
         else
           selectedItem = m.global.queueManager.callFunc("getHold")
           m.global.queueManager.callFunc("clearHold")
@@ -965,7 +1005,7 @@ sub Main (args as dynamic) as void
               m.global.queueManager.callFunc("playQueue")
             else if popupNode.returnData.indexselected = 2
               ' User chose Go to series
-              CreateSeriesDetailsGroup(selectedItem[0].SeriesId)
+              CreateItemDetailsGroup({ id: selectedItem[0].SeriesId, type: "Series" })
             else if popupNode.returnData.indexselected = 3
               ' User chose Go to season
               if isValid(selectedItem[0].SeriesId) and isValid(selectedItem[0].seasonID)
@@ -976,7 +1016,7 @@ sub Main (args as dynamic) as void
               end if
             else if popupNode.returnData.indexselected = 4
               ' User chose Go to episode
-              CreateMovieDetailsGroup(selectedItem[0])
+              CreateItemDetailsGroup(selectedItem[0])
             end if
           end if
         end if

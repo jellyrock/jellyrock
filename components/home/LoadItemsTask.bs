@@ -201,6 +201,38 @@ sub loadItems()
     getPersonVideos("Episode", results)
   else if m.top.itemsToLoad = "personSeries"
     getPersonVideos("Series", results)
+  else if m.top.itemsToLoad = "seasons"
+    data = api.shows.GetSeasons(m.top.itemId, { UserId: globalUser.id, Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
+      end for
+    end if
+  else if m.top.itemsToLoad = "seasonEpisodes"
+    ' itemId = seriesId, metadata.seasonId = season to load
+    seasonId = ""
+    if isValid(m.top.metadata) and isValidAndNotEmpty(m.top.metadata.seasonId)
+      seasonId = m.top.metadata.seasonId
+    end if
+    data = api.shows.GetEpisodes(m.top.itemId, {
+      UserId: globalUser.id,
+      SeasonId: seasonId,
+      Fields: "PrimaryImageAspectRatio,Overview",
+      EnableImages: true
+    })
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
+      end for
+    end if
+  else if m.top.itemsToLoad = "seriesFirstEpisode"
+    data = api.shows.GetEpisodes(m.top.itemId, { UserId: globalUser.id, Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" })
+    if isValid(data) and isValid(data.Items) and data.Items.count() > 0
+      node = m.transformer.transformBaseItem(data.Items[0])
+      if isValid(node) then results.push(node)
+    end if
   else if m.top.itemsToLoad = "metaData"
     results.push(ItemMetaData(m.top.itemId))
   else if m.top.itemsToLoad = "audioStream"
