@@ -1,0 +1,145 @@
+namespace tests
+
+  @suite("ItemDetails - nextUpEpisodeChanged()")
+  class ItemDetailsNextUpEpisodeChangedTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private buttonGrp as object
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.buttonGrp = m.itemDetails.findNode("buttons")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.itemDetails = invalid
+      m.buttonGrp = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has no resume button by default")
+    function _()
+      resumeButton = m.itemDetails.findNode("resumeButton")
+
+      m.assertInvalid(resumeButton)
+    end function
+
+    @it("has 4 default buttons (play, watched, favorite, refresh)")
+    function _()
+      m.assertEqual(m.buttonGrp.getChildCount(), 4)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Resume button insertion")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds resume button when nextUpEpisode has a valid id")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+
+      m.itemDetails.nextUpEpisode = ep
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertNotInvalid(resumeButton)
+    end function
+
+    @it("inserts resume button at index 0 (before play button)")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+
+      m.itemDetails.nextUpEpisode = ep
+
+      firstButton = m.buttonGrp.getChild(0)
+      m.assertEqual(firstButton.id, "resumeButton")
+    end function
+
+    @it("button count increases to 5 when resume button is added")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+
+      m.itemDetails.nextUpEpisode = ep
+
+      m.assertEqual(m.buttonGrp.getChildCount(), 5)
+    end function
+
+    @it("does not add resume button when nextUpEpisode id is empty")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = ""
+
+      m.itemDetails.nextUpEpisode = ep
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertInvalid(resumeButton)
+    end function
+
+    @it("updates tick values on resume button without adding a duplicate")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+      ep.playbackPositionTicks = 100000&
+
+      m.itemDetails.nextUpEpisode = ep
+
+      ' Update ticks via a second assignment
+      ep2 = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep2.id = "ep-001"
+      ep2.playbackPositionTicks = 200000&
+
+      m.itemDetails.nextUpEpisode = ep2
+
+      ' Still only one resume button
+      m.assertEqual(m.buttonGrp.getChildCount(), 5)
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertEqual(resumeButton.playbackPositionTicks, 200000&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Resume button removal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes resume button when nextUpEpisode id becomes empty")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+      m.itemDetails.nextUpEpisode = ep
+
+      ' Clear by setting an episode with no id
+      epEmpty = CreateObject("roSGNode", "JellyfinBaseItem")
+      epEmpty.id = ""
+      m.itemDetails.nextUpEpisode = epEmpty
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertInvalid(resumeButton)
+    end function
+
+    @it("button count returns to 4 after resume button is removed")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+      m.itemDetails.nextUpEpisode = ep
+
+      epEmpty = CreateObject("roSGNode", "JellyfinBaseItem")
+      epEmpty.id = ""
+      m.itemDetails.nextUpEpisode = epEmpty
+
+      m.assertEqual(m.buttonGrp.getChildCount(), 4)
+    end function
+
+  end class
+
+end namespace
