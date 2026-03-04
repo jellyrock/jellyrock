@@ -554,9 +554,13 @@ sub Main (args as dynamic) as void
                   regularEps.push(ep)
                 end if
               end for
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("set", regularEps)
-              m.global.queueManager.callFunc("playQueue")
+              if regularEps.count() > 0
+                m.global.queueManager.callFunc("clear")
+                m.global.queueManager.callFunc("set", regularEps)
+                m.global.queueManager.callFunc("playQueue")
+              else
+                stopLoadingSpinner()
+              end if
             else
               stopLoadingSpinner()
             end if
