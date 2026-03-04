@@ -622,11 +622,16 @@ sub Main (args as dynamic) as void
             nextEp = group.nextUpEpisode
             if isValid(nextEp) and isValidAndNotEmpty(nextEp.id)
               queueItem = nodeHelpers.createQueueItem(nextEp)
-              if not isValid(queueItem) then return
+              if not isValid(queueItem)
+                stopLoadingSpinner()
+                return
+              end if
               queueItem.startingPoint = nextEp.playbackPositionTicks
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("push", queueItem)
               m.global.queueManager.callFunc("playQueue")
+            else
+              stopLoadingSpinner()
             end if
           else
             queueItem = nodeHelpers.createQueueItem(group.itemContent)
