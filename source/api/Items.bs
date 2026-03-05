@@ -263,7 +263,7 @@ end function
 ' MetaData about an item — returns a JellyfinBaseItem node.
 function ItemMetaData(id as string)
   url = Substitute("Users/{0}/Items/{1}", m.global.user.id, id)
-  resp = APIRequest(url, { "fields": "Chapters,Trickplay" })
+  resp = APIRequest(url, { "fields": "Chapters,Trickplay,Genres,Studios,People" })
   data = getJson(resp)
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()

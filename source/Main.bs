@@ -213,15 +213,12 @@ sub Main (args as dynamic) as void
       currentScene = m.global.sceneManager.callFunc("getActiveScene")
 
       if isValid(currentScene) and isValid(currentScene.itemContent) and isValidAndNotEmpty(currentScene.itemContent.id)
-        data = api.users.GetItem(m.global.user.id, currentScene.itemContent.id)
-        if isValid(data)
-          transformer = JellyfinDataTransformer()
-          updatedItem = transformer.transformBaseItem(data)
-          if isValid(updatedItem)
-            currentScene.itemContent = updatedItem
-            if updatedItem.playbackPositionTicks > 0
-              m.global.queueManager.callFunc("setTopStartingPoint", updatedItem.playbackPositionTicks)
-            end if
+        ' Use ItemMetaData (same as initial load) so People/Genres/Studios/UserData are all present.
+        updatedItem = ItemMetaData(currentScene.itemContent.id)
+        if isValid(updatedItem)
+          currentScene.itemContent = updatedItem
+          if updatedItem.playbackPositionTicks > 0
+            m.global.queueManager.callFunc("setTopStartingPoint", updatedItem.playbackPositionTicks)
           end if
         end if
       end if
@@ -262,12 +259,7 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "Series"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Season"
-          if isValidAndNotEmpty(selectedItem.seriesId) and isValidAndNotEmpty(selectedItem.id)
-            group = CreateSeasonDetailsGroupByID(selectedItem.seriesId, selectedItem.id)
-          else
-            stopLoadingSpinner()
-            message_dialog(tr("Error loading Season"))
-          end if
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Movie"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Person"
@@ -564,6 +556,22 @@ sub Main (args as dynamic) as void
             else
               stopLoadingSpinner()
             end if
+          else if group.subtype() = "ItemDetails" and group.itemContent.type = "Season"
+            ' Season "Play All": queue all episodes for this season in order
+            item = group.itemContent
+            allEpData = api.shows.GetEpisodes(item.seriesId, {
+              UserId: m.global.user.id,
+              SeasonId: item.id,
+              SortBy: "IndexNumber,SortName",
+              SortOrder: "Ascending"
+            })
+            if isValid(allEpData) and isValid(allEpData.Items) and allEpData.Items.count() > 0
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("set", allEpData.Items)
+              m.global.queueManager.callFunc("playQueue")
+            else
+              stopLoadingSpinner()
+            end if
           else
             queueItem = nodeHelpers.createQueueItem(group.itemContent)
             if not isValid(queueItem) then return
@@ -691,7 +699,7 @@ sub Main (args as dynamic) as void
       else if btn.id = "watchedButton"
         item = group.itemContent
         if isValid(item) and isValidAndNotEmpty(item.id)
-          ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of files)
+          ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of episodes)
           if item.type = "Series"
             m.pendingWatchedItemId = item.id
             m.pendingWatchedIsCurrentlyWatched = item.isWatched
@@ -706,9 +714,9 @@ sub Main (args as dynamic) as void
           else
             startLoadingSpinner()
             if item.isWatched
-              UnmarkItemWatched(item.id)
+              api.users.UnmarkPlayed(m.global.user.id, item.id)
             else
-              MarkItemWatched(item.id)
+              api.users.MarkPlayed(m.global.user.id, item.id)
             end if
             ' Refresh from server to get authoritative state
             group.refreshItemDetailsData = not group.refreshItemDetailsData
@@ -721,11 +729,11 @@ sub Main (args as dynamic) as void
         if isValid(movie) and isValidAndNotEmpty(movie.id) and isValid(favoriteButton)
           startLoadingSpinner()
           if movie.isFavorite
-            UnmarkItemFavorite(movie.id)
+            api.users.UnmarkFavorite(m.global.user.id, movie.id)
             movie.isFavorite = false
             favoriteButton.selected = false
           else
-            MarkItemFavorite(movie.id)
+            api.users.MarkFavorite(m.global.user.id, movie.id)
             movie.isFavorite = true
             favoriteButton.selected = true
           end if
@@ -746,6 +754,10 @@ sub Main (args as dynamic) as void
           if item.type = "Series"
             shuffleData = api.shows.GetEpisodes(item.id, { UserId: m.global.user.id, SortBy: "Random", Limit: 200 })
             if isValid(shuffleData) then shuffleItems = shuffleData.Items
+          else if item.type = "Season"
+            ' Shuffle all episodes in this season only
+            shuffleData = api.shows.GetEpisodes(item.seriesId, { UserId: m.global.user.id, SeasonId: item.id, SortBy: "Random", Limit: 200 })
+            if isValid(shuffleData) then shuffleItems = shuffleData.Items
           end if
 
           if isValid(shuffleItems) and shuffleItems.count() > 0
@@ -755,6 +767,14 @@ sub Main (args as dynamic) as void
           else
             stopLoadingSpinner()
           end if
+        end if
+      else if btn.id = "goToSeriesButton"
+        ' Navigate to the parent series detail screen
+        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.seriesId)
+          seriesRef = CreateObject("roSGNode", "ContentNode")
+          seriesRef.id = group.itemContent.seriesId
+          seriesRef.type = "Series"
+          CreateItemDetailsGroup(seriesRef)
         end if
       else if btn.id = "deleteButton"
         print "deleteButton pressed"
@@ -974,9 +994,9 @@ sub Main (args as dynamic) as void
             ' User confirmed — mark/unmark all episodes
             startLoadingSpinner()
             if m.pendingWatchedIsCurrentlyWatched
-              UnmarkItemWatched(m.pendingWatchedItemId)
+              api.users.UnmarkPlayed(m.global.user.id, m.pendingWatchedItemId)
             else
-              MarkItemWatched(m.pendingWatchedItemId)
+              api.users.MarkPlayed(m.global.user.id, m.pendingWatchedItemId)
             end if
             m.pendingWatchedItemId = invalid
             m.pendingWatchedIsCurrentlyWatched = invalid

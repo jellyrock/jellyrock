@@ -12,6 +12,8 @@ const EXTRAS_GRP_TARGET_Y = 378
 const ITEM_DETAILS_EXTRAS_PADDING = 6
 ' Minimum display height for the logo image — images smaller than this are scaled up (aspect ratio preserved)
 const LOGO_MIN_DISPLAY_HEIGHT = 212
+' Maximum display width for the logo image — prevents very wide/flat logos from overlapping buttons
+const LOGO_MAX_DISPLAY_WIDTH = 500
 
 sub init()
   m.log = log.Logger("ItemDetails")
@@ -59,6 +61,7 @@ sub init()
   m.optionsButton = invalid
   m.deleteButton = invalid
   m.shuffleButton = invalid
+  m.goToSeriesButton = invalid
 
   ' Shuffle task (Series only)
   m.getShuffleEpisodesTask = createObject("roSGNode", "getShuffleEpisodesTask")
@@ -66,6 +69,14 @@ sub init()
   ' First episode task (Series Play button)
   m.loadFirstEpisodeTask = CreateObject("roSGNode", "LoadItemsTask")
   m.loadFirstEpisodeTask.itemsToLoad = "seriesFirstEpisode"
+
+  ' Season: fetch parent series metadata in the background for ratings/runtime/genres/logo
+  m.loadSeasonSeriesTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.loadSeasonSeriesTask.itemsToLoad = "metaData"
+  m.seasonSeriesData = invalid
+  ' Cache persists for the lifetime of this component — keyed by seriesId so returning to a
+  ' previously-visited season renders immediately rather than showing a metadata pop-in.
+  m.seasonSeriesCache = {}
 
   m.isFirstRun = true
 
@@ -234,9 +245,9 @@ sub removeResumeButtonWithFocus(resumeButton as object)
   focusButtonGroupChild()
 end sub
 
-' manageShuffleButton: Add or remove Shuffle button for Series type only
+' manageShuffleButton: Add or remove Shuffle button for Series and Season types
 sub manageShuffleButton(itemType as string)
-  if itemType = "Series"
+  if itemType = "Series" or itemType = "Season"
     if not isValid(m.shuffleButton)
       m.shuffleButton = CreateObject("roSGNode", "IconButton")
       m.shuffleButton.id = "shuffleButton"
@@ -362,6 +373,8 @@ sub populateInfoGroup()
 
   if item.type = "Series"
     populateInfoGroupSeries(item, userSettings)
+  else if item.type = "Season"
+    populateInfoGroupSeason(item, userSettings)
   else if item.type = "Episode"
     populateInfoGroupEpisode(item, userSettings)
   else if item.type = "MusicVideo"
@@ -605,6 +618,67 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
   end if
 end sub
 
+' populateInfoGroupSeason: Info rows for Season
+' Row 1: Year · Official Rating (series) · Avg episode runtime (series) · Ends At
+' Row 2: Series name · Episode count · Studio
+sub populateInfoGroupSeason(item as object, userSettings as object)
+  if item.productionYear > 0
+    yearNode = createInfoLabel("releaseYear")
+    yearNode.text = stri(item.productionYear).trim()
+    displayInfoNode(yearNode)
+  end if
+
+  ' Runtime and ends-at fall back to parent series data (Jellyfin stores avg episode runtime there)
+  seriesData = m.seasonSeriesData
+
+  ' Official rating lives on the Series in Jellyfin, not on Season items — fall back to series data
+  officialRating = item.officialRating
+  if not isValidAndNotEmpty(officialRating) and isValid(seriesData)
+    officialRating = seriesData.officialRating
+  end if
+  if isValidAndNotEmpty(officialRating)
+    ratingNode = createInfoLabel("officialRating")
+    ratingNode.text = officialRating
+    displayInfoNode(ratingNode)
+  end if
+
+  if isValid(seriesData) and seriesData.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(round(seriesData.runTimeTicks / 600000000.0)).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  if isValid(seriesData) and seriesData.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    ' Compute end time directly from series runTimeTicks — do NOT swap m.top.itemContent,
+    ' as that fires itemContentChanged() synchronously causing reentrancy and row duplication.
+    endDate = CreateObject("roDateTime")
+    endDate.fromSeconds(endDate.asSeconds() + int(seriesData.runTimeTicks / 10000000.0))
+    endDate.toLocalTime()
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", formatTime(endDate))
+    displayInfoNode(m.endsAtNode)
+  end if
+
+  ' Row 2: series name · episode count · studio
+  if isValidAndNotEmpty(item.seriesName)
+    seriesNameNode = createInfoLabel("seriesName")
+    seriesNameNode.text = item.seriesName
+    displayDirectorGenreNode(seriesNameNode)
+  end if
+
+  if item.childCount > 0
+    episodeCountNode = createInfoLabel("episodeCount")
+    episodeCountNode.text = stri(item.childCount).trim() + " " + tr("episodes")
+    displayDirectorGenreNode(episodeCountNode)
+  end if
+
+  if isValid(seriesData) and seriesData.studios.count() > 0
+    studioNode = createInfoLabel("studio")
+    studioNode.text = seriesData.studios[0]
+    displayDirectorGenreNode(studioNode)
+  end if
+end sub
+
 ' getHistory: Format the air schedule/status string for a Series item
 ' Example output: "ABC" or "Fridays at 9:30 PM on NBC"
 function getHistory() as string
@@ -647,7 +721,16 @@ end function
 
 sub itemContentChanged()
   m.animationTargetCalculated = false
+  m.seasonSeriesData = invalid
   item = m.top.itemContent
+
+  ' Pre-populate series data from cache so Season info rows render on first paint
+  if isValid(item) and item.type = "Season" and isValidAndNotEmpty(item.seriesId)
+    cached = m.seasonSeriesCache[item.seriesId]
+    if isValid(cached)
+      m.seasonSeriesData = cached
+    end if
+  end if
 
   if isValid(item) and isValidAndNotEmpty(item.id)
     device = m.global.device
@@ -665,9 +748,9 @@ sub itemContentChanged()
 
     ' Media tracks and stream options are only relevant for playable types
     ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space
-    setTracksInLayout(item.type <> "Series")
+    setTracksInLayout(item.type <> "Series" and item.type <> "Season")
 
-    if item.type <> "Series"
+    if item.type <> "Series" and item.type <> "Season"
       if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
         m.top.selectedVideoStreamId = item.mediaSourceId
       end if
@@ -687,7 +770,7 @@ sub itemContentChanged()
       SetUpSubtitleDisplay(allStreams, m.top.selectedAudioStreamIndex)
       updateOptionsButtonVisibility()
     else
-      ' Series: ensure options button is removed if it was left from a previous load
+      ' Series/Season: ensure options button is removed if it was left from a previous load
       if isValid(m.optionsButton)
         m.buttonGrp.removeChild(m.optionsButton)
         m.optionsButton = invalid
@@ -699,10 +782,10 @@ sub itemContentChanged()
 
     setFieldText("videoTitle", item.name)
 
-    ' Series uses "Play All" to clarify it starts from the first episode
+    ' Series and Season use "Play All" to clarify all episodes will be queued
     playButton = m.top.findNode("playButton")
     if isValid(playButton)
-      if item.type = "Series"
+      if item.type = "Series" or item.type = "Season"
         playButton.text = tr("Play All")
       else
         playButton.text = tr("Play")
@@ -713,13 +796,26 @@ sub itemContentChanged()
     updateWatchedButton()
     manageShuffleButton(item.type)
 
-    ' Non-Series types: Resume based on playbackPositionTicks
+    ' Non-Series/Season types: Resume based on playbackPositionTicks
     ' Series: Resume based on nextUpEpisode (managed by nextUpEpisodeChanged observer)
-    if item.type <> "Series"
+    ' Season: No resume — NextUp API does not support SeasonId filtering
+    if item.type <> "Series" and item.type <> "Season"
       manageResumeButton()
     end if
 
+    manageGoToSeriesButton(item.type)
     manageDeleteButton()
+
+    ' Season: kick off background fetch of parent series data for ratings/runtime/genres/logo
+    if item.type = "Season" and isValidAndNotEmpty(item.seriesId)
+      m.loadSeasonSeriesTask.itemId = item.seriesId
+      m.loadSeasonSeriesTask.observeField("content", "onSeasonSeriesDataLoaded")
+      m.loadSeasonSeriesTask.control = "RUN"
+    end if
+
+    ' Reload extras rows on every content change (first load and every refresh)
+    m.extrasGrid.type = item.type
+    m.extrasGrid.callFunc("loadParts", item)
   end if
 
   m.buttonGrp.visible = true
@@ -926,8 +1022,8 @@ sub setItemLogo(item as object)
   logoItemId = item.id
   logoImageTag = item.logoImageTag
 
-  if item.type = "Episode"
-    ' Episodes don't have their own logo — use the parent series logo
+  if item.type = "Episode" or item.type = "Season"
+    ' Episodes and Seasons don't have their own logo — use the parent series logo
     if isValidAndNotEmpty(item.parentLogoItemId)
       logoItemId = item.parentLogoItemId
       logoImageTag = item.parentLogoImageTag
@@ -1002,6 +1098,13 @@ sub onLogoLoadStatusChanged()
       else
         displayWidth = logoWidth
         displayHeight = logoHeight
+      end if
+
+      ' Cap width to prevent wide/flat logos from overlapping buttons.
+      ' If the cap reduces width, scale height down proportionally to preserve aspect ratio.
+      if displayWidth > LOGO_MAX_DISPLAY_WIDTH
+        displayHeight = int(displayHeight * LOGO_MAX_DISPLAY_WIDTH / displayWidth)
+        displayWidth = LOGO_MAX_DISPLAY_WIDTH
       end if
 
       m.itemLogo.width = displayWidth
@@ -1218,6 +1321,39 @@ sub manageDeleteButton()
   end if
 end sub
 
+' manageGoToSeriesButton: Add or remove "Go to Series" button for Season type only
+sub manageGoToSeriesButton(itemType as string)
+  if itemType = "Season"
+    if not isValid(m.goToSeriesButton)
+      m.goToSeriesButton = CreateObject("roSGNode", "IconButton")
+      m.goToSeriesButton.id = "goToSeriesButton"
+      m.goToSeriesButton.icon = "pkg:/images/icons/tv.png"
+      m.goToSeriesButton.text = tr("Go to Series")
+      ' Insert after favoriteButton, before refreshButton
+      refreshButtonIndex = getButtonIndex("refreshButton")
+      if refreshButtonIndex >= 0
+        m.buttonGrp.insertChild(m.goToSeriesButton, refreshButtonIndex)
+      else
+        m.buttonGrp.appendChild(m.goToSeriesButton)
+      end if
+    end if
+  else
+    if isValid(m.goToSeriesButton)
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      goToSeriesButtonIndex = getButtonIndex("goToSeriesButton")
+      m.buttonGrp.removeChild(m.goToSeriesButton)
+      m.goToSeriesButton = invalid
+
+      if isValid(currentFocusIndex) and isValid(goToSeriesButtonIndex) and currentFocusIndex >= goToSeriesButtonIndex
+        focusIndex = currentFocusIndex - 1
+        if focusIndex < 0 then focusIndex = 0
+        m.buttonGrp.buttonFocused = focusIndex
+      end if
+      focusButtonGroupChild()
+    end if
+  end if
+end sub
+
 function round(f as float) as integer
   ' BrightScript only has a "floor" round.
   ' Compare floor to floor+1 to find which is closer.
@@ -1266,6 +1402,40 @@ sub videoOptionsClosed()
     m.top.observeField("itemContent", "itemContentChanged")
   end if
   m.buttonGrp.setFocus(true)
+end sub
+
+' onSeasonSeriesDataLoaded: Update Season info rows and logo with parent series metadata
+sub onSeasonSeriesDataLoaded()
+  m.loadSeasonSeriesTask.unobserveField("content")
+  content = m.loadSeasonSeriesTask.content
+
+  if not isValid(content) or content.count() = 0 then return
+  seriesItem = content[0]
+  if not isValid(seriesItem) then return
+  m.seasonSeriesData = seriesItem
+
+  ' Update cache so future visits to any season of this series render immediately
+  seriesId = m.top.itemContent.seriesId
+  if isValidAndNotEmpty(seriesId)
+    m.seasonSeriesCache[seriesId] = seriesItem
+  end if
+
+  ' Clear both rows — removeChildrenIndex(num_children, startIndex)
+  m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
+  m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
+  m.infoDividerCount = 0
+  m.directorGenreDividerCount = 0
+  m.endsAtNode = invalid
+
+  populateInfoGroupSeason(m.top.itemContent, m.global.user.settings)
+
+  ' Row heights changed — reset so onItemDetailsRendered() recalculates the extras animation target
+  m.animationTargetCalculated = false
+
+  ' Update logo using series data if the season didn't carry parentLogoItemId
+  if isValid(m.itemLogo) and not m.itemLogo.visible
+    setItemLogo(m.seasonSeriesData)
+  end if
 end sub
 
 ' onShuffleEpisodeDataLoaded: Play shuffled episodes for Series
