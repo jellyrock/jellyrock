@@ -73,11 +73,6 @@
       <translation>Age</translation>
     </message>
     <message>
-      <source>Aired</source>
-      <translation>Aired</translation>
-      <extracomment>Aired date label</extracomment>
-    </message>
-    <message>
       <source>Album Artists</source>
       <translation>Album Artists</translation>
     </message>
@@ -130,6 +125,10 @@
     <message>
       <source>Artists</source>
       <translation>Artists</translation>
+    </message>
+    <message>
+      <source>at</source>
+      <translation>at</translation>
     </message>
     <message>
       <source>Attempt Direct Play for H.264 media with unsupported profile levels before falling back to transcoding if it fails.</source>
@@ -204,6 +203,10 @@
       <source>Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.</source>
       <translation>Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.</translation>
       <extracomment>Settings Menu - Description for option</extracomment>
+    </message>
+    <message>
+      <source>By: %1</source>
+      <translation>By: %1</translation>
     </message>
     <message>
       <source>Cancel</source>
@@ -289,6 +292,10 @@
     <message>
       <source>Control whether the server&apos;s splash screen image is displayed on the User Select screen. Server admin must enable this feature in branding settings.</source>
       <translation>Control whether the server&apos;s splash screen image is displayed on the User Select screen. Server admin must enable this feature in branding settings.</translation>
+    </message>
+    <message>
+      <source>Could not load the first episode.</source>
+      <translation>Could not load the first episode.</translation>
     </message>
     <message>
       <source>CRITIC_RATING</source>
@@ -682,6 +689,22 @@
       <translation>Manual Login</translation>
     </message>
     <message>
+      <source>Mark all episodes in this series as unwatched?</source>
+      <translation>Mark all episodes in this series as unwatched?</translation>
+    </message>
+    <message>
+      <source>Mark all episodes in this series as watched?</source>
+      <translation>Mark all episodes in this series as watched?</translation>
+    </message>
+    <message>
+      <source>Mark Unwatched</source>
+      <translation>Mark Unwatched</translation>
+    </message>
+    <message>
+      <source>Mark Watched</source>
+      <translation>Mark Watched</translation>
+    </message>
+    <message>
       <source>Max Days Next Up</source>
       <translation>Max Days Next Up</translation>
       <extracomment>Option Title in user setting screen</extracomment>
@@ -707,6 +730,14 @@
       <source>Monday</source>
       <translation>Monday</translation>
       <extracomment>Day of Week</extracomment>
+    </message>
+    <message>
+      <source>More Episodes</source>
+      <translation>More Episodes</translation>
+    </message>
+    <message>
+      <source>More from Season %1</source>
+      <translation>More from Season %1</translation>
     </message>
     <message>
       <source>More Like This</source>
@@ -800,6 +831,10 @@
       <translation>OK</translation>
     </message>
     <message>
+      <source>on</source>
+      <translation>on</translation>
+    </message>
+    <message>
       <source>On Now</source>
       <translation>On Now</translation>
     </message>
@@ -883,6 +918,10 @@
       <extracomment>Title for Playback section in user setting screen.</extracomment>
     </message>
     <message>
+      <source>Playback Error</source>
+      <translation>Playback Error</translation>
+    </message>
+    <message>
       <source>Playback Info</source>
       <translation>Playback Info</translation>
     </message>
@@ -901,6 +940,10 @@
     <message>
       <source>Preferred Surround Audio Codec</source>
       <translation>Preferred Surround Audio Codec</translation>
+    </message>
+    <message>
+      <source>Present</source>
+      <translation>Present</translation>
     </message>
     <message>
       <source>Preserve Dolby Vision content when possible by forcing remux instead of direct playback when using MKV container files. This ensures proper Dolby Vision playback on supported devices.</source>
