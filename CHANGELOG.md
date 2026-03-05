@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (itemDetails) universal detail screen replacing MovieDetails and TVShowDetails ([#351](https://github.com/jellyrock/jellyrock/pull/351))
 - universal JellyfinBaseItem ContentNode ([#349](https://github.com/jellyrock/jellyrock/pull/349))
 
 ### Dependencies
