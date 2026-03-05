@@ -10,6 +10,8 @@ import "pkg:/source/utils/streamSelection.bs"
 const EXTRAS_GRP_TARGET_Y = 378
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
 const ITEM_DETAILS_EXTRAS_PADDING = 6
+' Minimum display height for the logo image — images smaller than this are scaled up (aspect ratio preserved)
+const LOGO_MIN_DISPLAY_HEIGHT = 212
 
 sub init()
   m.log = log.Logger("ItemDetails")
@@ -930,8 +932,8 @@ sub setItemLogo(item as object)
       logoItemId = item.parentLogoItemId
       logoImageTag = item.parentLogoImageTag
     end if
-  else if item.type = "Video"
-    ' Videos don't typically have Logo images — use Primary (poster) image instead
+  else if item.type = "Video" or item.type = "MusicVideo"
+    ' Videos and MusicVideos don't typically have Logo images — use Primary (poster) image instead
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
@@ -982,6 +984,7 @@ end sub
 
 ' onLogoLoadStatusChanged: Position logo to the right, with its bottom just above the date label.
 ' When the date label is hidden, anchors to where the date label would be.
+' Images smaller than LOGO_MIN_DISPLAY_HEIGHT are scaled up while preserving aspect ratio.
 sub onLogoLoadStatusChanged()
   if not isValid(m.itemLogo) then return
 
@@ -990,8 +993,23 @@ sub onLogoLoadStatusChanged()
     logoHeight = m.itemLogo.bitmapHeight
 
     if logoWidth > 0 and logoHeight > 0
+      ' Scale up small images to LOGO_MIN_DISPLAY_HEIGHT, preserving aspect ratio.
+      ' Images already at or above the minimum height are displayed at native size.
+      if logoHeight < LOGO_MIN_DISPLAY_HEIGHT
+        scale = LOGO_MIN_DISPLAY_HEIGHT / logoHeight
+        displayWidth = int(logoWidth * scale)
+        displayHeight = LOGO_MIN_DISPLAY_HEIGHT
+      else
+        displayWidth = logoWidth
+        displayHeight = logoHeight
+      end if
+
+      m.itemLogo.width = displayWidth
+      m.itemLogo.height = displayHeight
+      m.itemLogo.loadDisplayMode = "scaleToFit"
+
       rightEdge = 1920 * 0.95
-      logoX = rightEdge - logoWidth
+      logoX = rightEdge - displayWidth
 
       if isValid(m.dateCreatedLabel) and m.dateCreatedLabel.visible
         ' Anchor logo bottom 18px above the date label
@@ -1002,7 +1020,7 @@ sub onLogoLoadStatusChanged()
         buttonBottom = buttonRect.y + buttonRect.height
         dateLabelY = buttonBottom - 30
       end if
-      logoY = dateLabelY - logoHeight - 18
+      logoY = dateLabelY - displayHeight - 18
 
       m.itemLogo.translation = [logoX, logoY]
       m.itemLogo.visible = true
