@@ -6,28 +6,32 @@ import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
-const ITEM_DETAILS_TOP_Y = 230
+' Y translation extrasGrp reaches after sliding open (ExtrasSlider.xml VertSlider end keyValue)
+const EXTRAS_GRP_TARGET_Y = 378
+' Gap between bottom of itemInfoRows and top of extras pane when extras are open
+const ITEM_DETAILS_EXTRAS_PADDING = 6
+' Minimum display height for the logo image — images smaller than this are scaled up (aspect ratio preserved)
+const LOGO_MIN_DISPLAY_HEIGHT = 212
 
 sub init()
-  m.log = log.Logger("MovieDetails")
-  m.extrasGrp = m.top.findnode("extrasGrp")
+  m.log = log.Logger("ItemDetails")
+  m.extrasGrp = m.top.findNode("extrasGrp")
   m.extrasGrid = m.top.findNode("extrasGrid")
   m.top.optionsAvailable = false
 
-  m.options = m.top.findNode("movieOptions")
+  m.options = m.top.findNode("itemOptions")
   m.infoGroup = m.top.findNode("infoGroup")
 
   m.itemDescription = m.top.findNode("itemDescription")
-  m.itemDescriptionWasVisible = false
-
+  m.itemDescriptionInLayout = true ' itemDescription is a static XML child, so it starts in layout
 
   m.buttonGrp = m.top.findNode("buttons")
   m.buttonGrp.setFocus(true)
   m.top.lastFocus = m.buttonGrp
 
-  ' Movie logo - positioned at fixed Y position
-  m.movieLogo = m.top.findNode("movieLogo")
-  m.movieLogo.observeField("loadStatus", "onLogoLoadStatusChanged")
+  ' Item logo - positioned at fixed Y position
+  m.itemLogo = m.top.findNode("itemLogo")
+  m.itemLogo.observeField("loadStatus", "onLogoLoadStatusChanged")
 
   ' Date added label - positioned at bottom right
   m.dateCreatedLabel = m.top.findNode("dateCreatedLabel")
@@ -41,16 +45,29 @@ sub init()
 
   ' itemDetails slide animation - synced with extras slider
   m.itemTracks = m.top.findNode("itemTracks")
+  m.itemTracksInLayout = true ' itemTracks is a static XML child, so it starts in layout
   m.itemDetailsSlider = m.top.findNode("itemDetailsSlider")
   m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
   m.extrasActive = false
+  m.animationTargetCalculated = false
 
-  ' Options and delete buttons will be created dynamically as needed
+  ' Inner group: title + infoGroup + directorGenreGroup (never changes during activate/deactivate)
+  ' Used to compute the correct animation target height when extras are shown
+  m.itemInfoRows = m.top.findNode("itemInfoRows")
+
+  ' Dynamic buttons — created/removed as needed
   m.optionsButton = invalid
   m.deleteButton = invalid
+  m.shuffleButton = invalid
+
+  ' Shuffle task (Series only)
+  m.getShuffleEpisodesTask = createObject("roSGNode", "getShuffleEpisodesTask")
+
+  ' First episode task (Series Play button)
+  m.loadFirstEpisodeTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.loadFirstEpisodeTask.itemsToLoad = "seriesFirstEpisode"
 
   m.isFirstRun = true
-  m.top.observeField("itemContent", "itemContentChanged")
 
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
   m.infoDividerCount = 0
@@ -69,23 +86,19 @@ sub init()
   end if
 end sub
 
-' OnScreenShown: Callback function when view is presented on screen
-'
+' OnScreenShown: Callback when view is presented on screen
 sub OnScreenShown()
-  ' Set backdrop from movie data (only if itemContent is already loaded)
-  ' This handles the case when returning to an already-loaded screen
+  ' Set backdrop from item data (only if itemContent is already loaded)
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
     device = m.global.device
     backdropUrl = getItemBackdropUrl(m.top.itemContent, { width: device.uiResolution[0], height: device.uiResolution[1] })
     m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
   end if
-  ' If itemContent not loaded, backdrop will be set in itemContentChanged()
 
   ' Restore focus to last focused element
   if m.extrasGrp.opacity = 1
     m.top.lastFocus.setFocus(true)
   else
-    ' Use lastFocus to return to description after OverviewDialog closes
     if isValid(m.top.lastFocus) and m.top.lastFocus.visible
       m.top.lastFocus.setFocus(true)
     else
@@ -96,24 +109,21 @@ sub OnScreenShown()
   if m.isFirstRun
     m.isFirstRun = false
   else
-    ' don't refresh when closing OverviewDialog
+    ' Don't refresh when closing OverviewDialog
     if not isValid(m.top.lastFocus) or m.top.lastFocus.id <> "itemDescription"
-      ' refresh screen when returning to it
-      m.top.refreshMovieDetailsData = not m.top.refreshMovieDetailsData
+      m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
     end if
   end if
 end sub
 
 sub trailerAvailableChanged()
   if m.top.trailerAvailable
-    ' add trailor button to button group
     trailerButton = CreateObject("roSGNode", "IconButton")
     trailerButton.id = "trailerButton"
     trailerButton.icon = "pkg:/images/icons/playOutline.png"
     trailerButton.text = tr("Play Trailer")
     m.buttonGrp.appendChild(trailerButton)
   else
-    ' remove trailor button from button group
     trailerButton = m.top.findNode("trailerButton")
     if isValid(trailerButton)
       m.buttonGrp.removeChild(trailerButton)
@@ -121,24 +131,58 @@ sub trailerAvailableChanged()
   end if
 end sub
 
-' manageResumeButton: Add or remove Resume button based on playback position
-'
+' nextUpEpisodeChanged: For Series — create/remove Resume button based on nextUpEpisode
+sub nextUpEpisodeChanged()
+  item = m.top.nextUpEpisode
+  resumeButton = m.top.findNode("resumeButton")
+
+  if isValid(item) and isValidAndNotEmpty(item.id)
+    if not isValid(resumeButton)
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      currentFocusedButton = invalid
+      if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
+        currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
+      end if
+
+      resumeButton = CreateObject("roSGNode", "ResumeButton")
+      resumeButton.id = "resumeButton"
+      resumeButton.icon = "pkg:/images/icons/resume.png"
+      resumeButton.text = tr("Resume")
+      resumeButton.playbackPositionTicks = item.playbackPositionTicks
+      resumeButton.runtimeTicks = item.runTimeTicks
+      m.buttonGrp.insertChild(resumeButton, 0)
+
+      if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
+        m.buttonGrp.buttonFocused = 0
+      else if isValid(currentFocusIndex) and currentFocusIndex >= 0
+        m.buttonGrp.buttonFocused = currentFocusIndex + 1
+      else
+        m.buttonGrp.buttonFocused = 0
+      end if
+      focusButtonGroupChild()
+    else
+      ' Resume button already present — update tick values
+      resumeButton.playbackPositionTicks = item.playbackPositionTicks
+      resumeButton.runtimeTicks = item.runTimeTicks
+    end if
+  else
+    removeResumeButtonWithFocus(resumeButton)
+  end if
+end sub
+
+' manageResumeButton: Add or remove Resume button based on playback position (non-Series types)
 sub manageResumeButton()
   resumeButton = m.top.findNode("resumeButton")
 
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
     item = m.top.itemContent
-    ' Validate RunTimeTicks before proceeding - required for progress bar calculation
     if item.runTimeTicks <= 0
-      ' Invalid runtime, remove resume button if present and exit
       removeResumeButtonWithFocus(resumeButton)
       return
     end if
 
     if item.playbackPositionTicks > 0
-      ' Add resume button if not already present
       if not isValid(resumeButton)
-        ' Capture current focus state before modifying button group
         currentFocusIndex = m.buttonGrp.buttonFocused
         currentFocusedButton = invalid
         if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
@@ -151,54 +195,37 @@ sub manageResumeButton()
         resumeButton.text = tr("Resume")
         resumeButton.playbackPositionTicks = item.playbackPositionTicks
         resumeButton.runtimeTicks = item.runTimeTicks
-
-        ' Insert at index 0 (first position)
         m.buttonGrp.insertChild(resumeButton, 0)
 
-        ' Update focus: move to Resume if previously on Play, otherwise maintain focus on same button
         if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
-          ' User was on Play button, move them to Resume
           m.buttonGrp.buttonFocused = 0
         else if isValid(currentFocusIndex) and currentFocusIndex >= 0
-          ' User was on another button, adjust index to account for insertion at index 0
           m.buttonGrp.buttonFocused = currentFocusIndex + 1
         else
-          ' No previous focus or invalid state, default to Resume
           m.buttonGrp.buttonFocused = 0
         end if
-
         focusButtonGroupChild()
       else
-        ' Resume button already exists, update its tick values (data may have refreshed)
         resumeButton.playbackPositionTicks = item.playbackPositionTicks
         resumeButton.runtimeTicks = item.runTimeTicks
       end if
     else
-      ' Remove resume button if present
       removeResumeButtonWithFocus(resumeButton)
     end if
   else
-    ' No valid data, remove resume button if present
     removeResumeButtonWithFocus(resumeButton)
   end if
 end sub
 
-' removeResumeButtonWithFocus: Helper to remove resume button while preserving focus
-' @param {object} resumeButton - The resume button node to remove (if valid)
-'
+' removeResumeButtonWithFocus: Remove resume button while preserving focus position
 sub removeResumeButtonWithFocus(resumeButton as object)
   if not isValid(resumeButton) then return
 
-  ' Preserve user's focus position when removing Resume button
   currentFocusIndex = m.buttonGrp.buttonFocused
-
-  ' Reset tick values before removing to clean up state
   resumeButton.playbackPositionTicks = 0
   resumeButton.runtimeTicks = 0
   m.buttonGrp.removeChild(resumeButton)
 
-  ' Adjust focus: if user was on Resume (index 0), move to Play (new index 0)
-  ' Otherwise, shift focus index down by 1 to maintain same logical button
   if isValid(currentFocusIndex) and currentFocusIndex > 0
     m.buttonGrp.buttonFocused = currentFocusIndex - 1
   else
@@ -207,9 +234,33 @@ sub removeResumeButtonWithFocus(resumeButton as object)
   focusButtonGroupChild()
 end sub
 
-' createInfoLabel: Create a label for the info/director rows
-' @param labelId - Unique ID for the label
-' @return Configured LabelPrimaryMedium node (bold)
+' manageShuffleButton: Add or remove Shuffle button for Series type only
+sub manageShuffleButton(itemType as string)
+  if itemType = "Series"
+    if not isValid(m.shuffleButton)
+      m.shuffleButton = CreateObject("roSGNode", "IconButton")
+      m.shuffleButton.id = "shuffleButton"
+      m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
+      m.shuffleButton.text = tr("Shuffle")
+      ' Insert after Play button
+      playButtonIndex = getButtonIndex("playButton")
+      if playButtonIndex >= 0
+        m.buttonGrp.insertChild(m.shuffleButton, playButtonIndex + 1)
+      else
+        m.buttonGrp.appendChild(m.shuffleButton)
+      end if
+    end if
+  else
+    if isValid(m.shuffleButton)
+      m.buttonGrp.removeChild(m.shuffleButton)
+      m.shuffleButton = invalid
+    end if
+  end if
+end sub
+
+' createInfoLabel: Create a bold label node for the info rows
+' @param {string} labelId - Unique ID for the label
+' @return {object} Configured LabelPrimaryMedium node
 function createInfoLabel(labelId as string) as object
   labelNode = CreateObject("roSGNode", "LabelPrimaryMedium")
   labelNode.id = labelId
@@ -219,8 +270,8 @@ function createInfoLabel(labelId as string) as object
 end function
 
 ' createDividerNode: Create a bullet divider node for separating info items
-' @param dividerId - Unique ID for the divider
-' @return Configured divider node
+' @param {string} dividerId - Unique ID for the divider
+' @return {object} Configured divider node
 function createDividerNode(dividerId as string) as object
   labelNode = CreateObject("roSGNode", "LabelPrimarySmall")
   labelNode.id = dividerId
@@ -233,7 +284,7 @@ function createDividerNode(dividerId as string) as object
   return labelNode
 end function
 
-' displayInfoNode: Add a node to the info group with dividers
+' displayInfoNode: Add a node to the info group, prepending a bullet divider if needed
 sub displayInfoNode(node as object)
   if not isValid(node) then return
   if m.infoGroup.getChildCount() > 0
@@ -244,7 +295,7 @@ sub displayInfoNode(node as object)
   m.infoGroup.appendChild(node)
 end sub
 
-' displayDirectorGenreNode: Add a node to the director/genre group with dividers
+' displayDirectorGenreNode: Add a node to the second info row, prepending a bullet divider if needed
 sub displayDirectorGenreNode(node as object)
   if not isValid(node) then return
   if m.directorGenreGroup.getChildCount() > 0
@@ -263,7 +314,6 @@ sub populateDescriptionGroup()
   hasTagline = false
   hasOverview = false
 
-  ' 1. Tagline (if enabled in settings and data exists)
   if userSettings.uiDetailsHideTagline = false
     if item.taglines.count() > 0 and isValidAndNotEmpty(item.taglines[0])
       m.itemDescription.tagline = item.taglines[0]
@@ -276,7 +326,6 @@ sub populateDescriptionGroup()
     m.itemDescription.tagline = ""
   end if
 
-  ' 2. Overview (if data exists)
   if isValidAndNotEmpty(item.overview)
     m.itemDescription.text = item.overview
     hasOverview = true
@@ -284,25 +333,24 @@ sub populateDescriptionGroup()
     m.itemDescription.text = ""
   end if
 
-  ' Adjust description maxLines based on tagline presence
   if hasTagline
     m.itemDescription.maxLines = 2
   else
     m.itemDescription.maxLines = 4
   end if
 
-  ' Set dialog title and visibility
   if hasTagline or hasOverview
     m.itemDescription.dialogTitle = item.name
     m.itemDescription.visible = true
+    setDescriptionInLayout(true)
   else
     m.itemDescription.visible = false
+    setDescriptionInLayout(false)
   end if
 end sub
 
-' populateInfoGroup: Dynamically populate info and director/genre groups
+' populateInfoGroup: Dispatch to type-specific info row builder
 sub populateInfoGroup()
-  ' Clear existing nodes
   m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
   m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
   m.infoDividerCount = 0
@@ -312,24 +360,34 @@ sub populateInfoGroup()
   item = m.top.itemContent
   userSettings = m.global.user.settings
 
-  ' === ROW 1: Info Group ===
-  ' Order: year, officialRating, communityRating, criticRating, runtime, ends-at
+  if item.type = "Series"
+    populateInfoGroupSeries(item, userSettings)
+  else if item.type = "Episode"
+    populateInfoGroupEpisode(item, userSettings)
+  else if item.type = "MusicVideo"
+    populateInfoGroupMusicVideo(item, userSettings)
+  else
+    ' Movie, Video, Recording
+    populateInfoGroupMovie(item, userSettings)
+  end if
+end sub
 
-  ' 1. Release Year
-  if item.productionYear > 0 and item.type <> "Episode"
+' populateInfoGroupMovie: Info rows for Movie, Video, Recording
+' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
+' Row 2: Genres · Director(s)
+sub populateInfoGroupMovie(item as object, userSettings as object)
+  if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
     yearNode.text = stri(item.productionYear).trim()
     displayInfoNode(yearNode)
   end if
 
-  ' 2. Official Rating (PG, R, etc.)
   if isValidAndNotEmpty(item.officialRating)
     ratingNode = createInfoLabel("officialRating")
     ratingNode.text = item.officialRating
     displayInfoNode(ratingNode)
   end if
 
-  ' 3. Community Rating (star + number)
   if userSettings.uiMoviesShowRatings and item.communityRating > 0
     communityRatingNode = CreateObject("roSGNode", "CommunityRating")
     communityRatingNode.id = "communityRating"
@@ -337,7 +395,6 @@ sub populateInfoGroup()
     displayInfoNode(communityRatingNode)
   end if
 
-  ' 4. Critic Rating (tomato + number)
   if userSettings.uiMoviesShowRatings and item.criticRating > 0
     criticRatingNode = CreateObject("roSGNode", "CriticRating")
     criticRatingNode.id = "criticRating"
@@ -345,40 +402,24 @@ sub populateInfoGroup()
     displayInfoNode(criticRatingNode)
   end if
 
-  ' 5. Runtime
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
     runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
     displayInfoNode(runtimeNode)
   end if
 
-  ' 6. Ends At (only shown when clock is visible in overhang)
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
     displayInfoNode(m.endsAtNode)
   end if
 
-  ' 7. Aired (Episodes only)
-  if isValidAndNotEmpty(item.premiereDate) and item.type = "Episode"
-    airDate = CreateObject("roDateTime")
-    airDate.FromISO8601String(item.premiereDate)
-    airedNode = createInfoLabel("aired")
-    airedNode.text = tr("Aired") + ": " + airDate.AsDateString("short-month-no-weekday")
-    displayInfoNode(airedNode)
-  end if
-
-  ' === ROW 2: Genres & Director ===
-  ' Order: genres first, then director(s)
-
-  ' 1. Genres (concatenated with " / ")
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
     displayDirectorGenreNode(genreNode)
   end if
 
-  ' 2. Director(s)
   directors = []
   if isValid(item.people)
     for each person in item.people
@@ -394,10 +435,220 @@ sub populateInfoGroup()
   end if
 end sub
 
-sub itemContentChanged()
+' populateInfoGroupMusicVideo: Info rows for MusicVideo
+' Row 1: Year · Official Rating · Runtime · Ends At
+' Row 2: Genres · By: Artist(s)
+sub populateInfoGroupMusicVideo(item as object, userSettings as object)
+  if item.productionYear > 0
+    yearNode = createInfoLabel("releaseYear")
+    yearNode.text = stri(item.productionYear).trim()
+    displayInfoNode(yearNode)
+  end if
+
+  if isValidAndNotEmpty(item.officialRating)
+    ratingNode = createInfoLabel("officialRating")
+    ratingNode.text = item.officialRating
+    displayInfoNode(ratingNode)
+  end if
+
+  if item.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
+  end if
+
+  if item.genres.count() > 0
+    genreNode = createInfoLabel("genre")
+    genreNode.text = item.genres.join(" / ")
+    displayDirectorGenreNode(genreNode)
+  end if
+
+  if isValid(item.artists) and item.artists.count() > 0
+    artistNode = createInfoLabel("artists")
+    artistNode.text = tr("By: %1").Replace("%1", item.artists.join(", "))
+    displayDirectorGenreNode(artistNode)
+  end if
+
+  directors = []
+  if isValid(item.people)
+    for each person in item.people
+      if person.type = "Director" then directors.push(person.name)
+    end for
+  end if
+  if directors.count() > 0
+    directorNode = createInfoLabel("director")
+    directorNode.text = tr("Directed by %1").Replace("%1", directors.join(", "))
+    displayDirectorGenreNode(directorNode)
+  end if
+end sub
+
+' populateInfoGroupEpisode: Info rows for Episode
+' Row 1: Air Date · Official Rating · Runtime · Ends At
+' Row 2: Series name + "S{n}E{n}"
+sub populateInfoGroupEpisode(item as object, userSettings as object)
+  if isValidAndNotEmpty(item.premiereDate)
+    airDate = CreateObject("roDateTime")
+    airDate.FromISO8601String(item.premiereDate)
+    airedNode = createInfoLabel("aired")
+    airedNode.text = airDate.AsDateString("short-month-no-weekday")
+    displayInfoNode(airedNode)
+  end if
+
+  if isValidAndNotEmpty(item.officialRating)
+    ratingNode = createInfoLabel("officialRating")
+    ratingNode.text = item.officialRating
+    displayInfoNode(ratingNode)
+  end if
+
+  if item.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
+  end if
+
+  ' Row 2: S{n}E{n} • SeriesName • Directed by X, Y, Z
+  if item.parentIndexNumber > 0 and item.indexNumber > 0
+    episodeCodeNode = createInfoLabel("episodeCode")
+    episodeCodeNode.text = "S" + item.parentIndexNumber.toStr() + "E" + item.indexNumber.toStr()
+    displayDirectorGenreNode(episodeCodeNode)
+  end if
+
+  if isValidAndNotEmpty(item.seriesName)
+    seriesNameNode = createInfoLabel("seriesName")
+    seriesNameNode.text = item.seriesName
+    displayDirectorGenreNode(seriesNameNode)
+  end if
+
+  directors = []
+  if isValid(item.people)
+    for each person in item.people
+      if person.type = "Director" then directors.push(person.name)
+    end for
+  end if
+  if directors.count() > 0
+    directorNode = createInfoLabel("director")
+    directorNode.text = tr("Directed by %1").Replace("%1", directors.join(", "))
+    displayDirectorGenreNode(directorNode)
+  end if
+end sub
+
+' populateInfoGroupSeries: Info rows for Series
+' Row 1: Year Range · Official Rating · Community Rating · Runtime · Ends At (only when avg episode runtime is available)
+' Row 2: Genres · Air schedule/Status
+sub populateInfoGroupSeries(item as object, userSettings as object)
+  ' Year range: "{productionYear} - {endYear}" or "{productionYear} - Present"
+  if item.productionYear > 0
+    yearText = stri(item.productionYear).trim()
+    if isValidAndNotEmpty(item.endDate)
+      endYear = item.endDate.left(4)
+      yearText = yearText + " - " + endYear
+    else if item.status = "Ended"
+      ' Ended but no endDate available — show production year only
+    else
+      yearText = yearText + " - " + tr("Present")
+    end if
+    yearNode = createInfoLabel("releaseYear")
+    yearNode.text = yearText
+    displayInfoNode(yearNode)
+  end if
+
+  if isValidAndNotEmpty(item.officialRating)
+    ratingNode = createInfoLabel("officialRating")
+    ratingNode.text = item.officialRating
+    displayInfoNode(ratingNode)
+  end if
+
+  if userSettings.uiMoviesShowRatings and item.communityRating > 0
+    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
+    communityRatingNode.id = "communityRating"
+    communityRatingNode.rating = item.communityRating
+    displayInfoNode(communityRatingNode)
+  end if
+
+  ' Average episode runtime (Jellyfin stores avg episode length in runTimeTicks for Series)
+  if item.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  ' "Ends At" is only meaningful when we have a valid avg episode runtime to calculate with
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
+  end if
+
+  if item.genres.count() > 0
+    genreNode = createInfoLabel("genre")
+    genreNode.text = item.genres.join(" / ")
+    displayDirectorGenreNode(genreNode)
+  end if
+
+  historyText = getHistory()
+  if isValidAndNotEmpty(historyText)
+    historyNode = createInfoLabel("history")
+    historyNode.text = historyText
+    displayDirectorGenreNode(historyNode)
+  end if
+end sub
+
+' getHistory: Format the air schedule/status string for a Series item
+' Example output: "ABC" or "Fridays at 9:30 PM on NBC"
+function getHistory() as string
   item = m.top.itemContent
 
-  ' Set backdrop from movie data
+  airwords = invalid
+  studio = invalid
+  words = ""
+  if isValid(item.airDays) and item.airDays.count() = 1
+    airwords = item.airDays[0]
+  end if
+  if isValidAndNotEmpty(item.airTime)
+    if isValid(airwords)
+      airwords = airwords + " " + tr("at") + " " + item.airTime
+    else
+      airwords = item.airTime
+    end if
+  end if
+
+  if item.studios.count() > 0
+    studio = item.studios[0]
+  end if
+
+  if not isValid(studio) and not isValid(airwords) then return words
+
+  if isValid(airwords)
+    words = airwords
+  end if
+
+  if isValid(studio)
+    if isValid(airwords)
+      words = words + " " + tr("on") + " " + studio
+    else
+      words = studio
+    end if
+  end if
+
+  return words
+end function
+
+sub itemContentChanged()
+  m.animationTargetCalculated = false
+  item = m.top.itemContent
+
   if isValid(item) and isValidAndNotEmpty(item.id)
     device = m.global.device
     backdropUrl = getItemBackdropUrl(item, { width: device.uiResolution[0], height: device.uiResolution[1] })
@@ -409,46 +660,72 @@ sub itemContentChanged()
   if isValid(item) and isValidAndNotEmpty(item.id)
     m.top.id = item.id
 
-    setMovieLogo(item)
+    setItemLogo(item)
     setDateAdded(item)
 
-    ' Set default video source if user hasn't selected one yet
-    if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
-      m.top.selectedVideoStreamId = item.mediaSourceId
-    end if
+    ' Media tracks and stream options are only relevant for playable types
+    ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space
+    setTracksInLayout(item.type <> "Series")
 
-    ' Extract streams from first media source for audio/subtitle/options setup
-    allStreams = []
-    mediaSources = invalid
-    if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
-      mediaSources = item.mediaSourcesData.mediaSources
-      if isValid(mediaSources[0].MediaStreams)
-        allStreams = mediaSources[0].MediaStreams
+    if item.type <> "Series"
+      if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
+        m.top.selectedVideoStreamId = item.mediaSourceId
+      end if
+
+      allStreams = []
+      mediaSources = invalid
+      if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
+        mediaSources = item.mediaSourcesData.mediaSources
+        if isValid(mediaSources[0].MediaStreams)
+          allStreams = mediaSources[0].MediaStreams
+        end if
+      end if
+
+      SetDefaultAudioTrack(allStreams)
+      SetUpVideoOptions(mediaSources ?? [])
+      SetUpAudioOptions(allStreams)
+      SetUpSubtitleDisplay(allStreams, m.top.selectedAudioStreamIndex)
+      updateOptionsButtonVisibility()
+    else
+      ' Series: ensure options button is removed if it was left from a previous load
+      if isValid(m.optionsButton)
+        m.buttonGrp.removeChild(m.optionsButton)
+        m.optionsButton = invalid
       end if
     end if
-
-    SetDefaultAudioTrack(allStreams)
 
     populateInfoGroup()
     populateDescriptionGroup()
 
     setFieldText("videoTitle", item.name)
 
+    ' Series uses "Play All" to clarify it starts from the first episode
+    playButton = m.top.findNode("playButton")
+    if isValid(playButton)
+      if item.type = "Series"
+        playButton.text = tr("Play All")
+      else
+        playButton.text = tr("Play")
+      end if
+    end if
+
     updateFavoriteButton()
     updateWatchedButton()
-    SetUpVideoOptions(mediaSources ?? [])
-    SetUpAudioOptions(allStreams)
-    SetUpSubtitleDisplay(allStreams, m.top.selectedAudioStreamIndex)
-    updateOptionsButtonVisibility()
+    manageShuffleButton(item.type)
 
-    manageResumeButton()
+    ' Non-Series types: Resume based on playbackPositionTicks
+    ' Series: Resume based on nextUpEpisode (managed by nextUpEpisodeChanged observer)
+    if item.type <> "Series"
+      manageResumeButton()
+    end if
+
     manageDeleteButton()
   end if
 
   m.buttonGrp.visible = true
   stopLoadingSpinner()
 
-  ' Re-hide description and tracks if extras slider is still active (e.g., returning from sub-screen)
+  ' Re-hide description and tracks if extras slider is still active (e.g. returning from sub-screen)
   if m.extrasActive
     activateExtras()
   end if
@@ -463,13 +740,11 @@ sub SetUpVideoOptions(streams)
     if streams[i].VideoType = "VideoFile"
       codec = formatVideoSourceTitle(streams[i], hasMultipleSources)
 
-      ' Set the codec for the details screen from the first video source
       if not codecDetailsSet
         setFieldText("video_codec", tr("Video") + ": " + codec)
         codecDetailsSet = true
       end if
 
-      ' Create options for user to switch between video tracks
       videos.push({
         "Title": codec,
         "Description": tr("Video"),
@@ -494,9 +769,9 @@ sub SetUpAudioOptions(streams)
 
   for i = 0 to streams.Count() - 1
     if streams[i].Type = "Audio"
-      ' Use server-side stream.index (not loop position) for both the pre-selection check
-      ' and the StreamIndex value carried to MovieOptions / audioOptionsClosed.
-      ' Jellyfin indices span all stream types and must match what ItemPostPlaybackInfo expects.
+      ' Use server-side stream.index for both the pre-selection check and the StreamIndex value
+      ' carried to ItemOptions. Jellyfin indices span all stream types and must match what
+      ' ItemPostPlaybackInfo expects.
       if isValid(streams[i].index)
         tracks.push({ "Title": formatAudioDisplayTitle(streams[i]), "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = streams[i].index, "StreamIndex": streams[i].index })
       end if
@@ -515,7 +790,7 @@ sub SetUpAudioOptions(streams)
   m.options.options = options
 end sub
 
-' SetUpSubtitleDisplay: Display the subtitle stream that will be auto-selected during playback
+' SetUpSubtitleDisplay: Display the subtitle stream that will be auto-selected during playback.
 ' Uses findDefaultSubtitleStreamIndex() to match the same selection logic as playback
 ' (subtitle mode, language preference, text-only preference, smart mode audio matching).
 ' Shows "+N" count if multiple subtitle tracks exist.
@@ -523,13 +798,11 @@ end sub
 ' @param {object} streams - Array of MediaStream objects (all types: video, audio, subtitle)
 ' @param {integer} selectedAudioStreamIndex - Server-side index of the selected audio stream
 sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
-  ' Clear any previous subtitle count badge
   subtitleCountNode = m.top.findNode("subtitle_codec_count")
   if isValid(subtitleCountNode) then subtitleCountNode.text = ""
 
   if not isValid(streams) then return
 
-  ' Count subtitle streams and find the one that playback would auto-select
   subtitleCount = 0
   for i = 0 to streams.count() - 1
     if isValid(streams[i].Type) and LCase(streams[i].Type) = "subtitle"
@@ -542,11 +815,9 @@ sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
     return
   end if
 
-  ' Use the same selection logic as playback to determine which subtitle to display
   selectedIndex = findDefaultSubtitleStreamIndex(streams, selectedAudioStreamIndex)
 
   if selectedIndex >= 0
-    ' Find the stream object with the selected index
     for i = 0 to streams.count() - 1
       if isValid(streams[i].index) and streams[i].index = selectedIndex
         setFieldText("subtitle_codec", tr("Subtitles") + ": " + formatSubtitleDisplayTitle(streams[i]))
@@ -565,16 +836,10 @@ end sub
 sub SetDefaultAudioTrack(mediaStreams as object)
   if not isValid(mediaStreams) then return
 
-  ' Get user settings for audio selection
   localUser = m.global.user
-
-  ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
   playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-
-  ' Use new comprehensive audio selection logic
   selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, localUser.config.audioLanguagePreference)
 
-  ' Find the audio stream with the selected index to get its displayTitle
   defaultAudioStream = invalid
   for each stream in mediaStreams
     if LCase(stream.Type) = "audio" and isValid(stream.index) and stream.index = selectedIndex
@@ -583,10 +848,8 @@ sub SetDefaultAudioTrack(mediaStreams as object)
     end if
   end for
 
-  ' Set the selected audio stream index
   m.top.selectedAudioStreamIndex = selectedIndex
 
-  ' Update UI with audio codec information
   if isValid(defaultAudioStream)
     setFieldText("audio_codec", tr("Audio") + ": " + formatAudioDisplayTitle(defaultAudioStream))
   end if
@@ -596,7 +859,6 @@ sub setFieldText(field, value)
   node = m.top.findNode(field)
   if not isValid(node) or not isValid(value) then return
 
-  ' Handle non strings... Which _shouldn't_ happen, but hey
   if type(value) = "roInt" or type(value) = "Integer"
     value = str(value).trim()
   else if type(value) = "roFloat" or type(value) = "Float"
@@ -612,7 +874,7 @@ end sub
 
 function getRuntime() as integer
   ' A tick is .1ms, so 1/10,000,000 for ticks to seconds,
-  ' then 1/60 for seconds to minutess... 1/600,000,000
+  ' then 1/60 for seconds to minutes... 1/600,000,000
   return round(m.top.itemContent.runTimeTicks / 600000000.0)
 end function
 
@@ -621,12 +883,10 @@ function getEndTime() as string
   duration_s = int(m.top.itemContent.runTimeTicks / 10000000.0)
   date.fromSeconds(date.asSeconds() + duration_s)
   date.toLocalTime()
-
   return formatTime(date)
 end function
 
 ' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes
-'
 sub onClockMinuteChanged()
   if not isValid(m.endsAtNode) then return
   m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
@@ -656,109 +916,146 @@ sub updateWatchedButton()
   end if
 end sub
 
-' setMovieLogo: Set the movie logo image URL if available
-' @param item - JellyfinBaseItem node
-'
-sub setMovieLogo(item as object)
-  if not isValid(m.movieLogo) then return
+' setItemLogo: Set the item logo image URL if available.
+' - Episode: falls back to parent series logo via parentLogoItemId/parentLogoImageTag
+' - Video: uses Primary (poster) image since videos rarely have Logo images
+' @param {object} item - JellyfinBaseItem node
+sub setItemLogo(item as object)
+  if not isValid(m.itemLogo) then return
 
-  if isValidAndNotEmpty(item.logoImageTag)
-    imgParams = {
-      maxHeight: 212,
-      maxWidth: 500,
-      quality: 90,
-      tag: item.logoImageTag
-    }
-    m.movieLogo.uri = ImageURL(item.id, "Logo", imgParams)
+  logoItemId = item.id
+  logoImageTag = item.logoImageTag
+
+  if item.type = "Episode"
+    ' Episodes don't have their own logo — use the parent series logo
+    if isValidAndNotEmpty(item.parentLogoItemId)
+      logoItemId = item.parentLogoItemId
+      logoImageTag = item.parentLogoImageTag
+    end if
+  else if item.type = "Video" or item.type = "MusicVideo"
+    ' Videos and MusicVideos don't typically have Logo images — use Primary (poster) image instead
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      return
+    end if
+    m.itemLogo.visible = false
+    m.itemLogo.uri = ""
+    return
+  end if
+
+  if isValidAndNotEmpty(logoImageTag)
+    imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: logoImageTag }
+    m.itemLogo.uri = ImageURL(logoItemId, "Logo", imgParams)
   else
-    m.movieLogo.visible = false
-    m.movieLogo.uri = ""
+    m.itemLogo.visible = false
+    m.itemLogo.uri = ""
   end if
 end sub
 
-' setDateAdded: Set date added label text and position
-' Positions label at bottom right corner of screen with 96px padding
-' @param item - JellyfinBaseItem node
-'
+' setDateAdded: Set date added label text and position at bottom right corner
+' @param {object} item - JellyfinBaseItem node
 sub setDateAdded(item as object)
   if not isValid(m.dateCreatedLabel) then return
 
-  if isValidAndNotEmpty(item.dateCreated)
-    ' Set the date and time text
-    dateAdded = CreateObject("roDateTime")
-    dateAdded.FromISO8601String(item.dateCreated)
-    dateAdded.toLocalTime()
-    m.dateCreatedLabel.text = tr("Added") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
-
-    ' Position at bottom right: screen is 1920x1080, with 96px padding
-    ' Label has fixed width with horizAlign="right" for text alignment
-    ' Translation is left edge, so: rightEdge - padding - width
-    buttonRect = m.buttonGrp.boundingRect()
-    buttonBottom = buttonRect.y + buttonRect.height
-
-    m.dateCreatedLabel.translation = [1920 - 96 - 450, buttonBottom - 30]
-    m.dateCreatedLabel.visible = true
-  else
-    ' Hide label if no date data available
+  if not isValidAndNotEmpty(item.dateCreated)
     m.dateCreatedLabel.visible = false
+    return
   end if
+
+  dateAdded = CreateObject("roDateTime")
+  dateAdded.FromISO8601String(item.dateCreated)
+
+  ' Hide dates at or before Unix epoch — server returned no real date
+  if dateAdded.getYear() <= 1970
+    m.dateCreatedLabel.visible = false
+    return
+  end if
+
+  dateAdded.toLocalTime()
+  m.dateCreatedLabel.text = tr("Added") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
+
+  ' Position at bottom right: screen is 1920x1080, with 96px padding
+  buttonRect = m.buttonGrp.boundingRect()
+  buttonBottom = buttonRect.y + buttonRect.height
+  m.dateCreatedLabel.translation = [1920 - 96 - 450, buttonBottom - 30]
+  m.dateCreatedLabel.visible = true
 end sub
 
-' onLogoLoadStatusChanged: Position the logo with fixed Y coordinate and make it visible
-' Positions logo 5% from right edge at fixed Y=648
-'
+' onLogoLoadStatusChanged: Position logo to the right, with its bottom just above the date label.
+' When the date label is hidden, anchors to where the date label would be.
+' Images smaller than LOGO_MIN_DISPLAY_HEIGHT are scaled up while preserving aspect ratio.
 sub onLogoLoadStatusChanged()
-  if not isValid(m.movieLogo) then return
+  if not isValid(m.itemLogo) then return
 
-  if m.movieLogo.loadStatus = "ready"
-    ' Get logo dimensions
-    logoWidth = m.movieLogo.bitmapWidth
-    logoHeight = m.movieLogo.bitmapHeight
+  if m.itemLogo.loadStatus = "ready"
+    logoWidth = m.itemLogo.bitmapWidth
+    logoHeight = m.itemLogo.bitmapHeight
 
     if logoWidth > 0 and logoHeight > 0
-      ' Calculate X position: 5% from right edge (right-aligned)
-      ' Screen width is 1920, 5% from right = 1920 * 0.95 = 1824
+      ' Scale up small images to LOGO_MIN_DISPLAY_HEIGHT, preserving aspect ratio.
+      ' Images already at or above the minimum height are displayed at native size.
+      if logoHeight < LOGO_MIN_DISPLAY_HEIGHT
+        scale = LOGO_MIN_DISPLAY_HEIGHT / logoHeight
+        displayWidth = int(logoWidth * scale)
+        displayHeight = LOGO_MIN_DISPLAY_HEIGHT
+      else
+        displayWidth = logoWidth
+        displayHeight = logoHeight
+      end if
+
+      m.itemLogo.width = displayWidth
+      m.itemLogo.height = displayHeight
+      m.itemLogo.loadDisplayMode = "scaleToFit"
+
       rightEdge = 1920 * 0.95
-      logoX = rightEdge - logoWidth
+      logoX = rightEdge - displayWidth
 
-      ' Fixed Y position
-      logoY = 648
+      if isValid(m.dateCreatedLabel) and m.dateCreatedLabel.visible
+        ' Anchor logo bottom 18px above the date label
+        dateLabelY = m.dateCreatedLabel.translation[1]
+      else
+        ' Date label hidden — use the same position it would occupy
+        buttonRect = m.buttonGrp.boundingRect()
+        buttonBottom = buttonRect.y + buttonRect.height
+        dateLabelY = buttonBottom - 30
+      end if
+      logoY = dateLabelY - displayHeight - 18
 
-      ' Position logo before making it visible to prevent glitches
-      m.movieLogo.translation = [logoX, logoY]
-      m.movieLogo.visible = true
+      m.itemLogo.translation = [logoX, logoY]
+      m.itemLogo.visible = true
     end if
-  else if m.movieLogo.loadStatus = "failed"
-    ' Logo failed to load, ensure it's hidden
-    m.movieLogo.uri = ""
-    m.movieLogo.visible = false
+  else if m.itemLogo.loadStatus = "failed"
+    m.itemLogo.uri = ""
+    m.itemLogo.visible = false
   end if
 end sub
 
 sub onItemDetailsRendered()
   if m.itemDetails.renderTracking = "none" then return
-
   updateTextGradient()
-  updateItemDetailsAnimationTarget()
+  ' Only calculate animation target once per content load — itemInfoRows height is stable after metadata is set.
+  if not m.animationTargetCalculated
+    m.animationTargetCalculated = true
+    updateItemDetailsAnimationTarget()
+  end if
 end sub
 
-' updateItemDetailsAnimationTarget: Recalculate the itemDetails slide animation target
-' Computes the translation Y that positions the top edge of itemDetails at ITEM_DETAILS_TOP_Y
-' Only recalculates when itemDetails is at its rest position (not during extras view)
-'
+' updateItemDetailsAnimationTarget: Slide itemDetails so the bottom of itemInfoRows sits just
+' above the extras pane. boundingRect() on a child returns LOCAL coords relative to the parent's
+' translation point, so we use translation[1] (not boundingRect().y) as the screen origin.
 sub updateItemDetailsAnimationTarget()
   if m.extrasActive then return
 
-  itemDetailsRect = m.itemDetails.boundingRect()
-  ' Delta = distance from translation point to top edge of bounding rect
-  ' This accounts for vertAlignment="bottom" positioning
   currentTransY = m.itemDetails.translation[1]
-  delta = currentTransY - itemDetailsRect.y
-  targetTransY = ITEM_DETAILS_TOP_Y + delta
+  itemInfoRowsLocalRect = m.itemInfoRows.boundingRect()
+  screenBottomOfInfoRows = currentTransY + itemInfoRowsLocalRect.y + itemInfoRowsLocalRect.height
+
+  dY = (EXTRAS_GRP_TARGET_Y - ITEM_DETAILS_EXTRAS_PADDING) - screenBottomOfInfoRows
+  targetTransY = currentTransY + dY
 
   startTransX = m.itemDetails.translation[0]
-  startTransY = m.itemDetails.translation[1]
-  m.itemDetailsSliderInterp.keyValue = [[startTransX, startTransY], [startTransX, targetTransY]]
+  m.itemDetailsSliderInterp.keyValue = [[startTransX, currentTransY], [startTransX, targetTransY]]
 end sub
 
 sub updateTextGradient()
@@ -779,33 +1076,25 @@ sub updateTextGradient()
   end if
 end sub
 
-' updateOptionsButtonVisibility: Create/remove options button based on available tracks
-' Creates button if there are multiple video or audio tracks to choose from
-' Removes button if there is 1 or fewer video tracks AND 1 or fewer audio tracks
-'
+' updateOptionsButtonVisibility: Create/remove options button based on available tracks.
+' Creates button if there are multiple video or audio tracks to choose from.
+' Removes button if there is 1 or fewer video tracks AND 1 or fewer audio tracks.
 sub updateOptionsButtonVisibility()
   videoCount = 0
   audioCount = 0
 
-  ' Count video tracks
   if isValid(m.options.options) and isValid(m.options.options.videos)
     videoCount = m.options.options.videos.count()
   end if
 
-  ' Count audio tracks
   if isValid(m.options.options) and isValid(m.options.options.audios)
     audioCount = m.options.options.audios.count()
   end if
 
-  ' Determine if options button should be shown
   shouldShowOptions = videoCount > 1 or audioCount > 1
-
-  ' Check current state
   buttonExists = isValid(m.optionsButton)
 
   if shouldShowOptions and not buttonExists
-    ' Create and add the options button (always right after play button)
-    ' Capture current focus state before modifying button group
     currentFocusIndex = m.buttonGrp.buttonFocused
 
     m.optionsButton = CreateObject("roSGNode", "IconButton")
@@ -818,25 +1107,20 @@ sub updateOptionsButtonVisibility()
       insertIndex = playButtonIndex + 1
       m.buttonGrp.insertChild(m.optionsButton, insertIndex)
 
-      ' Adjust focus index if user was on a button after the insertion point
       if isValid(currentFocusIndex) and currentFocusIndex >= insertIndex
         m.buttonGrp.buttonFocused = currentFocusIndex + 1
       end if
     else
-      ' Play button not found; append options button to end and log warning
       m.log.warn("playButton not found in button group; appending optionsButton to end")
       m.buttonGrp.appendChild(m.optionsButton)
     end if
   else if not shouldShowOptions and buttonExists
-    ' Capture current focus state before removing button
     currentFocusIndex = m.buttonGrp.buttonFocused
     optionsButtonIndex = getButtonIndex("optionsButton")
 
-    ' Remove the button and clear reference
     m.buttonGrp.removeChild(m.optionsButton)
     m.optionsButton = invalid
 
-    ' Adjust focus: if user was on a button after the removed button, shift focus back (clamped to 0)
     if isValid(currentFocusIndex) and isValid(optionsButtonIndex) and currentFocusIndex > optionsButtonIndex
       focusIndex = currentFocusIndex - 1
       if focusIndex < 0 then focusIndex = 0
@@ -846,10 +1130,9 @@ sub updateOptionsButtonVisibility()
   end if
 end sub
 
-' getButtonIndex: Helper to find button index in button group
+' getButtonIndex: Find the index of a button by ID in the button group
 ' @param {string} buttonId - The id of the button to find
-' @returns {integer} - The index of the button, or -1 if not found
-'
+' @return {integer} The index of the button, or -1 if not found
 function getButtonIndex(buttonId as string) as integer
   for i = 0 to m.buttonGrp.getChildCount() - 1
     child = m.buttonGrp.getChild(i)
@@ -860,29 +1143,41 @@ function getButtonIndex(buttonId as string) as integer
   return -1
 end function
 
-' activateExtras: Hide description and tracks when entering extras view
-' Saves current description visibility for later restoration
-'
 sub activateExtras()
-  m.itemDescriptionWasVisible = m.itemDescription.visible
-  m.itemDescription.visible = false
-  m.itemTracks.visible = false
   m.extrasActive = true
 end sub
 
-' deactivateExtras: Restore description and tracks when leaving extras view
-' Restores description to its pre-extras visibility state
-'
 sub deactivateExtras()
-  m.itemDescription.visible = m.itemDescriptionWasVisible
-  m.itemTracks.visible = true
   m.extrasActive = false
 end sub
 
-' focusButtonGroupChild: Focus the button at the current buttonFocused index
-' Directly sets focus on the child rather than the group to reliably update
-' visuals when focus is already on a sibling child.
-'
+' setDescriptionInLayout: Add or remove itemDescription from the itemDetails LayoutGroup.
+' Invisible nodes still take up space in RSG LayoutGroups, so reparenting is required
+' to truly eliminate spacing when there is no description text.
+sub setDescriptionInLayout(shouldShow as boolean)
+  if shouldShow = m.itemDescriptionInLayout then return
+  if shouldShow
+    m.itemDetails.insertChild(m.itemDescription, 1)
+  else
+    m.itemDetails.removeChild(m.itemDescription)
+  end if
+  m.itemDescriptionInLayout = shouldShow
+end sub
+
+' setTracksInLayout: Add or remove itemTracks from the itemDetails LayoutGroup.
+' Invisible nodes still take up space in RSG LayoutGroups, so reparenting is required
+' to truly eliminate spacing when tracks are not applicable (e.g. Series type).
+sub setTracksInLayout(shouldShow as boolean)
+  if shouldShow = m.itemTracksInLayout then return
+  if shouldShow
+    m.itemDetails.appendChild(m.itemTracks)
+  else
+    m.itemDetails.removeChild(m.itemTracks)
+  end if
+  m.itemTracksInLayout = shouldShow
+end sub
+
+' focusButtonGroupChild: Focus the button at the current buttonFocused index directly
 sub focusButtonGroupChild()
   focusIndex = m.buttonGrp.buttonFocused
   if not isValid(focusIndex) or focusIndex < 0 or focusIndex >= m.buttonGrp.getChildCount()
@@ -891,9 +1186,8 @@ sub focusButtonGroupChild()
   m.buttonGrp.getChild(focusIndex).setFocus(true)
 end sub
 
-' manageDeleteButton: Add or remove Delete button based on server CanDelete permission
-' CanDelete is computed server-side and accounts for global, folder-specific, and admin permissions
-'
+' manageDeleteButton: Add or remove Delete button based on server CanDelete permission.
+' CanDelete is computed server-side and accounts for global, folder-specific, and admin permissions.
 sub manageDeleteButton()
   canDelete = false
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
@@ -903,21 +1197,18 @@ sub manageDeleteButton()
   buttonExists = isValid(m.deleteButton)
 
   if canDelete and not buttonExists
-    ' Create and append delete button at end of button group (destructive action goes last)
     m.deleteButton = CreateObject("roSGNode", "IconButton")
     m.deleteButton.id = "deleteButton"
     m.deleteButton.icon = "pkg:/images/icons/delete.png"
     m.deleteButton.text = tr("Delete")
     m.buttonGrp.appendChild(m.deleteButton)
   else if not canDelete and buttonExists
-    ' Remove delete button and adjust focus if needed
     currentFocusIndex = m.buttonGrp.buttonFocused
     deleteButtonIndex = getButtonIndex("deleteButton")
 
     m.buttonGrp.removeChild(m.deleteButton)
     m.deleteButton = invalid
 
-    ' Adjust focus: if user was on or after delete button, shift focus back (clamped to 0)
     if isValid(currentFocusIndex) and isValid(deleteButtonIndex) and currentFocusIndex >= deleteButtonIndex
       focusIndex = currentFocusIndex - 1
       if focusIndex < 0 then focusIndex = 0
@@ -928,8 +1219,8 @@ sub manageDeleteButton()
 end sub
 
 function round(f as float) as integer
-  ' BrightScript only has a "floor" round
-  ' This compares floor to floor + 1 to find which is closer
+  ' BrightScript only has a "floor" round.
+  ' Compare floor to floor+1 to find which is closer.
   m = int(f)
   n = m + 1
   x = abs(f - m)
@@ -941,7 +1232,7 @@ function round(f as float) as integer
   end if
 end function
 
-'Check if options updated and any reloading required
+' audioOptionsClosed: Sync audio stream selection back from ItemOptions popup
 sub audioOptionsClosed()
   if m.options.audioStreamIndex <> m.top.selectedAudioStreamIndex
     m.top.selectedAudioStreamIndex = m.options.audioStreamIndex
@@ -952,16 +1243,15 @@ sub audioOptionsClosed()
       end if
     end for
   end if
-
   m.buttonGrp.setFocus(true)
 end sub
 
-' Check if options were updated and if any reloding is needed...
+' videoOptionsClosed: Sync video stream selection back from ItemOptions popup;
+' reload audio/subtitle options for the newly selected source
 sub videoOptionsClosed()
   if m.options.videoStreamId <> m.top.selectedVideoStreamId
     m.top.selectedVideoStreamId = m.options.videoStreamId
     setFieldText("video_codec", tr("Video") + ": " + m.options.video_codec)
-    ' Video stream changed — reload audio/subtitle options for the selected source
     m.top.unobserveField("itemContent")
     mediaSources = m.top.itemContent.mediaSourcesData.mediaSources
     for each mediaSource in mediaSources
@@ -975,13 +1265,35 @@ sub videoOptionsClosed()
     end for
     m.top.observeField("itemContent", "itemContentChanged")
   end if
-
   m.buttonGrp.setFocus(true)
 end sub
 
+' onShuffleEpisodeDataLoaded: Play shuffled episodes for Series
+sub onShuffleEpisodeDataLoaded()
+  m.getShuffleEpisodesTask.unobserveField("data")
+
+  if isValid(m.getShuffleEpisodesTask.data)
+    queueManager = m.global.queueManager
+    queueManager.callFunc("set", m.getShuffleEpisodesTask.data.items)
+    queueManager.callFunc("playQueue")
+  end if
+end sub
+
+' onFirstEpisodeLoaded: Start playback of first episode for Series Play button
+sub onFirstEpisodeLoaded()
+  m.loadFirstEpisodeTask.unobserveField("content")
+  content = m.loadFirstEpisodeTask.content
+
+  if isValid(content) and content.count() > 0
+    m.top.quickPlayNode = content[0]
+  else
+    m.log.warn("Series Play: could not load first episode for series", m.top.itemContent.id)
+    m.global.sceneManager.callFunc("standardDialog", tr("Playback Error"), { data: ["<p>" + tr("Could not load the first episode.") + "</p>"] })
+  end if
+end sub
+
 function onKeyEvent(key as string, press as boolean) as boolean
-  ' Due to the way the button pressed event works, need to catch the release for the button as the press is being sent
-  ' directly to the main loop.  Will get this sorted in the layout update for Movie Details
+  ' Options popup: intercept OK release on optionsButton
   if key = "OK" and isValid(m.optionsButton) and m.optionsButton.isInFocusChain()
     m.options.visible = true
     m.options.setFocus(true)
@@ -989,6 +1301,39 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   if not press then return false
+
+  item = m.top.itemContent
+  itemType = ""
+  if isValid(item)
+    itemType = item.type
+  end if
+
+  ' Series-specific button handling — intercept before Main.bs receives buttonSelected
+  if itemType = "Series" and key = "OK" and m.buttonGrp.isInFocusChain()
+    focusedButton = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
+    if isValid(focusedButton)
+      if focusedButton.id = "playButton" and isValidAndNotEmpty(item.id)
+        ' Load first episode and set quickPlayNode
+        m.loadFirstEpisodeTask.itemId = item.id
+        m.loadFirstEpisodeTask.observeField("content", "onFirstEpisodeLoaded")
+        m.loadFirstEpisodeTask.control = "RUN"
+        return true
+      else if focusedButton.id = "resumeButton" and isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
+        m.top.quickPlayNode = m.top.nextUpEpisode
+        return true
+      end if
+    end if
+  end if
+
+  ' Shuffle button: handled in component (like TVShowDetails)
+  if key = "OK" and isValid(m.shuffleButton) and m.shuffleButton.isInFocusChain()
+    if isValidAndNotEmpty(item.id)
+      m.getShuffleEpisodesTask.showID = item.id
+      m.getShuffleEpisodesTask.observeField("data", "onShuffleEpisodeDataLoaded")
+      m.getShuffleEpisodesTask.control = "RUN"
+    end if
+    return true
+  end if
 
   ' DOWN: itemDescription -> buttonGrp
   if key = "down" and m.itemDescription.isInFocusChain()
@@ -1035,9 +1380,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
   end if
 
-  ' UP: buttonGrp -> itemDescription (if visible)
+  ' UP: buttonGrp -> itemDescription (if in layout, i.e. has content)
   if key = "up" and m.buttonGrp.isInFocusChain()
-    if m.itemDescription.visible
+    if m.itemDescriptionInLayout
       m.top.lastFocus = m.itemDescription
       m.itemDescription.setFocus(true)
       return true
@@ -1052,7 +1397,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
   else if key = "play" and m.extrasGrid.hasFocus()
-    print "Play was pressed from the movie details extras slider"
     if isValid(m.extrasGrid.focusedItem)
       m.top.quickPlayNode = m.extrasGrid.focusedItem
       return true

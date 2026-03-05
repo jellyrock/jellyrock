@@ -521,6 +521,11 @@ end function
 ' Returns a list of TV Shows for a given TV Show and season
 ' Accepts strings for the TV Show Id and the season Id
 function TVEpisodes(showId as string, seasonId as string) as dynamic
+  if not isValidAndNotEmpty(seasonId)
+    print "TVEpisodes: seasonId is empty; skipping GetEpisodes call and returning invalid"
+    return invalid
+  end if
+
   ' Request Overview in fields to avoid per-episode ItemMetaData() API calls
   data = api.shows.GetEpisodes(showId, { "seasonId": seasonId, "UserId": m.global.user.id, "fields": "MediaStreams,MediaSources,Overview" })
   if not isValid(data) or not isValid(data.Items) then return invalid

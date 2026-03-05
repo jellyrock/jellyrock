@@ -412,7 +412,7 @@ namespace tests
     function _()
       ' Season has both its own backdrop AND a parent (series) backdrop.
       ' getItemParentBackdropUrl should pick the series backdrop so that the
-      ' URL matches what TVShowDetails generates for the same series.
+      ' URL matches what ItemDetails generates for the same series.
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "season1"
       item.backdropImageTags = ["seasonBack"]
