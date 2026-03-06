@@ -86,6 +86,7 @@ sub init()
 
   ' Observe overhang clock for dynamic "Ends At" updates (only when clock is visible)
   m.endsAtNode = invalid
+  m.endsAtDurationSeconds = 0
   if not m.global.user.settings.uiDesignHideClock
     overhang = m.top.getScene().findNode("overhang")
     if isValid(overhang)
@@ -367,6 +368,7 @@ sub populateInfoGroup()
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
   m.endsAtNode = invalid
+  m.endsAtDurationSeconds = 0
 
   item = m.top.itemContent
   userSettings = m.global.user.settings
@@ -423,6 +425,7 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
     m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
     displayInfoNode(m.endsAtNode)
   end if
@@ -472,6 +475,7 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
     m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
     displayInfoNode(m.endsAtNode)
   end if
@@ -527,6 +531,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
     m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
     displayInfoNode(m.endsAtNode)
   end if
@@ -600,6 +605,7 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
   ' "Ends At" is only meaningful when we have a valid avg episode runtime to calculate with
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
     m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
     displayInfoNode(m.endsAtNode)
   end if
@@ -652,8 +658,9 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
     m.endsAtNode = createInfoLabel("ends-at")
     ' Compute end time directly from series runTimeTicks — do NOT swap m.top.itemContent,
     ' as that fires itemContentChanged() synchronously causing reentrancy and row duplication.
+    m.endsAtDurationSeconds = int(seriesData.runTimeTicks / 10000000.0)
     endDate = CreateObject("roDateTime")
-    endDate.fromSeconds(endDate.asSeconds() + int(seriesData.runTimeTicks / 10000000.0))
+    endDate.fromSeconds(endDate.asSeconds() + m.endsAtDurationSeconds)
     endDate.toLocalTime()
     m.endsAtNode.text = tr("Ends at %1").Replace("%1", formatTime(endDate))
     displayInfoNode(m.endsAtNode)
@@ -987,7 +994,10 @@ end function
 ' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes
 sub onClockMinuteChanged()
   if not isValid(m.endsAtNode) then return
-  m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+  date = CreateObject("roDateTime")
+  date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
+  date.toLocalTime()
+  m.endsAtNode.text = tr("Ends at %1").Replace("%1", formatTime(date))
 end sub
 
 sub updateFavoriteButton()
@@ -1428,6 +1438,7 @@ sub onSeasonSeriesDataLoaded()
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
   m.endsAtNode = invalid
+  m.endsAtDurationSeconds = 0
 
   populateInfoGroupSeason(m.top.itemContent, m.global.user.settings)
 
