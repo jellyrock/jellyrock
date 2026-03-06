@@ -457,6 +457,10 @@
       <extracomment>User Setting - Setting title</extracomment>
     </message>
     <message>
+      <source>episodes</source>
+      <translation>episodes</translation>
+    </message>
+    <message>
       <source>Episodes</source>
       <translation>Episodes</translation>
     </message>
@@ -471,10 +475,6 @@
       <extracomment>Dialog Title: Received error from server when trying to get information about the selected item for playback</extracomment>
     </message>
     <message>
-      <source>Error loading Season</source>
-      <translation>Error loading Season</translation>
-    </message>
-    <message>
       <source>Error:</source>
       <translation>Error:</translation>
     </message>
@@ -485,10 +485,6 @@
     <message>
       <source>Exit JellyRock</source>
       <translation>Exit JellyRock</translation>
-    </message>
-    <message>
-      <source>Extras</source>
-      <translation>Extras</translation>
     </message>
     <message>
       <source>Fallback Fonts</source>
@@ -544,19 +540,8 @@
       <extracomment>User Setting - Setting description</extracomment>
     </message>
     <message>
-      <source>Go to episode</source>
-      <translation>Go to episode</translation>
-      <extracomment>Continue Watching Popup Menu - Navigate to the Episode Detail Page</extracomment>
-    </message>
-    <message>
-      <source>Go to season</source>
-      <translation>Go to season</translation>
-      <extracomment>Continue Watching Popup Menu - Navigate to the Season Page</extracomment>
-    </message>
-    <message>
-      <source>Go to series</source>
-      <translation>Go to series</translation>
-      <extracomment>Continue Watching Popup Menu - Navigate to the Series Detail Page</extracomment>
+      <source>Go to Series</source>
+      <translation>Go to Series</translation>
     </message>
     <message>
       <source>Grid View Settings</source>
@@ -601,10 +586,6 @@
     <message>
       <source>Home</source>
       <translation>Home</translation>
-    </message>
-    <message>
-      <source>If enabled, selecting a TV series with only one season will go straight to the episode list rather than the show details and season list.</source>
-      <translation>If enabled, selecting a TV series with only one season will go straight to the episode list rather than the show details and season list.</translation>
     </message>
     <message>
       <source>If enabled, the number of unwatched episodes in a series/season will be removed.</source>
@@ -663,10 +644,6 @@
       <source>Loading trailer</source>
       <translation>Loading trailer</translation>
       <extracomment>Dialog title in Main.brs</extracomment>
-    </message>
-    <message>
-      <source>Loading...</source>
-      <translation>Loading…</translation>
     </message>
     <message>
       <source>Login attempt failed.</source>
@@ -1120,6 +1097,10 @@
       <extracomment>Settings Menu - Description for option</extracomment>
     </message>
     <message>
+      <source>Series</source>
+      <translation>Series</translation>
+    </message>
+    <message>
       <source>Server not found, is it online?</source>
       <translation>Server not found, is it online?</translation>
     </message>
@@ -1214,11 +1195,6 @@
       <extracomment>Video size</extracomment>
     </message>
     <message>
-      <source>Skip Details for Single Seasons</source>
-      <translation>Skip Details for Single Seasons</translation>
-      <extracomment>Settings Menu - Title for option</extracomment>
-    </message>
-    <message>
       <source>Slideshow Off</source>
       <translation>Slideshow Off</translation>
       <extracomment>Photo view option - view single photos</extracomment>
@@ -1239,11 +1215,6 @@
     <message>
       <source>Sort</source>
       <translation>Sort</translation>
-    </message>
-    <message>
-      <source>Special</source>
-      <translation>Special</translation>
-      <extracomment>Special episode of a TV Show</extracomment>
     </message>
     <message>
       <source>Special Features</source>
