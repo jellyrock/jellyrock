@@ -815,7 +815,7 @@ sub itemContentChanged()
       m.loadSeasonSeriesTask.control = "RUN"
     end if
 
-    ' Reload extras rows on every content change (first load and every refresh)
+    ' Reload extras rows on every content change.
     m.extrasGrid.type = item.type
     m.extrasGrid.callFunc("loadParts", item)
   end if

@@ -31,6 +31,22 @@ sub init()
   ' Season episodes task (Season type — loads all episodes for this season in order)
   m.LoadSeasonAllEpisodesTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadSeasonAllEpisodesTask.itemsToLoad = "seasonEpisodes"
+
+  ' Permanent root content node — never replaced.
+  m.top.content = CreateObject("roSGNode", "ContentNode")
+
+  ' Named row refs — reused across refreshes so the RowList never loses focus position.
+  ' Each ref is invalid until that row's data loads for the first time.
+  m.rowAdditionalParts = invalid
+  m.rowSeasons = invalid
+  m.rowEpisodes = invalid
+  m.rowSeasonEpisodes = invalid
+  m.rowCast = invalid
+  m.rowLikeThis = invalid
+  m.rowSpecialFeatures = invalid
+  m.rowMovies = invalid
+  m.rowTvShows = invalid
+  m.rowSeries = invalid
 end sub
 
 sub updateSize()
@@ -42,6 +58,32 @@ sub updateSize()
   m.top.vertFocusAnimationStyle = "fixedFocus"
 end sub
 
+' cancelInFlightChain: Stop all tasks and unobserve their content fields before starting a new chain.
+' Prevents observer stacking and halts unnecessary in-flight work (network, processing) when
+' loadParts() or loadPersonVideos() is called while a previous chain is still running.
+sub cancelInFlightChain()
+  m.LoadSeasonsTask.control = "STOP"
+  m.LoadSeasonsTask.unobserveField("content")
+  m.LoadSeasonAllEpisodesTask.control = "STOP"
+  m.LoadSeasonAllEpisodesTask.unobserveField("content")
+  m.LoadSeasonEpisodesTask.control = "STOP"
+  m.LoadSeasonEpisodesTask.unobserveField("content")
+  m.LoadAdditionalPartsTask.control = "STOP"
+  m.LoadAdditionalPartsTask.unobserveField("content")
+  m.LoadPeopleTask.control = "STOP"
+  m.LoadPeopleTask.unobserveField("content")
+  m.LikeThisTask.control = "STOP"
+  m.LikeThisTask.unobserveField("content")
+  m.SpecialFeaturesTask.control = "STOP"
+  m.SpecialFeaturesTask.unobserveField("content")
+  m.LoadMoviesTask.control = "STOP"
+  m.LoadMoviesTask.unobserveField("content")
+  m.LoadShowsTask.control = "STOP"
+  m.LoadShowsTask.unobserveField("content")
+  m.LoadSeriesTask.control = "STOP"
+  m.LoadSeriesTask.unobserveField("content")
+end sub
+
 ' loadParts: Start the extras loading chain appropriate for the item type.
 '
 ' Chain by type:
@@ -51,39 +93,33 @@ end sub
 '   Season                    → Episodes ("Season X") → People → LikeThis'
 ' m.top.type must be set before calling this function (done by ShowScenes.bs).
 sub loadParts(data as object)
+  cancelInFlightChain()
   m.top.parentId = data.id
   m.people = data.people
 
   itemType = m.top.type
 
   if itemType = "Series"
-    ' Initialize content node and default row size; seasons will be prepended in onSeasonsLoaded
-    m.top.content = CreateObject("roSGNode", "ContentNode")
+    ' Clear and repopulate the permanent root; seasons will be appended in onSeasonsLoaded
     m.top.rowItemSize = [[234, 396]]
     m.LoadSeasonsTask.observeField("content", "onSeasonsLoaded")
     m.LoadSeasonsTask.itemId = m.top.parentId
     m.LoadSeasonsTask.control = "RUN"
   else if itemType = "Season"
-    ' Load all episodes for this season in order; row title comes from the season name
-    m.top.content = CreateObject("roSGNode", "ContentNode")
     m.top.rowItemSize = [[464, 396]]
     m.LoadSeasonAllEpisodesTask.observeField("content", "onSeasonAllEpisodesLoaded")
     m.LoadSeasonAllEpisodesTask.itemId = data.seriesId
     m.LoadSeasonAllEpisodesTask.metadata = { seasonId: data.id }
     m.LoadSeasonAllEpisodesTask.control = "RUN"
   else if itemType = "Episode"
-    ' Load all episodes from the same season; "More from Season X" row is prepended in onSeasonEpisodesLoaded
     m.currentEpisodeId = data.id
     m.currentEpisodeSeasonNumber = data.parentIndexNumber
-    m.top.content = CreateObject("roSGNode", "ContentNode")
     m.top.rowItemSize = [[234, 396]]
     m.LoadSeasonEpisodesTask.observeField("content", "onSeasonEpisodesLoaded")
     m.LoadSeasonEpisodesTask.itemId = data.seriesId
     m.LoadSeasonEpisodesTask.metadata = { seasonId: data.seasonId }
     m.LoadSeasonEpisodesTask.control = "RUN"
   else if itemType = "MusicVideo"
-    ' Skip AdditionalParts and SpecialFeatures
-    m.top.content = CreateObject("roSGNode", "ContentNode")
     m.top.rowItemSize = [[234, 396]]
     m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
     m.LoadPeopleTask.peopleList = m.people
@@ -97,6 +133,7 @@ sub loadParts(data as object)
 end sub
 
 sub loadPersonVideos(personId)
+  cancelInFlightChain()
   m.personId = personId
   m.LoadMoviesTask.itemId = m.personId
   m.LoadMoviesTask.observeField("content", "onMoviesLoaded")
@@ -109,8 +146,7 @@ sub onSeasonsLoaded()
   m.LoadSeasonsTask.unobserveField("content")
 
   if isValid(seasons) and seasons.count() > 0
-    row = buildRow(tr("Seasons"), seasons)
-    m.top.content.appendChild(row)
+    m.rowSeasons = populateRow(m.rowSeasons, tr("Seasons"), seasons)
   end if
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
@@ -157,10 +193,8 @@ sub onSeasonEpisodesLoaded()
       else
         rowTitle = tr("More Episodes")
       end if
-      row = buildRow(rowTitle, orderedEpisodes)
-      ' Wide landscape size for episode thumbnails; subsequent rows use portrait [234, 396]
       m.top.rowItemSize = [[464, 396], [234, 396]]
-      m.top.content.appendChild(row)
+      m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes)
     end if
   end if
 
@@ -175,10 +209,8 @@ sub onSeasonAllEpisodesLoaded()
   m.LoadSeasonAllEpisodesTask.unobserveField("content")
 
   if isValid(episodes) and episodes.count() > 0
-    row = buildRow(tr("Episodes"), episodes)
-    ' Wide landscape size for episode thumbnails; subsequent rows use portrait [234, 396]
     m.top.rowItemSize = [[464, 396], [234, 396]]
-    m.top.content.appendChild(row)
+    m.rowEpisodes = populateRow(m.rowEpisodes, tr("Episodes"), episodes)
   end if
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
@@ -190,12 +222,8 @@ sub onAdditionalPartsLoaded()
   parts = m.LoadAdditionalPartsTask.content
   m.LoadAdditionalPartsTask.unobserveField("content")
 
-  data = CreateObject("roSGNode", "ContentNode") ' The row node
-  m.top.content = data
   if isValid(parts) and parts.count() > 0
-    row = buildRow(tr("Additional Parts"), parts)
-    addRowSize([464, 291])
-    m.top.content.appendChild(row)
+    m.rowAdditionalParts = populateRow(m.rowAdditionalParts, tr("Additional Parts"), parts)
     m.top.rowItemSize = [[464, 291]]
   else
     m.top.rowItemSize = [[234, 396]]
@@ -211,11 +239,7 @@ sub onPeopleLoaded()
   people = m.LoadPeopleTask.content
   m.loadPeopleTask.unobserveField("content")
   if isValid(people) and people.count() > 0
-    row = m.top.content.createChild("ContentNode")
-    row.Title = tr("Cast & Crew")
-    for each person in people
-      row.appendChild(person)
-    end for
+    m.rowCast = populateRow(m.rowCast, tr("Cast & Crew"), people)
   end if
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
   m.LikeThisTask.itemId = m.top.parentId
@@ -226,11 +250,7 @@ sub onLikeThisLoaded()
   data = m.LikeThisTask.content
   m.LikeThisTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    row = m.top.content.createChild("ContentNode")
-    row.Title = tr("More Like This")
-    for each item in data
-      row.appendChild(item)
-    end for
+    m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data)
     addRowSize([234, 396])
   end if
 
@@ -247,12 +267,8 @@ function onSpecialFeaturesLoaded()
   data = m.SpecialFeaturesTask.content
   m.SpecialFeaturesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    row = m.top.content.createChild("ContentNode")
-    row.Title = tr("Special Features")
-    for each item in data
-      m.top.visible = true
-      row.appendChild(item)
-    end for
+    m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, tr("Special Features"), data)
+    m.top.visible = true
     addRowSize([462, 372])
   end if
 
@@ -262,16 +278,10 @@ end function
 sub onMoviesLoaded()
   data = m.LoadMoviesTask.content
   m.LoadMoviesTask.unobserveField("content")
-  rlContent = CreateObject("roSGNode", "ContentNode")
   if isValid(data) and data.count() > 0
-    row = rlContent.createChild("ContentNode")
-    row.title = tr("Movies")
-    for each mov in data
-      row.appendChild(mov)
-    end for
+    m.rowMovies = populateRow(m.rowMovies, tr("Movies"), data)
     m.top.rowItemSize = [[234, 396]]
   end if
-  m.top.content = rlContent
   m.LoadShowsTask.itemId = m.personId
   m.LoadShowsTask.observeField("content", "onShowsLoaded")
   m.LoadShowsTask.control = "RUN"
@@ -281,9 +291,8 @@ sub onShowsLoaded()
   data = m.LoadShowsTask.content
   m.LoadShowsTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    row = buildRow("TV Shows", data)
+    m.rowTvShows = populateRow(m.rowTvShows, tr("TV Shows"), data)
     addRowSize([502, 396])
-    m.top.content.appendChild(row)
   end if
   m.LoadSeriesTask.itemId = m.personId
   m.LoadSeriesTask.observeField("content", "onSeriesLoaded")
@@ -294,20 +303,27 @@ sub onSeriesLoaded()
   data = m.LoadSeriesTask.content
   m.LoadSeriesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    row = buildRow("Series", data)
+    m.rowSeries = populateRow(m.rowSeries, tr("Series"), data)
     addRowSize([234, 396])
-    m.top.content.appendChild(row)
   end if
   m.top.visible = true
 end sub
 
-function buildRow(rowTitle as string, items)
-  row = CreateObject("roSGNode", "ContentNode")
-  row.Title = tr(rowTitle)
-  for each mov in items
-    row.appendChild(mov)
+' populateRow: Reuse an existing row ContentNode (clearing its children) or create a new one.
+' Creating appends the row to m.top.content at the current end — correct since the async chain
+' fires in display order, and extras data never changes between refreshes.
+' Returns the row for the caller to store as a named ref.
+function populateRow(rowRef as object, title as string, items as object) as object
+  if isValid(rowRef)
+    rowRef.removeChildrenIndex(rowRef.getChildCount(), 0)
+  else
+    rowRef = m.top.content.createChild("ContentNode")
+    rowRef.Title = title
+  end if
+  for each item in items
+    rowRef.appendChild(item)
   end for
-  return row
+  return rowRef
 end function
 
 sub addRowSize(newRow)
