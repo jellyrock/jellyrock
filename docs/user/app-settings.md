@@ -329,7 +329,6 @@ Settings relating to how the application looks.
     - [Blur Unwatched Episodes](#uiTvShowsBlurUnwatched)
     - [Disable Community Rating for Episodes](#uiTvShowsDisableCommunityRating)
     - [Disable Unwatched Episode Count](#uiTvShowsDisableUnwatchedCount)
-    - [Skip Details for Single Seasons](#uiTvShowsGoStraightToEpisodes)
 
 ### General
 
@@ -663,18 +662,6 @@ If enabled, the number of unwatched episodes in a series/season will be removed.
 | Property | Value |
 | --- | --- |
 | Setting Name | `uiTvShowsDisableUnwatchedCount` |
-| Type | `bool` |
-| Default | `false` |
-
-<h5 id="uiTvShowsGoStraightToEpisodes">Skip Details for Single Seasons</h5>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-tv-shows">TV Shows</a> › <a href="#uiTvShowsGoStraightToEpisodes">Skip Details for Single Seasons</a>
-
-If enabled, selecting a TV series with only one season will go straight to the episode list rather than the show details and season list.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiTvShowsGoStraightToEpisodes` |
 | Type | `bool` |
 | Default | `false` |
 
