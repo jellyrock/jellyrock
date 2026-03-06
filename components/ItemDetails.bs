@@ -10,7 +10,8 @@ import "pkg:/source/utils/streamSelection.bs"
 const EXTRAS_GRP_TARGET_Y = 378
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
 const ITEM_DETAILS_EXTRAS_PADDING = 6
-' Minimum display height for the logo image — images smaller than this are scaled up (aspect ratio preserved)
+' Minimum display height for the logo image — images too small are scaled up (aspect ratio preserved).
+' Note: LOGO_MAX_DISPLAY_WIDTH takes precedence for very wide/flat logos; this minimum may not be reached.
 const LOGO_MIN_DISPLAY_HEIGHT = 212
 ' Maximum display width for the logo image — prevents very wide/flat logos from overlapping buttons
 const LOGO_MAX_DISPLAY_WIDTH = 500
@@ -1092,7 +1093,8 @@ end sub
 
 ' onLogoLoadStatusChanged: Position logo to the right, with its bottom just above the date label.
 ' When the date label is hidden, anchors to where the date label would be.
-' Images smaller than LOGO_MIN_DISPLAY_HEIGHT are scaled up while preserving aspect ratio.
+' Images smaller than LOGO_MIN_DISPLAY_HEIGHT are scaled up while preserving aspect ratio,
+' unless the logo is very wide/flat, in which case LOGO_MAX_DISPLAY_WIDTH takes precedence.
 sub onLogoLoadStatusChanged()
   if not isValid(m.itemLogo) then return
 
@@ -1101,22 +1103,24 @@ sub onLogoLoadStatusChanged()
     logoHeight = m.itemLogo.bitmapHeight
 
     if logoWidth > 0 and logoHeight > 0
-      ' Scale up small images to LOGO_MIN_DISPLAY_HEIGHT, preserving aspect ratio.
-      ' Images already at or above the minimum height are displayed at native size.
-      if logoHeight < LOGO_MIN_DISPLAY_HEIGHT
-        scale = LOGO_MIN_DISPLAY_HEIGHT / logoHeight
-        displayWidth = int(logoWidth * scale)
-        displayHeight = LOGO_MIN_DISPLAY_HEIGHT
-      else
+      ' Compute display size satisfying both constraints where possible.
+      ' LOGO_MAX_DISPLAY_WIDTH is a hard layout constraint (prevents button overlap).
+      ' LOGO_MIN_DISPLAY_HEIGHT is a best-effort aesthetic target — it cannot be
+      ' guaranteed when the logo is too wide/flat to satisfy both simultaneously.
+      scaleToMinHeight = LOGO_MIN_DISPLAY_HEIGHT / logoHeight
+      if logoHeight >= LOGO_MIN_DISPLAY_HEIGHT and logoWidth <= LOGO_MAX_DISPLAY_WIDTH
+        ' Native size already satisfies both constraints.
         displayWidth = logoWidth
         displayHeight = logoHeight
-      end if
-
-      ' Cap width to prevent wide/flat logos from overlapping buttons.
-      ' If the cap reduces width, scale height down proportionally to preserve aspect ratio.
-      if displayWidth > LOGO_MAX_DISPLAY_WIDTH
-        displayHeight = int(displayHeight * LOGO_MAX_DISPLAY_WIDTH / displayWidth)
+      else if int(logoWidth * scaleToMinHeight) <= LOGO_MAX_DISPLAY_WIDTH
+        ' Scaling up to min-height keeps width within max-width — both satisfied.
+        displayWidth = int(logoWidth * scaleToMinHeight)
+        displayHeight = LOGO_MIN_DISPLAY_HEIGHT
+      else
+        ' Very wide/flat logo: max-width is the binding constraint.
+        ' Height will be below LOGO_MIN_DISPLAY_HEIGHT — max-width takes precedence.
         displayWidth = LOGO_MAX_DISPLAY_WIDTH
+        displayHeight = int(logoHeight * LOGO_MAX_DISPLAY_WIDTH / logoWidth)
       end if
 
       m.itemLogo.width = displayWidth
