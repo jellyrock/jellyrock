@@ -690,7 +690,8 @@ function CreateItemDetailsGroup(item as object) as dynamic
   ' Set up and load item extras
   extras = group.findNode("extrasGrid")
   extras.observeField("selectedItem", m.port)
-  ' type and loadParts are called by itemContentChanged() in ItemDetails.bs on every content set/refresh
+  ' type and loadParts are called once by itemContentChanged() in ItemDetails.bs on first content load,
+  ' and again on explicit refresh via the refreshExtrasData field toggle.
 
   stopLoadingSpinner()
   return group
