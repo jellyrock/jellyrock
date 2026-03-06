@@ -53,6 +53,7 @@ sub init()
   m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
   m.extrasActive = false
   m.animationTargetCalculated = false
+  m.extrasLoaded = false
 
   ' Inner group: title + infoGroup + directorGenreGroup (never changes during activate/deactivate)
   ' Used to compute the correct animation target height when extras are shown
@@ -823,9 +824,12 @@ sub itemContentChanged()
       m.loadSeasonSeriesTask.control = "RUN"
     end if
 
-    ' Reload extras rows on every content change.
-    m.extrasGrid.type = item.type
-    m.extrasGrid.callFunc("loadParts", item)
+    ' Load extras rows on first content load only; explicit refresh via onRefreshExtrasData.
+    if not m.extrasLoaded
+      m.extrasLoaded = true
+      m.extrasGrid.type = item.type
+      m.extrasGrid.callFunc("loadParts", item)
+    end if
   end if
 
   m.buttonGrp.visible = true
@@ -1261,6 +1265,14 @@ function getButtonIndex(buttonId as string) as integer
   end for
   return -1
 end function
+
+' onRefreshExtrasData: Reload all extras rows when the user explicitly presses Refresh.
+sub onRefreshExtrasData()
+  item = m.top.itemContent
+  if not isValid(item) or not isValidAndNotEmpty(item.id) then return
+  m.extrasGrid.type = item.type
+  m.extrasGrid.callFunc("loadParts", item)
+end sub
 
 sub activateExtras()
   m.extrasActive = true

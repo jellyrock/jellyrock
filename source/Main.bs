@@ -683,6 +683,7 @@ sub Main (args as dynamic) as void
       else if btn.id = "refreshButton"
         ' Trigger data refresh for the current screen
         if isValid(group)
+          group.refreshExtrasData = not group.refreshExtrasData
           group.refreshItemDetailsData = not group.refreshItemDetailsData
         end if
       else if btn.id = "shuffleButton"

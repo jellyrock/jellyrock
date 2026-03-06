@@ -63,6 +63,7 @@
     <field id="selectedVideoStreamId" type="string" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="refreshItemDetailsData" type="bool" alwaysNotify="true" />
+    <field id="refreshExtrasData" type="bool" alwaysNotify="true" onChange="onRefreshExtrasData" />
     <field id="nextUpEpisode" type="node" onChange="nextUpEpisodeChanged" />
   </interface>
 </component>
