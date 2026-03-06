@@ -352,8 +352,8 @@ function populateRow(rowRef as object, title as string, items as object) as obje
     rowRef.removeChildrenIndex(rowRef.getChildCount(), 0)
   else
     rowRef = m.top.content.createChild("ContentNode")
-    rowRef.Title = title
   end if
+  rowRef.Title = title
   for each item in items
     rowRef.appendChild(item)
   end for
