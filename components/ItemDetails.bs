@@ -808,6 +808,8 @@ sub itemContentChanged()
 
     ' Season: kick off background fetch of parent series data for ratings/runtime/genres/logo
     if item.type = "Season" and isValidAndNotEmpty(item.seriesId)
+      ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
+      m.loadSeasonSeriesTask.unobserveField("content")
       m.loadSeasonSeriesTask.itemId = item.seriesId
       m.loadSeasonSeriesTask.observeField("content", "onSeasonSeriesDataLoaded")
       m.loadSeasonSeriesTask.control = "RUN"
