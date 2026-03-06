@@ -21,6 +21,9 @@ const GLOBAL_SETTINGS_CLEANUP_VERSION = "1.5.2"
 ' client version when music presentation views were removed
 const MUSIC_VIEW_MIGRATION_VERSION = "1.10.0"
 
+' client version when uiTvShowsGoStraightToEpisodes setting was removed (season now uses ItemDetails)
+const TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION = "2.0.0"
+
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()
   appLastRunVersion = m.global.app.lastRunVersion
@@ -156,7 +159,6 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
         "ui.tvshows.blurunwatched": "uiTvShowsBlurUnwatched",
         "ui.tvshows.disableCommunityRating": "uiTvShowsDisableCommunityRating",
         "ui.tvshows.disableUnwatchedEpisodeCount": "uiTvShowsDisableUnwatchedCount",
-        "ui.tvshows.goStraightToEpisodeListing": "uiTvShowsGoStraightToEpisodes",
 
         ' Item grid settings
         "itemgrid.showItemCount": "itemGridShowItemCount",
@@ -350,6 +352,30 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
         print `Successfully migrated ${migratedCount} music view settings for user ${section}`
       else
         print `No music view migration needed for userid: ${section} (no presentation views found)`
+      end if
+    end if
+
+    ' TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION - Remove uiTvShowsGoStraightToEpisodes (season now uses ItemDetails)
+    if isValid(lastRunVersion) and not versionChecker(lastRunVersion, TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION)
+      m.wasMigrated = true
+
+      ' Delete both forms: camelCase (used since v1.1.0) and old dotted alias
+      ' (handles users who jumped directly from v1.0.x to v2.0.0 without a v1.1.x run)
+      settingNames = ["uiTvShowsGoStraightToEpisodes", "ui.tvshows.goStraightToEpisodeListing"]
+      deletedAny = false
+      for each settingName in settingNames
+        if reg.exists(settingName)
+          print `Removing obsolete ${settingName} for userid: ${section}`
+          reg.delete(settingName)
+          deletedAny = true
+          print `Deleted ${settingName} from user ${section}`
+        end if
+      end for
+
+      if deletedAny
+        reg.flush()
+      else
+        print `No uiTvShowsGoStraightToEpisodes cleanup needed for userid: ${section} (setting not found)`
       end if
     end if
   end for

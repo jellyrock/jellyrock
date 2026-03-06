@@ -157,7 +157,6 @@ class SessionDataTransformer
     settingsNode.uiTvShowsBlurUnwatched = toBoolean(settingsData["uiTvShowsBlurUnwatched"])
     settingsNode.uiTvShowsDisableCommunityRating = toBoolean(settingsData["uiTvShowsDisableCommunityRating"])
     settingsNode.uiTvShowsDisableUnwatchedCount = toBoolean(settingsData["uiTvShowsDisableUnwatchedCount"])
-    settingsNode.uiTvShowsGoStraightToEpisodes = toBoolean(settingsData["uiTvShowsGoStraightToEpisodes"])
 
     ' Item Grid Settings
     settingsNode.itemGridShowItemCount = toBoolean(settingsData["itemGridShowItemCount"])

@@ -683,7 +683,6 @@ namespace tests
       m.assertEqual(result.uiTvShowsBlurUnwatched, false)
       m.assertEqual(result.uiTvShowsDisableCommunityRating, false)
       m.assertEqual(result.uiTvShowsDisableUnwatchedCount, false)
-      m.assertEqual(result.uiTvShowsGoStraightToEpisodes, false)
 
       ' Item Grid Settings
       m.assertEqual(result.itemGridShowItemCount, true)

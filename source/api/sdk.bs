@@ -2023,6 +2023,12 @@ namespace api
 
     ' Marks an item as played for user.
     function MarkPlayed(userid as string, itemid as string, params = {} as object)
+      if params.count() = 0
+        params = {
+          "DatePlayed": CreateObject("roDateTime").ToISOString(),
+          "PlaybackPositionTicks": 0
+        }
+      end if
       req = APIRequest(Substitute("users/{0}/playeditems/{1}", userid, itemid), params)
       return postJson(req)
     end function

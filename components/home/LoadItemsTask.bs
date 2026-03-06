@@ -164,6 +164,10 @@ sub loadItems()
 
     ' Extract array of persons from Views and download full metadata for each
   else if m.top.itemsToLoad = "people"
+    if not isValid(m.top.peopleList)
+      m.top.content = results
+      return
+    end if
     for each person in m.top.peopleList
       node = m.transformer.transformPerson(person)
       if isValid(node) then results.push(node)
@@ -238,6 +242,8 @@ sub loadItems()
     end if
   else if m.top.itemsToLoad = "metaData"
     results.push(ItemMetaData(m.top.itemId))
+  else if m.top.itemsToLoad = "metaDataDetails"
+    results.push(ItemDetailsMetaData(m.top.itemId))
   else if m.top.itemsToLoad = "audioStream"
     results.push(AudioStream(m.top.itemId))
   else if m.top.itemsToLoad = "backdropImage"

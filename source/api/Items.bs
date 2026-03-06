@@ -261,13 +261,20 @@ function searchMedia(query as string)
 end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.
-function ItemMetaData(id as string)
+' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
+function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string)
   url = Substitute("Users/{0}/Items/{1}", m.global.user.id, id)
-  resp = APIRequest(url, { "fields": "Chapters,Trickplay" })
+  resp = APIRequest(url, { "fields": fields })
   data = getJson(resp)
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
   return transformer.transformBaseItem(data)
+end function
+
+' MetaData for an item detail screen — includes People, Genres, and Studios in addition to
+' Chapters and Trickplay. Use this instead of ItemMetaData() when populating a detail view.
+function ItemDetailsMetaData(id as string)
+  return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People")
 end function
 
 ' Music Artist Data
@@ -516,47 +523,6 @@ function TVSeasons(id as string) as dynamic
   end for
   data.Items = results
   return data
-end function
-
-' Returns a list of TV Shows for a given TV Show and season
-' Accepts strings for the TV Show Id and the season Id
-function TVEpisodes(showId as string, seasonId as string) as dynamic
-  if not isValidAndNotEmpty(seasonId)
-    print "TVEpisodes: seasonId is empty; skipping GetEpisodes call and returning invalid"
-    return invalid
-  end if
-
-  ' Request Overview in fields to avoid per-episode ItemMetaData() API calls
-  data = api.shows.GetEpisodes(showId, { "seasonId": seasonId, "UserId": m.global.user.id, "fields": "MediaStreams,MediaSources,Overview" })
-  if not isValid(data) or not isValid(data.Items) then return invalid
-
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
-end function
-
-' Returns a list of extra features for a TV Show season
-' Accepts a string that is a TV Show season id
-function TVSeasonExtras(seasonId as string) as dynamic
-  ' Get and validate TV extra features data
-  data = api.users.GetSpecialFeatures(m.global.user.id, seasonId)
-  if not isValid(data) then return invalid
-
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data
-    node = transformer.transformBaseItem(item)
-    ' Force item type to Video so episode auto queue is not attempted
-    node.type = "Video"
-    results.push(node)
-  end for
-
-  ' Build the data format that the TVEpisodeRow expects
-  return { Items: results }
 end function
 
 ' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
