@@ -1349,9 +1349,9 @@ sub manageDeleteButton()
   end if
 end sub
 
-' manageGoToSeriesButton: Add or remove "Go to Series" button for Season type only
+' manageGoToSeriesButton: Add or remove "Go to Series" button for Season and Episode type
 sub manageGoToSeriesButton(itemType as string)
-  if itemType = "Season"
+  if itemType = "Season" or itemType = "Episode"
     if not isValid(m.goToSeriesButton)
       m.goToSeriesButton = CreateObject("roSGNode", "IconButton")
       m.goToSeriesButton.id = "goToSeriesButton"
