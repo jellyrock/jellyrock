@@ -121,12 +121,6 @@ sub Main (args as dynamic) as void
 
           if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
             quickplay.video(itemNode)
-            ' restore focus
-            if LCase(group.subtype()) = "tvepisodes"
-              if isValid(group.lastFocus)
-                group.lastFocus.setFocus(true)
-              end if
-            end if
           else if itemType = "audio"
             quickplay.audio(itemNode)
           else if itemType = "musicalbum"
@@ -165,48 +159,6 @@ sub Main (args as dynamic) as void
       end if
       elapsed = timeSpan.TotalMilliseconds() / 1000
       print "Quick Play finished loading in " + elapsed.toStr() + " seconds."
-    else if isNodeEvent(msg, "refreshSeasonDetailsData")
-      startLoadingSpinner()
-
-      currentScene = m.global.sceneManager.callFunc("getActiveScene")
-
-      ' Clear quickPlayNode before modifying nodes to prevent re-triggering the observer
-      if isValid(currentScene) and isValid(currentScene.quickPlayNode)
-        currentScene.quickPlayNode = invalid
-      end if
-
-      if isValid(currentScene) and isValid(currentScene.objects) and isValid(currentScene.seasonData)
-        currentEpisode = m.global.queueManager.callFunc("getCurrentItem")
-
-        if isValid(currentScene.objects.Items) and isValid(currentEpisode) and isValid(currentEpisode.id)
-          ' Find the object in the scene's data and update its json data
-          for i = 0 to currentScene.objects.Items.count() - 1
-            if LCase(currentScene.objects.Items[i].id) = LCase(currentEpisode.id)
-
-              data = api.users.GetItem(m.global.user.id, currentEpisode.id)
-              if isValid(data)
-                ' Update playback position on the JellyfinBaseItem node
-                positionTicks = 0
-                if isValid(data.UserData) and isValid(data.UserData.PlaybackPositionTicks)
-                  positionTicks = data.UserData.PlaybackPositionTicks
-                end if
-                currentScene.objects.Items[i].playbackPositionTicks = positionTicks
-                if positionTicks > 0
-                  m.global.queueManager.callFunc("setTopStartingPoint", positionTicks)
-                end if
-              end if
-              exit for
-            end if
-          end for
-        end if
-
-        seasonMetaData = ItemMetaData(currentScene.seasonData.id)
-        if isValid(seasonMetaData) then currentScene.seasonData = seasonMetaData
-        currentScene.episodeObjects = currentScene.objects
-        currentScene.callFunc("updateSeason")
-      end if
-
-      stopLoadingSpinner()
     else if isNodeEvent(msg, "refreshItemDetailsData")
       startLoadingSpinner()
 
@@ -290,7 +242,7 @@ sub Main (args as dynamic) as void
           if resumeTicks > 0
             dialog.close = true
             m.global.queueManager.callFunc("hold", queueItem)
-            playbackOptionDialog(resumeTicks, queueItem)
+            playbackOptionDialog(resumeTicks)
           else
             m.global.queueManager.callFunc("clear")
             m.global.queueManager.callFunc("push", queueItem)
@@ -582,22 +534,11 @@ sub Main (args as dynamic) as void
             end if
 
             ' ItemDetails: Play button always starts from beginning (Resume button handles resume)
-            ' Other screens: Show playback options dialog if resumable
             if group.subtype() = "ItemDetails"
               queueItem.startingPoint = 0
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("push", queueItem)
               m.global.queueManager.callFunc("playQueue")
-            else
-              ' Display playback options dialog
-              if group.itemContent.playbackPositionTicks > 0
-                m.global.queueManager.callFunc("hold", queueItem)
-                playbackOptionDialog(group.itemContent.playbackPositionTicks, queueItem)
-              else
-                m.global.queueManager.callFunc("clear")
-                m.global.queueManager.callFunc("push", queueItem)
-                m.global.queueManager.callFunc("playQueue")
-              end if
             end if
           end if
         end if
@@ -1036,20 +977,6 @@ sub Main (args as dynamic) as void
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("push", selectedItem[0])
               m.global.queueManager.callFunc("playQueue")
-            else if popupNode.returnData.indexselected = 2
-              ' User chose Go to series
-              CreateItemDetailsGroup({ id: selectedItem[0].SeriesId, type: "Series" })
-            else if popupNode.returnData.indexselected = 3
-              ' User chose Go to season
-              if isValid(selectedItem[0].SeriesId) and isValid(selectedItem[0].seasonID)
-                CreateSeasonDetailsGroupByID(selectedItem[0].SeriesId, selectedItem[0].seasonID)
-              else
-                stopLoadingSpinner()
-                message_dialog(tr("Error loading Season"))
-              end if
-            else if popupNode.returnData.indexselected = 4
-              ' User chose Go to episode
-              CreateItemDetailsGroup(selectedItem[0])
             end if
           end if
         end if

@@ -657,15 +657,6 @@ function CreateItemDetailsGroup(item as object) as dynamic
     return invalid
   end if
 
-  ' Series: redirect if single-season + goStraightToEpisodes enabled
-  if item.type = "Series"
-    seasonData = api.shows.GetSeasons(item.id, { UserId: m.global.user.id })
-    if isValid(seasonData) and m.global.user.settings.uiTvShowsGoStraightToEpisodes and seasonData.Items.Count() = 1
-      stopLoadingSpinner()
-      return CreateSeasonDetailsGroupByID(item.id, seasonData.Items[0].id)
-    end if
-  end if
-
   group = CreateObject("roSGNode", "ItemDetails")
   group.observeField("quickPlayNode", m.port)
   group.observeField("refreshItemDetailsData", m.port)
@@ -794,72 +785,6 @@ function CreatePlaylistView(playlist as object) as dynamic
   return group
 end function
 
-function CreateSeasonDetailsGroup(series as object, season as object) as dynamic
-  ' validate series node
-  if not isValid(series) or not isValid(series.id) then return invalid
-  ' validate season node
-  if not isValid(season) or not isValid(season.id) then return invalid
-
-  startLoadingSpinner()
-  ' get season meta data
-  seasonMetaData = ItemMetaData(season.id)
-  ' validate season meta data
-  if not isValid(seasonMetaData)
-    stopLoadingSpinner()
-    return invalid
-  end if
-  ' start building SeasonDetails view
-  group = CreateObject("roSGNode", "TVEpisodes")
-  group.optionsAvailable = false
-  ' push scene asap (to prevent extra button presses when retriving series/movie info)
-  m.global.sceneManager.callFunc("pushScene", group)
-  group.seasonData = seasonMetaData
-  group.objects = TVEpisodes(series.id, season.id)
-  group.episodeObjects = group.objects
-  group.extrasObjects = TVSeasonExtras(season.id)
-
-  group.observeField("refreshSeasonDetailsData", m.port)
-
-  ' watch for button presses
-  group.observeField("selectedItem", m.port)
-  group.observeField("quickPlayNode", m.port)
-  ' finished building SeasonDetails view
-  stopLoadingSpinner()
-  return group
-end function
-
-function CreateSeasonDetailsGroupByID(seriesID as string, seasonID as string) as dynamic
-  ' validate parameters
-  if seriesID = "" or seasonID = "" then return invalid
-
-  startLoadingSpinner()
-  ' get season meta data
-  seasonMetaData = ItemMetaData(seasonID)
-  ' validate season meta data
-  if not isValid(seasonMetaData)
-    stopLoadingSpinner()
-    return invalid
-  end if
-  ' start building SeasonDetails view
-  group = CreateObject("roSGNode", "TVEpisodes")
-  group.optionsAvailable = false
-  ' push scene asap (to prevent extra button presses when retriving series/movie info)
-  group.seasonData = seasonMetaData
-  group.objects = TVEpisodes(seriesID, seasonID)
-  group.episodeObjects = group.objects
-  ' watch for button presses
-  group.observeField("selectedItem", m.port)
-  group.observeField("quickPlayNode", m.port)
-  ' don't wait for the extras button
-  stopLoadingSpinner()
-  m.global.sceneManager.callFunc("pushScene", group)
-  ' check for specials/extras for this season
-  group.extrasObjects = TVSeasonExtras(seasonID)
-
-  ' finished building SeasonDetails view
-  return group
-end function
-
 function CreateSearchPage()
   ' Search + Results Page
   group = CreateObject("roSGNode", "searchResults")
@@ -897,22 +822,13 @@ function CreatePersonView(personData as object) as dynamic
 end function
 
 'Opens dialog asking user if they want to resume video or start playback over only on the home screen
-sub playbackOptionDialog(time as longinteger, meta as object)
+sub playbackOptionDialog(time as longinteger)
 
   resumeData = [
     tr("Resume playing at ") + ticksToHuman(time) + ".",
     tr("Start over from the beginning.")
   ]
 
-  group = m.global.sceneManager.callFunc("getActiveScene")
-
-  if LCase(group.subtype()) = "home"
-    if LCase(meta.type) = "episode"
-      resumeData.push(tr("Go to series"))
-      resumeData.push(tr("Go to season"))
-      resumeData.push(tr("Go to episode"))
-    end if
-  end if
   stopLoadingSpinner()
   m.global.sceneManager.callFunc("optionDialog", tr("Playback Options"), [], resumeData)
 end sub

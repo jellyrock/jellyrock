@@ -267,7 +267,6 @@ namespace tests
         "uiTvShowsBlurUnwatched",
         "uiTvShowsDisableCommunityRating",
         "uiTvShowsDisableUnwatchedCount",
-        "uiTvShowsGoStraightToEpisodes",
         "itemGridShowItemCount",
         "itemGridReset"
       ]

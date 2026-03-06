@@ -61,7 +61,6 @@
     <field id="uiTvShowsBlurUnwatched" type="boolean" alwaysNotify="true" />
     <field id="uiTvShowsDisableCommunityRating" type="boolean" alwaysNotify="true" />
     <field id="uiTvShowsDisableUnwatchedCount" type="boolean" alwaysNotify="true" />
-    <field id="uiTvShowsGoStraightToEpisodes" type="boolean" alwaysNotify="true" />
 
     <!-- Item Grid Settings -->
     <field id="itemGridShowItemCount" type="boolean" alwaysNotify="true" />
