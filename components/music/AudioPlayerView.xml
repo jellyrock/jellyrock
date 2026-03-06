@@ -16,7 +16,7 @@
         <Rectangle id="playPosition" height="9"></Rectangle>
         <Poster id="thumb" width="25" loadWidth="25" height="25" loadHeight="25" uri="pkg:/images/icons/circle.png" visible="false" translation="[0, -10]" loadDisplayMode="limitSize" />
       </Rectangle>
-      <JRButtonGroup id="buttons" itemSpacings="36">
+      <JRButtonGroup id="buttons" itemSpacings="[36]">
         <IconButton id="previous" icon="pkg:/images/icons/itemPrevious.png" />
         <IconButton id="play" icon="pkg:/images/icons/play.png" />
         <IconButton id="next" icon="pkg:/images/icons/itemNext.png" />

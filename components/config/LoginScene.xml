@@ -4,7 +4,7 @@
     <LabelPrimaryLarge text="Enter Configuration" id="prompt" translation="[150, 150]" bold="true" />
     <ConfigList id="configOptions" translation="[150, 240]" />
     <CheckList id="onOff" translation="[200, 450]" />
-    <JRButtonGroup id="buttons" itemSpacings="72" translation="[150,550]">
+    <JRButtonGroup id="buttons" itemSpacings="[72]" translation="[150,550]">
       <TextButton id="submit" minWidth="330" text="Submit" />
       <TextButton id="quickConnect" minWidth="330" text="Quick Connect" />
     </JRButtonGroup>

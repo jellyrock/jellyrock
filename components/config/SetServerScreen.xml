@@ -8,7 +8,7 @@
   </interface>
 
   <children>
-    <LayoutGroup translation="[150,150]" itemSpacings="39">
+    <LayoutGroup translation="[150,150]" itemSpacings="[39]">
       <LayoutGroup>
         <LabelPrimaryLarge text="Connect to Server" id="prompt" bold="true" />
         <LabelPrimaryMedium text="Pick a Jellyfin server from the local network" />

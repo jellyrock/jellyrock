@@ -46,7 +46,7 @@
       <Vector2DFieldInterpolator
         id="itemDetailsSliderInterp"
         key="[0.0, 1.0]"
-        keyValue="[[96, 775], [96, 775]]"
+        keyValue="[[96, 775],[96, 775]]"
         fieldToInterp="itemDetails.translation" />
     </Animation>
 

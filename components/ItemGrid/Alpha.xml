@@ -15,33 +15,33 @@
       drawFocusFeedback="true"
     >
       <ContentNode id="alphaText" role="content">
-        <ContentNode title="#" />
-        <ContentNode title="A" />
-        <ContentNode title="B" />
-        <ContentNode title="C" />
-        <ContentNode title="D" />
-        <ContentNode title="E" />
-        <ContentNode title="F" />
-        <ContentNode title="G" />
-        <ContentNode title="H" />
-        <ContentNode title="I" />
-        <ContentNode title="J" />
-        <ContentNode title="K" />
-        <ContentNode title="L" />
-        <ContentNode title="M" />
-        <ContentNode title="N" />
-        <ContentNode title="O" />
-        <ContentNode title="P" />
-        <ContentNode title="Q" />
-        <ContentNode title="R" />
-        <ContentNode title="S" />
-        <ContentNode title="T" />
-        <ContentNode title="U" />
-        <ContentNode title="V" />
-        <ContentNode title="W" />
-        <ContentNode title="X" />
-        <ContentNode title="Y" />
-        <ContentNode title="Z" />
+        <ContentNode Title="#" />
+        <ContentNode Title="A" />
+        <ContentNode Title="B" />
+        <ContentNode Title="C" />
+        <ContentNode Title="D" />
+        <ContentNode Title="E" />
+        <ContentNode Title="F" />
+        <ContentNode Title="G" />
+        <ContentNode Title="H" />
+        <ContentNode Title="I" />
+        <ContentNode Title="J" />
+        <ContentNode Title="K" />
+        <ContentNode Title="L" />
+        <ContentNode Title="M" />
+        <ContentNode Title="N" />
+        <ContentNode Title="O" />
+        <ContentNode Title="P" />
+        <ContentNode Title="Q" />
+        <ContentNode Title="R" />
+        <ContentNode Title="S" />
+        <ContentNode Title="T" />
+        <ContentNode Title="U" />
+        <ContentNode Title="V" />
+        <ContentNode Title="W" />
+        <ContentNode Title="X" />
+        <ContentNode Title="Y" />
+        <ContentNode Title="Z" />
       </ContentNode>
     </LabelList>
   </children>
