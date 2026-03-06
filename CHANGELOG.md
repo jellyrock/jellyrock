@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - (itemDetails) universal detail screen replacing MovieDetails and TVShowDetails ([#351](https://github.com/jellyrock/jellyrock/pull/351))
 - universal JellyfinBaseItem ContentNode ([#349](https://github.com/jellyrock/jellyrock/pull/349))
 
+### Changed
+
+- adjust extras panel layout and hide metadata during transition ([c6be05a](https://github.com/jellyrock/jellyrock/commit/c6be05a))
+
 ### Dependencies
 
 - Update spellchecker-cli from v7.0.2 to v7.0.3 ([#354](https://github.com/jellyrock/jellyrock/pull/354))
