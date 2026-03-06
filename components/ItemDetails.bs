@@ -7,12 +7,11 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
 ' Y translation extrasGrp reaches after sliding open (ExtrasSlider.xml VertSlider end keyValue)
-const EXTRAS_GRP_TARGET_Y = 378
+const EXTRAS_GRP_TARGET_Y = 306
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
-const ITEM_DETAILS_EXTRAS_PADDING = 6
+const ITEM_DETAILS_EXTRAS_PADDING = 48
 ' Minimum display height for the logo image — images too small are scaled up (aspect ratio preserved).
-' Note: LOGO_MAX_DISPLAY_WIDTH takes precedence for very wide/flat logos; this minimum may not be reached.
-const LOGO_MIN_DISPLAY_HEIGHT = 212
+const LOGO_MIN_DISPLAY_HEIGHT = 212 ' Note: LOGO_MAX_DISPLAY_WIDTH takes precedence for very wide/flat logos; this minimum may not be reached.
 ' Maximum display width for the logo image — prevents very wide/flat logos from overlapping buttons
 const LOGO_MAX_DISPLAY_WIDTH = 500
 
@@ -1548,6 +1547,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
     activateExtras()
 
+    ' Hide description and tracks before sliding up so they don't show during the transition
+    m.itemDescription.opacity = 0
+    m.itemTracks.opacity = 0
+
     ' Animate itemDetails to top (synced with extras slider)
     m.itemDetailsSliderInterp.reverse = false
     m.itemDetailsSlider.control = "start"
@@ -1565,6 +1568,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
       m.top.lastFocus = m.buttonGrp
 
       deactivateExtras()
+
+      ' Restore description and tracks before sliding back down
+      m.itemDescription.opacity = 1
+      m.itemTracks.opacity = 1
 
       ' Animate itemDetails back to rest position (synced with extras slider)
       m.itemDetailsSliderInterp.reverse = true
