@@ -74,7 +74,7 @@ sub init()
 
   ' Season: fetch parent series metadata in the background for ratings/runtime/genres/logo
   m.loadSeasonSeriesTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.loadSeasonSeriesTask.itemsToLoad = "metaData"
+  m.loadSeasonSeriesTask.itemsToLoad = "metaDataDetails"
   m.seasonSeriesData = invalid
   ' Cache persists for the lifetime of this component — keyed by seriesId so returning to a
   ' previously-visited season renders immediately rather than showing a metadata pop-in.
