@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- show Go to Series button for Episode items ([bcfe2c2](https://github.com/jellyrock/jellyrock/commit/bcfe2c2))
 - Use `ItemDetails` to open `Season` items ([#352](https://github.com/jellyrock/jellyrock/pull/352))
 - Support direct playing h264 profile "Constrained Baseline" ([f5e9f0e](https://github.com/jellyrock/jellyrock/commit/f5e9f0e))
 - (itemDetails) universal detail screen replacing MovieDetails and TVShowDetails ([#351](https://github.com/jellyrock/jellyrock/pull/351))
