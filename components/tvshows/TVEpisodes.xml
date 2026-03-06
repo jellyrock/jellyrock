@@ -2,7 +2,7 @@
 <component name="TVEpisodes" extends="JRScreen">
   <children>
     <JRPoster id="seasonPoster" width="300" height="450" translation="[95,175]" />
-    <LayoutGroup id="buttonGroup" itemSpacings="18" layoutDirection="vert" translation="[96, 640]">
+    <LayoutGroup id="buttonGroup" itemSpacings="[18]" layoutDirection="vert" translation="[96, 640]">
       <TextButton id="shuffle" minWidth="300" text="Shuffle" visible="false"></TextButton>
       <TextButton id="extras" minWidth="300" text="Extras" visible="false"></TextButton>
     </LayoutGroup>

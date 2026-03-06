@@ -14,7 +14,7 @@
       <Animation id="moveFocusAnimation" duration="0.25" repeat="false" easeFunction="outQuad">
         <FloatFieldInterpolator id="focusWidth" key="[0.0, 1.0]" keyValue="[ 0.00, 0.25 ]" fieldToInterp="focus.width" />
         <FloatFieldInterpolator id="focusHeight" key="[0.0, 1.0]" keyValue="[ 0.25, 0.00 ]" fieldToInterp="focus.height" />
-        <Vector2DFieldInterpolator id="focusLocation" key="[0.0, 1.0]" keyValue="[]" fieldToInterp="focus.translation" />
+        <Vector2DFieldInterpolator id="focusLocation" key="[0.0, 1.0]" fieldToInterp="focus.translation" />
       </Animation>
     </Group>
 

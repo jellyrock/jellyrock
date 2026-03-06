@@ -6,10 +6,9 @@
     <field id="selectedItem" type="node" alias="extrasGrid.selectedItem" alwaysNotify="true" />
   </interface>
   <children>
-    <LayoutGroup id="main_group"
-      layoutdirection="vert" translation="[60, 180]" itemSpacings="[36]">
-      <LayoutGroup id="header_group" layoutdirection="horiz">
-        <LayoutGroup id="title_group" layoutdirection="vert" itemSpacings="[11]">
+    <LayoutGroup id="main_group" layoutDirection="vert" translation="[60, 180]" itemSpacings="[36]">
+      <LayoutGroup id="header_group" layoutDirection="horiz">
+        <LayoutGroup id="title_group" layoutDirection="vert" itemSpacings="[11]">
           <RectangleBackgroundPrimary id="title_rectangle" height="100" width="1426">
             <LabelPrimaryLargest id="name" height="100" width="1426" vertAlign="bottom" bold="true" />
           </RectangleBackgroundPrimary>

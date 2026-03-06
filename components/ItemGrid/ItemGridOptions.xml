@@ -9,11 +9,11 @@
       </LayoutGroup>
       <LayoutGroup id="menuOptions" horizAlignment="center" translation="[860,200]" itemSpacings="[50]">
         <Group>
-          <RadiobuttonList id="viewMenu" itemSize="[600, 75]" itemspacing="[0,10]" vertFocusAnimationStyle="floatingFocus" opacity="0" drawFocusFeedback="false">
+          <RadiobuttonList id="viewMenu" itemSize="[600, 75]" itemSpacing="[0,10]" vertFocusAnimationStyle="floatingFocus" opacity="0" drawFocusFeedback="false">
           </RadiobuttonList>
-          <RadiobuttonList id="sortMenu" itemSize="[600, 75]" itemspacing="[0,10]" vertFocusAnimationStyle="floatingFocus" opacity="1" numRows="8" drawFocusFeedback="false">
+          <RadiobuttonList id="sortMenu" itemSize="[600, 75]" itemSpacing="[0,10]" vertFocusAnimationStyle="floatingFocus" opacity="1" numRows="8" drawFocusFeedback="false">
           </RadiobuttonList>
-          <RadiobuttonList id="filterMenu" itemSize="[600, 75]" checkOnSelect="false" itemspacing="[0,10]" vertFocusAnimationStyle="floatingFocus" opacity="0" drawFocusFeedback="false">
+          <RadiobuttonList id="filterMenu" itemSize="[600, 75]" checkOnSelect="false" itemSpacing="[0,10]" vertFocusAnimationStyle="floatingFocus" opacity="0" drawFocusFeedback="false">
           </RadiobuttonList>
         </Group>
       </LayoutGroup>
@@ -30,12 +30,12 @@
 
     <Animation id="showChecklistAnimation" duration="0.5" repeat="false">
       <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0, 1]" fieldToInterp="filterOptions.opacity" />
-      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[860, 200], [560, 200]]" fieldToInterp="menuOptions.translation" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[860, 200],[560, 200]]" fieldToInterp="menuOptions.translation" />
     </Animation>
 
     <Animation id="hideChecklistAnimation" duration="0.5" repeat="false">
       <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[1, 0]" fieldToInterp="filterOptions.opacity" />
-      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[560, 200], [860, 200]]" fieldToInterp="menuOptions.translation" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[560, 200],[860, 200]]" fieldToInterp="menuOptions.translation" />
     </Animation>
 
   </children>
