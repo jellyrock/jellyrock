@@ -1,0 +1,190 @@
+import "pkg:/source/migrations.bs"
+import "pkg:/source/utils/config.bs"
+
+namespace tests
+
+  @suite("TV Season Straight To Episodes Removal Migration - v2.0.0")
+  @tags("migration")
+  class TvSeasonStraightToEpisodesRemovalTests extends tests.BaseTestSuite
+
+    protected override sub setup()
+      m.needsRegistrySetup = true
+      super.setup()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("TV Season Straight To Episodes Removal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("deletes uiTvShowsGoStraightToEpisodes when set to true")
+    function _()
+      ' GIVEN: User on v1.x with the setting enabled
+      testUserId = "test-tvseason-removal-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("LastRunVersion", "1.15.0")
+      reg.write("serverId", "test-server-123")
+      reg.write("uiTvShowsGoStraightToEpisodes", "true")
+      reg.flush()
+
+      ' WHEN: Migration runs
+      runRegistryUserMigrations([testUserId])
+
+      ' THEN: uiTvShowsGoStraightToEpisodes is deleted
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("uiTvShowsGoStraightToEpisodes"), "uiTvShowsGoStraightToEpisodes should be deleted")
+    end function
+
+    @it("deletes uiTvShowsGoStraightToEpisodes when set to false")
+    function _()
+      ' GIVEN: User on v1.x with the setting disabled
+      testUserId = "test-tvseason-removal-002"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("LastRunVersion", "1.15.0")
+      reg.write("serverId", "test-server-123")
+      reg.write("uiTvShowsGoStraightToEpisodes", "false")
+      reg.flush()
+
+      ' WHEN: Migration runs
+      runRegistryUserMigrations([testUserId])
+
+      ' THEN: uiTvShowsGoStraightToEpisodes is deleted regardless of value
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("uiTvShowsGoStraightToEpisodes"), "uiTvShowsGoStraightToEpisodes should be deleted")
+    end function
+
+    @it("deletes old dotted key for users who skipped v1.1.0")
+    function _()
+      ' GIVEN: User who jumped from v1.0.x to v2.0.0 directly, still has old dotted name
+      testUserId = "test-tvseason-dotted-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("LastRunVersion", "1.0.0")
+      reg.write("serverId", "test-server-123")
+      reg.write("ui.tvshows.goStraightToEpisodeListing", "true")
+      reg.flush()
+
+      ' WHEN: Migration runs
+      runRegistryUserMigrations([testUserId])
+
+      ' THEN: Old dotted key is also deleted
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("ui.tvshows.goStraightToEpisodeListing"), "Old dotted key should be deleted")
+      m.assertFalse(reg.exists("uiTvShowsGoStraightToEpisodes"), "camelCase key should not exist")
+    end function
+
+    @it("handles missing setting gracefully")
+    function _()
+      ' GIVEN: User who never set this preference
+      testUserId = "test-tvseason-missing-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("LastRunVersion", "1.15.0")
+      reg.write("serverId", "test-server-123")
+      ' Don't write uiTvShowsGoStraightToEpisodes
+      reg.flush()
+
+      ' WHEN: Migration runs
+      runRegistryUserMigrations([testUserId])
+
+      ' THEN: No error occurs, setting still doesn't exist
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("uiTvShowsGoStraightToEpisodes"), "uiTvShowsGoStraightToEpisodes should not exist")
+    end function
+
+    @it("preserves other user settings during migration")
+    function _()
+      ' GIVEN: User with multiple settings including the one being removed
+      testUserId = "test-tvseason-preserve-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("LastRunVersion", "1.15.0")
+      reg.write("serverId", "test-server-123")
+      reg.write("uiTvShowsGoStraightToEpisodes", "true")
+      reg.write("uiTvShowsBlurUnwatched", "true")
+      reg.write("playbackBitrateLimit", "8000")
+      reg.flush()
+
+      ' WHEN: Migration runs
+      runRegistryUserMigrations([testUserId])
+
+      ' THEN: Only the removed setting is deleted, others preserved
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("uiTvShowsGoStraightToEpisodes"), "uiTvShowsGoStraightToEpisodes should be deleted")
+      m.assertTrue(reg.exists("uiTvShowsBlurUnwatched"), "Other tv settings should be preserved")
+      m.assertEqual(reg.read("uiTvShowsBlurUnwatched"), "true")
+      m.assertTrue(reg.exists("playbackBitrateLimit"), "Playback settings should be preserved")
+      m.assertEqual(reg.read("playbackBitrateLimit"), "8000")
+    end function
+
+    @it("skips migration when version is already v2.0.0 or later")
+    function _()
+      ' GIVEN: User already on v2.0.0 who somehow still has the setting (should not happen)
+      testUserId = "test-tvseason-skip-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("LastRunVersion", "2.0.0")
+      reg.write("serverId", "test-server-123")
+      reg.write("uiTvShowsGoStraightToEpisodes", "true")
+      reg.flush()
+
+      ' WHEN: Migration runs
+      runRegistryUserMigrations([testUserId])
+
+      ' THEN: Migration skipped — setting untouched
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertTrue(reg.exists("uiTvShowsGoStraightToEpisodes"), "Setting should remain (migration skipped)")
+    end function
+
+    @it("runs migration for version 1.15.0")
+    function _()
+      ' GIVEN: User on the last version before the removal
+      testUserId = "test-tvseason-run-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("LastRunVersion", "1.15.0")
+      reg.write("serverId", "test-server-123")
+      reg.write("uiTvShowsGoStraightToEpisodes", "true")
+      reg.flush()
+
+      ' WHEN: Migration runs
+      runRegistryUserMigrations([testUserId])
+
+      ' THEN: Setting is deleted
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("uiTvShowsGoStraightToEpisodes"), "uiTvShowsGoStraightToEpisodes should be deleted")
+    end function
+
+    @it("migrates multiple users independently")
+    function _()
+      ' GIVEN: Two users, both with the setting
+      user1 = "test-tvseason-multi-001"
+      user2 = "test-tvseason-multi-002"
+
+      reg1 = CreateObject("roRegistrySection", user1)
+      reg1.write("LastRunVersion", "1.15.0")
+      reg1.write("serverId", "test-server-123")
+      reg1.write("uiTvShowsGoStraightToEpisodes", "true")
+      reg1.flush()
+
+      reg2 = CreateObject("roRegistrySection", user2)
+      reg2.write("LastRunVersion", "1.15.0")
+      reg2.write("serverId", "test-server-123")
+      reg2.write("uiTvShowsGoStraightToEpisodes", "false")
+      reg2.flush()
+
+      ' WHEN: Both users migrate
+      runRegistryUserMigrations([user1, user2])
+
+      ' THEN: Both have the setting deleted
+      reg1 = CreateObject("roRegistrySection", user1)
+      m.assertFalse(reg1.exists("uiTvShowsGoStraightToEpisodes"), "User1 setting should be deleted")
+
+      reg2 = CreateObject("roRegistrySection", user2)
+      m.assertFalse(reg2.exists("uiTvShowsGoStraightToEpisodes"), "User2 setting should be deleted")
+    end function
+
+  end class
+
+end namespace

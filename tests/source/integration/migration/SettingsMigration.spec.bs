@@ -55,7 +55,7 @@ namespace tests
       reg.write("ui.tvshows.blurunwatched", "false")
       reg.write("ui.tvshows.disableCommunityRating", "true")
       reg.write("ui.tvshows.disableUnwatchedEpisodeCount", "false")
-      reg.write("ui.tvshows.goStraightToEpisodeListing", "true")
+      reg.write("ui.tvshows.goStraightToEpisodeListing", "true") ' v2.0.0 migration deletes this
 
       ' Item grid settings
       reg.write("itemgrid.showItemCount", "true")
@@ -150,8 +150,9 @@ namespace tests
       m.assertEqual(reg.read("uiTvShowsDisableCommunityRating"), "true")
       m.assertTrue(reg.exists("uiTvShowsDisableUnwatchedCount"))
       m.assertEqual(reg.read("uiTvShowsDisableUnwatchedCount"), "false")
-      m.assertTrue(reg.exists("uiTvShowsGoStraightToEpisodes"))
-      m.assertEqual(reg.read("uiTvShowsGoStraightToEpisodes"), "true")
+      ' uiTvShowsGoStraightToEpisodes is deleted by v2.0.0 migration (both dotted and camelCase forms)
+      m.assertFalse(reg.exists("uiTvShowsGoStraightToEpisodes"), "uiTvShowsGoStraightToEpisodes should be deleted in v2.0.0")
+      m.assertFalse(reg.exists("ui.tvshows.goStraightToEpisodeListing"), "Old dotted key should also be deleted in v2.0.0")
 
       ' Verify item grid settings migrated correctly
       m.assertTrue(reg.exists("itemGridShowItemCount"))
