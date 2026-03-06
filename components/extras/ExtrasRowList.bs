@@ -147,6 +147,9 @@ sub onSeasonsLoaded()
 
   if isValid(seasons) and seasons.count() > 0
     m.rowSeasons = populateRow(m.rowSeasons, tr("Seasons"), seasons)
+  else if isValid(m.rowSeasons)
+    m.top.content.removeChild(m.rowSeasons)
+    m.rowSeasons = invalid
   end if
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
@@ -195,7 +198,13 @@ sub onSeasonEpisodesLoaded()
       end if
       m.top.rowItemSize = [[464, 396], [234, 396]]
       m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes)
+    else if isValid(m.rowSeasonEpisodes)
+      m.top.content.removeChild(m.rowSeasonEpisodes)
+      m.rowSeasonEpisodes = invalid
     end if
+  else if isValid(m.rowSeasonEpisodes)
+    m.top.content.removeChild(m.rowSeasonEpisodes)
+    m.rowSeasonEpisodes = invalid
   end if
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
@@ -211,6 +220,9 @@ sub onSeasonAllEpisodesLoaded()
   if isValid(episodes) and episodes.count() > 0
     m.top.rowItemSize = [[464, 396], [234, 396]]
     m.rowEpisodes = populateRow(m.rowEpisodes, tr("Episodes"), episodes)
+  else if isValid(m.rowEpisodes)
+    m.top.content.removeChild(m.rowEpisodes)
+    m.rowEpisodes = invalid
   end if
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
@@ -226,6 +238,10 @@ sub onAdditionalPartsLoaded()
     m.rowAdditionalParts = populateRow(m.rowAdditionalParts, tr("Additional Parts"), parts)
     m.top.rowItemSize = [[464, 291]]
   else
+    if isValid(m.rowAdditionalParts)
+      m.top.content.removeChild(m.rowAdditionalParts)
+      m.rowAdditionalParts = invalid
+    end if
     m.top.rowItemSize = [[234, 396]]
   end if
 
@@ -240,6 +256,9 @@ sub onPeopleLoaded()
   m.loadPeopleTask.unobserveField("content")
   if isValid(people) and people.count() > 0
     m.rowCast = populateRow(m.rowCast, tr("Cast & Crew"), people)
+  else if isValid(m.rowCast)
+    m.top.content.removeChild(m.rowCast)
+    m.rowCast = invalid
   end if
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
   m.LikeThisTask.itemId = m.top.parentId
@@ -252,6 +271,9 @@ sub onLikeThisLoaded()
   if isValid(data) and data.count() > 0
     m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data)
     addRowSize([234, 396])
+  else if isValid(m.rowLikeThis)
+    m.top.content.removeChild(m.rowLikeThis)
+    m.rowLikeThis = invalid
   end if
 
   ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, or Season
@@ -270,6 +292,9 @@ function onSpecialFeaturesLoaded()
     m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, tr("Special Features"), data)
     m.top.visible = true
     addRowSize([462, 372])
+  else if isValid(m.rowSpecialFeatures)
+    m.top.content.removeChild(m.rowSpecialFeatures)
+    m.rowSpecialFeatures = invalid
   end if
 
   return m.top.content
@@ -281,6 +306,9 @@ sub onMoviesLoaded()
   if isValid(data) and data.count() > 0
     m.rowMovies = populateRow(m.rowMovies, tr("Movies"), data)
     m.top.rowItemSize = [[234, 396]]
+  else if isValid(m.rowMovies)
+    m.top.content.removeChild(m.rowMovies)
+    m.rowMovies = invalid
   end if
   m.LoadShowsTask.itemId = m.personId
   m.LoadShowsTask.observeField("content", "onShowsLoaded")
@@ -293,6 +321,9 @@ sub onShowsLoaded()
   if isValid(data) and data.count() > 0
     m.rowTvShows = populateRow(m.rowTvShows, tr("TV Shows"), data)
     addRowSize([502, 396])
+  else if isValid(m.rowTvShows)
+    m.top.content.removeChild(m.rowTvShows)
+    m.rowTvShows = invalid
   end if
   m.LoadSeriesTask.itemId = m.personId
   m.LoadSeriesTask.observeField("content", "onSeriesLoaded")
@@ -305,6 +336,9 @@ sub onSeriesLoaded()
   if isValid(data) and data.count() > 0
     m.rowSeries = populateRow(m.rowSeries, tr("Series"), data)
     addRowSize([234, 396])
+  else if isValid(m.rowSeries)
+    m.top.content.removeChild(m.rowSeries)
+    m.rowSeries = invalid
   end if
   m.top.visible = true
 end sub
