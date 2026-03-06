@@ -165,8 +165,8 @@ sub Main (args as dynamic) as void
       currentScene = m.global.sceneManager.callFunc("getActiveScene")
 
       if isValid(currentScene) and isValid(currentScene.itemContent) and isValidAndNotEmpty(currentScene.itemContent.id)
-        ' Use ItemMetaData (same as initial load) so People/Genres/Studios/UserData are all present.
-        updatedItem = ItemMetaData(currentScene.itemContent.id)
+        ' Use ItemDetailsMetaData (same as initial load) so People/Genres/Studios/UserData are all present.
+        updatedItem = ItemDetailsMetaData(currentScene.itemContent.id)
         if isValid(updatedItem)
           currentScene.itemContent = updatedItem
           if updatedItem.playbackPositionTicks > 0

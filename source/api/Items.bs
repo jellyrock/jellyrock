@@ -261,13 +261,20 @@ function searchMedia(query as string)
 end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.
-function ItemMetaData(id as string)
+' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
+function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string)
   url = Substitute("Users/{0}/Items/{1}", m.global.user.id, id)
-  resp = APIRequest(url, { "fields": "Chapters,Trickplay,Genres,Studios,People" })
+  resp = APIRequest(url, { "fields": fields })
   data = getJson(resp)
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
   return transformer.transformBaseItem(data)
+end function
+
+' MetaData for an item detail screen — includes People, Genres, and Studios in addition to
+' Chapters and Trickplay. Use this instead of ItemMetaData() when populating a detail view.
+function ItemDetailsMetaData(id as string)
+  return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People")
 end function
 
 ' Music Artist Data

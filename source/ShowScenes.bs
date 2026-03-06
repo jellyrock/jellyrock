@@ -651,7 +651,7 @@ function CreateItemDetailsGroup(item as object) as dynamic
 
   startLoadingSpinner()
 
-  itemData = ItemMetaData(item.id)
+  itemData = ItemDetailsMetaData(item.id)
   if not isValid(itemData)
     stopLoadingSpinner()
     return invalid
