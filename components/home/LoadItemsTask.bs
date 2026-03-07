@@ -241,7 +241,7 @@ sub loadItems()
       if isValid(node) then results.push(node)
     end if
   else if m.top.itemsToLoad = "seriesResume"
-    ' Mirrors quickplay.series() logic: resumable (in-progress) episode takes priority over next unstarted.
+    ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
     resumeData = api.users.GetResumeItemsByQuery(globalUser.id, {
       ParentId: m.top.itemId,
