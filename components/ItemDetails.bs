@@ -265,7 +265,11 @@ sub removeResumeButtonWithFocus(resumeButton as object)
   else
     m.buttonGrp.buttonFocused = 0
   end if
-  focusButtonGroupChild()
+  ' Only move actual focus when the button group already owns it — avoid stealing
+  ' focus from the extras row or description when the button is removed asynchronously.
+  if m.buttonGrp.isInFocusChain()
+    focusButtonGroupChild()
+  end if
 end sub
 
 ' manageShuffleButton: Add or remove Shuffle button for Series and Season types
