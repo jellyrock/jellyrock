@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- focus no longer stolen when returning from extras sub-screen on Series ([9c87a75](https://github.com/jellyrock/jellyrock/commit/9c87a75))
 - quickplay.series() logic. check for resumeable episode first ([76e86c0](https://github.com/jellyrock/jellyrock/commit/76e86c0))
 - sync Series Resume button logic with Home rows ([#355](https://github.com/jellyrock/jellyrock/pull/355))
 
