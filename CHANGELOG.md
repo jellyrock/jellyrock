@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - show episode in Series resume button ([11f0e12](https://github.com/jellyrock/jellyrock/commit/11f0e12))
 - adjust extras panel layout and hide metadata during transition ([c6be05a](https://github.com/jellyrock/jellyrock/commit/c6be05a))
 
+### Fixed
+
+- sync Series Resume button logic with Home rows ([#355](https://github.com/jellyrock/jellyrock/pull/355))
+
 ### Dependencies
 
 - Update spellchecker-cli from v7.0.2 to v7.0.3 ([#354](https://github.com/jellyrock/jellyrock/pull/354))
