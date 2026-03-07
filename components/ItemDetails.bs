@@ -71,6 +71,10 @@ sub init()
   m.loadFirstEpisodeTask = CreateObject("roSGNode", "LoadItemsTask")
   m.loadFirstEpisodeTask.itemsToLoad = "seriesFirstEpisode"
 
+  ' Series: fetch the resume/next-up episode in the background for the Resume button
+  m.loadSeriesResumeTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.loadSeriesResumeTask.itemsToLoad = "seriesResume"
+
   ' Season: fetch parent series metadata in the background for ratings/runtime/genres/logo
   m.loadSeasonSeriesTask = CreateObject("roSGNode", "LoadItemsTask")
   m.loadSeasonSeriesTask.itemsToLoad = "metaDataDetails"
@@ -173,7 +177,11 @@ sub nextUpEpisodeChanged()
       else
         m.buttonGrp.buttonFocused = 0
       end if
-      focusButtonGroupChild()
+      ' Only move actual focus when the button group already owns it — avoid stealing
+      ' focus from the extras row or description when the button arrives asynchronously.
+      if m.buttonGrp.isInFocusChain()
+        focusButtonGroupChild()
+      end if
     else
       ' Resume button already present — update text and tick values
       resumeButton.text = resumeText
@@ -827,7 +835,18 @@ sub itemContentChanged()
     manageGoToSeriesButton(item.type)
     manageDeleteButton()
 
-    ' Season: kick off background fetch of parent series data for ratings/runtime/genres/logo
+    ' Series: kick off background fetch of resume/next-up episode for the Resume button
+    if item.type = "Series"
+      ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
+      m.loadSeriesResumeTask.unobserveField("content")
+      m.loadSeriesResumeTask.control = "STOP"
+      m.top.nextUpEpisode = invalid
+      m.loadSeriesResumeTask.itemId = item.id
+      m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
+      m.loadSeriesResumeTask.control = "RUN"
+    end if
+
+    ' Season: kick off background fetch of parent series metadata for ratings/runtime/genres/logo
     if item.type = "Season" and isValidAndNotEmpty(item.seriesId)
       ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
       m.loadSeasonSeriesTask.unobserveField("content")
@@ -1476,6 +1495,19 @@ sub onSeasonSeriesDataLoaded()
   ' Update logo using series data if the season didn't carry parentLogoItemId
   if isValid(m.itemLogo) and not m.itemLogo.visible
     setItemLogo(m.seasonSeriesData)
+  end if
+end sub
+
+' onSeriesResumeLoaded: Set nextUpEpisode from seriesResume task result to show/hide the Resume button
+sub onSeriesResumeLoaded()
+  m.loadSeriesResumeTask.unobserveField("content")
+  content = m.loadSeriesResumeTask.content
+  m.loadSeriesResumeTask.content = []
+
+  if isValid(content) and content.count() > 0
+    m.top.nextUpEpisode = content[0]
+  else
+    m.top.nextUpEpisode = invalid
   end if
 end sub
 

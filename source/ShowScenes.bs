@@ -674,13 +674,6 @@ function CreateItemDetailsGroup(item as object) as dynamic
     if isValid(trailerData)
       group.trailerAvailable = trailerData.Count() > 0
     end if
-  else if item.type = "Series"
-    ' Load NextUp episode to decide whether to show the Resume button
-    nextUpData = api.shows.GetNextUp({ UserId: m.global.user.id, SeriesId: item.id, Limit: 1, Fields: "PrimaryImageAspectRatio" })
-    if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
-      transformer = JellyfinDataTransformer()
-      group.nextUpEpisode = transformer.transformBaseItem(nextUpData.Items[0])
-    end if
   end if
 
   ' Watch for button presses

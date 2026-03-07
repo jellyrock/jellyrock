@@ -240,6 +240,31 @@ sub loadItems()
       node = m.transformer.transformBaseItem(data.Items[0])
       if isValid(node) then results.push(node)
     end if
+  else if m.top.itemsToLoad = "seriesResume"
+    ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
+    ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
+    resumeData = api.users.GetResumeItemsByQuery(globalUser.id, {
+      ParentId: m.top.itemId,
+      Filters: "IsResumable",
+      SortBy: "DatePlayed",
+      SortOrder: "Descending",
+      Limit: 1,
+      recursive: true,
+      Fields: "PrimaryImageAspectRatio",
+      EnableTotalRecordCount: false
+    })
+    if isValid(resumeData) and isValid(resumeData.Items) and resumeData.Items.Count() > 0
+      node = m.transformer.transformBaseItem(resumeData.Items[0])
+      if isValid(node) then results.push(node)
+    else
+      ' No resumable episode — fall back to next unstarted episode.
+      ' DisableFirstEpisode: true so a Resume button never appears for a completely unwatched series.
+      nextUpData = api.shows.GetNextUp({ UserId: globalUser.id, SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" })
+      if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
+        node = m.transformer.transformBaseItem(nextUpData.Items[0])
+        if isValid(node) then results.push(node)
+      end if
+    end if
   else if m.top.itemsToLoad = "metaData"
     results.push(ItemMetaData(m.top.itemId))
   else if m.top.itemsToLoad = "metaDataDetails"

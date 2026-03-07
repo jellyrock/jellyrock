@@ -1,0 +1,67 @@
+namespace tests
+
+  ' Tests for getResumeButtonText() formatting: "Resume S{n}E{n}" vs plain "Resume".
+  @suite("ItemDetails - Resume Button Text Formatting")
+  class ItemDetailsSeriesResumeTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.itemDetails = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Resume button text formatting for Series next-up episodes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows 'Resume S{n}E{n}' when season and episode numbers are both positive")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+      ep.parentIndexNumber = 2
+      ep.indexNumber = 5
+      m.itemDetails.nextUpEpisode = ep
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertEqual(resumeButton.text, "Resume S2E5")
+    end function
+
+    @it("shows plain 'Resume' when parentIndexNumber is zero")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+      ep.parentIndexNumber = 0
+      ep.indexNumber = 3
+      m.itemDetails.nextUpEpisode = ep
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertEqual(resumeButton.text, "Resume")
+    end function
+
+    @it("shows plain 'Resume' when indexNumber is zero")
+    function _()
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = "ep-001"
+      ep.parentIndexNumber = 2
+      ep.indexNumber = 0
+      m.itemDetails.nextUpEpisode = ep
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertEqual(resumeButton.text, "Resume")
+    end function
+
+  end class
+
+end namespace
