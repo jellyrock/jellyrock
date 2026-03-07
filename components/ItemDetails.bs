@@ -1499,15 +1499,12 @@ sub onSeasonSeriesDataLoaded()
 end sub
 
 ' onSeriesResumeLoaded: Set nextUpEpisode from seriesResume task result to show/hide the Resume button
-'
 sub onSeriesResumeLoaded()
   m.loadSeriesResumeTask.unobserveField("content")
   content = m.loadSeriesResumeTask.content
   m.loadSeriesResumeTask.content = []
 
-  ' Always write nextUpEpisode — clears stale value (and Resume button) when content is
-  ' empty or belongs to a different series (race between task runs).
-  if isValid(content) and content.count() > 0 and content[0].seriesId = m.top.itemContent.id
+  if isValid(content) and content.count() > 0
     m.top.nextUpEpisode = content[0]
   else
     m.top.nextUpEpisode = invalid
