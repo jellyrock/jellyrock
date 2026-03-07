@@ -115,7 +115,7 @@ namespace quickplay
       "parentId": itemNode.id,
       "imageTypeLimit": 1,
       "sortBy": "SortName",
-      "limit": 2000,
+      "limit": 500,
       "enableUserData": false,
       "EnableTotalRecordCount": false
     })
@@ -136,7 +136,7 @@ namespace quickplay
       "artistIds": itemNode.id,
       "includeItemTypes": "Audio",
       "sortBy": "Album",
-      "limit": 2000,
+      "limit": 500,
       "imageTypeLimit": 1,
       "Recursive": true,
       "enableUserData": false,
@@ -159,7 +159,7 @@ namespace quickplay
     data = api.items.GetByQuery({
       "userid": m.global.user.id,
       "parentid": itemNode.id,
-      "limit": 2000,
+      "limit": 500,
       "EnableTotalRecordCount": false
     })
     if isValid(data) and isValidAndNotEmpty(data.Items)
@@ -219,7 +219,7 @@ namespace quickplay
         data = api.shows.GetEpisodes(itemNode.id, {
           "userid": localUser.id,
           "SortBy": "Random",
-          "limit": 2000,
+          "limit": 500,
           "EnableTotalRecordCount": false
         })
 
@@ -240,7 +240,7 @@ namespace quickplay
       userId = m.global.user.id
 
       numTotal = 0
-      numLimit = 2000
+      numLimit = 500
       for each tvshow in itemNodes
         ' grab all watched episodes for each series
         showData = api.shows.GetEpisodes(tvshow.id, {
@@ -290,7 +290,7 @@ namespace quickplay
         "sortBy": "Random",
         "recursive": true,
         "includeItemTypes": "Movie,Video",
-        "limit": 2000
+        "limit": 500
       })
       print "data=", data
       if isValid(data) and isValidAndNotEmpty(data.items)
@@ -355,7 +355,7 @@ namespace quickplay
     unwatchedData = api.shows.GetEpisodes(seriesId, {
       "seasonId": itemNode.id,
       "userid": globalUser.id,
-      "limit": 2000,
+      "limit": 500,
       "EnableTotalRecordCount": false
     })
 
@@ -427,7 +427,7 @@ namespace quickplay
       "includeItemTypes": "Movie,Video",
       "excludeItemTypes": "Season,Series",
       "recursive": true,
-      "limit": 2000
+      "limit": 500
     })
     print "personMovies=", personMovies
 
@@ -443,7 +443,7 @@ namespace quickplay
       "isPlayed": true,
       "excludeItemTypes": "Season,Series",
       "recursive": true,
-      "limit": 2000
+      "limit": 500
     })
     print "personEpisodes=", personEpisodes
 
@@ -496,7 +496,7 @@ namespace quickplay
     ' get playlist items
     myPlaylist = api.playlists.GetItems(itemNode.id, {
       "userId": m.global.user.id,
-      "limit": 2000
+      "limit": 500
     })
 
     if isValid(myPlaylist) and isValidAndNotEmpty(myPlaylist.Items)
@@ -519,7 +519,7 @@ namespace quickplay
       "includeItemTypes": ["Episode", "Recording", "Movie", "Video"],
       "videoTypes": "VideoFile",
       "sortBy": "Random",
-      "limit": 2000,
+      "limit": 500,
       "imageTypeLimit": 1,
       "Recursive": true,
       "enableUserData": false,
@@ -603,7 +603,7 @@ namespace quickplay
         "includeItemTypes": "Audio",
         "sortBy": "Album",
         "Recursive": true,
-        "limit": 2000,
+        "limit": 500,
         "imageTypeLimit": 1,
         "enableUserData": false,
         "EnableTotalRecordCount": false
@@ -618,7 +618,7 @@ namespace quickplay
       ' get list of all boxsets inside
       boxsetData = api.users.GetItemsByQuery(globalUser.id, {
         "parentId": itemNode.id,
-        "limit": 2000,
+        "limit": 500,
         "imageTypeLimit": 0,
         "enableUserData": false,
         "EnableTotalRecordCount": false,
@@ -654,7 +654,7 @@ namespace quickplay
         "includeItemTypes": "MusicVideo",
         "sortBy": "Random",
         "Recursive": true,
-        "limit": 2000,
+        "limit": 500,
         "imageTypeLimit": 1,
         "enableUserData": false,
         "EnableTotalRecordCount": false
@@ -722,7 +722,7 @@ namespace quickplay
         playlistItems = api.playlists.GetItems(myPlaylist.id, {
           "userId": globalUser.id,
           "EnableTotalRecordCount": false,
-          "limit": 2000
+          "limit": 500
         })
         ' validate api results
         if isValid(playlistItems) and isValidAndNotEmpty(playlistItems.items)
