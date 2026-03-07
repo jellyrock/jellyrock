@@ -17,11 +17,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Limit all quickplay API queries to 500 items ([4d271a5](https://github.com/jellyrock/jellyrock/commit/4d271a5))
 - show episode in Series resume button ([11f0e12](https://github.com/jellyrock/jellyrock/commit/11f0e12))
 - adjust extras panel layout and hide metadata during transition ([c6be05a](https://github.com/jellyrock/jellyrock/commit/c6be05a))
 
 ### Fixed
 
+- quickplay.series() logic. check for resumeable episode first ([76e86c0](https://github.com/jellyrock/jellyrock/commit/76e86c0))
 - sync Series Resume button logic with Home rows ([#355](https://github.com/jellyrock/jellyrock/pull/355))
 
 ### Dependencies
