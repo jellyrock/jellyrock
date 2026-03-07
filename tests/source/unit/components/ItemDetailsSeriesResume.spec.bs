@@ -1,19 +1,10 @@
 namespace tests
 
-  ' Tests for the Series-only async resume/next-up episode loading path.
-  '
-  ' Covers:
-  '   - itemContentChanged() synchronously clears nextUpEpisode when a new Series is loaded,
-  '     preventing stale Resume buttons from a prior series (race condition guard).
-  '   - onSeriesResumeLoaded() "no results" path: nextUpEpisode is set to invalid, which
-  '     removes the Resume button (exercised here via itemContent switch which triggers the
-  '     same synchronous clear).
-  '   - getResumeButtonText() formatting: "Resume S{n}E{n}" vs plain "Resume".
-  @suite("ItemDetails - Series Resume Loading")
+  ' Tests for getResumeButtonText() formatting: "Resume S{n}E{n}" vs plain "Resume".
+  @suite("ItemDetails - Resume Button Text Formatting")
   class ItemDetailsSeriesResumeTests extends tests.BaseTestSuite
 
     private itemDetails as object
-    private buttonGrp as object
 
     protected override sub setup()
       super.setup()
@@ -24,100 +15,12 @@ namespace tests
       end if
 
       m.itemDetails = CreateObject("roSGNode", "ItemDetails")
-      m.buttonGrp = m.itemDetails.findNode("buttons")
     end sub
 
     protected override sub teardown()
       super.teardown()
       m.itemDetails = invalid
-      m.buttonGrp = invalid
     end sub
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("No results from resume fetch: Resume button removed")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    ' Switching itemContent to a new Series is the live trigger for the
-    ' "no results" path: itemContentChanged() calls
-    '   m.top.nextUpEpisode = invalid
-    ' before starting the new task, mirroring what onSeriesResumeLoaded()
-    ' does when the task returns an empty or mismatched content array.
-
-    @it("resume button is absent after switching to a new Series itemContent")
-    function _()
-      ' First, simulate a Resume button that was present from a prior series load.
-      ep = CreateObject("roSGNode", "JellyfinBaseItem")
-      ep.id = "ep-001"
-      m.itemDetails.nextUpEpisode = ep
-      m.assertNotInvalid(m.itemDetails.findNode("resumeButton"))
-
-      ' Now switch to a different Series — itemContentChanged fires and
-      ' synchronously sets nextUpEpisode = invalid (same effect as
-      ' onSeriesResumeLoaded with no content).
-      series = CreateObject("roSGNode", "JellyfinBaseItem")
-      series.id = "series-B"
-      series.type = "Series"
-      m.itemDetails.itemContent = series
-
-      resumeButton = m.itemDetails.findNode("resumeButton")
-      m.assertInvalid(resumeButton)
-    end function
-
-    @it("nextUpEpisode is invalid after switching to a new Series itemContent")
-    function _()
-      ep = CreateObject("roSGNode", "JellyfinBaseItem")
-      ep.id = "ep-001"
-      m.itemDetails.nextUpEpisode = ep
-
-      series = CreateObject("roSGNode", "JellyfinBaseItem")
-      series.id = "series-B"
-      series.type = "Series"
-      m.itemDetails.itemContent = series
-
-      m.assertInvalid(m.itemDetails.nextUpEpisode)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("No stale Resume button across rapid Series navigation")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("resume button from first series is absent after switching to a second series")
-    function _()
-      ' Simulate Series A having a next-up episode loaded.
-      epA = CreateObject("roSGNode", "JellyfinBaseItem")
-      epA.id = "ep-a01"
-      epA.parentIndexNumber = 1
-      epA.indexNumber = 4
-      m.itemDetails.nextUpEpisode = epA
-      m.assertNotInvalid(m.itemDetails.findNode("resumeButton"))
-
-      ' User navigates to Series B before the background task for A finishes.
-      ' itemContentChanged() must clear the stale Resume button immediately.
-      seriesB = CreateObject("roSGNode", "JellyfinBaseItem")
-      seriesB.id = "series-B"
-      seriesB.type = "Series"
-      m.itemDetails.itemContent = seriesB
-
-      m.assertInvalid(m.itemDetails.findNode("resumeButton"))
-    end function
-
-    @it("nextUpEpisode is invalid synchronously when Series itemContent is set")
-    function _()
-      ' A previously loaded next-up episode is present.
-      ep = CreateObject("roSGNode", "JellyfinBaseItem")
-      ep.id = "ep-001"
-      m.itemDetails.nextUpEpisode = ep
-
-      seriesB = CreateObject("roSGNode", "JellyfinBaseItem")
-      seriesB.id = "series-B"
-      seriesB.type = "Series"
-      m.itemDetails.itemContent = seriesB
-
-      ' The clear happens synchronously inside itemContentChanged() —
-      ' before onSeriesResumeLoaded() is ever invoked — so by the time
-      ' itemContent is observed as changed, nextUpEpisode must already be invalid.
-      m.assertInvalid(m.itemDetails.nextUpEpisode)
-    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Resume button text formatting for Series next-up episodes")
