@@ -170,51 +170,52 @@ namespace quickplay
   end sub
 
   ' A TV Show Series.
-  ' Play the first unwatched episode.
-  ' If none, shuffle play the whole series.
+  ' Prefer an in-progress (resumable) episode — consistent with the Continue Watching row.
+  ' Falls back to the next unstarted/unwatched episode (ep 1 for a fresh series).
+  ' If all episodes are fully watched and rewatching is disabled, shuffle the whole series.
   sub series(itemNode as object)
     if not isValid(itemNode) or not isValid(itemNode.id) then return
 
     ' ONE rendezvous to get user
     localUser = m.global.user
 
-    data = api.shows.GetNextUp({
-      "seriesId": itemNode.id,
-      "recursive": true,
+    ' Check for a resumable (in-progress) episode first
+    resumeData = api.users.GetResumeItemsByQuery(localUser.id, {
+      "parentId": itemNode.id,
+      "userid": localUser.id,
+      "Filters": "IsResumable",
       "SortBy": "DatePlayed",
       "SortOrder": "Descending",
+      "Limit": 1,
+      "recursive": true,
       "ImageTypeLimit": 1,
-      "UserId": localUser.id,
-      "EnableRewatching": localUser.settings.uiDetailsEnableRewatchingNextUp,
-      "DisableFirstEpisode": false,
       "EnableTotalRecordCount": false
     })
 
-    if isValid(data) and isValidAndNotEmpty(data.Items)
-      ' there are unwatched episodes
-      m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[0]))
+    if isValid(resumeData) and isValidAndNotEmpty(resumeData.Items)
+      ' play the resumable episode
+      queueItem = nodeHelpers.createQueueItem(resumeData.Items[0])
+      if isValid(resumeData.Items[0].UserData) and isValid(resumeData.Items[0].UserData.PlaybackPositionTicks)
+        queueItem.startingPoint = resumeData.Items[0].UserData.PlaybackPositionTicks
+      end if
+      m.global.queueManager.callFunc("push", queueItem)
     else
-      ' next up check was empty
-      ' check for a resumable episode
-      data = api.users.GetResumeItemsByQuery(localUser.id, {
-        "parentId": itemNode.id,
-        "userid": localUser.id,
-        "SortBy": "DatePlayed",
-        "recursive": true,
-        "SortOrder": "Descending",
-        "Filters": "IsResumable",
+      ' Fall back to next unstarted episode.
+      ' DisableFirstEpisode: false so a completely unwatched series starts at episode 1.
+      data = api.shows.GetNextUp({
+        "seriesId": itemNode.id,
+        "UserId": localUser.id,
+        "Limit": 1,
+        "DisableFirstEpisode": false,
+        "ImageTypeLimit": 1,
+        "EnableRewatching": localUser.settings.uiDetailsEnableRewatchingNextUp,
         "EnableTotalRecordCount": false
       })
-      print "resumeitems data=", data
+
       if isValid(data) and isValidAndNotEmpty(data.Items)
-        ' play the resumable episode
-        queueItem = nodeHelpers.createQueueItem(data.Items[0])
-        if isValid(data.Items[0].UserData) and isValid(data.Items[0].UserData.PlaybackPositionTicks)
-          queueItem.startingPoint = data.Items[0].UserData.PlaybackPositionTicks
-        end if
-        m.global.queueManager.callFunc("push", queueItem)
+        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[0]))
       else
-        ' shuffle all episodes
+        ' All episodes fully watched and rewatching disabled — shuffle the whole series
         data = api.shows.GetEpisodes(itemNode.id, {
           "userid": localUser.id,
           "SortBy": "Random",
@@ -223,7 +224,6 @@ namespace quickplay
         })
 
         if isValid(data) and isValidAndNotEmpty(data.Items)
-          ' add all episodes found to a playlist
           quickplay.pushToQueue(data.Items)
         else
           stopLoadingSpinner()
