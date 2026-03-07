@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- show episode in Series resume button ([11f0e12](https://github.com/jellyrock/jellyrock/commit/11f0e12))
 - adjust extras panel layout and hide metadata during transition ([c6be05a](https://github.com/jellyrock/jellyrock/commit/c6be05a))
 
 ### Dependencies
