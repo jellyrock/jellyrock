@@ -839,6 +839,8 @@ sub itemContentChanged()
     if item.type = "Series"
       ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
       m.loadSeriesResumeTask.unobserveField("content")
+      m.loadSeriesResumeTask.control = "STOP"
+      m.top.nextUpEpisode = invalid
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
       m.loadSeriesResumeTask.control = "RUN"
