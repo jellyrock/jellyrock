@@ -10,7 +10,7 @@
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" />
     <Poster id="buttonIcon" />
-    <LabelPrimarySmaller id="buttonText" horizAlign="center" wrap="true" maxLines="2" lineSpacing="0" />
+    <LabelPrimarySmaller id="buttonText" horizAlign="center" wrap="true" maxLines="2" lineSpacing="4" />
   </children>
   <interface>
     <field id="background" type="color" value="" />

@@ -150,6 +150,7 @@ sub nextUpEpisodeChanged()
   resumeButton = m.top.findNode("resumeButton")
 
   if isValid(item) and isValidAndNotEmpty(item.id)
+    resumeText = getResumeButtonText(item)
     if not isValid(resumeButton)
       currentFocusIndex = m.buttonGrp.buttonFocused
       currentFocusedButton = invalid
@@ -160,7 +161,7 @@ sub nextUpEpisodeChanged()
       resumeButton = CreateObject("roSGNode", "ResumeButton")
       resumeButton.id = "resumeButton"
       resumeButton.icon = "pkg:/images/icons/resume.png"
-      resumeButton.text = tr("Resume")
+      resumeButton.text = resumeText
       resumeButton.playbackPositionTicks = item.playbackPositionTicks
       resumeButton.runtimeTicks = item.runTimeTicks
       m.buttonGrp.insertChild(resumeButton, 0)
@@ -174,7 +175,8 @@ sub nextUpEpisodeChanged()
       end if
       focusButtonGroupChild()
     else
-      ' Resume button already present — update tick values
+      ' Resume button already present — update text and tick values
+      resumeButton.text = resumeText
       resumeButton.playbackPositionTicks = item.playbackPositionTicks
       resumeButton.runtimeTicks = item.runTimeTicks
     end if
@@ -182,6 +184,17 @@ sub nextUpEpisodeChanged()
     removeResumeButtonWithFocus(resumeButton)
   end if
 end sub
+
+' getResumeButtonText: Return "Resume S{n}E{n}" when season and episode numbers are known,
+' otherwise fall back to plain "Resume".
+' @param {object} item - nextUpEpisode JellyfinBaseItem node
+' @return {string} Localised button label
+function getResumeButtonText(item as object) as string
+  if item.parentIndexNumber > 0 and item.indexNumber > 0
+    return tr("Resume") + " S" + item.parentIndexNumber.toStr() + "E" + item.indexNumber.toStr()
+  end if
+  return tr("Resume")
+end function
 
 ' manageResumeButton: Add or remove Resume button based on playback position (non-Series types)
 sub manageResumeButton()
