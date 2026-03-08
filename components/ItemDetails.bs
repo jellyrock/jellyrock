@@ -1588,8 +1588,24 @@ sub onPersonHasMediaChanged()
     end if
   else
     if isValid(m.shuffleButton)
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      shuffleIndex = getButtonIndex("shuffleButton")
       m.buttonGrp.removeChild(m.shuffleButton)
       m.shuffleButton = invalid
+
+      ' Shuffle was at or before the focused button — shift the index down by one so
+      ' buttonFocused still tracks the same button after the removal.
+      if isValid(shuffleIndex) and shuffleIndex >= 0 and currentFocusIndex >= shuffleIndex
+        focusIndex = currentFocusIndex - 1
+        if focusIndex < 0 then focusIndex = 0
+        m.buttonGrp.buttonFocused = focusIndex
+      end if
+
+      ' Re-anchor Roku RSG focus if the button group is active — the removed node may
+      ' have been the physically-focused child, leaving focus orphaned.
+      if m.buttonGrp.isInFocusChain()
+        focusButtonGroupChild()
+      end if
     end if
   end if
 end sub
