@@ -215,7 +215,7 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "Movie"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Person"
-          CreatePersonView(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Video"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "TvChannel" or selectedItemType = "Program"
@@ -438,7 +438,7 @@ sub Main (args as dynamic) as void
         m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Person"
-        group = CreatePersonView(node)
+        group = CreateItemDetailsGroup(node)
       else if node.type = "TvChannel"
         m.global.queueManager.callFunc("clear")
         m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
@@ -687,28 +687,15 @@ sub Main (args as dynamic) as void
           group.refreshItemDetailsData = not group.refreshItemDetailsData
         end if
       else if btn.id = "shuffleButton"
-        ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added
+        ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added.
+        ' API calls run off the render thread via GetShuffleItemsTask; result handled by "shuffleItems" event.
         if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
           startLoadingSpinner()
           item = group.itemContent
-          shuffleItems = invalid
-
-          if item.type = "Series"
-            shuffleData = api.shows.GetEpisodes(item.id, { UserId: m.global.user.id, SortBy: "Random", Limit: 200 })
-            if isValid(shuffleData) then shuffleItems = shuffleData.Items
-          else if item.type = "Season"
-            ' Shuffle all episodes in this season only
-            shuffleData = api.shows.GetEpisodes(item.seriesId, { UserId: m.global.user.id, SeasonId: item.id, SortBy: "Random", Limit: 200 })
-            if isValid(shuffleData) then shuffleItems = shuffleData.Items
-          end if
-
-          if isValid(shuffleItems) and shuffleItems.count() > 0
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("set", shuffleItems)
-            m.global.queueManager.callFunc("playQueue")
-          else
-            stopLoadingSpinner()
-          end if
+          m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
+          m.shuffleTask.shuffleInput = { type: item.type, id: item.id, seriesId: item.seriesId }
+          m.shuffleTask.observeField("shuffleItems", m.port)
+          m.shuffleTask.control = "RUN"
         end if
       else if btn.id = "goToSeriesButton"
         ' Navigate to the parent series detail screen
@@ -981,6 +968,24 @@ sub Main (args as dynamic) as void
             end if
           end if
         end if
+      end if
+    else if isNodeEvent(msg, "shuffleItems")
+      ' GetShuffleItemsTask completed — queue and play the results
+      shuffleTask = msg.getRoSGNode()
+      shuffleItems = shuffleTask.shuffleItems
+      shuffleTask.unobserveField("shuffleItems")
+      shuffleTask.control = "STOP"
+      m.shuffleTask = invalid
+      if isValid(shuffleItems) and shuffleItems.count() > 0
+        m.global.queueManager.callFunc("clear")
+        m.global.queueManager.callFunc("resetShuffle")
+        m.global.queueManager.callFunc("set", shuffleItems)
+        if shuffleItems.count() > 1
+          m.global.queueManager.callFunc("toggleShuffle") ' Fisher-Yates client-side shuffle
+        end if
+        m.global.queueManager.callFunc("playQueue")
+      else
+        stopLoadingSpinner()
       end if
     else if isNodeEvent(msg, "reloadHomeRequested")
       ' Theme colors changed - reload home screen with fresh state

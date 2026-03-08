@@ -1,0 +1,43 @@
+import "pkg:/source/api/sdk.bs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.top.functionName = "getShuffleItems"
+end sub
+
+' Fetches items to shuffle for Series, Season, and Person item types off the render thread.
+' Writes the combined result array to m.top.shuffleItems (empty array = nothing to play).
+sub getShuffleItems()
+  input = m.top.shuffleInput
+  userId = m.global.user.id
+  items = []
+
+  if input.type = "Series"
+    data = api.shows.GetEpisodes(input.id, { UserId: userId, SortBy: "Random", Limit: 200 })
+    if isValid(data) and isValid(data.Items) then items = data.Items
+  else if input.type = "Season"
+    ' Shuffle episodes within this season only
+    data = api.shows.GetEpisodes(input.seriesId, { UserId: userId, SeasonId: input.id, SortBy: "Random", Limit: 200 })
+    if isValid(data) and isValid(data.Items) then items = data.Items
+  else if input.type = "Person"
+    ' All movies featuring this person (watched or not — rewatching a film is fine)
+    moviesData = api.users.GetItemsByQuery(userId, {
+      personIds: input.id,
+      recursive: true,
+      includeItemTypes: "Movie",
+      Limit: 250
+    })
+    ' Watched episodes/recordings only — avoids spoiling shows the user is mid-way through
+    episodesData = api.users.GetItemsByQuery(userId, {
+      personIds: input.id,
+      recursive: true,
+      includeItemTypes: "Episode,Recording",
+      isPlayed: true,
+      Limit: 250
+    })
+    if isValid(moviesData) and isValid(moviesData.Items) then items.append(moviesData.Items)
+    if isValid(episodesData) and isValid(episodesData.Items) then items.append(episodesData.Items)
+  end if
+
+  m.top.shuffleItems = items
+end sub

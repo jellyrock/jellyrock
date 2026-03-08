@@ -13,7 +13,7 @@ end sub
 
 sub onGroupFocusChanged()
   ' When group gains focus, set focus on the current button
-  if m.top.hasFocus() and m.top.buttonFocused <> invalid
+  if m.top.hasFocus()
     button = m.top.getChild(m.top.buttonFocused)
     if button <> invalid
       button.setFocus(true)
@@ -131,6 +131,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   if key = "OK"
+    ' Ignore OK on non-actionable placeholder buttons (e.g. LoadingButton)
+    if isValid(currentFocusButton) and currentFocusButton.subtype() = "LoadingButton" then return true
     print "OK pressed from JRButtonGroup, buttonFocused =", m.top.buttonFocused
     m.top.buttonSelected = m.top.buttonFocused
     return true

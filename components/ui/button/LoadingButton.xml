@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LoadingButton: Temporary placeholder button shown in the button group while itemContent loads.
+  Visually matches IconButton (same 9-patch background/border) but shows a spinner instead of an icon.
+  Replaced by real buttons in setupButtons() once item type is known.
+-->
+<component name="LoadingButton" extends="Group" focusable="true">
+  <children>
+    <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" />
+    <Spinner id="loadingSpinner" />
+    <LabelPrimarySmaller id="buttonText" text="Loading" horizAlign="center" />
+  </children>
+</component>

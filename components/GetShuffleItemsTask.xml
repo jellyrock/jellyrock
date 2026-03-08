@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<component name="GetShuffleItemsTask" extends="Task">
+  <interface>
+    <!--
+      shuffleInput: assocarray with keys:
+        type     - "Series" | "Season" | "Person"
+        id       - primary item ID (series ID for Series, season ID for Season, person ID for Person)
+        seriesId - parent series ID (Season only)
+    -->
+    <field id="shuffleInput" type="assocarray" />
+    <!-- Resolved items array, ready to pass directly to queueManager "set" -->
+    <field id="shuffleItems" type="array" />
+  </interface>
+</component>

@@ -28,6 +28,11 @@ sub init()
   m.itemDescriptionInLayout = true ' itemDescription is a static XML child, so it starts in layout
 
   m.buttonGrp = m.top.findNode("buttons")
+  ' LoadingButton placeholder gives focus a home before itemContent arrives.
+  ' setupButtons() clears it and builds the real button set once item type is known.
+  loadingButton = CreateObject("roSGNode", "LoadingButton")
+  loadingButton.id = "loadingButton"
+  m.buttonGrp.appendChild(loadingButton)
   m.buttonGrp.setFocus(true)
   m.top.lastFocus = m.buttonGrp
 
@@ -58,14 +63,9 @@ sub init()
   ' Used to compute the correct animation target height when extras are shown
   m.itemInfoRows = m.top.findNode("itemInfoRows")
 
-  ' Dynamic buttons — created/removed as needed
+  ' Dynamic button refs — reset by setupButtons() on each content load
   m.optionsButton = invalid
-  m.deleteButton = invalid
   m.shuffleButton = invalid
-  m.goToSeriesButton = invalid
-
-  ' Shuffle task (Series only)
-  m.getShuffleEpisodesTask = createObject("roSGNode", "getShuffleEpisodesTask")
 
   ' First episode task (Series Play button)
   m.loadFirstEpisodeTask = CreateObject("roSGNode", "LoadItemsTask")
@@ -88,6 +88,9 @@ sub init()
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
+
+  ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
+  m.extrasGrid.observeField("personHasMedia", "onPersonHasMediaChanged")
 
   ' Observe overhang clock for dynamic "Ends At" updates (only when clock is visible)
   m.endsAtNode = invalid
@@ -135,11 +138,25 @@ end sub
 
 sub trailerAvailableChanged()
   if m.top.trailerAvailable
-    trailerButton = CreateObject("roSGNode", "IconButton")
-    trailerButton.id = "trailerButton"
-    trailerButton.icon = "pkg:/images/icons/playOutline.png"
-    trailerButton.text = tr("Play Trailer")
-    m.buttonGrp.appendChild(trailerButton)
+    ' Guard: setupButtons() may have already restored the trailer button on refresh
+    if not isValid(m.top.findNode("trailerButton"))
+      trailerButton = CreateObject("roSGNode", "IconButton")
+      trailerButton.id = "trailerButton"
+      trailerButton.icon = "pkg:/images/icons/playOutline.png"
+      trailerButton.text = tr("Play Trailer")
+      ' Insert before Delete (if present) to match setupButtons() ordering, else before Refresh
+      deleteButtonIndex = getButtonIndex("deleteButton")
+      if deleteButtonIndex >= 0
+        m.buttonGrp.insertChild(trailerButton, deleteButtonIndex)
+      else
+        refreshButtonIndex = getButtonIndex("refreshButton")
+        if refreshButtonIndex >= 0
+          m.buttonGrp.insertChild(trailerButton, refreshButtonIndex)
+        else
+          m.buttonGrp.appendChild(trailerButton)
+        end if
+      end if
+    end if
   else
     trailerButton = m.top.findNode("trailerButton")
     if isValid(trailerButton)
@@ -238,7 +255,11 @@ sub manageResumeButton()
         else
           m.buttonGrp.buttonFocused = 0
         end if
-        focusButtonGroupChild()
+        ' Only move actual focus when the button group already owns it — avoid stealing
+        ' focus from the extras row when setupButtons() cleared and rebuilt buttons on refresh.
+        if m.buttonGrp.isInFocusChain()
+          focusButtonGroupChild()
+        end if
       else
         resumeButton.playbackPositionTicks = item.playbackPositionTicks
         resumeButton.runtimeTicks = item.runTimeTicks
@@ -272,29 +293,6 @@ sub removeResumeButtonWithFocus(resumeButton as object)
   end if
 end sub
 
-' manageShuffleButton: Add or remove Shuffle button for Series and Season types
-sub manageShuffleButton(itemType as string)
-  if itemType = "Series" or itemType = "Season"
-    if not isValid(m.shuffleButton)
-      m.shuffleButton = CreateObject("roSGNode", "IconButton")
-      m.shuffleButton.id = "shuffleButton"
-      m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
-      m.shuffleButton.text = tr("Shuffle")
-      ' Insert after Play button
-      playButtonIndex = getButtonIndex("playButton")
-      if playButtonIndex >= 0
-        m.buttonGrp.insertChild(m.shuffleButton, playButtonIndex + 1)
-      else
-        m.buttonGrp.appendChild(m.shuffleButton)
-      end if
-    end if
-  else
-    if isValid(m.shuffleButton)
-      m.buttonGrp.removeChild(m.shuffleButton)
-      m.shuffleButton = invalid
-    end if
-  end if
-end sub
 
 ' createInfoLabel: Create a bold label node for the info rows
 ' @param {string} labelId - Unique ID for the label
@@ -348,6 +346,21 @@ end sub
 sub populateDescriptionGroup()
   item = m.top.itemContent
   userSettings = m.global.user.settings
+
+  ' Person: always show biography with higher maxLines; no tagline support
+  if item.type = "Person"
+    if isValidAndNotEmpty(item.overview)
+      m.itemDescription.text = item.overview
+    else
+      m.itemDescription.text = tr("Biographical information for this person is not currently available.")
+    end if
+    m.itemDescription.tagline = ""
+    m.itemDescription.maxLines = 8
+    m.itemDescription.dialogTitle = item.name
+    m.itemDescription.visible = true
+    setDescriptionInLayout(true)
+    return
+  end if
 
   hasTagline = false
   hasOverview = false
@@ -407,6 +420,8 @@ sub populateInfoGroup()
     populateInfoGroupEpisode(item, userSettings)
   else if item.type = "MusicVideo"
     populateInfoGroupMusicVideo(item, userSettings)
+  else if item.type = "Person"
+    populateInfoGroupPerson(item)
   else
     ' Movie, Video, Recording
     populateInfoGroupMovie(item, userSettings)
@@ -712,6 +727,68 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
   end if
 end sub
 
+' populateInfoGroupPerson: Info rows for Person
+' Row 1: {birthDate} [- {deathDate}] · {n} years old
+'   Living:  Jan 1, 1980 · 45 years old
+'   Deceased: Jan 1, 1920 - Dec 31, 1980 · 60 years old
+' Row 2: {n} Movie(s) [· {n} Episode(s)]  — omitted entirely if both counts are 0
+sub populateInfoGroupPerson(item as object)
+  ' Row 1: birth / death / age
+  if isValidAndNotEmpty(item.premiereDate)
+    birthDate = CreateObject("roDateTime")
+    birthDate.FromISO8601String(item.premiereDate)
+    lifeString = birthDate.AsDateString("short-month-no-weekday")
+
+    if isValidAndNotEmpty(item.endDate)
+      ' Deceased: show birth - death dates as one hyphenated unit
+      deathDate = CreateObject("roDateTime")
+      deathDate.FromISO8601String(item.endDate)
+      lifeString = lifeString + " - " + deathDate.AsDateString("short-month-no-weekday")
+      ' Age at time of death
+      age = deathDate.getYear() - birthDate.getYear()
+      if deathDate.getMonth() < birthDate.getMonth()
+        age--
+      else if deathDate.getMonth() = birthDate.getMonth()
+        if deathDate.getDayOfMonth() < birthDate.getDayOfMonth()
+          age--
+        end if
+      end if
+    else
+      ' Living: calculate age from birth to today
+      today = CreateObject("roDateTime")
+      age = today.getYear() - birthDate.getYear()
+      if today.getMonth() < birthDate.getMonth()
+        age--
+      else if today.getMonth() = birthDate.getMonth()
+        if today.getDayOfMonth() < birthDate.getDayOfMonth()
+          age--
+        end if
+      end if
+    end if
+    lifeString = lifeString + " · " + stri(age).trim() + " " + tr("years old")
+
+    lifeNode = createInfoLabel("personLife")
+    lifeNode.text = lifeString
+    displayInfoNode(lifeNode)
+  end if
+
+  ' Row 2: movie count / episode count (only shown when the API returns non-zero values)
+  if item.movieCount > 0
+    movieCountNode = createInfoLabel("personMovieCount")
+    movieLabel = tr("Movie")
+    if item.movieCount <> 1 then movieLabel = tr("Movies")
+    movieCountNode.text = stri(item.movieCount).trim() + " " + movieLabel
+    displayDirectorGenreNode(movieCountNode)
+  end if
+  if item.episodeCount > 0
+    episodeCountNode = createInfoLabel("personEpisodeCount")
+    episodeLabel = tr("Episode")
+    if item.episodeCount <> 1 then episodeLabel = tr("Episodes")
+    episodeCountNode.text = stri(item.episodeCount).trim() + " " + episodeLabel
+    displayDirectorGenreNode(episodeCountNode)
+  end if
+end sub
+
 ' getHistory: Format the air schedule/status string for a Series item
 ' Example output: "ABC" or "Fridays at 9:30 PM on NBC"
 function getHistory() as string
@@ -779,11 +856,13 @@ sub itemContentChanged()
     setItemLogo(item)
     setDateAdded(item)
 
+    setupButtons(item)
+
     ' Media tracks and stream options are only relevant for playable types
     ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space
-    setTracksInLayout(item.type <> "Series" and item.type <> "Season")
+    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person")
 
-    if item.type <> "Series" and item.type <> "Season"
+    if item.type <> "Series" and item.type <> "Season" and item.type <> "Person"
       if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
         m.top.selectedVideoStreamId = item.mediaSourceId
       end if
@@ -803,7 +882,7 @@ sub itemContentChanged()
       SetUpSubtitleDisplay(allStreams, m.top.selectedAudioStreamIndex)
       updateOptionsButtonVisibility()
     else
-      ' Series/Season: ensure options button is removed if it was left from a previous load
+      ' Series/Season/Person: ensure options button is removed if it was left from a previous load
       if isValid(m.optionsButton)
         m.buttonGrp.removeChild(m.optionsButton)
         m.optionsButton = invalid
@@ -815,19 +894,8 @@ sub itemContentChanged()
 
     setFieldText("videoTitle", item.name)
 
-    ' Series and Season use "Play All" to clarify all episodes will be queued
-    playButton = m.top.findNode("playButton")
-    if isValid(playButton)
-      if item.type = "Series" or item.type = "Season"
-        playButton.text = tr("Play All")
-      else
-        playButton.text = tr("Play")
-      end if
-    end if
-
     updateFavoriteButton()
     updateWatchedButton()
-    manageShuffleButton(item.type)
 
     ' Non-Series/Season types: Resume based on playbackPositionTicks
     ' Series: Resume based on nextUpEpisode (managed by nextUpEpisodeChanged observer)
@@ -835,9 +903,6 @@ sub itemContentChanged()
     if item.type <> "Series" and item.type <> "Season"
       manageResumeButton()
     end if
-
-    manageGoToSeriesButton(item.type)
-    manageDeleteButton()
 
     ' Series: kick off background fetch of resume/next-up episode for the Resume button
     if item.type = "Series"
@@ -862,8 +927,12 @@ sub itemContentChanged()
     ' Load extras rows on first content load only; explicit refresh via onRefreshExtrasData.
     if not m.extrasLoaded
       m.extrasLoaded = true
-      m.extrasGrid.type = item.type
-      m.extrasGrid.callFunc("loadParts", item)
+      if item.type = "Person"
+        m.extrasGrid.callFunc("loadPersonVideos", item.id)
+      else
+        m.extrasGrid.type = item.type
+        m.extrasGrid.callFunc("loadParts", item)
+      end if
     end if
   end if
 
@@ -1074,7 +1143,16 @@ sub setItemLogo(item as object)
   logoItemId = item.id
   logoImageTag = item.logoImageTag
 
-  if item.type = "Episode" or item.type = "Season"
+  if item.type = "Person"
+    ' Person: display primary (portrait) photo where the logo sits; fall back to silhouette icon
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+    else
+      m.itemLogo.uri = "pkg:/images/icons/baseline_person_white_48dp.png"
+    end if
+    return
+  else if item.type = "Episode" or item.type = "Season"
     ' Episodes and Seasons don't have their own logo — use the parent series logo
     if isValidAndNotEmpty(item.parentLogoItemId)
       logoItemId = item.parentLogoItemId
@@ -1305,8 +1383,12 @@ end function
 sub onRefreshExtrasData()
   item = m.top.itemContent
   if not isValid(item) or not isValidAndNotEmpty(item.id) then return
-  m.extrasGrid.type = item.type
-  m.extrasGrid.callFunc("loadParts", item)
+  if item.type = "Person"
+    m.extrasGrid.callFunc("loadPersonVideos", item.id)
+  else
+    m.extrasGrid.type = item.type
+    m.extrasGrid.callFunc("loadParts", item)
+  end if
 end sub
 
 sub activateExtras()
@@ -1346,76 +1428,186 @@ end sub
 ' focusButtonGroupChild: Focus the button at the current buttonFocused index directly
 sub focusButtonGroupChild()
   focusIndex = m.buttonGrp.buttonFocused
-  if not isValid(focusIndex) or focusIndex < 0 or focusIndex >= m.buttonGrp.getChildCount()
+  if focusIndex < 0 or focusIndex >= m.buttonGrp.getChildCount()
     return
   end if
   m.buttonGrp.getChild(focusIndex).setFocus(true)
 end sub
 
-' manageDeleteButton: Add or remove Delete button based on server CanDelete permission.
-' CanDelete is computed server-side and accounts for global, folder-specific, and admin permissions.
-sub manageDeleteButton()
-  canDelete = false
-  if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
-    canDelete = m.top.itemContent.canDelete = true
+' setupButtons: Build the complete button set for the given item type.
+' Clears all existing buttons (including the LoadingButton placeholder from init()) and adds
+' the correct sync buttons in order. Async buttons (Series Resume, Trailer, Person Shuffle)
+' are handled separately by their existing observers.
+' Called on every itemContentChanged — the button list is rebuilt from scratch each time.
+sub setupButtons(item as object)
+  ' Capture focus state BEFORE clearing — removing buttons nulls out focus, so
+  ' isInFocusChain() would return false even if buttons were focused a moment ago.
+  wasButtonGroupFocused = m.buttonGrp.isInFocusChain()
+  ' Capture the focused button's ID so we can restore to the same button after the rebuild.
+  ' Falling back to index 0 only when the previously-focused button no longer exists (e.g. Delete
+  ' was removed because canDelete changed) or when this is the initial load (LoadingButton).
+  focusedButtonId = ""
+  focusIndex = m.buttonGrp.buttonFocused
+  if focusIndex >= 0 and focusIndex < m.buttonGrp.getChildCount()
+    focusedBtn = m.buttonGrp.getChild(focusIndex)
+    if isValid(focusedBtn) and focusedBtn.id <> "loadingButton" then focusedButtonId = focusedBtn.id
   end if
 
-  buttonExists = isValid(m.deleteButton)
+  ' Clear everything (LoadingButton placeholder + any buttons from a previous content load)
+  while m.buttonGrp.getChildCount() > 0
+    m.buttonGrp.removeChild(m.buttonGrp.getChild(0))
+  end while
 
-  if canDelete and not buttonExists
-    m.deleteButton = CreateObject("roSGNode", "IconButton")
-    m.deleteButton.id = "deleteButton"
-    m.deleteButton.icon = "pkg:/images/icons/delete.png"
-    m.deleteButton.text = tr("Delete")
-    m.buttonGrp.appendChild(m.deleteButton)
-  else if not canDelete and buttonExists
-    currentFocusIndex = m.buttonGrp.buttonFocused
-    deleteButtonIndex = getButtonIndex("deleteButton")
+  ' Reset dynamic refs that were pointing into the now-cleared button group
+  m.optionsButton = invalid
+  m.shuffleButton = invalid
 
-    m.buttonGrp.removeChild(m.deleteButton)
-    m.deleteButton = invalid
+  itemType = item.type
 
-    if isValid(currentFocusIndex) and isValid(deleteButtonIndex) and currentFocusIndex >= deleteButtonIndex
-      focusIndex = currentFocusIndex - 1
-      if focusIndex < 0 then focusIndex = 0
-      m.buttonGrp.buttonFocused = focusIndex
+  ' Play button — all types except Person
+  if itemType <> "Person"
+    playButton = CreateObject("roSGNode", "IconButton")
+    playButton.id = "playButton"
+    playButton.icon = "pkg:/images/icons/play.png"
+    if itemType = "Series" or itemType = "Season"
+      playButton.text = tr("Play All")
+    else
+      playButton.text = tr("Play")
     end if
+    m.buttonGrp.appendChild(playButton)
+  end if
+
+  ' Watched button — playable types only (not Series, Season, or Person)
+  if itemType <> "Person" and itemType <> "Series" and itemType <> "Season"
+    watchedButton = CreateObject("roSGNode", "IconButton")
+    watchedButton.id = "watchedButton"
+    watchedButton.icon = "pkg:/images/icons/check.png"
+    watchedButton.text = tr("Watched")
+    m.buttonGrp.appendChild(watchedButton)
+  end if
+
+  ' Shuffle button — Series and Season only (Person shuffle is async via onPersonHasMediaChanged)
+  if itemType = "Series" or itemType = "Season"
+    m.shuffleButton = CreateObject("roSGNode", "IconButton")
+    m.shuffleButton.id = "shuffleButton"
+    m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
+    m.shuffleButton.text = tr("Shuffle")
+    m.buttonGrp.appendChild(m.shuffleButton)
+  end if
+
+  ' Favorite button — all types
+  favoriteButton = CreateObject("roSGNode", "IconButton")
+  favoriteButton.id = "favoriteButton"
+  favoriteButton.icon = "pkg:/images/icons/heart.png"
+  favoriteButton.text = tr("Favorite")
+  m.buttonGrp.appendChild(favoriteButton)
+
+  ' Go to Series button — Season and Episode only
+  if itemType = "Season" or itemType = "Episode"
+    goToSeriesButton = CreateObject("roSGNode", "IconButton")
+    goToSeriesButton.id = "goToSeriesButton"
+    goToSeriesButton.icon = "pkg:/images/icons/tv.png"
+    goToSeriesButton.text = tr("Go to Series")
+    m.buttonGrp.appendChild(goToSeriesButton)
+  end if
+
+  ' Trailer button — restore on refresh (on first load, trailerAvailableChanged adds it async)
+  ' Must come before Delete to match the insertion order used in trailerAvailableChanged()
+  if m.top.trailerAvailable
+    trailerButton = CreateObject("roSGNode", "IconButton")
+    trailerButton.id = "trailerButton"
+    trailerButton.icon = "pkg:/images/icons/playOutline.png"
+    trailerButton.text = tr("Play Trailer")
+    m.buttonGrp.appendChild(trailerButton)
+  end if
+
+  ' Delete button — when server grants permission
+  if item.canDelete
+    deleteButton = CreateObject("roSGNode", "IconButton")
+    deleteButton.id = "deleteButton"
+    deleteButton.icon = "pkg:/images/icons/delete.png"
+    deleteButton.text = tr("Delete")
+    m.buttonGrp.appendChild(deleteButton)
+  end if
+
+  ' Refresh button — always last
+  refreshButton = CreateObject("roSGNode", "IconButton")
+  refreshButton.id = "refreshButton"
+  refreshButton.icon = "pkg:/images/icons/refresh.png"
+  refreshButton.text = tr("Refresh")
+  m.buttonGrp.appendChild(refreshButton)
+
+  ' Person Shuffle: if personHasMedia was already set before this refresh, restore the button now.
+  ' On first load this is a no-op; onPersonHasMediaChanged fires later via the extras chain.
+  if itemType = "Person"
+    onPersonHasMediaChanged()
+  end if
+
+  ' Restore focus to the same button the user was on before the rebuild, identified by ID.
+  ' Falls back to index 0 when the button no longer exists or this is the initial load.
+  restoredIndex = 0
+  if focusedButtonId <> ""
+    restoredIndex = getButtonIndex(focusedButtonId)
+    if restoredIndex < 0 then restoredIndex = 0
+  end if
+  m.buttonGrp.buttonFocused = restoredIndex
+  if wasButtonGroupFocused
     focusButtonGroupChild()
   end if
 end sub
 
-' manageGoToSeriesButton: Add or remove "Go to Series" button for Season and Episode type
-sub manageGoToSeriesButton(itemType as string)
-  if itemType = "Season" or itemType = "Episode"
-    if not isValid(m.goToSeriesButton)
-      m.goToSeriesButton = CreateObject("roSGNode", "IconButton")
-      m.goToSeriesButton.id = "goToSeriesButton"
-      m.goToSeriesButton.icon = "pkg:/images/icons/tv.png"
-      m.goToSeriesButton.text = tr("Go to Series")
-      ' Insert after favoriteButton, before refreshButton
-      refreshButtonIndex = getButtonIndex("refreshButton")
-      if refreshButtonIndex >= 0
-        m.buttonGrp.insertChild(m.goToSeriesButton, refreshButtonIndex)
+' onPersonHasMediaChanged: Show or hide the Shuffle button once the person extras chain completes.
+' Fires via alwaysNotify so it triggers even when personHasMedia stays the same value (e.g. on refresh).
+sub onPersonHasMediaChanged()
+  if not isValid(m.top.itemContent) or m.top.itemContent.type <> "Person" then return
+  if m.extrasGrid.personHasMedia
+    if not isValid(m.shuffleButton)
+      m.shuffleButton = CreateObject("roSGNode", "IconButton")
+      m.shuffleButton.id = "shuffleButton"
+      m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
+      m.shuffleButton.text = tr("Shuffle")
+      ' Insert before Favorite so button order is: Shuffle · Favorite · Refresh
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      favoriteButtonIndex = getButtonIndex("favoriteButton")
+      insertIndex = 0
+      if favoriteButtonIndex >= 0 then insertIndex = favoriteButtonIndex
+      m.buttonGrp.insertChild(m.shuffleButton, insertIndex)
+
+      if currentFocusIndex = 0
+        ' User is on the default button (index 0) — Shuffle takes that position, follow it.
+        m.buttonGrp.buttonFocused = 0
+        if m.buttonGrp.isInFocusChain()
+          focusButtonGroupChild()
+        end if
       else
-        m.buttonGrp.appendChild(m.goToSeriesButton)
+        ' User moved focus away from the default — shift index to track their button, don't steal.
+        m.buttonGrp.buttonFocused = currentFocusIndex + 1
       end if
     end if
   else
-    if isValid(m.goToSeriesButton)
+    if isValid(m.shuffleButton)
       currentFocusIndex = m.buttonGrp.buttonFocused
-      goToSeriesButtonIndex = getButtonIndex("goToSeriesButton")
-      m.buttonGrp.removeChild(m.goToSeriesButton)
-      m.goToSeriesButton = invalid
+      shuffleIndex = getButtonIndex("shuffleButton")
+      m.buttonGrp.removeChild(m.shuffleButton)
+      m.shuffleButton = invalid
 
-      if isValid(currentFocusIndex) and isValid(goToSeriesButtonIndex) and currentFocusIndex >= goToSeriesButtonIndex
+      ' Shuffle was at or before the focused button — shift the index down by one so
+      ' buttonFocused still tracks the same button after the removal.
+      if isValid(shuffleIndex) and shuffleIndex >= 0 and currentFocusIndex >= shuffleIndex
         focusIndex = currentFocusIndex - 1
         if focusIndex < 0 then focusIndex = 0
         m.buttonGrp.buttonFocused = focusIndex
       end if
-      focusButtonGroupChild()
+
+      ' Re-anchor Roku RSG focus if the button group is active — the removed node may
+      ' have been the physically-focused child, leaving focus orphaned.
+      if m.buttonGrp.isInFocusChain()
+        focusButtonGroupChild()
+      end if
     end if
   end if
 end sub
+
 
 function round(f as float) as integer
   ' BrightScript only has a "floor" round.
@@ -1515,17 +1707,6 @@ sub onSeriesResumeLoaded()
   end if
 end sub
 
-' onShuffleEpisodeDataLoaded: Play shuffled episodes for Series
-sub onShuffleEpisodeDataLoaded()
-  m.getShuffleEpisodesTask.unobserveField("data")
-
-  if isValid(m.getShuffleEpisodesTask.data)
-    queueManager = m.global.queueManager
-    queueManager.callFunc("set", m.getShuffleEpisodesTask.data.items)
-    queueManager.callFunc("playQueue")
-  end if
-end sub
-
 ' onFirstEpisodeLoaded: Start playback of first episode for Series Play button
 sub onFirstEpisodeLoaded()
   m.loadFirstEpisodeTask.unobserveField("content")
@@ -1570,16 +1751,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
         return true
       end if
     end if
-  end if
-
-  ' Shuffle button: handled in component (like TVShowDetails)
-  if key = "OK" and isValid(m.shuffleButton) and m.shuffleButton.isInFocusChain()
-    if isValidAndNotEmpty(item.id)
-      m.getShuffleEpisodesTask.showID = item.id
-      m.getShuffleEpisodesTask.observeField("data", "onShuffleEpisodeDataLoaded")
-      m.getShuffleEpisodesTask.control = "RUN"
-    end if
-    return true
   end if
 
   ' DOWN: itemDescription -> buttonGrp

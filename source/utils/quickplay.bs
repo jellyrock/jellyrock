@@ -417,14 +417,14 @@ namespace quickplay
   end sub
 
   ' Quick Play A Person.
-  ' Shuffle play all videos found
+  ' Shuffle play all movies and episodes found for this person
   sub person(itemNode as object)
     globalUser = m.global.user
     if not isValid(itemNode) or not isValid(itemNode.id) then return
-    ' get movies and videos by the person
+    ' get movies by the person
     personMovies = api.users.GetItemsByQuery(globalUser.id, {
       "personIds": itemNode.id,
-      "includeItemTypes": "Movie,Video",
+      "includeItemTypes": "Movie",
       "excludeItemTypes": "Season,Series",
       "recursive": true,
       "limit": 500
@@ -439,7 +439,7 @@ namespace quickplay
     ' get watched episodes by the person
     personEpisodes = api.users.GetItemsByQuery(globalUser.id, {
       "personIds": itemNode.id,
-      "includeItemTypes": ["Episode", "Recording"],
+      "includeItemTypes": "Episode,Recording",
       "isPlayed": true,
       "excludeItemTypes": "Season,Series",
       "recursive": true,

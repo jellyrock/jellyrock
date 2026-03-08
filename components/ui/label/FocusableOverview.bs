@@ -64,9 +64,9 @@ sub onTaglineMaxLinesChanged()
 end sub
 
 ' Sizes the focus border based on background dimensions
-' When showBackground is true (e.g., PersonDetails), border matches background exactly
+' When showBackground is true, border matches background exactly
 ' since content padding already provides breathing room.
-' When showBackground is false (e.g., MovieDetails), border expands outward so it
+' When showBackground is false, border expands outward so it
 ' doesn't overlap flush text content.
 sub updateFocusBorderLayout()
   ' Only expand outward when focused and no background padding exists
@@ -91,7 +91,7 @@ sub onSizeChanged()
 
   m.background.width = componentWidth
 
-  ' Apply padding only when background is shown (e.g., PersonDetails)
+  ' Apply padding only when background is shown
   ' Without background, content is flush for alignment with sibling elements
   if m.top.showBackground
     padding = LABEL_PADDING
@@ -113,7 +113,7 @@ sub onSizeChanged()
     m.background.height = componentHeight
 
     ' Only set explicit label height when maxLines is not specified
-    ' This preserves clipping behavior for consumers like PersonDetails
+    ' This preserves clipping behavior for consumers that set maxLines
     if m.top.maxLines = 0
       m.label.height = componentHeight - (padding * 2)
     end if

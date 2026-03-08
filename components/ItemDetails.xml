@@ -28,12 +28,8 @@
       </LayoutGroup>
     </LayoutGroup>
 
-    <JRButtonGroup id="buttons" translation="[90, 800]">
-      <IconButton id="playButton" icon="pkg:/images/icons/play.png" text="Play" />
-      <IconButton id="watchedButton" icon="pkg:/images/icons/check.png" text="Watched" />
-      <IconButton id="favoriteButton" icon="pkg:/images/icons/heart.png" text="Favorite" />
-      <IconButton id="refreshButton" icon="pkg:/images/icons/refresh.png" text="Refresh" />
-    </JRButtonGroup>
+    <!-- Buttons are created dynamically in setupButtons() based on item type -->
+    <JRButtonGroup id="buttons" translation="[90, 800]" />
 
     <!-- Item logo - positioned 5% from right edge -->
     <Poster id="itemLogo" visible="false" />
