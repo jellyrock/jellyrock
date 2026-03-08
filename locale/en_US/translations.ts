@@ -69,10 +69,6 @@
       <extracomment>Additional parts of a video</extracomment>
     </message>
     <message>
-      <source>Age</source>
-      <translation>Age</translation>
-    </message>
-    <message>
       <source>Album Artists</source>
       <translation>Album Artists</translation>
     </message>
@@ -194,10 +190,6 @@
       <source>Blur Unwatched Episodes</source>
       <translation>Blur Unwatched Episodes</translation>
       <extracomment>Option Title in user setting screen</extracomment>
-    </message>
-    <message>
-      <source>Born</source>
-      <translation>Born</translation>
     </message>
     <message>
       <source>Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.</source>
@@ -354,10 +346,6 @@
       <translation>Delete Saved</translation>
     </message>
     <message>
-      <source>Died</source>
-      <translation>Died</translation>
-    </message>
-    <message>
       <source>direct</source>
       <translation>direct</translation>
     </message>
@@ -450,6 +438,10 @@
     <message>
       <source>Enter the server name or ip address</source>
       <translation>Enter the server name or ip address</translation>
+    </message>
+    <message>
+      <source>Episode</source>
+      <translation>Episode</translation>
     </message>
     <message>
       <source>Episode Images Next Up</source>
@@ -633,6 +625,10 @@
       <translation>LIVE</translation>
     </message>
     <message>
+      <source>Loading</source>
+      <translation>Loading</translation>
+    </message>
+    <message>
       <source>Loading Channel Data</source>
       <translation>Loading Channel Data</translation>
     </message>
@@ -719,6 +715,10 @@
     <message>
       <source>More Like This</source>
       <translation>More Like This</translation>
+    </message>
+    <message>
+      <source>Movie</source>
+      <translation>Movie</translation>
     </message>
     <message>
       <source>Movies</source>
@@ -1105,11 +1105,6 @@
       <translation>Server not found, is it online?</translation>
     </message>
     <message>
-      <source>Set Favorite</source>
-      <translation>Set Favorite</translation>
-      <extracomment>Button Text - When pressed, sets item as Favorite</extracomment>
-    </message>
-    <message>
       <source>Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable.</source>
       <translation>Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable.</translation>
       <extracomment>Settings Menu - Description for option</extracomment>
@@ -1485,6 +1480,10 @@
       <source>Years</source>
       <translation>Years</translation>
       <extracomment>Used in Filter menu</extracomment>
+    </message>
+    <message>
+      <source>years old</source>
+      <translation>years old</translation>
     </message>
     <message>
       <source>Yes</source>
