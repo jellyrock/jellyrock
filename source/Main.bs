@@ -726,7 +726,9 @@ sub Main (args as dynamic) as void
             m.global.queueManager.callFunc("clear")
             m.global.queueManager.callFunc("resetShuffle")
             m.global.queueManager.callFunc("set", shuffleItems)
-            m.global.queueManager.callFunc("toggleShuffle") ' Fisher-Yates client-side shuffle
+            if shuffleItems.count() > 1
+              m.global.queueManager.callFunc("toggleShuffle") ' Fisher-Yates client-side shuffle
+            end if
             m.global.queueManager.callFunc("playQueue")
           else
             stopLoadingSpinner()
