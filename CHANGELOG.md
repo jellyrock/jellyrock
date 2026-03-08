@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Support direct playing more h264 profiles ([bf2891c](https://github.com/jellyrock/jellyrock/commit/bf2891c))
 - Use `ItemDetails` to open `Person` items ([#358](https://github.com/jellyrock/jellyrock/pull/358))
 - show Go to Series button for Episode items ([bcfe2c2](https://github.com/jellyrock/jellyrock/commit/bcfe2c2))
 - Use `ItemDetails` to open `Season` items ([#352](https://github.com/jellyrock/jellyrock/pull/352))
