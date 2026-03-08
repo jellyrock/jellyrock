@@ -8,7 +8,7 @@
   <children>
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" />
-    <Spinner id="loadingSpinner" uri="pkg:/images/icons/spinnerIcon.png" />
+    <Spinner id="loadingSpinner" />
     <LabelPrimarySmaller id="buttonText" text="Loading" horizAlign="center" />
   </children>
 </component>

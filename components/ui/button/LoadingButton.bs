@@ -37,6 +37,11 @@ sub layoutButton()
   m.buttonBorder.height = btnHeight
   m.buttonBorder.translation = [buttonOffset, 0]
 
+  m.loadingSpinner.poster.uri = "pkg:/images/spinner.png"
+  m.loadingSpinner.poster.loadWidth = LOADING_BTN_ICON_SIZE
+  m.loadingSpinner.poster.loadHeight = LOADING_BTN_ICON_SIZE
+  m.loadingSpinner.poster.loadDisplayMode = "limitSize"
+
   m.loadingSpinner.translation = [
     buttonOffset + (btnWidth - LOADING_BTN_ICON_SIZE) / 2,
     (btnHeight - LOADING_BTN_ICON_SIZE) / 2
