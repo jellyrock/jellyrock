@@ -794,25 +794,27 @@ function CreatePersonView(personData as object) as dynamic
   if not isValid(personData) or not isValid(personData.id) then return invalid
 
   startLoadingSpinner()
-  ' get person meta data
-  personMetaData = ItemMetaData(personData.id)
-  ' validate season meta data
+  ' Fetch full metadata (same call as other detail views — includes People/Genres/Studios)
+  personMetaData = ItemDetailsMetaData(personData.id)
   if not isValid(personMetaData)
     stopLoadingSpinner()
     return invalid
   end if
-  ' start building Person View
-  person = CreateObject("roSGNode", "PersonDetails")
-  ' push scene asap (to prevent extra button presses when retriving series/movie info)
-  m.global.SceneManager.callFunc("pushScene", person)
-  person.itemContent = personMetaData
-  person.setFocus(true)
-  ' watch for button presses
-  person.observeField("selectedItem", m.port)
-  person.findNode("buttons").observeField("buttonSelected", m.port)
-  ' finished building Person View
+
+  group = CreateObject("roSGNode", "ItemDetails")
+  group.observeField("quickPlayNode", m.port)
+  group.observeField("refreshItemDetailsData", m.port)
+  group.overhangTitle = ""
+  group.optionsAvailable = false
+  m.global.sceneManager.callFunc("pushScene", group)
+  group.itemContent = personMetaData
+
+  ' Watch for button presses and extras selection
+  group.findNode("buttons").observeField("buttonSelected", m.port)
+  group.findNode("extrasGrid").observeField("selectedItem", m.port)
+
   stopLoadingSpinner()
-  return person
+  return group
 end function
 
 'Opens dialog asking user if they want to resume video or start playback over only on the home screen
