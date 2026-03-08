@@ -726,6 +726,8 @@ end sub
 '
 ' Runs hide Next Episode button animation and sets focus back to video
 sub hideNextEpisodeButton()
+  if not isValid(m.hideNextEpisodeButtonAnimation) then return
+
   m.hideNextEpisodeButtonAnimation.control = "start"
   m.nextEpisodeButton.setFocus(false)
   m.top.setFocus(true)
