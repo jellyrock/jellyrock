@@ -710,7 +710,11 @@ function getCodecProfiles() as object
 
   ' H264
   h264LevelSupported = 0.0
-  h264AssProfiles = { "Constrained Baseline": true }
+  h264AssProfiles = {
+    "Baseline": true,
+    "Constrained Baseline": true,
+    "Extended": true
+  }
   for each profile in profileSupport["h264"]
     h264AssProfiles.AddReplace(profile, true)
     for each level in profileSupport["h264"][profile]
