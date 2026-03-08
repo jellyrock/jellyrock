@@ -1,0 +1,56 @@
+' Matches IconButton layout constants — keeps visual size identical to a standard icon button
+const LOADING_BTN_ICON_SIZE = 64
+const LOADING_BTN_PADDING = 15
+const LOADING_BTN_TEXT_EXTENSION = 12 ' Text extends 6px on each side beyond the button background (mirrors IconButton)
+const LOADING_BTN_FOCUS_BORDER_OFFSET = 6 ' Vertical gap between button background and text label (mirrors IconButton)
+
+sub init()
+  m.buttonBackground = m.top.findNode("buttonBackground")
+  m.buttonBorder = m.top.findNode("buttonBorder")
+  m.loadingSpinner = m.top.findNode("loadingSpinner")
+  m.buttonText = m.top.findNode("buttonText")
+
+  m.top.observeField("focusedChild", "onFocusChanged")
+
+  applyTheme()
+  layoutButton()
+end sub
+
+sub applyTheme()
+  constants = m.global.constants
+  m.colorBackground = constants.colorBackgroundSecondary
+  m.colorBorder = constants.colorPrimary
+  m.buttonBackground.blendColor = m.colorBackground
+  m.buttonBorder.blendColor = m.colorBackground ' border matches background when unfocused
+end sub
+
+sub layoutButton()
+  btnWidth = LOADING_BTN_ICON_SIZE + (LOADING_BTN_PADDING * 4)
+  btnHeight = LOADING_BTN_ICON_SIZE + (LOADING_BTN_PADDING * 2)
+
+  ' Shift background/border right so they center under the wider text label (mirrors IconButton)
+  buttonOffset = LOADING_BTN_TEXT_EXTENSION / 2
+  m.buttonBackground.width = btnWidth
+  m.buttonBackground.height = btnHeight
+  m.buttonBackground.translation = [buttonOffset, 0]
+  m.buttonBorder.width = btnWidth
+  m.buttonBorder.height = btnHeight
+  m.buttonBorder.translation = [buttonOffset, 0]
+
+  m.loadingSpinner.translation = [
+    buttonOffset + (btnWidth - LOADING_BTN_ICON_SIZE) / 2,
+    (btnHeight - LOADING_BTN_ICON_SIZE) / 2
+  ]
+
+  ' Text label: wider than background by TEXT_EXTENSION, positioned below the background
+  m.buttonText.width = btnWidth + LOADING_BTN_TEXT_EXTENSION
+  m.buttonText.translation = [0, btnHeight + (LOADING_BTN_FOCUS_BORDER_OFFSET * 2)]
+end sub
+
+sub onFocusChanged()
+  if m.top.hasFocus()
+    m.buttonBorder.blendColor = m.colorBorder
+  else
+    m.buttonBorder.blendColor = m.colorBackground
+  end if
+end sub
