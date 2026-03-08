@@ -973,6 +973,8 @@ sub Main (args as dynamic) as void
       ' GetShuffleItemsTask completed — queue and play the results
       shuffleTask = msg.getRoSGNode()
       shuffleItems = shuffleTask.shuffleItems
+      shuffleTask.unobserveField("shuffleItems")
+      shuffleTask.control = "STOP"
       m.shuffleTask = invalid
       if isValid(shuffleItems) and shuffleItems.count() > 0
         m.global.queueManager.callFunc("clear")
