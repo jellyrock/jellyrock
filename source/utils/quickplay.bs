@@ -439,7 +439,7 @@ namespace quickplay
     ' get watched episodes by the person
     personEpisodes = api.users.GetItemsByQuery(globalUser.id, {
       "personIds": itemNode.id,
-      "includeItemTypes": ["Episode", "Recording"],
+      "includeItemTypes": "Episode,Recording",
       "isPlayed": true,
       "excludeItemTypes": "Season,Series",
       "recursive": true,
