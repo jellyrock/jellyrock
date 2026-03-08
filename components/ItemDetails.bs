@@ -1431,7 +1431,7 @@ end sub
 ' focusButtonGroupChild: Focus the button at the current buttonFocused index directly
 sub focusButtonGroupChild()
   focusIndex = m.buttonGrp.buttonFocused
-  if not isValid(focusIndex) or focusIndex < 0 or focusIndex >= m.buttonGrp.getChildCount()
+  if focusIndex < 0 or focusIndex >= m.buttonGrp.getChildCount()
     return
   end if
   m.buttonGrp.getChild(focusIndex).setFocus(true)
@@ -1451,7 +1451,7 @@ sub setupButtons(item as object)
   ' was removed because canDelete changed) or when this is the initial load (LoadingButton).
   focusedButtonId = ""
   focusIndex = m.buttonGrp.buttonFocused
-  if isValid(focusIndex) and focusIndex >= 0 and focusIndex < m.buttonGrp.getChildCount()
+  if focusIndex >= 0 and focusIndex < m.buttonGrp.getChildCount()
     focusedBtn = m.buttonGrp.getChild(focusIndex)
     if isValid(focusedBtn) and focusedBtn.id <> "loadingButton" then focusedButtonId = focusedBtn.id
   end if

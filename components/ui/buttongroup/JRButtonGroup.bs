@@ -13,7 +13,7 @@ end sub
 
 sub onGroupFocusChanged()
   ' When group gains focus, set focus on the current button
-  if m.top.hasFocus() and m.top.buttonFocused <> invalid
+  if m.top.hasFocus()
     button = m.top.getChild(m.top.buttonFocused)
     if button <> invalid
       button.setFocus(true)
