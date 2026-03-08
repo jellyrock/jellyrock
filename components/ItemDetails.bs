@@ -1514,6 +1514,16 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(goToSeriesButton)
   end if
 
+  ' Trailer button — restore on refresh (on first load, trailerAvailableChanged adds it async)
+  ' Must come before Delete to match the insertion order used in trailerAvailableChanged()
+  if m.top.trailerAvailable
+    trailerButton = CreateObject("roSGNode", "IconButton")
+    trailerButton.id = "trailerButton"
+    trailerButton.icon = "pkg:/images/icons/playOutline.png"
+    trailerButton.text = tr("Play Trailer")
+    m.buttonGrp.appendChild(trailerButton)
+  end if
+
   ' Delete button — when server grants permission
   if item.canDelete
     deleteButton = CreateObject("roSGNode", "IconButton")
@@ -1521,15 +1531,6 @@ sub setupButtons(item as object)
     deleteButton.icon = "pkg:/images/icons/delete.png"
     deleteButton.text = tr("Delete")
     m.buttonGrp.appendChild(deleteButton)
-  end if
-
-  ' Trailer button — restore on refresh (on first load, trailerAvailableChanged adds it async)
-  if m.top.trailerAvailable
-    trailerButton = CreateObject("roSGNode", "IconButton")
-    trailerButton.id = "trailerButton"
-    trailerButton.icon = "pkg:/images/icons/playOutline.png"
-    trailerButton.text = tr("Play Trailer")
-    m.buttonGrp.appendChild(trailerButton)
   end if
 
   ' Refresh button — always last

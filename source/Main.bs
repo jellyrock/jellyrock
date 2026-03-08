@@ -712,7 +712,7 @@ sub Main (args as dynamic) as void
             personEpisodes = api.users.GetItemsByQuery(m.global.user.id, {
               personIds: item.id,
               recursive: true,
-              includeItemTypes: ["Episode", "Recording"],
+              includeItemTypes: "Episode,Recording",
               isPlayed: true,
               Limit: 250
             })
