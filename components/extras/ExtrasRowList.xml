@@ -8,5 +8,6 @@
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <function name="loadParts" />
     <function name="loadPersonVideos" />
+    <field id="personHasMedia" type="bool" value="false" alwaysNotify="true" />
   </interface>
 </component>

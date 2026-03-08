@@ -306,6 +306,8 @@ sub onMoviesLoaded()
   if isValid(data) and data.count() > 0
     m.rowMovies = populateRow(m.rowMovies, tr("Movies"), data)
     m.top.rowItemSize = [[234, 396]]
+    ' Signal early — we already know there is media, no need to wait for the full chain
+    m.top.personHasMedia = true
   else if isValid(m.rowMovies)
     m.top.content.removeChild(m.rowMovies)
     m.rowMovies = invalid
@@ -321,6 +323,8 @@ sub onShowsLoaded()
   if isValid(data) and data.count() > 0
     m.rowTvShows = populateRow(m.rowTvShows, tr("TV Shows"), data)
     addRowSize([502, 396])
+    ' Signal early — we already know there is media, no need to wait for the full chain
+    m.top.personHasMedia = true
   else if isValid(m.rowTvShows)
     m.top.content.removeChild(m.rowTvShows)
     m.rowTvShows = invalid
@@ -341,6 +345,9 @@ sub onSeriesLoaded()
     m.rowSeries = invalid
   end if
   m.top.visible = true
+  ' Final authoritative signal — covers the false case (no media at all) and the Series-only case.
+  ' onPersonHasMediaChanged guards against adding a duplicate button if already signalled true above.
+  m.top.personHasMedia = isValid(m.rowMovies) or isValid(m.rowTvShows) or isValid(m.rowSeries)
 end sub
 
 ' populateRow: Reuse an existing row ContentNode (clearing its children) or create a new one.
