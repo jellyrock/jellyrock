@@ -708,12 +708,12 @@ sub Main (args as dynamic) as void
               includeItemTypes: "Movie",
               Limit: 250
             })
-            ' Unwatched episodes only — avoid spoiling a show the user is mid-way through
+            ' Watched episodes only — avoids spoiling shows the user is mid-way through
             personEpisodes = api.users.GetItemsByQuery(m.global.user.id, {
               personIds: item.id,
               recursive: true,
               includeItemTypes: "Episode",
-              isPlayed: false,
+              isPlayed: true,
               Limit: 250
             })
             shuffleItems = []
