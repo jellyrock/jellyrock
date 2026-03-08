@@ -135,6 +135,7 @@ end sub
 sub loadPersonVideos(personId)
   cancelInFlightChain()
   m.personId = personId
+  m.top.personHasMedia = false  ' Reset before new chain — prevents stale true from a prior run
   m.LoadMoviesTask.itemId = m.personId
   m.LoadMoviesTask.observeField("content", "onMoviesLoaded")
   m.LoadMoviesTask.control = "RUN"
