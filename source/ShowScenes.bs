@@ -789,34 +789,6 @@ function CreateSearchPage()
   return group
 end function
 
-function CreatePersonView(personData as object) as dynamic
-  ' validate personData node
-  if not isValid(personData) or not isValid(personData.id) then return invalid
-
-  startLoadingSpinner()
-  ' Fetch full metadata (same call as other detail views — includes People/Genres/Studios)
-  personMetaData = ItemDetailsMetaData(personData.id)
-  if not isValid(personMetaData)
-    stopLoadingSpinner()
-    return invalid
-  end if
-
-  group = CreateObject("roSGNode", "ItemDetails")
-  group.observeField("quickPlayNode", m.port)
-  group.observeField("refreshItemDetailsData", m.port)
-  group.overhangTitle = ""
-  group.optionsAvailable = false
-  m.global.sceneManager.callFunc("pushScene", group)
-  group.itemContent = personMetaData
-
-  ' Watch for button presses and extras selection
-  group.findNode("buttons").observeField("buttonSelected", m.port)
-  group.findNode("extrasGrid").observeField("selectedItem", m.port)
-
-  stopLoadingSpinner()
-  return group
-end function
-
 'Opens dialog asking user if they want to resume video or start playback over only on the home screen
 sub playbackOptionDialog(time as longinteger)
 
