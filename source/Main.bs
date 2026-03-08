@@ -215,7 +215,7 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "Movie"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Person"
-          CreatePersonView(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Video"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "TvChannel" or selectedItemType = "Program"
@@ -438,7 +438,7 @@ sub Main (args as dynamic) as void
         m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Person"
-        group = CreatePersonView(node)
+        group = CreateItemDetailsGroup(node)
       else if node.type = "TvChannel"
         m.global.queueManager.callFunc("clear")
         m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
@@ -700,11 +700,33 @@ sub Main (args as dynamic) as void
             ' Shuffle all episodes in this season only
             shuffleData = api.shows.GetEpisodes(item.seriesId, { UserId: m.global.user.id, SeasonId: item.id, SortBy: "Random", Limit: 200 })
             if isValid(shuffleData) then shuffleItems = shuffleData.Items
+          else if item.type = "Person"
+            ' All movies featuring this person (watched or not — rewatching a film is fine)
+            personMovies = api.users.GetItemsByQuery(m.global.user.id, {
+              personIds: item.id,
+              recursive: true,
+              includeItemTypes: "Movie",
+              Limit: 250
+            })
+            ' Unwatched episodes only — avoid spoiling a show the user is mid-way through
+            personEpisodes = api.users.GetItemsByQuery(m.global.user.id, {
+              personIds: item.id,
+              recursive: true,
+              includeItemTypes: "Episode",
+              isPlayed: false,
+              Limit: 250
+            })
+            shuffleItems = []
+            if isValid(personMovies) and isValid(personMovies.Items) then shuffleItems.append(personMovies.Items)
+            if isValid(personEpisodes) and isValid(personEpisodes.Items) then shuffleItems.append(personEpisodes.Items)
+            if shuffleItems.count() = 0 then shuffleItems = invalid
           end if
 
           if isValid(shuffleItems) and shuffleItems.count() > 0
             m.global.queueManager.callFunc("clear")
+            m.global.queueManager.callFunc("resetShuffle")
             m.global.queueManager.callFunc("set", shuffleItems)
+            m.global.queueManager.callFunc("toggleShuffle") ' Fisher-Yates client-side shuffle
             m.global.queueManager.callFunc("playQueue")
           else
             stopLoadingSpinner()
