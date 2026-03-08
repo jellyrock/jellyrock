@@ -687,52 +687,15 @@ sub Main (args as dynamic) as void
           group.refreshItemDetailsData = not group.refreshItemDetailsData
         end if
       else if btn.id = "shuffleButton"
-        ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added
+        ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added.
+        ' API calls run off the render thread via GetShuffleItemsTask; result handled by "shuffleItems" event.
         if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
           startLoadingSpinner()
           item = group.itemContent
-          shuffleItems = invalid
-
-          if item.type = "Series"
-            shuffleData = api.shows.GetEpisodes(item.id, { UserId: m.global.user.id, SortBy: "Random", Limit: 200 })
-            if isValid(shuffleData) then shuffleItems = shuffleData.Items
-          else if item.type = "Season"
-            ' Shuffle all episodes in this season only
-            shuffleData = api.shows.GetEpisodes(item.seriesId, { UserId: m.global.user.id, SeasonId: item.id, SortBy: "Random", Limit: 200 })
-            if isValid(shuffleData) then shuffleItems = shuffleData.Items
-          else if item.type = "Person"
-            ' All movies featuring this person (watched or not — rewatching a film is fine)
-            personMovies = api.users.GetItemsByQuery(m.global.user.id, {
-              personIds: item.id,
-              recursive: true,
-              includeItemTypes: "Movie",
-              Limit: 250
-            })
-            ' Watched episodes/recordings only — avoids spoiling shows the user is mid-way through
-            personEpisodes = api.users.GetItemsByQuery(m.global.user.id, {
-              personIds: item.id,
-              recursive: true,
-              includeItemTypes: "Episode,Recording",
-              isPlayed: true,
-              Limit: 250
-            })
-            shuffleItems = []
-            if isValid(personMovies) and isValid(personMovies.Items) then shuffleItems.append(personMovies.Items)
-            if isValid(personEpisodes) and isValid(personEpisodes.Items) then shuffleItems.append(personEpisodes.Items)
-            if shuffleItems.count() = 0 then shuffleItems = invalid
-          end if
-
-          if isValid(shuffleItems) and shuffleItems.count() > 0
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("resetShuffle")
-            m.global.queueManager.callFunc("set", shuffleItems)
-            if shuffleItems.count() > 1
-              m.global.queueManager.callFunc("toggleShuffle") ' Fisher-Yates client-side shuffle
-            end if
-            m.global.queueManager.callFunc("playQueue")
-          else
-            stopLoadingSpinner()
-          end if
+          m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
+          m.shuffleTask.shuffleInput = { type: item.type, id: item.id, seriesId: item.seriesId }
+          m.shuffleTask.observeField("shuffleItems", m.port)
+          m.shuffleTask.control = "RUN"
         end if
       else if btn.id = "goToSeriesButton"
         ' Navigate to the parent series detail screen
@@ -1005,6 +968,22 @@ sub Main (args as dynamic) as void
             end if
           end if
         end if
+      end if
+    else if isNodeEvent(msg, "shuffleItems")
+      ' GetShuffleItemsTask completed — queue and play the results
+      shuffleTask = msg.getRoSGNode()
+      shuffleItems = shuffleTask.shuffleItems
+      m.shuffleTask = invalid
+      if isValid(shuffleItems) and shuffleItems.count() > 0
+        m.global.queueManager.callFunc("clear")
+        m.global.queueManager.callFunc("resetShuffle")
+        m.global.queueManager.callFunc("set", shuffleItems)
+        if shuffleItems.count() > 1
+          m.global.queueManager.callFunc("toggleShuffle") ' Fisher-Yates client-side shuffle
+        end if
+        m.global.queueManager.callFunc("playQueue")
+      else
+        stopLoadingSpinner()
       end if
     else if isNodeEvent(msg, "reloadHomeRequested")
       ' Theme colors changed - reload home screen with fresh state
