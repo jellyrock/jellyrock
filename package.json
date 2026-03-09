@@ -10,7 +10,7 @@
   "devDependencies": {
     "@rokucommunity/bslint": "0.8.38",
     "brighterscript": "0.70.3",
-    "brighterscript-formatter": "1.7.19",
+    "brighterscript-formatter": "1.7.21",
     "brighterscript-xml-plugin": "0.3.2",
     "fast-glob": "3.3.3",
     "jshint": "2.13.6",
