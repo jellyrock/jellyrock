@@ -114,6 +114,7 @@ sub loadParts(data as object)
   else if itemType = "Episode"
     m.currentEpisodeId = data.id
     m.currentEpisodeSeasonNumber = data.parentIndexNumber
+    m.episodeSeriesId = data.seriesId
     m.top.rowItemSize = [[234, 396]]
     m.LoadSeasonEpisodesTask.observeField("content", "onSeasonEpisodesLoaded")
     m.LoadSeasonEpisodesTask.itemId = data.seriesId
@@ -262,7 +263,13 @@ sub onPeopleLoaded()
     m.rowCast = invalid
   end if
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  m.LikeThisTask.itemId = m.top.parentId
+  ' For Episode, query similar items against the parent series since Jellyfin returns
+  ' no results for individual episode IDs.
+  if m.top.type = "Episode" and isValid(m.episodeSeriesId) and m.episodeSeriesId <> ""
+    m.LikeThisTask.itemId = m.episodeSeriesId
+  else
+    m.LikeThisTask.itemId = m.top.parentId
+  end if
   m.LikeThisTask.control = "RUN"
 end sub
 
