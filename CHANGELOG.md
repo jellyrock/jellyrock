@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- OSD logo not displaying and add image fallbacks for all types ([415512b](https://github.com/jellyrock/jellyrock/commit/415512b))
 - Add null check for hideNextEpisodeButtonAnimation to prevent crash ([a3d2c85](https://github.com/jellyrock/jellyrock/commit/a3d2c85))
 - focus no longer stolen when returning from extras sub-screen on Series ([9c87a75](https://github.com/jellyrock/jellyrock/commit/9c87a75))
 - quickplay.series() logic. check for resumeable episode first ([76e86c0](https://github.com/jellyrock/jellyrock/commit/76e86c0))
