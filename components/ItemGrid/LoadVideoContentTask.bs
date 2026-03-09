@@ -159,11 +159,26 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     if isValidAndNotEmpty(meta.seriesId)
       logoLookupID = meta.seriesId
     end if
+  else if videotype = "recording"
+    ' Recordings belong to a series — look up the series logo, same as episodes
+    if isValidAndNotEmpty(meta.seriesId)
+      logoLookupID = meta.seriesId
+    end if
   end if
 
   logoImageExists = api.items.HeadImageURLByName(logoLookupID, "logo")
   if logoImageExists
     video.logoImage = api.items.GetImageURL(logoLookupID, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })
+  else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
+    ' Movie with no logo — fall back to primary (poster) image
+    video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
+  else if videotype = "episode"
+    ' Episode with no series logo — fall back to series primary poster, then episode thumbnail
+    if isValidAndNotEmpty(meta.seriesPrimaryImageTag) and isValidAndNotEmpty(meta.seriesId)
+      video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.seriesPrimaryImageTag })
+    else if isValidAndNotEmpty(meta.primaryImageTag)
+      video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
+    end if
   end if
 
   if LCase(m.top.itemType) = "episode"

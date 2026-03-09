@@ -65,7 +65,7 @@
     <field id="runTimeMinutes" type="integer" />
 
     <!-- Playback state (set by VideoPlayerView) -->
-    <field id="videoLogo" type="string" value="" />
+    <field id="videoLogo" type="string" value="" onChange="setVideoLogoGroup" />
     <field id="inactiveTimeout" type="integer" />
     <field id="progressPercentage" type="float" />
     <field id="positionTime" type="float" />

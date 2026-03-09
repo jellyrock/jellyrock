@@ -1134,8 +1134,11 @@ sub updateWatchedButton()
 end sub
 
 ' setItemLogo: Set the item logo image URL if available.
-' - Episode: falls back to parent series logo via parentLogoItemId/parentLogoImageTag
-' - Video: uses Primary (poster) image since videos rarely have Logo images
+' Fallback chains by type:
+' - Movie/Series:   Logo → primaryImageTag (poster)
+' - Episode/Season/Recording: parentLogoImageTag (series logo) → seriesPrimaryImageTag → primaryImageTag (episode thumb)
+' - Video/MusicVideo: primaryImageTag (poster)
+' - Person: primaryImageTag (portrait photo) → silhouette icon
 ' @param {object} item - JellyfinBaseItem node
 sub setItemLogo(item as object)
   if not isValid(m.itemLogo) then return
@@ -1152,8 +1155,9 @@ sub setItemLogo(item as object)
       m.itemLogo.uri = "pkg:/images/icons/baseline_person_white_48dp.png"
     end if
     return
-  else if item.type = "Episode" or item.type = "Season"
-    ' Episodes and Seasons don't have their own logo — use the parent series logo
+  else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
+    ' Episodes, Seasons, and Recordings don't have their own logo — use the parent series logo.
+    ' If no series logo found, falls through to the final block which tries seriesPrimaryImageTag → primaryImageTag.
     if isValidAndNotEmpty(item.parentLogoItemId)
       logoItemId = item.parentLogoItemId
       logoImageTag = item.parentLogoImageTag
@@ -1173,6 +1177,27 @@ sub setItemLogo(item as object)
   if isValidAndNotEmpty(logoImageTag)
     imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: logoImageTag }
     m.itemLogo.uri = ImageURL(logoItemId, "Logo", imgParams)
+  else if item.type = "Movie" or item.type = "Series"
+    ' No logo: fall back to primary (poster) image
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+    else
+      m.itemLogo.visible = false
+      m.itemLogo.uri = ""
+    end if
+  else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
+    ' No series logo: fall back to series primary poster, then episode/item thumbnail
+    if isValidAndNotEmpty(item.seriesPrimaryImageTag) and isValidAndNotEmpty(item.seriesId)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.seriesPrimaryImageTag }
+      m.itemLogo.uri = ImageURL(item.seriesId, "Primary", imgParams)
+    else if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+    else
+      m.itemLogo.visible = false
+      m.itemLogo.uri = ""
+    end if
   else
     m.itemLogo.visible = false
     m.itemLogo.uri = ""
