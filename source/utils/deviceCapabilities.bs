@@ -30,9 +30,11 @@ const MAX_HLS_PLAYLIST_ENTRIES = 5000
 
 ' Translate Jellyfin codec names to Roku API codec names where they differ.
 ' Covers both audio and video codecs.
-'   "truehd"    → "mat"   (TrueHD/Dolby MAT — "truehd" is unknown to the Roku API)
-'   "mpeg1video"→ "mpeg1" (Jellyfin uses "mpeg1video"; Roku API uses "mpeg1")
+'   "h264"      → "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)
+'   "truehd"    → "mat"       (TrueHD/Dolby MAT — "truehd" is unknown to the Roku API)
+'   "mpeg1video"→ "mpeg1"     (Jellyfin uses "mpeg1video"; Roku API uses "mpeg1")
 function jellyfinToRokuCodecName(codec as string) as string
+  if codec = "h264" then return "mpeg4 avc"
   if codec = "truehd" then return "mat"
   if codec = "mpeg1video" then return "mpeg1"
   return codec
@@ -215,31 +217,31 @@ function GetDirectPlayProfiles() as object
   supportedContainers = {
     mp4: {
       audio: [],
-      video: ["h264", "avc"]
+      video: []
     },
     hls: {
       audio: [],
-      video: ["h264", "avc"]
+      video: []
     },
     mkv: {
       audio: [],
-      video: ["h264", "avc"]
+      video: []
     },
     ism: {
       audio: [],
-      video: ["h264", "avc"]
+      video: []
     },
     dash: {
       audio: [],
-      video: ["h264", "avc"]
+      video: []
     },
     ts: {
       audio: [],
-      video: ["h264", "avc"]
+      video: []
     }
   }
   ' all possible codecs (besides those restricted by user settings)
-  videoCodecs = ["hevc", "vp8", "vp9", "mpeg1video", "h263"]
+  videoCodecs = ["h264", "hevc", "vp8", "vp9", "mpeg1video", "h263"]
   audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "opus", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
 
   ' check video codecs for each container
@@ -247,7 +249,11 @@ function GetDirectPlayProfiles() as object
     for each videoCodec in videoCodecs
       rokuCodec = jellyfinToRokuCodecName(videoCodec)
       if di.CanDecodeVideo({ Codec: rokuCodec, Container: container }).Result
-        if videoCodec = "hevc"
+        if videoCodec = "h264"
+          ' push both Jellyfin aliases — server may use either string
+          supportedContainers[container]["video"].push("h264")
+          supportedContainers[container]["video"].push("avc")
+        else if videoCodec = "hevc"
           supportedContainers[container]["video"].push("hevc")
           supportedContainers[container]["video"].push("h265")
         else
@@ -287,6 +293,14 @@ function GetDirectPlayProfiles() as object
       if rokuCodec = "mat"
         ' mat does not accept the Container parameter; TrueHD is only valid in mkv and ts
         if (container = "mkv" or container = "ts") and di.CanDecodeAudio({ Codec: rokuCodec }).Result
+          supportedContainers[container]["audio"].push(audioCodec)
+        end if
+      else if rokuCodec = "dtshd"
+        ' dtshd: ChCnt is N/A; standard container check returns false on passthrough-only devices.
+        ' Check native decode first, then fall back to PassThru (current hardware support path).
+        nativeDecode = di.CanDecodeAudio({ Codec: rokuCodec, Container: container }).Result
+        passthroughSupport = di.CanDecodeAudio({ Codec: rokuCodec, PassThru: 1 }).Result
+        if nativeDecode or passthroughSupport
           supportedContainers[container]["audio"].push(audioCodec)
         end if
       else if di.CanDecodeAudio({ Codec: rokuCodec, Container: container }).Result
@@ -402,25 +416,31 @@ function getTranscodingProfiles() as object
 
   for each container in transcodingContainers
     ' Video codecs
-    videoCodecList = "h264,avc"
+    videoCodecList = []
+
+    if di.CanDecodeVideo({ Codec: "mpeg4 avc", Container: container }).Result
+      videoCodecList.push("h264")
+      videoCodecList.push("avc")
+    end if
 
     if di.CanDecodeVideo({ Codec: "hevc", Container: container }).Result
-      videoCodecList = "hevc,h265," + videoCodecList
+      videoCodecList.push("h265")
+      videoCodecList.push("hevc")
     end if
 
     if di.CanDecodeVideo({ Codec: "vp9", Container: container }).Result
-      if videoCodecList.Instr("vp9") = -1
-        videoCodecList = videoCodecList + ",vp9"
+      if not arrayHasValue(videoCodecList, "vp9")
+        videoCodecList.push("vp9")
       end if
     end if
 
     if globalUserSettings.playbackMpeg2
       if di.CanDecodeVideo({ Codec: "mpeg2", Container: container }).Result
-        videoCodecList = videoCodecList + ",mpeg2video"
+        videoCodecList.push("mpeg2video")
       end if
     end if
 
-    containerVideoCodecs[container] = videoCodecList
+    containerVideoCodecs[container] = videoCodecList.join(",")
   end for
 
   ' ========================================
@@ -525,7 +545,6 @@ function getCodecProfiles() as object
   codecProfiles = []
   profileSupport = {
     "h264": {},
-    "h265": {},
     "hevc": {},
     "vp9": {},
     "mpeg2": {},
