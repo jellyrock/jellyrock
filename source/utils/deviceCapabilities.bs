@@ -28,6 +28,18 @@ const BUFFER_SEGMENT_COUNT = 2
 ' Tune this value based on testing if "mpr playlist file is too large" errors occur.
 const MAX_HLS_PLAYLIST_ENTRIES = 5000
 
+' Translate Jellyfin codec names to Roku API codec names where they differ.
+' Covers both audio and video codecs.
+'   "h264"      → "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)
+'   "truehd"    → "mat"       (TrueHD/Dolby MAT — "truehd" is unknown to the Roku API)
+'   "mpeg1video"→ "mpeg1"     (Jellyfin uses "mpeg1video"; Roku API uses "mpeg1")
+function jellyfinToRokuCodecName(codec as string) as string
+  if codec = "h264" then return "mpeg4 avc"
+  if codec = "truehd" then return "mat"
+  if codec = "mpeg1video" then return "mpeg1"
+  return codec
+end function
+
 ' Returns the Device Capabilities for Roku.
 ' Also prints out the device profile for debugging
 function getDeviceCapabilities() as object
@@ -84,19 +96,34 @@ end function
 ' Override false positives from Roku API using known hardware limits
 ' Returns true if codec can actually decode/passthrough the specified channel count
 ' For surround codecs (>2ch), prioritizes PassThru check to detect receiver support
+' Accepts Jellyfin codec names (e.g. "truehd") and translates to Roku API names internally
 function getActualCodecSupport(codec as string, channelCount as integer, di as object) as boolean
-  ' Codecs that Roku can OUTPUT multichannel audio (not just decode)
-  surroundOutputCodecs = ["eac3", "ac3", "dts"]
+  rokuCodec = jellyfinToRokuCodecName(codec) ' e.g. "truehd" → "mat"
+
+  ' Codecs where the Roku API does not accept ChCnt (returns chcnt: "n.a.").
+  ' These are passthrough-only; check PassThru without ChCnt.
+  ' dtsx (DTS:X) is an extension of DTS-HD MA — covered by dtshd in the profile.
+  passThroughOnlyCodecs = ["dtshd", "dtsx"]
+  if arrayHasValue(passThroughOnlyCodecs, rokuCodec)
+    if channelCount > 2
+      return di.CanDecodeAudio({ Codec: rokuCodec, PassThru: 1 }).Result
+    end if
+    return false ' Passthrough-only codecs are not relevant at 2ch
+  end if
+
+  ' Codecs that Roku can OUTPUT multichannel audio (passthru + possible native decode).
+  ' mat is the Roku API name for TrueHD/Dolby MAT (Jellyfin name: "truehd").
+  surroundOutputCodecs = ["eac3", "ac3", "dts", "mat"]
 
   ' For multichannel surround codecs (>2ch), prioritize PassThru check
-  if channelCount > 2 and arrayHasValue(surroundOutputCodecs, codec)
+  if channelCount > 2 and arrayHasValue(surroundOutputCodecs, rokuCodec)
     ' First: Check if receiver supports this via PassThru
-    if di.CanDecodeAudio({ Codec: codec, ChCnt: channelCount, PassThru: 1 }).Result
+    if di.CanDecodeAudio({ Codec: rokuCodec, ChCnt: channelCount, PassThru: 1 }).Result
       return true ' Receiver connected and supports this channel count!
     end if
 
     ' No PassThru support - check if Roku can natively decode (will downmix to stereo)
-    if not di.CanDecodeAudio({ Codec: codec, ChCnt: channelCount }).Result
+    if not di.CanDecodeAudio({ Codec: rokuCodec, ChCnt: channelCount }).Result
       return false ' API says can't decode at all
     end if
 
@@ -104,18 +131,18 @@ function getActualCodecSupport(codec as string, channelCount as integer, di as o
     rokuDecodeMaxChannels = {
       "eac3": 6,
       "ac3": 6,
-      "dts": 0 ' DTS is passthrough-only, cannot natively decode
+      "dts": 0, ' DTS is passthrough-only, cannot natively decode multichannel
+      "mat": 0 ' TrueHD (mat): API accepts ChCnt but native decode outputs stereo PCM only
     }
 
     ' Defensive: Ensure codec is a valid key in rokuDecodeMaxChannels
     ' This should always be true due to the surroundOutputCodecs check above,
     ' but this guards against future changes or typos.
-    if not rokuDecodeMaxChannels.DoesExist(codec)
-      ' Unexpected codec; treat as unsupported for >2ch
+    if not rokuDecodeMaxChannels.DoesExist(rokuCodec)
       return false
     end if
 
-    if channelCount > rokuDecodeMaxChannels[codec]
+    if channelCount > rokuDecodeMaxChannels[rokuCodec]
       return false ' Exceeds native decode capability - false positive
     end if
 
@@ -123,7 +150,7 @@ function getActualCodecSupport(codec as string, channelCount as integer, di as o
   end if
 
   ' For stereo (2ch) or non-surround codecs (aac, mp3, pcm, etc)
-  if not di.CanDecodeAudio({ Codec: codec, ChCnt: channelCount }).Result
+  if not di.CanDecodeAudio({ Codec: rokuCodec, ChCnt: channelCount }).Result
     return false ' API says no support
   end if
 
@@ -134,25 +161,48 @@ function getActualCodecSupport(codec as string, channelCount as integer, di as o
     "lpcm": 2
   }
 
-  if rokuDecodeMaxChannels.DoesExist(codec) and channelCount > rokuDecodeMaxChannels[codec]
+  if rokuDecodeMaxChannels.DoesExist(rokuCodec) and channelCount > rokuDecodeMaxChannels[rokuCodec]
     return false ' False positive
   end if
 
   return true
 end function
 
-' Get list of surround codecs that support passthrough at specified channel count
-' Returns array of codec strings in priority order: eac3, ac3, dts
+' Get list of surround codecs that support passthrough, returned as Jellyfin codec strings.
+' Returns array in priority order: eac3, ac3, dts, truehd, dtshd
+'
+' Two groups due to differing Roku API behaviour:
+'   Group 1 (ChCnt-aware): eac3, ac3, dts, mat — checked with ChCnt + PassThru: 1
+'   Group 2 (ChCnt N/A):   dtshd             — checked with PassThru: 1 only
+'
+' mat is the Roku API name for TrueHD/Dolby MAT; returned here as "truehd" (Jellyfin name).
+' dtsx (DTS:X) is an extension of DTS-HD MA — covered by dtshd; not added separately.
 function getSupportedPassthruCodecs(di as object, channelCount as integer) as object
-  ' Codecs that Roku can OUTPUT multichannel audio (not just decode)
-  surroundOutputCodecs = ["eac3", "ac3", "dts"]
   supportedCodecs = []
 
-  for each codec in surroundOutputCodecs
+  ' Group 1: codecs that accept ChCnt — use PassThru + ChCnt check
+  ' "mat" is the Roku API string for TrueHD; map back to "truehd" for Jellyfin callers
+  chCntCodecs = ["eac3", "ac3", "dts", "mat"]
+  for each codec in chCntCodecs
     if di.CanDecodeAudio({ Codec: codec, ChCnt: channelCount, PassThru: 1 }).Result
-      supportedCodecs.push(codec)
+      if codec = "mat"
+        supportedCodecs.push("truehd")
+      else
+        supportedCodecs.push(codec)
+      end if
     end if
   end for
+
+  ' Group 2: codecs where ChCnt is N/A — use PassThru-only check
+  ' If passthrough is supported at all, include for any channelCount > 2 (passthrough is bitstream)
+  chCntNACodecs = ["dtshd"]
+  if channelCount > 2
+    for each codec in chCntNACodecs
+      if di.CanDecodeAudio({ Codec: codec, PassThru: 1 }).Result
+        supportedCodecs.push(codec)
+      end if
+    end for
+  end if
 
   return supportedCodecs
 end function
@@ -164,7 +214,7 @@ function GetDirectPlayProfiles() as object
   directPlayProfiles = []
   di = CreateObject("roDeviceInfo")
   ' all possible containers
-  supportedCodecs = {
+  supportedContainers = {
     mp4: {
       audio: [],
       video: []
@@ -191,19 +241,23 @@ function GetDirectPlayProfiles() as object
     }
   }
   ' all possible codecs (besides those restricted by user settings)
-  videoCodecs = ["h264", "hevc", "mpeg4 avc", "vp8", "vp9", "h263", "mpeg1"]
-  audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "opus", "dts", "wmapro", "vorbis", "eac3", "mpg123"]
+  videoCodecs = ["h264", "hevc", "vp8", "vp9", "mpeg1video", "h263"]
+  audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "opus", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
 
   ' check video codecs for each container
-  for each container in supportedCodecs
+  for each container in supportedContainers
     for each videoCodec in videoCodecs
-      if di.CanDecodeVideo({ Codec: videoCodec, Container: container }).Result
-        if videoCodec = "hevc"
-          supportedCodecs[container]["video"].push("hevc")
-          supportedCodecs[container]["video"].push("h265")
+      rokuCodec = jellyfinToRokuCodecName(videoCodec)
+      if di.CanDecodeVideo({ Codec: rokuCodec, Container: container }).Result
+        if videoCodec = "h264"
+          ' push both Jellyfin aliases — server may use either string
+          supportedContainers[container]["video"].push("h264")
+          supportedContainers[container]["video"].push("avc")
+        else if videoCodec = "hevc"
+          supportedContainers[container]["video"].push("hevc")
+          supportedContainers[container]["video"].push("h265")
         else
-          ' device profile string matches codec string
-          supportedCodecs[container]["video"].push(videoCodec)
+          supportedContainers[container]["video"].push(videoCodec)
         end if
       end if
     end for
@@ -211,13 +265,13 @@ function GetDirectPlayProfiles() as object
 
   ' user setting overrides
   if globalUserSettings.playbackMpeg4
-    for each container in supportedCodecs
-      supportedCodecs[container]["video"].push("mpeg4")
+    for each container in supportedContainers
+      supportedContainers[container]["video"].push("mpeg4")
     end for
   end if
   if globalUserSettings.playbackMpeg2
-    for each container in supportedCodecs
-      supportedCodecs[container]["video"].push("mpeg2video")
+    for each container in supportedContainers
+      supportedContainers[container]["video"].push("mpeg2video")
     end for
   end if
 
@@ -225,35 +279,52 @@ function GetDirectPlayProfiles() as object
   ' these codecs play fine but are not correctly detected using CanDecodeVideo()
   if di.CanDecodeVideo({ Codec: "av1" }).Result
     ' codec must be checked by itself or the result will always be false
-    for each container in supportedCodecs
-      supportedCodecs[container]["video"].push("av1")
+    for each container in supportedContainers
+      supportedContainers[container]["video"].push("av1")
     end for
   end if
 
   ' check audio codecs for each container
-  for each container in supportedCodecs
+  ' translate Jellyfin names to Roku API names for the detection call (e.g. truehd → mat)
+  ' but push the Jellyfin name so the profile contains the correct string
+  for each container in supportedContainers
     for each audioCodec in audioCodecs
-      if di.CanDecodeAudio({ Codec: audioCodec, Container: container }).Result
-        supportedCodecs[container]["audio"].push(audioCodec)
+      rokuCodec = jellyfinToRokuCodecName(audioCodec)
+      if rokuCodec = "mat"
+        ' mat does not accept the Container parameter; TrueHD is only valid in mkv and ts
+        if (container = "mkv" or container = "ts") and di.CanDecodeAudio({ Codec: rokuCodec }).Result
+          supportedContainers[container]["audio"].push(audioCodec)
+        end if
+      else if rokuCodec = "dtshd"
+        ' dtshd: ChCnt is N/A; standard container check returns false on passthrough-only devices.
+        ' Check native decode first, then fall back to PassThru (current hardware support path).
+        nativeDecode = di.CanDecodeAudio({ Codec: rokuCodec, Container: container }).Result
+        passthroughSupport = di.CanDecodeAudio({ Codec: rokuCodec, PassThru: 1 }).Result
+        if nativeDecode or passthroughSupport
+          supportedContainers[container]["audio"].push(audioCodec)
+        end if
+      else if di.CanDecodeAudio({ Codec: rokuCodec, Container: container }).Result
+        supportedContainers[container]["audio"].push(audioCodec)
       end if
     end for
   end for
 
   ' remove audio codecs not supported as standalone audio files (opus)
   ' also add aac back to the list so it gets added to the direct play profile
-  audioCodecs = ["aac", "mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "dts", "wmapro", "vorbis", "eac3", "mpg123"]
+  audioCodecs = ["aac", "mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
 
   ' check audio codecs with no container
+  ' translate Jellyfin names to Roku API names for the detection call
   supportedAudio = []
   for each audioCodec in audioCodecs
-    if di.CanDecodeAudio({ Codec: audioCodec }).Result
+    if di.CanDecodeAudio({ Codec: jellyfinToRokuCodecName(audioCodec) }).Result
       supportedAudio.push(audioCodec)
     end if
   end for
 
   ' build return array
-  for each container in supportedCodecs
-    videoCodecString = supportedCodecs[container]["video"].Join(",")
+  for each container in supportedContainers
+    videoCodecString = supportedContainers[container]["video"].Join(",")
     if videoCodecString <> ""
       containerString = container
 
@@ -267,7 +338,7 @@ function GetDirectPlayProfiles() as object
         "Container": containerString,
         "Type": "Video",
         "VideoCodec": videoCodecString,
-        "AudioCodec": supportedCodecs[container]["audio"].Join(",")
+        "AudioCodec": supportedContainers[container]["audio"].Join(",")
       })
     end if
   end for
@@ -345,31 +416,31 @@ function getTranscodingProfiles() as object
 
   for each container in transcodingContainers
     ' Video codecs
-    videoCodecList = "h264"
-
-    if di.CanDecodeVideo({ Codec: "hevc", Container: container }).Result
-      videoCodecList = "hevc,h265," + videoCodecList
-    end if
+    videoCodecList = []
 
     if di.CanDecodeVideo({ Codec: "mpeg4 avc", Container: container }).Result
-      if videoCodecList.Instr("mpeg4 avc") = -1
-        videoCodecList = videoCodecList + ",mpeg4 avc"
-      end if
+      videoCodecList.push("h264")
+      videoCodecList.push("avc")
+    end if
+
+    if di.CanDecodeVideo({ Codec: "hevc", Container: container }).Result
+      videoCodecList.push("h265")
+      videoCodecList.push("hevc")
     end if
 
     if di.CanDecodeVideo({ Codec: "vp9", Container: container }).Result
-      if videoCodecList.Instr("vp9") = -1
-        videoCodecList = videoCodecList + ",vp9"
+      if not arrayHasValue(videoCodecList, "vp9")
+        videoCodecList.push("vp9")
       end if
     end if
 
     if globalUserSettings.playbackMpeg2
       if di.CanDecodeVideo({ Codec: "mpeg2", Container: container }).Result
-        videoCodecList = videoCodecList + ",mpeg2video"
+        videoCodecList.push("mpeg2video")
       end if
     end if
 
-    containerVideoCodecs[container] = videoCodecList
+    containerVideoCodecs[container] = videoCodecList.join(",")
   end for
 
   ' ========================================
@@ -474,8 +545,6 @@ function getCodecProfiles() as object
   codecProfiles = []
   profileSupport = {
     "h264": {},
-    "mpeg4 avc": {},
-    "h265": {},
     "hevc": {},
     "vp9": {},
     "mpeg2": {},
@@ -509,7 +578,7 @@ function getCodecProfiles() as object
   ' AUDIO CODEC PROFILES
   ' ========================================
 
-  audioCodecs = ["aac", "mp3", "mp2", "opus", "pcm", "lpcm", "wav", "flac", "alac", "ac3", "ac4", "aiff", "dts", "wmapro", "vorbis", "eac3", "mpg123"]
+  audioCodecs = ["aac", "mp3", "mp2", "opus", "pcm", "lpcm", "wav", "flac", "alac", "ac3", "ac4", "aiff", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
   audioChannels = [8, 6, 2] ' highest first
 
   for each audioCodec in audioCodecs
@@ -618,16 +687,13 @@ function getCodecProfiles() as object
   end for
 
   ' check device for codec profile and level support
-  ' AVC / h264 / MPEG4 AVC
+  ' AVC / h264
   h264Profiles = ["main", "high"]
   h264Levels = ["4.1", "4.2"]
   for each profile in h264Profiles
     for each level in h264Levels
-      if di.CanDecodeVideo({ Codec: "h264", Profile: profile, Level: level }).Result
-        profileSupport = updateProfileArray(profileSupport, "h264", profile, level)
-      end if
       if di.CanDecodeVideo({ Codec: "mpeg4 avc", Profile: profile, Level: level }).Result
-        profileSupport = updateProfileArray(profileSupport, "mpeg4 avc", profile, level)
+        profileSupport = updateProfileArray(profileSupport, "h264", profile, level)
       end if
     end for
   end for
@@ -638,7 +704,6 @@ function getCodecProfiles() as object
   for each profile in hevcProfiles
     for each level in hevcLevels
       if di.CanDecodeVideo({ Codec: "hevc", Profile: profile, Level: level }).Result
-        profileSupport = updateProfileArray(profileSupport, "h265", profile, level)
         profileSupport = updateProfileArray(profileSupport, "hevc", profile, level)
       end if
     end for
@@ -732,7 +797,7 @@ function getCodecProfiles() as object
 
   h264ProfileArray = {
     "Type": "Video",
-    "Codec": "h264",
+    "Codec": "h264,avc",
     "Conditions": [
       {
         "Condition": "NotEquals",
@@ -789,7 +854,7 @@ function getCodecProfiles() as object
 
     mpeg2ProfileArray = {
       "Type": "Video",
-      "Codec": "mpeg2",
+      "Codec": "mpeg2video",
       "Conditions": [
         {
           "Condition": "EqualsAny",
@@ -810,6 +875,27 @@ function getCodecProfiles() as object
     end if
 
     codecProfiles.push(mpeg2ProfileArray)
+  end if
+
+  ' MPEG-4 Part 2
+  if globalUserSettings.playbackMpeg4
+    mpeg4ProfileArray = {
+      "Type": "Video",
+      "Codec": "mpeg4",
+      "Conditions": [
+        {
+          "Condition": "EqualsAny",
+          "Property": "VideoRangeType",
+          "Value": "SDR",
+          "IsRequired": false
+        }
+      ]
+    }
+
+    ' set max resolution
+    mpeg4ProfileArray.Conditions.Append(resolutionConditions)
+
+    codecProfiles.push(mpeg4ProfileArray)
   end if
 
   if di.CanDecodeVideo({ Codec: "av1" }).Result
@@ -880,7 +966,7 @@ function getCodecProfiles() as object
 
     hevcProfileArray = {
       "Type": "Video",
-      "Codec": "hevc",
+      "Codec": "h265,hevc",
       "Conditions": [
         {
           "Condition": "NotEquals",
@@ -961,6 +1047,28 @@ function getCodecProfiles() as object
     end if
 
     codecProfiles.push(vp9ProfileArray)
+  end if
+
+  ' VP8
+  ' No profile/level system to test — SDR only
+  if di.CanDecodeVideo({ Codec: "vp8" }).Result
+    vp8ProfileArray = {
+      "Type": "Video",
+      "Codec": "vp8",
+      "Conditions": [
+        {
+          "Condition": "EqualsAny",
+          "Property": "VideoRangeType",
+          "Value": "SDR",
+          "IsRequired": false
+        }
+      ]
+    }
+
+    ' set max resolution
+    vp8ProfileArray.Conditions.Append(resolutionConditions)
+
+    codecProfiles.push(vp8ProfileArray)
   end if
 
   return codecProfiles
