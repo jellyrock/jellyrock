@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (extras) show More Like This row for episode type ([1330489](https://github.com/jellyrock/jellyrock/commit/1330489))
 - Support direct playing `truehd`, `dtshd`, and `mpeg1video` ([#359](https://github.com/jellyrock/jellyrock/pull/359))
 - Support direct playing more h264 profiles ([bf2891c](https://github.com/jellyrock/jellyrock/commit/bf2891c))
 - Use `ItemDetails` to open `Person` items ([#358](https://github.com/jellyrock/jellyrock/pull/358))
