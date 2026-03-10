@@ -22,9 +22,7 @@ sub loadItems()
   ' Load Libraries
   if m.top.itemsToLoad = "libraries"
 
-    url = Substitute("Users/{0}/Views/", globalUser.id)
-    resp = APIRequest(url)
-    data = getJson(resp)
+    data = api.users.GetViews(globalUser.id)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #525)
@@ -38,7 +36,6 @@ sub loadItems()
   else if m.top.itemsToLoad = "latest"
     activeUser = globalUser.id
     if isValid(activeUser)
-      url = Substitute("Users/{0}/Items/Latest", activeUser)
       params = {}
       params["Limit"] = 16
       params["ParentId"] = m.top.itemId
@@ -46,8 +43,7 @@ sub loadItems()
       params["ImageTypeLimit"] = 1
       params["EnableTotalRecordCount"] = false
 
-      resp = APIRequest(url, params)
-      data = getJson(resp)
+      data = api.users.GetLatestMedia(activeUser, params)
 
       if isValid(data)
         for each item in data
@@ -99,8 +95,6 @@ sub loadItems()
   else if m.top.itemsToLoad = "continue"
     activeUser = globalUser.id
     if isValid(activeUser)
-      url = Substitute("Users/{0}/Items/Resume", activeUser)
-
       params = {}
       params["recursive"] = true
       params["SortBy"] = "DatePlayed"
@@ -108,8 +102,7 @@ sub loadItems()
       params["Filters"] = "IsResumable"
       params["EnableTotalRecordCount"] = false
 
-      resp = APIRequest(url, params)
-      data = getJson(resp)
+      data = api.users.GetResumeItemsByQuery(activeUser, params)
       if isValid(data) and isValid(data.Items)
         for each item in data.Items
           ' Skip Books for now as we don't support it (issue #558)
@@ -122,8 +115,6 @@ sub loadItems()
 
   else if m.top.itemsToLoad = "favorites"
 
-    url = Substitute("Users/{0}/Items", globalUser.id)
-
     params = {}
     params["Filters"] = "IsFavorite"
     params["Limit"] = 20
@@ -131,8 +122,7 @@ sub loadItems()
     params["sortby"] = "random"
     params["EnableTotalRecordCount"] = false
 
-    resp = APIRequest(url, params)
-    data = getJson(resp)
+    data = api.users.GetItemsByQuery(globalUser.id, params)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #558)
@@ -173,9 +163,7 @@ sub loadItems()
       if isValid(node) then results.push(node)
     end for
   else if m.top.itemsToLoad = "specialfeatures"
-    url = Substitute("Users/{0}/Items/{1}/SpecialFeatures", globalUser.id, m.top.itemId)
-    resp = APIRequest(url)
-    data = getJson(resp)
+    data = api.users.GetSpecialFeatures(globalUser.id, m.top.itemId)
     if isValid(data) and data.count() > 0
       for each specfeat in data
         node = m.transformer.transformBaseItem(specfeat)
@@ -281,9 +269,7 @@ end sub
 
 sub getPersonVideos(videoType as string, dest as object)
   params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
-  url = Substitute("Users/{0}/Items", m.global.user.id)
-  resp = APIRequest(url, params)
-  data = getJson(resp)
+  data = api.users.GetItemsByQuery(m.global.user.id, params)
   if isValid(data) and data.count() > 0
     for each item in data.items
       node = m.transformer.transformBaseItem(item)

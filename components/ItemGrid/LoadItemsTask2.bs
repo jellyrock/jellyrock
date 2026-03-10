@@ -117,17 +117,21 @@ sub loadItems()
     params.append({ IncludeItemTypes: m.top.ItemType })
   end if
 
+  ' queryType drives which api namespace is called — used for both the main request
+  ' and the optional 2nd lookup for the # (special characters) filter below.
+  queryType = "usersItems"
+
   if m.top.ItemType = "LiveTV"
-    url = "LiveTv/Channels"
+    queryType = "liveTV"
     params.append({ UserId: globalUser.id })
   else if m.top.view = "Networks"
-    url = "Studios"
+    queryType = "studios"
     params.append({ UserId: globalUser.id })
   else if m.top.view = "Genres"
-    url = "Genres"
+    queryType = "genres"
     params.append({ UserId: globalUser.id, includeItemTypes: m.top.itemType })
   else if m.top.ItemType = "MusicArtist"
-    url = "Artists"
+    queryType = "artists"
     ' Merge Genres with existing fields instead of overriding
     if fields.Instr(",Genres") = -1 and fields <> "Genres"
       fields = fields + ",Genres"
@@ -138,7 +142,7 @@ sub loadItems()
       IncludeItemTypes: "MusicAlbum,Audio"
     })
   else if m.top.ItemType = "AlbumArtists"
-    url = "Artists/AlbumArtists"
+    queryType = "albumArtists"
     ' Merge Genres with existing fields instead of overriding
     if fields.Instr(",Genres") = -1 and fields <> "Genres"
       fields = fields + ",Genres"
@@ -149,15 +153,12 @@ sub loadItems()
       IncludeItemTypes: "MusicAlbum,Audio"
     })
   else if m.top.ItemType = "MusicAlbum"
-    url = Substitute("Users/{0}/Items/", globalUser.id)
     params.append({ ImageTypeLimit: 1 })
     params.append({ EnableImageTypes: "Primary,Backdrop,Banner,Thumb" })
-  else
-    url = Substitute("Users/{0}/Items/", globalUser.id)
   end if
+  ' MusicAlbum and the generic else both use queryType = "usersItems" (default)
 
-  resp = APIRequest(url, params)
-  data = getJson(resp)
+  data = executeItemQuery(queryType, globalUser.id, params)
 
   ' If user has filtered by #, include special characters sorted after Z as well
   if isValid(params.NameLessThan)
@@ -167,8 +168,7 @@ sub loadItems()
       params.NameStartsWithOrGreater = "z"
 
       ' Perform 2nd API lookup for items starting with Z or greater
-      startsWithZAndGreaterResp = APIRequest(url, params)
-      startsWithZAndGreaterData = getJson(startsWithZAndGreaterResp)
+      startsWithZAndGreaterData = executeItemQuery(queryType, globalUser.id, params)
 
       if isValidAndNotEmpty(startsWithZAndGreaterData)
         specialCharacterItems = []
@@ -268,3 +268,22 @@ sub loadItems()
   end if
   m.top.content = results
 end sub
+
+' Routes an item query to the correct api namespace based on queryType.
+' Used for both the main request and the optional 2nd lookup for the # filter.
+' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
+function executeItemQuery(queryType as string, userId as string, params as object) as dynamic
+  if queryType = "liveTV"
+    return api.liveTV.GetChannels(params)
+  else if queryType = "studios"
+    return api.studios.Get(params)
+  else if queryType = "genres"
+    return api.genres.Get(params)
+  else if queryType = "artists"
+    return api.artists.Get(params)
+  else if queryType = "albumArtists"
+    return api.artists.GetAlbumArtists(params)
+  end if
+  ' default: "usersItems"
+  return api.users.GetItemsByQuery(userId, params)
+end function
