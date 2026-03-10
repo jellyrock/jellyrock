@@ -1502,8 +1502,8 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(playButton)
   end if
 
-  ' Watched button — playable types only (not Series, Season, or Person)
-  if itemType <> "Person" and itemType <> "Series" and itemType <> "Season"
+  ' Watched button — all types except Person
+  if itemType <> "Person"
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
     watchedButton.icon = "pkg:/images/icons/check.png"
