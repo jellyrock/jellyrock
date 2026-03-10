@@ -1,0 +1,171 @@
+import "pkg:/source/api/baserequest.bs"
+
+' V1 user endpoint shims — covers Jellyfin 10.7.x and 10.8.x
+' All paths use the /Users/{userId}/ prefix that was removed in 10.9.
+' Do NOT call these functions directly. Use the api.users.* dispatchers in sdk.bs.
+namespace apiV1
+  namespace users
+
+    ' Get user profile image URL.
+    function GetImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object) as dynamic
+      return buildURL(Substitute("/users/{0}/images/{1}/{2}", id, imagetype, imageindex.toStr()), params)
+    end function
+
+    ' HEAD user profile image.
+    function HeadImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
+      req = APIRequest(Substitute("/users/{0}/images/{1}/{2}", id, imagetype, imageindex.toStr()), params)
+      return headVoid(req)
+    end function
+
+    ' Gets items based on a query.
+    function GetItemsByQuery(id as string, params = {} as object)
+      req = APIRequest(Substitute("/users/{0}/items", id), params)
+      return getJson(req)
+    end function
+
+    ' Gets resumable items.
+    function GetResumeItemsByQuery(id as string, params = {} as object)
+      req = APIRequest(Substitute("/users/{0}/items/resume", id), params)
+      return getJson(req)
+    end function
+
+    ' Gets suggestions.
+    function GetSuggestions(id as string, params = {} as object)
+      req = APIRequest(Substitute("/users/{0}/suggestions", id), params)
+      return getJson(req)
+    end function
+
+    ' Get user view grouping options.
+    function GetGroupingOptions(id as string)
+      req = APIRequest(Substitute("/users/{0}/groupingoptions", id))
+      return getJson(req)
+    end function
+
+    ' Get user views.
+    function GetViews(id as string, params = {} as object)
+      req = APIRequest(Substitute("/users/{0}/views", id), params)
+      return getJson(req)
+    end function
+
+    ' Gets an item from a user's library.
+    function GetItem(userid as string, itemid as string, params = {} as object)
+      req = APIRequest(Substitute("/users/{0}/items/{1}", userid, itemid), params)
+      return getJson(req)
+    end function
+
+    ' Gets intros to play before the main media item plays.
+    function GetIntros(userid as string, itemid as string)
+      req = APIRequest(Substitute("/users/{0}/items/{1}/intros", userid, itemid))
+      return getJson(req)
+    end function
+
+    ' Gets local trailers for an item.
+    function GetLocalTrailers(userid as string, itemid as string)
+      req = APIRequest(Substitute("/users/{0}/items/{1}/localtrailers", userid, itemid))
+      return getJson(req)
+    end function
+
+    ' Gets special features for an item.
+    function GetSpecialFeatures(userid as string, itemid as string)
+      req = APIRequest(Substitute("/users/{0}/items/{1}/specialfeatures", userid, itemid))
+      return getJson(req)
+    end function
+
+    ' Gets latest media.
+    function GetLatestMedia(userid as string, params = {} as object)
+      req = APIRequest(Substitute("/users/{0}/items/latest", userid), params)
+      return getJson(req)
+    end function
+
+    ' Gets the root folder from a user's library.
+    function GetRoot(userid as string)
+      req = APIRequest(Substitute("/users/{0}/items/root", userid))
+      return getJson(req)
+    end function
+
+    ' Marks an item as a favorite.
+    function MarkFavorite(userid as string, itemid as string)
+      req = APIRequest(Substitute("users/{0}/favoriteitems/{1}", userid, itemid))
+      return postJson(req)
+    end function
+
+    ' Unmarks item as a favorite.
+    function UnmarkFavorite(userid as string, itemid as string)
+      req = APIRequest(Substitute("users/{0}/favoriteitems/{1}", userid, itemid))
+      return deleteVoid(req)
+    end function
+
+    ' Deletes a user's saved personal rating for an item.
+    function DeleteRating(userid as string, itemid as string)
+      req = APIRequest(Substitute("users/{0}/items/{1}/rating", userid, itemid))
+      return deleteVoid(req)
+    end function
+
+    ' Updates a user's rating for an item.
+    function UpdateRating(userid as string, itemid as string, params = {} as object)
+      req = APIRequest(Substitute("users/{0}/items/{1}/rating", userid, itemid), params)
+      return postJson(req)
+    end function
+
+    ' Marks an item as played for user.
+    function MarkPlayed(userid as string, itemid as string, params = {} as object)
+      if params.count() = 0
+        params = {
+          "DatePlayed": CreateObject("roDateTime").ToISOString(),
+          "PlaybackPositionTicks": 0
+        }
+      end if
+      req = APIRequest(Substitute("users/{0}/playeditems/{1}", userid, itemid), params)
+      return postJson(req)
+    end function
+
+    ' Marks an item as unplayed for user.
+    function UnmarkPlayed(userid as string, itemid as string)
+      req = APIRequest(Substitute("users/{0}/playeditems/{1}", userid, itemid))
+      return deleteVoid(req)
+    end function
+
+    ' Reports that a user has begun playing an item.
+    function MarkPlaying(userid as string, itemid as string, params = {} as object)
+      req = APIRequest(Substitute("users/{0}/playingitems/{1}", userid, itemid), params)
+      return postJson(req)
+    end function
+
+    ' Reports that a user has stopped playing an item.
+    function MarkStoppedPlaying(userid as string, itemid as string, params = {} as object)
+      req = APIRequest(Substitute("users/{0}/playingitems/{1}", userid, itemid), params)
+      return deleteVoid(req)
+    end function
+
+    ' Reports a user's playback progress.
+    function ReportPlayProgress(userid as string, itemid as string, params = {} as object)
+      req = APIRequest(Substitute("users/{0}/playingitems/{1}/progress", userid, itemid), params)
+      return postJson(req)
+    end function
+
+    ' Updates a user configuration.
+    function UpdateConfiguration(id as string, body = {} as object)
+      req = APIRequest(Substitute("/users/{0}/configuration", id))
+      return postVoid(req, FormatJson(body))
+    end function
+
+    ' Updates a user's password.
+    function UpdatePassword(id as string, body = {} as object)
+      req = APIRequest(Substitute("/users/{0}/password", id))
+      return postVoid(req, FormatJson(body))
+    end function
+
+    ' Updates a user's easy password.
+    function UpdateEasyPassword(id as string, body = {} as object)
+      req = APIRequest(Substitute("/users/{0}/easypassword", id))
+      return postVoid(req, FormatJson(body))
+    end function
+
+    ' Updates a user.
+    function Update(id as string, body = {} as object)
+      req = APIRequest(Substitute("/users/{0}", id))
+      return postVoid(req, FormatJson(body))
+    end function
+
+  end namespace
+end namespace

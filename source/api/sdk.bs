@@ -1,4 +1,6 @@
 import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/sdk.v1.bs"
+import "pkg:/source/api/sdk.v2.bs"
 
 namespace api
   namespace albums
@@ -1850,30 +1852,6 @@ namespace api
       return deleteVoid(req)
     end function
 
-    ' Updates a user.
-    function Update(id, body = {} as object)
-      req = APIRequest(Substitute("/users/{0}", id))
-      return postVoid(req, FormatJson(body))
-    end function
-
-    ' Updates a user configuration.
-    function UpdateConfiguration(id, body = {} as object)
-      req = APIRequest(Substitute("/users/{0}/configuration", id))
-      return postVoid(req, FormatJson(body))
-    end function
-
-    ' Updates a user's easy password.
-    function UpdateEasyPassword(id, body = {} as object)
-      req = APIRequest(Substitute("/users/{0}/easypassword", id))
-      return postVoid(req, FormatJson(body))
-    end function
-
-    ' Updates a user's password.
-    function UpdatePassword(id, body = {} as object)
-      req = APIRequest(Substitute("/users/{0}/password", id))
-      return postVoid(req, FormatJson(body))
-    end function
-
     ' Updates a user's policy.
     function UpdatePolicy(id, body = {} as object)
       req = APIRequest(Substitute("/users/{0}/policy", id))
@@ -1916,145 +1894,218 @@ namespace api
       throw "System.NotImplementedException: The function is not implemented."
     end sub
 
-    ' Get user profile image.
+    ' --- Version-dispatched functions ---
+    ' Each dispatcher checks m.global.server.apiVersion and delegates to the
+    ' correct shim (apiV1.users.* or apiV2.users.*). The >= 2 check is
+    ' forward-compatible: future server versions use V2 paths until a new
+    ' breaking change requires V3.
+
+    ' Get user profile image URL.
     function GetImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      return buildURL(Substitute("/users/{0}/images/{1}/{2}", id, imagetype, imageindex.toStr()), params)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetImageURL(id, imagetype, imageindex, params)
+      end if
+      return apiV1.users.GetImageURL(id, imagetype, imageindex, params)
     end function
 
-    ' Get music genre image by name.
+    ' HEAD user profile image.
     function HeadImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      req = APIRequest(Substitute("/users/{0}/images/{1}/{2}", id, imagetype, imageindex.toStr()), params)
-      return headVoid(req)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.HeadImageURL(id, imagetype, imageindex, params)
+      end if
+      return apiV1.users.HeadImageURL(id, imagetype, imageindex, params)
     end function
 
     ' Gets items based on a query.
     function GetItemsByQuery(id as string, params = {} as object)
-      req = APIRequest(Substitute("/users/{0}/items", id), params)
-      return getJson(req)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetItemsByQuery(id, params)
+      end if
+      return apiV1.users.GetItemsByQuery(id, params)
     end function
 
-    ' Gets items based on a query.
+    ' Gets resumable items.
     function GetResumeItemsByQuery(id as string, params = {} as object)
-      req = APIRequest(Substitute("/users/{0}/items/resume", id), params)
-      return getJson(req)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetResumeItemsByQuery(id, params)
+      end if
+      return apiV1.users.GetResumeItemsByQuery(id, params)
     end function
 
     ' Gets suggestions.
     function GetSuggestions(id as string, params = {} as object)
-      resp = APIRequest(Substitute("/users/{0}/suggestions", id), params)
-      return getJson(resp)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetSuggestions(id, params)
+      end if
+      return apiV1.users.GetSuggestions(id, params)
     end function
 
     ' Get user view grouping options.
     function GetGroupingOptions(id as string)
-      resp = APIRequest(Substitute("/users/{0}/groupingoptions", id))
-      return getJson(resp)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetGroupingOptions(id)
+      end if
+      return apiV1.users.GetGroupingOptions(id)
     end function
 
     ' Get user views.
     function GetViews(id as string, params = {} as object)
-      resp = APIRequest(Substitute("/users/{0}/views", id), params)
-      return getJson(resp)
-    end function
-
-    ' Marks an item as a favorite.
-    function MarkFavorite(userid as string, itemid as string)
-      req = APIRequest(Substitute("users/{0}/favoriteitems/{1}", userid, itemid))
-      json = postJson(req)
-      return json
-    end function
-
-    ' Unmarks item as a favorite.
-    function UnmarkFavorite(userid as string, itemid as string)
-      req = APIRequest(Substitute("users/{0}/favoriteitems/{1}", userid, itemid))
-      json = deleteVoid(req)
-      return json
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetViews(id, params)
+      end if
+      return apiV1.users.GetViews(id, params)
     end function
 
     ' Gets an item from a user's library.
-    function GetItem(userid as string, itemid as string)
-      resp = APIRequest(Substitute("/users/{0}/items/{1}", userid, itemid))
-      return getJson(resp)
+    function GetItem(userid as string, itemid as string, params = {} as object)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetItem(userid, itemid, params)
+      end if
+      return apiV1.users.GetItem(userid, itemid, params)
     end function
 
     ' Gets intros to play before the main media item plays.
     function GetIntros(userid as string, itemid as string)
-      resp = APIRequest(Substitute("/users/{0}/items/{1}/intros", userid, itemid))
-      return getJson(resp)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetIntros(userid, itemid)
+      end if
+      return apiV1.users.GetIntros(userid, itemid)
     end function
 
     ' Gets local trailers for an item.
     function GetLocalTrailers(userid as string, itemid as string)
-      resp = APIRequest(Substitute("/users/{0}/items/{1}/localtrailers", userid, itemid))
-      return getJson(resp)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetLocalTrailers(userid, itemid)
+      end if
+      return apiV1.users.GetLocalTrailers(userid, itemid)
     end function
 
     ' Deletes a user's saved personal rating for an item.
     function DeleteRating(userid as string, itemid as string)
-      req = APIRequest(Substitute("users/{0}/items/{1}/rating", userid, itemid))
-      json = deleteVoid(req)
-      return json
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.DeleteRating(userid, itemid)
+      end if
+      return apiV1.users.DeleteRating(userid, itemid)
     end function
 
     ' Updates a user's rating for an item.
     function UpdateRating(userid as string, itemid as string, params = {} as object)
-      req = APIRequest(Substitute("users/{0}/items/{1}/rating", userid, itemid), params)
-      json = postJson(req)
-      return json
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.UpdateRating(userid, itemid, params)
+      end if
+      return apiV1.users.UpdateRating(userid, itemid, params)
     end function
 
     ' Gets special features for an item.
     function GetSpecialFeatures(userid as string, itemid as string)
-      resp = APIRequest(Substitute("/users/{0}/items/{1}/specialfeatures", userid, itemid))
-      return getJson(resp)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetSpecialFeatures(userid, itemid)
+      end if
+      return apiV1.users.GetSpecialFeatures(userid, itemid)
     end function
 
     ' Gets latest media.
     function GetLatestMedia(userid as string, params = {} as object)
-      resp = APIRequest(Substitute("/users/{0}/items/latest", userid), params)
-      return getJson(resp)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetLatestMedia(userid, params)
+      end if
+      return apiV1.users.GetLatestMedia(userid, params)
     end function
 
     ' Gets the root folder from a user's library.
     function GetRoot(userid as string)
-      resp = APIRequest(Substitute("/users/{0}/items/root", userid))
-      return getJson(resp)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.GetRoot(userid)
+      end if
+      return apiV1.users.GetRoot(userid)
+    end function
+
+    ' Marks an item as a favorite.
+    function MarkFavorite(userid as string, itemid as string)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.MarkFavorite(userid, itemid)
+      end if
+      return apiV1.users.MarkFavorite(userid, itemid)
+    end function
+
+    ' Unmarks item as a favorite.
+    function UnmarkFavorite(userid as string, itemid as string)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.UnmarkFavorite(userid, itemid)
+      end if
+      return apiV1.users.UnmarkFavorite(userid, itemid)
     end function
 
     ' Marks an item as played for user.
     function MarkPlayed(userid as string, itemid as string, params = {} as object)
-      if params.count() = 0
-        params = {
-          "DatePlayed": CreateObject("roDateTime").ToISOString(),
-          "PlaybackPositionTicks": 0
-        }
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.MarkPlayed(userid, itemid, params)
       end if
-      req = APIRequest(Substitute("users/{0}/playeditems/{1}", userid, itemid), params)
-      return postJson(req)
+      return apiV1.users.MarkPlayed(userid, itemid, params)
     end function
 
     ' Marks an item as unplayed for user.
     function UnmarkPlayed(userid as string, itemid as string)
-      req = APIRequest(Substitute("users/{0}/playeditems/{1}", userid, itemid))
-      return deleteVoid(req)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.UnmarkPlayed(userid, itemid)
+      end if
+      return apiV1.users.UnmarkPlayed(userid, itemid)
     end function
 
     ' Reports that a user has begun playing an item.
     function MarkPlaying(userid as string, itemid as string, params = {} as object)
-      req = APIRequest(Substitute("users/{0}/playingitems/{1}", userid, itemid), params)
-      return postJson(req)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.MarkPlaying(userid, itemid, params)
+      end if
+      return apiV1.users.MarkPlaying(userid, itemid, params)
     end function
 
     ' Reports that a user has stopped playing an item.
     function MarkStoppedPlaying(userid as string, itemid as string, params = {} as object)
-      req = APIRequest(Substitute("users/{0}/playingitems/{1}", userid, itemid), params)
-      return deleteVoid(req)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.MarkStoppedPlaying(userid, itemid, params)
+      end if
+      return apiV1.users.MarkStoppedPlaying(userid, itemid, params)
     end function
 
     ' Reports a user's playback progress.
     function ReportPlayProgress(userid as string, itemid as string, params = {} as object)
-      req = APIRequest(Substitute("users/{0}/playingitems/{1}/progress", userid, itemid), params)
-      return postJson(req)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.ReportPlayProgress(userid, itemid, params)
+      end if
+      return apiV1.users.ReportPlayProgress(userid, itemid, params)
+    end function
+
+    ' Updates a user configuration.
+    function UpdateConfiguration(id as string, body = {} as object)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.UpdateConfiguration(id, body)
+      end if
+      return apiV1.users.UpdateConfiguration(id, body)
+    end function
+
+    ' Updates a user's password.
+    function UpdatePassword(id as string, body = {} as object)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.UpdatePassword(id, body)
+      end if
+      return apiV1.users.UpdatePassword(id, body)
+    end function
+
+    ' Updates a user's easy password.
+    function UpdateEasyPassword(id as string, body = {} as object)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.UpdateEasyPassword(id, body)
+      end if
+      return apiV1.users.UpdateEasyPassword(id, body)
+    end function
+
+    ' Updates a user.
+    function Update(id as string, body = {} as object)
+      if m.global.server.apiVersion >= 2
+        return apiV2.users.Update(id, body)
+      end if
+      return apiV1.users.Update(id, body)
     end function
   end namespace
 

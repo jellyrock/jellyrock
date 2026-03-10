@@ -58,6 +58,7 @@ namespace server
     serverNode.localURL = myServerInfo.LocalAddress ?? ""
     serverNode.startupWizardCompleted = myServerInfo.StartupWizardCompleted ?? false
     serverNode.version = myServerInfo.Version ?? ""
+    serverNode.apiVersion = resolveApiVersion(serverNode.version)
 
     ' Check HTTPS
     serverNode.isHTTPS = (serverNode.serverUrl.left(8) = "https://")

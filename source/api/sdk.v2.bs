@@ -1,0 +1,220 @@
+import "pkg:/source/api/baserequest.bs"
+
+' V2 user endpoint shims — covers Jellyfin 10.9+
+' All /Users/{userId}/ paths were removed in 10.9. Endpoints moved to top-level
+' with userId passed as a query parameter. Verified against jellyfin-openapi-10.9.0.json.
+' Do NOT call these functions directly. Use the api.users.* dispatchers in sdk.bs.
+namespace apiV2
+  namespace users
+
+    ' Get user profile image URL.
+    ' V2: GET /UserImage?userId=&type=&index=
+    function GetImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object) as dynamic
+      queryParams = { userId: id, type: imagetype, index: imageindex }
+      queryParams.append(params)
+      return buildURL("/UserImage", queryParams)
+    end function
+
+    ' HEAD user profile image.
+    ' V2: HEAD /UserImage?userId=&type=&index=
+    function HeadImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
+      queryParams = { userId: id, type: imagetype, index: imageindex }
+      queryParams.append(params)
+      req = APIRequest("/UserImage", queryParams)
+      return headVoid(req)
+    end function
+
+    ' Gets items based on a query.
+    ' V2: GET /Items/?userId=
+    function GetItemsByQuery(id as string, params = {} as object)
+      queryParams = { userId: id }
+      queryParams.append(params)
+      req = APIRequest("/items/", queryParams)
+      return getJson(req)
+    end function
+
+    ' Gets resumable items.
+    ' V2: GET /UserItems/Resume?userId=
+    function GetResumeItemsByQuery(id as string, params = {} as object)
+      queryParams = { userId: id }
+      queryParams.append(params)
+      req = APIRequest("/UserItems/Resume", queryParams)
+      return getJson(req)
+    end function
+
+    ' Gets suggestions.
+    ' V2: GET /Items/Suggestions?userId=
+    function GetSuggestions(id as string, params = {} as object)
+      queryParams = { userId: id }
+      queryParams.append(params)
+      req = APIRequest("/Items/Suggestions", queryParams)
+      return getJson(req)
+    end function
+
+    ' Get user view grouping options.
+    ' V2: GET /UserViews/GroupingOptions
+    function GetGroupingOptions(id as string)
+      req = APIRequest("/UserViews/GroupingOptions", { userId: id })
+      return getJson(req)
+    end function
+
+    ' Get user views.
+    ' V2: GET /UserViews?userId=
+    function GetViews(id as string, params = {} as object)
+      queryParams = { userId: id }
+      queryParams.append(params)
+      req = APIRequest("/UserViews", queryParams)
+      return getJson(req)
+    end function
+
+    ' Gets an item from a user's library.
+    ' V2: GET /Items/{itemId}?userId=
+    function GetItem(userid as string, itemid as string, params = {} as object)
+      queryParams = { userId: userid }
+      queryParams.append(params)
+      req = APIRequest(Substitute("/Items/{0}", itemid), queryParams)
+      return getJson(req)
+    end function
+
+    ' Gets intros to play before the main media item plays.
+    ' V2: GET /Items/{itemId}/Intros (userId not required — auth token identifies the user)
+    function GetIntros(_userid as string, itemid as string)
+      req = APIRequest(Substitute("/Items/{0}/Intros", itemid))
+      return getJson(req)
+    end function
+
+    ' Gets local trailers for an item.
+    ' V2: GET /Items/{itemId}/LocalTrailers (userId not required)
+    function GetLocalTrailers(_userid as string, itemid as string)
+      req = APIRequest(Substitute("/Items/{0}/LocalTrailers", itemid))
+      return getJson(req)
+    end function
+
+    ' Gets special features for an item.
+    ' V2: GET /Items/{itemId}/SpecialFeatures (userId not required)
+    function GetSpecialFeatures(_userid as string, itemid as string)
+      req = APIRequest(Substitute("/Items/{0}/SpecialFeatures", itemid))
+      return getJson(req)
+    end function
+
+    ' Gets latest media.
+    ' V2: GET /Items/Latest?userId=
+    function GetLatestMedia(userid as string, params = {} as object)
+      queryParams = { userId: userid }
+      queryParams.append(params)
+      req = APIRequest("/Items/Latest", queryParams)
+      return getJson(req)
+    end function
+
+    ' Gets the root folder from a user's library.
+    ' V2: GET /Items/Root
+    function GetRoot(userid as string)
+      req = APIRequest("/Items/Root", { userId: userid })
+      return getJson(req)
+    end function
+
+    ' Marks an item as a favorite.
+    ' V2: POST /UserFavoriteItems/{itemId}?userId=
+    function MarkFavorite(userid as string, itemid as string)
+      req = APIRequest(Substitute("/UserFavoriteItems/{0}", itemid), { userId: userid })
+      return postJson(req)
+    end function
+
+    ' Unmarks item as a favorite.
+    ' V2: DELETE /UserFavoriteItems/{itemId}?userId=
+    function UnmarkFavorite(userid as string, itemid as string)
+      req = APIRequest(Substitute("/UserFavoriteItems/{0}", itemid), { userId: userid })
+      return deleteVoid(req)
+    end function
+
+    ' Deletes a user's saved personal rating for an item.
+    ' V2: DELETE /UserItems/{itemId}/Rating?userId=
+    function DeleteRating(userid as string, itemid as string)
+      req = APIRequest(Substitute("/UserItems/{0}/Rating", itemid), { userId: userid })
+      return deleteVoid(req)
+    end function
+
+    ' Updates a user's rating for an item.
+    ' V2: POST /UserItems/{itemId}/Rating?userId=
+    function UpdateRating(userid as string, itemid as string, params = {} as object)
+      queryParams = { userId: userid }
+      queryParams.append(params)
+      req = APIRequest(Substitute("/UserItems/{0}/Rating", itemid), queryParams)
+      return postJson(req)
+    end function
+
+    ' Marks an item as played for user.
+    ' V2: POST /UserPlayedItems/{itemId}?userId=
+    function MarkPlayed(userid as string, itemid as string, params = {} as object)
+      if params.count() = 0
+        params = {
+          "DatePlayed": CreateObject("roDateTime").ToISOString(),
+          "PlaybackPositionTicks": 0
+        }
+      end if
+      queryParams = { userId: userid }
+      queryParams.append(params)
+      req = APIRequest(Substitute("/UserPlayedItems/{0}", itemid), queryParams)
+      return postJson(req)
+    end function
+
+    ' Marks an item as unplayed for user.
+    ' V2: DELETE /UserPlayedItems/{itemId}?userId=
+    function UnmarkPlayed(userid as string, itemid as string)
+      req = APIRequest(Substitute("/UserPlayedItems/{0}", itemid), { userId: userid })
+      return deleteVoid(req)
+    end function
+
+    ' Reports that a user has begun playing an item.
+    ' V2: POST /PlayingItems/{itemId}
+    function MarkPlaying(userid as string, itemid as string, params = {} as object)
+      queryParams = { userId: userid }
+      queryParams.append(params)
+      req = APIRequest(Substitute("/PlayingItems/{0}", itemid), queryParams)
+      return postJson(req)
+    end function
+
+    ' Reports that a user has stopped playing an item.
+    ' V2: DELETE /PlayingItems/{itemId}
+    function MarkStoppedPlaying(userid as string, itemid as string, params = {} as object)
+      queryParams = { userId: userid }
+      queryParams.append(params)
+      req = APIRequest(Substitute("/PlayingItems/{0}", itemid), queryParams)
+      return deleteVoid(req)
+    end function
+
+    ' Reports a user's playback progress.
+    ' V2: POST /PlayingItems/{itemId}/Progress
+    function ReportPlayProgress(userid as string, itemid as string, params = {} as object)
+      queryParams = { userId: userid }
+      queryParams.append(params)
+      req = APIRequest(Substitute("/PlayingItems/{0}/Progress", itemid), queryParams)
+      return postJson(req)
+    end function
+
+    ' Updates a user configuration.
+    ' V2: POST /Users/Configuration (userId not required — auth token identifies the user)
+    function UpdateConfiguration(_id as string, body = {} as object)
+      req = APIRequest("/Users/Configuration")
+      return postVoid(req, FormatJson(body))
+    end function
+
+    ' Updates a user's password.
+    ' V2: POST /Users/Password (userId not required — auth token identifies the user)
+    function UpdatePassword(_id as string, body = {} as object)
+      req = APIRequest("/Users/Password")
+      return postVoid(req, FormatJson(body))
+    end function
+
+    ' UpdateEasyPassword was removed in 10.9 — no-op.
+    function UpdateEasyPassword(_id as string, _body = {} as object)
+      return invalid
+    end function
+
+    ' Update (POST /users/{id}) was removed in 10.9 — no-op.
+    function Update(_id as string, _body = {} as object)
+      return invalid
+    end function
+
+  end namespace
+end namespace
