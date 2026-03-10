@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (ItemDetails) missing Watched button for type `Series` and `Season` ([2b06857](https://github.com/jellyrock/jellyrock/commit/2b06857))
+
 ### Dependencies
 
 - Update roku-deploy from v3.16.1 to v3.16.2 ([#364](https://github.com/jellyrock/jellyrock/pull/364))
