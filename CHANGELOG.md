@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (ItemDetails) prevent extras pane from opening when grid is empty ([ec5a2dd](https://github.com/jellyrock/jellyrock/commit/ec5a2dd))
 - (ItemDetails) missing Watched button for type `Series` and `Season` ([2b06857](https://github.com/jellyrock/jellyrock/commit/2b06857))
 
 ### Dependencies
