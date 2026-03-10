@@ -79,5 +79,6 @@ npm run build # OR npm run build:prod
 - [Logging](docs/dev/logging.md)
 - [New User Setting](docs/dev/new-user-setting.md)
 - [Registry Migrations](docs/dev/registry-migrations.md)
+- [SDK API Versioning](docs/dev/sdk-api-versioning.md)
 - [TDD Workflow](docs/dev/unit-tests-tdd.md)
 - [Unit Tests](docs/dev/unit-tests.md)
