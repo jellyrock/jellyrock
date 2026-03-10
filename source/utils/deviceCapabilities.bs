@@ -63,6 +63,25 @@ end function
 
 function getDeviceProfile() as object
   globalDevice = m.global.device
+  
+  ' Check server version to determine which DeviceProfile format to use
+  apiVersion = 2
+  if isValid(m.global.server) and isValid(m.global.server.apiVersion)
+    apiVersion = m.global.server.apiVersion
+  end if
+  
+  ' V1 (10.7.x - 10.8.x): Uses full DeviceProfile with Identification object
+  ' V2 (10.9+): Uses simplified DeviceProfile without Identification
+  if apiVersion >= 2
+    return getDeviceProfileV2(globalDevice)
+  end if
+  
+  return getDeviceProfileV1(globalDevice)
+end function
+
+' V1 DeviceProfile for Jellyfin 10.7.x - 10.8.x servers
+' Uses the full DeviceProfile format with Identification object
+function getDeviceProfileV1(globalDevice as object) as object
   return {
     "Name": "JellyRock",
     "Id": globalDevice.id,
@@ -75,8 +94,26 @@ function getDeviceProfile() as object
     },
     "MaxStreamingBitrate": 140000000,
     "MaxStaticBitrate": 140000000,
-    "MusicStreamingTranscodingBitrate": 192000, ' 192 kbps
-    ' "MaxStaticMusicBitrate": 500000,
+    "MusicStreamingTranscodingBitrate": 192000,
+    "DirectPlayProfiles": GetDirectPlayProfiles(),
+    "TranscodingProfiles": getTranscodingProfiles(),
+    "ContainerProfiles": getContainerProfiles(),
+    "CodecProfiles": getCodecProfiles(),
+    "SubtitleProfiles": getSubtitleProfiles(),
+    "SupportedMediaTypes": "Video,Audio",
+    "ResponseProfiles": []
+  }
+end function
+
+' V2 DeviceProfile for Jellyfin 10.9+ servers  
+' Uses the simplified DeviceProfile format without Identification object
+function getDeviceProfileV2(globalDevice as object) as object
+  return {
+    "Name": "JellyRock",
+    "Id": globalDevice.id,
+    "MaxStreamingBitrate": 140000000,
+    "MaxStaticBitrate": 140000000,
+    "MusicStreamingTranscodingBitrate": 192000,
     "DirectPlayProfiles": GetDirectPlayProfiles(),
     "TranscodingProfiles": getTranscodingProfiles(),
     "ContainerProfiles": getContainerProfiles(),
@@ -1071,7 +1108,55 @@ function getCodecProfiles() as object
     codecProfiles.push(vp8ProfileArray)
   end if
 
+  ' Filter out version-specific conditions based on server API version
+  apiVersion = 2
+  if isValid(m.global.server) and isValid(m.global.server.apiVersion)
+    apiVersion = m.global.server.apiVersion
+  end if
+  
+  ' VideoRangeType was added in Jellyfin 10.9 (API v2)
+  ' Remove it for older servers (10.7.x, 10.8.x) that don't support this property
+  if apiVersion < 2
+    codecProfiles = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+  end if
+
   return codecProfiles
+end function
+
+' filterCodecProfileConditions: Removes conditions with specified properties from codec profiles
+' Used for version compatibility - e.g., removing VideoRangeType for pre-10.9 servers
+'
+' @param {array} codecProfiles - Array of codec profile objects
+' @param {array} propertiesToRemove - Array of property names to filter out
+' @return {array} Filtered codec profiles
+function filterCodecProfileConditions(codecProfiles as object, propertiesToRemove as object) as object
+  filteredProfiles = []
+  
+  for each profile in codecProfiles
+    if isValid(profile.Conditions) and profile.Conditions.count() > 0
+      filteredConditions = []
+      for each condition in profile.Conditions
+        if isValid(condition.Property)
+          shouldKeep = true
+          for each prop in propertiesToRemove
+            if condition.Property = prop
+              shouldKeep = false
+              exit for
+            end if
+          end for
+          if shouldKeep
+            filteredConditions.push(condition)
+          end if
+        else
+          filteredConditions.push(condition)
+        end if
+      end for
+      profile.Conditions = filteredConditions
+    end if
+    filteredProfiles.push(profile)
+  end for
+  
+  return filteredProfiles
 end function
 
 function getSubtitleProfiles() as object
