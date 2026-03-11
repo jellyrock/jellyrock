@@ -2092,21 +2092,6 @@ namespace api
       return apiV1.users.UpdatePassword(id, body)
     end function
 
-    ' Updates a user's easy password.
-    function UpdateEasyPassword(id as string, body = {} as object)
-      if m.global.server.apiVersion >= 2
-        return apiV2.users.UpdateEasyPassword(id, body)
-      end if
-      return apiV1.users.UpdateEasyPassword(id, body)
-    end function
-
-    ' Updates a user.
-    function Update(id as string, body = {} as object)
-      if m.global.server.apiVersion >= 2
-        return apiV2.users.Update(id, body)
-      end if
-      return apiV1.users.Update(id, body)
-    end function
   end namespace
 
   namespace videos

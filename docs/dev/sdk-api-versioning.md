@@ -58,8 +58,6 @@ and never reference the shim namespaces directly.
 | `ReportPlayProgress` | `POST /Users/{id}/PlayingItems/{itemId}/Progress` | `POST /PlayingItems/{itemId}/Progress?userId=` |
 | `UpdateConfiguration` | `POST /Users/{id}/Configuration` | `POST /Users/Configuration` |
 | `UpdatePassword` | `POST /Users/{id}/Password` | `POST /Users/Password` |
-| `UpdateEasyPassword` | `POST /Users/{id}/EasyPassword` | *(removed in 10.9 — no-op)* |
-| `Update` | `POST /Users/{id}` | *(removed in 10.9 — no-op)* |
 
 ## Adding a New Server Version
 
@@ -168,12 +166,12 @@ Authentication works across ALL server versions (10.7.x through 10.11.x+) withou
 
 **Request Body:**
 
-``json
+```json
 {
   "Username": "user",
   "Pw": "plain-text-password"
 }
-``
+```
 
 **Compatibility:**
 
@@ -211,9 +209,9 @@ All authentication-related endpoints are stable across versions:
 
 Authentication headers are consistent across all versions:
 
-``text
+```text
 Authorization: MediaBrowser Client="JellyRock", Device="Roku", Token="access-token"
-``
+```
 
 No version-specific header handling is required.
 
@@ -221,7 +219,7 @@ No version-specific header handling is required.
 
 The `resolveApiVersion()` function determines which API version to use:
 
-``brightscript
+```brightscript
 function resolveApiVersion(serverVersion as string) as integer
   if not isValidAndNotEmpty(serverVersion)
     return 1  ' Safe fallback to legacy paths
@@ -231,7 +229,7 @@ function resolveApiVersion(serverVersion as string) as integer
   end if
   return 1
 end function
-``
+```
 
 **Version Boundaries:**
 

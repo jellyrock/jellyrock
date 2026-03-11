@@ -155,17 +155,5 @@ namespace apiV1
       return postVoid(req, FormatJson(body))
     end function
 
-    ' Updates a user's easy password.
-    function UpdateEasyPassword(id as string, body = {} as object)
-      req = APIRequest(Substitute("/users/{0}/easypassword", id))
-      return postVoid(req, FormatJson(body))
-    end function
-
-    ' Updates a user.
-    function Update(id as string, body = {} as object)
-      req = APIRequest(Substitute("/users/{0}", id))
-      return postVoid(req, FormatJson(body))
-    end function
-
   end namespace
 end namespace
