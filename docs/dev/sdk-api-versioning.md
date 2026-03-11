@@ -158,7 +158,7 @@ end if
 
 ## Authentication Compatibility
 
-Authentication works across ALL server versions (10.7.x through 10.11.x+) without changes:
+Username/password authentication is compatible across Jellyfin 10.7.x through 10.11.x+ without version-specific handling. Other authentication flows (such as Quick Connect) have their own version requirements, documented in their respective subsections:
 
 ### Username/Password Login
 
