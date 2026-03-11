@@ -131,7 +131,7 @@ namespace server
     headers = resp.GetResponseHeaders()
     if isValid(headers) and isValid(headers.location)
       ' Only follow redirect if path matches /System/Info/Public
-      if right(headers.location, 19) = "/System/Info/Public"
+      if LCase(right(headers.location, 19)) = "/system/info/public"
         newUrl = left(headers.location, len(headers.location) - 19)
         set_setting("server", newUrl)
 
