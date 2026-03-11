@@ -229,7 +229,7 @@ function reconstructUrl(parts as object) as string
     url = url + parts.fullAuthority
   end if
 
-  ' Only add path if it's not just the root "/" 
+  ' Only add path if it's not just the root "/"
   ' (to avoid trailing slash on URLs without paths)
   if isValid(parts.path) and parts.path <> "" and parts.path <> "/"
     url = url + parts.path
