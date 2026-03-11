@@ -151,10 +151,10 @@ The `filterCodecProfileConditions()` function removes `VideoRangeType` condition
 `apiVersion < 2`:
 
 ```brightscript
-' `VideoRangeType` was added in Jellyfin 10.9 (API `v2`)
+' VideoRangeType was added in Jellyfin 10.9 (API v2)
 ' Remove it for older servers (10.7.x, 10.8.x) that don't support this property
-if `apiVersion` < 2
-  codecProfiles = filterCodecProfileConditions(codecProfiles, ["`VideoRangeType`"])
+if apiVersion < 2
+  codecProfiles = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
 end if
 ```
 
