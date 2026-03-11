@@ -309,6 +309,70 @@ namespace tests
     end function
 
     ' ============================================
+    ' getServerBaseUrl Tests
+    ' ============================================
+
+    @describe("getServerBaseUrl preserves base path")
+    @it("should preserve reverse-proxy base path when stripping endpoint")
+    function _()
+      ' Reverse-proxy scenario: https://host/jellyfin/system/info/public -> https://host/jellyfin
+      url = "https://example.com/jellyfin/system/info/public"
+      result = getServerBaseUrl(url, "/system/info/public")
+      m.assertEqual(result, "https://example.com/jellyfin")
+    end function
+
+    @describe("getServerBaseUrl handles URL without base path")
+    @it("should work correctly for URLs without reverse-proxy base path")
+    function _()
+      ' Standard scenario: https://host:8096/system/info/public -> https://host:8096
+      url = "http://192.168.1.100:8096/system/info/public"
+      result = getServerBaseUrl(url, "/system/info/public")
+      m.assertEqual(result, "http://192.168.1.100:8096")
+    end function
+
+    @describe("getServerBaseUrl handles nested base path")
+    @it("should preserve nested reverse-proxy paths")
+    function _()
+      ' Nested path scenario
+      url = "https://example.com/apps/jellyfin/system/info/public"
+      result = getServerBaseUrl(url, "/system/info/public")
+      m.assertEqual(result, "https://example.com/apps/jellyfin")
+    end function
+
+    @describe("getServerBaseUrl case insensitive matching")
+    @it("should match endpoint path case-insensitively")
+    function _()
+      url = "http://example.com/jellyfin/SYSTEM/INFO/PUBLIC"
+      result = getServerBaseUrl(url, "/system/info/public")
+      m.assertEqual(result, "http://example.com/jellyfin")
+    end function
+
+    @describe("getServerBaseUrl handles URL without endpoint path")
+    @it("should return URL unchanged when endpoint not present")
+    function _()
+      url = "http://example.com/jellyfin/other/path"
+      result = getServerBaseUrl(url, "/system/info/public")
+      m.assertEqual(result, "http://example.com/jellyfin/other/path")
+    end function
+
+    @describe("getServerBaseUrl handles empty inputs")
+    @it("should return empty string for invalid inputs")
+    function _()
+      m.assertEqual(getServerBaseUrl("", "/system/info/public"), "")
+      m.assertEqual(getServerBaseUrl("http://example.com", ""), "")
+      m.assertEqual(getServerBaseUrl("", ""), "")
+    end function
+
+    @describe("getServerBaseUrl handles query strings")
+    @it("should remove query strings when stripping endpoint")
+    function _()
+      url = "http://example.com/jellyfin/system/info/public?format=json"
+      result = getServerBaseUrl(url, "/system/info/public")
+      ' Query string should be stripped (as it's part of the endpoint URL)
+      m.assertEqual(result, "http://example.com/jellyfin")
+    end function
+
+    ' ============================================
     ' urlsEqual Tests
     ' ============================================
 

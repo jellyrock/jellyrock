@@ -152,21 +152,53 @@ function parseUrlComponents(url as string) as object
       authority = Mid(authority, atIndex + 1)
     end if
 
-    ' Check for port
-    colonIndex = Instr(1, authority, ":")
-    if colonIndex > 0
-      host = LCase(Left(authority, colonIndex - 1))
-      port = Mid(authority, colonIndex + 1)
-      ' Rebuild authority with lowercase host
-      authority = host + ":" + port
+    ' Check for IPv6 literal (starts with [)
+    if Left(authority, 1) = "["
+      ' IPv6 literal: [::1] or [::1]:8096
+      ' Find closing bracket
+      bracketIndex = Instr(1, authority, "]")
+      if bracketIndex > 0
+        ' Extract IPv6 address inside brackets (without the brackets for lowercasing)
+        ipv6Addr = Mid(authority, 2, bracketIndex - 2)
+        ' Host includes the brackets per RFC 3986 with lowercase address per RFC 5952
+        host = "[" + LCase(ipv6Addr) + "]"
+        ' Check for port after the closing bracket
+        port = ""
+        if Len(authority) > bracketIndex + 1 and Mid(authority, bracketIndex + 1, 1) = ":"
+          port = Mid(authority, bracketIndex + 2)
+          ' Rebuild authority with port since it was explicitly provided
+          authority = host + ":" + port
+        else
+          ' No port specified - use default port internally but don't add to authority
+          if LCase(scheme) = "http"
+            port = "80"
+          else if LCase(scheme) = "https"
+            port = "443"
+          end if
+          ' Authority is just the host (without port) when no explicit port
+          authority = host
+        end if
+      else
+        ' Invalid IPv6 literal (no closing bracket)
+        return invalid
+      end if
     else
-      host = LCase(authority)
-      authority = host
-      ' Default ports
-      if LCase(scheme) = "http"
-        port = "80"
-      else if LCase(scheme) = "https"
-        port = "443"
+      ' Check for port (non-IPv6)
+      colonIndex = Instr(1, authority, ":")
+      if colonIndex > 0
+        host = LCase(Left(authority, colonIndex - 1))
+        port = Mid(authority, colonIndex + 1)
+        ' Rebuild authority with lowercase host
+        authority = host + ":" + port
+      else
+        host = LCase(authority)
+        authority = host
+        ' Default ports
+        if LCase(scheme) = "http"
+          port = "80"
+        else if LCase(scheme) = "https"
+          port = "443"
+        end if
       end if
     end if
   end if
@@ -300,4 +332,36 @@ end function
 ' @returns true if URLs are equivalent, false otherwise
 function urlsEqual(url1 as string, url2 as string) as boolean
   return normalizeUrl(url1) = normalizeUrl(url2)
+end function
+
+' Extract server base URL by removing a known endpoint path suffix
+' This preserves any base path (e.g., /jellyfin) unlike getBaseUrl() which strips all paths
+' @param url - The full URL (e.g., "https://host/jellyfin/system/info/public")
+' @param endpointPath - The endpoint path to remove (e.g., "/system/info/public")
+' @returns Base URL with preserved path (e.g., "https://host/jellyfin"), or empty string if invalid
+function getServerBaseUrl(url as string, endpointPath as string) as string
+  if url = "" or endpointPath = "" then return ""
+
+  parts = parseUrlComponents(url)
+  if not isValid(parts) then return ""
+
+  ' Remove the endpoint path suffix if present (case-insensitive)
+  path = parts.path
+  endpointLower = LCase(endpointPath)
+  pathLower = LCase(path)
+
+  if Right(pathLower, Len(endpointLower)) = endpointLower
+    ' Remove the endpoint path
+    newPath = Left(path, Len(path) - Len(endpointPath))
+    ' Remove trailing slash (but keep root "/")
+    if Len(newPath) > 1 and Right(newPath, 1) = "/"
+      newPath = Left(newPath, Len(newPath) - 1)
+    end if
+    parts.path = newPath
+  end if
+
+  ' Always clear query string - we want the base server URL, not endpoint-specific params
+  parts.query = ""
+
+  return reconstructUrl(parts)
 end function

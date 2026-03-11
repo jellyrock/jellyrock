@@ -144,8 +144,20 @@ namespace server
     if isValid(headers) and isValid(headers.location)
       ' Resolve relative URLs and normalize
       currentUrl = serverNode.serverUrl
-      resolvedUrl = resolveUrl(currentUrl, headers.location)
-      newBaseUrl = getBaseUrl(resolvedUrl)
+
+      ' Resolve redirect against the full request URL (not just server base)
+      ' This ensures relative Location values resolve correctly with base paths
+      endpointPath = "/system/info/public"
+      if Right(currentUrl, 1) = "/"
+        fullRequestUrl = currentUrl + Mid(endpointPath, 2)
+      else
+        fullRequestUrl = currentUrl + endpointPath
+      end if
+      resolvedUrl = resolveUrl(fullRequestUrl, headers.location)
+
+      ' Strip the endpoint path to get the new server base URL
+      ' This preserves any base path (e.g., /jellyfin) unlike getBaseUrl()
+      newBaseUrl = getServerBaseUrl(resolvedUrl, endpointPath)
       normalizedNewUrl = normalizeUrl(newBaseUrl)
       normalizedCurrentUrl = normalizeUrl(currentUrl)
 
