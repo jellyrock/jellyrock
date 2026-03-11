@@ -175,8 +175,8 @@ namespace tests
       filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
 
       m.assertEqual(filtered.count(), 2)
-      m.assertEqual(filtered[0].Conditions.count(), 0)  ' h264: VideoRangeType was only condition
-      m.assertEqual(filtered[1].Conditions.count(), 1)  ' hevc: only Height remains
+      m.assertEqual(filtered[0].Conditions.count(), 0) ' h264: VideoRangeType was only condition
+      m.assertEqual(filtered[1].Conditions.count(), 1) ' hevc: only Height remains
       m.assertEqual(filtered[1].Conditions[0].Property, "Height")
     end function
 

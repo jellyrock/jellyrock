@@ -206,13 +206,15 @@ namespace apiV2
       return postVoid(req, FormatJson(body))
     end function
 
-    ' UpdateEasyPassword was removed in 10.9 — no-op.
+    ' UpdateEasyPassword was removed in 10.9 — no-op with warning.
     function UpdateEasyPassword(_id as string, _body = {} as object)
+      print "WARNING: api.users.UpdateEasyPassword is not supported on Jellyfin 10.9+ (endpoint removed)"
       return invalid
     end function
 
-    ' Update (POST /users/{id}) was removed in 10.9 — no-op.
+    ' Update (POST /users/{id}) was removed in 10.9 — no-op with warning.
     function Update(_id as string, _body = {} as object)
+      print "WARNING: api.users.Update is not supported on Jellyfin 10.9+ (endpoint removed)"
       return invalid
     end function
 
