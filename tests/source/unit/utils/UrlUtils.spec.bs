@@ -2,7 +2,7 @@
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/url.bs"
 
-namespace Tests
+namespace tests
   @suite("URL Utility Functions")
   class UrlUtilsTests extends tests.BaseTestSuite
 
