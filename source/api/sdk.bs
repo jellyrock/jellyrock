@@ -1762,11 +1762,6 @@ namespace api
       return getJson(req)
     end function
 
-    ' Gets the URL for public server info (for manual requests with redirect handling).
-    function GetPublicInfoURL() as dynamic
-      return buildURL("/system/info/public")
-    end function
-
     ' Gets a list of available server log files.
     function GetLogs()
       req = APIRequest("/system/logs")

@@ -91,7 +91,15 @@ namespace server
   end sub
 
   ' Discovers server information and handles redirects.
-  ' Uses manual request to check for redirect headers, then uses api namespace for retry.
+  '
+  ' Convention: all API calls should go through api.* namespace functions (e.g. api.system.GetPublicInfo()).
+  ' Those functions bundle APIRequest() with a synchronous execution strategy (getJson, postVoid, etc.).
+  '
+  ' Discover() is an intentional exception: it must intercept the roUrlEvent to read GetResponseHeaders()
+  ' so it can detect and persist server-side redirects. The api.* wrappers use GetToString() which follows
+  ' redirects silently, making the redirect URL undetectable. By calling APIRequest() directly and executing
+  ' async, we get the same auth header and HTTPS certificate setup without losing the redirect headers.
+  '
   ' @returns {object} Server info with Error field set on failure
   function Discover() as object
     serverNode = m.global.server
@@ -101,15 +109,13 @@ namespace server
       return { "Error": true, "ErrorMessage": "Server URL not configured" }
     end if
 
-    ' Build URL using api namespace for consistency
-    url = api.system.GetPublicInfoURL()
-    if not isValid(url)
+    ' APIRequest applies auth header and HTTPS certificate authority (same as all other API calls).
+    ' We set the port and execute async ourselves so we can read redirect headers from the roUrlEvent.
+    req = APIRequest("/system/info/public")
+    if not isValid(req)
       return { "Error": true, "ErrorMessage": "Server URL not configured" }
     end if
 
-    ' Manual request to check for redirects
-    req = createObject("roUrlTransfer")
-    req.setUrl(url)
     req.setMessagePort(CreateObject("roMessagePort"))
     req.AsyncGetToString()
 
