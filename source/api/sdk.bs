@@ -125,12 +125,6 @@ namespace api
       req = APIRequest("/auth/providers")
       return getJson(req)
     end function
-
-    ' Authenticates a user by name.
-    function AuthenticateByName(username as string, password as string)
-      req = APIRequest("/users/authenticatebyname")
-      return postJson(req, FormatJson({ "Username": username, "Pw": password }))
-    end function
   end namespace
 
   namespace branding
@@ -1864,11 +1858,10 @@ namespace api
       return postVoid(req, FormatJson(body))
     end function
 
-    ' Authenticates a user.
-    function AuthenticateByName(body = {} as object)
+    ' Authenticates a user by name.
+    function AuthenticateByName(username as string, password as string)
       req = APIRequest("users/authenticatebyname")
-      json = postJson(req, FormatJson(body))
-      return json
+      return postJson(req, FormatJson({ "Username": username, "Pw": password }))
     end function
 
     ' Authenticates a user with quick connect.

@@ -4,7 +4,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
 
 function get_token(username as string, password as string)
-  json = api.auth.AuthenticateByName(username, password)
+  json = api.users.AuthenticateByName(username, password)
 
   if not isValid(json) then return invalid
 
