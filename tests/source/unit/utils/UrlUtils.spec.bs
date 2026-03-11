@@ -162,6 +162,33 @@ namespace tests
       m.assertEqual(result, "http://192.168.1.5:8096/system/info/public")
     end function
 
+    @describe("resolveUrl IPv6 base with relative path")
+    @it("should resolve relative path against IPv6 base URL")
+    function _()
+      base = "http://[2001:db8::1]:8096"
+      location = "/system/info/public"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://[2001:db8::1]:8096/system/info/public")
+    end function
+
+    @describe("resolveUrl IPv6 base with relative redirect")
+    @it("should handle IPv6 with path-relative redirect")
+    function _()
+      base = "http://[::1]:8096/base/"
+      location = "relative/path"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://[::1]:8096/base/relative/path")
+    end function
+
+    @describe("resolveUrl absolute redirect to IPv6")
+    @it("should handle absolute redirect to IPv6 address")
+    function _()
+      base = "http://old.example.com:8096"
+      location = "http://[2001:db8::1]:8096/system/info/public"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://[2001:db8::1]:8096/system/info/public")
+    end function
+
     ' ============================================
     ' resolveUrl Tests - Protocol-Relative URLs
     ' ============================================
@@ -308,6 +335,24 @@ namespace tests
       m.assertEqual(getBaseUrl("not-a-url"), "")
     end function
 
+    @describe("getBaseUrl IPv6 with port")
+    @it("should extract scheme and authority from IPv6 URL with port")
+    function _()
+      m.assertEqual(getBaseUrl("http://[2001:db8::1]:8096/system/info"), "http://[2001:db8::1]:8096")
+    end function
+
+    @describe("getBaseUrl IPv6 without port")
+    @it("should extract scheme and authority from IPv6 URL without port")
+    function _()
+      m.assertEqual(getBaseUrl("http://[::1]/path"), "http://[::1]")
+    end function
+
+    @describe("getBaseUrl IPv6 with query")
+    @it("should strip query string from IPv6 URL")
+    function _()
+      m.assertEqual(getBaseUrl("http://[fe80::1]:8096/path?key=value"), "http://[fe80::1]:8096")
+    end function
+
     ' ============================================
     ' getServerBaseUrl Tests
     ' ============================================
@@ -372,6 +417,23 @@ namespace tests
       m.assertEqual(result, "http://example.com/jellyfin")
     end function
 
+    @describe("getServerBaseUrl IPv6 with base path")
+    @it("should preserve reverse-proxy base path with IPv6")
+    function _()
+      ' IPv6 reverse-proxy scenario
+      url = "http://[2001:db8::1]:8096/jellyfin/system/info/public"
+      result = getServerBaseUrl(url, "/system/info/public")
+      m.assertEqual(result, "http://[2001:db8::1]:8096/jellyfin")
+    end function
+
+    @describe("getServerBaseUrl IPv6 without base path")
+    @it("should work correctly for IPv6 without reverse-proxy base path")
+    function _()
+      url = "http://[::1]:8096/system/info/public"
+      result = getServerBaseUrl(url, "/system/info/public")
+      m.assertEqual(result, "http://[::1]:8096")
+    end function
+
     ' ============================================
     ' urlsEqual Tests
     ' ============================================
@@ -389,6 +451,22 @@ namespace tests
     function _()
       m.assertFalse(urlsEqual("http://example.com", "http://example.org"))
       m.assertFalse(urlsEqual("http://example.com", "https://example.com"))
+    end function
+
+    @describe("urlsEqual IPv6 URLs")
+    @it("should correctly compare IPv6 URLs")
+    function _()
+      ' Same IPv6 URL should be equal
+      m.assertTrue(urlsEqual("http://[2001:db8::1]:8096/path", "http://[2001:db8::1]:8096/path"))
+      ' Case normalization for IPv6
+      m.assertTrue(urlsEqual("http://[2001:DB8::1]:8096/", "http://[2001:db8::1]:8096"))
+    end function
+
+    @describe("urlsEqual IPv6 different addresses")
+    @it("should consider different IPv6 addresses as not equal")
+    function _()
+      m.assertFalse(urlsEqual("http://[2001:db8::1]:8096/", "http://[2001:db8::2]:8096/"))
+      m.assertFalse(urlsEqual("http://[::1]:8096/", "http://[::2]:8096/"))
     end function
 
     ' ============================================
@@ -484,6 +562,93 @@ namespace tests
       m.assertEqual(parts.scheme, "http")
       m.assertEqual(parts.path, "/path")
       m.assertEqual(parts.query, "?key=value")
+    end function
+
+    ' ============================================
+    ' parseUrlComponents IPv6 Tests
+    ' ============================================
+
+    @describe("parseUrlComponents IPv6 with port")
+    @it("should correctly parse IPv6 literal with port")
+    function _()
+      parts = parseUrlComponents("http://[2001:db8::1]:8096/system/info/public")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.host, "[2001:db8::1]")
+      m.assertEqual(parts.port, "8096")
+      m.assertEqual(parts.authority, "[2001:db8::1]:8096")
+      m.assertEqual(parts.path, "/system/info/public")
+    end function
+
+    @describe("parseUrlComponents IPv6 without port")
+    @it("should correctly parse IPv6 literal without explicit port")
+    function _()
+      parts = parseUrlComponents("http://[::1]/path")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.host, "[::1]")
+      m.assertEqual(parts.port, "80")
+      m.assertEqual(parts.authority, "[::1]")
+      m.assertEqual(parts.path, "/path")
+    end function
+
+    @describe("parseUrlComponents IPv6 HTTPS")
+    @it("should correctly parse IPv6 literal with HTTPS")
+    function _()
+      parts = parseUrlComponents("https://[fe80::1]:443/path")
+      m.assertEqual(parts.scheme, "https")
+      m.assertEqual(parts.host, "[fe80::1]")
+      m.assertEqual(parts.port, "443")
+      m.assertEqual(parts.path, "/path")
+    end function
+
+    @describe("parseUrlComponents IPv6 uppercase")
+    @it("should normalize IPv6 address to lowercase per RFC 5952")
+    function _()
+      parts = parseUrlComponents("http://[2001:DB8::1]:8096/path")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.host, "[2001:db8::1]")
+      m.assertEqual(parts.port, "8096")
+      m.assertEqual(parts.authority, "[2001:db8::1]:8096")
+    end function
+
+    @describe("parseUrlComponents IPv6 loopback")
+    @it("should correctly parse IPv6 loopback address")
+    function _()
+      parts = parseUrlComponents("http://[::1]:8096/")
+      m.assertEqual(parts.host, "[::1]")
+      m.assertEqual(parts.port, "8096")
+    end function
+
+    @describe("parseUrlComponents IPv6 full")
+    @it("should correctly parse full IPv6 address")
+    function _()
+      parts = parseUrlComponents("http://[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:8096/path")
+      m.assertEqual(parts.host, "[2001:0db8:85a3:0000:0000:8a2e:0370:7334]")
+      m.assertEqual(parts.port, "8096")
+    end function
+
+    @describe("parseUrlComponents IPv6 with userinfo")
+    @it("should correctly parse IPv6 with userinfo")
+    function _()
+      parts = parseUrlComponents("http://user:pass@[2001:db8::1]:8096/path")
+      m.assertEqual(parts.host, "[2001:db8::1]")
+      m.assertEqual(parts.port, "8096")
+      m.assertEqual(parts.authority, "[2001:db8::1]:8096")
+    end function
+
+    @describe("parseUrlComponents IPv6 invalid - no closing bracket")
+    @it("should return invalid for malformed IPv6 literal")
+    function _()
+      parts = parseUrlComponents("http://[2001:db8::1:8096/path")
+      m.assertInvalid(parts)
+    end function
+
+    @describe("parseUrlComponents IPv6 zone ID")
+    @it("should correctly parse IPv6 with zone ID")
+    function _()
+      ' IPv6 zone ID format: [fe80::1%eth0]
+      parts = parseUrlComponents("http://[fe80::1%25eth0]:8096/path")
+      m.assertEqual(parts.host, "[fe80::1%25eth0]")
+      m.assertEqual(parts.port, "8096")
     end function
 
     ' ============================================
@@ -712,6 +877,24 @@ namespace tests
       m.assertEqual(normalizeUrl("nas.local:8096"), "http://nas.local:8096")
       m.assertEqual(normalizeUrl("jellyfin.example.com"), "http://jellyfin.example.com")
       m.assertEqual(normalizeUrl("jellyfin.example.com/"), "http://jellyfin.example.com")
+    end function
+
+    @describe("normalizeUrl IPv6 with port")
+    @it("should correctly normalize IPv6 URLs with port")
+    function _()
+      m.assertEqual(normalizeUrl("http://[2001:db8::1]:8096/path"), "http://[2001:db8::1]:8096/path")
+    end function
+
+    @describe("normalizeUrl IPv6 without port")
+    @it("should correctly normalize IPv6 URLs without explicit port")
+    function _()
+      m.assertEqual(normalizeUrl("http://[::1]/"), "http://[::1]")
+    end function
+
+    @describe("normalizeUrl IPv6 case normalization")
+    @it("should lowercase IPv6 addresses per RFC 5952")
+    function _()
+      m.assertEqual(normalizeUrl("http://[2001:DB8::1]:8096/"), "http://[2001:db8::1]:8096")
     end function
 
     @describe("urlsEqual scheme-less server comparison")
