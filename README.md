@@ -13,9 +13,12 @@ JellyRock is a Jellyfin client for Roku devices with a focus on stability and UX
 
 All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.md).
 
-## Install
+## Prerequisites
 
-JellyRock requires **Roku OS 11** or later.
+- Roku OS 11 or later
+- Jellyfin server 10.7.0 or later
+
+## Install
 
 ### Using your Roku device
 
