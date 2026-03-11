@@ -1,0 +1,289 @@
+' Unit tests for URL utility functions
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/url.bs"
+
+namespace Tests
+  @suite("URL Utility Functions")
+  class UrlUtilsTests extends tests.BaseTestSuite
+
+    ' ============================================
+    ' normalizeUrl Tests - Scheme Normalization
+    ' ============================================
+
+    @describe("normalizeUrl scheme case handling")
+    @it("should normalize HTTP scheme to lowercase")
+    function _()
+      m.assertEqual(normalizeUrl("HTTP://example.com"), "http://example.com")
+    end function
+
+    @describe("normalizeUrl HTTPS scheme case handling")
+    @it("should normalize HTTPS scheme and host to lowercase")
+    function _()
+      m.assertEqual(normalizeUrl("HTTPS://Example.Com"), "https://example.com")
+    end function
+
+    ' ============================================
+    ' normalizeUrl Tests - Trailing Slash Handling
+    ' ============================================
+
+    @describe("normalizeUrl trailing slash on root")
+    @it("should remove trailing slash from root URL")
+    function _()
+      m.assertEqual(normalizeUrl("http://example.com/"), "http://example.com")
+    end function
+
+    @describe("normalizeUrl trailing slash on path")
+    @it("should remove trailing slash from path ending")
+    function _()
+      m.assertEqual(normalizeUrl("https://example.com/path/"), "https://example.com/path")
+    end function
+
+    @describe("normalizeUrl no trailing slash preservation")
+    @it("should preserve URL without trailing slash")
+    function _()
+      m.assertEqual(normalizeUrl("http://example.com"), "http://example.com")
+    end function
+
+    ' ============================================
+    ' normalizeUrl Tests - Default Port Removal
+    ' ============================================
+
+    @describe("normalizeUrl default HTTP port removal")
+    @it("should remove default port 80 from HTTP URLs")
+    function _()
+      m.assertEqual(normalizeUrl("http://example.com:80"), "http://example.com")
+      m.assertEqual(normalizeUrl("http://example.com:80/path"), "http://example.com/path")
+    end function
+
+    @describe("normalizeUrl default HTTPS port removal")
+    @it("should remove default port 443 from HTTPS URLs")
+    function _()
+      m.assertEqual(normalizeUrl("https://example.com:443"), "https://example.com")
+      m.assertEqual(normalizeUrl("https://example.com:443/path"), "https://example.com/path")
+    end function
+
+    @describe("normalizeUrl non-default port preservation")
+    @it("should preserve non-default ports like 8096 and 8080")
+    function _()
+      m.assertEqual(normalizeUrl("http://example.com:8096"), "http://example.com:8096")
+      m.assertEqual(normalizeUrl("https://example.com:8080"), "https://example.com:8080")
+    end function
+
+    ' ============================================
+    ' normalizeUrl Tests - Invalid Input Handling
+    ' ============================================
+
+    @describe("normalizeUrl empty string input")
+    @it("should return empty string for empty input")
+    function _()
+      m.assertEqual(normalizeUrl(""), "")
+    end function
+
+    @describe("normalizeUrl invalid URL format")
+    @it("should return empty string for malformed URLs")
+    function _()
+      m.assertEqual(normalizeUrl("not-a-url"), "")
+    end function
+
+    ' ============================================
+    ' normalizeUrl Tests - Query String Handling
+    ' ============================================
+
+    @describe("normalizeUrl query string preservation")
+    @it("should preserve query strings during normalization")
+    function _()
+      m.assertEqual(normalizeUrl("http://example.com/path?key=value"), "http://example.com/path?key=value")
+    end function
+
+    ' ============================================
+    ' resolveUrl Tests - Absolute URL References
+    ' ============================================
+
+    @describe("resolveUrl absolute URL reference")
+    @it("should return absolute URL unchanged when reference is absolute")
+    function _()
+      m.assertEqual(resolveUrl("http://old.com", "https://new.com/path"), "https://new.com/path")
+    end function
+
+    @describe("resolveUrl absolute redirect with Jellyfin path")
+    @it("should resolve absolute redirect containing system info public path")
+    function _()
+      base = "http://old.example.com:8096"
+      location = "https://new.example.com/system/info/public"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "https://new.example.com/system/info/public")
+    end function
+
+    ' ============================================
+    ' resolveUrl Tests - Relative Path Resolution
+    ' ============================================
+
+    @describe("resolveUrl relative path against base")
+    @it("should resolve relative path against base URL")
+    function _()
+      m.assertEqual(resolveUrl("http://example.com:8096", "/system/info/public"), "http://example.com:8096/system/info/public")
+    end function
+
+    @describe("resolveUrl Jellyfin server redirect scenario")
+    @it("should resolve Jellyfin server relative redirect to full URL")
+    function _()
+      ' This tests RFC 3986 resolution - session.Discover() uses getBaseUrl() to extract base
+      base = "http://192.168.1.5:8096"
+      location = "/system/info/public"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://192.168.1.5:8096/system/info/public")
+    end function
+
+    ' ============================================
+    ' resolveUrl Tests - Protocol-Relative URLs
+    ' ============================================
+
+    @describe("resolveUrl protocol-relative URL")
+    @it("should resolve protocol-relative URL using base scheme")
+    function _()
+      m.assertEqual(resolveUrl("http://example.com", "//new.example.com/path"), "http://new.example.com/path")
+    end function
+
+    ' ============================================
+    ' resolveUrl Tests - Edge Cases
+    ' ============================================
+
+    @describe("resolveUrl empty reference string")
+    @it("should return base URL when reference is empty")
+    function _()
+      m.assertEqual(resolveUrl("http://example.com", ""), "http://example.com")
+    end function
+
+    @describe("resolveUrl fragment-only reference")
+    @it("should return base URL unchanged for fragment-only references")
+    function _()
+      m.assertEqual(resolveUrl("http://example.com/page", "#section"), "http://example.com/page")
+    end function
+
+    @describe("resolveUrl invalid base URL")
+    @it("should return empty string when base URL is invalid")
+    function _()
+      m.assertEqual(resolveUrl("", "/path"), "")
+    end function
+
+    @describe("resolveUrl path with dot segments")
+    @it("should normalize dot segments in resolved path")
+    function _()
+      ' Though we don't expect this from Jellyfin, test robustness
+      base = "http://example.com/a/b"
+      location = "/c/../d"
+      result = resolveUrl(base, location)
+      ' Path should be normalized
+      m.assertEqual(result, "http://example.com/d")
+    end function
+
+    ' ============================================
+    ' getBaseUrl Tests
+    ' ============================================
+
+    @describe("getBaseUrl extraction with path")
+    @it("should extract scheme and authority from URL with path")
+    function _()
+      m.assertEqual(getBaseUrl("http://example.com:8096/system/info"), "http://example.com:8096")
+      m.assertEqual(getBaseUrl("https://example.com/path?query=1"), "https://example.com")
+    end function
+
+    @describe("getBaseUrl extraction without path")
+    @it("should extract base from URL without path component")
+    function _()
+      m.assertEqual(getBaseUrl("http://example.com:8096"), "http://example.com:8096")
+    end function
+
+    @describe("getBaseUrl invalid input handling")
+    @it("should return empty string for invalid or empty URLs")
+    function _()
+      m.assertEqual(getBaseUrl(""), "")
+      m.assertEqual(getBaseUrl("not-a-url"), "")
+    end function
+
+    ' ============================================
+    ' urlsEqual Tests
+    ' ============================================
+
+    @describe("urlsEqual equivalent URL comparison")
+    @it("should consider semantically equivalent URLs as equal")
+    function _()
+      m.assertTrue(urlsEqual("http://example.com/", "http://example.com"))
+      m.assertTrue(urlsEqual("HTTP://Example.Com", "http://example.com"))
+      m.assertTrue(urlsEqual("http://example.com:80", "http://example.com"))
+    end function
+
+    @describe("urlsEqual different URL comparison")
+    @it("should consider different URLs as not equal")
+    function _()
+      m.assertFalse(urlsEqual("http://example.com", "http://example.org"))
+      m.assertFalse(urlsEqual("http://example.com", "https://example.com"))
+    end function
+
+    ' ============================================
+    ' parseUrlComponents Tests
+    ' ============================================
+
+    @describe("parseUrlComponents basic URL parsing")
+    @it("should correctly parse URL components")
+    function _()
+      parts = parseUrlComponents("http://example.com:8096/path?key=value")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.host, "example.com")
+      m.assertEqual(parts.port, "8096")
+      m.assertEqual(parts.path, "/path")
+      m.assertEqual(parts.query, "?key=value")
+    end function
+
+    @describe("parseUrlComponents URL without query")
+    @it("should parse URL without query string correctly")
+    function _()
+      parts = parseUrlComponents("https://example.com/path")
+      m.assertEqual(parts.scheme, "https")
+      m.assertEqual(parts.host, "example.com")
+      m.assertEqual(parts.port, "443")
+      m.assertEqual(parts.path, "/path")
+      m.assertEqual(parts.query, "")
+    end function
+
+    @describe("parseUrlComponents URL with default port")
+    @it("should parse HTTP URL without explicit port")
+    function _()
+      parts = parseUrlComponents("http://example.com/path")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.host, "example.com")
+      m.assertEqual(parts.port, "80")
+      m.assertEqual(parts.path, "/path")
+    end function
+
+    @describe("parseUrlComponents host lowercase conversion")
+    @it("should convert host to lowercase")
+    function _()
+      parts = parseUrlComponents("HTTP://Example.Com:8096/")
+      m.assertEqual(parts.host, "example.com")
+      m.assertEqual(parts.authority, "example.com:8096")
+    end function
+
+    @describe("parseUrlComponents complex query string")
+    @it("should parse URL with multiple query parameters")
+    function _()
+      parts = parseUrlComponents("http://example.com/path?a=1&b=2&c=3")
+      m.assertEqual(parts.query, "?a=1&b=2&c=3")
+    end function
+
+    @describe("parseUrlComponents root path only")
+    @it("should handle URL with just root path")
+    function _()
+      parts = parseUrlComponents("http://example.com")
+      m.assertEqual(parts.path, "/")
+      m.assertEqual(parts.host, "example.com")
+    end function
+
+    @describe("parseUrlComponents invalid URL")
+    @it("should return invalid for malformed URLs")
+    function _()
+      parts = parseUrlComponents("not-a-url")
+      m.assertInvalid(parts)
+    end function
+  end class
+end namespace

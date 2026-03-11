@@ -1,3 +1,5 @@
+import "pkg:/source/utils/url.bs"
+
 ' Functions for making requests to the API
 function buildParams(params = {} as object) as string
   ' Take an object of parameters and construct the URL query
@@ -180,16 +182,11 @@ function get_url()
   ' ContentNode fields return "" instead of invalid, so we must check both
   if not isValid(serverURL) or serverURL = "" then return invalid
 
-  if serverURL.right(1) = "/"
-    serverURL = serverURL.left(serverURL.len() - 1)
-  end if
+  ' Normalize URL using centralized normalization
+  normalizedUrl = normalizeUrl(serverURL)
+  if normalizedUrl = "" then return invalid
 
-  ' append http:// to the start if not specified
-  if serverURL.left(7) <> "http://" and serverURL.left(8) <> "https://"
-    serverURL = "http://" + serverURL
-  end if
-
-  return serverURL
+  return normalizedUrl
 end function
 
 function getString(req)

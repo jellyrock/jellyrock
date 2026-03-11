@@ -10,6 +10,7 @@ import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeUtils.bs"
+import "pkg:/source/utils/url.bs"
 
 ' ============================================
 ' SERVER NAMESPACE
@@ -20,8 +21,12 @@ namespace server
   function UpdateURL(url as string) as boolean
     if url = "" then return false
 
+    ' Normalize URL for consistent storage and comparison
+    normalizedUrl = normalizeUrl(url)
+    if normalizedUrl = "" then return false
+
     serverNode = m.global.server
-    serverNode.serverUrl = url
+    serverNode.serverUrl = normalizedUrl
     success = server.Populate()
 
     if not success
@@ -100,13 +105,20 @@ namespace server
   ' redirects silently, making the redirect URL undetectable. By calling APIRequest() directly and executing
   ' async, we get the same auth header and HTTPS certificate setup without losing the redirect headers.
   '
+  ' @param redirectCount - Internal counter for tracking redirects (default: 0)
   ' @returns {object} Server info with Error field set on failure
-  function Discover() as object
+  function Discover(redirectCount = 0 as integer) as object
     serverNode = m.global.server
 
     ' Validate URL
     if not isValidAndNotEmpty(serverNode.serverUrl)
       return { "Error": true, "ErrorMessage": "Server URL not configured" }
+    end if
+
+    ' RFC 7231 recommends max 10 redirects
+    MAX_REDIRECTS = 10
+    if redirectCount >= MAX_REDIRECTS
+      return { "Error": true, "ErrorMessage": "Server redirect loop detected - too many redirects" }
     end if
 
     ' APIRequest applies auth header and HTTPS certificate authority (same as all other API calls).
@@ -130,19 +142,34 @@ namespace server
     ' Check for redirect headers
     headers = resp.GetResponseHeaders()
     if isValid(headers) and isValid(headers.location)
+      ' Resolve relative URLs and normalize
+      currentUrl = serverNode.serverUrl
+      resolvedUrl = resolveUrl(currentUrl, headers.location)
+      newBaseUrl = getBaseUrl(resolvedUrl)
+      normalizedNewUrl = normalizeUrl(newBaseUrl)
+      normalizedCurrentUrl = normalizeUrl(currentUrl)
+
       ' Only follow redirect if path matches /System/Info/Public
       if LCase(right(headers.location, 19)) = "/system/info/public"
-        newUrl = left(headers.location, len(headers.location) - 19)
-        set_setting("server", newUrl)
+        ' Validate resolved URL is not empty
+        if normalizedNewUrl = ""
+          return { "Error": true, "ErrorMessage": "Server returned invalid redirect URL" }
+        end if
 
-        ' Update server URL and retry
-        serverNode.serverUrl = newUrl
-        result = server.Discover()
+        ' Loop detection: if new URL is same as current, we've looped
+        if normalizedNewUrl = normalizedCurrentUrl
+          return { "Error": true, "ErrorMessage": "Server redirect loop detected - redirecting to same URL" }
+        end if
+
+        ' Persist and retry with incremented counter
+        set_setting("server", normalizedNewUrl)
+        serverNode.serverUrl = normalizedNewUrl
+        result = server.Discover(redirectCount + 1)
 
         ' Add redirect info to error if retry failed
         if result.Error
-          result.UpdatedUrl = newUrl
-          result.ErrorMessage = result.ErrorMessage + " (Note: Server redirected us to " + newUrl + ")"
+          result.UpdatedUrl = normalizedNewUrl
+          result.ErrorMessage = result.ErrorMessage + " (Note: Server redirected us to " + normalizedNewUrl + ")"
         end if
         return result
       end if

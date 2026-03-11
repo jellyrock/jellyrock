@@ -1,0 +1,268 @@
+' URL Utility Functions
+' RFC 3986 compliant URL resolution and normalization
+
+' Resolve a reference URI against a base URI per RFC 3986 Section 5
+' @param baseUrl - The base URI (absolute)
+' @param reference - The reference URI (can be absolute, relative, or protocol-relative)
+' @returns Resolved absolute URI string, or empty string if resolution fails
+function resolveUrl(baseUrl as string, reference as string) as string
+  if reference = "" then return baseUrl
+
+  ' Check for fragment-only reference (same-document reference)
+  if Left(reference, 1) = "#" then return baseUrl
+
+  ' Parse the base URL
+  baseParts = parseUrlComponents(baseUrl)
+  if not isValid(baseParts) then return ""
+
+  ' Check if reference is absolute (has scheme)
+  if LCase(Left(reference, 7)) = "http://" or LCase(Left(reference, 8)) = "https://"
+    ' Reference is absolute - return it (with normalization)
+    return normalizeUrl(reference)
+  end if
+
+  ' Check for protocol-relative reference (starts with //)
+  if Left(reference, 2) = "//"
+    return normalizeUrl(baseParts.scheme + ":" + reference)
+  end if
+
+  ' Reference is relative - need to resolve against base
+  resultParts = {}
+
+  ' Check if reference is path-absolute (starts with /)
+  if Left(reference, 1) = "/"
+    resultParts = {
+      scheme: baseParts.scheme,
+      authority: baseParts.authority,
+      path: removeDotSegments(reference),
+      query: ""
+    }
+  else
+    ' Reference is path-relative - merge with base path
+    mergedPath = mergePaths(baseParts.path, reference)
+    resultParts = {
+      scheme: baseParts.scheme,
+      authority: baseParts.authority,
+      path: removeDotSegments(mergedPath),
+      query: ""
+    }
+  end if
+
+  ' Extract query string from reference if present
+  queryIndex = Instr(1, reference, "?")
+  if queryIndex > 0
+    resultParts.query = Mid(reference, queryIndex)
+  end if
+
+  return reconstructUrl(resultParts)
+end function
+
+' Normalize a URL for consistent comparison and storage
+' - Lowercase scheme
+' - Remove default ports (:80 for http, :443 for https)
+' - Remove trailing slash from path (except root)
+' - Remove empty query strings
+' @param url - The URL to normalize
+' @returns Normalized URL string, or empty string if invalid
+function normalizeUrl(url as string) as string
+  if url = "" then return ""
+
+  parts = parseUrlComponents(url)
+  if not isValid(parts) then return ""
+
+  ' Lowercase scheme
+  parts.scheme = LCase(parts.scheme)
+
+  ' Remove default ports
+  if parts.port = "80" and parts.scheme = "http"
+    parts.authority = parts.host
+  else if parts.port = "443" and parts.scheme = "https"
+    parts.authority = parts.host
+  end if
+
+  ' Remove trailing slash from path (but keep root "/")
+  if Len(parts.path) > 1 and Right(parts.path, 1) = "/"
+    parts.path = Left(parts.path, Len(parts.path) - 1)
+  end if
+
+  ' Remove empty query strings
+  if parts.query = "?"
+    parts.query = ""
+  end if
+
+  return reconstructUrl(parts)
+end function
+
+' Parse URL into components
+' @param url - The URL to parse
+' @returns Associative array with scheme, authority, host, port, path, query, or invalid
+function parseUrlComponents(url as string) as object
+  if url = "" then return invalid
+
+  ' Regex pattern for RFC 3986 generic URI
+  ' Groups: 1=scheme, 3=authority, 4=path, 6=query, 8=fragment
+  rgx = CreateObject("roRegex", "^([a-zA-Z][a-zA-Z0-9+.-]*):(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#.*)?$", "")
+  match = rgx.match(url)
+
+  if match.count() < 4 then return invalid
+
+  scheme = match[1]
+  authority = match[3]
+  path = match[4]
+  query = ""
+  if match.count() > 5 and isValid(match[5]) and match[5] <> ""
+    ' match[5] contains the query including the leading "?"
+    query = match[5]
+  end if
+
+  ' Parse authority into host and port
+  host = ""
+  port = ""
+  if isValid(authority) and authority <> ""
+    ' Check for userinfo (user:pass@host)
+    atIndex = Instr(1, authority, "@")
+    if atIndex > 0
+      authority = Mid(authority, atIndex + 1)
+    end if
+
+    ' Check for port
+    colonIndex = Instr(1, authority, ":")
+    if colonIndex > 0
+      host = LCase(Left(authority, colonIndex - 1))
+      port = Mid(authority, colonIndex + 1)
+      ' Rebuild authority with lowercase host
+      authority = host + ":" + port
+    else
+      host = LCase(authority)
+      authority = host
+      ' Default ports
+      if LCase(scheme) = "http"
+        port = "80"
+      else if LCase(scheme) = "https"
+        port = "443"
+      end if
+    end if
+  end if
+
+  ' Ensure path starts with /
+  if path = ""
+    path = "/"
+  else if Left(path, 1) <> "/"
+    path = "/" + path
+  end if
+
+  return {
+    scheme: scheme,
+    authority: authority,
+    host: host,
+    port: port,
+    path: path,
+    query: query,
+    fullAuthority: isValid(authority) and authority <> "" ? "//" + authority : ""
+  }
+end function
+
+' Merge a relative path with a base path
+' @param basePath - The base path (directory)
+' @param relPath - The relative path to merge
+' @returns Merged path string
+function mergePaths(basePath as string, relPath as string) as string
+  ' Remove everything after last / in base path to get directory
+  lastSlash = Instr(Len(basePath), basePath, "/")
+  if lastSlash <= 0
+    return "/" + relPath
+  end if
+
+  baseDir = Left(basePath, lastSlash)
+  return baseDir + relPath
+end function
+
+' Remove dot segments from path per RFC 3986 Section 5.2.4
+' @param path - The path to process
+' @returns Path with dot segments removed
+function removeDotSegments(path as string) as string
+  if path = "" then return "/"
+
+  rgx = CreateObject("roRegex", "/", "")
+  segments = rgx.Split(path)
+  output = []
+
+  for each segment in segments
+    if segment = ".."
+      ' Pop last segment if we can
+      if output.count() > 0 and output[output.count() - 1] <> ""
+        output.pop()
+      end if
+    else if segment <> "." and segment <> ""
+      ' Keep non-dot segments
+      output.push(segment)
+    end if
+  end for
+
+  ' Reconstruct path
+  if output.count() = 0
+    return "/"
+  end if
+
+  result = ""
+  for each segment in output
+    result = result + "/" + segment
+  end for
+
+  ' Preserve trailing slash if original had it
+  if Right(path, 1) = "/" and Right(result, 1) <> "/"
+    result = result + "/"
+  end if
+
+  return result
+end function
+
+' Reconstruct URL from parsed components
+' @param parts - Associative array with scheme, authority, path, query
+' @returns Reconstructed URL string
+function reconstructUrl(parts as object) as string
+  url = parts.scheme + ":"
+
+  if isValid(parts.authority) and parts.authority <> ""
+    url = url + "//" + parts.authority
+  else if isValid(parts.fullAuthority) and parts.fullAuthority <> ""
+    url = url + parts.fullAuthority
+  end if
+
+  ' Only add path if it's not just the root "/" 
+  ' (to avoid trailing slash on URLs without paths)
+  if isValid(parts.path) and parts.path <> "" and parts.path <> "/"
+    url = url + parts.path
+  end if
+
+  if isValid(parts.query) and parts.query <> ""
+    url = url + parts.query
+  end if
+
+  return url
+end function
+
+' Extract base URL (scheme + authority) from a full URL
+' @param url - The full URL
+' @returns Base URL (e.g., "https://example.com:8096"), or empty string if invalid
+function getBaseUrl(url as string) as string
+  if url = "" then return ""
+
+  parts = parseUrlComponents(url)
+  if not isValid(parts) then return ""
+
+  base = LCase(parts.scheme) + ":"
+  if isValid(parts.authority) and parts.authority <> ""
+    base = base + "//" + parts.authority
+  end if
+
+  return base
+end function
+
+' Check if two URLs are equivalent after normalization
+' @param url1 - First URL
+' @param url2 - Second URL
+' @returns true if URLs are equivalent, false otherwise
+function urlsEqual(url1 as string, url2 as string) as boolean
+  return normalizeUrl(url1) = normalizeUrl(url2)
+end function
