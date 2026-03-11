@@ -127,7 +127,7 @@ function parseUrlComponents(url as string) as object
   if url = "" then return invalid
 
   ' Regex pattern for RFC 3986 generic URI
-  ' Groups: 1=scheme, 3=authority, 4=path, 6=query, 8=fragment
+  ' Groups: 1=scheme, 3=authority, 4=path, 5=query (with "?"), 6=query value, 7=fragment
   rgx = CreateObject("roRegex", "^([a-zA-Z][a-zA-Z0-9+.-]*):(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#.*)?$", "")
   match = rgx.match(url)
 
