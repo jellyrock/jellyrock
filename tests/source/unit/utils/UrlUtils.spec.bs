@@ -79,10 +79,38 @@ namespace tests
       m.assertEqual(normalizeUrl(""), "")
     end function
 
-    @describe("normalizeUrl invalid URL format")
-    @it("should return empty string for malformed URLs")
+    @describe("normalizeUrl server address without scheme")
+    @it("should auto-prepend http:// to server-like addresses without scheme")
     function _()
-      m.assertEqual(normalizeUrl("not-a-url"), "")
+      m.assertEqual(normalizeUrl("not-a-url"), "http://not-a-url")
+    end function
+
+    ' ============================================
+    ' normalizeUrl Tests - Missing Scheme Handling
+    ' ============================================
+
+    @describe("normalizeUrl IP address without scheme")
+    @it("should auto-prepend http:// to IP:port inputs")
+    function _()
+      m.assertEqual(normalizeUrl("192.168.1.100:8096"), "http://192.168.1.100:8096")
+    end function
+
+    @describe("normalizeUrl localhost without scheme")
+    @it("should auto-prepend http:// to localhost:port inputs")
+    function _()
+      m.assertEqual(normalizeUrl("localhost:8096"), "http://localhost:8096")
+    end function
+
+    @describe("normalizeUrl hostname without scheme")
+    @it("should auto-prepend http:// to hostname inputs")
+    function _()
+      m.assertEqual(normalizeUrl("server.local"), "http://server.local")
+    end function
+
+    @describe("normalizeUrl hostname with path no scheme")
+    @it("should auto-prepend http:// and normalize path")
+    function _()
+      m.assertEqual(normalizeUrl("server.local/path/"), "http://server.local/path")
     end function
 
     ' ============================================

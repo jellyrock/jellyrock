@@ -67,7 +67,14 @@ end function
 function normalizeUrl(url as string) as string
   if url = "" then return ""
 
-  parts = parseUrlComponents(url)
+  ' If no :// present, assume http:// scheme for backward compatibility with
+  ' UI-suggested inputs like "192.168.1.100:8096" and persisted legacy values.
+  ' Otherwise parse as-is for URLs that already have a scheme.
+  if Instr(1, url, "://") = 0
+    parts = parseUrlComponents("http://" + url)
+  else
+    parts = parseUrlComponents(url)
+  end if
   if not isValid(parts) then return ""
 
   ' Lowercase scheme
