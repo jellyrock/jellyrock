@@ -392,5 +392,270 @@ namespace tests
       parts = parseUrlComponents("not-a-url")
       m.assertInvalid(parts)
     end function
+
+    @describe("parseUrlComponents URL with userinfo")
+    @it("should parse URL containing user:pass@host correctly")
+    function _()
+      parts = parseUrlComponents("http://user:pass@example.com:8096/path")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.host, "example.com")
+      m.assertEqual(parts.port, "8096")
+      m.assertEqual(parts.authority, "example.com:8096")
+      m.assertEqual(parts.path, "/path")
+    end function
+
+    @describe("parseUrlComponents URL with fragment")
+    @it("should parse URL containing fragment correctly")
+    function _()
+      parts = parseUrlComponents("http://example.com/path#section")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.path, "/path")
+      m.assertEqual(parts.query, "")
+    end function
+
+    @describe("parseUrlComponents URL with query and fragment")
+    @it("should parse URL containing both query and fragment")
+    function _()
+      parts = parseUrlComponents("http://example.com/path?key=value#section")
+      m.assertEqual(parts.scheme, "http")
+      m.assertEqual(parts.path, "/path")
+      m.assertEqual(parts.query, "?key=value")
+    end function
+
+    ' ============================================
+    ' mergePaths Tests
+    ' ============================================
+
+    @describe("mergePaths base with trailing slash")
+    @it("should merge relative path with base ending in slash")
+    function _()
+      result = mergePaths("/a/b/", "c/d")
+      m.assertEqual(result, "/a/b/c/d")
+    end function
+
+    @describe("mergePaths base without trailing slash")
+    @it("should replace last segment of base path")
+    function _()
+      result = mergePaths("/a/b/c", "d/e")
+      m.assertEqual(result, "/a/b/d/e")
+    end function
+
+    @describe("mergePaths base at root")
+    @it("should handle base path at root level")
+    function _()
+      result = mergePaths("/", "path/to/file")
+      m.assertEqual(result, "/path/to/file")
+    end function
+
+    @describe("mergePaths empty base")
+    @it("should handle empty or invalid base path")
+    function _()
+      result = mergePaths("", "path")
+      m.assertEqual(result, "/path")
+    end function
+
+    ' ============================================
+    ' removeDotSegments Tests
+    ' ============================================
+
+    @describe("removeDotSegments single dot segments")
+    @it("should remove single dot segments per RFC 3986")
+    function _()
+      m.assertEqual(removeDotSegments("/a/./b/./c"), "/a/b/c")
+      m.assertEqual(removeDotSegments("/./a/b"), "/a/b")
+    end function
+
+    @describe("removeDotSegments double dot segments")
+    @it("should remove double dot segments and parent directory per RFC 3986")
+    function _()
+      m.assertEqual(removeDotSegments("/a/b/../c"), "/a/c")
+      m.assertEqual(removeDotSegments("/a/b/c/../../d"), "/a/d")
+      m.assertEqual(removeDotSegments("/../a"), "/a")
+    end function
+
+    @describe("removeDotSegments multiple parent traversal")
+    @it("should handle multiple parent directory traversals")
+    function _()
+      m.assertEqual(removeDotSegments("/a/b/c/../../../d"), "/d")
+      m.assertEqual(removeDotSegments("/a/../b/../c/../d"), "/d")
+    end function
+
+    @describe("removeDotSegments mixed segments")
+    @it("should handle mix of dot and double-dot segments")
+    function _()
+      m.assertEqual(removeDotSegments("/a/./b/../c/./d"), "/a/c/d")
+    end function
+
+    @describe("removeDotSegments preserve trailing slash")
+    @it("should preserve trailing slash if original had one")
+    function _()
+      m.assertEqual(removeDotSegments("/a/b/"), "/a/b/")
+      m.assertEqual(removeDotSegments("/a/b/c/../"), "/a/b/")
+    end function
+
+    @describe("removeDotSegments empty path")
+    @it("should return root for empty path")
+    function _()
+      m.assertEqual(removeDotSegments(""), "/")
+    end function
+
+    @describe("removeDotSegments only dot segments")
+    @it("should return root for paths with only dot segments")
+    function _()
+      m.assertEqual(removeDotSegments("/././."), "/")
+      m.assertEqual(removeDotSegments("/.."), "/")
+    end function
+
+    ' ============================================
+    ' reconstructUrl Tests
+    ' ============================================
+
+    @describe("reconstructUrl basic URL")
+    @it("should reconstruct URL from parsed components")
+    function _()
+      parts = {
+        scheme: "http",
+        authority: "example.com:8096",
+        path: "/path",
+        query: "?key=value"
+      }
+      result = reconstructUrl(parts)
+      m.assertEqual(result, "http://example.com:8096/path?key=value")
+    end function
+
+    @describe("reconstructUrl without authority")
+    @it("should reconstruct URL without authority")
+    function _()
+      parts = {
+        scheme: "mailto",
+        authority: "",
+        path: "user@example.com",
+        query: ""
+      }
+      result = reconstructUrl(parts)
+      m.assertEqual(result, "mailto:user@example.com")
+    end function
+
+    @describe("reconstructUrl with fullAuthority")
+    @it("should use fullAuthority when authority is empty")
+    function _()
+      parts = {
+        scheme: "https",
+        authority: "",
+        fullAuthority: "//example.com",
+        path: "/",
+        query: ""
+      }
+      result = reconstructUrl(parts)
+      m.assertEqual(result, "https://example.com")
+    end function
+
+    @describe("reconstructUrl root path only")
+    @it("should not include root path in reconstructed URL")
+    function _()
+      parts = {
+        scheme: "http",
+        authority: "example.com",
+        path: "/",
+        query: ""
+      }
+      result = reconstructUrl(parts)
+      m.assertEqual(result, "http://example.com")
+    end function
+
+    @describe("reconstructUrl without query")
+    @it("should reconstruct URL without query string")
+    function _()
+      parts = {
+        scheme: "https",
+        authority: "example.com:443",
+        path: "/api/v1",
+        query: ""
+      }
+      result = reconstructUrl(parts)
+      m.assertEqual(result, "https://example.com:443/api/v1")
+    end function
+
+    ' ============================================
+    ' RFC 3986 Compliance Tests
+    ' ============================================
+
+    @describe("RFC 3986 resolveUrl complex relative resolution")
+    @it("should handle complex relative path resolution per RFC 3986")
+    function _()
+      ' From RFC 3986 Section 5.4.2 - abnormal examples
+      base = "http://a/b/c/d;p?q"
+
+      ' Relative paths that don't start with /
+      m.assertEqual(resolveUrl(base, "g"), "http://a/b/c/g")
+      m.assertEqual(resolveUrl(base, "./g"), "http://a/b/c/g")
+      m.assertEqual(resolveUrl(base, "g/"), "http://a/b/c/g")
+      m.assertEqual(resolveUrl(base, "/g"), "http://a/g")
+      m.assertEqual(resolveUrl(base, "//g"), "http://g")
+      m.assertEqual(resolveUrl(base, "?y"), "http://a/b/c/d;p?y")
+      m.assertEqual(resolveUrl(base, "g?y"), "http://a/b/c/g?y")
+      m.assertEqual(resolveUrl(base, "#s"), "http://a/b/c/d;p?q")
+      m.assertEqual(resolveUrl(base, "g#s"), "http://a/b/c/g")
+      m.assertEqual(resolveUrl(base, "g?y#s"), "http://a/b/c/g?y")
+      m.assertEqual(resolveUrl(base, ";x"), "http://a/b/c/;x")
+      m.assertEqual(resolveUrl(base, "g;x"), "http://a/b/c/g;x")
+      m.assertEqual(resolveUrl(base, "g;x?y#s"), "http://a/b/c/g;x?y")
+
+      ' Dot segment resolution
+      m.assertEqual(resolveUrl(base, "."), "http://a/b/c")
+      m.assertEqual(resolveUrl(base, "./"), "http://a/b/c")
+      m.assertEqual(resolveUrl(base, ".."), "http://a/b")
+      m.assertEqual(resolveUrl(base, "../"), "http://a/b")
+      m.assertEqual(resolveUrl(base, "../g"), "http://a/b/g")
+      m.assertEqual(resolveUrl(base, "../.."), "http://a")
+      m.assertEqual(resolveUrl(base, "../../"), "http://a")
+      m.assertEqual(resolveUrl(base, "../../g"), "http://a/g")
+    end function
+
+    ' ============================================
+    ' Real-World Jellyfin Scenarios
+    ' ============================================
+
+    @describe("resolveUrl Jellyfin server with query redirect")
+    @it("should handle Jellyfin redirects with query parameters")
+    function _()
+      base = "http://192.168.1.100:8096"
+      location = "/system/info/public?format=json"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://192.168.1.100:8096/system/info/public?format=json")
+    end function
+
+    @describe("resolveUrl persisted server URL without scheme")
+    @it("should handle resolution when base URL is normalized from scheme-less input")
+    function _()
+      ' Simulate a server URL that was persisted without scheme
+      ' and later normalized
+      normalizedBase = normalizeUrl("192.168.1.100:8096")
+      m.assertEqual(normalizedBase, "http://192.168.1.100:8096")
+
+      ' Now resolve against it
+      location = "/Users"
+      result = resolveUrl(normalizedBase, location)
+      m.assertEqual(result, "http://192.168.1.100:8096/Users")
+    end function
+
+    @describe("normalizeUrl persisted legacy value edge cases")
+    @it("should handle various persisted server URL formats")
+    function _()
+      ' Various formats users might have persisted
+      m.assertEqual(normalizeUrl("192.168.1.100"), "http://192.168.1.100")
+      m.assertEqual(normalizeUrl("192.168.1.100:8096/jellyfin"), "http://192.168.1.100:8096/jellyfin")
+      m.assertEqual(normalizeUrl("nas.local:8096"), "http://nas.local:8096")
+      m.assertEqual(normalizeUrl("jellyfin.example.com"), "http://jellyfin.example.com")
+      m.assertEqual(normalizeUrl("jellyfin.example.com/"), "http://jellyfin.example.com")
+    end function
+
+    @describe("urlsEqual scheme-less server comparison")
+    @it("should consider scheme-less and explicit URLs equivalent")
+    function _()
+      m.assertTrue(urlsEqual("192.168.1.100:8096", "http://192.168.1.100:8096"))
+      m.assertTrue(urlsEqual("localhost:8096", "http://localhost:8096"))
+      m.assertTrue(urlsEqual("HTTP://192.168.1.100:8096", "http://192.168.1.100:8096"))
+    end function
   end class
 end namespace

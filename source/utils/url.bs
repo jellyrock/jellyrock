@@ -55,6 +55,14 @@ function resolveUrl(baseUrl as string, reference as string) as string
       path: removeDotSegments(refPath),
       query: refQuery
     }
+  else if refPath = ""
+    ' Query-only reference (e.g., "?y") - preserve base path
+    resultParts = {
+      scheme: baseParts.scheme,
+      authority: baseParts.authority,
+      path: baseParts.path,
+      query: refQuery
+    }
   else
     ' Reference is path-relative - merge with base path
     mergedPath = mergePaths(baseParts.path, refPath)
@@ -187,7 +195,15 @@ end function
 ' @returns Merged path string
 function mergePaths(basePath as string, relPath as string) as string
   ' Remove everything after last / in base path to get directory
-  lastSlash = Instr(Len(basePath), basePath, "/")
+  ' Search backwards from the end to find the last slash
+  lastSlash = 0
+  for i = Len(basePath) to 1 step -1
+    if Mid(basePath, i, 1) = "/"
+      lastSlash = i
+      exit for
+    end if
+  end for
+
   if lastSlash <= 0
     return "/" + relPath
   end if
