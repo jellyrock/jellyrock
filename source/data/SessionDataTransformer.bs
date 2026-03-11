@@ -1,4 +1,5 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/url.bs"
 
 ' Transforms session data (server, user, app, device) to content nodes
 class SessionDataTransformer
@@ -21,8 +22,20 @@ class SessionDataTransformer
       serverNode.productName = serverData.productName ?? ""
       serverNode.operatingSystem = serverData.operatingSystem ?? ""
 
-      serverNode.serverUrl = serverData.serverUrl ?? ""
-      serverNode.localURL = serverData.localURL ?? ""
+      ' Normalize serverUrl to ensure consistent format
+      ' Handles legacy registry values that may not be normalized
+      serverUrl = serverData.serverUrl ?? ""
+      if serverUrl <> ""
+        serverUrl = normalizeUrl(serverUrl)
+      end if
+      serverNode.serverUrl = serverUrl
+
+      ' Also normalize localURL if present
+      localURL = serverData.localURL ?? ""
+      if localURL <> ""
+        localURL = normalizeUrl(localURL)
+      end if
+      serverNode.localURL = localURL
       serverNode.isHTTPS = serverData.isHTTPS ?? false
       serverNode.isLocalHTTPS = serverData.isLocalHTTPS ?? false
 

@@ -182,11 +182,12 @@ function get_url()
   ' ContentNode fields return "" instead of invalid, so we must check both
   if not isValid(serverURL) or serverURL = "" then return invalid
 
-  ' Normalize URL using centralized normalization
-  normalizedUrl = normalizeUrl(serverURL)
-  if normalizedUrl = "" then return invalid
+  ' Note: serverUrl is guaranteed to be normalized by:
+  ' - server.UpdateURL() - normalizes before storing
+  ' - SessionDataTransformer - normalizes when loading from registry
+  ' This avoids expensive regex parsing on every API request
 
-  return normalizedUrl
+  return serverURL
 end function
 
 function getString(req)
