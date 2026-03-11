@@ -1278,7 +1278,7 @@ namespace api
     end function
 
     ' Attempts to retrieve authentication information.
-    function Connect(secret = "" as string)
+    function Connect(secret as string)
       req = APIRequest("/quickconnect/connect", { secret: secret })
       return getJson(req)
     end function
