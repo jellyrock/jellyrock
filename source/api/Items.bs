@@ -98,7 +98,14 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
             containerString = LCase(videoMetadata.container)
           end if
 
-          if isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
+          ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
+          ' Only apply this for API v2+ servers (10.9+)
+          apiVersion = 2
+          if isValid(m.global.server) and isValid(m.global.server.apiVersion)
+            apiVersion = m.global.server.apiVersion
+          end if
+
+          if apiVersion >= 2 and isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
             ' is DOVI in the string?
             if Instr(LCase(stream.VideoRangeType), "dovi") > 0
               ' add a condition to the mkv container profile to force remux (container swap)
@@ -263,9 +270,7 @@ end function
 ' MetaData about an item — returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
 function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string)
-  url = Substitute("Users/{0}/Items/{1}", m.global.user.id, id)
-  resp = APIRequest(url, { "fields": fields })
-  data = getJson(resp)
+  data = api.users.GetItem(m.global.user.id, id, { "fields": fields })
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
   return transformer.transformBaseItem(data)
@@ -289,15 +294,12 @@ end function
 
 ' Get list of albums belonging to an artist
 function MusicAlbumList(id as string)
-  url = Substitute("Users/{0}/Items", m.global.user.id)
-  resp = APIRequest(url, {
+  data = api.users.GetItemsByQuery(m.global.user.id, {
     "AlbumArtistIds": id,
     "includeitemtypes": "MusicAlbum",
     "sortBy": "SortName",
     "Recursive": true
   })
-
-  data = getJson(resp)
   transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
@@ -309,8 +311,7 @@ end function
 
 ' Get list of albums an artist appears on
 function AppearsOnList(id as string)
-  url = Substitute("Users/{0}/Items", m.global.user.id)
-  resp = APIRequest(url, {
+  data = api.users.GetItemsByQuery(m.global.user.id, {
     "ContributingArtistIds": id,
     "ExcludeItemIds": id,
     "includeitemtypes": "MusicAlbum",
@@ -318,8 +319,6 @@ function AppearsOnList(id as string)
     "SortOrder": "Descending",
     "Recursive": true
   })
-
-  data = getJson(resp)
   transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
@@ -331,7 +330,6 @@ end function
 
 ' Get list of songs belonging to an artist
 function GetSongsByArtist(id as string, params = {} as object)
-  url = Substitute("Users/{0}/Items", m.global.user.id)
   paramArray = {
     "AlbumArtistIds": id,
     "includeitemtypes": "Audio",
@@ -343,8 +341,7 @@ function GetSongsByArtist(id as string, params = {} as object)
     paramArray.AddReplace(param, params[param])
   end for
 
-  resp = APIRequest(url, paramArray)
-  data = getJson(resp)
+  data = api.users.GetItemsByQuery(m.global.user.id, paramArray)
   results = []
 
   if not isValid(data) then return invalid
@@ -384,8 +381,7 @@ end function
 ' Get Songs that are on an Album
 function MusicSongList(id as string)
   globalUser = m.global.user
-  url = Substitute("Users/{0}/Items", globalUser.id, id)
-  resp = APIRequest(url, {
+  data = api.users.GetItemsByQuery(globalUser.id, {
     "UserId": globalUser.id,
     "parentId": id,
     "includeitemtypes": "Audio",
@@ -393,7 +389,6 @@ function MusicSongList(id as string)
   })
 
   results = []
-  data = getJson(resp)
 
   if not isValid(data) then return invalid
   if not isValid(data.Items) then return invalid
@@ -410,14 +405,11 @@ end function
 ' Get Songs that are on an Album
 function AudioItem(id as string)
   globalUser = m.global.user
-  url = Substitute("Users/{0}/Items/{1}", globalUser.id, id)
-  resp = APIRequest(url, {
+  return api.users.GetItem(globalUser.id, id, {
     "UserId": globalUser.id,
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
   })
-
-  return getJson(resp)
 end function
 
 ' Get Instant Mix based on item
@@ -433,8 +425,7 @@ end function
 
 ' Get Instant Mix based on item
 function CreateArtistMix(id as string)
-  url = Substitute("Users/{0}/Items", m.global.user.id)
-  resp = APIRequest(url, {
+  return api.users.GetItemsByQuery(m.global.user.id, {
     "ArtistIds": id,
     "Recursive": "true",
     "MediaTypes": "Audio",
@@ -446,19 +437,11 @@ function CreateArtistMix(id as string)
     "EnableTotalRecordCount": false,
     "CollapseBoxSetItems": false
   })
-
-  return getJson(resp)
 end function
 
 ' Get Intro Videos for an item
 function GetIntroVideos(id as string)
-  globalUser = m.global.user
-  url = Substitute("Users/{0}/Items/{1}/Intros", globalUser.id, id)
-  resp = APIRequest(url, {
-    "UserId": globalUser.id
-  })
-
-  return getJson(resp)
+  return api.users.GetIntros(m.global.user.id, id)
 end function
 
 function AudioStream(id as string)

@@ -1,0 +1,206 @@
+namespace tests
+
+  @suite("deviceCapabilities.bs - filterCodecProfileConditions()")
+  class FilterCodecProfileConditionsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("filterCodecProfileConditions() - version compatibility")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes VideoRangeType conditions when filtering")
+    function _()
+      codecProfiles = [
+        {
+          "Type": "Video",
+          "Codec": "h264",
+          "Conditions": [
+            {
+              "Condition": "EqualsAny",
+              "Property": "VideoProfile",
+              "Value": "high|main",
+              "IsRequired": false
+            },
+            {
+              "Condition": "EqualsAny",
+              "Property": "VideoRangeType",
+              "Value": "SDR|DOVI",
+              "IsRequired": false
+            },
+            {
+              "Condition": "LessThanEqual",
+              "Property": "Height",
+              "Value": "1080",
+              "IsRequired": true
+            }
+          ]
+        }
+      ]
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+
+      ' Should have 1 profile
+      m.assertEqual(filtered.count(), 1)
+      ' Should have 2 conditions (VideoProfile and Height, VideoRangeType removed)
+      m.assertEqual(filtered[0].Conditions.count(), 2)
+      m.assertEqual(filtered[0].Conditions[0].Property, "VideoProfile")
+      m.assertEqual(filtered[0].Conditions[1].Property, "Height")
+    end function
+
+    @it("removes multiple condition types when specified")
+    function _()
+      codecProfiles = [
+        {
+          "Type": "Video",
+          "Codec": "h264",
+          "Conditions": [
+            {
+              "Property": "VideoProfile",
+              "Value": "high"
+            },
+            {
+              "Property": "VideoRangeType",
+              "Value": "SDR"
+            },
+            {
+              "Property": "VideoLevel",
+              "Value": "42"
+            }
+          ]
+        }
+      ]
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType", "VideoLevel"])
+
+      m.assertEqual(filtered[0].Conditions.count(), 1)
+      m.assertEqual(filtered[0].Conditions[0].Property, "VideoProfile")
+    end function
+
+    @it("returns empty conditions array when all conditions are filtered")
+    function _()
+      codecProfiles = [
+        {
+          "Type": "Video",
+          "Codec": "h264",
+          "Conditions": [
+            {
+              "Property": "VideoRangeType",
+              "Value": "SDR"
+            }
+          ]
+        }
+      ]
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+
+      m.assertEqual(filtered[0].Conditions.count(), 0)
+    end function
+
+    @it("preserves profiles without Conditions field")
+    function _()
+      codecProfiles = [
+        {
+          "Type": "VideoAudio",
+          "Codec": "aac"
+        }
+      ]
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+
+      m.assertEqual(filtered.count(), 1)
+      m.assertInvalid(filtered[0].Conditions)
+    end function
+
+    @it("preserves all conditions when none match filter list")
+    function _()
+      codecProfiles = [
+        {
+          "Type": "Video",
+          "Codec": "h264",
+          "Conditions": [
+            {
+              "Property": "VideoProfile",
+              "Value": "high"
+            },
+            {
+              "Property": "Height",
+              "Value": "1080"
+            }
+          ]
+        }
+      ]
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+
+      m.assertEqual(filtered[0].Conditions.count(), 2)
+    end function
+
+    @it("handles empty codecProfiles array")
+    function _()
+      codecProfiles = []
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+
+      m.assertEqual(filtered.count(), 0)
+    end function
+
+    @it("handles multiple profiles")
+    function _()
+      codecProfiles = [
+        {
+          "Type": "Video",
+          "Codec": "h264",
+          "Conditions": [
+            {
+              "Property": "VideoRangeType",
+              "Value": "SDR"
+            }
+          ]
+        },
+        {
+          "Type": "Video",
+          "Codec": "hevc",
+          "Conditions": [
+            {
+              "Property": "VideoRangeType",
+              "Value": "HDR10"
+            },
+            {
+              "Property": "Height",
+              "Value": "2160"
+            }
+          ]
+        }
+      ]
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+
+      m.assertEqual(filtered.count(), 2)
+      m.assertEqual(filtered[0].Conditions.count(), 0) ' h264: VideoRangeType was only condition
+      m.assertEqual(filtered[1].Conditions.count(), 1) ' hevc: only Height remains
+      m.assertEqual(filtered[1].Conditions[0].Property, "Height")
+    end function
+
+    @it("preserves original profile objects when no filtering occurs")
+    function _()
+      originalProfile = {
+        "Type": "Video",
+        "Codec": "h264",
+        "Conditions": [
+          {
+            "Property": "Height",
+            "Value": "1080"
+          }
+        ]
+      }
+      codecProfiles = [originalProfile]
+
+      filtered = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
+
+      m.assertEqual(filtered.count(), 1)
+      m.assertEqual(filtered[0].Codec, "h264")
+      m.assertEqual(filtered[0].Conditions[0].Value, "1080")
+    end function
+
+  end class
+
+end namespace

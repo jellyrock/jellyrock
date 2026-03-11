@@ -76,7 +76,7 @@ namespace tests
       m.assertEqual(firstButton.id, "resumeButton")
     end function
 
-    @it("button count increases to 5 when resume button is added")
+    @it("button count increases to 6 when resume button is added")
     function _()
       m.setupSeriesItem()
 
@@ -85,7 +85,7 @@ namespace tests
 
       m.itemDetails.nextUpEpisode = ep
 
-      m.assertEqual(m.buttonGrp.getChildCount(), 5)
+      m.assertEqual(m.buttonGrp.getChildCount(), 6)
     end function
 
     @it("does not add resume button when nextUpEpisode id is empty")
@@ -116,8 +116,8 @@ namespace tests
 
       m.itemDetails.nextUpEpisode = ep2
 
-      ' Still only one resume button
-      m.assertEqual(m.buttonGrp.getChildCount(), 5)
+      ' Still only one resume button (6 total: Play All, Watched, Shuffle, Favorite, Refresh, Resume)
+      m.assertEqual(m.buttonGrp.getChildCount(), 6)
       resumeButton = m.itemDetails.findNode("resumeButton")
       m.assertEqual(resumeButton.playbackPositionTicks, 200000&)
     end function
@@ -141,7 +141,7 @@ namespace tests
       m.assertInvalid(resumeButton)
     end function
 
-    @it("button count returns to 4 after resume button is removed")
+    @it("button count returns to 5 after resume button is removed")
     function _()
       m.setupSeriesItem()
 
@@ -153,7 +153,8 @@ namespace tests
       epEmpty.id = ""
       m.itemDetails.nextUpEpisode = epEmpty
 
-      m.assertEqual(m.buttonGrp.getChildCount(), 4)
+      ' 5 buttons: Play All, Watched, Shuffle, Favorite, Refresh
+      m.assertEqual(m.buttonGrp.getChildCount(), 5)
     end function
 
   end class

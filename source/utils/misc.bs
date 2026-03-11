@@ -461,10 +461,25 @@ function versionChecker(versionToCheck as string, minVersionAccepted as string)
     end for
   end if
 
-  leftHand = (version[0].ToInt() * 10000) + (version[1].ToInt() * 100) + (version[2].ToInt() * 10)
-  rightHand = (minVersion[0].ToInt() * 10000) + (minVersion[1].ToInt() * 100) + (minVersion[2].ToInt() * 10)
+  leftHand = (version[0].ToInt() * 10000) + (version[1].ToInt() * 100) + version[2].ToInt()
+  rightHand = (minVersion[0].ToInt() * 10000) + (minVersion[1].ToInt() * 100) + minVersion[2].ToInt()
 
   return leftHand >= rightHand
+end function
+
+'
+' Maps a Jellyfin server version string to an API version integer used by the SDK dispatcher.
+' V1: Covers pre-10.9 servers (10.7.x, 10.8.x) — uses /Users/{userId}/ path prefix
+' V2: Covers 10.9+ servers — endpoints moved to top-level, userId passed as query param
+' Returns 1 if serverVersion is empty/invalid (safe fallback to legacy paths)
+function resolveApiVersion(serverVersion as string) as integer
+  if not isValidAndNotEmpty(serverVersion)
+    return 1
+  end if
+  if versionChecker(serverVersion, "10.9.0")
+    return 2
+  end if
+  return 1
 end function
 
 function findNodeBySubtype(node, subtype)

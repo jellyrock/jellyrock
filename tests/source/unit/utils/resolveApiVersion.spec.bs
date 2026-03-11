@@ -1,0 +1,40 @@
+namespace tests
+
+  @suite("misc.bs - resolveApiVersion()")
+  class ResolveApiVersionTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveApiVersion() - version boundary detection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns 1 for empty string (safe fallback to legacy paths)")
+    function _()
+      m.assertEqual(resolveApiVersion(""), 1)
+    end function
+
+    @it("returns 1 for version below 10.9 boundary (10.8.13)")
+    @params("10.8.13")
+    @params("10.8.0")
+    @params("10.7.7")
+    @params("10.0.0")
+    function _(version)
+      m.assertEqual(resolveApiVersion(version), 1)
+    end function
+
+    @it("returns 2 for exactly 10.9.0 (the boundary)")
+    function _()
+      m.assertEqual(resolveApiVersion("10.9.0"), 2)
+    end function
+
+    @it("returns 2 for versions above 10.9.0")
+    @params("10.9.1")
+    @params("10.9.99")
+    @params("10.10.0")
+    @params("11.0.0")
+    function _(version)
+      m.assertEqual(resolveApiVersion(version), 2)
+    end function
+
+  end class
+
+end namespace
