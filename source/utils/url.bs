@@ -97,6 +97,13 @@ function normalizeUrl(url as string) as string
   end if
   if not isValid(parts) then return ""
 
+  ' For http/https schemes, require non-empty authority (host)
+  ' This prevents invalid URLs like "http://" from being persisted as serverUrl
+  scheme = LCase(parts.scheme)
+  if (scheme = "http" or scheme = "https") and (parts.host = "")
+    return ""
+  end if
+
   ' Lowercase scheme
   parts.scheme = LCase(parts.scheme)
 

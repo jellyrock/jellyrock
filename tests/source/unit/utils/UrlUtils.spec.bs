@@ -85,6 +85,20 @@ namespace tests
       m.assertEqual(normalizeUrl("not-a-url"), "http://not-a-url")
     end function
 
+    @describe("normalizeUrl http scheme with empty authority")
+    @it("should return empty string for http:// without host")
+    function _()
+      m.assertEqual(normalizeUrl("http://"), "")
+      m.assertEqual(normalizeUrl("HTTP://"), "")
+    end function
+
+    @describe("normalizeUrl https scheme with empty authority")
+    @it("should return empty string for https:// without host")
+    function _()
+      m.assertEqual(normalizeUrl("https://"), "")
+      m.assertEqual(normalizeUrl("HTTPS://"), "")
+    end function
+
     ' ============================================
     ' normalizeUrl Tests - Missing Scheme Handling
     ' ============================================
