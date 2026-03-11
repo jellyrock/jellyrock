@@ -26,7 +26,7 @@ namespace api
 
     ' Gets an artist by name.
     function GetByName(name as string, params = {} as object)
-      req = APIRequest(Substitute("/artists/{0}", name), params)
+      req = APIRequest(Substitute("/artists/{0}", name.EncodeUriComponent()), params)
       return getJson(req)
     end function
 
@@ -38,12 +38,12 @@ namespace api
 
     ' Get artist image by name.
     function GetImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      return buildURL(Substitute("/artists/{0}/images/{1}/{2}", name, imagetype, imageindex.ToStr()), params)
+      return buildURL(Substitute("/artists/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.ToStr()), params)
     end function
 
     ' Get artist image by name.
     function HeadImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      req = APIRequest(Substitute("/artists/{0}/images/{1}/{2}", name, imagetype, imageindex.ToStr()), params)
+      req = APIRequest(Substitute("/artists/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.ToStr()), params)
       return headVoid(req)
     end function
 
@@ -367,18 +367,18 @@ namespace api
 
     ' Gets a genre, by name.
     function GetByName(name as string, params = {} as object)
-      req = APIRequest(Substitute("/genres/{0}", name), params)
+      req = APIRequest(Substitute("/genres/{0}", name.EncodeUriComponent()), params)
       return getJson(req)
     end function
 
     ' Get genre image by name.
     function GetImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      return buildURL(Substitute("/genres/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      return buildURL(Substitute("/genres/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
     end function
 
     ' Get genre image by name.
     function HeadImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      req = APIRequest(Substitute("/genres/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      req = APIRequest(Substitute("/genres/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
       return headVoid(req)
     end function
   end namespace
@@ -1057,12 +1057,12 @@ namespace api
   namespace musicGenres
     ' Get music genre image by name.
     function GetImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      return buildURL(Substitute("/musicgenres/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      return buildURL(Substitute("/musicgenres/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
     end function
 
     ' Get music genre image by name.
     function HeadImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      req = APIRequest(Substitute("/musicgenres/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      req = APIRequest(Substitute("/musicgenres/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
       return headVoid(req)
     end function
 
@@ -1074,7 +1074,7 @@ namespace api
 
     ' Gets a music genre, by name.
     function GetByName(name as string, params = {} as object)
-      req = APIRequest(Substitute("/musicgenres/{0}", name), params)
+      req = APIRequest(Substitute("/musicgenres/{0}", name.EncodeUriComponent()), params)
       return getJson(req)
     end function
   end namespace
@@ -1152,12 +1152,12 @@ namespace api
   namespace persons
     ' Get person image by name.
     function GetImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      return buildURL(Substitute("/persons/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      return buildURL(Substitute("/persons/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
     end function
 
     ' Get person image by name.
     function HeadImageURLByName(name as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      req = APIRequest(Substitute("/persons/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      req = APIRequest(Substitute("/persons/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
       return headVoid(req)
     end function
 
@@ -1169,7 +1169,7 @@ namespace api
 
     ' Get person by name.
     function GetByName(name as string, params = {} as object)
-      req = APIRequest(Substitute("/persons/{0}", name), params)
+      req = APIRequest(Substitute("/persons/{0}", name.EncodeUriComponent()), params)
       return getJson(req)
     end function
   end namespace
@@ -1559,18 +1559,18 @@ namespace api
 
     ' Gets a studio by name.
     function GetByName(name as string, params = {} as object)
-      req = APIRequest(Substitute("/studios/{0}", name), params)
+      req = APIRequest(Substitute("/studios/{0}", name.EncodeUriComponent()), params)
       return getJson(req)
     end function
 
     ' Get studio image by name.
     function GetImageURLByName(name as string, imagetype = "thumb" as string, imageindex = 0 as integer, params = {} as object)
-      return buildURL(Substitute("/studios/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      return buildURL(Substitute("/studios/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
     end function
 
     ' Get studio image by name.
     function HeadImageURLByName(name as string, imagetype = "thumb" as string, imageindex = 0 as integer, params = {} as object)
-      req = APIRequest(Substitute("/studios/{0}/images/{1}/{2}", name, imagetype, imageindex.toStr()), params)
+      req = APIRequest(Substitute("/studios/{0}/images/{1}/{2}", name.EncodeUriComponent(), imagetype, imageindex.toStr()), params)
       return headVoid(req)
     end function
   end namespace
