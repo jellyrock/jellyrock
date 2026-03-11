@@ -1,4 +1,4 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/sdk.bs"
 import "pkg:/source/utils/config.bs"
 
 sub init()
@@ -6,19 +6,18 @@ sub init()
 end sub
 
 sub PlaystateUpdate()
+  params = PlaystateDefaults(m.top.params)
+
   if m.top.status = "start"
-    url = "Sessions/Playing"
+    api.sessions.Playing(params)
   else if m.top.status = "stop" or m.top.status = "finished"
-    url = "Sessions/Playing/Stopped"
+    api.sessions.PostStopped(params)
   else if m.top.status = "update"
-    url = "Sessions/Playing/Progress"
+    api.sessions.PostProgress(params)
   else
     ' Unknown State
     return
   end if
-  params = PlaystateDefaults(m.top.params)
-  resp = APIRequest(url)
-  postJson(resp, params)
 end sub
 
 function PlaystateDefaults(params = {} as object)
@@ -50,5 +49,5 @@ function PlaystateDefaults(params = {} as object)
     item = paramsArray[i]
     new_params[item.key] = item.value
   end for
-  return FormatJson(new_params)
+  return new_params
 end function
