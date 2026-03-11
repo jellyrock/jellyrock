@@ -162,7 +162,7 @@ namespace server
       normalizedCurrentUrl = normalizeUrl(currentUrl)
 
       ' Only follow redirect if path matches /System/Info/Public
-      if LCase(right(headers.location, 19)) = "/system/info/public"
+      if LCase(right(headers.location, Len(endpointPath))) = "/system/info/public"
         ' Validate resolved URL is not empty
         if normalizedNewUrl = ""
           return { "Error": true, "ErrorMessage": "Server returned invalid redirect URL" }
