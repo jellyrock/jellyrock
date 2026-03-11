@@ -3,6 +3,7 @@
 ' Organized via namespaces for clean code organization
 
 import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/sdk.bs"
 import "pkg:/source/api/userauth.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/migrations.bs"
@@ -88,6 +89,76 @@ namespace server
     ' Reset to XML defaults (no fields preserved)
     nodeUtils.resetNodeToDefaults(localServer, "JellyfinServer", [])
   end sub
+
+  ' Discovers server information and handles redirects.
+  ' Uses manual request to check for redirect headers, then uses api namespace for retry.
+  ' @returns {object} Server info with Error field set on failure
+  function Discover() as object
+    serverNode = m.global.server
+
+    ' Validate URL
+    if not isValidAndNotEmpty(serverNode.serverUrl)
+      return { "Error": true, "ErrorMessage": "Server URL not configured" }
+    end if
+
+    ' Build URL using api namespace for consistency
+    url = api.system.GetPublicInfoURL()
+    if not isValid(url)
+      return { "Error": true, "ErrorMessage": "Server URL not configured" }
+    end if
+
+    ' Manual request to check for redirects
+    req = createObject("roUrlTransfer")
+    req.setUrl(url)
+    req.setMessagePort(CreateObject("roMessagePort"))
+    req.AsyncGetToString()
+
+    ' Wait for response (35 second timeout)
+    resp = wait(35000, req.GetMessagePort())
+
+    ' Handle unknown errors
+    if type(resp) <> "roUrlEvent"
+      return { "Error": true, "ErrorMessage": "Unknown" }
+    end if
+
+    ' Check for redirect headers
+    headers = resp.GetResponseHeaders()
+    if isValid(headers) and isValid(headers.location)
+      ' Only follow redirect if path matches /System/Info/Public
+      if right(headers.location, 19) = "/System/Info/Public"
+        newUrl = left(headers.location, len(headers.location) - 19)
+        set_setting("server", newUrl)
+
+        ' Update server URL and retry
+        serverNode.serverUrl = newUrl
+        result = server.Discover()
+
+        ' Add redirect info to error if retry failed
+        if result.Error
+          result.UpdatedUrl = newUrl
+          result.ErrorMessage = result.ErrorMessage + " (Note: Server redirected us to " + newUrl + ")"
+        end if
+        return result
+      end if
+    end if
+
+    ' Handle non-200 responses
+    if resp.GetResponseCode() <> 200
+      return { "Error": true, "ErrorCode": resp.GetResponseCode(), "ErrorMessage": resp.GetFailureReason() }
+    end if
+
+    ' Parse and return response
+    responseString = resp.GetString()
+    if isValid(responseString) and responseString <> ""
+      result = ParseJson(responseString)
+      if isValid(result)
+        result.Error = false
+        return result
+      end if
+    end if
+
+    return { "Error": true, "ErrorMessage": "Does not appear to be a Jellyfin Server" }
+  end function
 end namespace
 
 ' ============================================
@@ -349,9 +420,7 @@ namespace user
   sub LoadUserPreferences()
     id = m.global.user.id
 
-    url = Substitute("DisplayPreferences/usersettings?userId={0}&client=emby", id)
-    resp = APIRequest(url)
-    jsonResponse = getJson(resp)
+    jsonResponse = api.displayPreferences.Get("usersettings", { userId: id, client: "emby" })
 
     if isValid(jsonResponse)
       userNode = m.global.user
