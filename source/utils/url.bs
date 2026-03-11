@@ -27,34 +27,46 @@ function resolveUrl(baseUrl as string, reference as string) as string
   end if
 
   ' Reference is relative - need to resolve against base
+  ' First, extract query and fragment from reference before path processing
+  ' per RFC 3986 Section 5.2.2 (fragments are stripped during resolution)
+  refPath = reference
+  refQuery = ""
+
+  ' Extract fragment first (it comes after query) - fragments are stripped
+  fragmentIndex = Instr(1, refPath, "#")
+  if fragmentIndex > 0
+    refPath = Left(refPath, fragmentIndex - 1)
+  end if
+
+  ' Extract query
+  queryIndex = Instr(1, refPath, "?")
+  if queryIndex > 0
+    refQuery = Mid(refPath, queryIndex)
+    refPath = Left(refPath, queryIndex - 1)
+  end if
+
   resultParts = {}
 
   ' Check if reference is path-absolute (starts with /)
-  if Left(reference, 1) = "/"
+  if Left(refPath, 1) = "/"
     resultParts = {
       scheme: baseParts.scheme,
       authority: baseParts.authority,
-      path: removeDotSegments(reference),
-      query: ""
+      path: removeDotSegments(refPath),
+      query: refQuery
     }
   else
     ' Reference is path-relative - merge with base path
-    mergedPath = mergePaths(baseParts.path, reference)
+    mergedPath = mergePaths(baseParts.path, refPath)
     resultParts = {
       scheme: baseParts.scheme,
       authority: baseParts.authority,
       path: removeDotSegments(mergedPath),
-      query: ""
+      query: refQuery
     }
   end if
 
-  ' Extract query string from reference if present
-  queryIndex = Instr(1, reference, "?")
-  if queryIndex > 0
-    resultParts.query = Mid(reference, queryIndex)
-  end if
-
-  return reconstructUrl(resultParts)
+  return normalizeUrl(reconstructUrl(resultParts))
 end function
 
 ' Normalize a URL for consistent comparison and storage

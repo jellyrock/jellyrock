@@ -206,6 +206,85 @@ namespace tests
     end function
 
     ' ============================================
+    ' resolveUrl Tests - Query String and Fragment Handling
+    ' ============================================
+
+    @describe("resolveUrl path-absolute reference with query")
+    @it("should properly resolve path-absolute reference containing query string")
+    function _()
+      base = "http://example.com:8096"
+      location = "/path?key=value"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://example.com:8096/path?key=value")
+    end function
+
+    @describe("resolveUrl path-relative reference with query")
+    @it("should properly resolve path-relative reference containing query string")
+    function _()
+      base = "http://example.com:8096/base/"
+      location = "relative/path?foo=bar&baz=qux"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://example.com:8096/base/relative/path?foo=bar&baz=qux")
+    end function
+
+    @describe("resolveUrl path-absolute reference with fragment")
+    @it("should strip fragment from reference per RFC 3986")
+    function _()
+      base = "http://example.com:8096"
+      location = "/path#section"
+      result = resolveUrl(base, location)
+      ' Fragment is stripped during resolution per RFC 3986
+      m.assertEqual(result, "http://example.com:8096/path")
+    end function
+
+    @describe("resolveUrl path-relative reference with fragment")
+    @it("should strip fragment from relative reference")
+    function _()
+      base = "http://example.com:8096/base/"
+      location = "page#anchor"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://example.com:8096/base/page")
+    end function
+
+    @describe("resolveUrl reference with both query and fragment")
+    @it("should preserve query but strip fragment from reference")
+    function _()
+      base = "http://example.com:8096"
+      location = "/path?x=1#section"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://example.com:8096/path?x=1")
+    end function
+
+    @describe("resolveUrl complex query string with special characters")
+    @it("should preserve complex query strings during resolution")
+    function _()
+      base = "http://example.com:8096"
+      location = "/api?key=value%20with%20spaces&array[]=1&array[]=2"
+      result = resolveUrl(base, location)
+      m.assertEqual(result, "http://example.com:8096/api?key=value%20with%20spaces&array[]=1&array[]=2")
+    end function
+
+    @describe("resolveUrl reference with query overriding base query")
+    @it("should use reference query instead of base query")
+    function _()
+      base = "http://example.com:8096/base?oldParam=oldValue"
+      location = "/newPath?newParam=newValue"
+      result = resolveUrl(base, location)
+      ' Reference query should replace base query
+      m.assertEqual(result, "http://example.com:8096/newPath?newParam=newValue")
+    end function
+
+    @describe("resolveUrl empty query in reference")
+    @it("should handle empty query string in reference")
+    function _()
+      base = "http://example.com:8096"
+      location = "/path?"
+      result = resolveUrl(base, location)
+      ' Empty query should be normalized away
+      m.assertEqual(result, "http://example.com:8096/path")
+    end function
+
+    ' ============================================
     ' getBaseUrl Tests
     ' ============================================
 
