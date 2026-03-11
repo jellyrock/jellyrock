@@ -44,7 +44,7 @@ and never reference the shim namespaces directly.
 | `GetIntros` | `GET /Users/{id}/Items/{itemId}/Intros` | `GET /Items/{itemId}/Intros` |
 | `GetLocalTrailers` | `GET /Users/{id}/Items/{itemId}/LocalTrailers` | `GET /Items/{itemId}/LocalTrailers` |
 | `GetSpecialFeatures` | `GET /Users/{id}/Items/{itemId}/SpecialFeatures` | `GET /Items/{itemId}/SpecialFeatures` |
-| `GetRoot` | `GET /Users/{id}/Items/Root` | `GET /Items/Root` |
+| `GetRoot` | `GET /Users/{id}/Items/Root` | `GET /Items/Root?userId=` |
 | `GetSuggestions` | `GET /Users/{id}/Suggestions` | `GET /Items/Suggestions?userId=` |
 | `GetGroupingOptions` | `GET /Users/{id}/GroupingOptions` | `GET /UserViews/GroupingOptions?userId=` |
 | `MarkFavorite` | `POST /Users/{id}/FavoriteItems/{itemId}` | `POST /UserFavoriteItems/{itemId}?userId=` |
