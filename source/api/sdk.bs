@@ -125,6 +125,12 @@ namespace api
       req = APIRequest("/auth/providers")
       return getJson(req)
     end function
+
+    ' Authenticates a user by name.
+    function AuthenticateByName(username as string, password as string)
+      req = APIRequest("/users/authenticatebyname")
+      return postJson(req, FormatJson({ "Username": username, "Pw": password }))
+    end function
   end namespace
 
   namespace branding
@@ -1278,8 +1284,8 @@ namespace api
     end function
 
     ' Attempts to retrieve authentication information.
-    function Connect()
-      req = APIRequest("/quickconnect/connect")
+    function Connect(secret = "" as string)
+      req = APIRequest("/quickconnect/connect", { secret: secret })
       return getJson(req)
     end function
 
@@ -1756,6 +1762,11 @@ namespace api
       return getJson(req)
     end function
 
+    ' Gets the URL for public server info (for manual requests with redirect handling).
+    function GetPublicInfoURL() as dynamic
+      return buildURL("/system/info/public")
+    end function
+
     ' Gets a list of available server log files.
     function GetLogs()
       req = APIRequest("/system/logs")
@@ -1866,9 +1877,10 @@ namespace api
     end function
 
     ' Authenticates a user with quick connect.
-    sub AuthenticateWithQuickConnect()
-      throw "System.NotImplementedException: The function is not implemented."
-    end sub
+    function AuthenticateWithQuickConnect(secret as string)
+      req = APIRequest("/users/authenticatewithquickconnect")
+      return postJson(req, FormatJson({ "secret": secret }))
+    end function
 
     ' Initiates the forgot password process for a local user.
     function ForgotPassword(body = {} as object)
