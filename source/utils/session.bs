@@ -23,7 +23,11 @@ namespace server
 
     ' Normalize URL for consistent storage and comparison
     normalizedUrl = normalizeUrl(url)
-    if normalizedUrl = "" then return false
+    if normalizedUrl = ""
+      ' Clear stale server state on invalid URL
+      server.Delete()
+      return false
+    end if
 
     serverNode = m.global.server
     serverNode.serverUrl = normalizedUrl
