@@ -1,0 +1,331 @@
+namespace tests
+
+  @suite("ApiClient - V1/V2 routing and parameter injection")
+  class ApiClientTests extends tests.BaseTestSuite
+
+    private apiClient
+    private testUserId = "test-user-123"
+    private testItemId = "test-item-456"
+
+    protected override function setup()
+      super.setup()
+      m.apiClient = new ApiClient()
+      m.setupTestUser()
+      m.setupMockServer()
+    end function
+
+    private function setupTestUser()
+      localUser = m.global.user
+      localUser.id = m.testUserId
+    end function
+
+    private function setupMockServer()
+      m.global.server.serverUrl = "http://jellyfin.test:8096"
+    end function
+
+    private function setApiVersion(version as integer)
+      m.global.server.apiVersion = version
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("V1/V2 Routing - GetUserImageURL")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("routes GetUserImageURL to V1 path when apiVersion = 1")
+    function _()
+      m.setApiVersion(1)
+
+      result = m.apiClient.GetUserImageURL(m.testUserId, "primary")
+
+      m.assertTrue(result.Instr("/users/" + m.testUserId + "/images/") >= 0, "V1 URL should contain /users/{id}/images/ path")
+      m.assertTrue(result.Instr("/primary/") >= 0, "V1 URL should contain imagetype in path")
+    end function
+
+    @it("routes GetUserImageURL to V2 path when apiVersion = 2")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.GetUserImageURL(m.testUserId, "primary")
+
+      m.assertTrue(result.Instr("/UserImage") >= 0, "V2 URL should use /UserImage path")
+      m.assertFalse(result.Instr("/users/") >= 0, "V2 URL must not contain /users/ path prefix")
+    end function
+
+    @it("routes GetUserImageURL to V2 path when apiVersion > 2")
+    function _()
+      m.setApiVersion(3)
+
+      result = m.apiClient.GetUserImageURL(m.testUserId, "primary")
+
+      m.assertTrue(result.Instr("/UserImage") >= 0, "V2+ URL should use /UserImage path")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Parameter Passthrough - GetUserImageURL")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("passes params to GetUserImageURL for V1")
+    function _()
+      m.setApiVersion(1)
+
+      result = m.apiClient.GetUserImageURL(m.testUserId, "primary", 0, { maxHeight: 300 })
+
+      ' BrightScript AA keys are lowercased in URLs
+      m.assertTrue(result.Instr("300") >= 0, "V1 URL should include maxHeight value")
+    end function
+
+    @it("passes params to GetUserImageURL for V2")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.GetUserImageURL(m.testUserId, "primary", 0, { maxHeight: 300 })
+
+      m.assertTrue(result.Instr("300") >= 0, "V2 URL should include maxHeight value")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Edge Cases - Empty User")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when userId is empty for GetItem")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetItem(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetItemsByQuery when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetItemsByQuery({})
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetResumeItems when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetResumeItems({})
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetSuggestions when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetSuggestions({})
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetLatestMedia when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetLatestMedia({})
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetViews when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetViews()
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetIntros when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetIntros(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetLocalTrailers when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetLocalTrailers(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetSpecialFeatures when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetSpecialFeatures(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from MarkFavorite when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.MarkFavorite(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from UnmarkFavorite when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.UnmarkFavorite(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from MarkPlayed when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.MarkPlayed(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from UnmarkPlayed when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.UnmarkPlayed(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from UpdateRating when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.UpdateRating(m.testItemId, { rating: 5 })
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from DeleteRating when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.DeleteRating(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("V1/V2 Routing - URL Path Verification")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("GetUserImageURL V1 uses correct path structure")
+    function _()
+      m.setApiVersion(1)
+
+      result = m.apiClient.GetUserImageURL("user-123", "backdrop", 1)
+
+      m.assertTrue(result.Instr("/users/user-123/images/backdrop/1") >= 0, "V1 should use /users/{id}/images/{type}/{index} path")
+    end function
+
+    @it("GetUserImageURL V2 uses correct query parameter structure")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.GetUserImageURL("user-123", "backdrop", 1, { maxWidth: 500 })
+
+      m.assertTrue(result.Instr("/UserImage") >= 0, "V2 should use /UserImage path")
+      ' BrightScript lowercases AA keys in URLs, so check values are present
+      m.assertTrue(result.Instr("user-123") >= 0, "V2 should have userId value in query")
+      m.assertTrue(result.Instr("backdrop") >= 0, "V2 should have type value in query")
+      m.assertTrue(result.Instr("500") >= 0, "V2 should have maxWidth value")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ApiClient Instantiation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("can create new ApiClient instance directly")
+    function _()
+      client = new ApiClient()
+      m.assertNotInvalid(client)
+    end function
+
+    @it("GetApi returns a valid object")
+    function _()
+      api = GetApi()
+      m.assertNotInvalid(api)
+      ' Verify it has the expected methods
+      m.assertTrue(api.GetItem <> invalid, "GetApi should return object with GetItem method")
+    end function
+
+  end class
+
+end namespace
