@@ -149,6 +149,229 @@ class ApiClient
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
+  ' ARTIST ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get artist by name
+  ' @param name - Artist name
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetArtistByName(name as string, params = {} as object) as dynamic
+    return sdk.artists.GetByName(name, params)
+  end function
+
+  ' Get all artists with automatic image injection
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetArtists(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    return sdk.artists.Get(mergedParams)
+  end function
+
+  ' Get all album artists with automatic image injection
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetAlbumArtists(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    return sdk.artists.GetAlbumArtists(mergedParams)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' PLAYLIST ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get playlist items
+  ' @param playlistId - The playlist ID
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetPlaylistItems(playlistId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = {}
+    mergedParams.append(params)
+    mergedParams.UserId = userId
+
+    return sdk.playlists.GetItems(playlistId, mergedParams)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' ITEMS ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get instant mix based on item
+  ' @param itemId - The item ID
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetInstantMix(itemId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = {}
+    mergedParams.append(params)
+    mergedParams.UserId = userId
+
+    return sdk.items.GetInstantMix(itemId, mergedParams)
+  end function
+
+  ' Get intros for an item
+  ' @param itemId - The item ID
+  ' @returns API response or invalid on error
+  function GetIntros(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetIntros(userId, itemId)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' THIN WRAPPERS - Pass-through to SDK for consistent UX
+  ' These don't modify params but provide consistent api.* interface
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Post playback info (used for starting playback)
+  ' @param itemId - The item ID
+  ' @param postData - Request body data
+  ' @returns API response or invalid on error
+  function PostPlaybackInfo(itemId as string, postData as object) as dynamic
+    return sdk.items.PostPlayBackInfo(itemId, postData)
+  end function
+
+  ' Get artist by name
+  ' @param name - Artist name
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetArtistByName(name as string, params = {} as object) as dynamic
+    return sdk.artists.GetByName(name, params)
+  end function
+
+  ' Get all artists
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetArtists(params = {} as object) as dynamic
+    return sdk.artists.Get(params)
+  end function
+
+  ' Get all album artists
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetAlbumArtists(params = {} as object) as dynamic
+    return sdk.artists.GetAlbumArtists(params)
+  end function
+
+  ' Get similar artists
+  ' @param id - Artist ID
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetSimilarArtists(id as string, params = {} as object) as dynamic
+    return sdk.artists.GetSimilar(id, params)
+  end function
+
+  ' Get similar albums
+  ' @param id - Album ID
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetSimilarAlbums(id as string, params = {} as object) as dynamic
+    return sdk.albums.GetSimilar(id, params)
+  end function
+
+  ' Get album instant mix
+  ' @param id - Album ID
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetAlbumInstantMix(id as string, params = {} as object) as dynamic
+    return sdk.albums.GetInstantMix(id, params)
+  end function
+
+  ' Get playlist items
+  ' @param playlistId - The playlist ID
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetPlaylistItems(playlistId as string, params = {} as object) as dynamic
+    return sdk.playlists.GetItems(playlistId, params)
+  end function
+
+  ' Get local trailers for an item
+  ' @param itemId - The item ID
+  ' @returns API response or invalid on error
+  function GetLocalTrailers(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.GetLocalTrailers(userId, itemId)
+  end function
+
+  ' Get special features for an item
+  ' @param itemId - The item ID
+  ' @returns API response or invalid on error
+  function GetSpecialFeatures(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.GetSpecialFeatures(userId, itemId)
+  end function
+
+  ' Mark item as favorite
+  ' @param itemId - The item ID
+  ' @returns API response or invalid on error
+  function MarkFavorite(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.MarkFavorite(userId, itemId)
+  end function
+
+  ' Unmark item as favorite
+  ' @param itemId - The item ID
+  ' @returns API response or invalid on error
+  function UnmarkFavorite(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.UnmarkFavorite(userId, itemId)
+  end function
+
+  ' Mark item as played
+  ' @param itemId - The item ID
+  ' @param params - Optional parameters (DatePlayed, etc.)
+  ' @returns API response or invalid on error
+  function MarkPlayed(itemId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.MarkPlayed(userId, itemId, params)
+  end function
+
+  ' Mark item as unplayed
+  ' @param itemId - The item ID
+  ' @returns API response or invalid on error
+  function UnmarkPlayed(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.UnmarkPlayed(userId, itemId)
+  end function
+
+  ' Update user rating
+  ' @param itemId - The item ID
+  ' @param params - Rating parameters
+  ' @returns API response or invalid on error
+  function UpdateRating(itemId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.UpdateRating(userId, itemId, params)
+  end function
+
+  ' Delete user rating
+  ' @param itemId - The item ID
+  ' @returns API response or invalid on error
+  function DeleteRating(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.DeleteRating(userId, itemId)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
   ' PRIVATE HELPERS
   ' ═══════════════════════════════════════════════════════════════════════════
 
