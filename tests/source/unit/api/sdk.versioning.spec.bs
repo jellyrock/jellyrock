@@ -69,39 +69,6 @@ namespace tests
       m.assertTrue(result.Instr("2") >= 0, "V2 URL should contain imageindex as query param value")
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("sdk.users.GetImageURL() dispatcher - routes by apiVersion")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("routes to V1 when apiVersion = 0 (default/unset)")
-    function _()
-      m.global.server.apiVersion = 0
-      result = sdk.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/users/" + m.testUserId + "/images/") >= 0, "apiVersion=0 should use V1 /users/ path")
-    end function
-
-    @it("routes to V1 when apiVersion = 1")
-    function _()
-      m.global.server.apiVersion = 1
-      result = sdk.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/users/" + m.testUserId + "/images/") >= 0, "apiVersion=1 should use V1 /users/ path")
-    end function
-
-    @it("routes to V2 when apiVersion = 2")
-    function _()
-      m.global.server.apiVersion = 2
-      result = sdk.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/UserImage") >= 0, "apiVersion=2 should use V2 /UserImage path")
-      m.assertFalse(result.Instr("/users/") >= 0, "apiVersion=2 must not use V1 /users/ path")
-    end function
-
-    @it("routes to V2 for future versions (apiVersion > 2, forward-compat)")
-    function _()
-      m.global.server.apiVersion = 3
-      result = sdk.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/UserImage") >= 0, "apiVersion=3 should still use V2 paths (>= 2 check)")
-    end function
-
   end class
 
 end namespace

@@ -1,4 +1,6 @@
 import "pkg:/source/api/sdk.bs"
+import "pkg:/source/api/sdk.v1.bs"
+import "pkg:/source/api/sdk.v2.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' ApiClient provides a centralized, stateful wrapper around the Jellyfin API.
@@ -35,10 +37,20 @@ class ApiClient
     return ""
   end function
 
-  ' NOTE: API version is now retrieved via getApiVersionFromGlobal() from misc.bs
+  ' Get API version from global state (always fresh)
+  ' Note: Must use GetGlobalAA() instead of m.global because inside a class,
+  ' 'm' refers to the class instance, not the component context
+  private function getApiVersion() as integer
+    globalAA = GetGlobalAA()
+    if isValid(globalAA) and isValid(globalAA.global) and isValid(globalAA.global.server) and isValid(globalAA.global.server.apiVersion)
+      return globalAA.global.server.apiVersion
+    end if
+    return 2  ' Default to V2 for modern servers
+  end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
-  ' USER ENDPOINTS - All auto-inject image parameters
+  ' USER ENDPOINTS - Version-aware (V1/V2 routing)
+  ' When adding V3 support, add else-if branch in each method below
   ' ═══════════════════════════════════════════════════════════════════════════
 
   ' Get a single item by ID with automatic image and version field injection
@@ -49,7 +61,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetItem(userId, itemId, m.injectDefaults(params))
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetItem(userId, itemId, m.injectDefaults(params))
+    end if
+    return sdkV1.users.GetItem(userId, itemId, m.injectDefaults(params))
   end function
 
   ' Get items by query with automatic image and version field injection
@@ -59,7 +74,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetItemsByQuery(userId, m.injectDefaults(params))
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetItemsByQuery(userId, m.injectDefaults(params))
+    end if
+    return sdkV1.users.GetItemsByQuery(userId, m.injectDefaults(params))
   end function
 
   ' Get resume items (Continue Watching) with automatic image injection
@@ -69,7 +87,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
+    end if
+    return sdkV1.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
   end function
 
   ' Get suggestions with automatic image injection
@@ -79,7 +100,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetSuggestions(userId, m.injectDefaults(params))
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetSuggestions(userId, m.injectDefaults(params))
+    end if
+    return sdkV1.users.GetSuggestions(userId, m.injectDefaults(params))
   end function
 
   ' Get latest media with automatic image injection
@@ -89,7 +113,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetLatestMedia(userId, m.injectDefaults(params))
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetLatestMedia(userId, m.injectDefaults(params))
+    end if
+    return sdkV1.users.GetLatestMedia(userId, m.injectDefaults(params))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -104,7 +131,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetItem(userId, itemId, params)
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetItem(userId, itemId, params)
+    end if
+    return sdkV1.users.GetItem(userId, itemId, params)
   end function
 
   ' Get items by query without image parameters
@@ -114,7 +144,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetItemsByQuery(userId, params)
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetItemsByQuery(userId, params)
+    end if
+    return sdkV1.users.GetItemsByQuery(userId, params)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -230,7 +263,10 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
 
-    return sdk.users.GetIntros(userId, itemId)
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetIntros(userId, itemId)
+    end if
+    return sdkV1.users.GetIntros(userId, itemId)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -276,7 +312,11 @@ class ApiClient
   function GetLocalTrailers(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.GetLocalTrailers(userId, itemId)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetLocalTrailers(userId, itemId)
+    end if
+    return sdkV1.users.GetLocalTrailers(userId, itemId)
   end function
 
   ' Get special features for an item
@@ -285,7 +325,11 @@ class ApiClient
   function GetSpecialFeatures(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.GetSpecialFeatures(userId, itemId)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetSpecialFeatures(userId, itemId)
+    end if
+    return sdkV1.users.GetSpecialFeatures(userId, itemId)
   end function
 
   ' Mark item as favorite
@@ -294,7 +338,11 @@ class ApiClient
   function MarkFavorite(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.MarkFavorite(userId, itemId)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.MarkFavorite(userId, itemId)
+    end if
+    return sdkV1.users.MarkFavorite(userId, itemId)
   end function
 
   ' Unmark item as favorite
@@ -303,7 +351,11 @@ class ApiClient
   function UnmarkFavorite(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.UnmarkFavorite(userId, itemId)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.UnmarkFavorite(userId, itemId)
+    end if
+    return sdkV1.users.UnmarkFavorite(userId, itemId)
   end function
 
   ' Mark item as played
@@ -313,7 +365,11 @@ class ApiClient
   function MarkPlayed(itemId as string, params = {} as object) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.MarkPlayed(userId, itemId, params)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.MarkPlayed(userId, itemId, params)
+    end if
+    return sdkV1.users.MarkPlayed(userId, itemId, params)
   end function
 
   ' Mark item as unplayed
@@ -322,7 +378,11 @@ class ApiClient
   function UnmarkPlayed(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.UnmarkPlayed(userId, itemId)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.UnmarkPlayed(userId, itemId)
+    end if
+    return sdkV1.users.UnmarkPlayed(userId, itemId)
   end function
 
   ' Update user rating
@@ -332,7 +392,11 @@ class ApiClient
   function UpdateRating(itemId as string, params = {} as object) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.UpdateRating(userId, itemId, params)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.UpdateRating(userId, itemId, params)
+    end if
+    return sdkV1.users.UpdateRating(userId, itemId, params)
   end function
 
   ' Delete user rating
@@ -341,7 +405,11 @@ class ApiClient
   function DeleteRating(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.DeleteRating(userId, itemId)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.DeleteRating(userId, itemId)
+    end if
+    return sdkV1.users.DeleteRating(userId, itemId)
   end function
 
   ' Delete an item
@@ -474,7 +542,11 @@ class ApiClient
   function GetViews() as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
-    return sdk.users.GetViews(userId)
+
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetViews(userId)
+    end if
+    return sdkV1.users.GetViews(userId)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -548,7 +620,10 @@ class ApiClient
   ' @param params - Optional parameters
   ' @returns API response or invalid on error
   function GetUserImageURL(id as string, imageType as string, imageIndex = 0 as integer, params = {} as object) as dynamic
-    return sdk.users.GetImageURL(id, imageType, imageIndex, params)
+    if m.getApiVersion() >= 2
+      return sdkV2.users.GetImageURL(id, imageType, imageIndex, params)
+    end if
+    return sdkV1.users.GetImageURL(id, imageType, imageIndex, params)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
