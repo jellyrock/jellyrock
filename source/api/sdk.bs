@@ -1,6 +1,7 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/sdk.v1.bs"
 import "pkg:/source/api/sdk.v2.bs"
+import "pkg:/source/utils/misc.bs"
 
 namespace sdk
   namespace albums
@@ -1895,14 +1896,14 @@ namespace sdk
     end sub
 
     ' --- Version-dispatched functions ---
-    ' Each dispatcher checks m.global.server.apiVersion and delegates to the
+    ' Each dispatcher checks getApiVersionFromGlobal() and delegates to the
     ' correct shim (apiV1.users.* or apiV2.users.*). The >= 2 check is
     ' forward-compatible: future server versions use V2 paths until a new
     ' breaking change requires V3.
 
     ' Get user profile image URL.
     function GetImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetImageURL(id, imagetype, imageindex, params)
       end if
       return sdkV1.users.GetImageURL(id, imagetype, imageindex, params)
@@ -1910,7 +1911,7 @@ namespace sdk
 
     ' HEAD user profile image.
     function HeadImageURL(id as string, imagetype = "primary" as string, imageindex = 0 as integer, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.HeadImageURL(id, imagetype, imageindex, params)
       end if
       return sdkV1.users.HeadImageURL(id, imagetype, imageindex, params)
@@ -1918,7 +1919,7 @@ namespace sdk
 
     ' Gets items based on a query.
     function GetItemsByQuery(id as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetItemsByQuery(id, params)
       end if
       return sdkV1.users.GetItemsByQuery(id, params)
@@ -1926,7 +1927,7 @@ namespace sdk
 
     ' Gets resumable items.
     function GetResumeItemsByQuery(id as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetResumeItemsByQuery(id, params)
       end if
       return sdkV1.users.GetResumeItemsByQuery(id, params)
@@ -1934,7 +1935,7 @@ namespace sdk
 
     ' Gets suggestions.
     function GetSuggestions(id as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetSuggestions(id, params)
       end if
       return sdkV1.users.GetSuggestions(id, params)
@@ -1942,7 +1943,7 @@ namespace sdk
 
     ' Get user view grouping options.
     function GetGroupingOptions(id as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetGroupingOptions(id)
       end if
       return sdkV1.users.GetGroupingOptions(id)
@@ -1950,7 +1951,7 @@ namespace sdk
 
     ' Get user views.
     function GetViews(id as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetViews(id, params)
       end if
       return sdkV1.users.GetViews(id, params)
@@ -1958,7 +1959,7 @@ namespace sdk
 
     ' Gets an item from a user's library.
     function GetItem(userid as string, itemid as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetItem(userid, itemid, params)
       end if
       return sdkV1.users.GetItem(userid, itemid, params)
@@ -1966,7 +1967,7 @@ namespace sdk
 
     ' Gets intros to play before the main media item plays.
     function GetIntros(userid as string, itemid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetIntros(userid, itemid)
       end if
       return sdkV1.users.GetIntros(userid, itemid)
@@ -1974,7 +1975,7 @@ namespace sdk
 
     ' Gets local trailers for an item.
     function GetLocalTrailers(userid as string, itemid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetLocalTrailers(userid, itemid)
       end if
       return sdkV1.users.GetLocalTrailers(userid, itemid)
@@ -1982,7 +1983,7 @@ namespace sdk
 
     ' Deletes a user's saved personal rating for an item.
     function DeleteRating(userid as string, itemid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.DeleteRating(userid, itemid)
       end if
       return sdkV1.users.DeleteRating(userid, itemid)
@@ -1990,7 +1991,7 @@ namespace sdk
 
     ' Updates a user's rating for an item.
     function UpdateRating(userid as string, itemid as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.UpdateRating(userid, itemid, params)
       end if
       return sdkV1.users.UpdateRating(userid, itemid, params)
@@ -1998,7 +1999,7 @@ namespace sdk
 
     ' Gets special features for an item.
     function GetSpecialFeatures(userid as string, itemid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetSpecialFeatures(userid, itemid)
       end if
       return sdkV1.users.GetSpecialFeatures(userid, itemid)
@@ -2006,7 +2007,7 @@ namespace sdk
 
     ' Gets latest media.
     function GetLatestMedia(userid as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetLatestMedia(userid, params)
       end if
       return sdkV1.users.GetLatestMedia(userid, params)
@@ -2014,7 +2015,7 @@ namespace sdk
 
     ' Gets the root folder from a user's library.
     function GetRoot(userid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.GetRoot(userid)
       end if
       return sdkV1.users.GetRoot(userid)
@@ -2022,7 +2023,7 @@ namespace sdk
 
     ' Marks an item as a favorite.
     function MarkFavorite(userid as string, itemid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.MarkFavorite(userid, itemid)
       end if
       return sdkV1.users.MarkFavorite(userid, itemid)
@@ -2030,7 +2031,7 @@ namespace sdk
 
     ' Unmarks item as a favorite.
     function UnmarkFavorite(userid as string, itemid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.UnmarkFavorite(userid, itemid)
       end if
       return sdkV1.users.UnmarkFavorite(userid, itemid)
@@ -2038,7 +2039,7 @@ namespace sdk
 
     ' Marks an item as played for user.
     function MarkPlayed(userid as string, itemid as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.MarkPlayed(userid, itemid, params)
       end if
       return sdkV1.users.MarkPlayed(userid, itemid, params)
@@ -2046,7 +2047,7 @@ namespace sdk
 
     ' Marks an item as unplayed for user.
     function UnmarkPlayed(userid as string, itemid as string)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.UnmarkPlayed(userid, itemid)
       end if
       return sdkV1.users.UnmarkPlayed(userid, itemid)
@@ -2054,7 +2055,7 @@ namespace sdk
 
     ' Reports that a user has begun playing an item.
     function MarkPlaying(userid as string, itemid as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.MarkPlaying(userid, itemid, params)
       end if
       return sdkV1.users.MarkPlaying(userid, itemid, params)
@@ -2062,7 +2063,7 @@ namespace sdk
 
     ' Reports that a user has stopped playing an item.
     function MarkStoppedPlaying(userid as string, itemid as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.MarkStoppedPlaying(userid, itemid, params)
       end if
       return sdkV1.users.MarkStoppedPlaying(userid, itemid, params)
@@ -2070,7 +2071,7 @@ namespace sdk
 
     ' Reports a user's playback progress.
     function ReportPlayProgress(userid as string, itemid as string, params = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.ReportPlayProgress(userid, itemid, params)
       end if
       return sdkV1.users.ReportPlayProgress(userid, itemid, params)
@@ -2078,7 +2079,7 @@ namespace sdk
 
     ' Updates a user configuration.
     function UpdateConfiguration(id as string, body = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.UpdateConfiguration(id, body)
       end if
       return sdkV1.users.UpdateConfiguration(id, body)
@@ -2086,7 +2087,7 @@ namespace sdk
 
     ' Updates a user's password.
     function UpdatePassword(id as string, body = {} as object)
-      if m.global.server.apiVersion >= 2
+      if getApiVersionFromGlobal() >= 2
         return sdkV2.users.UpdatePassword(id, body)
       end if
       return sdkV1.users.UpdatePassword(id, body)

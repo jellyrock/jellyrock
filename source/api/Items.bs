@@ -100,10 +100,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
 
           ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
           ' Only apply this for API v2+ servers (10.9+)
-          apiVersion = 2
-          if isValid(m.global.server) and isValid(m.global.server.apiVersion)
-            apiVersion = m.global.server.apiVersion
-          end if
+          apiVersion = getApiVersionFromGlobal()
 
           if apiVersion >= 2 and isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
             ' is DOVI in the string?

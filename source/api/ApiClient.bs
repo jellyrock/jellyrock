@@ -35,17 +35,7 @@ class ApiClient
     return ""
   end function
 
-  ' Get current API version from global state (always fresh)
-  private function getApiVersion() as integer
-    globalAA = GetGlobalAA()
-    if isValid(globalAA) and isValid(globalAA.global)
-      globalServer = globalAA.global.server
-      if isValid(globalServer) and isValid(globalServer.apiVersion)
-        return globalServer.apiVersion
-      end if
-    end if
-    return 1
-  end function
+  ' NOTE: API version is now retrieved via getApiVersionFromGlobal() from misc.bs
 
   ' ═══════════════════════════════════════════════════════════════════════════
   ' USER ENDPOINTS - All auto-inject image parameters
@@ -633,14 +623,16 @@ class ApiClient
   ' @param baseFields - Comma-separated field list
   ' @returns Updated field list with version-specific additions
   private function addVersionFields(baseFields as string) as string
-    if baseFields = "" then return baseFields
-
     ' Always add Chapters field
     if baseFields.Instr("Chapters") = -1
-      baseFields = baseFields + ",Chapters"
+      if baseFields = ""
+        baseFields = "Chapters"
+      else
+        baseFields = baseFields + ",Chapters"
+      end if
     end if
 
-    apiVersion = m.getApiVersion()
+    apiVersion = getApiVersionFromGlobal()
 
     ' Add Trickplay for 10.9+ servers (API v2+)
     if apiVersion >= 2 and baseFields.Instr("Trickplay") = -1

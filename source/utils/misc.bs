@@ -468,6 +468,28 @@ function versionChecker(versionToCheck as string, minVersionAccepted as string)
 end function
 
 '
+' Returns the current API version from global state with a safe default of 2.
+' Works in both class and non-class contexts (components, namespaces, functions).
+' This is the single source of truth for reading m.global.server.apiVersion.
+'
+' @returns {integer} API version (default: 2 if not set or invalid)
+function getApiVersionFromGlobal() as integer
+  ' Try m.global first (works in namespaces, functions, components)
+  if isValid(m.global) and isValid(m.global.server) and isValid(m.global.server.apiVersion)
+    return m.global.server.apiVersion
+  end if
+
+  ' Fall back to GetGlobalAA() (required for classes where m.global isn't available)
+  globalAA = GetGlobalAA()
+  if isValid(globalAA) and isValid(globalAA.global) and isValid(globalAA.global.server) and isValid(globalAA.global.server.apiVersion)
+    return globalAA.global.server.apiVersion
+  end if
+
+  ' Default to 2 (modern servers) if not found
+  return 2
+end function
+
+'
 ' Maps a Jellyfin server version string to an API version integer used by the SDK dispatcher.
 ' V1: Covers pre-10.9 servers (10.7.x, 10.8.x) — uses /Users/{userId}/ path prefix
 ' V2: Covers 10.9+ servers — endpoints moved to top-level, userId passed as query param
