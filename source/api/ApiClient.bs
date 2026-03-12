@@ -371,6 +371,13 @@ class ApiClient
     return sdk.users.DeleteRating(userId, itemId)
   end function
 
+  ' Delete an item
+  ' @param itemId - The item ID to delete
+  ' @returns API response or invalid on error
+  function DeleteItem(itemId as string) as dynamic
+    return sdk.items.DeleteByID(itemId)
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' PRIVATE HELPERS
   ' ═══════════════════════════════════════════════════════════════════════════
