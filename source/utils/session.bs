@@ -90,6 +90,13 @@ namespace server
     return true
   end function
 
+  ' Get normalized/canonical URL for consistent storage and comparison
+  ' @param url - The URL to normalize
+  ' @returns Normalized URL string (or empty string if invalid)
+  function GetNormalizedUrl(url as string) as string
+    return normalizeUrl(url)
+  end function
+
   ' Reset server to defaults
   sub Delete()
     ' Get local reference to minimize rendezvous

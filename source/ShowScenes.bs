@@ -334,18 +334,19 @@ function CreateServerGroup()
           m.scene.isLoading = true
 
           serverUrl = inferServerUrl(screen.serverUrl)
+          normalizedUrl = server.GetNormalizedUrl(serverUrl)
 
           isConnected = server.UpdateURL(serverUrl)
           serverInfoResult = invalid
           if isConnected
-            set_setting("server", serverUrl)
+            set_setting("server", normalizedUrl)
             serverInfoResult = ServerInfo()
             'If this is a different server from what we know, reset username/password setting
-            if globalServer.serverUrl <> serverUrl
+            if globalServer.serverUrl <> normalizedUrl
               set_setting("username", "")
               set_setting("password", "")
             end if
-            set_setting("server", serverUrl)
+            set_setting("server", normalizedUrl)
           end if
           m.scene.isLoading = false
 
@@ -361,10 +362,11 @@ function CreateServerGroup()
               ' If server redirected received, update the URL
               if isValid(serverInfoResult.UpdatedUrl)
                 serverUrl = serverInfoResult.UpdatedUrl
+                normalizedUrl = server.GetNormalizedUrl(serverUrl)
 
                 isConnected = server.UpdateURL(serverUrl)
                 if isConnected
-                  set_setting("server", serverUrl)
+                  set_setting("server", normalizedUrl)
                   screen.visible = false
                   return ""
                 end if
