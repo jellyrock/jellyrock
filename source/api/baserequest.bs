@@ -1,5 +1,3 @@
-import "pkg:/source/utils/url.bs"
-
 ' Functions for making requests to the API
 function buildParams(params = {} as object) as string
   ' Take an object of parameters and construct the URL query
