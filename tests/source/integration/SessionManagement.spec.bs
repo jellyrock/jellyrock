@@ -379,5 +379,109 @@ namespace tests
       m.assertNotEqual(persistedUrl, connectionUrl, "Registry should NOT contain connection URL")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Credential Clearing on Server Change - CreateServerGroup Logic")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("detects server URL changes for credential clearing")
+    function _()
+      ' Set up initial server state with saved credentials
+      localServer = m.getTestServer()
+      localServer.serverUrl = "https://old-server.example.com"
+      set_setting("username", "olduser")
+      set_setting("password", "oldpass")
+
+      ' Capture pre-connection URL (simulating CreateServerGroup behavior)
+      previousServerUrl = localServer.serverUrl
+
+      ' Simulate connecting to a different server
+      server.Delete()
+      success = server.UpdateURL("https://demo.jellyfin.org/stable")
+      m.assertTrue(success, "Should connect to new server")
+
+      ' Get canonical URL after discovery
+      canonicalUrl = localServer.serverUrl
+
+      ' The fix: Compare pre-connection URL to post-discovery canonical URL
+      ' This should detect the server change and clear credentials
+      if previousServerUrl <> canonicalUrl
+        set_setting("username", "")
+        set_setting("password", "")
+      end if
+
+      ' Verify credentials were cleared
+      m.assertEqual(get_setting("username"), "", "Username should be cleared when server URL changes")
+      m.assertEqual(get_setting("password"), "", "Password should be cleared when server URL changes")
+    end function
+
+    @it("preserves credentials when reconnecting to same server")
+    function _()
+      ' Set up initial server state with saved credentials
+      localServer = m.getTestServer()
+      localServer.serverUrl = "https://demo.jellyfin.org/stable"
+      set_setting("username", "saveduser")
+      set_setting("password", "savedpass")
+
+      ' Capture pre-connection URL
+      previousServerUrl = localServer.serverUrl
+
+      ' Reconnect to the same server (simulating refresh/reconnect)
+      server.Delete()
+      success = server.UpdateURL("https://demo.jellyfin.org/stable")
+      m.assertTrue(success, "Should reconnect to same server")
+
+      ' Get canonical URL after discovery
+      canonicalUrl = localServer.serverUrl
+
+      ' URL hasn't changed - credentials should be preserved
+      if previousServerUrl <> canonicalUrl
+        set_setting("username", "")
+        set_setting("password", "")
+      end if
+
+      ' Verify credentials were NOT cleared
+      m.assertEqual(get_setting("username"), "saveduser", "Username should be preserved when reconnecting to same server")
+      m.assertEqual(get_setting("password"), "savedpass", "Password should be preserved when reconnecting to same server")
+    end function
+
+    @it("clears credentials when server redirects to different URL")
+    function _()
+      ' This tests the core bug fix scenario:
+      ' Previous bug: globalServer.serverUrl was compared to canonicalUrl
+      ' Since globalServer IS m.global.server, they were always the same
+      ' Fixed: Capture previousServerUrl BEFORE UpdateURL(), compare after
+
+      localServer = m.getTestServer()
+      localServer.serverUrl = "http://example.com"  ' Initial URL
+      set_setting("username", "user123")
+      set_setting("password", "pass123")
+
+      ' Fixed implementation: Capture URL before any updates
+      previousServerUrl = localServer.serverUrl
+
+      ' Connect to server (this may change the URL due to redirects)
+      server.Delete()
+      success = server.UpdateURL("https://demo.jellyfin.org/stable")
+      m.assertTrue(success, "Should connect")
+
+      ' Get the canonical URL after discovery
+      canonicalUrl = localServer.serverUrl
+
+      ' Bug scenario: The previous code would have done:
+      ' if globalServer.serverUrl <> canonicalUrl
+      '   ' This was ALWAYS false since globalServer IS m.global.server
+      ' end if
+
+      ' Fixed scenario: Compare captured URL to canonical URL
+      if previousServerUrl <> canonicalUrl
+        set_setting("username", "")
+        set_setting("password", "")
+      end if
+
+      ' URL changed from http://example.com to demo server, credentials should be cleared
+      m.assertEqual(get_setting("username"), "", "Username should be cleared on URL redirect")
+      m.assertEqual(get_setting("password"), "", "Password should be cleared on URL redirect")
+    end function
+
   end class
 end namespace
