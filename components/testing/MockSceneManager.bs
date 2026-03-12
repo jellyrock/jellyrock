@@ -1,0 +1,62 @@
+' Mock SceneManager for testing
+' Provides no-op implementations of all SceneManager interface functions
+' This allows tests to call these functions without crashing
+
+sub init()
+  ' No initialization needed for mock
+end sub
+
+' Stub implementations - do nothing but exist so callFunc doesn't crash
+
+sub pushScene(newGroup)
+end sub
+
+sub popScene()
+end sub
+
+sub settings()
+end sub
+
+function getActiveScene() as object
+  return invalid
+end function
+
+sub clearScenes()
+end sub
+
+sub clearPreviousScene()
+end sub
+
+sub reloadHome()
+end sub
+
+' This is the key function that user.Login() calls after authentication
+' In the real SceneManager, this updates theme colors on the scene
+' In tests, we just do nothing since there's no real UI to update
+sub refreshThemeColors()
+end sub
+
+sub resetTime()
+end sub
+
+sub setBackgroundImage(url as string, fade = false as boolean, alwaysShow = false as boolean)
+end sub
+
+sub userMessage(title as string, message as string)
+end sub
+
+sub standardDialog(title as string, content as object)
+end sub
+
+sub radioDialog(title as string, content as object)
+end sub
+
+sub dismissDialog()
+end sub
+
+function isDialogOpen() as boolean
+  return false
+end function
+
+sub optionDialog(title as string, message as string, options as object)
+end sub
