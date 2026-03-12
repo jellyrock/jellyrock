@@ -1,6 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 

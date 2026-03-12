@@ -1,6 +1,5 @@
 ' needed for SignOut() and ServerInfo()
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
 

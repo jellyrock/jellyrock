@@ -1,4 +1,3 @@
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Returns an image URL for the specified item, or empty string if tag validation fails

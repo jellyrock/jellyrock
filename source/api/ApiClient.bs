@@ -1,4 +1,5 @@
 import "pkg:/source/api/sdk.bs"
+import "pkg:/source/utils/misc.bs"
 
 ' ApiClient provides a centralized, stateful wrapper around the Jellyfin API.
 ' It automatically injects image parameters and version-specific fields for consistent,
