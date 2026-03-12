@@ -1,152 +1,71 @@
 # Jellyfin Server Feature Support Matrix
 
-This document shows which JellyRock features are available based on your Jellyfin server version.
+This document shows which JellyRock features require specific Jellyfin server versions.
 
 ## Quick Reference
 
-| Server Version | API Version | Status |
-|----------------|-------------|--------|
-| 10.7.0 - 10.8.x | 1 | ✅ Fully Supported |
-| 10.9.0 - 10.10.x | 2 | ✅ Fully Supported |
-| 10.11.x+ | 2 | ✅ Fully Supported |
+| Server Version | API Version | Support Level |
+|----------------|-------------|---------------|
+| 10.7.0 - 10.8.x | 1 | Core features only |
+| 10.9.0+ | 2 | Full feature set |
 
-## Feature Availability by Server Version
+## Version-Specific Features
 
-### Core Features
-
-| Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
-|---------|--------|--------|---------|-------|
-| **Media Playback** | ✅ | ✅ | ✅ | All video/audio formats |
-| **Libraries View** | ✅ | ✅ | ✅ | Movies, TV, Music, etc. |
-| **Continue Watching** | ✅ | ✅ | ✅ | Resume partially watched items |
-| **Next Up** | ✅ | ✅ | ✅ | Next episode in series |
-| **Latest Media** | ✅ | ✅ | ✅ | Recently added content |
-| **Favorites** | ✅ | ✅ | ✅ | Mark/unmark favorites |
-| **Search** | ✅ | ✅ | ✅ | Search across libraries |
-| **Shuffle Play** | ✅ | ✅ | ✅ | Random playback order |
-
-### Image Features
+Only features with version differences are listed below. All other features (playback, browsing, search, etc.) work identically across all supported versions.
 
 | Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
 |---------|--------|--------|---------|-------|
-| **Poster Images** | ✅ | ✅ | ✅ | Primary artwork display |
-| **Backdrop Images** | ✅ | ✅ | ✅ | Background images on item details |
-| **Logo Images** | ✅ | ✅ | ✅ | Series/movie logos on OSD |
-| **Thumbnail Images** | ✅ | ✅ | ✅ | Video thumbnails |
-| **Image Tag Support** | ✅ | ✅ | ✅ | Caching and optimization |
-
-### Video Features
-
-| Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
-|---------|--------|--------|---------|-------|
-| **Direct Play** | ✅ | ✅ | ✅ | Stream without transcoding |
-| **Transcoding** | ✅ | ✅ | ✅ | Server-side format conversion |
-| **HDR Support** | ✅* | ✅* | ✅ | HDR10, HLG detection |
-| **Dolby Vision** | ✅* | ✅* | ✅ | DoVi profile detection |
-| **Subtitle Support** | ✅ | ✅ | ✅ | SRT, ASS, PGS, etc. |
-| **Audio Track Selection** | ✅ | ✅ | ✅ | Multiple audio languages |
-| **Chapter Support** | ✅ | ✅ | ✅ | Chapter markers and thumbnails |
-
-*HDR/DoVi detection limited on 10.7.x-10.8.x (no VideoRangeType field)
-
-### TV/Series Features
-
-| Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
-|---------|--------|--------|---------|-------|
-| **Seasons View** | ✅ | ✅ | ✅ | Browse seasons |
-| **Episodes List** | ✅ | ✅ | ✅ | Episode grid/list |
-| **Next Episode Auto-Play** | ✅ | ✅ | ✅ | Play next episode automatically |
-| **Special Features** | ✅ | ✅ | ✅ | Behind the scenes, deleted scenes |
-| **Intros/Pre-roll** | ✅ | ✅ | ✅ | Custom intro videos |
-
-### Music Features
-
-| Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
-|---------|--------|--------|---------|-------|
-| **Album Art** | ✅ | ✅ | ✅ | Cover images |
-| **Artist Images** | ✅ | ✅ | ✅ | Artist artwork |
-| **Audio Playback** | ✅ | ✅ | ✅ | All audio formats |
-| **Lyrics Display** | ❌ | ❌ | ✅ | Requires 10.9+ |
-| **Instant Mix** | ✅ | ✅ | ✅ | Auto-generated playlists |
-| **Normalization** | ❌ | ❌ | ✅ | Audio normalization (10.9+) |
-
-### Advanced Features
-
-| Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
-|---------|--------|--------|---------|-------|
-| **Trickplay** | ❌ | ❌ | ✅ | Video preview thumbnails (10.9+) |
-| **Quick Connect** | ⚠️ | ✅ | ✅ | 10.7.x uses different field name |
-| **Remote Control** | ✅ | ✅ | ✅ | Control from other devices |
-| **User Management** | ✅ | ✅ | ✅ | Multiple user support |
-| **Live TV** | ✅ | ✅ | ✅ | Live TV and DVR support |
-
-### Settings & Configuration
-
-| Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
-|---------|--------|--------|---------|-------|
-| **User Settings Sync** | ✅ | ✅ | ✅ | Settings saved to server |
-| **Display Preferences** | ✅ | ✅ | ✅ | Show/hide backdrop, etc. |
-| **Subtitle Settings** | ✅ | ✅ | ✅ | Language preferences |
-| **Audio Settings** | ✅ | ✅ | ✅ | Default audio language |
+| **Trickplay Thumbnails** | ❌ | ❌ | ✅ | Video preview scrubbing |
+| **Music Lyrics** | ❌ | ❌ | ✅ | On-screen lyrics display |
+| **Audio Normalization** | ❌ | ❌ | ✅ | ReplayGain support |
+| **HDR Type Detection** | ⚠️ | ⚠️ | ✅ | Limited on 10.7-10.8 |
+| **Dolby Vision Detection** | ⚠️ | ⚠️ | ✅ | Limited on 10.7-10.8 |
+| **Quick Connect** | ⚠️ | ✅ | ✅ | 10.7 uses "Token" field |
 
 ## Legend
 
 | Symbol | Meaning |
 |--------|---------|
 | ✅ | Fully supported |
-| ❌ | Not supported on this version |
-| ⚠️ | Partially supported / has limitations |
+| ❌ | Not available on this version |
+| ⚠️ | Partially supported |
 
-## Version-Specific Limitations
+## Important Notes
 
-### 10.7.x - 10.8.x (API v1)
+### HDR/Dolby Vision (⚠️ on 10.7-10.8)
+HDR and Dolby Vision content plays fine on all versions. However:
+- **10.9+**: Full detection via `VideoRangeType` field
+- **10.7-10.8**: Limited detection, may not display HDR badges
 
-**Limitations:**
-- Trickplay thumbnails: Not available (feature added in 10.9)
-- Music lyrics: Not available (feature added in 10.9)
-- Audio normalization: Not available (feature added in 10.9)
-- HDR/DoVi detection: Limited (no VideoRangeType field)
-- Quick Connect: Uses `Token` field (vs `Secret` in 10.8+)
+Does NOT affect playback quality - only visual indicators in the UI.
 
-**Workarounds:**
-- App gracefully degrades - features simply won't appear
-- All core functionality works identically
+### Quick Connect (⚠️ on 10.7)
+Quick Connect authentication works on 10.7 but uses a different field name:
+- **10.7**: Uses `Token` field
+- **10.8+**: Uses `Secret` field
 
-### 10.9.x+ (API v2)
+If Quick Connect fails on 10.7, use username/password login instead.
 
-**Full feature set available.**
+### What Works on ALL Versions
 
-All features listed as ✅ above are available on 10.9.x and newer versions.
+The following features work identically on 10.7.0 through latest:
 
-## Troubleshooting
-
-**Q: Why doesn't Trickplay work on my 10.8 server?**
-A: Trickplay is a Jellyfin 10.9+ feature. Upgrade your server to enable it.
-
-**Q: Why are some images not loading on 10.7?**
-A: Ensure you're running the latest JellyRock version. Earlier versions had image loading issues on 10.7 that have been resolved.
-
-**Q: Can I use Quick Connect on 10.7?**
-A: Quick Connect has limited support on 10.7 due to API differences. Username/password login is recommended for 10.7 servers.
-
-**Q: Will newer Jellyfin versions break JellyRock?**
-A: No. The app is designed to be forward-compatible. New server versions automatically use the 10.9+ (API v2) code paths until explicitly updated.
-
-## Checking Your Server Version
-
-You can check your Jellyfin server version in the app:
-1. Go to Settings → Server Information
-2. The version is displayed at the top
-
-Or check directly in your Jellyfin web dashboard:
-1. Log in as admin
-2. Go to Dashboard → General
-3. Version shown in top right
+- Video/audio playback (all formats)
+- Direct play and transcoding
+- Library browsing (Movies, TV, Music)
+- Continue watching / Next up
+- Favorites and playlists
+- Search functionality
+- Subtitle support
+- Image display (posters, backdrops, logos)
+- Live TV and DVR
+- Multiple user accounts
+- User settings sync
 
 ## Upgrade Recommendations
 
-**Minimum Recommended:** 10.7.0 (all core features work)
+**Minimum**: 10.7.0 (all essential features work)
 
-**Optimal:** 10.9.0 or newer (all features including Trickplay, lyrics, etc.)
+**Recommended**: 10.9.0+ (enables Trickplay, lyrics, better HDR detection)
 
-JellyRock will continue to support 10.7.x indefinitely, but upgrading to 10.9+ unlocks all features.
+JellyRock will continue supporting 10.7.x indefinitely.
