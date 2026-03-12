@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ImageHelpers.bs"
 import "pkg:/source/utils/config.bs"
 
 sub init()
@@ -120,7 +121,7 @@ function createUserPoster() as object
     userImage.blendColor = "0xFFFFFFFF"
 
     if m.global.server.serverUrl <> ""
-      userImage.uri = GetApi().GetImageURL(localUser.id, "primary", 0, imgParams)
+      userImage.uri = GetUserAvatarURL(localUser, 36, 36)
     else
       print "ERROR: No server URL set, cannot load user image"
     end if
