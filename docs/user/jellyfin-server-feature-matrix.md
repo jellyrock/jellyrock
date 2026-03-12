@@ -11,16 +11,16 @@ This document shows which JellyRock features require specific Jellyfin server ve
 
 ## Version-Specific Features
 
-| Feature              | 10.7.x | 10.8.x | 10.9.x+ | Notes                           |
-| -------------------- | ------ | ------ | ------- | ------------------------------- |
-| **Trickplay Thumbnails** | ❌     | ❌     | ✅      | Video preview scrubbing         |
-| **Quick Connect**    | ❌     | ✅     | ✅      | 10.7 uses "Token" not "Secret"  |
+| Feature                   | 10.7.x | 10.8.x | 10.9.x+ | Notes                           |
+| ------------------------- | ------ | ------ | ------- | ------------------------------- |
+| **Trickplay Thumbnails**  | ❌     | ❌     | ✅      | Video preview scrubbing         |
+| **Quick Connect**         | ❌     | ✅     | ✅      | 10.7 uses "Token" not "Secret"  |
 
 ## Legend
 
-| Symbol | Meaning                      |
-| ------ | ---------------------------- |
-| ✅     | Fully supported              |
+| Symbol | Meaning                       |
+| ------ | ----------------------------- |
+| ✅     | Fully supported               |
 | ❌     | Not available on this version |
 
 ## Important Notes
