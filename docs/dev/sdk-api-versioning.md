@@ -13,11 +13,13 @@ JellyRock supports Jellyfin servers from 10.7.0 through the latest version. To a
 Jellyfin 10.9 introduced breaking changes to user API endpoints by removing `/Users/{userId}/` path prefixes. JellyRock transparently handles both endpoint styles through a dispatch layer.
 
 **How it works:**
+
 - `apiVersion = 1`: 10.7.x - 10.8.x (legacy paths with `/Users/{id}/` prefix)
 - `apiVersion = 2`: 10.9+ (top-level paths with `userId` query parameter)
 - `GetApi()` client automatically handles both versions
 
 **Key Files:**
+
 - `source/api/sdk.bs` - Dispatcher that routes to appropriate version
 - `source/api/sdk.v1.bs` - 10.7.x - 10.8.x endpoint implementations
 - `source/api/sdk.v2.bs` - 10.9+ endpoint implementations
@@ -28,39 +30,43 @@ Jellyfin 10.9 introduced breaking changes to user API endpoints by removing `/Us
 Device profiles describe what media formats the Roku device can play. Different server versions expect different profile structures.
 
 **How it works:**
-- `V1 Profile`: 10.7.x - 10.8.x (includes Identification object, SupportedMediaTypes, ResponseProfiles)
-- `V2 Profile`: 10.9+ (simplified structure, supports VideoRangeType)
+
+- `V1 Profile`: 10.7.x - 10.8.x (includes `Identification` object, `SupportedMediaTypes`, `ResponseProfiles`)
+- `V2 Profile`: 10.9+ (simplified structure, supports `VideoRangeType`)
 - Profile is generated based on detected API version
 
 **Key Differences:**
-- V1 includes DLNA-related fields (Identification, SupportedMediaTypes)
-- V2 adds support for `VideoRangeType` for HDR/DoVi detection
-- V1 does NOT support VideoRangeType in codec conditions (causes 400 errors)
+
+- `V1` includes DLNA related fields (`Identification`, `SupportedMediaTypes`)
+- `V2` adds support for `VideoRangeType` for `HDR`/`DoVi` detection
+- `V1` does NOT support `VideoRangeType` in codec conditions (causes 400 errors)
 
 **Key Files:**
+
 - `source/utils/deviceCapabilities.bs` - Generates appropriate profile
-- `source/utils/deviceCapabilities.v1.bs` - V1 profile generation
-- `source/utils/deviceCapabilities.v2.bs` - V2 profile generation
+- `source/utils/deviceCapabilities.v1.bs` - `V1` profile generation
+- `source/utils/deviceCapabilities.v2.bs` - `V2` profile generation
 
 ### 3. Field Availability Versioning (BaseItemDto)
 
 Different Jellyfin versions return different fields in API responses. JellyRock handles this gracefully.
 
 **How it works:**
+
 - Fields added in 10.9+ are checked with `isValid()` before accessing
 - Fields not available return gracefully with defaults
-- ApiClient automatically injects required fields (EnableImageTypes, ImageTypeLimit)
+- `ApiClient` automatically injects required fields (`EnableImageTypes`, `ImageTypeLimit`)
 
 **Notable Field Differences:**
 
 | Field | 10.7.0 | 10.9+ | Handling |
-|-------|--------|-------|----------|
-| Trickplay | ❌ | ✅ | Safe with isValid() check |
-| HasLyrics | ❌ | ✅ | Safe with ?? operator |
-| NormalizationGain | ❌ | ✅ | Safe with ?? operator |
-| VideoRangeType | ❌ | ✅ | Safe with isValid() checks |
-| ImageTags | ✅ | ✅ | Always requested via ApiClient |
-| SupportsSync | ✅ | ❌ | Not used in codebase |
+| ----- | ------ | ----- | -------- |
+| `Trickplay` | ❌ | ✅ | Safe with `isValid()` check |
+| `HasLyrics` | ❌ | ✅ | Safe with ?? operator |
+| `NormalizationGain` | ❌ | ✅ | Safe with ?? operator |
+| `VideoRangeType` | ❌ | ✅ | Safe with `isValid()` checks |
+| `ImageTags` | ✅ | ✅ | Always requested via `ApiClient` |
+| `SupportsSync` | ✅ | ❌ | Not used in codebase |
 
 **Note:** Some fields like `ImageTags` and `BackdropImageTags` are not in the `ItemFields` enum but are returned when `EnableImageTypes` is specified.
 
@@ -69,6 +75,7 @@ Different Jellyfin versions return different fields in API responses. JellyRock 
 Most authentication flows work across all versions, with one exception:
 
 **Quick Connect Field Name:**
+
 - 10.7.x: Uses `Token` field
 - 10.8.x+: Uses `Secret` field
 - Current implementation uses `Secret` (10.8.x+ compatible)
@@ -86,14 +93,15 @@ data = api.GetItem(itemId, { fields: "Overview" })
 ```
 
 **Automatic handling:**
-- Image parameters injected automatically (EnableImageTypes, ImageTypeLimit)
+
+- Image parameters injected automatically (`EnableImageTypes`, `ImageTypeLimit`)
 - Version-specific fields added conditionally (e.g., Trickplay for 10.9+)
-- UserId automatically retrieved from global state
+- `UserId` automatically retrieved from global state
 - API version automatically detected and routed
 
 ## How Versioning Works Together
 
-```
+```text
 User Action → GetApi().GetItem()
                     ↓
             ApiClient.injectDefaults()
@@ -127,7 +135,7 @@ All code references this value to determine behavior.
 ## Files by Versioning System
 
 | System | Key Files |
-|--------|-----------|
+| ------ | --------- |
 | API Endpoints | `source/api/sdk.bs`, `source/api/sdk.v1.bs`, `source/api/sdk.v2.bs`, `source/api/ApiClient.bs` |
 | Device Profile | `source/utils/deviceCapabilities.bs`, `source/utils/deviceCapabilities.v1.bs`, `source/utils/deviceCapabilities.v2.bs` |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
@@ -141,7 +149,7 @@ If Jellyfin 11.0 introduces breaking changes:
 2. **Profile Changes:** Create `source/utils/deviceCapabilities.v3.bs` with new profile structure
 3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for 11.0+
 4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `sdk.bs`
-5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to V2 until overridden
+5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden
 
 ## Related Documentation
 
