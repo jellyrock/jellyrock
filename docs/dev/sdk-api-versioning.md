@@ -16,14 +16,15 @@ Jellyfin 10.9 introduced breaking changes to user API endpoints by removing `/Us
 
 - `apiVersion = 1`: 10.7.x - 10.8.x (legacy paths with `/Users/{id}/` prefix)
 - `apiVersion = 2`: 10.9+ (top-level paths with `userId` query parameter)
-- `GetApi()` client automatically handles both versions
+- `ApiClient` class routes to the appropriate version (`sdkV1` or `sdkV2`) based on `m.global.server.apiVersion`
+- Static endpoints (shows, artists, movies, etc.) use `sdk.*` directly without version dispatch
 
 **Key Files:**
 
-- `source/api/sdk.bs` - Dispatcher that routes to appropriate version
-- `source/api/sdk.v1.bs` - 10.7.x - 10.8.x endpoint implementations
-- `source/api/sdk.v2.bs` - 10.9+ endpoint implementations
-- `source/api/ApiClient.bs` - Unified client that uses sdk internally
+- `source/api/ApiClient.bs` - Dispatcher that routes to appropriate version and injects defaults
+- `source/api/sdk.bs` - Base SDK with static endpoints (shows, artists, items, etc.)
+- `source/api/sdk.v1.bs` - 10.7.x - 10.8.x user endpoint implementations
+- `source/api/sdk.v2.bs` - 10.9+ user endpoint implementations
 
 ### 2. Device Profile Versioning
 
@@ -104,14 +105,14 @@ data = api.GetItem(itemId, { fields: "Overview" })
 ```text
 User Action → GetApi().GetItem()
                     ↓
-            ApiClient.injectDefaults()
-                    ↓
-            sdk.users.GetItem() [dispatcher]
+            ApiClient (dispatcher)
                     ↓
             Check m.global.server.apiVersion
                     ↓
             ├── apiVersion = 1 → sdkV1.users.GetItem()
             └── apiVersion = 2 → sdkV2.users.GetItem()
+                    ↓
+            Static endpoints (shows, items, etc.) → sdk.*
                     ↓
             Device Profile (getDeviceProfile())
                     ↓
@@ -136,7 +137,7 @@ All code references this value to determine behavior.
 
 | System | Key Files |
 | ------ | --------- |
-| API Endpoints | `source/api/sdk.bs`, `source/api/sdk.v1.bs`, `source/api/sdk.v2.bs`, `source/api/ApiClient.bs` |
+| API Endpoints | `source/api/ApiClient.bs` (dispatcher), `source/api/sdk.bs` (static), `source/api/sdk.v1.bs` (`V1` user), `source/api/sdk.v2.bs` (`V2` user) |
 | Device Profile | `source/utils/deviceCapabilities.bs`, `source/utils/deviceCapabilities.v1.bs`, `source/utils/deviceCapabilities.v2.bs` |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
 | Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
@@ -148,7 +149,7 @@ If Jellyfin 11.0 introduces breaking changes:
 1. **API Changes:** Create `source/api/sdk.v3.bs` with new endpoint paths
 2. **Profile Changes:** Create `source/utils/deviceCapabilities.v3.bs` with new profile structure
 3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for 11.0+
-4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `sdk.bs`
+4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `ApiClient.bs`
 5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden
 
 ## Related Documentation
