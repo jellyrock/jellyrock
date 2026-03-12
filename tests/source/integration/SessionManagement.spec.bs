@@ -452,7 +452,7 @@ namespace tests
       ' Fixed: Capture previousServerUrl BEFORE UpdateURL(), compare after
 
       localServer = m.getTestServer()
-      localServer.serverUrl = "http://example.com"  ' Initial URL
+      localServer.serverUrl = "http://example.com" ' Initial URL
       set_setting("username", "user123")
       set_setting("password", "pass123")
 
