@@ -210,11 +210,14 @@ function parseUrlComponents(url as string) as object
     end if
   end if
 
-  ' Ensure path starts with /
-  if path = ""
-    path = "/"
-  else if Left(path, 1) <> "/"
-    path = "/" + path
+  ' Only ensure path starts with / for hierarchical URLs (those with authority)
+  ' Non-hierarchical URIs (mailto, tel, data, etc.) should preserve their path as-is
+  if authority <> ""
+    if path = ""
+      path = "/"
+    else if Left(path, 1) <> "/"
+      path = "/" + path
+    end if
   end if
 
   return {

@@ -667,6 +667,54 @@ namespace tests
     end function
 
     ' ============================================
+    ' parseUrlComponents Non-Hierarchical URI Tests (RFC 3986)
+    ' ============================================
+
+    @describe("parseUrlComponents mailto URI")
+    @it("should preserve path for non-hierarchical mailto URI")
+    function _()
+      parts = parseUrlComponents("mailto:user@example.com")
+      m.assertEqual(parts.scheme, "mailto")
+      m.assertEqual(parts.path, "user@example.com")
+      m.assertEqual(parts.host, "")
+      m.assertEqual(parts.authority, "")
+    end function
+
+    @describe("parseUrlComponents tel URI")
+    @it("should preserve path for non-hierarchical tel URI")
+    function _()
+      parts = parseUrlComponents("tel:+1-234-567-8900")
+      m.assertEqual(parts.scheme, "tel")
+      m.assertEqual(parts.path, "+1-234-567-8900")
+      m.assertEqual(parts.host, "")
+    end function
+
+    @describe("parseUrlComponents data URI")
+    @it("should preserve path for data URI")
+    function _()
+      parts = parseUrlComponents("data:text/plain;base64,SGVsbG8=")
+      m.assertEqual(parts.scheme, "data")
+      m.assertEqual(parts.path, "text/plain;base64,SGVsbG8=")
+    end function
+
+    @describe("parseUrlComponents ftp URI with authority")
+    @it("should add leading slash for hierarchical FTP URI")
+    function _()
+      parts = parseUrlComponents("ftp://ftp.example.com/pub/file.txt")
+      m.assertEqual(parts.scheme, "ftp")
+      m.assertEqual(parts.host, "ftp.example.com")
+      m.assertEqual(parts.path, "/pub/file.txt")
+    end function
+
+    @describe("parseUrlComponents file URI without authority")
+    @it("should handle file URI without authority")
+    function _()
+      parts = parseUrlComponents("file:///path/to/file.txt")
+      m.assertEqual(parts.scheme, "file")
+      m.assertEqual(parts.path, "/path/to/file.txt")
+    end function
+
+    ' ============================================
     ' mergePaths Tests
     ' ============================================
 
