@@ -18,7 +18,12 @@ import "pkg:/source/utils/url.bs"
 
 namespace server
   ' Update server URL and populate from API
-  function UpdateURL(url as string) as boolean
+  ' @param url - The URL to connect to (will be normalized for API calls)
+  ' @param originalUrl - Optional: The original user-entered URL to persist to registry.
+  '                      If not provided, the url parameter will be persisted.
+  '                      This preserves the user's input for multi-network access
+  '                      while allowing runtime discovery to use canonical URLs.
+  function UpdateURL(url as string, originalUrl = "" as string) as boolean
     if url = "" then return false
 
     ' Normalize URL for consistent storage and comparison
@@ -33,7 +38,15 @@ namespace server
     serverNode.serverUrl = normalizedUrl
     success = server.Populate()
 
-    if not success
+    if success
+      ' Persist the ORIGINAL URL (what user entered), not the canonical URL
+      ' This allows re-discovery on each connection for multi-network scenarios
+      urlToPersist = originalUrl
+      if urlToPersist = ""
+        urlToPersist = url
+      end if
+      set_setting("server", urlToPersist)
+    else
       ' Reset on failure
       server.Delete()
     end if
@@ -202,8 +215,9 @@ namespace server
             return { "Error": true, "ErrorMessage": "Server redirect loop detected - redirecting to same URL" }
           end if
 
-          ' Persist and retry with incremented counter
-          set_setting("server", normalizedNewUrl)
+          ' Update runtime state with canonical URL and retry
+          ' Note: We do NOT persist canonical URL to registry - caller handles persistence
+          ' This ensures user's original URL is preserved for multi-network access
           serverNode.serverUrl = normalizedNewUrl
           result = server.Discover(redirectCount + 1)
 

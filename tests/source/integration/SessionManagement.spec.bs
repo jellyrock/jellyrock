@@ -339,5 +339,45 @@ namespace tests
       return m.assertEqual(localUser.authToken, "", "Auth token should be cleared after logout")
     end function
 
+    @it("persists original URL to registry, not canonical URL")
+    function _()
+      ' Clear server and registry to start fresh
+      server.Delete()
+      unset_setting("server")
+
+      ' Attempt connection with original URL
+      originalUrl = "https://demo.jellyfin.org/stable"
+      success = server.UpdateURL(originalUrl, originalUrl)
+
+      m.assertTrue(success, "Should successfully connect")
+
+      ' Verify: Registry should contain original URL
+      persistedUrl = get_setting("server")
+      m.assertEqual(persistedUrl, originalUrl, "Registry should contain original URL, not canonical")
+
+      ' Verify: Global state should contain URL (used for API calls)
+      localServer = m.getTestServer()
+      m.assertNotEqual(localServer.serverUrl, "", "Global state should have server URL")
+    end function
+
+    @it("persists provided originalUrl even when different from connection URL")
+    function _()
+      ' Clear server and registry to start fresh
+      server.Delete()
+      unset_setting("server")
+
+      ' Connect with inferred URL but provide different original for persistence
+      connectionUrl = "https://demo.jellyfin.org/stable"
+      userEnteredUrl = "https://jellyfin.example.com"
+      success = server.UpdateURL(connectionUrl, userEnteredUrl)
+
+      m.assertTrue(success, "Should successfully connect")
+
+      ' Verify: Registry should contain user-entered URL, not connection URL
+      persistedUrl = get_setting("server")
+      m.assertEqual(persistedUrl, userEnteredUrl, "Registry should persist originalUrl parameter")
+      m.assertNotEqual(persistedUrl, connectionUrl, "Registry should NOT contain connection URL")
+    end function
+
   end class
 end namespace
