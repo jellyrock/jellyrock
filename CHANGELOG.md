@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Add support for all Jellyfin server versions 10.7.x+ ([#368](https://github.com/jellyrock/jellyrock/pull/368))
 
+### Fixed
+
+- multi-network server discovery with original URL persistence ([#369](https://github.com/jellyrock/jellyrock/pull/369))
+
 ## [2.0.1](https://github.com/jellyrock/jellyrock/compare/v2.0.0...v2.0.1) - 2026-03-10
 
 ### Fixed
