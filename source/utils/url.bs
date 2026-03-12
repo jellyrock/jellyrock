@@ -9,10 +9,10 @@
 ' @param reference - The reference URI (can be absolute http/https, relative, or protocol-relative)
 ' @returns Resolved and normalized absolute URI string, or empty string if resolution fails
 function resolveUrl(baseUrl as string, reference as string) as string
-  if reference = "" then return baseUrl
+  if reference = "" then return normalizeUrl(baseUrl)
 
   ' Check for fragment-only reference (same-document reference)
-  if Left(reference, 1) = "#" then return baseUrl
+  if Left(reference, 1) = "#" then return normalizeUrl(baseUrl)
 
   ' Parse the base URL
   baseParts = parseUrlComponents(baseUrl)
