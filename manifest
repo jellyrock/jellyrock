@@ -27,4 +27,4 @@ supports_input_launch=1
 
 requires_mkv=1
 
-bs_const=debug=false
+bs_const=debug=true

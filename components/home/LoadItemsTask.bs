@@ -22,8 +22,12 @@ sub loadItems()
 
   ' Load Libraries
   if m.top.itemsToLoad = "libraries"
-
     data = GetApi().GetViews()
+    print "m.global.user.id =", globalUser.id
+    print "DEBUG GetViews result data =", data
+    if isValid(data) and isValid(data.Items)
+      print "DEBUG GetViews item count: " + data.Items.count().toStr()
+    end if
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #525)

@@ -1950,10 +1950,15 @@ namespace sdk
 
     ' Get user views.
     function GetViews(id as string, params = {} as object)
+      print "DEBUG sdk.users.GetViews() id="; id; " apiVersion="; m.global.server.apiVersion
       if m.global.server.apiVersion >= 2
-        return sdkV2.users.GetViews(id, params)
+        result = sdkV2.users.GetViews(id, params)
+        print "DEBUG sdk.users.GetViews() v2 result type="; type(result)
+        return result
       end if
-      return sdkV1.users.GetViews(id, params)
+      result = sdkV1.users.GetViews(id, params)
+      print "DEBUG sdk.users.GetViews() v1 result type="; type(result)
+      return result
     end function
 
     ' Gets an item from a user's library.
