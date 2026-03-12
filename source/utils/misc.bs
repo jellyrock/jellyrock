@@ -475,17 +475,18 @@ end function
 ' @returns {integer} API version (default: 2 if not set or invalid)
 function getApiVersionFromGlobal() as integer
   ' Try m.global first (works in namespaces, functions, components)
-  if isValid(m.global) and isValid(m.global.server) and isValid(m.global.server.apiVersion)
+  ' Treat 0 as unset (should never happen, but safety check)
+  if isValid(m.global) and isValid(m.global.server) and isValid(m.global.server.apiVersion) and m.global.server.apiVersion <> 0
     return m.global.server.apiVersion
   end if
 
   ' Fall back to GetGlobalAA() (required for classes where m.global isn't available)
   globalAA = GetGlobalAA()
-  if isValid(globalAA) and isValid(globalAA.global) and isValid(globalAA.global.server) and isValid(globalAA.global.server.apiVersion)
+  if isValid(globalAA) and isValid(globalAA.global) and isValid(globalAA.global.server) and isValid(globalAA.global.server.apiVersion) and globalAA.global.server.apiVersion <> 0
     return globalAA.global.server.apiVersion
   end if
 
-  ' Default to 2 (modern servers) if not found
+  ' Default to 2 (modern servers) if not found or 0
   return 2
 end function
 

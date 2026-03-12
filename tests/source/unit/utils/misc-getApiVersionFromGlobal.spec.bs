@@ -1,0 +1,55 @@
+
+namespace tests
+
+  @suite("misc.bs - getApiVersionFromGlobal")
+  class MiscApiVersionTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+      ' BaseTestSuite already creates m.global.server as JellyfinServer
+      ' Just ensure it's reset to a known state with apiVersion = 0 (default)
+      m.global.server.apiVersion = 0
+    end function
+
+    @describe("getApiVersionFromGlobal()")
+
+    @it("returns 2 when apiVersion is 0 (unset/default)")
+    function _()
+      ' setup() already sets apiVersion = 0
+      result = getApiVersionFromGlobal()
+      m.assertEqual(result, 2)
+    end function
+
+    @it("returns 1 when apiVersion is set to 1")
+    function _()
+      m.global.server.apiVersion = 1
+      result = getApiVersionFromGlobal()
+      m.assertEqual(result, 1)
+    end function
+
+    @it("returns 2 when apiVersion is set to 2")
+    function _()
+      m.global.server.apiVersion = 2
+      result = getApiVersionFromGlobal()
+      m.assertEqual(result, 2)
+    end function
+
+    @it("returns apiVersion when set to values > 2")
+    function _()
+      m.global.server.apiVersion = 3
+      result = getApiVersionFromGlobal()
+      m.assertEqual(result, 3)
+    end function
+
+    @it("returns 2 when m.global.server is invalid")
+    function _()
+      originalServer = m.global.server
+      m.global.server = invalid
+      result = getApiVersionFromGlobal()
+      m.global.server = originalServer
+      m.assertEqual(result, 2)
+    end function
+
+  end class
+
+end namespace
