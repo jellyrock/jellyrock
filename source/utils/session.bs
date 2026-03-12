@@ -122,7 +122,7 @@ namespace server
 
   ' Discovers server information and handles redirects.
   '
-  ' Convention: all API calls should go through api.* namespace functions (e.g. api.system.GetPublicInfo()).
+  ' Convention: all API calls should go through the ApiClient class via GetApi() (e.g. GetApi().GetConfigurationByName()).
   ' Those functions bundle APIRequest() with a synchronous execution strategy (getJson, postVoid, etc.).
   '
   ' Discover() is an intentional exception: it must intercept the roUrlEvent to read GetResponseHeaders()
