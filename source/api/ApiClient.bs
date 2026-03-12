@@ -21,17 +21,27 @@ class ApiClient
   }
 
   ' Get current user ID from global state (always fresh)
+  ' Note: Must use GetGlobalAA() instead of m.global because inside a class,
+  ' 'm' refers to the class instance, not the component context
   private function getUserId() as string
-    if isValid(m.global) and isValid(m.global.user)
-      return m.global.user.id ?? ""
+    globalAA = GetGlobalAA()
+    if isValid(globalAA) and isValid(globalAA.global)
+      globalUser = globalAA.global.user
+      if isValid(globalUser) and isValid(globalUser.id)
+        return globalUser.id
+      end if
     end if
     return ""
   end function
 
   ' Get current API version from global state (always fresh)
   private function getApiVersion() as integer
-    if isValid(m.global) and isValid(m.global.server)
-      return m.global.server.apiVersion ?? 1
+    globalAA = GetGlobalAA()
+    if isValid(globalAA) and isValid(globalAA.global)
+      globalServer = globalAA.global.server
+      if isValid(globalServer) and isValid(globalServer.apiVersion)
+        return globalServer.apiVersion
+      end if
     end if
     return 1
   end function
