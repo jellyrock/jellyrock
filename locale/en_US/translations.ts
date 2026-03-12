@@ -467,10 +467,6 @@
       <extracomment>Dialog Title: Received error from server when trying to get information about the selected item for playback</extracomment>
     </message>
     <message>
-      <source>Error:</source>
-      <translation>Error:</translation>
-    </message>
-    <message>
       <source>Exit</source>
       <translation>Exit</translation>
     </message>
