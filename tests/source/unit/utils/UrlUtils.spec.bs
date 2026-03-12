@@ -170,7 +170,7 @@ namespace tests
     @describe("resolveUrl Jellyfin server redirect scenario")
     @it("should resolve Jellyfin server relative redirect to full URL")
     function _()
-      ' This tests RFC 3986 resolution - session.Discover() uses getBaseUrl() to extract base
+      ' This tests RFC 3986 resolution - server.Discover() uses getServerBaseUrl() to extract base
       base = "http://192.168.1.5:8096"
       location = "/system/info/public"
       result = resolveUrl(base, location)
