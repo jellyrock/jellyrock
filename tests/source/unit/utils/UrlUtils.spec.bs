@@ -709,6 +709,36 @@ namespace tests
       m.assertEqual(parts.path, "text/plain;base64,SGVsbG8=")
     end function
 
+    @describe("parseUrlComponents authority type safety for non-hierarchical URIs")
+    @it("should return empty string authority for mailto URI (not invalid)")
+    function _()
+      parts = parseUrlComponents("mailto:user@example.com")
+      m.assertEqual(parts.authority, "")
+      m.assertEqual(parts.fullAuthority, "")
+      m.assertTrue(isValid(parts.authority))
+      m.assertTrue(isValid(parts.fullAuthority))
+    end function
+
+    @describe("parseUrlComponents authority type safety for tel URI")
+    @it("should return empty string authority for tel URI (not invalid)")
+    function _()
+      parts = parseUrlComponents("tel:+1-234-567-8900")
+      m.assertEqual(parts.authority, "")
+      m.assertEqual(parts.fullAuthority, "")
+      m.assertTrue(isValid(parts.authority))
+      m.assertTrue(isValid(parts.fullAuthority))
+    end function
+
+    @describe("parseUrlComponents authority type safety for data URI")
+    @it("should return empty string authority for data URI (not invalid)")
+    function _()
+      parts = parseUrlComponents("data:text/plain,hello")
+      m.assertEqual(parts.authority, "")
+      m.assertEqual(parts.fullAuthority, "")
+      m.assertTrue(isValid(parts.authority))
+      m.assertTrue(isValid(parts.fullAuthority))
+    end function
+
     @describe("parseUrlComponents ftp URI with authority")
     @it("should add leading slash for hierarchical FTP URI")
     function _()

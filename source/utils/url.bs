@@ -144,7 +144,10 @@ function parseUrlComponents(url as string) as object
   if match.count() < 4 then return invalid
 
   scheme = match[1]
-  authority = match[3]
+  authority = ""
+  if match.count() > 3 and isValid(match[3])
+    authority = match[3]
+  end if
   path = match[4]
   query = ""
   if match.count() > 5 and isValid(match[5]) and match[5] <> ""
