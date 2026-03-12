@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+
 function LoginFlow()
   'Collect Jellyfin server and user information
   start_login:
@@ -654,7 +656,7 @@ function CreateItemDetailsGroup(item as object) as dynamic
 
   ' Type-specific post-load setup
   if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
-    trailerData = api.users.GetLocalTrailers(m.global.user.id, item.id)
+    trailerData = GetApi().GetLocalTrailers(item.id)
     if isValid(trailerData)
       group.trailerAvailable = trailerData.Count() > 0
     end if
