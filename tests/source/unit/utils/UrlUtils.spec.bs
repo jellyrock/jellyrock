@@ -969,6 +969,54 @@ namespace tests
     end function
 
     ' ============================================
+    ' Redirect Path Validation Tests
+    ' ============================================
+
+    @describe("parseUrlComponents extracts path ignoring query strings")
+    @it("should extract path without query string for redirect validation")
+    function _()
+      parts = parseUrlComponents("http://example.com/system/info/public?format=json")
+      m.assertEqual(parts.path, "/system/info/public")
+    end function
+
+    @describe("parseUrlComponents extracts path ignoring fragments")
+    @it("should extract path without fragment for redirect validation")
+    function _()
+      parts = parseUrlComponents("http://example.com/system/info/public#section")
+      m.assertEqual(parts.path, "/system/info/public")
+    end function
+
+    @describe("parseUrlComponents handles paths with both query and fragment")
+    @it("should extract only the path component")
+    function _()
+      parts = parseUrlComponents("http://example.com/system/info/public?format=json#section")
+      m.assertEqual(parts.path, "/system/info/public")
+      m.assertEqual(parts.query, "?format=json")
+    end function
+
+    @describe("parseUrlComponents handles reverse proxy base paths")
+    @it("should preserve base path with endpoint for redirect validation")
+    function _()
+      parts = parseUrlComponents("http://example.com/jellyfin/system/info/public")
+      m.assertEqual(parts.path, "/jellyfin/system/info/public")
+    end function
+
+    @describe("parseUrlComponents handles endpoint with trailing slash")
+    @it("should preserve trailing slash in path")
+    function _()
+      parts = parseUrlComponents("http://example.com/system/info/public/")
+      m.assertEqual(parts.path, "/system/info/public/")
+    end function
+
+    @describe("parseUrlComponents handles complex reverse proxy scenario")
+    @it("should handle nested base paths with query strings")
+    function _()
+      parts = parseUrlComponents("http://example.com/apps/jellyfin/system/info/public?format=json")
+      m.assertEqual(parts.path, "/apps/jellyfin/system/info/public")
+      m.assertEqual(parts.query, "?format=json")
+    end function
+
+    ' ============================================
     ' server.GetNormalizedUrl Tests - Wrapper function
     ' ============================================
 

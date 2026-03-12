@@ -172,29 +172,42 @@ namespace server
       normalizedNewUrl = normalizeUrl(newBaseUrl)
       normalizedCurrentUrl = normalizeUrl(currentUrl)
 
-      ' Only follow redirect if path matches /System/Info/Public
-      if LCase(right(headers.location, Len(endpointPath))) = "/system/info/public"
-        ' Validate resolved URL is not empty
-        if normalizedNewUrl = ""
-          return { "Error": true, "ErrorMessage": "Server returned invalid redirect URL" }
+      ' Only follow redirect if path matches /system/info/public (ignores query strings and fragments)
+      resolvedParts = parseUrlComponents(resolvedUrl)
+      if isValid(resolvedParts)
+        ' Normalize path: lowercase and remove trailing slash for comparison
+        resolvedPath = LCase(resolvedParts.path)
+        if Right(resolvedPath, 1) = "/" and Len(resolvedPath) > 1
+          resolvedPath = Left(resolvedPath, Len(resolvedPath) - 1)
         end if
 
-        ' Loop detection: if new URL is same as current, we've looped
-        if normalizedNewUrl = normalizedCurrentUrl
-          return { "Error": true, "ErrorMessage": "Server redirect loop detected - redirecting to same URL" }
-        end if
+        ' Check if path ends with the expected endpoint (supports reverse proxy base paths)
+        endpointPathLower = "/system/info/public"
+        pathEndsWithEndpoint = Right(resolvedPath, Len(endpointPathLower)) = endpointPathLower
 
-        ' Persist and retry with incremented counter
-        set_setting("server", normalizedNewUrl)
-        serverNode.serverUrl = normalizedNewUrl
-        result = server.Discover(redirectCount + 1)
+        if pathEndsWithEndpoint
+          ' Validate resolved URL is not empty
+          if normalizedNewUrl = ""
+            return { "Error": true, "ErrorMessage": "Server returned invalid redirect URL" }
+          end if
 
-        ' Add redirect info to error if retry failed
-        if result.Error
-          result.UpdatedUrl = normalizedNewUrl
-          result.ErrorMessage = result.ErrorMessage + " (Note: Server redirected us to " + normalizedNewUrl + ")"
+          ' Loop detection: if new URL is same as current, we've looped
+          if normalizedNewUrl = normalizedCurrentUrl
+            return { "Error": true, "ErrorMessage": "Server redirect loop detected - redirecting to same URL" }
+          end if
+
+          ' Persist and retry with incremented counter
+          set_setting("server", normalizedNewUrl)
+          serverNode.serverUrl = normalizedNewUrl
+          result = server.Discover(redirectCount + 1)
+
+          ' Add redirect info to error if retry failed
+          if result.Error
+            result.UpdatedUrl = normalizedNewUrl
+            result.ErrorMessage = result.ErrorMessage + " (Note: Server redirected us to " + normalizedNewUrl + ")"
+          end if
+          return result
         end if
-        return result
       end if
     end if
 
