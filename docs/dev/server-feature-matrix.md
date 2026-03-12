@@ -16,8 +16,6 @@ Only features with version differences are listed below. All other features (pla
 | Feature | 10.7.x | 10.8.x | 10.9.x+ | Notes |
 |---------|--------|--------|---------|-------|
 | **Trickplay Thumbnails** | ❌ | ❌ | ✅ | Video preview scrubbing |
-| **Music Lyrics** | ❌ | ❌ | ✅ | On-screen lyrics display |
-| **Audio Normalization** | ❌ | ❌ | ✅ | ReplayGain support |
 | **Quick Connect** | ❌ | ✅ | ✅ | 10.7 uses "Token" not "Secret" |
 
 ## Legend
@@ -58,6 +56,6 @@ The following features work identically on 10.7.0 through latest:
 
 **Minimum**: 10.7.0 (all essential features work)
 
-**Recommended**: 10.9.0+ (enables Trickplay, lyrics, better HDR detection)
+**Recommended**: 10.9.0+ (enables Trickplay thumbnails)
 
 JellyRock will continue supporting 10.7.x indefinitely.
