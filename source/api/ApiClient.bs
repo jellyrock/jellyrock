@@ -593,14 +593,14 @@ class ApiClient
   ' IMAGE ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Get image URL by name
-  ' @param name - Item name
+  ' Get image URL for an item by ID (HEAD request helper)
+  ' @param id - Item ID
   ' @param imageType - Type of image
   ' @param imageIndex - Image index (default 0)
   ' @param params - Optional parameters
   ' @returns API response or invalid on error
-  function HeadImageURLByName(name as string, imageType as string, imageIndex = 0 as integer, params = {} as object) as dynamic
-    return sdk.items.HeadImageURLByName(name, imageType, imageIndex, params)
+  function HeadImageURLByName(id as string, imageType as string, imageIndex = 0 as integer, params = {} as object) as dynamic
+    return sdk.items.HeadImageURLByName(id, imageType, imageIndex, params)
   end function
 
   ' Get image URL
