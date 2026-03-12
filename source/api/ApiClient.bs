@@ -608,16 +608,12 @@ class ApiClient
     merged.append(params)
 
     ' Add image-related fields if fields parameter exists
-    ' This ensures ImageTags, ParentLogoImageTag etc. are returned for logo display
+    ' PrimaryImageAspectRatio is a valid ItemField that triggers ImageTags to be returned
     if merged.DoesExist("fields")
       fields = merged.fields
-      ' Add ImageTags field if not already present
-      if fields.Instr("ImageTags") = -1
-        fields = fields + ",ImageTags"
-      end if
-      ' Add ParentLogoImageTag for series logo support
-      if fields.Instr("ParentLogoImageTag") = -1
-        fields = fields + ",ParentLogoImageTag"
+      ' Add PrimaryImageAspectRatio if not present - this causes ImageTags to be returned
+      if fields.Instr("PrimaryImageAspectRatio") = -1
+        fields = fields + ",PrimaryImageAspectRatio"
       end if
       merged.fields = m.addVersionFields(fields)
     end if
