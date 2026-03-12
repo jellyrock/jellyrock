@@ -70,7 +70,7 @@ function UserImageURL(id, params = {})
     params.append({ "quality": "90" })
   end if
 
-  fullURL = sdk.users.GetImageURL(id, "primary", 0, params)
+  fullURL = GetApi().GetUserImageURL(id, "primary", 0, params)
 
   ' Return empty string if server URL not configured (buildURL returns invalid)
   if not isValid(fullURL) then return ""

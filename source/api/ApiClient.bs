@@ -179,6 +179,7 @@ class ApiClient
     if userId = "" then return invalid
 
     mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
     return sdk.artists.Get(mergedParams)
   end function
 
@@ -190,6 +191,7 @@ class ApiClient
     if userId = "" then return invalid
 
     mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
     return sdk.artists.GetAlbumArtists(mergedParams)
   end function
 
@@ -608,16 +610,21 @@ class ApiClient
     ' Then apply user params (will override defaults if specified)
     merged.append(params)
 
-    ' Add image-related fields if fields parameter exists
+    ' Add image-related fields
     ' PrimaryImageAspectRatio is a valid ItemField that triggers ImageTags to be returned
+    fields = ""
     if merged.DoesExist("fields")
       fields = merged.fields
-      ' Add PrimaryImageAspectRatio if not present - this causes ImageTags to be returned
-      if fields.Instr("PrimaryImageAspectRatio") = -1
+    end if
+    ' Add PrimaryImageAspectRatio if not present - this causes ImageTags to be returned
+    if fields.Instr("PrimaryImageAspectRatio") = -1
+      if fields = ""
+        fields = "PrimaryImageAspectRatio"
+      else
         fields = fields + ",PrimaryImageAspectRatio"
       end if
-      merged.fields = m.addVersionFields(fields)
     end if
+    merged.fields = m.addVersionFields(fields)
 
     return merged
   end function
@@ -628,14 +635,16 @@ class ApiClient
   private function addVersionFields(baseFields as string) as string
     if baseFields = "" then return baseFields
 
+    ' Always add Chapters field
+    if baseFields.Instr("Chapters") = -1
+      baseFields = baseFields + ",Chapters"
+    end if
+
     apiVersion = m.getApiVersion()
 
-    ' Only add Trickplay for 10.9+ servers (API v2+)
+    ' Add Trickplay for 10.9+ servers (API v2+)
     if apiVersion >= 2 and baseFields.Instr("Trickplay") = -1
-      ' Check if we're already requesting Chapters (Trickplay is often paired with it)
-      if baseFields.Instr("Chapters") > -1
-        return baseFields + ",Trickplay"
-      end if
+      baseFields = baseFields + ",Trickplay"
     end if
 
     return baseFields
