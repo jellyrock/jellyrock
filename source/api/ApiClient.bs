@@ -379,6 +379,55 @@ class ApiClient
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
+  ' AUTHENTICATION ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Authenticate user by username and password
+  ' @param username - User's username
+  ' @param password - User's password
+  ' @returns API response with auth token or invalid on error
+  function AuthenticateByName(username as string, password as string) as dynamic
+    return sdk.users.AuthenticateByName(username, password)
+  end function
+
+  ' Get user by ID
+  ' @param userId - The user ID
+  ' @returns API response or invalid on error
+  function GetUser(userId as string) as dynamic
+    return sdk.users.Get(userId)
+  end function
+
+  ' Get public users
+  ' @returns API response or invalid on error
+  function GetPublicUsers() as dynamic
+    return sdk.users.GetPublic()
+  end function
+
+  ' Authenticate via Quick Connect
+  ' @param secret - The Quick Connect secret
+  ' @returns API response or invalid on error
+  function AuthenticateWithQuickConnect(secret as string) as dynamic
+    return sdk.users.AuthenticateWithQuickConnect(secret)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' QUICK CONNECT ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Initiate Quick Connect
+  ' @returns API response with secret or invalid on error
+  function InitiateQuickConnect() as dynamic
+    return sdk.quickConnect.Initiate()
+  end function
+
+  ' Connect via Quick Connect
+  ' @param secret - The Quick Connect secret
+  ' @returns API response or invalid on error
+  function ConnectQuickConnect(secret as string) as dynamic
+    return sdk.quickConnect.Connect(secret)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
   ' PRIVATE HELPERS
   ' ═══════════════════════════════════════════════════════════════════════════
 
