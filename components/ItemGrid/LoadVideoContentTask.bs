@@ -149,22 +149,13 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   video.title = isValidAndNotEmpty(titleOverride) ? titleOverride : meta.title
   video.showID = meta.seriesId
 
-  logoLookupID = video.id
-
   if videotype = "episode" or videotype = "series"
     video.content.contenttype = "episode"
     video.seasonNumber = meta.parentIndexNumber
     video.episodeNumber = meta.indexNumber
     video.episodeNumberEnd = meta.indexNumberEnd
-
-    if isValidAndNotEmpty(meta.seriesId)
-      logoLookupID = meta.seriesId
-    end if
   else if videotype = "recording"
     ' Recordings belong to a series — look up the series logo, same as episodes
-    if isValidAndNotEmpty(meta.seriesId)
-      logoLookupID = meta.seriesId
-    end if
   end if
 
   ' Set logo image using metadata (same logic as ItemDetails)
