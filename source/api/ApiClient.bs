@@ -45,7 +45,7 @@ class ApiClient
     if isValid(globalAA) and isValid(globalAA.global) and isValid(globalAA.global.server) and isValid(globalAA.global.server.apiVersion)
       return globalAA.global.server.apiVersion
     end if
-    return 2  ' Default to V2 for modern servers
+    return 2 ' Default to V2 for modern servers
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
