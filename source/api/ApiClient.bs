@@ -243,28 +243,6 @@ class ApiClient
     return sdk.items.PostPlayBackInfo(itemId, postData)
   end function
 
-  ' Get artist by name
-  ' @param name - Artist name
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetArtistByName(name as string, params = {} as object) as dynamic
-    return sdk.artists.GetByName(name, params)
-  end function
-
-  ' Get all artists
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetArtists(params = {} as object) as dynamic
-    return sdk.artists.Get(params)
-  end function
-
-  ' Get all album artists
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetAlbumArtists(params = {} as object) as dynamic
-    return sdk.artists.GetAlbumArtists(params)
-  end function
-
   ' Get similar artists
   ' @param id - Artist ID
   ' @param params - Optional query parameters
@@ -287,14 +265,6 @@ class ApiClient
   ' @returns API response or invalid on error
   function GetAlbumInstantMix(id as string, params = {} as object) as dynamic
     return sdk.albums.GetInstantMix(id, params)
-  end function
-
-  ' Get playlist items
-  ' @param playlistId - The playlist ID
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetPlaylistItems(playlistId as string, params = {} as object) as dynamic
-    return sdk.playlists.GetItems(playlistId, params)
   end function
 
   ' Get local trailers for an item

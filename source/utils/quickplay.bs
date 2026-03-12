@@ -420,7 +420,6 @@ namespace quickplay
   ' Quick Play A Person.
   ' Shuffle play all movies and episodes found for this person
   sub person(itemNode as object)
-    globalUser = m.global.user
     if not isValid(itemNode) or not isValid(itemNode.id) then return
     ' get movies by the person
     personMovies = GetApi().GetItemsByQuery({
@@ -587,7 +586,6 @@ namespace quickplay
   ' Shuffle play the items inside
   ' with some differences based on collectionType.
   sub collectionFolder(itemNode as object)
-    globalUser = m.global.user
     if not isValid(itemNode) or not isValid(itemNode.id) then return
     ' play depends on the kind of files inside the collectionfolder
     print "attempting to quickplay a collection folder"
