@@ -1,3 +1,4 @@
+import "pkg://source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/sdk.bs"
 import "pkg:/source/utils/config.bs"
@@ -11,9 +12,9 @@ sub setFavoriteStatus()
   task = m.top.favTask
 
   if task = "Favorite"
-    api.users.MarkFavorite(m.global.user.id, m.top.itemId)
+    GetApi().MarkFavorite(m.global.user.id, m.top.itemId)
   else if task = "Unfavorite"
-    api.users.UnmarkFavorite(m.global.user.id, m.top.itemId)
+    GetApi().UnmarkFavorite(m.global.user.id, m.top.itemId)
   end if
 
 end sub

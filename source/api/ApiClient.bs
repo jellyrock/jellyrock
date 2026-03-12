@@ -379,6 +379,71 @@ class ApiClient
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
+  ' SESSION ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Report playback started
+  ' @param params - Playback parameters
+  ' @returns API response or invalid on error
+  function Playing(params as object) as dynamic
+    return sdk.sessions.Playing(params)
+  end function
+
+  ' Report playback stopped
+  ' @param params - Playback parameters
+  ' @returns API response or invalid on error
+  function PostStopped(params as object) as dynamic
+    return sdk.sessions.PostStopped(params)
+  end function
+
+  ' Report playback progress
+  ' @param params - Playback parameters
+  ' @returns API response or invalid on error
+  function PostProgress(params as object) as dynamic
+    return sdk.sessions.PostProgress(params)
+  end function
+
+  ' Get active sessions
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetSessions(params = {} as object) as dynamic
+    return sdk.sessions.Get(params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' SYSTEM ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get configuration by name
+  ' @param name - Configuration name
+  ' @returns API response or invalid on error
+  function GetConfigurationByName(name as string) as dynamic
+    return sdk.system.GetConfigurationByName(name)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' BRANDING ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get branding configuration
+  ' @returns API response or invalid on error
+  function GetBrandingConfiguration() as dynamic
+    return sdk.branding.GetConfiguration()
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' DISPLAY PREFERENCES ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get display preferences
+  ' @param id - Preference ID
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetDisplayPreferences(id as string, params = {} as object) as dynamic
+    return sdk.displayPreferences.Get(id, params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
   ' AUTHENTICATION ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
@@ -425,6 +490,117 @@ class ApiClient
   ' @returns API response or invalid on error
   function ConnectQuickConnect(secret as string) as dynamic
     return sdk.quickConnect.Connect(secret)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' VIEWS ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get user views
+  ' @returns API response or invalid on error
+  function GetViews() as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return sdk.users.GetViews(userId)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' NEXT UP ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get next up episodes
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetNextUp(params = {} as object) as dynamic
+    return sdk.shows.GetNextUp(params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' VIDEOS ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get additional parts for a video
+  ' @param itemId - The video item ID
+  ' @returns API response or invalid on error
+  function GetAdditionalParts(itemId as string) as dynamic
+    return sdk.videos.GetAdditionalParts(itemId)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' FILTERS ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get filters
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetFilters(params = {} as object) as dynamic
+    return sdk.items.GetFilters(params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' IMAGE ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get image URL by name
+  ' @param name - Item name
+  ' @param imageType - Type of image
+  ' @param params - Optional parameters
+  ' @returns API response or invalid on error
+  function HeadImageURLByName(name as string, imageType as string, params = {} as object) as dynamic
+    return sdk.items.HeadImageURLByName(name, imageType, params)
+  end function
+
+  ' Get image URL
+  ' @param id - Item ID
+  ' @param imageType - Type of image
+  ' @param imageIndex - Image index
+  ' @param params - Optional parameters
+  ' @returns API response or invalid on error
+  function GetImageURL(id as string, imageType as string, imageIndex = 0 as integer, params = {} as object) as dynamic
+    return sdk.items.GetImageURL(id, imageType, imageIndex, params)
+  end function
+
+  ' Get user image URL
+  ' @param id - User ID
+  ' @param imageType - Type of image
+  ' @param imageIndex - Image index
+  ' @param params - Optional parameters
+  ' @returns API response or invalid on error
+  function GetUserImageURL(id as string, imageType as string, imageIndex = 0 as integer, params = {} as object) as dynamic
+    return sdk.users.GetImageURL(id, imageType, imageIndex, params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' LIVETV ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get Live TV channels
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetLiveTVChannels(params = {} as object) as dynamic
+    return sdk.liveTV.GetChannels(params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' STUDIOS ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get studios
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetStudios(params = {} as object) as dynamic
+    return sdk.studios.Get(params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' GENRES ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get genres
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetGenres(params = {} as object) as dynamic
+    return sdk.genres.Get(params)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════

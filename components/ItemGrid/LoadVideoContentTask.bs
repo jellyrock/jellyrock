@@ -1,3 +1,4 @@
+import "pkg://source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
@@ -166,9 +167,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     end if
   end if
 
-  logoImageExists = api.items.HeadImageURLByName(logoLookupID, "logo")
+  logoImageExists = GetApi().HeadImageURLByName(logoLookupID, "logo")
   if logoImageExists
-    video.logoImage = api.items.GetImageURL(logoLookupID, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })
+    video.logoImage = GetApi().GetImageURL(logoLookupID, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })
   else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
     ' Movie with no logo — fall back to primary (poster) image
     video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })

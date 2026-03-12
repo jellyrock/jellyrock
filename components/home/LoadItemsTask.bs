@@ -1,3 +1,4 @@
+import "pkg://source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
@@ -22,7 +23,7 @@ sub loadItems()
   ' Load Libraries
   if m.top.itemsToLoad = "libraries"
 
-    data = api.users.GetViews(globalUser.id)
+    data = GetApi().GetViews(globalUser.id)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #525)
@@ -43,7 +44,7 @@ sub loadItems()
       params["ImageTypeLimit"] = 1
       params["EnableTotalRecordCount"] = false
 
-      data = api.users.GetLatestMedia(activeUser, params)
+      data = GetApi().GetLatestMedia(activeUser, params)
 
       if isValid(data)
         for each item in data
@@ -102,7 +103,7 @@ sub loadItems()
       params["Filters"] = "IsResumable"
       params["EnableTotalRecordCount"] = false
 
-      data = api.users.GetResumeItemsByQuery(activeUser, params)
+      data = GetApi().GetResumeItems(activeUser, params)
       if isValid(data) and isValid(data.Items)
         for each item in data.Items
           ' Skip Books for now as we don't support it (issue #558)
@@ -122,7 +123,7 @@ sub loadItems()
     params["sortby"] = "random"
     params["EnableTotalRecordCount"] = false
 
-    data = api.users.GetItemsByQuery(globalUser.id, params)
+    data = GetApi().GetItemsByQuery(globalUser.id, params)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #558)
@@ -163,7 +164,7 @@ sub loadItems()
       if isValid(node) then results.push(node)
     end for
   else if m.top.itemsToLoad = "specialfeatures"
-    data = api.users.GetSpecialFeatures(globalUser.id, m.top.itemId)
+    data = GetApi().GetSpecialFeatures(globalUser.id, m.top.itemId)
     if isValid(data) and data.count() > 0
       for each specfeat in data
         node = m.transformer.transformBaseItem(specfeat)
@@ -171,7 +172,7 @@ sub loadItems()
       end for
     end if
   else if m.top.itemsToLoad = "additionalparts"
-    additionalParts = api.videos.GetAdditionalParts(m.top.itemId)
+    additionalParts = GetApi().GetAdditionalParts(m.top.itemId)
     if isValid(additionalParts)
       for each part in additionalParts.items
         node = m.transformer.transformBaseItem(part)
@@ -196,7 +197,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "personSeries"
     getPersonVideos("Series", results)
   else if m.top.itemsToLoad = "seasons"
-    data = api.shows.GetSeasons(m.top.itemId, { UserId: globalUser.id, Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
+    data = GetApi().GetSeasons(m.top.itemId, { UserId: globalUser.id, Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         node = m.transformer.transformBaseItem(item)
@@ -210,7 +211,7 @@ sub loadItems()
       m.top.content = results
       return
     end if
-    data = api.shows.GetEpisodes(m.top.itemId, {
+    data = GetApi().GetEpisodes(m.top.itemId, {
       UserId: globalUser.id,
       SeasonId: m.top.metadata.seasonId,
       Fields: "PrimaryImageAspectRatio,Overview",
@@ -223,7 +224,7 @@ sub loadItems()
       end for
     end if
   else if m.top.itemsToLoad = "seriesFirstEpisode"
-    data = api.shows.GetEpisodes(m.top.itemId, { UserId: globalUser.id, Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" })
+    data = GetApi().GetEpisodes(m.top.itemId, { UserId: globalUser.id, Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" })
     if isValid(data) and isValid(data.Items) and data.Items.count() > 0
       node = m.transformer.transformBaseItem(data.Items[0])
       if isValid(node) then results.push(node)
@@ -231,7 +232,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "seriesResume"
     ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
-    resumeData = api.users.GetResumeItemsByQuery(globalUser.id, {
+    resumeData = GetApi().GetResumeItems(globalUser.id, {
       ParentId: m.top.itemId,
       Filters: "IsResumable",
       SortBy: "DatePlayed",
@@ -247,7 +248,7 @@ sub loadItems()
     else
       ' No resumable episode — fall back to next unstarted episode.
       ' DisableFirstEpisode: true so a Resume button never appears for a completely unwatched series.
-      nextUpData = api.shows.GetNextUp({ UserId: globalUser.id, SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" })
+      nextUpData = GetApi().GetNextUp({ UserId: globalUser.id, SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" })
       if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
         node = m.transformer.transformBaseItem(nextUpData.Items[0])
         if isValid(node) then results.push(node)
@@ -269,7 +270,7 @@ end sub
 
 sub getPersonVideos(videoType as string, dest as object)
   params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
-  data = api.users.GetItemsByQuery(m.global.user.id, params)
+  data = GetApi().GetItemsByQuery(m.global.user.id, params)
   if isValid(data) and data.count() > 0
     for each item in data.items
       node = m.transformer.transformBaseItem(item)
