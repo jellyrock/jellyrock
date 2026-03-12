@@ -12,9 +12,9 @@ sub setFavoriteStatus()
   task = m.top.favTask
 
   if task = "Favorite"
-    GetApi().MarkFavorite(m.global.user.id, m.top.itemId)
+    GetApi().MarkFavorite(m.top.itemId)
   else if task = "Unfavorite"
-    GetApi().UnmarkFavorite(m.global.user.id, m.top.itemId)
+    GetApi().UnmarkFavorite(m.top.itemId)
   end if
 
 end sub

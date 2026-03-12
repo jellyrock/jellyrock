@@ -49,7 +49,7 @@ sub loadChannels()
     params.append({ isFavorite: true })
   end if
 
-  data = GetApi().GetItemsByQuery(globalUser.id, params)
+  data = GetApi().GetItemsByQuery(params)
 
   if not isValid(data.TotalRecordCount)
     m.top.channels = results

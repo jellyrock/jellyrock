@@ -14,22 +14,22 @@ sub getShuffleItems()
   items = []
 
   if input.type = "Series"
-    data = GetApi().GetEpisodes(input.id, { UserId: userId, SortBy: "Random", Limit: 200 })
+    data = GetApi().GetEpisodes(input.id, { SortBy: "Random", Limit: 200 })
     if isValid(data) and isValid(data.Items) then items = data.Items
   else if input.type = "Season"
     ' Shuffle episodes within this season only
-    data = GetApi().GetEpisodes(input.seriesId, { UserId: userId, SeasonId: input.id, SortBy: "Random", Limit: 200 })
+    data = GetApi().GetEpisodes(input.seriesId, { SeasonId: input.id, SortBy: "Random", Limit: 200 })
     if isValid(data) and isValid(data.Items) then items = data.Items
   else if input.type = "Person"
     ' All movies featuring this person (watched or not — rewatching a film is fine)
-    moviesData = GetApi().GetItemsByQuery(userId, {
+    moviesData = GetApi().GetItemsByQuery({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Movie",
       Limit: 250
     })
     ' Watched episodes/recordings only — avoids spoiling shows the user is mid-way through
-    episodesData = GetApi().GetItemsByQuery(userId, {
+    episodesData = GetApi().GetItemsByQuery({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Episode,Recording",

@@ -23,7 +23,7 @@ sub loadItems()
   ' Load Libraries
   if m.top.itemsToLoad = "libraries"
 
-    data = GetApi().GetViews(globalUser.id)
+    data = GetApi().GetViews()
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #525)
@@ -123,7 +123,7 @@ sub loadItems()
     params["sortby"] = "random"
     params["EnableTotalRecordCount"] = false
 
-    data = GetApi().GetItemsByQuery(globalUser.id, params)
+    data = GetApi().GetItemsByQuery(params)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #558)
@@ -164,7 +164,7 @@ sub loadItems()
       if isValid(node) then results.push(node)
     end for
   else if m.top.itemsToLoad = "specialfeatures"
-    data = GetApi().GetSpecialFeatures(globalUser.id, m.top.itemId)
+    data = GetApi().GetSpecialFeatures(m.top.itemId)
     if isValid(data) and data.count() > 0
       for each specfeat in data
         node = m.transformer.transformBaseItem(specfeat)
@@ -197,7 +197,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "personSeries"
     getPersonVideos("Series", results)
   else if m.top.itemsToLoad = "seasons"
-    data = GetApi().GetSeasons(m.top.itemId, { UserId: globalUser.id, Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
+    data = GetApi().GetSeasons(m.top.itemId, { Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         node = m.transformer.transformBaseItem(item)
@@ -224,7 +224,7 @@ sub loadItems()
       end for
     end if
   else if m.top.itemsToLoad = "seriesFirstEpisode"
-    data = GetApi().GetEpisodes(m.top.itemId, { UserId: globalUser.id, Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" })
+    data = GetApi().GetEpisodes(m.top.itemId, { Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" })
     if isValid(data) and isValid(data.Items) and data.Items.count() > 0
       node = m.transformer.transformBaseItem(data.Items[0])
       if isValid(node) then results.push(node)
@@ -232,7 +232,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "seriesResume"
     ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
-    resumeData = GetApi().GetResumeItems(globalUser.id, {
+    resumeData = GetApi().GetResumeItems({
       ParentId: m.top.itemId,
       Filters: "IsResumable",
       SortBy: "DatePlayed",
@@ -248,7 +248,7 @@ sub loadItems()
     else
       ' No resumable episode — fall back to next unstarted episode.
       ' DisableFirstEpisode: true so a Resume button never appears for a completely unwatched series.
-      nextUpData = GetApi().GetNextUp({ UserId: globalUser.id, SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" })
+      nextUpData = GetApi().GetNextUp({ SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" })
       if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
         node = m.transformer.transformBaseItem(nextUpData.Items[0])
         if isValid(node) then results.push(node)

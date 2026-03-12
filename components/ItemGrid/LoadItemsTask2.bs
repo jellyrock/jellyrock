@@ -201,7 +201,7 @@ sub loadItems()
         tmp = CreateObject("roSGNode", "ContentNode")
         tmp.title = item.name
 
-        genreData = GetApi().GetItemsByQuery(globalUser.id, {
+        genreData = GetApi().GetItemsByQuery({
           SortBy: "Random",
           SortOrder: "Ascending",
           IncludeItemTypes: m.top.itemType,
@@ -286,5 +286,5 @@ function executeItemQuery(queryType as string, userId as string, params as objec
     return GetApi().GetAlbumArtists(params)
   end if
   ' default: "usersItems"
-  return GetApi().GetItemsByQuery(userId, params)
+  return GetApi().GetItemsByQuery(params)
 end function
