@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- multi-network server discovery with original URL persistence ([#369](https://github.com/jellyrock/jellyrock/pull/369))
 - Add support for all Jellyfin server versions 10.7.x+ ([#368](https://github.com/jellyrock/jellyrock/pull/368))
 
 ### Fixed
