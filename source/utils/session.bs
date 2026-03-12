@@ -145,9 +145,15 @@ namespace server
     ' Wait for response (35 second timeout)
     resp = wait(35000, req.GetMessagePort())
 
-    ' Handle unknown errors
+    ' Handle non-roUrlEvent responses (timeouts, system errors, etc.)
     if type(resp) <> "roUrlEvent"
-      return { "Error": true, "ErrorMessage": "Unknown" }
+      ' Check for timeout (wait() returns invalid after timeout expires)
+      if resp = invalid
+        return { "Error": true, "ErrorMessage": "Connection timed out - server did not respond within 35 seconds" }
+      end if
+
+      ' Handle unexpected message types
+      return { "Error": true, "ErrorMessage": "Unexpected response type: " + type(resp) }
     end if
 
     ' Check for redirect headers
