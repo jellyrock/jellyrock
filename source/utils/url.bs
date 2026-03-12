@@ -1,11 +1,12 @@
 ' URL Utility Functions
-' RFC 3986 compliant URL resolution with automatic normalization
+' HTTP/HTTPS URL resolution per RFC 3986 Section 5 with automatic normalization
 
 ' Resolve a reference URI against a base URI per RFC 3986 Section 5
-' Note: The result is automatically normalized (lowercased scheme, default ports removed,
-' trailing slashes stripped, etc.) for consistent comparison and storage.
-' @param baseUrl - The base URI (absolute)
-' @param reference - The reference URI (can be absolute, relative, or protocol-relative)
+' Note: Only http:// and https:// schemes are supported. Other schemes (mailto:, ftp:, etc.)
+' will be treated as relative paths. The result is automatically normalized (lowercased scheme,
+' default ports removed, trailing slashes stripped, etc.) for consistent comparison and storage.
+' @param baseUrl - The base URI (absolute, http/https only)
+' @param reference - The reference URI (can be absolute http/https, relative, or protocol-relative)
 ' @returns Resolved and normalized absolute URI string, or empty string if resolution fails
 function resolveUrl(baseUrl as string, reference as string) as string
   if reference = "" then return baseUrl
