@@ -5,11 +5,11 @@ import "pkg:/source/api/sdk.bs"
 ' bulletproof item fetching across all Jellyfin server versions (10.7.0+).
 '
 ' Usage:
-'   api = API()
+'   api = GetApi()
 '   data = api.GetItem(itemId, { fields: "Overview" })
 '
 ' Or inline:
-'   data = API().GetItem(itemId, { fields: "Overview" })
+'   data = GetApi().GetItem(itemId, { fields: "Overview" })
 '
 ' The singleton pattern ensures one instance is shared across the entire app.
 class ApiClient
