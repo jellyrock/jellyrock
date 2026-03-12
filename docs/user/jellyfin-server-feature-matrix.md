@@ -26,6 +26,7 @@ This document shows which JellyRock features require specific Jellyfin server ve
 ## Important Notes
 
 ### Quick Connect
+
 Quick Connect authentication requires Jellyfin 10.8 or newer.
 
 - **10.7**: ❌ Does not work (API uses "Token" field, app sends "Secret")

@@ -74,6 +74,7 @@ npm run build # OR npm run build:prod
 ## User Docs
 
 - [App Settings](docs/user/app-settings.md)
+- [Jellyfin Server Feature Matrix](docs/user/jellyfin-server-feature-matrix.md)
 
 ## Dev Docs
 
