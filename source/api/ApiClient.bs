@@ -553,11 +553,44 @@ class ApiClient
   ' NEXT UP ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Get next up episodes
+  ' Get next up episodes with automatic image injection
   ' @param params - Query parameters
   ' @returns API response or invalid on error
   function GetNextUp(params = {} as object) as dynamic
-    return sdk.shows.GetNextUp(params)
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+
+    return sdk.shows.GetNextUp(mergedParams)
+  end function
+
+  ' Get upcoming episodes with automatic image injection
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetUpcoming(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+
+    return sdk.shows.GetUpcoming(mergedParams)
+  end function
+
+  ' Get similar shows with automatic image injection
+  ' @param id - Show ID
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetSimilarShows(id as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+
+    return sdk.shows.GetSimilar(id, mergedParams)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════

@@ -282,6 +282,45 @@ namespace tests
       m.assertInvalid(result)
     end function
 
+    @it("returns invalid from GetNextUp when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetNextUp({})
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetUpcoming when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetUpcoming({})
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from GetSimilarShows when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.GetSimilarShows(m.testItemId)
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("V1/V2 Routing - URL Path Verification")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
