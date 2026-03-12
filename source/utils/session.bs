@@ -2,6 +2,7 @@
 ' Global content nodes: m.global.server and m.global.user
 ' Organized via namespaces for clean code organization
 
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/sdk.bs"
 import "pkg:/source/api/userauth.bs"
@@ -509,7 +510,7 @@ namespace user
   sub LoadUserPreferences()
     id = m.global.user.id
 
-    jsonResponse = api.displayPreferences.Get("usersettings", { userId: id, client: "emby" })
+    jsonResponse = GetApi().GetDisplayPreferences("usersettings", { userId: id, client: "emby" })
 
     if isValid(jsonResponse)
       userNode = m.global.user
