@@ -154,6 +154,6 @@ If Jellyfin 11.0 introduces breaking changes:
 
 ## Related Documentation
 
-- `docs/dev/server-feature-matrix.md` - User-facing feature support by server version
-- `docs/dev/adding-user-settings.md` - How to add version-aware settings
+- `docs/user/jellyfin-server-feature-matrix.md` - User-facing feature support by server version
+- `docs/dev/new-user-setting.md` - How to add version-aware settings
 - `docs/dev/registry-migrations.md` - Handling data migrations across versions
