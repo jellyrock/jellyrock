@@ -22,11 +22,11 @@ The API architecture follows a **3-layer abstraction model**, where each layer b
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Layer 1: Raw API Client                                    │
+│  Layer 1: Smart API Client                                  │
 │  (source/api/ApiClient.bs)                                  │
 │  • Direct API endpoint calls                                │
 │  • V1/V2 server version dispatch                            │
-│  • No validation or defaults                                │
+│  • Smart defaults: image params, fields auto-augmentation   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -35,13 +35,32 @@ The API architecture follows a **3-layer abstraction model**, where each layer b
 **File:** `source/api/ApiClient.bs`  
 **Access:** `GetApi().<method>()`
 
-The `ApiClient` provides raw access to Jellyfin API endpoints with automatic `V1`/`V2` server version dispatch. This layer has **no validation, no defaults, and minimal error handling**.
+The `ApiClient` provides direct access to Jellyfin API endpoints with automatic `V1`/`V2` server version dispatch. It automatically injects image parameters and version-specific fields to ensure consistent, bulletproof item fetching across all Jellyfin server versions (10.7.0+).
+
+### Automatic Parameter Injection
+
+The following defaults are automatically applied to item fetching endpoints:
+
+| Parameter | Default Value | Purpose |
+|-----------|---------------|---------|
+| `EnableImageTypes` | `"Primary,Backdrop,Logo,Thumb"` | Ensures images are requested |
+| `ImageTypeLimit` | `1` | Limits images per type |
+| `fields` | Auto-augmented* | Adds required fields (see below) |
+
+**Auto-augmented fields appended to `fields` parameter:**
+
+- `PrimaryImageAspectRatio` - Always added (causes ImageTags to be returned)
+- `Chapters` - Always added
+- `Trickplay` - Added for V2+ servers (10.9+)
+
+These injections ensure consistent item data across all supported server versions without manual parameter management.
 
 ### When to Use Layer 1
 
-- You need full control over parameters
+- You need control over parameters (defaults can be overridden by passing your own values)
 - Building custom helper functions (Layers 2-3)
 - Working with non-standard endpoints
+- Need automatic image parameter injection for consistent item fetching
 
 ### Image Methods
 
@@ -58,7 +77,7 @@ The `ApiClient` provides raw access to Jellyfin API endpoints with automatic `V1
 ### Layer 1 Example
 
 ```brighterscript
-' Raw API call - no validation, no defaults
+' Direct API call with V1/V2 dispatch (image methods have no defaults)
 url = GetApi().GetUserImageURL(userId, "primary", 0, {
   maxHeight: 300,
   maxWidth: 300,
@@ -236,7 +255,7 @@ end sub
 ### Direct API Access (Rare)
 
 ```brighterscript
-' Layer 1: Only when you need full control
+' Layer 1: Image methods pass through without defaults
 url = GetApi().GetUserImageURL(userId, "primary", 0, {
   maxHeight: 600,
   maxWidth: 600,
