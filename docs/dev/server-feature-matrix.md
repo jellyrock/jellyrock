@@ -18,9 +18,7 @@ Only features with version differences are listed below. All other features (pla
 | **Trickplay Thumbnails** | ❌ | ❌ | ✅ | Video preview scrubbing |
 | **Music Lyrics** | ❌ | ❌ | ✅ | On-screen lyrics display |
 | **Audio Normalization** | ❌ | ❌ | ✅ | ReplayGain support |
-| **HDR Type Detection** | ⚠️ | ⚠️ | ✅ | Limited on 10.7-10.8 |
-| **Dolby Vision Detection** | ⚠️ | ⚠️ | ✅ | Limited on 10.7-10.8 |
-| **Quick Connect** | ⚠️ | ✅ | ✅ | 10.7 uses "Token" field |
+| **Quick Connect** | ❌ | ✅ | ✅ | 10.7 uses "Token" not "Secret" |
 
 ## Legend
 
@@ -32,19 +30,13 @@ Only features with version differences are listed below. All other features (pla
 
 ## Important Notes
 
-### HDR/Dolby Vision (⚠️ on 10.7-10.8)
-HDR and Dolby Vision content plays fine on all versions. However:
-- **10.9+**: Full detection via `VideoRangeType` field
-- **10.7-10.8**: Limited detection, may not display HDR badges
+### Quick Connect
+Quick Connect authentication requires Jellyfin 10.8 or newer.
 
-Does NOT affect playback quality - only visual indicators in the UI.
+- **10.7**: ❌ Does not work (API uses "Token" field, app sends "Secret")
+- **10.8+**: ✅ Works correctly
 
-### Quick Connect (⚠️ on 10.7)
-Quick Connect authentication works on 10.7 but uses a different field name:
-- **10.7**: Uses `Token` field
-- **10.8+**: Uses `Secret` field
-
-If Quick Connect fails on 10.7, use username/password login instead.
+Use username/password login for 10.7 servers.
 
 ### What Works on ALL Versions
 
