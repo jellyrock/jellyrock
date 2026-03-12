@@ -168,8 +168,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
     ' Movie with no logo — fall back to primary (poster) image
     video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
-  else if videotype = "episode"
-    ' Episode with no series logo — fall back to series primary poster, then episode thumbnail
+  else if videotype = "episode" or videotype = "recording"
+    ' Episode/recording with no series logo — fall back to series primary poster, then episode thumbnail
     if isValidAndNotEmpty(meta.seriesPrimaryImageTag) and isValidAndNotEmpty(meta.seriesId)
       video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.seriesPrimaryImageTag })
     else if isValidAndNotEmpty(meta.primaryImageTag)
