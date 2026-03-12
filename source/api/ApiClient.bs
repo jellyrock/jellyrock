@@ -607,9 +607,19 @@ class ApiClient
     ' Then apply user params (will override defaults if specified)
     merged.append(params)
 
-    ' Add version-specific fields if fields parameter exists
+    ' Add image-related fields if fields parameter exists
+    ' This ensures ImageTags, ParentLogoImageTag etc. are returned for logo display
     if merged.DoesExist("fields")
-      merged.fields = m.addVersionFields(merged.fields)
+      fields = merged.fields
+      ' Add ImageTags field if not already present
+      if fields.Instr("ImageTags") = -1
+        fields = fields + ",ImageTags"
+      end if
+      ' Add ParentLogoImageTag for series logo support
+      if fields.Instr("ParentLogoImageTag") = -1
+        fields = fields + ",ParentLogoImageTag"
+      end if
+      merged.fields = m.addVersionFields(fields)
     end if
 
     return merged
