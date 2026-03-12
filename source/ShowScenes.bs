@@ -5,7 +5,8 @@ function LoginFlow()
   serverUrl = get_setting("server")
   if isValid(serverUrl)
     print "Previous server connection saved to registry"
-    startOver = not server.UpdateURL(serverUrl)
+    ' Pass originalUrl to preserve user's input for re-discovery on each connection
+    startOver = not server.UpdateURL(serverUrl, serverUrl)
     if startOver
       print "Could not connect to previously saved server."
     end if
@@ -282,6 +283,8 @@ end sub
 
 function CreateServerGroup()
   globalServer = m.global.server
+  ' Capture the URL before any updates to detect changes during discovery/redirects
+  previousServerUrl = globalServer.serverUrl
   screen = CreateObject("roSGNode", "SetServerScreen")
   screen.optionsAvailable = true
   m.global.sceneManager.callFunc("pushScene", screen)
@@ -333,56 +336,37 @@ function CreateServerGroup()
         if buttonSelected.id = "submit"
           m.scene.isLoading = true
 
-          serverUrl = inferServerUrl(screen.serverUrl)
+          originalUrl = screen.serverUrl
+          serverUrl = inferServerUrl(originalUrl)
 
-          isConnected = server.UpdateURL(serverUrl)
+          ' Pass originalUrl so it gets persisted (not the canonical redirect URL)
+          ' This allows re-discovery on each connection for multi-network access
+          isConnected = server.UpdateURL(serverUrl, originalUrl)
           serverInfoResult = invalid
           if isConnected
-            set_setting("server", serverUrl)
             serverInfoResult = ServerInfo()
             'If this is a different server from what we know, reset username/password setting
-            if globalServer.serverUrl <> serverUrl
+            ' Compare using canonical URL from global state against pre-connection URL
+            canonicalUrl = m.global.server.serverUrl
+            if previousServerUrl <> canonicalUrl
               set_setting("username", "")
               set_setting("password", "")
             end if
-            set_setting("server", serverUrl)
           end if
           m.scene.isLoading = false
 
-          if isConnected = false or not isValid(serverInfoResult)
+          if isConnected = false or not isValid(serverInfoResult) or (isValid(serverInfoResult.Error) and serverInfoResult.Error)
             ' Maybe don't unset setting, but offer as a prompt
             ' Server not found, is it online? New values / Retry
             print "Server not found, is it online? New values / Retry"
             screen.errorMessage = tr("Server not found, is it online?")
             SignOut(false)
           else
-
-            if isValid(serverInfoResult.Error) and serverInfoResult.Error
-              ' If server redirected received, update the URL
-              if isValid(serverInfoResult.UpdatedUrl)
-                serverUrl = serverInfoResult.UpdatedUrl
-
-                isConnected = server.UpdateURL(serverUrl)
-                if isConnected
-                  set_setting("server", serverUrl)
-                  screen.visible = false
-                  return ""
-                end if
-              end if
-              ' Display Error Message to user
-              message = tr("Error: ")
-              if isValid(serverInfoResult.ErrorCode)
-                message = message + "[" + serverInfoResult.ErrorCode.toStr() + "] "
-              end if
-              screen.errorMessage = message + tr(serverInfoResult.ErrorMessage)
-              SignOut(false)
+            screen.visible = false
+            if isValid(serverInfoResult.serverName)
+              return serverInfoResult.ServerName + " (Saved)"
             else
-              screen.visible = false
-              if isValid(serverInfoResult.serverName)
-                return serverInfoResult.ServerName + " (Saved)"
-              else
-                return "Saved"
-              end if
+              return "Saved"
             end if
           end if
         end if

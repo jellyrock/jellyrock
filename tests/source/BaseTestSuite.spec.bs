@@ -79,6 +79,14 @@ namespace tests
         m.global.user = userNode
       end if
 
+      ' Create MockSceneManager for tests that call scene navigation functions
+      ' This prevents crashes when code calls m.global.sceneManager.callFunc(...)
+      ' Using MockSceneManager which has all interface functions but no-ops
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "MockSceneManager")
+      end if
+
       ' ===================================================================
       ' Override with test-specific mock data
       ' Load mock data from JSON files and transform using SessionDataTransformer

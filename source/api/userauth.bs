@@ -1,12 +1,10 @@
 ' needed for SignOut() and ServerInfo()
+import "pkg:/source/api/sdk.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
 
 function get_token(username as string, password as string)
-  url = "Users/AuthenticateByName?format=json"
-  req = APIRequest(url)
-
-  json = postJson(req, FormatJson({ "Username": username, "Pw": password }))
+  json = api.users.AuthenticateByName(username, password)
 
   if not isValid(json) then return invalid
 
@@ -27,9 +25,7 @@ function AboutMe(id = "" as string)
     end if
   end if
 
-  url = Substitute("Users/{0}", id)
-  resp = APIRequest(url)
-  return getJson(resp)
+  return api.users.Get(id)
 end function
 
 sub SignOut(deleteSavedEntry = true as boolean)
@@ -50,74 +46,15 @@ function AvailableUsers()
 end function
 
 function ServerInfo()
-  url = "System/Info/Public"
-  req = APIRequest(url)
-
-  ' Handle case where server URL is not set or invalid
-  if not isValid(req)
-    return { "Error": true, "ErrorMessage": "Server URL not configured" }
-  end if
-
-  req.setMessagePort(CreateObject("roMessagePort"))
-  req.AsyncGetToString()
-
-  ' wait 15 seconds for a server response
-  resp = wait(35000, req.GetMessagePort())
-
-  ' handle unknown errors
-  if type(resp) <> "roUrlEvent"
-    return { "Error": true, "ErrorMessage": "Unknown" }
-  end if
-
-  ' check for a location redirect header in the response
-  headers = resp.GetResponseHeaders()
-  if isValid(headers) and isValid(headers.location)
-
-    ' only follow redirect if it the API Endpoint path is the same (/System/Info/Public)
-    ' set the server to new location and try again
-    if right(headers.location, 19) = "/System/Info/Public"
-      set_setting("server", left(headers.location, len(headers.location) - 19))
-      isConnected = server.UpdateURL(left(headers.location, len(headers.location) - 19))
-      if isConnected
-        info = ServerInfo()
-        if info.Error
-          info.UpdatedUrl = left(headers.location, len(headers.location) - 19)
-          info.ErrorMessage = info.ErrorMessage + " (Note: Server redirected us to " + info.UpdatedUrl + ")"
-        end if
-        return info
-      end if
-    end if
-  end if
-
-  ' handle any non 200 responses, returning the error code and message
-  if resp.GetResponseCode() <> 200
-    return { "Error": true, "ErrorCode": resp.GetResponseCode(), "ErrorMessage": resp.GetFailureReason() }
-  end if
-
-  ' return the parsed response string
-  responseString = resp.GetString()
-  if isValid(responseString) and responseString <> ""
-    result = ParseJson(responseString)
-    if isValid(result)
-      result.Error = false
-      return result
-    end if
-  end if
-
-  ' otherwise return error message
-  return { "Error": true, "ErrorMessage": "Does not appear to be a Jellyfin Server" }
-
+  return server.Discover()
 end function
 
 function GetPublicUsers()
-  url = "Users/Public"
-  resp = APIRequest(url)
-  return getJson(resp)
+  return api.users.GetPublic()
 end function
 
 function initQuickConnect()
-  resp = APIRequest("QuickConnect/Initiate")
-  jsonResponse = getJson(resp)
+  jsonResponse = api.quickConnect.Initiate()
   if not isValid(jsonResponse)
     return invalid
   end if
@@ -130,9 +67,7 @@ function initQuickConnect()
 end function
 
 function checkQuickConnect(secret)
-  url = Substitute("QuickConnect/Connect?secret={0}", secret)
-  resp = APIRequest(url)
-  jsonResponse = getJson(resp)
+  jsonResponse = api.quickConnect.Connect(secret)
   if not isValid(jsonResponse)
     return false
   end if
@@ -145,11 +80,7 @@ function checkQuickConnect(secret)
 end function
 
 function AuthenticateViaQuickConnect(secret)
-  params = {
-    secret: secret
-  }
-  req = APIRequest("Users/AuthenticateWithQuickConnect")
-  jsonResponse = postJson(req, FormatJson(params))
+  jsonResponse = api.users.AuthenticateWithQuickConnect(secret)
   if isValid(jsonResponse) and isValid(jsonResponse.AccessToken) and isValid(jsonResponse.User)
     globalUser = m.global.user
     userdata = CreateObject("roSGNode", "UserData")

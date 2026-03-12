@@ -1,0 +1,154 @@
+namespace tests
+
+  @suite("String.EncodeUriComponent() - URL encoding for name-based endpoints")
+  class EncodeUriComponentTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Space encoding")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("encodes spaces as %20")
+    function _()
+      result = "Pink Floyd".EncodeUriComponent()
+      m.assertEqual(result, "Pink%20Floyd")
+    end function
+
+    @it("encodes multiple spaces correctly")
+    function _()
+      result = "Simon  Garfunkel".EncodeUriComponent()
+      m.assertEqual(result, "Simon%20%20Garfunkel")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Special character encoding")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("encodes forward slash as %2F")
+    function _()
+      result = "AC/DC".EncodeUriComponent()
+      m.assertEqual(result, "AC%2FDC")
+    end function
+
+    @it("encodes ampersand as %26")
+    function _()
+      result = "R&B".EncodeUriComponent()
+      m.assertEqual(result, "R%26B")
+    end function
+
+    @it("encodes plus sign as %2B")
+    function _()
+      result = "+44".EncodeUriComponent()
+      m.assertEqual(result, "%2B44")
+    end function
+
+    @it("encodes question mark as %3F")
+    function _()
+      result = "What?".EncodeUriComponent()
+      m.assertEqual(result, "What%3F")
+    end function
+
+    @it("encodes hash as %23")
+    function _()
+      result = "Number #1".EncodeUriComponent()
+      m.assertEqual(result, "Number%20%231")
+    end function
+
+    @it("encodes percent sign as %25")
+    function _()
+      result = "100% Pure".EncodeUriComponent()
+      m.assertEqual(result, "100%25%20Pure")
+    end function
+
+    @it("encodes equals sign as %3D")
+    function _()
+      result = "A=B".EncodeUriComponent()
+      m.assertEqual(result, "A%3DB")
+    end function
+
+    @it("encodes at symbol as %40")
+    function _()
+      result = "user@example".EncodeUriComponent()
+      m.assertEqual(result, "user%40example")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Characters that should NOT be encoded")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not encode apostrophe")
+    function _()
+      result = "Rock'n'Roll".EncodeUriComponent()
+      m.assertEqual(result, "Rock'n'Roll")
+    end function
+
+    @it("does not encode hyphen")
+    function _()
+      result = "Mary-Kate".EncodeUriComponent()
+      m.assertEqual(result, "Mary-Kate")
+    end function
+
+    @it("does not encode period")
+    function _()
+      result = "Dr. Dre".EncodeUriComponent()
+      m.assertEqual(result, "Dr.%20Dre")
+    end function
+
+    @it("does not encode underscore")
+    function _()
+      result = "Artist_Name".EncodeUriComponent()
+      m.assertEqual(result, "Artist_Name")
+    end function
+
+    @it("does not encode tilde")
+    function _()
+      result = "Artist~Name".EncodeUriComponent()
+      m.assertEqual(result, "Artist~Name")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Complex name examples")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles artist name with multiple special characters")
+    function _()
+      result = "Earth, Wind & Fire".EncodeUriComponent()
+      m.assertEqual(result, "Earth%2C%20Wind%20%26%20Fire")
+    end function
+
+    @it("handles studio name with spaces")
+    function _()
+      result = "20th Century Fox".EncodeUriComponent()
+      m.assertEqual(result, "20th%20Century%20Fox")
+    end function
+
+    @it("handles genre name with apostrophe and spaces")
+    function _()
+      result = "90's Hip Hop".EncodeUriComponent()
+      m.assertEqual(result, "90's%20Hip%20Hop")
+    end function
+
+    @it("handles person with hyphenated first name")
+    function _()
+      result = "Mary-Kate Olsen".EncodeUriComponent()
+      m.assertEqual(result, "Mary-Kate%20Olsen")
+    end function
+
+    @it("handles empty string")
+    function _()
+      result = "".EncodeUriComponent()
+      m.assertEqual(result, "")
+    end function
+
+    @it("handles string with no special characters")
+    function _()
+      result = "Beatles".EncodeUriComponent()
+      m.assertEqual(result, "Beatles")
+    end function
+
+  end class
+
+end namespace

@@ -180,14 +180,10 @@ function get_url()
   ' ContentNode fields return "" instead of invalid, so we must check both
   if not isValid(serverURL) or serverURL = "" then return invalid
 
-  if serverURL.right(1) = "/"
-    serverURL = serverURL.left(serverURL.len() - 1)
-  end if
-
-  ' append http:// to the start if not specified
-  if serverURL.left(7) <> "http://" and serverURL.left(8) <> "https://"
-    serverURL = "http://" + serverURL
-  end if
+  ' Note: serverUrl is guaranteed to be normalized by:
+  ' - server.UpdateURL() - normalizes before storing
+  ' - SessionDataTransformer - normalizes when loading from registry
+  ' This avoids expensive regex parsing on every API request
 
   return serverURL
 end function

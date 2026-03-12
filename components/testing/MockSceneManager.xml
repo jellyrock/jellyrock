@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Mock SceneManager for testing
+  
+  This is a minimal mock that provides the same interface functions as SceneManager
+  but doesn't require a real scene context. Used by integration tests that call
+  user.Login() which invokes refreshThemeColors.
+  
+  Extends ContentNode so tests can add arbitrary fields if needed.
+-->
+<component name="MockSceneManager" extends="ContentNode">
+  <interface>
+    <function name="pushScene" />
+    <function name="popScene" />
+    <function name="settings" />
+    <function name="getActiveScene" />
+    <function name="clearScenes" />
+    <function name="clearPreviousScene" />
+    <function name="reloadHome" />
+    <function name="refreshThemeColors" />
+    <field id="reloadHomeRequested" type="boolean" alwaysNotify="true" />
+    <function name="resetTime" />
+    <function name="setBackgroundImage" />
+    <function name="userMessage" />
+    <function name="standardDialog" />
+    <function name="radioDialog" />
+    <function name="dismissDialog" />
+    <function name="isDialogOpen" />
+    <function name="optionDialog" />
+    <field id="currentUser" type="string" />
+    <field id="returnData" type="assocarray" />
+    <field id="dataReturned" type="boolean" />
+    <field id="pendingExitConfirmation" type="boolean" value="false" />
+  </interface>
+</component>

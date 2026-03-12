@@ -231,9 +231,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
   end if
 
-  req = APIRequest(Substitute("Items/{0}/PlaybackInfo", id))
-  req.SetRequest("POST")
-  return postJson(req, FormatJson(postData))
+  return api.items.PostPlayBackInfo(id, postData)
 end function
 
 ' Search across all libraries
@@ -284,10 +282,7 @@ end function
 
 ' Music Artist Data
 function ArtistOverview(name as string)
-  req = createObject("roUrlTransfer")
-  url = Substitute("Artists/{0}", req.escape(name))
-  resp = APIRequest(url)
-  data = getJson(resp)
+  data = api.artists.GetByName(name)
   if not isValid(data) then return invalid
   return data.overview
 end function
@@ -358,13 +353,9 @@ end function
 
 ' Get Items that are under the provided item
 function PlaylistItemList(id as string)
-  url = Substitute("Playlists/{0}/Items", id)
-  resp = APIRequest(url, {
-    "UserId": m.global.user.id
-  })
+  data = api.playlists.GetItems(id, { "UserId": m.global.user.id })
 
   results = []
-  data = getJson(resp)
 
   if not isValid(data) then return invalid
   if not isValid(data.Items) then return invalid
@@ -414,13 +405,7 @@ end function
 
 ' Get Instant Mix based on item
 function CreateInstantMix(id as string)
-  url = Substitute("/Items/{0}/InstantMix", id)
-  resp = APIRequest(url, {
-    "UserId": m.global.user.id,
-    "Limit": 201
-  })
-
-  return getJson(resp)
+  return api.items.GetInstantMix(id, { "UserId": m.global.user.id, "Limit": 201 })
 end function
 
 ' Get Instant Mix based on item
@@ -492,10 +477,7 @@ end function
 
 ' Seasons for a TV Show
 function TVSeasons(id as string) as dynamic
-  url = Substitute("Shows/{0}/Seasons", id)
-  resp = APIRequest(url, { "UserId": m.global.user.id })
-
-  data = getJson(resp)
+  data = api.shows.GetSeasons(id, { "UserId": m.global.user.id })
   ' validate data
   if not isValid(data) or not isValid(data.Items) then return invalid
 

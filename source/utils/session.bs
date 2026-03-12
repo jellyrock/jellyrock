@@ -3,12 +3,14 @@
 ' Organized via namespaces for clean code organization
 
 import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/sdk.bs"
 import "pkg:/source/api/userauth.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeUtils.bs"
+import "pkg:/source/utils/url.bs"
 
 ' ============================================
 ' SERVER NAMESPACE
@@ -16,14 +18,35 @@ import "pkg:/source/utils/nodeUtils.bs"
 
 namespace server
   ' Update server URL and populate from API
-  function UpdateURL(url as string) as boolean
+  ' @param url - The URL to connect to (will be normalized for API calls)
+  ' @param originalUrl - Optional: The original user-entered URL to persist to registry.
+  '                      If not provided, the url parameter will be persisted.
+  '                      This preserves the user's input for multi-network access
+  '                      while allowing runtime discovery to use canonical URLs.
+  function UpdateURL(url as string, originalUrl = "" as string) as boolean
     if url = "" then return false
 
+    ' Normalize URL for consistent storage and comparison
+    normalizedUrl = normalizeUrl(url)
+    if normalizedUrl = ""
+      ' Clear stale server state on invalid URL
+      server.Delete()
+      return false
+    end if
+
     serverNode = m.global.server
-    serverNode.serverUrl = url
+    serverNode.serverUrl = normalizedUrl
     success = server.Populate()
 
-    if not success
+    if success
+      ' Persist the ORIGINAL URL (what user entered), not the canonical URL
+      ' This allows re-discovery on each connection for multi-network scenarios
+      urlToPersist = originalUrl
+      if urlToPersist = ""
+        urlToPersist = url
+      end if
+      set_setting("server", urlToPersist)
+    else
       ' Reset on failure
       server.Delete()
     end if
@@ -80,6 +103,13 @@ namespace server
     return true
   end function
 
+  ' Get normalized/canonical URL for consistent storage and comparison
+  ' @param url - The URL to normalize
+  ' @returns Normalized URL string (or empty string if invalid)
+  function GetNormalizedUrl(url as string) as string
+    return normalizeUrl(url)
+  end function
+
   ' Reset server to defaults
   sub Delete()
     ' Get local reference to minimize rendezvous
@@ -88,6 +118,136 @@ namespace server
     ' Reset to XML defaults (no fields preserved)
     nodeUtils.resetNodeToDefaults(localServer, "JellyfinServer", [])
   end sub
+
+  ' Discovers server information and handles redirects.
+  '
+  ' Convention: all API calls should go through api.* namespace functions (e.g. api.system.GetPublicInfo()).
+  ' Those functions bundle APIRequest() with a synchronous execution strategy (getJson, postVoid, etc.).
+  '
+  ' Discover() is an intentional exception: it must intercept the roUrlEvent to read GetResponseHeaders()
+  ' so it can detect and persist server-side redirects. The api.* wrappers use GetToString() which follows
+  ' redirects silently, making the redirect URL undetectable. By calling APIRequest() directly and executing
+  ' async, we get the same auth header and HTTPS certificate setup without losing the redirect headers.
+  '
+  ' @param redirectCount - Internal counter for tracking redirects (default: 0)
+  ' @returns {object} Server info with Error field set on failure
+  function Discover(redirectCount = 0 as integer) as object
+    serverNode = m.global.server
+
+    ' Validate URL
+    if not isValidAndNotEmpty(serverNode.serverUrl)
+      return { "Error": true, "ErrorMessage": "Server URL not configured" }
+    end if
+
+    ' RFC 7231 recommends max 10 redirects
+    MAX_REDIRECTS = 10
+    if redirectCount >= MAX_REDIRECTS
+      return { "Error": true, "ErrorMessage": "Server redirect loop detected - too many redirects" }
+    end if
+
+    ' APIRequest applies auth header and HTTPS certificate authority (same as all other API calls).
+    ' We set the port and execute async ourselves so we can read redirect headers from the roUrlEvent.
+    req = APIRequest("/system/info/public")
+    if not isValid(req)
+      return { "Error": true, "ErrorMessage": "Server URL not configured" }
+    end if
+
+    req.setMessagePort(CreateObject("roMessagePort"))
+    req.AsyncGetToString()
+
+    ' Wait for response (35 second timeout)
+    resp = wait(35000, req.GetMessagePort())
+
+    ' Handle non-roUrlEvent responses (timeouts, system errors, etc.)
+    if type(resp) <> "roUrlEvent"
+      ' Check for timeout (wait() returns invalid after timeout expires)
+      if resp = invalid
+        return { "Error": true, "ErrorMessage": "Connection timed out - server did not respond within 35 seconds" }
+      end if
+
+      ' Handle unexpected message types
+      return { "Error": true, "ErrorMessage": "Unexpected response type: " + type(resp) }
+    end if
+
+    ' Check for redirect headers
+    headers = resp.GetResponseHeaders()
+    if isValid(headers) and isValid(headers.location)
+      ' Resolve relative URLs and normalize
+      currentUrl = serverNode.serverUrl
+
+      ' Resolve redirect against the full request URL (not just server base)
+      ' This ensures relative Location values resolve correctly with base paths
+      endpointPath = "/system/info/public"
+      if Right(currentUrl, 1) = "/"
+        fullRequestUrl = currentUrl + Mid(endpointPath, 2)
+      else
+        fullRequestUrl = currentUrl + endpointPath
+      end if
+      resolvedUrl = resolveUrl(fullRequestUrl, headers.location)
+
+      ' Strip the endpoint path to get the new server base URL
+      ' This preserves any base path (e.g., /jellyfin) unlike getBaseUrl()
+      newBaseUrl = getServerBaseUrl(resolvedUrl, endpointPath)
+      normalizedNewUrl = normalizeUrl(newBaseUrl)
+      normalizedCurrentUrl = normalizeUrl(currentUrl)
+
+      ' Only follow redirect if path matches /system/info/public (ignores query strings and fragments)
+      resolvedParts = parseUrlComponents(resolvedUrl)
+      if isValid(resolvedParts)
+        ' Normalize path: lowercase and remove trailing slash for comparison
+        resolvedPath = LCase(resolvedParts.path)
+        if Right(resolvedPath, 1) = "/" and Len(resolvedPath) > 1
+          resolvedPath = Left(resolvedPath, Len(resolvedPath) - 1)
+        end if
+
+        ' Check if path ends with the expected endpoint (supports reverse proxy base paths)
+        endpointPathLower = "/system/info/public"
+        pathEndsWithEndpoint = Right(resolvedPath, Len(endpointPathLower)) = endpointPathLower
+
+        if pathEndsWithEndpoint
+          ' Validate resolved URL is not empty
+          if normalizedNewUrl = ""
+            return { "Error": true, "ErrorMessage": "Server returned invalid redirect URL" }
+          end if
+
+          ' Loop detection: if new URL is same as current, we've looped
+          if normalizedNewUrl = normalizedCurrentUrl
+            return { "Error": true, "ErrorMessage": "Server redirect loop detected - redirecting to same URL" }
+          end if
+
+          ' Update runtime state with canonical URL and retry
+          ' Note: We do NOT persist canonical URL to registry - caller handles persistence
+          ' This ensures user's original URL is preserved for multi-network access
+          serverNode.serverUrl = normalizedNewUrl
+          result = server.Discover(redirectCount + 1)
+
+          ' Add redirect info to error if retry failed
+          if result.Error
+            result.UpdatedUrl = normalizedNewUrl
+            result.ErrorMessage = result.ErrorMessage + " (Note: Server redirected us to " + normalizedNewUrl + ")"
+          end if
+          return result
+        end if
+      end if
+    end if
+
+    ' Handle non-200 responses
+    if resp.GetResponseCode() <> 200
+      return { "Error": true, "ErrorCode": resp.GetResponseCode(), "ErrorMessage": resp.GetFailureReason() }
+    end if
+
+    ' Parse and return response
+    responseString = resp.GetString()
+    if isValid(responseString) and responseString <> ""
+      result = ParseJson(responseString)
+      if isValid(result)
+        result.Error = false
+        return result
+      end if
+    end if
+
+    return { "Error": true, "ErrorMessage": "Does not appear to be a Jellyfin Server" }
+  end function
 end namespace
 
 ' ============================================
@@ -349,9 +509,7 @@ namespace user
   sub LoadUserPreferences()
     id = m.global.user.id
 
-    url = Substitute("DisplayPreferences/usersettings?userId={0}&client=emby", id)
-    resp = APIRequest(url)
-    jsonResponse = getJson(resp)
+    jsonResponse = api.displayPreferences.Get("usersettings", { userId: id, client: "emby" })
 
     if isValid(jsonResponse)
       userNode = m.global.user
