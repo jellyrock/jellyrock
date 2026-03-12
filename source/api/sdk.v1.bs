@@ -43,13 +43,8 @@ namespace sdkV1
 
     ' Get user views.
     function GetViews(id as string, params = {} as object)
-      url = Substitute("/users/{0}/views", id)
-      print "DEBUG sdkV1 GetViews url="; url
-      req = APIRequest(url, params)
-      print "DEBUG sdkV1 GetViews req valid="; isValid(req)
-      result = getJson(req)
-      print "DEBUG sdkV1 GetViews result type="; type(result)
-      return result
+      req = APIRequest(Substitute("/users/{0}/views", id), params)
+      return getJson(req)
     end function
 
     ' Gets an item from a user's library.

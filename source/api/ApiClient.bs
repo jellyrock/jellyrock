@@ -470,14 +470,8 @@ class ApiClient
   ' @returns API response or invalid on error
   function GetViews() as dynamic
     userId = m.getUserId()
-    print "DEBUG ApiClient.GetViews() userId="; userId
-    if userId = "" 
-      print "DEBUG ApiClient.GetViews() returning invalid - empty userId"
-      return invalid
-    end if
-    result = sdk.users.GetViews(userId)
-    print "DEBUG ApiClient.GetViews() sdk result type="; type(result)
-    return result
+    if userId = "" then return invalid
+    return sdk.users.GetViews(userId)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
