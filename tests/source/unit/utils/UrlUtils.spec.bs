@@ -230,6 +230,18 @@ namespace tests
       m.assertEqual(resolveUrl("http://example.com/page", "#section"), "http://example.com/page")
     end function
 
+    @describe("resolveUrl empty reference normalizes baseUrl")
+    @it("should normalize non-normalized base URL when reference is empty")
+    function _()
+      m.assertEqual(resolveUrl("HTTP://Example.COM:80/", ""), "http://example.com")
+    end function
+
+    @describe("resolveUrl fragment-only reference normalizes baseUrl")
+    @it("should normalize non-normalized base URL for fragment-only references")
+    function _()
+      m.assertEqual(resolveUrl("HTTPS://Example.COM:443/path/", "#section"), "https://example.com/path")
+    end function
+
     @describe("resolveUrl invalid base URL")
     @it("should return empty string when base URL is invalid")
     function _()
