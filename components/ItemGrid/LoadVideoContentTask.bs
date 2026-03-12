@@ -167,9 +167,13 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     end if
   end if
 
-  logoImageExists = GetApi().HeadImageURLByName(logoLookupID, "logo")
-  if logoImageExists
-    video.logoImage = GetApi().GetImageURL(logoLookupID, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })
+  ' Set logo image using metadata (same logic as ItemDetails)
+  ' Check for logoImageTag first (movie/item logo)
+  if isValidAndNotEmpty(meta.logoImageTag)
+    video.logoImage = ImageURL(meta.id, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.logoImageTag })
+  else if isValidAndNotEmpty(meta.parentLogoImageTag) and isValidAndNotEmpty(meta.seriesId)
+    ' Series logo for episodes
+    video.logoImage = ImageURL(meta.seriesId, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.parentLogoImageTag })
   else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
     ' Movie with no logo — fall back to primary (poster) image
     video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
