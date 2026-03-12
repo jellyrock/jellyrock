@@ -44,7 +44,7 @@ sub loadItems()
       params["ImageTypeLimit"] = 1
       params["EnableTotalRecordCount"] = false
 
-      data = GetApi().GetLatestMedia(activeUser, params)
+      data = GetApi().GetLatestMedia(params)
 
       if isValid(data)
         for each item in data
@@ -103,7 +103,7 @@ sub loadItems()
       params["Filters"] = "IsResumable"
       params["EnableTotalRecordCount"] = false
 
-      data = GetApi().GetResumeItems(activeUser, params)
+      data = GetApi().GetResumeItems(params)
       if isValid(data) and isValid(data.Items)
         for each item in data.Items
           ' Skip Books for now as we don't support it (issue #558)
@@ -270,7 +270,7 @@ end sub
 
 sub getPersonVideos(videoType as string, dest as object)
   params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
-  data = GetApi().GetItemsByQuery(m.global.user.id, params)
+  data = GetApi().GetItemsByQuery(params)
   if isValid(data) and data.count() > 0
     for each item in data.items
       node = m.transformer.transformBaseItem(item)

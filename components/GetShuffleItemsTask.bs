@@ -10,7 +10,6 @@ end sub
 ' Writes the combined result array to m.top.shuffleItems (empty array = nothing to play).
 sub getShuffleItems()
   input = m.top.shuffleInput
-  userId = m.global.user.id
   items = []
 
   if input.type = "Series"
