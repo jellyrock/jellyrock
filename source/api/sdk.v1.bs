@@ -3,7 +3,7 @@ import "pkg:/source/api/baserequest.bs"
 ' V1 user endpoint shims — covers Jellyfin 10.7.x and 10.8.x
 ' All paths use the /Users/{userId}/ prefix that was removed in 10.9.
 ' Do NOT call these functions directly. Use the api.users.* dispatchers in sdk.bs.
-namespace apiV1
+namespace sdkV1
   namespace users
 
     ' Get user profile image URL.

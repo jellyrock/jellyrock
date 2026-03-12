@@ -1,0 +1,212 @@
+import "pkg:/source/api/sdk.bs"
+
+' ApiClient provides a centralized, stateful wrapper around the Jellyfin API.
+' It automatically injects image parameters and version-specific fields for consistent,
+' bulletproof item fetching across all Jellyfin server versions (10.7.0+).
+'
+' Usage:
+'   api = API()
+'   data = api.GetItem(itemId, { fields: "Overview" })
+'
+' Or inline:
+'   data = API().GetItem(itemId, { fields: "Overview" })
+'
+' The singleton pattern ensures one instance is shared across the entire app.
+class ApiClient
+  ' Default image parameters for all item endpoints
+  ' These ensure backdrop, logo, and thumb images are always requested
+  private imageDefaults = {
+    EnableImageTypes: "Primary,Backdrop,Logo,Thumb",
+    ImageTypeLimit: 1
+  }
+
+  ' Get current user ID from global state (always fresh)
+  private function getUserId() as string
+    if isValid(m.global) and isValid(m.global.user)
+      return m.global.user.id ?? ""
+    end if
+    return ""
+  end function
+
+  ' Get current API version from global state (always fresh)
+  private function getApiVersion() as integer
+    if isValid(m.global) and isValid(m.global.server)
+      return m.global.server.apiVersion ?? 1
+    end if
+    return 1
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' USER ENDPOINTS - All auto-inject image parameters
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get a single item by ID with automatic image and version field injection
+  ' @param itemId - The Jellyfin item ID
+  ' @param params - Optional query parameters (fields, etc.)
+  ' @returns API response or invalid on error
+  function GetItem(itemId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetItem(userId, itemId, m.injectDefaults(params))
+  end function
+
+  ' Get items by query with automatic image and version field injection
+  ' @param params - Query parameters (limit, sortBy, filters, etc.)
+  ' @returns API response or invalid on error
+  function GetItemsByQuery(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetItemsByQuery(userId, m.injectDefaults(params))
+  end function
+
+  ' Get resume items (Continue Watching) with automatic image injection
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetResumeItems(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
+  end function
+
+  ' Get suggestions with automatic image injection
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetSuggestions(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetSuggestions(userId, m.injectDefaults(params))
+  end function
+
+  ' Get latest media with automatic image injection
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetLatestMedia(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetLatestMedia(userId, m.injectDefaults(params))
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' RAW ACCESS - No image injection (for playback/internal use)
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get item without image parameters - use for playback info only
+  ' @param itemId - The Jellyfin item ID
+  ' @param params - Query parameters (passed through as-is)
+  ' @returns API response or invalid on error
+  function GetItemRaw(itemId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetItem(userId, itemId, params)
+  end function
+
+  ' Get items by query without image parameters
+  ' @param params - Query parameters (passed through as-is)
+  ' @returns API response or invalid on error
+  function GetItemsByQueryRaw(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    return sdk.users.GetItemsByQuery(userId, params)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' SHOWS ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Get seasons for a TV series with automatic image injection
+  ' @param seriesId - The series ID
+  ' @param params - Optional query parameters
+  ' @returns API response or invalid on error
+  function GetSeasons(seriesId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+
+    return sdk.shows.GetSeasons(seriesId, mergedParams)
+  end function
+
+  ' Get episodes for a TV season with automatic image injection
+  ' @param seriesId - The series ID
+  ' @param params - Optional query parameters (season number, etc.)
+  ' @returns API response or invalid on error
+  function GetEpisodes(seriesId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+
+    return sdk.shows.GetEpisodes(seriesId, mergedParams)
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' PRIVATE HELPERS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Inject default image parameters and version-specific fields into params
+  ' @param params - Original parameters object
+  ' @returns New params object with defaults merged in
+  private function injectDefaults(params as object) as object
+    merged = {}
+
+    ' First apply image defaults
+    merged.append(m.imageDefaults)
+
+    ' Then apply user params (will override defaults if specified)
+    merged.append(params)
+
+    ' Add version-specific fields if fields parameter exists
+    if merged.DoesExist("fields")
+      merged.fields = m.addVersionFields(merged.fields)
+    end if
+
+    return merged
+  end function
+
+  ' Add version-specific fields (like Trickplay) based on server version
+  ' @param baseFields - Comma-separated field list
+  ' @returns Updated field list with version-specific additions
+  private function addVersionFields(baseFields as string) as string
+    if baseFields = "" then return baseFields
+
+    apiVersion = m.getApiVersion()
+
+    ' Only add Trickplay for 10.9+ servers (API v2+)
+    if apiVersion >= 2 and baseFields.Instr("Trickplay") = -1
+      ' Check if we're already requesting Chapters (Trickplay is often paired with it)
+      if baseFields.Instr("Chapters") > -1
+        return baseFields + ",Trickplay"
+      end if
+    end if
+
+    return baseFields
+  end function
+
+end class
+
+' ═══════════════════════════════════════════════════════════════════════════
+' SINGLETON FACTORY
+' ═══════════════════════════════════════════════════════════════════════════
+
+' Get the singleton ApiClient instance
+' Creates the instance on first call, returns cached instance thereafter
+' Usage: api = GetApi() or data = GetApi().GetItem(id)
+' @returns ApiClient singleton instance
+function GetApi() as ApiClient
+  globalAA = GetGlobalAA()
+
+  if not isValid(globalAA.apiClient)
+    globalAA.apiClient = new ApiClient()
+  end if
+
+  return globalAA.apiClient
+end function

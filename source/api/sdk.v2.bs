@@ -4,7 +4,7 @@ import "pkg:/source/api/baserequest.bs"
 ' All /Users/{userId}/ paths were removed in 10.9. Endpoints moved to top-level
 ' with userId passed as a query parameter. Verified against jellyfin-openapi-10.9.0.json.
 ' Do NOT call these functions directly. Use the api.users.* dispatchers in sdk.bs.
-namespace apiV2
+namespace sdkV2
   namespace users
 
     ' Get user profile image URL.

@@ -1,3 +1,4 @@
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/sdk.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
@@ -268,7 +269,7 @@ end function
 ' MetaData about an item — returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
 function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string)
-  data = api.users.GetItem(m.global.user.id, id, { "fields": fields })
+  data = GetApi().GetItem(id, { "fields": fields })
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
   return transformer.transformBaseItem(data)
