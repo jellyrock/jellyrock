@@ -517,6 +517,13 @@ class ApiClient
     return sdk.items.GetFilters(params)
   end function
 
+  ' Get items by query (alternative endpoint)
+  ' @param params - Query parameters
+  ' @returns API response or invalid on error
+  function GetByQuery(params = {} as object) as dynamic
+    return sdk.items.GetByQuery(params)
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' IMAGE ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
