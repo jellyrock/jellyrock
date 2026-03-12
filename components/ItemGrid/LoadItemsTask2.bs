@@ -158,7 +158,7 @@ sub loadItems()
   end if
   ' MusicAlbum and the generic else both use queryType = "usersItems" (default)
 
-  data = executeItemQuery(queryType, globalUser.id, params)
+  data = executeItemQuery(queryType, params)
 
   ' If user has filtered by #, include special characters sorted after Z as well
   if isValid(params.NameLessThan)
@@ -168,7 +168,7 @@ sub loadItems()
       params.NameStartsWithOrGreater = "z"
 
       ' Perform 2nd API lookup for items starting with Z or greater
-      startsWithZAndGreaterData = executeItemQuery(queryType, globalUser.id, params)
+      startsWithZAndGreaterData = executeItemQuery(queryType, params)
 
       if isValidAndNotEmpty(startsWithZAndGreaterData)
         specialCharacterItems = []
@@ -272,7 +272,7 @@ end sub
 ' Routes an item query to the correct api namespace based on queryType.
 ' Used for both the main request and the optional 2nd lookup for the # filter.
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
-function executeItemQuery(queryType as string, userId as string, params as object) as dynamic
+function executeItemQuery(queryType as string, params as object) as dynamic
   if queryType = "liveTV"
     return GetApi().GetLiveTVChannels(params)
   else if queryType = "studios"
