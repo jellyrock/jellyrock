@@ -108,6 +108,7 @@ function GetUserAvatarURL(userObj as object, maxHeight = 300 as integer, maxWidt
   params = {
     "maxHeight": maxHeight,
     "maxWidth": maxWidth,
+    "quality": 90,
     "tag": userObj.primaryImageTag
   }
 

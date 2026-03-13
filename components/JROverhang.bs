@@ -96,16 +96,6 @@ function createUserPoster() as object
   localUser = m.global.user
   userImage = createObject("roSGNode", "Poster")
 
-  imgParams = {
-    maxHeight: 36,
-    maxWidth: 36,
-    quality: 90
-  }
-
-  if isValidAndNotEmpty(localUser.primaryImageTag)
-    imgParams.tag = localUser.primaryImageTag
-  end if
-
   userImage.id = "userImage"
   userImage.width = 36
   userImage.loadWidth = 36
@@ -116,7 +106,7 @@ function createUserPoster() as object
     userId: localUser.id
   })
 
-  if isValid(imgParams.tag)
+  if isValidAndNotEmpty(localUser.primaryImageTag)
     ' reset defaults
     userImage.blendColor = "0xFFFFFFFF"
 
