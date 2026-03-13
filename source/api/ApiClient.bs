@@ -19,6 +19,13 @@ import "pkg:/source/utils/misc.bs"
 '
 ' The singleton pattern ensures one instance is shared across the entire app.
 class ApiClient
+  ' Cache global reference so m.global works inside class methods
+  private global = invalid
+
+  sub new()
+    m.global = GetGlobalAA().global
+  end sub
+
   ' Default image parameters for all item endpoints
   ' These ensure backdrop, logo, and thumb images are always requested
   private imageDefaults = {
@@ -26,25 +33,14 @@ class ApiClient
     ImageTypeLimit: 1
   }
 
-  ' Get current user ID from global state (always fresh)
-  ' Note: Must use GetGlobalAA() instead of m.global because inside a class,
-  ' 'm' refers to the class instance, not the component context
+  ' Get current user ID from global state
   private function getUserId() as string
-    globalAA = GetGlobalAA()
-    if isValid(globalAA) and isValid(globalAA.global)
-      globalUser = globalAA.global.user
-      if isValid(globalUser) and isValid(globalUser.id)
-        return globalUser.id
-      end if
-    end if
-    return ""
+    return m.global.user.id
   end function
 
-  ' Get API version from global state (always fresh)
-  ' Delegates to getApiVersionFromGlobal() which is the single source of truth
-  ' for API version detection and handles both class and component contexts
+  ' Get API version from global state
   private function getApiVersion() as integer
-    return getApiVersionFromGlobal()
+    return m.global.server.apiVersion
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════

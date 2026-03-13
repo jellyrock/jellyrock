@@ -481,9 +481,9 @@ function getApiVersionFromGlobal() as integer
   end if
 
   ' Fall back to GetGlobalAA() (required for classes where m.global isn't available)
-  globalAA = GetGlobalAA()
-  if isValid(globalAA) and isValid(globalAA.global) and isValid(globalAA.global.server) and isValid(globalAA.global.server.apiVersion) and globalAA.global.server.apiVersion <> 0
-    return globalAA.global.server.apiVersion
+  global = GetGlobalAA().global
+  if global.server.apiVersion <> 0
+    return global.server.apiVersion
   end if
 
   ' Default to 2 (modern servers) if not found or still 0 (unset)
