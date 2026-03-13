@@ -787,3 +787,54 @@ function getGlobalSplashScreenSetting() as string
   return globalSetting
 end function
 
+' injectApiParams: Pure function to inject default image parameters and version-specific fields
+' Separated from ApiClient for testability without network I/O
+'
+' @param {object} params - Original query parameters from caller
+' @param {integer} apiVersion - API version (1 for pre-10.9, 2+ for 10.9+)
+' @param {object} imageDefaults - Default image parameters (e.g., { EnableImageTypes: "Primary,Backdrop,Logo,Thumb", ImageTypeLimit: 1 })
+' @returns {object} New params object with defaults merged and version-specific fields added
+function injectApiParams(params as object, apiVersion as integer, imageDefaults as object) as object
+  merged = {}
+
+  ' First apply image defaults
+  merged.append(imageDefaults)
+
+  ' Then apply user params (will override defaults if specified)
+  merged.append(params)
+
+  ' Add image-related fields
+  ' PrimaryImageAspectRatio is a valid ItemField that triggers ImageTags to be returned
+  fields = ""
+  if merged.DoesExist("fields")
+    fields = merged.fields
+  end if
+
+  ' Add PrimaryImageAspectRatio if not present - this causes ImageTags to be returned
+  if fields.Instr("PrimaryImageAspectRatio") = -1
+    if fields = ""
+      fields = "PrimaryImageAspectRatio"
+    else
+      fields = fields + ",PrimaryImageAspectRatio"
+    end if
+  end if
+
+  ' Always add Chapters field
+  if fields.Instr("Chapters") = -1
+    if fields = ""
+      fields = "Chapters"
+    else
+      fields = fields + ",Chapters"
+    end if
+  end if
+
+  ' Add Trickplay for 10.9+ servers (API v2+)
+  if apiVersion >= 2 and fields.Instr("Trickplay") = -1
+    fields = fields + ",Trickplay"
+  end if
+
+  merged.fields = fields
+
+  return merged
+end function
+

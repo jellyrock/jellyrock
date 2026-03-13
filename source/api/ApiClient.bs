@@ -696,57 +696,11 @@ class ApiClient
   ' ═══════════════════════════════════════════════════════════════════════════
 
   ' Inject default image parameters and version-specific fields into params
+  ' Delegates to injectApiParams() pure function for testability
   ' @param params - Original parameters object
   ' @returns New params object with defaults merged in
   private function injectDefaults(params as object) as object
-    merged = {}
-
-    ' First apply image defaults
-    merged.append(m.imageDefaults)
-
-    ' Then apply user params (will override defaults if specified)
-    merged.append(params)
-
-    ' Add image-related fields
-    ' PrimaryImageAspectRatio is a valid ItemField that triggers ImageTags to be returned
-    fields = ""
-    if merged.DoesExist("fields")
-      fields = merged.fields
-    end if
-    ' Add PrimaryImageAspectRatio if not present - this causes ImageTags to be returned
-    if fields.Instr("PrimaryImageAspectRatio") = -1
-      if fields = ""
-        fields = "PrimaryImageAspectRatio"
-      else
-        fields = fields + ",PrimaryImageAspectRatio"
-      end if
-    end if
-    merged.fields = m.addVersionFields(fields)
-
-    return merged
-  end function
-
-  ' Add version-specific fields (like Trickplay) based on server version
-  ' @param baseFields - Comma-separated field list
-  ' @returns Updated field list with version-specific additions
-  private function addVersionFields(baseFields as string) as string
-    ' Always add Chapters field
-    if baseFields.Instr("Chapters") = -1
-      if baseFields = ""
-        baseFields = "Chapters"
-      else
-        baseFields = baseFields + ",Chapters"
-      end if
-    end if
-
-    apiVersion = getApiVersionFromGlobal()
-
-    ' Add Trickplay for 10.9+ servers (API v2+)
-    if apiVersion >= 2 and baseFields.Instr("Trickplay") = -1
-      baseFields = baseFields + ",Trickplay"
-    end if
-
-    return baseFields
+    return injectApiParams(params, m.getApiVersion(), m.imageDefaults)
   end function
 
 end class

@@ -1,0 +1,244 @@
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("misc.bs - injectApiParams")
+  class InjectApiParamsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("injectApiParams() - Image parameter injection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("injects default image parameters when params is empty")
+    function _()
+      imageDefaults = {
+        EnableImageTypes: "Primary,Backdrop,Logo,Thumb",
+        ImageTypeLimit: 1
+      }
+
+      result = injectApiParams({}, 2, imageDefaults)
+
+      m.assertEqual(result.EnableImageTypes, "Primary,Backdrop,Logo,Thumb")
+      m.assertEqual(result.ImageTypeLimit, 1)
+    end function
+
+    @it("injects default image parameters alongside existing params")
+    function _()
+      imageDefaults = {
+        EnableImageTypes: "Primary,Backdrop,Logo,Thumb",
+        ImageTypeLimit: 1
+      }
+      params = {
+        Limit: 50,
+        SortBy: "DateCreated"
+      }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      m.assertEqual(result.EnableImageTypes, "Primary,Backdrop,Logo,Thumb")
+      m.assertEqual(result.ImageTypeLimit, 1)
+      m.assertEqual(result.Limit, 50)
+      m.assertEqual(result.SortBy, "DateCreated")
+    end function
+
+    @it("allows user params to override image defaults")
+    function _()
+      imageDefaults = {
+        EnableImageTypes: "Primary,Backdrop,Logo,Thumb",
+        ImageTypeLimit: 1
+      }
+      params = {
+        EnableImageTypes: "Primary",
+        ImageTypeLimit: 3
+      }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      m.assertEqual(result.EnableImageTypes, "Primary")
+      m.assertEqual(result.ImageTypeLimit, 3)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("injectApiParams() - Field injection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("injects PrimaryImageAspectRatio field by default")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+
+      result = injectApiParams({}, 2, imageDefaults)
+
+      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0, "Should contain PrimaryImageAspectRatio field")
+    end function
+
+    @it("injects Chapters field by default")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+
+      result = injectApiParams({}, 2, imageDefaults)
+
+      m.assertTrue(result.fields.Instr("Chapters") >= 0, "Should contain Chapters field")
+    end function
+
+    @it("adds PrimaryImageAspectRatio to existing fields")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+      params = { fields: "Overview,Genres" }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      m.assertTrue(result.fields.Instr("Overview") >= 0, "Should preserve Overview field")
+      m.assertTrue(result.fields.Instr("Genres") >= 0, "Should preserve Genres field")
+      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0, "Should add PrimaryImageAspectRatio field")
+    end function
+
+    @it("does not duplicate PrimaryImageAspectRatio if already present")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+      params = { fields: "PrimaryImageAspectRatio" }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      ' First verify the field exists
+      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0, "PrimaryImageAspectRatio should be present")
+
+      ' Count occurrences by splitting - should only have 1 element
+      parts = result.fields.Split(",")
+      occurrenceCount = 0
+      for each part in parts
+        if part = "PrimaryImageAspectRatio" then occurrenceCount = occurrenceCount + 1
+      end for
+      m.assertEqual(occurrenceCount, 1, "PrimaryImageAspectRatio should appear exactly once")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("injectApiParams() - Version-specific field injection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("injects Trickplay field for API v2+")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+
+      result = injectApiParams({}, 2, imageDefaults)
+
+      m.assertTrue(result.fields.Instr("Trickplay") >= 0, "Should contain Trickplay field for API v2")
+    end function
+
+    @it("injects Trickplay field for API v3")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+
+      result = injectApiParams({}, 3, imageDefaults)
+
+      m.assertTrue(result.fields.Instr("Trickplay") >= 0, "Should contain Trickplay field for API v3")
+    end function
+
+    @it("does NOT inject Trickplay field for API v1")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+
+      result = injectApiParams({}, 1, imageDefaults)
+
+      m.assertEqual(result.fields.Instr("Trickplay"), -1, "Should NOT contain Trickplay field for API v1")
+    end function
+
+    @it("does not duplicate Trickplay if already present")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+      params = { fields: "Trickplay,Overview" }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      ' First verify the field exists
+      m.assertTrue(result.fields.Instr("Trickplay") >= 0, "Trickplay should be present")
+
+      ' Count occurrences by splitting - should only have 1 element
+      parts = result.fields.Split(",")
+      occurrenceCount = 0
+      for each part in parts
+        if part = "Trickplay" then occurrenceCount = occurrenceCount + 1
+      end for
+      m.assertEqual(occurrenceCount, 1, "Trickplay should appear exactly once")
+    end function
+
+    @it("does not duplicate Chapters if already present")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+      params = { fields: "Chapters,Overview" }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      ' First verify the field exists
+      m.assertTrue(result.fields.Instr("Chapters") >= 0, "Chapters should be present")
+
+      ' Count occurrences by splitting - should only have 1 element
+      parts = result.fields.Split(",")
+      occurrenceCount = 0
+      for each part in parts
+        if part = "Chapters" then occurrenceCount = occurrenceCount + 1
+      end for
+      m.assertEqual(occurrenceCount, 1, "Chapters should appear exactly once")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("injectApiParams() - Complete field ordering")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("correctly orders fields when all auto-added fields are present")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+      params = { fields: "Overview,Genres" }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      ' Should contain all expected fields
+      m.assertTrue(result.fields.Instr("Overview") >= 0)
+      m.assertTrue(result.fields.Instr("Genres") >= 0)
+      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
+      m.assertTrue(result.fields.Instr("Chapters") >= 0)
+      m.assertTrue(result.fields.Instr("Trickplay") >= 0)
+    end function
+
+    @it("handles empty image defaults gracefully")
+    function _()
+      imageDefaults = {}
+      params = { Limit: 50 }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      m.assertEqual(result.Limit, 50)
+      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
+      m.assertTrue(result.fields.Instr("Chapters") >= 0)
+      m.assertTrue(result.fields.Instr("Trickplay") >= 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("injectApiParams() - Edge cases")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles params with no fields key")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+      params = { Limit: 50, SortBy: "Name" }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      m.assertEqual(result.Limit, 50)
+      m.assertEqual(result.SortBy, "Name")
+      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
+    end function
+
+    @it("handles empty fields string")
+    function _()
+      imageDefaults = { EnableImageTypes: "Primary", ImageTypeLimit: 1 }
+      params = { fields: "" }
+
+      result = injectApiParams(params, 2, imageDefaults)
+
+      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
+      m.assertTrue(result.fields.Instr("Chapters") >= 0)
+    end function
+
+  end class
+
+end namespace
