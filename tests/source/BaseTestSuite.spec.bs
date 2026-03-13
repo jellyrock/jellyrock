@@ -20,8 +20,7 @@ namespace tests
         end if
       end if
 
-      ' Initialize GetGlobalAA().global so classes can access m.global
-      ' This mirrors Main.bs behavior where m.global = GetGlobalAA().global
+      ' Populate GetGlobalAA().global so classes can access m.global
       GetGlobalAA().global = m.global
 
       ' ===================================================================
