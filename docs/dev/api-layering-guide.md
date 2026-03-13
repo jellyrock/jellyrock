@@ -41,17 +41,17 @@ The `ApiClient` provides direct access to Jellyfin API endpoints with automatic 
 
 The following defaults are automatically applied to item fetching endpoints:
 
-| Parameter | Default Value | Purpose |
-|-----------|---------------|---------|
+| Parameter          | Default Value                   | Purpose                      |
+|--------------------|---------------------------------|------------------------------|
 | `EnableImageTypes` | `"Primary,Backdrop,Logo,Thumb"` | Ensures images are requested |
-| `ImageTypeLimit` | `1` | Limits images per type |
-| `fields` | Auto-augmented* | Adds required fields (see below) |
+| `ImageTypeLimit`   | `1`                             | Limits images per type       |
+| `fields`           | Auto-augmented*                 | Adds required fields (below) |
 
 **Auto-augmented fields appended to `fields` parameter:**
 
-- `PrimaryImageAspectRatio` - Always added (causes ImageTags to be returned)
+- `PrimaryImageAspectRatio` - Always added (causes `ImageTags` to be returned)
 - `Chapters` - Always added
-- `Trickplay` - Added for V2+ servers (10.9+)
+- `Trickplay` - Added for `V2`+ servers (10.9+)
 
 These injections ensure consistent item data across all supported server versions without manual parameter management.
 
