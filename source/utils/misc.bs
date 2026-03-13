@@ -482,7 +482,7 @@ function getApiVersionFromGlobal() as integer
 
   ' Fall back to GetGlobalAA() (required for classes where m.global isn't available)
   globalRef = GetGlobalAA().global
-  if globalRef.server.apiVersion <> 0
+  if isValid(globalRef) and isValid(globalRef.server) and globalRef.server.apiVersion <> 0
     return globalRef.server.apiVersion
   end if
 

@@ -39,8 +39,13 @@ class ApiClient
   end function
 
   ' Get API version from global state
+  ' Returns 2 when apiVersion is 0 (unset/default) for V2 routing
   private function getApiVersion() as integer
-    return m.global.server.apiVersion
+    version = m.global.server.apiVersion
+    if version = 0
+      return 2
+    end if
+    return version
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
