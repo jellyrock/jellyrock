@@ -475,14 +475,16 @@ end function
 ' @returns {integer} API version (default: 2 if not set, unset (0), or invalid)
 function getApiVersionFromGlobal() as integer
   ' Try m.global first (works in namespaces, functions, components)
+  ' Structural guarantee: if m.global exists, server.apiVersion exists
   ' Treat 0 as an unset/initial value (default before server.Populate() and in tests)
-  if isValid(m.global) and isValid(m.global.server) and isValid(m.global.server.apiVersion) and m.global.server.apiVersion <> 0
+  if isValid(m.global) and m.global.server.apiVersion <> 0
     return m.global.server.apiVersion
   end if
 
   ' Fall back to GetGlobalAA() (required for classes where m.global isn't available)
+  ' Structural guarantee: if globalRef exists, server.apiVersion exists
   globalRef = GetGlobalAA().global
-  if isValid(globalRef) and isValid(globalRef.server) and globalRef.server.apiVersion <> 0
+  if isValid(globalRef) and globalRef.server.apiVersion <> 0
     return globalRef.server.apiVersion
   end if
 

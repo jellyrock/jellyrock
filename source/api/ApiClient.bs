@@ -38,14 +38,10 @@ class ApiClient
     return m.global.user.id
   end function
 
-  ' Get API version from global state
-  ' Returns 2 when apiVersion is 0 (unset/default) for V2 routing
+  ' Get API version from global state via helper
+  ' Uses getApiVersionFromGlobal() as single source of truth for safe API version reading
   private function getApiVersion() as integer
-    version = m.global.server.apiVersion
-    if version = 0
-      return 2
-    end if
-    return version
+    return getApiVersionFromGlobal()
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
