@@ -472,10 +472,10 @@ end function
 ' Works in both class and non-class contexts (components, namespaces, functions).
 ' This is the single source of truth for reading m.global.server.apiVersion.
 '
-' @returns {integer} API version (default: 2 if not set or invalid)
+' @returns {integer} API version (default: 2 if not set, unset (0), or invalid)
 function getApiVersionFromGlobal() as integer
   ' Try m.global first (works in namespaces, functions, components)
-  ' Treat 0 as unset (should never happen, but safety check)
+  ' Treat 0 as an unset/initial value (default before server.Populate() and in tests)
   if isValid(m.global) and isValid(m.global.server) and isValid(m.global.server.apiVersion) and m.global.server.apiVersion <> 0
     return m.global.server.apiVersion
   end if
@@ -486,7 +486,7 @@ function getApiVersionFromGlobal() as integer
     return globalAA.global.server.apiVersion
   end if
 
-  ' Default to 2 (modern servers) if not found or 0
+  ' Default to 2 (modern servers) if not found or still 0 (unset)
   return 2
 end function
 
