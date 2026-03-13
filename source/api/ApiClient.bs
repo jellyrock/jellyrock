@@ -3,6 +3,9 @@ import "pkg:/source/api/sdk.v1.bs"
 import "pkg:/source/api/sdk.v2.bs"
 import "pkg:/source/utils/misc.bs"
 
+' Note: getApiVersionFromGlobal() is imported from misc.bs and serves as the
+' single source of truth for API version detection across the entire app.
+
 ' ApiClient provides a centralized, stateful wrapper around the Jellyfin API.
 ' It automatically injects image parameters and version-specific fields for consistent,
 ' bulletproof item fetching across all Jellyfin server versions (10.7.0+).
@@ -38,14 +41,10 @@ class ApiClient
   end function
 
   ' Get API version from global state (always fresh)
-  ' Note: Must use GetGlobalAA() instead of m.global because inside a class,
-  ' 'm' refers to the class instance, not the component context
+  ' Delegates to getApiVersionFromGlobal() which is the single source of truth
+  ' for API version detection and handles both class and component contexts
   private function getApiVersion() as integer
-    globalAA = GetGlobalAA()
-    if isValid(globalAA) and isValid(globalAA.global) and isValid(globalAA.global.server) and isValid(globalAA.global.server.apiVersion)
-      return globalAA.global.server.apiVersion
-    end if
-    return 2 ' Default to V2 for modern servers
+    return getApiVersionFromGlobal()
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════

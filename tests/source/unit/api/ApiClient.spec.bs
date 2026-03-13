@@ -60,6 +60,18 @@ namespace tests
       m.assertTrue(result.Instr("/UserImage") >= 0, "V2+ URL should use /UserImage path")
     end function
 
+    @it("routes GetUserImageURL to V2 path when apiVersion = 0 (default/unset)")
+    function _()
+      ' apiVersion defaults to 0 in JellyfinServer - this tests that 0 is treated as unset
+      ' and defaults to V2, matching getApiVersionFromGlobal() behavior
+      m.setApiVersion(0)
+
+      result = m.apiClient.GetUserImageURL(m.testUserId, "primary")
+
+      m.assertTrue(result.Instr("/UserImage") >= 0, "apiVersion=0 should route to V2 URL with /UserImage path")
+      m.assertFalse(result.Instr("/users/") >= 0, "apiVersion=0 must not use V1 /users/ path prefix")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Parameter Passthrough - GetUserImageURL")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
