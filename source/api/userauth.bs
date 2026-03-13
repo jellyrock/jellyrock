@@ -1,10 +1,10 @@
 ' needed for SignOut() and ServerInfo()
-import "pkg:/source/api/sdk.bs"
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
 
 function get_token(username as string, password as string)
-  json = api.users.AuthenticateByName(username, password)
+  json = GetApi().AuthenticateByName(username, password)
 
   if not isValid(json) then return invalid
 
@@ -25,7 +25,7 @@ function AboutMe(id = "" as string)
     end if
   end if
 
-  return api.users.Get(id)
+  return GetApi().GetUser(id)
 end function
 
 sub SignOut(deleteSavedEntry = true as boolean)
@@ -50,11 +50,11 @@ function ServerInfo()
 end function
 
 function GetPublicUsers()
-  return api.users.GetPublic()
+  return GetApi().GetPublicUsers()
 end function
 
 function initQuickConnect()
-  jsonResponse = api.quickConnect.Initiate()
+  jsonResponse = GetApi().InitiateQuickConnect()
   if not isValid(jsonResponse)
     return invalid
   end if
@@ -67,7 +67,7 @@ function initQuickConnect()
 end function
 
 function checkQuickConnect(secret)
-  jsonResponse = api.quickConnect.Connect(secret)
+  jsonResponse = GetApi().ConnectQuickConnect(secret)
   if not isValid(jsonResponse)
     return false
   end if
@@ -80,7 +80,7 @@ function checkQuickConnect(secret)
 end function
 
 function AuthenticateViaQuickConnect(secret)
-  jsonResponse = api.users.AuthenticateWithQuickConnect(secret)
+  jsonResponse = GetApi().AuthenticateWithQuickConnect(secret)
   if isValid(jsonResponse) and isValid(jsonResponse.AccessToken) and isValid(jsonResponse.User)
     globalUser = m.global.user
     userdata = CreateObject("roSGNode", "UserData")

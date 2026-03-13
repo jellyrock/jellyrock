@@ -1,3 +1,4 @@
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
@@ -148,32 +149,27 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   video.title = isValidAndNotEmpty(titleOverride) ? titleOverride : meta.title
   video.showID = meta.seriesId
 
-  logoLookupID = video.id
-
   if videotype = "episode" or videotype = "series"
     video.content.contenttype = "episode"
     video.seasonNumber = meta.parentIndexNumber
     video.episodeNumber = meta.indexNumber
     video.episodeNumberEnd = meta.indexNumberEnd
-
-    if isValidAndNotEmpty(meta.seriesId)
-      logoLookupID = meta.seriesId
-    end if
   else if videotype = "recording"
     ' Recordings belong to a series — look up the series logo, same as episodes
-    if isValidAndNotEmpty(meta.seriesId)
-      logoLookupID = meta.seriesId
-    end if
   end if
 
-  logoImageExists = api.items.HeadImageURLByName(logoLookupID, "logo")
-  if logoImageExists
-    video.logoImage = api.items.GetImageURL(logoLookupID, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })
+  ' Set logo image using metadata (same logic as ItemDetails)
+  ' Check for logoImageTag first (movie/item logo)
+  if isValidAndNotEmpty(meta.logoImageTag)
+    video.logoImage = ImageURL(meta.id, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.logoImageTag })
+  else if isValidAndNotEmpty(meta.parentLogoImageTag) and isValidAndNotEmpty(meta.seriesId)
+    ' Series logo for episodes
+    video.logoImage = ImageURL(meta.seriesId, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.parentLogoImageTag })
   else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
     ' Movie with no logo — fall back to primary (poster) image
     video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
-  else if videotype = "episode"
-    ' Episode with no series logo — fall back to series primary poster, then episode thumbnail
+  else if videotype = "episode" or videotype = "recording"
+    ' Episode/recording with no series logo — fall back to series primary poster, then episode thumbnail
     if isValidAndNotEmpty(meta.seriesPrimaryImageTag) and isValidAndNotEmpty(meta.seriesId)
       video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.seriesPrimaryImageTag })
     else if isValidAndNotEmpty(meta.primaryImageTag)

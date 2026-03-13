@@ -1,5 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -15,7 +15,7 @@ end sub
 sub fetchBrandingConfig()
   m.log.info("Fetching branding configuration from server")
 
-  configData = api.branding.GetConfiguration()
+  configData = GetApi().GetBrandingConfiguration()
 
   if isValid(configData)
     m.log.debug("Branding config response received", formatJson(configData))

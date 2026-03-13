@@ -1,5 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -11,7 +11,7 @@ sub downloadFallbackFont()
   print "FontDownloadTask: Starting fallback font download..."
 
   ' Check if server supports fallback fonts
-  configEncoding = api.system.GetConfigurationByName("encoding")
+  configEncoding = GetApi().GetConfigurationByName("encoding")
 
   if not isValid(configEncoding) or not isValid(configEncoding.EnableFallbackFont) or not configEncoding.EnableFallbackFont
     print "FontDownloadTask: Server does not support fallback fonts"

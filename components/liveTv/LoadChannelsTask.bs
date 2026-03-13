@@ -1,6 +1,6 @@
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
@@ -48,7 +48,7 @@ sub loadChannels()
     params.append({ isFavorite: true })
   end if
 
-  data = api.users.GetItemsByQuery(globalUser.id, params)
+  data = GetApi().GetItemsByQuery(params)
 
   if not isValid(data.TotalRecordCount)
     m.top.channels = results

@@ -5,8 +5,11 @@ import "pkg:/source/utils/misc.bs"
 ' Follows the type defaults pattern: fields have XML-declared defaults ("", 0, false).
 ' See JellyfinBaseItem.xml for field documentation and the full defaults pattern description.
 class JellyfinDataTransformer
+  ' Cache global reference so m.global works inside class methods
+  private global = invalid
 
   sub new()
+    m.global = GetGlobalAA().global
   end sub
 
   ' Transform a BaseItemDto to a JellyfinBaseItem content node.
@@ -20,11 +23,10 @@ class JellyfinDataTransformer
     end if
 
     ' Get server version from global session if not provided
-    ' Note: In classes, m.global is not available; use GetGlobalAA() pattern
     if not isValidAndNotEmpty(serverVersion)
-      globalAA = GetGlobalAA()
-      if isValid(globalAA) and isValid(globalAA.session) and isValid(globalAA.session.server) and isValidAndNotEmpty(globalAA.session.server.version)
-        serverVersion = globalAA.session.server.version
+      version = m.global.server.version
+      if version <> ""
+        serverVersion = version
       else
         serverVersion = "unknown"
       end if
@@ -256,9 +258,9 @@ class JellyfinDataTransformer
 
     ' Resolve server version once for all items
     if not isValidAndNotEmpty(serverVersion)
-      globalAA = GetGlobalAA()
-      if isValid(globalAA) and isValid(globalAA.session) and isValid(globalAA.session.server) and isValidAndNotEmpty(globalAA.session.server.version)
-        serverVersion = globalAA.session.server.version
+      version = m.global.server.version
+      if version <> ""
+        serverVersion = version
       else
         serverVersion = "unknown"
       end if

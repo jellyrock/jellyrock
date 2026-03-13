@@ -1,5 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/Image.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
@@ -100,10 +100,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
 
           ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
           ' Only apply this for API v2+ servers (10.9+)
-          apiVersion = 2
-          if isValid(m.global.server) and isValid(m.global.server.apiVersion)
-            apiVersion = m.global.server.apiVersion
-          end if
+          apiVersion = getApiVersionFromGlobal()
 
           if apiVersion >= 2 and isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
             ' is DOVI in the string?
@@ -231,13 +228,13 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
   end if
 
-  return api.items.PostPlayBackInfo(id, postData)
+  return GetApi().PostPlaybackInfo(id, postData)
 end function
 
 ' Search across all libraries
 function searchMedia(query as string)
   if query <> ""
-    data = api.users.GetItemsByQuery(m.global.user.id, {
+    data = GetApi().GetItemsByQuery({
       "searchTerm": query,
       "IncludePeople": true,
       "IncludeMedia": true,
@@ -247,7 +244,6 @@ function searchMedia(query as string)
       "IncludeArtists": true,
       "IncludeItemTypes": "LiveTvChannel,Movie,BoxSet,Series,Episode,Video,Person,Audio,MusicAlbum,MusicArtist,Playlist",
       "EnableTotalRecordCount": false,
-      "ImageTypeLimit": 1,
       "Recursive": true,
       "limit": 100
     })
@@ -268,7 +264,7 @@ end function
 ' MetaData about an item — returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
 function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string)
-  data = api.users.GetItem(m.global.user.id, id, { "fields": fields })
+  data = GetApi().GetItem(id, { "fields": fields })
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
   return transformer.transformBaseItem(data)
@@ -282,14 +278,14 @@ end function
 
 ' Music Artist Data
 function ArtistOverview(name as string)
-  data = api.artists.GetByName(name)
+  data = GetApi().GetArtistByName(name)
   if not isValid(data) then return invalid
   return data.overview
 end function
 
 ' Get list of albums belonging to an artist
 function MusicAlbumList(id as string)
-  data = api.users.GetItemsByQuery(m.global.user.id, {
+  data = GetApi().GetItemsByQuery({
     "AlbumArtistIds": id,
     "includeitemtypes": "MusicAlbum",
     "sortBy": "SortName",
@@ -306,7 +302,7 @@ end function
 
 ' Get list of albums an artist appears on
 function AppearsOnList(id as string)
-  data = api.users.GetItemsByQuery(m.global.user.id, {
+  data = GetApi().GetItemsByQuery({
     "ContributingArtistIds": id,
     "ExcludeItemIds": id,
     "includeitemtypes": "MusicAlbum",
@@ -336,7 +332,7 @@ function GetSongsByArtist(id as string, params = {} as object)
     paramArray.AddReplace(param, params[param])
   end for
 
-  data = api.users.GetItemsByQuery(m.global.user.id, paramArray)
+  data = GetApi().GetItemsByQuery(paramArray)
   results = []
 
   if not isValid(data) then return invalid
@@ -353,7 +349,7 @@ end function
 
 ' Get Items that are under the provided item
 function PlaylistItemList(id as string)
-  data = api.playlists.GetItems(id, { "UserId": m.global.user.id })
+  data = GetApi().GetPlaylistItems(id)
 
   results = []
 
@@ -371,9 +367,7 @@ end function
 
 ' Get Songs that are on an Album
 function MusicSongList(id as string)
-  globalUser = m.global.user
-  data = api.users.GetItemsByQuery(globalUser.id, {
-    "UserId": globalUser.id,
+  data = GetApi().GetItemsByQuery({
     "parentId": id,
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
@@ -395,9 +389,7 @@ end function
 
 ' Get Songs that are on an Album
 function AudioItem(id as string)
-  globalUser = m.global.user
-  return api.users.GetItem(globalUser.id, id, {
-    "UserId": globalUser.id,
+  return GetApi().GetItemRaw(id, {
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
   })
@@ -405,12 +397,12 @@ end function
 
 ' Get Instant Mix based on item
 function CreateInstantMix(id as string)
-  return api.items.GetInstantMix(id, { "UserId": m.global.user.id, "Limit": 201 })
+  return GetApi().GetInstantMix(id, { "Limit": 201 })
 end function
 
 ' Get Instant Mix based on item
 function CreateArtistMix(id as string)
-  return api.users.GetItemsByQuery(m.global.user.id, {
+  return GetApi().GetItemsByQuery({
     "ArtistIds": id,
     "Recursive": "true",
     "MediaTypes": "Audio",
@@ -426,7 +418,7 @@ end function
 
 ' Get Intro Videos for an item
 function GetIntroVideos(id as string)
-  return api.users.GetIntros(m.global.user.id, id)
+  return GetApi().GetIntros(id)
 end function
 
 function AudioStream(id as string)
@@ -477,7 +469,7 @@ end function
 
 ' Seasons for a TV Show
 function TVSeasons(id as string) as dynamic
-  data = api.shows.GetSeasons(id, { "UserId": m.global.user.id })
+  data = GetApi().GetSeasons(id)
   ' validate data
   if not isValid(data) or not isValid(data.Items) then return invalid
 

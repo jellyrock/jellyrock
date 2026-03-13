@@ -1,4 +1,5 @@
-import "pkg:/source/api/sdk.bs"
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ImageHelpers.bs"
 import "pkg:/source/utils/config.bs"
 
 sub init()
@@ -95,16 +96,6 @@ function createUserPoster() as object
   localUser = m.global.user
   userImage = createObject("roSGNode", "Poster")
 
-  imgParams = {
-    maxHeight: 36,
-    maxWidth: 36,
-    quality: 90
-  }
-
-  if isValidAndNotEmpty(localUser.primaryImageTag)
-    imgParams.tag = localUser.primaryImageTag
-  end if
-
   userImage.id = "userImage"
   userImage.width = 36
   userImage.loadWidth = 36
@@ -115,12 +106,12 @@ function createUserPoster() as object
     userId: localUser.id
   })
 
-  if isValid(imgParams.tag)
+  if isValidAndNotEmpty(localUser.primaryImageTag)
     ' reset defaults
     userImage.blendColor = "0xFFFFFFFF"
 
     if m.global.server.serverUrl <> ""
-      userImage.uri = api.users.GetImageURL(localUser.id, "primary", 0, imgParams)
+      userImage.uri = GetUserAvatarURL(localUser, 36, 36)
     else
       print "ERROR: No server URL set, cannot load user image"
     end if

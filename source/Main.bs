@@ -257,7 +257,7 @@ sub Main (args as dynamic) as void
           print "selectedItem=", selectedItem
 
           ' grab all photos inside photo album
-          photoAlbumData = api.users.GetItemsByQuery(m.global.user.id, {
+          photoAlbumData = GetApi().GetItemsByQuery({
             "parentId": selectedItem.id,
             "includeItemTypes": "Photo",
             "Recursive": true
@@ -485,8 +485,7 @@ sub Main (args as dynamic) as void
         if isValid(group.itemContent)
           ' Series on ItemDetails: "Play All" queues all episodes from the beginning
           if group.subtype() = "ItemDetails" and group.itemContent.type = "Series"
-            allEpData = api.shows.GetEpisodes(group.itemContent.id, {
-              UserId: m.global.user.id,
+            allEpData = GetApi().GetEpisodes(group.itemContent.id, {
               SortBy: "IndexNumber,SortName",
               SortOrder: "Ascending"
             })
@@ -511,8 +510,7 @@ sub Main (args as dynamic) as void
           else if group.subtype() = "ItemDetails" and group.itemContent.type = "Season"
             ' Season "Play All": queue all episodes for this season in order
             item = group.itemContent
-            allEpData = api.shows.GetEpisodes(item.seriesId, {
-              UserId: m.global.user.id,
+            allEpData = GetApi().GetEpisodes(item.seriesId, {
               SeasonId: item.id,
               SortBy: "IndexNumber,SortName",
               SortOrder: "Ascending"
@@ -623,7 +621,7 @@ sub Main (args as dynamic) as void
         dialog.title = tr("Loading trailer")
         m.scene.dialog = dialog
 
-        trailerData = api.users.GetLocalTrailers(m.global.user.id, group.id)
+        trailerData = GetApi().GetLocalTrailers(group.id)
 
         if isValid(trailerData) and isValid(trailerData[0]) and isValid(trailerData[0].id)
           m.global.queueManager.callFunc("clear")
@@ -655,9 +653,9 @@ sub Main (args as dynamic) as void
           else
             startLoadingSpinner()
             if item.isWatched
-              api.users.UnmarkPlayed(m.global.user.id, item.id)
+              GetApi().UnmarkPlayed(item.id)
             else
-              api.users.MarkPlayed(m.global.user.id, item.id)
+              GetApi().MarkPlayed(item.id)
             end if
             ' Refresh from server to get authoritative state
             group.refreshItemDetailsData = not group.refreshItemDetailsData
@@ -670,11 +668,11 @@ sub Main (args as dynamic) as void
         if isValid(movie) and isValidAndNotEmpty(movie.id) and isValid(favoriteButton)
           startLoadingSpinner()
           if movie.isFavorite
-            api.users.UnmarkFavorite(m.global.user.id, movie.id)
+            GetApi().UnmarkFavorite(movie.id)
             movie.isFavorite = false
             favoriteButton.selected = false
           else
-            api.users.MarkFavorite(m.global.user.id, movie.id)
+            GetApi().MarkFavorite(movie.id)
             movie.isFavorite = true
             favoriteButton.selected = true
           end if
@@ -910,7 +908,7 @@ sub Main (args as dynamic) as void
         else if isValid(m.pendingDeleteItemId)
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Delete")
             ' User confirmed deletion
-            api.items.DeleteByID(m.pendingDeleteItemId)
+            GetApi().DeleteItem(m.pendingDeleteItemId)
             m.pendingDeleteItemId = invalid
             m.global.sceneManager.callFunc("popScene")
           else
@@ -923,9 +921,9 @@ sub Main (args as dynamic) as void
             ' User confirmed — mark/unmark all episodes
             startLoadingSpinner()
             if m.pendingWatchedIsCurrentlyWatched
-              api.users.UnmarkPlayed(m.global.user.id, m.pendingWatchedItemId)
+              GetApi().UnmarkPlayed(m.pendingWatchedItemId)
             else
-              api.users.MarkPlayed(m.global.user.id, m.pendingWatchedItemId)
+              GetApi().MarkPlayed(m.pendingWatchedItemId)
             end if
             m.pendingWatchedItemId = invalid
             m.pendingWatchedIsCurrentlyWatched = invalid

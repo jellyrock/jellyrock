@@ -20,6 +20,9 @@ namespace tests
         end if
       end if
 
+      ' Populate GetGlobalAA().global so classes can access m.global
+      GetGlobalAA().global = m.global
+
       ' ===================================================================
       ' Use ACTUAL main app initialization functions
       ' This ensures tests use identical global state as production

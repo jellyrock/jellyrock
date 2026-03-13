@@ -1,7 +1,7 @@
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
@@ -34,9 +34,9 @@ sub loadItems()
   end if
 
   if m.top.ItemType = "LogoImage"
-    logoImageExists = api.items.HeadImageURLByName(m.top.itemId, "logo")
+    logoImageExists = GetApi().HeadImageURLByName(m.top.itemId, "logo")
     if logoImageExists
-      m.top.content = [api.items.GetImageURL(m.top.itemId, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })]
+      m.top.content = [GetApi().GetImageURL(m.top.itemId, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })]
     else
       m.top.content = []
     end if
@@ -158,7 +158,7 @@ sub loadItems()
   end if
   ' MusicAlbum and the generic else both use queryType = "usersItems" (default)
 
-  data = executeItemQuery(queryType, globalUser.id, params)
+  data = executeItemQuery(queryType, params)
 
   ' If user has filtered by #, include special characters sorted after Z as well
   if isValid(params.NameLessThan)
@@ -168,7 +168,7 @@ sub loadItems()
       params.NameStartsWithOrGreater = "z"
 
       ' Perform 2nd API lookup for items starting with Z or greater
-      startsWithZAndGreaterData = executeItemQuery(queryType, globalUser.id, params)
+      startsWithZAndGreaterData = executeItemQuery(queryType, params)
 
       if isValidAndNotEmpty(startsWithZAndGreaterData)
         specialCharacterItems = []
@@ -200,7 +200,7 @@ sub loadItems()
         tmp = CreateObject("roSGNode", "ContentNode")
         tmp.title = item.name
 
-        genreData = api.users.GetItemsByQuery(globalUser.id, {
+        genreData = GetApi().GetItemsByQuery({
           SortBy: "Random",
           SortOrder: "Ascending",
           IncludeItemTypes: m.top.itemType,
@@ -269,21 +269,21 @@ sub loadItems()
   m.top.content = results
 end sub
 
-' Routes an item query to the correct api namespace based on queryType.
+' Routes an item query through the ApiClient (GetApi()) based on queryType.
 ' Used for both the main request and the optional 2nd lookup for the # filter.
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
-function executeItemQuery(queryType as string, userId as string, params as object) as dynamic
+function executeItemQuery(queryType as string, params as object) as dynamic
   if queryType = "liveTV"
-    return api.liveTV.GetChannels(params)
+    return GetApi().GetLiveTVChannels(params)
   else if queryType = "studios"
-    return api.studios.Get(params)
+    return GetApi().GetStudios(params)
   else if queryType = "genres"
-    return api.genres.Get(params)
+    return GetApi().GetGenres(params)
   else if queryType = "artists"
-    return api.artists.Get(params)
+    return GetApi().GetArtists(params)
   else if queryType = "albumArtists"
-    return api.artists.GetAlbumArtists(params)
+    return GetApi().GetAlbumArtists(params)
   end if
   ' default: "usersItems"
-  return api.users.GetItemsByQuery(userId, params)
+  return GetApi().GetItemsByQuery(params)
 end function

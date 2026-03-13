@@ -65,10 +65,7 @@ function getDeviceProfile() as object
   globalDevice = m.global.device
 
   ' Check server version to determine which DeviceProfile format to use
-  apiVersion = 2
-  if isValid(m.global.server) and isValid(m.global.server.apiVersion)
-    apiVersion = m.global.server.apiVersion
-  end if
+  apiVersion = getApiVersionFromGlobal()
 
   ' V1 (10.7.x - 10.8.x): Uses full DeviceProfile with Identification object
   ' V2 (10.9+): Uses simplified DeviceProfile without Identification
@@ -1110,10 +1107,7 @@ function getCodecProfiles() as object
   end if
 
   ' Filter out version-specific conditions based on server API version
-  apiVersion = 2
-  if isValid(m.global.server) and isValid(m.global.server.apiVersion)
-    apiVersion = m.global.server.apiVersion
-  end if
+  apiVersion = getApiVersionFromGlobal()
 
   ' VideoRangeType was added in Jellyfin 10.9 (API v2)
   ' Remove it for older servers (10.7.x, 10.8.x) that don't support this property

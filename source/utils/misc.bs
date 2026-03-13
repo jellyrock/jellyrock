@@ -468,6 +468,31 @@ function versionChecker(versionToCheck as string, minVersionAccepted as string)
 end function
 
 '
+' Returns the current API version from global state with a safe default of 2.
+' Works in both class and non-class contexts (components, namespaces, functions).
+' This is the single source of truth for reading m.global.server.apiVersion.
+'
+' @returns {integer} API version (default: 2 if not set, unset (0), or invalid)
+function getApiVersionFromGlobal() as integer
+  ' Try m.global first (works in namespaces, functions, components)
+  ' Structural guarantee: if m.global exists, server.apiVersion exists
+  ' Treat 0 as an unset/initial value (default before server.Populate() and in tests)
+  if isValid(m.global) and m.global.server.apiVersion <> 0
+    return m.global.server.apiVersion
+  end if
+
+  ' Fall back to GetGlobalAA() (required for classes where m.global isn't available)
+  ' Structural guarantee: if globalRef exists, server.apiVersion exists
+  globalRef = GetGlobalAA().global
+  if isValid(globalRef) and globalRef.server.apiVersion <> 0
+    return globalRef.server.apiVersion
+  end if
+
+  ' Default to 2 (modern servers) if not found or still 0 (unset)
+  return 2
+end function
+
+'
 ' Maps a Jellyfin server version string to an API version integer used by the SDK dispatcher.
 ' V1: Covers pre-10.9 servers (10.7.x, 10.8.x) — uses /Users/{userId}/ path prefix
 ' V2: Covers 10.9+ servers — endpoints moved to top-level, userId passed as query param
@@ -762,5 +787,56 @@ function getGlobalSplashScreenSetting() as string
   end if
 
   return globalSetting
+end function
+
+' injectApiParams: Pure function to inject default image parameters and version-specific fields
+' Separated from ApiClient for testability without network I/O
+'
+' @param {object} params - Original query parameters from caller
+' @param {integer} apiVersion - API version (1 for pre-10.9, 2+ for 10.9+)
+' @param {object} imageDefaults - Default image parameters (e.g., { EnableImageTypes: "Primary,Backdrop,Logo,Thumb", ImageTypeLimit: 1 })
+' @returns {object} New params object with defaults merged and version-specific fields added
+function injectApiParams(params as object, apiVersion as integer, imageDefaults as object) as object
+  merged = {}
+
+  ' First apply image defaults
+  merged.append(imageDefaults)
+
+  ' Then apply user params (will override defaults if specified)
+  merged.append(params)
+
+  ' Add image-related fields
+  ' PrimaryImageAspectRatio is a valid ItemField that triggers ImageTags to be returned
+  fields = ""
+  if merged.DoesExist("fields")
+    fields = merged.fields
+  end if
+
+  ' Add PrimaryImageAspectRatio if not present - this causes ImageTags to be returned
+  if fields.Instr("PrimaryImageAspectRatio") = -1
+    if fields = ""
+      fields = "PrimaryImageAspectRatio"
+    else
+      fields = fields + ",PrimaryImageAspectRatio"
+    end if
+  end if
+
+  ' Always add Chapters field
+  if fields.Instr("Chapters") = -1
+    if fields = ""
+      fields = "Chapters"
+    else
+      fields = fields + ",Chapters"
+    end if
+  end if
+
+  ' Add Trickplay for 10.9+ servers (API v2+)
+  if apiVersion >= 2 and fields.Instr("Trickplay") = -1
+    fields = fields + ",Trickplay"
+  end if
+
+  merged.fields = fields
+
+  return merged
 end function
 

@@ -83,3 +83,8 @@ E2E
 UX
 v1
 v2
+Trickplay
+sdk
+enum
+codec
+DLNA

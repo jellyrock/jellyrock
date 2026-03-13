@@ -2,8 +2,8 @@
 ' Global content nodes: m.global.server and m.global.user
 ' Organized via namespaces for clean code organization
 
+import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/sdk.bs"
 import "pkg:/source/api/userauth.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/migrations.bs"
@@ -121,7 +121,7 @@ namespace server
 
   ' Discovers server information and handles redirects.
   '
-  ' Convention: all API calls should go through api.* namespace functions (e.g. api.system.GetPublicInfo()).
+  ' Convention: all API calls should go through the ApiClient class via GetApi() (e.g. GetApi().GetConfigurationByName()).
   ' Those functions bundle APIRequest() with a synchronous execution strategy (getJson, postVoid, etc.).
   '
   ' Discover() is an intentional exception: it must intercept the roUrlEvent to read GetResponseHeaders()
@@ -509,7 +509,7 @@ namespace user
   sub LoadUserPreferences()
     id = m.global.user.id
 
-    jsonResponse = api.displayPreferences.Get("usersettings", { userId: id, client: "emby" })
+    jsonResponse = GetApi().GetDisplayPreferences("usersettings", { userId: id, client: "emby" })
 
     if isValid(jsonResponse)
       userNode = m.global.user
