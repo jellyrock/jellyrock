@@ -269,7 +269,7 @@ sub loadItems()
   m.top.content = results
 end sub
 
-' Routes an item query to the correct api namespace based on queryType.
+' Routes an item query through the ApiClient (GetApi()) based on queryType.
 ' Used for both the main request and the optional 2nd lookup for the # filter.
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
 function executeItemQuery(queryType as string, params as object) as dynamic
