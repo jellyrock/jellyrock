@@ -100,6 +100,13 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
   m.title.visible = false
   m.subtitle.visible = true
 
+  ' Hide any backdropText left over from a previous library tile render on this recycled instance.
+  ' onPosterLoadStatusChanged is also gated, but this closes the window between render and first callback.
+  backdropText = m.top.findNode("backdropText")
+  if isValid(backdropText)
+    backdropText.visible = false
+  end if
+
   ' Backdrop shows while poster is loading, hidden once image is ready
   m.backdrop.visible = true
 
@@ -198,18 +205,24 @@ end function
 
 ' Hides the backdrop (and any backdropText) once the poster image loads.
 ' Shows the backdrop as a fallback when the image is unavailable or still loading.
+' backdropText visibility is only toggled for library tiles — standard items must not
+' inherit a stale label when this component instance is recycled from a library row.
 sub onPosterLoadStatusChanged()
   if m.poster.loadStatus = "ready" and m.poster.uri <> ""
     m.backdrop.visible = false
-    backdropText = m.top.findNode("backdropText")
-    if isValid(backdropText)
-      backdropText.visible = false
+    if m.isLibraryTile
+      backdropText = m.top.findNode("backdropText")
+      if isValid(backdropText)
+        backdropText.visible = false
+      end if
     end if
   else
     m.backdrop.visible = true
-    backdropText = m.top.findNode("backdropText")
-    if isValid(backdropText)
-      backdropText.visible = true
+    if m.isLibraryTile
+      backdropText = m.top.findNode("backdropText")
+      if isValid(backdropText)
+        backdropText.visible = true
+      end if
     end if
   end if
 end sub
