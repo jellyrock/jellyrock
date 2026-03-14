@@ -156,7 +156,7 @@ sub updateLayout(slotWidth as float, posterHeight as float)
 end sub
 
 ' Lazy-creates the backdrop text label for library tiles on first use.
-' Matches HomeItem's pattern to avoid allocating the node for non-library rows.
+' Deferred allocation avoids creating the node for non-library rows.
 sub initBackdropText(slotWidth as float, posterHeight as float)
   if isValid(m.top.findNode("backdropText")) then return
 
@@ -215,7 +215,7 @@ sub onIconLoadStatusChanged()
 end sub
 
 ' Centers the icon in the upper portion of the backdrop and positions the library
-' name label below it. Matches HomeItem's arrangement for library tiles.
+' name label below it.
 sub arrangeIconAndBackdropText()
   backdropText = m.top.findNode("backdropText")
   if not isValid(backdropText) then return

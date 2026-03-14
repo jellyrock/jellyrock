@@ -315,17 +315,17 @@ namespace tests
     @describe("getRowItemImageUrl() - wide-native types")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("uses wide image for TvChannel")
+    @it("uses Primary image for TvChannel (channel logos stored as Primary, not Thumb)")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "tv1"
       item.type = "TvChannel"
-      item.thumbImageTag = "tvtag"
+      item.primaryImageTag = "tvtag"
 
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
       m.assertTrue(url.Instr("tvtag") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
     end function
 
   end class

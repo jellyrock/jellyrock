@@ -326,7 +326,6 @@ sub createLibraryRow(sectionType as string)
 
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = rowSlotSize.LIBRARY[0]
   row.cursorSize = rowSlotSize.LIBRARY
 
   filteredMedia = filterNodeArray(m.libraryData, "id", m.global.user.config.myMediaExcludes)
@@ -363,7 +362,6 @@ sub createLatestInRows()
       if not sectionExists(sectionName)
         nextUpRow = m.top.content.CreateChild("HomeRow")
         nextUpRow.title = sectionName
-        nextUpRow.imageWidth = slotSize[0]
         nextUpRow.cursorSize = slotSize
       end if
 
@@ -438,7 +436,6 @@ sub createLiveTVRow()
   if not sectionExists(sectionName)
     nextUpRow = m.top.content.CreateChild("HomeRow")
     nextUpRow.title = sectionName
-    nextUpRow.imageWidth = rowSlotSize.PORTRAIT[0]
     nextUpRow.cursorSize = rowSlotSize.PORTRAIT
   end if
 
@@ -462,7 +459,6 @@ sub createNextUpRow()
   if not sectionExists(sectionName)
     nextUpRow = m.top.content.CreateChild("HomeRow")
     nextUpRow.title = sectionName
-    nextUpRow.imageWidth = rowSlotSize.WIDE[0]
     nextUpRow.cursorSize = rowSlotSize.WIDE
   end if
 
@@ -507,7 +503,6 @@ sub updateFavoritesItems()
   ' remake row using the new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = rowSlotSize.WIDE[0]
   row.cursorSize = rowSlotSize.WIDE
 
   for each item in itemData
@@ -543,7 +538,6 @@ sub updateContinueWatchingItems()
   ' remake row using the new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = rowSlotSize.WIDE[0]
   row.cursorSize = rowSlotSize.WIDE
 
   for each item in itemData
@@ -582,7 +576,6 @@ sub updateNextUpItems()
   ' remake row using the new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = tr("Next Up")
-  row.imageWidth = rowSlotSize.WIDE[0]
   row.cursorSize = rowSlotSize.WIDE
 
   for each item in itemData
@@ -633,7 +626,6 @@ sub updateLatestItems(msg)
   ' remake row using new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = slotSize[0]
   row.cursorSize = slotSize
 
   for each item in itemData
@@ -671,7 +663,6 @@ sub updateOnNowItems()
   ' Program items show their primary image; JRRowItem/getRowItemImageUrl handles the channel art fallback.
   row = CreateObject("roSGNode", "HomeRow")
   row.title = tr("On Now")
-  row.imageWidth = rowSlotSize.SQUARE[0]
   row.cursorSize = rowSlotSize.SQUARE
 
   for each item in itemData
