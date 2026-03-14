@@ -72,8 +72,16 @@ sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
   end if
 
   ' Icon based on collection type (music note, TV icon, etc.)
+  ' Explicitly manage visibility so a stale icon from a previously-rendered tile
+  ' in the same row doesn't persist when this cell is recycled.
   iconPath = getLibraryIconPath(item.collectionType)
-  m.itemIcon.uri = iconPath
+  if iconPath <> ""
+    m.itemIcon.uri = iconPath
+    ' onIconLoadStatusChanged shows it once the image loads
+  else
+    m.itemIcon.visible = false
+    m.itemIcon.uri = ""
+  end if
 
   m.poster.uri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), invalid)
 end sub
@@ -207,10 +215,13 @@ sub onPosterLoadStatusChanged()
 end sub
 
 ' Shows the icon and repositions it with the backdrop text once the icon image loads.
+' Hides the icon on failure so a stale image from a previous render does not persist.
 sub onIconLoadStatusChanged()
   if m.itemIcon.loadStatus = "ready" and m.itemIcon.uri <> ""
     m.itemIcon.visible = true
     arrangeIconAndBackdropText()
+  else
+    m.itemIcon.visible = false
   end if
 end sub
 
