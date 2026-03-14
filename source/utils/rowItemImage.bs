@@ -12,8 +12,12 @@ import "pkg:/source/utils/misc.bs"
 ' @param userSettings - m.global.user.settings node (may be invalid)
 ' @param useEpisodeImages - pre-computed from m.global.user.config.useEpisodeImagesInNextUpAndResume;
 '                           only relevant when uiGeneralEpisodeImages = "webclient"
+' @param applyEpisodeImageSetting - when false, skip the uiGeneralEpisodeImages user setting entirely
+'                                   and always show the episode's own Primary image. Use false for
+'                                   extras rows (season episode lists, person TV shows) where the
+'                                   setting is only meaningful for home rows (Continue Watching, Next Up).
 ' @returns Image URL string, or "" if no image is available
-function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight as integer, userSettings as object, useEpisodeImages = false as boolean) as string
+function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight as integer, userSettings as object, useEpisodeImages = false as boolean, applyEpisodeImageSetting = true as boolean) as string
   if not isValid(item) then return ""
   if not isValidAndNotEmpty(item.id) then return ""
 
@@ -24,18 +28,28 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return getItemImageUrl(item, "Primary", size)
   end if
 
-  ' Episodes and Recordings: image type controlled by user setting
+  ' Episodes and Recordings: image type controlled by user setting.
+  ' applyEpisodeImageSetting = false bypasses the setting entirely (used by extras rows
+  ' where the episode's own screenshot is always the right choice).
   if item.type = "Episode" or LCase(item.type) = "recording"
-    if isValid(userSettings)
+    if applyEpisodeImageSetting and isValid(userSettings)
       episodeImageSetting = userSettings.uiGeneralEpisodeImages
       if episodeImageSetting = "webclient"
         ' Respect the Jellyfin web client's "use episode images" config flag
         return useEpisodeImages ? getItemThumbnailUrl(item, size) : getItemWidePosterUrl(item, size)
       else if episodeImageSetting = "episode"
         return getItemThumbnailUrl(item, size)
+      else if episodeImageSetting = "show"
+        ' "show" setting: Use episode's own image (stored in primaryImageTag), fall back to series poster
+        ' Note: Episode screenshots are stored in primaryImageTag, not screenshotImageTags
+        episodeUrl = getItemPosterUrl(item, size)
+        if episodeUrl <> "" then return episodeUrl
+        return getItemWidePosterUrl(item, size)
       end if
-      ' "show" falls through to default wide poster below
     end if
+    ' Default (and extras rows): episode's own Primary image (screenshot), fall back to series poster
+    episodeUrl = getItemPosterUrl(item, size)
+    if episodeUrl <> "" then return episodeUrl
     return getItemWidePosterUrl(item, size)
   end if
 

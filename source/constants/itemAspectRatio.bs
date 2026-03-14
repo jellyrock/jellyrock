@@ -21,13 +21,26 @@ end namespace
 
 namespace rowSlotSize
   ' Portrait: 2:3 — Movie, Series, Season, BoxSet, Person
-  ' Height = 234 × 1.5 = 351 (exact 2:3, no scaleToZoom clipping). Both ÷3.
+  ' Height = 351 gives exact 2:3 ratio (234 × 1.5). Text adds 90px below.
+  ' Total row height needed: 351 + 90 = 441px
   const PORTRAIT = [234, 351]
   ' Square: 1:1 — MusicAlbum, MusicArtist, Audio
+  ' Height = 234 gives exact 1:1 ratio. Text adds 90px below.
+  ' Total row height needed: 234 + 90 = 324px
   const SQUARE = [234, 234]
   ' Wide: ≈16:9 — Episode, Continue Watching, Next Up
-  ' Height = 468 × 9/16 = 263.25 → 264 (both ÷3, <0.3% aspect drift).
+  ' Height = 264 gives ~16:9 ratio (468 × 9/16 = 263.25). Text adds 90px below.
+  ' Total row height needed: 264 + 90 = 354px
   const WIDE = [468, 264]
   ' Library: wide backdrop tile — My Media library tiles
+  ' No text below, so height = 264 for backdrop+icon layout.
+  ' Total row height needed: 264px
   const LIBRARY = [468, 264]
+  
+  ' Row height constants for RowList itemSize (includes slot + text area)
+  ' Use these to set m.top.itemSize based on row content type
+  const ROW_HEIGHT_PORTRAIT = 441  ' 351 + 90
+  const ROW_HEIGHT_SQUARE = 324    ' 234 + 90
+  const ROW_HEIGHT_WIDE = 354      ' 264 + 90
+  const ROW_HEIGHT_LIBRARY = 264   ' 264 + 0
 end namespace

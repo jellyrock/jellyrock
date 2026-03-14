@@ -48,11 +48,15 @@ sub init()
   m.rowMovies = invalid
   m.rowTvShows = invalid
   m.rowSeries = invalid
+  
+  ' Track row heights for rowHeights array (per-row height customization)
+  m.rowHeights = []
 end sub
 
 sub updateSize()
-  itemHeight = 396
-  m.top.itemSize = [1920, itemHeight]
+  ' Use maximum row height to accommodate PORTRAIT slots (351px slot + 90px text = 441px)
+  ' WIDE rows (264px slot + 90px text = 354px) will have extra padding, which is acceptable
+  m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
   ' Vertical spacing must accommodate text labels that render below each item's slot bounds:
   ' FOCUS_PADDING (18) + title (36) + subtitle (36) = 90px.
   m.top.rowItemSpacing = [36, 90]
@@ -151,7 +155,7 @@ sub onSeasonsLoaded()
   m.LoadSeasonsTask.unobserveField("content")
 
   if isValid(seasons) and seasons.count() > 0
-    m.rowSeasons = populateRow(m.rowSeasons, tr("Seasons"), seasons)
+    m.rowSeasons = populateRow(m.rowSeasons, tr("Seasons"), seasons, rowSlotSize.ROW_HEIGHT_PORTRAIT)
   else if isValid(m.rowSeasons)
     m.top.content.removeChild(m.rowSeasons)
     m.rowSeasons = invalid
@@ -202,7 +206,7 @@ sub onSeasonEpisodesLoaded()
         rowTitle = tr("More Episodes")
       end if
       m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-      m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes)
+      m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes, rowSlotSize.ROW_HEIGHT_WIDE)
     else if isValid(m.rowSeasonEpisodes)
       m.top.content.removeChild(m.rowSeasonEpisodes)
       m.rowSeasonEpisodes = invalid
@@ -224,7 +228,7 @@ sub onSeasonAllEpisodesLoaded()
 
   if isValid(episodes) and episodes.count() > 0
     m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-    m.rowEpisodes = populateRow(m.rowEpisodes, tr("Episodes"), episodes)
+    m.rowEpisodes = populateRow(m.rowEpisodes, tr("Episodes"), episodes, rowSlotSize.ROW_HEIGHT_WIDE)
   else if isValid(m.rowEpisodes)
     m.top.content.removeChild(m.rowEpisodes)
     m.rowEpisodes = invalid
@@ -240,7 +244,7 @@ sub onAdditionalPartsLoaded()
   m.LoadAdditionalPartsTask.unobserveField("content")
 
   if isValid(parts) and parts.count() > 0
-    m.rowAdditionalParts = populateRow(m.rowAdditionalParts, tr("Additional Parts"), parts)
+    m.rowAdditionalParts = populateRow(m.rowAdditionalParts, tr("Additional Parts"), parts, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
   else
     if isValid(m.rowAdditionalParts)
@@ -260,7 +264,7 @@ sub onPeopleLoaded()
   people = m.LoadPeopleTask.content
   m.loadPeopleTask.unobserveField("content")
   if isValid(people) and people.count() > 0
-    m.rowCast = populateRow(m.rowCast, tr("Cast & Crew"), people)
+    m.rowCast = populateRow(m.rowCast, tr("Cast & Crew"), people, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowCast)
     m.top.content.removeChild(m.rowCast)
@@ -281,7 +285,7 @@ sub onLikeThisLoaded()
   data = m.LikeThisTask.content
   m.LikeThisTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data)
+    m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowLikeThis)
     m.top.content.removeChild(m.rowLikeThis)
@@ -301,7 +305,7 @@ function onSpecialFeaturesLoaded()
   data = m.SpecialFeaturesTask.content
   m.SpecialFeaturesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, tr("Special Features"), data)
+    m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, tr("Special Features"), data, rowSlotSize.ROW_HEIGHT_WIDE)
     m.top.visible = true
     addRowSize(rowSlotSize.WIDE)
   else if isValid(m.rowSpecialFeatures)
@@ -316,7 +320,7 @@ sub onMoviesLoaded()
   data = m.LoadMoviesTask.content
   m.LoadMoviesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowMovies = populateRow(m.rowMovies, tr("Movies"), data)
+    m.rowMovies = populateRow(m.rowMovies, tr("Movies"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
@@ -333,8 +337,9 @@ sub onShowsLoaded()
   data = m.LoadShowsTask.content
   m.LoadShowsTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowTvShows = populateRow(m.rowTvShows, tr("TV Shows"), data)
-    addRowSize(rowSlotSize.PORTRAIT)
+    ' personTVShows loads Episode items — use WIDE slot for episode screenshots
+    m.rowTvShows = populateRow(m.rowTvShows, tr("Episodes"), data, rowSlotSize.ROW_HEIGHT_WIDE)
+    addRowSize(rowSlotSize.WIDE)
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
   else if isValid(m.rowTvShows)
@@ -350,7 +355,7 @@ sub onSeriesLoaded()
   data = m.LoadSeriesTask.content
   m.LoadSeriesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowSeries = populateRow(m.rowSeries, tr("Series"), data)
+    m.rowSeries = populateRow(m.rowSeries, tr("Series"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowSeries)
     m.top.content.removeChild(m.rowSeries)
@@ -365,12 +370,16 @@ end sub
 ' populateRow: Reuse an existing row ContentNode (clearing its children) or create a new one.
 ' Creating appends the row to m.top.content at the current end — correct since the async chain
 ' fires in display order, and extras data never changes between refreshes.
+' @param rowHeight - height for this specific row (from rowSlotSize.ROW_HEIGHT_* constants)
 ' Returns the row for the caller to store as a named ref.
-function populateRow(rowRef as object, title as string, items as object) as object
+function populateRow(rowRef as object, title as string, items as object, rowHeight as integer) as object
   if isValid(rowRef)
     rowRef.removeChildrenIndex(rowRef.getChildCount(), 0)
   else
     rowRef = m.top.content.createChild("ContentNode")
+    ' New row - add its height to the tracking array
+    m.rowHeights.push(rowHeight)
+    m.top.rowHeights = m.rowHeights
   end if
   rowRef.Title = title
   for each item in items

@@ -1,0 +1,5 @@
+' Roku calls init() for each component in the inheritance chain from parent to child,
+' so this runs after JRRowItem's init() and safely overrides the field default.
+sub init()
+  m.top.applyEpisodeImageSetting = false
+end sub

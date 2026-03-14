@@ -101,7 +101,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     useEpisodeImages = (globalUser.config.useEpisodeImagesInNextUpAndResume = true)
   end if
 
-  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages)
+  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, m.top.applyEpisodeImageSetting)
 
   ' Blur unwatched episodes when the user setting is enabled
   if isValid(userSettings) and userSettings.uiTvShowsBlurUnwatched and item.type = "Episode" and not item.isWatched

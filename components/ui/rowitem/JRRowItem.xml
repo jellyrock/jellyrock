@@ -56,5 +56,12 @@
     -->
     <field id="width" type="float" value="234" onChange="onSizeChanged" />
     <field id="height" type="float" value="396" onChange="onSizeChanged" />
+    <!--
+      applyEpisodeImageSetting: when true (default), respects the uiGeneralEpisodeImages user
+      setting when selecting the image for Episode items. Set to false for extras rows (season
+      episode lists, person TV shows) to always show the episode's own screenshot regardless
+      of the setting, which only makes sense for home rows (Continue Watching, Next Up).
+    -->
+    <field id="applyEpisodeImageSetting" type="boolean" value="true" />
   </interface>
 </component>
