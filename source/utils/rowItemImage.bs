@@ -1,0 +1,73 @@
+import "pkg:/source/api/Image.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Returns the image URL for a row item based on its type, slot dimensions, and user settings.
+'
+' Does NOT handle blur — blur is applied by JRPoster via its blurAmount field.
+'
+' @param item - JellyfinBaseItem content node
+' @param slotWidth - width of the image area in pixels (from rowSlotSize constant)
+' @param posterHeight - height of the image area in pixels (slot height minus text area)
+' @param userSettings - m.global.user.settings node (may be invalid)
+' @param useEpisodeImages - pre-computed from m.global.user.config.useEpisodeImagesInNextUpAndResume;
+'                           only relevant when uiGeneralEpisodeImages = "webclient"
+' @returns Image URL string, or "" if no image is available
+function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight as integer, userSettings as object, useEpisodeImages = false as boolean) as string
+  if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.id) then return ""
+
+  size = { width: slotWidth, height: posterHeight }
+
+  ' Library tiles: Primary image only (Thumb/Backdrop not available for these types)
+  if item.type = "CollectionFolder" or item.type = "UserView" or item.type = "Channel"
+    return getItemImageUrl(item, "Primary", size)
+  end if
+
+  ' Episodes and Recordings: image type controlled by user setting
+  if item.type = "Episode" or LCase(item.type) = "recording"
+    if isValid(userSettings)
+      episodeImageSetting = userSettings.uiGeneralEpisodeImages
+      if episodeImageSetting = "webclient"
+        ' Respect the Jellyfin web client's "use episode images" config flag
+        return useEpisodeImages ? getItemThumbnailUrl(item, size) : getItemWidePosterUrl(item, size)
+      else if episodeImageSetting = "episode"
+        return getItemThumbnailUrl(item, size)
+      end if
+      ' "show" falls through to default wide poster below
+    end if
+    return getItemWidePosterUrl(item, size)
+  end if
+
+  ' Program: portrait poster with inline channel art fallback
+  ' (channelId and channelPrimaryImageTag are fields on the Program item itself)
+  if item.type = "Program"
+    url = getItemPosterUrl(item, size)
+    if url = "" and isValidAndNotEmpty(item.channelId) and isValidAndNotEmpty(item.channelPrimaryImageTag)
+      url = ImageURL(item.channelId, "Primary", { tag: item.channelPrimaryImageTag, maxWidth: slotWidth, maxHeight: posterHeight })
+    end if
+    return url
+  end if
+
+  ' Wide-native types: always use landscape image
+  if item.type = "TvChannel" or item.type = "Photo" or item.type = "PhotoAlbum"
+    return getItemWidePosterUrl(item, size)
+  end if
+
+  ' Square-native types: Primary image (square crop via scaleToZoom on the poster)
+  if item.type = "MusicAlbum" or item.type = "MusicArtist" or item.type = "Audio"
+    return getItemPosterUrl(item, size)
+  end if
+
+  ' All remaining types (Movie, Series, Season, BoxSet, Person, Video, MusicVideo, etc.):
+  ' Use slot shape to determine image strategy.
+  ' Wide slot (slotWidth > posterHeight): try wide image first, fall back to portrait.
+  ' Portrait/square slot: use portrait poster.
+  if slotWidth > posterHeight
+    url = getItemWidePosterUrl(item, size)
+    if url = "" then url = getItemPosterUrl(item, size)
+    return url
+  end if
+
+  return getItemPosterUrl(item, size)
+end function

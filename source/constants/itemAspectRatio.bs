@@ -1,0 +1,31 @@
+' @fileoverview Aspect ratio constants and standard row slot size constants for JRRowItem.
+'
+' itemAspectRatio: ideal aspect ratio (width/height) per Jellyfin item category.
+'   Used for image request sizing and layout decisions.
+'
+' rowSlotSize: [width, height] slot dimensions for use as RowList rowItemSize values.
+'   ALL dimensions are divisible by 3 for clean FHD-to-720p/SD auto-scaling
+'   (manifest ui_resolutions=fhd).
+'
+' Text area below the image is ~72px (title 36px + subtitle 36px).
+' Image area = slot height - 72px.
+
+namespace itemAspectRatio
+  ' 2:3 — Movie, Series, Season, BoxSet, Person
+  const PORTRAIT = 0.667
+  ' 16:9 — Episode, Program, Recording, Continue Watching, Next Up
+  const LANDSCAPE = 1.778
+  ' 1:1 — MusicAlbum, MusicArtist, Audio, Genre
+  const SQUARE = 1.0
+end namespace
+
+namespace rowSlotSize
+  ' Portrait: 2:3 — Movie, Series, Season, BoxSet, Person
+  const PORTRAIT = [234, 396]
+  ' Square: ~1:1 — MusicAlbum, MusicArtist, Audio
+  const SQUARE = [234, 306]
+  ' Wide: 16:9 — Episode, Continue Watching, Next Up
+  const WIDE = [468, 330]
+  ' Library: wide backdrop tile — My Media library tiles
+  const LIBRARY = [468, 264]
+end namespace

@@ -1,0 +1,44 @@
+import "pkg:/source/utils/misc.bs"
+
+' Returns the primary display title for a row item.
+'
+' - Season: returns the series name (stored in subtitle by the transformer)
+' - Episode: returns the series name (item.seriesName)
+' - All others: returns item.name
+'
+' @param item - JellyfinBaseItem content node
+' @returns Display title string, or "" if item is invalid
+function getRowItemTitle(item as object) as string
+  if not isValid(item) then return ""
+
+  ' Season: transformer stores seriesName in subtitle for primary display
+  if item.type = "Season"
+    return item.subtitle
+  end if
+
+  ' Episode: show the series name as the headline (episode title goes in subtitle)
+  if item.type = "Episode"
+    return item.seriesName
+  end if
+
+  return item.name
+end function
+
+' Returns the secondary display subtitle for a row item.
+'
+' - Season: returns the season label ("Season 1", "Season 2", etc.) from item.name
+' - All others: returns the pre-computed subtitle field
+'   (e.g., "2024 • PG-13" for Movie, "S1E2 - Title" for Episode, "2020 - Present" for Series)
+'
+' @param item - JellyfinBaseItem content node
+' @returns Display subtitle string, or "" if item is invalid
+function getRowItemSubtitle(item as object) as string
+  if not isValid(item) then return ""
+
+  ' Season: name holds "Season 1", subtitle holds seriesName (used as the title)
+  if item.type = "Season"
+    return item.name
+  end if
+
+  return item.subtitle
+end function
