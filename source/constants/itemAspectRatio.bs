@@ -36,11 +36,11 @@ namespace rowSlotSize
   ' No text below, so height = 264 for backdrop+icon layout.
   ' Total row height needed: 264px
   const LIBRARY = [468, 264]
-  
+
   ' Row height constants for RowList itemSize (includes slot + text area)
   ' Use these to set m.top.itemSize based on row content type
-  const ROW_HEIGHT_PORTRAIT = 441  ' 351 + 90
-  const ROW_HEIGHT_SQUARE = 324    ' 234 + 90
-  const ROW_HEIGHT_WIDE = 354      ' 264 + 90
-  const ROW_HEIGHT_LIBRARY = 264   ' 264 + 0
+  const ROW_HEIGHT_PORTRAIT = 441 ' 351 + 90
+  const ROW_HEIGHT_SQUARE = 324 ' 234 + 90
+  const ROW_HEIGHT_WIDE = 354 ' 264 + 90
+  const ROW_HEIGHT_LIBRARY = 264 ' 264 + 0
 end namespace

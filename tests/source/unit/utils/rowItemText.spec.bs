@@ -28,7 +28,7 @@ namespace tests
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "s1"
       item.type = "Season"
-      item.subtitle = "Breaking Bad"  ' transformer stores seriesName in subtitle
+      item.subtitle = "Breaking Bad" ' transformer stores seriesName in subtitle
       item.name = "Season 1"
       m.assertEqual(getRowItemTitle(item), "Breaking Bad")
     end function
