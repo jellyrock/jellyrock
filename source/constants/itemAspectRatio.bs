@@ -21,11 +21,13 @@ end namespace
 
 namespace rowSlotSize
   ' Portrait: 2:3 — Movie, Series, Season, BoxSet, Person
-  const PORTRAIT = [234, 396]
-  ' Square: ~1:1 — MusicAlbum, MusicArtist, Audio
-  const SQUARE = [234, 306]
-  ' Wide: 16:9 — Episode, Continue Watching, Next Up
-  const WIDE = [468, 330]
+  ' Height = 234 × 1.5 = 351 (exact 2:3, no scaleToZoom clipping). Both ÷3.
+  const PORTRAIT = [234, 351]
+  ' Square: 1:1 — MusicAlbum, MusicArtist, Audio
+  const SQUARE = [234, 234]
+  ' Wide: ≈16:9 — Episode, Continue Watching, Next Up
+  ' Height = 468 × 9/16 = 263.25 → 264 (both ÷3, <0.3% aspect drift).
+  const WIDE = [468, 264]
   ' Library: wide backdrop tile — My Media library tiles
   const LIBRARY = [468, 264]
 end namespace

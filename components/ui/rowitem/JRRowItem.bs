@@ -3,9 +3,9 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
 
-' Height in pixels reserved for the text area below the poster image.
-' title (36px) + subtitle (36px) = 72px total.
-const TEXT_AREA_HEIGHT = 72
+' Vertical gap between the bottom of the poster (= bottom of the RowList focus ring)
+' and the first text label. Prevents the focus border from overlapping the title.
+const FOCUS_PADDING = 18
 
 sub init()
   m.log = log.Logger("JRRowItem")
@@ -41,8 +41,7 @@ sub renderItem()
   m.poster.callFunc("resetBadge")
 
   slotWidth = m.top.width
-  slotHeight = m.top.height
-  posterHeight = int(slotHeight - TEXT_AREA_HEIGHT)
+  posterHeight = int(m.top.height)
 
   updateLayout(slotWidth, posterHeight)
 
@@ -132,8 +131,11 @@ sub updateLayout(slotWidth as float, posterHeight as float)
   m.poster.loadWidth = int(slotWidth)
   m.poster.loadHeight = int(posterHeight)
 
+  ' Text sits below the poster, outside the slot bounds (which = the focus ring).
+  ' FOCUS_PADDING clears the focus border so it doesn't overlap the title.
+  titleY = posterHeight + FOCUS_PADDING
+
   ' title and staticTitle overlap at the same position; only one is visible at a time
-  titleY = posterHeight
   m.title.translation = [0, titleY]
   m.title.maxWidth = slotWidth
   m.title.height = 36
@@ -213,7 +215,7 @@ sub arrangeIconAndBackdropText()
   backdropText = m.top.findNode("backdropText")
   if not isValid(backdropText) then return
 
-  posterHeight = int(m.top.height - TEXT_AREA_HEIGHT)
+  posterHeight = int(m.top.height)
   slotWidth = m.top.width
 
   m.itemIcon.translation = [

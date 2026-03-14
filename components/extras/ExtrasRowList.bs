@@ -1,3 +1,4 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -52,7 +53,9 @@ end sub
 sub updateSize()
   itemHeight = 396
   m.top.itemSize = [1920, itemHeight]
-  m.top.rowItemSpacing = [36, 36]
+  ' Vertical spacing must accommodate text labels that render below each item's slot bounds:
+  ' FOCUS_PADDING (18) + title (36) + subtitle (36) = 90px.
+  m.top.rowItemSpacing = [36, 90]
 
   ' override defaults from JRRowList
   m.top.vertFocusAnimationStyle = "fixedFocus"
@@ -101,12 +104,12 @@ sub loadParts(data as object)
 
   if itemType = "Series"
     ' Clear and repopulate the permanent root; seasons will be appended in onSeasonsLoaded
-    m.top.rowItemSize = [[234, 396]]
+    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     m.LoadSeasonsTask.observeField("content", "onSeasonsLoaded")
     m.LoadSeasonsTask.itemId = m.top.parentId
     m.LoadSeasonsTask.control = "RUN"
   else if itemType = "Season"
-    m.top.rowItemSize = [[464, 396]]
+    m.top.rowItemSize = [rowSlotSize.WIDE]
     m.LoadSeasonAllEpisodesTask.observeField("content", "onSeasonAllEpisodesLoaded")
     m.LoadSeasonAllEpisodesTask.itemId = data.seriesId
     m.LoadSeasonAllEpisodesTask.metadata = { seasonId: data.id }
@@ -115,13 +118,13 @@ sub loadParts(data as object)
     m.currentEpisodeId = data.id
     m.currentEpisodeSeasonNumber = data.parentIndexNumber
     m.episodeSeriesId = data.seriesId
-    m.top.rowItemSize = [[234, 396]]
+    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     m.LoadSeasonEpisodesTask.observeField("content", "onSeasonEpisodesLoaded")
     m.LoadSeasonEpisodesTask.itemId = data.seriesId
     m.LoadSeasonEpisodesTask.metadata = { seasonId: data.seasonId }
     m.LoadSeasonEpisodesTask.control = "RUN"
   else if itemType = "MusicVideo"
-    m.top.rowItemSize = [[234, 396]]
+    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
     m.LoadPeopleTask.peopleList = m.people
     m.LoadPeopleTask.control = "RUN"
@@ -198,7 +201,7 @@ sub onSeasonEpisodesLoaded()
       else
         rowTitle = tr("More Episodes")
       end if
-      m.top.rowItemSize = [[464, 396], [234, 396]]
+      m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
       m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes)
     else if isValid(m.rowSeasonEpisodes)
       m.top.content.removeChild(m.rowSeasonEpisodes)
@@ -220,7 +223,7 @@ sub onSeasonAllEpisodesLoaded()
   m.LoadSeasonAllEpisodesTask.unobserveField("content")
 
   if isValid(episodes) and episodes.count() > 0
-    m.top.rowItemSize = [[464, 396], [234, 396]]
+    m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
     m.rowEpisodes = populateRow(m.rowEpisodes, tr("Episodes"), episodes)
   else if isValid(m.rowEpisodes)
     m.top.content.removeChild(m.rowEpisodes)
@@ -238,13 +241,13 @@ sub onAdditionalPartsLoaded()
 
   if isValid(parts) and parts.count() > 0
     m.rowAdditionalParts = populateRow(m.rowAdditionalParts, tr("Additional Parts"), parts)
-    m.top.rowItemSize = [[464, 291]]
+    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
   else
     if isValid(m.rowAdditionalParts)
       m.top.content.removeChild(m.rowAdditionalParts)
       m.rowAdditionalParts = invalid
     end if
-    m.top.rowItemSize = [[234, 396]]
+    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
   end if
 
   ' Load Cast and Crew and everything else...
@@ -258,6 +261,7 @@ sub onPeopleLoaded()
   m.loadPeopleTask.unobserveField("content")
   if isValid(people) and people.count() > 0
     m.rowCast = populateRow(m.rowCast, tr("Cast & Crew"), people)
+    addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowCast)
     m.top.content.removeChild(m.rowCast)
     m.rowCast = invalid
@@ -278,7 +282,7 @@ sub onLikeThisLoaded()
   m.LikeThisTask.unobserveField("content")
   if isValid(data) and data.count() > 0
     m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data)
-    addRowSize([234, 396])
+    addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowLikeThis)
     m.top.content.removeChild(m.rowLikeThis)
     m.rowLikeThis = invalid
@@ -299,7 +303,7 @@ function onSpecialFeaturesLoaded()
   if isValid(data) and data.count() > 0
     m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, tr("Special Features"), data)
     m.top.visible = true
-    addRowSize([462, 372])
+    addRowSize(rowSlotSize.WIDE)
   else if isValid(m.rowSpecialFeatures)
     m.top.content.removeChild(m.rowSpecialFeatures)
     m.rowSpecialFeatures = invalid
@@ -313,7 +317,7 @@ sub onMoviesLoaded()
   m.LoadMoviesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
     m.rowMovies = populateRow(m.rowMovies, tr("Movies"), data)
-    m.top.rowItemSize = [[234, 396]]
+    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
   else if isValid(m.rowMovies)
@@ -330,7 +334,7 @@ sub onShowsLoaded()
   m.LoadShowsTask.unobserveField("content")
   if isValid(data) and data.count() > 0
     m.rowTvShows = populateRow(m.rowTvShows, tr("TV Shows"), data)
-    addRowSize([502, 396])
+    addRowSize(rowSlotSize.PORTRAIT)
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
   else if isValid(m.rowTvShows)
@@ -347,7 +351,7 @@ sub onSeriesLoaded()
   m.LoadSeriesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
     m.rowSeries = populateRow(m.rowSeries, tr("Series"), data)
-    addRowSize([234, 396])
+    addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowSeries)
     m.top.content.removeChild(m.rowSeries)
     m.rowSeries = invalid
