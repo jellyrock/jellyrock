@@ -155,19 +155,21 @@ sub updateLayout(slotWidth as float, posterHeight as float)
   ' FOCUS_PADDING clears the focus border so it doesn't overlap the title.
   titleY = posterHeight + FOCUS_PADDING
 
-  ' title and staticTitle overlap at the same position; only one is visible at a time
+  ' title and staticTitle overlap at the same position; only one is visible at a time.
+  ' Height is intentionally tighter than a standard line height to reduce dead space
+  ' between the title and subtitle.
   m.title.translation = [0, titleY]
   m.title.maxWidth = slotWidth
-  m.title.height = 30
+  m.title.height = 0
 
   m.staticTitle.translation = [0, titleY]
   m.staticTitle.width = slotWidth
-  m.staticTitle.height = 30
+  m.staticTitle.height = 0
 
   ' Subtitle sits directly below title
   m.subtitle.translation = [0, titleY + 30]
   m.subtitle.maxWidth = slotWidth
-  m.subtitle.height = 36
+  m.subtitle.height = 0
 end sub
 
 ' Lazy-creates the backdrop text label for library tiles on first use.

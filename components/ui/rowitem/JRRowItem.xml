@@ -27,16 +27,16 @@
       Both sit at the same vertical position; only one is visible at a time.
     -->
     <ScrollingLabelPrimarySmaller id="title" bold="true" horizAlign="center"
-      height="36" maxWidth="234" repeatCount="0" visible="false" />
+      maxWidth="234" repeatCount="0" visible="false" />
     <LabelPrimarySmaller id="staticTitle" bold="true" horizAlign="center"
-      height="36" width="234" wrap="false" />
+      width="234" wrap="false" />
 
     <!--
       subtitle: secondary text (e.g., "S1E2 - Title", "2024 • PG-13").
       Scrolls on focus via repeatCount toggle; always visible for standard items.
     -->
     <ScrollingLabelSecondarySmall id="subtitle" bold="true" horizAlign="center"
-      height="36" maxWidth="234" repeatCount="0" />
+      maxWidth="234" repeatCount="0" />
   </children>
   <interface>
     <!--
