@@ -63,9 +63,15 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return url
   end if
 
-  ' Wide-native types: always use landscape image
-  if item.type = "TvChannel" or item.type = "Photo" or item.type = "PhotoAlbum"
+  ' TvChannel: wide image (channel logo/thumb)
+  if item.type = "TvChannel" or item.type = "PhotoAlbum"
     return getItemWidePosterUrl(item, size)
+  end if
+
+  ' Photos are stored as Primary images in Jellyfin (no Thumb/Backdrop).
+  ' Use Primary image; slot shape already set to WIDE by createLatestInRows for photo libraries.
+  if item.type = "Photo"
+    return getItemPosterUrl(item, size)
   end if
 
   ' Square-native types: Primary image (square crop via scaleToZoom on the poster)

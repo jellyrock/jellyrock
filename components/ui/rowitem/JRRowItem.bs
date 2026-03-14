@@ -138,14 +138,14 @@ sub updateLayout(slotWidth as float, posterHeight as float)
   ' title and staticTitle overlap at the same position; only one is visible at a time
   m.title.translation = [0, titleY]
   m.title.maxWidth = slotWidth
-  m.title.height = 36
+  m.title.height = 30
 
   m.staticTitle.translation = [0, titleY]
   m.staticTitle.width = slotWidth
-  m.staticTitle.height = 36
+  m.staticTitle.height = 30
 
   ' Subtitle sits directly below title
-  m.subtitle.translation = [0, titleY + 36]
+  m.subtitle.translation = [0, titleY + 30]
   m.subtitle.maxWidth = slotWidth
   m.subtitle.height = 36
 end sub
@@ -175,12 +175,12 @@ end sub
 ' @returns pkg:/ path to the icon image
 function getLibraryIconPath(collectionType as string) as string
   collectionTypeLower = LCase(collectionType)
-  if collectionTypeLower = "music"
-    return "pkg:/images/media_type_icons/music_white.png"
-  else if collectionTypeLower = "livetv"
+  if collectionTypeLower = "livetv"
     return "pkg:/images/media_type_icons/live_tv_white.png"
   end if
-  return "pkg:/images/media_type_icons/folder_white.png"
+  ' No icon for this type — return "" so the icon Poster stays hidden
+  ' and backdropText remains vertically centered (standard library tile appearance).
+  return ""
 end function
 
 ' Hides the backdrop (and any backdropText) once the poster image loads.

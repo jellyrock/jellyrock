@@ -48,7 +48,7 @@ sub init()
   m.rowMovies = invalid
   m.rowTvShows = invalid
   m.rowSeries = invalid
-  
+
   ' Track row heights for rowHeights array (per-row height customization)
   m.rowHeights = []
 end sub
@@ -57,9 +57,6 @@ sub updateSize()
   ' Use maximum row height to accommodate PORTRAIT slots (351px slot + 90px text = 441px)
   ' WIDE rows (264px slot + 90px text = 354px) will have extra padding, which is acceptable
   m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
-  ' Vertical spacing must accommodate text labels that render below each item's slot bounds:
-  ' FOCUS_PADDING (18) + title (36) + subtitle (36) = 90px.
-  m.top.rowItemSpacing = [36, 90]
 
   ' override defaults from JRRowList
   m.top.vertFocusAnimationStyle = "fixedFocus"

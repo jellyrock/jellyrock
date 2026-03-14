@@ -8,12 +8,12 @@ sub init()
   m.top.rowFocusAnimationStyle = "fixedFocusWrap"
   m.top.vertFocusAnimationStyle = "fixedFocusWrap"
   m.top.focusBitmapBlendColor = constants.colorPrimary ' color of the item selector
-  m.top.itemSpacing = [0, 105] ' spacing between rows
-  m.top.rowItemSpacing = [27, 0] ' spacing between items in a row
+  m.top.itemSpacing = [0, 60] ' spacing between rows
+  m.top.rowItemSpacing = [30, 0] ' spacing between items in a row
 
   m.top.focusXOffset = [96] ' align item selector with edge of "action" safe zone
 
-  m.top.rowLabelOffset = [96, 21] ' align row label with edge of "action" safe zone
+  m.top.rowLabelOffset = [96, 18] ' align row label with edge of "action" safe zone
   m.top.rowLabelColor = constants.colorTextPrimary
   m.top.rowLabelFont = "font:MediumSystemFont"
   m.top.rowLabelFont.size = constants.fontSizeMedium
