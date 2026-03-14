@@ -108,6 +108,11 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     posterUri = posterUri + "&blur=15"
   end if
 
+  ' TvChannel logos are stored as Primary images and may be any aspect ratio —
+  ' use scaleToFit (letterbox) to show the full logo without cropping.
+  ' All other types use scaleToZoom (fill) since their images match the slot shape.
+  m.poster.loadDisplayMode = (item.type = "TvChannel") ? "scaleToFit" : "scaleToZoom"
+
   m.poster.uri = posterUri
 
   ' Watch badges

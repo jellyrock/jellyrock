@@ -1,12 +1,13 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
+import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.top.itemComponentName = "ListPoster"
+  m.top.itemComponentName = "BrowseRowItem"
   m.top.content = getData()
 
   ' override defaults
@@ -14,15 +15,12 @@ sub init()
   m.top.vertFocusAnimationStyle = "fixedFocus"
   m.top.rowFocusAnimationStyle = "fixedFocus"
   m.top.focusXOffset = [0]
-  m.top.rowLabelOffset = [0, 21]
   m.top.translation = [491, 165]
-  m.top.itemSize = [1325, 346] ' this is used for setting the row size
-  m.top.itemSpacing = [0, 105]
-  m.top.rowItemSize = [311, 346]
+  ' itemSize width sets the row container width; height is the tallest possible row.
+  ' rowHeights (set in applyRowSizes) overrides height per-row.
+  m.top.itemSize = [1325, rowSlotSize.ROW_HEIGHT_PORTRAIT]
+  m.top.itemSpacing = [0, 0]
   m.top.numRows = 3
-
-  ' TODO - Define a failed to load image background
-  ' m.top.failedBitmapURI
 end sub
 
 function getData()
@@ -63,6 +61,7 @@ function getData()
   end for
 
   m.top.content = data
+  applyRowSizes(data)
   return data
 end function
 
@@ -75,4 +74,51 @@ sub addRow(data, title, type_filter)
       row.appendChild(item)
     end if
   end for
+end sub
+
+' Returns the appropriate slot size for a given Jellyfin item type.
+' Episode → WIDE (16:9 screenshots)
+' Music and Playlists → SQUARE (1:1 album art)
+' All others (Movie, Series, TvChannel, Person, etc.) → PORTRAIT (2:3 poster)
+function getSlotSizeForType(itemType as string) as object
+  if itemType = "Episode"
+    return rowSlotSize.WIDE
+  else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "PlaylistsFolder"
+    return rowSlotSize.SQUARE
+  end if
+  return rowSlotSize.PORTRAIT
+end function
+
+' Applies per-row slot sizes, heights, and spacings to the RowList.
+' Infers each row's slot size from its first item's type.
+' Must be called after all rows are added to the content node.
+sub applyRowSizes(data as object)
+  if not isValid(data) then return
+  rows = data.getChildren(-1, 0)
+  if rows.count() = 0 then return
+
+  newSizeArray = []
+  newRowHeights = []
+  newRowSpacings = []
+
+  for each row in rows
+    firstItem = row.getChild(0)
+    slotSize = getSlotSizeForType(isValid(firstItem) ? firstItem.type : "")
+    newSizeArray.Push(slotSize)
+
+    slotHeight = slotSize[1]
+    if slotHeight = rowSlotSize.PORTRAIT[1]
+      newRowHeights.Push(rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    else if slotHeight = rowSlotSize.SQUARE[1]
+      newRowHeights.Push(rowSlotSize.ROW_HEIGHT_SQUARE)
+    else
+      newRowHeights.Push(rowSlotSize.ROW_HEIGHT_WIDE)
+    end if
+
+    newRowSpacings.Push(60)
+  end for
+
+  m.top.rowItemSize = newSizeArray
+  m.top.rowHeights = newRowHeights
+  m.top.rowSpacings = newRowSpacings
 end sub

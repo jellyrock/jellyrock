@@ -63,8 +63,12 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return url
   end if
 
-  ' TvChannel: wide image (channel logo/thumb)
-  if item.type = "TvChannel" or item.type = "PhotoAlbum"
+  ' TvChannel: Primary image (channel logo stored as Primary, not Thumb/Backdrop)
+  ' PhotoAlbum: wide thumb
+  if item.type = "TvChannel"
+    return getItemPosterUrl(item, size)
+  end if
+  if item.type = "PhotoAlbum"
     return getItemWidePosterUrl(item, size)
   end if
 
