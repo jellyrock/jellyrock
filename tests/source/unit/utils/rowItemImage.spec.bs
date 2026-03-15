@@ -1,0 +1,384 @@
+import "pkg:/source/utils/rowItemImage.bs"
+
+namespace tests
+
+  @suite("rowItemImage - Row item image URL helper")
+  class RowItemImageTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - guard conditions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty string for invalid item")
+    function _()
+      url = getRowItemImageUrl(invalid, 234, 324, invalid)
+      m.assertEqual(url, "")
+    end function
+
+    @it("returns empty string for unloaded sentinel (id is empty)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" is the unloaded sentinel; tag present but id guard prevents URL generation
+      item.primaryImageTag = "tag"
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+      m.assertEqual(url, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - library tile types")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses Primary image for CollectionFolder")
+    @params("CollectionFolder")
+    @params("UserView")
+    @params("Channel")
+    function _(itemType)
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "lib1"
+      item.type = itemType
+      item.primaryImageTag = "ptag"
+
+      url = getRowItemImageUrl(item, 468, 192, invalid)
+
+      m.assertTrue(isValidAndNotEmpty(url))
+      m.assertTrue(url.Instr("lib1") > -1)
+      m.assertTrue(url.Instr("ptag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    @it("returns empty string for library tile with no primary image")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "lib1"
+      item.type = "CollectionFolder"
+      ' No primaryImageTag
+
+      url = getRowItemImageUrl(item, 468, 192, invalid)
+
+      m.assertEqual(url, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - episodes: user settings")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses series wide art for 'show' setting, bypassing episode-level images")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.Instr("seriesthumb") > -1, "should use series thumb tag")
+      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode thumb")
+    end function
+
+    @it("falls back to parent backdrop for 'show' when no parent thumb")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      item.parentBackdropImageTags = ["seriesback"]
+      item.parentBackdropItemId = "series1"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.Instr("seriesback") > -1, "should use series backdrop tag")
+      m.assertTrue(url.Instr("Backdrop") > -1)
+      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+    end function
+
+    @it("returns empty string for 'show' when episode has images but series has no wide art")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      ' No parentThumbImageTag, no parentBackdropImageTags
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertEqual(url, "")
+    end function
+
+    @it("uses episode thumbnail for 'episode' setting")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.thumbImageTag = "thumbtag"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "episode"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.Instr("thumbtag") > -1)
+      m.assertTrue(url.Instr("Thumb") > -1)
+    end function
+
+    @it("uses series wide art for 'webclient' when useEpisodeImages is false")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "webclient"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings, false)
+
+      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.Instr("seriesthumb") > -1, "should use series thumb tag")
+      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode thumb")
+    end function
+
+    @it("uses episode thumbnail for 'webclient' when useEpisodeImages is true")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.thumbImageTag = "thumbtag"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "webclient"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings, true)
+
+      m.assertTrue(url.Instr("thumbtag") > -1)
+      m.assertTrue(url.Instr("Thumb") > -1)
+    end function
+
+    @it("falls back to wide poster when no settings provided for episode")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.thumbImageTag = "thumbtag"
+
+      url = getRowItemImageUrl(item, 468, 258, invalid)
+
+      m.assertTrue(url.Instr("thumbtag") > -1)
+      m.assertTrue(url.Instr("Thumb") > -1)
+    end function
+
+    @it("falls back to wide poster for episode with empty setting string")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.thumbImageTag = "thumbtag"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      ' uiGeneralEpisodeImages defaults to "" (empty)
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.Instr("thumbtag") > -1)
+      m.assertTrue(url.Instr("Thumb") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - music types")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses Primary poster for MusicAlbum")
+    @params("MusicAlbum")
+    @params("MusicArtist")
+    @params("Audio")
+    function _(itemType)
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mus1"
+      item.type = itemType
+      item.primaryImageTag = "mustag"
+
+      url = getRowItemImageUrl(item, 234, 234, invalid)
+
+      m.assertTrue(url.Instr("mustag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - portrait types in portrait slot")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses portrait poster for Movie in portrait slot")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mov1"
+      item.type = "Movie"
+      item.primaryImageTag = "movtag"
+
+      ' Portrait slot: slotWidth (234) < posterHeight (324)
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertTrue(url.Instr("movtag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    @it("uses portrait poster for Series in portrait slot")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ser1"
+      item.type = "Series"
+      item.primaryImageTag = "sertag"
+
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertTrue(url.Instr("sertag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    @it("uses portrait poster for Season")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "sea1"
+      item.type = "Season"
+      item.primaryImageTag = "seatag"
+
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertTrue(url.Instr("seatag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    @it("uses portrait poster for BoxSet")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "bs1"
+      item.type = "BoxSet"
+      item.primaryImageTag = "bstag"
+
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertTrue(url.Instr("bstag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - slot shape determines image for generic types")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses wide image first for Movie in wide slot")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mov1"
+      item.type = "Movie"
+      item.thumbImageTag = "thumbtag"
+
+      ' Wide slot: slotWidth (468) > posterHeight (258)
+      url = getRowItemImageUrl(item, 468, 258, invalid)
+
+      m.assertTrue(url.Instr("thumbtag") > -1)
+      m.assertTrue(url.Instr("Thumb") > -1)
+    end function
+
+    @it("falls back to portrait poster when no wide image available in wide slot")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mov1"
+      item.type = "Movie"
+      item.primaryImageTag = "movtag"
+      ' No thumbImageTag or backdropImageTags — wide URL returns ""
+
+      url = getRowItemImageUrl(item, 468, 258, invalid)
+
+      m.assertTrue(url.Instr("movtag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - Program with channel fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses program's own primary image when available")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "prog1"
+      item.type = "Program"
+      item.primaryImageTag = "progtag"
+
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertTrue(url.Instr("progtag") > -1)
+      m.assertTrue(url.Instr("prog1") > -1)
+    end function
+
+    @it("falls back to channel image when program has no primary image")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "prog1"
+      item.type = "Program"
+      ' No primaryImageTag
+      item.channelId = "chan1"
+      item.channelPrimaryImageTag = "chantag"
+
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertTrue(url.Instr("chan1") > -1)
+      m.assertTrue(url.Instr("chantag") > -1)
+    end function
+
+    @it("returns empty string when program and channel have no images")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "prog1"
+      item.type = "Program"
+      ' No image tags at all
+
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertEqual(url, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - wide-native types")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses Primary image for TvChannel (channel logos stored as Primary, not Thumb)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "tv1"
+      item.type = "TvChannel"
+      item.primaryImageTag = "tvtag"
+
+      url = getRowItemImageUrl(item, 234, 324, invalid)
+
+      m.assertTrue(url.Instr("tvtag") > -1)
+      m.assertTrue(url.Instr("Primary") > -1)
+    end function
+
+  end class
+
+end namespace

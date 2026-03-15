@@ -30,7 +30,6 @@ sub stopFieldObservers()
   if m.disableWatchBadge then return
   m.top.unobserveField("unplayedCount")
   m.top.unobserveField("isWatched")
-
 end sub
 
 sub onUnplayedCountChanged()
@@ -90,7 +89,6 @@ sub resetBadge()
   m.top.unplayedCount = 0
   m.top.isWatched = false
   m.top.playedPercentage = 0
-
   m.watchBadgeBackground.visible = false
   m.unplayedVideosCount.text = ""
   m.checkmark.visible = false

@@ -1,0 +1,182 @@
+import "pkg:/source/utils/rowItemText.bs"
+
+namespace tests
+
+  @suite("rowItemText - Row item title and subtitle helpers")
+  class RowItemTextTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemTitle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns seriesName for Episode")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.seriesName = "Breaking Bad"
+      item.name = "Pilot"
+      m.assertEqual(getRowItemTitle(item), "Breaking Bad")
+    end function
+
+    @it("returns subtitle (seriesName) for Season")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "s1"
+      item.type = "Season"
+      item.subtitle = "Breaking Bad" ' transformer stores seriesName in subtitle
+      item.name = "Season 1"
+      m.assertEqual(getRowItemTitle(item), "Breaking Bad")
+    end function
+
+    @it("returns name for Movie")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+      item.type = "Movie"
+      item.name = "The Matrix"
+      m.assertEqual(getRowItemTitle(item), "The Matrix")
+    end function
+
+    @it("returns name for Series")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ser1"
+      item.type = "Series"
+      item.name = "Game of Thrones"
+      m.assertEqual(getRowItemTitle(item), "Game of Thrones")
+    end function
+
+    @it("returns name for MusicAlbum")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "alb1"
+      item.type = "MusicAlbum"
+      item.name = "Dark Side of the Moon"
+      m.assertEqual(getRowItemTitle(item), "Dark Side of the Moon")
+    end function
+
+    @it("returns name for CollectionFolder")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "lib1"
+      item.type = "CollectionFolder"
+      item.name = "Movies"
+      m.assertEqual(getRowItemTitle(item), "Movies")
+    end function
+
+    @it("returns name for BoxSet")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "bs1"
+      item.type = "BoxSet"
+      item.name = "Marvel Collection"
+      m.assertEqual(getRowItemTitle(item), "Marvel Collection")
+    end function
+
+    @it("returns empty string for invalid item")
+    function _()
+      m.assertEqual(getRowItemTitle(invalid), "")
+    end function
+
+    @it("returns empty string for Episode with no seriesName")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      ' seriesName defaults to "" in JellyfinBaseItem
+      m.assertEqual(getRowItemTitle(item), "")
+    end function
+
+    @it("returns empty string for Season with no subtitle (seriesName)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "s1"
+      item.type = "Season"
+      ' subtitle defaults to "" in JellyfinBaseItem
+      item.name = "Season 1"
+      m.assertEqual(getRowItemTitle(item), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemSubtitle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns name (season label) for Season")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "s1"
+      item.type = "Season"
+      item.name = "Season 1"
+      item.subtitle = "Breaking Bad"
+      m.assertEqual(getRowItemSubtitle(item), "Season 1")
+    end function
+
+    @it("returns pre-computed subtitle for Episode")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.subtitle = "S1E2 - Cat's in the Bag"
+      m.assertEqual(getRowItemSubtitle(item), "S1E2 - Cat's in the Bag")
+    end function
+
+    @it("returns pre-computed subtitle for Movie")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+      item.type = "Movie"
+      item.subtitle = "2024 • PG-13"
+      m.assertEqual(getRowItemSubtitle(item), "2024 • PG-13")
+    end function
+
+    @it("returns pre-computed subtitle for Series")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ser1"
+      item.type = "Series"
+      item.subtitle = "2020 - Present"
+      m.assertEqual(getRowItemSubtitle(item), "2020 - Present")
+    end function
+
+    @it("returns pre-computed subtitle for MusicAlbum")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "alb1"
+      item.type = "MusicAlbum"
+      item.subtitle = "Pink Floyd"
+      m.assertEqual(getRowItemSubtitle(item), "Pink Floyd")
+    end function
+
+    @it("returns empty string for invalid item")
+    function _()
+      m.assertEqual(getRowItemSubtitle(invalid), "")
+    end function
+
+    @it("returns empty string for item with no subtitle")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "m1"
+      item.type = "Movie"
+      ' subtitle defaults to "" in JellyfinBaseItem
+      m.assertEqual(getRowItemSubtitle(item), "")
+    end function
+
+    @it("Season subtitle is its own name, not the series name in subtitle field")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "s2"
+      item.type = "Season"
+      item.name = "Season 2"
+      item.subtitle = "Breaking Bad"
+      ' Subtitle should return "Season 2" (name), NOT "Breaking Bad" (subtitle)
+      m.assertEqual(getRowItemSubtitle(item), "Season 2")
+    end function
+
+  end class
+
+end namespace

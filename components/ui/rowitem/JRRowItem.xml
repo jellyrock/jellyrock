@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="JRRowItem" extends="Group">
+  <children>
+    <!--
+      backdrop: colored rectangle behind the poster; visible until the poster image loads,
+      then hidden. Always visible for library tiles (backdrop IS the tile background).
+    -->
+    <RectangleBackgroundSecondary id="backdrop" width="234" height="324" />
+
+    <!--
+      poster: the main item image. Positioned at [0,0], sized to fill the image area
+      (slot height minus text area). Size and loadWidth/loadHeight set dynamically
+      in updateLayout() so Roku decodes at the correct resolution.
+    -->
+    <JRPoster id="poster" width="234" height="324" loadDisplayMode="scaleToZoom" />
+
+    <!--
+      itemIcon: optional library-type icon (e.g., music note, TV icon) displayed
+      over the backdrop for library tiles. Hidden until icon image loads.
+    -->
+    <Poster id="itemIcon" width="96" height="96" loadDisplayMode="scaleToFit" visible="false" />
+
+    <!--
+      title: scrolling label shown when the item has focus.
+      staticTitle: non-scrolling label shown when unfocused — prevents layout shift
+      that a scrolling label would cause even when not animating.
+      Both sit at the same vertical position; only one is visible at a time.
+    -->
+    <ScrollingLabelPrimarySmaller id="title" bold="true" horizAlign="center"
+      maxWidth="234" repeatCount="0" visible="false" />
+    <LabelPrimarySmaller id="staticTitle" bold="true" horizAlign="center"
+      width="234" wrap="false" />
+
+    <!--
+      subtitle: secondary text (e.g., "S1E2 - Title", "2024 • PG-13").
+      Scrolls on focus via repeatCount toggle; always visible for standard items.
+    -->
+    <ScrollingLabelSecondarySmall id="subtitle" bold="true" horizAlign="center"
+      maxWidth="234" repeatCount="0" />
+  </children>
+  <interface>
+    <!--
+      itemContent: the JellyfinBaseItem to render. Observed so the component
+      re-renders whenever the RowList assigns a new item.
+    -->
+    <field id="itemContent" type="node" onChange="onItemContentChanged" />
+    <!--
+      itemHasFocus: toggled by RowList. Drives scrolling labels and audio guide.
+    -->
+    <field id="itemHasFocus" type="boolean" onChange="onFocusChanged" />
+    <!--
+      width/height: set by RowList per rowItemSize. height is the image/poster
+      height only — text labels are laid out below the slot, not within it, so
+      height is used directly as posterHeight with no subtraction. Declaring these
+      fields guarantees they are never Invalid (unlike m.top.width on a raw Group
+      node) and lets us observe size changes reliably.
+    -->
+    <field id="width" type="float" value="0" onChange="onSizeChanged" />
+    <field id="height" type="float" value="0" onChange="onSizeChanged" />
+    <!--
+      applyEpisodeImageSetting: when true (default), respects the uiGeneralEpisodeImages user
+      setting when selecting the image for Episode items. Set to false for extras rows (season
+      episode lists, person TV shows) to always show the episode's own screenshot regardless
+      of the setting, which only makes sense for home rows (Continue Watching, Next Up).
+    -->
+    <field id="applyEpisodeImageSetting" type="boolean" value="true" />
+  </interface>
+</component>

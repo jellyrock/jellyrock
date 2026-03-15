@@ -1,11 +1,11 @@
-import "pkg:/source/constants/HomeRowItemSizes.bs"
+import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 const LOADING_WAIT_TIME = 2
 
 sub init()
-  m.top.itemComponentName = "HomeItem"
+  m.top.itemComponentName = "JRRowItem"
   ' how many rows are visible on the screen
   m.top.numRows = 3
   m.top.vertFocusAnimationStyle = "fixedFocus"
@@ -53,19 +53,20 @@ sub updateSize()
 
   if isValid(uiRowLayout)
     if uiRowLayout = "fullwidth"
-      m.top.translation = [0, 150]
-      ' rows take up full width of the screen
-      m.top.itemSize = [1920, 330]
+      m.top.translation = [0, 120]
+      ' itemSize height = tallest possible row (PORTRAIT slot + text area).
+      ' Per-row rowHeights overrides this for each actual row.
+      m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
       ' align with edge of "action" safe zone
       m.top.focusXOffset = [96]
-      m.top.rowLabelOffset = [96, 30]
+      m.top.rowLabelOffset = [96, 18]
     else
       ' original layout
-      m.top.translation = [111, 150]
-      m.top.itemSize = [1703, 330]
+      m.top.translation = [111, 120]
+      m.top.itemSize = [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT]
       ' reset to defaults
       m.top.focusXOffset = []
-      m.top.rowLabelOffset = [0, 30]
+      m.top.rowLabelOffset = [0, 18]
     end if
   end if
 
@@ -199,31 +200,51 @@ sub removeHomeSection(sectionTitleToRemove as string)
   setRowItemSize()
 end sub
 
-' setRowItemSize: Loops through all home sections and sets the correct item sizes per row
-'
+' setRowItemSize: Loops through all home sections and sets the correct item sizes, heights, and spacings per row.
+' rowItemSize[i] = slot size [width, posterHeight] — determines focus ring dimensions (poster only, no text).
+' rowHeights[i]  = total row height: slot + 90px text area for standard rows; slot-only for library tiles.
+' rowSpacings[i] = gap after each row before the next row label. Must be set for ALL rows because Roku
+'                  ignores itemSpacing entirely once rowSpacings is assigned (even partially). Standard rows
+'                  use 60px; My Media uses 78px to partially compensate for its absent text area.
 sub setRowItemSize()
   if not isValid(m.top.content) then return
 
   homeSections = m.top.content.getChildren(-1, 0)
   newSizeArray = CreateObject("roArray", homeSections.count(), false)
+  newRowHeights = CreateObject("roArray", homeSections.count(), false)
+  newRowSpacings = CreateObject("roArray", homeSections.count(), false)
 
-  myMediaIndex = -1
+  interRowSpacing = 60
+
   for i = 0 to homeSections.count() - 1
-    if homeSections[i].title = tr("My Media")
-      myMediaIndex = i
+    section = homeSections[i]
+    slotSize = isValid(section.cursorSize) ? section.cursorSize : rowSlotSize.WIDE
+    newSizeArray[i] = slotSize
+
+    if section.title = tr("My Media")
+      ' Library tiles render no text below the slot. rowHeight = slot only.
+      ' rowSpacings is intentionally larger than standard rows — the next row's label
+      ' lives inside the gap, giving a consistent visual distance to the label text.
+      newRowHeights[i] = rowSlotSize.ROW_HEIGHT_LIBRARY
+      newRowSpacings[i] = 78
+    else
+      ' Standard rows: text flows below the slot — infer total height from slot height
+      slotHeight = slotSize[1]
+      if slotHeight = rowSlotSize.PORTRAIT[1]
+        newRowHeights[i] = rowSlotSize.ROW_HEIGHT_PORTRAIT
+      else if slotHeight = rowSlotSize.SQUARE[1]
+        newRowHeights[i] = rowSlotSize.ROW_HEIGHT_SQUARE
+      else
+        ' WIDE (264px) — default
+        newRowHeights[i] = rowSlotSize.ROW_HEIGHT_WIDE
+      end if
+      newRowSpacings[i] = interRowSpacing
     end if
-    newSizeArray[i] = isValid(homeSections[i].cursorSize) ? homeSections[i].cursorSize : homeRowItemSizes.WIDE_POSTER
   end for
-
-  newRowSpacing = []
-  for i = 0 to myMediaIndex - 1
-    newRowSpacing.Push(105)
-  end for
-
-  newRowSpacing.Push(45) ' My Media row has title/subtitle, so reduce spacing/padding
 
   m.top.rowItemSize = newSizeArray
-  m.top.rowSpacings = newRowSpacing
+  m.top.rowHeights = newRowHeights
+  m.top.rowSpacings = newRowSpacings
 
   ' If we have processed the expected number of content rows, stop the loading timer and run the complete function
   if m.expectedRowCount = m.processedRowCount
@@ -304,8 +325,7 @@ sub createLibraryRow(sectionType as string)
 
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = homeRowItemSizes.MY_MEDIA[0]
-  row.cursorSize = homeRowItemSizes.MY_MEDIA
+  row.cursorSize = rowSlotSize.LIBRARY
 
   filteredMedia = filterNodeArray(m.libraryData, "id", m.global.user.config.myMediaExcludes)
   for each item in filteredMedia
@@ -328,21 +348,20 @@ sub createLatestInRows()
     if lib.collectionType <> "boxsets" and lib.collectionType <> "livetv" and lib.collectionType <> "Program"
       sectionName = `${tr("Recently Added in")} ${lib.name}`
 
-      rowSlotSize = homeRowItemSizes.WIDE_POSTER
+      slotSize = rowSlotSize.WIDE
 
       if isValidAndNotEmpty(lib.collectionType)
         if LCase(lib.collectionType) = "movies"
-          rowSlotSize = homeRowItemSizes.MOVIE_POSTER
+          slotSize = rowSlotSize.PORTRAIT
         else if LCase(lib.collectionType) = "music"
-          rowSlotSize = homeRowItemSizes.MUSIC_ALBUM
+          slotSize = rowSlotSize.SQUARE
         end if
       end if
 
       if not sectionExists(sectionName)
         nextUpRow = m.top.content.CreateChild("HomeRow")
         nextUpRow.title = sectionName
-        nextUpRow.imageWidth = rowSlotSize[0]
-        nextUpRow.cursorSize = rowSlotSize
+        nextUpRow.cursorSize = slotSize
       end if
 
       loadLatest = createObject("roSGNode", "LoadItemsTask")
@@ -416,8 +435,7 @@ sub createLiveTVRow()
   if not sectionExists(sectionName)
     nextUpRow = m.top.content.CreateChild("HomeRow")
     nextUpRow.title = sectionName
-    nextUpRow.imageWidth = homeRowItemSizes.WIDE_POSTER[0]
-    nextUpRow.cursorSize = homeRowItemSizes.WIDE_POSTER
+    nextUpRow.cursorSize = rowSlotSize.PORTRAIT
   end if
 
   m.LoadOnNowTask.observeField("content", "updateOnNowItems")
@@ -440,8 +458,7 @@ sub createNextUpRow()
   if not sectionExists(sectionName)
     nextUpRow = m.top.content.CreateChild("HomeRow")
     nextUpRow.title = sectionName
-    nextUpRow.imageWidth = homeRowItemSizes.WIDE_POSTER[0]
-    nextUpRow.cursorSize = homeRowItemSizes.WIDE_POSTER
+    nextUpRow.cursorSize = rowSlotSize.WIDE
   end if
 
   ' Load the Next Up Data
@@ -485,8 +502,7 @@ sub updateFavoritesItems()
   ' remake row using the new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = homeRowItemSizes.WIDE_POSTER[0]
-  row.cursorSize = homeRowItemSizes.WIDE_POSTER
+  row.cursorSize = rowSlotSize.WIDE
 
   for each item in itemData
     row.appendChild(item)
@@ -521,8 +537,7 @@ sub updateContinueWatchingItems()
   ' remake row using the new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = homeRowItemSizes.WIDE_POSTER[0]
-  row.cursorSize = homeRowItemSizes.WIDE_POSTER
+  row.cursorSize = rowSlotSize.WIDE
 
   for each item in itemData
     row.appendChild(item)
@@ -560,8 +575,7 @@ sub updateNextUpItems()
   ' remake row using the new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = tr("Next Up")
-  row.imageWidth = homeRowItemSizes.WIDE_POSTER[0]
-  row.cursorSize = homeRowItemSizes.WIDE_POSTER
+  row.cursorSize = rowSlotSize.WIDE
 
   for each item in itemData
     row.appendChild(item)
@@ -598,21 +612,20 @@ sub updateLatestItems(msg)
     return
   end if
 
-  rowSlotSize = homeRowItemSizes.WIDE_POSTER
+  slotSize = rowSlotSize.WIDE
 
   if isValid(node.metadata.contentType)
     if LCase(node.metadata.contentType) = "movies"
-      rowSlotSize = homeRowItemSizes.MOVIE_POSTER
+      slotSize = rowSlotSize.PORTRAIT
     else if LCase(node.metadata.contentType) = "music"
-      rowSlotSize = homeRowItemSizes.MUSIC_ALBUM
+      slotSize = rowSlotSize.SQUARE
     end if
   end if
 
   ' remake row using new data
   row = CreateObject("roSGNode", "HomeRow")
   row.title = sectionName
-  row.imageWidth = rowSlotSize[0]
-  row.cursorSize = rowSlotSize
+  row.cursorSize = slotSize
 
   for each item in itemData
     row.appendChild(item)
@@ -645,12 +658,11 @@ sub updateOnNowItems()
     return
   end if
 
-  ' On Now programs always render at portrait/poster size (MOVIE_POSTER).
-  ' Program items show their primary image; HomeItem handles the channel art fallback.
+  ' On Now programs always render at square size.
+  ' Program items show their primary image; JRRowItem/getRowItemImageUrl handles the channel art fallback.
   row = CreateObject("roSGNode", "HomeRow")
   row.title = tr("On Now")
-  row.imageWidth = homeRowItemSizes.MOVIE_POSTER[0]
-  row.cursorSize = homeRowItemSizes.MOVIE_POSTER
+  row.cursorSize = rowSlotSize.SQUARE
 
   for each item in itemData
     row.appendChild(item)
