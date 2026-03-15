@@ -49,10 +49,11 @@
     -->
     <field id="itemHasFocus" type="boolean" onChange="onFocusChanged" />
     <!--
-      width/height: set by RowList per rowItemSize. Observed so the component
-      can compute posterHeight = height - TEXT_AREA_HEIGHT and lay out its children.
-      Declaring these fields guarantees they are never Invalid (unlike m.top.width
-      on a raw Group node) and lets us observe size changes reliably.
+      width/height: set by RowList per rowItemSize. height is the image/poster
+      height only — text labels are laid out below the slot, not within it, so
+      height is used directly as posterHeight with no subtraction. Declaring these
+      fields guarantees they are never Invalid (unlike m.top.width on a raw Group
+      node) and lets us observe size changes reliably.
     -->
     <field id="width" type="float" value="0" onChange="onSizeChanged" />
     <field id="height" type="float" value="0" onChange="onSizeChanged" />
