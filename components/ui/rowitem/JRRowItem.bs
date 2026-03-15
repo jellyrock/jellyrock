@@ -118,8 +118,10 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
 
   posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, m.top.applyEpisodeImageSetting)
 
-  ' Blur unwatched episodes when the user setting is enabled
-  if isValid(userSettings) and userSettings.uiTvShowsBlurUnwatched and item.type = "Episode" and not item.isWatched
+  ' Blur unwatched episodes when the user setting is enabled.
+  ' Guard posterUri <> "" to avoid appending to an empty string, which would produce
+  ' the invalid URI "&blur=15" and trigger a bogus network request.
+  if isValid(userSettings) and userSettings.uiTvShowsBlurUnwatched and item.type = "Episode" and not item.isWatched and posterUri <> ""
     posterUri = posterUri + "&blur=15"
   end if
 

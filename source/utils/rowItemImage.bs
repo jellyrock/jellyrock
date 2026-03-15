@@ -4,7 +4,7 @@ import "pkg:/source/utils/misc.bs"
 
 ' Returns the image URL for a row item based on its type, slot dimensions, and user settings.
 '
-' Does NOT handle blur — blur is applied by JRPoster via its blurAmount field.
+' Does NOT handle blur — blur is appended by the caller (JRRowItem) after the URL is resolved.
 '
 ' @param item - JellyfinBaseItem content node
 ' @param slotWidth - width of the image area in pixels (from rowSlotSize constant)
