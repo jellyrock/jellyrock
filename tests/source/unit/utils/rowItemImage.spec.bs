@@ -66,20 +66,64 @@ namespace tests
     @describe("getRowItemImageUrl() - episodes: user settings")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("uses wide poster for 'show' setting")
+    @it("uses series wide art for 'show' setting, bypassing episode-level images")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "ep1"
       item.type = "Episode"
-      item.thumbImageTag = "thumbtag"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
 
       userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
       userSettings.uiGeneralEpisodeImages = "show"
 
       url = getRowItemImageUrl(item, 468, 258, userSettings)
 
-      m.assertTrue(url.Instr("thumbtag") > -1)
+      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.Instr("seriesthumb") > -1, "should use series thumb tag")
       m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode thumb")
+    end function
+
+    @it("falls back to parent backdrop for 'show' when no parent thumb")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      item.parentBackdropImageTags = ["seriesback"]
+      item.parentBackdropItemId = "series1"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.Instr("seriesback") > -1, "should use series backdrop tag")
+      m.assertTrue(url.Instr("Backdrop") > -1)
+      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+    end function
+
+    @it("returns empty string for 'show' when episode has images but series has no wide art")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      ' No parentThumbImageTag, no parentBackdropImageTags
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertEqual(url, "")
     end function
 
     @it("uses episode thumbnail for 'episode' setting")
@@ -98,19 +142,26 @@ namespace tests
       m.assertTrue(url.Instr("Thumb") > -1)
     end function
 
-    @it("uses wide poster for 'webclient' when useEpisodeImages is false")
+    @it("uses series wide art for 'webclient' when useEpisodeImages is false")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "ep1"
       item.type = "Episode"
-      item.thumbImageTag = "thumbtag"
+      item.primaryImageTag = "episodeprimary"
+      item.thumbImageTag = "episodethumb"
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
 
       userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
       userSettings.uiGeneralEpisodeImages = "webclient"
 
       url = getRowItemImageUrl(item, 468, 258, userSettings, false)
 
+      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.Instr("seriesthumb") > -1, "should use series thumb tag")
       m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode thumb")
     end function
 
     @it("uses episode thumbnail for 'webclient' when useEpisodeImages is true")

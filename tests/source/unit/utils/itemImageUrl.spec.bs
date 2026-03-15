@@ -467,5 +467,71 @@ namespace tests
       m.assertEqual(url, "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getItemParentWidePosterUrl - parent-first wide art")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses parent thumb, bypassing item's own thumb")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.thumbImageTag = "episodethumb"
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
+
+      url = getItemParentWidePosterUrl(item, { width: 468, height: 258 })
+
+      m.assertTrue(url.Instr("series1") > -1, "should use parent item ID")
+      m.assertTrue(url.Instr("seriesthumb") > -1, "should use parent tag")
+      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode-level thumb")
+    end function
+
+    @it("falls back to parent backdrop when no parent thumb")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.thumbImageTag = "episodethumb"
+      item.parentBackdropImageTags = ["seriesback"]
+      item.parentBackdropItemId = "series1"
+
+      url = getItemParentWidePosterUrl(item, { width: 468, height: 258 })
+
+      m.assertTrue(url.Instr("series1") > -1, "should use parent item ID")
+      m.assertTrue(url.Instr("seriesback") > -1, "should use parent backdrop tag")
+      m.assertTrue(url.Instr("Backdrop") > -1)
+      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode-level thumb")
+    end function
+
+    @it("returns empty string when no parent wide images available")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.thumbImageTag = "episodethumb"
+      ' No parentThumbImageTag, no parentBackdropImageTags
+
+      url = getItemParentWidePosterUrl(item, { width: 468, height: 258 })
+
+      m.assertEqual(url, "")
+    end function
+
+    @it("returns empty string for invalid item")
+    function _()
+      url = getItemParentWidePosterUrl(invalid, { width: 468, height: 258 })
+      m.assertEqual(url, "")
+    end function
+
+    @it("returns empty string for unloaded sentinel node (id is empty)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      ' id="" is the unloaded sentinel; tag is present so only the id guard prevents URL generation
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
+
+      url = getItemParentWidePosterUrl(item, { width: 468, height: 258 })
+
+      m.assertEqual(url, "")
+    end function
+
   end class
 end namespace

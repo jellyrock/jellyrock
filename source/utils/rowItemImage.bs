@@ -34,20 +34,19 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
   if item.type = "Episode" or LCase(item.type) = "recording"
     if applyEpisodeImageSetting and isValid(userSettings)
       episodeImageSetting = userSettings.uiGeneralEpisodeImages
-      if episodeImageSetting = "webclient"
-        ' Respect the Jellyfin web client's "use episode images" config flag
-        return useEpisodeImages ? getItemThumbnailUrl(item, size) : getItemWidePosterUrl(item, size)
-      else if episodeImageSetting = "episode"
+      ' Two logical paths: episode art (wide Thumb/Backdrop of the episode) or
+      ' show art (wide Thumb/Backdrop of the series, bypassing episode-level images).
+      if episodeImageSetting = "episode"
         return getItemThumbnailUrl(item, size)
       else if episodeImageSetting = "show"
-        ' "show" setting: Use episode's own image (stored in primaryImageTag), fall back to series poster
-        ' Note: Episode screenshots are stored in primaryImageTag, not screenshotImageTags
-        episodeUrl = getItemPosterUrl(item, size)
-        if episodeUrl <> "" then return episodeUrl
-        return getItemWidePosterUrl(item, size)
+        return getItemParentWidePosterUrl(item, size)
+      else if episodeImageSetting = "webclient"
+        ' Respect the Jellyfin web client's "use episode images" config flag.
+        ' Collapses to the same two paths as "episode" and "show".
+        return useEpisodeImages ? getItemThumbnailUrl(item, size) : getItemParentWidePosterUrl(item, size)
       end if
     end if
-    ' Default (and extras rows): episode's own Primary image (screenshot), fall back to series poster
+    ' Default (and extras rows): episode's own Primary image (screenshot), fall back to series wide art
     episodeUrl = getItemPosterUrl(item, size)
     if episodeUrl <> "" then return episodeUrl
     return getItemWidePosterUrl(item, size)
