@@ -98,6 +98,7 @@ end sub
 ' m.top.type must be set before calling this function (done by ShowScenes.bs).
 sub loadParts(data as object)
   cancelInFlightChain()
+  m.rowHeights = []
   m.top.parentId = data.id
   m.people = data.people
 
@@ -139,6 +140,7 @@ end sub
 
 sub loadPersonVideos(personId)
   cancelInFlightChain()
+  m.rowHeights = []
   m.personId = personId
   m.top.personHasMedia = false ' Reset before new chain — prevents stale true from a prior run
   m.LoadMoviesTask.itemId = m.personId
@@ -366,7 +368,8 @@ end sub
 
 ' populateRow: Reuse an existing row ContentNode (clearing its children) or create a new one.
 ' Creating appends the row to m.top.content at the current end — correct since the async chain
-' fires in display order, and extras data never changes between refreshes.
+' fires in display order. m.rowHeights is reset at chain start and rebuilt here on every call,
+' keeping it in sync with m.top.content across refreshes where rows may appear or disappear.
 ' @param rowHeight - height for this specific row (from rowSlotSize.ROW_HEIGHT_* constants)
 ' Returns the row for the caller to store as a named ref.
 function populateRow(rowRef as object, title as string, items as object, rowHeight as integer) as object
@@ -374,10 +377,11 @@ function populateRow(rowRef as object, title as string, items as object, rowHeig
     rowRef.removeChildrenIndex(rowRef.getChildCount(), 0)
   else
     rowRef = m.top.content.createChild("ContentNode")
-    ' New row - add its height to the tracking array
-    m.rowHeights.push(rowHeight)
-    m.top.rowHeights = m.rowHeights
   end if
+  ' Always push — m.rowHeights is reset at chain start so this rebuilds in display order each run.
+  ' Covers both reuse (row exists in content) and create (just appended) paths.
+  m.rowHeights.push(rowHeight)
+  m.top.rowHeights = m.rowHeights
   rowRef.Title = title
   for each item in items
     rowRef.appendChild(item)
