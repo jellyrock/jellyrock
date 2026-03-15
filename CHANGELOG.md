@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- use primary image in logo slot for Episode/Season/Recording ([#373](https://github.com/jellyrock/jellyrock/pull/373))
 - (JRRowItem) Season/Episode title order and MusicVideo slot ([#372](https://github.com/jellyrock/jellyrock/pull/372))
 - (SearchResults) prevent stale backdrop when keyboard is focused ([e99e62b](https://github.com/jellyrock/jellyrock/commit/e99e62b))
 
