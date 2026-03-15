@@ -205,8 +205,7 @@ end sub
 ' rowHeights[i]  = total row height: slot + 90px text area for standard rows; slot-only for library tiles.
 ' rowSpacings[i] = gap after each row before the next row label. Must be set for ALL rows because Roku
 '                  ignores itemSpacing entirely once rowSpacings is assigned (even partially). Standard rows
-'                  use INTER_ROW_SPACING; My Media adds TEXT_AREA_HEIGHT to compensate for its absent text
-'                  area, producing a uniform visual distance from every poster bottom to the next row label.
+'                  use 60px; My Media uses 78px to partially compensate for its absent text area.
 sub setRowItemSize()
   if not isValid(m.top.content) then return
 
