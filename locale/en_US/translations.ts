@@ -1361,11 +1361,6 @@
       <translation>Unable to get playback information</translation>
     </message>
     <message>
-      <source>Unknown</source>
-      <translation>Unknown</translation>
-      <extracomment>Title for a cast member for which we have no information for</extracomment>
-    </message>
-    <message>
       <source>Unplayed</source>
       <translation>Unplayed</translation>
     </message>
