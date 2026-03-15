@@ -54,8 +54,8 @@
       Declaring these fields guarantees they are never Invalid (unlike m.top.width
       on a raw Group node) and lets us observe size changes reliably.
     -->
-    <field id="width" type="float" value="234" onChange="onSizeChanged" />
-    <field id="height" type="float" value="396" onChange="onSizeChanged" />
+    <field id="width" type="float" value="0" onChange="onSizeChanged" />
+    <field id="height" type="float" value="0" onChange="onSizeChanged" />
     <!--
       applyEpisodeImageSetting: when true (default), respects the uiGeneralEpisodeImages user
       setting when selecting the image for Episode items. Set to false for extras rows (season

@@ -24,13 +24,13 @@ end sub
 
 sub onItemContentChanged()
   if not isValid(m.top.itemContent) then return
-  if m.top.width <= 0 then return
+  if m.top.width <= 0 or m.top.height <= 0 then return
   renderItem()
 end sub
 
 sub onSizeChanged()
   if not isValid(m.top.itemContent) then return
-  if m.top.width <= 0 then return
+  if m.top.width <= 0 or m.top.height <= 0 then return
   renderItem()
 end sub
 
