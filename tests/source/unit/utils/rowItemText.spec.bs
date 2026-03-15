@@ -13,24 +13,24 @@ namespace tests
     @describe("getRowItemTitle()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns seriesName for Episode")
+    @it("returns episode code and title (subtitle field) for Episode")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "ep1"
       item.type = "Episode"
+      item.subtitle = "S1E1 - Pilot"
       item.seriesName = "Breaking Bad"
-      item.name = "Pilot"
-      m.assertEqual(getRowItemTitle(item), "Breaking Bad")
+      m.assertEqual(getRowItemTitle(item), "S1E1 - Pilot")
     end function
 
-    @it("returns subtitle (seriesName) for Season")
+    @it("returns season label (name field) for Season")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "s1"
       item.type = "Season"
-      item.subtitle = "Breaking Bad" ' transformer stores seriesName in subtitle
       item.name = "Season 1"
-      m.assertEqual(getRowItemTitle(item), "Breaking Bad")
+      item.subtitle = "Breaking Bad" ' transformer stores seriesName in subtitle (shown below)
+      m.assertEqual(getRowItemTitle(item), "Season 1")
     end function
 
     @it("returns name for Movie")
@@ -83,46 +83,47 @@ namespace tests
       m.assertEqual(getRowItemTitle(invalid), "")
     end function
 
-    @it("returns empty string for Episode with no seriesName")
+    @it("returns empty string for Episode with no subtitle")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "ep1"
       item.type = "Episode"
-      ' seriesName defaults to "" in JellyfinBaseItem
+      ' subtitle defaults to "" in JellyfinBaseItem
       m.assertEqual(getRowItemTitle(item), "")
     end function
 
-    @it("returns empty string for Season with no subtitle (seriesName)")
+    @it("returns season name for Season regardless of subtitle field")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "s1"
       item.type = "Season"
-      ' subtitle defaults to "" in JellyfinBaseItem
       item.name = "Season 1"
-      m.assertEqual(getRowItemTitle(item), "")
+      ' subtitle may be empty (e.g. series name not yet populated) — title always comes from name
+      m.assertEqual(getRowItemTitle(item), "Season 1")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getRowItemSubtitle()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns name (season label) for Season")
+    @it("returns series name (subtitle field) for Season")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "s1"
       item.type = "Season"
       item.name = "Season 1"
-      item.subtitle = "Breaking Bad"
-      m.assertEqual(getRowItemSubtitle(item), "Season 1")
+      item.subtitle = "Breaking Bad" ' transformer stores seriesName in subtitle
+      m.assertEqual(getRowItemSubtitle(item), "Breaking Bad")
     end function
 
-    @it("returns pre-computed subtitle for Episode")
+    @it("returns series name for Episode")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "ep1"
       item.type = "Episode"
       item.subtitle = "S1E2 - Cat's in the Bag"
-      m.assertEqual(getRowItemSubtitle(item), "S1E2 - Cat's in the Bag")
+      item.seriesName = "Breaking Bad"
+      m.assertEqual(getRowItemSubtitle(item), "Breaking Bad")
     end function
 
     @it("returns pre-computed subtitle for Movie")
@@ -166,15 +167,15 @@ namespace tests
       m.assertEqual(getRowItemSubtitle(item), "")
     end function
 
-    @it("Season subtitle is its own name, not the series name in subtitle field")
+    @it("Season subtitle returns series name from subtitle field, not its own name")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
       item.id = "s2"
       item.type = "Season"
       item.name = "Season 2"
       item.subtitle = "Breaking Bad"
-      ' Subtitle should return "Season 2" (name), NOT "Breaking Bad" (subtitle)
-      m.assertEqual(getRowItemSubtitle(item), "Season 2")
+      ' Subtitle should return "Breaking Bad" (series name), NOT "Season 2" (name, shown as title)
+      m.assertEqual(getRowItemSubtitle(item), "Breaking Bad")
     end function
 
   end class
