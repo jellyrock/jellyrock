@@ -8,7 +8,9 @@ import "pkg:/source/utils/misc.bs"
 '
 ' @param item - JellyfinBaseItem content node
 ' @param slotWidth - width of the image area in pixels (from rowSlotSize constant)
-' @param posterHeight - height of the image area in pixels (slot height minus text area)
+' @param posterHeight - height of the image area in pixels; pass rowSlotSize[1] directly —
+'                       text is laid out below the slot by the caller, so do NOT subtract
+'                       the text area before passing this value (that would double-subtract it)
 ' @param userSettings - m.global.user.settings node (may be invalid)
 ' @param useEpisodeImages - pre-computed from m.global.user.config.useEpisodeImagesInNextUpAndResume;
 '                           only relevant when uiGeneralEpisodeImages = "webclient"
