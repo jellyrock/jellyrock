@@ -14,6 +14,10 @@ const ITEM_DETAILS_EXTRAS_PADDING = 48
 const LOGO_MIN_DISPLAY_HEIGHT = 212 ' Note: LOGO_MAX_DISPLAY_WIDTH takes precedence for very wide/flat logos; this minimum may not be reached.
 ' Maximum display width for the logo image — prevents very wide/flat logos from overlapping buttons
 const LOGO_MAX_DISPLAY_WIDTH = 500
+' Maximum display height for non-Person primary images — prevents portrait posters from
+' extending above the metadata rows. Person photos are exempt because their info rows
+' are short and don't reach the right edge where the photo sits.
+const LOGO_MAX_DISPLAY_HEIGHT = 336
 
 sub init()
   m.log = log.Logger("ItemDetails")
@@ -1135,10 +1139,10 @@ end sub
 
 ' setItemLogo: Set the item logo image URL if available.
 ' Fallback chains by type:
-' - Movie/Series:   Logo → primaryImageTag (poster)
-' - Episode/Season/Recording: parentLogoImageTag (series logo) → seriesPrimaryImageTag → primaryImageTag (episode thumb)
+' - Movie/Series:   Logo → primaryImageTag (poster, compact size)
+' - Episode/Season/Recording: primaryImageTag (item thumb/poster) → parentLogoImageTag (series logo) → seriesPrimaryImageTag → hide
 ' - Video/MusicVideo: primaryImageTag (poster)
-' - Person: primaryImageTag (portrait photo) → silhouette icon
+' - Person: primaryImageTag (portrait photo, tall) → silhouette icon
 ' @param {object} item - JellyfinBaseItem node
 sub setItemLogo(item as object)
   if not isValid(m.itemLogo) then return
@@ -1156,8 +1160,13 @@ sub setItemLogo(item as object)
     end if
     return
   else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
-    ' Episodes, Seasons, and Recordings don't have their own logo — use the parent series logo.
-    ' If no series logo found, falls through to the final block which tries seriesPrimaryImageTag → primaryImageTag.
+    ' Show the item's own primary image first (episode still, season poster).
+    ' If none, fall through to the series logo chain via logoItemId/logoImageTag.
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      return
+    end if
     if isValidAndNotEmpty(item.parentLogoItemId)
       logoItemId = item.parentLogoItemId
       logoImageTag = item.parentLogoImageTag
@@ -1178,7 +1187,8 @@ sub setItemLogo(item as object)
     imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: logoImageTag }
     m.itemLogo.uri = ImageURL(logoItemId, "Logo", imgParams)
   else if item.type = "Movie" or item.type = "Series"
-    ' No logo: fall back to primary (poster) image
+    ' No logo: fall back to primary (poster) image — fetch at full quality; display height is
+    ' capped by LOGO_MAX_DISPLAY_HEIGHT in onLogoLoadStatusChanged to avoid overlapping info rows.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
@@ -1187,13 +1197,10 @@ sub setItemLogo(item as object)
       m.itemLogo.uri = ""
     end if
   else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
-    ' No series logo: fall back to series primary poster, then episode/item thumbnail
+    ' No item primary (already tried above), no series logo: fall back to series primary poster
     if isValidAndNotEmpty(item.seriesPrimaryImageTag) and isValidAndNotEmpty(item.seriesId)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.seriesPrimaryImageTag }
       m.itemLogo.uri = ImageURL(item.seriesId, "Primary", imgParams)
-    else if isValidAndNotEmpty(item.primaryImageTag)
-      imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
       m.itemLogo.visible = false
       m.itemLogo.uri = ""
@@ -1263,6 +1270,15 @@ sub onLogoLoadStatusChanged()
         ' Height will be below LOGO_MIN_DISPLAY_HEIGHT — max-width takes precedence.
         displayWidth = LOGO_MAX_DISPLAY_WIDTH
         displayHeight = int(logoHeight * LOGO_MAX_DISPLAY_WIDTH / logoWidth)
+      end if
+
+      ' Cap portrait images for non-Person items so the logo top stays below the metadata rows.
+      ' Person photos are exempt — their info rows are short and don't reach the right edge.
+      if isValid(m.top.itemContent) and m.top.itemContent.type <> "Person"
+        if displayHeight > LOGO_MAX_DISPLAY_HEIGHT
+          displayWidth = int(displayWidth * LOGO_MAX_DISPLAY_HEIGHT / displayHeight)
+          displayHeight = LOGO_MAX_DISPLAY_HEIGHT
+        end if
       end if
 
       m.itemLogo.width = displayWidth
