@@ -283,16 +283,33 @@ end sub
 sub onLikeThisLoaded()
   data = m.LikeThisTask.content
   m.LikeThisTask.unobserveField("content")
+  itemType = m.top.type
   if isValid(data) and data.count() > 0
-    m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-    addRowSize(rowSlotSize.PORTRAIT)
+    ' MusicVideo and Video items are always landscape (≥4:3) and have no portrait posters —
+    ' use a wide slot so the image URL logic fetches Thumb/Backdrop instead of Primary.
+    if itemType = "MusicVideo" or itemType = "Video"
+      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_WIDE)
+      ' Cannot use addRowSize() here. loadParts() seeds rowItemSize with a phantom PORTRAIT
+      ' element before any rows exist, which offsets all addRowSize() indices by one and would
+      ' leave this row still mapped to PORTRAIT. Instead, rebuild the array from the actual
+      ' content child count: PORTRAIT for every preceding row, WIDE for this (final) row.
+      newSizes = []
+      childCount = m.top.content.getChildCount()
+      for i = 0 to childCount - 2
+        newSizes.push(rowSlotSize.PORTRAIT)
+      end for
+      newSizes.push(rowSlotSize.WIDE)
+      m.top.rowItemSize = newSizes
+    else
+      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+      addRowSize(rowSlotSize.PORTRAIT)
+    end if
   else if isValid(m.rowLikeThis)
     m.top.content.removeChild(m.rowLikeThis)
     m.rowLikeThis = invalid
   end if
 
   ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, or Season
-  itemType = m.top.type
   if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season"
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
