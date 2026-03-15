@@ -31,9 +31,6 @@ sub init()
 end sub
 
 sub OnScreenShown()
-  ' Start with transparent backdrop - will update on item focus
-  m.global.sceneManager.callFunc("setBackgroundImage", "")
-
   ' Restore focus for scene navigation
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
@@ -42,10 +39,16 @@ sub OnScreenShown()
   end if
 end sub
 
-' onKeyboardFocusChange: Adjust alphabet keyboard position when textbox gains/loses focus
-' The voice button popup covers alphabet rows when textbox is focused, so we move the textbox up
+' onKeyboardFocusChange: Fires when focus changes within the keyboard subtree (including entry/exit).
+' Clears stale backdrop when keyboard gains focus, and adjusts alphabet layout when the
+' voice button popup appears (textEditBox focused moves the textbox up to avoid overlap).
 sub onKeyboardFocusChange()
   if not isValid(m.searchAlphabox) then return
+
+  ' Clear stale backdrop whenever keyboard gains focus
+  if m.searchAlphabox.isInFocusChain()
+    m.global.sceneManager.callFunc("setBackgroundImage", "")
+  end if
 
   ' Check if the textEditBox has focus (voice button popup is visible)
   if m.searchAlphabox.textEditBox.hasFocus()
