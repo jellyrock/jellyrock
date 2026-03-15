@@ -7,8 +7,8 @@
 '   ALL dimensions are divisible by 3 for clean FHD-to-720p/SD auto-scaling
 '   (manifest ui_resolutions=fhd).
 '
-' Text area below the image is 84px (FOCUS_PADDING + title + subtitle).
-' Image area = slot height - 84px.
+' Text area below the image is 90px (FOCUS_PADDING + title + subtitle).
+' Image area = slot height - 90px.
 
 namespace itemAspectRatio
   ' 2:3 — Movie, Series, Season, BoxSet, Person
