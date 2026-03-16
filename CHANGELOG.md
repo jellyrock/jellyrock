@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- add destroy() to all remaining screens ([#379](https://github.com/jellyrock/jellyrock/pull/379))
+
 ### Removed
 
 - dead tmp:/scene file operations for screensaver ([#378](https://github.com/jellyrock/jellyrock/pull/378))
