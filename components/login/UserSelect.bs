@@ -55,15 +55,6 @@ end sub
 ' JRScreen hook called when the screen is hidden by the screen manager
 sub OnScreenHidden()
   m.log.info("UserSelect screen hidden - clearing backdrop")
-
-  ' Stop task to prevent wasted resources
-  m.brandingTask.control = "STOP"
-
-  ' Cleanup observers and reset task
-  m.global.server.unobserveFieldScoped("splashscreenEnabled")
-  m.brandingTask.unobserveFieldScoped("responseCode")
-  m.brandingTask.callFunc("empty")
-
   ' Clear backdrop using forceBackdrop to ensure it clears even before login
   m.global.sceneManager.callFunc("setBackgroundImage", "", true, true)
 end sub
@@ -181,3 +172,21 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
   return false
 end function
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+' Note: OnScreenHidden already cleared the backdrop; this handles task/ref cleanup.
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Stop branding task and unobserve all scoped fields
+  ' (may already be self-cleaned by task callbacks, guards are safe no-ops)
+  m.brandingTask.control = "STOP"
+  m.global.server.unobserveFieldScoped("splashscreenEnabled")
+  m.brandingTask.unobserveFieldScoped("responseCode")
+  m.brandingTask.callFunc("empty")
+  m.brandingTask = invalid
+
+  ' Clear node references
+  m.buttons = invalid
+end sub

@@ -926,14 +926,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       optionsClosed()
       return true
     else
-      ' Cleanup presenter
-      if isValid(m.presenter)
-        m.presenter.destroy()
-        m.presenter = invalid
-      end if
-
       m.global.sceneManager.callfunc("popScene")
-      m.loadItemsTask.control = "stop"
       return true
     end if
   else if key = "play"
@@ -1047,4 +1040,52 @@ sub updateTitle()
   if m.showItemCount and m.loadItemsTask.totalRecordCount > 0 and lowerView <> "genres"
     m.top.overhangTitle += " (" + tr("%1 of %2").Replace("%1", actInt.toStr()).Replace("%2", m.loadItemsTask.totalRecordCount.toStr()) + ")"
   end if
+end sub
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve child node observers
+  m.genreList.unobserveField("rowItemFocused")
+  m.genreList.unobserveField("itemSelected")
+  m.itemGrid.unobserveField("itemFocused")
+  m.itemGrid.unobserveField("itemSelected")
+  m.voiceBox.unobserveField("text")
+
+  ' tvGuide may already be cleaned up by hideTvGuide() on back-press
+  if isValid(m.tvGuide)
+    m.tvGuide.unobserveField("watchChannel")
+    m.tvGuide.unobserveField("focusedChannel")
+    m.tvGuide = invalid
+  end if
+
+  ' Stop and release task node
+  m.loadItemsTask.unobserveField("content")
+  m.loadItemsTask.control = "STOP"
+  m.loadItemsTask.content = []
+  m.loadItemsTask = invalid
+
+  ' Destroy presenter class object (may already be invalid from back-press handler)
+  if isValid(m.presenter)
+    m.presenter.destroy()
+    m.presenter = invalid
+  end if
+
+  ' Clear node references
+  m.options = invalid
+  m.itemGrid = invalid
+  m.voiceBox = invalid
+  m.emptyText = invalid
+  m.alpha = invalid
+  m.alphaMenu = invalid
+  m.genreList = invalid
+  m.presentationBackdrop = invalid
+  m.presentationInfo = invalid
+  m.channelFocused = invalid
+
+  ' Release content nodes
+  m.data = invalid
+  m.genreData = invalid
 end sub

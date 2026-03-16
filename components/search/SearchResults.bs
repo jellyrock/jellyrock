@@ -2,12 +2,14 @@ import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = log.Logger("SearchResults")
   ' Clear backdrop immediately when search screen opens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
@@ -144,3 +146,23 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   return false
 end function
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve child node observers
+  m.searchAlphabox.unobserveField("focusedChild")
+  m.searchSelect.unobserveField("rowItemFocused")
+
+  ' Stop and release task node (observer may already be cleared by loadResults())
+  m.searchTask.unobserveField("results")
+  m.searchTask.control = "STOP"
+  m.searchTask = invalid
+
+  ' Clear node references
+  m.searchSelect = invalid
+  m.searchAlphabox = invalid
+  m.searchHelpText = invalid
+end sub

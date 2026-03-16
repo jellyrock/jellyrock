@@ -1876,3 +1876,58 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   return false
 end function
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve m.top programmatic observer (may or may not be active depending on flow)
+  m.top.unobserveField("itemContent")
+
+  ' Unobserve child node observers
+  m.itemLogo.unobserveField("loadStatus")
+  m.itemDetails.unobserveField("renderTracking")
+  m.extrasGrid.unobserveField("personHasMedia")
+  if isValid(m.clock)
+    m.clock.unobserveField("minutes")
+    m.clock = invalid
+  end if
+
+  ' Stop and release task nodes
+  m.loadFirstEpisodeTask.unobserveField("content")
+  m.loadFirstEpisodeTask.control = "STOP"
+  m.loadFirstEpisodeTask = invalid
+
+  m.loadSeriesResumeTask.unobserveField("content")
+  m.loadSeriesResumeTask.control = "STOP"
+  m.loadSeriesResumeTask = invalid
+
+  m.loadSeasonSeriesTask.unobserveField("content")
+  m.loadSeasonSeriesTask.control = "STOP"
+  m.loadSeasonSeriesTask = invalid
+
+  ' Clear node references
+  m.extrasGrp = invalid
+  m.extrasGrid = invalid
+  m.options = invalid
+  m.infoGroup = invalid
+  m.itemDescription = invalid
+  m.buttonGrp = invalid
+  m.itemLogo = invalid
+  m.dateCreatedLabel = invalid
+  m.itemTextGradient = invalid
+  m.itemDetails = invalid
+  m.itemTracks = invalid
+  m.itemDetailsSlider = invalid
+  m.itemDetailsSliderInterp = invalid
+  m.itemInfoRows = invalid
+  m.directorGenreGroup = invalid
+  m.optionsButton = invalid
+  m.shuffleButton = invalid
+  m.endsAtNode = invalid
+
+  ' Clear data caches
+  m.seasonSeriesCache = invalid
+  m.seasonSeriesData = invalid
+end sub

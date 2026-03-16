@@ -1,6 +1,8 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = log.Logger("OSD")
   m.inactivityTimer = m.top.findNode("inactivityTimer")
   m.endsAtTime = m.top.findNode("endsAtTime")
   m.videoLogo = m.top.findNode("videoLogo")
@@ -484,3 +486,43 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   return false
 end function
+
+' destroy: Full teardown releasing all resources before component removal
+' Called by VideoPlayerView.destroy() since OSD is a child component, not a SceneManager scene
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve all m.top observers
+  m.top.unobserveField("itemData")
+  m.top.unobserveField("visible")
+  m.top.unobserveField("hasFocus")
+  m.top.unobserveField("progressPercentage")
+  m.top.unobserveField("playbackState")
+
+  ' Unobserve clock (guarded — may be invalid if clock node not found in init)
+  if isValid(m.clock)
+    m.clock.unobserveField("minutes")
+    m.clock = invalid
+  end if
+
+  ' Stop inactivity timer (may already be stopped by onVisibleChanged)
+  m.inactivityTimer.unobserveField("fire")
+  m.inactivityTimer.control = "stop"
+  m.inactivityTimer = invalid
+
+  ' Clear node references
+  m.endsAtTime = invalid
+  m.videoLogo = invalid
+  m.videoTitle = invalid
+  m.videoSubtitleGroup = invalid
+  m.videoPlayPause = invalid
+  m.videoPositionTime = invalid
+  m.videoRemainingTime = invalid
+  m.progressBar = invalid
+  m.progressBarBackground = invalid
+  m.buttonMenuRight = invalid
+  m.buttonMenuLeft = invalid
+
+  ' Release cached item data reference
+  m.itemData = invalid
+end sub

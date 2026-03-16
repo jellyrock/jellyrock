@@ -1,7 +1,9 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = log.Logger("PhotoDetails")
   m.top.optionsAvailable = true
   m.top.overhangVisible = false
   m.slideshowTimer = m.top.findNode("slideshowTimer")
@@ -161,6 +163,35 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   return false
 end function
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve timer observers
+  m.slideshowTimer.unobserveField("fire")
+  m.statusTimer.unobserveField("fire")
+
+  ' Stop timers (may already be stopped by OnScreenHidden or user interaction)
+  m.slideshowTimer.control = "stop"
+  m.statusTimer.control = "stop"
+
+  ' Stop and release task node (may be invalid if photo loading hadn't started)
+  if isValid(m.LoadLibrariesTask)
+    m.LoadLibrariesTask.unobserveField("results")
+    m.LoadLibrariesTask.control = "STOP"
+    m.LoadLibrariesTask = invalid
+  end if
+
+  ' Clear node references
+  m.slideshowTimer = invalid
+  m.status = invalid
+  m.textBackground = invalid
+  m.statusTimer = invalid
+  m.showStatusAnimation = invalid
+  m.hideStatusAnimation = invalid
+end sub
 
 function isValidToContinue(index as integer)
   if isValid(m.top.itemsNode)
