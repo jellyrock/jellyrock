@@ -25,7 +25,14 @@ sub itemContentChanged() as void
 
   m.poster.uri = serverItem.iconUrl
   m.name.text = serverItem.name
-  m.baseUrl.text = serverItem.baseUrl
+  ' Prefer originalUrl (user-entered or scheme-stripped) over the canonical baseUrl.
+  ' Falls back to baseUrl for SSDP-discovered servers with no saved entry and for
+  ' old saved_servers entries that predate this field.
+  displayUrl = serverItem.originalUrl
+  if not isValidAndNotEmpty(displayUrl)
+    displayUrl = serverItem.baseUrl
+  end if
+  m.baseUrl.text = displayUrl
 end sub
 
 sub onFocusPercentChange()

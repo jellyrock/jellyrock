@@ -33,30 +33,65 @@ sub ScanForServersComplete(event)
 
   items = CreateObject("roSGNode", "ContentNode")
   stopLoadingSpinner()
+
+  ' Load saved servers upfront — used in both passes below
+  savedServers = { serverList: [] }
+  saved = get_setting("saved_servers")
+  if isValid(saved)
+    parsed = ParseJson(saved)
+    if isValid(parsed) and isValid(parsed.serverList)
+      savedServers = parsed
+    end if
+  end if
+
+  ' Pass 1: Add all SSDP-discovered servers.
+  ' If a matching saved entry exists, inject its originalUrl so the user sees their own
+  ' URL (e.g. "192.168.1.100:8096" or an HTTPS address) instead of the raw SSDP URL.
+  ' Dedup uses id first (robust to URL changes), then falls back to canonical baseUrl
+  ' for backward compatibility with saved entries that predate this change.
   for each serverItem in m.servers
     serverItem.subtype = "ContentNode"
-    'add new fields for every server property onto the ContentNode (rather than making a dedicated component just to hold data...)
+    for each savedServer in savedServers.serverList
+      isMatch = false
+      if isValidAndNotEmpty(serverItem.id) and isValidAndNotEmpty(savedServer.id)
+        isMatch = (serverItem.id = savedServer.id)
+      else if LCase(serverItem.baseUrl) = savedServer.baseUrl
+        isMatch = true
+      end if
+      if isMatch
+        ' Merge: keep SSDP name and connection URL, restore saved originalUrl
+        savedOriginalUrl = savedServer.originalUrl
+        if not isValidAndNotEmpty(savedOriginalUrl)
+          savedOriginalUrl = savedServer.baseUrl ' backward compat: old entries have no originalUrl
+        end if
+        serverItem.originalUrl = savedOriginalUrl
+        serverItem.isSaved = true ' mark as deletable — this server exists in saved_servers
+        exit for
+      end if
+    end for
     items.update([serverItem], true)
   end for
 
-  'load any previously logged in to servers as well (if they aren't already discovered on the local network)
-  saved = get_setting("saved_servers")
-  if isValid(saved)
-    savedServers = ParseJson(saved)
-    for each savedServer in savedServers.serverList
-      alreadyListed = false
-      for each listed in m.servers
-        if LCase(listed.baseUrl) = savedServer.baseUrl 'saved server data is always lowercase
+  ' Pass 2: Add saved servers not found by SSDP (e.g. remote servers)
+  for each savedServer in savedServers.serverList
+    alreadyListed = false
+    for each listed in m.servers
+      if isValidAndNotEmpty(listed.id) and isValidAndNotEmpty(savedServer.id)
+        if listed.id = savedServer.id
           alreadyListed = true
           exit for
         end if
-      end for
-      if alreadyListed = false
-        items.update([savedServer], true)
-        m.servers.push(savedServer)
+      else if LCase(listed.baseUrl) = savedServer.baseUrl
+        alreadyListed = true
+        exit for
       end if
     end for
-  end if
+    if not alreadyListed
+      savedServer.isSaved = true ' mark as deletable — this server exists in saved_servers
+      items.update([savedServer], true)
+      m.servers.push(savedServer)
+    end if
+  end for
 
   m.serverPicker.content = items
 
@@ -128,7 +163,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
   handled = true
 
   if key = "OK" and m.serverPicker.hasFocus()
-    m.top.serverUrl = m.serverPicker.content.getChild(m.serverPicker.itemFocused).baseUrl
+    item = m.serverPicker.content.getChild(m.serverPicker.itemFocused)
+    ' Prefer originalUrl (user-entered or scheme-stripped SSDP URL) so inferServerUrl()
+    ' can re-discover the correct protocol rather than locking in the canonical form
+    selectedUrl = item.originalUrl
+    if not isValidAndNotEmpty(selectedUrl)
+      selectedUrl = item.baseUrl
+    end if
+    m.top.serverUrl = selectedUrl
     m.buttons.setFocus(true)
     'if the user pressed the down key and we are already at the last child of server picker, then change focus to the url textbox
   else if key = "down" and m.serverPicker.hasFocus() and m.serverPicker.content.getChildCount() > 0 and m.serverPicker.itemFocused = m.serverPicker.content.getChildCount() - 1
@@ -159,10 +201,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.buttons.setFocus(true)
   else if key = "options"
     if m.serverPicker.itemFocused >= 0 and m.serverPicker.itemFocused < m.serverPicker.content.getChildCount()
-      serverName = m.serverPicker.content.getChild(m.serverPicker.itemFocused).name
-      if m.servers.Count() > 0 and Instr(1, serverName, "Saved") > 0
+      item = m.serverPicker.content.getChild(m.serverPicker.itemFocused)
+      if m.servers.Count() > 0 and item.isSaved = true
         'Can only delete previously saved servers, not locally discovered ones
-        'So if we are on a "Saved" item, let the options dialog be shown (handled elsewhere)
+        'So if we are on a saved item, let the options dialog be shown (handled elsewhere)
         handled = false
       end if
     end if

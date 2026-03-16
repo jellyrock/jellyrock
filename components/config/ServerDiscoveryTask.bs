@@ -39,8 +39,79 @@ sub execute()
 
   end while
 
+  FetchServerIds()
   m.top.content = m.servers
   m.log.debug("Jellyfin servers found", m.servers[0], m.servers[1], m.servers[2])
+end sub
+
+' Fetch server IDs and names from /system/info/public for all discovered servers.
+' All requests are fired in parallel on a shared port and collected within a 5s budget.
+' Also strips the URL scheme to produce originalUrl (e.g. "192.168.1.100:8096") so:
+'   - users see clean URLs in the server picker (no "http://" prefix)
+'   - inferServerUrl() can re-probe the correct protocol on each connection,
+'     automatically picking up HTTPS if the server has been upgraded since last save
+sub FetchServerIds()
+  if m.servers.Count() = 0 then return
+
+  port = CreateObject("roMessagePort")
+  identityToIndex = {}
+  transfers = [] ' hold refs — roUrlTransfer is GC'd if not kept in scope
+
+  for i = 0 to m.servers.Count() - 1
+    serverUrl = m.servers[i].baseUrl
+    if not isValidAndNotEmpty(serverUrl) then continue for
+
+    http = CreateObject("roUrlTransfer")
+    http.SetUrl(serverUrl + "/system/info/public")
+    http.SetMessagePort(port)
+    if serverUrl.Left(8) = "https://"
+      http.SetCertificatesFile("common:/certs/ca-bundle.crt")
+    end if
+    http.AsyncGetToString()
+    identityToIndex[http.GetIdentity().ToStr()] = i
+    transfers.push(http)
+  end for
+
+  remaining = transfers.Count()
+  ts = CreateObject("roTimespan")
+
+  while remaining > 0 and ts.TotalMilliseconds() < 5000
+    resp = wait(500, port)
+    if type(resp) = "roUrlEvent"
+      idx = identityToIndex[resp.GetSourceIdentity().ToStr()]
+      if isValid(idx) and resp.GetResponseCode() = 200
+        info = ParseJson(resp.GetString())
+        if isValid(info)
+          if isValidAndNotEmpty(info.Id)
+            m.servers[idx].id = info.Id
+          end if
+          if isValidAndNotEmpty(info.ServerName)
+            m.servers[idx].name = info.ServerName
+          end if
+        end if
+      end if
+      remaining--
+    end if
+  end while
+
+  ' Strip URL scheme from every discovered server to produce a clean originalUrl.
+  ' inferServerUrl() probes http/https candidates in parallel so there is no reconnect
+  ' penalty for servers that are HTTP-only.
+  for i = 0 to m.servers.Count() - 1
+    serverUrl = m.servers[i].baseUrl
+    if not isValidAndNotEmpty(serverUrl) then continue for
+
+    schemeEnd = Instr(1, serverUrl, "://")
+    if schemeEnd > 0
+      originalUrl = Mid(serverUrl, schemeEnd + 3)
+    else
+      originalUrl = serverUrl
+    end if
+    if Right(originalUrl, 1) = "/" and Len(originalUrl) > 1
+      originalUrl = Left(originalUrl, Len(originalUrl) - 1)
+    end if
+    m.servers[i].originalUrl = originalUrl
+  end for
 end sub
 
 sub AddServer(serverItem)
