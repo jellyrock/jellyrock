@@ -5,10 +5,6 @@ sub Main (args as dynamic) as void
   m.port = CreateObject("roMessagePort")
   m.screen.setMessagePort(m.port)
 
-  ' Write screen tracker for screensaver
-  WriteAsciiFile("tmp:/scene.temp", "")
-  MoveFile("tmp:/scene.temp", "tmp:/scene")
-
   m.global = m.screen.getGlobalNode()
   setGlobals()
 
