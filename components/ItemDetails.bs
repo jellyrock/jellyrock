@@ -426,6 +426,8 @@ sub populateInfoGroup()
     populateInfoGroupMusicVideo(item, userSettings)
   else if item.type = "Person"
     populateInfoGroupPerson(item)
+  else if item.type = "BoxSet"
+    populateInfoGroupBoxSet(item, userSettings)
   else
     ' Movie, Video, Recording
     populateInfoGroupMovie(item, userSettings)
@@ -669,6 +671,50 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
   end if
 end sub
 
+' populateInfoGroupBoxSet: Info rows for BoxSet (movie collection)
+' Row 1: Year · Official Rating · Community Rating · N Movies
+' Row 2: Genres · Studio
+sub populateInfoGroupBoxSet(item as object, userSettings as object)
+  if item.productionYear > 0
+    yearNode = createInfoLabel("releaseYear")
+    yearNode.text = stri(item.productionYear).trim()
+    displayInfoNode(yearNode)
+  end if
+
+  if isValidAndNotEmpty(item.officialRating)
+    ratingNode = createInfoLabel("officialRating")
+    ratingNode.text = item.officialRating
+    displayInfoNode(ratingNode)
+  end if
+
+  if userSettings.uiMoviesShowRatings and item.communityRating > 0
+    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
+    communityRatingNode.id = "communityRating"
+    communityRatingNode.rating = item.communityRating
+    displayInfoNode(communityRatingNode)
+  end if
+
+  if item.childCount > 0
+    movieCountNode = createInfoLabel("movieCount")
+    movieLabel = tr("Movie")
+    if item.childCount <> 1 then movieLabel = tr("Movies")
+    movieCountNode.text = stri(item.childCount).trim() + " " + movieLabel
+    displayInfoNode(movieCountNode)
+  end if
+
+  if item.genres.count() > 0
+    genreNode = createInfoLabel("genre")
+    genreNode.text = item.genres.join(" / ")
+    displayDirectorGenreNode(genreNode)
+  end if
+
+  if item.studios.count() > 0
+    studioNode = createInfoLabel("studio")
+    studioNode.text = item.studios[0]
+    displayDirectorGenreNode(studioNode)
+  end if
+end sub
+
 ' populateInfoGroupSeason: Info rows for Season
 ' Row 1: Year · Official Rating (series) · Avg episode runtime (series) · Ends At
 ' Row 2: Series name · Episode count · Studio
@@ -864,9 +910,9 @@ sub itemContentChanged()
 
     ' Media tracks and stream options are only relevant for playable types
     ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space
-    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person")
+    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet")
 
-    if item.type <> "Series" and item.type <> "Season" and item.type <> "Person"
+    if item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet"
       if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
         m.top.selectedVideoStreamId = item.mediaSourceId
       end if
@@ -1186,7 +1232,7 @@ sub setItemLogo(item as object)
   if isValidAndNotEmpty(logoImageTag)
     imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: logoImageTag }
     m.itemLogo.uri = ImageURL(logoItemId, "Logo", imgParams)
-  else if item.type = "Movie" or item.type = "Series"
+  else if item.type = "Movie" or item.type = "Series" or item.type = "BoxSet"
     ' No logo: fall back to primary (poster) image — fetch at full quality; display height is
     ' capped by LOGO_MAX_DISPLAY_HEIGHT in onLogoLoadStatusChanged to avoid overlapping info rows.
     if isValidAndNotEmpty(item.primaryImageTag)
@@ -1510,7 +1556,7 @@ sub setupButtons(item as object)
     playButton = CreateObject("roSGNode", "IconButton")
     playButton.id = "playButton"
     playButton.icon = "pkg:/images/icons/play.png"
-    if itemType = "Series" or itemType = "Season"
+    if itemType = "Series" or itemType = "Season" or itemType = "BoxSet"
       playButton.text = tr("Play All")
     else
       playButton.text = tr("Play")
@@ -1527,8 +1573,8 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(watchedButton)
   end if
 
-  ' Shuffle button — Series and Season only (Person shuffle is async via onPersonHasMediaChanged)
-  if itemType = "Series" or itemType = "Season"
+  ' Shuffle button — Series, Season, and BoxSet (Person shuffle is async via onPersonHasMediaChanged)
+  if itemType = "Series" or itemType = "Season" or itemType = "BoxSet"
     m.shuffleButton = CreateObject("roSGNode", "IconButton")
     m.shuffleButton.id = "shuffleButton"
     m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"

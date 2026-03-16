@@ -1,0 +1,293 @@
+namespace tests
+
+  ' Tests for BoxSet (movie collection) support in ItemDetails:
+  ' setupButtons(), populateInfoGroupBoxSet(), and setItemLogo() for type="BoxSet".
+  @suite("ItemDetails - BoxSet support")
+  class ItemDetailsBoxSetTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private buttonGrp as object
+
+    ' Returns a JellyfinBaseItem node pre-populated as a BoxSet.
+    ' Callers may override individual fields after calling this.
+    private function makeBoxSet() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "boxset-001"
+      item.type = "BoxSet"
+      item.name = "The Dark Knight Trilogy"
+      item.productionYear = 2005
+      item.officialRating = "PG-13"
+      item.communityRating = 8.5
+      item.childCount = 3
+      item.genres = ["Action", "Crime", "Drama"]
+      item.studios = ["Warner Bros."]
+      item.logoImageTag = "logo-tag-abc"
+      item.primaryImageTag = "primary-tag-xyz"
+      return item
+    end function
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.buttonGrp = m.itemDetails.findNode("buttons")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.itemDetails = invalid
+      m.buttonGrp = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("setupButtons() for BoxSet")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("produces exactly 5 buttons for a standard BoxSet (no trailer, no delete)")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      m.assertEqual(m.buttonGrp.getChildCount(), 5)
+    end function
+
+    @it("first button is Play All")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      playBtn = m.buttonGrp.getChild(0)
+      m.assertEqual(playBtn.id, "playButton")
+      m.assertEqual(playBtn.text, "Play All")
+    end function
+
+    @it("second button is Watched")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      watchedBtn = m.buttonGrp.getChild(1)
+      m.assertEqual(watchedBtn.id, "watchedButton")
+    end function
+
+    @it("third button is Shuffle")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      shuffleBtn = m.buttonGrp.getChild(2)
+      m.assertEqual(shuffleBtn.id, "shuffleButton")
+    end function
+
+    @it("fourth button is Favorite")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      favoriteBtn = m.buttonGrp.getChild(3)
+      m.assertEqual(favoriteBtn.id, "favoriteButton")
+    end function
+
+    @it("fifth button is Refresh (always last)")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      refreshBtn = m.buttonGrp.getChild(4)
+      m.assertEqual(refreshBtn.id, "refreshButton")
+    end function
+
+    @it("no Options button for BoxSet (not directly playable)")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      optionsBtn = m.itemDetails.findNode("optionsButton")
+      m.assertInvalid(optionsBtn)
+    end function
+
+    @it("no Go to Series button for BoxSet")
+    function _()
+      item = m.makeBoxSet()
+      m.itemDetails.itemContent = item
+
+      goToSeriesBtn = m.itemDetails.findNode("goToSeriesButton")
+      m.assertInvalid(goToSeriesBtn)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("populateInfoGroupBoxSet() — movie count label")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows plural 'Movies' label when childCount > 1")
+    function _()
+      item = m.makeBoxSet()
+      item.childCount = 3
+      m.itemDetails.itemContent = item
+
+      movieCountNode = m.itemDetails.findNode("movieCount")
+      m.assertNotInvalid(movieCountNode)
+      m.assertEqual(movieCountNode.text, "3 Movies")
+    end function
+
+    @it("shows singular 'Movie' label when childCount = 1")
+    function _()
+      item = m.makeBoxSet()
+      item.childCount = 1
+      m.itemDetails.itemContent = item
+
+      movieCountNode = m.itemDetails.findNode("movieCount")
+      m.assertNotInvalid(movieCountNode)
+      m.assertEqual(movieCountNode.text, "1 Movie")
+    end function
+
+    @it("omits movie count node when childCount = 0")
+    function _()
+      item = m.makeBoxSet()
+      item.childCount = 0
+      m.itemDetails.itemContent = item
+
+      movieCountNode = m.itemDetails.findNode("movieCount")
+      m.assertInvalid(movieCountNode)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("populateInfoGroupBoxSet() — year and rating")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("populates release year node when productionYear > 0")
+    function _()
+      item = m.makeBoxSet()
+      item.productionYear = 2005
+      m.itemDetails.itemContent = item
+
+      yearNode = m.itemDetails.findNode("releaseYear")
+      m.assertNotInvalid(yearNode)
+      m.assertEqual(yearNode.text, "2005")
+    end function
+
+    @it("omits release year node when productionYear = 0")
+    function _()
+      item = m.makeBoxSet()
+      item.productionYear = 0
+      m.itemDetails.itemContent = item
+
+      yearNode = m.itemDetails.findNode("releaseYear")
+      m.assertInvalid(yearNode)
+    end function
+
+    @it("populates official rating node when officialRating is non-empty")
+    function _()
+      item = m.makeBoxSet()
+      item.officialRating = "PG-13"
+      m.itemDetails.itemContent = item
+
+      ratingNode = m.itemDetails.findNode("officialRating")
+      m.assertNotInvalid(ratingNode)
+      m.assertEqual(ratingNode.text, "PG-13")
+    end function
+
+    @it("omits official rating node when officialRating is empty")
+    function _()
+      item = m.makeBoxSet()
+      item.officialRating = ""
+      m.itemDetails.itemContent = item
+
+      ratingNode = m.itemDetails.findNode("officialRating")
+      m.assertInvalid(ratingNode)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("populateInfoGroupBoxSet() — genres and studio")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("populates genre node with slash-joined genres")
+    function _()
+      item = m.makeBoxSet()
+      item.genres = ["Action", "Crime", "Drama"]
+      m.itemDetails.itemContent = item
+
+      genreNode = m.itemDetails.findNode("genre")
+      m.assertNotInvalid(genreNode)
+      m.assertEqual(genreNode.text, "Action / Crime / Drama")
+    end function
+
+    @it("omits genre node when genres array is empty")
+    function _()
+      item = m.makeBoxSet()
+      item.genres = []
+      m.itemDetails.itemContent = item
+
+      genreNode = m.itemDetails.findNode("genre")
+      m.assertInvalid(genreNode)
+    end function
+
+    @it("populates studio node with first studio name")
+    function _()
+      item = m.makeBoxSet()
+      item.studios = ["Warner Bros.", "DC Films"]
+      m.itemDetails.itemContent = item
+
+      studioNode = m.itemDetails.findNode("studio")
+      m.assertNotInvalid(studioNode)
+      m.assertEqual(studioNode.text, "Warner Bros.")
+    end function
+
+    @it("omits studio node when studios array is empty")
+    function _()
+      item = m.makeBoxSet()
+      item.studios = []
+      m.itemDetails.itemContent = item
+
+      studioNode = m.itemDetails.findNode("studio")
+      m.assertInvalid(studioNode)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("setItemLogo() for BoxSet")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses Logo image URL when logoImageTag is present")
+    function _()
+      item = m.makeBoxSet()
+      item.logoImageTag = "logo-tag-abc"
+      item.primaryImageTag = "primary-tag-xyz"
+      m.itemDetails.itemContent = item
+
+      logoNode = m.itemDetails.findNode("itemLogo")
+      m.assertTrue(logoNode.uri.Instr("Logo") >= 0)
+      m.assertTrue(logoNode.uri.Instr("logo-tag-abc") >= 0)
+    end function
+
+    @it("falls back to Primary poster URL when logoImageTag is empty but primaryImageTag is present")
+    function _()
+      item = m.makeBoxSet()
+      item.logoImageTag = ""
+      item.primaryImageTag = "primary-tag-xyz"
+      m.itemDetails.itemContent = item
+
+      logoNode = m.itemDetails.findNode("itemLogo")
+      m.assertTrue(logoNode.uri.Instr("Primary") >= 0)
+      m.assertTrue(logoNode.uri.Instr("primary-tag-xyz") >= 0)
+    end function
+
+    @it("hides logo when both logoImageTag and primaryImageTag are empty")
+    function _()
+      item = m.makeBoxSet()
+      item.logoImageTag = ""
+      item.primaryImageTag = ""
+      m.itemDetails.itemContent = item
+
+      logoNode = m.itemDetails.findNode("itemLogo")
+      m.assertFalse(logoNode.visible)
+      m.assertEqual(logoNode.uri, "")
+    end function
+
+  end class
+
+end namespace
