@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Dependencies
+
+- Update softprops/action-gh-release action to v2.6.1 ([#377](https://github.com/jellyrock/jellyrock/pull/377))
+
 ## [2.1.0](https://github.com/jellyrock/jellyrock/compare/v2.0.1...v2.1.0) - 2026-03-16
 
 ### Added
