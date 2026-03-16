@@ -30,16 +30,10 @@ sub init()
 
   m.seekPosition.translation = [720 - (m.seekPosition.width / 2), m.seekPosition.translation[1]]
 
-  m.screenSaverTimeout = 300
+  m.screenSaverTimeout = 0
 
   m.LoadScreenSaverTimeoutTask.observeField("content", "onScreensaverTimeoutLoaded")
   m.LoadScreenSaverTimeoutTask.control = "RUN"
-
-  m.di = CreateObject("roDeviceInfo")
-
-  ' Write screen tracker for screensaver
-  WriteAsciiFile("tmp:/scene.temp", "nowplaying")
-  MoveFile("tmp:/scene.temp", "tmp:/scene")
 
   loadButtons()
   pageContentChanged()
@@ -227,7 +221,8 @@ sub audioPositionChanged()
 
   ' Only fall into screensaver logic if the user has screensaver enabled in Roku settings
   if m.screenSaverTimeout > 0
-    if m.di.TimeSinceLastKeypress() >= m.screenSaverTimeout - 2
+    di = CreateObject("roDeviceInfo")
+    if di.TimeSinceLastKeypress() >= m.screenSaverTimeout - 2
       if not screenSaverActive()
         startScreenSaver()
       end if
@@ -311,25 +306,16 @@ function playAction() as boolean
     if isValid(m.playButton)
       m.playButton.icon = "pkg:/images/icons/play.png"
     end if
-    ' Allow screen to go to real screensaver
-    WriteAsciiFile("tmp:/scene.temp", "nowplaying-paused")
-    MoveFile("tmp:/scene.temp", "tmp:/scene")
   else if m.audioPlayer.state = "paused"
     m.audioPlayer.control = "resume"
     if isValid(m.playButton)
       m.playButton.icon = "pkg:/images/icons/pause.png"
     end if
-    ' Write screen tracker for screensaver
-    WriteAsciiFile("tmp:/scene.temp", "nowplaying")
-    MoveFile("tmp:/scene.temp", "tmp:/scene")
   else if m.audioPlayer.state = "finished"
     m.audioPlayer.control = "play"
     if isValid(m.playButton)
       m.playButton.icon = "pkg:/images/icons/pause.png"
     end if
-    ' Write screen tracker for screensaver
-    WriteAsciiFile("tmp:/scene.temp", "nowplaying")
-    MoveFile("tmp:/scene.temp", "tmp:/scene")
   end if
 
   return true
@@ -851,8 +837,4 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-sub OnScreenHidden()
-  ' Write screen tracker for screensaver
-  WriteAsciiFile("tmp:/scene.temp", "")
-  MoveFile("tmp:/scene.temp", "tmp:/scene")
-end sub
+
