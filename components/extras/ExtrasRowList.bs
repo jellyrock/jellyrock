@@ -18,6 +18,8 @@ sub init()
   m.LoadAdditionalPartsTask.itemsToLoad = "additionalparts"
   m.LoadSeasonsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadSeasonsTask.itemsToLoad = "seasons"
+  m.LoadBoxSetItemsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadBoxSetItemsTask.itemsToLoad = "boxsetitems"
   m.LoadMoviesTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadMoviesTask.itemsToLoad = "personMovies"
   m.LoadShowsTask = CreateObject("roSGNode", "LoadItemsTask")
@@ -45,6 +47,7 @@ sub init()
   m.rowCast = invalid
   m.rowLikeThis = invalid
   m.rowSpecialFeatures = invalid
+  m.rowBoxSetItems = invalid
   m.rowMovies = invalid
   m.rowTvShows = invalid
   m.rowSeries = invalid
@@ -86,6 +89,8 @@ sub cancelInFlightChain()
   m.LoadShowsTask.unobserveField("content")
   m.LoadSeriesTask.control = "STOP"
   m.LoadSeriesTask.unobserveField("content")
+  m.LoadBoxSetItemsTask.control = "STOP"
+  m.LoadBoxSetItemsTask.unobserveField("content")
 end sub
 
 ' loadParts: Start the extras loading chain appropriate for the item type.
@@ -94,7 +99,8 @@ end sub
 '   Movie / Video / Recording → AdditionalParts → People → LikeThis → SpecialFeatures
 '   MusicVideo / Episode      → People → LikeThis
 '   Series                    → Seasons → People → LikeThis
-'   Season                    → Episodes ("Season X") → People → LikeThis'
+'   Season                    → Episodes ("Season X") → People → LikeThis
+'   BoxSet                    → BoxSetItems ("Movies") → People → LikeThis
 ' m.top.type must be set before calling this function (done by ShowScenes.bs).
 sub loadParts(data as object)
   cancelInFlightChain()
@@ -130,6 +136,11 @@ sub loadParts(data as object)
     m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
     m.LoadPeopleTask.peopleList = m.people
     m.LoadPeopleTask.control = "RUN"
+  else if itemType = "BoxSet"
+    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
+    m.LoadBoxSetItemsTask.itemId = m.top.parentId
+    m.LoadBoxSetItemsTask.observeField("content", "onBoxSetItemsLoaded")
+    m.LoadBoxSetItemsTask.control = "RUN"
   else
     ' Movie, Video, Recording: full chain starting with AdditionalParts
     m.LoadAdditionalPartsTask.observeField("content", "onAdditionalPartsLoaded")
@@ -238,6 +249,25 @@ sub onSeasonAllEpisodesLoaded()
   m.LoadPeopleTask.control = "RUN"
 end sub
 
+' onBoxSetItemsLoaded: Build "Movies" row then chain to People → LikeThis (BoxSet only)
+sub onBoxSetItemsLoaded()
+  content = m.LoadBoxSetItemsTask.content
+  m.LoadBoxSetItemsTask.unobserveField("content")
+  m.LoadBoxSetItemsTask.content = []
+
+  if isValid(content) and content.count() > 0
+    m.rowBoxSetItems = populateRow(m.rowBoxSetItems, tr("Movies"), content, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+  else if isValid(m.rowBoxSetItems)
+    m.top.content.removeChild(m.rowBoxSetItems)
+    m.rowBoxSetItems = invalid
+  end if
+
+  ' Continue chain: People → LikeThis
+  m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
+  m.LoadPeopleTask.peopleList = m.people
+  m.LoadPeopleTask.control = "RUN"
+end sub
+
 sub onAdditionalPartsLoaded()
   parts = m.LoadAdditionalPartsTask.content
   m.LoadAdditionalPartsTask.unobserveField("content")
@@ -309,8 +339,8 @@ sub onLikeThisLoaded()
     m.rowLikeThis = invalid
   end if
 
-  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, or Season
-  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season"
+  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, or BoxSet
+  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet"
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
     m.SpecialFeaturesTask.control = "RUN"

@@ -649,8 +649,10 @@ class JellyfinDataTransformer
       count = apiData.ChildCount ?? 0
       if count = 1
         return "1 item"
+      else if count > 1
+        return str(count).trim() + " items"
       end if
-      return str(count).trim() + " items"
+      return ""
 
     else if itemType = "Program" or itemType = "Recording"
       episodeTitle = apiData.EpisodeTitle ?? ""

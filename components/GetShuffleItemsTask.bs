@@ -36,6 +36,14 @@ sub getShuffleItems()
     })
     if isValid(moviesData) and isValid(moviesData.Items) then items.append(moviesData.Items)
     if isValid(episodesData) and isValid(episodesData.Items) then items.append(episodesData.Items)
+  else if input.type = "BoxSet"
+    data = GetApi().GetItemsByQuery({
+      "ParentId": input.id,
+      "SortBy": "Random",
+      "Limit": 200,
+      "EnableTotalRecordCount": false
+    })
+    if isValid(data) and isValid(data.Items) then items = data.Items
   end if
 
   m.top.shuffleItems = items

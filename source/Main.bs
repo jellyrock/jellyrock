@@ -197,11 +197,13 @@ sub Main (args as dynamic) as void
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "UserView" or selectedItemType = "Folder" or selectedItemType = "Channel" or selectedItemType = "BoxSet"
+        else if selectedItemType = "UserView" or selectedItemType = "Folder" or selectedItemType = "Channel"
           group = CreateLibraryView(selectedItem)
           group.observeField("selectedItem", m.port)
           group.observeField("quickPlayNode", m.port)
           m.global.sceneManager.callFunc("pushScene", group)
+        else if selectedItemType = "BoxSet"
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Episode" or LCase(selectedItemType) = "recording"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Series"
@@ -435,6 +437,8 @@ sub Main (args as dynamic) as void
         m.global.queueManager.callFunc("playQueue")
       else if node.type = "Person"
         group = CreateItemDetailsGroup(node)
+      else if node.type = "BoxSet"
+        group = CreateItemDetailsGroup(node)
       else if node.type = "TvChannel"
         m.global.queueManager.callFunc("clear")
         m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
@@ -514,6 +518,22 @@ sub Main (args as dynamic) as void
             if isValid(allEpData) and isValid(allEpData.Items) and allEpData.Items.count() > 0
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("set", allEpData.Items)
+              m.global.queueManager.callFunc("playQueue")
+            else
+              stopLoadingSpinner()
+            end if
+          else if group.subtype() = "ItemDetails" and group.itemContent.type = "BoxSet"
+            ' BoxSet "Play All": queue all movies in collection in alphabetical order
+            item = group.itemContent
+            boxsetData = GetApi().GetItemsByQuery({
+              "ParentId": item.id,
+              "SortBy": "SortName",
+              "SortOrder": "Ascending",
+              "EnableTotalRecordCount": false
+            })
+            if isValid(boxsetData) and isValid(boxsetData.Items) and boxsetData.Items.count() > 0
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("set", boxsetData.Items)
               m.global.queueManager.callFunc("playQueue")
             else
               stopLoadingSpinner()

@@ -261,6 +261,20 @@ sub loadItems()
     results.push(AudioStream(m.top.itemId))
   else if m.top.itemsToLoad = "backdropImage"
     results.push(BackdropImage(m.top.itemId))
+  else if m.top.itemsToLoad = "boxsetitems"
+    data = GetApi().GetItemsByQuery({
+      "ParentId": m.top.itemId,
+      "SortBy": "SortName",
+      "SortOrder": "Ascending",
+      "Fields": "PrimaryImageAspectRatio,Overview",
+      "EnableTotalRecordCount": false
+    })
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
+      end for
+    end if
   end if
 
   m.top.content = results
