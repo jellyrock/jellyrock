@@ -837,4 +837,59 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
 
+  ' Unobserve global audioPlayer fields (m.audioPlayer is m.global.audioPlayer — don't destroy it)
+  m.audioPlayer.unobserveField("state")
+  m.audioPlayer.unobserveField("position")
+  m.audioPlayer.unobserveField("bufferingStatus")
+
+  ' Unobserve button observer
+  m.buttons.unobserveField("buttonSelected")
+
+  ' Stop and release task nodes (observers may already be cleared by their callbacks)
+  m.LoadMetaDataTask.unobserveField("content")
+  m.LoadMetaDataTask.control = "STOP"
+  m.LoadMetaDataTask = invalid
+
+  m.LoadAudioStreamTask.unobserveField("content")
+  m.LoadAudioStreamTask.control = "STOP"
+  m.LoadAudioStreamTask = invalid
+
+  m.LoadScreenSaverTimeoutTask.unobserveField("content")
+  m.LoadScreenSaverTimeoutTask.control = "STOP"
+  m.LoadScreenSaverTimeoutTask = invalid
+
+  ' Release global node references (nulling local refs only — global nodes are unaffected)
+  m.audioPlayer = invalid
+  m.queueManager = invalid
+
+  ' Clear node references
+  m.buttons = invalid
+  m.playButton = invalid
+  m.shuffleButton = invalid
+  m.repeatButton = invalid
+  m.albumCover = invalid
+  m.playPosition = invalid
+  m.bufferPosition = invalid
+  m.seekBar = invalid
+  m.thumb = invalid
+  m.positionTimestamp = invalid
+  m.seekPosition = invalid
+  m.seekTimestamp = invalid
+  m.totalLengthTimestamp = invalid
+  m.playPositionAnimation = invalid
+  m.playPositionAnimationWidth = invalid
+  m.bufferPositionAnimation = invalid
+  m.bufferPositionAnimationWidth = invalid
+  m.screenSaverBackground = invalid
+  m.screenSaverAlbumCover = invalid
+  m.screenSaverAlbumAnimation = invalid
+  m.screenSaverAlbumCoverFadeIn = invalid
+  m.PosterOne = invalid
+  m.BounceAnimation = invalid
+  m.PosterOneFadeIn = invalid
+end sub

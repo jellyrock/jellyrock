@@ -216,3 +216,35 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   return handled
 end function
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve m.top observer
+  m.top.unobserveField("serverUrl")
+
+  ' Dialog may or may not be open — unobserve and release if present
+  if isValid(m.dialog)
+    m.dialog.unobserveField("buttonSelected")
+    m.dialog = invalid
+  end if
+
+  ' Stop and release task node (created by ScanForServers on init)
+  if isValid(m.ssdpScanner)
+    m.ssdpScanner.unobserveField("content")
+    m.ssdpScanner.control = "STOP"
+    m.ssdpScanner = invalid
+  end if
+
+  ' Clear node references
+  m.serverPicker = invalid
+  m.serverUrlTextbox = invalid
+  m.serverUrlContainer = invalid
+  m.serverUrlOutline = invalid
+  m.buttons = invalid
+
+  ' Release server list data
+  m.servers = invalid
+end sub

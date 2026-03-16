@@ -389,3 +389,42 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   return false
 end function
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve all child node observers
+  m.integerSetting.unobserveField("submit")
+  m.integerSetting.unobserveField("escape")
+  m.hexSetting.unobserveField("submit")
+  m.hexSetting.unobserveField("escape")
+  m.hexSetting.unobserveField("reset")
+  m.settingsMenu.unobserveField("itemFocused")
+  m.settingsMenu.unobserveField("itemSelected")
+  m.boolSetting.unobserveField("checkedItem")
+  m.radioSetting.unobserveField("checkedItem")
+
+  ' Unobserve scoped observer on sceneManager (may be active if reset dialog was open)
+  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+
+  ' Stop and release postTask (observer may already be cleared by postFinished())
+  m.postTask.unobserveField("responseCode")
+  m.postTask.control = "STOP"
+  m.postTask = invalid
+
+  ' Clear node references
+  m.settingsMenu = invalid
+  m.settingDetail = invalid
+  m.settingDesc = invalid
+  m.path = invalid
+  m.boolSetting = invalid
+  m.integerSetting = invalid
+  m.radioSetting = invalid
+  m.hexSetting = invalid
+
+  ' Clear data structures
+  m.userLocation = invalid
+  m.configTree = invalid
+end sub

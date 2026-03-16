@@ -1,7 +1,9 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = log.Logger("AlbumView")
   m.top.optionsAvailable = false
   setupMainNode()
 
@@ -136,4 +138,21 @@ end sub
 sub onDoneLoading()
   m.songList.unobservefield("doneLoading")
   stopLoadingSpinner()
+end sub
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Unobserve child node observer (may already be cleared by onDoneLoading())
+  m.songList.unobserveField("doneLoading")
+
+  ' Clear node references
+  m.buttons = invalid
+  m.albumCover = invalid
+  m.songList = invalid
+  m.infoGroup = invalid
+  m.songListRect = invalid
+  m.dscr = invalid
 end sub

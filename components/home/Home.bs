@@ -183,3 +183,17 @@ sub postFinished()
   m.log.decreaseIndent()
   m.log.verbose("Post task cleanup complete")
 end sub
+
+' destroy: Full teardown releasing all resources before component removal
+' Called automatically by SceneManager.popScene() / clearScenes()
+sub destroy()
+  m.log.verbose("destroy")
+
+  ' Stop and release task node (observer may already be cleared by postFinished())
+  m.postTask.unobserveField("responseCode")
+  m.postTask.control = "STOP"
+  m.postTask = invalid
+
+  ' Clear node references
+  m.homeRows = invalid
+end sub
