@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (ItemDetails) Add support for type `BoxSet` ([#380](https://github.com/jellyrock/jellyrock/pull/380))
 - add destroy() to all remaining screens ([#379](https://github.com/jellyrock/jellyrock/pull/379))
 
 ### Removed
