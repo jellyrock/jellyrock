@@ -265,9 +265,10 @@ sub SaveServerList()
     end if
 
     if isMatch
-      ' Update in-place: refresh name and originalUrl; baseUrl stays canonical for SSDP dedup
+      ' Update in-place: refresh all fields so the registry stays current
       savedServers.serverList[i].name = serverName
       savedServers.serverList[i].id = serverId
+      savedServers.serverList[i].baseUrl = serverUrl ' keep canonical URL current (e.g. HTTP→HTTPS)
       savedServers.serverList[i].originalUrl = originalUrl
       set_setting("saved_servers", FormatJson(savedServers))
       return

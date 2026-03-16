@@ -165,7 +165,7 @@ namespace tests
       ' WHEN
       SaveServerList()
 
-      ' THEN: no duplicate — same entry updated with new canonical baseUrl
+      ' THEN: no duplicate — same entry updated in-place with the new canonical baseUrl
       saved = get_setting("saved_servers")
       parsed = ParseJson(saved)
       m.assertArrayCount(parsed.serverList, 1)
@@ -173,6 +173,7 @@ namespace tests
       entry = parsed.serverList[0]
       m.assertEqual(entry.id, "test-server-123")
       m.assertEqual(entry.originalUrl, "test.jellyfin.local")
+      m.assertEqual(entry.baseUrl, "https://test.jellyfin.local") ' canonical URL must be updated
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
