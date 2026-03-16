@@ -265,7 +265,8 @@ sub SaveServerList()
     end if
 
     if isMatch
-      ' Update in-place: refresh all fields so the registry stays current
+      ' Update in-place: refresh mutable server identity fields (name, id, baseUrl, originalUrl).
+      ' iconUrl/iconWidth/iconHeight are static app branding defaults and are not changed.
       savedServers.serverList[i].name = serverName
       savedServers.serverList[i].id = serverId
       savedServers.serverList[i].baseUrl = serverUrl ' keep canonical URL current (e.g. HTTP→HTTPS)
