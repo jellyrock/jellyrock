@@ -39,7 +39,7 @@ namespace tests
       m.assertEqual(entry.id, "test-server-123")
       m.assertEqual(entry.name, "Test Jellyfin Server")
       m.assertEqual(entry.baseUrl, "https://test.jellyfin.local") ' canonical, lowercase
-      m.assertEqual(entry.originalUrl, "test.jellyfin.local")     ' user-entered from registry
+      m.assertEqual(entry.originalUrl, "test.jellyfin.local") ' user-entered from registry
     end function
 
     @it("appends a new entry when saved_servers has a different server")
