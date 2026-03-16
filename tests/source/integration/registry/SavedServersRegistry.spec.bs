@@ -197,6 +197,79 @@ namespace tests
       m.assertNotEqual(entry.baseUrl, entry.originalUrl)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("DeleteFromServerList()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("deletes entry by server ID")
+    function _()
+      ' GIVEN: two saved servers
+      list = FormatJson({
+        serverList: [
+          { id: "test-server-123", name: "Test Server", baseUrl: "https://test.jellyfin.local", iconUrl: "pkg:/images/branding/logo-icon120.jpg", iconWidth: 120, iconHeight: 120 },
+          { id: "other-server-999", name: "Other Server", baseUrl: "http://192.168.1.50:8096", iconUrl: "pkg:/images/branding/logo-icon120.jpg", iconWidth: 120, iconHeight: 120 }
+        ]
+      })
+      set_setting("saved_servers", list)
+
+      ' WHEN: delete by id
+      DeleteFromServerList("test-server-123")
+
+      ' THEN: only the other server remains
+      saved = get_setting("saved_servers")
+      parsed = ParseJson(saved)
+      m.assertArrayCount(parsed.serverList, 1)
+      m.assertEqual(parsed.serverList[0].id, "other-server-999")
+    end function
+
+    @it("deletes by ID even when caller passes the SSDP baseUrl that differs from saved baseUrl")
+    function _()
+      ' GIVEN: server saved under HTTPS but SSDP discovered it under HTTP (same server ID).
+      ' The picker item's baseUrl is the SSDP HTTP URL; deletion must still remove the entry.
+      list = FormatJson({
+        serverList: [{
+          id: "test-server-123",
+          name: "Test Server",
+          baseUrl: "https://test.jellyfin.local", ' saved canonical URL
+          iconUrl: "pkg:/images/branding/logo-icon120.jpg",
+          iconWidth: 120,
+          iconHeight: 120
+        }]
+      })
+      set_setting("saved_servers", list)
+
+      ' WHEN: delete using the ID (as the delete trigger now does)
+      DeleteFromServerList("test-server-123")
+
+      ' THEN: entry is removed despite URL mismatch
+      saved = get_setting("saved_servers")
+      parsed = ParseJson(saved)
+      m.assertArrayCount(parsed.serverList, 0)
+    end function
+
+    @it("deletes entry by baseUrl when no id present (legacy backward compat)")
+    function _()
+      ' GIVEN: old-style entry without an id field
+      list = FormatJson({
+        serverList: [{
+          name: "Old Server",
+          baseUrl: "http://192.168.1.100:8096",
+          iconUrl: "pkg:/images/branding/logo-icon120.jpg",
+          iconWidth: 120,
+          iconHeight: 120
+        }]
+      })
+      set_setting("saved_servers", list)
+
+      ' WHEN: delete by canonical baseUrl (legacy path)
+      DeleteFromServerList("http://192.168.1.100:8096")
+
+      ' THEN: entry removed
+      saved = get_setting("saved_servers")
+      parsed = ParseJson(saved)
+      m.assertArrayCount(parsed.serverList, 0)
+    end function
+
     @it("falls back to canonical baseUrl for originalUrl when registry server key is missing")
     function _()
       ' GIVEN: no "server" key in registry (edge case — e.g. first-ever run after upgrade)

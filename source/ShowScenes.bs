@@ -287,21 +287,30 @@ sub SaveServerList()
   set_setting("saved_servers", FormatJson(savedServers))
 end sub
 
-sub DeleteFromServerList(urlToDelete)
+sub DeleteFromServerList(idOrUrl as string)
+  ' idOrUrl should be the server's id when available (passed from itemToDelete.id).
+  ' Falls back to a canonical baseUrl for legacy entries that predate the id field.
+  ' ID match is tried first so deletion is correct even when the saved entry's baseUrl
+  ' differs from the picker item's baseUrl (e.g. a saved HTTPS entry matched via SSDP
+  ' on HTTP — the picker item carries the SSDP baseUrl, not the saved one).
   saved = get_setting("saved_servers")
-  if isValid(urlToDelete)
-    urlToDelete = LCase(urlToDelete)
-  end if
-  if isValid(saved)
-    savedServers = ParseJson(saved)
-    newServers = { serverList: [] }
-    for each item in savedServers.serverList
-      if item.baseUrl <> urlToDelete
-        newServers.serverList.Push(item)
-      end if
-    end for
-    set_setting("saved_servers", FormatJson(newServers))
-  end if
+  if not isValid(saved) then return
+
+  savedServers = ParseJson(saved)
+  newServers = { serverList: [] }
+  normalizedInput = LCase(idOrUrl) ' for URL fallback comparison (baseUrls are always lowercase)
+  for each item in savedServers.serverList
+    keepEntry = true
+    if isValidAndNotEmpty(item.id) and item.id = idOrUrl
+      keepEntry = false ' ID match — remove this entry
+    else if item.baseUrl = normalizedInput
+      keepEntry = false ' URL fallback — remove this entry
+    end if
+    if keepEntry
+      newServers.serverList.Push(item)
+    end if
+  end for
+  set_setting("saved_servers", FormatJson(newServers))
 end sub
 
 ' Roku Performance monitoring
@@ -403,9 +412,14 @@ function CreateServerGroup()
       else if nodeName = "delete_saved"
         serverPicker = screen.findNode("serverPicker")
         itemToDelete = serverPicker.content.getChild(serverPicker.itemFocused)
-        urlToDelete = itemToDelete.baseUrl
-        if isValid(urlToDelete)
-          DeleteFromServerList(urlToDelete)
+        ' Prefer id for deletion — robust when the picker item's baseUrl differs from
+        ' the saved entry's baseUrl (e.g. SSDP HTTP item merged from an HTTPS saved entry)
+        idOrUrl = itemToDelete.id
+        if not isValidAndNotEmpty(idOrUrl)
+          idOrUrl = itemToDelete.baseUrl
+        end if
+        if isValidAndNotEmpty(idOrUrl)
+          DeleteFromServerList(idOrUrl)
           serverPicker.content.removeChild(itemToDelete)
           sidepanel.visible = false
           serverPicker.setFocus(true)
