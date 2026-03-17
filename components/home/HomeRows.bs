@@ -588,7 +588,12 @@ function getItemAtIndices(indices as object) as dynamic
 end function
 
 sub itemSelected()
-  m.top.selectedItem = getItemAtIndices(m.top.rowItemSelected)
+  item = getItemAtIndices(m.top.rowItemSelected)
+
+  ' Ignore skeleton placeholder items
+  if not isValid(item) or item.type = "Loading" then return
+
+  m.top.selectedItem = item
 
   'Prevent the selected item event from double firing
   m.top.selectedItem = invalid
@@ -620,7 +625,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     if key = "play"
       print "play was pressed from homerow"
       itemToPlay = getItemAtIndices(m.top.rowItemFocused)
-      if isValid(itemToPlay)
+      if isValid(itemToPlay) and itemToPlay.type <> "Loading"
         m.top.quickPlayNode = itemToPlay
       end if
       return true

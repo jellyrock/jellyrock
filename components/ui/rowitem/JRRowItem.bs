@@ -38,6 +38,16 @@ sub renderItem()
   item = m.top.itemContent
   if not isValid(item) then return
 
+  ' Skeleton placeholder — show only the backdrop rectangle, no text or poster
+  if item.type = "Loading"
+    m.backdrop.visible = true
+    m.poster.uri = ""
+    m.staticTitle.visible = false
+    m.title.visible = false
+    m.subtitle.visible = false
+    return
+  end if
+
   m.poster.callFunc("resetBadge")
 
   slotWidth = m.top.width
