@@ -1,0 +1,25 @@
+{
+  "Id": "channel456",
+  "Type": "TvChannel",
+  "Name": "Channel 4",
+  "Number": "4",
+  "ImageTags": {
+    "Primary": "chanTag456"
+  },
+  "CurrentProgram": {
+    "Id": "program456",
+    "Type": "Program",
+    "Name": "Gladiator",
+    "IsMovie": true,
+    "IsSeries": false,
+    "RunTimeTicks": 54000000000,
+    "OfficialRating": "R",
+    "CommunityRating": 8.1,
+    "ProductionYear": 2000,
+    "EndDate": "2024-01-15T22:42:00.000Z",
+    "ImageTags": {
+      "Primary": "gladiatorPrimary",
+      "Logo": "gladiatorLogo"
+    }
+  }
+}

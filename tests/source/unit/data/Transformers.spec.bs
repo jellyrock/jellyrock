@@ -1893,5 +1893,74 @@ namespace tests
       m.assertEqual(result.subtitle, "Director")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyfinDataTransformer - TvChannel fields")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets isLive=true and live=true for TvChannel")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = MockDataLoader.LoadItem("tvchannel-basic")
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.type, "TvChannel")
+      m.assertTrue(result.isLive)
+      m.assertTrue(result.live)
+    end function
+
+    @it("reads channelNumber from apiData.Number for TvChannel")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = MockDataLoader.LoadItem("tvchannel-basic")
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.channelNumber, "1")
+    end function
+
+    @it("leaves currentProgram invalid when no CurrentProgram in API data")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = MockDataLoader.LoadItem("tvchannel-basic")
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertInvalid(result.currentProgram)
+    end function
+
+    @it("transforms CurrentProgram into a typed JellyfinBaseItem child node")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = MockDataLoader.LoadItem("tvchannel-with-program")
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertNotInvalid(result.currentProgram)
+      m.assertEqual(result.currentProgram.id, "program456")
+      m.assertEqual(result.currentProgram.name, "Gladiator")
+      m.assertTrue(result.currentProgram.isMovie)
+      m.assertFalse(result.currentProgram.isSeries)
+    end function
+
+    @it("transforms CurrentProgram runtime and image tags")
+    function _()
+      ' 90 minutes = 90 * 60 * 10000000 = 54000000000 ticks
+      transformer = new JellyfinDataTransformer()
+
+      apiData = MockDataLoader.LoadItem("tvchannel-with-program")
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertNotInvalid(result.currentProgram)
+      m.assertEqual(result.currentProgram.runTimeTicks, 54000000000&)
+      m.assertEqual(result.currentProgram.primaryImageTag, "gladiatorPrimary")
+      m.assertEqual(result.currentProgram.logoImageTag, "gladiatorLogo")
+    end function
+
   end class
 end namespace

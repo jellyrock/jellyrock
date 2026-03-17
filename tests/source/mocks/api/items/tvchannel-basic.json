@@ -1,0 +1,9 @@
+{
+  "Id": "channel123",
+  "Type": "TvChannel",
+  "Name": "BBC One",
+  "Number": "1",
+  "ImageTags": {
+    "Primary": "chanTag123"
+  }
+}

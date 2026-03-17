@@ -191,6 +191,64 @@ namespace tests
       m.assertTrue(true)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("TvChannel currentProgram overrides")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses currentProgram.isMovie when TvChannel has a movie program")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.setFields({ id: "prog-1", type: "Program", isMovie: true })
+      item = m.createItem({ id: "ch-1", type: "TvChannel" })
+      item.currentProgram = program
+      m.osd.itemData = item
+
+      m.assertTrue(m.osd.isMovie)
+      m.assertFalse(m.osd.isSeries)
+    end function
+
+    @it("uses currentProgram.isSeries when TvChannel has a series program")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.setFields({ id: "prog-2", type: "Program", isSeries: true })
+      item = m.createItem({ id: "ch-2", type: "TvChannel" })
+      item.currentProgram = program
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.isMovie)
+      m.assertTrue(m.osd.isSeries)
+    end function
+
+    @it("falls back to heuristic isMovie when TvChannel has no currentProgram")
+    function _()
+      ' No currentProgram, no series metadata → fallback heuristic defaults to isMovie
+      item = m.createItem({ id: "ch-3", type: "TvChannel" })
+      m.osd.itemData = item
+
+      m.assertTrue(m.osd.isMovie)
+      m.assertFalse(m.osd.isSeries)
+    end function
+
+    @it("uses currentProgram.runTimeTicks for TvChannel runtime")
+    function _()
+      ' 162 minutes = 162 * 60 * 10000000 = 97200000000 ticks
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.setFields({ id: "prog-3", type: "Program", runTimeTicks: 97200000000& })
+      item = m.createItem({ id: "ch-4", type: "TvChannel" })
+      item.currentProgram = program
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.runTimeMinutes, 162)
+    end function
+
+    @it("reports 0 runTimeMinutes when TvChannel has no currentProgram")
+    function _()
+      item = m.createItem({ id: "ch-5", type: "TvChannel" })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.runTimeMinutes, 0)
+    end function
+
   end class
 
 end namespace
