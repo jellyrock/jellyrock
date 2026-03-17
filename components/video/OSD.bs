@@ -61,10 +61,15 @@ sub onItemDataChanged()
 
   itemType = item.type
 
-  ' Determine isMovie/isSeries flags for ratings display settings
-  ' TODO Phase 6: For TvChannel/Program types, isMovie/isSeries should come from CurrentProgram data
-  isMovieFlag = item.isMovie
-  isSeriesFlag = item.isSeries
+  ' Determine isMovie/isSeries flags for ratings display settings.
+  ' For TvChannel, use the currently-airing program's flags if available.
+  if itemType = "TvChannel" and isValid(item.currentProgram)
+    isMovieFlag = item.currentProgram.isMovie
+    isSeriesFlag = item.currentProgram.isSeries
+  else
+    isMovieFlag = item.isMovie
+    isSeriesFlag = item.isSeries
+  end if
 
   ' Validate mutual exclusivity: both flags cannot be true
   if isMovieFlag and isSeriesFlag
@@ -93,15 +98,16 @@ sub onItemDataChanged()
   ' Stream counts - read pre-computed values from item node
   m.top.numAudioStreams = item.audioStreamCount
 
-  ' Runtime
-  if item.runTimeTicks > 0
-    m.top.runTimeMinutes = ticksToMinutes(item.runTimeTicks)
+  ' Runtime — for TvChannel, use the currently-airing program's runtime if available
+  runTimeTicks = item.runTimeTicks
+  if itemType = "TvChannel" and isValid(item.currentProgram) and item.currentProgram.runTimeTicks > 0
+    runTimeTicks = item.currentProgram.runTimeTicks
+  end if
+  if runTimeTicks > 0
+    m.top.runTimeMinutes = ticksToMinutes(runTimeTicks)
   else
     m.top.runTimeMinutes = 0
   end if
-
-  ' TODO Phase 6: Live TV CurrentProgram override for runTimeTicks/runTimeMinutes
-  ' When currentProgram data is available on JellyfinBaseItem, override here.
 
   setButtonStates()
   populateData()
@@ -148,15 +154,30 @@ sub setButtonStates()
 end sub
 
 sub setEndsAtText()
+  endsAtText = m.top.findNode("endsAtText")
+
   if m.global.user.settings.uiDesignHideClock
-    endsAtText = m.top.findNode("endsAtText")
     endsAtText.visible = false
     m.endsAtTime.text = ""
     return
   end if
 
-  ' TODO Phase 6: Live TV "ends at" time from CurrentProgram.EndDate
-  ' When currentProgram data is available on JellyfinBaseItem, restore TvChannel EndDate display here.
+  ' For live TV channels, use the currently-airing program's EndDate for end time.
+  ' remainingPositionTime ≈ 0 for live streams so the default calculation would show current time.
+  if isValid(m.itemData) and m.itemData.type = "TvChannel"
+    currentProgram = m.itemData.currentProgram
+    if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.endDate)
+      endDt = CreateObject("roDateTime")
+      endDt.FromISO8601String(currentProgram.endDate)
+      endDt.toLocalTime()
+      m.endsAtTime.text = formatTime(endDt)
+      endsAtText.visible = true
+    else
+      endsAtText.visible = false
+      m.endsAtTime.text = ""
+    end if
+    return
+  end if
 
   ' Calculate endsAtTime based on remainingPositionTime
   date = CreateObject("roDateTime")
@@ -169,16 +190,16 @@ end sub
 
 sub setVideoLogoGroup()
   m.videoLogo.uri = m.top.videoLogo
-
-  ' TODO Phase 6: Live TV channel logo from CurrentProgram image tags
-  ' When currentProgram data is available on JellyfinBaseItem, restore TvChannel logo override here.
 end sub
 
 sub setVideoTitle()
-  m.videoTitle.text = m.itemData.name
-
-  ' TODO Phase 6: Live TV channel title from CurrentProgram.Name
-  ' When currentProgram data is available on JellyfinBaseItem, restore TvChannel title override here.
+  item = m.itemData
+  ' For TvChannel, display the currently-airing program name rather than the channel name
+  if item.type = "TvChannel" and isValid(item.currentProgram) and isValidAndNotEmpty(item.currentProgram.name)
+    m.videoTitle.text = item.currentProgram.name
+  else
+    m.videoTitle.text = item.name
+  end if
 end sub
 
 sub setVideoSubTitle()
@@ -188,6 +209,12 @@ sub setVideoSubTitle()
   airDateNodeCreated = false
   item = m.itemData
   itemType = item.type
+
+  ' For TvChannel, ratings and dates are sourced from the currently-airing program when available
+  metaItem = item
+  if itemType = "TvChannel" and isValid(item.currentProgram)
+    metaItem = item.currentProgram
+  end if
 
   ' EPISODE
   if itemType = "Episode" or itemType = "Recording"
@@ -239,8 +266,43 @@ sub setVideoSubTitle()
       displaySubtitleNode(productionYearNode)
     end if
   else if itemType = "TvChannel"
-    ' TODO Phase 6: Live TV channel number/name from CurrentProgram data
-    ' When currentProgram data is available on JellyfinBaseItem, restore channel info display here.
+    ' Display currently-airing program metadata (episode info or movie year)
+    currentProgram = item.currentProgram
+    if isValid(currentProgram)
+      if currentProgram.isSeries
+        ' Episode info: S1E2 - Episode Name
+        episodeInfoText = ""
+        if currentProgram.parentIndexNumber > 0
+          episodeInfoText = episodeInfoText + `${tr("S")}${currentProgram.parentIndexNumber}`
+        end if
+        if currentProgram.indexNumber > 0
+          episodeInfoText = episodeInfoText + `${tr("E")}${currentProgram.indexNumber}`
+        end if
+        if isValidAndNotEmpty(currentProgram.name)
+          if isValidAndNotEmpty(episodeInfoText)
+            episodeInfoText = episodeInfoText + ` - ${currentProgram.name}`
+          else
+            episodeInfoText = currentProgram.name
+          end if
+        end if
+        if isValidAndNotEmpty(episodeInfoText)
+          episodeInfoNode = createSubtitleLabelNode("episodeInfo")
+          episodeInfoNode.text = episodeInfoText
+          displaySubtitleNode(episodeInfoNode)
+        end if
+      else if currentProgram.isMovie and currentProgram.productionYear > 0
+        airDateNodeCreated = true
+        productionYearNode = createSubtitleLabelNode("productionYear")
+        productionYearNode.text = currentProgram.productionYear.toStr().trim()
+        displaySubtitleNode(productionYearNode)
+      end if
+    end if
+    ' Channel number (e.g. "CH 4") — always shown when available
+    if isValidAndNotEmpty(item.channelNumber)
+      channelNumberNode = createSubtitleLabelNode("channelNumber")
+      channelNumberNode.text = `${tr("CH")} ${item.channelNumber}`
+      displaySubtitleNode(channelNumberNode)
+    end if
   end if
 
   ' append these to all video types
@@ -248,9 +310,9 @@ sub setVideoSubTitle()
   userSettings = m.global.user.settings
 
   ' Official Rating
-  if isValidAndNotEmpty(item.officialRating)
+  if isValidAndNotEmpty(metaItem.officialRating)
     officialRatingNode = createSubtitleLabelNode("officialRating")
-    officialRatingNode.text = item.officialRating
+    officialRatingNode.text = metaItem.officialRating
     displaySubtitleNode(officialRatingNode)
   end if
 
@@ -269,30 +331,28 @@ sub setVideoSubTitle()
 
   if showRatings
     ' communityRating (star + rating)
-    ' TODO Phase 6: For TvChannel/Program, communityRating should come from CurrentProgram
-    if item.communityRating <> 0
+    if metaItem.communityRating <> 0
       communityRatingNode = CreateObject("roSGNode", "CommunityRating")
       communityRatingNode.id = "communityRating"
-      communityRatingNode.rating = item.communityRating
+      communityRatingNode.rating = metaItem.communityRating
       communityRatingNode.iconSize = 30
       displaySubtitleNode(communityRatingNode)
     end if
 
     ' criticRating (tomato + rating)
-    ' TODO Phase 6: For TvChannel/Program, criticRating should come from CurrentProgram
-    if item.criticRating <> 0
+    if metaItem.criticRating <> 0
       criticRatingNode = CreateObject("roSGNode", "CriticRating")
       criticRatingNode.id = "criticRating"
-      criticRatingNode.rating = item.criticRating
+      criticRatingNode.rating = metaItem.criticRating
       criticRatingNode.iconSize = 30
       displaySubtitleNode(criticRatingNode)
     end if
   end if
 
   ' videoAirDate if needed
-  if not airDateNodeCreated and isValidAndNotEmpty(item.premiereDate)
+  if not airDateNodeCreated and isValidAndNotEmpty(metaItem.premiereDate)
     premiereDateNode = createSubtitleLabelNode("videoAirDate")
-    premiereDateNode.text = formatIsoDateVideo(item.premiereDate)
+    premiereDateNode.text = formatIsoDateVideo(metaItem.premiereDate)
     displaySubtitleNode(premiereDateNode)
   end if
 

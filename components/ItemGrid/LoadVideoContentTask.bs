@@ -22,8 +22,9 @@ end sub
 sub loadItems()
   queueManager = m.global.queueManager
 
-  ' Reset intro tracker in case task gets reused
+  ' Reset per-run fields in case task gets reused
   m.top.isIntro = false
+  m.top.errorMsg = ""
 
   ' Only show preroll once per queue
   if queueManager.callFunc("isPrerollActive")
@@ -125,12 +126,17 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   subtitle_idx = m.top.selectedSubtitleIndex
   videotype = LCase(meta.type)
 
-  ' Check for any Live TV streams or Recordings coming from other places other than the TV Guide
+  ' Check for any Live TV streams or Recordings coming from other places other than the TV Guide.
+  ' TvChannel is always live — include it here so mediaSourceId is cleared and live-stream
+  ' flags (content.live, StreamFormat, transcodeParams.LiveStreamId) are set correctly below.
   isLive = false
   titleOverride = ""
-  if videotype = "recording" or isValidAndNotEmpty(meta.channelId)
+  if videotype = "recording" or videotype = "tvchannel" or isValidAndNotEmpty(meta.channelId)
     if isValidAndNotEmpty(meta.episodeTitle)
       titleOverride = meta.episodeTitle
+    else if videotype = "tvchannel" and isValid(meta.currentProgram) and isValidAndNotEmpty(meta.currentProgram.name)
+      ' For TvChannel, prefer the currently-airing program's name over the channel name
+      titleOverride = meta.currentProgram.name
     else
       titleOverride = meta.name
     end if
@@ -141,9 +147,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
       video.id = meta.id
     end if
   end if
-
-  ' TVChannel CurrentProgram fields (live program title/episode info) deferred to Phase 6
-  ' meta.json.CurrentProgram is not a typed field on JellyfinBaseItem
 
   video.chapters = meta.chapters
   video.title = isValidAndNotEmpty(titleOverride) ? titleOverride : meta.title
@@ -174,6 +177,21 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
       video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.seriesPrimaryImageTag })
     else if isValidAndNotEmpty(meta.primaryImageTag)
       video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
+    end if
+  else if videotype = "tvchannel"
+    ' For live TV channels, prefer the currently-airing program's artwork over the channel icon.
+    ' Priority: program logo → program primary (poster) → channel icon (fallback).
+    currentProgram = meta.currentProgram
+    if isValid(currentProgram)
+      if isValidAndNotEmpty(currentProgram.logoImageTag)
+        video.logoImage = ImageURL(currentProgram.id, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: currentProgram.logoImageTag })
+      else if isValidAndNotEmpty(currentProgram.primaryImageTag)
+        video.logoImage = ImageURL(currentProgram.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: currentProgram.primaryImageTag })
+      else if isValidAndNotEmpty(meta.primaryImageTag)
+        video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 212, maxWidth: 212, quality: 90, tag: meta.primaryImageTag })
+      end if
+    else if isValidAndNotEmpty(meta.primaryImageTag)
+      video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 212, maxWidth: 212, quality: 90, tag: meta.primaryImageTag })
     end if
   end if
 
@@ -224,21 +242,26 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   ' Call ItemPostPlaybackInfo ONCE with final subtitle_idx
   m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audio_stream_idx, subtitle_idx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
   if not isValid(m.playbackInfo)
-    video.errorMsg = "Error loading playback info"
+    m.log.error("ItemPostPlaybackInfo returned invalid response")
+    m.top.errorMsg = tr("There was an error retrieving playback information from the server.")
     video.content = invalid
     return
   end if
 
-  ' Playback info can be logged here for debugging playback issues
-  print "LoadItems_AddVideoContent() m.playbackInfo =", m.playbackInfo
-  if m.playbackInfo.MediaSources.Count() > 0
-    for each mediaSource in m.playbackInfo.MediaSources
-      print "mediaSource =", mediaSource
-      ' for each mediaStream in mediaSource.MediaStreams
-      '   print "mediaStream =", mediaStream
-      ' end for
-    end for
+  ' Surface structured server errors as user-friendly messages before inspecting MediaSources
+  if isValidAndNotEmpty(m.playbackInfo.ErrorCode)
+    errorCode = m.playbackInfo.ErrorCode
+    m.log.error("PlaybackInfo returned error code", "errorCode", errorCode, "itemId", video.id)
+    if errorCode = "NoCompatibleStream"
+      m.top.errorMsg = tr("No compatible streams are available for this item.")
+    else
+      m.top.errorMsg = tr("The server was unable to start playback.") + " (" + errorCode + ")"
+    end if
+    video.content = invalid
+    return
   end if
+
+  m.log.debug("PlaybackInfo loaded", "mediaSourceCount", m.playbackInfo.MediaSources.Count())
 
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
   addSubtitlesToVideo(video, meta)
@@ -311,9 +334,10 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     applyLiveDirectPlayFallback(video, meta)
   else
     if not isValid(m.playbackInfo.MediaSources[0].TranscodingUrl)
-      ' If server does not provide a transcode URL, display a message to the user
-      m.global.sceneManager.callFunc("userMessage", tr("Error Getting Playback Information"), tr("An error was encountered while playing this item.  Server did not provide required transcoding data."))
-      video.errorMsg = "Error getting playback information"
+      ' Server did not provide a transcode URL — surface a message to the user via the task field
+      ' so VideoPlayerView shows one dialog (not two).
+      m.log.error("Server did not provide a TranscodingUrl", "itemId", video.id)
+      m.top.errorMsg = tr("An error was encountered while playing this item. The server did not provide the required transcoding data.")
       video.content = invalid
       return
     end if

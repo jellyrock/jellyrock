@@ -28,5 +28,8 @@
          Set by VideoPlayerView when retrying after a direct-play failure (VideoLevelNotSupported
          or live-stream direct-play error) so the server returns a transcoding URL instead. -->
     <field id="forceTranscoding" type="boolean" value="false" />
+    <!-- User-facing error message set by the task on failure. Read by VideoPlayerView in
+         onVideoContentLoaded() to show a specific error dialog instead of the generic fallback. -->
+    <field id="errorMsg" type="string" value="" />
   </interface>
 </component>
