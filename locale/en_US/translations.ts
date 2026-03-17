@@ -98,9 +98,8 @@
       <translation>Always Show</translation>
     </message>
     <message>
-      <source>An error was encountered while playing this item. Server did not provide required transcoding data.</source>
-      <translation>An error was encountered while playing this item. Server did not provide required transcoding data.</translation>
-      <extracomment>Content of message box when trying to play an item which requires transcoding, and the server did not provide transcode url</extracomment>
+      <source>An error was encountered while playing this item. The server did not provide the required transcoding data.</source>
+      <translation>An error was encountered while playing this item. The server did not provide the required transcoding data.</translation>
     </message>
     <message>
       <source>AppearsOn</source>
@@ -462,11 +461,6 @@
       <extracomment>Dialog title when error occurs during playback</extracomment>
     </message>
     <message>
-      <source>Error Getting Playback Information</source>
-      <translation>Error Getting Playback Information</translation>
-      <extracomment>Dialog Title: Received error from server when trying to get information about the selected item for playback</extracomment>
-    </message>
-    <message>
       <source>Exit</source>
       <translation>Exit</translation>
     </message>
@@ -773,6 +767,10 @@
       <source>No Chapter Data Found</source>
       <translation>No Chapter Data Found</translation>
       <extracomment>Message shown in OSD when no chapter data is returned by the API</extracomment>
+    </message>
+    <message>
+      <source>No compatible streams are available for this item.</source>
+      <translation>No compatible streams are available for this item.</translation>
     </message>
     <message>
       <source>No schedule information</source>
@@ -1288,6 +1286,10 @@
       <extracomment>Name of a setting - should we hide subtitles that might transcode</extracomment>
     </message>
     <message>
+      <source>The server was unable to start playback.</source>
+      <translation>The server was unable to start playback.</translation>
+    </message>
+    <message>
       <source>The source file is entirely compatible with this client and the session is receiving the file without modifications.</source>
       <translation>The source file is entirely compatible with this client and the session is receiving the file without modifications.</translation>
       <extracomment>Direct play info box text in GetPlaybackInfoTask.brs</extracomment>
@@ -1299,6 +1301,10 @@
     <message>
       <source>There was an error authenticating via Quick Connect.</source>
       <translation>There was an error authenticating via Quick Connect.</translation>
+    </message>
+    <message>
+      <source>There was an error retrieving playback information from the server.</source>
+      <translation>There was an error retrieving playback information from the server.</translation>
     </message>
     <message>
       <source>There was an error retrieving the data for this item from the server.</source>
