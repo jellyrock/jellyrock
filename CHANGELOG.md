@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - (ItemDetails) Add support for type `BoxSet` ([#380](https://github.com/jellyrock/jellyrock/pull/380))
 - add destroy() to all remaining screens ([#379](https://github.com/jellyrock/jellyrock/pull/379))
 
+### Fixed
+
+- TvChannel playback and implement OSD CurrentProgram metadata ([#381](https://github.com/jellyrock/jellyrock/pull/381))
+
 ### Removed
 
 - dead tmp:/scene file operations for screensaver ([#378](https://github.com/jellyrock/jellyrock/pull/378))
