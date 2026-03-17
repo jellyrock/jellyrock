@@ -619,6 +619,30 @@ function arrayHasValue(arr as object, value as dynamic) as boolean
   return false
 end function
 
+' Filters an array of nodes, excluding any whose nodeKey value appears in excludeArray
+'
+' @param {object} nodeArray - Array of nodes to filter
+' @param {string} nodeKey - Field name to check on each node
+' @param {object} excludeArray - Array of values to exclude
+' @return {object} Filtered array with excluded nodes removed
+function filterNodeArray(nodeArray as object, nodeKey as string, excludeArray as object) as object
+  if excludeArray.IsEmpty() then return nodeArray
+
+  newNodeArray = []
+  for each node in nodeArray
+    excludeThisNode = false
+    for each exclude in excludeArray
+      if node[nodeKey] = exclude
+        excludeThisNode = true
+      end if
+    end for
+    if excludeThisNode = false
+      newNodeArray.Push(node)
+    end if
+  end for
+  return newNodeArray
+end function
+
 ' Takes an array of data, shuffles the order, then returns the array
 ' uses the Fisher-Yates shuffling algorithm
 function shuffleArray(array as object) as object

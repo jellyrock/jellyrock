@@ -194,6 +194,9 @@ sub destroy()
   m.postTask.control = "STOP"
   m.postTask = invalid
 
-  ' Clear node references
+  ' Destroy child components before clearing references
+  if isValid(m.homeRows)
+    m.homeRows.callFunc("destroy")
+  end if
   m.homeRows = invalid
 end sub

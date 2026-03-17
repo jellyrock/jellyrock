@@ -435,7 +435,7 @@ sub createLiveTVRow()
   if not sectionExists(sectionName)
     nextUpRow = m.top.content.CreateChild("HomeRow")
     nextUpRow.title = sectionName
-    nextUpRow.cursorSize = rowSlotSize.PORTRAIT
+    nextUpRow.cursorSize = rowSlotSize.SQUARE
   end if
 
   m.LoadOnNowTask.observeField("content", "updateOnNowItems")
@@ -710,7 +710,6 @@ function getItemAtIndices(indices as object) as dynamic
 end function
 
 sub itemSelected()
-  m.selectedRowItem = m.top.rowItemSelected
   m.top.selectedItem = getItemAtIndices(m.top.rowItemSelected)
 
   'Prevent the selected item event from double firing
@@ -756,20 +755,40 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-function filterNodeArray(nodeArray as object, nodeKey as string, excludeArray as object) as object
-  if excludeArray.IsEmpty() then return nodeArray
+' destroy: Full teardown releasing all resources before component removal
+' Called by Home.bs destroy() before nulling the homeRows reference
+sub destroy()
+  ' Unobserve m.top fields
+  m.top.unobserveField("rowItemSelected")
+  m.top.unobserveField("rowItemFocused")
 
-  newNodeArray = []
-  for each node in nodeArray
-    excludeThisNode = false
-    for each exclude in excludeArray
-      if node[nodeKey] = exclude
-        excludeThisNode = true
-      end if
-    end for
-    if excludeThisNode = false
-      newNodeArray.Push(node)
-    end if
-  end for
-  return newNodeArray
-end function
+  ' Stop and release loading timer
+  m.loadingTimer.unobserveField("fire")
+  m.loadingTimer.control = "stop"
+  m.loadingTimer = invalid
+
+  ' Stop and release all persistent task nodes
+  m.LoadLibrariesTask.unobserveField("content")
+  m.LoadLibrariesTask.control = "STOP"
+  m.LoadLibrariesTask = invalid
+
+  m.LoadContinueWatchingTask.unobserveField("content")
+  m.LoadContinueWatchingTask.control = "STOP"
+  m.LoadContinueWatchingTask = invalid
+
+  m.LoadNextUpTask.unobserveField("content")
+  m.LoadNextUpTask.control = "STOP"
+  m.LoadNextUpTask = invalid
+
+  m.LoadOnNowTask.unobserveField("content")
+  m.LoadOnNowTask.control = "STOP"
+  m.LoadOnNowTask = invalid
+
+  m.LoadFavoritesTask.unobserveField("content")
+  m.LoadFavoritesTask.control = "STOP"
+  m.LoadFavoritesTask = invalid
+
+  ' Clear data caches
+  m.libraryData = invalid
+  m.filteredLatest = invalid
+end sub
