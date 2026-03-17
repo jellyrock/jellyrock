@@ -186,6 +186,11 @@
     <field id="seriesTimerId" type="string" value="" />
     <field id="timerId" type="string" value="" />
     <field id="completionPercentage" type="float" value="0.0" />
+    <!-- Currently airing program (TvChannel type only). Populated from apiData.CurrentProgram
+         by JellyfinDataTransformer — a nested BaseItemDto returned by default on all TvChannel
+         items. Used by the OSD to display program title, episode info, artwork, runtime, and
+         end time instead of raw channel metadata. -->
+    <field id="currentProgram" type="node" />
 
     <!-- ==================== -->
     <!-- PERMISSIONS          -->

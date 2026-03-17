@@ -517,10 +517,17 @@ sub onVideoContentLoaded()
   videoContent = m.LoadMetaDataTask.content
   m.LoadMetaDataTask.content = []
 
-  ' If we have nothing to play, return to previous screen
+  ' If we have nothing to play, show an error dialog and return.
+  ' Prefer the task's specific errorMsg (e.g. NoCompatibleStream) over the generic fallback
+  ' so the user sees an actionable message rather than a generic one.
   if not isValid(videoContent) or not isValid(videoContent[0])
     stopLoadingSpinner()
-    showPlaybackErrorDialog(tr("There was an error retrieving the data for this item from the server."))
+    taskErrorMsg = m.LoadMetaDataTask.errorMsg
+    if isValidAndNotEmpty(taskErrorMsg)
+      showPlaybackErrorDialog(taskErrorMsg)
+    else
+      showPlaybackErrorDialog(tr("There was an error retrieving the data for this item from the server."))
+    end if
     return
   end if
 
