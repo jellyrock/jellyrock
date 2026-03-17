@@ -38,22 +38,28 @@ sub renderItem()
   item = m.top.itemContent
   if not isValid(item) then return
 
-  ' Skeleton placeholder — show only the backdrop rectangle, no text or poster
-  if item.type = "Loading"
-    m.backdrop.visible = true
-    m.poster.uri = ""
-    m.staticTitle.visible = false
-    m.title.visible = false
-    m.subtitle.visible = false
-    return
-  end if
-
   m.poster.callFunc("resetBadge")
 
   slotWidth = m.top.width
   posterHeight = int(m.top.height)
 
   updateLayout(slotWidth, posterHeight)
+
+  ' Skeleton placeholder — show backdrop + centered spinner, no poster or text
+  if item.type = "Loading"
+    m.backdrop.visible = true
+    m.poster.uri = ""
+    m.poster.visible = false
+    m.staticTitle.visible = false
+    m.title.visible = false
+    m.subtitle.visible = false
+    showLoadingSpinner(slotWidth, posterHeight)
+    return
+  end if
+
+  ' Hide loading spinner if this recycled item previously showed one
+  hideLoadingSpinner()
+  m.poster.visible = true
 
   m.isLibraryTile = (item.type = "CollectionFolder" or item.type = "UserView" or item.type = "Channel")
 
@@ -294,5 +300,31 @@ sub onFocusChanged()
     txt2Speech = CreateObject("roTextToSpeech")
     txt2Speech.Flush()
     txt2Speech.Say(m.staticTitle.text)
+  end if
+end sub
+
+' Lazy-creates and shows a small centered spinner over the backdrop for Loading placeholders.
+sub showLoadingSpinner(slotWidth as float, posterHeight as float)
+  if not isValid(m.loadingSpinner)
+    m.loadingSpinner = CreateObject("roSGNode", "Spinner")
+  end if
+
+  spinnerSize = 48
+  m.loadingSpinner.poster.width = spinnerSize
+  m.loadingSpinner.poster.height = spinnerSize
+  m.loadingSpinner.translation = [
+    (slotWidth - spinnerSize) / 2,
+    (posterHeight - spinnerSize) / 2
+  ]
+  m.loadingSpinner.visible = true
+  m.loadingSpinner.control = "start"
+  m.top.appendChild(m.loadingSpinner)
+end sub
+
+' Hides and stops the loading spinner if it exists.
+sub hideLoadingSpinner()
+  if isValid(m.loadingSpinner)
+    m.loadingSpinner.visible = false
+    m.loadingSpinner.control = "stop"
   end if
 end sub

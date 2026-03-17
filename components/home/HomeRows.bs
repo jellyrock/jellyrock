@@ -18,7 +18,6 @@ sub init()
 
   ' Persistent task nodes for data loading
   m.LoadLibrariesTask = createObject("roSGNode", "LoadItemsTask")
-  m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
 
   m.LoadContinueWatchingTask = createObject("roSGNode", "LoadItemsTask")
   m.LoadContinueWatchingTask.itemsToLoad = "continue"
@@ -47,7 +46,8 @@ sub loadLibraries()
   ' Show rows immediately — no timer hack needed since skeletons are in place
   m.top.showRowCounter = [true]
 
-  ' Start loading library data (needed for latestmedia rows + library row population)
+  ' Re-observe library task (observer is removed after each load in onLibrariesLoaded)
+  m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
   m.LoadLibrariesTask.control = "RUN"
 
   ' Start loading data for sections that don't depend on library data
