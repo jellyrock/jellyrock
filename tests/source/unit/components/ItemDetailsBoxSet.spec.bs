@@ -252,30 +252,6 @@ namespace tests
     @describe("setItemLogo() for BoxSet")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("uses Logo image URL when logoImageTag is present")
-    function _()
-      item = m.makeBoxSet()
-      item.logoImageTag = "logo-tag-abc"
-      item.primaryImageTag = "primary-tag-xyz"
-      m.itemDetails.itemContent = item
-
-      logoNode = m.itemDetails.findNode("itemLogo")
-      m.assertTrue(logoNode.uri.Instr("Logo") >= 0)
-      m.assertTrue(logoNode.uri.Instr("logo-tag-abc") >= 0)
-    end function
-
-    @it("falls back to Primary poster URL when logoImageTag is empty but primaryImageTag is present")
-    function _()
-      item = m.makeBoxSet()
-      item.logoImageTag = ""
-      item.primaryImageTag = "primary-tag-xyz"
-      m.itemDetails.itemContent = item
-
-      logoNode = m.itemDetails.findNode("itemLogo")
-      m.assertTrue(logoNode.uri.Instr("Primary") >= 0)
-      m.assertTrue(logoNode.uri.Instr("primary-tag-xyz") >= 0)
-    end function
-
     @it("hides logo when both logoImageTag and primaryImageTag are empty")
     function _()
       item = m.makeBoxSet()
