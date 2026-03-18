@@ -10,6 +10,13 @@ jobs:
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release-prep')
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Extract version from PR title
         id: extract_version
         run: |
@@ -30,7 +37,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: main
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
@@ -61,7 +68,7 @@ jobs:
 
       - name: Update draft release with new ZIP
         env:
-          GH_TOKEN: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           TAG_NAME="${{ steps.extract_version.outputs.tag_name }}"
           VERSION="${{ steps.extract_version.outputs.version }}"

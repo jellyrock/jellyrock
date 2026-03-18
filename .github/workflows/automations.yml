@@ -18,9 +18,16 @@ jobs:
     name: Labeling 🏷️
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Check all PRs for merge conflicts ⛔
         uses: eps1lon/actions-label-merge-conflict@1df065ebe6e3310545d4f4c4e862e43bdca146f0 # v3.0.3
         with:
           dirtyLabel: "merge-conflict"
           commentOnDirty: "This pull request has merge conflicts. Please resolve the conflicts so the PR can be reviewed. Thanks!"
-          repoToken: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          repoToken: ${{ steps.app-token.outputs.token }}

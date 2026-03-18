@@ -10,6 +10,13 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f # v10
         with:
           days-before-issue-stale: -1
@@ -20,4 +27,4 @@ jobs:
           days-before-pr-stale: 30
           days-before-pr-close: 15
           exempt-draft-pr: true
-          repo-token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          repo-token: ${{ steps.app-token.outputs.token }}

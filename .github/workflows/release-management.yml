@@ -21,6 +21,13 @@ jobs:
       pr_exists: ${{ steps.check_pr.outputs.pr_exists }}
       pr_number: ${{ steps.check_pr.outputs.pr_number }}
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Debug Info
         run: |
           echo "🔍 Workflow Debug Information:"
@@ -34,7 +41,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.ref }}
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           fetch-tags: true
           fetch-depth: 0
 
@@ -134,7 +141,7 @@ jobs:
       - name: Check if PR already exists
         id: check_pr
         env:
-          GH_TOKEN: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           BRANCH_NAME="${{ steps.extract_version.outputs.branch_name }}"
           PR_COUNT=$(gh pr list --head "$BRANCH_NAME" --base main --state open --json number 2>/dev/null | jq 'length')
@@ -157,11 +164,18 @@ jobs:
       group: bot-push-release-${{ needs.validate-and-prepare.outputs.branch_name }}
       cancel-in-progress: false
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.ref }}
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Install required packages
         uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
@@ -198,8 +212,8 @@ jobs:
 
       - name: Commit version updates
         run: |
-          git config user.name "JellyRock-bot"
-          git config user.email "c.ewert@gmail.com"
+          git config user.name "jellyrock[bot]"
+          git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
           git pull --rebase --autostash origin ${{ needs.validate-and-prepare.outputs.branch_name }}
           git add package.json package-lock.json manifest
 
@@ -215,7 +229,7 @@ jobs:
         if: env.has_changes == 'true'
         uses: CasperWA/push-protected@74d25b8aa10e0c29024138735d32f3c0b75f9279 # v2
         with:
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           branch: ${{ needs.validate-and-prepare.outputs.branch_name }}
           unprotect_reviews: false
 
@@ -224,16 +238,23 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.validate-and-prepare.outputs.pr_exists == 'false'
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ needs.validate-and-prepare.outputs.branch_name }}
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Create Pull Request
         id: create_pr
         env:
-          GH_TOKEN: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           VERSION="${{ needs.validate-and-prepare.outputs.version }}"
           BRANCH_NAME="${{ needs.validate-and-prepare.outputs.branch_name }}"
@@ -256,11 +277,18 @@ jobs:
     if: always() && needs.validate-and-prepare.result == 'success' && needs.update-version-files.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout release branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ needs.validate-and-prepare.outputs.branch_name }}
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           fetch-tags: true
           fetch-depth: 0
 
@@ -294,7 +322,7 @@ jobs:
       - name: Check for existing draft release
         id: check_draft
         env:
-          GH_TOKEN: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           TAG_NAME="v${{ needs.validate-and-prepare.outputs.version }}"
 
@@ -316,7 +344,7 @@ jobs:
       - name: Delete existing draft release
         if: steps.check_draft.outputs.exists == 'true' && steps.check_draft.outputs.is_draft == 'true'
         env:
-          GH_TOKEN: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           TAG_NAME="v${{ needs.validate-and-prepare.outputs.version }}"
           echo "🗑️ Deleting existing draft release: $TAG_NAME"
@@ -325,7 +353,7 @@ jobs:
 
       - name: Create draft release
         env:
-          GH_TOKEN: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           TAG_NAME="v${{ needs.validate-and-prepare.outputs.version }}"
           VERSION="${{ needs.validate-and-prepare.outputs.version }}"
