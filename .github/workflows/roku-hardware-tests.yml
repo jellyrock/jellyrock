@@ -58,7 +58,12 @@ jobs:
           npm --version
       
       - name: Install dependencies
-        run: npm ci
+        run: |
+          # Install dependencies
+          # Use --ignore-scripts to skip postinstall temporarily, then run ropm manually with npx
+          npm ci --ignore-scripts
+          # Run ropm via npx to ensure proper permissions
+          npx ropm copy && node scripts/ropm-hook.cjs
       
       - name: Run all tests on Roku
         run: npm run test:all
