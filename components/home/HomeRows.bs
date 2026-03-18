@@ -31,6 +31,9 @@ sub init()
   ' Track populated section count for AppLaunchComplete beacon
   m.populatedSectionCount = 0
   m.initialLoadComplete = false
+
+  ' Track per-library latest media tasks so they can be cleaned up
+  m.latestMediaTasks = []
 end sub
 
 ' loadLibraries: Entry point called by Home.bs via callFunc.
@@ -291,6 +294,9 @@ end function
 sub startLatestMediaLoads()
   if not isValidAndNotEmpty(m.filteredLatest) then return
 
+  ' Ensure any previous latest-media tasks are stopped and unobserved
+  cleanupLatestMediaTasks()
+
   for each lib in m.filteredLatest
     if lib.collectionType <> "boxsets" and lib.collectionType <> "livetv" and lib.collectionType <> "Program"
       loadLatest = createObject("roSGNode", "LoadItemsTask")
@@ -301,9 +307,32 @@ sub startLatestMediaLoads()
       loadLatest.metadata = metadata
 
       loadLatest.observeField("content", "updateLatestItems")
+
+      ' Track the task so it can be cleaned up later
+      m.latestMediaTasks.push(loadLatest)
+
       loadLatest.control = "RUN"
     end if
   end for
+end sub
+
+' cleanupLatestMediaTasks: Stop and unobserve any in-flight latest media tasks
+sub cleanupLatestMediaTasks()
+  if not isValid(m.latestMediaTasks) then return
+
+  for each task in m.latestMediaTasks
+    if isValid(task)
+      ' Remove all observers on the content field to prevent callbacks after teardown
+      task.unobserveField("content")
+
+      ' Stop the task if it is still running
+      if lcase(task.control) = "run"
+        task.control = "stop"
+      end if
+    end if
+  end for
+
+  m.latestMediaTasks = []
 end sub
 
 ' ============================================
@@ -715,6 +744,9 @@ sub destroy()
   m.LoadOnNowTask.unobserveField("content")
   m.LoadOnNowTask.control = "STOP"
   m.LoadOnNowTask = invalid
+
+  ' Stop and release any per-library latest media tasks
+  cleanupLatestMediaTasks()
 
   ' Clear data caches
   m.libraryData = invalid
