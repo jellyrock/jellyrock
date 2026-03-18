@@ -48,10 +48,14 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "lts/*"
-          cache: "npm"
+      - name: Setup Node.js
+        run: |
+          # Install Node.js directly from NodeSource (avoids setup-node action permission issues)
+          # Using Node.js 20.x (LTS) for compatibility
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y nodejs
+          node --version
+          npm --version
       
       - name: Install dependencies
         run: npm ci
