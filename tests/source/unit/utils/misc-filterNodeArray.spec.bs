@@ -1,0 +1,119 @@
+
+namespace tests
+
+  @suite("misc.bs - filterNodeArray")
+  class FilterNodeArrayTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("filterNodeArray")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty array when nodeArray is invalid")
+    function _()
+      result = filterNodeArray(invalid, "id", ["1"])
+      m.assertTrue(isValid(result))
+      m.assertEqual(result.count(), 0)
+    end function
+
+    @it("returns empty array when nodeArray is not an array")
+    function _()
+      result = filterNodeArray("not an array", "id", ["1"])
+      m.assertTrue(isValid(result))
+      m.assertEqual(result.count(), 0)
+    end function
+
+    @it("returns original nodeArray when excludeArray is invalid")
+    function _()
+      nodeArray = [{ id: "1", name: "Item 1" }]
+      result = filterNodeArray(nodeArray, "id", invalid)
+      m.assertTrue(isValid(result))
+      m.assertEqual(result.count(), 1)
+      m.assertEqual(result[0].id, "1")
+    end function
+
+    @it("returns original nodeArray when excludeArray is not an array")
+    function _()
+      nodeArray = [{ id: "1", name: "Item 1" }]
+      result = filterNodeArray(nodeArray, "id", "not an array")
+      m.assertTrue(isValid(result))
+      m.assertEqual(result.count(), 1)
+      m.assertEqual(result[0].id, "1")
+    end function
+
+    @it("returns original nodeArray when excludeArray is empty")
+    function _()
+      nodeArray = [{ id: "1", name: "Item 1" }]
+      result = filterNodeArray(nodeArray, "id", [])
+      m.assertTrue(isValid(result))
+      m.assertEqual(result.count(), 1)
+      m.assertEqual(result[0].id, "1")
+    end function
+
+    @it("filters single matching node")
+    function _()
+      nodeArray = [
+        { id: "1", name: "Item 1" },
+        { id: "2", name: "Item 2" },
+        { id: "3", name: "Item 3" }
+      ]
+      result = filterNodeArray(nodeArray, "id", ["2"])
+      m.assertEqual(result.count(), 2)
+      m.assertEqual(result[0].id, "1")
+      m.assertEqual(result[1].id, "3")
+    end function
+
+    @it("filters multiple matching nodes")
+    function _()
+      nodeArray = [
+        { id: "1", name: "Item 1" },
+        { id: "2", name: "Item 2" },
+        { id: "3", name: "Item 3" },
+        { id: "2", name: "Duplicate Item 2" }
+      ]
+      result = filterNodeArray(nodeArray, "id", ["2", "3"])
+      m.assertEqual(result.count(), 1)
+      m.assertEqual(result[0].id, "1")
+    end function
+
+    @it("returns all nodes when no exclusions match")
+    function _()
+      nodeArray = [
+        { id: "1", name: "Item 1" },
+        { id: "2", name: "Item 2" }
+      ]
+      result = filterNodeArray(nodeArray, "id", ["99", "100"])
+      m.assertEqual(result.count(), 2)
+      m.assertEqual(result[0].id, "1")
+      m.assertEqual(result[1].id, "2")
+    end function
+
+    @it("returns empty array when all nodes are filtered")
+    function _()
+      nodeArray = [
+        { id: "1", name: "Item 1" },
+        { id: "2", name: "Item 2" }
+      ]
+      result = filterNodeArray(nodeArray, "id", ["1", "2"])
+      m.assertEqual(result.count(), 0)
+    end function
+
+    @it("handles nodes with invalid nodeKey value")
+    function _()
+      nodeArray = [
+        { id: invalid, name: "Invalid Item" },
+        { id: "2", name: "Valid Item" }
+      ]
+      result = filterNodeArray(nodeArray, "id", [invalid])
+      m.assertEqual(result.count(), 1)
+      m.assertEqual(result[0].id, "2")
+    end function
+
+    @it("handles empty nodeArray")
+    function _()
+      result = filterNodeArray([], "id", ["1"])
+      m.assertEqual(result.count(), 0)
+    end function
+
+  end class
+
+end namespace
