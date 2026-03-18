@@ -6,182 +6,110 @@ import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.log = new log.Logger("Home")
-  m.log.verbose("Initializing Home component")
+  m.log.verbose("init")
 
-  m.log.increaseIndent("Setting up component state")
   m.isFirstRun = true
-  m.log.debug("Set isFirstRun", m.isFirstRun)
-
   m.top.overhangTitle = "Home"
   m.top.optionsAvailable = true
-  m.log.debug("Configured overhang properties", "title:", m.top.overhangTitle, "optionsAvailable:", m.top.optionsAvailable)
 
   m.postTask = createObject("roSGNode", "PostTask")
-  m.log.debug("Created PostTask node", m.postTask)
-  m.log.decreaseIndent()
-
   m.homeRows = m.top.findNode("homeRows")
-
-  m.log.verbose("Home component initialization complete")
 end sub
 
 sub refresh()
-  m.log.verbose("Refreshing home content")
-
   if not isValid(m.homeRows)
-    m.log.error("Cannot refresh - homeRows node is invalid")
+    m.log.error("Cannot refresh - homeRows is invalid")
     return
   end if
 
-  m.log.debug("Calling updateHomeRows on homeRows node")
   m.homeRows.callFunc("updateHomeRows")
-  m.log.info("Home content refresh initiated")
 end sub
 
+' Entry point called by Main.bs createAndShowHomeGroup() BEFORE pushScene().
+' Starting data loads before the screen transition completes improves perceived performance.
 sub loadLibraries()
-  m.log.verbose("Loading libraries for home content")
-
   if not isValid(m.homeRows)
-    m.log.error("Cannot load libraries - homeRows node is invalid")
+    m.log.error("Cannot load libraries - homeRows is invalid")
     return
   end if
 
-  m.log.debug("Calling loadLibraries on homeRows node")
   m.homeRows.callFunc("loadLibraries")
-  m.log.info("Library loading initiated")
 end sub
 
 ' JRScreen hook called when the screen is displayed by the screen manager
 sub OnScreenShown()
-  m.log.info("Home screen shown - configuring UI and loading content")
-  m.log.increaseIndent("OnScreenShown operations")
+  m.log.info("OnScreenShown")
 
   ' Configure overhang UI
-  m.log.increaseIndent("Configuring overhang")
   scene = m.top.getScene()
   globalUser = m.global.user
-  m.log.debug("Retrieved scene", scene)
 
   overhang = scene.findNode("overhang")
   if isValid(overhang)
-    m.log.debug("Found overhang node", overhang)
-
     overhang.isLogoVisible = true
     overhang.currentUser = globalUser.name
     overhang.title = tr("Home")
-    m.log.debug("Updated overhang properties", "user:", overhang.currentUser, "title:", overhang.title, "logoVisible:", overhang.isLogoVisible)
 
     ' Hide clock if user preference is set
-    hideClockSetting = globalUser.settings.uiDesignHideClock
-    m.log.debug("Hide clock setting", hideClockSetting)
-
-    if hideClockSetting
+    if globalUser.settings.uiDesignHideClock
       clock = overhang.findNode("clock")
       if isValid(clock)
         overhang.removeChild(clock)
-        m.log.info("Clock hidden per user preference")
-      else
-        m.log.warn("Clock node not found - cannot hide")
       end if
     end if
-  else
-    m.log.error("Overhang node not found - UI configuration incomplete")
   end if
-  m.log.decreaseIndent()
 
   ' Set focus appropriately
-  m.log.increaseIndent("Setting focus")
   if isValid(m.top.lastFocus)
-    m.log.debug("Restoring focus to last focused element", m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
-    m.log.debug("No last focus found - setting focus to home screen")
     m.top.setFocus(true)
   end if
-  m.log.decreaseIndent()
 
-  ' Handle first run device capabilities posting or refresh content
+  ' First run: post device capabilities to the server.
+  ' postFinished() intentionally does NOT trigger a content load — Main.bs already
+  ' called loadLibraries() before pushing this screen, so data is already in flight.
   if m.isFirstRun
-    m.log.increaseIndent("First run - posting device capabilities")
     m.isFirstRun = false
-    m.log.debug("Set isFirstRun to false")
 
-    deviceCapabilities = getDeviceCapabilities()
-    m.log.debug("Retrieved device capabilities", deviceCapabilities)
-
-    m.postTask.arrayData = deviceCapabilities
+    m.postTask.arrayData = getDeviceCapabilities()
     m.postTask.apiUrl = "/Sessions/Capabilities/Full"
     m.postTask.control = "RUN"
-    m.log.debug("Configured PostTask", "apiUrl:", m.postTask.apiUrl, "control:", m.postTask.control)
-
     m.postTask.observeField("responseCode", "postFinished")
-    m.log.info("Device capabilities post initiated")
-    m.log.decreaseIndent()
   else
-    m.log.increaseIndent("Subsequent run - refreshing content")
+    ' Subsequent visits: refresh row data in place
     refresh()
-    m.log.decreaseIndent()
   end if
 
   ' Re-evaluate backdrop setting visibility (updates when user changes setting from Settings screen)
   scene.callFunc("refreshBackdropSetting")
-  m.log.debug("Refreshed backdrop setting")
-
-  m.log.decreaseIndent()
-  m.log.info("Home screen shown configuration complete")
 end sub
 
 ' JRScreen hook called when the screen is hidden by the screen manager
 sub OnScreenHidden()
-  m.log.info("Home screen hidden - cleaning up UI state")
-  m.log.increaseIndent("OnScreenHidden operations")
+  m.log.info("OnScreenHidden")
 
   scene = m.top.getScene()
-  m.log.debug("Retrieved scene for cleanup", scene)
-
   overhang = scene.findNode("overhang")
   if isValid(overhang)
-    m.log.debug("Found overhang node - clearing properties")
-
     overhang.isLogoVisible = false
     overhang.currentUser = ""
     overhang.title = ""
-
-    m.log.debug("Cleared overhang properties", "logoVisible:", overhang.isLogoVisible, "user:", overhang.currentUser, "title:", overhang.title)
-    m.log.info("Overhang UI state cleared")
-  else
-    m.log.warn("Overhang node not found - cleanup incomplete")
   end if
-
-  m.log.decreaseIndent()
-  m.log.info("Home screen hidden cleanup complete")
 end sub
 
 ' Triggered by m.postTask after completing a post.
-' Empty the task data when finished.
+' Cleans up the task — does NOT trigger content loading (already handled by loadLibraries).
 sub postFinished()
-  m.log.verbose("Device capabilities post finished - cleaning up task")
-  m.log.increaseIndent("Post cleanup operations")
+  if not isValid(m.postTask) then return
 
-  if isValid(m.postTask)
-    responseCode = m.postTask.responseCode
-    m.log.debug("Post task response code", responseCode)
-
-    if responseCode = 200 or responseCode = 204
-      m.log.info("Device capabilities posted successfully", "responseCode:", responseCode)
-    else
-      m.log.warn("Device capabilities post completed with non-success code", "responseCode:", responseCode)
-    end if
-
-    m.postTask.unobserveField("responseCode")
-    m.postTask.callFunc("empty")
-    m.log.debug("Post task cleaned up and emptied")
-  else
-    m.log.error("Post task invalid during cleanup")
+  responseCode = m.postTask.responseCode
+  if responseCode <> 200 and responseCode <> 204
+    m.log.warn("Device capabilities post returned", responseCode)
   end if
 
-  m.log.decreaseIndent()
-  m.log.verbose("Post task cleanup complete")
+  m.postTask.unobserveField("responseCode")
+  m.postTask.callFunc("empty")
 end sub
 
 ' destroy: Full teardown releasing all resources before component removal
