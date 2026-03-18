@@ -288,7 +288,7 @@ end function
 
 sub itemSelected()
   item = getItemAtIndices(m.top.rowItemSelected)
-  if not isValid(item) then return
+  if not isValid(item) or item.type = "Loading" then return
 
   m.top.selectedItem = item
   m.top.selectedItem = invalid
