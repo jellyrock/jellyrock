@@ -1,0 +1,71 @@
+name: Roku Hardware Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - unit
+          - integration
+          - all
+
+jobs:
+  check-skip:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Check if push is from PR merge
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            if echo "${{ github.event.head_commit.message }}" | grep -q "Merge pull request"; then
+              echo "This is a PR merge to main - tests already ran on PR"
+              echo "skip=true" >> $GITHUB_OUTPUT
+            else
+              echo "This is a direct push to main"
+              echo "skip=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "This is a PR or manual trigger - always run tests"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+  all-tests:
+    needs: check-skip
+    if: needs.check-skip.outputs.should_skip != 'true'
+    runs-on: [self-hosted, roku-device]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run all tests on Roku
+        run: npm run test:all
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+      
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roku-all-test-logs
+          path: roku-test-output.log
+          retention-days: 30

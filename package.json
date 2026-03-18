@@ -50,7 +50,10 @@
     "postinstall": "npm run ropm",
     "ropm": "ropm copy && node scripts/ropm-hook.cjs",
     "update-translations": "node scripts/update-translations.cjs",
-    "validate": "npx bsc --copy-to-staging=false --create-package=false"
+    "validate": "npx bsc --copy-to-staging=false --create-package=false",
+    "test:unit": "npm run build:tests-unit && node scripts/run-roku-tests.js",
+    "test:integration": "npm run build:tests-integration && node scripts/run-roku-tests.js",
+    "test:all": "npm run build:tests && node scripts/run-roku-tests.js"
   },
   "repository": {
     "type": "git",
