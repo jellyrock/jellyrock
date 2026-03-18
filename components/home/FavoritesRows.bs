@@ -17,6 +17,20 @@ sub init()
 
   m.loadFavoritesTask = createObject("roSGNode", "LoadItemsTask")
   m.loadFavoritesTask.itemsToLoad = "favorites"
+
+  ' Known type ordering and labels — used for skeleton creation and data grouping
+  m.typeArray = ["Movie", "Series", "BoxSet", "Episode", "MusicArtist", "MusicAlbum", "Audio", "Person"]
+  m.typeLabels = {
+    "Movie": tr("Movies"),
+    "Series": tr("Series"),
+    "BoxSet": tr("Collections"),
+    "Episode": tr("Episodes"),
+    "MusicArtist": tr("Artists"),
+    "MusicAlbum": tr("Albums"),
+    "Audio": tr("Songs"),
+    "Person": tr("People")
+  }
+  m.initialLoadComplete = false
 end sub
 
 sub updateSize()
@@ -39,63 +53,171 @@ sub updateSize()
   m.top.visible = true
 end sub
 
-' Entry point called by Home.bs when Favorites tab is selected
+' Entry point called by Home.bs when Favorites tab is selected.
+' Creates skeleton rows on first load, then fires the data task.
 sub loadFavorites()
+  if not m.initialLoadComplete
+    createSkeletonRows()
+    m.top.showRowCounter = [true]
+  end if
+
   m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
   m.loadFavoritesTask.control = "RUN"
 end sub
 
-' Groups loaded favorites by item type into separate rows
+' Creates skeleton rows for all known favorite types with loading placeholders
+sub createSkeletonRows()
+  for each itemType in m.typeArray
+    row = CreateObject("roSGNode", "HomeRow")
+    row.title = m.typeLabels[itemType] ?? itemType
+    row.sectionId = itemType
+    row.cursorSize = getSlotSizeForType(itemType)
+
+    placeholder = CreateObject("roSGNode", "ContentNode")
+    placeholder.addFields({ type: "Loading" })
+    row.appendChild(placeholder)
+
+    m.top.content.appendChild(row)
+  end for
+
+  applyRowSizes()
+end sub
+
+' Groups loaded favorites by item type and populates/removes skeleton rows.
+' On refresh, updates existing rows in place to preserve focus position.
 sub onFavoritesLoaded()
   itemData = m.loadFavoritesTask.content
   m.loadFavoritesTask.unobserveField("content")
   m.loadFavoritesTask.content = []
 
-  if not isValidAndNotEmpty(itemData)
-    ' Show empty state — no favorites
-    m.top.content.removeChildren(m.top.content.getChildren(-1, 0))
-    return
-  end if
+  m.initialLoadComplete = true
 
-  ' Group items by type, preserving order via type_array
-  typeArray = ["Movie", "Series", "BoxSet", "Episode", "MusicArtist", "MusicAlbum", "Audio", "Person"]
-  typeLabels = {
-    "Movie": tr("Movies"),
-    "Series": tr("Series"),
-    "BoxSet": tr("Collections"),
-    "Episode": tr("Episodes"),
-    "MusicArtist": tr("Artists"),
-    "MusicAlbum": tr("Albums"),
-    "Audio": tr("Songs"),
-    "Person": tr("People")
-  }
+  ' Bucket items by type
+  buckets = {}
+  for each itemType in m.typeArray
+    buckets[itemType] = []
+  end for
 
-  data = CreateObject("roSGNode", "ContentNode")
-
-  for each itemType in typeArray
-    row = CreateObject("roSGNode", "HomeRow")
-    hasItems = false
-
+  if isValidAndNotEmpty(itemData)
     for each item in itemData
-      if item.type = itemType
-        row.appendChild(item)
-        hasItems = true
+      if buckets.doesExist(item.type)
+        buckets[item.type].push(item)
       end if
     end for
+  end if
 
-    if hasItems
-      row.title = typeLabels[itemType] ?? itemType
-      row.cursorSize = getSlotSizeForType(itemType)
-      data.appendChild(row)
+  ' Sort each bucket by name for stable ordering across refreshes
+  for each itemType in m.typeArray
+    bucket = buckets[itemType]
+    if bucket.count() > 1
+      buckets[itemType] = sortByName(bucket)
     end if
   end for
 
-  m.top.content = data
-  applyRowSizes()
-  m.top.showRowCounter = [true]
+  ' Populate or remove each row
+  sizesChanged = false
+  for each itemType in m.typeArray
+    bucket = buckets[itemType]
+    result = findRowBySectionId(itemType)
+
+    if bucket.count() = 0
+      ' No items — remove row if it exists (skeleton or populated)
+      if isValid(result)
+        m.top.content.removeChildIndex(result.index)
+        sizesChanged = true
+      end if
+    else if isValid(result)
+      ' Row exists — swap children in place (append new before removing old)
+      row = result.row
+      oldCount = row.getChildCount()
+
+      for each item in bucket
+        row.appendChild(item)
+      end for
+
+      for i = oldCount - 1 to 0 step -1
+        row.removeChildIndex(i)
+      end for
+    else
+      ' Row was previously removed but now has data — re-insert at correct position
+      row = CreateObject("roSGNode", "HomeRow")
+      row.title = m.typeLabels[itemType] ?? itemType
+      row.sectionId = itemType
+      row.cursorSize = getSlotSizeForType(itemType)
+
+      for each item in bucket
+        row.appendChild(item)
+      end for
+
+      insertIndex = findInsertIndexForType(itemType, m.typeArray)
+      m.top.content.insertChild(row, insertIndex)
+      sizesChanged = true
+    end if
+  end for
+
+  if sizesChanged
+    applyRowSizes()
+  end if
 
   updateBackdropForFocusedItem()
 end sub
+
+' Sort an array of content nodes by their name field (case-insensitive)
+function sortByName(items as object) as object
+  ' Simple insertion sort — favorites lists are small
+  sorted = []
+  for each item in items
+    sorted.push(item)
+  end for
+
+  for i = 1 to sorted.count() - 1
+    j = i
+    while j > 0 and LCase(sorted[j].name) < LCase(sorted[j - 1].name)
+      temp = sorted[j]
+      sorted[j] = sorted[j - 1]
+      sorted[j - 1] = temp
+      j--
+    end while
+  end for
+
+  return sorted
+end function
+
+' Find a row by its sectionId
+function findRowBySectionId(sectionId as string) as object
+  if not isValid(m.top.content) then return invalid
+
+  for i = 0 to m.top.content.getChildCount() - 1
+    row = m.top.content.getChild(i)
+    if row.sectionId = sectionId
+      return { row: row, index: i }
+    end if
+  end for
+
+  return invalid
+end function
+
+' Find the correct insert index for a type based on the type ordering
+function findInsertIndexForType(itemType as string, typeArray as object) as integer
+  ' Find what comes before this type in typeArray and locate it in content
+  targetIdx = -1
+  for i = 0 to typeArray.count() - 1
+    if typeArray[i] = itemType
+      targetIdx = i
+      exit for
+    end if
+  end for
+
+  ' Walk backward to find the last preceding type that has a row
+  for i = targetIdx - 1 to 0 step -1
+    result = findRowBySectionId(typeArray[i])
+    if isValid(result)
+      return result.index + 1
+    end if
+  end for
+
+  return 0
+end function
 
 ' Returns the appropriate slot size for a Jellyfin item type.
 ' Follows the same logic as SearchRow.bs getSlotSizeForType.

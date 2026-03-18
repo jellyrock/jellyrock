@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRTab" extends="Group">
   <children>
+    <!-- Focus border: 9-patch rounded border, visible only when this tab has focus -->
+    <Poster id="focusBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+    <!-- Background: transparent by default, shown when focused for consistency with border -->
+    <Poster id="background" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <LabelPrimaryMedium id="label" vertAlign="center" />
-    <!-- Underline indicator: visible when tab is selected -->
+    <!-- Underline indicator: visible when tab is selected (active) -->
     <Rectangle id="indicator" height="3" visible="false" />
   </children>
   <interface>

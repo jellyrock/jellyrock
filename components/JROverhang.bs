@@ -142,6 +142,15 @@ sub isLogoVisibleChanged()
       m.title.maxWidth = 1560
     end if
   end if
+
+  ' Reposition tab bar when logo visibility changes
+  if isValid(m.tabBar)
+    if isValid(m.logo)
+      m.tabBar.translation = [360, 51]
+    else
+      m.tabBar.translation = [96, 51]
+    end if
+  end if
 end sub
 
 ' Create and return a logo poster node
