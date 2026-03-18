@@ -1,0 +1,108 @@
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.tabContainer = m.top.findNode("tabContainer")
+  m.focusedTabIndex = 0
+
+  ' When the tab bar gains focus, highlight the focused tab
+  m.top.observeField("focusedChild", "onFocusChanged")
+end sub
+
+' Rebuilds tab children when the tabs array changes
+sub onTabsChanged()
+  ' Clear existing tabs
+  m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
+  m.focusedTabIndex = 0
+
+  tabs = m.top.tabs
+  if not isValidAndNotEmpty(tabs) then return
+
+  for each tabData in tabs
+    tabNode = CreateObject("roSGNode", "JRTab")
+    tabNode.tabTitle = tabData.title
+    tabNode.tabId = tabData.id
+
+    ' Mark the first tab as selected by default if no selection exists
+    if m.top.selectedTabId = "" and tabData.id = tabs[0].id
+      tabNode.isSelected = true
+      m.top.selectedTabId = tabData.id
+    else if tabData.id = m.top.selectedTabId
+      tabNode.isSelected = true
+    end if
+
+    m.tabContainer.appendChild(tabNode)
+  end for
+
+  updateFocusedTabVisuals()
+end sub
+
+' When the tab bar gains or loses focus, update tab visuals
+sub onFocusChanged()
+  hasFocus = m.top.isInFocusChain()
+  updateFocusedTabVisuals()
+
+  ' Clear focus indicator on all tabs when losing focus
+  if not hasFocus
+    for i = 0 to m.tabContainer.getChildCount() - 1
+      m.tabContainer.getChild(i).isFocused = false
+    end for
+  end if
+end sub
+
+' Updates the isFocused visual state on tab children
+sub updateFocusedTabVisuals()
+  if not m.top.isInFocusChain() then return
+
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    tabNode = m.tabContainer.getChild(i)
+    tabNode.isFocused = (i = m.focusedTabIndex)
+  end for
+end sub
+
+' Selects a tab by index: updates isSelected on all children and fires selectedTabId
+sub selectTab(index as integer)
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    tabNode = m.tabContainer.getChild(i)
+    tabNode.isSelected = (i = index)
+  end for
+
+  selectedTab = m.tabContainer.getChild(index)
+  if isValid(selectedTab)
+    m.top.selectedTabId = selectedTab.tabId
+  end if
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  tabCount = m.tabContainer.getChildCount()
+  if tabCount = 0 then return false
+
+  if key = "right"
+    ' Move focus right, wrapping at the end
+    m.focusedTabIndex = (m.focusedTabIndex + 1) mod tabCount
+    updateFocusedTabVisuals()
+    return true
+  else if key = "left"
+    ' Move focus left, wrapping at the beginning
+    m.focusedTabIndex = (m.focusedTabIndex - 1 + tabCount) mod tabCount
+    updateFocusedTabVisuals()
+    return true
+  else if key = "OK"
+    selectTab(m.focusedTabIndex)
+    return true
+  else if key = "down"
+    ' Signal the parent screen to take focus back
+    m.top.requestFocusReturn = true
+    return true
+  end if
+
+  ' UP: don't consume — let it bubble (nothing above the tab bar)
+  return false
+end function
+
+sub destroy()
+  m.top.unobserveField("focusedChild")
+  m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
+  m.tabContainer = invalid
+end sub

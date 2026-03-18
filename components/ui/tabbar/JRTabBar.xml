@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="JRTabBar" extends="Group">
+  <children>
+    <LayoutGroup id="tabContainer" layoutDirection="horz" itemSpacings="[48]" />
+  </children>
+  <interface>
+    <!-- Input: array of { title: string, id: string } -->
+    <field id="tabs" type="array" onChange="onTabsChanged" />
+    <!-- Output: id of the currently selected (active) tab -->
+    <field id="selectedTabId" type="string" alwaysNotify="true" />
+    <!-- Output: signals the parent screen to take focus back (e.g., on DOWN press) -->
+    <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
+    <function name="destroy" />
+  </interface>
+</component>

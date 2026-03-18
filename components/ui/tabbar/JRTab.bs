@@ -1,0 +1,36 @@
+sub init()
+  m.label = m.top.findNode("label")
+  m.indicator = m.top.findNode("indicator")
+
+  m.colorPrimary = m.global.constants.colorPrimary
+  m.colorTextPrimary = m.global.constants.colorTextPrimary
+  m.colorTextSecondary = m.global.constants.colorTextSecondary
+
+  m.indicator.color = m.colorPrimary
+end sub
+
+sub onTitleChanged()
+  m.label.text = m.top.tabTitle
+
+  ' Position indicator below label. boundingRect requires the label to have text.
+  labelRect = m.label.boundingRect()
+  m.indicator.width = labelRect.width
+  m.indicator.translation = [0, labelRect.height + 4]
+end sub
+
+' Update label color and indicator visibility based on focused + selected state.
+' Focused = this tab has remote focus. Selected = this tab's content is active.
+sub onStateChanged()
+  isFocused = m.top.isFocused
+  isSelected = m.top.isSelected
+
+  if isFocused
+    m.label.color = m.colorTextPrimary
+  else if isSelected
+    m.label.color = m.colorTextPrimary
+  else
+    m.label.color = m.colorTextSecondary
+  end if
+
+  m.indicator.visible = isSelected
+end sub
