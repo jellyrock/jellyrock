@@ -60,10 +60,10 @@ jobs:
       - name: Install dependencies
         run: |
           # Install dependencies
-          # Use --ignore-scripts to skip postinstall temporarily, then run ropm manually with npx
+          # Use --ignore-scripts to skip postinstall temporarily
           npm ci --ignore-scripts
-          # Run ropm via npx to ensure proper permissions
-          npx ropm copy && node scripts/ropm-hook.cjs
+          # Run ropm directly via node (avoids permission issues with binaries)
+          node node_modules/ropm/dist/cli.js copy && node scripts/ropm-hook.cjs
       
       - name: Run all tests on Roku
         run: npm run test:all
