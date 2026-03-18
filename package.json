@@ -12,6 +12,7 @@
     "brighterscript": "0.70.3",
     "brighterscript-formatter": "1.7.21",
     "brighterscript-xml-plugin": "0.3.2",
+    "dotenv": "17.3.1",
     "fast-glob": "3.3.3",
     "jshint": "2.13.6",
     "markdownlint-cli2": "0.21.0",

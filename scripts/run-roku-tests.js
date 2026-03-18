@@ -4,10 +4,16 @@
  * Deploys test build to Roku and captures console output
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const net = require('net');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import net from 'net';
+import dotenv from 'dotenv';
+import * as rokuDeploy from 'roku-deploy';
+
+dotenv.config();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const ROKU_IP = process.env.ROKU_IP;
 const ROKU_PASSWORD = process.env.ROKU_PASSWORD;
@@ -21,10 +27,13 @@ if (!ROKU_IP || !ROKU_PASSWORD) {
 
 async function deployToRoku() {
   console.log(`📱 Deploying to Roku at ${ROKU_IP}...`);
+  const OUT_DIR = path.join(__dirname, '..', 'out');
   try {
-    execSync(`npx roku-deploy --host ${ROKU_IP} --password ${ROKU_PASSWORD} --root-dir ${BUILD_DIR}`, {
-      stdio: 'inherit',
-      timeout: 60000
+    await rokuDeploy.publish({
+      host: ROKU_IP,
+      password: ROKU_PASSWORD,
+      outDir: OUT_DIR,
+      outFile: 'jellyrock.zip'
     });
     console.log('✅ Deployment successful');
   } catch (error) {
