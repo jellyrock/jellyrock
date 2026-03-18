@@ -19,5 +19,8 @@
     <field id="isVisible" value="true" type="boolean" onChange="isVisibleChanged" />
     <field id="disableMoveAnimation" value="false" type="boolean" />
     <field id="isLogoVisible" value="true" type="boolean" onChange="isLogoVisibleChanged" />
+    <field id="tabs" type="array" onChange="onTabsChanged" />
+    <field id="selectedTabId" type="string" alwaysNotify="true" />
+    <function name="getTabBar" />
   </interface>
 </component>

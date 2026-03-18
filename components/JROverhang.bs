@@ -156,6 +156,58 @@ function createLogoPoster()
   return logoPoster
 end function
 
+' onTabsChanged: Swaps between title label and tab bar.
+' Empty/invalid tabs restores the title label; non-empty creates a JRTabBar.
+sub onTabsChanged()
+  tabs = m.top.tabs
+
+  if not isValidAndNotEmpty(tabs)
+    ' Remove tab bar, restore title label
+    if isValid(m.tabBar)
+      m.tabBar.unobserveField("selectedTabId")
+      m.top.removeChild(m.tabBar)
+      m.tabBar = invalid
+    end if
+    m.title.visible = true
+    return
+  end if
+
+  ' Hide title label and create/update tab bar
+  m.title.visible = false
+
+  if not isValid(m.tabBar)
+    m.tabBar = CreateObject("roSGNode", "JRTabBar")
+    m.tabBar.observeField("selectedTabId", "onTabBarSelectionChanged")
+    m.top.appendChild(m.tabBar)
+  end if
+
+  ' Position tab bar where the title normally sits
+  if isValid(m.logo)
+    m.tabBar.translation = [360, 51]
+  else
+    m.tabBar.translation = [96, 51]
+  end if
+
+  ' Sync current selection before setting tabs (so the correct tab starts selected)
+  if isValidAndNotEmpty(m.top.selectedTabId)
+    m.tabBar.selectedTabId = m.top.selectedTabId
+  end if
+
+  m.tabBar.tabs = tabs
+end sub
+
+' Proxy tab bar selection changes to the overhang's selectedTabId field
+sub onTabBarSelectionChanged()
+  if isValid(m.tabBar)
+    m.top.selectedTabId = m.tabBar.selectedTabId
+  end if
+end sub
+
+' Returns the tab bar node reference for direct focus management by screens
+function getTabBar() as object
+  return m.tabBar
+end function
+
 sub resetTime()
   if isValid(m.clock)
     m.clock.callFunc("resetTime")

@@ -183,12 +183,23 @@ sub registerOverhangData(group)
       m.overhang.visible = false
     end if
     group.observeField("overhangVisible", "updateOverhangVisible")
+
+    ' Tab support: sync tabs from group to overhang
+    m.overhang.tabs = group.overhangTabs
+    if isValidAndNotEmpty(group.selectedTabId)
+      m.overhang.selectedTabId = group.selectedTabId
+    end if
+    group.observeField("overhangTabs", "updateOverhangTabs")
+    m.overhang.observeField("selectedTabId", "onOverhangTabSelected")
   end if
 end sub
 
 ' Remove observers for overhang data
 sub unregisterOverhangData(group)
   group.unobserveField("overhangTitle")
+  group.unobserveField("overhangTabs")
+  m.overhang.unobserveField("selectedTabId")
+  m.overhang.tabs = []
 end sub
 
 ' Update overhang title
@@ -199,6 +210,19 @@ end sub
 ' Update whether the overhang is visible or not
 sub updateOverhangVisible(msg)
   m.overhang.visible = msg.getData()
+end sub
+
+' Update overhang tabs when group's overhangTabs changes
+sub updateOverhangTabs(msg)
+  m.overhang.tabs = msg.getData()
+end sub
+
+' Proxy overhang tab selection back to the active group's selectedTabId
+sub onOverhangTabSelected()
+  group = m.groups.peek()
+  if isValid(group) and group.isSubType("JRGroup")
+    group.selectedTabId = m.overhang.selectedTabId
+  end if
 end sub
 
 ' Update username in overhang
