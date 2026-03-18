@@ -9,11 +9,26 @@ sub init()
   m.log.verbose("init")
 
   m.isFirstRun = true
-  m.top.overhangTitle = "Home"
   m.top.optionsAvailable = true
 
   m.postTask = createObject("roSGNode", "PostTask")
   m.homeRows = m.top.findNode("homeRows")
+  m.favoritesRows = m.top.findNode("favoritesRows")
+  m.favoritesLoaded = false
+
+  ' Proxy selectedItem and quickPlayNode from both row lists
+  m.homeRows.observeField("selectedItem", "onRowItemSelected")
+  m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
+  m.favoritesRows.observeField("selectedItem", "onRowItemSelected")
+  m.favoritesRows.observeField("quickPlayNode", "onQuickPlayNode")
+
+  ' Tab configuration
+  m.top.overhangTabs = [
+    { title: tr("Home"), id: "home" },
+    { title: tr("Favorites"), id: "favorites" }
+  ]
+  m.top.selectedTabId = "home"
+  m.top.observeField("selectedTabId", "onTabChanged")
 end sub
 
 sub refresh()
@@ -23,6 +38,11 @@ sub refresh()
   end if
 
   m.homeRows.callFunc("updateHomeRows")
+
+  ' Refresh favorites if they've been loaded before
+  if m.favoritesLoaded and isValid(m.favoritesRows)
+    m.favoritesRows.callFunc("loadFavorites")
+  end if
 end sub
 
 ' Entry point called by Main.bs createAndShowHomeGroup() BEFORE pushScene().
@@ -48,7 +68,9 @@ sub OnScreenShown()
   if isValid(overhang)
     overhang.isLogoVisible = true
     overhang.currentUser = globalUser.name
-    overhang.title = tr("Home")
+
+    ' Cache overhang reference for tab bar focus management
+    m.overhang = overhang
 
     ' Hide clock if user preference is set
     if globalUser.settings.uiDesignHideClock
@@ -59,11 +81,11 @@ sub OnScreenShown()
     end if
   end if
 
-  ' Set focus appropriately
+  ' Set focus to the active content
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
-    m.top.setFocus(true)
+    getActiveRows().setFocus(true)
   end if
 
   ' First run: post device capabilities to the server.
@@ -94,9 +116,95 @@ sub OnScreenHidden()
   if isValid(overhang)
     overhang.isLogoVisible = false
     overhang.currentUser = ""
-    overhang.title = ""
   end if
 end sub
+
+' ============================================
+' TAB HANDLING
+' ============================================
+
+' Called when selectedTabId changes (via SceneManager proxy from overhang tab bar)
+sub onTabChanged()
+  tabId = m.top.selectedTabId
+
+  if tabId = "home"
+    m.homeRows.visible = true
+    m.favoritesRows.visible = false
+    m.homeRows.setFocus(true)
+  else if tabId = "favorites"
+    m.homeRows.visible = false
+    m.favoritesRows.visible = true
+    m.favoritesRows.setFocus(true)
+
+    ' Load favorites on first visit to the tab
+    if not m.favoritesLoaded
+      m.favoritesLoaded = true
+      m.favoritesRows.callFunc("loadFavorites")
+    end if
+  end if
+end sub
+
+' Returns the currently active row list based on selected tab
+function getActiveRows() as object
+  if m.top.selectedTabId = "favorites"
+    return m.favoritesRows
+  end if
+  return m.homeRows
+end function
+
+' Proxy selectedItem from whichever row list fires it
+sub onRowItemSelected(msg)
+  m.top.selectedItem = msg.getData()
+end sub
+
+' Proxy quickPlayNode from whichever row list fires it
+sub onQuickPlayNode(msg)
+  m.top.quickPlayNode = msg.getData()
+end sub
+
+' ============================================
+' FOCUS MANAGEMENT
+' ============================================
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  ' UP at top of content → focus the tab bar in the overhang
+  if key = "up"
+    activeRows = getActiveRows()
+    ' Check if we're on the first row (rowItemFocused[0] = 0)
+    if isValid(activeRows.rowItemFocused) and activeRows.rowItemFocused[0] = 0
+      if isValid(m.overhang)
+        tabBar = m.overhang.callFunc("getTabBar")
+        if isValid(tabBar)
+          tabBar.setFocus(true)
+
+          ' Observe requestFocusReturn to know when to take focus back
+          tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
+          return true
+        end if
+      end if
+    end if
+  end if
+
+  return false
+end function
+
+' Tab bar signals DOWN was pressed — return focus to active content
+sub onTabBarFocusReturn()
+  if isValid(m.overhang)
+    tabBar = m.overhang.callFunc("getTabBar")
+    if isValid(tabBar)
+      tabBar.unobserveField("requestFocusReturn")
+    end if
+  end if
+
+  getActiveRows().setFocus(true)
+end sub
+
+' ============================================
+' POST TASK & TEARDOWN
+' ============================================
 
 ' Triggered by m.postTask after completing a post.
 ' Cleans up the task — does NOT trigger content loading (already handled by loadLibraries).
@@ -117,6 +225,9 @@ end sub
 sub destroy()
   m.log.verbose("destroy")
 
+  ' Unobserve tab field
+  m.top.unobserveField("selectedTabId")
+
   ' Stop and release task node (observer may already be cleared by postFinished())
   m.postTask.unobserveField("responseCode")
   m.postTask.control = "STOP"
@@ -124,7 +235,16 @@ sub destroy()
 
   ' Destroy child components before clearing references
   if isValid(m.homeRows)
+    m.homeRows.unobserveField("selectedItem")
+    m.homeRows.unobserveField("quickPlayNode")
     m.homeRows.callFunc("destroy")
   end if
   m.homeRows = invalid
+
+  if isValid(m.favoritesRows)
+    m.favoritesRows.unobserveField("selectedItem")
+    m.favoritesRows.unobserveField("quickPlayNode")
+    m.favoritesRows.callFunc("destroy")
+  end if
+  m.favoritesRows = invalid
 end sub
