@@ -46,10 +46,17 @@ jobs:
       branch_name: ${{ steps.context.outputs.branch_name }}
       build_context: ${{ steps.context.outputs.build_context }}
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token }}
           fetch-tags: true
           fetch-depth: 0
 
@@ -221,7 +228,7 @@ jobs:
             echo "ℹ️ No existing release found for tag: $TAG_NAME"
           fi
         env:
-          GH_TOKEN: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Generate Changelog Entry
         if: ${{ inputs.create_github_release == true && (steps.context.outputs.build_context == 'version_branch' || steps.context.outputs.build_context == 'main_branch') }}
@@ -288,5 +295,5 @@ jobs:
           prerelease: false
           generate_release_notes: false
           discussion_category_name: Announcements
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           files: ${{ github.workspace }}/out/${{ steps.context.outputs.zip_name }}
