@@ -50,19 +50,13 @@ jobs:
       
       - name: Setup Node.js
         run: |
-          # Install Node.js directly from NodeSource (avoids setup-node action permission issues)
-          # Using Node.js 20.x (LTS) for compatibility
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get install -y nodejs
           node --version
           npm --version
       
       - name: Install dependencies
-        run: |
-          # Install dependencies without running postinstall scripts
-          npm ci --ignore-scripts
-          # Run ropm directly via node (bypasses binary permission issues)
-          node node_modules/ropm/dist/cli.js copy && node scripts/ropm-hook.cjs
+        run: npm ci
       
       - name: Run all tests on Roku
         run: npm run test:all
