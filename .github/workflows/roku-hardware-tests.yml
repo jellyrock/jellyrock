@@ -59,10 +59,12 @@ jobs:
       
       - name: Install dependencies
         run: |
-          # Install dependencies
-          npm ci
+          # Install dependencies without running postinstall scripts
+          npm ci --ignore-scripts
           # Fix permissions on binaries (required for restricted container environment)
           chmod -R +x node_modules/.bin/ 2>/dev/null || true
+          # Now run the postinstall script manually
+          npm run postinstall
       
       - name: Run all tests on Roku
         run: npm run test:all
