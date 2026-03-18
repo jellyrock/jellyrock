@@ -28,9 +28,6 @@ sub init()
   m.LoadOnNowTask = createObject("roSGNode", "LoadItemsTask")
   m.LoadOnNowTask.itemsToLoad = "onNow"
 
-  m.LoadFavoritesTask = createObject("roSGNode", "LoadItemsTask")
-  m.LoadFavoritesTask.itemsToLoad = "favorites"
-
   ' Track populated section count for AppLaunchComplete beacon
   m.populatedSectionCount = 0
   m.initialLoadComplete = false
@@ -84,7 +81,7 @@ end sub
 ' SECTION PLAN & SKELETON ROW CREATION
 ' ============================================
 
-' buildSectionPlan: Reads homeSection0-6 + hardcoded favorites, returns ordered array of sections to display
+' buildSectionPlan: Reads homeSection0-6 settings, returns ordered array of sections to display
 '
 ' @return {array} of { type: string, settingIndex: integer }
 function buildSectionPlan() as object
@@ -97,9 +94,6 @@ function buildSectionPlan() as object
       plan.push({ type: sectionName, settingIndex: i })
     end if
   end for
-
-  ' Favorites is hardcoded at the end (not configurable in Jellyfin web settings)
-  plan.push({ type: "favorites", settingIndex: 7 })
 
   return plan
 end function
@@ -147,10 +141,6 @@ function createSkeletonRow(sectionType as string) as object
     row.title = tr("My Media")
     row.sectionId = "library"
     row.cursorSize = rowSlotSize.LIBRARY
-  else if sectionType = "favorites"
-    row.title = tr("Favorites")
-    row.sectionId = "favorites"
-    row.cursorSize = rowSlotSize.WIDE
   else
     return invalid
   end if
@@ -181,9 +171,6 @@ sub startParallelLoads()
     else if section.type = "livetv"
       m.LoadOnNowTask.observeField("content", "updateOnNowItems")
       m.LoadOnNowTask.control = "RUN"
-    else if section.type = "favorites"
-      m.LoadFavoritesTask.observeField("content", "updateFavoritesItems")
-      m.LoadFavoritesTask.control = "RUN"
     end if
   end for
 end sub
@@ -349,7 +336,6 @@ function getSectionIdForType(sectionType as string) as dynamic
   if sectionType = "nextup" then return "nextup"
   if sectionType = "livetv" then return "livetv"
   if sectionType = "librarybuttons" or sectionType = "smalllibrarytiles" then return "library"
-  if sectionType = "favorites" then return "favorites"
   return invalid
 end function
 
@@ -371,7 +357,6 @@ function getRowConfigForSection(sectionId as string) as object
   if sectionId = "nextup" then return { title: tr("Next Up"), slotSize: rowSlotSize.WIDE }
   if sectionId = "livetv" then return { title: tr("On Now"), slotSize: rowSlotSize.SQUARE }
   if sectionId = "library" then return { title: tr("My Media"), slotSize: rowSlotSize.LIBRARY }
-  if sectionId = "favorites" then return { title: tr("Favorites"), slotSize: rowSlotSize.WIDE }
 
   ' latestmedia rows: derive title and slotSize from the library data
   if sectionId.startsWith("latest_") and isValidAndNotEmpty(m.filteredLatest)
@@ -475,14 +460,6 @@ sub updateOnNowItems()
   m.LoadOnNowTask.content = []
 
   populateRowFromData("livetv", itemData)
-end sub
-
-sub updateFavoritesItems()
-  itemData = m.LoadFavoritesTask.content
-  m.LoadFavoritesTask.unobserveField("content")
-  m.LoadFavoritesTask.content = []
-
-  populateRowFromData("favorites", itemData)
 end sub
 
 ' updateLatestItems: Processes LoadItemsTask content for a latest-in-library row.
@@ -738,10 +715,6 @@ sub destroy()
   m.LoadOnNowTask.unobserveField("content")
   m.LoadOnNowTask.control = "STOP"
   m.LoadOnNowTask = invalid
-
-  m.LoadFavoritesTask.unobserveField("content")
-  m.LoadFavoritesTask.control = "STOP"
-  m.LoadFavoritesTask = invalid
 
   ' Clear data caches
   m.libraryData = invalid
