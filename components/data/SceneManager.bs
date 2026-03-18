@@ -199,7 +199,8 @@ sub unregisterOverhangData(group)
   group.unobserveField("overhangTitle")
   group.unobserveField("overhangTabs")
   m.overhang.unobserveField("selectedTabId")
-  m.overhang.tabs = []
+  ' Don't clear tabs here — registerOverhangData() sets the correct state
+  ' for the next screen. Clearing would briefly flash the title label.
 end sub
 
 ' Update overhang title

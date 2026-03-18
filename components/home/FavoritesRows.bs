@@ -38,12 +38,12 @@ sub updateSize()
 
   if isValid(uiRowLayout)
     if uiRowLayout = "fullwidth"
-      m.top.translation = [0, 120]
+      m.top.translation = [0, 126]
       m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
       m.top.focusXOffset = [96]
       m.top.rowLabelOffset = [96, 18]
     else
-      m.top.translation = [111, 120]
+      m.top.translation = [111, 126]
       m.top.itemSize = [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT]
       m.top.focusXOffset = []
       m.top.rowLabelOffset = [0, 18]

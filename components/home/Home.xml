@@ -2,7 +2,6 @@
 <component name="Home" extends="JRScreen">
   <children>
     <HomeRows id="homeRows" />
-    <FavoritesRows id="favoritesRows" visible="false" />
 
     <OptionsSlider id="options" />
   </children>

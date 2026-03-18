@@ -60,6 +60,9 @@ sub updateLayout()
   ' Position indicator below the border
   m.indicator.width = borderWidth
   m.indicator.translation = [0, borderHeight + 4]
+
+  ' Show the tab now that layout is complete (starts visible="false" in XML)
+  m.top.visible = true
 end sub
 
 ' Update visuals based on focused + selected state.
