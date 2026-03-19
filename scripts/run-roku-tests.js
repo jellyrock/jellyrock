@@ -41,23 +41,6 @@ async function deployToRoku() {
   }
 }
 
-function extractResult(logPath) {
-  try {
-    const content = fs.readFileSync(logPath, 'utf8');
-    const results = content.match(/^\[Rooibos Result\]: (PASS|FAIL)$/gm);
-    if (results && results.length > 0) {
-      const lastResult = results[results.length - 1];
-      return {
-        passed: lastResult.includes('PASS'),
-        found: true
-      };
-    }
-    return { found: false };
-  } catch (err) {
-    return { found: false, error: err.message };
-  }
-}
-
 async function captureConsole() {
   console.log('🔌 Connecting to Roku debug console...');
   return new Promise((resolve, reject) => {
@@ -65,47 +48,84 @@ async function captureConsole() {
     const writeStream = fs.createWriteStream(logFile);
     const socket = new net.Socket();
     let timeoutId;
+    let lineBuffer = '';
+    const results = [];
 
     socket.connect(8085, ROKU_IP, () => {
       console.log('✅ Connected to Roku console');
     });
 
+    // Helper to process a single line for results and shutdown
+    function processLine(line) {
+      // Normalize line endings (handle CRLF from Roku console)
+      const cleanLine = line.replace(/\r+$/, '');
+      
+      // Capture test results in-memory to avoid file read race condition
+      const resultMatch = cleanLine.match(/^\[Rooibos Result\]: (PASS|FAIL)$/);
+      if (resultMatch) {
+        results.push(resultMatch[1]);
+      }
+
+      // Check for shutdown signal
+      if (cleanLine.includes('[Rooibos Shutdown]')) {
+        clearTimeout(timeoutId);
+        socket.destroy();
+        writeStream.end();
+        
+        const lastResult = results.length > 0 ? results[results.length - 1] : null;
+        if (lastResult) {
+          resolve({ passed: lastResult === 'PASS', logFile });
+        } else {
+          reject(new Error('Test run completed without result'));
+        }
+        return true; // Signal that shutdown was detected
+      }
+      return false;
+    }
+
     socket.on('data', (data) => {
+      const chunk = data.toString();
       writeStream.write(data);
       process.stdout.write(data);
 
-      // Check for shutdown signal to know when tests are truly done
-      if (data.toString().includes('[Rooibos Shutdown]')) {
-        writeStream.end();
-        const result = extractResult(logFile);
-        clearTimeout(timeoutId);
-        socket.destroy();
-        if (result.found) {
-          resolve({ passed: result.passed, logFile });
-        } else {
-          reject(new Error('Test run completed without result'));
+      // Line buffering to handle TCP chunk boundaries
+      lineBuffer += chunk;
+      const lines = lineBuffer.split('\n');
+      lineBuffer = lines.pop(); // Keep incomplete line for next chunk
+
+      for (const line of lines) {
+        if (processLine(line)) {
+          return; // Shutdown detected
         }
       }
     });
 
     socket.on('error', (err) => {
+      clearTimeout(timeoutId);
+      socket.destroy();
       writeStream.end();
-      const result = extractResult(logFile);
-      if (result.found) {
+      
+      const lastResult = results.length > 0 ? results[results.length - 1] : null;
+      if (lastResult) {
         console.warn('Connection error, but result found:', err.message);
-        clearTimeout(timeoutId);
-        resolve({ passed: result.passed, logFile });
+        resolve({ passed: lastResult === 'PASS', logFile });
       } else {
         reject(new Error(`Console connection error: ${err.message}`));
       }
     });
 
     socket.on('close', () => {
-      writeStream.end();
-      const result = extractResult(logFile);
       clearTimeout(timeoutId);
-      if (result.found) {
-        resolve({ passed: result.passed, logFile });
+      writeStream.end();
+      
+      // Process any remaining content in lineBuffer (handles shutdown without trailing newline)
+      if (lineBuffer.length > 0 && processLine(lineBuffer)) {
+        return; // Shutdown was detected and handled
+      }
+      
+      const lastResult = results.length > 0 ? results[results.length - 1] : null;
+      if (lastResult) {
+        resolve({ passed: lastResult === 'PASS', logFile });
       } else {
         reject(new Error('Console connection closed without test result'));
       }
@@ -114,9 +134,10 @@ async function captureConsole() {
     timeoutId = setTimeout(() => {
       socket.destroy();
       writeStream.end();
-      const result = extractResult(logFile);
-      if (result.found) {
-        resolve({ passed: result.passed, logFile });
+      
+      const lastResult = results.length > 0 ? results[results.length - 1] : null;
+      if (lastResult) {
+        resolve({ passed: lastResult === 'PASS', logFile });
       } else {
         reject(new Error(`Test timeout after ${TIMEOUT_MS / 1000} seconds`));
       }
