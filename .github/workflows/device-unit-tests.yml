@@ -17,6 +17,7 @@ on:
           - unit
           - integration
           - all
+          - complete
 
 jobs:
   check-skip:
@@ -56,8 +57,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run unit tests on Roku
+        if: github.event.inputs.test_type == 'unit'
+        run: npm run test:unit
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+
+      - name: Run integration tests on Roku
+        if: github.event.inputs.test_type == 'integration'
+        run: npm run test:integration
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+
       - name: Run all tests on Roku
+        if: github.event.inputs.test_type == 'all' || github.event_name != 'workflow_dispatch'
         run: npm run test:all
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+
+      - name: Run complete tests on Roku (including migration and registry)
+        if: github.event.inputs.test_type == 'complete'
+        run: npm run test:complete
         env:
           ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
           ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
@@ -66,6 +89,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: roku-all-test-logs
+          name: roku-test-logs-${{ github.event.inputs.test_type || 'all' }}
           path: roku-test-output.log
           retention-days: 30

@@ -35,6 +35,7 @@
     "build:tests": "npx rimraf build/ out/ && npx bsc --project bsconfig-tests.json",
     "build:tests-unit": "npx rimraf build/ out/ && npx bsc --project bsconfig-tests-unit.json",
     "build:tests-integration": "npx rimraf build/ out/ && npx bsc --project bsconfig-tests-integration.json",
+    "build:tests-complete": "npx rimraf build/ out/ && npx bsc --project bsconfig-tests-complete.json",
     "changelog:sync-unreleased": "node scripts/changelog-syncer.js sync-unreleased",
     "changelog:sync-release": "node scripts/changelog-syncer.js sync-release",
     "changelog:validate": "node scripts/changelog-syncer.js validate",
@@ -54,7 +55,8 @@
     "validate": "npx bsc --copy-to-staging=false --create-package=false",
     "test:unit": "npm run build:tests-unit && node scripts/run-roku-tests.js",
     "test:integration": "npm run build:tests-integration && node scripts/run-roku-tests.js",
-    "test:all": "npm run build:tests && node scripts/run-roku-tests.js"
+    "test:all": "npm run build:tests && node scripts/run-roku-tests.js",
+    "test:complete": "npm run build:tests-complete && node scripts/run-roku-tests.js"
   },
   "repository": {
     "type": "git",

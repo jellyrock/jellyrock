@@ -1,0 +1,58 @@
+{
+  "files": [
+    "manifest",
+    {
+      "src": "source/**/*",
+      "dest": "source"
+    },
+    "!source/Main.bs",
+    {
+      "src": "components/**/*",
+      "dest": "components"
+    },
+    {
+      "src": "locale/**/*",
+      "dest": "locale"
+    },
+    {
+      "src": "settings/**/*",
+      "dest": "settings"
+    },
+    {
+      "src": "tests/source/**/*",
+      "dest": "source/tests"
+    },
+    "!tests/source/e2e/**/*",
+    "!tests/source/**/*.md"
+  ],
+  "diagnosticFilters": [
+    "node_modules/**/*",
+    "**/roku_modules/**/*",
+    {
+      "src": "tests/**/*",
+      "codes": [
+        1026,
+        "LINT3008"
+      ]
+    }
+  ],
+  "autoImportComponentScript": true,
+  "stagingDir": "build",
+  "retainStagingDir": true,
+  "plugins": [
+    "rooibos-roku",
+    "@rokucommunity/bslint"
+  ],
+  "rooibos": {
+    "isRecordingCodeCoverage": true,
+    "testsFilePattern": null,
+    "tags": null,
+    "showOnlyFailures": true,
+    "catchCrashes": true,
+    "lineWidth": 70,
+    "failFast": false,
+    "sendHomeOnFinish": false,
+    "printTestTimes": true
+  },
+  "sourceMap": true
+}
