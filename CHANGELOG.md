@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Add self-hosted GitHub Actions runner for Roku hardware tests + migrate to GitHub App auth ([#385](https://github.com/jellyrock/jellyrock/pull/385))
 
+### Fixed
+
+- don't run device unit tests for automated commits ([445d473](https://github.com/jellyrock/jellyrock/commit/445d473))
+
 ## [2.2.0](https://github.com/jellyrock/jellyrock/compare/v2.1.0...v2.2.0) - 2026-03-17
 
 ### Added
