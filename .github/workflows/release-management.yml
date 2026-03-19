@@ -212,7 +212,7 @@ jobs:
 
       - name: Commit version updates
         run: |
-          git config user.name "jellyrock[bot]"
+          git config user.name "jellyrock"
           git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
           git pull --rebase --autostash origin ${{ needs.validate-and-prepare.outputs.branch_name }}
           git add package.json package-lock.json manifest

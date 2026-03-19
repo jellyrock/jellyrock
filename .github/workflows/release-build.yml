@@ -49,7 +49,7 @@ jobs:
 
       - name: Commit changelog update
         run: |
-          git config user.name "jellyrock[bot]"
+          git config user.name "jellyrock"
           git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
 
           if git diff --quiet CHANGELOG.md; then
