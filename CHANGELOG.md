@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - don't run device unit tests for automated commits ([445d473](https://github.com/jellyrock/jellyrock/commit/445d473))
 
+### Dependencies
+
+- Update @rokucommunity/bslint from v0.8.38 to v0.8.39 ([#386](https://github.com/jellyrock/jellyrock/pull/386))
+
 ## [2.2.0](https://github.com/jellyrock/jellyrock/compare/v2.1.0...v2.2.0) - 2026-03-17
 
 ### Added
