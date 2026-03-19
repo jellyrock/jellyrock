@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - "push-action/**" # Temp branches created by CasperWA/push-protected action
   pull_request:
     types: [opened, synchronize]
 
