@@ -17,7 +17,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const ROKU_IP = process.env.ROKU_IP;
 const ROKU_PASSWORD = process.env.ROKU_PASSWORD;
-const BUILD_DIR = path.join(__dirname, '..', 'build');
 const TIMEOUT_MS = 5 * 60 * 1000;
 
 if (!ROKU_IP || !ROKU_PASSWORD) {
@@ -48,16 +47,16 @@ async function captureConsole() {
     const output = [];
     const socket = new net.Socket();
     let timeoutId;
-    
+
     socket.connect(8085, ROKU_IP, () => {
       console.log('✅ Connected to Roku console');
     });
-    
+
     socket.on('data', (data) => {
       const text = data.toString();
       output.push(text);
       process.stdout.write(text);
-      
+
       if (text.includes('[Rooibos Result]: PASS')) {
         clearTimeout(timeoutId);
         socket.destroy();
@@ -68,18 +67,18 @@ async function captureConsole() {
         resolve({ output: output.join(''), passed: false });
       }
     });
-    
+
     socket.on('error', (err) => {
       reject(new Error(`Console connection error: ${err.message}`));
     });
-    
+
     socket.on('close', () => {
       reject(new Error('Console connection closed unexpectedly'));
     });
-    
+
     timeoutId = setTimeout(() => {
       socket.destroy();
-      reject(new Error(`Test timeout after ${TIMEOUT_MS/1000} seconds`));
+      reject(new Error(`Test timeout after ${TIMEOUT_MS / 1000} seconds`));
     }, TIMEOUT_MS);
   });
 }
@@ -89,12 +88,12 @@ async function main() {
     await deployToRoku();
     console.log('⏳ Waiting for app to start...');
     await new Promise(resolve => setTimeout(resolve, 5000));
-    
+
     const result = await captureConsole();
     const logFile = 'roku-test-output.log';
     fs.writeFileSync(logFile, result.output);
     console.log(`📝 Full log saved to ${logFile}`);
-    
+
     if (result.passed) {
       console.log('✅ All tests passed!');
       process.exit(0);
