@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- Add self-hosted GitHub Actions runner for Roku hardware tests + migrate to GitHub App auth ([#385](https://github.com/jellyrock/jellyrock/pull/385))
+
 ## [2.2.0](https://github.com/jellyrock/jellyrock/compare/v2.1.0...v2.2.0) - 2026-03-17
 
 ### Added
