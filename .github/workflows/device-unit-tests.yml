@@ -48,7 +48,7 @@ jobs:
 
   all-tests:
     needs: check-skip
-    if: needs.check-skip.outputs.should_skip != 'true'
+    if: needs.check-skip.outputs.should_skip != 'true' && github.actor != 'jellyrock[bot]'
     runs-on: [self-hosted, roku-device]
     timeout-minutes: 15
     steps:

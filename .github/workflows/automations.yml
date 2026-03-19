@@ -13,8 +13,8 @@ on:
 
 jobs:
   label:
-    # don't run job on forks
-    if: github.repository == 'jellyrock/jellyrock'
+    # don't run job on forks or bot commits
+    if: github.repository == 'jellyrock/jellyrock' && github.actor != 'jellyrock[bot]'
     name: Labeling 🏷️
     runs-on: ubuntu-latest
     steps:
