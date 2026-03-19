@@ -1,10 +1,15 @@
 name: Device Unit Tests
 
+# SECURITY NOTE: This workflow uses pull_request_target to allow fork PRs access to secrets.
+# This is required for external contributors to run tests on the physical Roku device.
+# Repository has approval workflows enabled - external PRs require manual approval before running.
+# See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk
+
 on:
   push:
     branches:
       - main
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize]
   workflow_dispatch:
     inputs:
@@ -47,7 +52,10 @@ jobs:
     runs-on: [self-hosted, roku-device]
     timeout-minutes: 15
     steps:
+      # Explicitly checkout PR code - pull_request_target defaults to base branch
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
