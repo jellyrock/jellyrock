@@ -1,0 +1,102 @@
+name: Device Unit Tests
+
+# SECURITY NOTE: This workflow uses pull_request_target to allow fork PRs access to secrets.
+# This is required for external contributors to run tests on the physical Roku device.
+# Repository has approval workflows enabled - external PRs require manual approval before running.
+# See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk
+
+on:
+  push:
+    branches:
+      - main
+  pull_request_target:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: "Test type to run"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - unit
+          - integration
+          - all
+          - complete
+
+jobs:
+  check-skip:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Check if push is from PR merge
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            if echo "${{ github.event.head_commit.message }}" | grep -q "Merge pull request"; then
+              echo "This is a PR merge to main - tests already ran on PR"
+              echo "skip=true" >> $GITHUB_OUTPUT
+            else
+              echo "This is a direct push to main"
+              echo "skip=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "This is a PR or manual trigger - always run tests"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+  all-tests:
+    needs: check-skip
+    if: needs.check-skip.outputs.should_skip != 'true'
+    runs-on: [self-hosted, roku-device]
+    timeout-minutes: 15
+    steps:
+      # Explicitly checkout PR code - pull_request_target defaults to base branch
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests on Roku
+        if: github.event.inputs.test_type == 'unit'
+        run: npm run test:unit
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+
+      - name: Run integration tests on Roku
+        if: github.event.inputs.test_type == 'integration'
+        run: npm run test:integration
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+
+      - name: Run all tests on Roku
+        if: github.event.inputs.test_type == 'all' || github.event_name != 'workflow_dispatch'
+        run: npm run test:all
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+
+      - name: Run complete tests on Roku (including migration and registry)
+        if: github.event.inputs.test_type == 'complete'
+        run: npm run test:complete
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: roku-test-logs-${{ github.event.inputs.test_type || 'all' }}
+          path: roku-test-output.log
+          retention-days: 30

@@ -12,10 +12,17 @@ jobs:
       group: jellyrock-bot-main
       cancel-in-progress: false
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
       - name: Extract version info
@@ -42,8 +49,8 @@ jobs:
 
       - name: Commit changelog update
         run: |
-          git config user.name "JellyRock-bot"
-          git config user.email "c.ewert@gmail.com"
+          git config user.name "jellyrock[bot]"
+          git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
 
           if git diff --quiet CHANGELOG.md; then
             echo "ℹ️ No changelog changes to commit"
@@ -61,13 +68,9 @@ jobs:
             echo "✅ Prepared changelog for release ${{ steps.version.outputs.version }}"
           fi
 
-      - name: Push changelog to protected branch
+      - name: Push changes
         if: env.has_changes == 'true'
-        uses: CasperWA/push-protected@74d25b8aa10e0c29024138735d32f3c0b75f9279 # v2
-        with:
-          token: ${{ secrets.JELLYROCK_BOT_TOKEN }}
-          branch: main
-          unprotect_reviews: false
+        run: git push origin main
 
       - name: Release Summary
         run: |
