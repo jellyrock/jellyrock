@@ -1,4 +1,4 @@
-name: Roku Hardware Tests
+name: Device Unit Tests
 
 on:
   push:
@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       test_type:
-        description: 'Test type to run'
+        description: "Test type to run"
         required: true
-        default: 'all'
+        default: "all"
         type: choice
         options:
           - unit
@@ -47,21 +47,21 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      
+
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: "lts/*"
           cache: "npm"
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run all tests on Roku
         run: npm run test:all
         env:
           ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
           ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
-      
+
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

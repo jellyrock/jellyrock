@@ -1,4 +1,5 @@
 .env
+*.log
 # BrightScript 
 dist/apps
 out/
