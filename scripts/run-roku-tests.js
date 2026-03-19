@@ -41,10 +41,28 @@ async function deployToRoku() {
   }
 }
 
+function extractResult(logPath) {
+  try {
+    const content = fs.readFileSync(logPath, 'utf8');
+    const results = content.match(/^\[Rooibos Result\]: (PASS|FAIL)$/gm);
+    if (results && results.length > 0) {
+      const lastResult = results[results.length - 1];
+      return {
+        passed: lastResult.includes('PASS'),
+        found: true
+      };
+    }
+    return { found: false };
+  } catch (err) {
+    return { found: false, error: err.message };
+  }
+}
+
 async function captureConsole() {
   console.log('🔌 Connecting to Roku debug console...');
   return new Promise((resolve, reject) => {
-    const output = [];
+    const logFile = 'roku-test-output.log';
+    const writeStream = fs.createWriteStream(logFile);
     const socket = new net.Socket();
     let timeoutId;
 
@@ -53,32 +71,55 @@ async function captureConsole() {
     });
 
     socket.on('data', (data) => {
-      const text = data.toString();
-      output.push(text);
-      process.stdout.write(text);
+      writeStream.write(data);
+      process.stdout.write(data);
 
-      if (text.includes('[Rooibos Result]: PASS')) {
+      // Check for shutdown signal to know when tests are truly done
+      if (data.toString().includes('[Rooibos Shutdown]')) {
+        writeStream.end();
+        const result = extractResult(logFile);
         clearTimeout(timeoutId);
         socket.destroy();
-        resolve({ output: output.join(''), passed: true });
-      } else if (text.includes('[Rooibos Result]: FAIL')) {
-        clearTimeout(timeoutId);
-        socket.destroy();
-        resolve({ output: output.join(''), passed: false });
+        if (result.found) {
+          resolve({ passed: result.passed, logFile });
+        } else {
+          reject(new Error('Test run completed without result'));
+        }
       }
     });
 
     socket.on('error', (err) => {
-      reject(new Error(`Console connection error: ${err.message}`));
+      writeStream.end();
+      const result = extractResult(logFile);
+      if (result.found) {
+        console.warn('Connection error, but result found:', err.message);
+        clearTimeout(timeoutId);
+        resolve({ passed: result.passed, logFile });
+      } else {
+        reject(new Error(`Console connection error: ${err.message}`));
+      }
     });
 
     socket.on('close', () => {
-      reject(new Error('Console connection closed unexpectedly'));
+      writeStream.end();
+      const result = extractResult(logFile);
+      clearTimeout(timeoutId);
+      if (result.found) {
+        resolve({ passed: result.passed, logFile });
+      } else {
+        reject(new Error('Console connection closed without test result'));
+      }
     });
 
     timeoutId = setTimeout(() => {
       socket.destroy();
-      reject(new Error(`Test timeout after ${TIMEOUT_MS / 1000} seconds`));
+      writeStream.end();
+      const result = extractResult(logFile);
+      if (result.found) {
+        resolve({ passed: result.passed, logFile });
+      } else {
+        reject(new Error(`Test timeout after ${TIMEOUT_MS / 1000} seconds`));
+      }
     }, TIMEOUT_MS);
   });
 }
@@ -90,9 +131,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     const result = await captureConsole();
-    const logFile = 'roku-test-output.log';
-    fs.writeFileSync(logFile, result.output);
-    console.log(`📝 Full log saved to ${logFile}`);
+    console.log(`📝 Full log saved to ${result.logFile}`);
 
     if (result.passed) {
       console.log('✅ All tests passed!');
