@@ -48,10 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       
-      - name: Verify Node.js
-        run: |
-          node --version
-          npm --version
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "lts/*"
+          cache: "npm"
       
       - name: Install dependencies
         run: npm ci
