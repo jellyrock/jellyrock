@@ -66,6 +66,16 @@ sub OnScreenShown()
     overhang.currentUser = globalUser.name
     m.overhang = overhang
 
+    ' Cache tab bar reference and observe for focus return once — for the
+    ' lifetime of this screen. Observing on each UP keypress would stack
+    ' duplicate observers if focus ever returned to content via a path that
+    ' bypassed onTabBarFocusReturn (e.g. tab switch via OK).
+    tabBar = overhang.callFunc("getTabBar")
+    if isValid(tabBar)
+      m.tabBar = tabBar
+      m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
+    end if
+
     ' Hide clock if user preference is set
     if globalUser.settings.uiDesignHideClock
       clock = overhang.findNode("clock")
@@ -202,13 +212,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "up"
     activeRows = getActiveRows()
     if isValid(activeRows) and isValid(activeRows.rowItemFocused) and activeRows.rowItemFocused[0] = 0
-      if isValid(m.overhang)
-        tabBar = m.overhang.callFunc("getTabBar")
-        if isValid(tabBar)
-          tabBar.setFocus(true)
-          tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
-          return true
-        end if
+      if isValid(m.tabBar)
+        m.tabBar.setFocus(true)
+        return true
       end if
     end if
   end if
@@ -218,13 +224,6 @@ end function
 
 ' Tab bar signals DOWN was pressed — return focus to active content
 sub onTabBarFocusReturn()
-  if isValid(m.overhang)
-    tabBar = m.overhang.callFunc("getTabBar")
-    if isValid(tabBar)
-      tabBar.unobserveField("requestFocusReturn")
-    end if
-  end if
-
   if isValid(m.activeContent)
     m.activeContent.setFocus(true)
   end if
@@ -254,6 +253,12 @@ sub destroy()
   m.log.verbose("destroy")
 
   m.top.unobserveField("selectedTabId")
+
+  ' Release tab bar observer
+  if isValid(m.tabBar)
+    m.tabBar.unobserveField("requestFocusReturn")
+    m.tabBar = invalid
+  end if
 
   ' Stop and release task node
   m.postTask.unobserveField("responseCode")
