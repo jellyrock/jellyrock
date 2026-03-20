@@ -185,6 +185,10 @@ sub onLibrariesLoaded()
   m.LoadLibrariesTask.unobserveField("content")
   m.LoadLibrariesTask.content = []
 
+  ' Always recompute filteredLatest — library data or latestItemsExcludes may have changed since last load.
+  ' startLatestMediaLoads() and getRowConfigForSection() both depend on this being current.
+  m.filteredLatest = filterNodeArray(m.libraryData, "id", m.global.user.config.latestItemsExcludes)
+
   ' Populate the library row immediately (data is available now)
   populateLibraryRow()
 
@@ -213,10 +217,7 @@ end sub
 ' insertLatestMediaSkeletons: Creates skeleton rows for each non-excluded library
 ' and inserts them at the correct position in the content node.
 sub insertLatestMediaSkeletons()
-  if not isValidAndNotEmpty(m.libraryData) then return
-
-  sessionUser = m.global.user
-  m.filteredLatest = filterNodeArray(m.libraryData, "id", sessionUser.config.latestItemsExcludes)
+  if not isValidAndNotEmpty(m.filteredLatest) then return
 
   ' Find where latestmedia should be inserted by finding the index after the last
   ' non-latestmedia section that comes before it in the plan
