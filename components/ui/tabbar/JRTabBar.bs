@@ -17,6 +17,7 @@ sub onTabsChanged()
   tabs = m.top.tabs
   if not isValidAndNotEmpty(tabs) then return
 
+  matched = false
   for each tabData in tabs
     tabNode = CreateObject("roSGNode", "JRTab")
     tabNode.tabTitle = tabData.title
@@ -26,12 +27,23 @@ sub onTabsChanged()
     if m.top.selectedTabId = "" and tabData.id = tabs[0].id
       tabNode.isSelected = true
       m.top.selectedTabId = tabData.id
+      matched = true
     else if tabData.id = m.top.selectedTabId
       tabNode.isSelected = true
+      matched = true
     end if
 
     m.tabContainer.appendChild(tabNode)
   end for
+
+  ' Fallback: selectedTabId was stale (not found in new tabs); select and announce the first tab
+  if not matched
+    firstTab = m.tabContainer.getChild(0)
+    if isValid(firstTab)
+      firstTab.isSelected = true
+      m.top.selectedTabId = firstTab.tabId
+    end if
+  end if
 
   updateFocusedTabVisuals()
 end sub

@@ -184,10 +184,9 @@ sub registerOverhangData(group)
     end if
     group.observeField("overhangVisible", "updateOverhangVisible")
 
-    ' Tab support: sync tabs from group to overhang
-    m.overhang.tabs = group.overhangTabs
-    ' Always sync selectedTabId to prevent stale values from previous screens
+    ' Tab support: set selectedTabId before tabs so onTabsChanged reads the correct value
     m.overhang.selectedTabId = group.selectedTabId
+    m.overhang.tabs = group.overhangTabs
     group.observeField("overhangTabs", "updateOverhangTabs")
     m.overhang.observeField("selectedTabId", "onOverhangTabSelected")
   end if
