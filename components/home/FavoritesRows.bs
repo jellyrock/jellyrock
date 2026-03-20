@@ -31,6 +31,9 @@ sub init()
     "Person": tr("People")
   }
   m.initialLoadComplete = false
+
+  ' Track loading state to prevent duplicate observers/requests
+  m.isLoadingFavorites = false
 end sub
 
 sub updateSize()
@@ -61,6 +64,13 @@ sub loadFavorites()
     m.top.showRowCounter = [true]
   end if
 
+  ' Cancel any in-flight task before starting new one
+  if m.isLoadingFavorites
+    m.loadFavoritesTask.unobserveField("content")
+    m.loadFavoritesTask.control = "STOP"
+  end if
+
+  m.isLoadingFavorites = true
   m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
   m.loadFavoritesTask.control = "RUN"
 end sub
@@ -90,6 +100,7 @@ sub onFavoritesLoaded()
   m.loadFavoritesTask.unobserveField("content")
   m.loadFavoritesTask.content = []
 
+  m.isLoadingFavorites = false
   m.initialLoadComplete = true
 
   ' Bucket items by type
@@ -336,4 +347,7 @@ sub destroy()
   m.loadFavoritesTask.unobserveField("content")
   m.loadFavoritesTask.control = "STOP"
   m.loadFavoritesTask = invalid
+
+  ' Reset loading flag
+  m.isLoadingFavorites = false
 end sub
