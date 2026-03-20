@@ -34,6 +34,11 @@ sub init()
 
   ' Track per-library latest media tasks so they can be cleaned up
   m.latestMediaTasks = []
+
+  ' Track loading state for persistent tasks to prevent duplicate observers/requests
+  m.isLoadingResume = false
+  m.isLoadingNextUp = false
+  m.isLoadingOnNow = false
 end sub
 
 ' loadLibraries: Entry point called by Home.bs via callFunc.
@@ -166,12 +171,18 @@ end function
 sub startParallelLoads()
   for each section in m.sectionPlan
     if section.type = "resume"
+      if m.isLoadingResume then continue for
+      m.isLoadingResume = true
       m.LoadContinueWatchingTask.observeField("content", "updateContinueWatchingItems")
       m.LoadContinueWatchingTask.control = "RUN"
     else if section.type = "nextup"
+      if m.isLoadingNextUp then continue for
+      m.isLoadingNextUp = true
       m.LoadNextUpTask.observeField("content", "updateNextUpItems")
       m.LoadNextUpTask.control = "RUN"
     else if section.type = "livetv"
+      if m.isLoadingOnNow then continue for
+      m.isLoadingOnNow = true
       m.LoadOnNowTask.observeField("content", "updateOnNowItems")
       m.LoadOnNowTask.control = "RUN"
     end if
@@ -471,6 +482,7 @@ sub updateContinueWatchingItems()
   itemData = m.LoadContinueWatchingTask.content
   m.LoadContinueWatchingTask.unobserveField("content")
   m.LoadContinueWatchingTask.content = []
+  m.isLoadingResume = false
 
   populateRowFromData("resume", itemData)
 end sub
@@ -480,6 +492,7 @@ sub updateNextUpItems()
   m.LoadNextUpTask.unobserveField("content")
   m.LoadNextUpTask.content = []
   m.LoadNextUpTask.control = "STOP"
+  m.isLoadingNextUp = false
 
   populateRowFromData("nextup", itemData)
 end sub
@@ -488,6 +501,7 @@ sub updateOnNowItems()
   itemData = m.LoadOnNowTask.content
   m.LoadOnNowTask.unobserveField("content")
   m.LoadOnNowTask.content = []
+  m.isLoadingOnNow = false
 
   populateRowFromData("livetv", itemData)
 end sub
@@ -753,4 +767,9 @@ sub destroy()
   m.libraryData = invalid
   m.filteredLatest = invalid
   m.sectionPlan = invalid
+
+  ' Reset loading flags
+  m.isLoadingResume = false
+  m.isLoadingNextUp = false
+  m.isLoadingOnNow = false
 end sub
