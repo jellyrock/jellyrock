@@ -211,7 +211,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' UP at top of content → focus the tab bar in the overhang
   if key = "up"
     activeRows = getActiveRows()
-    if isValid(activeRows) and isValid(activeRows.rowItemFocused) and activeRows.rowItemFocused[0] = 0
+    rowItemFocused = activeRows?.rowItemFocused
+    if isValid(activeRows) and type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0
       ' Lazy-init: tab bar may not exist during first OnScreenShown (pushScene
       ' calls OnScreenShown before registerOverhangData creates the tab bar)
       if not isValid(m.tabBar) and isValid(m.overhang)
