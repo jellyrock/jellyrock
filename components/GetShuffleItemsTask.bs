@@ -51,7 +51,7 @@ sub getShuffleItems()
     data = GetApi().GetItemsByQuery({
       "ArtistIds": input.id,
       "includeitemtypes": "Audio",
-      "sortBy": "Random",
+      "SortBy": "Random",
       "Recursive": true,
       "Limit": 200,
       "EnableTotalRecordCount": false
@@ -62,7 +62,7 @@ sub getShuffleItems()
     data = GetApi().GetItemsByQuery({
       "parentId": input.id,
       "includeitemtypes": "Audio",
-      "sortBy": "SortName",
+      "SortBy": "SortName",
       "Limit": 200,
       "EnableTotalRecordCount": false
     })
