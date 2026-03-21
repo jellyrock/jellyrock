@@ -9,7 +9,7 @@
   <children>
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" />
-    <Poster id="buttonIcon" />
+    <Poster id="buttonIcon" width="64" loadWidth="64" height="64" loadHeight="64" loadDisplayMode="limitSize" />
     <LabelPrimarySmaller id="buttonText" horizAlign="center" wrap="true" maxLines="2" lineSpacing="4" />
   </children>
   <interface>

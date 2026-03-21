@@ -44,6 +44,27 @@ sub getShuffleItems()
       "EnableTotalRecordCount": false
     })
     if isValid(data) and isValid(data.Items) then items = data.Items
+  else if input.type = "MusicArtist"
+    ' All Audio tracks by this artist, shuffled server-side
+    data = GetApi().GetItemsByQuery({
+      "AlbumArtistIds": input.id,
+      "includeitemtypes": "Audio",
+      "sortBy": "Random",
+      "Recursive": true,
+      "Limit": 200,
+      "EnableTotalRecordCount": false
+    })
+    if isValid(data) and isValid(data.Items) then items = data.Items
+  else if input.type = "MusicAlbum"
+    ' All Audio tracks on this album — client-side shuffle applied by the caller
+    data = GetApi().GetItemsByQuery({
+      "parentId": input.id,
+      "includeitemtypes": "Audio",
+      "sortBy": "SortName",
+      "Limit": 200,
+      "EnableTotalRecordCount": false
+    })
+    if isValid(data) and isValid(data.Items) then items = data.Items
   end if
 
   m.top.shuffleItems = items

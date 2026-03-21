@@ -87,6 +87,10 @@ sub init()
   ' previously-visited season renders immediately rather than showing a metadata pop-in.
   m.seasonSeriesCache = {}
 
+  ' Audio: fetch lyrics in the background for the description area
+  m.loadLyricsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.loadLyricsTask.itemsToLoad = "lyrics"
+
   m.isFirstRun = true
 
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
@@ -366,6 +370,54 @@ sub populateDescriptionGroup()
     return
   end if
 
+  ' MusicArtist: biography with higher maxLines; placeholder when none
+  if item.type = "MusicArtist"
+    if isValidAndNotEmpty(item.overview)
+      m.itemDescription.text = item.overview
+    else
+      m.itemDescription.text = tr("No biography available for this artist.")
+    end if
+    m.itemDescription.tagline = ""
+    m.itemDescription.maxLines = 8
+    m.itemDescription.dialogTitle = item.name
+    m.itemDescription.visible = true
+    setDescriptionInLayout(true)
+    return
+  end if
+
+  ' MusicAlbum: overview if present; hidden otherwise (no placeholder)
+  if item.type = "MusicAlbum"
+    m.itemDescription.tagline = ""
+    if isValidAndNotEmpty(item.overview)
+      m.itemDescription.text = item.overview
+      m.itemDescription.maxLines = 4
+      m.itemDescription.dialogTitle = item.name
+      m.itemDescription.visible = true
+      setDescriptionInLayout(true)
+    else
+      m.itemDescription.visible = false
+      setDescriptionInLayout(false)
+    end if
+    return
+  end if
+
+  ' Audio: lyrics fetched async — start hidden; onLyricsLoaded() will populate when ready
+  if item.type = "Audio"
+    m.itemDescription.tagline = ""
+    m.itemDescription.maxLines = 8
+    m.itemDescription.dialogTitle = item.name
+    m.itemDescription.visible = false
+    setDescriptionInLayout(false)
+    if item.hasLyrics
+      m.loadLyricsTask.unobserveField("content")
+      m.loadLyricsTask.control = "STOP"
+      m.loadLyricsTask.itemId = item.id
+      m.loadLyricsTask.observeField("content", "onLyricsLoaded")
+      m.loadLyricsTask.control = "RUN"
+    end if
+    return
+  end if
+
   hasTagline = false
   hasOverview = false
 
@@ -428,6 +480,12 @@ sub populateInfoGroup()
     populateInfoGroupPerson(item)
   else if item.type = "BoxSet"
     populateInfoGroupBoxSet(item, userSettings)
+  else if item.type = "MusicArtist"
+    populateInfoGroupMusicArtist(item)
+  else if item.type = "MusicAlbum"
+    populateInfoGroupMusicAlbum(item, userSettings)
+  else if item.type = "Audio"
+    populateInfoGroupAudio(item, userSettings)
   else
     ' Movie, Video, Recording
     populateInfoGroupMovie(item, userSettings)
@@ -500,7 +558,7 @@ end sub
 
 ' populateInfoGroupMusicVideo: Info rows for MusicVideo
 ' Row 1: Year · Official Rating · Runtime · Ends At
-' Row 2: Genres · By: Artist(s)
+' Row 2: Genres · Artist(s)
 sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -535,7 +593,7 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
 
   if isValid(item.artists) and item.artists.count() > 0
     artistNode = createInfoLabel("artists")
-    artistNode.text = tr("By: %1").Replace("%1", item.artists.join(", "))
+    artistNode.text = item.artists.join(", ")
     displayDirectorGenreNode(artistNode)
   end if
 
@@ -839,6 +897,126 @@ sub populateInfoGroupPerson(item as object)
   end if
 end sub
 
+' populateInfoGroupMusicArtist: Info rows for MusicArtist
+' Row 1: N Albums · N Songs · Year
+' Row 2: Genres
+sub populateInfoGroupMusicArtist(item as object)
+  if item.albumCount > 0
+    albumCountNode = createInfoLabel("albumCount")
+    albumLabel = tr("Album")
+    if item.albumCount <> 1 then albumLabel = tr("Albums")
+    albumCountNode.text = stri(item.albumCount).trim() + " " + albumLabel
+    displayInfoNode(albumCountNode)
+  end if
+
+  if item.songCount > 0
+    songCountNode = createInfoLabel("songCount")
+    songLabel = tr("Song")
+    if item.songCount <> 1 then songLabel = tr("Songs")
+    songCountNode.text = stri(item.songCount).trim() + " " + songLabel
+    displayInfoNode(songCountNode)
+  end if
+
+  if item.productionYear > 0
+    yearNode = createInfoLabel("releaseYear")
+    yearNode.text = stri(item.productionYear).trim()
+    displayInfoNode(yearNode)
+  end if
+
+  if item.genres.count() > 0
+    genreNode = createInfoLabel("genre")
+    genreNode.text = item.genres.join(" / ")
+    displayDirectorGenreNode(genreNode)
+  end if
+end sub
+
+' populateInfoGroupMusicAlbum: Info rows for MusicAlbum
+' Row 1: Year · Runtime · Ends At
+' Row 2: Album Artist · Genres · N Tracks
+sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
+  if item.productionYear > 0
+    yearNode = createInfoLabel("releaseYear")
+    yearNode.text = stri(item.productionYear).trim()
+    displayInfoNode(yearNode)
+  end if
+
+  if item.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
+  end if
+
+  if isValidAndNotEmpty(item.albumArtist)
+    artistNode = createInfoLabel("albumArtist")
+    artistNode.text = item.albumArtist
+    displayDirectorGenreNode(artistNode)
+  end if
+
+  if item.genres.count() > 0
+    genreNode = createInfoLabel("genre")
+    genreNode.text = item.genres.join(" / ")
+    displayDirectorGenreNode(genreNode)
+  end if
+
+  if item.childCount > 0
+    trackCountNode = createInfoLabel("trackCount")
+    trackLabel = tr("Track")
+    if item.childCount <> 1 then trackLabel = tr("Tracks")
+    trackCountNode.text = stri(item.childCount).trim() + " " + trackLabel
+    displayDirectorGenreNode(trackCountNode)
+  end if
+end sub
+
+' populateInfoGroupAudio: Info rows for Audio (song)
+' Row 1: Track N · Disc N (only when disc > 1) · Runtime · Ends At
+' Row 2: Album name · Album artist
+sub populateInfoGroupAudio(item as object, userSettings as object)
+  if item.indexNumber > 0
+    trackNode = createInfoLabel("trackNumber")
+    trackNode.text = tr("Track %1").Replace("%1", stri(item.indexNumber).trim())
+    displayInfoNode(trackNode)
+  end if
+
+  ' Only show disc number when there is more than one disc in the album
+  if item.parentIndexNumber > 1
+    discNode = createInfoLabel("discNumber")
+    discNode.text = tr("Disc %1").Replace("%1", stri(item.parentIndexNumber).trim())
+    displayInfoNode(discNode)
+  end if
+
+  if item.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
+  end if
+
+  if isValidAndNotEmpty(item.albumName)
+    albumNameNode = createInfoLabel("albumName")
+    albumNameNode.text = item.albumName
+    displayDirectorGenreNode(albumNameNode)
+  end if
+
+  if isValidAndNotEmpty(item.albumArtist)
+    albumArtistNode = createInfoLabel("albumArtistName")
+    albumArtistNode.text = item.albumArtist
+    displayDirectorGenreNode(albumArtistNode)
+  end if
+end sub
+
 ' getHistory: Format the air schedule/status string for a Series item
 ' Example output: "ABC" or "Fridays at 9:30 PM on NBC"
 function getHistory() as string
@@ -908,11 +1086,26 @@ sub itemContentChanged()
 
     setupButtons(item)
 
-    ' Media tracks and stream options are only relevant for playable types
-    ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space
-    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet")
+    ' Media tracks and stream options are only relevant for playable types.
+    ' MusicArtist/MusicAlbum have no track info. Audio shows audio codec only.
+    ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space.
+    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum")
 
-    if item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet"
+    if item.type = "Audio"
+      ' Audio: show audio codec only — no video source selection or subtitle display
+      setFieldText("video_codec", "")
+      setFieldText("subtitle_codec", "")
+      allStreams = []
+      if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
+        mediaSources = item.mediaSourcesData.mediaSources
+        if isValid(mediaSources[0].MediaStreams)
+          allStreams = mediaSources[0].MediaStreams
+        end if
+      end if
+      SetDefaultAudioTrack(allStreams)
+      SetUpAudioOptions(allStreams)
+      updateOptionsButtonVisibility()
+    else if item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum"
       if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
         m.top.selectedVideoStreamId = item.mediaSourceId
       end if
@@ -932,7 +1125,7 @@ sub itemContentChanged()
       SetUpSubtitleDisplay(allStreams, m.top.selectedAudioStreamIndex)
       updateOptionsButtonVisibility()
     else
-      ' Series/Season/Person: ensure options button is removed if it was left from a previous load
+      ' Series/Season/Person/BoxSet/MusicArtist/MusicAlbum: remove options button if left from previous load
       if isValid(m.optionsButton)
         m.buttonGrp.removeChild(m.optionsButton)
         m.optionsButton = invalid
@@ -947,10 +1140,11 @@ sub itemContentChanged()
     updateFavoriteButton()
     updateWatchedButton()
 
-    ' Non-Series/Season types: Resume based on playbackPositionTicks
+    ' Non-Series/Season/music types: Resume based on playbackPositionTicks
     ' Series: Resume based on nextUpEpisode (managed by nextUpEpisodeChanged observer)
     ' Season: No resume — NextUp API does not support SeasonId filtering
-    if item.type <> "Series" and item.type <> "Season"
+    ' Music types: no resume — play state for music is not tracked via playbackPositionTicks
+    if item.type <> "Series" and item.type <> "Season" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Audio"
       manageResumeButton()
     end if
 
@@ -1047,7 +1241,7 @@ sub SetUpAudioOptions(streams)
   end if
 
   options = {}
-  if isValid(m.options.options.videos)
+  if isValid(m.options.options) and isValid(m.options.options.videos)
     options.videos = m.options.options.videos
   end if
   options.audios = tracks
@@ -1205,6 +1399,39 @@ sub setItemLogo(item as object)
       m.itemLogo.uri = "pkg:/images/icons/baseline_person_white_48dp.png"
     end if
     return
+  else if item.type = "MusicArtist"
+    ' Same as Person — primary photo where the logo sits; hide if none (no silhouette fallback)
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+    else
+      m.itemLogo.visible = false
+      m.itemLogo.uri = ""
+    end if
+    return
+  else if item.type = "MusicAlbum"
+    ' Square album art as the primary image; hide if none
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+    else
+      m.itemLogo.visible = false
+      m.itemLogo.uri = ""
+    end if
+    return
+  else if item.type = "Audio"
+    ' Own primary image → album art fallback → hide
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+    else if isValidAndNotEmpty(item.albumId) and isValidAndNotEmpty(item.albumPrimaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.albumPrimaryImageTag }
+      m.itemLogo.uri = ImageURL(item.albumId, "Primary", imgParams)
+    else
+      m.itemLogo.visible = false
+      m.itemLogo.uri = ""
+    end if
+    return
   else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
     ' Show the item's own primary image first (episode still, season poster).
     ' If none, fall through to the series logo chain via logoItemId/logoImageTag.
@@ -1318,9 +1545,9 @@ sub onLogoLoadStatusChanged()
         displayHeight = int(logoHeight * LOGO_MAX_DISPLAY_WIDTH / logoWidth)
       end if
 
-      ' Cap portrait images for non-Person items so the logo top stays below the metadata rows.
-      ' Person photos are exempt — their info rows are short and don't reach the right edge.
-      if isValid(m.top.itemContent) and m.top.itemContent.type <> "Person"
+      ' Cap portrait images for non-Person/MusicArtist items so the logo top stays below the metadata rows.
+      ' Person and MusicArtist are exempt — their info rows are short and don't reach the right edge.
+      if isValid(m.top.itemContent) and m.top.itemContent.type <> "Person" and m.top.itemContent.type <> "MusicArtist"
         if displayHeight > LOGO_MAX_DISPLAY_HEIGHT
           displayWidth = int(displayWidth * LOGO_MAX_DISPLAY_HEIGHT / displayHeight)
           displayHeight = LOGO_MAX_DISPLAY_HEIGHT
@@ -1556,7 +1783,7 @@ sub setupButtons(item as object)
     playButton = CreateObject("roSGNode", "IconButton")
     playButton.id = "playButton"
     playButton.icon = "pkg:/images/icons/play.png"
-    if itemType = "Series" or itemType = "Season" or itemType = "BoxSet"
+    if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum"
       playButton.text = tr("Play All")
     else
       playButton.text = tr("Play")
@@ -1564,8 +1791,8 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(playButton)
   end if
 
-  ' Watched button — all types except Person
-  if itemType <> "Person"
+  ' Watched button — not for Person or music types (music play state is tracked differently)
+  if itemType <> "Person" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio"
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
     watchedButton.icon = "pkg:/images/icons/check.png"
@@ -1573,13 +1800,22 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(watchedButton)
   end if
 
-  ' Shuffle button — Series, Season, and BoxSet (Person shuffle is async via onPersonHasMediaChanged)
-  if itemType = "Series" or itemType = "Season" or itemType = "BoxSet"
+  ' Shuffle button — Series, Season, BoxSet, MusicArtist, MusicAlbum (not Audio; Person shuffle is async)
+  if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum"
     m.shuffleButton = CreateObject("roSGNode", "IconButton")
     m.shuffleButton.id = "shuffleButton"
     m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
     m.shuffleButton.text = tr("Shuffle")
     m.buttonGrp.appendChild(m.shuffleButton)
+  end if
+
+  ' Instant Mix button — MusicArtist, MusicAlbum, Audio (grouped with play buttons before Favorite)
+  if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio"
+    instantMixButton = CreateObject("roSGNode", "IconButton")
+    instantMixButton.id = "instantMixButton"
+    instantMixButton.icon = "pkg:/images/icons/instantMix.png"
+    instantMixButton.text = tr("Instant Mix")
+    m.buttonGrp.appendChild(instantMixButton)
   end if
 
   ' Favorite button — all types
@@ -1596,6 +1832,41 @@ sub setupButtons(item as object)
     goToSeriesButton.icon = "pkg:/images/icons/tv.png"
     goToSeriesButton.text = tr("Go to Series")
     m.buttonGrp.appendChild(goToSeriesButton)
+  end if
+
+  ' Go to Album button — Audio only (when album ID is available)
+  if itemType = "Audio" and isValidAndNotEmpty(item.albumId)
+    goToAlbumButton = CreateObject("roSGNode", "IconButton")
+    goToAlbumButton.id = "goToAlbumButton"
+    goToAlbumButton.icon = "pkg:/images/icons/album.png"
+    goToAlbumButton.text = tr("Go to Album")
+    m.buttonGrp.appendChild(goToAlbumButton)
+  end if
+
+  ' Go to Artist button — MusicAlbum only.
+  ' Prefers albumArtists (primary album artist with an ID). Falls back to artistItems when
+  ' there is exactly one contributing artist — avoids the ambiguity of multi-artist compilations.
+  if itemType = "MusicAlbum"
+    hasNavigableArtist = false
+    if isValid(item.albumArtists) and item.albumArtists.count() > 0
+      firstAlbumArtist = item.albumArtists[0]
+      if isValid(firstAlbumArtist) and isValidAndNotEmpty(firstAlbumArtist.Id)
+        hasNavigableArtist = true
+      end if
+    end if
+    if not hasNavigableArtist and isValid(item.artistItems) and item.artistItems.count() = 1
+      firstArtistItem = item.artistItems[0]
+      if isValid(firstArtistItem) and isValidAndNotEmpty(firstArtistItem.Id)
+        hasNavigableArtist = true
+      end if
+    end if
+    if hasNavigableArtist
+      goToArtistButton = CreateObject("roSGNode", "IconButton")
+      goToArtistButton.id = "goToArtistButton"
+      goToArtistButton.icon = "pkg:/images/icons/baseline_person_white_48dp.png"
+      goToArtistButton.text = tr("Go to Artist")
+      m.buttonGrp.appendChild(goToArtistButton)
+    end if
   end if
 
   ' Trailer button — restore on refresh (on first load, trailerAvailableChanged adds it async)
@@ -1794,6 +2065,22 @@ sub onSeriesResumeLoaded()
   end if
 end sub
 
+' onLyricsLoaded: Show lyrics in the description area once the async fetch completes (Audio only)
+sub onLyricsLoaded()
+  m.loadLyricsTask.unobserveField("content")
+  content = m.loadLyricsTask.content
+  m.loadLyricsTask.content = []
+
+  if not isValid(m.top.itemContent) or m.top.itemContent.type <> "Audio" then return
+  if not isValid(content) or content.count() = 0 or not isValidAndNotEmpty(content[0]) then return
+
+  m.itemDescription.text = content[0]
+  m.itemDescription.visible = true
+  setDescriptionInLayout(true)
+  ' Row heights changed — reset so onItemDetailsRendered() recalculates the extras animation target
+  m.animationTargetCalculated = false
+end sub
+
 ' onFirstEpisodeLoaded: Start playback of first episode for Series Play button
 sub onFirstEpisodeLoaded()
   m.loadFirstEpisodeTask.unobserveField("content")
@@ -1952,6 +2239,10 @@ sub destroy()
   m.loadSeasonSeriesTask.unobserveField("content")
   m.loadSeasonSeriesTask.control = "STOP"
   m.loadSeasonSeriesTask = invalid
+
+  m.loadLyricsTask.unobserveField("content")
+  m.loadLyricsTask.control = "STOP"
+  m.loadLyricsTask = invalid
 
   ' Clear node references
   m.extrasGrp = invalid
