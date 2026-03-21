@@ -167,6 +167,7 @@ sub onTabsChanged()
     ' No tabs — hide the tab bar (preserve it for instant reuse on return)
     ' and restore the title label
     if isValid(m.tabBar)
+      m.tabBar.unobserveField("ready") ' cancel any pending ready observer before restoring title
       m.tabBar.visible = false
     end if
     m.title.visible = true
@@ -195,6 +196,7 @@ sub onTabsChanged()
   if m.tabBar.ready
     m.title.visible = false
   else
+    m.tabBar.unobserveField("ready") ' prevent stacking duplicate observers on rapid tab changes
     m.tabBar.observeField("ready", "onTabBarReady")
   end if
 end sub
