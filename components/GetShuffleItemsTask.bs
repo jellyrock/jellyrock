@@ -45,9 +45,11 @@ sub getShuffleItems()
     })
     if isValid(data) and isValid(data.Items) then items = data.Items
   else if input.type = "MusicArtist"
-    ' All Audio tracks by this artist, shuffled server-side
+    ' All Audio tracks by this artist in any capacity (album artist OR contributing).
+    ' Uses ArtistIds (broad) to match GetSongsByArtistBroad — includes songs on compilation
+    ' albums and "Appears On" albums where AlbumArtistIds alone would miss them.
     data = GetApi().GetItemsByQuery({
-      "AlbumArtistIds": input.id,
+      "ArtistIds": input.id,
       "includeitemtypes": "Audio",
       "sortBy": "Random",
       "Recursive": true,

@@ -275,7 +275,7 @@ sub loadItems()
       end for
     end if
   else if m.top.itemsToLoad = "artistAlbums"
-    ' Albums where this artist is the album artist, sorted by year descending
+    ' Albums where this artist is the album artist (AlbumArtistIds), sorted by year descending
     data = MusicAlbumList(m.top.itemId)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
@@ -283,7 +283,7 @@ sub loadItems()
       end for
     end if
   else if m.top.itemsToLoad = "artistAppearsOn"
-    ' Albums where this artist contributes but is not the album artist
+    ' Albums where this artist contributes (ContributingArtistIds) but is not the album artist
     data = AppearsOnList(m.top.itemId)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
