@@ -168,7 +168,7 @@ sub loadParts(data as object)
     m.LoadBoxSetItemsTask.observeField("content", "onBoxSetItemsLoaded")
     m.LoadBoxSetItemsTask.control = "RUN"
   else if itemType = "MusicArtist"
-    ' Chain: Albums → Appears On → More Like This
+    ' Chain: Albums → Appears On → Songs → More Like This
     m.top.rowItemSize = [rowSlotSize.SQUARE]
     m.LoadArtistAlbumsTask.itemId = m.top.parentId
     m.LoadArtistAlbumsTask.observeField("content", "onArtistAlbumsLoaded")
