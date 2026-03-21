@@ -450,7 +450,8 @@ sub Main (args as dynamic) as void
             albumTracksData = GetApi().GetItemsByQuery({
               "parentId": item.id,
               "includeitemtypes": "Audio",
-              "sortBy": "SortName",
+              "sortBy": "ParentIndexNumber,IndexNumber,SortName",
+              "sortOrder": "Ascending",
               "EnableTotalRecordCount": false
             })
             if isValid(albumTracksData) and isValid(albumTracksData.Items) and albumTracksData.Items.count() > 0
