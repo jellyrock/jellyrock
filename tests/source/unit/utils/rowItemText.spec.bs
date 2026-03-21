@@ -78,6 +78,35 @@ namespace tests
       m.assertEqual(getRowItemTitle(item), "Marvel Collection")
     end function
 
+    @it("returns prefixed track number and name for Audio with indexNumber > 0")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "aud1"
+      item.type = "Audio"
+      item.name = "Yesterday"
+      item.indexNumber = 3
+      m.assertEqual(getRowItemTitle(item), "3. Yesterday")
+    end function
+
+    @it("returns name for Audio with indexNumber = 0 (no prefix)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "aud2"
+      item.type = "Audio"
+      item.name = "Hey Jude"
+      item.indexNumber = 0
+      m.assertEqual(getRowItemTitle(item), "Hey Jude")
+    end function
+
+    @it("returns name for Audio with unset indexNumber (defaults to 0)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "aud3"
+      item.type = "Audio"
+      item.name = "Let It Be"
+      m.assertEqual(getRowItemTitle(item), "Let It Be")
+    end function
+
     @it("returns empty string for invalid item")
     function _()
       m.assertEqual(getRowItemTitle(invalid), "")

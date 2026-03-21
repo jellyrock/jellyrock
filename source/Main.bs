@@ -269,22 +269,15 @@ sub Main (args as dynamic) as void
             m.global.sceneManager.callfunc("pushScene", photoPlayer)
           end if
         else if selectedItemType = "MusicArtist"
-          group = CreateArtistView(selectedItem)
-          if not isValid(group)
-            stopLoadingSpinner()
-            message_dialog(tr("Unable to find any albums or songs belonging to this artist"))
-          end if
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "MusicAlbum"
-          group = CreateAlbumView(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
+        else if selectedItemType = "Audio"
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "MusicVideo"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Playlist"
           group = CreatePlaylistView(selectedItem)
-        else if selectedItemType = "Audio"
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("resetShuffle")
-          m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(selectedItem))
-          m.global.queueManager.callFunc("playQueue")
         else
           ' TODO - switch on more node types
           stopLoadingSpinner()
@@ -301,36 +294,6 @@ sub Main (args as dynamic) as void
       startLoadingSpinner()
       node = getMsgPicker(msg, "picker")
       group = CreateItemDetailsGroup(node)
-    else if isNodeEvent(msg, "musicAlbumSelected")
-      ' If you select a Music Album from ANYWHERE, follow this flow
-      startLoadingSpinner()
-      ptr = msg.getData()
-      albums = msg.getRoSGNode()
-      node = albums.musicArtistAlbumData.items[ptr]
-      group = CreateAlbumView(node)
-      if not isValid(group)
-        stopLoadingSpinner()
-      end if
-    else if isNodeEvent(msg, "appearsOnSelected")
-      ' If you select a Music Album from ANYWHERE, follow this flow
-      startLoadingSpinner()
-      ptr = msg.getData()
-      albums = msg.getRoSGNode()
-      node = albums.musicArtistAppearsOnData.items[ptr]
-      group = CreateAlbumView(node)
-      if not isValid(group)
-        stopLoadingSpinner()
-      end if
-    else if isNodeEvent(msg, "playSong")
-      ' User has selected audio they want us to play
-      startLoadingSpinner()
-      selectedIndex = msg.getData()
-      screenContent = msg.getRoSGNode()
-
-      m.global.queueManager.callFunc("resetShuffle")
-      m.global.queueManager.callFunc("set", screenContent.albumData.items)
-      m.global.queueManager.callFunc("setPosition", selectedIndex)
-      m.global.queueManager.callFunc("playQueue")
     else if isNodeEvent(msg, "playItem")
       ' User has selected audio they want us to play
       startLoadingSpinner()
@@ -341,65 +304,6 @@ sub Main (args as dynamic) as void
       m.global.queueManager.callFunc("set", screenContent.albumData.items)
       m.global.queueManager.callFunc("setPosition", selectedIndex)
       m.global.queueManager.callFunc("playQueue")
-    else if isNodeEvent(msg, "playAllSelected")
-      ' User has selected playlist of of audio they want us to play
-      screenContent = msg.getRoSGNode()
-      startLoadingSpinner()
-
-      m.global.queueManager.callFunc("clear")
-      m.global.queueManager.callFunc("resetShuffle")
-      m.global.queueManager.callFunc("set", screenContent.albumData.items)
-      m.global.queueManager.callFunc("playQueue")
-    else if isNodeEvent(msg, "playArtistSelected")
-      ' User has selected playlist of of audio they want us to play
-      startLoadingSpinner()
-      screenContent = msg.getRoSGNode()
-
-      m.global.queueManager.callFunc("clear")
-      m.global.queueManager.callFunc("resetShuffle")
-      m.global.queueManager.callFunc("set", CreateArtistMix(screenContent.pageContent.id).Items)
-      m.global.queueManager.callFunc("playQueue")
-
-    else if isNodeEvent(msg, "instantMixSelected")
-      ' User has selected instant mix
-      ' User has selected playlist of of audio they want us to play
-      screenContent = msg.getRoSGNode()
-      startLoadingSpinner()
-
-      viewHandled = false
-
-      ' Create instant mix based on selected album
-      if isValid(screenContent.albumData)
-        if isValid(screenContent.albumData.items)
-          if screenContent.albumData.items.count() > 0
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("resetShuffle")
-            instantMixData = CreateInstantMix(screenContent.albumData.items[0].id)
-            if isValid(instantMixData) and isValid(instantMixData.Items)
-              m.global.queueManager.callFunc("set", instantMixData.Items)
-            else
-              print "Failed to create instant mix for album item: ", screenContent.albumData.items[0].id
-            end if
-            m.global.queueManager.callFunc("playQueue")
-
-            viewHandled = true
-          end if
-        end if
-      end if
-
-      if not viewHandled
-        ' Create instant mix based on selected artist
-        m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("resetShuffle")
-        instantMixData = CreateInstantMix(screenContent.pageContent.id)
-        if isValid(instantMixData) and isValid(instantMixData.Items)
-          m.global.queueManager.callFunc("set", instantMixData.Items)
-        else
-          print "Failed to create instant mix for artist: ", screenContent.pageContent.id
-        end if
-        m.global.queueManager.callFunc("playQueue")
-      end if
-
     else if isNodeEvent(msg, "search_value")
       query = msg.getRoSGNode().search_value
       group.findNode("SearchBox").visible = false
@@ -425,16 +329,13 @@ sub Main (args as dynamic) as void
       else if node.type = "Movie"
         group = CreateItemDetailsGroup(node)
       else if node.type = "MusicArtist"
-        group = CreateArtistView(node)
+        group = CreateItemDetailsGroup(node)
       else if node.type = "MusicAlbum"
-        group = CreateAlbumView(node)
-      else if node.type = "MusicVideo"
         group = CreateItemDetailsGroup(node)
       else if node.type = "Audio"
-        m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("resetShuffle")
-        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
-        m.global.queueManager.callFunc("playQueue")
+        group = CreateItemDetailsGroup(node)
+      else if node.type = "MusicVideo"
+        group = CreateItemDetailsGroup(node)
       else if node.type = "Person"
         group = CreateItemDetailsGroup(node)
       else if node.type = "BoxSet"
@@ -447,13 +348,6 @@ sub Main (args as dynamic) as void
         group = CreateItemDetailsGroup(node)
       else if LCase(node.type) = "recording"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "Audio"
-        selectedIndex = msg.getData()
-        screenContent = msg.getRoSGNode()
-        m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("resetShuffle")
-        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(screenContent.albumData.items[node.id]))
-        m.global.queueManager.callFunc("playQueue")
       else
         ' TODO - switch on more node types
         stopLoadingSpinner()
@@ -534,6 +428,36 @@ sub Main (args as dynamic) as void
             if isValid(boxsetData) and isValid(boxsetData.Items) and boxsetData.Items.count() > 0
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("set", boxsetData.Items)
+              m.global.queueManager.callFunc("playQueue")
+            else
+              stopLoadingSpinner()
+            end if
+          else if group.subtype() = "ItemDetails" and group.itemContent.type = "MusicArtist"
+            ' MusicArtist "Play All": queue all songs by this artist sorted by name
+            item = group.itemContent
+            artistTracksData = CreateArtistMix(item.id)
+            if isValid(artistTracksData) and isValid(artistTracksData.Items) and artistTracksData.Items.count() > 0
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("resetShuffle")
+              m.global.queueManager.callFunc("set", artistTracksData.Items)
+              m.global.queueManager.callFunc("playQueue")
+            else
+              stopLoadingSpinner()
+            end if
+          else if group.subtype() = "ItemDetails" and group.itemContent.type = "MusicAlbum"
+            ' MusicAlbum "Play All": queue all tracks on this album in track order
+            item = group.itemContent
+            albumTracksData = GetApi().GetItemsByQuery({
+              "parentId": item.id,
+              "includeitemtypes": "Audio",
+              "SortBy": "ParentIndexNumber,IndexNumber,SortName",
+              "SortOrder": "Ascending",
+              "EnableTotalRecordCount": false
+            })
+            if isValid(albumTracksData) and isValid(albumTracksData.Items) and albumTracksData.Items.count() > 0
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("resetShuffle")
+              m.global.queueManager.callFunc("set", albumTracksData.Items)
               m.global.queueManager.callFunc("playQueue")
             else
               stopLoadingSpinner()
@@ -711,6 +635,20 @@ sub Main (args as dynamic) as void
           m.shuffleTask.observeField("shuffleItems", m.port)
           m.shuffleTask.control = "RUN"
         end if
+      else if btn.id = "instantMixButton"
+        ' Instant Mix: create a radio-like queue seeded by this item (MusicArtist, MusicAlbum, or Audio)
+        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
+          startLoadingSpinner()
+          instantMixData = CreateInstantMix(group.itemContent.id)
+          if isValid(instantMixData) and isValid(instantMixData.Items) and instantMixData.Items.count() > 0
+            m.global.queueManager.callFunc("clear")
+            m.global.queueManager.callFunc("resetShuffle")
+            m.global.queueManager.callFunc("set", instantMixData.Items)
+            m.global.queueManager.callFunc("playQueue")
+          else
+            stopLoadingSpinner()
+          end if
+        end if
       else if btn.id = "goToSeriesButton"
         ' Navigate to the parent series detail screen
         if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.seriesId)
@@ -719,69 +657,44 @@ sub Main (args as dynamic) as void
           seriesRef.type = "Series"
           CreateItemDetailsGroup(seriesRef)
         end if
+      else if btn.id = "goToAlbumButton"
+        ' Navigate to the album detail screen for the current Audio item
+        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.albumId)
+          albumRef = CreateObject("roSGNode", "ContentNode")
+          albumRef.id = group.itemContent.albumId
+          albumRef.type = "MusicAlbum"
+          CreateItemDetailsGroup(albumRef)
+        end if
+      else if btn.id = "goToArtistButton"
+        ' Navigate to the artist detail screen for the current MusicAlbum.
+        ' Prefers albumArtists (primary album artist); falls back to artistItems when only one artist.
+        if isValid(group) and isValid(group.itemContent)
+          item = group.itemContent
+          artistId = ""
+          if isValid(item.albumArtists) and item.albumArtists.count() > 0
+            firstAlbumArtist = item.albumArtists[0]
+            if isValid(firstAlbumArtist) and isValidAndNotEmpty(firstAlbumArtist.Id)
+              artistId = firstAlbumArtist.Id
+            end if
+          end if
+          if artistId = "" and isValid(item.artistItems) and item.artistItems.count() = 1
+            firstArtistItem = item.artistItems[0]
+            if isValid(firstArtistItem) and isValidAndNotEmpty(firstArtistItem.Id)
+              artistId = firstArtistItem.Id
+            end if
+          end if
+          if isValidAndNotEmpty(artistId)
+            artistRef = CreateObject("roSGNode", "ContentNode")
+            artistRef.id = artistId
+            artistRef.type = "MusicArtist"
+            CreateItemDetailsGroup(artistRef)
+          end if
+        end if
       else if btn.id = "deleteButton"
         print "deleteButton pressed"
         if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
           m.pendingDeleteItemId = group.itemContent.id
           m.global.sceneManager.callFunc("optionDialog", tr("Delete"), [tr("Are you sure you want to delete this item? This action cannot be undone.")], [tr("Cancel"), tr("Delete")])
-        end if
-      else if btn.id = "playAll"
-        print "playAll button pressed"
-        ' User has selected playlist of of audio they want us to play
-        startLoadingSpinner()
-        node = msg.getRoSGNode()
-
-        if isValid(group) and isValid(group.albumData) and isValid(group.albumData.items)
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("resetShuffle")
-          m.global.queueManager.callFunc("set", group.albumData.items)
-          m.global.queueManager.callFunc("playQueue")
-        else
-          stopLoadingSpinner()
-        end if
-      else if btn.id = "instantMix"
-        print "instantMix button pressed"
-        ' User has selected instant mix
-        ' User has selected playlist of of audio they want us to play
-        startLoadingSpinner()
-        node = msg.getRoSGNode()
-        viewHandled = false
-
-        ' Create instant mix based on selected album
-        if isValid(group) and isValid(group.albumData)
-          if isValid(group.albumData.items)
-            if group.albumData.items.count() > 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("resetShuffle")
-              instantMixData = CreateInstantMix(group.albumData.items[0].id)
-              if isValid(instantMixData) and isValid(instantMixData.Items)
-                m.global.queueManager.callFunc("set", instantMixData.Items)
-              else
-                print "Failed to create instant mix for album item: ", group.albumData.items[0].id
-              end if
-              m.global.queueManager.callFunc("playQueue")
-
-              viewHandled = true
-            end if
-          end if
-        end if
-
-        if not viewHandled
-          ' Create instant mix based on selected artist - fallback to pageContent
-          parentWithPageContent = findParentWithField(node, "pageContent")
-          if isValid(parentWithPageContent) and isValid(parentWithPageContent.pageContent) and isValid(parentWithPageContent.pageContent.id)
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("resetShuffle")
-            instantMixData = CreateInstantMix(parentWithPageContent.pageContent.id)
-            if isValid(instantMixData) and isValid(instantMixData.Items)
-              m.global.queueManager.callFunc("set", instantMixData.Items)
-            else
-              print "Failed to create instant mix for artist: ", parentWithPageContent.pageContent.id
-            end if
-            m.global.queueManager.callFunc("playQueue")
-          else
-            stopLoadingSpinner()
-          end if
         end if
       else
         ' If there are no other button matches, check if this is a simple "OK" Dialog & Close if so

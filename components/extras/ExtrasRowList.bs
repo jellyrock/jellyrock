@@ -20,6 +20,16 @@ sub init()
   m.LoadSeasonsTask.itemsToLoad = "seasons"
   m.LoadBoxSetItemsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadBoxSetItemsTask.itemsToLoad = "boxsetitems"
+  m.LoadArtistAlbumsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadArtistAlbumsTask.itemsToLoad = "artistAlbums"
+  m.LoadArtistAppearsOnTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadArtistAppearsOnTask.itemsToLoad = "artistAppearsOn"
+  m.LoadArtistSongsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadArtistSongsTask.itemsToLoad = "artistSongs"
+  m.LoadArtistSimilarTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadArtistSimilarTask.itemsToLoad = "artistSimilar"
+  m.LoadAlbumSongsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadAlbumSongsTask.itemsToLoad = "albumSongs"
   m.LoadMoviesTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadMoviesTask.itemsToLoad = "personMovies"
   m.LoadShowsTask = CreateObject("roSGNode", "LoadItemsTask")
@@ -51,6 +61,11 @@ sub init()
   m.rowMovies = invalid
   m.rowTvShows = invalid
   m.rowSeries = invalid
+  m.rowArtistAlbums = invalid
+  m.rowArtistAppearsOn = invalid
+  m.rowArtistSongs = invalid
+  m.rowAlbumSongs = invalid
+  m.rowAlbumArtistAlbums = invalid
 
   ' Track row heights for rowHeights array (per-row height customization)
   m.rowHeights = []
@@ -91,6 +106,16 @@ sub cancelInFlightChain()
   m.LoadSeriesTask.unobserveField("content")
   m.LoadBoxSetItemsTask.control = "STOP"
   m.LoadBoxSetItemsTask.unobserveField("content")
+  m.LoadArtistAlbumsTask.control = "STOP"
+  m.LoadArtistAlbumsTask.unobserveField("content")
+  m.LoadArtistAppearsOnTask.control = "STOP"
+  m.LoadArtistAppearsOnTask.unobserveField("content")
+  m.LoadArtistSongsTask.control = "STOP"
+  m.LoadArtistSongsTask.unobserveField("content")
+  m.LoadArtistSimilarTask.control = "STOP"
+  m.LoadArtistSimilarTask.unobserveField("content")
+  m.LoadAlbumSongsTask.control = "STOP"
+  m.LoadAlbumSongsTask.unobserveField("content")
 end sub
 
 ' loadParts: Start the extras loading chain appropriate for the item type.
@@ -101,6 +126,7 @@ end sub
 '   Series                    → Seasons → People → LikeThis
 '   Season                    → Episodes ("Season X") → People → LikeThis
 '   BoxSet                    → BoxSetItems ("Movies") → People → LikeThis
+'   MusicArtist               → Albums → Appears On → Songs → ArtistSimilar
 ' m.top.type must be set before calling this function (done by ShowScenes.bs).
 sub loadParts(data as object)
   cancelInFlightChain()
@@ -141,6 +167,42 @@ sub loadParts(data as object)
     m.LoadBoxSetItemsTask.itemId = m.top.parentId
     m.LoadBoxSetItemsTask.observeField("content", "onBoxSetItemsLoaded")
     m.LoadBoxSetItemsTask.control = "RUN"
+  else if itemType = "MusicArtist"
+    ' Chain: Albums → Appears On → Songs → More Like This
+    m.top.rowItemSize = [rowSlotSize.SQUARE]
+    m.LoadArtistAlbumsTask.itemId = m.top.parentId
+    m.LoadArtistAlbumsTask.observeField("content", "onArtistAlbumsLoaded")
+    m.LoadArtistAlbumsTask.control = "RUN"
+  else if itemType = "MusicAlbum"
+    ' Chain: Songs → More Albums by Artist → More Like This
+    ' Store current album ID so we can exclude it from the "More Albums by Artist" row
+    m.currentAlbumId = data.id
+    m.currentAlbumArtistId = ""
+    if isValid(data.albumArtists) and data.albumArtists.count() > 0
+      firstArtist = data.albumArtists[0]
+      if isValid(firstArtist) and isValid(firstArtist.Id)
+        m.currentAlbumArtistId = firstArtist.Id
+      end if
+    end if
+    m.top.rowItemSize = [rowSlotSize.SQUARE]
+    m.LoadAlbumSongsTask.itemId = m.top.parentId
+    m.LoadAlbumSongsTask.observeField("content", "onAlbumSongsLoaded")
+    m.LoadAlbumSongsTask.control = "RUN"
+  else if itemType = "Audio"
+    ' Chain: Album Tracklist (current track first) → More Like This
+    m.currentAudioId = data.id
+    m.currentAlbumName = data.albumName
+    m.top.rowItemSize = [rowSlotSize.SQUARE]
+    if isValidAndNotEmpty(data.albumId)
+      m.LoadAlbumSongsTask.itemId = data.albumId
+      m.LoadAlbumSongsTask.observeField("content", "onAudioAlbumTracksLoaded")
+      m.LoadAlbumSongsTask.control = "RUN"
+    else
+      ' No album — skip tracklist row and go straight to More Like This
+      m.LikeThisTask.itemId = m.top.parentId
+      m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+      m.LikeThisTask.control = "RUN"
+    end if
   else
     ' Movie, Video, Recording: full chain starting with AdditionalParts
     m.LoadAdditionalPartsTask.observeField("content", "onAdditionalPartsLoaded")
@@ -330,6 +392,11 @@ sub onLikeThisLoaded()
       end for
       newSizes.push(rowSlotSize.WIDE)
       m.top.rowItemSize = newSizes
+    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio"
+      ' Music rows all use square album-art slots — addRowSize is safe here because the phantom
+      ' element seeded in loadParts() is also SQUARE, so the extra element is harmless.
+      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
+      addRowSize(rowSlotSize.SQUARE)
     else
       m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
       addRowSize(rowSlotSize.PORTRAIT)
@@ -339,8 +406,8 @@ sub onLikeThisLoaded()
     m.rowLikeThis = invalid
   end if
 
-  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, or BoxSet
-  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet"
+  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, BoxSet, or music types
+  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio"
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
     m.SpecialFeaturesTask.control = "RUN"
@@ -411,6 +478,189 @@ sub onSeriesLoaded()
   ' Final authoritative signal — covers the false case (no media at all) and the Series-only case.
   ' onPersonHasMediaChanged guards against adding a duplicate button if already signalled true above.
   m.top.personHasMedia = isValid(m.rowMovies) or isValid(m.rowTvShows) or isValid(m.rowSeries)
+end sub
+
+' onArtistAlbumsLoaded: Build "Albums" row then chain to Appears On (MusicArtist only)
+sub onArtistAlbumsLoaded()
+  content = m.LoadArtistAlbumsTask.content
+  m.LoadArtistAlbumsTask.unobserveField("content")
+  m.LoadArtistAlbumsTask.content = []
+
+  if isValid(content) and content.count() > 0
+    m.rowArtistAlbums = populateRow(m.rowArtistAlbums, tr("Albums"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    addRowSize(rowSlotSize.SQUARE)
+  else if isValid(m.rowArtistAlbums)
+    m.top.content.removeChild(m.rowArtistAlbums)
+    m.rowArtistAlbums = invalid
+  end if
+
+  m.LoadArtistAppearsOnTask.itemId = m.top.parentId
+  m.LoadArtistAppearsOnTask.observeField("content", "onArtistAppearsOnLoaded")
+  m.LoadArtistAppearsOnTask.control = "RUN"
+end sub
+
+' onArtistAppearsOnLoaded: Build "Appears On" row then chain to Songs (MusicArtist only)
+sub onArtistAppearsOnLoaded()
+  content = m.LoadArtistAppearsOnTask.content
+  m.LoadArtistAppearsOnTask.unobserveField("content")
+  m.LoadArtistAppearsOnTask.content = []
+
+  if isValid(content) and content.count() > 0
+    m.rowArtistAppearsOn = populateRow(m.rowArtistAppearsOn, tr("Appears On"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    addRowSize(rowSlotSize.SQUARE)
+  else if isValid(m.rowArtistAppearsOn)
+    m.top.content.removeChild(m.rowArtistAppearsOn)
+    m.rowArtistAppearsOn = invalid
+  end if
+
+  m.LoadArtistSongsTask.itemId = m.top.parentId
+  m.LoadArtistSongsTask.observeField("content", "onArtistSongsLoaded")
+  m.LoadArtistSongsTask.control = "RUN"
+end sub
+
+' onArtistSongsLoaded: Build "Songs" row then chain to ArtistSimilar (MusicArtist only).
+' Uses ArtistIds (broad) so songs on compilation albums surface even when album-level
+' metadata doesn't associate the artist via AlbumArtistIds.
+sub onArtistSongsLoaded()
+  content = m.LoadArtistSongsTask.content
+  m.LoadArtistSongsTask.unobserveField("content")
+  m.LoadArtistSongsTask.content = []
+
+  if isValid(content) and content.count() > 0
+    m.rowArtistSongs = populateRow(m.rowArtistSongs, tr("Songs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    addRowSize(rowSlotSize.SQUARE)
+  else if isValid(m.rowArtistSongs)
+    m.top.content.removeChild(m.rowArtistSongs)
+    m.rowArtistSongs = invalid
+  end if
+
+  m.LoadArtistSimilarTask.itemId = m.top.parentId
+  m.LoadArtistSimilarTask.observeField("content", "onArtistSimilarLoaded")
+  m.LoadArtistSimilarTask.control = "RUN"
+end sub
+
+' onArtistSimilarLoaded: Build "More Like This" row (MusicArtist only, end of chain).
+' Uses Artists/{id}/Similar which is more reliable for MusicArtist than Items/{id}/Similar.
+sub onArtistSimilarLoaded()
+  data = m.LoadArtistSimilarTask.content
+  m.LoadArtistSimilarTask.unobserveField("content")
+  if isValid(data) and data.count() > 0
+    m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
+    addRowSize(rowSlotSize.SQUARE)
+  else if isValid(m.rowLikeThis)
+    m.top.content.removeChild(m.rowLikeThis)
+    m.rowLikeThis = invalid
+  end if
+end sub
+
+' onAlbumSongsLoaded: Build "Songs" row then chain to More Albums by Artist → More Like This (MusicAlbum only)
+sub onAlbumSongsLoaded()
+  content = m.LoadAlbumSongsTask.content
+  m.LoadAlbumSongsTask.unobserveField("content")
+  m.LoadAlbumSongsTask.content = []
+
+  if isValid(content) and content.count() > 0
+    m.rowAlbumSongs = populateRow(m.rowAlbumSongs, tr("Songs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    addRowSize(rowSlotSize.SQUARE)
+  else if isValid(m.rowAlbumSongs)
+    m.top.content.removeChild(m.rowAlbumSongs)
+    m.rowAlbumSongs = invalid
+  end if
+
+  ' Chain to more albums by the same artist if we have an artist ID, otherwise skip to LikeThis
+  if isValidAndNotEmpty(m.currentAlbumArtistId)
+    m.LoadArtistAlbumsTask.itemId = m.currentAlbumArtistId
+    m.LoadArtistAlbumsTask.observeField("content", "onAlbumArtistAlbumsLoaded")
+    m.LoadArtistAlbumsTask.control = "RUN"
+  else
+    m.LikeThisTask.itemId = m.top.parentId
+    m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+    m.LikeThisTask.control = "RUN"
+  end if
+end sub
+
+' onAlbumArtistAlbumsLoaded: Build "More Albums" row (excluding current album) then chain to More Like This (MusicAlbum only)
+sub onAlbumArtistAlbumsLoaded()
+  content = m.LoadArtistAlbumsTask.content
+  m.LoadArtistAlbumsTask.unobserveField("content")
+  m.LoadArtistAlbumsTask.content = []
+
+  ' Filter out the current album so it doesn't appear in its own "More Albums" row
+  filtered = []
+  if isValid(content)
+    for each album in content
+      if album.id <> m.currentAlbumId
+        filtered.push(album)
+      end if
+    end for
+  end if
+
+  if filtered.count() > 0
+    m.rowAlbumArtistAlbums = populateRow(m.rowAlbumArtistAlbums, tr("More Albums"), filtered, rowSlotSize.ROW_HEIGHT_SQUARE)
+    addRowSize(rowSlotSize.SQUARE)
+  else if isValid(m.rowAlbumArtistAlbums)
+    m.top.content.removeChild(m.rowAlbumArtistAlbums)
+    m.rowAlbumArtistAlbums = invalid
+  end if
+
+  m.LikeThisTask.itemId = m.top.parentId
+  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+  m.LikeThisTask.control = "RUN"
+end sub
+
+' onAudioAlbumTracksLoaded: Build "More from {Album}" row with current track first,
+' then tracks that follow it in order, then tracks that preceded it (wrapping around).
+' E.g. viewing track 3 of 10 → [3, 4, 5, 6, 7, 8, 9, 10, 1, 2]
+sub onAudioAlbumTracksLoaded()
+  tracks = m.LoadAlbumSongsTask.content
+  m.LoadAlbumSongsTask.unobserveField("content")
+  m.LoadAlbumSongsTask.content = []
+
+  if isValid(tracks) and tracks.count() > 0
+    current = invalid
+    before = []
+    after = []
+    foundCurrent = false
+    for each track in tracks
+      if track.id = m.currentAudioId
+        current = track
+        foundCurrent = true
+      else if foundCurrent
+        after.push(track)
+      else
+        before.push(track)
+      end if
+    end for
+
+    orderedTracks = []
+    if isValid(current) then orderedTracks.push(current)
+    for each track in after
+      orderedTracks.push(track)
+    end for
+    for each track in before
+      orderedTracks.push(track)
+    end for
+
+    if orderedTracks.count() > 0
+      if isValidAndNotEmpty(m.currentAlbumName)
+        rowTitle = tr("More from %1").Replace("%1", m.currentAlbumName)
+      else
+        rowTitle = tr("Album Tracks")
+      end if
+      m.rowAlbumSongs = populateRow(m.rowAlbumSongs, rowTitle, orderedTracks, rowSlotSize.ROW_HEIGHT_SQUARE)
+      addRowSize(rowSlotSize.SQUARE)
+    else if isValid(m.rowAlbumSongs)
+      m.top.content.removeChild(m.rowAlbumSongs)
+      m.rowAlbumSongs = invalid
+    end if
+  else if isValid(m.rowAlbumSongs)
+    m.top.content.removeChild(m.rowAlbumSongs)
+    m.rowAlbumSongs = invalid
+  end if
+
+  m.LikeThisTask.itemId = m.top.parentId
+  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+  m.LikeThisTask.control = "RUN"
 end sub
 
 ' populateRow: Reuse an existing row ContentNode (clearing its children) or create a new one.

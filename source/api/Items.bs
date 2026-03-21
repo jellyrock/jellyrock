@@ -283,14 +283,19 @@ function ArtistOverview(name as string)
   return data.overview
 end function
 
-' Get list of albums belonging to an artist
+' Get list of albums where this artist is the album artist (strict: AlbumArtistIds only).
+' Sorted by year descending so the discography reads newest-first.
+' Does NOT include albums the artist merely contributes to — see AppearsOnList().
 function MusicAlbumList(id as string)
   data = GetApi().GetItemsByQuery({
     "AlbumArtistIds": id,
     "includeitemtypes": "MusicAlbum",
-    "sortBy": "SortName",
+    "sortBy": "PremiereDate,ProductionYear,SortName",
+    "SortOrder": "Descending",
     "Recursive": true
   })
+  if not isValid(data) then return invalid
+  if not isValid(data.Items) then return invalid
   transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
@@ -300,16 +305,20 @@ function MusicAlbumList(id as string)
   return data
 end function
 
-' Get list of albums an artist appears on
+' Get list of albums an artist appears on as a contributing artist (not album artist).
+' Uses ContributingArtistIds which Jellyfin defines as artists who appear on the album
+' but are NOT tagged as the album artist — so this row is mutually exclusive with MusicAlbumList().
+' Sorted by year descending.
 function AppearsOnList(id as string)
   data = GetApi().GetItemsByQuery({
     "ContributingArtistIds": id,
-    "ExcludeItemIds": id,
     "includeitemtypes": "MusicAlbum",
     "sortBy": "PremiereDate,ProductionYear,SortName",
     "SortOrder": "Descending",
     "Recursive": true
   })
+  if not isValid(data) then return invalid
+  if not isValid(data.Items) then return invalid
   transformer = JellyfinDataTransformer()
   results = []
   for each item in data.Items
@@ -340,6 +349,33 @@ function GetSongsByArtist(id as string, params = {} as object)
   if data.Items.Count() = 0 then return invalid
 
   transformer = JellyfinDataTransformer()
+  for each item in data.Items
+    results.push(transformer.transformBaseItem(item))
+  end for
+  data.Items = results
+  return data
+end function
+
+' Get all Audio tracks by an artist in any capacity (album artist OR contributing artist).
+' Broader than GetSongsByArtist (which uses AlbumArtistIds). Used for the artist Songs row
+' so songs on compilation albums or items with mismatched album-level tags still surface.
+' @param {string} id - MusicArtist item ID
+function GetSongsByArtistBroad(id as string) as dynamic
+  data = GetApi().GetItemsByQuery({
+    "ArtistIds": id,
+    "includeitemtypes": "Audio",
+    "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
+    "Recursive": true,
+    "Limit": 100,
+    "EnableTotalRecordCount": false
+  })
+
+  if not isValid(data) then return invalid
+  if not isValid(data.Items) then return invalid
+  if data.Items.Count() = 0 then return invalid
+
+  transformer = JellyfinDataTransformer()
+  results = []
   for each item in data.Items
     results.push(transformer.transformBaseItem(item))
   end for
@@ -458,6 +494,15 @@ end function
 
 function useTranscodeAudioStream(playbackInfo)
   return isValid(playbackInfo.mediaSources[0]) and isValid(playbackInfo.mediaSources[0].TranscodingURL)
+end function
+
+' Get lyrics for an Audio item.
+' @param {string} itemId - The Audio item ID
+' @returns {dynamic} LyricDto: { Metadata: {...}, Lyrics: [{Start: ticks, Text: string}] }, or invalid
+function GetItemLyrics(itemId as string) as dynamic
+  url = Substitute("Audio/{0}/Lyrics", itemId)
+  resp = APIRequest(url, {})
+  return getJson(resp)
 end function
 
 function BackdropImage(id as string)

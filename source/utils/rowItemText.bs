@@ -4,6 +4,7 @@ import "pkg:/source/utils/misc.bs"
 '
 ' - Season: returns the season label (item.name, e.g. "Season 1")
 ' - Episode: returns the episode code and title (item.subtitle, e.g. "S1E2 - Pilot")
+' - Audio: "{trackNumber}. {name}" when indexNumber > 0 (item.name unchanged for ItemDetails title)
 ' - All others: returns item.name
 '
 ' @param item - JellyfinBaseItem content node
@@ -20,6 +21,12 @@ function getRowItemTitle(item as object) as string
   ' seriesName provides context and is shown as secondary text below.
   if item.type = "Episode"
     return item.subtitle
+  end if
+
+  ' Audio: prefix with track number when available. item.name is left unmodified so
+  ' ItemDetails can use it as the page title without a numeric prefix.
+  if item.type = "Audio" and item.indexNumber > 0
+    return stri(item.indexNumber).trim() + ". " + item.name
   end if
 
   return item.name
