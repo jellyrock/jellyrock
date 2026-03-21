@@ -251,6 +251,10 @@
       <translation>Codec Tag</translation>
     </message>
     <message>
+      <source>Collections</source>
+      <translation>Collections</translation>
+    </message>
+    <message>
       <source>Community and Critical Ratings</source>
       <translation>Community and Critical Ratings</translation>
       <extracomment>User Setting - Setting title</extracomment>
@@ -845,6 +849,10 @@
       <translation>Password</translation>
     </message>
     <message>
+      <source>People</source>
+      <translation>People</translation>
+    </message>
+    <message>
       <source>Pick a Jellyfin server from the local network</source>
       <translation>Select an available Jellyfin server from your local network:</translation>
       <extracomment>Instructions on initial app launch when the user is asked to pick a server from a list</extracomment>
@@ -1200,6 +1208,10 @@
     <message>
       <source>Slideshow Resumed</source>
       <translation>Slideshow Resumed</translation>
+    </message>
+    <message>
+      <source>Songs</source>
+      <translation>Songs</translation>
     </message>
     <message>
       <source>Sort</source>
