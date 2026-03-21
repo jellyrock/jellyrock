@@ -117,11 +117,15 @@ sub onFavoritesLoaded()
     end for
   end if
 
-  ' Sort each bucket by name for stable ordering across refreshes
+  ' Cap each bucket at 50 items (API returns sorted by SortName)
+  maxPerRow = 50
   for each itemType in m.typeArray
     bucket = buckets[itemType]
-    if bucket.count() > 1
-      buckets[itemType] = sortByName(bucket)
+    if bucket.count() > maxPerRow
+      buckets[itemType] = []
+      for i = 0 to maxPerRow - 1
+        buckets[itemType].push(bucket[i])
+      end for
     end if
   end for
 
@@ -172,27 +176,6 @@ sub onFavoritesLoaded()
 
   updateBackdropForFocusedItem()
 end sub
-
-' Sort an array of content nodes by their name field (case-insensitive)
-function sortByName(items as object) as object
-  ' Simple insertion sort — favorites lists are small
-  sorted = []
-  for each item in items
-    sorted.push(item)
-  end for
-
-  for i = 1 to sorted.count() - 1
-    j = i
-    while j > 0 and LCase(sorted[j].name) < LCase(sorted[j - 1].name)
-      temp = sorted[j]
-      sorted[j] = sorted[j - 1]
-      sorted[j - 1] = temp
-      j--
-    end while
-  end for
-
-  return sorted
-end function
 
 ' Find a row by its sectionId
 function findRowBySectionId(sectionId as string) as object

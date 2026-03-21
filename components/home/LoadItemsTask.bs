@@ -117,9 +117,9 @@ sub loadItems()
 
     params = {}
     params["Filters"] = "IsFavorite"
-    params["Limit"] = 20
     params["recursive"] = true
-    params["sortby"] = "random"
+    params["SortBy"] = "SortName"
+    params["SortOrder"] = "Ascending"
     params["EnableTotalRecordCount"] = false
 
     data = GetApi().GetItemsByQuery(params)

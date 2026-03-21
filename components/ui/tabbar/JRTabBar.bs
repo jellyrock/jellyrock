@@ -8,14 +8,28 @@ sub init()
   m.top.observeField("focusedChild", "onFocusChanged")
 end sub
 
-' Rebuilds tab children when the tabs array changes
+' Rebuilds tab children when the tabs array changes.
+' Skips recreation when the tab configuration is unchanged (e.g. returning
+' to the same screen) so already-sized JRTab nodes appear instantly.
 sub onTabsChanged()
-  ' Clear existing tabs
+  tabs = m.top.tabs
+  if not isValidAndNotEmpty(tabs)
+    m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
+    m.focusedTabIndex = 0
+    return
+  end if
+
+  ' Preserve existing tabs if the configuration matches — avoids the visible
+  ' TextButton render/sizing dance when returning to the same screen
+  if tabsMatchExisting(tabs)
+    syncSelectedTab()
+    return
+  end if
+
+  ' Configuration changed — full rebuild
+  m.top.ready = false
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
   m.focusedTabIndex = 0
-
-  tabs = m.top.tabs
-  if not isValidAndNotEmpty(tabs) then return
 
   matched = false
   for each tabData in tabs
@@ -45,7 +59,45 @@ sub onTabsChanged()
     end if
   end if
 
+  ' Observe first tab's ready field to propagate sizing completion
+  firstTab = m.tabContainer.getChild(0)
+  if isValid(firstTab)
+    firstTab.observeField("ready", "onFirstTabReady")
+  end if
+
   updateFocusedTabVisuals()
+end sub
+
+' First tab has finished rendering/sizing — signal that the tab bar is ready
+sub onFirstTabReady()
+  firstTab = m.tabContainer.getChild(0)
+  if isValid(firstTab)
+    firstTab.unobserveField("ready")
+  end if
+  m.top.ready = true
+end sub
+
+' Returns true if the existing tab children match the new tabs configuration
+function tabsMatchExisting(tabs as object) as boolean
+  if m.tabContainer.getChildCount() <> tabs.count() then return false
+
+  for i = 0 to tabs.count() - 1
+    existing = m.tabContainer.getChild(i)
+    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title
+      return false
+    end if
+  end for
+
+  return true
+end function
+
+' Updates isSelected on existing tabs to match the current selectedTabId
+' without recreating any nodes
+sub syncSelectedTab()
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    tabNode = m.tabContainer.getChild(i)
+    tabNode.isSelected = (tabNode.tabId = m.top.selectedTabId)
+  end for
 end sub
 
 ' When the tab bar gains or loses focus, update tab visuals

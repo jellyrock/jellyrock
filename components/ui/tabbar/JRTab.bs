@@ -1,87 +1,86 @@
 sub init()
-  m.label = m.top.findNode("label")
-  m.indicator = m.top.findNode("indicator")
-  m.focusBorder = m.top.findNode("focusBorder")
-  m.background = m.top.findNode("background")
+  ' TextButton.init() has already run: m.buttonBackground, m.buttonBorder, m.buttonText are set
 
   constants = m.global.constants
-  m.colorPrimary = constants.colorPrimary
-  m.colorSecondary = constants.colorSecondary
   m.colorTextPrimary = constants.colorTextPrimary
   m.colorTextSecondary = constants.colorTextSecondary
-  m.colorBackgroundSecondary = constants.colorBackgroundSecondary
 
-  m.indicator.color = m.colorSecondary
-  m.focusBorder.blendColor = m.colorPrimary
-  m.background.blendColor = m.colorBackgroundSecondary
+  ' Upgrade font to Large to match overhang title size
+  m.buttonText.font.size = constants.fontSizeLarge
 
-  ' Padding around the label text inside the focus border
-  m.padding = 16
+  ' Match TextButton's default padding for consistent styling
+  m.top.padding = 30
 
-  ' Enable render tracking to size the border after the label renders
-  m.top.enableRenderTracking = true
-  m.top.observeField("renderTracking", "onRenderComplete")
+  ' Unfocused state: transparent background/border so only text is visible
+  m.top.background = "0x00000000"
+  m.top.border = "0x00000000"
+  m.top.textColor = m.colorTextSecondary
+
+  ' Focused state: standard TextButton appearance
+  m.top.focusBorder = constants.colorPrimary
+  m.top.focusBackground = constants.colorBackgroundSecondary
+  m.top.textFocusColor = m.colorTextPrimary
+
+  ' Create underline indicator programmatically (positioned after sizing in onReady)
+  m.indicator = createObject("roSGNode", "Rectangle")
+  m.indicator.height = 6
+  m.indicator.color = constants.colorSecondary
+  m.indicator.visible = false
+  m.top.appendChild(m.indicator)
+
+  ' Position indicator after TextButton finishes sizing
+  m.top.observeField("ready", "onReady")
 end sub
 
+' Maps tabTitle to TextButton's text field, triggering TextButton's sizing flow
 sub onTitleChanged()
-  m.label.text = m.top.tabTitle
-
-  ' If already rendered, resize immediately
-  if m.top.renderTracking = "full"
-    updateLayout()
-  end if
+  m.top.text = m.top.tabTitle
 end sub
 
-sub onRenderComplete()
-  if m.top.renderTracking <> "full" then return
-  updateLayout()
+' Positions the underline indicator inside the button after TextButton sizes itself.
+' The indicator sits below the text at text width, inside the background bounds.
+' When focused, the TextButton border naturally wraps around it (ResumeButton pattern).
+sub onReady()
+  if not m.top.ready then return
+
+  padding = m.top.padding
+  bgWidth = m.buttonBackground.width
+  bgHeight = m.buttonBackground.height
+
+  ' Text sits from y=padding to y=bgHeight-padding inside the background
+  textWidth = bgWidth - (padding * 2)
+  textBottom = bgHeight - padding
+
+  m.indicator.width = textWidth
+  m.indicator.translation = [padding, textBottom + 12]
+  m.indicator.visible = m.top.isSelected
 end sub
 
-' Sizes the focus border and indicator to match the label dimensions
-sub updateLayout()
-  if m.label.text.Len() = 0 then return
-
-  labelRect = m.label.localBoundingRect()
-  if labelRect.width = 0 then return
-
-  ' Size focus border and background to wrap the label with padding
-  borderWidth = labelRect.width + (m.padding * 2)
-  fontSize = m.label.font.size
-  borderHeight = (fontSize * 0.7) + (m.padding * 2)
-
-  m.focusBorder.width = borderWidth
-  m.focusBorder.height = borderHeight
-  m.background.width = borderWidth
-  m.background.height = borderHeight
-
-  ' Center the label inside the border
-  m.label.translation = [m.padding, (borderHeight - labelRect.height) / 2]
-
-  ' Position indicator below the border
-  m.indicator.width = borderWidth
-  m.indicator.translation = [0, borderHeight + 4]
-
-  ' Show the tab now that layout is complete (starts visible="false" in XML)
-  m.top.visible = true
-end sub
-
-' Update visuals based on focused + selected state.
-' Focused = this tab has remote focus (show border). Selected = this tab's content is active (show underline).
-sub onStateChanged()
+' Overrides TextButton.onFocusChanged to use the virtual isFocused field.
+' Individual tabs never receive real Roku focus — JRTabBar manages focus
+' externally via the isFocused field.
+sub onFocusChanged()
   isFocused = m.top.isFocused
-  isSelected = m.top.isSelected
 
-  ' Focus border: visible only when focused
-  m.focusBorder.visible = isFocused
-  m.background.visible = isFocused
-
-  ' Label color: primary when focused or selected, secondary otherwise
-  if isFocused or isSelected
-    m.label.color = m.colorTextPrimary
+  if isFocused
+    m.buttonBorder.blendColor = m.top.focusBorder
+    m.buttonBackground.blendColor = m.top.focusBackground
+    m.buttonBorder.visible = true
+    m.buttonBackground.visible = true
+    m.buttonText.color = m.top.textFocusColor
   else
-    m.label.color = m.colorTextSecondary
+    m.buttonBorder.visible = false
+    m.buttonBackground.visible = false
+    if m.top.isSelected
+      m.buttonText.color = m.colorTextPrimary
+    else
+      m.buttonText.color = m.colorTextSecondary
+    end if
   end if
+end sub
 
-  ' Underline: visible when this tab is the active/selected one
-  m.indicator.visible = isSelected
+' Called when isFocused or isSelected changes — updates all visual state
+sub onStateChanged()
+  onFocusChanged()
+  m.indicator.visible = m.top.isSelected
 end sub

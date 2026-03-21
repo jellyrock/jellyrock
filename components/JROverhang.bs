@@ -143,14 +143,7 @@ sub isLogoVisibleChanged()
     end if
   end if
 
-  ' Reposition tab bar when logo visibility changes
-  if isValid(m.tabBar)
-    if isValid(m.logo)
-      m.tabBar.translation = [360, 51]
-    else
-      m.tabBar.translation = [96, 51]
-    end if
-  end if
+  positionTabBar()
 end sub
 
 ' Create and return a logo poster node
@@ -171,19 +164,14 @@ sub onTabsChanged()
   tabs = m.top.tabs
 
   if not isValidAndNotEmpty(tabs)
-    ' Remove tab bar, restore title label
+    ' No tabs — hide the tab bar (preserve it for instant reuse on return)
+    ' and restore the title label
     if isValid(m.tabBar)
-      m.tabBar.unobserveField("selectedTabId")
-      m.tabBar.callFunc("destroy")
-      m.top.removeChild(m.tabBar)
-      m.tabBar = invalid
+      m.tabBar.visible = false
     end if
     m.title.visible = true
     return
   end if
-
-  ' Hide title label and create/update tab bar
-  m.title.visible = false
 
   if not isValid(m.tabBar)
     m.tabBar = CreateObject("roSGNode", "JRTabBar")
@@ -191,12 +179,8 @@ sub onTabsChanged()
     m.top.appendChild(m.tabBar)
   end if
 
-  ' Position tab bar where the title normally sits
-  if isValid(m.logo)
-    m.tabBar.translation = [360, 51]
-  else
-    m.tabBar.translation = [96, 51]
-  end if
+  m.tabBar.visible = true
+  positionTabBar()
 
   ' Sync current selection before setting tabs (so the correct tab starts selected)
   if isValidAndNotEmpty(m.top.selectedTabId)
@@ -204,6 +188,41 @@ sub onTabsChanged()
   end if
 
   m.tabBar.tabs = tabs
+
+  ' After setting tabs, check if they were preserved (return path) or rebuilt (init).
+  ' Preserved tabs are already sized → hide title instantly.
+  ' Rebuilt tabs need render tracking → keep title visible until ready.
+  if m.tabBar.ready
+    m.title.visible = false
+  else
+    m.tabBar.observeField("ready", "onTabBarReady")
+  end if
+end sub
+
+' Called when newly created tabs finish sizing. Swaps the title for the
+' fully-formed tab bar in a single frame — no blank gap or sizing dance.
+sub onTabBarReady()
+  if isValid(m.tabBar)
+    m.tabBar.unobserveField("ready")
+  end if
+  m.title.visible = false
+end sub
+
+' Positions the tab bar so tab text aligns with where the title label sits.
+' TextButton adds padding around the text, so we offset the tab bar to compensate.
+sub positionTabBar()
+  if not isValid(m.tabBar) then return
+
+  tabPadding = 30 ' Must match JRTab's padding value
+  fontSize = m.global.constants.fontSizeLarge
+  buttonHeight = int(fontSize * 0.7) + (tabPadding * 2)
+  yOffset = int((buttonHeight - fontSize) / 2.0)
+
+  if isValid(m.logo)
+    m.tabBar.translation = [360 - tabPadding, 51 - yOffset]
+  else
+    m.tabBar.translation = [96 - tabPadding, 51 - yOffset]
+  end if
 end sub
 
 ' Proxy tab bar selection changes to the overhang's selectedTabId field

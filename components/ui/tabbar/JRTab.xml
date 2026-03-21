@@ -1,14 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="JRTab" extends="Group" visible="false">
-  <children>
-    <!-- Background: shown when focused, rendered first so border draws on top -->
-    <Poster id="background" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
-    <!-- Focus border: 9-patch rounded border, visible only when this tab has focus -->
-    <Poster id="focusBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
-    <LabelPrimaryMedium id="label" vertAlign="center" />
-    <!-- Underline indicator: visible when tab is selected (active) -->
-    <Rectangle id="indicator" height="6" visible="false" />
-  </children>
+<component name="JRTab" extends="TextButton">
   <interface>
     <field id="tabTitle" type="string" onChange="onTitleChanged" />
     <field id="tabId" type="string" />
