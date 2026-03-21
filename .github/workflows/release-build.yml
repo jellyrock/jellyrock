@@ -19,6 +19,14 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Configure Git as the GitHub App Bot
+        run: |
+          APP_USER_ID=$(gh api "/users/jellyrock[bot]" --jq .id)
+          git config --global user.name "jellyrock[bot]"
+          git config --global user.email "${APP_USER_ID}+jellyrock[bot]@users.noreply.github.com"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -49,9 +57,6 @@ jobs:
 
       - name: Commit changelog update
         run: |
-          git config user.name "jellyrock"
-          git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
-
           if git diff --quiet CHANGELOG.md; then
             echo "ℹ️ No changelog changes to commit"
             echo "has_changes=false" >> $GITHUB_ENV

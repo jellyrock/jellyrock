@@ -35,6 +35,14 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Configure Git as the GitHub App Bot
+        run: |
+          APP_USER_ID=$(gh api "/users/jellyrock[bot]" --jq .id)
+          git config --global user.name "jellyrock[bot]"
+          git config --global user.email "${APP_USER_ID}+jellyrock[bot]@users.noreply.github.com"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
@@ -74,8 +82,6 @@ jobs:
       - name: Commit translation changes
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
-          git config user.name "jellyrock"
-          git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
           git pull --rebase --autostash origin main
           git add locale/en_US/translations.ts
           git commit -m "chore(translation): Update en_US translation file"
@@ -99,6 +105,14 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Configure Git as the GitHub App Bot
+        run: |
+          APP_USER_ID=$(gh api "/users/jellyrock[bot]" --jq .id)
+          git config --global user.name "jellyrock[bot]"
+          git config --global user.email "${APP_USER_ID}+jellyrock[bot]@users.noreply.github.com"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -153,8 +167,6 @@ jobs:
       - name: Commit settings docs changes
         if: steps.settings_check.outputs.settings_changed == 'true' && steps.check_changes.outputs.has_changes == 'true'
         run: |
-          git config user.name "jellyrock"
-          git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
           git pull --rebase --autostash origin main
           git add docs/user/app-settings.md
           git commit -m "chore(docs): auto-update settings docs"
@@ -177,6 +189,14 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Configure Git as the GitHub App Bot
+        run: |
+          APP_USER_ID=$(gh api "/users/jellyrock[bot]" --jq .id)
+          git config --global user.name "jellyrock[bot]"
+          git config --global user.email "${APP_USER_ID}+jellyrock[bot]@users.noreply.github.com"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -249,8 +269,6 @@ jobs:
             echo "ℹ️ No changelog changes needed"
             echo "has_changes=false" >> $GITHUB_ENV
           else
-            git config user.name "jellyrock"
-            git config user.email "${{ vars.APP_ID }}+jellyrock[bot]@users.noreply.github.com"
             git pull --rebase --autostash origin main
             git add CHANGELOG.md
 
