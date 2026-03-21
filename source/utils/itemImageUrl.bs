@@ -68,6 +68,12 @@ function getItemPosterUrl(item as object, size = imageSize.POSTER_LG as object) 
     return ImageURL(item.seriesId, "Primary", imgParams)
   end if
 
+  ' 4. Album primary image (for Audio tracks without their own art)
+  if isValidAndNotEmpty(item.albumPrimaryImageTag) and isValidAndNotEmpty(item.albumId)
+    imgParams.tag = item.albumPrimaryImageTag
+    return ImageURL(item.albumId, "Primary", imgParams)
+  end if
+
   return ""
 end function
 
