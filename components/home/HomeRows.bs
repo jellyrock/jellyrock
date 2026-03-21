@@ -36,6 +36,7 @@ sub init()
   m.latestMediaTasks = []
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
+  m.isLoadingLibraries = false
   m.isLoadingResume = false
   m.isLoadingNextUp = false
   m.isLoadingOnNow = false
@@ -52,7 +53,9 @@ sub loadLibraries()
   ' Show rows immediately — no timer hack needed since skeletons are in place
   m.top.showRowCounter = [true]
 
-  ' Re-observe library task (observer is removed after each load in onLibrariesLoaded)
+  ' Observe library task (observer is removed after each load in onLibrariesLoaded)
+  m.isLoadingLibraries = true
+  m.LoadLibrariesTask.unobserveField("content")
   m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
   m.LoadLibrariesTask.control = "RUN"
 
@@ -195,6 +198,7 @@ sub onLibrariesLoaded()
   m.libraryData = m.LoadLibrariesTask.content
   m.LoadLibrariesTask.unobserveField("content")
   m.LoadLibrariesTask.content = []
+  m.isLoadingLibraries = false
 
   ' Always recompute filteredLatest — library data or latestItemsExcludes may have changed since last load.
   ' startLatestMediaLoads() and getRowConfigForSection() both depend on this being current.
@@ -645,9 +649,14 @@ end sub
 ' Keeps existing row nodes in place to avoid focus disruption. As fresh data
 ' arrives, populateRowFromData updates row children in place.
 sub updateHomeRows()
-  ' Re-fire library task (triggers latestmedia refreshes in onLibrariesLoaded)
-  m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
-  m.LoadLibrariesTask.control = "RUN"
+  ' Guard: if a library load is already in flight, skip to avoid stacking observers.
+  ' No deferred re-run is needed — the in-flight load will deliver fresh data shortly.
+  if not m.isLoadingLibraries
+    m.isLoadingLibraries = true
+    m.LoadLibrariesTask.unobserveField("content")
+    m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
+    m.LoadLibrariesTask.control = "RUN"
+  end if
 
   ' Re-fire non-library-dependent tasks
   startParallelLoads()
@@ -769,6 +778,7 @@ sub destroy()
   m.sectionPlan = invalid
 
   ' Reset loading flags
+  m.isLoadingLibraries = false
   m.isLoadingResume = false
   m.isLoadingNextUp = false
   m.isLoadingOnNow = false
