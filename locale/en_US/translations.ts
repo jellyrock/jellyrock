@@ -69,8 +69,16 @@
       <extracomment>Additional parts of a video</extracomment>
     </message>
     <message>
+      <source>Album</source>
+      <translation>Album</translation>
+    </message>
+    <message>
       <source>Album Artists</source>
       <translation>Album Artists</translation>
+    </message>
+    <message>
+      <source>Album Tracks</source>
+      <translation>Album Tracks</translation>
     </message>
     <message>
       <source>Albums</source>
@@ -102,8 +110,8 @@
       <translation>An error was encountered while playing this item. The server did not provide the required transcoding data.</translation>
     </message>
     <message>
-      <source>AppearsOn</source>
-      <translation>AppearsOn</translation>
+      <source>Appears On</source>
+      <translation>Appears On</translation>
     </message>
     <message>
       <source>Are you sure you want to delete this item? This action cannot be undone.</source>
@@ -194,10 +202,6 @@
       <source>Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.</source>
       <translation>Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.</translation>
       <extracomment>Settings Menu - Description for option</extracomment>
-    </message>
-    <message>
-      <source>By: %1</source>
-      <translation>By: %1</translation>
     </message>
     <message>
       <source>Cancel</source>
@@ -374,6 +378,10 @@
       <translation>Disabled</translation>
     </message>
     <message>
+      <source>Disc %1</source>
+      <translation>Disc %1</translation>
+    </message>
+    <message>
       <source>Dolby Digital (AC3)</source>
       <translation>Dolby Digital (AC3)</translation>
     </message>
@@ -524,6 +532,14 @@
       <source>Global settings that affect everyone that uses this Roku device.</source>
       <translation>Global settings that affect everyone that uses this Roku device.</translation>
       <extracomment>User Setting - Setting description</extracomment>
+    </message>
+    <message>
+      <source>Go to Album</source>
+      <translation>Go to Album</translation>
+    </message>
+    <message>
+      <source>Go to Artist</source>
+      <translation>Go to Artist</translation>
     </message>
     <message>
       <source>Go to Series</source>
@@ -699,8 +715,16 @@
       <extracomment>Day of Week</extracomment>
     </message>
     <message>
+      <source>More Albums</source>
+      <translation>More Albums</translation>
+    </message>
+    <message>
       <source>More Episodes</source>
       <translation>More Episodes</translation>
+    </message>
+    <message>
+      <source>More from %1</source>
+      <translation>More from %1</translation>
     </message>
     <message>
       <source>More from Season %1</source>
@@ -766,6 +790,10 @@
     <message>
       <source>No</source>
       <translation>No</translation>
+    </message>
+    <message>
+      <source>No biography available for this artist.</source>
+      <translation>No biography available for this artist.</translation>
     </message>
     <message>
       <source>No Chapter Data Found</source>
@@ -865,10 +893,6 @@
     <message>
       <source>Play</source>
       <translation>Play</translation>
-    </message>
-    <message>
-      <source>Play Album</source>
-      <translation>Play Album</translation>
     </message>
     <message>
       <source>Play All</source>
@@ -1210,6 +1234,10 @@
       <translation>Slideshow Resumed</translation>
     </message>
     <message>
+      <source>Song</source>
+      <translation>Song</translation>
+    </message>
+    <message>
       <source>Songs</source>
       <translation>Songs</translation>
     </message>
@@ -1352,6 +1380,14 @@
       <translation>Track</translation>
     </message>
     <message>
+      <source>Track %1</source>
+      <translation>Track %1</translation>
+    </message>
+    <message>
+      <source>Tracks</source>
+      <translation>Tracks</translation>
+    </message>
+    <message>
       <source>Transcoding Information</source>
       <translation>Transcoding Information</translation>
     </message>
@@ -1368,11 +1404,6 @@
     <message>
       <source>TV Shows</source>
       <translation>TV Shows</translation>
-    </message>
-    <message>
-      <source>Unable to find any albums or songs belonging to this artist</source>
-      <translation>Unable to find any albums or songs belonging to this artist</translation>
-      <extracomment>Popup message when we find no audio data for an artist</extracomment>
     </message>
     <message>
       <source>Unable to get playback information</source>
