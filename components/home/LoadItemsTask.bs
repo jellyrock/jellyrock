@@ -274,6 +274,67 @@ sub loadItems()
         if isValid(node) then results.push(node)
       end for
     end if
+  else if m.top.itemsToLoad = "artistAlbums"
+    ' Albums where this artist is the album artist, sorted by year descending
+    data = MusicAlbumList(m.top.itemId)
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        results.push(item)
+      end for
+    end if
+  else if m.top.itemsToLoad = "artistAppearsOn"
+    ' Albums where this artist contributes but is not the album artist
+    data = AppearsOnList(m.top.itemId)
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        results.push(item)
+      end for
+    end if
+  else if m.top.itemsToLoad = "albumSongs"
+    ' All Audio tracks under a MusicAlbum, sorted by track number
+    data = MusicSongList(m.top.itemId)
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        results.push(item)
+      end for
+    end if
+  else if m.top.itemsToLoad = "lyrics"
+    ' Fetch lyrics for an Audio item and join lines into a single string.
+    ' Returns a one-element array containing the lyrics string, or empty on failure.
+    lyricsData = GetItemLyrics(m.top.itemId)
+    if isValid(lyricsData) and isValid(lyricsData.Lyrics)
+      lines = []
+      for each lyric in lyricsData.Lyrics
+        if isValid(lyric.Text) and lyric.Text <> ""
+          lines.push(lyric.Text)
+        end if
+      end for
+      if lines.count() > 0
+        results.push(lines.join(Chr(10)))
+      end if
+    end if
+  else if m.top.itemsToLoad = "artistSimilar"
+    ' Similar artists via the artist-specific endpoint (more reliable than Items/{id}/Similar for MusicArtist)
+    params = { "userId": globalUser.id, "limit": 16 }
+    url = Substitute("Artists/{0}/Similar", m.top.itemId)
+    resp = APIRequest(url, params)
+    data = getJson(resp)
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
+      end for
+    end if
+  else if m.top.itemsToLoad = "artistSongs"
+    ' All Audio tracks by this artist (ArtistIds = any capacity: album artist OR contributing).
+    ' Sorted by album then track number so songs group naturally even without album rows.
+    ' Limit 100 to avoid overwhelming the row for prolific artists.
+    data = GetSongsByArtistBroad(m.top.itemId)
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        results.push(item)
+      end for
+    end if
   end if
 
   m.top.content = results
