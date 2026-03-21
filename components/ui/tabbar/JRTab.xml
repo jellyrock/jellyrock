@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="JRTab" extends="TextButton">
+  <interface>
+    <field id="tabTitle" type="string" onChange="onTitleChanged" />
+    <field id="tabId" type="string" />
+    <field id="isSelected" type="boolean" value="false" onChange="onStateChanged" />
+    <field id="isFocused" type="boolean" value="false" onChange="onStateChanged" />
+  </interface>
+</component>

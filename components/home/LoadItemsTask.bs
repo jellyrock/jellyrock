@@ -117,17 +117,16 @@ sub loadItems()
 
     params = {}
     params["Filters"] = "IsFavorite"
-    params["Limit"] = 20
     params["recursive"] = true
-    params["sortby"] = "random"
+    params["SortBy"] = "SortName"
+    params["SortOrder"] = "Ascending"
     params["EnableTotalRecordCount"] = false
 
     data = GetApi().GetItemsByQuery(params)
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #558)
-        ' also skip songs since there is limited space
-        if not (item.Type = "Book" or item.Type = "Audio")
+        if item.Type <> "Book"
           results.push(m.transformer.transformBaseItem(item))
         end if
       end for

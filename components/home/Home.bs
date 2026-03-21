@@ -6,182 +6,256 @@ import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.log = new log.Logger("Home")
-  m.log.verbose("Initializing Home component")
+  m.log.verbose("init")
 
-  m.log.increaseIndent("Setting up component state")
   m.isFirstRun = true
-  m.log.debug("Set isFirstRun", m.isFirstRun)
-
-  m.top.overhangTitle = "Home"
   m.top.optionsAvailable = true
-  m.log.debug("Configured overhang properties", "title:", m.top.overhangTitle, "optionsAvailable:", m.top.optionsAvailable)
 
   m.postTask = createObject("roSGNode", "PostTask")
-  m.log.debug("Created PostTask node", m.postTask)
-  m.log.decreaseIndent()
 
+  ' HomeRows starts in XML as the default tab content
   m.homeRows = m.top.findNode("homeRows")
+  m.activeContent = m.homeRows
+  m.activeTabId = "home"
 
-  m.log.verbose("Home component initialization complete")
+  ' Proxy item selection from the active content
+  m.homeRows.observeField("selectedItem", "onRowItemSelected")
+  m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
+
+  ' Tab configuration
+  m.top.overhangTabs = [
+    { title: tr("Home"), id: "home" },
+    { title: tr("Favorites"), id: "favorites" }
+  ]
+  m.top.selectedTabId = "home"
+  m.top.observeField("selectedTabId", "onTabChanged")
 end sub
 
 sub refresh()
-  m.log.verbose("Refreshing home content")
+  if not isValid(m.activeContent) then return
 
-  if not isValid(m.homeRows)
-    m.log.error("Cannot refresh - homeRows node is invalid")
-    return
+  if m.activeTabId = "home"
+    m.activeContent.callFunc("updateHomeRows")
+  else if m.activeTabId = "favorites"
+    m.activeContent.callFunc("loadFavorites")
   end if
-
-  m.log.debug("Calling updateHomeRows on homeRows node")
-  m.homeRows.callFunc("updateHomeRows")
-  m.log.info("Home content refresh initiated")
 end sub
 
+' Entry point called by Main.bs createAndShowHomeGroup() BEFORE pushScene().
+' Starting data loads before the screen transition completes improves perceived performance.
 sub loadLibraries()
-  m.log.verbose("Loading libraries for home content")
-
   if not isValid(m.homeRows)
-    m.log.error("Cannot load libraries - homeRows node is invalid")
+    m.log.error("Cannot load libraries - homeRows is invalid")
     return
   end if
 
-  m.log.debug("Calling loadLibraries on homeRows node")
   m.homeRows.callFunc("loadLibraries")
-  m.log.info("Library loading initiated")
 end sub
 
 ' JRScreen hook called when the screen is displayed by the screen manager
 sub OnScreenShown()
-  m.log.info("Home screen shown - configuring UI and loading content")
-  m.log.increaseIndent("OnScreenShown operations")
+  m.log.info("OnScreenShown")
 
   ' Configure overhang UI
-  m.log.increaseIndent("Configuring overhang")
   scene = m.top.getScene()
   globalUser = m.global.user
-  m.log.debug("Retrieved scene", scene)
 
   overhang = scene.findNode("overhang")
   if isValid(overhang)
-    m.log.debug("Found overhang node", overhang)
-
     overhang.isLogoVisible = true
     overhang.currentUser = globalUser.name
-    overhang.title = tr("Home")
-    m.log.debug("Updated overhang properties", "user:", overhang.currentUser, "title:", overhang.title, "logoVisible:", overhang.isLogoVisible)
+    m.overhang = overhang
+
+    ' Cache tab bar reference and observe for focus return once — for the
+    ' lifetime of this screen. Observing on each UP keypress would stack
+    ' duplicate observers if focus ever returned to content via a path that
+    ' bypassed onTabBarFocusReturn (e.g. tab switch via OK).
+    tabBar = overhang.callFunc("getTabBar")
+    if isValid(tabBar)
+      m.tabBar = tabBar
+      m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
+    end if
 
     ' Hide clock if user preference is set
-    hideClockSetting = globalUser.settings.uiDesignHideClock
-    m.log.debug("Hide clock setting", hideClockSetting)
-
-    if hideClockSetting
+    if globalUser.settings.uiDesignHideClock
       clock = overhang.findNode("clock")
       if isValid(clock)
         overhang.removeChild(clock)
-        m.log.info("Clock hidden per user preference")
-      else
-        m.log.warn("Clock node not found - cannot hide")
       end if
     end if
-  else
-    m.log.error("Overhang node not found - UI configuration incomplete")
   end if
-  m.log.decreaseIndent()
 
-  ' Set focus appropriately
-  m.log.increaseIndent("Setting focus")
+  ' Set focus to the active content
   if isValid(m.top.lastFocus)
-    m.log.debug("Restoring focus to last focused element", m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
+  else if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
   else
-    m.log.debug("No last focus found - setting focus to home screen")
     m.top.setFocus(true)
   end if
-  m.log.decreaseIndent()
 
-  ' Handle first run device capabilities posting or refresh content
+  ' First run: post device capabilities to the server.
+  ' postFinished() intentionally does NOT trigger a content load — Main.bs already
+  ' called loadLibraries() before pushing this screen, so data is already in flight.
   if m.isFirstRun
-    m.log.increaseIndent("First run - posting device capabilities")
     m.isFirstRun = false
-    m.log.debug("Set isFirstRun to false")
 
-    deviceCapabilities = getDeviceCapabilities()
-    m.log.debug("Retrieved device capabilities", deviceCapabilities)
-
-    m.postTask.arrayData = deviceCapabilities
+    m.postTask.arrayData = getDeviceCapabilities()
     m.postTask.apiUrl = "/Sessions/Capabilities/Full"
     m.postTask.control = "RUN"
-    m.log.debug("Configured PostTask", "apiUrl:", m.postTask.apiUrl, "control:", m.postTask.control)
-
     m.postTask.observeField("responseCode", "postFinished")
-    m.log.info("Device capabilities post initiated")
-    m.log.decreaseIndent()
   else
-    m.log.increaseIndent("Subsequent run - refreshing content")
+    ' Subsequent visits: refresh the active tab's data in place
     refresh()
-    m.log.decreaseIndent()
   end if
 
   ' Re-evaluate backdrop setting visibility (updates when user changes setting from Settings screen)
   scene.callFunc("refreshBackdropSetting")
-  m.log.debug("Refreshed backdrop setting")
-
-  m.log.decreaseIndent()
-  m.log.info("Home screen shown configuration complete")
 end sub
 
 ' JRScreen hook called when the screen is hidden by the screen manager
 sub OnScreenHidden()
-  m.log.info("Home screen hidden - cleaning up UI state")
-  m.log.increaseIndent("OnScreenHidden operations")
+  m.log.info("OnScreenHidden")
 
   scene = m.top.getScene()
-  m.log.debug("Retrieved scene for cleanup", scene)
-
   overhang = scene.findNode("overhang")
   if isValid(overhang)
-    m.log.debug("Found overhang node - clearing properties")
-
     overhang.isLogoVisible = false
     overhang.currentUser = ""
-    overhang.title = ""
-
-    m.log.debug("Cleared overhang properties", "logoVisible:", overhang.isLogoVisible, "user:", overhang.currentUser, "title:", overhang.title)
-    m.log.info("Overhang UI state cleared")
-  else
-    m.log.warn("Overhang node not found - cleanup incomplete")
   end if
-
-  m.log.decreaseIndent()
-  m.log.info("Home screen hidden cleanup complete")
 end sub
 
-' Triggered by m.postTask after completing a post.
-' Empty the task data when finished.
-sub postFinished()
-  m.log.verbose("Device capabilities post finished - cleaning up task")
-  m.log.increaseIndent("Post cleanup operations")
+' ============================================
+' TAB HANDLING
+' ============================================
 
-  if isValid(m.postTask)
-    responseCode = m.postTask.responseCode
-    m.log.debug("Post task response code", responseCode)
+' Called when selectedTabId changes (via SceneManager proxy from overhang tab bar).
+' Destroys the old tab's content and creates the new tab's content.
+sub onTabChanged()
+  tabId = m.top.selectedTabId
+  if tabId = m.activeTabId then return
 
-    if responseCode = 200 or responseCode = 204
-      m.log.info("Device capabilities posted successfully", "responseCode:", responseCode)
-    else
-      m.log.warn("Device capabilities post completed with non-success code", "responseCode:", responseCode)
-    end if
+  ' Destroy the current content
+  destroyActiveContent()
 
-    m.postTask.unobserveField("responseCode")
-    m.postTask.callFunc("empty")
-    m.log.debug("Post task cleaned up and emptied")
-  else
-    m.log.error("Post task invalid during cleanup")
+  m.activeTabId = tabId
+
+  if tabId = "home"
+    ' Create HomeRows, add to scene, load data
+    m.homeRows = CreateObject("roSGNode", "HomeRows")
+    m.activeContent = m.homeRows
+    m.top.insertChild(m.homeRows, 0)
+
+    m.homeRows.observeField("selectedItem", "onRowItemSelected")
+    m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
+
+    m.homeRows.callFunc("loadLibraries")
+    m.homeRows.setFocus(true)
+
+  else if tabId = "favorites"
+    ' Create FavoritesRows, add to scene, load data
+    m.favoritesRows = CreateObject("roSGNode", "FavoritesRows")
+    m.activeContent = m.favoritesRows
+    m.top.insertChild(m.favoritesRows, 0)
+
+    m.favoritesRows.observeField("selectedItem", "onRowItemSelected")
+    m.favoritesRows.observeField("quickPlayNode", "onQuickPlayNode")
+
+    m.favoritesRows.callFunc("loadFavorites")
+    m.favoritesRows.setFocus(true)
+  end if
+end sub
+
+' Destroys the currently active tab content and removes it from the scene
+sub destroyActiveContent()
+  if not isValid(m.activeContent) then return
+
+  m.activeContent.unobserveField("selectedItem")
+  m.activeContent.unobserveField("quickPlayNode")
+
+  if m.activeTabId = "home" and isValid(m.homeRows)
+    m.homeRows.callFunc("destroy")
+    m.top.removeChild(m.homeRows)
+    m.homeRows = invalid
+  else if m.activeTabId = "favorites" and isValid(m.favoritesRows)
+    m.favoritesRows.callFunc("destroy")
+    m.top.removeChild(m.favoritesRows)
+    m.favoritesRows = invalid
   end if
 
-  m.log.decreaseIndent()
-  m.log.verbose("Post task cleanup complete")
+  m.activeContent = invalid
+end sub
+
+' Returns the currently active row list
+function getActiveRows() as object
+  return m.activeContent
+end function
+
+' Proxy selectedItem from whichever row list fires it
+sub onRowItemSelected(msg)
+  m.top.selectedItem = msg.getData()
+end sub
+
+' Proxy quickPlayNode from whichever row list fires it
+sub onQuickPlayNode(msg)
+  m.top.quickPlayNode = msg.getData()
+end sub
+
+' ============================================
+' FOCUS MANAGEMENT
+' ============================================
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  ' UP at top of content → focus the tab bar in the overhang
+  if key = "up"
+    activeRows = getActiveRows()
+    rowItemFocused = activeRows?.rowItemFocused
+    if isValid(activeRows) and type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0
+      ' Lazy-init: tab bar may not exist during first OnScreenShown (pushScene
+      ' calls OnScreenShown before registerOverhangData creates the tab bar)
+      if not isValid(m.tabBar) and isValid(m.overhang)
+        tabBar = m.overhang.callFunc("getTabBar")
+        if isValid(tabBar)
+          m.tabBar = tabBar
+          m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
+        end if
+      end if
+
+      if isValid(m.tabBar)
+        m.tabBar.setFocus(true)
+        return true
+      end if
+    end if
+  end if
+
+  return false
+end function
+
+' Tab bar signals DOWN was pressed — return focus to active content
+sub onTabBarFocusReturn()
+  if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
+  end if
+end sub
+
+' ============================================
+' POST TASK & TEARDOWN
+' ============================================
+
+' Triggered by m.postTask after completing a post.
+' Cleans up the task — does NOT trigger content loading (already handled by loadLibraries).
+sub postFinished()
+  if not isValid(m.postTask) then return
+
+  responseCode = m.postTask.responseCode
+  if responseCode <> 200 and responseCode <> 204
+    m.log.warn("Device capabilities post returned", responseCode)
+  end if
+
+  m.postTask.unobserveField("responseCode")
+  m.postTask.callFunc("empty")
 end sub
 
 ' destroy: Full teardown releasing all resources before component removal
@@ -189,11 +263,19 @@ end sub
 sub destroy()
   m.log.verbose("destroy")
 
-  ' Stop and release task node (observer may already be cleared by postFinished())
+  m.top.unobserveField("selectedTabId")
+
+  ' Release tab bar observer
+  if isValid(m.tabBar)
+    m.tabBar.unobserveField("requestFocusReturn")
+    m.tabBar = invalid
+  end if
+
+  ' Stop and release task node
   m.postTask.unobserveField("responseCode")
   m.postTask.control = "STOP"
   m.postTask = invalid
 
-  ' Clear node references
-  m.homeRows = invalid
+  ' Destroy active tab content
+  destroyActiveContent()
 end sub

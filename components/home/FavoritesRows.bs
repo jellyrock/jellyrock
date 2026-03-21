@@ -1,0 +1,339 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.top.itemComponentName = "JRRowItem"
+  m.top.numRows = 3
+  m.top.vertFocusAnimationStyle = "fixedFocus"
+  m.top.content = CreateObject("roSGNode", "ContentNode")
+
+  updateSize()
+
+  m.top.setFocus(true)
+
+  m.top.observeField("rowItemSelected", "itemSelected")
+  m.top.observeField("rowItemFocused", "onItemFocused")
+
+  m.loadFavoritesTask = createObject("roSGNode", "LoadItemsTask")
+  m.loadFavoritesTask.itemsToLoad = "favorites"
+
+  ' Known type ordering and labels — used for skeleton creation and data grouping
+  m.typeArray = ["Movie", "Series", "BoxSet", "Episode", "MusicArtist", "MusicAlbum", "Audio", "Person"]
+  m.typeLabels = {
+    "Movie": tr("Movies"),
+    "Series": tr("Series"),
+    "BoxSet": tr("Collections"),
+    "Episode": tr("Episodes"),
+    "MusicArtist": tr("Artists"),
+    "MusicAlbum": tr("Albums"),
+    "Audio": tr("Songs"),
+    "Person": tr("People")
+  }
+  m.initialLoadComplete = false
+
+  ' Track loading state to prevent duplicate observers/requests
+  m.isLoadingFavorites = false
+end sub
+
+sub updateSize()
+  uiRowLayout = m.global.user.settings.uiRowLayout
+
+  if isValid(uiRowLayout)
+    if uiRowLayout = "fullwidth"
+      m.top.translation = [0, 126]
+      m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
+      m.top.focusXOffset = [96]
+      m.top.rowLabelOffset = [96, 18]
+    else
+      m.top.translation = [111, 126]
+      m.top.itemSize = [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT]
+      m.top.focusXOffset = []
+      m.top.rowLabelOffset = [0, 18]
+    end if
+  end if
+
+  m.top.visible = true
+end sub
+
+' Entry point called by Home.bs when Favorites tab is selected.
+' Creates skeleton rows on first load, then fires the data task.
+sub loadFavorites()
+  if not m.initialLoadComplete
+    createSkeletonRows()
+    m.top.showRowCounter = [true]
+  end if
+
+  ' Cancel any in-flight task before starting new one
+  if m.isLoadingFavorites
+    m.loadFavoritesTask.unobserveField("content")
+    m.loadFavoritesTask.control = "STOP"
+  end if
+
+  m.isLoadingFavorites = true
+  m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
+  m.loadFavoritesTask.control = "RUN"
+end sub
+
+' Creates skeleton rows for all known favorite types with loading placeholders
+sub createSkeletonRows()
+  for each itemType in m.typeArray
+    row = CreateObject("roSGNode", "HomeRow")
+    row.title = m.typeLabels[itemType] ?? itemType
+    row.sectionId = itemType
+    row.cursorSize = getSlotSizeForType(itemType)
+
+    placeholder = CreateObject("roSGNode", "ContentNode")
+    placeholder.addFields({ type: "Loading" })
+    row.appendChild(placeholder)
+
+    m.top.content.appendChild(row)
+  end for
+
+  applyRowSizes()
+end sub
+
+' Groups loaded favorites by item type and populates/removes skeleton rows.
+' On refresh, updates existing rows in place to preserve focus position.
+sub onFavoritesLoaded()
+  itemData = m.loadFavoritesTask.content
+  m.loadFavoritesTask.unobserveField("content")
+  m.loadFavoritesTask.content = []
+
+  m.isLoadingFavorites = false
+  m.initialLoadComplete = true
+
+  ' Bucket items by type
+  buckets = {}
+  for each itemType in m.typeArray
+    buckets[itemType] = []
+  end for
+
+  if isValidAndNotEmpty(itemData)
+    for each item in itemData
+      if buckets.doesExist(item.type)
+        buckets[item.type].push(item)
+      end if
+    end for
+  end if
+
+  ' Cap each bucket at 50 items (API returns sorted by SortName)
+  maxPerRow = 50
+  for each itemType in m.typeArray
+    bucket = buckets[itemType]
+    if bucket.count() > maxPerRow
+      buckets[itemType] = []
+      for i = 0 to maxPerRow - 1
+        buckets[itemType].push(bucket[i])
+      end for
+    end if
+  end for
+
+  ' Populate or remove each row
+  sizesChanged = false
+  for each itemType in m.typeArray
+    bucket = buckets[itemType]
+    result = findRowBySectionId(itemType)
+
+    if bucket.count() = 0
+      ' No items — remove row if it exists (skeleton or populated)
+      if isValid(result)
+        m.top.content.removeChildIndex(result.index)
+        sizesChanged = true
+      end if
+    else if isValid(result)
+      ' Row exists — swap children in place (append new before removing old)
+      row = result.row
+      oldCount = row.getChildCount()
+
+      for each item in bucket
+        row.appendChild(item)
+      end for
+
+      for i = oldCount - 1 to 0 step -1
+        row.removeChildIndex(i)
+      end for
+    else
+      ' Row was previously removed but now has data — re-insert at correct position
+      row = CreateObject("roSGNode", "HomeRow")
+      row.title = m.typeLabels[itemType] ?? itemType
+      row.sectionId = itemType
+      row.cursorSize = getSlotSizeForType(itemType)
+
+      for each item in bucket
+        row.appendChild(item)
+      end for
+
+      insertIndex = findInsertIndexForType(itemType, m.typeArray)
+      m.top.content.insertChild(row, insertIndex)
+      sizesChanged = true
+    end if
+  end for
+
+  if sizesChanged
+    applyRowSizes()
+  end if
+
+  updateBackdropForFocusedItem()
+end sub
+
+' Find a row by its sectionId
+function findRowBySectionId(sectionId as string) as object
+  if not isValid(m.top.content) then return invalid
+
+  for i = 0 to m.top.content.getChildCount() - 1
+    row = m.top.content.getChild(i)
+    if row.sectionId = sectionId
+      return { row: row, index: i }
+    end if
+  end for
+
+  return invalid
+end function
+
+' Find the correct insert index for a type based on the type ordering
+function findInsertIndexForType(itemType as string, typeArray as object) as integer
+  ' Find what comes before this type in typeArray and locate it in content
+  targetIdx = -1
+  for i = 0 to typeArray.count() - 1
+    if typeArray[i] = itemType
+      targetIdx = i
+      exit for
+    end if
+  end for
+
+  ' Walk backward to find the last preceding type that has a row
+  for i = targetIdx - 1 to 0 step -1
+    result = findRowBySectionId(typeArray[i])
+    if isValid(result)
+      return result.index + 1
+    end if
+  end for
+
+  return 0
+end function
+
+' Returns the appropriate slot size for a Jellyfin item type.
+' Follows the same logic as SearchRow.bs getSlotSizeForType.
+function getSlotSizeForType(itemType as string) as object
+  if itemType = "Episode"
+    return rowSlotSize.WIDE
+  else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio"
+    return rowSlotSize.SQUARE
+  end if
+  return rowSlotSize.PORTRAIT
+end function
+
+' Applies per-row slot sizes, heights, and spacings based on each row's cursorSize
+sub applyRowSizes()
+  if not isValid(m.top.content) then return
+  rows = m.top.content.getChildren(-1, 0)
+  if rows.count() = 0 then return
+
+  newSizeArray = []
+  newRowHeights = []
+  newRowSpacings = []
+
+  for each row in rows
+    slotSize = isValid(row.cursorSize) ? row.cursorSize : rowSlotSize.PORTRAIT
+    newSizeArray.push(slotSize)
+
+    slotHeight = slotSize[1]
+    if slotHeight = rowSlotSize.PORTRAIT[1]
+      newRowHeights.push(rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    else if slotHeight = rowSlotSize.SQUARE[1]
+      newRowHeights.push(rowSlotSize.ROW_HEIGHT_SQUARE)
+    else
+      newRowHeights.push(rowSlotSize.ROW_HEIGHT_WIDE)
+    end if
+
+    newRowSpacings.push(60)
+  end for
+
+  m.top.rowItemSize = newSizeArray
+  m.top.rowHeights = newRowHeights
+  m.top.rowSpacings = newRowSpacings
+end sub
+
+' ============================================
+' ITEM SELECTION, FOCUS, AND KEY EVENTS
+' ============================================
+
+function getItemAtIndices(indices as object) as dynamic
+  if not isValidAndNotEmpty(indices) or not isValid(m.top.content)
+    return invalid
+  end if
+
+  if indices[0] < 0 or indices[0] >= m.top.content.getChildCount()
+    return invalid
+  end if
+
+  row = m.top.content.getChild(indices[0])
+  if not isValid(row)
+    return invalid
+  end if
+
+  if indices[1] < 0 or indices[1] >= row.getChildCount()
+    return invalid
+  end if
+
+  return row.getChild(indices[1])
+end function
+
+sub itemSelected()
+  item = getItemAtIndices(m.top.rowItemSelected)
+  if not isValid(item) or item.type = "Loading" then return
+
+  m.top.selectedItem = item
+  m.top.selectedItem = invalid
+end sub
+
+sub onItemFocused()
+  updateBackdropForFocusedItem()
+end sub
+
+sub updateBackdropForFocusedItem()
+  focusedItem = getItemAtIndices(m.top.rowItemFocused)
+
+  backdropUrl = ""
+  if isValid(focusedItem)
+    deviceRes = m.global.device.uiResolution
+    backdropUrl = getItemBackdropUrl(focusedItem, { width: deviceRes[0], height: deviceRes[1] })
+  end if
+  m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if press
+    if key = "play"
+      itemToPlay = getItemAtIndices(m.top.rowItemFocused)
+      if isValid(itemToPlay) and itemToPlay.type <> "Loading"
+        m.top.quickPlayNode = itemToPlay
+      end if
+      return true
+    else if key = "replay"
+      indices = m.top.rowItemFocused
+      if isValidAndNotEmpty(indices) and indices[0] >= 0
+        m.top.jumpToRowItem = [indices[0], 0]
+      end if
+      return true
+    end if
+  end if
+  return false
+end function
+
+' ============================================
+' TEARDOWN
+' ============================================
+
+sub destroy()
+  m.top.unobserveField("rowItemSelected")
+  m.top.unobserveField("rowItemFocused")
+
+  m.loadFavoritesTask.unobserveField("content")
+  m.loadFavoritesTask.control = "STOP"
+  m.loadFavoritesTask = invalid
+
+  ' Reset loading flag
+  m.isLoadingFavorites = false
+end sub

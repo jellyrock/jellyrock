@@ -134,6 +134,16 @@ end function
 
 ' Clear all content from group stack
 sub clearScenes()
+  ' Hide overhang immediately so all element removals (logo, tabs, title)
+  ' happen off-screen — prevents staggered visual cleanup across frames
+  if isValid(m.overhang) then m.overhang.visible = false
+
+  ' Unregister overhang observers from the active group before teardown
+  activeGroup = m.groups.peek()
+  if isValid(activeGroup) and activeGroup.isSubType("JRGroup")
+    unregisterOverhangData(activeGroup)
+  end if
+
   if isValid(m.content) then m.content.removeChildrenIndex(m.content.getChildCount(), 0)
   for each group in m.groups
     if type(group) = "roSGNode"
@@ -173,22 +183,31 @@ end sub
 ' Register observers for overhang data
 sub registerOverhangData(group)
   if group.isSubType("JRGroup")
-    if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
-
-    group.observeField("overhangTitle", "updateOverhangTitle")
-
     if group.overhangVisible
       m.overhang.visible = true
     else
       m.overhang.visible = false
     end if
     group.observeField("overhangVisible", "updateOverhangVisible")
+
+    ' Set tabs BEFORE the title so onTabsChanged can hide the title before it
+    ' renders with text — prevents a visible title→tab transition flash
+    m.overhang.selectedTabId = group.selectedTabId
+    m.overhang.tabs = group.overhangTabs
+    group.observeField("overhangTabs", "updateOverhangTabs")
+    m.overhang.observeField("selectedTabId", "onOverhangTabSelected")
+
+    if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
+    group.observeField("overhangTitle", "updateOverhangTitle")
   end if
 end sub
 
 ' Remove observers for overhang data
 sub unregisterOverhangData(group)
   group.unobserveField("overhangTitle")
+  group.unobserveField("overhangTabs")
+  group.unobserveField("overhangVisible")
+  m.overhang.unobserveField("selectedTabId")
 end sub
 
 ' Update overhang title
@@ -199,6 +218,19 @@ end sub
 ' Update whether the overhang is visible or not
 sub updateOverhangVisible(msg)
   m.overhang.visible = msg.getData()
+end sub
+
+' Update overhang tabs when group's overhangTabs changes
+sub updateOverhangTabs(msg)
+  m.overhang.tabs = msg.getData()
+end sub
+
+' Proxy overhang tab selection back to the active group's selectedTabId
+sub onOverhangTabSelected()
+  group = m.groups.peek()
+  if isValid(group) and group.isSubType("JRGroup")
+    group.selectedTabId = m.overhang.selectedTabId
+  end if
 end sub
 
 ' Update username in overhang

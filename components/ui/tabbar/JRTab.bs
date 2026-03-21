@@ -1,0 +1,86 @@
+sub init()
+  ' TextButton.init() has already run: m.buttonBackground, m.buttonBorder, m.buttonText are set
+
+  constants = m.global.constants
+  m.colorTextPrimary = constants.colorTextPrimary
+  m.colorTextSecondary = constants.colorTextSecondary
+
+  ' Upgrade font to Large to match overhang title size
+  m.buttonText.font.size = constants.fontSizeLarge
+
+  ' Match TextButton's default padding for consistent styling
+  m.top.padding = 30
+
+  ' Unfocused state: transparent background/border so only text is visible
+  m.top.background = "0x00000000"
+  m.top.border = "0x00000000"
+  m.top.textColor = m.colorTextSecondary
+
+  ' Focused state: standard TextButton appearance
+  m.top.focusBorder = constants.colorPrimary
+  m.top.focusBackground = constants.colorBackgroundSecondary
+  m.top.textFocusColor = m.colorTextPrimary
+
+  ' Create underline indicator programmatically (positioned after sizing in onReady)
+  m.indicator = createObject("roSGNode", "Rectangle")
+  m.indicator.height = 6
+  m.indicator.color = constants.colorSecondary
+  m.indicator.visible = false
+  m.top.appendChild(m.indicator)
+
+  ' Position indicator after TextButton finishes sizing
+  m.top.observeField("ready", "onReady")
+end sub
+
+' Maps tabTitle to TextButton's text field, triggering TextButton's sizing flow
+sub onTitleChanged()
+  m.top.text = m.top.tabTitle
+end sub
+
+' Positions the underline indicator inside the button after TextButton sizes itself.
+' The indicator sits below the text at text width, inside the background bounds.
+' When focused, the TextButton border naturally wraps around it (ResumeButton pattern).
+sub onReady()
+  if not m.top.ready then return
+
+  padding = m.top.padding
+  bgWidth = m.buttonBackground.width
+  bgHeight = m.buttonBackground.height
+
+  ' Text sits from y=padding to y=bgHeight-padding inside the background
+  textWidth = bgWidth - (padding * 2)
+  textBottom = bgHeight - padding
+
+  m.indicator.width = textWidth
+  m.indicator.translation = [padding, textBottom + 12]
+  m.indicator.visible = m.top.isSelected
+end sub
+
+' Overrides TextButton.onFocusChanged to use the virtual isFocused field.
+' Individual tabs never receive real Roku focus — JRTabBar manages focus
+' externally via the isFocused field.
+sub onFocusChanged()
+  isFocused = m.top.isFocused
+
+  if isFocused
+    m.buttonBorder.blendColor = m.top.focusBorder
+    m.buttonBackground.blendColor = m.top.focusBackground
+    m.buttonBorder.visible = true
+    m.buttonBackground.visible = true
+    m.buttonText.color = m.top.textFocusColor
+  else
+    m.buttonBorder.visible = false
+    m.buttonBackground.visible = false
+    if m.top.isSelected
+      m.buttonText.color = m.colorTextPrimary
+    else
+      m.buttonText.color = m.colorTextSecondary
+    end if
+  end if
+end sub
+
+' Called when isFocused or isSelected changes — updates all visual state
+sub onStateChanged()
+  onFocusChanged()
+  m.indicator.visible = m.top.isSelected
+end sub

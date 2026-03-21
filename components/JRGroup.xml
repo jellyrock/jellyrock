@@ -6,5 +6,7 @@
     <field id="overhangTitle" type="string" />
     <field id="optionsAvailable" value="true" type="boolean" />
     <field id="overhangVisible" value="true" type="boolean" />
+    <field id="overhangTabs" type="array" />
+    <field id="selectedTabId" type="string" alwaysNotify="true" />
   </interface>
 </component>
