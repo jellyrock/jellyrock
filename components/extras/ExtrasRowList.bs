@@ -368,8 +368,8 @@ sub onAdditionalPartsLoaded()
 end sub
 
 ' onPlaylistItemsLoaded: Build "Playlist Items" row then chain to More Like This (Playlist only).
-' Detects whether all items are Audio (SQUARE slot) or mixed/video (PORTRAIT slot).
-' Sets playlistHasVideos so ItemDetails can add the Watched button asynchronously.
+' Detects whether items are all audio, all video, or mixed, and selects SQUARE vs PORTRAIT slots accordingly.
+' Sets playlistContentKind ("audio"/"video"/"mixed"/"unknown") so ItemDetails can add the Watched button asynchronously.
 sub onPlaylistItemsLoaded()
   items = m.LoadPlaylistItemsTask.content
   m.LoadPlaylistItemsTask.unobserveField("content")
