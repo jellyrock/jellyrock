@@ -383,24 +383,6 @@ function GetSongsByArtistBroad(id as string) as dynamic
   return data
 end function
 
-' Get Items that are under the provided item
-function PlaylistItemList(id as string)
-  data = GetApi().GetPlaylistItems(id)
-
-  results = []
-
-  if not isValid(data) then return invalid
-  if not isValid(data.Items) then return invalid
-  if data.Items.Count() = 0 then return invalid
-
-  transformer = JellyfinDataTransformer()
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
-end function
-
 ' Get Songs that are on an Album
 function MusicSongList(id as string)
   data = GetApi().GetItemsByQuery({

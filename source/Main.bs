@@ -277,7 +277,7 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "MusicVideo"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Playlist"
-          group = CreatePlaylistView(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
         else
           ' TODO - switch on more node types
           stopLoadingSpinner()
