@@ -5,11 +5,6 @@
   <context>
     <name>default</name>
     <message>
-      <source>... (Press * to read more)</source>
-      <translation>... (Press * to read more)</translation>
-      <extracomment>Ellipsis Text for when text overflows its container</extracomment>
-    </message>
-    <message>
       <source>...or enter server URL manually:</source>
       <translation>If no server is listed above, you may also enter the server URL manually:</translation>
       <extracomment>Instructions on initial app launch when the user is asked to manually enter a server URL</extracomment>
@@ -607,6 +602,10 @@
       <translation>Invalid Color</translation>
     </message>
     <message>
+      <source>Item</source>
+      <translation>Item</translation>
+    </message>
+    <message>
       <source>Item Count</source>
       <translation>Item Count</translation>
       <extracomment>UI -&gt; Media Grid -&gt; Item Count in user setting screen.</extracomment>
@@ -615,6 +614,10 @@
       <source>Item Titles</source>
       <translation>Item Titles</translation>
       <extracomment>Title of a setting - when should we show the title text of a grid item</extracomment>
+    </message>
+    <message>
+      <source>Items</source>
+      <translation>Items</translation>
     </message>
     <message>
       <source>Level</source>
@@ -860,10 +863,6 @@
       <translation>Override web client audio preference. When enabled, use the IsDefault flag to select audio track. When disabled, prefer language match and ignore IsDefault.</translation>
     </message>
     <message>
-      <source>Overview</source>
-      <translation>Overview</translation>
-    </message>
-    <message>
       <source>Panel/card background color. Default: 161B22</source>
       <translation>Panel/card background color. Default: 161B22</translation>
     </message>
@@ -935,6 +934,14 @@
     <message>
       <source>Played</source>
       <translation>Played</translation>
+    </message>
+    <message>
+      <source>Playlist Items</source>
+      <translation>Playlist Items</translation>
+    </message>
+    <message>
+      <source>Playlists</source>
+      <translation>Playlists</translation>
     </message>
     <message>
       <source>Please enter exactly 6 hex characters (0-9, A-F).</source>
