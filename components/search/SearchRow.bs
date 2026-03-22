@@ -46,7 +46,8 @@ function getData()
     "MusicArtist": { "label": "Artists", "count": 0 },
     "MusicAlbum": { "label": "Albums", "count": 0 },
     "Audio": { "label": "Songs", "count": 0 },
-    "TvChannel": { "label": "Channels", "count": 0 }
+    "TvChannel": { "label": "Channels", "count": 0 },
+    "BoxSet": { "label": "Collections", "count": 0 }
   }
 
   for each item in itemData.Items

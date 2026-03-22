@@ -7,7 +7,6 @@
 namespace itemTypeOrder
 
   ' Types displayed in search result rows, in web-client display order.
-  ' Excluded: "BoxSet" (Collections) — the search API does not return it.
   const SEARCH = [
     "Movie", ' Movies
     "Series", ' Shows
@@ -19,10 +18,11 @@ namespace itemTypeOrder
     "Audio", ' Songs
     ' "Video"       ' Videos       — not yet supported
     ' "Program"     ' Programs     — not yet supported
-    "TvChannel" ' Channels
+    "TvChannel", ' Channels
     ' "PhotoAlbum"  ' Photo Albums — not yet supported
     ' "Photo"       ' Photos       — not yet supported
     ' "Book"        ' Audiobooks / Books — not yet supported
+    "BoxSet" ' Collections
   ]
 
   ' Types displayed in the Favorites home tab, in web-client display order.
