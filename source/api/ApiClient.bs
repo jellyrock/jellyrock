@@ -202,6 +202,18 @@ class ApiClient
     return sdk.artists.Get(mergedParams)
   end function
 
+  ' Get all persons with automatic image injection
+  ' @param params - Query parameters (e.g. searchTerm, IsFavorite)
+  ' @returns API response or invalid on error
+  function GetPersons(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+    return sdk.persons.Get(mergedParams)
+  end function
+
   ' Get all album artists with automatic image injection
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -664,6 +676,14 @@ class ApiClient
   ' @returns API response or invalid on error
   function GetLiveTVChannels(params = {} as object) as dynamic
     return sdk.liveTV.GetChannels(params)
+  end function
+
+  ' Get Live TV programs with automatic image injection
+  ' @param params - Query parameters (e.g. SearchTerm, Limit)
+  ' @returns API response or invalid on error
+  function GetLiveTVPrograms(params = {} as object) as dynamic
+    mergedParams = m.injectDefaults(params)
+    return sdk.liveTV.GetPrograms(mergedParams)
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════

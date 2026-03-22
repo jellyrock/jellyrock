@@ -233,32 +233,72 @@ end function
 
 ' Search across all libraries
 function searchMedia(query as string)
-  if query <> ""
-    data = GetApi().GetItemsByQuery({
-      "searchTerm": query,
-      "IncludePeople": true,
-      "IncludeMedia": true,
-      "IncludeShows": true,
-      "IncludeGenres": true,
-      "IncludeStudios": true,
-      "IncludeArtists": true,
-      "IncludeItemTypes": "LiveTvChannel,Movie,BoxSet,Series,Episode,Video,Person,Audio,MusicAlbum,MusicArtist,Playlist",
-      "EnableTotalRecordCount": false,
-      "Recursive": true,
-      "limit": 100
-    })
+  if query = "" then return []
 
-    if not isValid(data) then return []
+  transformer = JellyfinDataTransformer()
+  allItems = []
 
-    transformer = JellyfinDataTransformer()
-    results = []
+  ' Regular library items — Person and MusicArtist are fetched via dedicated endpoints below.
+  ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
+  data = GetApi().GetItemsByQuery({
+    "searchTerm": query,
+    "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
+    "EnableTotalRecordCount": false,
+    "Recursive": true,
+    "limit": 100
+  })
+  if isValid(data) and isValid(data.Items)
     for each item in data.Items
-      results.push(transformer.transformBaseItem(item))
+      ' Live TV recordings come back from /Items as the content type (Movie/Episode).
+      ' The only reliable discriminator is the container format: recordings are always
+      ' stored as MPEG transport streams ("ts"), while library items never are.
+      if LCase(item.Container ?? "") = "ts"
+        item.Type = "Recording"
+      end if
+      allItems.push(transformer.transformBaseItem(item))
     end for
-    data.Items = results
-    return data
   end if
-  return []
+
+  ' People — /Items does not return Person type; /Persons endpoint required.
+  personData = GetApi().GetPersons({
+    "searchTerm": query,
+    "Limit": 20,
+    "EnableTotalRecordCount": false
+  })
+  if isValid(personData) and isValid(personData.Items)
+    for each item in personData.Items
+      allItems.push(transformer.transformBaseItem(item))
+    end for
+  end if
+
+  ' Artists — /Items does not return MusicArtist type; /Artists endpoint required.
+  artistData = GetApi().GetArtists({
+    "searchTerm": query,
+    "Limit": 20,
+    "EnableTotalRecordCount": false
+  })
+  if isValid(artistData) and isValid(artistData.Items)
+    for each item in artistData.Items
+      allItems.push(transformer.transformBaseItem(item))
+    end for
+  end if
+
+  ' Live TV Programs — /LiveTv/Programs searches the full EPG; /Items only covers recordings.
+  programData = GetApi().GetLiveTVPrograms({
+    "SearchTerm": query,
+    "Limit": 20,
+    "EnableTotalRecordCount": false
+  })
+  if isValid(programData) and isValid(programData.Items)
+    for each item in programData.Items
+      allItems.push(transformer.transformBaseItem(item))
+    end for
+  end if
+
+  result = {}
+  result.Items = allItems
+  result.TotalRecordCount = allItems.count()
+  return result
 end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.
