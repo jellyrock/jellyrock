@@ -31,11 +31,14 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
   end if
 
   ' Recordings: standalone items, not episodes of a series — the episode image setting
-  ' (show art vs episode art) does not apply. Always use the item's own Primary image.
+  ' (show art vs episode art) does not apply. Use only the item's own images (no parent/series
+  ' inheritance), falling back through Primary → Thumb → Backdrop.
   if item.type = "Recording"
-    url = getItemPosterUrl(item, size)
+    url = getItemImageUrl(item, "Primary", size)
     if url <> "" then return url
-    return getItemWidePosterUrl(item, size)
+    url = getItemImageUrl(item, "Thumb", size)
+    if url <> "" then return url
+    return getItemImageUrl(item, "Backdrop", size)
   end if
 
   ' Episodes: image type controlled by user setting.
