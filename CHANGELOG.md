@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update markdownlint-cli2 from v0.21.0 to v0.22.0 ([#390](https://github.com/jellyrock/jellyrock/pull/390))
 - Update @rokucommunity/bslint from v0.8.38 to v0.8.39 ([#386](https://github.com/jellyrock/jellyrock/pull/386))
 
 ## [2.2.0](https://github.com/jellyrock/jellyrock/compare/v2.1.0...v2.2.0) - 2026-03-17
