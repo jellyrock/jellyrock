@@ -9,17 +9,17 @@ namespace itemTypeOrder
   ' Types displayed in search result rows, in web-client display order.
   ' Excluded: "BoxSet" (Collections) — the search API does not return it.
   const SEARCH = [
-    "Movie",        ' Movies
-    "Series",       ' Shows
-    "Episode",      ' Episodes
-    "Person",       ' People
-    "Playlist",     ' Playlists
-    "MusicArtist",  ' Artists
-    "MusicAlbum",   ' Albums
-    "Audio",        ' Songs
+    "Movie", ' Movies
+    "Series", ' Shows
+    "Episode", ' Episodes
+    "Person", ' People
+    "Playlist", ' Playlists
+    "MusicArtist", ' Artists
+    "MusicAlbum", ' Albums
+    "Audio", ' Songs
     ' "Video"       ' Videos       — not yet supported
     ' "Program"     ' Programs     — not yet supported
-    "TvChannel"     ' Channels
+    "TvChannel" ' Channels
     ' "PhotoAlbum"  ' Photo Albums — not yet supported
     ' "Photo"       ' Photos       — not yet supported
     ' "Book"        ' Audiobooks / Books — not yet supported
@@ -28,21 +28,21 @@ namespace itemTypeOrder
   ' Types displayed in the Favorites home tab, in web-client display order.
   ' Excluded: "TvChannel" (Channels) — channels cannot be favorited.
   const FAVORITES = [
-    "Movie",        ' Movies
-    "Series",       ' Shows
-    "Episode",      ' Episodes
-    "Person",       ' People
-    "Playlist",     ' Playlists
-    "MusicArtist",  ' Artists
-    "MusicAlbum",   ' Albums
-    "Audio",        ' Songs
+    "Movie", ' Movies
+    "Series", ' Shows
+    "Episode", ' Episodes
+    "Person", ' People
+    "Playlist", ' Playlists
+    "MusicArtist", ' Artists
+    "MusicAlbum", ' Albums
+    "Audio", ' Songs
     ' "Video"       ' Videos       — not yet supported
     ' "Program"     ' Programs     — not yet supported
     ' "TvChannel"   ' Channels     — cannot be favorited
     ' "PhotoAlbum"  ' Photo Albums — not yet supported
     ' "Photo"       ' Photos       — not yet supported
     ' "Book"        ' Audiobooks / Books — not yet supported
-    "BoxSet"        ' Collections
+    "BoxSet" ' Collections
   ]
 
 end namespace
