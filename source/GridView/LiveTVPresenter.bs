@@ -30,11 +30,11 @@ class LiveTVPresenter extends GridPresenterBase
   end function
 
   ' No presentation info for LiveTV
-  override function shouldShowPresentationInfo(viewMode as string) as boolean
+  override function shouldShowPresentationInfo(_viewMode as string) as boolean
     return false
   end function
 
-  override function getOptions(parentItem as object) as object
+  override function getOptions(_parentItem as object) as object
     return {
       views: [
         { "Title": tr("Channels"), "Name": "livetv" },
@@ -51,7 +51,7 @@ class LiveTVPresenter extends GridPresenterBase
   end function
 
   ' Channel logos need scaleToFit, not scaleToZoom
-  override function getGridConfig(viewMode as string) as object
+  override function getGridConfig(_viewMode as string) as object
     return {
       translation: [96, 102],
       itemSize: [264, 396],
@@ -62,7 +62,7 @@ class LiveTVPresenter extends GridPresenterBase
     }
   end function
 
-  override sub configureLoadTask(task as object, parentItem as object, viewMode as string)
+  override sub configureLoadTask(task as object, _parentItem as object, _viewMode as string)
     ' CRITICAL: itemType must be "LiveTV" to route to the LiveTv/Channels API endpoint
     ' (see LoadItemsTask2.bs line 113-115)
     task.itemType = "LiveTV"
