@@ -348,6 +348,8 @@ sub Main (args as dynamic) as void
         group = CreateItemDetailsGroup(node)
       else if LCase(node.type) = "recording"
         group = CreateItemDetailsGroup(node)
+      else if node.type = "Playlist"
+        group = CreateItemDetailsGroup(node)
       else
         ' TODO - switch on more node types
         stopLoadingSpinner()

@@ -1,0 +1,48 @@
+' @fileoverview Canonical item type display orderings, following the Jellyfin web client section sort order.
+' Source: https://github.com/jellyfin/jellyfin-web/blob/1874929aff871d38fd689ad3f5af8204533c2e6b/src/apps/stable/features/search/constants/sectionSortOrder.ts
+'
+' When adding support for a new type, uncomment it here and add the corresponding label/slot
+' handling in the consumer (FavoritesRows.bs, SearchRow.bs).
+
+namespace itemTypeOrder
+
+  ' Types displayed in search result rows, in web-client display order.
+  ' Excluded: "BoxSet" (Collections) — the search API does not return it.
+  const SEARCH = [
+    "Movie",        ' Movies
+    "Series",       ' Shows
+    "Episode",      ' Episodes
+    "Person",       ' People
+    "Playlist",     ' Playlists
+    "MusicArtist",  ' Artists
+    "MusicAlbum",   ' Albums
+    "Audio",        ' Songs
+    ' "Video"       ' Videos       — not yet supported
+    ' "Program"     ' Programs     — not yet supported
+    "TvChannel"     ' Channels
+    ' "PhotoAlbum"  ' Photo Albums — not yet supported
+    ' "Photo"       ' Photos       — not yet supported
+    ' "Book"        ' Audiobooks / Books — not yet supported
+  ]
+
+  ' Types displayed in the Favorites home tab, in web-client display order.
+  ' Excluded: "TvChannel" (Channels) — channels cannot be favorited.
+  const FAVORITES = [
+    "Movie",        ' Movies
+    "Series",       ' Shows
+    "Episode",      ' Episodes
+    "Person",       ' People
+    "Playlist",     ' Playlists
+    "MusicArtist",  ' Artists
+    "MusicAlbum",   ' Albums
+    "Audio",        ' Songs
+    ' "Video"       ' Videos       — not yet supported
+    ' "Program"     ' Programs     — not yet supported
+    ' "TvChannel"   ' Channels     — cannot be favorited
+    ' "PhotoAlbum"  ' Photo Albums — not yet supported
+    ' "Photo"       ' Photos       — not yet supported
+    ' "Book"        ' Audiobooks / Books — not yet supported
+    "BoxSet"        ' Collections
+  ]
+
+end namespace
