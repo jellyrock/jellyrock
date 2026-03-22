@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (osd) limit OSD logo image height to 300px ([#394](https://github.com/jellyrock/jellyrock/pull/394))
 - bslint build warnings  ([#391](https://github.com/jellyrock/jellyrock/pull/391))
 - don't run device unit tests for automated commits ([445d473](https://github.com/jellyrock/jellyrock/commit/445d473))
 
