@@ -3,6 +3,7 @@ import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
 import "pkg:/source/api/userauth.bs"
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
@@ -162,21 +163,24 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   end if
 
   ' Set logo image using metadata (same logic as ItemDetails)
+  ' All OSD logo images are sized to imageSize.LOGO_OSD — the Poster node in OSD.xml enforces
+  ' this client-side via loadDisplayMode=limitSize, so the API params and UI stay in sync.
+  osdLogoSize = imageSize.LOGO_OSD ' { width: 500, height: 300 } — BrightScript requires local var for namespace field access
   ' Check for logoImageTag first (movie/item logo)
   if isValidAndNotEmpty(meta.logoImageTag)
-    video.logoImage = ImageURL(meta.id, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.logoImageTag })
+    video.logoImage = ImageURL(meta.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.logoImageTag })
   else if isValidAndNotEmpty(meta.parentLogoImageTag) and isValidAndNotEmpty(meta.seriesId)
     ' Series logo for episodes
-    video.logoImage = ImageURL(meta.seriesId, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.parentLogoImageTag })
+    video.logoImage = ImageURL(meta.seriesId, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.parentLogoImageTag })
   else if videotype = "movie" and isValidAndNotEmpty(meta.primaryImageTag)
     ' Movie with no logo — fall back to primary (poster) image
-    video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
+    video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
   else if videotype = "episode" or videotype = "recording"
     ' Episode/recording with no series logo — fall back to series primary poster, then episode thumbnail
     if isValidAndNotEmpty(meta.seriesPrimaryImageTag) and isValidAndNotEmpty(meta.seriesId)
-      video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: meta.seriesPrimaryImageTag })
+      video.logoImage = ImageURL(meta.seriesId, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.seriesPrimaryImageTag })
     else if isValidAndNotEmpty(meta.primaryImageTag)
-      video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 212, maxWidth: 500, quality: 90, tag: meta.primaryImageTag })
+      video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
     end if
   else if videotype = "tvchannel"
     ' For live TV channels, prefer the currently-airing program's artwork over the channel icon.
@@ -184,14 +188,14 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     currentProgram = meta.currentProgram
     if isValid(currentProgram)
       if isValidAndNotEmpty(currentProgram.logoImageTag)
-        video.logoImage = ImageURL(currentProgram.id, "Logo", { maxHeight: 212, maxWidth: 500, quality: 90, tag: currentProgram.logoImageTag })
+        video.logoImage = ImageURL(currentProgram.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.logoImageTag })
       else if isValidAndNotEmpty(currentProgram.primaryImageTag)
-        video.logoImage = ImageURL(currentProgram.id, "Primary", { maxHeight: 534, maxWidth: 500, quality: 90, tag: currentProgram.primaryImageTag })
+        video.logoImage = ImageURL(currentProgram.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.primaryImageTag })
       else if isValidAndNotEmpty(meta.primaryImageTag)
-        video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 212, maxWidth: 212, quality: 90, tag: meta.primaryImageTag })
+        video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
       end if
     else if isValidAndNotEmpty(meta.primaryImageTag)
-      video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: 212, maxWidth: 212, quality: 90, tag: meta.primaryImageTag })
+      video.logoImage = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
     end if
   end if
 
