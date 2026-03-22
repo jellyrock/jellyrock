@@ -380,8 +380,9 @@ sub onPlaylistItemsLoaded()
   m.top.rowItemSize = []
 
   hasVideos = false
-  allAudio = true
+  allAudio = false
   if isValid(items) and items.count() > 0
+    allAudio = true ' assume all-audio until a non-Audio item is found
     for each item in items
       if item.type <> "Audio"
         allAudio = false
@@ -405,7 +406,18 @@ sub onPlaylistItemsLoaded()
     m.rowPlaylistItems = invalid
   end if
 
-  m.top.playlistHasVideos = hasVideos
+  ' Derive content kind: "video" / "audio" / "mixed" / "unknown" (empty or load failure).
+  ' "unknown" keeps ItemDetails in the safe default state (no Watched button, "Items" label).
+  if not isValid(items) or items.count() = 0
+    kind = "unknown"
+  else if hasVideos
+    kind = "video"
+  else if allAudio
+    kind = "audio"
+  else
+    kind = "mixed"
+  end if
+  m.top.playlistContentKind = kind
 
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")

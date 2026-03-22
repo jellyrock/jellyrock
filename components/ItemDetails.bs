@@ -100,8 +100,9 @@ sub init()
   ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
   m.extrasGrid.observeField("personHasMedia", "onPersonHasMediaChanged")
 
-  ' Observe playlistHasVideos to show/hide Watched button after Playlist items chain completes
-  m.extrasGrid.observeField("playlistHasVideos", "onPlaylistHasVideosChanged")
+  ' Observe playlistContentKind to show/hide Watched button and set "Tracks"/"Items" label
+  ' after the Playlist items chain completes.
+  m.extrasGrid.observeField("playlistContentKind", "onPlaylistContentKindChanged")
 
   ' Observe overhang clock for dynamic "Ends At" updates (only when clock is visible)
   m.endsAtNode = invalid
@@ -2032,19 +2033,24 @@ sub onPersonHasMediaChanged()
   end if
 end sub
 
-' onPlaylistHasVideosChanged: Add or remove the Watched button once the playlist items chain
-' confirms whether the playlist contains video-type items. Also swaps the info row item count
-' label from "Items" to "Tracks" (and back) as the content type is determined.
-' Fires via alwaysNotify so it triggers even when playlistHasVideos stays the same value (e.g. on refresh).
-sub onPlaylistHasVideosChanged()
+' onPlaylistContentKindChanged: Drives the Watched button and item-count label based on the
+' confirmed content kind of the playlist ("video" / "audio" / "mixed" / "unknown").
+' Fires via alwaysNotify so it triggers even when the kind is unchanged (e.g. on refresh).
+'
+' Watched button: only shown for "video" (has at least one video-type item).
+' Label:         "Tracks" only when positively confirmed "audio" (all items are Audio type).
+'                All other kinds — including "unknown" (load failure) and "mixed" — stay "Items".
+sub onPlaylistContentKindChanged()
   if not isValid(m.top.itemContent) or m.top.itemContent.type <> "Playlist" then return
 
   item = m.top.itemContent
   childCount = item.childCount
+  kind = m.extrasGrid.playlistContentKind
 
-  if m.extrasGrid.playlistHasVideos
+  ' --- Watched button ---
+  watchedButton = m.top.findNode("watchedButton")
+  if kind = "video"
     ' Video items detected — ensure Watched button exists before Favorite
-    watchedButton = m.top.findNode("watchedButton")
     if not isValid(watchedButton)
       watchedButton = CreateObject("roSGNode", "IconButton")
       watchedButton.id = "watchedButton"
@@ -2064,17 +2070,8 @@ sub onPlaylistHasVideosChanged()
     end if
 
     updateWatchedButton()
-
-    ' Restore "Items" label in case a prior all-audio load swapped it to "Tracks"
-    itemCountNode = m.top.findNode("itemCount")
-    if isValid(itemCountNode) and childCount > 0
-      label = tr("Item")
-      if childCount <> 1 then label = tr("Items")
-      itemCountNode.text = stri(childCount).trim() + " " + label
-    end if
   else
-    ' All-audio confirmed — remove Watched button if it was added
-    watchedButton = m.top.findNode("watchedButton")
+    ' Not a video playlist — remove Watched button if present
     if isValid(watchedButton)
       currentFocusIndex = m.buttonGrp.buttonFocused
       watchedIndex = getButtonIndex("watchedButton")
@@ -2090,14 +2087,21 @@ sub onPlaylistHasVideosChanged()
         focusButtonGroupChild()
       end if
     end if
+  end if
 
-    ' Swap "Items" → "Tracks" now that we know it's an all-audio playlist
-    itemCountNode = m.top.findNode("itemCount")
-    if isValid(itemCountNode) and childCount > 0
+  ' --- Item count label ---
+  ' "Tracks" only when the playlist is positively confirmed all-audio.
+  ' "unknown" (load failure) and "mixed" both fall through to "Items" — the safe neutral default.
+  itemCountNode = m.top.findNode("itemCount")
+  if isValid(itemCountNode) and childCount > 0
+    if kind = "audio"
       label = tr("Track")
       if childCount <> 1 then label = tr("Tracks")
-      itemCountNode.text = stri(childCount).trim() + " " + label
+    else
+      label = tr("Item")
+      if childCount <> 1 then label = tr("Items")
     end if
+    itemCountNode.text = stri(childCount).trim() + " " + label
   end if
 end sub
 
@@ -2357,6 +2361,7 @@ sub destroy()
   m.itemLogo.unobserveField("loadStatus")
   m.itemDetails.unobserveField("renderTracking")
   m.extrasGrid.unobserveField("personHasMedia")
+  m.extrasGrid.unobserveField("playlistContentKind")
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
     m.clock = invalid
