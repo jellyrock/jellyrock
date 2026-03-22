@@ -16,17 +16,20 @@ namespace itemTypeOrder
     "MusicArtist", ' Artists
     "MusicAlbum", ' Albums
     "Audio", ' Songs
-    ' "Video"       ' Videos       — not yet supported
-    ' "Program"     ' Programs     — not yet supported
+    "Video", ' Videos
+    "MusicVideo", ' Music Videos
+    "Program", ' Programs
     "TvChannel", ' Channels
-    ' "PhotoAlbum"  ' Photo Albums — not yet supported
-    ' "Photo"       ' Photos       — not yet supported
+    "Recording", ' Recordings
+    "PhotoAlbum", ' Photo Albums
+    "Photo", ' Photos
     ' "Book"        ' Audiobooks / Books — not yet supported
     "BoxSet" ' Collections
   ]
 
   ' Types displayed in the Favorites home tab, in web-client display order.
-  ' Excluded: "TvChannel" (Channels) — channels cannot be favorited.
+  ' Excluded: "Program" (Live TV programs) — programs cannot be favorited, only the channel can.
+  ' Excluded: "Book" — not yet supported.
   const FAVORITES = [
     "Movie", ' Movies
     "Series", ' Shows
@@ -36,11 +39,12 @@ namespace itemTypeOrder
     "MusicArtist", ' Artists
     "MusicAlbum", ' Albums
     "Audio", ' Songs
-    ' "Video"       ' Videos       — not yet supported
-    ' "Program"     ' Programs     — not yet supported
-    ' "TvChannel"   ' Channels     — cannot be favorited
-    ' "PhotoAlbum"  ' Photo Albums — not yet supported
-    ' "Photo"       ' Photos       — not yet supported
+    "Video", ' Videos
+    "MusicVideo", ' Music Videos
+    "TvChannel", ' Channels
+    "Recording", ' Recordings
+    "PhotoAlbum", ' Photo Albums
+    "Photo", ' Photos
     ' "Book"        ' Audiobooks / Books — not yet supported
     "BoxSet" ' Collections
   ]

@@ -30,10 +30,21 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return getItemImageUrl(item, "Primary", size)
   end if
 
-  ' Episodes and Recordings: image type controlled by user setting.
+  ' Recordings: standalone items, not episodes of a series — the episode image setting
+  ' (show art vs episode art) does not apply. Use only the item's own images (no parent/series
+  ' inheritance), falling back through Primary → Thumb → Backdrop.
+  if item.type = "Recording"
+    url = getItemImageUrl(item, "Primary", size)
+    if url <> "" then return url
+    url = getItemImageUrl(item, "Thumb", size)
+    if url <> "" then return url
+    return getItemImageUrl(item, "Backdrop", size)
+  end if
+
+  ' Episodes: image type controlled by user setting.
   ' applyEpisodeImageSetting = false bypasses the setting entirely (used by extras rows
   ' where the episode's own screenshot is always the right choice).
-  if item.type = "Episode" or LCase(item.type) = "recording"
+  if item.type = "Episode"
     if applyEpisodeImageSetting and isValid(userSettings)
       episodeImageSetting = userSettings.uiGeneralEpisodeImages
       ' Two logical paths: episode art (wide Thumb/Backdrop of the episode) or

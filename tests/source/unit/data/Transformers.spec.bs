@@ -168,6 +168,17 @@ namespace tests
       m.assertEqual(result.isSports, false)
     end function
 
+    @it("normalizes integer apiData.ChannelNumber to string for Program channelNumber")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "p1", Type: "Program", Name: "Evening News", ChannelNumber: 7 }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.channelNumber, "7")
+    end function
+
     @it("stores parent and series image tags for episodes")
     function _()
       transformer = new JellyfinDataTransformer()
@@ -1344,6 +1355,39 @@ namespace tests
       m.assertEqual(result.subtitle, "Summer Trip")
     end function
 
+    @it("computes TvChannel subtitle with string Number")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "ch1", Type: "TvChannel", Name: "BBC One", Number: "1" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "CH 1")
+    end function
+
+    @it("computes TvChannel subtitle with integer Number (defensive: API returns int instead of string)")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "ch1", Type: "TvChannel", Name: "BBC One", Number: 4 }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "CH 4")
+    end function
+
+    @it("returns empty TvChannel subtitle when Number is absent")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "ch1", Type: "TvChannel", Name: "BBC One" }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("JellyfinDataTransformer - item.title (ContentNode compatibility)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1975,6 +2019,17 @@ namespace tests
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
       m.assertEqual(result.channelNumber, "1")
+    end function
+
+    @it("normalizes integer apiData.Number to string for TvChannel channelNumber")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = { Id: "ch1", Type: "TvChannel", Name: "BBC One", Number: 4 }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.channelNumber, "4")
     end function
 
     @it("leaves currentProgram invalid when no CurrentProgram in API data")

@@ -202,7 +202,9 @@ class JellyfinDataTransformer
         item.live = true
         ' Channel number lives in apiData.Number for TvChannel items (distinct from apiData.ChannelNumber,
         ' which is the program-to-channel reference field used only on Program/Recording items).
-        item.channelNumber = apiData.Number ?? ""
+        ' Normalize to string: apiData.Number is string? in the Jellyfin spec but may arrive as an
+        ' integer. Assigning a non-string to a string-typed ContentNode field silently no-ops on Roku.
+        item.channelNumber = (apiData.Number ?? "").toStr().trim()
         ' CurrentProgram is a nested BaseItemDto returned by default on all TvChannel items
         ' (not gated behind ItemFields — no extra fields= param needed). Transform it so the
         ' OSD and playback stack can read typed program fields (name, episode info, artwork,
@@ -430,7 +432,9 @@ class JellyfinDataTransformer
   ' Transform program/recording (Live TV) specific fields.
   private sub transformProgramFields(item as object, apiData as object)
     item.channelName = apiData.ChannelName ?? ""
-    item.channelNumber = apiData.ChannelNumber ?? ""
+    ' Normalize to string: same defensive guard as TvChannel's Number field — assigning a non-string
+    ' to a string-typed ContentNode field silently no-ops on Roku.
+    item.channelNumber = (apiData.ChannelNumber ?? "").toStr().trim()
     item.channelType = apiData.ChannelType ?? ""
     item.isLive = apiData.IsLive ?? false
     item.isNews = apiData.IsNews ?? false
@@ -669,6 +673,15 @@ class JellyfinDataTransformer
         return "1 item"
       else if count > 1
         return str(count).trim() + " items"
+      end if
+      return ""
+
+    else if itemType = "TvChannel"
+      ' apiData.Number is string? in the Jellyfin API spec, but toStr().trim() guards against
+      ' integer responses (isValidAndNotEmpty() rejects non-string primitives).
+      chanNumStr = (apiData.Number ?? "").toStr().trim()
+      if chanNumStr <> ""
+        return tr("CH") + " " + chanNumStr
       end if
       return ""
 
