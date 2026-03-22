@@ -18,7 +18,7 @@ class GenericPresenter extends GridPresenterBase
   end function
 
   ' No presentation info for generic view
-  override function shouldShowPresentationInfo(viewMode as string) as boolean
+  override function shouldShowPresentationInfo(_viewMode as string) as boolean
     return false
   end function
 
@@ -80,7 +80,7 @@ class GenericPresenter extends GridPresenterBase
   end function
 
   ' Standard grid layout
-  override function getGridConfig(viewMode as string) as object
+  override function getGridConfig(_viewMode as string) as object
     return {
       translation: [96, 102],
       itemSize: [264, 396],
@@ -91,7 +91,7 @@ class GenericPresenter extends GridPresenterBase
     }
   end function
 
-  override sub configureLoadTask(task as object, parentItem as object, viewMode as string)
+  override sub configureLoadTask(task as object, _parentItem as object, _viewMode as string)
     ' Generic presenter uses whatever item type is in the folder
     task.recursive = false
   end sub

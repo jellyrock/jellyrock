@@ -149,7 +149,7 @@ namespace tests
     @it("detects false positive for aac >6ch")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: true } ' API says yes (false positive)
         end function
       }
@@ -161,7 +161,7 @@ namespace tests
     @it("detects false positive for pcm >2ch")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: true } ' False positive
         end function
       }
@@ -173,7 +173,7 @@ namespace tests
     @it("detects false positive for lpcm >2ch")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: true } ' False positive
         end function
       }
@@ -189,7 +189,7 @@ namespace tests
     @it("returns true for supported stereo codec (mp3 2ch)")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: true }
         end function
       }
@@ -201,7 +201,7 @@ namespace tests
     @it("returns false when API says codec not supported")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: false }
         end function
       }
@@ -213,7 +213,7 @@ namespace tests
     @it("returns true for aac 2ch (within limits)")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: true }
         end function
       }
@@ -225,7 +225,7 @@ namespace tests
     @it("returns true for aac 6ch (at limit)")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: true }
         end function
       }
@@ -262,7 +262,7 @@ namespace tests
     @it("returns empty array when no codecs are supported")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           return { Result: false } ' None supported
         end function
       }
@@ -446,7 +446,7 @@ namespace tests
     @it("dtshd is passthrough-only: returns false at >2ch when PassThru is not supported")
     function _()
       mockDi = {
-        CanDecodeAudio: function(params as object) as object
+        CanDecodeAudio: function(_params as object) as object
           ' Device has no receiver — PassThru not supported
           return { Result: false }
         end function

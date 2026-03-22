@@ -50,7 +50,7 @@ class GridPresenterBase
   ' Returns the options configuration for ItemGridOptions
   ' @param {object} parentItem - The library item being displayed
   ' @return {object} Options object with views, sort, filter arrays
-  function getOptions(parentItem as object) as object
+  function getOptions(_parentItem as object) as object
     return {
       views: [],
       sort: [],
@@ -61,7 +61,7 @@ class GridPresenterBase
   ' Called when options dialog is closed
   ' Override to handle presenter-specific option changes
   ' @param {object} options - The ItemGridOptions component
-  sub onOptionsClosed(options as object)
+  sub onOptionsClosed(_options as object)
     ' Override in subclass
   end sub
 
@@ -73,7 +73,7 @@ class GridPresenterBase
   ' @param {object} task - The LoadItemsTask2 node
   ' @param {object} parentItem - The library item being displayed
   ' @param {string} viewMode - Current view mode (e.g., "Movies", "MoviesGrid")
-  sub configureLoadTask(task as object, parentItem as object, viewMode as string)
+  sub configureLoadTask(_task as object, _parentItem as object, _viewMode as string)
     ' Override in subclass
   end sub
 
@@ -96,7 +96,7 @@ class GridPresenterBase
   '   - numRows: string number of visible rows
   '   - numColumns: string number of columns
   '   - imageDisplayMode: "scaleToZoom" | "scaleToFit"
-  function getGridConfig(viewMode as string) as object
+  function getGridConfig(_viewMode as string) as object
     return {
       translation: [96, 60],
       itemSize: [264, 396],
@@ -110,7 +110,7 @@ class GridPresenterBase
   ' Returns whether to show presentation info panel for the view mode
   ' @param {string} viewMode - Current view mode
   ' @return {boolean} True to show info panel
-  function shouldShowPresentationInfo(viewMode as string) as boolean
+  function shouldShowPresentationInfo(_viewMode as string) as boolean
     return false
   end function
 
@@ -122,7 +122,7 @@ class GridPresenterBase
   ' Override to update presentation info display
   ' @param {object} item - The focused ContentNode item
   ' @param {string} currentView - The current view mode (e.g., "Movies", "MoviesGrid")
-  sub onItemFocused(item as object, currentView as string)
+  sub onItemFocused(_item as object, _currentView as string)
     ' Override in subclass
   end sub
 
@@ -133,7 +133,7 @@ class GridPresenterBase
   ' Creates presenter-specific info nodes in the presentationInfo group
   ' Called during onInit() if presenter needs custom info display
   ' @param {object} infoGroup - The presentationInfo Group node
-  sub createInfoNodes(infoGroup as object)
+  sub createInfoNodes(_infoGroup as object)
     ' Override in subclass
   end sub
 
