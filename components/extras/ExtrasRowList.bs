@@ -197,6 +197,10 @@ sub loadParts(data as object)
     m.LoadAlbumSongsTask.control = "RUN"
   else if itemType = "Playlist"
     ' Chain: Playlist Items → More Like This
+    ' Slot type is determined by item content (Audio → SQUARE, mixed → PORTRAIT), so we cannot
+    ' set rowItemSize to a final value here. Reset to [] now so no stale values from a previous
+    ' chain can leak into addRowSize() calls later in onPlaylistItemsLoaded/onLikeThisLoaded.
+    m.top.rowItemSize = []
     m.LoadPlaylistItemsTask.itemId = m.top.parentId
     m.LoadPlaylistItemsTask.observeField("content", "onPlaylistItemsLoaded")
     m.LoadPlaylistItemsTask.control = "RUN"
@@ -370,6 +374,10 @@ sub onPlaylistItemsLoaded()
   items = m.LoadPlaylistItemsTask.content
   m.LoadPlaylistItemsTask.unobserveField("content")
   m.LoadPlaylistItemsTask.content = []
+
+  ' Reset before branching — ensures addRowSize() in onLikeThisLoaded() always starts from a
+  ' clean slate whether items are present or empty. The items branches below set the real value.
+  m.top.rowItemSize = []
 
   hasVideos = false
   allAudio = true
