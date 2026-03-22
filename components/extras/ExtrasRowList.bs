@@ -45,6 +45,10 @@ sub init()
   m.LoadSeasonAllEpisodesTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadSeasonAllEpisodesTask.itemsToLoad = "seasonEpisodes"
 
+  ' Playlist items task — loads all items in a Playlist sorted by date added descending
+  m.LoadPlaylistItemsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadPlaylistItemsTask.itemsToLoad = "playlistItems"
+
   ' Permanent root content node — never replaced.
   m.top.content = CreateObject("roSGNode", "ContentNode")
 
@@ -66,6 +70,7 @@ sub init()
   m.rowArtistSongs = invalid
   m.rowAlbumSongs = invalid
   m.rowAlbumArtistAlbums = invalid
+  m.rowPlaylistItems = invalid
 
   ' Track row heights for rowHeights array (per-row height customization)
   m.rowHeights = []
@@ -116,6 +121,8 @@ sub cancelInFlightChain()
   m.LoadArtistSimilarTask.unobserveField("content")
   m.LoadAlbumSongsTask.control = "STOP"
   m.LoadAlbumSongsTask.unobserveField("content")
+  m.LoadPlaylistItemsTask.control = "STOP"
+  m.LoadPlaylistItemsTask.unobserveField("content")
 end sub
 
 ' loadParts: Start the extras loading chain appropriate for the item type.
@@ -188,6 +195,11 @@ sub loadParts(data as object)
     m.LoadAlbumSongsTask.itemId = m.top.parentId
     m.LoadAlbumSongsTask.observeField("content", "onAlbumSongsLoaded")
     m.LoadAlbumSongsTask.control = "RUN"
+  else if itemType = "Playlist"
+    ' Chain: Playlist Items → More Like This
+    m.LoadPlaylistItemsTask.itemId = m.top.parentId
+    m.LoadPlaylistItemsTask.observeField("content", "onPlaylistItemsLoaded")
+    m.LoadPlaylistItemsTask.control = "RUN"
   else if itemType = "Audio"
     ' Chain: Album Tracklist (current track first) → More Like This
     m.currentAudioId = data.id
@@ -351,6 +363,47 @@ sub onAdditionalPartsLoaded()
   m.LoadPeopleTask.control = "RUN"
 end sub
 
+' onPlaylistItemsLoaded: Build "Playlist Items" row then chain to More Like This (Playlist only).
+' Detects whether all items are Audio (SQUARE slot) or mixed/video (PORTRAIT slot).
+' Sets playlistHasVideos so ItemDetails can add the Watched button asynchronously.
+sub onPlaylistItemsLoaded()
+  items = m.LoadPlaylistItemsTask.content
+  m.LoadPlaylistItemsTask.unobserveField("content")
+  m.LoadPlaylistItemsTask.content = []
+
+  hasVideos = false
+  allAudio = true
+  if isValid(items) and items.count() > 0
+    for each item in items
+      if item.type <> "Audio"
+        allAudio = false
+        if item.type = "Movie" or item.type = "Episode" or item.type = "Video" or item.type = "MusicVideo" or item.type = "Recording"
+          hasVideos = true
+        end if
+      end if
+    end for
+  end if
+
+  if isValid(items) and items.count() > 0
+    if allAudio
+      m.top.rowItemSize = [rowSlotSize.SQUARE]
+      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, tr("Playlist Items"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+    else
+      m.top.rowItemSize = [rowSlotSize.PORTRAIT]
+      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, tr("Playlist Items"), items, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    end if
+  else if isValid(m.rowPlaylistItems)
+    m.top.content.removeChild(m.rowPlaylistItems)
+    m.rowPlaylistItems = invalid
+  end if
+
+  m.top.playlistHasVideos = hasVideos
+
+  m.LikeThisTask.itemId = m.top.parentId
+  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+  m.LikeThisTask.control = "RUN"
+end sub
+
 sub onPeopleLoaded()
   people = m.LoadPeopleTask.content
   m.loadPeopleTask.unobserveField("content")
@@ -392,9 +445,8 @@ sub onLikeThisLoaded()
       end for
       newSizes.push(rowSlotSize.WIDE)
       m.top.rowItemSize = newSizes
-    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio"
-      ' Music rows all use square album-art slots — addRowSize is safe here because the phantom
-      ' element seeded in loadParts() is also SQUARE, so the extra element is harmless.
+    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist"
+      ' Music and Playlist rows use square slots — Playlist primary images are 1:1.
       m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
       addRowSize(rowSlotSize.SQUARE)
     else
@@ -406,8 +458,8 @@ sub onLikeThisLoaded()
     m.rowLikeThis = invalid
   end if
 
-  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, BoxSet, or music types
-  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio"
+  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, BoxSet, music types, or Playlist
+  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist"
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
     m.SpecialFeaturesTask.control = "RUN"
