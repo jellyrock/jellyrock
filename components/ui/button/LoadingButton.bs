@@ -1,5 +1,6 @@
 ' Matches IconButton layout constants — keeps visual size identical to a standard icon button
-const LOADING_BTN_ICON_SIZE = 64
+const LOADING_BTN_LAYOUT_SIZE = 64 ' Button frame matches a real 64px icon button
+const LOADING_BTN_SPINNER_SIZE = 42 ' Spinner rendered smaller to match visible icon area (icons have transparent padding)
 const LOADING_BTN_PADDING = 15
 const LOADING_BTN_TEXT_EXTENSION = 12 ' Text extends 6px on each side beyond the button background (mirrors IconButton)
 const LOADING_BTN_FOCUS_BORDER_OFFSET = 6 ' Vertical gap between button background and text label (mirrors IconButton)
@@ -25,8 +26,8 @@ sub applyTheme()
 end sub
 
 sub layoutButton()
-  btnWidth = LOADING_BTN_ICON_SIZE + (LOADING_BTN_PADDING * 4)
-  btnHeight = LOADING_BTN_ICON_SIZE + (LOADING_BTN_PADDING * 2)
+  btnWidth = LOADING_BTN_LAYOUT_SIZE + (LOADING_BTN_PADDING * 4)
+  btnHeight = LOADING_BTN_LAYOUT_SIZE + (LOADING_BTN_PADDING * 2)
 
   ' Shift background/border right so they center under the wider text label (mirrors IconButton)
   buttonOffset = LOADING_BTN_TEXT_EXTENSION / 2
@@ -37,14 +38,12 @@ sub layoutButton()
   m.buttonBorder.height = btnHeight
   m.buttonBorder.translation = [buttonOffset, 0]
 
-  m.loadingSpinner.poster.uri = "pkg:/images/spinner.png"
-  m.loadingSpinner.poster.loadWidth = LOADING_BTN_ICON_SIZE
-  m.loadingSpinner.poster.loadHeight = LOADING_BTN_ICON_SIZE
-  m.loadingSpinner.poster.loadDisplayMode = "limitSize"
+  m.loadingSpinner.poster.width = LOADING_BTN_SPINNER_SIZE
+  m.loadingSpinner.poster.height = LOADING_BTN_SPINNER_SIZE
 
   m.loadingSpinner.translation = [
-    buttonOffset + (btnWidth - LOADING_BTN_ICON_SIZE) / 2,
-    (btnHeight - LOADING_BTN_ICON_SIZE) / 2
+    buttonOffset + (btnWidth - LOADING_BTN_SPINNER_SIZE) / 2,
+    (btnHeight - LOADING_BTN_SPINNER_SIZE) / 2
   ]
 
   ' Text label: wider than background by TEXT_EXTENSION, positioned below the background
