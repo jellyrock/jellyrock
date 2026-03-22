@@ -999,7 +999,7 @@ end sub
 ' populateInfoGroupPlaylist: Info rows for Playlist
 ' Row 1: N Items · Runtime · Ends At
 ' Row 2: Genres
-' The item count label starts as "Items" and is swapped to "Tracks" by onPlaylistHasVideosChanged()
+' The item count label starts as "Items" and is swapped to "Tracks" by onPlaylistContentKindChanged()
 ' once the extras chain confirms the playlist is all-audio.
 sub populateInfoGroupPlaylist(item as object, userSettings as object)
   if item.childCount > 0
