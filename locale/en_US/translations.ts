@@ -766,6 +766,10 @@
       <extracomment>Name of codec used in settings menu</extracomment>
     </message>
     <message>
+      <source>Music Videos</source>
+      <translation>Music Videos</translation>
+    </message>
+    <message>
       <source>Muted/disabled/inactive text. Default: 4A4A4A</source>
       <translation>Muted/disabled/inactive text. Default: 4A4A4A</translation>
     </message>
@@ -878,6 +882,14 @@
     <message>
       <source>People</source>
       <translation>People</translation>
+    </message>
+    <message>
+      <source>Photo Albums</source>
+      <translation>Photo Albums</translation>
+    </message>
+    <message>
+      <source>Photos</source>
+      <translation>Photos</translation>
     </message>
     <message>
       <source>Pick a Jellyfin server from the local network</source>
@@ -1013,6 +1025,10 @@
     <message>
       <source>Record Series</source>
       <translation>Record Series</translation>
+    </message>
+    <message>
+      <source>Recordings</source>
+      <translation>Recordings</translation>
     </message>
     <message>
       <source>Refresh</source>
@@ -1482,6 +1498,10 @@
     <message>
       <source>Video range type</source>
       <translation>Video range type</translation>
+    </message>
+    <message>
+      <source>Videos</source>
+      <translation>Videos</translation>
     </message>
     <message>
       <source>View</source>
