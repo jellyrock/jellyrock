@@ -464,6 +464,22 @@ sub Main (args as dynamic) as void
             else
               stopLoadingSpinner()
             end if
+          else if group.subtype() = "ItemDetails" and group.itemContent.type = "Playlist"
+            ' Playlist "Play All": queue all items in playlist order
+            item = group.itemContent
+            playlistData = GetApi().GetPlaylistItems(item.id, {
+              "SortBy": "ListItemOrder",
+              "SortOrder": "Ascending",
+              "EnableTotalRecordCount": false,
+              "limit": 500
+            })
+            if isValid(playlistData) and isValid(playlistData.Items) and playlistData.Items.count() > 0
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("set", playlistData.Items)
+              m.global.queueManager.callFunc("playQueue")
+            else
+              stopLoadingSpinner()
+            end if
           else
             queueItem = nodeHelpers.createQueueItem(group.itemContent)
             if not isValid(queueItem) then return
