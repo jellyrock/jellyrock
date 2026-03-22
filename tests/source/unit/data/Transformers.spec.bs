@@ -1216,6 +1216,62 @@ namespace tests
       m.assertEqual(result.subtitle, "1 item")
     end function
 
+    @it("computes Playlist subtitle with many items")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "pl1", Type: "Playlist", Name: "My Playlist",
+        ChildCount: 12
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "12 items")
+    end function
+
+    @it("computes Playlist subtitle singular")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "pl1", Type: "Playlist", Name: "Solo Playlist",
+        ChildCount: 1
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "1 item")
+    end function
+
+    @it("computes Playlist subtitle with zero items")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      apiData = {
+        Id: "pl1", Type: "Playlist", Name: "Empty Playlist",
+        ChildCount: 0
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "")
+    end function
+
+    @it("computes Playlist subtitle with absent ChildCount")
+    function _()
+      transformer = new JellyfinDataTransformer()
+
+      ' ChildCount absent from API response — ?? 0 guard should return ""
+      apiData = {
+        Id: "pl1", Type: "Playlist", Name: "New Playlist"
+      }
+
+      result = transformer.transformBaseItem(apiData, "10.8.0")
+
+      m.assertEqual(result.subtitle, "")
+    end function
+
     @it("computes Program subtitle preferring episode title over channel name")
     function _()
       transformer = new JellyfinDataTransformer()
