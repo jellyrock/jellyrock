@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- expand supported item types for search and favorites ([#393](https://github.com/jellyrock/jellyrock/pull/393))
 - (ItemDetails) Add support for type `Playlist` ([#389](https://github.com/jellyrock/jellyrock/pull/389))
 - (ItemDetails) Add support for types `Artist`, `Album`, and `Song` ([#387](https://github.com/jellyrock/jellyrock/pull/387))
 - (home) Tab navigation, skeleton loading, and Favorites tab ([#384](https://github.com/jellyrock/jellyrock/pull/384))
