@@ -999,7 +999,7 @@ end sub
 ' populateInfoGroupPlaylist: Info rows for Playlist
 ' Row 1: N Items · Runtime · Ends At
 ' Row 2: Genres
-' The item count label starts as "Items" and is swapped to "Tracks" by onPlaylistHasVideosChanged()
+' The item count label starts as "Items" and is swapped to "Tracks" by onPlaylistContentKindChanged()
 ' once the extras chain confirms the playlist is all-audio.
 sub populateInfoGroupPlaylist(item as object, userSettings as object)
   if item.childCount > 0
@@ -1858,7 +1858,7 @@ sub setupButtons(item as object)
   end if
 
   ' Watched button — not for Person, music types, or Playlist (Playlist Watched is added async
-  ' by onPlaylistHasVideosChanged() once the items chain confirms the playlist contains video items)
+  ' by onPlaylistContentKindChanged() once the items chain confirms the playlist contains video items)
   if itemType <> "Person" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist"
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
