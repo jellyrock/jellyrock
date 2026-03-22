@@ -335,6 +335,20 @@ sub loadItems()
         results.push(item)
       end for
     end if
+  else if m.top.itemsToLoad = "playlistItems"
+    ' All items in a Playlist, sorted newest-added first.
+    data = GetApi().GetPlaylistItems(m.top.itemId, {
+      "SortBy": "DateCreated",
+      "SortOrder": "Descending",
+      "Fields": "PrimaryImageAspectRatio,Overview",
+      "EnableTotalRecordCount": false
+    })
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
+      end for
+    end if
   end if
 
   m.top.content = results

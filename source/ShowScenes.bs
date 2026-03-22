@@ -720,26 +720,6 @@ function CreateItemDetailsGroup(item as object) as dynamic
   return group
 end function
 
-' Shows details on selected playlist. Description text, image, and list of available items
-function CreatePlaylistView(playlist as object) as dynamic
-  ' validate playlist node
-  if not isValid(playlist) or not isValid(playlist.id) then return invalid
-
-  group = CreateObject("roSGNode", "PlaylistView")
-  m.global.sceneManager.callFunc("pushScene", group)
-
-  group.pageContent = ItemMetaData(playlist.id)
-  group.albumData = PlaylistItemList(playlist.id)
-
-  ' Watch for user clicking on an item
-  group.observeField("playItem", m.port)
-
-  buttons = group.findNode("buttons")
-  buttons.observeField("buttonSelected", m.port)
-
-  return group
-end function
-
 function CreateSearchPage()
   ' Search + Results Page
   group = CreateObject("roSGNode", "searchResults")

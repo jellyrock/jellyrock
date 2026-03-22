@@ -1,0 +1,119 @@
+namespace tests
+
+  ' Tests for Playlist support in ItemDetails:
+  ' setupButtons() and button layout for type="Playlist".
+  @suite("ItemDetails - Playlist support")
+  class ItemDetailsPlaylistTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private buttonGrp as object
+
+    ' Returns a JellyfinBaseItem node pre-populated as a Playlist.
+    ' Callers may override individual fields after calling this.
+    private function makePlaylist() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "playlist-001"
+      item.type = "Playlist"
+      item.name = "My Favourites"
+      item.childCount = 12
+      item.primaryImageTag = "primary-tag-xyz"
+      return item
+    end function
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.buttonGrp = m.itemDetails.findNode("buttons")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.itemDetails = invalid
+      m.buttonGrp = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("setupButtons() for Playlist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("produces exactly 4 buttons for a standard Playlist (no trailer, no delete, Watched added async)")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      m.assertEqual(m.buttonGrp.getChildCount(), 4)
+    end function
+
+    @it("first button is Play All")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      playBtn = m.buttonGrp.getChild(0)
+      m.assertEqual(playBtn.id, "playButton")
+      m.assertEqual(playBtn.text, "Play All")
+    end function
+
+    @it("second button is Shuffle")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      shuffleBtn = m.buttonGrp.getChild(1)
+      m.assertEqual(shuffleBtn.id, "shuffleButton")
+    end function
+
+    @it("third button is Favorite")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      favoriteBtn = m.buttonGrp.getChild(2)
+      m.assertEqual(favoriteBtn.id, "favoriteButton")
+    end function
+
+    @it("fourth button is Refresh (always last)")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      refreshBtn = m.buttonGrp.getChild(3)
+      m.assertEqual(refreshBtn.id, "refreshButton")
+    end function
+
+    @it("no Watched button on initial load (added async by onPlaylistContentKindChanged)")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      watchedBtn = m.itemDetails.findNode("watchedButton")
+      m.assertInvalid(watchedBtn)
+    end function
+
+    @it("no Options button for Playlist (stream selection not applicable)")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      optionsBtn = m.itemDetails.findNode("optionsButton")
+      m.assertInvalid(optionsBtn)
+    end function
+
+    @it("no Go to Series button for Playlist")
+    function _()
+      item = m.makePlaylist()
+      m.itemDetails.itemContent = item
+
+      goToSeriesBtn = m.itemDetails.findNode("goToSeriesButton")
+      m.assertInvalid(goToSeriesBtn)
+    end function
+
+  end class
+
+end namespace

@@ -1,4 +1,5 @@
 import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -18,17 +19,19 @@ sub init()
   m.loadFavoritesTask = createObject("roSGNode", "LoadItemsTask")
   m.loadFavoritesTask.itemsToLoad = "favorites"
 
-  ' Known type ordering and labels — used for skeleton creation and data grouping
-  m.typeArray = ["Movie", "Series", "BoxSet", "Episode", "MusicArtist", "MusicAlbum", "Audio", "Person"]
+  ' Known type ordering and labels — used for skeleton creation and data grouping.
+  ' Ordering follows itemTypeOrder.FAVORITES (web-client section sort order).
+  m.typeArray = itemTypeOrder.FAVORITES
   m.typeLabels = {
     "Movie": tr("Movies"),
     "Series": tr("Series"),
-    "BoxSet": tr("Collections"),
     "Episode": tr("Episodes"),
+    "Person": tr("People"),
+    "Playlist": tr("Playlists"),
     "MusicArtist": tr("Artists"),
     "MusicAlbum": tr("Albums"),
     "Audio": tr("Songs"),
-    "Person": tr("People")
+    "BoxSet": tr("Collections")
   }
   m.initialLoadComplete = false
 
@@ -218,7 +221,7 @@ end function
 function getSlotSizeForType(itemType as string) as object
   if itemType = "Episode"
     return rowSlotSize.WIDE
-  else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio"
+  else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist"
     return rowSlotSize.SQUARE
   end if
   return rowSlotSize.PORTRAIT

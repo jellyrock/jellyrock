@@ -277,7 +277,7 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "MusicVideo"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Playlist"
-          group = CreatePlaylistView(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
         else
           ' TODO - switch on more node types
           stopLoadingSpinner()
@@ -347,6 +347,8 @@ sub Main (args as dynamic) as void
       else if node.type = "Episode"
         group = CreateItemDetailsGroup(node)
       else if LCase(node.type) = "recording"
+        group = CreateItemDetailsGroup(node)
+      else if node.type = "Playlist"
         group = CreateItemDetailsGroup(node)
       else
         ' TODO - switch on more node types
@@ -458,6 +460,23 @@ sub Main (args as dynamic) as void
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("resetShuffle")
               m.global.queueManager.callFunc("set", albumTracksData.Items)
+              m.global.queueManager.callFunc("playQueue")
+            else
+              stopLoadingSpinner()
+            end if
+          else if group.subtype() = "ItemDetails" and group.itemContent.type = "Playlist"
+            ' Playlist "Play All": queue all items in playlist order
+            item = group.itemContent
+            playlistData = GetApi().GetPlaylistItems(item.id, {
+              "SortBy": "ListItemOrder",
+              "SortOrder": "Ascending",
+              "EnableTotalRecordCount": false,
+              "limit": 500
+            })
+            if isValid(playlistData) and isValid(playlistData.Items) and playlistData.Items.count() > 0
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("resetShuffle")
+              m.global.queueManager.callFunc("set", playlistData.Items)
               m.global.queueManager.callFunc("playQueue")
             else
               stopLoadingSpinner()

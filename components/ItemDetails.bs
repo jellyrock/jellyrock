@@ -100,6 +100,10 @@ sub init()
   ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
   m.extrasGrid.observeField("personHasMedia", "onPersonHasMediaChanged")
 
+  ' Observe playlistContentKind to show/hide Watched button and set "Tracks"/"Items" label
+  ' after the Playlist items chain completes.
+  m.extrasGrid.observeField("playlistContentKind", "onPlaylistContentKindChanged")
+
   ' Observe overhang clock for dynamic "Ends At" updates (only when clock is visible)
   m.endsAtNode = invalid
   m.endsAtDurationSeconds = 0
@@ -385,6 +389,22 @@ sub populateDescriptionGroup()
     return
   end if
 
+  ' Playlist: overview if present; hidden otherwise (no placeholder)
+  if item.type = "Playlist"
+    m.itemDescription.tagline = ""
+    if isValidAndNotEmpty(item.overview)
+      m.itemDescription.text = item.overview
+      m.itemDescription.maxLines = 4
+      m.itemDescription.dialogTitle = item.name
+      m.itemDescription.visible = true
+      setDescriptionInLayout(true)
+    else
+      m.itemDescription.visible = false
+      setDescriptionInLayout(false)
+    end if
+    return
+  end if
+
   ' MusicAlbum: overview if present; hidden otherwise (no placeholder)
   if item.type = "MusicAlbum"
     m.itemDescription.tagline = ""
@@ -484,6 +504,8 @@ sub populateInfoGroup()
     populateInfoGroupMusicArtist(item)
   else if item.type = "MusicAlbum"
     populateInfoGroupMusicAlbum(item, userSettings)
+  else if item.type = "Playlist"
+    populateInfoGroupPlaylist(item, userSettings)
   else if item.type = "Audio"
     populateInfoGroupAudio(item, userSettings)
   else
@@ -974,6 +996,40 @@ sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
   end if
 end sub
 
+' populateInfoGroupPlaylist: Info rows for Playlist
+' Row 1: N Items · Runtime · Ends At
+' Row 2: Genres
+' The item count label starts as "Items" and is swapped to "Tracks" by onPlaylistContentKindChanged()
+' once the extras chain confirms the playlist is all-audio.
+sub populateInfoGroupPlaylist(item as object, userSettings as object)
+  if item.childCount > 0
+    itemCountNode = createInfoLabel("itemCount")
+    itemLabel = tr("Item")
+    if item.childCount <> 1 then itemLabel = tr("Items")
+    itemCountNode.text = stri(item.childCount).trim() + " " + itemLabel
+    displayInfoNode(itemCountNode)
+  end if
+
+  if item.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtNode = createInfoLabel("ends-at")
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
+    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    displayInfoNode(m.endsAtNode)
+  end if
+
+  if item.genres.count() > 0
+    genreNode = createInfoLabel("genre")
+    genreNode.text = item.genres.join(" / ")
+    displayDirectorGenreNode(genreNode)
+  end if
+end sub
+
 ' populateInfoGroupAudio: Info rows for Audio (song)
 ' Row 1: Track N · Disc N (only when disc > 1) · Runtime · Ends At
 ' Row 2: Album name · Album artist
@@ -1089,7 +1145,7 @@ sub itemContentChanged()
     ' Media tracks and stream options are only relevant for playable types.
     ' MusicArtist/MusicAlbum have no track info. Audio shows audio codec only.
     ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space.
-    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum")
+    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Playlist")
 
     if item.type = "Audio"
       ' Audio: show audio codec only — no video source selection or subtitle display
@@ -1105,7 +1161,7 @@ sub itemContentChanged()
       SetDefaultAudioTrack(allStreams)
       SetUpAudioOptions(allStreams)
       updateOptionsButtonVisibility()
-    else if item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum"
+    else if item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Playlist"
       if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
         m.top.selectedVideoStreamId = item.mediaSourceId
       end if
@@ -1144,7 +1200,7 @@ sub itemContentChanged()
     ' Series: Resume based on nextUpEpisode (managed by nextUpEpisodeChanged observer)
     ' Season: No resume — NextUp API does not support SeasonId filtering
     ' Music types: no resume — play state for music is not tracked via playbackPositionTicks
-    if item.type <> "Series" and item.type <> "Season" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Audio"
+    if item.type <> "Series" and item.type <> "Season" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Audio" and item.type <> "Playlist"
       manageResumeButton()
     end if
 
@@ -1411,6 +1467,16 @@ sub setItemLogo(item as object)
     return
   else if item.type = "MusicAlbum"
     ' Square album art as the primary image; hide if none
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
+      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+    else
+      m.itemLogo.visible = false
+      m.itemLogo.uri = ""
+    end if
+    return
+  else if item.type = "Playlist"
+    ' Square playlist cover as primary image; hide if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
@@ -1783,7 +1849,7 @@ sub setupButtons(item as object)
     playButton = CreateObject("roSGNode", "IconButton")
     playButton.id = "playButton"
     playButton.icon = "pkg:/images/icons/play.png"
-    if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum"
+    if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
       playButton.text = tr("Play All")
     else
       playButton.text = tr("Play")
@@ -1791,8 +1857,9 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(playButton)
   end if
 
-  ' Watched button — not for Person or music types (music play state is tracked differently)
-  if itemType <> "Person" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio"
+  ' Watched button — not for Person, music types, or Playlist (Playlist Watched is added async
+  ' by onPlaylistContentKindChanged() once the items chain confirms the playlist contains video items)
+  if itemType <> "Person" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist"
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
     watchedButton.icon = "pkg:/images/icons/check.png"
@@ -1800,8 +1867,8 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(watchedButton)
   end if
 
-  ' Shuffle button — Series, Season, BoxSet, MusicArtist, MusicAlbum (not Audio; Person shuffle is async)
-  if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum"
+  ' Shuffle button — Series, Season, BoxSet, MusicArtist, MusicAlbum, Playlist (not Audio; Person shuffle is async)
+  if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
     m.shuffleButton = CreateObject("roSGNode", "IconButton")
     m.shuffleButton.id = "shuffleButton"
     m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
@@ -1963,6 +2030,78 @@ sub onPersonHasMediaChanged()
         focusButtonGroupChild()
       end if
     end if
+  end if
+end sub
+
+' onPlaylistContentKindChanged: Drives the Watched button and item-count label based on the
+' confirmed content kind of the playlist ("video" / "audio" / "mixed" / "unknown").
+' Fires via alwaysNotify so it triggers even when the kind is unchanged (e.g. on refresh).
+'
+' Watched button: only shown for "video" (has at least one video-type item).
+' Label:         "Tracks" only when positively confirmed "audio" (all items are Audio type).
+'                All other kinds — including "unknown" (load failure) and "mixed" — stay "Items".
+sub onPlaylistContentKindChanged()
+  if not isValid(m.top.itemContent) or m.top.itemContent.type <> "Playlist" then return
+
+  item = m.top.itemContent
+  childCount = item.childCount
+  kind = m.extrasGrid.playlistContentKind
+
+  ' --- Watched button ---
+  watchedButton = m.top.findNode("watchedButton")
+  if kind = "video"
+    ' Video items detected — ensure Watched button exists before Favorite
+    if not isValid(watchedButton)
+      watchedButton = CreateObject("roSGNode", "IconButton")
+      watchedButton.id = "watchedButton"
+      watchedButton.icon = "pkg:/images/icons/check.png"
+      watchedButton.text = tr("Watched")
+
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      favoriteButtonIndex = getButtonIndex("favoriteButton")
+      insertIndex = 0
+      if favoriteButtonIndex >= 0 then insertIndex = favoriteButtonIndex
+      m.buttonGrp.insertChild(watchedButton, insertIndex)
+
+      if currentFocusIndex >= insertIndex
+        ' Shift focus index up to track the same button after insertion
+        m.buttonGrp.buttonFocused = currentFocusIndex + 1
+      end if
+    end if
+
+    updateWatchedButton()
+  else
+    ' Not a video playlist — remove Watched button if present
+    if isValid(watchedButton)
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      watchedIndex = getButtonIndex("watchedButton")
+      m.buttonGrp.removeChild(watchedButton)
+
+      if isValid(watchedIndex) and watchedIndex >= 0 and currentFocusIndex >= watchedIndex
+        focusIndex = currentFocusIndex - 1
+        if focusIndex < 0 then focusIndex = 0
+        m.buttonGrp.buttonFocused = focusIndex
+      end if
+
+      if m.buttonGrp.isInFocusChain()
+        focusButtonGroupChild()
+      end if
+    end if
+  end if
+
+  ' --- Item count label ---
+  ' "Tracks" only when the playlist is positively confirmed all-audio.
+  ' "unknown" (load failure) and "mixed" both fall through to "Items" — the safe neutral default.
+  itemCountNode = m.top.findNode("itemCount")
+  if isValid(itemCountNode) and childCount > 0
+    if kind = "audio"
+      label = tr("Track")
+      if childCount <> 1 then label = tr("Tracks")
+    else
+      label = tr("Item")
+      if childCount <> 1 then label = tr("Items")
+    end if
+    itemCountNode.text = stri(childCount).trim() + " " + label
   end if
 end sub
 
@@ -2222,6 +2361,7 @@ sub destroy()
   m.itemLogo.unobserveField("loadStatus")
   m.itemDetails.unobserveField("renderTracking")
   m.extrasGrid.unobserveField("personHasMedia")
+  m.extrasGrid.unobserveField("playlistContentKind")
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
     m.clock = invalid

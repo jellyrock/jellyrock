@@ -2,6 +2,7 @@ import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
@@ -33,18 +34,20 @@ function getData()
 
   ' todo - Or get the old data? I can't remember...
   data = CreateObject("roSGNode", "ContentNode")
-  ' Do this to keep the ordering, AssociateArrays have no order
-  type_array = ["Movie", "Series", "TvChannel", "Episode", "MusicArtist", "MusicAlbum", "Audio", "Person", "Playlist"]
+  ' Ordering follows itemTypeOrder.SEARCH (web-client section sort order).
+  ' AssocArrays have no guaranteed order, so a separate array drives row creation.
+  type_array = itemTypeOrder.SEARCH
   content_types = {
-    "TvChannel": { "label": "Channels", "count": 0 },
     "Movie": { "label": "Movies", "count": 0 },
     "Series": { "label": "Shows", "count": 0 },
     "Episode": { "label": "Episodes", "count": 0 },
+    "Person": { "label": "People", "count": 0 },
+    "Playlist": { "label": "Playlists", "count": 0 },
     "MusicArtist": { "label": "Artists", "count": 0 },
     "MusicAlbum": { "label": "Albums", "count": 0 },
     "Audio": { "label": "Songs", "count": 0 },
-    "Person": { "label": "People", "count": 0 },
-    "Playlist": { "label": "Playlist", "count": 0 }
+    "TvChannel": { "label": "Channels", "count": 0 },
+    "BoxSet": { "label": "Collections", "count": 0 }
   }
 
   for each item in itemData.Items

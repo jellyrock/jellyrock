@@ -67,6 +67,13 @@ sub getShuffleItems()
       "EnableTotalRecordCount": false
     })
     if isValid(data) and isValid(data.Items) then items = data.Items
+  else if input.type = "Playlist"
+    ' All items in this playlist — client-side shuffle applied by the caller
+    data = GetApi().GetPlaylistItems(input.id, {
+      "Limit": 500,
+      "EnableTotalRecordCount": false
+    })
+    if isValid(data) and isValid(data.Items) then items = data.Items
   end if
 
   m.top.shuffleItems = items

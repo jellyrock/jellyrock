@@ -9,5 +9,6 @@
     <function name="loadParts" />
     <function name="loadPersonVideos" />
     <field id="personHasMedia" type="bool" value="false" alwaysNotify="true" />
+    <field id="playlistContentKind" type="string" value="unknown" alwaysNotify="true" />
   </interface>
 </component>
