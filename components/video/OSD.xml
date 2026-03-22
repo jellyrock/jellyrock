@@ -8,7 +8,11 @@
 
     <!-- HEADER LEFT -->
     <LayoutGroup id="videoLogoGroup" itemSpacings="[15]" layoutDirection="vert" translation="[96,54]">
-      <Poster id="videoLogo" />
+      <!-- loadWidth/loadHeight bound texture memory to imageSize.LOGO_OSD (500x300) with AR preserved
+           (Roku treats them as a bounding box, not independent axes). noScale renders at the loaded
+           size so the Poster auto-sizes to its content, keeping top-left alignment in the safe zone.
+           Do NOT set width/height here — that forces a fixed layout box and centers the image. -->
+      <Poster id="videoLogo" loadDisplayMode="noScale" loadWidth="500" loadHeight="300" />
     </LayoutGroup>
 
     <!-- HEADER RIGHT -->
