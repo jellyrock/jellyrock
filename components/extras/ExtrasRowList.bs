@@ -196,6 +196,7 @@ sub loadParts(data as object)
     m.LoadAlbumSongsTask.observeField("content", "onAlbumSongsLoaded")
     m.LoadAlbumSongsTask.control = "RUN"
   else if itemType = "Playlist"
+    m.top.playlistContentKind = "unknown" ' Reset before chain — prevents stale kind from a prior run
     ' Chain: Playlist Items → More Like This
     ' Slot type is determined by item content (Audio → SQUARE, mixed → PORTRAIT), so we cannot
     ' set rowItemSize to a final value here. Reset to [] now so no stale values from a previous
