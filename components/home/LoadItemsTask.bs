@@ -127,10 +127,32 @@ sub loadItems()
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #558)
         if item.Type <> "Book"
+          ' Live TV recordings come back from /Items as the content type (Movie/Episode).
+          ' The only reliable discriminator is the container format: recordings are always
+          ' stored as MPEG transport streams ("ts"), while library items never are.
+          if LCase(item.Container ?? "") = "ts"
+            item.Type = "Recording"
+          end if
           results.push(m.transformer.transformBaseItem(item))
         end if
       end for
     end if
+
+    ' People — favorited persons are not returned by /Items; requires /Persons endpoint.
+    personData = GetApi().GetPersons({
+      "IsFavorite": true,
+      "SortBy": "SortName",
+      "SortOrder": "Ascending",
+      "EnableTotalRecordCount": false
+    })
+    if isValid(personData) and isValid(personData.Items)
+      for each item in personData.Items
+        results.push(m.transformer.transformBaseItem(item))
+      end for
+    end if
+
+    ' Note: MusicArtist items ARE returned by /Items above (they are regular library items),
+    ' so no separate /Artists call is needed here (unlike search, where /Items misses them).
 
   else if m.top.itemsToLoad = "onNow"
     url = "LiveTv/Programs/Recommended"
