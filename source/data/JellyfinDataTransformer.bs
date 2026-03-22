@@ -673,9 +673,11 @@ class JellyfinDataTransformer
       return ""
 
     else if itemType = "TvChannel"
-      chanNum = apiData.Number ?? ""
-      if isValidAndNotEmpty(chanNum)
-        return tr("CH") + " " + chanNum
+      ' apiData.Number is string? in the Jellyfin API spec, but toStr().trim() guards against
+      ' integer responses (isValidAndNotEmpty() rejects non-string primitives).
+      chanNumStr = (apiData.Number ?? "").toStr().trim()
+      if chanNumStr <> ""
+        return tr("CH") + " " + chanNumStr
       end if
       return ""
 
