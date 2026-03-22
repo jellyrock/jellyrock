@@ -1,3 +1,4 @@
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -6,6 +7,13 @@ sub init()
   m.inactivityTimer = m.top.findNode("inactivityTimer")
   m.endsAtTime = m.top.findNode("endsAtTime")
   m.videoLogo = m.top.findNode("videoLogo")
+  ' loadWidth/loadHeight bound texture memory to imageSize.LOGO_OSD with AR preserved
+  ' (Roku treats them as a bounding box, not independent axes). noScale renders at the loaded
+  ' size so the Poster auto-sizes to its content, keeping top-left alignment in the safe zone.
+  ' Do NOT set width/height on the Poster node — that forces a fixed layout box and centers the image.
+  osdLogoSize = imageSize.LOGO_OSD
+  m.videoLogo.loadWidth = osdLogoSize.width
+  m.videoLogo.loadHeight = osdLogoSize.height
   m.videoTitle = m.top.findNode("videoTitle")
   m.videoSubtitleGroup = m.top.findNode("videoSubtitleGroup")
   m.videoPlayPause = m.top.findNode("videoPlayPause")

@@ -8,7 +8,8 @@
 
     <!-- HEADER LEFT -->
     <LayoutGroup id="videoLogoGroup" itemSpacings="[15]" layoutDirection="vert" translation="[96,54]">
-      <Poster id="videoLogo" />
+      <!-- loadWidth/loadHeight set from imageSize.LOGO_OSD in OSD.bs init() -->
+      <Poster id="videoLogo" loadDisplayMode="noScale" />
     </LayoutGroup>
 
     <!-- HEADER RIGHT -->
