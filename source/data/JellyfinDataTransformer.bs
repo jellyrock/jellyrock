@@ -663,7 +663,7 @@ class JellyfinDataTransformer
     else if itemType = "MusicAlbum" or itemType = "Audio"
       return apiData.AlbumArtist ?? ""
 
-    else if itemType = "BoxSet" or itemType = "PhotoAlbum"
+    else if itemType = "BoxSet" or itemType = "PhotoAlbum" or itemType = "Playlist"
       count = apiData.ChildCount ?? 0
       if count = 1
         return "1 item"
