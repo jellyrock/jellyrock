@@ -9,8 +9,26 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "tests/**"
+      - "source/**"
+      - "components/**"
+      - "settings/settings.json"
+      - "bsconfig.json"
+      - "bsconfig-tests*.json"
+      - "package.json"
+      - "package-lock.json"
   pull_request_target:
     types: [opened, synchronize]
+    paths:
+      - "tests/**"
+      - "source/**"
+      - "components/**"
+      - "settings/settings.json"
+      - "bsconfig.json"
+      - "bsconfig-tests*.json"
+      - "package.json"
+      - "package-lock.json"
   workflow_dispatch:
     inputs:
       test_type:
