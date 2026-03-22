@@ -672,6 +672,13 @@ class JellyfinDataTransformer
       end if
       return ""
 
+    else if itemType = "TvChannel"
+      chanNum = apiData.Number ?? ""
+      if isValidAndNotEmpty(chanNum)
+        return tr("CH") + " " + chanNum
+      end if
+      return ""
+
     else if itemType = "Program" or itemType = "Recording"
       episodeTitle = apiData.EpisodeTitle ?? ""
       if isValidAndNotEmpty(episodeTitle)
