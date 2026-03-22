@@ -1858,7 +1858,7 @@ sub setupButtons(item as object)
   end if
 
   ' Watched button — not for Person, music types, or Playlist (Playlist Watched is added async
-  ' by onPlaylistHasVideosChanged() once the items chain confirms the playlist contains video items)
+  ' by onPlaylistContentKindChanged() once the items chain confirms the playlist contains video items)
   if itemType <> "Person" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist"
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
