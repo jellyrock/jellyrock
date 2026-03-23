@@ -1,9 +1,17 @@
+import "pkg:/source/constants/extrasLayout.bs"
 
 sub init()
   globalConstants = m.global.constants
 
   extrasGrp = m.top.findNode("extrasGrp")
   extrasGrp.color = globalConstants.colorBlack + globalConstants.alpha60
+  ' Place panel off-screen at startup. Matches extrasLayout.PANEL_CLOSED_Y (972).
+  extrasGrp.translation = [0, extrasLayout.PANEL_CLOSED_Y]
+
+  ' Set VertSlider keyValue: closed -> open. Always overridden by ItemDetails.bs before each animation,
+  ' but initialised here so the value is never a stale XML default.
+  vertSlider = m.top.findNode("VertSlider")
+  vertSlider.keyValue = [[0, extrasLayout.PANEL_CLOSED_Y], [0, extrasLayout.PANEL_OPEN_Y]]
 
   ' Set color interpolator keyValue: start color -> background primary
   colorSlider = m.top.findNode("colorSlider")

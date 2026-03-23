@@ -1,4 +1,5 @@
 import "pkg:/source/api/Image.bs"
+import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
@@ -6,8 +7,6 @@ import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
-' Y translation extrasGrp reaches after sliding open (ExtrasSlider.xml VertSlider end keyValue)
-const EXTRAS_GRP_TARGET_Y = 306
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
 const ITEM_DETAILS_EXTRAS_PADDING = 48
 ' Minimum display height for the logo image — images too small are scaled up (aspect ratio preserved).
@@ -103,6 +102,13 @@ sub init()
   ' Observe playlistContentKind to show/hide Watched button and set "Tracks"/"Items" label
   ' after the Playlist items chain completes.
   m.extrasGrid.observeField("playlistContentKind", "onPlaylistContentKindChanged")
+
+  ' Grid translation animation — smoothly repositions the RowList when row focus changes.
+  ' Set early via onKeyEvent in ExtrasRowList so the animation runs in sync with the RowList's
+  ' own floatingFocus animation. gridAnime and gridTranslationInterp are defined in ExtrasSlider.xml.
+  m.gridAnime = m.top.findNode("gridAnime")
+  m.gridTranslationInterp = m.top.findNode("gridTranslationInterp")
+  m.extrasGrid.observeField("targetTranslationY", "onExtrasTargetTranslationYChanged")
 
   ' Observe overhang clock for dynamic "Ends At" updates (only when clock is visible)
   m.endsAtNode = invalid
@@ -1667,7 +1673,7 @@ sub updateItemDetailsAnimationTarget()
   itemInfoRowsLocalRect = m.itemInfoRows.boundingRect()
   screenBottomOfInfoRows = currentTransY + itemInfoRowsLocalRect.y + itemInfoRowsLocalRect.height
 
-  dY = (EXTRAS_GRP_TARGET_Y - ITEM_DETAILS_EXTRAS_PADDING) - screenBottomOfInfoRows
+  dY = (extrasLayout.PANEL_OPEN_Y - ITEM_DETAILS_EXTRAS_PADDING) - screenBottomOfInfoRows
   targetTransY = currentTransY + dY
 
   startTransX = m.itemDetails.translation[0]
@@ -1680,7 +1686,7 @@ sub updateTextGradient()
   globalConstants = m.global.constants
   itemDetailsRect = m.itemDetails.boundingRect()
   itemDetailsTop = itemDetailsRect.y
-  extrasGrpY = 972
+  extrasGrpY = extrasLayout.PANEL_CLOSED_Y
   gradientHeight = extrasGrpY - itemDetailsTop
 
   if gradientHeight > 0
@@ -1777,6 +1783,17 @@ end sub
 
 sub deactivateExtras()
   m.extrasActive = false
+end sub
+
+' onExtrasTargetTranslationYChanged: Animate the RowList translation to the new target.
+' Fired early by onKeyEvent in ExtrasRowList (at key press) so the animation runs in parallel
+' with the RowList's floatingFocus animation, and confirmed by onRowItemFocused after focus lands.
+sub onExtrasTargetTranslationYChanged()
+  currentY = m.extrasGrid.translation[1]
+  targetY = m.extrasGrid.targetTranslationY
+  if abs(currentY - targetY) < 1 then return
+  m.gridTranslationInterp.keyValue = [[0, currentY], [0, targetY]]
+  m.gridAnime.control = "start"
 end sub
 
 ' setDescriptionInLayout: Add or remove itemDescription from the itemDetails LayoutGroup.
@@ -2292,8 +2309,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.itemDetailsSliderInterp.reverse = false
     m.itemDetailsSlider.control = "start"
 
-    ' Extras slider animation
-    m.top.findNode("VertSlider").reverse = false
+    ' Extras slider animation — panel always opens to extrasLayout.PANEL_OPEN_Y (306).
+    ' Row positioning within the panel is handled by translating the RowList (ExtrasRowList.bs).
+    vertSlider = m.top.findNode("VertSlider")
+    vertSlider.keyValue = [[0, extrasLayout.PANEL_CLOSED_Y], [0, extrasLayout.PANEL_OPEN_Y]]
+    vertSlider.reverse = false
     m.top.findNode("colorSlider").reverse = false
     m.top.findNode("pplAnime").control = "start"
     return true
@@ -2314,8 +2334,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
       m.itemDetailsSliderInterp.reverse = true
       m.itemDetailsSlider.control = "start"
 
-      ' Extras slider animation
-      m.top.findNode("VertSlider").reverse = true
+      ' Extras slider animation — panel always closes from extrasLayout.PANEL_OPEN_Y (306).
+      vertSlider = m.top.findNode("VertSlider")
+      vertSlider.keyValue = [[0, extrasLayout.PANEL_CLOSED_Y], [0, extrasLayout.PANEL_OPEN_Y]]
+      vertSlider.reverse = true
       m.top.findNode("colorSlider").reverse = true
       m.top.findNode("pplAnime").control = "start"
       m.buttonGrp.setFocus(true)
@@ -2362,6 +2384,7 @@ sub destroy()
   m.itemDetails.unobserveField("renderTracking")
   m.extrasGrid.unobserveField("personHasMedia")
   m.extrasGrid.unobserveField("playlistContentKind")
+  m.extrasGrid.unobserveField("targetTranslationY")
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
     m.clock = invalid
@@ -2387,6 +2410,8 @@ sub destroy()
   ' Clear node references
   m.extrasGrp = invalid
   m.extrasGrid = invalid
+  m.gridAnime = invalid
+  m.gridTranslationInterp = invalid
   m.options = invalid
   m.infoGroup = invalid
   m.itemDescription = invalid
