@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (extras) improve UX by animating panel on row focus change ([#400](https://github.com/jellyrock/jellyrock/pull/400))
+
 ### Dependencies
 
 - Update actions/cache action to v5.0.4 ([#398](https://github.com/jellyrock/jellyrock/pull/398))
