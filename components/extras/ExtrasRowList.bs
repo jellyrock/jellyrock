@@ -1,6 +1,17 @@
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/misc.bs"
 
+' extrasGrp opens to Y=306 and stays there. Must stay in sync with EXTRAS_GRP_TARGET_Y in ItemDetails.bs
+' and the VertSlider end keyValue in ExtrasSlider.xml.
+const EXTRAS_PANEL_TOP_Y = 306
+' Default RowList translation.y — places the focused row (TOP) 18px below the panel top edge.
+const EXTRAS_ROWLIST_DEFAULT_Y = 18
+' Row spacing between rows (itemSpacing y-dimension set in JRRowList.bs).
+const EXTRAS_ROW_SPACING = 60
+' Extra clearance so the focused row's bottom edge sits comfortably above the 5% action-safe zone.
+' Adjusting this shifts BOTTOM and MIDDLE positions equally relative to the action zone.
+const EXTRAS_BOTTOM_SAFE_PADDING = 18
+
 sub init()
   m.top.visible = true
   updateSize()
@@ -74,6 +85,10 @@ sub init()
 
   ' Track row heights for rowHeights array (per-row height customization)
   m.rowHeights = []
+
+  ' Track the last focused row index so horizontal item scrolling within a row
+  ' does not trigger an unnecessary panel position recalculation.
+  m.lastFocusedRowIndex = -1
 end sub
 
 sub updateSize()
@@ -81,8 +96,10 @@ sub updateSize()
   ' WIDE rows (264px slot + 90px text = 354px) will have extra padding, which is acceptable
   m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
 
-  ' override defaults from JRRowList
-  m.top.vertFocusAnimationStyle = "fixedFocus"
+  ' floatingFocus: when navigating to a new row, the previous row remains visible above the
+  ' focused row within the RowList's visible area. fixedFocus always scrolls the previous row
+  ' off-screen (focus snaps to RowList Y=0), so the peek effect is impossible with fixedFocus.
+  m.top.vertFocusAnimationStyle = "floatingFocus"
 end sub
 
 ' cancelInFlightChain: Stop all tasks and unobserve their content fields before starting a new chain.
@@ -138,6 +155,9 @@ end sub
 sub loadParts(data as object)
   cancelInFlightChain()
   m.rowHeights = []
+  m.lastFocusedRowIndex = -1
+  m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
+  m.top.numRows = 1
   m.top.parentId = data.id
   m.people = data.people
 
@@ -231,6 +251,9 @@ end sub
 sub loadPersonVideos(personId)
   cancelInFlightChain()
   m.rowHeights = []
+  m.lastFocusedRowIndex = -1
+  m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
+  m.top.numRows = 1
   m.personId = personId
   m.top.personHasMedia = false ' Reset before new chain — prevents stale true from a prior run
   m.LoadMoviesTask.itemId = m.personId
@@ -752,6 +775,10 @@ function populateRow(rowRef as object, title as string, items as object, rowHeig
   ' Covers both reuse (row exists in content) and create (just appended) paths.
   m.rowHeights.push(rowHeight)
   m.top.rowHeights = m.rowHeights
+  ' numRows must always equal the actual row count so floatingFocus never needs to scroll.
+  ' If numRows < rowCount, navigation causes internal scrolling which changes the focused row's
+  ' RowList Y position unpredictably, breaking our translation formula.
+  m.top.numRows = m.rowHeights.count()
   rowRef.Title = title
   for each item in items
     rowRef.appendChild(item)
@@ -774,5 +801,87 @@ sub onRowItemSelected()
 end sub
 
 sub onRowItemFocused()
-  m.top.focusedItem = m.top.content.getChild(m.top.rowItemFocused[0]).getChild(m.top.rowItemFocused[1])
+  rowIndex = m.top.rowItemFocused[0]
+  m.top.focusedItem = m.top.content.getChild(rowIndex).getChild(m.top.rowItemFocused[1])
+
+  ' Skip panel position recalculation when horizontal item scrolling fires rowItemFocused
+  ' without an actual row change (avoids redundant translation and vertFocusOffset writes).
+  if rowIndex = m.lastFocusedRowIndex then return
+  m.lastFocusedRowIndex = rowIndex
+
+  updatePanelPosition(rowIndex)
 end sub
+
+' updatePanelPosition: Set targetTranslationY so ItemDetails.bs can animate the RowList's
+' translation within extrasGrp. extrasGrp stays fixed at EXTRAS_PANEL_TOP_Y (306).
+'
+' numRows always equals the total row count (set in populateRow), so floatingFocus never scrolls
+' internally. All rows stay at fixed RowList-relative Y positions:
+'   row 0 → RowList Y = 0
+'   row N → RowList Y = sum(heights[0..N-1]) + N * EXTRAS_ROW_SPACING  (= focusedRowY)
+'
+' Visible screen height between panel top and action zone: 1026 - 306 = 720px.
+'
+' Three position classes:
+'   TOP    — row 0 (or only row): focused row at RowList Y=0, default translation (18px).
+'   BOTTOM — last row: focused row bottom edge at action zone - EXTRAS_BOTTOM_SAFE_PADDING.
+'              306 + translationY + focusedRowY + rowHeight = 1008  (1026-18)
+'              translationY = 702 - rowHeight - focusedRowY
+'   MIDDLE — rows 1..N-2: focused row centered in the 720px visible area.
+'              translationY = int((720 - rowHeight) / 2) - focusedRowY
+'
+' Negative translationY moves the RowList above extrasGrp Y=0. The clippingRect Group in
+' ExtrasSlider.xml clips that overflow so the previous row only peeks within the panel bounds.
+' targetTranslationY is observed by ItemDetails.bs which runs the gridAnime Animation.
+' Called early from onKeyEvent (before RowList focuses the row) and confirmed by onRowItemFocused.
+sub updatePanelPosition(rowIndex as integer)
+  rowCount = m.top.content.getChildCount()
+
+  ' Safe row height — fall back to portrait if rowHeights not yet populated for this index.
+  rowHeight = rowSlotSize.ROW_HEIGHT_PORTRAIT
+  if isValid(m.rowHeights) and m.rowHeights.count() > rowIndex
+    rowHeight = m.rowHeights[rowIndex]
+  end if
+
+  if rowIndex = 0 or rowCount <= 1
+    ' TOP: focused row at RowList Y=0, default translation
+    m.top.targetTranslationY = EXTRAS_ROWLIST_DEFAULT_Y
+  else
+    ' focusedRowY: Y of the focused row within the RowList's rendered area.
+    ' Sum all preceding row heights plus one spacing per preceding row.
+    focusedRowY = 0
+    for i = 0 to rowIndex - 1
+      rowH = rowSlotSize.ROW_HEIGHT_PORTRAIT
+      if isValid(m.rowHeights) and m.rowHeights.count() > i
+        rowH = m.rowHeights[i]
+      end if
+      focusedRowY += rowH + EXTRAS_ROW_SPACING
+    end for
+
+    if rowIndex = rowCount - 1
+      ' BOTTOM: focused row bottom edge at action zone minus safe padding (1026-18=1008)
+      ' 306 + translationY + focusedRowY + rowHeight = 1008
+      translationY = 702 - rowHeight - focusedRowY
+    else
+      ' MIDDLE: center focused row within the 720px visible area (306..1026)
+      ' translationY + focusedRowY = (720 - rowHeight) / 2
+      translationY = int((720 - rowHeight) / 2) - focusedRowY
+    end if
+    m.top.targetTranslationY = translationY
+  end if
+end sub
+
+' onKeyEvent: Anticipate the next row on UP/DOWN so the panel translation animation starts
+' in sync with the RowList floatingFocus animation rather than after it completes.
+' Returns false so the RowList handles the actual navigation.
+function onKeyEvent(key as string, press as boolean) as boolean
+  if press
+    rowCount = m.top.content.getChildCount()
+    if key = "down" and m.lastFocusedRowIndex < rowCount - 1
+      updatePanelPosition(m.lastFocusedRowIndex + 1)
+    else if key = "up" and m.lastFocusedRowIndex > 0
+      updatePanelPosition(m.lastFocusedRowIndex - 1)
+    end if
+  end if
+  return false
+end function
