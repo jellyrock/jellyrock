@@ -71,7 +71,7 @@ jobs:
     timeout-minutes: 15
     steps:
       # Explicitly checkout PR code - pull_request_target defaults to base branch
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload test logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: roku-test-logs-${{ github.event.inputs.test_type || 'all' }}
           path: roku-test-output.log
