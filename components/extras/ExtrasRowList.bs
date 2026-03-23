@@ -158,7 +158,6 @@ sub loadParts(data as object)
   m.rowHeights = []
   m.lastFocusedRowIndex = -1
   m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
-  m.top.numRows = 1
   m.top.parentId = data.id
   m.people = data.people
 
@@ -254,7 +253,6 @@ sub loadPersonVideos(personId)
   m.rowHeights = []
   m.lastFocusedRowIndex = -1
   m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
-  m.top.numRows = 1
   m.personId = personId
   m.top.personHasMedia = false ' Reset before new chain — prevents stale true from a prior run
   m.LoadMoviesTask.itemId = m.personId
@@ -270,7 +268,7 @@ sub onSeasonsLoaded()
   if isValid(seasons) and seasons.count() > 0
     m.rowSeasons = populateRow(m.rowSeasons, tr("Seasons"), seasons, rowSlotSize.ROW_HEIGHT_PORTRAIT)
   else if isValid(m.rowSeasons)
-    m.top.content.removeChild(m.rowSeasons)
+    removeRow(m.rowSeasons)
     m.rowSeasons = invalid
   end if
 
@@ -321,11 +319,11 @@ sub onSeasonEpisodesLoaded()
       m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
       m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes, rowSlotSize.ROW_HEIGHT_WIDE)
     else if isValid(m.rowSeasonEpisodes)
-      m.top.content.removeChild(m.rowSeasonEpisodes)
+      removeRow(m.rowSeasonEpisodes)
       m.rowSeasonEpisodes = invalid
     end if
   else if isValid(m.rowSeasonEpisodes)
-    m.top.content.removeChild(m.rowSeasonEpisodes)
+    removeRow(m.rowSeasonEpisodes)
     m.rowSeasonEpisodes = invalid
   end if
 
@@ -343,7 +341,7 @@ sub onSeasonAllEpisodesLoaded()
     m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
     m.rowEpisodes = populateRow(m.rowEpisodes, tr("Episodes"), episodes, rowSlotSize.ROW_HEIGHT_WIDE)
   else if isValid(m.rowEpisodes)
-    m.top.content.removeChild(m.rowEpisodes)
+    removeRow(m.rowEpisodes)
     m.rowEpisodes = invalid
   end if
 
@@ -361,7 +359,7 @@ sub onBoxSetItemsLoaded()
   if isValid(content) and content.count() > 0
     m.rowBoxSetItems = populateRow(m.rowBoxSetItems, tr("Movies"), content, rowSlotSize.ROW_HEIGHT_PORTRAIT)
   else if isValid(m.rowBoxSetItems)
-    m.top.content.removeChild(m.rowBoxSetItems)
+    removeRow(m.rowBoxSetItems)
     m.rowBoxSetItems = invalid
   end if
 
@@ -380,7 +378,7 @@ sub onAdditionalPartsLoaded()
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
   else
     if isValid(m.rowAdditionalParts)
-      m.top.content.removeChild(m.rowAdditionalParts)
+      removeRow(m.rowAdditionalParts)
       m.rowAdditionalParts = invalid
     end if
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
@@ -427,7 +425,7 @@ sub onPlaylistItemsLoaded()
       m.rowPlaylistItems = populateRow(m.rowPlaylistItems, tr("Playlist Items"), items, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     end if
   else if isValid(m.rowPlaylistItems)
-    m.top.content.removeChild(m.rowPlaylistItems)
+    removeRow(m.rowPlaylistItems)
     m.rowPlaylistItems = invalid
   end if
 
@@ -456,7 +454,7 @@ sub onPeopleLoaded()
     m.rowCast = populateRow(m.rowCast, tr("Cast & Crew"), people, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowCast)
-    m.top.content.removeChild(m.rowCast)
+    removeRow(m.rowCast)
     m.rowCast = invalid
   end if
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
@@ -499,7 +497,7 @@ sub onLikeThisLoaded()
       addRowSize(rowSlotSize.PORTRAIT)
     end if
   else if isValid(m.rowLikeThis)
-    m.top.content.removeChild(m.rowLikeThis)
+    removeRow(m.rowLikeThis)
     m.rowLikeThis = invalid
   end if
 
@@ -519,7 +517,7 @@ function onSpecialFeaturesLoaded()
     m.top.visible = true
     addRowSize(rowSlotSize.WIDE)
   else if isValid(m.rowSpecialFeatures)
-    m.top.content.removeChild(m.rowSpecialFeatures)
+    removeRow(m.rowSpecialFeatures)
     m.rowSpecialFeatures = invalid
   end if
 
@@ -535,7 +533,7 @@ sub onMoviesLoaded()
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
   else if isValid(m.rowMovies)
-    m.top.content.removeChild(m.rowMovies)
+    removeRow(m.rowMovies)
     m.rowMovies = invalid
   end if
   m.LoadShowsTask.itemId = m.personId
@@ -553,7 +551,7 @@ sub onShowsLoaded()
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
   else if isValid(m.rowTvShows)
-    m.top.content.removeChild(m.rowTvShows)
+    removeRow(m.rowTvShows)
     m.rowTvShows = invalid
   end if
   m.LoadSeriesTask.itemId = m.personId
@@ -568,7 +566,7 @@ sub onSeriesLoaded()
     m.rowSeries = populateRow(m.rowSeries, tr("Series"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowSeries)
-    m.top.content.removeChild(m.rowSeries)
+    removeRow(m.rowSeries)
     m.rowSeries = invalid
   end if
   m.top.visible = true
@@ -587,7 +585,7 @@ sub onArtistAlbumsLoaded()
     m.rowArtistAlbums = populateRow(m.rowArtistAlbums, tr("Albums"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowArtistAlbums)
-    m.top.content.removeChild(m.rowArtistAlbums)
+    removeRow(m.rowArtistAlbums)
     m.rowArtistAlbums = invalid
   end if
 
@@ -606,7 +604,7 @@ sub onArtistAppearsOnLoaded()
     m.rowArtistAppearsOn = populateRow(m.rowArtistAppearsOn, tr("Appears On"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowArtistAppearsOn)
-    m.top.content.removeChild(m.rowArtistAppearsOn)
+    removeRow(m.rowArtistAppearsOn)
     m.rowArtistAppearsOn = invalid
   end if
 
@@ -627,7 +625,7 @@ sub onArtistSongsLoaded()
     m.rowArtistSongs = populateRow(m.rowArtistSongs, tr("Songs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowArtistSongs)
-    m.top.content.removeChild(m.rowArtistSongs)
+    removeRow(m.rowArtistSongs)
     m.rowArtistSongs = invalid
   end if
 
@@ -645,7 +643,7 @@ sub onArtistSimilarLoaded()
     m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowLikeThis)
-    m.top.content.removeChild(m.rowLikeThis)
+    removeRow(m.rowLikeThis)
     m.rowLikeThis = invalid
   end if
 end sub
@@ -660,7 +658,7 @@ sub onAlbumSongsLoaded()
     m.rowAlbumSongs = populateRow(m.rowAlbumSongs, tr("Songs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowAlbumSongs)
-    m.top.content.removeChild(m.rowAlbumSongs)
+    removeRow(m.rowAlbumSongs)
     m.rowAlbumSongs = invalid
   end if
 
@@ -696,7 +694,7 @@ sub onAlbumArtistAlbumsLoaded()
     m.rowAlbumArtistAlbums = populateRow(m.rowAlbumArtistAlbums, tr("More Albums"), filtered, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowAlbumArtistAlbums)
-    m.top.content.removeChild(m.rowAlbumArtistAlbums)
+    removeRow(m.rowAlbumArtistAlbums)
     m.rowAlbumArtistAlbums = invalid
   end if
 
@@ -747,11 +745,11 @@ sub onAudioAlbumTracksLoaded()
       m.rowAlbumSongs = populateRow(m.rowAlbumSongs, rowTitle, orderedTracks, rowSlotSize.ROW_HEIGHT_SQUARE)
       addRowSize(rowSlotSize.SQUARE)
     else if isValid(m.rowAlbumSongs)
-      m.top.content.removeChild(m.rowAlbumSongs)
+      removeRow(m.rowAlbumSongs)
       m.rowAlbumSongs = invalid
     end if
   else if isValid(m.rowAlbumSongs)
-    m.top.content.removeChild(m.rowAlbumSongs)
+    removeRow(m.rowAlbumSongs)
     m.rowAlbumSongs = invalid
   end if
 
@@ -779,7 +777,10 @@ function populateRow(rowRef as object, title as string, items as object, rowHeig
   ' numRows must always equal the actual row count so floatingFocus never needs to scroll.
   ' If numRows < rowCount, navigation causes internal scrolling which changes the focused row's
   ' RowList Y position unpredictably, breaking our translation formula.
-  m.top.numRows = m.rowHeights.count()
+  ' Use content.getChildCount() (not m.rowHeights.count()) so that on a Refresh — where all
+  ' row nodes are reused in place and content.count() stays constant — numRows never dips
+  ' below content.count() during the incremental rebuild.
+  m.top.numRows = m.top.content.getChildCount()
   rowRef.Title = title
   for each item in items
     rowRef.appendChild(item)
@@ -795,6 +796,13 @@ sub addRowSize(newRow)
   end for
   newSizeArray.push(newRow)
   m.top.rowItemSize = newSizeArray
+end sub
+
+' removeRow: Remove a row ContentNode from content and keep numRows in sync with content.getChildCount().
+' Always call this instead of m.top.content.removeChild() directly; then null the caller's ref.
+sub removeRow(rowNode as object)
+  m.top.content.removeChild(rowNode)
+  m.top.numRows = m.top.content.getChildCount()
 end sub
 
 sub onRowItemSelected()
