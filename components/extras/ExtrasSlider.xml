@@ -1,24 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="ExtrasSlider" extends="JRGroup">
   <children>
-    <Rectangle id="extrasGrp" width="1920" height="900" translation="[0, 972]">
+    <!-- Initial translation places the panel off-screen (extrasLayout.PANEL_CLOSED_Y). Set in ExtrasSlider.bs init(). -->
+    <Rectangle id="extrasGrp" width="1920" height="900">
       <!-- Clip RowList rendering to the panel bounds. vertFocusOffset can cause the RowList to
            render previous-row content above its own Y=0 origin; this Group prevents that overflow
            from bleeding above the panel's top edge (screen Y=306 when open). -->
       <Group clippingRect="[0, 0, 1920, 900]">
-        <ExtrasRowList id="extrasGrid" numRows="2" translation="[0, 18]" itemComponentName="BrowseRowItem" />
+        <!-- numRows and translation set in ExtrasRowList.bs init() from constants. -->
+        <ExtrasRowList id="extrasGrid" itemComponentName="BrowseRowItem" />
       </Group>
       <!-- Smoothly animates extrasGrid.translation when row focus changes.
            Started by ItemDetails.bs in response to extrasGrid.targetTranslationY changes.
            outCubic easing matches the feel of the RowList floatingFocus scroll animation. -->
       <Animation id="gridAnime" duration="0.3" repeat="false" easeFunction="outCubic">
+        <!-- keyValue default mirrors EXTRAS_ROWLIST_DEFAULT_Y (18). Always overridden by ItemDetails.bs before each animation. -->
         <Vector2DFieldInterpolator id="gridTranslationInterp" key="[0.0, 1.0]" keyValue="[[0, 18],[0, 18]]" fieldToInterp="extrasGrid.translation" />
       </Animation>
       <Animation id="pplAnime" duration=".4" repeat="false">
+        <!-- keyValue set in ExtrasSlider.bs init() from extrasLayout.PANEL_CLOSED_Y / PANEL_OPEN_Y. Always overridden by ItemDetails.bs before each animation. -->
         <Vector2DFieldInterpolator
           id="VertSlider"
           key="[0.0, 1.0]"
-          keyValue="[[0, 972],[0, 306]]"
           fieldToInterp="extrasGrp.translation" />
         <ColorFieldInterpolator
           id="colorSlider"

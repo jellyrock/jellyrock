@@ -12,7 +12,8 @@
     <field id="playlistContentKind" type="string" value="unknown" alwaysNotify="true" />
     <!-- Target Y for animating the RowList's translation within extrasGrp.
          Observed by ItemDetails.bs which drives the gridAnime Animation.
-         Set early (onKeyEvent) so animation starts in sync with the RowList focus animation. -->
-    <field id="targetTranslationY" type="integer" value="18" />
+         Set early (onKeyEvent) so animation starts in sync with the RowList focus animation.
+         Default (EXTRAS_ROWLIST_DEFAULT_Y) set in ExtrasRowList.bs init(). -->
+    <field id="targetTranslationY" type="integer" />
   </interface>
 </component>

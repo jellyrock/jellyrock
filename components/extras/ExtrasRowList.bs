@@ -1,11 +1,7 @@
+import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/misc.bs"
 
-' extrasGrp opens to Y=306 and stays there. Must stay in sync with EXTRAS_GRP_TARGET_Y in ItemDetails.bs
-' and the VertSlider end keyValue in ExtrasSlider.xml.
-const EXTRAS_PANEL_TOP_Y = 306
-' Roku 5% action-safe bottom edge (1080 - 54). Rows must not render below this.
-const ACTION_SAFE_BOTTOM_Y = 1026
 ' Default RowList translation.y — places the focused row (TOP) 18px below the panel top edge.
 const EXTRAS_ROWLIST_DEFAULT_Y = 18
 ' Extra clearance so the focused row's bottom edge sits comfortably above the 5% action-safe zone.
@@ -14,6 +10,9 @@ const EXTRAS_BOTTOM_SAFE_PADDING = 18
 
 sub init()
   m.top.visible = true
+  m.top.numRows = 1
+  m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
+  m.top.targetTranslationY = EXTRAS_ROWLIST_DEFAULT_Y
   updateSize()
   ' Cache row spacing from JRRowList so updatePanelPosition stays in sync with the rendered spacing.
   m.rowSpacing = m.top.itemSpacing[1]
@@ -815,7 +814,7 @@ sub onRowItemFocused()
 end sub
 
 ' updatePanelPosition: Set targetTranslationY so ItemDetails.bs can animate the RowList's
-' translation within extrasGrp. extrasGrp stays fixed at EXTRAS_PANEL_TOP_Y (306).
+' translation within extrasGrp. extrasGrp stays fixed at extrasLayout.PANEL_OPEN_Y (306).
 '
 ' numRows always equals the total row count (set in populateRow), so floatingFocus never scrolls
 ' internally. All rows stay at fixed RowList-relative Y positions:
@@ -823,15 +822,15 @@ end sub
 '   row N → RowList Y = sum(heights[0..N-1]) + N * m.rowSpacing  (= focusedRowY)
 '
 ' Visible screen height between panel top and action zone:
-'   ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y = 720px.
+'   extrasLayout.ACTION_SAFE_BOTTOM_Y - extrasLayout.PANEL_OPEN_Y = 720px.
 '
 ' Three position classes:
 '   TOP    — row 0 (or only row): focused row at RowList Y=0, default translation (18px).
 '   BOTTOM — last row: focused row bottom edge at action zone - EXTRAS_BOTTOM_SAFE_PADDING.
-'              EXTRAS_PANEL_TOP_Y + translationY + focusedRowY + rowHeight = ACTION_SAFE_BOTTOM_Y - EXTRAS_BOTTOM_SAFE_PADDING
-'              translationY = (ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - EXTRAS_BOTTOM_SAFE_PADDING) - rowHeight - focusedRowY
+'              extrasLayout.PANEL_OPEN_Y + translationY + focusedRowY + rowHeight = extrasLayout.ACTION_SAFE_BOTTOM_Y - EXTRAS_BOTTOM_SAFE_PADDING
+'              translationY = (extrasLayout.ACTION_SAFE_BOTTOM_Y - extrasLayout.PANEL_OPEN_Y - EXTRAS_BOTTOM_SAFE_PADDING) - rowHeight - focusedRowY
 '   MIDDLE — rows 1..N-2: focused row centered in the visible area.
-'              translationY = int((ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - rowHeight) / 2) - focusedRowY
+'              translationY = int((extrasLayout.ACTION_SAFE_BOTTOM_Y - extrasLayout.PANEL_OPEN_Y - rowHeight) / 2) - focusedRowY
 '
 ' Negative translationY moves the RowList above extrasGrp Y=0. The clippingRect Group in
 ' ExtrasSlider.xml clips that overflow so the previous row only peeks within the panel bounds.
@@ -863,10 +862,10 @@ sub updatePanelPosition(rowIndex as integer)
 
     if rowIndex = rowCount - 1
       ' BOTTOM: focused row bottom edge at action zone minus safe padding
-      translationY = (ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - EXTRAS_BOTTOM_SAFE_PADDING) - rowHeight - focusedRowY
+      translationY = (extrasLayout.ACTION_SAFE_BOTTOM_Y - extrasLayout.PANEL_OPEN_Y - EXTRAS_BOTTOM_SAFE_PADDING) - rowHeight - focusedRowY
     else
-      ' MIDDLE: center focused row within the visible area (EXTRAS_PANEL_TOP_Y..ACTION_SAFE_BOTTOM_Y)
-      translationY = int((ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - rowHeight) / 2) - focusedRowY
+      ' MIDDLE: center focused row within the visible area (extrasLayout.PANEL_OPEN_Y..extrasLayout.ACTION_SAFE_BOTTOM_Y)
+      translationY = int((extrasLayout.ACTION_SAFE_BOTTOM_Y - extrasLayout.PANEL_OPEN_Y - rowHeight) / 2) - focusedRowY
     end if
     m.top.targetTranslationY = translationY
   end if

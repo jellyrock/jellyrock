@@ -1,0 +1,18 @@
+' @fileoverview Layout constants for the extras panel (ExtrasSlider + ExtrasRowList).
+' These values define the panel's screen-space geometry and must stay in sync with
+' the corresponding XML attribute comments in ExtrasSlider.xml.
+
+namespace extrasLayout
+
+  ' Y position of extrasGrp when the panel is fully open (screen space).
+  ' Matches the VertSlider end keyValue and extrasGrp open translation in ExtrasSlider.xml.
+  const PANEL_OPEN_Y = 306
+
+  ' Y position of extrasGrp when the panel is off-screen (closed).
+  ' Matches the extrasGrp initial translation and VertSlider start keyValue in ExtrasSlider.xml.
+  const PANEL_CLOSED_Y = 972
+
+  ' Roku 5% action-safe bottom edge (1080 - 54). Extras rows must not render below this.
+  const ACTION_SAFE_BOTTOM_Y = 1026
+
+end namespace
