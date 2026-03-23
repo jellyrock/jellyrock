@@ -4,10 +4,10 @@ import "pkg:/source/utils/misc.bs"
 ' extrasGrp opens to Y=306 and stays there. Must stay in sync with EXTRAS_GRP_TARGET_Y in ItemDetails.bs
 ' and the VertSlider end keyValue in ExtrasSlider.xml.
 const EXTRAS_PANEL_TOP_Y = 306
+' Roku 5% action-safe bottom edge (1080 - 54). Rows must not render below this.
+const ACTION_SAFE_BOTTOM_Y = 1026
 ' Default RowList translation.y — places the focused row (TOP) 18px below the panel top edge.
 const EXTRAS_ROWLIST_DEFAULT_Y = 18
-' Row spacing between rows (itemSpacing y-dimension set in JRRowList.bs).
-const EXTRAS_ROW_SPACING = 60
 ' Extra clearance so the focused row's bottom edge sits comfortably above the 5% action-safe zone.
 ' Adjusting this shifts BOTTOM and MIDDLE positions equally relative to the action zone.
 const EXTRAS_BOTTOM_SAFE_PADDING = 18
@@ -15,6 +15,8 @@ const EXTRAS_BOTTOM_SAFE_PADDING = 18
 sub init()
   m.top.visible = true
   updateSize()
+  ' Cache row spacing from JRRowList so updatePanelPosition stays in sync with the rendered spacing.
+  m.rowSpacing = m.top.itemSpacing[1]
   m.top.observeField("rowItemSelected", "onRowItemSelected")
   m.top.observeField("rowItemFocused", "onRowItemFocused")
 
@@ -818,17 +820,18 @@ end sub
 ' numRows always equals the total row count (set in populateRow), so floatingFocus never scrolls
 ' internally. All rows stay at fixed RowList-relative Y positions:
 '   row 0 → RowList Y = 0
-'   row N → RowList Y = sum(heights[0..N-1]) + N * EXTRAS_ROW_SPACING  (= focusedRowY)
+'   row N → RowList Y = sum(heights[0..N-1]) + N * m.rowSpacing  (= focusedRowY)
 '
-' Visible screen height between panel top and action zone: 1026 - 306 = 720px.
+' Visible screen height between panel top and action zone:
+'   ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y = 720px.
 '
 ' Three position classes:
 '   TOP    — row 0 (or only row): focused row at RowList Y=0, default translation (18px).
 '   BOTTOM — last row: focused row bottom edge at action zone - EXTRAS_BOTTOM_SAFE_PADDING.
-'              306 + translationY + focusedRowY + rowHeight = 1008  (1026-18)
-'              translationY = 702 - rowHeight - focusedRowY
-'   MIDDLE — rows 1..N-2: focused row centered in the 720px visible area.
-'              translationY = int((720 - rowHeight) / 2) - focusedRowY
+'              EXTRAS_PANEL_TOP_Y + translationY + focusedRowY + rowHeight = ACTION_SAFE_BOTTOM_Y - EXTRAS_BOTTOM_SAFE_PADDING
+'              translationY = (ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - EXTRAS_BOTTOM_SAFE_PADDING) - rowHeight - focusedRowY
+'   MIDDLE — rows 1..N-2: focused row centered in the visible area.
+'              translationY = int((ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - rowHeight) / 2) - focusedRowY
 '
 ' Negative translationY moves the RowList above extrasGrp Y=0. The clippingRect Group in
 ' ExtrasSlider.xml clips that overflow so the previous row only peeks within the panel bounds.
@@ -855,17 +858,15 @@ sub updatePanelPosition(rowIndex as integer)
       if isValid(m.rowHeights) and m.rowHeights.count() > i
         rowH = m.rowHeights[i]
       end if
-      focusedRowY += rowH + EXTRAS_ROW_SPACING
+      focusedRowY += rowH + m.rowSpacing
     end for
 
     if rowIndex = rowCount - 1
-      ' BOTTOM: focused row bottom edge at action zone minus safe padding (1026-18=1008)
-      ' 306 + translationY + focusedRowY + rowHeight = 1008
-      translationY = 702 - rowHeight - focusedRowY
+      ' BOTTOM: focused row bottom edge at action zone minus safe padding
+      translationY = (ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - EXTRAS_BOTTOM_SAFE_PADDING) - rowHeight - focusedRowY
     else
-      ' MIDDLE: center focused row within the 720px visible area (306..1026)
-      ' translationY + focusedRowY = (720 - rowHeight) / 2
-      translationY = int((720 - rowHeight) / 2) - focusedRowY
+      ' MIDDLE: center focused row within the visible area (EXTRAS_PANEL_TOP_Y..ACTION_SAFE_BOTTOM_Y)
+      translationY = int((ACTION_SAFE_BOTTOM_Y - EXTRAS_PANEL_TOP_Y - rowHeight) / 2) - focusedRowY
     end if
     m.top.targetTranslationY = translationY
   end if
