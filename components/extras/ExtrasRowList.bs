@@ -814,7 +814,7 @@ sub onRowItemFocused()
   m.top.focusedItem = m.top.content.getChild(rowIndex).getChild(m.top.rowItemFocused[1])
 
   ' Skip panel position recalculation when horizontal item scrolling fires rowItemFocused
-  ' without an actual row change (avoids redundant translation and vertFocusOffset writes).
+  ' without an actual row change (avoids redundant translation/targetTranslationY updates).
   if rowIndex = m.lastFocusedRowIndex then return
   m.lastFocusedRowIndex = rowIndex
 
