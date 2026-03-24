@@ -1,11 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/Image.bs"
-import "pkg:/source/api/Items.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/config.bs"
-import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -34,13 +30,14 @@ sub loadItems()
   end if
 
   if m.top.ItemType = "LogoImage"
-    logoImageExists = GetApi().HeadImageURLByName(m.top.itemId, "logo")
-    if logoImageExists
+    ' HEAD request to check if logo image exists — res.ok = true means 200
+    req = GetApi().BuildHeadItemImageRequest(m.top.itemId, "logo", 0)
+    res = fetchRes(req, "logoHead")
+    if isValid(res) and res.ok
       m.top.content = [GetApi().GetImageURL(m.top.itemId, "logo", 0, { "maxHeight": 212, "maxWidth": 500, "quality": "90" })]
     else
       m.top.content = []
     end if
-
     return
   end if
 
@@ -117,7 +114,7 @@ sub loadItems()
     params.append({ IncludeItemTypes: m.top.ItemType })
   end if
 
-  ' queryType drives which api namespace is called — used for both the main request
+  ' queryType drives which Build*Request() is called — used for both the main request
   ' and the optional 2nd lookup for the # (special characters) filter below.
   queryType = "usersItems"
 
@@ -200,10 +197,10 @@ sub loadItems()
         tmp = CreateObject("roSGNode", "ContentNode")
         tmp.title = item.name
 
-        genreData = GetApi().GetItemsByQuery({
+        genreReq = GetApi().BuildGetItemsByQueryRequest({
           SortBy: "Random",
           SortOrder: "Ascending",
-          IncludeItemTypes: m.top.itemType,
+          IncludeItemTypes: m.top.itemtype,
           Recursive: true,
           Fields: "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags",
           ImageTypeLimit: 1,
@@ -213,8 +210,12 @@ sub loadItems()
           EnableTotalRecordCount: false,
           ParentId: m.top.itemId
         })
+        genreData = invalid
+        if isValid(genreReq)
+          genreData = fetchJson(genreReq, "genreItems_" + item.id)
+        end if
 
-        if genreData.Items.Count() > 5
+        if isValid(genreData) and genreData.Items.Count() > 5
           ' Add View All item to the start of the row — transform the genre item itself
           viewAllNode = m.transformer.transformBaseItem(item)
           viewAllNode.title = tr("View All") + " " + item.name
@@ -235,10 +236,12 @@ sub loadItems()
           tmp.appendChild(viewAllNode)
         end if
 
-        for each genreItem in genreData.Items
-          row = m.transformer.transformBaseItem(genreItem)
-          tmp.appendChild(row)
-        end for
+        if isValid(genreData)
+          for each genreItem in genreData.Items
+            row = m.transformer.transformBaseItem(genreItem)
+            tmp.appendChild(row)
+          end for
+        end if
 
       else
         ' All other item types: transform to JellyfinBaseItem
@@ -253,9 +256,9 @@ sub loadItems()
         ' Studio items (IsFolder=false, type="Studio") don't carry a CollectionType from the API.
         ' Infer it from the item type being fetched so DeterminePresenterType can route correctly.
         if LCase(tmp.type) = "studio" and not isValidAndNotEmpty(tmp.collectionType)
-          if LCase(m.top.itemType) = "movie"
+          if LCase(m.top.itemtype) = "movie"
             tmp.collectionType = "movies"
-          else if LCase(m.top.itemType) = "series"
+          else if LCase(m.top.itemtype) = "series"
             tmp.collectionType = "tvshows"
           end if
         end if
@@ -269,21 +272,21 @@ sub loadItems()
   m.top.content = results
 end sub
 
-' Routes an item query through the ApiClient (GetApi()) based on queryType.
+' Routes an item query through Build*Request() + pool based on queryType.
 ' Used for both the main request and the optional 2nd lookup for the # filter.
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
 function executeItemQuery(queryType as string, params as object) as dynamic
   if queryType = "liveTV"
-    return GetApi().GetLiveTVChannels(params)
+    return fetchJson(GetApi().BuildGetLiveTVChannelsRequest(params), "itemQuery_liveTV")
   else if queryType = "studios"
-    return GetApi().GetStudios(params)
+    return fetchJson(GetApi().BuildGetStudiosRequest(params), "itemQuery_studios")
   else if queryType = "genres"
-    return GetApi().GetGenres(params)
+    return fetchJson(GetApi().BuildGetGenresRequest(params), "itemQuery_genres")
   else if queryType = "artists"
-    return GetApi().GetArtists(params)
+    return fetchJson(GetApi().BuildGetArtistsRequest(params), "itemQuery_artists")
   else if queryType = "albumArtists"
-    return GetApi().GetAlbumArtists(params)
+    return fetchJson(GetApi().BuildGetAlbumArtistsRequest(params), "itemQuery_albumArtists")
   end if
   ' default: "usersItems"
-  return GetApi().GetItemsByQuery(params)
+  return fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "itemQuery_usersItems")
 end function

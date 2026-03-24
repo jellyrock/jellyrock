@@ -1,10 +1,15 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.top.functionName = "getFiltersTask"
 end sub
 
+' Orchestrator Task: submits to ApiTask pool via queue and waits off the render thread.
 sub getFiltersTask()
-  m.filters = GetApi().GetFilters(m.top.params)
-  m.top.filters = m.filters
+  res = fetchRes(GetApi().BuildGetFiltersRequest(m.top.params), "filters")
+  if isValid(res) and res.ok
+    m.top.filters = res.json
+  end if
 end sub

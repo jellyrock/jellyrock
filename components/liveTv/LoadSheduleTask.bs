@@ -1,16 +1,14 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
-import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.top.functionName = "loadSchedule"
 end sub
 
+' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
 sub loadSchedule()
-
-  results = []
-
   params = {
     UserId: m.global.user.id,
     SortBy: "startDate",
@@ -22,31 +20,22 @@ sub loadSchedule()
     MinEndDate: m.top.startTime
   }
 
-  url = "LiveTv/Programs"
-
-  resp = APIRequest(url)
-  data = postJson(resp, FormatJson(params))
-
-  if not isValid(data)
-    m.top.schedule = results
-    return
-  end if
-
+  res = fetchRes(GetApi().BuildGetLiveTvScheduleRequest(params), "liveTvSchedule")
   results = []
 
-  transformer = JellyfinDataTransformer()
-  for each item in data.Items
-    node = transformer.transformBaseItem(item)
-    ' Set hdSmallIconUrl for TimeGrid recording indicator (ContentNode built-in read by Roku TimeGrid)
-    if isValidAndNotEmpty(node.timerId)
-      node.hdsmalliconurl = "pkg:/images/red.png"
-    else
-      node.hdsmalliconurl = ""
-    end if
-    results.push(node)
-  end for
-
+  if isValid(res) and res.ok and isValid(res.json)
+    transformer = JellyfinDataTransformer()
+    for each item in res.json.Items
+      node = transformer.transformBaseItem(item)
+      ' Set hdSmallIconUrl for TimeGrid recording indicator (ContentNode built-in read by Roku TimeGrid)
+      if isValidAndNotEmpty(node.timerId)
+        node.hdsmalliconurl = "pkg:/images/red.png"
+      else
+        node.hdsmalliconurl = ""
+      end if
+      results.push(node)
+    end for
+  end if
 
   m.top.schedule = results
-
 end sub
