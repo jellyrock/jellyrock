@@ -1,0 +1,71 @@
+import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/roku_modules/rr/Requests.brs"
+
+sub init()
+  m.top.functionName = "runApiLoop"
+end sub
+
+' Continuous-server event loop (Architecture C).
+' Waits for request field writes, executes HTTP via roku-requests, writes response.
+' Never exits — lives for the lifetime of the app alongside the global pool.
+sub runApiLoop()
+  port = CreateObject("roMessagePort")
+  m.top.observeField("request", port)
+  ' Signal that our observer is registered. The ApiQueueTask coordinator waits
+  ' for all pool slots to be ready before dispatching — without this, the
+  ' coordinator could write to our request field before we're listening,
+  ' causing a permanently dead slot.
+  m.top.ready = true
+
+  while true
+    msg = wait(0, port)
+    if type(msg) = "roSGNodeEvent" and msg.getField() = "request"
+      ' Safe to read m.top.request directly: the coordinator only dispatches
+      ' one request per slot at a time (m.inFlight prevents reuse until we
+      ' write the response), so the field always reflects our pending request.
+      req = m.top.request
+      if isValid(req)
+        m.top.response = executeRequest(req)
+      end if
+    end if
+  end while
+end sub
+
+' Executes a single HTTP request via roku-requests.
+' @param req - request AA: { requestId, method, url, headers?, body?, timeout? }
+' @return response AA: { requestId, ok, statusCode, json, text }
+function executeRequest(req as object) as object
+  method = req.method
+  if not isValid(method) or method = "" then method = "GET"
+
+  ' Auth header first; merge in any caller-provided extras
+  headers = { Authorization: buildAuthHeader() }
+  if isValid(req.headers) and type(req.headers) = "roAssociativeArray"
+    headers.append(req.headers)
+  end if
+
+  ' timeout in request AA is seconds; rr_Requests expects milliseconds
+  timeout = 30000
+  if isValid(req.timeout) then timeout = req.timeout * 1000
+
+  args = {
+    headers: headers,
+    timeout: timeout,
+    useCache: false
+  }
+
+  if isValid(req.body) and req.body <> ""
+    args.data = req.body
+  end if
+
+  r = rr_Requests().request(method, req.url, args)
+
+  return {
+    requestId: req.requestId,
+    ok: r.ok,
+    statusCode: r.statusCode,
+    json: r.json,
+    text: r.text
+  }
+end function

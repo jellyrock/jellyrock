@@ -74,9 +74,31 @@ end sub
 ' Set all global variables that require an roSGNode
 ' NOTE: roSGNodes must be created after m.screen is shown
 sub setGlobalNodes()
-  playstateTask = CreateObject("roSGNode", "PlaystateTask")
-  playstateTask.id = "playstateTask"
-  m.global.addFields({ playstateTask: playstateTask })
+  ' Tier 1 API pool — 3 persistent ApiTask instances (Architecture C continuous-server)
+  ' Each task runs an infinite while loop; control = "RUN" must be set once to start it.
+  apiPool0 = CreateObject("roSGNode", "ApiTask")
+  apiPool0.id = "apiPool0"
+  apiPool0.control = "RUN"
+  apiPool1 = CreateObject("roSGNode", "ApiTask")
+  apiPool1.id = "apiPool1"
+  apiPool1.control = "RUN"
+  apiPool2 = CreateObject("roSGNode", "ApiTask")
+  apiPool2.id = "apiPool2"
+  apiPool2.control = "RUN"
+  m.global.addFields({
+    apiPool0: apiPool0,
+    apiPool1: apiPool1,
+    apiPool2: apiPool2
+  })
+
+  ' FIFO queue coordinator — dispatches queued requests to free pool slots.
+  ' Must start after the pool nodes are on m.global so it can read them in runQueueLoop.
+  apiQueue = CreateObject("roSGNode", "ApiQueueTask")
+  apiQueue.control = "RUN"
+  m.global.addFields({ apiQueue: apiQueue })
+
+  ' Tier 2 side-effect task — single persistent SideEffectTask (Architecture B re-triggered)
+  m.global.addFields({ sideEffectTask: CreateObject("roSGNode", "SideEffectTask") })
 
   sceneManager = CreateObject("roSGNode", "SceneManager")
   sceneManager.observeField("dataReturned", m.port)

@@ -1,0 +1,100 @@
+import "pkg:/source/utils/misc.bs"
+
+' Submits a request to the API queue coordinator and blocks the calling Task thread
+' until the response arrives (or a 30-second timeout elapses).
+'
+' Safe to call concurrently from multiple Task threads — each request gets its own
+' ApiResultNode, so responses are never mixed up between callers. The coordinator
+' (ApiQueueTask) is the only entity that dispatches to pool slots, eliminating the
+' TOCTOU race that existed when callers claimed slots directly.
+'
+' Delivery mechanism: the ApiResultNode is appended as a CHILD of the coordinator
+' node. This is immune to SceneGraph port-event coalescing — even if multiple
+' concurrent enqueue wakeup events merge into one, the coordinator reads ALL
+' unprocessed children when it wakes up, so no request is ever lost.
+'
+' @param req      - request AA from a Build*Request() method; returns invalid if invalid
+' @param requestId - unique string identifying this request (echoed in the response AA)
+' @return response AA { requestId, ok, statusCode, json, text } or invalid on timeout
+function fetchRes(req as dynamic, requestId as string) as dynamic
+  if not isValid(req) then return invalid
+
+  apiQueue = m.global.apiQueue
+  if not isValid(apiQueue) then return invalid
+
+  ' Startup ordering guard: the coordinator sets ready=true only AFTER all 3 pool
+  ' tasks have registered their request observers AND the coordinator has registered
+  ' its own observers. This guarantees the full pipeline (pool → coordinator →
+  ' callers) is operational before any request flows.
+  ' After the first request this check costs a single field-read rendezvous; it is
+  ' effectively free for the rest of the session once the pipeline is up.
+  if not apiQueue.ready
+    readyPort = CreateObject("roMessagePort")
+    apiQueue.observeField("ready", readyPort)
+    ' Double-check after registering: ready may have become true in the narrow window
+    ' between the first check and observeField(), in which case we skip the wait.
+    ' Loop with short waits: a single 5s wait can miss the event if the coordinator
+    ' becomes ready between observeField and the first wait (event consumed by
+    ' the observe itself on some firmware). Re-checking actual field state each
+    ' iteration makes this immune to event delivery quirks.
+    for _attempt = 0 to 50
+      if apiQueue.ready then exit for
+      wait(200, readyPort)
+    end for
+    apiQueue.unobserveField("ready")
+  end if
+
+  req.requestId = requestId
+
+  ' One result node per request — carries the request in and the response out.
+  ' The coordinator reads 'request', dispatches to a pool slot, then writes
+  ' 'result' and sets 'done' when the slot completes.
+  resultNode = CreateObject("roSGNode", "ApiResultNode")
+  resultNode.request = req
+
+  ' Observe BEFORE appending. If the request completes before we reach wait(),
+  ' the 'done' event is already in the port queue and wait() returns immediately.
+  port = CreateObject("roMessagePort")
+  resultNode.observeField("done", port)
+
+  ' Append the result node as a child of the coordinator. The coordinator reads
+  ' ALL unprocessed children when woken up — this is immune to event coalescing,
+  ' unlike writing data to a shared field where concurrent writes can merge events.
+  apiQueue.appendChild(resultNode)
+  ' Write to enqueue as a wake-up signal. The coordinator ignores the event data
+  ' and reads children instead. Even if multiple wakeup writes coalesce into a
+  ' single event, the coordinator processes all pending children when it wakes.
+  apiQueue.enqueue = requestId
+
+  msg = wait(30000, port)
+  if type(msg) = "roSGNodeEvent"
+    return resultNode.result
+  end if
+  ' Timeout: the result node is orphaned. When the coordinator eventually delivers
+  ' the response it will write to the abandoned node (no crash), free the slot,
+  ' and dispatch the next queued request normally.
+  return invalid
+end function
+
+' Convenience wrapper — submits via the queue and returns the parsed JSON body.
+' Returns invalid on timeout, HTTP error, or if req is invalid.
+'
+' @param req       - request AA from a Build*Request() method
+' @param requestId - unique string identifying this request
+' @return res.json or invalid
+function fetchJson(req as dynamic, requestId as string) as dynamic
+  res = fetchRes(req, requestId)
+  if isValid(res) and res.ok then return res.json
+  return invalid
+end function
+
+' Submits a fire-and-forget request to the global SideEffectTask.
+' No response is observed. Calls are serialised — do not use for cancellable UI requests.
+'
+' @param req - request AA: { method, url, headers?, body?, timeout? }
+sub SubmitSideEffect(req as object)
+  sideEffectTask = m.global.sideEffectTask
+  if not isValid(sideEffectTask) then return
+  sideEffectTask.request = req
+  sideEffectTask.control = "RUN"
+end sub

@@ -1,0 +1,39 @@
+import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/roku_modules/rr/Requests.brs"
+
+sub init()
+  m.top.functionName = "executeSideEffect"
+end sub
+
+' Architecture B: re-triggered by setting request + control = "RUN".
+' Fire-and-forget — no output. Serialises must-complete calls (mark watched, playback state, etc.)
+sub executeSideEffect()
+  req = m.top.request
+  if not isValid(req) then return
+
+  method = req.method
+  if not isValid(method) or method = "" then method = "POST"
+
+  ' Auth header first; merge in any caller-provided extras
+  headers = { Authorization: buildAuthHeader() }
+  if isValid(req.headers) and type(req.headers) = "roAssociativeArray"
+    headers.append(req.headers)
+  end if
+
+  ' timeout in request AA is seconds; rr_Requests expects milliseconds
+  timeout = 30000
+  if isValid(req.timeout) then timeout = req.timeout * 1000
+
+  args = {
+    headers: headers,
+    timeout: timeout,
+    useCache: false
+  }
+
+  if isValid(req.body) and req.body <> ""
+    args.data = req.body
+  end if
+
+  rr_Requests().request(method, req.url, args)
+end sub

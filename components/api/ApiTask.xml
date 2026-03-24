@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<component name="ApiTask" extends="Task">
+  <interface>
+    <field id="request" type="assocarray" />
+    <field id="response" type="assocarray" />
+    <!--
+      Set to true by runApiLoop() immediately after registering the request
+      observer. The ApiQueueTask coordinator waits for all pool slots to be
+      ready before it starts dispatching — this prevents the startup race
+      where a request field write arrives before the observer is registered.
+    -->
+    <field id="ready" type="boolean" value="false" />
+  </interface>
+</component>
