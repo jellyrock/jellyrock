@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -36,8 +38,7 @@ sub ReportPlayback(state as string)
     "IsPaused": (LCase(m.top.state) = "paused")
   }
 
-  ' Report playstate via global task
-  playstateTask = m.global.playstateTask
-  playstateTask.setFields({ status: state, params: params })
-  playstateTask.control = "RUN"
+  ' Report playstate via side-effect task
+  req = GetApi().BuildPlaystateRequest(state, params)
+  if isValid(req) then SubmitSideEffect(req)
 end sub

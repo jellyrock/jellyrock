@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -203,20 +205,16 @@ end sub
 sub toggleFavorite()
   if not isValid(m.selectedFavoriteItem) then return
 
-  m.favItemsTask = createObject("roSGNode", "FavoriteItemsTask")
   if m.favoriteMenu.iconUri = "pkg:/images/icons/favorite.png"
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_selected.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite_selected.png"
-    ' Run the task to actually favorite it via API
-    m.favItemsTask.favTask = "Favorite"
-    m.favItemsTask.itemId = m.selectedFavoriteItem.id
-    m.favItemsTask.control = "RUN"
+    req = GetApi().BuildMarkFavoriteRequest(m.selectedFavoriteItem.id)
+    if isValid(req) then SubmitSideEffect(req)
   else
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite.png"
-    m.favItemsTask.favTask = "Unfavorite"
-    m.favItemsTask.itemId = m.selectedFavoriteItem.id
-    m.favItemsTask.control = "RUN"
+    req = GetApi().BuildUnmarkFavoriteRequest(m.selectedFavoriteItem.id)
+    if isValid(req) then SubmitSideEffect(req)
   end if
   ' Make sure we set the Favorite Heart color for the appropriate child
   setHeartColor("#cc3333")

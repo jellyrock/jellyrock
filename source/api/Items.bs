@@ -231,7 +231,9 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   return GetApi().PostPlaybackInfo(id, postData)
 end function
 
-' Search across all libraries
+' Search across all libraries.
+' NOTE: Called from both SearchTask (task thread — correct) and Main.bs (render thread — pre-existing
+' violation, to be fixed by migrating Main.bs search flow to use SearchTask asynchronously).
 function searchMedia(query as string)
   if query = "" then return []
 
