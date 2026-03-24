@@ -76,6 +76,23 @@ class ApiClient
     return sdkV1.users.GetItemsByQuery(userId, m.injectDefaults(params))
   end function
 
+  ' Build a request AA for GetItemsByQuery, for use with fetchRes() or fetchJson().
+  ' @param params - Query parameters (limit, sortBy, filters, etc.)
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildGetItemsByQueryRequest(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+
+    if m.getApiVersion() >= 2
+      queryParams = { userId: userId }
+      queryParams.append(mergedParams)
+      return { method: "GET", url: buildURL("/items/", queryParams) }
+    end if
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items", userId), mergedParams) }
+  end function
+
   ' Get resume items (Continue Watching) with automatic image injection
   ' @param params - Optional query parameters
   ' @returns API response or invalid on error
@@ -87,6 +104,22 @@ class ApiClient
       return sdkV2.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
     end if
     return sdkV1.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
+  end function
+
+  ' Build a request AA for GetResumeItems (Continue Watching), for use with fetchRes() or fetchJson().
+  ' Mirrors GetResumeItems(): applies injectDefaults, version-aware endpoint.
+  ' @param params - Optional query parameters
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetResumeItemsRequest(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    mergedParams = m.injectDefaults(params)
+    if m.getApiVersion() >= 2
+      queryParams = { userId: userId }
+      queryParams.append(mergedParams)
+      return { method: "GET", url: buildURL("/UserItems/Resume", queryParams) }
+    end if
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items/resume", userId), mergedParams) }
   end function
 
   ' Get suggestions with automatic image injection
@@ -113,6 +146,24 @@ class ApiClient
       return sdkV2.users.GetLatestMedia(userId, m.injectDefaults(params))
     end if
     return sdkV1.users.GetLatestMedia(userId, m.injectDefaults(params))
+  end function
+
+  ' Build a request AA for GetLatestMedia, for use with fetchRes() or fetchJson().
+  ' Both V1 and V2 return a bare array of BaseItemDto (not paginated).
+  ' V1: /users/{id}/items/latest (10.7.x–10.8.x)
+  ' V2: /Items/Latest?userId= (10.9+)
+  ' @param params - Optional query parameters (ParentId, Limit, etc.)
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetLatestMediaRequest(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    mergedParams = m.injectDefaults(params)
+    if m.getApiVersion() >= 2
+      queryParams = { userId: userId }
+      queryParams.append(mergedParams)
+      return { method: "GET", url: buildURL("/Items/Latest", queryParams) }
+    end if
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items/latest", userId), mergedParams) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -164,6 +215,19 @@ class ApiClient
     return sdk.shows.GetSeasons(seriesId, mergedParams)
   end function
 
+  ' Build a request AA for GetSeasons, for use with fetchRes() or fetchJson().
+  ' Mirrors GetSeasons(): applies injectDefaults and injects UserId.
+  ' @param seriesId - The series ID
+  ' @param params - Optional query parameters
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetSeasonsRequest(seriesId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+    return { method: "GET", url: buildURL(Substitute("/shows/{0}/seasons", seriesId), mergedParams) }
+  end function
+
   ' Get episodes for a TV season with automatic image injection
   ' @param seriesId - The series ID
   ' @param params - Optional query parameters (season number, etc.)
@@ -176,6 +240,20 @@ class ApiClient
     mergedParams.UserId = userId
 
     return sdk.shows.GetEpisodes(seriesId, mergedParams)
+  end function
+
+  ' Build a request AA for GetEpisodes, for use with fetchRes() or fetchJson().
+  ' @param seriesId - The series ID
+  ' @param params - Optional query parameters (StartItemId, Limit, etc.)
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildGetEpisodesRequest(seriesId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+
+    return { method: "GET", url: buildURL(Substitute("/shows/{0}/episodes", seriesId), mergedParams) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -202,6 +280,18 @@ class ApiClient
     return sdk.artists.Get(mergedParams)
   end function
 
+  ' Build a request AA to fetch all artists, for use with fetchRes() or fetchJson().
+  ' Mirrors GetArtists(): applies injectDefaults and injects UserId.
+  ' @param params - Query parameters
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetArtistsRequest(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+    return { method: "GET", url: buildURL("/artists", mergedParams) }
+  end function
+
   ' Get all persons with automatic image injection
   ' @param params - Query parameters (e.g. searchTerm, IsFavorite)
   ' @returns API response or invalid on error
@@ -214,6 +304,18 @@ class ApiClient
     return sdk.persons.Get(mergedParams)
   end function
 
+  ' Build a request AA for GetPersons, for use with fetchRes() or fetchJson().
+  ' Mirrors GetPersons(): applies injectDefaults and injects UserId.
+  ' @param params - Query parameters (e.g. IsFavorite, searchTerm)
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetPersonsRequest(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+    return { method: "GET", url: buildURL("/persons", mergedParams) }
+  end function
+
   ' Get all album artists with automatic image injection
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -224,6 +326,26 @@ class ApiClient
     mergedParams = m.injectDefaults(params)
     mergedParams.UserId = userId
     return sdk.artists.GetAlbumArtists(mergedParams)
+  end function
+
+  ' Build a request AA to fetch all album artists, for use with fetchRes() or fetchJson().
+  ' Mirrors GetAlbumArtists(): applies injectDefaults and injects UserId.
+  ' @param params - Query parameters
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetAlbumArtistsRequest(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+    return { method: "GET", url: buildURL("/artists/albumartists", mergedParams) }
+  end function
+
+  ' Build a request AA to get similar artists, for use with fetchRes() or fetchJson().
+  ' @param itemId - The artist item ID
+  ' @param params - Optional query parameters (userId, limit, etc.)
+  ' @returns Request AA: { method, url }
+  function BuildGetArtistSimilarRequest(itemId as string, params = {} as object) as object
+    return { method: "GET", url: buildURL(Substitute("/Artists/{0}/Similar", itemId), params) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -243,6 +365,21 @@ class ApiClient
     mergedParams.UserId = userId
 
     return sdk.playlists.GetItems(playlistId, mergedParams)
+  end function
+
+  ' Build a request AA for GetPlaylistItems, for use with fetchRes() or fetchJson().
+  ' @param playlistId - The playlist ID
+  ' @param params - Optional query parameters
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildGetPlaylistItemsRequest(playlistId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = {}
+    mergedParams.append(params)
+    mergedParams.UserId = userId
+
+    return { method: "GET", url: buildURL(Substitute("/playlists/{0}/items", playlistId), mergedParams) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -340,6 +477,19 @@ class ApiClient
     return sdkV1.users.GetSpecialFeatures(userId, itemId)
   end function
 
+  ' Build a request AA for GetSpecialFeatures, for use with fetchRes() or fetchJson().
+  ' Mirrors GetSpecialFeatures(): version-aware endpoint.
+  ' @param itemId - The item ID
+  ' @returns Request AA: { method, url } or invalid if no userId (V1 only)
+  function BuildGetSpecialFeaturesRequest(itemId as string) as dynamic
+    if m.getApiVersion() >= 2
+      return { method: "GET", url: buildURL(Substitute("/Items/{0}/SpecialFeatures", itemId), {}) }
+    end if
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}/specialfeatures", userId, itemId), {}) }
+  end function
+
   ' Mark item as favorite
   ' @param itemId - The item ID
   ' @returns API response or invalid on error
@@ -353,6 +503,19 @@ class ApiClient
     return sdkV1.users.MarkFavorite(userId, itemId)
   end function
 
+  ' Build a request AA to mark an item as favorite, for use with SubmitSideEffect().
+  ' @param itemId - The item ID
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildMarkFavoriteRequest(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    if m.getApiVersion() >= 2
+      return { method: "POST", url: buildURL(Substitute("/UserFavoriteItems/{0}", itemId), { userId: userId }) }
+    end if
+    return { method: "POST", url: buildURL(Substitute("users/{0}/favoriteitems/{1}", userId, itemId)) }
+  end function
+
   ' Unmark item as favorite
   ' @param itemId - The item ID
   ' @returns API response or invalid on error
@@ -364,6 +527,19 @@ class ApiClient
       return sdkV2.users.UnmarkFavorite(userId, itemId)
     end if
     return sdkV1.users.UnmarkFavorite(userId, itemId)
+  end function
+
+  ' Build a request AA to unmark an item as favorite, for use with SubmitSideEffect().
+  ' @param itemId - The item ID
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildUnmarkFavoriteRequest(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    if m.getApiVersion() >= 2
+      return { method: "DELETE", url: buildURL(Substitute("/UserFavoriteItems/{0}", itemId), { userId: userId }) }
+    end if
+    return { method: "DELETE", url: buildURL(Substitute("users/{0}/favoriteitems/{1}", userId, itemId)) }
   end function
 
   ' Mark item as played
@@ -452,6 +628,38 @@ class ApiClient
     return sdk.sessions.PostProgress(params)
   end function
 
+  ' Build a playstate request AA for use with SubmitSideEffect().
+  ' Applies default playstate fields and routes to the correct session endpoint.
+  ' @param state - "start" | "update" | "stop" | "finished"
+  ' @param params - Playback parameters (ItemId, PositionTicks, IsPaused, etc.)
+  ' @returns Request AA: { method, url, body, headers } or invalid if state unknown
+  function BuildPlaystateRequest(state as string, params as object) as dynamic
+    merged = {
+      IsPaused: false,
+      PositionTicks: 0
+    }
+    for each item in params.items()
+      merged[item.key] = item.value
+    end for
+
+    if state = "start"
+      path = "/sessions/playing"
+    else if state = "update"
+      path = "/sessions/playing/progress"
+    else if state = "stop" or state = "finished"
+      path = "/sessions/playing/stopped"
+    else
+      return invalid
+    end if
+
+    return {
+      method: "POST",
+      url: buildURL(path),
+      body: FormatJson(merged),
+      headers: { "Content-Type": "application/json" }
+    }
+  end function
+
   ' Get active sessions
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -478,6 +686,12 @@ class ApiClient
   ' @returns API response or invalid on error
   function GetBrandingConfiguration() as dynamic
     return sdk.branding.GetConfiguration()
+  end function
+
+  ' Build a request AA for GetBrandingConfiguration, for use with fetchRes() or fetchJson().
+  ' @returns Request AA: { method, url }
+  function BuildGetBrandingConfigurationRequest() as object
+    return { method: "GET", url: buildURL("/branding/configuration") }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -557,6 +771,18 @@ class ApiClient
     return sdkV1.users.GetViews(userId)
   end function
 
+  ' Build a request AA for GetViews, for use with fetchRes() or fetchJson().
+  ' Mirrors GetViews(): version-aware endpoint.
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetViewsRequest() as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    if m.getApiVersion() >= 2
+      return { method: "GET", url: buildURL("/UserViews", { userId: userId }) }
+    end if
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/views", userId), {}) }
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' NEXT UP ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -572,6 +798,18 @@ class ApiClient
     mergedParams.UserId = userId
 
     return sdk.shows.GetNextUp(mergedParams)
+  end function
+
+  ' Build a request AA for GetNextUp, for use with fetchRes() or fetchJson().
+  ' Mirrors GetNextUp(): applies injectDefaults and injects UserId.
+  ' @param params - Query parameters (SeriesId, limit, EnableRewatching, etc.)
+  ' @returns Request AA: { method, url } or invalid if no userId
+  function BuildGetNextUpRequest(params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    mergedParams = m.injectDefaults(params)
+    mergedParams.UserId = userId
+    return { method: "GET", url: buildURL("/shows/nextup", mergedParams) }
   end function
 
   ' Get upcoming episodes with automatic image injection
@@ -612,6 +850,21 @@ class ApiClient
     return sdk.videos.GetAdditionalParts(itemId)
   end function
 
+  ' Build a request AA for GetAdditionalParts, for use with fetchRes() or fetchJson().
+  ' @param itemId - The video item ID
+  ' @returns Request AA: { method, url }
+  function BuildGetAdditionalPartsRequest(itemId as string) as object
+    return { method: "GET", url: buildURL(Substitute("/videos/{0}/additionalparts", itemId), {}) }
+  end function
+
+  ' Build a request AA to get similar items, for use with fetchRes() or fetchJson().
+  ' @param itemId - The item ID
+  ' @param params - Optional query parameters (userId, limit, etc.)
+  ' @returns Request AA: { method, url }
+  function BuildGetSimilarItemsRequest(itemId as string, params = {} as object) as object
+    return { method: "GET", url: buildURL(Substitute("/Items/{0}/Similar", itemId), params) }
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' FILTERS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -621,6 +874,13 @@ class ApiClient
   ' @returns API response or invalid on error
   function GetFilters(params = {} as object) as dynamic
     return sdk.items.GetFilters(params)
+  end function
+
+  ' Build a request AA for GetFilters, for use with fetchRes() or fetchJson().
+  ' @param params - Query parameters (userid, parentid, includeitemtypes, etc.)
+  ' @returns Request AA: { method, url }
+  function BuildGetFiltersRequest(params = {} as object) as object
+    return { method: "GET", url: buildURL("/items/filters", params) }
   end function
 
   ' Get items by query (alternative endpoint)
@@ -642,6 +902,16 @@ class ApiClient
   ' @returns API response or invalid on error
   function HeadImageURLByName(id as string, imageType as string, imageIndex = 0 as integer, params = {} as object) as dynamic
     return sdk.items.HeadImageURLByName(id, imageType, imageIndex, params)
+  end function
+
+  ' Build a HEAD request AA to check if an item image exists, for use with fetchRes() or fetchJson().
+  ' Caller checks res.ok — no body is returned for HEAD requests.
+  ' @param id - Item ID
+  ' @param imageType - Type of image (e.g. "logo", "Primary")
+  ' @param imageIndex - Image index (default 0)
+  ' @returns Request AA: { method, url }
+  function BuildHeadItemImageRequest(id as string, imageType as string, imageIndex = 0 as integer) as object
+    return { method: "HEAD", url: buildURL(Substitute("/items/{0}/images/{1}/{2}", id, imageType, imageIndex.toStr()), {}) }
   end function
 
   ' Get image URL
@@ -678,12 +948,35 @@ class ApiClient
     return sdk.liveTV.GetChannels(params)
   end function
 
+  ' Build a request AA to fetch Live TV channels, for use with fetchRes() or fetchJson().
+  ' @param params - Query parameters
+  ' @returns Request AA: { method, url }
+  function BuildGetLiveTVChannelsRequest(params = {} as object) as object
+    return { method: "GET", url: buildURL("/livetv/channels", params) }
+  end function
+
   ' Get Live TV programs with automatic image injection
   ' @param params - Query parameters (e.g. SearchTerm, Limit)
   ' @returns API response or invalid on error
   function GetLiveTVPrograms(params = {} as object) as dynamic
     mergedParams = m.injectDefaults(params)
     return sdk.liveTV.GetPrograms(mergedParams)
+  end function
+
+  ' Build a request AA for GetLiveTVPrograms (full EPG search), for use with fetchRes() or fetchJson().
+  ' Mirrors GetLiveTVPrograms(): applies injectDefaults.
+  ' @param params - Query parameters (SearchTerm, Limit, etc.)
+  ' @returns Request AA: { method, url }
+  function BuildGetLiveTVProgramsRequest(params = {} as object) as object
+    mergedParams = m.injectDefaults(params)
+    return { method: "GET", url: buildURL("/livetv/programs", mergedParams) }
+  end function
+
+  ' Build a request AA to get recommended Live TV programs (On Now), for use with fetchRes() or fetchJson().
+  ' @param params - Query parameters (userId, isAiring, limit, etc.)
+  ' @returns Request AA: { method, url }
+  function BuildGetLiveTvRecommendedProgramsRequest(params = {} as object) as object
+    return { method: "GET", url: buildURL("/LiveTv/Programs/Recommended", params) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -697,6 +990,13 @@ class ApiClient
     return sdk.studios.Get(params)
   end function
 
+  ' Build a request AA to fetch studios, for use with fetchRes() or fetchJson().
+  ' @param params - Query parameters
+  ' @returns Request AA: { method, url }
+  function BuildGetStudiosRequest(params = {} as object) as object
+    return { method: "GET", url: buildURL("/studios", params) }
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' GENRES ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -706,6 +1006,87 @@ class ApiClient
   ' @returns API response or invalid on error
   function GetGenres(params = {} as object) as dynamic
     return sdk.genres.Get(params)
+  end function
+
+  ' Build a request AA to fetch genres, for use with fetchRes() or fetchJson().
+  ' @param params - Query parameters
+  ' @returns Request AA: { method, url }
+  function BuildGetGenresRequest(params = {} as object) as object
+    return { method: "GET", url: buildURL("/genres", params) }
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' LIVE TV ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA to fetch a single Live TV program, for use with fetchRes() or fetchJson().
+  ' @param programId - The program ID
+  ' @param params - Optional query parameters (UserId, etc.)
+  ' @returns Request AA: { method, url }
+  function BuildGetLiveTvProgramRequest(programId as string, params = {} as object) as object
+    return { method: "GET", url: buildURL(Substitute("/LiveTv/Programs/{0}", programId), params) }
+  end function
+
+  ' Build a request AA to fetch the Live TV schedule, for use with fetchRes() or fetchJson().
+  ' Uses POST because the channelIds list can exceed URL length limits.
+  ' @param params - Query/body parameters (channelIds, startTime, endTime, UserId, etc.)
+  ' @returns Request AA: { method, url, body, headers }
+  function BuildGetLiveTvScheduleRequest(params as object) as object
+    return {
+      method: "POST",
+      url: buildURL("/LiveTv/Programs"),
+      body: FormatJson(params),
+      headers: { "Content-Type": "application/json" }
+    }
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' LIVE TV RECORDING ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA to fetch Live TV timer defaults for a program, for use with fetchRes() or fetchJson().
+  ' @param programId - The program ID to pre-fill timer defaults
+  ' @returns Request AA: { method, url }
+  function BuildGetLiveTvTimerDefaultsRequest(programId as string) as object
+    return { method: "GET", url: buildURL("/LiveTv/Timers/Defaults", { programId: programId }) }
+  end function
+
+  ' Build a request AA to create a Live TV recording timer, for use with fetchRes() or fetchJson().
+  ' @param defaults - Timer defaults AA from BuildGetLiveTvTimerDefaultsRequest response
+  ' @returns Request AA: { method, url, body, headers }
+  function BuildCreateTimerRequest(defaults as object) as object
+    return {
+      method: "POST",
+      url: buildURL("/LiveTv/Timers"),
+      body: FormatJson(defaults),
+      headers: { "Content-Type": "application/json" }
+    }
+  end function
+
+  ' Build a request AA to create a Live TV series recording timer, for use with fetchRes() or fetchJson().
+  ' @param defaults - Timer defaults AA from BuildGetLiveTvTimerDefaultsRequest response
+  ' @returns Request AA: { method, url, body, headers }
+  function BuildCreateSeriesTimerRequest(defaults as object) as object
+    return {
+      method: "POST",
+      url: buildURL("/LiveTv/SeriesTimers"),
+      body: FormatJson(defaults),
+      headers: { "Content-Type": "application/json" }
+    }
+  end function
+
+  ' Build a request AA to cancel a Live TV recording timer, for use with SubmitSideEffect().
+  ' @param timerId - The timer ID to cancel
+  ' @returns Request AA: { method, url }
+  function BuildCancelTimerRequest(timerId as string) as object
+    return { method: "DELETE", url: buildURL(Substitute("/LiveTv/Timers/{0}", timerId)) }
+  end function
+
+  ' Build a request AA to cancel a Live TV series recording timer, for use with SubmitSideEffect().
+  ' @param timerId - The series timer ID to cancel
+  ' @returns Request AA: { method, url }
+  function BuildCancelSeriesTimerRequest(timerId as string) as object
+    return { method: "DELETE", url: buildURL(Substitute("/LiveTv/SeriesTimers/{0}", timerId)) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
