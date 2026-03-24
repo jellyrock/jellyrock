@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "@rokucommunity/bslint": "0.8.40",
-    "brighterscript": "0.70.3",
+    "brighterscript": "0.70.4",
     "brighterscript-formatter": "1.7.22",
     "brighterscript-xml-plugin": "0.3.2",
     "dotenv": "17.3.1",
@@ -26,7 +26,7 @@
     "xml2js": "0.6.2"
   },
   "overrides": {
-    "brighterscript": "0.70.3"
+    "brighterscript": "0.70.4"
   },
   "scripts": {
     "build": "npx rimraf build/ out/ && npx bsc --project bsconfig.json",
