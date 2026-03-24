@@ -5,7 +5,8 @@
   "description": "Roku client for Jellyfin media server",
   "dependencies": {
     "@rokucommunity/bslib": "0.1.1",
-    "log": "npm:roku-log@0.11.1"
+    "log": "npm:roku-log@0.11.1",
+    "rr": "npm:roku-requests@1.2.0"
   },
   "devDependencies": {
     "@rokucommunity/bslint": "0.8.40",
