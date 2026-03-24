@@ -8,7 +8,7 @@
     "log": "npm:roku-log@0.11.1"
   },
   "devDependencies": {
-    "@rokucommunity/bslint": "0.8.39",
+    "@rokucommunity/bslint": "0.8.40",
     "brighterscript": "0.70.3",
     "brighterscript-formatter": "1.7.21",
     "brighterscript-xml-plugin": "0.3.2",
