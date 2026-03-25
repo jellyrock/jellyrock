@@ -422,30 +422,6 @@ class ApiClient
     return { method: "POST", url: buildURL(Substitute("/items/{0}/playbackinfo", itemId)), body: FormatJson(postData) }
   end function
 
-  ' @deprecated Use BuildGetArtistSimilarRequest() with fetchRes()/fetchJson()
-  ' Get similar artists
-  ' @param id - Artist ID
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetSimilarArtists(id as string, params = {} as object) as dynamic
-    return sdk.artists.GetSimilar(id, params)
-  end function
-
-  ' Get similar albums
-  ' @param id - Album ID
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetSimilarAlbums(id as string, params = {} as object) as dynamic
-    return sdk.albums.GetSimilar(id, params)
-  end function
-
-  ' Get album instant mix
-  ' @param id - Album ID
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetAlbumInstantMix(id as string, params = {} as object) as dynamic
-    return sdk.albums.GetInstantMix(id, params)
-  end function
 
   ' Get local trailers for an item
   ' @param itemId - The item ID
@@ -461,19 +437,6 @@ class ApiClient
   end function
 
   ' @deprecated Use BuildGetSpecialFeaturesRequest() with fetchRes()/fetchJson()
-  ' Get special features for an item
-  ' @param itemId - The item ID
-  ' @returns API response or invalid on error
-  function GetSpecialFeatures(itemId as string) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetSpecialFeatures(userId, itemId)
-    end if
-    return sdkV1.users.GetSpecialFeatures(userId, itemId)
-  end function
-
   ' Build a request AA for GetSpecialFeatures, for use with fetchRes() or fetchJson().
   ' Mirrors GetSpecialFeatures(): version-aware endpoint.
   ' @param itemId - The item ID
@@ -553,32 +516,6 @@ class ApiClient
     return { method: "DELETE", url: buildURL(Substitute("/items/{0}", itemId)) }
   end function
 
-  ' Update user rating
-  ' @param itemId - The item ID
-  ' @param params - Rating parameters
-  ' @returns API response or invalid on error
-  function UpdateRating(itemId as string, params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.UpdateRating(userId, itemId, params)
-    end if
-    return sdkV1.users.UpdateRating(userId, itemId, params)
-  end function
-
-  ' Delete user rating
-  ' @param itemId - The item ID
-  ' @returns API response or invalid on error
-  function DeleteRating(itemId as string) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.DeleteRating(userId, itemId)
-    end if
-    return sdkV1.users.DeleteRating(userId, itemId)
-  end function
 
 
   ' ═══════════════════════════════════════════════════════════════════════════

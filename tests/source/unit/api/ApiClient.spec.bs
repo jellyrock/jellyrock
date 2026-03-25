@@ -203,13 +203,13 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetSpecialFeatures when userId is empty")
+    @it("returns invalid from BuildGetItemRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetSpecialFeatures(m.testItemId)
+      result = m.apiClient.BuildGetItemRequest(m.testItemId)
 
       localUser.id = originalId
 
@@ -268,26 +268,26 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from UpdateRating when userId is empty")
+    @it("returns invalid from BuildGetItemRawRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.UpdateRating(m.testItemId, { rating: 5 })
+      result = m.apiClient.BuildGetItemRawRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from DeleteRating when userId is empty")
+    @it("returns invalid from BuildGetInstantMixRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.DeleteRating(m.testItemId)
+      result = m.apiClient.BuildGetInstantMixRequest(m.testItemId)
 
       localUser.id = originalId
 
