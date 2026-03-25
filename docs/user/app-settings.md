@@ -307,13 +307,14 @@ Settings relating to how the application looks.
   - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
   - [Row Layout](#uiRowLayout)
   - [Theme Colors](#user-interface-general-theme-colors)
-    - [Primary](#uiThemeColorPrimary)
-    - [Secondary](#uiThemeColorSecondary)
+    - [Theme](#uiTheme)
     - [Background - Primary](#uiThemeColorBackgroundPrimary)
     - [Background - Secondary](#uiThemeColorBackgroundSecondary)
+    - [Primary](#uiThemeColorPrimary)
+    - [Secondary](#uiThemeColorSecondary)
+    - [Text - Disabled](#uiThemeColorTextDisabled)
     - [Text - Primary](#uiThemeColorTextPrimary)
     - [Text - Secondary](#uiThemeColorTextSecondary)
-    - [Text - Disabled](#uiThemeColorTextDisabled)
   - [Use Web Client's Home Section Arrangement](#uiHomeUseWebArrangement)
 - [Libraries](#user-interface-libraries)
   - [General](#user-interface-libraries-general)
@@ -439,31 +440,20 @@ Make the arrangement of the Roku home view sections match the web client's home 
 
 <a id="user-interface-general-theme-colors"></a>
 
-Customize the app's color scheme. Enter 6-digit hex codes (e.g. FF5733).
+Customize the app's color scheme. Choose a preset or create your own custom theme.
 
-<h5 id="uiThemeColorPrimary">Primary</h5>
+<h5 id="uiTheme">Theme</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorPrimary">Primary</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiTheme">Theme</a>
 
-Focus highlights and buttons. Default: 8B5CF6
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiThemeColorPrimary` |
-| Type | `text` |
-| Default | `8B5CF6` |
-
-<h5 id="uiThemeColorSecondary">Secondary</h5>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorSecondary">Secondary</a>
-
-Progress bars and accents. Default: 3B82F6
+Select a color theme. Choose 'Custom' to manually set individual colors.
 
 | Property | Value |
 | --- | --- |
-| Setting Name | `uiThemeColorSecondary` |
-| Type | `text` |
-| Default | `3B82F6` |
+| Setting Name | `uiTheme` |
+| Type | `radio` |
+| Default | `jellyrock` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>JellyRock</td><td><code>jellyrock</code></td></tr><tr><td>JellyRock (Black)</td><td><code>jellyrock-black</code></td></tr><tr><td>Custom</td><td><code>custom</code></td></tr></tbody></table> |
 
 <h5 id="uiThemeColorBackgroundPrimary">Background - Primary</h5>
 
@@ -489,6 +479,42 @@ Panel/card background color. Default: 161B22
 | Type | `text` |
 | Default | `161B22` |
 
+<h5 id="uiThemeColorPrimary">Primary</h5>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorPrimary">Primary</a>
+
+Focus highlights and buttons. Default: 8B5CF6
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiThemeColorPrimary` |
+| Type | `text` |
+| Default | `8B5CF6` |
+
+<h5 id="uiThemeColorSecondary">Secondary</h5>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorSecondary">Secondary</a>
+
+Progress bars and accents. Default: 3B82F6
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiThemeColorSecondary` |
+| Type | `text` |
+| Default | `3B82F6` |
+
+<h5 id="uiThemeColorTextDisabled">Text - Disabled</h5>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorTextDisabled">Text - Disabled</a>
+
+Muted/disabled/inactive text. Default: 4A4A4A
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiThemeColorTextDisabled` |
+| Type | `text` |
+| Default | `4A4A4A` |
+
 <h5 id="uiThemeColorTextPrimary">Text - Primary</h5>
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorTextPrimary">Text - Primary</a>
@@ -512,18 +538,6 @@ Secondary text. Default: A8A8A8
 | Setting Name | `uiThemeColorTextSecondary` |
 | Type | `text` |
 | Default | `A8A8A8` |
-
-<h5 id="uiThemeColorTextDisabled">Text - Disabled</h5>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorTextDisabled">Text - Disabled</a>
-
-Muted/disabled/inactive text. Default: 4A4A4A
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiThemeColorTextDisabled` |
-| Type | `text` |
-| Default | `4A4A4A` |
 
 ### Libraries
 
