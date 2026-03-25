@@ -480,6 +480,14 @@
       <translation>Exit JellyRock</translation>
     </message>
     <message>
+      <source>Failed to update favorite</source>
+      <translation>Failed to update favorite</translation>
+    </message>
+    <message>
+      <source>Failed to update watched status</source>
+      <translation>Failed to update watched status</translation>
+    </message>
+    <message>
       <source>Fallback Fonts</source>
       <translation>Fallback Fonts</translation>
     </message>
@@ -650,21 +658,12 @@
       <translation>LIVE</translation>
     </message>
     <message>
-      <source>Loading</source>
-      <translation>Loading</translation>
-    </message>
-    <message>
       <source>Loading Channel Data</source>
       <translation>Loading Channel Data</translation>
     </message>
     <message>
       <source>Loading Search Data</source>
       <translation>Loading Search Data</translation>
-    </message>
-    <message>
-      <source>Loading trailer</source>
-      <translation>Loading trailer</translation>
-      <extracomment>Dialog title in Main.brs</extracomment>
     </message>
     <message>
       <source>Login attempt failed.</source>
