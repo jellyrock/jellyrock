@@ -82,6 +82,9 @@ namespace tests
       ' Empty primaryImageTag (will be deleted by v1.4.0 migration)
       reg.write("primaryImageTag", "")
 
+      ' Theme color (v2.4.0 migration will detect this and set uiTheme=custom)
+      reg.write("uiThemeColorPrimary", "FF5733")
+
       reg.flush()
 
       ' WHEN: Migration runs
@@ -192,6 +195,10 @@ namespace tests
 
       ' AND: Empty primaryImageTag is cleaned up
       m.assertFalse(reg.exists("primaryImageTag"), "Empty primaryImageTag should be deleted")
+
+      ' AND: Theme preset migration detected custom colors and set uiTheme=custom
+      m.assertTrue(reg.exists("uiTheme"), "uiTheme should be set by theme preset migration")
+      m.assertEqual(reg.read("uiTheme"), "custom", "uiTheme should be 'custom' when custom colors exist")
     end function
 
     @it("preserves exact string values during migration")

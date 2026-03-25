@@ -24,6 +24,9 @@ const MUSIC_VIEW_MIGRATION_VERSION = "1.10.0"
 ' client version when uiTvShowsGoStraightToEpisodes setting was removed (season now uses ItemDetails)
 const TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION = "2.0.0"
 
+' client version when theme presets were added (detect existing custom colors and set uiTheme=custom)
+const THEME_PRESET_MIGRATION_VERSION = "2.4.0"
+
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()
   appLastRunVersion = m.global.app.lastRunVersion
@@ -376,6 +379,34 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
         reg.flush()
       else
         print `No uiTvShowsGoStraightToEpisodes cleanup needed for userid: ${section} (setting not found)`
+      end if
+    end if
+
+    ' THEME_PRESET_MIGRATION_VERSION - Set uiTheme=custom for users with existing custom theme colors
+    if isValid(lastRunVersion) and not versionChecker(lastRunVersion, THEME_PRESET_MIGRATION_VERSION)
+      m.wasMigrated = true
+
+      ' If user already has uiTheme set, skip (idempotent)
+      if not reg.exists("uiTheme")
+        ' Check if any custom theme color settings exist in registry
+        themeColorKeys = ["uiThemeColorPrimary", "uiThemeColorSecondary", "uiThemeColorBackgroundPrimary", "uiThemeColorBackgroundSecondary", "uiThemeColorTextPrimary", "uiThemeColorTextSecondary", "uiThemeColorTextDisabled"]
+        hasCustomColors = false
+        for each colorKey in themeColorKeys
+          if reg.exists(colorKey)
+            hasCustomColors = true
+            exit for
+          end if
+        end for
+
+        if hasCustomColors
+          print `Setting uiTheme=custom for userid: ${section} (existing custom theme colors detected)`
+          reg.write("uiTheme", "custom")
+          reg.flush()
+        else
+          print `No theme preset migration needed for userid: ${section} (no custom colors found)`
+        end if
+      else
+        print `No theme preset migration needed for userid: ${section} (uiTheme already set)`
       end if
     end if
   end for

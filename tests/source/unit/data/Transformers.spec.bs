@@ -682,6 +682,7 @@ namespace tests
 
       ' UI Settings
       m.assertEqual(result.uiGeneralEpisodeImages, "always")
+      m.assertEqual(result.uiTheme, "custom")
       m.assertEqual(result.uiFontFallback, false)
       m.assertEqual(result.uiDesignHideClock, true)
       m.assertEqual(result.uiDetailsMaxDaysNextUp, 365)
