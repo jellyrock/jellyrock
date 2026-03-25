@@ -95,22 +95,24 @@ namespace tests
     @describe("Icon poster has correct load params for texture memory")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    ' Roku XML numeric attributes are parsed as Floats, not Integers
     @it("toastIcon has loadWidth 32")
     function _()
       icon = m.toast.findNode("toastIcon")
-      m.assertEqual(icon.loadWidth, 32)
+      m.assertEqual(icon.loadWidth, 32.0)
     end function
 
     @it("toastIcon has loadHeight 32")
     function _()
       icon = m.toast.findNode("toastIcon")
-      m.assertEqual(icon.loadHeight, 32)
+      m.assertEqual(icon.loadHeight, 32.0)
     end function
 
+    ' Roku lowercases string field values set in XML
     @it("toastIcon has loadDisplayMode limitSize")
     function _()
       icon = m.toast.findNode("toastIcon")
-      m.assertEqual(icon.loadDisplayMode, "limitSize")
+      m.assertEqual(icon.loadDisplayMode, "limitsize")
     end function
 
   end class
