@@ -231,76 +231,26 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   return GetApi().PostPlaybackInfo(id, postData)
 end function
 
-' Search across all libraries.
-' NOTE: Called from both SearchTask (task thread — correct) and Main.bs (render thread — pre-existing
-' violation, to be fixed by migrating Main.bs search flow to use SearchTask asynchronously).
-function searchMedia(query as string)
-  if query = "" then return []
+' Render-thread wrapper: delegates search to SearchTask (task thread) and blocks until complete.
+' Used by Main.bs SearchBox flow which shows a ProgressDialog while waiting.
+function searchMedia(query as string) as object
+  if query = "" then return { Items: [], TotalRecordCount: 0 }
 
-  transformer = JellyfinDataTransformer()
-  allItems = []
+  searchTask = CreateObject("roSGNode", "SearchTask")
+  port = CreateObject("roMessagePort")
+  searchTask.observeField("results", port)
+  searchTask.query = query
+  searchTask.control = "RUN"
 
-  ' Regular library items — Person and MusicArtist are fetched via dedicated endpoints below.
-  ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
-  data = GetApi().GetItemsByQuery({
-    "searchTerm": query,
-    "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
-    "EnableTotalRecordCount": false,
-    "Recursive": true,
-    "limit": 100
-  })
-  if isValid(data) and isValid(data.Items)
-    for each item in data.Items
-      ' Live TV recordings come back from /Items as the content type (Movie/Episode).
-      ' The only reliable discriminator is the container format: recordings are always
-      ' stored as MPEG transport streams ("ts"), while library items never are.
-      if LCase(item.Container ?? "") = "ts"
-        item.Type = "Recording"
-      end if
-      allItems.push(transformer.transformBaseItem(item))
-    end for
+  ' Block until SearchTask completes (30s timeout matches fetchRes)
+  msg = wait(30000, port)
+  searchTask.unobserveField("results")
+  searchTask.control = "STOP"
+
+  if isValid(msg) and isValid(searchTask.results)
+    return searchTask.results
   end if
-
-  ' People — /Items does not return Person type; /Persons endpoint required.
-  personData = GetApi().GetPersons({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  })
-  if isValid(personData) and isValid(personData.Items)
-    for each item in personData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  ' Artists — /Items does not return MusicArtist type; /Artists endpoint required.
-  artistData = GetApi().GetArtists({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  })
-  if isValid(artistData) and isValid(artistData.Items)
-    for each item in artistData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  ' Live TV Programs — /LiveTv/Programs searches the full EPG; /Items only covers recordings.
-  programData = GetApi().GetLiveTVPrograms({
-    "SearchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  })
-  if isValid(programData) and isValid(programData.Items)
-    for each item in programData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  result = {}
-  result.Items = allItems
-  result.TotalRecordCount = allItems.count()
-  return result
+  return { Items: [], TotalRecordCount: 0 }
 end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.
