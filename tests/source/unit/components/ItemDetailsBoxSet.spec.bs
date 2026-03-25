@@ -66,22 +66,22 @@ namespace tests
       m.assertEqual(playBtn.text, "Play All")
     end function
 
-    @it("second button is Watched")
+    @it("second button is Shuffle")
     function _()
       item = m.makeBoxSet()
       m.itemDetails.itemContent = item
 
-      watchedBtn = m.buttonGrp.getChild(1)
-      m.assertEqual(watchedBtn.id, "watchedButton")
+      shuffleBtn = m.buttonGrp.getChild(1)
+      m.assertEqual(shuffleBtn.id, "shuffleButton")
     end function
 
-    @it("third button is Shuffle")
+    @it("third button is Watched")
     function _()
       item = m.makeBoxSet()
       m.itemDetails.itemContent = item
 
-      shuffleBtn = m.buttonGrp.getChild(2)
-      m.assertEqual(shuffleBtn.id, "shuffleButton")
+      watchedBtn = m.buttonGrp.getChild(2)
+      m.assertEqual(watchedBtn.id, "watchedButton")
     end function
 
     @it("fourth button is Favorite")
