@@ -334,56 +334,102 @@
           },
           {
             "title": "Theme Colors",
-            "description": "Customize the app's color scheme. Enter 6-digit hex codes (e.g. FF5733).",
+            "description": "Customize the app's color scheme. Choose a preset or create your own custom theme.",
             "children": [
               {
-                "title": "Primary",
-                "description": "Focus highlights and buttons. Default: 8B5CF6",
-                "settingName": "uiThemeColorPrimary",
-                "type": "text",
-                "default": "8B5CF6"
-              },
-              {
-                "title": "Secondary",
-                "description": "Progress bars and accents. Default: 3B82F6",
-                "settingName": "uiThemeColorSecondary",
-                "type": "text",
-                "default": "3B82F6"
+                "title": "Theme",
+                "description": "Select a color theme. Choose 'Custom' to manually set individual colors.",
+                "settingName": "uiTheme",
+                "type": "radio",
+                "default": "jellyrock",
+                "options": [
+                  {
+                    "title": "JellyRock",
+                    "id": "jellyrock",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "8B5CF6",
+                      "uiThemeColorSecondary": "3B82F6",
+                      "uiThemeColorBackgroundPrimary": "0D1117",
+                      "uiThemeColorBackgroundSecondary": "161B22",
+                      "uiThemeColorTextPrimary": "F0F0F0",
+                      "uiThemeColorTextSecondary": "A8A8A8",
+                      "uiThemeColorTextDisabled": "4A4A4A"
+                    }
+                  },
+                  {
+                    "title": "JellyRock (Black)",
+                    "id": "jellyrock-black",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "8B5CF6",
+                      "uiThemeColorSecondary": "3B82F6",
+                      "uiThemeColorBackgroundPrimary": "000000",
+                      "uiThemeColorBackgroundSecondary": "0D0D0D",
+                      "uiThemeColorTextPrimary": "F0F0F0",
+                      "uiThemeColorTextSecondary": "A8A8A8",
+                      "uiThemeColorTextDisabled": "4A4A4A"
+                    }
+                  },
+                  {
+                    "title": "Custom",
+                    "id": "custom"
+                  }
+                ]
               },
               {
                 "title": "Background - Primary",
                 "description": "Main background color. Default: 0D1117",
                 "settingName": "uiThemeColorBackgroundPrimary",
                 "type": "text",
-                "default": "0D1117"
+                "default": "0D1117",
+                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
               },
               {
                 "title": "Background - Secondary",
                 "description": "Panel/card background color. Default: 161B22",
                 "settingName": "uiThemeColorBackgroundSecondary",
                 "type": "text",
-                "default": "161B22"
+                "default": "161B22",
+                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
               },
               {
-                "title": "Text - Primary",
-                "description": "Main text color. Default: F0F0F0",
-                "settingName": "uiThemeColorTextPrimary",
+                "title": "Primary",
+                "description": "Focus highlights and buttons. Default: 8B5CF6",
+                "settingName": "uiThemeColorPrimary",
                 "type": "text",
-                "default": "F0F0F0"
+                "default": "8B5CF6",
+                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
               },
               {
-                "title": "Text - Secondary",
-                "description": "Secondary text. Default: A8A8A8",
-                "settingName": "uiThemeColorTextSecondary",
+                "title": "Secondary",
+                "description": "Progress bars and accents. Default: 3B82F6",
+                "settingName": "uiThemeColorSecondary",
                 "type": "text",
-                "default": "A8A8A8"
+                "default": "3B82F6",
+                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
               },
               {
                 "title": "Text - Disabled",
                 "description": "Muted/disabled/inactive text. Default: 4A4A4A",
                 "settingName": "uiThemeColorTextDisabled",
                 "type": "text",
-                "default": "4A4A4A"
+                "default": "4A4A4A",
+                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+              },
+              {
+                "title": "Text - Primary",
+                "description": "Main text color. Default: F0F0F0",
+                "settingName": "uiThemeColorTextPrimary",
+                "type": "text",
+                "default": "F0F0F0",
+                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+              },
+              {
+                "title": "Text - Secondary",
+                "description": "Secondary text. Default: A8A8A8",
+                "settingName": "uiThemeColorTextSecondary",
+                "type": "text",
+                "default": "A8A8A8",
+                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
               }
             ]
           },
