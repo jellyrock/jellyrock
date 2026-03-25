@@ -25,7 +25,7 @@ const MUSIC_VIEW_MIGRATION_VERSION = "1.10.0"
 const TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION = "2.0.0"
 
 ' client version when theme presets were added (detect existing custom colors and set uiTheme=custom)
-const THEME_PRESET_MIGRATION_VERSION = "2.4.0"
+const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
 
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()

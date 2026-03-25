@@ -82,7 +82,7 @@ namespace tests
       ' Empty primaryImageTag (will be deleted by v1.4.0 migration)
       reg.write("primaryImageTag", "")
 
-      ' Theme color (v2.4.0 migration will detect this and set uiTheme=custom)
+      ' Theme color (v2.5.0 migration will detect this and set uiTheme=custom)
       reg.write("uiThemeColorPrimary", "FF5733")
 
       reg.flush()

@@ -1,7 +1,7 @@
 
 namespace tests
 
-  @suite("Theme Preset Migration - v2.4.0")
+  @suite("Theme Preset Migration - v2.5.0")
   @tags("migration")
   class ThemePresetMigrationTests extends tests.BaseTestSuite
 
@@ -63,20 +63,20 @@ namespace tests
       m.assertEqual(reg.read("uiTheme"), "jellyrock-black")
     end function
 
-    @it("skips migration for users already on v2.4.0+")
+    @it("skips migration for users already on v2.5.0+")
     function _()
       testUserId = "test-theme-preset-004"
 
       reg = CreateObject("roRegistrySection", testUserId)
       reg.write("serverId", m.global.server.id)
-      reg.write("LastRunVersion", "2.4.0")
+      reg.write("LastRunVersion", "2.5.0")
       reg.write("uiThemeColorPrimary", "FF5733")
       reg.flush()
 
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertFalse(reg.exists("uiTheme"), "Migration should not run for v2.4.0+")
+      m.assertFalse(reg.exists("uiTheme"), "Migration should not run for v2.5.0+")
     end function
 
     @it("detects any theme color key, not just primary")
