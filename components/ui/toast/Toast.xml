@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Toast: Non-interactive, auto-dismissing notification.
-  Lives on JRScene. Shown via showToast() global helper.
+  Lives on JRScene. Shown via displayToast() global helper or scene.callFunc("showToast").
   Supports "error", "success", and "info" types with distinct background colors.
 -->
 <component name="Toast" extends="Group">

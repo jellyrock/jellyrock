@@ -599,10 +599,10 @@ sub stopLoadingSpinner()
   m.scene.isLoading = false
 end sub
 
-' showToast: Display a transient toast notification via the scene-level Toast component.
+' displayToast: Display a transient toast notification via the scene-level Toast component.
 ' @param {string} message - The message to display
 ' @param {string} [toastType="error"] - "error", "success", or "info"
-sub showToast(message as string, toastType = "error" as string)
+sub displayToast(message as string, toastType = "error" as string)
   if not isValid(m.scene)
     m.scene = m.top.getScene()
   end if
