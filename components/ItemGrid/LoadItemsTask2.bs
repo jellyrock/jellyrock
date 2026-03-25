@@ -200,7 +200,7 @@ sub loadItems()
         genreReq = GetApi().BuildGetItemsByQueryRequest({
           SortBy: "Random",
           SortOrder: "Ascending",
-          IncludeItemTypes: m.top.itemtype,
+          IncludeItemTypes: m.top.itemType,
           Recursive: true,
           Fields: "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags",
           ImageTypeLimit: 1,
@@ -256,9 +256,9 @@ sub loadItems()
         ' Studio items (IsFolder=false, type="Studio") don't carry a CollectionType from the API.
         ' Infer it from the item type being fetched so DeterminePresenterType can route correctly.
         if LCase(tmp.type) = "studio" and not isValidAndNotEmpty(tmp.collectionType)
-          if LCase(m.top.itemtype) = "movie"
+          if LCase(m.top.itemType) = "movie"
             tmp.collectionType = "movies"
-          else if LCase(m.top.itemtype) = "series"
+          else if LCase(m.top.itemType) = "series"
             tmp.collectionType = "tvshows"
           end if
         end if
