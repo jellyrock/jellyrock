@@ -26,6 +26,12 @@
     <field id="colorTextDisabled" type="string" />
     <field id="colorTextError" type="string" value="0xff0000" />
 
+    <!-- Semantic Colors (used app-wide for status indication) -->
+    <field id="colorSuccess" type="string" value="0x16A34A" />
+    <field id="colorError" type="string" value="0xDC2626" />
+    <field id="colorWarning" type="string" value="0xEAB308" />
+    <field id="colorInfo" type="string" value="0x2563EB" />
+
     <!-- Background Colors (defaults loaded from settings.json) -->
     <field id="colorBackgroundPrimary" type="string" />
     <field id="colorBackgroundSecondary" type="string" />
@@ -64,6 +70,10 @@
     <field id="iconCheckWhite" type="string" value="pkg:/images/icons/check_white.png" />
     <field id="iconTomatoFresh" type="string" value="pkg:/images/icons/tomato-fresh.png" />
     <field id="iconTomatoRotten" type="string" value="pkg:/images/icons/tomato-rotten.png" />
+    <field id="iconSuccess" type="string" value="pkg:/images/icons/check.png" />
+    <field id="iconError" type="string" value="pkg:/images/icons/error.png" />
+    <field id="iconWarning" type="string" value="pkg:/images/icons/warning.png" />
+    <field id="iconInfo" type="string" value="pkg:/images/icons/info.png" />
 
     <!-- Other Constants -->
     <field id="jellyfinServerResponse" type="string" value="jellyfin server" />
