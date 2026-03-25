@@ -9,7 +9,7 @@
     "rr": "npm:roku-requests@1.2.0"
   },
   "devDependencies": {
-    "@rokucommunity/bslint": "0.8.40",
+    "@rokucommunity/bslint": "0.8.41",
     "brighterscript": "0.70.4",
     "brighterscript-formatter": "1.7.22",
     "brighterscript-xml-plugin": "0.3.2",
