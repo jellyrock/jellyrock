@@ -68,9 +68,13 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   if type(msg) = "roSGNodeEvent"
     return resultNode.result
   end if
-  ' Timeout: the result node is orphaned. When the coordinator eventually delivers
-  ' the response it will write to the abandoned node (no crash), free the slot,
-  ' and dispatch the next queued request normally.
+  ' Timeout: clean up the observer to prevent a stale reference to the dead port.
+  ' The result node stays as a child of the coordinator — do NOT removeChild(),
+  ' as that shifts child indices and corrupts the coordinator's m.processedIndex.
+  ' When the coordinator eventually delivers the response it will write to the
+  ' abandoned node (no crash), free the slot, and dispatch the next queued
+  ' request normally. The node is pruned at the 50-child threshold.
+  resultNode.unobserveField("done")
   return invalid
 end function
 
