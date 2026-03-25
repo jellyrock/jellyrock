@@ -112,65 +112,52 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetItemsByQuery when userId is empty")
+    @it("returns invalid from BuildGetItemsByQueryRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetItemsByQuery({})
+      result = m.apiClient.BuildGetItemsByQueryRequest({})
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetResumeItems when userId is empty")
+    @it("returns invalid from BuildGetResumeItemsRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetResumeItems({})
+      result = m.apiClient.BuildGetResumeItemsRequest({})
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetSuggestions when userId is empty")
+    @it("returns invalid from BuildGetLatestMediaRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetSuggestions({})
+      result = m.apiClient.BuildGetLatestMediaRequest({})
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetLatestMedia when userId is empty")
+    @it("returns invalid from BuildGetViewsRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetLatestMedia({})
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from GetViews when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.GetViews()
+      result = m.apiClient.BuildGetViewsRequest()
 
       localUser.id = originalId
 
@@ -190,26 +177,14 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetLocalTrailers when userId is empty")
+    @it("returns invalid from BuildGetLocalTrailersRequest V1 when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
+      m.global.server.apiVersion = 1
 
-      result = m.apiClient.GetLocalTrailers(m.testItemId)
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from BuildGetItemRequest when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.BuildGetItemRequest(m.testItemId)
+      result = m.apiClient.BuildGetLocalTrailersRequest(m.testItemId)
 
       localUser.id = originalId
 
@@ -294,39 +269,13 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetNextUp when userId is empty")
+    @it("returns invalid from BuildGetNextUpRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetNextUp({})
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from GetUpcoming when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.GetUpcoming({})
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from GetSimilarShows when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.GetSimilarShows(m.testItemId)
+      result = m.apiClient.BuildGetNextUpRequest({})
 
       localUser.id = originalId
 
@@ -374,7 +323,7 @@ namespace tests
       api = GetApi()
       m.assertNotInvalid(api)
       ' Verify it has the expected methods
-      m.assertTrue(api.GetItem <> invalid, "GetApi should return object with GetItem method")
+      m.assertTrue(api.BuildGetItemRequest <> invalid, "GetApi should return object with BuildGetItemRequest method")
     end function
 
   end class

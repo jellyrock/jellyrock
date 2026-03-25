@@ -10,14 +10,6 @@ import "pkg:/source/utils/misc.bs"
 ' It automatically injects image parameters and version-specific fields for consistent,
 ' bulletproof item fetching across all Jellyfin server versions (10.7.0+).
 '
-' MIGRATION NOTE:
-' This class has two API surfaces during the task pool migration:
-'   - Build*Request() methods: return a request AA for use with fetchRes()/fetchJson()/SubmitSideEffect().
-'     These are the NEW pattern. All new code should use these exclusively.
-'   - Legacy execute-and-return methods (e.g. GetItem, GetArtists): call the SDK layer which
-'     executes HTTP synchronously via baserequest.bs. These are DEPRECATED — do not use in new code.
-'     Methods marked @deprecated have a Build*Request() equivalent already available.
-'
 ' The singleton pattern ensures one instance is shared across the entire app.
 class ApiClient
   ' Cache global reference so m.global works inside class methods
@@ -84,20 +76,6 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}", userId, itemId), params) }
   end function
 
-  ' @deprecated Use BuildGetItemsByQueryRequest() with fetchRes()/fetchJson()
-  ' Get items by query with automatic image and version field injection
-  ' @param params - Query parameters (limit, sortBy, filters, etc.)
-  ' @returns API response or invalid on error
-  function GetItemsByQuery(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetItemsByQuery(userId, m.injectDefaults(params))
-    end if
-    return sdkV1.users.GetItemsByQuery(userId, m.injectDefaults(params))
-  end function
-
   ' Build a request AA for GetItemsByQuery, for use with fetchRes() or fetchJson().
   ' @param params - Query parameters (limit, sortBy, filters, etc.)
   ' @returns Request AA: { method, url } or invalid if no user
@@ -115,20 +93,6 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items", userId), mergedParams) }
   end function
 
-  ' @deprecated Use BuildGetResumeItemsRequest() with fetchRes()/fetchJson()
-  ' Get resume items (Continue Watching) with automatic image injection
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetResumeItems(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
-    end if
-    return sdkV1.users.GetResumeItemsByQuery(userId, m.injectDefaults(params))
-  end function
-
   ' Build a request AA for GetResumeItems (Continue Watching), for use with fetchRes() or fetchJson().
   ' Mirrors GetResumeItems(): applies injectDefaults, version-aware endpoint.
   ' @param params - Optional query parameters
@@ -143,33 +107,6 @@ class ApiClient
       return { method: "GET", url: buildURL("/UserItems/Resume", queryParams) }
     end if
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items/resume", userId), mergedParams) }
-  end function
-
-  ' Get suggestions with automatic image injection
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetSuggestions(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetSuggestions(userId, m.injectDefaults(params))
-    end if
-    return sdkV1.users.GetSuggestions(userId, m.injectDefaults(params))
-  end function
-
-  ' @deprecated Use BuildGetLatestMediaRequest() with fetchRes()/fetchJson()
-  ' Get latest media with automatic image injection
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetLatestMedia(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetLatestMedia(userId, m.injectDefaults(params))
-    end if
-    return sdkV1.users.GetLatestMedia(userId, m.injectDefaults(params))
   end function
 
   ' Build a request AA for GetLatestMedia, for use with fetchRes() or fetchJson().
@@ -212,21 +149,6 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/shows/{0}/seasons", seriesId), mergedParams) }
   end function
 
-  ' @deprecated Use BuildGetEpisodesRequest() with fetchRes()/fetchJson()
-  ' Get episodes for a TV season with automatic image injection
-  ' @param seriesId - The series ID
-  ' @param params - Optional query parameters (season number, etc.)
-  ' @returns API response or invalid on error
-  function GetEpisodes(seriesId as string, params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-
-    return sdk.shows.GetEpisodes(seriesId, mergedParams)
-  end function
-
   ' Build a request AA for GetEpisodes, for use with fetchRes() or fetchJson().
   ' @param seriesId - The series ID
   ' @param params - Optional query parameters (StartItemId, Limit, etc.)
@@ -253,19 +175,6 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/artists/{0}", name.EncodeUriComponent()), params) }
   end function
 
-  ' @deprecated Use BuildGetArtistsRequest() with fetchRes()/fetchJson()
-  ' Get all artists with automatic image injection
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetArtists(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-    return sdk.artists.Get(mergedParams)
-  end function
-
   ' Build a request AA to fetch all artists, for use with fetchRes() or fetchJson().
   ' Mirrors GetArtists(): applies injectDefaults and injects UserId.
   ' @param params - Query parameters
@@ -278,19 +187,6 @@ class ApiClient
     return { method: "GET", url: buildURL("/artists", mergedParams) }
   end function
 
-  ' @deprecated Use BuildGetPersonsRequest() with fetchRes()/fetchJson()
-  ' Get all persons with automatic image injection
-  ' @param params - Query parameters (e.g. searchTerm, IsFavorite)
-  ' @returns API response or invalid on error
-  function GetPersons(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-    return sdk.persons.Get(mergedParams)
-  end function
-
   ' Build a request AA for GetPersons, for use with fetchRes() or fetchJson().
   ' Mirrors GetPersons(): applies injectDefaults and injects UserId.
   ' @param params - Query parameters (e.g. IsFavorite, searchTerm)
@@ -301,19 +197,6 @@ class ApiClient
     mergedParams = m.injectDefaults(params)
     mergedParams.UserId = userId
     return { method: "GET", url: buildURL("/persons", mergedParams) }
-  end function
-
-  ' @deprecated Use BuildGetAlbumArtistsRequest() with fetchRes()/fetchJson()
-  ' Get all album artists with automatic image injection
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetAlbumArtists(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-    return sdk.artists.GetAlbumArtists(mergedParams)
   end function
 
   ' Build a request AA to fetch all album artists, for use with fetchRes() or fetchJson().
@@ -339,22 +222,6 @@ class ApiClient
   ' ═══════════════════════════════════════════════════════════════════════════
   ' PLAYLIST ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' @deprecated Use BuildGetPlaylistItemsRequest() with fetchRes()/fetchJson()
-  ' Get playlist items
-  ' @param playlistId - The playlist ID
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetPlaylistItems(playlistId as string, params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = {}
-    mergedParams.append(params)
-    mergedParams.UserId = userId
-
-    return sdk.playlists.GetItems(playlistId, mergedParams)
-  end function
 
   ' Build a request AA for GetPlaylistItems, for use with fetchRes() or fetchJson().
   ' @param playlistId - The playlist ID
@@ -436,21 +303,6 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}/localtrailers", userId, itemId), {}) }
   end function
 
-  ' @deprecated Use BuildGetLocalTrailersRequest() with submitApiRequest() or fetchJson()
-  ' Get local trailers for an item
-  ' @param itemId - The item ID
-  ' @returns API response or invalid on error
-  function GetLocalTrailers(itemId as string) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetLocalTrailers(userId, itemId)
-    end if
-    return sdkV1.users.GetLocalTrailers(userId, itemId)
-  end function
-
-  ' @deprecated Use BuildGetSpecialFeaturesRequest() with fetchRes()/fetchJson()
   ' Build a request AA for GetSpecialFeatures, for use with fetchRes() or fetchJson().
   ' Mirrors GetSpecialFeatures(): version-aware endpoint.
   ' @param itemId - The item ID
@@ -536,30 +388,6 @@ class ApiClient
   ' SESSION ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' @deprecated Use BuildPlaystateRequest("start") with SubmitSideEffect()
-  ' Report playback started
-  ' @param params - Playback parameters
-  ' @returns API response or invalid on error
-  function Playing(params as object) as dynamic
-    return sdk.sessions.Playing(params)
-  end function
-
-  ' @deprecated Use BuildPlaystateRequest("stop") with SubmitSideEffect()
-  ' Report playback stopped
-  ' @param params - Playback parameters
-  ' @returns API response or invalid on error
-  function PostStopped(params as object) as dynamic
-    return sdk.sessions.PostStopped(params)
-  end function
-
-  ' @deprecated Use BuildPlaystateRequest("update") with SubmitSideEffect()
-  ' Report playback progress
-  ' @param params - Playback parameters
-  ' @returns API response or invalid on error
-  function PostProgress(params as object) as dynamic
-    return sdk.sessions.PostProgress(params)
-  end function
-
   ' Build a playstate request AA for use with SubmitSideEffect().
   ' Applies default playstate fields and routes to the correct session endpoint.
   ' @param state - "start" | "update" | "stop" | "finished"
@@ -625,13 +453,6 @@ class ApiClient
   ' ═══════════════════════════════════════════════════════════════════════════
   ' BRANDING ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' @deprecated Use BuildGetBrandingConfigurationRequest() with fetchRes()/fetchJson()
-  ' Get branding configuration
-  ' @returns API response or invalid on error
-  function GetBrandingConfiguration() as dynamic
-    return sdk.branding.GetConfiguration()
-  end function
 
   ' Build a request AA for GetBrandingConfiguration, for use with fetchRes() or fetchJson().
   ' @returns Request AA: { method, url }
@@ -704,19 +525,6 @@ class ApiClient
   ' VIEWS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' @deprecated Use BuildGetViewsRequest() with fetchRes()/fetchJson()
-  ' Get user views
-  ' @returns API response or invalid on error
-  function GetViews() as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetViews(userId)
-    end if
-    return sdkV1.users.GetViews(userId)
-  end function
-
   ' Build a request AA for GetViews, for use with fetchRes() or fetchJson().
   ' Mirrors GetViews(): version-aware endpoint.
   ' @returns Request AA: { method, url } or invalid if no userId
@@ -733,20 +541,6 @@ class ApiClient
   ' NEXT UP ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' @deprecated Use BuildGetNextUpRequest() with fetchRes()/fetchJson()
-  ' Get next up episodes with automatic image injection
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetNextUp(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-
-    return sdk.shows.GetNextUp(mergedParams)
-  end function
-
   ' Build a request AA for GetNextUp, for use with fetchRes() or fetchJson().
   ' Mirrors GetNextUp(): applies injectDefaults and injects UserId.
   ' @param params - Query parameters (SeriesId, limit, EnableRewatching, etc.)
@@ -759,44 +553,9 @@ class ApiClient
     return { method: "GET", url: buildURL("/shows/nextup", mergedParams) }
   end function
 
-  ' Get upcoming episodes with automatic image injection
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetUpcoming(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-
-    return sdk.shows.GetUpcoming(mergedParams)
-  end function
-
-  ' Get similar shows with automatic image injection
-  ' @param id - Show ID
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetSimilarShows(id as string, params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-
-    return sdk.shows.GetSimilar(id, mergedParams)
-  end function
-
   ' ═══════════════════════════════════════════════════════════════════════════
   ' VIDEOS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' @deprecated Use BuildGetAdditionalPartsRequest() with fetchRes()/fetchJson()
-  ' Get additional parts for a video
-  ' @param itemId - The video item ID
-  ' @returns API response or invalid on error
-  function GetAdditionalParts(itemId as string) as dynamic
-    return sdk.videos.GetAdditionalParts(itemId)
-  end function
 
   ' Build a request AA for GetAdditionalParts, for use with fetchRes() or fetchJson().
   ' @param itemId - The video item ID
@@ -817,14 +576,6 @@ class ApiClient
   ' FILTERS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' @deprecated Use BuildGetFiltersRequest() with fetchRes()/fetchJson()
-  ' Get filters
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetFilters(params = {} as object) as dynamic
-    return sdk.items.GetFilters(params)
-  end function
-
   ' Build a request AA for GetFilters, for use with fetchRes() or fetchJson().
   ' @param params - Query parameters (userid, parentid, includeitemtypes, etc.)
   ' @returns Request AA: { method, url }
@@ -832,27 +583,9 @@ class ApiClient
     return { method: "GET", url: buildURL("/items/filters", params) }
   end function
 
-  ' Get items by query (alternative endpoint)
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetByQuery(params = {} as object) as dynamic
-    return sdk.items.GetByQuery(params)
-  end function
-
   ' ═══════════════════════════════════════════════════════════════════════════
   ' IMAGE ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' @deprecated Use BuildHeadItemImageRequest() with fetchRes()
-  ' Get image URL for an item by ID (HEAD request helper)
-  ' @param id - Item ID
-  ' @param imageType - Type of image
-  ' @param imageIndex - Image index (default 0)
-  ' @param params - Optional parameters
-  ' @returns API response or invalid on error
-  function HeadImageURLByName(id as string, imageType as string, imageIndex = 0 as integer, params = {} as object) as dynamic
-    return sdk.items.HeadImageURLByName(id, imageType, imageIndex, params)
-  end function
 
   ' Build a HEAD request AA to check if an item image exists, for use with fetchRes() or fetchJson().
   ' Caller checks res.ok — no body is returned for HEAD requests.
@@ -891,28 +624,11 @@ class ApiClient
   ' LIVETV ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' @deprecated Use BuildGetLiveTVChannelsRequest() with fetchRes()/fetchJson()
-  ' Get Live TV channels
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetLiveTVChannels(params = {} as object) as dynamic
-    return sdk.liveTV.GetChannels(params)
-  end function
-
   ' Build a request AA to fetch Live TV channels, for use with fetchRes() or fetchJson().
   ' @param params - Query parameters
   ' @returns Request AA: { method, url }
   function BuildGetLiveTVChannelsRequest(params = {} as object) as object
     return { method: "GET", url: buildURL("/livetv/channels", params) }
-  end function
-
-  ' @deprecated Use BuildGetLiveTVProgramsRequest() with fetchRes()/fetchJson()
-  ' Get Live TV programs with automatic image injection
-  ' @param params - Query parameters (e.g. SearchTerm, Limit)
-  ' @returns API response or invalid on error
-  function GetLiveTVPrograms(params = {} as object) as dynamic
-    mergedParams = m.injectDefaults(params)
-    return sdk.liveTV.GetPrograms(mergedParams)
   end function
 
   ' Build a request AA for GetLiveTVPrograms (full EPG search), for use with fetchRes() or fetchJson().
@@ -935,14 +651,6 @@ class ApiClient
   ' STUDIOS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' @deprecated Use BuildGetStudiosRequest() with fetchRes()/fetchJson()
-  ' Get studios
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetStudios(params = {} as object) as dynamic
-    return sdk.studios.Get(params)
-  end function
-
   ' Build a request AA to fetch studios, for use with fetchRes() or fetchJson().
   ' @param params - Query parameters
   ' @returns Request AA: { method, url }
@@ -953,14 +661,6 @@ class ApiClient
   ' ═══════════════════════════════════════════════════════════════════════════
   ' GENRES ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' @deprecated Use BuildGetGenresRequest() with fetchRes()/fetchJson()
-  ' Get genres
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetGenres(params = {} as object) as dynamic
-    return sdk.genres.Get(params)
-  end function
 
   ' Build a request AA to fetch genres, for use with fetchRes() or fetchJson().
   ' @param params - Query parameters
