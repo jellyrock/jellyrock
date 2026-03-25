@@ -612,9 +612,9 @@ sub Main (args as dynamic) as void
           else
             startLoadingSpinner()
             if item.isWatched
-              GetApi().UnmarkPlayed(item.id)
+              SubmitSideEffect(GetApi().BuildUnmarkPlayedRequest(item.id))
             else
-              GetApi().MarkPlayed(item.id)
+              SubmitSideEffect(GetApi().BuildMarkPlayedRequest(item.id))
             end if
             ' Refresh from server to get authoritative state
             group.refreshItemDetailsData = not group.refreshItemDetailsData
@@ -627,11 +627,11 @@ sub Main (args as dynamic) as void
         if isValid(movie) and isValidAndNotEmpty(movie.id) and isValid(favoriteButton)
           startLoadingSpinner()
           if movie.isFavorite
-            GetApi().UnmarkFavorite(movie.id)
+            SubmitSideEffect(GetApi().BuildUnmarkFavoriteRequest(movie.id))
             movie.isFavorite = false
             favoriteButton.selected = false
           else
-            GetApi().MarkFavorite(movie.id)
+            SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(movie.id))
             movie.isFavorite = true
             favoriteButton.selected = true
           end if
@@ -848,7 +848,7 @@ sub Main (args as dynamic) as void
         else if isValid(m.pendingDeleteItemId)
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Delete")
             ' User confirmed deletion
-            GetApi().DeleteItem(m.pendingDeleteItemId)
+            SubmitSideEffect(GetApi().BuildDeleteItemRequest(m.pendingDeleteItemId))
             m.pendingDeleteItemId = invalid
             m.global.sceneManager.callFunc("popScene")
           else
@@ -861,9 +861,9 @@ sub Main (args as dynamic) as void
             ' User confirmed — mark/unmark all episodes
             startLoadingSpinner()
             if m.pendingWatchedIsCurrentlyWatched
-              GetApi().UnmarkPlayed(m.pendingWatchedItemId)
+              SubmitSideEffect(GetApi().BuildUnmarkPlayedRequest(m.pendingWatchedItemId))
             else
-              GetApi().MarkPlayed(m.pendingWatchedItemId)
+              SubmitSideEffect(GetApi().BuildMarkPlayedRequest(m.pendingWatchedItemId))
             end if
             m.pendingWatchedItemId = invalid
             m.pendingWatchedIsCurrentlyWatched = invalid

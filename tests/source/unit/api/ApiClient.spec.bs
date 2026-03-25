@@ -216,52 +216,52 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from MarkFavorite when userId is empty")
+    @it("returns invalid from BuildMarkFavoriteRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.MarkFavorite(m.testItemId)
+      result = m.apiClient.BuildMarkFavoriteRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from UnmarkFavorite when userId is empty")
+    @it("returns invalid from BuildUnmarkFavoriteRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.UnmarkFavorite(m.testItemId)
+      result = m.apiClient.BuildUnmarkFavoriteRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from MarkPlayed when userId is empty")
+    @it("returns invalid from BuildMarkPlayedRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.MarkPlayed(m.testItemId)
+      result = m.apiClient.BuildMarkPlayedRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from UnmarkPlayed when userId is empty")
+    @it("returns invalid from BuildUnmarkPlayedRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.UnmarkPlayed(m.testItemId)
+      result = m.apiClient.BuildUnmarkPlayedRequest(m.testItemId)
 
       localUser.id = originalId
 

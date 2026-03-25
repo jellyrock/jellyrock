@@ -502,20 +502,6 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}/specialfeatures", userId, itemId), {}) }
   end function
 
-  ' @deprecated Use BuildMarkFavoriteRequest() with SubmitSideEffect()
-  ' Mark item as favorite
-  ' @param itemId - The item ID
-  ' @returns API response or invalid on error
-  function MarkFavorite(itemId as string) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.MarkFavorite(userId, itemId)
-    end if
-    return sdkV1.users.MarkFavorite(userId, itemId)
-  end function
-
   ' Build a request AA to mark an item as favorite, for use with SubmitSideEffect().
   ' @param itemId - The item ID
   ' @returns Request AA: { method, url } or invalid if no user
@@ -527,20 +513,6 @@ class ApiClient
       return { method: "POST", url: buildURL(Substitute("/UserFavoriteItems/{0}", itemId), { userId: userId }) }
     end if
     return { method: "POST", url: buildURL(Substitute("users/{0}/favoriteitems/{1}", userId, itemId)) }
-  end function
-
-  ' @deprecated Use BuildUnmarkFavoriteRequest() with SubmitSideEffect()
-  ' Unmark item as favorite
-  ' @param itemId - The item ID
-  ' @returns API response or invalid on error
-  function UnmarkFavorite(itemId as string) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.UnmarkFavorite(userId, itemId)
-    end if
-    return sdkV1.users.UnmarkFavorite(userId, itemId)
   end function
 
   ' Build a request AA to unmark an item as favorite, for use with SubmitSideEffect().
@@ -556,31 +528,44 @@ class ApiClient
     return { method: "DELETE", url: buildURL(Substitute("users/{0}/favoriteitems/{1}", userId, itemId)) }
   end function
 
-  ' Mark item as played
+  ' Build a request AA to mark an item as played, for use with SubmitSideEffect().
+  ' Includes default DatePlayed (now) and PlaybackPositionTicks (0) matching Jellyfin API expectations.
   ' @param itemId - The item ID
-  ' @param params - Optional parameters (DatePlayed, etc.)
-  ' @returns API response or invalid on error
-  function MarkPlayed(itemId as string, params = {} as object) as dynamic
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildMarkPlayedRequest(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
 
+    params = {
+      "DatePlayed": CreateObject("roDateTime").ToISOString(),
+      "PlaybackPositionTicks": 0
+    }
+
     if m.getApiVersion() >= 2
-      return sdkV2.users.MarkPlayed(userId, itemId, params)
+      params.userId = userId
+      return { method: "POST", url: buildURL(Substitute("/UserPlayedItems/{0}", itemId), params) }
     end if
-    return sdkV1.users.MarkPlayed(userId, itemId, params)
+    return { method: "POST", url: buildURL(Substitute("users/{0}/playeditems/{1}", userId, itemId), params) }
   end function
 
-  ' Mark item as unplayed
+  ' Build a request AA to mark an item as unplayed, for use with SubmitSideEffect().
   ' @param itemId - The item ID
-  ' @returns API response or invalid on error
-  function UnmarkPlayed(itemId as string) as dynamic
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildUnmarkPlayedRequest(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
 
     if m.getApiVersion() >= 2
-      return sdkV2.users.UnmarkPlayed(userId, itemId)
+      return { method: "DELETE", url: buildURL(Substitute("/UserPlayedItems/{0}", itemId), { userId: userId }) }
     end if
-    return sdkV1.users.UnmarkPlayed(userId, itemId)
+    return { method: "DELETE", url: buildURL(Substitute("users/{0}/playeditems/{1}", userId, itemId)) }
+  end function
+
+  ' Build a request AA to delete an item, for use with SubmitSideEffect().
+  ' @param itemId - The item ID to delete
+  ' @returns Request AA: { method, url }
+  function BuildDeleteItemRequest(itemId as string) as dynamic
+    return { method: "DELETE", url: buildURL(Substitute("/items/{0}", itemId)) }
   end function
 
   ' Update user rating
@@ -610,12 +595,6 @@ class ApiClient
     return sdkV1.users.DeleteRating(userId, itemId)
   end function
 
-  ' Delete an item
-  ' @param itemId - The item ID to delete
-  ' @returns API response or invalid on error
-  function DeleteItem(itemId as string) as dynamic
-    return sdk.items.DeleteByID(itemId)
-  end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
   ' SESSION ENDPOINTS
