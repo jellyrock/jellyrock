@@ -88,3 +88,4 @@ sdk
 enum
 codec
 DLNA
+lookups

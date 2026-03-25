@@ -149,6 +149,7 @@ class SessionDataTransformer
     settingsNode.uiFontFallback = toBoolean(settingsData["uiFontFallback"])
 
     ' Theme Color Settings
+    settingsNode.uiTheme = settingsData["uiTheme"] ?? ""
     settingsNode.uiThemeColorPrimary = settingsData["uiThemeColorPrimary"] ?? ""
     settingsNode.uiThemeColorSecondary = settingsData["uiThemeColorSecondary"] ?? ""
     settingsNode.uiThemeColorBackgroundPrimary = settingsData["uiThemeColorBackgroundPrimary"] ?? ""

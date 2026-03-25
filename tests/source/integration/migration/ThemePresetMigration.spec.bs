@@ -1,0 +1,129 @@
+
+namespace tests
+
+  @suite("Theme Preset Migration - v2.5.0")
+  @tags("migration")
+  class ThemePresetMigrationTests extends tests.BaseTestSuite
+
+    protected override sub setup()
+      m.needsRegistrySetup = true
+      super.setup()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Theme Preset Migration")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets uiTheme=custom when user has custom theme colors in registry")
+    function _()
+      testUserId = "test-theme-preset-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.3.0")
+      reg.write("uiThemeColorPrimary", "FF5733")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertTrue(reg.exists("uiTheme"))
+      m.assertEqual(reg.read("uiTheme"), "custom")
+    end function
+
+    @it("does not set uiTheme when no custom theme colors exist")
+    function _()
+      testUserId = "test-theme-preset-002"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.3.0")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("uiTheme"))
+    end function
+
+    @it("does not overwrite uiTheme if already set")
+    function _()
+      testUserId = "test-theme-preset-003"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.3.0")
+      reg.write("uiTheme", "jellyrock-black")
+      reg.write("uiThemeColorPrimary", "FF5733")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("uiTheme"), "jellyrock-black")
+    end function
+
+    @it("skips migration for users already on v2.5.0+")
+    function _()
+      testUserId = "test-theme-preset-004"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.5.0")
+      reg.write("uiThemeColorPrimary", "FF5733")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("uiTheme"), "Migration should not run for v2.5.0+")
+    end function
+
+    @it("detects any theme color key, not just primary")
+    function _()
+      testUserId = "test-theme-preset-005"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.3.0")
+      reg.write("uiThemeColorBackgroundPrimary", "000000")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertTrue(reg.exists("uiTheme"))
+      m.assertEqual(reg.read("uiTheme"), "custom")
+    end function
+
+    @it("migrates multiple users independently")
+    function _()
+      user1 = "test-theme-preset-multi-001"
+      user2 = "test-theme-preset-multi-002"
+
+      ' User 1 has custom colors
+      reg1 = CreateObject("roRegistrySection", user1)
+      reg1.write("serverId", m.global.server.id)
+      reg1.write("LastRunVersion", "2.3.0")
+      reg1.write("uiThemeColorPrimary", "FF0000")
+      reg1.flush()
+
+      ' User 2 has no custom colors
+      reg2 = CreateObject("roRegistrySection", user2)
+      reg2.write("serverId", m.global.server.id)
+      reg2.write("LastRunVersion", "2.3.0")
+      reg2.flush()
+
+      runRegistryUserMigrations([user1, user2])
+
+      reg1 = CreateObject("roRegistrySection", user1)
+      m.assertTrue(reg1.exists("uiTheme"))
+      m.assertEqual(reg1.read("uiTheme"), "custom")
+
+      reg2 = CreateObject("roRegistrySection", user2)
+      m.assertFalse(reg2.exists("uiTheme"))
+    end function
+
+  end class
+
+end namespace

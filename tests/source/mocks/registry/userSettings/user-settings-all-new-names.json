@@ -15,6 +15,7 @@
   "playbackTryDirectH264ProfileLevel": "false",
   "playbackTryDirectHevcProfileLevel": "false",
   "uiGeneralEpisodeImages": "always",
+  "uiTheme": "custom",
   "uiFontFallback": "false",
   "uiDesignHideClock": "true",
   "uiDetailsMaxDaysNextUp": "365",
