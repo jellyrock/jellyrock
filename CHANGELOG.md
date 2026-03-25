@@ -14,10 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update @rokucommunity/bslint from v0.8.39 to v0.8.41 ([#403](https://github.com/jellyrock/jellyrock/pull/403), [#415](https://github.com/jellyrock/jellyrock/pull/415))
 - Update brighterscript from v0.70.3 to v0.70.4 ([#404](https://github.com/jellyrock/jellyrock/pull/404))
 - Update roku-deploy from v3.16.2 to v3.16.3 ([#406](https://github.com/jellyrock/jellyrock/pull/406))
 - Update brighterscript-formatter from v1.7.21 to v1.7.22 ([#405](https://github.com/jellyrock/jellyrock/pull/405))
-- Update @rokucommunity/bslint from v0.8.39 to v0.8.40 ([#403](https://github.com/jellyrock/jellyrock/pull/403))
 
 ## [2.4.0](https://github.com/jellyrock/jellyrock/compare/v2.3.0...v2.4.0) - 2026-03-24
 
