@@ -191,15 +191,6 @@ sub onDetailsLoaded()
     return
   end if
 
-  ' Check trailer availability (Pattern 1: non-blocking, trivial callback)
-  itemType = m.top.itemType
-  if itemType = "Movie" or itemType = "Video" or itemType = "MusicVideo"
-    m.trailerResultNode = submitApiRequest(GetApi().BuildGetLocalTrailersRequest(m.top.itemId), "trailerCheck")
-    if isValid(m.trailerResultNode)
-      m.trailerResultNode.observeField("done", "onTrailerCheckDone")
-    end if
-  end if
-
   stopLoadingSpinner()
 end sub
 
@@ -213,12 +204,49 @@ sub onTrailerCheckDone()
   end if
 end sub
 
+' Triggered by refreshResumeData field toggle (watched toggle on Series).
+' Re-fetches ONLY the next-up/resume episode — no full rebuild, no setupButtons().
+' The existing nextUpEpisodeChanged() handles adding/removing/updating the resume button.
+sub onRefreshResumeData()
+  item = m.top.itemContent
+  if not isValid(item) or item.type <> "Series" then return
+
+  m.loadSeriesResumeTask.unobserveField("content")
+  m.loadSeriesResumeTask.control = "STOP"
+  m.loadSeriesResumeTask.itemId = item.id
+  m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
+  m.loadSeriesResumeTask.control = "RUN"
+end sub
+
 ' Triggered by refreshItemDetailsData field toggle (return from playback, refresh button).
 ' Refreshes silently in the background — no spinner, no input blocking.
 ' The UI already has data from the initial load so the user can navigate freely.
 sub onRefreshItemDetailsData()
   itemId = m.top.itemId
   if not isValidAndNotEmpty(itemId) then return
+
+  ' Series: show resume loading state immediately while we wait for fresh data.
+  ' If a resume button exists, set it to loading. If not, create a loading placeholder
+  ' so the user sees a skeleton instead of a button popping in unexpectedly.
+  if isValid(m.top.itemContent) and m.top.itemContent.type = "Series"
+    resumeButton = m.top.findNode("resumeButton")
+    if isValid(resumeButton)
+      resumeButton.loading = true
+    else if not isValid(m.top.findNode("resumeLoadingButton"))
+      m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
+      m.resumeLoadingButton.id = "resumeLoadingButton"
+      m.resumeLoadingButton.icon = "pkg:/images/icons/resume.png"
+      if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
+        m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
+      else
+        m.resumeLoadingButton.text = tr("Resume")
+      end if
+      m.resumeLoadingButton.loading = true
+      m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
+      ' Shift focus index to account for the new button at position 0
+      m.buttonGrp.buttonFocused = m.buttonGrp.buttonFocused + 1
+    end if
+  end if
 
   m.loadDetailsTask.unobserveField("content")
   m.loadDetailsTask.control = "STOP"
@@ -339,6 +367,7 @@ sub nextUpEpisodeChanged()
       resumeButton.text = resumeText
       resumeButton.playbackPositionTicks = item.playbackPositionTicks
       resumeButton.runtimeTicks = item.runTimeTicks
+      resumeButton.loading = false
     end if
   else
     ' No resume data — remove the LoadingButton placeholder if still present
@@ -1280,6 +1309,13 @@ sub itemContentChanged()
 
     setupButtons(item)
 
+    ' Person Shuffle: on refresh (extras already loaded), the extras chain won't re-fire
+    ' because only refreshItemDetailsData was toggled. Resolve the loading placeholder
+    ' immediately from the already-known personHasMedia value.
+    if item.type = "Person" and m.extrasLoaded
+      onPersonHasMediaChanged()
+    end if
+
     ' Media tracks and stream options are only relevant for playable types.
     ' MusicArtist/MusicAlbum have no track info. Audio shows audio codec only.
     ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space.
@@ -1353,6 +1389,19 @@ sub itemContentChanged()
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
       m.loadSeriesResumeTask.control = "RUN"
+    end if
+
+    ' Trailer availability check — re-run on every content change so refreshes get fresh data.
+    ' trailerAvailableChanged() adds or removes the button when the result arrives.
+    if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
+      if isValid(m.trailerResultNode)
+        m.trailerResultNode.unobserveField("done")
+        m.trailerResultNode = invalid
+      end if
+      m.trailerResultNode = submitApiRequest(GetApi().BuildGetLocalTrailersRequest(m.top.itemId), "trailerCheck")
+      if isValid(m.trailerResultNode)
+        m.trailerResultNode.observeField("done", "onTrailerCheckDone")
+      end if
     end if
 
     ' Season: kick off background fetch of parent series metadata for ratings/runtime/genres/logo
@@ -1999,11 +2048,17 @@ sub setupButtons(item as object)
 
   ' Series Resume placeholder — shows a loading IconButton at position 0 while the seriesResume
   ' task fetches the next-up episode. nextUpEpisodeChanged() replaces or removes it.
+  ' Preserves the episode-specific text (e.g. "Resume S2E3") from prior data if available
+  ' so the user sees a consistent label through the loading transition.
   if itemType = "Series"
     m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
     m.resumeLoadingButton.id = "resumeLoadingButton"
     m.resumeLoadingButton.icon = "pkg:/images/icons/resume.png"
-    m.resumeLoadingButton.text = tr("Resume")
+    if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
+      m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
+    else
+      m.resumeLoadingButton.text = tr("Resume")
+    end if
     m.resumeLoadingButton.loading = true
     m.buttonGrp.appendChild(m.resumeLoadingButton)
   end if
@@ -2115,7 +2170,8 @@ sub setupButtons(item as object)
     end if
   end if
 
-  ' Trailer button — restore on refresh (on first load, trailerAvailableChanged adds it async)
+  ' Trailer button — on refresh, restored from prior run while the async re-check runs.
+  ' trailerAvailableChanged() will add/remove it if the server state changed.
   ' Must come before Delete to match the insertion order used in trailerAvailableChanged()
   if m.top.trailerAvailable
     trailerButton = CreateObject("roSGNode", "IconButton")
@@ -2140,15 +2196,6 @@ sub setupButtons(item as object)
   refreshButton.icon = "pkg:/images/icons/refresh.png"
   refreshButton.text = tr("Refresh")
   m.buttonGrp.appendChild(refreshButton)
-
-  ' Person Shuffle: on refresh, personHasMedia may already be set from the prior run.
-  ' Check it now to restore the Shuffle button immediately (replacing the LoadingButton
-  ' placeholder) rather than waiting for the extras chain to re-fire.
-  ' On first load, personHasMedia is still at its default (false) so we skip this — the
-  ' LoadingButton placeholder stays visible until the extras chain fires onPersonHasMediaChanged.
-  if itemType = "Person" and m.extrasGrid.personHasMedia
-    onPersonHasMediaChanged()
-  end if
 
   ' Show the button group (hidden until first setupButtons call)
   m.buttonGrp.visible = true

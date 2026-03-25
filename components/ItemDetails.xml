@@ -63,5 +63,6 @@
     <field id="refreshItemDetailsData" type="bool" alwaysNotify="true" onChange="onRefreshItemDetailsData" />
     <field id="refreshExtrasData" type="bool" alwaysNotify="true" onChange="onRefreshExtrasData" />
     <field id="nextUpEpisode" type="node" onChange="nextUpEpisodeChanged" />
+    <field id="refreshResumeData" type="boolean" value="false" alwaysNotify="true" onChange="onRefreshResumeData" />
   </interface>
 </component>
