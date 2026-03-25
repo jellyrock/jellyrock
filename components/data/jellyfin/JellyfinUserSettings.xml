@@ -41,6 +41,7 @@
     <field id="uiGeneralEpisodeImages" type="string" alwaysNotify="true" />
 
     <!-- Theme Color Settings -->
+    <field id="uiTheme" type="string" alwaysNotify="true" />
     <field id="uiThemeColorPrimary" type="string" alwaysNotify="true" />
     <field id="uiThemeColorSecondary" type="string" alwaysNotify="true" />
     <field id="uiThemeColorBackgroundPrimary" type="string" alwaysNotify="true" />
