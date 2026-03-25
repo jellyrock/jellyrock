@@ -66,6 +66,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
 
   msg = wait(30000, port)
   if type(msg) = "roSGNodeEvent"
+    resultNode.unobserveField("done")
     return resultNode.result
   end if
   ' Timeout: clean up the observer to prevent a stale reference to the dead port.
