@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Toast: Non-interactive, auto-dismissing notification.
+  Lives on JRScene. Shown via showToast() global helper.
+  Supports "error", "success", and "info" types with distinct background colors.
+-->
+<component name="Toast" extends="Group">
+  <children>
+    <Poster id="toastBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <LabelPrimarySmall id="toastMessage" vertAlign="center" />
+    <Animation id="fadeIn" duration="0.3" repeat="false" easeFunction="outCubic">
+      <FloatFieldInterpolator key="[0, 1]" keyValue="[0, 1]" fieldToInterp="opacity" />
+    </Animation>
+    <Animation id="fadeOut" duration="0.3" repeat="false" easeFunction="inCubic">
+      <FloatFieldInterpolator key="[0, 1]" keyValue="[1, 0]" fieldToInterp="opacity" />
+    </Animation>
+    <Timer id="dismissTimer" repeat="false" duration="4" />
+  </children>
+  <interface>
+    <field id="message" type="string" value="" />
+    <field id="toastType" type="string" value="error" />
+    <field id="show" type="boolean" value="false" alwaysNotify="true" onChange="onShow" />
+  </interface>
+</component>

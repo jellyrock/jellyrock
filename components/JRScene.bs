@@ -9,6 +9,7 @@ sub init()
   m.loadingText = m.top.findNode("loadingText")
   m.spinner = m.top.findNode("spinner")
   m.imageFader = m.top.findNode("imageFader")
+  m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
@@ -121,6 +122,16 @@ sub isLoadingChanged()
   m.spinner.visible = m.top.isLoading
   ' toggle visibility of loading text
   m.loadingText.visible = m.top.isLoading
+end sub
+
+' showToast: Display a transient toast notification.
+' @param {string} message - The message to display
+' @param {string} [toastType="error"] - "error", "success", or "info"
+sub showToast(message as string, toastType = "error" as string)
+  if not isValid(m.toast) then return
+  m.toast.message = message
+  m.toast.toastType = toastType
+  m.toast.show = true
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

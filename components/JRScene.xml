@@ -6,6 +6,7 @@
     <JROverhang id="overhang" />
     <LabelPrimaryLarge id="loadingText" height="225" width="1266" horizAlign="center" vertAlign="bottom" wrap="true" translation="[327, 210]" visible="false" />
     <Spinner id="spinner" translation="[897, 477]" />
+    <Toast id="toast" visible="false" />
     <!-- Used to calculate m.global.user.fontScaleFactor -->
     <Label id="defaultFont" text="" visible="false" />
     <Label id="fallbackFont" text="" visible="false" />
@@ -19,5 +20,6 @@
     <field id="backgroundImageUri" type="string" value="" alwaysNotify="true" onchange="backgroundImageUriChanged" />
     <function name="setBackgroundImage" />
     <function name="refreshBackdropSetting" />
+    <function name="showToast" />
   </interface>
 </component>

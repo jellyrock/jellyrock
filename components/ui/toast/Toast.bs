@@ -1,0 +1,66 @@
+const TOAST_WIDTH = 400
+const TOAST_HEIGHT = 60
+const TOAST_MARGIN = 40
+const TOAST_PADDING = 16
+const TOAST_COLOR_ERROR = "0xDC2626FF"
+const TOAST_COLOR_SUCCESS = "0x16A34AFF"
+
+sub init()
+  m.toastBackground = m.top.findNode("toastBackground")
+  m.toastMessage = m.top.findNode("toastMessage")
+  m.fadeIn = m.top.findNode("fadeIn")
+  m.fadeOut = m.top.findNode("fadeOut")
+  m.dismissTimer = m.top.findNode("dismissTimer")
+
+  m.dismissTimer.observeField("fire", "onDismissTimer")
+  m.fadeOut.observeField("state", "onFadeOutComplete")
+
+  ' Layout
+  m.toastBackground.width = TOAST_WIDTH
+  m.toastBackground.height = TOAST_HEIGHT
+  m.toastMessage.width = TOAST_WIDTH - (TOAST_PADDING * 2)
+  m.toastMessage.height = TOAST_HEIGHT
+  m.toastMessage.translation = [TOAST_PADDING, 0]
+
+  ' Position: bottom-right of 1080p screen
+  m.top.translation = [1920 - TOAST_WIDTH - TOAST_MARGIN, 1080 - TOAST_HEIGHT - TOAST_MARGIN]
+  m.top.opacity = 0
+end sub
+
+sub onShow()
+  if not m.top.show then return
+
+  ' Set background color based on type
+  toastType = m.top.toastType
+  if toastType = "success"
+    m.toastBackground.blendColor = TOAST_COLOR_SUCCESS
+  else if toastType = "info"
+    m.toastBackground.blendColor = m.global.constants.colorBackgroundSecondary
+  else
+    m.toastBackground.blendColor = TOAST_COLOR_ERROR
+  end if
+
+  ' Set message text
+  m.toastMessage.text = m.top.message
+
+  ' Stop any in-progress animations
+  m.fadeOut.control = "stop"
+  m.dismissTimer.control = "stop"
+
+  ' Show and fade in
+  m.top.visible = true
+  m.top.opacity = 0
+  m.fadeIn.control = "start"
+  m.dismissTimer.control = "start"
+end sub
+
+sub onDismissTimer()
+  m.fadeOut.control = "start"
+end sub
+
+sub onFadeOutComplete()
+  if m.fadeOut.state = "stopped"
+    m.top.visible = false
+    m.top.opacity = 0
+  end if
+end sub
