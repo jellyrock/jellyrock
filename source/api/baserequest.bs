@@ -85,61 +85,6 @@ function getJson(req)
   return json
 end function
 
-function postVoid(req, data = "" as string) as boolean
-  ' Handle case where server URL is not set or invalid
-  if not isValid(req) then return false
-
-  req.setMessagePort(CreateObject("roMessagePort"))
-  req.AddHeader("Content-Type", "application/json")
-  req.AsyncPostFromString(data)
-  resp = wait(30000, req.GetMessagePort())
-  if type(resp) <> "roUrlEvent"
-    return false
-  end if
-
-  if resp.GetResponseCode() = 200
-    return true
-  end if
-
-  return false
-end function
-
-function headVoid(req) as boolean
-  ' Handle case where server URL is not set or invalid
-  if not isValid(req) then return false
-
-  req.setMessagePort(CreateObject("roMessagePort"))
-  req.AddHeader("Content-Type", "application/json")
-  req.AsyncHead()
-  resp = wait(30000, req.GetMessagePort())
-  if type(resp) <> "roUrlEvent"
-    return false
-  end if
-
-  if resp.GetResponseCode() = 200
-    return true
-  end if
-
-  return false
-end function
-
-function getVoid(req) as boolean
-  req.setMessagePort(CreateObject("roMessagePort"))
-  req.AddHeader("Content-Type", "application/json")
-  req.AsyncGetToString()
-  resp = wait(30000, req.GetMessagePort())
-
-  if type(resp) <> "roUrlEvent"
-    return false
-  end if
-
-  if resp.GetResponseCode() = 200
-    return true
-  end if
-
-  return false
-end function
-
 function postJson(req, data = "" as string)
   ' Handle case where server URL is not set or invalid
   if not isValid(req) then return invalid
@@ -161,18 +106,6 @@ function postJson(req, data = "" as string)
   return json
 end function
 
-function deleteVoid(req)
-  ' Handle case where server URL is not set or invalid
-  if not isValid(req) then return false
-
-  req.setMessagePort(CreateObject("roMessagePort"))
-  req.AddHeader("Content-Type", "application/json")
-  req.SetRequest("DELETE")
-  req.GetToString()
-
-  return true
-end function
-
 function get_url()
   serverURL = m.global.server.serverUrl
 
@@ -186,29 +119,6 @@ function get_url()
   ' This avoids expensive regex parsing on every API request
 
   return serverURL
-end function
-
-function getString(req)
-  ' Handle case where server URL is not set or invalid
-  if not isValid(req) then return invalid
-
-  data = req.GetToString()
-  return data
-end function
-
-function postString(req, data = "" as string)
-  ' Handle case where server URL is not set or invalid
-  if not isValid(req) then return invalid
-
-  req.setMessagePort(CreateObject("roMessagePort"))
-  req.AddHeader("Content-Type", "application/json")
-  req.AsyncPostFromString(data)
-  resp = wait(30000, req.GetMessagePort())
-  if type(resp) <> "roUrlEvent"
-    return invalid
-  end if
-
-  return resp.getString()
 end function
 
 ' sets the certificate authority by file path on the passed node
