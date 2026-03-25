@@ -10,12 +10,13 @@ import "pkg:/source/utils/misc.bs"
 ' It automatically injects image parameters and version-specific fields for consistent,
 ' bulletproof item fetching across all Jellyfin server versions (10.7.0+).
 '
-' Usage:
-'   api = GetApi()
-'   data = api.GetItem(itemId, { fields: "Overview" })
-'
-' Or inline:
-'   data = GetApi().GetItem(itemId, { fields: "Overview" })
+' MIGRATION NOTE:
+' This class has two API surfaces during the task pool migration:
+'   - Build*Request() methods: return a request AA for use with fetchRes()/fetchJson()/SubmitSideEffect().
+'     These are the NEW pattern. All new code should use these exclusively.
+'   - Legacy execute-and-return methods (e.g. GetItem, GetArtists): call the SDK layer which
+'     executes HTTP synchronously via baserequest.bs. These are DEPRECATED — do not use in new code.
+'     Methods marked @deprecated have a Build*Request() equivalent already available.
 '
 ' The singleton pattern ensures one instance is shared across the entire app.
 class ApiClient
@@ -63,6 +64,7 @@ class ApiClient
     return sdkV1.users.GetItem(userId, itemId, m.injectDefaults(params))
   end function
 
+  ' @deprecated Use BuildGetItemsByQueryRequest() with fetchRes()/fetchJson()
   ' Get items by query with automatic image and version field injection
   ' @param params - Query parameters (limit, sortBy, filters, etc.)
   ' @returns API response or invalid on error
@@ -93,6 +95,7 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items", userId), mergedParams) }
   end function
 
+  ' @deprecated Use BuildGetResumeItemsRequest() with fetchRes()/fetchJson()
   ' Get resume items (Continue Watching) with automatic image injection
   ' @param params - Optional query parameters
   ' @returns API response or invalid on error
@@ -135,6 +138,7 @@ class ApiClient
     return sdkV1.users.GetSuggestions(userId, m.injectDefaults(params))
   end function
 
+  ' @deprecated Use BuildGetLatestMediaRequest() with fetchRes()/fetchJson()
   ' Get latest media with automatic image injection
   ' @param params - Optional query parameters
   ' @returns API response or invalid on error
@@ -201,6 +205,7 @@ class ApiClient
   ' SHOWS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetSeasonsRequest() with fetchRes()/fetchJson()
   ' Get seasons for a TV series with automatic image injection
   ' @param seriesId - The series ID
   ' @param params - Optional query parameters
@@ -228,6 +233,7 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/shows/{0}/seasons", seriesId), mergedParams) }
   end function
 
+  ' @deprecated Use BuildGetEpisodesRequest() with fetchRes()/fetchJson()
   ' Get episodes for a TV season with automatic image injection
   ' @param seriesId - The series ID
   ' @param params - Optional query parameters (season number, etc.)
@@ -268,6 +274,7 @@ class ApiClient
     return sdk.artists.GetByName(name, params)
   end function
 
+  ' @deprecated Use BuildGetArtistsRequest() with fetchRes()/fetchJson()
   ' Get all artists with automatic image injection
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -292,6 +299,7 @@ class ApiClient
     return { method: "GET", url: buildURL("/artists", mergedParams) }
   end function
 
+  ' @deprecated Use BuildGetPersonsRequest() with fetchRes()/fetchJson()
   ' Get all persons with automatic image injection
   ' @param params - Query parameters (e.g. searchTerm, IsFavorite)
   ' @returns API response or invalid on error
@@ -316,6 +324,7 @@ class ApiClient
     return { method: "GET", url: buildURL("/persons", mergedParams) }
   end function
 
+  ' @deprecated Use BuildGetAlbumArtistsRequest() with fetchRes()/fetchJson()
   ' Get all album artists with automatic image injection
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -352,6 +361,7 @@ class ApiClient
   ' PLAYLIST ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetPlaylistItemsRequest() with fetchRes()/fetchJson()
   ' Get playlist items
   ' @param playlistId - The playlist ID
   ' @param params - Optional query parameters
@@ -427,6 +437,7 @@ class ApiClient
     return sdk.items.PostPlayBackInfo(itemId, postData)
   end function
 
+  ' @deprecated Use BuildGetArtistSimilarRequest() with fetchRes()/fetchJson()
   ' Get similar artists
   ' @param id - Artist ID
   ' @param params - Optional query parameters
@@ -464,6 +475,7 @@ class ApiClient
     return sdkV1.users.GetLocalTrailers(userId, itemId)
   end function
 
+  ' @deprecated Use BuildGetSpecialFeaturesRequest() with fetchRes()/fetchJson()
   ' Get special features for an item
   ' @param itemId - The item ID
   ' @returns API response or invalid on error
@@ -490,6 +502,7 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}/specialfeatures", userId, itemId), {}) }
   end function
 
+  ' @deprecated Use BuildMarkFavoriteRequest() with SubmitSideEffect()
   ' Mark item as favorite
   ' @param itemId - The item ID
   ' @returns API response or invalid on error
@@ -516,6 +529,7 @@ class ApiClient
     return { method: "POST", url: buildURL(Substitute("users/{0}/favoriteitems/{1}", userId, itemId)) }
   end function
 
+  ' @deprecated Use BuildUnmarkFavoriteRequest() with SubmitSideEffect()
   ' Unmark item as favorite
   ' @param itemId - The item ID
   ' @returns API response or invalid on error
@@ -607,6 +621,7 @@ class ApiClient
   ' SESSION ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildPlaystateRequest("start") with SubmitSideEffect()
   ' Report playback started
   ' @param params - Playback parameters
   ' @returns API response or invalid on error
@@ -614,6 +629,7 @@ class ApiClient
     return sdk.sessions.Playing(params)
   end function
 
+  ' @deprecated Use BuildPlaystateRequest("stop") with SubmitSideEffect()
   ' Report playback stopped
   ' @param params - Playback parameters
   ' @returns API response or invalid on error
@@ -621,6 +637,7 @@ class ApiClient
     return sdk.sessions.PostStopped(params)
   end function
 
+  ' @deprecated Use BuildPlaystateRequest("update") with SubmitSideEffect()
   ' Report playback progress
   ' @param params - Playback parameters
   ' @returns API response or invalid on error
@@ -682,6 +699,7 @@ class ApiClient
   ' BRANDING ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetBrandingConfigurationRequest() with fetchRes()/fetchJson()
   ' Get branding configuration
   ' @returns API response or invalid on error
   function GetBrandingConfiguration() as dynamic
@@ -759,6 +777,7 @@ class ApiClient
   ' VIEWS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetViewsRequest() with fetchRes()/fetchJson()
   ' Get user views
   ' @returns API response or invalid on error
   function GetViews() as dynamic
@@ -787,6 +806,7 @@ class ApiClient
   ' NEXT UP ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetNextUpRequest() with fetchRes()/fetchJson()
   ' Get next up episodes with automatic image injection
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -843,6 +863,7 @@ class ApiClient
   ' VIDEOS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetAdditionalPartsRequest() with fetchRes()/fetchJson()
   ' Get additional parts for a video
   ' @param itemId - The video item ID
   ' @returns API response or invalid on error
@@ -869,6 +890,7 @@ class ApiClient
   ' FILTERS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetFiltersRequest() with fetchRes()/fetchJson()
   ' Get filters
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -894,6 +916,7 @@ class ApiClient
   ' IMAGE ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildHeadItemImageRequest() with fetchRes()
   ' Get image URL for an item by ID (HEAD request helper)
   ' @param id - Item ID
   ' @param imageType - Type of image
@@ -941,6 +964,7 @@ class ApiClient
   ' LIVETV ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetLiveTVChannelsRequest() with fetchRes()/fetchJson()
   ' Get Live TV channels
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -955,6 +979,7 @@ class ApiClient
     return { method: "GET", url: buildURL("/livetv/channels", params) }
   end function
 
+  ' @deprecated Use BuildGetLiveTVProgramsRequest() with fetchRes()/fetchJson()
   ' Get Live TV programs with automatic image injection
   ' @param params - Query parameters (e.g. SearchTerm, Limit)
   ' @returns API response or invalid on error
@@ -983,6 +1008,7 @@ class ApiClient
   ' STUDIOS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetStudiosRequest() with fetchRes()/fetchJson()
   ' Get studios
   ' @param params - Query parameters
   ' @returns API response or invalid on error
@@ -1001,6 +1027,7 @@ class ApiClient
   ' GENRES ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
+  ' @deprecated Use BuildGetGenresRequest() with fetchRes()/fetchJson()
   ' Get genres
   ' @param params - Query parameters
   ' @returns API response or invalid on error

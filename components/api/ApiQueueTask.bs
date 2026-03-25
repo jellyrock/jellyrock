@@ -137,7 +137,7 @@ end sub
 
 ' Read all unprocessed children (ApiResultNodes appended by fetchRes callers),
 ' extract their request AAs, add to the internal FIFO queue, and dispatch.
-' Children are never removed — m.processedIndex tracks progress.
+' Periodically prunes processed children to prevent unbounded accumulation.
 sub processNewChildren(pool as object)
   childCount = m.top.getChildCount()
   while m.processedIndex < childCount
@@ -148,6 +148,15 @@ sub processNewChildren(pool as object)
     end if
   end while
   tryDispatch(pool)
+
+  ' Prune processed children to prevent unbounded node accumulation in long sessions.
+  ' Safe: entry objects (in m.queue/m.inFlight) and fetchRes() callers hold direct node
+  ' references — removing from the child tree only detaches the parent link; node fields
+  ' and observers remain valid until all references are dropped.
+  if m.processedIndex >= 50
+    m.top.removeChildrenIndex(m.processedIndex, 0)
+    m.processedIndex = 0
+  end if
 end sub
 
 ' Dispatch queued requests to free pool slots (FIFO).
