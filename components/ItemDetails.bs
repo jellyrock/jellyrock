@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -90,6 +92,13 @@ sub init()
   m.loadLyricsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.loadLyricsTask.itemsToLoad = "lyrics"
 
+  ' Self-loading: fetch item details metadata via task (triggered by onItemIdChanged)
+  m.loadDetailsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.loadDetailsTask.itemsToLoad = "metaDataDetails"
+
+  ' Trailer check result node (Pattern 1: submitApiRequest, trivial callback)
+  m.trailerResultNode = invalid
+
   m.isFirstRun = true
 
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
@@ -151,6 +160,92 @@ sub OnScreenShown()
     if not isValid(m.top.lastFocus) or m.top.lastFocus.id <> "itemDescription"
       m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
     end if
+  end if
+end sub
+
+' Triggered when CreateItemDetailsGroup sets itemId — kicks off async data load
+sub onItemIdChanged()
+  itemId = m.top.itemId
+  if not isValidAndNotEmpty(itemId) then return
+
+  m.loadDetailsTask.unobserveField("content")
+  m.loadDetailsTask.control = "STOP"
+
+  m.loadDetailsTask.itemId = itemId
+  m.loadDetailsTask.forceRefresh = false
+  m.loadDetailsTask.observeField("content", "onDetailsLoaded")
+  m.loadDetailsTask.control = "RUN"
+end sub
+
+' Callback when initial item details metadata arrives from the task
+sub onDetailsLoaded()
+  m.loadDetailsTask.unobserveField("content")
+  content = m.loadDetailsTask.content
+  m.loadDetailsTask.content = []
+
+  if isValidAndNotEmpty(content) and isValid(content[0])
+    m.top.itemContent = content[0]
+  else
+    stopLoadingSpinner()
+    return
+  end if
+
+  ' Check trailer availability (Pattern 1: non-blocking, trivial callback)
+  itemType = m.top.itemType
+  if itemType = "Movie" or itemType = "Video" or itemType = "MusicVideo"
+    m.trailerResultNode = submitApiRequest(GetApi().BuildGetLocalTrailersRequest(m.top.itemId), "trailerCheck")
+    if isValid(m.trailerResultNode)
+      m.trailerResultNode.observeField("done", "onTrailerCheckDone")
+    end if
+  end if
+
+  stopLoadingSpinner()
+end sub
+
+' Callback when trailer availability check completes
+sub onTrailerCheckDone()
+  res = m.trailerResultNode.result
+  m.trailerResultNode.unobserveField("done")
+  m.trailerResultNode = invalid
+  if isValid(res) and res.ok and isValid(res.json)
+    m.top.trailerAvailable = res.json.Count() > 0
+  end if
+end sub
+
+' Triggered by refreshItemDetailsData field toggle (return from playback, refresh button).
+' Refreshes silently in the background — no spinner, no input blocking.
+' The UI already has data from the initial load so the user can navigate freely.
+sub onRefreshItemDetailsData()
+  itemId = m.top.itemId
+  if not isValidAndNotEmpty(itemId) then return
+
+  m.loadDetailsTask.unobserveField("content")
+  m.loadDetailsTask.control = "STOP"
+
+  m.loadDetailsTask.itemId = itemId
+  m.loadDetailsTask.forceRefresh = true
+  m.loadDetailsTask.observeField("content", "onRefreshDetailsLoaded")
+  m.loadDetailsTask.control = "RUN"
+end sub
+
+' Callback when refreshed item details metadata arrives
+sub onRefreshDetailsLoaded()
+  m.loadDetailsTask.unobserveField("content")
+  content = m.loadDetailsTask.content
+  m.loadDetailsTask.content = []
+
+  if isValidAndNotEmpty(content) and isValid(content[0])
+    m.top.itemContent = content[0]
+    if content[0].playbackPositionTicks > 0
+      m.global.queueManager.callFunc("setTopStartingPoint", content[0].playbackPositionTicks)
+    end if
+  end if
+
+  ' Stop spinner only when this screen is the active scene (watched/refresh button flow).
+  ' If a video player or other scene is on top, the spinner belongs to that flow — don't touch it.
+  activeScene = m.global.sceneManager.callFunc("getActiveScene")
+  if isValid(activeScene) and activeScene.isSameNode(m.top)
+    stopLoadingSpinner()
   end if
 end sub
 
@@ -2376,6 +2471,10 @@ end function
 sub destroy()
   m.log.verbose("destroy")
 
+  ' Safety net: stop the loading spinner in case the component is destroyed
+  ' while the initial load or a refresh is still in flight.
+  stopLoadingSpinner()
+
   ' Unobserve m.top programmatic observer (may or may not be active depending on flow)
   m.top.unobserveField("itemContent")
 
@@ -2406,6 +2505,15 @@ sub destroy()
   m.loadLyricsTask.unobserveField("content")
   m.loadLyricsTask.control = "STOP"
   m.loadLyricsTask = invalid
+
+  m.loadDetailsTask.unobserveField("content")
+  m.loadDetailsTask.control = "STOP"
+  m.loadDetailsTask = invalid
+
+  if isValid(m.trailerResultNode)
+    m.trailerResultNode.unobserveField("done")
+    m.trailerResultNode = invalid
+  end if
 
   ' Clear node references
   m.extrasGrp = invalid
