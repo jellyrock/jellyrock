@@ -12,6 +12,7 @@ sub init()
 
   m.userLocation = []
   m.themeColorsChanged = false
+  m.customColorBackup = invalid
 
   versionLabel = m.top.findNode("versionLabel")
   versionLabel.text = "v" + m.global.app.version
@@ -48,7 +49,7 @@ sub init()
 end sub
 
 sub onKeyGridSubmit()
-  selectedSetting = m.userLocation.peek().children[m.settingsMenu.itemFocused]
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
   newValue = m.integerSetting.text
 
   ' Update node field - observer handles registry persistence
@@ -64,7 +65,7 @@ sub onKeyGridEscape()
 end sub
 
 sub onHexKeyGridSubmit()
-  selectedSetting = m.userLocation.peek().children[m.settingsMenu.itemFocused]
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
   newValue = UCase(m.hexSetting.text)
 
   ' Validate hex color input
@@ -110,7 +111,7 @@ sub onResetDialogResponse()
   end if
 
   ' User confirmed reset - get default value from config tree
-  selectedSetting = m.userLocation.peek().children[m.settingsMenu.itemFocused]
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
   configEntry = findConfigTreeKey(selectedSetting.settingName, m.configTree)
 
   if not isValid(configEntry) or not isValid(configEntry.default)
@@ -147,7 +148,17 @@ sub LoadMenu(configSection)
 
   result = CreateObject("roSGNode", "ContentNode")
 
+  ' Build filtered children list (respecting visibleWhen conditions)
+  filteredChildren = []
   for each item in configSection.children
+    if isValid(item.visibleWhen) and not isSettingVisible(item.visibleWhen)
+      continue for
+    end if
+    filteredChildren.push(item)
+  end for
+  configSection.filteredChildren = filteredChildren
+
+  for each item in filteredChildren
     listItem = result.CreateChild("ContentNode")
     listItem.title = tr(item.title)
     listItem.Description = tr(item.description)
@@ -175,7 +186,7 @@ end sub
 
 sub settingFocused()
 
-  selectedSetting = m.userLocation.peek().children[m.settingsMenu.itemFocused]
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
   m.settingDesc.text = tr(selectedSetting.Description)
 
   ' Hide Settings
@@ -210,7 +221,7 @@ sub settingFocused()
     radioContent = CreateObject("roSGNode", "ContentNode")
 
     itemIndex = 0
-    for each item in m.userLocation.peek().children[m.settingsMenu.itemFocused].options
+    for each item in m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused].options
       listItem = radioContent.CreateChild("ContentNode")
       listItem.title = tr(item.title)
       listItem.id = item.id
@@ -241,7 +252,7 @@ end sub
 
 sub settingSelected()
 
-  selectedItem = m.userLocation.peek().children[m.settingsMenu.itemFocused]
+  selectedItem = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
 
   if isValid(selectedItem.type) ' Show setting
     if selectedItem.type = "bool"
@@ -267,7 +278,7 @@ end sub
 
 sub boolSettingChanged()
   if not isValid(m.boolSetting.focusedChild) then return
-  selectedSetting = m.userLocation.peek().children[m.settingsMenu.itemFocused]
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
 
   if m.boolSetting.checkedItem
     ' Update node field - observer handles registry persistence
@@ -290,12 +301,102 @@ end sub
 
 sub radioSettingChanged()
   if not isValid(m.radioSetting.focusedChild) then return
-  selectedSetting = m.userLocation.peek().children[m.settingsMenu.itemFocused]
-  newValue = m.radioSetting.content.getChild(m.radioSetting.checkedItem).id
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
+  selectedOption = selectedSetting.options[m.radioSetting.checkedItem]
+  newValue = selectedOption.id
+
+  ' Backup custom colors before applying a preset (so user can switch back)
+  if isValid(selectedOption.presetValues)
+    currentTheme = m.global.user.settings.uiTheme
+    if currentTheme = "custom" or currentTheme = ""
+      backupCustomColors()
+    end if
+  else if newValue = "custom" and isValid(m.customColorBackup)
+    ' Switching to Custom - restore backed up colors
+    restoreCustomColors()
+  end if
 
   ' Update node field - observer handles registry persistence
   user.settings.Save(selectedSetting.settingName, newValue)
+
+  ' Apply preset values if the selected option has them
+  if isValid(selectedOption.presetValues)
+    for each presetKey in selectedOption.presetValues
+      user.settings.Save(presetKey, selectedOption.presetValues[presetKey])
+    end for
+    m.themeColorsChanged = true
+  end if
+
+  ' Refresh menu if sibling items have visibleWhen referencing this setting
+  if hasDependentVisibility(selectedSetting.settingName)
+    refreshCurrentMenu()
+  end if
 end sub
+
+' Evaluate a visibleWhen condition against current user settings
+' @param {object} condition - { settingName: string, value: string }
+' @return {boolean} - true if the setting matches the required value
+function isSettingVisible(condition as object) as boolean
+  if not isValid(condition) or not isValid(condition.settingName) or not isValid(condition.value)
+    return true
+  end if
+  currentValue = m.global.user.settings[condition.settingName]
+  return currentValue = condition.value
+end function
+
+' Check if any sibling items in the current menu depend on a setting for visibility
+function hasDependentVisibility(settingName as string) as boolean
+  currentSection = m.userLocation.peek()
+  for each item in currentSection.children
+    if isValid(item.visibleWhen) and item.visibleWhen.settingName = settingName
+      return true
+    end if
+  end for
+  return false
+end function
+
+' Refresh the current menu level (re-filter visibleWhen and re-render)
+sub refreshCurrentMenu()
+  currentSection = m.userLocation.peek()
+  m.userLocation.pop()
+  LoadMenu(currentSection)
+end sub
+
+' Backup current custom color values before applying a preset
+sub backupCustomColors()
+  userSettings = m.global.user.settings
+  m.customColorBackup = {
+    uiThemeColorPrimary: userSettings.uiThemeColorPrimary,
+    uiThemeColorSecondary: userSettings.uiThemeColorSecondary,
+    uiThemeColorBackgroundPrimary: userSettings.uiThemeColorBackgroundPrimary,
+    uiThemeColorBackgroundSecondary: userSettings.uiThemeColorBackgroundSecondary,
+    uiThemeColorTextPrimary: userSettings.uiThemeColorTextPrimary,
+    uiThemeColorTextSecondary: userSettings.uiThemeColorTextSecondary,
+    uiThemeColorTextDisabled: userSettings.uiThemeColorTextDisabled
+  }
+end sub
+
+' Restore custom color values from backup
+sub restoreCustomColors()
+  if not isValid(m.customColorBackup) then return
+  for each key in m.customColorBackup
+    user.settings.Save(key, m.customColorBackup[key])
+  end for
+  m.themeColorsChanged = true
+end sub
+
+' Check if the current color values differ from the backed-up custom colors
+' @return {boolean} - true if any color has changed from the backup
+function hasCustomColorsChanged() as boolean
+  if not isValid(m.customColorBackup) then return false
+  userSettings = m.global.user.settings
+  for each key in m.customColorBackup
+    if userSettings[key] <> m.customColorBackup[key]
+      return true
+    end if
+  end for
+  return false
+end function
 
 ' JRScreen hook that gets ran when the screen is shown.
 sub OnScreenShown()
@@ -336,7 +437,38 @@ function isFormInFocus() as boolean
 end function
 
 ' Exit settings screen, refreshing theme colors only if they changed
+' Shows confirmation dialog if custom colors would be permanently lost
 sub exitSettingsAndReloadHome()
+  ' Check if custom colors will be lost (user switched from Custom to a preset)
+  if isValid(m.customColorBackup) and m.global.user.settings.uiTheme <> "custom" and hasCustomColorsChanged()
+    m.global.sceneManager.callFunc("optionDialog", tr("Replace Custom Colors"), tr("Your custom colors will be replaced by the selected theme. Continue?"), [tr("Yes"), tr("No")])
+    m.global.sceneManager.observeFieldScoped("dataReturned", "onExitConfirmResponse")
+    return
+  end if
+
+  performSettingsExit()
+end sub
+
+' Handle user response from exit confirmation dialog
+sub onExitConfirmResponse()
+  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+
+  returnData = m.global.sceneManager.returnData
+  if not isValid(returnData) or returnData.indexSelected <> 0
+    ' User selected "No" or closed dialog - restore custom colors and stay
+    restoreCustomColors()
+    user.settings.Save("uiTheme", "custom")
+    m.settingsMenu.setFocus(true)
+    return
+  end if
+
+  ' User confirmed - clear backup and exit
+  m.customColorBackup = invalid
+  performSettingsExit()
+end sub
+
+' Perform the actual settings exit (apply theme changes and navigate)
+sub performSettingsExit()
   if m.themeColorsChanged
     ' Apply theme color overrides and refresh UI
     applyThemeColorOverrides(m.global.user.settings)
@@ -427,4 +559,5 @@ sub destroy()
   ' Clear data structures
   m.userLocation = invalid
   m.configTree = invalid
+  m.customColorBackup = invalid
 end sub
