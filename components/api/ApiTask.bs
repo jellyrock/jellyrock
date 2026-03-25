@@ -1,6 +1,6 @@
 import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/utils/misc.bs"
 import "pkg:/source/roku_modules/rr/Requests.brs"
+import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.top.functionName = "runApiLoop"
@@ -57,6 +57,11 @@ function executeRequest(req as object) as object
 
   if isValid(req.body) and req.body <> ""
     args.data = req.body
+    ' POST/PUT/PATCH with a body requires Content-Type so the server knows the format.
+    ' Only set if not already provided by caller-supplied headers.
+    if not isValid(headers["Content-Type"])
+      headers["Content-Type"] = "application/json"
+    end if
   end if
 
   r = rr_Requests().request(method, req.url, args)
