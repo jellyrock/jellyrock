@@ -3,8 +3,8 @@
 
 [![Current Release](https://img.shields.io/github/release/jellyrock/jellyrock.svg?logo=github "Current Release")](https://github.com/jellyrock/jellyrock/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
-[![Code Documentation](https://img.shields.io/badge/Code%20Documentation-purple)](https://jellyrock.github.io/api-docs/)
 [![License](https://img.shields.io/github/license/jellyrock/jellyrock.svg "GPL 2.0 License")](LICENSE)
+[![API docs](https://img.shields.io/badge/API%20docs-purple)](https://jellyrock.github.io/api-docs/)
 <!-- [![Translation Status](https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-roku/svg-badge.svg "Translation Status")](https://translate.jellyfin.org/projects/jellyfin/jellyfin-roku/?utm_source=widget) -->
 
 JellyRock is a Jellyfin client for Roku devices with a focus on stability and UX. Originally forked from jellyfin-roku [v2.2.5](https://github.com/jellyfin-archive/jellyfin-roku-legacy/releases/tag/v2.2.5).
