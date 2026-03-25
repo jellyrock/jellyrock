@@ -1,4 +1,5 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
@@ -10,8 +11,6 @@ sub init()
 
   m.isFirstRun = true
   m.top.optionsAvailable = true
-
-  m.postTask = createObject("roSGNode", "PostTask")
 
   ' HomeRows starts in XML as the default tab content
   m.homeRows = m.top.findNode("homeRows")
@@ -94,16 +93,12 @@ sub OnScreenShown()
     m.top.setFocus(true)
   end if
 
-  ' First run: post device capabilities to the server.
-  ' postFinished() intentionally does NOT trigger a content load — Main.bs already
-  ' called loadLibraries() before pushing this screen, so data is already in flight.
+  ' First run: post device capabilities to the server via fire-and-forget side effect.
+  ' No response handling needed — Main.bs already called loadLibraries() before
+  ' pushing this screen, so data is already in flight.
   if m.isFirstRun
     m.isFirstRun = false
-
-    m.postTask.arrayData = getDeviceCapabilities()
-    m.postTask.apiUrl = "/Sessions/Capabilities/Full"
-    m.postTask.control = "RUN"
-    m.postTask.observeField("responseCode", "postFinished")
+    SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
   else
     ' Subsequent visits: refresh the active tab's data in place
     refresh()
@@ -241,22 +236,8 @@ sub onTabBarFocusReturn()
 end sub
 
 ' ============================================
-' POST TASK & TEARDOWN
+' TEARDOWN
 ' ============================================
-
-' Triggered by m.postTask after completing a post.
-' Cleans up the task — does NOT trigger content loading (already handled by loadLibraries).
-sub postFinished()
-  if not isValid(m.postTask) then return
-
-  responseCode = m.postTask.responseCode
-  if responseCode <> 200 and responseCode <> 204
-    m.log.warn("Device capabilities post returned", responseCode)
-  end if
-
-  m.postTask.unobserveField("responseCode")
-  m.postTask.callFunc("empty")
-end sub
 
 ' destroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
@@ -270,11 +251,6 @@ sub destroy()
     m.tabBar.unobserveField("requestFocusReturn")
     m.tabBar = invalid
   end if
-
-  ' Stop and release task node
-  m.postTask.unobserveField("responseCode")
-  m.postTask.control = "STOP"
-  m.postTask = invalid
 
   ' Destroy active tab content
   destroyActiveContent()

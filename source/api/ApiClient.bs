@@ -677,6 +677,18 @@ class ApiClient
     }
   end function
 
+  ' Build a request AA to post full session capabilities, for use with SubmitSideEffect().
+  ' @param capabilities - Device capabilities AA from getDeviceCapabilities()
+  ' @returns Request AA: { method, url, body, headers }
+  function BuildPostSessionCapabilitiesRequest(capabilities as object) as object
+    return {
+      method: "POST",
+      url: buildURL("/Sessions/Capabilities/Full"),
+      body: FormatJson(capabilities),
+      headers: { "Content-Type": "application/json" }
+    }
+  end function
+
   ' Get active sessions
   ' @param params - Query parameters
   ' @returns API response or invalid on error
