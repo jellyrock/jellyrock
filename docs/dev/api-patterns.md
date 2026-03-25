@@ -86,7 +86,7 @@ Examples: `captionTask`, `FontDownloadTask`, `ServerDiscoveryTask`
 ## Key Files
 
 | File | Purpose |
-|------|---------|
+| ------ | ------- |
 | `source/api/ApiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `SubmitSideEffect()` |
 | `source/api/ApiClient.bs` | `Build*Request()` methods that create request AAs |
 | `components/api/ApiQueueTask.bs` | FIFO coordinator for the pool |
