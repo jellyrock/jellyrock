@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- two-tier API task pool, async button UX, and toast notifications ([#414](https://github.com/jellyrock/jellyrock/pull/414))
 - Theme preset system with conditional settings ([#410](https://github.com/jellyrock/jellyrock/pull/410))
 
 ### Dependencies
