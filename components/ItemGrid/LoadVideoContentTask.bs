@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/api/Items.bs"
@@ -532,14 +533,10 @@ sub addNextEpisodesToQueue(showID)
     end if
   end if
 
-  url = Substitute("Shows/{0}/Episodes", showID)
-  urlParams = {
-    "UserId": m.global.user.id,
+  data = fetchJson(GetApi().BuildGetEpisodesRequest(showID, {
     "StartItemId": videoID,
     "Limit": 50
-  }
-  resp = APIRequest(url, urlParams)
-  data = getJson(resp)
+  }), "nextEpisodes")
 
   if isValid(data) and data.Items.Count() > 1
     ' Start at index 1 to skip the current episode

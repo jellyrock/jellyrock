@@ -99,13 +99,13 @@ namespace tests
     @describe("Edge Cases - Empty User")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns invalid when userId is empty for GetItem")
+    @it("returns invalid from BuildGetItemRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetItem(m.testItemId)
+      result = m.apiClient.BuildGetItemRequest(m.testItemId)
 
       localUser.id = originalId
 
@@ -177,13 +177,13 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetIntros when userId is empty")
+    @it("returns invalid from BuildGetIntrosRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetIntros(m.testItemId)
+      result = m.apiClient.BuildGetIntrosRequest(m.testItemId)
 
       localUser.id = originalId
 

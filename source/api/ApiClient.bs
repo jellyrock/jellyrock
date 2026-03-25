@@ -52,16 +52,36 @@ class ApiClient
 
   ' Get a single item by ID with automatic image and version field injection
   ' @param itemId - The Jellyfin item ID
+  ' Build a request AA to get a single item with automatic image/version field injection.
+  ' @param itemId - The item ID
   ' @param params - Optional query parameters (fields, etc.)
-  ' @returns API response or invalid on error
-  function GetItem(itemId as string, params = {} as object) as dynamic
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildGetItemRequest(itemId as string, params = {} as object) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    mergedParams = m.injectDefaults(params)
+
+    if m.getApiVersion() >= 2
+      mergedParams.userId = userId
+      return { method: "GET", url: buildURL(Substitute("/Items/{0}", itemId), mergedParams) }
+    end if
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}", userId, itemId), mergedParams) }
+  end function
+
+  ' Build a request AA to get a single item WITHOUT image/version field injection.
+  ' @param itemId - The item ID
+  ' @param params - Optional query parameters (passed through as-is)
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildGetItemRawRequest(itemId as string, params = {} as object) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
 
     if m.getApiVersion() >= 2
-      return sdkV2.users.GetItem(userId, itemId, m.injectDefaults(params))
+      params.userId = userId
+      return { method: "GET", url: buildURL(Substitute("/Items/{0}", itemId), params) }
     end if
-    return sdkV1.users.GetItem(userId, itemId, m.injectDefaults(params))
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}", userId, itemId), params) }
   end function
 
   ' @deprecated Use BuildGetItemsByQueryRequest() with fetchRes()/fetchJson()
@@ -174,51 +194,10 @@ class ApiClient
   ' RAW ACCESS - No image injection (for playback/internal use)
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Get item without image parameters - use for playback info only
-  ' @param itemId - The Jellyfin item ID
-  ' @param params - Query parameters (passed through as-is)
-  ' @returns API response or invalid on error
-  function GetItemRaw(itemId as string, params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetItem(userId, itemId, params)
-    end if
-    return sdkV1.users.GetItem(userId, itemId, params)
-  end function
-
-  ' Get items by query without image parameters
-  ' @param params - Query parameters (passed through as-is)
-  ' @returns API response or invalid on error
-  function GetItemsByQueryRaw(params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    if m.getApiVersion() >= 2
-      return sdkV2.users.GetItemsByQuery(userId, params)
-    end if
-    return sdkV1.users.GetItemsByQuery(userId, params)
-  end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
   ' SHOWS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
-
-  ' @deprecated Use BuildGetSeasonsRequest() with fetchRes()/fetchJson()
-  ' Get seasons for a TV series with automatic image injection
-  ' @param seriesId - The series ID
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetSeasons(seriesId as string, params = {} as object) as dynamic
-    userId = m.getUserId()
-    if userId = "" then return invalid
-
-    mergedParams = m.injectDefaults(params)
-    mergedParams.UserId = userId
-
-    return sdk.shows.GetSeasons(seriesId, mergedParams)
-  end function
 
   ' Build a request AA for GetSeasons, for use with fetchRes() or fetchJson().
   ' Mirrors GetSeasons(): applies injectDefaults and injects UserId.
@@ -266,12 +245,12 @@ class ApiClient
   ' ARTIST ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Get artist by name
-  ' @param name - Artist name
+  ' Build a request AA for GetArtistByName, for use with fetchJson().
+  ' @param name - Artist name (will be URI-encoded)
   ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetArtistByName(name as string, params = {} as object) as dynamic
-    return sdk.artists.GetByName(name, params)
+  ' @returns Request AA: { method, url }
+  function BuildGetArtistByNameRequest(name as string, params = {} as object) as object
+    return { method: "GET", url: buildURL(Substitute("/artists/{0}", name.EncodeUriComponent()), params) }
   end function
 
   ' @deprecated Use BuildGetArtistsRequest() with fetchRes()/fetchJson()
@@ -396,11 +375,11 @@ class ApiClient
   ' ITEMS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Get instant mix based on item
+  ' Build a request AA for GetInstantMix, for use with fetchJson().
   ' @param itemId - The item ID
-  ' @param params - Optional query parameters
-  ' @returns API response or invalid on error
-  function GetInstantMix(itemId as string, params = {} as object) as dynamic
+  ' @param params - Optional query parameters (Limit, etc.)
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildGetInstantMixRequest(itemId as string, params = {} as object) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
 
@@ -408,33 +387,39 @@ class ApiClient
     mergedParams.append(params)
     mergedParams.UserId = userId
 
-    return sdk.items.GetInstantMix(itemId, mergedParams)
+    return { method: "GET", url: buildURL(Substitute("/items/{0}/instantmix", itemId), mergedParams) }
   end function
 
-  ' Get intros for an item
+  ' Build a request AA for GetIntros, for use with fetchJson().
   ' @param itemId - The item ID
-  ' @returns API response or invalid on error
-  function GetIntros(itemId as string) as dynamic
+  ' @returns Request AA: { method, url } or invalid if no user
+  function BuildGetIntrosRequest(itemId as string) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
 
     if m.getApiVersion() >= 2
-      return sdkV2.users.GetIntros(userId, itemId)
+      return { method: "GET", url: buildURL(Substitute("/Items/{0}/Intros", itemId)) }
     end if
-    return sdkV1.users.GetIntros(userId, itemId)
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}/intros", userId, itemId)) }
+  end function
+
+  ' Build a request AA for GetItemLyrics, for use with fetchJson().
+  ' @param itemId - The Audio item ID
+  ' @returns Request AA: { method, url }
+  function BuildGetItemLyricsRequest(itemId as string) as object
+    return { method: "GET", url: buildURL(Substitute("Audio/{0}/Lyrics", itemId)) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
-  ' THIN WRAPPERS - Pass-through to SDK for consistent UX
-  ' These don't modify params but provide consistent api.* interface
+  ' PLAYBACK ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
-  ' Post playback info (used for starting playback)
+  ' Build a request AA for PostPlaybackInfo, for use with fetchJson().
   ' @param itemId - The item ID
-  ' @param postData - Request body data
-  ' @returns API response or invalid on error
-  function PostPlaybackInfo(itemId as string, postData as object) as dynamic
-    return sdk.items.PostPlayBackInfo(itemId, postData)
+  ' @param postData - Request body data (DeviceProfile, MediaSourceId, etc.)
+  ' @returns Request AA: { method, url, body }
+  function BuildPostPlaybackInfoRequest(itemId as string, postData as object) as object
+    return { method: "POST", url: buildURL(Substitute("/items/{0}/playbackinfo", itemId)), body: FormatJson(postData) }
   end function
 
   ' @deprecated Use BuildGetArtistSimilarRequest() with fetchRes()/fetchJson()
