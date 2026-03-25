@@ -97,8 +97,57 @@ jellyrock/
 | `integer` | Numeric value | `0`, `30`, `1920` |
 | `string` | Free-form text | `"auto"`, `"enabled"` |
 | `radio` | Single selection from options | `"webclient"`, `"enabled"`, `"disabled"` |
+| `text` | Free-form text input | `"FF5733"`, `"0D1117"` |
 
 **Note:** Radio buttons with options are the most common for override settings.
+
+### Conditional Visibility (`visibleWhen`)
+
+Any setting can declare a `visibleWhen` condition to only appear in the UI when another setting has a specific value. This is fully declarative in `settings.json` — no code changes needed.
+
+```json
+{
+  "settingName": "uiThemeColorPrimary",
+  "type": "text",
+  "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+}
+```
+
+The setting above only appears when `uiTheme` equals `"custom"`. When the controlling setting changes, the menu automatically refreshes to show/hide dependent items.
+
+**How it works in code:**
+
+- `LoadMenu()` builds a `filteredChildren` array by evaluating each item's `visibleWhen` condition via `isSettingVisible()`
+- All menu index lookups use `filteredChildren[]` instead of `children[]` to ensure correct mapping
+- `radioSettingChanged()` calls `refreshCurrentMenu()` when the changed setting has dependent siblings (detected by `hasDependentVisibility()`)
+
+### Preset Values (`presetValues`)
+
+Radio options can declare `presetValues` — a map of setting names to values that are bulk-applied when that option is selected. This lets a single radio selection update multiple settings at once.
+
+```json
+{
+  "title": "Theme",
+  "settingName": "uiTheme",
+  "type": "radio",
+  "options": [
+    {
+      "title": "JellyRock",
+      "id": "jellyrock",
+      "presetValues": {
+        "uiThemeColorPrimary": "8B5CF6",
+        "uiThemeColorBackgroundPrimary": "0D1117"
+      }
+    },
+    {
+      "title": "Custom",
+      "id": "custom"
+    }
+  ]
+}
+```
+
+When a preset option is selected, all its `presetValues` are saved via `user.settings.Save()`. Options without `presetValues` (like "Custom" above) just set the radio value itself.
 
 ### Global Settings vs User Settings
 
@@ -160,6 +209,13 @@ Add your setting to the appropriate category (Playback, User Interface, etc.):
   ]
 }
 ```
+
+**Optional Properties:**
+
+| Property | Description |
+| -------------- | ----------------------------------------------------------------- |
+| `visibleWhen` | Condition to show/hide this setting based on another setting's value. See [Conditional Visibility](#conditional-visibility-visiblewhen). |
+| `presetValues` | (Radio options only) Map of setting names to values applied when this option is selected. See [Preset Values](#preset-values-presetvalues). |
 
 **Naming Conventions:**
 
