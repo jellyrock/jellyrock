@@ -668,11 +668,11 @@ class ApiClient
     }
   end function
 
-  ' Get active sessions
-  ' @param params - Query parameters
-  ' @returns API response or invalid on error
-  function GetSessions(params = {} as object) as dynamic
-    return sdk.sessions.Get(params)
+  ' Build a request AA to get active sessions, for use with fetchJson().
+  ' @param params - Query parameters (e.g. { deviceId: "..." })
+  ' @returns Request AA: { method, url }
+  function BuildGetSessionsRequest(params = {} as object) as object
+    return { method: "GET", url: buildURL("/sessions", params) }
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
