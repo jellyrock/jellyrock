@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG ONLY: Error injection flags for testing error paths and toast notifications.
+     This node is ONLY created when bs_const=debug=true (sideloaded dev builds).
+     It does not exist in production builds. See docs/dev/debug-flags.md for usage. -->
+<component name="DebugFlags" extends="ContentNode">
+  <interface>
+    <!-- API Error Injection -->
+    <field id="forceFiltersFail" type="boolean" value="false" />
+    <field id="forceFavoriteFail" type="boolean" value="false" />
+    <field id="forceWatchedFail" type="boolean" value="false" />
+  </interface>
+</component>

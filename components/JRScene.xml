@@ -21,5 +21,8 @@
     <function name="setBackgroundImage" />
     <function name="refreshBackdropSetting" />
     <function name="showToast" />
+    <!-- DEBUG: Set from BrightScript console to test toasts. Format: "type|message"
+         Example: m.top.getScene().testToast = "error|Something went wrong" -->
+    <field id="testToast" type="string" value="" alwaysNotify="true" />
   </interface>
 </component>

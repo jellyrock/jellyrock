@@ -1045,6 +1045,13 @@ sub handleFavoriteToggleDone()
   m.favoriteResultNode.unobserveField("done")
   m.favoriteResultNode = invalid
 
+  ' Debug error injection — compiled out in production (bs_const=debug=false)
+  #if debug
+    if isValid(m.global.debug) and m.global.debug.forceFavoriteFail
+      res = { ok: false }
+    end if
+  #end if
+
   if isValid(res) and res.ok
     if isValid(m.pendingFavoriteButton)
       m.pendingFavoriteButton.selected = m.pendingFavoriteNewState
@@ -1068,6 +1075,13 @@ sub handleWatchedToggleDone()
   res = m.watchedResultNode.result
   m.watchedResultNode.unobserveField("done")
   m.watchedResultNode = invalid
+
+  ' Debug error injection — compiled out in production (bs_const=debug=false)
+  #if debug
+    if isValid(m.global.debug) and m.global.debug.forceWatchedFail
+      res = { ok: false }
+    end if
+  #end if
 
   if isValid(res) and res.ok
     if isValid(m.pendingWatchedButton)

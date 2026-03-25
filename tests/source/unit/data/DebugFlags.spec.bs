@@ -1,0 +1,85 @@
+namespace tests
+
+  @suite("DebugFlags - Node interface and defaults")
+  class DebugFlagsTests extends tests.BaseTestSuite
+
+    private debugNode as object
+
+    protected override function setup()
+      super.setup()
+      m.debugNode = CreateObject("roSGNode", "DebugFlags")
+    end function
+
+    protected override function teardown()
+      m.debugNode = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has forceFiltersFail field")
+    function _()
+      m.assertTrue(m.debugNode.doesExist("forceFiltersFail"))
+    end function
+
+    @it("has forceFavoriteFail field")
+    function _()
+      m.assertTrue(m.debugNode.doesExist("forceFavoriteFail"))
+    end function
+
+    @it("has forceWatchedFail field")
+    function _()
+      m.assertTrue(m.debugNode.doesExist("forceWatchedFail"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("All flags default to false")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("forceFiltersFail defaults to false")
+    function _()
+      m.assertFalse(m.debugNode.forceFiltersFail)
+    end function
+
+    @it("forceFavoriteFail defaults to false")
+    function _()
+      m.assertFalse(m.debugNode.forceFavoriteFail)
+    end function
+
+    @it("forceWatchedFail defaults to false")
+    function _()
+      m.assertFalse(m.debugNode.forceWatchedFail)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Flags can be toggled")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("forceFiltersFail can be set to true and back to false")
+    function _()
+      m.debugNode.forceFiltersFail = true
+      m.assertTrue(m.debugNode.forceFiltersFail)
+      m.debugNode.forceFiltersFail = false
+      m.assertFalse(m.debugNode.forceFiltersFail)
+    end function
+
+    @it("forceFavoriteFail can be set to true and back to false")
+    function _()
+      m.debugNode.forceFavoriteFail = true
+      m.assertTrue(m.debugNode.forceFavoriteFail)
+      m.debugNode.forceFavoriteFail = false
+      m.assertFalse(m.debugNode.forceFavoriteFail)
+    end function
+
+    @it("forceWatchedFail can be set to true and back to false")
+    function _()
+      m.debugNode.forceWatchedFail = true
+      m.assertTrue(m.debugNode.forceWatchedFail)
+      m.debugNode.forceWatchedFail = false
+      m.assertFalse(m.debugNode.forceWatchedFail)
+    end function
+
+  end class
+
+end namespace

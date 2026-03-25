@@ -107,6 +107,18 @@ sub setGlobalNodes()
 
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
+
+  ' Debug-only error injection flags — compiled out in production (bs_const=debug=false)
+  ' See docs/dev/debug-flags.md for the full developer contract.
+  #if debug
+    debugNode = CreateObject("roSGNode", "DebugFlags")
+    m.global.addFields({ debug: debugNode })
+    print "[DEBUG] DebugFlags node initialized on m.global.debug"
+    print "[DEBUG] Toggle flags from BrightScript console (port 8085):"
+    print "[DEBUG]   m.global.debug.forceFiltersFail = true"
+    print "[DEBUG]   m.global.debug.forceFavoriteFail = true"
+    print "[DEBUG]   m.global.debug.forceWatchedFail = true"
+  #end if
 end sub
 
 ' Save Constants

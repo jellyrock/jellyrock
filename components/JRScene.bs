@@ -20,6 +20,42 @@ sub init()
   fallbackFont = m.top.findNode("fallbackFont")
   defaultFont.text = "Ag"
   fallbackFont.text = "Ag"
+
+  ' Test toast trigger — set from BrightScript console for quick visual verification
+  m.top.observeField("testToast", "onTestToast")
+
+  ' Debug-only: cheat code state for toast testing — compiled out in production
+  #if debug
+    m.debugCodeSequence = ["up", "up", "down", "down"]
+    m.debugCodeProgress = 0
+    m.debugLastKeyTime = 0
+    m.debugToastIndex = 0
+  #end if
+end sub
+
+' DEBUG: Triggered when testToast field is set from the BrightScript console.
+' Format: "type|message" where type is "error", "success", "warning", or "info".
+' Falls back to "error" type if no pipe delimiter is found.
+'
+' Usage from BrightScript console (port 8085):
+'   m.top.getScene().testToast = "error|Something went wrong"
+'   m.top.getScene().testToast = "success|Item saved"
+'   m.top.getScene().testToast = "info|Loading filters..."
+'   m.top.getScene().testToast = "Just a message"
+sub onTestToast()
+  value = m.top.testToast
+  if value = "" then return
+
+  parts = value.split("|")
+  if parts.count() >= 2
+    toastType = parts[0]
+    message = value.mid(toastType.len() + 1)
+  else
+    toastType = "error"
+    message = value
+  end if
+
+  showToast(message, toastType)
 end sub
 
 sub loadingTextChanged()
@@ -135,6 +171,39 @@ sub showToast(message as string, toastType = "error" as string)
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
+  ' Debug-only: up-up-down-down cheat code on key UP events to cycle test toasts.
+  ' Key UP (press=false) always bubbles to JRScene because all child components
+  ' return false for press=false. This guarantees the sequence is tracked regardless
+  ' of which screen has focus. Compiled out in production (bs_const=debug=false).
+  ' See docs/dev/debug-flags.md.
+  #if debug
+    if not press
+      now = CreateObject("roDateTime").asSeconds()
+      if now - m.debugLastKeyTime > 2
+        m.debugCodeProgress = 0
+      end if
+      m.debugLastKeyTime = now
+      if key = m.debugCodeSequence[m.debugCodeProgress]
+        m.debugCodeProgress++
+        if m.debugCodeProgress >= m.debugCodeSequence.count()
+          m.debugCodeProgress = 0
+          debugToasts = [
+            { type: "error", msg: "[DEBUG] Error toast test" },
+            { type: "success", msg: "[DEBUG] Success toast test" },
+            { type: "warning", msg: "[DEBUG] Warning toast test" },
+            { type: "info", msg: "[DEBUG] Info toast test" }
+          ]
+          toast = debugToasts[m.debugToastIndex]
+          m.debugToastIndex = (m.debugToastIndex + 1) mod 4
+          showToast(toast.msg, toast.type)
+          return true
+        end if
+      else
+        m.debugCodeProgress = 0
+      end if
+    end if
+  #end if
+
   if not press then return false
   if m.top.disableRemote then return true
 
