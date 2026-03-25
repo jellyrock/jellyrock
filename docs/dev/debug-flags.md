@@ -55,9 +55,9 @@ In a debug build, enter **up, up, down, down** on the d-pad within 2 seconds to 
 
 **Compiled out in production** via `#if debug`.
 
-### testToast Field (Console Fallback)
+### `testToast` Field (Console Fallback)
 
-The `testToast` field on `JRScene` provides programmatic toast triggering. It is always available (not behind `#if debug`) because it has negligible footprint and the BrightScript console is only accessible on sideloaded dev builds anyway.
+The `testToast` field on `JRScene` provides programmatic toast triggering. It is always available (not behind `#if debug`) because it has negligible footprint and the BrightScript console is only accessible on side loaded dev builds anyway.
 
 **Important:** The BrightScript console (both VS Code and telnet port 8085) can only evaluate expressions when the app is **paused at a breakpoint**. For live testing, use the key combo above.
 
@@ -67,7 +67,7 @@ The `testToast` field on `JRScene` provides programmatic toast triggering. It is
 
 ---
 
-## DebugFlags System (Option C)
+## `DebugFlags` System (Option C)
 
 ### Architecture
 
@@ -107,8 +107,8 @@ The system uses BrighterScript's `#if debug` conditional compilation:
 | Flag | What It Does | Where to Test |
 | ------ | ------------- | --------------- |
 | `forceFiltersFail` | Skips the API call in `GetFiltersTask` and simulates a failure response | Navigate to any library with dynamic filters (e.g., Movies) |
-| `forceFavoriteFail` | Forces the favorite toggle API response to appear failed | Press the favorite button on any ItemDetails screen |
-| `forceWatchedFail` | Forces the watched toggle API response to appear failed | Press the watched button on any ItemDetails screen |
+| `forceFavoriteFail` | Forces the favorite toggle API response to appear failed | Press the favorite button on any `ItemDetails` screen |
+| `forceWatchedFail` | Forces the watched toggle API response to appear failed | Press the watched button on any `ItemDetails` screen |
 
 ---
 

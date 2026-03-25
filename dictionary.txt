@@ -94,3 +94,5 @@ Orchestrator
 non-Jellyfin
 playstate
 AAs
+injectable
+BrighterScript's
