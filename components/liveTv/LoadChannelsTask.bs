@@ -46,32 +46,32 @@ sub loadChannels()
   results = []
 
   if isValid(res) and res.ok and isValid(res.json)
-      if not isValid(res.json.TotalRecordCount)
-        m.top.channels = results
-        return
+    if not isValid(res.json.TotalRecordCount)
+      m.top.channels = results
+      return
+    end if
+
+    transformer = JellyfinDataTransformer()
+    for each item in res.json.Items
+      node = transformer.transformBaseItem(item)
+
+      ' Format title with channel number for TimeGrid channel gutter display
+      if isValidAndNotEmpty(node.channelNumber)
+        node.title = `${tr("CH")} ${node.channelNumber} ${node.name}`
       end if
 
-      transformer = JellyfinDataTransformer()
-      for each item in res.json.Items
-        node = transformer.transformBaseItem(item)
+      ' Set hdSmallIconUrl for TimeGrid channel icon (ContentNode built-in read by Roku TimeGrid)
+      if isValidAndNotEmpty(node.primaryImageTag)
+        node.hdsmalliconurl = ImageURL(node.id, "Primary", { maxHeight: 60, tag: node.primaryImageTag })
+      end if
 
-        ' Format title with channel number for TimeGrid channel gutter display
-        if isValidAndNotEmpty(node.channelNumber)
-          node.title = `${tr("CH")} ${node.channelNumber} ${node.name}`
-        end if
-
-        ' Set hdSmallIconUrl for TimeGrid channel icon (ContentNode built-in read by Roku TimeGrid)
-        if isValidAndNotEmpty(node.primaryImageTag)
-          node.hdsmalliconurl = ImageURL(node.id, "Primary", { maxHeight: 60, tag: node.primaryImageTag })
-        end if
-
-        ' Favorites appear at the top of the channel list
-        if node.isFavorite
-          results.Unshift(node)
-        else
-          results.push(node)
-        end if
-      end for
+      ' Favorites appear at the top of the channel list
+      if node.isFavorite
+        results.Unshift(node)
+      else
+        results.push(node)
+      end if
+    end for
   end if
 
   m.top.channels = results
