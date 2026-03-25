@@ -296,13 +296,17 @@
       <translation>Critics Rating</translation>
     </message>
     <message>
+      <source>Custom</source>
+      <translation>Custom</translation>
+    </message>
+    <message>
       <source>Custom Subtitles</source>
       <translation>Custom Subtitles</translation>
       <extracomment>Name of a setting - custom subtitles that support CJK fonts</extracomment>
     </message>
     <message>
-      <source>Customize the app&apos;s color scheme. Enter 6-digit hex codes (e.g. FF5733).</source>
-      <translation>Customize the app&apos;s color scheme. Enter 6-digit hex codes (e.g. FF5733).</translation>
+      <source>Customize the app&apos;s color scheme. Choose a preset or create your own custom theme.</source>
+      <translation>Customize the app&apos;s color scheme. Choose a preset or create your own custom theme.</translation>
     </message>
     <message>
       <source>DATE_ADDED</source>
@@ -618,6 +622,14 @@
     <message>
       <source>Items</source>
       <translation>Items</translation>
+    </message>
+    <message>
+      <source>JellyRock</source>
+      <translation>JellyRock</translation>
+    </message>
+    <message>
+      <source>JellyRock (Black)</source>
+      <translation>JellyRock (Black)</translation>
     </message>
     <message>
       <source>Level</source>
@@ -1053,6 +1065,10 @@
       <extracomment>If TV Shows has previously been broadcasted</extracomment>
     </message>
     <message>
+      <source>Replace Custom Colors</source>
+      <translation>Replace Custom Colors</translation>
+    </message>
+    <message>
       <source>Replace Roku&apos;s system font with the fallback font provided by the Jellyfin server. Fallback fonts must be configured and enabled by the server admin for this to work. JellyRock will need to be restarted.</source>
       <translation>Replace Roku&apos;s system font with the fallback font provided by the Jellyfin server. Fallback fonts must be configured and enabled by the server admin for this to work. JellyRock will need to be restarted.</translation>
     </message>
@@ -1127,6 +1143,10 @@
     <message>
       <source>Secondary text. Default: A8A8A8</source>
       <translation>Secondary text. Default: A8A8A8</translation>
+    </message>
+    <message>
+      <source>Select a color theme. Choose &apos;Custom&apos; to manually set individual colors.</source>
+      <translation>Select a color theme. Choose &apos;Custom&apos; to manually set individual colors.</translation>
     </message>
     <message>
       <source>Select a User</source>
@@ -1358,6 +1378,10 @@
       <extracomment>Direct play info box text in GetPlaybackInfoTask.brs</extracomment>
     </message>
     <message>
+      <source>Theme</source>
+      <translation>Theme</translation>
+    </message>
+    <message>
       <source>Theme Colors</source>
       <translation>Theme Colors</translation>
     </message>
@@ -1565,6 +1589,10 @@
       <source>You can search for Titles, People, Live TV Channels and more</source>
       <translation>You can search for Titles, People, Live TV Channels and more</translation>
       <extracomment>Help text in search results</extracomment>
+    </message>
+    <message>
+      <source>Your custom colors will be replaced by the selected theme. Continue?</source>
+      <translation>Your custom colors will be replaced by the selected theme. Continue?</translation>
     </message>
   </context>
 </TS>
