@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Theme preset system with conditional settings ([#410](https://github.com/jellyrock/jellyrock/pull/410))
+
 ### Dependencies
 
 - Update brighterscript from v0.70.3 to v0.70.4 ([#404](https://github.com/jellyrock/jellyrock/pull/404))
