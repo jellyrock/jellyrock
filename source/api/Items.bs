@@ -249,8 +249,12 @@ end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
-function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string)
-  data = fetchJson(GetApi().BuildGetItemRequest(id, { "fields": fields }), "itemMetaData")
+function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string, forceRefresh = false as boolean)
+  req = GetApi().BuildGetItemRequest(id, { "fields": fields })
+  if forceRefresh and isValid(req)
+    req.headers = { "Cache-Control": "no-cache" }
+  end if
+  data = fetchJson(req, "itemMetaData")
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
   return transformer.transformBaseItem(data)
@@ -258,8 +262,8 @@ end function
 
 ' MetaData for an item detail screen — includes People, Genres, and Studios in addition to
 ' Chapters and Trickplay. Use this instead of ItemMetaData() when populating a detail view.
-function ItemDetailsMetaData(id as string)
-  return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People")
+function ItemDetailsMetaData(id as string, forceRefresh = false as boolean)
+  return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People", forceRefresh)
 end function
 
 ' Music Artist Data
@@ -397,27 +401,6 @@ function AudioItem(id as string)
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
   }), "audioItem")
-end function
-
-' Get Instant Mix based on item
-function CreateInstantMix(id as string)
-  return fetchJson(GetApi().BuildGetInstantMixRequest(id, { "Limit": 201 }), "instantMix")
-end function
-
-' Get Instant Mix based on item
-function CreateArtistMix(id as string)
-  return fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "ArtistIds": id,
-    "Recursive": "true",
-    "MediaTypes": "Audio",
-    "Filters": "IsNotFolder",
-    "SortBy": "SortName",
-    "Limit": 300,
-    "Fields": "Chapters",
-    "ExcludeLocationTypes": "Virtual",
-    "EnableTotalRecordCount": false,
-    "CollapseBoxSetItems": false
-  }), "artistMix")
 end function
 
 ' Get Intro Videos for an item

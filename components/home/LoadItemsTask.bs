@@ -267,7 +267,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "metaData"
     results.push(ItemMetaData(m.top.itemId))
   else if m.top.itemsToLoad = "metaDataDetails"
-    results.push(ItemDetailsMetaData(m.top.itemId))
+    results.push(ItemDetailsMetaData(m.top.itemId, m.top.forceRefresh))
   else if m.top.itemsToLoad = "audioStream"
     results.push(AudioStream(m.top.itemId))
   else if m.top.itemsToLoad = "backdropImage"

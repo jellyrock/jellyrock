@@ -61,9 +61,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   ' ALL unprocessed children when woken up — this is immune to event coalescing,
   ' unlike writing data to a shared field where concurrent writes can merge events.
   apiQueue.appendChild(resultNode)
-  ' Write to enqueue as a wake-up signal. The coordinator ignores the event data
-  ' and reads children instead. Even if multiple wakeup writes coalesce into a
-  ' single event, the coordinator processes all pending children when it wakes.
+  ' Wake-up signal — coordinator ignores the value and reads children instead.
   apiQueue.enqueue = requestId
 
   msg = wait(30000, port)
@@ -86,6 +84,41 @@ function fetchJson(req as dynamic, requestId as string) as dynamic
   res = fetchRes(req, requestId)
   if isValid(res) and res.ok then return res.json
   return invalid
+end function
+
+' Submits a request to the API queue coordinator and returns immediately without
+' blocking. The caller observes 'done' on the returned ApiResultNode via a
+' render-thread callback, then reads 'result' for the response.
+'
+' The render thread does NOT make the HTTP call — it just creates a node,
+' appends it to the coordinator, and returns (~microseconds). The coordinator
+' (ApiQueueTask, a Task thread) dispatches to an ApiTask pool slot (another
+' Task thread) which performs the actual HTTP request. When done, the result
+' is written back to the ApiResultNode and the render-thread observeField
+' callback fires.
+'
+' Use for single API calls with trivial callbacks (set a boolean, read one value).
+' Do NOT use when the callback needs data transforms or array processing —
+' use an Orchestrator Task with fetchJson() instead.
+'
+' @param req       - request AA from a Build*Request() method; returns invalid if invalid
+' @param requestId - unique string identifying this request
+' @return ApiResultNode to observe, or invalid if the pool is not ready
+function submitApiRequest(req as dynamic, requestId as string) as dynamic
+  if not isValid(req) then return invalid
+
+  apiQueue = m.global.apiQueue
+  if not isValid(apiQueue) or not apiQueue.ready then return invalid
+
+  req.requestId = requestId
+
+  resultNode = CreateObject("roSGNode", "ApiResultNode")
+  resultNode.request = req
+
+  apiQueue.appendChild(resultNode)
+  apiQueue.enqueue = requestId
+
+  return resultNode
 end function
 
 ' Submits a fire-and-forget request to the global SideEffectTask.

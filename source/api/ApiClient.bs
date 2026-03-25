@@ -419,10 +419,24 @@ class ApiClient
   ' @param postData - Request body data (DeviceProfile, MediaSourceId, etc.)
   ' @returns Request AA: { method, url, body }
   function BuildPostPlaybackInfoRequest(itemId as string, postData as object) as object
-    return { method: "POST", url: buildURL(Substitute("/items/{0}/playbackinfo", itemId)), body: FormatJson(postData) }
+    return { method: "POST", url: buildURL(Substitute("/items/{0}/playbackinfo", itemId)), body: FormatJson(postData), headers: { "Content-Type": "application/json" } }
   end function
 
 
+  ' Build a request AA for GetLocalTrailers, for use with submitApiRequest() or fetchJson().
+  ' Version-aware: V2 uses /Items/{id}/LocalTrailers, V1 uses /users/{userId}/items/{id}/localtrailers.
+  ' @param itemId - The item ID
+  ' @returns Request AA: { method, url } or invalid if no userId (V1 only)
+  function BuildGetLocalTrailersRequest(itemId as string) as dynamic
+    if m.getApiVersion() >= 2
+      return { method: "GET", url: buildURL(Substitute("/Items/{0}/LocalTrailers", itemId), {}) }
+    end if
+    userId = m.getUserId()
+    if userId = "" then return invalid
+    return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}/localtrailers", userId, itemId), {}) }
+  end function
+
+  ' @deprecated Use BuildGetLocalTrailersRequest() with submitApiRequest() or fetchJson()
   ' Get local trailers for an item
   ' @param itemId - The item ID
   ' @returns API response or invalid on error
