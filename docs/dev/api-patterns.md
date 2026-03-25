@@ -6,14 +6,14 @@ All API calls must run on Task threads. The render thread and main thread (Main.
 
 JellyRock uses a two-tier API task pool:
 
-- **Tier 1 (ApiTask pool)**: 3 persistent workers (`apiPool0/1/2`) coordinated by `ApiQueueTask` FIFO coordinator. Handles all GET/query requests.
-- **Tier 2 (SideEffectTask)**: Single persistent node for fire-and-forget write operations (POST/DELETE).
+- **Tier 1 (`ApiTask` pool)**: 3 persistent workers (`apiPool0/1/2`) coordinated by `ApiQueueTask` FIFO coordinator. Handles all GET/query requests.
+- **Tier 2 (`SideEffectTask`)**: Single persistent node for fire-and-forget write operations (POST/DELETE).
 
 All pool communication uses `ApiResultNode` per-request routing, immune to SceneGraph event coalescing.
 
 ## Patterns
 
-### Pattern 1: submitApiRequest (single non-blocking request)
+### Pattern 1: `submitApiRequest` (single non-blocking request)
 
 Submits a request to the API pool from the render thread and returns immediately. The render thread observes the result via a callback.
 
@@ -33,7 +33,7 @@ sub onMyReqDone()
 end sub
 ```
 
-The render thread does NOT make the HTTP call. `submitApiRequest()` creates an `ApiResultNode`, appends it to the coordinator, and returns (~microseconds). The actual HTTP runs on an ApiTask pool thread.
+The render thread does NOT make the HTTP call. `submitApiRequest()` creates an `ApiResultNode`, appends it to the coordinator, and returns (~microseconds). The actual HTTP runs on an `ApiTask` pool thread.
 
 **Use when**: Single API call with a trivial callback (set a boolean, read one value). NO data transforms, NO array loops.
 
@@ -52,7 +52,7 @@ m.myTask.control = "RUN"
 
 Examples: `LoadItemsTask`, `SearchTask`, `QuickPlayTask`
 
-### Pattern 3: SubmitSideEffect (fire-and-forget writes)
+### Pattern 3: `SubmitSideEffect` (fire-and-forget writes)
 
 ```brighterscript
 SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
