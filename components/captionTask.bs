@@ -1,5 +1,5 @@
-import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/roku_modules/rr/Requests.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -14,7 +14,6 @@ sub init()
   m.captionTimer.ObserveField("fire", "updateCaption")
 
   m.captionList = []
-  m.reader = createObject("roUrlTransfer")
   m.font = CreateObject("roSGNode", "Font")
   m.tags = CreateObject("roRegex", "{\\an\d*}|&lt;.*?&gt;|<.*?>", "s")
 
@@ -76,28 +75,15 @@ sub fetchCaption()
   url = re.match(m.top.url)[0]
 
   if isValid(url)
-    port = createObject("roMessagePort")
-    m.reader.setUrl(url)
-    m.reader.setMessagePort(port)
-    if m.reader.AsyncGetToString()
-      ' Wait for response with 10 second timeout to prevent infinite blocking
-      msg = port.waitMessage(10000)
-      if isValid(msg) and type(msg) = "roUrlEvent"
-        responseCode = msg.GetResponseCode()
-        if responseCode = 200
-          vttContent = msg.GetString()
-          m.log.debug("VTT content received, length:", vttContent.len())
-          m.captionList = parseVTT(vttContent)
-          m.log.info("Parsed", m.captionList.count(), "caption entries")
-          m.captionTimer.control = "start"
-        else
-          m.log.error("Failed to fetch captions. HTTP response code:", responseCode)
-        end if
-      else
-        m.log.error("Timeout or invalid response when fetching captions")
-      end if
+    r = rr_Requests().get(url, { timeout: 10000, useCache: false })
+    if r.ok
+      vttContent = r.text
+      m.log.debug("VTT content received, length:", vttContent.len())
+      m.captionList = parseVTT(vttContent)
+      m.log.info("Parsed", m.captionList.count(), "caption entries")
+      m.captionTimer.control = "start"
     else
-      m.log.error("Failed to initiate caption download")
+      m.log.error("Failed to fetch captions. HTTP response code:", r.statusCode)
     end if
   else
     m.log.warn("No valid VTT URL found in:", m.top.url)

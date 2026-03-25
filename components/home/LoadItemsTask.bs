@@ -1,11 +1,8 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/Image.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/api/Items.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/config.bs"
-import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -22,7 +19,7 @@ sub loadItems()
   ' Load Libraries
   if m.top.itemsToLoad = "libraries"
 
-    data = GetApi().GetViews()
+    data = fetchJson(GetApi().BuildGetViewsRequest(), "libraries")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #525)
@@ -43,8 +40,9 @@ sub loadItems()
       params["ImageTypeLimit"] = 1
       params["EnableTotalRecordCount"] = false
 
-      data = GetApi().GetLatestMedia(params)
+      data = fetchJson(GetApi().BuildGetLatestMediaRequest(params), "latest")
 
+      ' /Items/Latest returns a bare array of BaseItemDto (not paginated).
       if isValid(data)
         for each item in data
           ' Skip Books for now as we don't support it (issue #525)
@@ -59,13 +57,10 @@ sub loadItems()
   else if m.top.itemsToLoad = "nextUp"
     userSettings = globalUser.settings
 
-    url = "Shows/NextUp"
     params = {}
     params["recursive"] = true
     params["SortBy"] = "DatePlayed"
     params["SortOrder"] = "Descending"
-    params["ImageTypeLimit"] = 1
-    params["UserId"] = globalUser.id
     params["EnableRewatching"] = userSettings.uiDetailsEnableRewatchingNextUp
     params["DisableFirstEpisode"] = false
     params["limit"] = 69
@@ -84,13 +79,13 @@ sub loadItems()
       end if
     end if
 
-    resp = APIRequest(url, params)
-    data = getJson(resp)
+    data = fetchJson(GetApi().BuildGetNextUpRequest(params), "nextUp")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
+
     ' Load Continue Watching
   else if m.top.itemsToLoad = "continue"
     activeUser = globalUser.id
@@ -102,7 +97,7 @@ sub loadItems()
       params["Filters"] = "IsResumable"
       params["EnableTotalRecordCount"] = false
 
-      data = GetApi().GetResumeItems(params)
+      data = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "continue")
       if isValid(data) and isValid(data.Items)
         for each item in data.Items
           ' Skip Books for now as we don't support it (issue #558)
@@ -122,7 +117,7 @@ sub loadItems()
     params["SortOrder"] = "Ascending"
     params["EnableTotalRecordCount"] = false
 
-    data = GetApi().GetItemsByQuery(params)
+    data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #558)
@@ -139,12 +134,12 @@ sub loadItems()
     end if
 
     ' People — favorited persons are not returned by /Items; requires /Persons endpoint.
-    personData = GetApi().GetPersons({
+    personData = fetchJson(GetApi().BuildGetPersonsRequest({
       "IsFavorite": true,
       "SortBy": "SortName",
       "SortOrder": "Ascending",
       "EnableTotalRecordCount": false
-    })
+    }), "favoritePeople")
     if isValid(personData) and isValid(personData.Items)
       for each item in personData.Items
         results.push(m.transformer.transformBaseItem(item))
@@ -155,7 +150,6 @@ sub loadItems()
     ' so no separate /Artists call is needed here (unlike search, where /Items misses them).
 
   else if m.top.itemsToLoad = "onNow"
-    url = "LiveTv/Programs/Recommended"
     params = {}
     params["userId"] = globalUser.id
     params["isAiring"] = true
@@ -165,8 +159,7 @@ sub loadItems()
     params["enableTotalRecordCount"] = false
     params["fields"] = "ChannelInfo,PrimaryImageAspectRatio"
 
-    resp = APIRequest(url, params)
-    data = getJson(resp)
+    data = fetchJson(GetApi().BuildGetLiveTvRecommendedProgramsRequest(params), "onNow")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         results.push(m.transformer.transformBaseItem(item))
@@ -184,7 +177,7 @@ sub loadItems()
       if isValid(node) then results.push(node)
     end for
   else if m.top.itemsToLoad = "specialfeatures"
-    data = GetApi().GetSpecialFeatures(m.top.itemId)
+    data = fetchJson(GetApi().BuildGetSpecialFeaturesRequest(m.top.itemId), "specialfeatures")
     if isValid(data) and data.count() > 0
       for each specfeat in data
         node = m.transformer.transformBaseItem(specfeat)
@@ -192,18 +185,16 @@ sub loadItems()
       end for
     end if
   else if m.top.itemsToLoad = "additionalparts"
-    additionalParts = GetApi().GetAdditionalParts(m.top.itemId)
-    if isValid(additionalParts)
-      for each part in additionalParts.items
+    data = fetchJson(GetApi().BuildGetAdditionalPartsRequest(m.top.itemId), "additionalparts")
+    if isValid(data)
+      for each part in data.items
         node = m.transformer.transformBaseItem(part)
         if isValid(node) then results.push(node)
       end for
     end if
   else if m.top.itemsToLoad = "likethis"
     params = { "userId": globalUser.id, "limit": 16 }
-    url = Substitute("Items/{0}/Similar", m.top.itemId)
-    resp = APIRequest(url, params)
-    data = getJson(resp)
+    data = fetchJson(GetApi().BuildGetSimilarItemsRequest(m.top.itemId, params), "likethis")
     if isValid(data) and isValid(data.Items)
       for each item in data.items
         node = m.transformer.transformBaseItem(item)
@@ -217,7 +208,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "personSeries"
     getPersonVideos("Series", results)
   else if m.top.itemsToLoad = "seasons"
-    data = GetApi().GetSeasons(m.top.itemId, { Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
+    data = fetchJson(GetApi().BuildGetSeasonsRequest(m.top.itemId, { Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true }), "seasons")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         node = m.transformer.transformBaseItem(item)
@@ -231,12 +222,11 @@ sub loadItems()
       m.top.content = results
       return
     end if
-    data = GetApi().GetEpisodes(m.top.itemId, {
-      UserId: globalUser.id,
+    data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, {
       SeasonId: m.top.metadata.seasonId,
       Fields: "PrimaryImageAspectRatio,Overview",
       EnableImages: true
-    })
+    }), "seasonEpisodes")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         node = m.transformer.transformBaseItem(item)
@@ -244,7 +234,7 @@ sub loadItems()
       end for
     end if
   else if m.top.itemsToLoad = "seriesFirstEpisode"
-    data = GetApi().GetEpisodes(m.top.itemId, { Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" })
+    data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, { Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" }), "seriesFirstEpisode")
     if isValid(data) and isValid(data.Items) and data.Items.count() > 0
       node = m.transformer.transformBaseItem(data.Items[0])
       if isValid(node) then results.push(node)
@@ -252,7 +242,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "seriesResume"
     ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
-    resumeData = GetApi().GetResumeItems({
+    resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
       ParentId: m.top.itemId,
       Filters: "IsResumable",
       SortBy: "DatePlayed",
@@ -261,14 +251,14 @@ sub loadItems()
       recursive: true,
       Fields: "PrimaryImageAspectRatio",
       EnableTotalRecordCount: false
-    })
+    }), "seriesResume")
     if isValid(resumeData) and isValid(resumeData.Items) and resumeData.Items.Count() > 0
       node = m.transformer.transformBaseItem(resumeData.Items[0])
       if isValid(node) then results.push(node)
     else
       ' No resumable episode — fall back to next unstarted episode.
       ' DisableFirstEpisode: true so a Resume button never appears for a completely unwatched series.
-      nextUpData = GetApi().GetNextUp({ SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" })
+      nextUpData = fetchJson(GetApi().BuildGetNextUpRequest({ SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" }), "seriesNextUp")
       if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
         node = m.transformer.transformBaseItem(nextUpData.Items[0])
         if isValid(node) then results.push(node)
@@ -277,19 +267,19 @@ sub loadItems()
   else if m.top.itemsToLoad = "metaData"
     results.push(ItemMetaData(m.top.itemId))
   else if m.top.itemsToLoad = "metaDataDetails"
-    results.push(ItemDetailsMetaData(m.top.itemId))
+    results.push(ItemDetailsMetaData(m.top.itemId, m.top.forceRefresh))
   else if m.top.itemsToLoad = "audioStream"
     results.push(AudioStream(m.top.itemId))
   else if m.top.itemsToLoad = "backdropImage"
     results.push(BackdropImage(m.top.itemId))
   else if m.top.itemsToLoad = "boxsetitems"
-    data = GetApi().GetItemsByQuery({
+    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "ParentId": m.top.itemId,
       "SortBy": "SortName",
       "SortOrder": "Ascending",
       "Fields": "PrimaryImageAspectRatio,Overview",
       "EnableTotalRecordCount": false
-    })
+    }), "boxsetitems")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         node = m.transformer.transformBaseItem(item)
@@ -338,9 +328,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "artistSimilar"
     ' Similar artists via the artist-specific endpoint (more reliable than Items/{id}/Similar for MusicArtist)
     params = { "userId": globalUser.id, "limit": 16 }
-    url = Substitute("Artists/{0}/Similar", m.top.itemId)
-    resp = APIRequest(url, params)
-    data = getJson(resp)
+    data = fetchJson(GetApi().BuildGetArtistSimilarRequest(m.top.itemId, params), "artistSimilar")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         node = m.transformer.transformBaseItem(item)
@@ -359,12 +347,12 @@ sub loadItems()
     end if
   else if m.top.itemsToLoad = "playlistItems"
     ' All items in a Playlist, sorted newest-added first.
-    data = GetApi().GetPlaylistItems(m.top.itemId, {
+    data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(m.top.itemId, {
       "SortBy": "DateCreated",
       "SortOrder": "Descending",
       "Fields": "PrimaryImageAspectRatio,Overview",
       "EnableTotalRecordCount": false
-    })
+    }), "playlistItems")
     if isValid(data) and isValid(data.Items)
       for each item in data.Items
         node = m.transformer.transformBaseItem(item)
@@ -379,7 +367,7 @@ end sub
 
 sub getPersonVideos(videoType as string, dest as object)
   params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
-  data = GetApi().GetItemsByQuery(params)
+  data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "personVideos_" + videoType)
   if isValid(data) and data.count() > 0
     for each item in data.items
       node = m.transformer.transformBaseItem(item)

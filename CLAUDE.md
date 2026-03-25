@@ -16,6 +16,7 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - **Adding user settings?** → `docs/dev/adding-user-settings.md`
 - **Writing tests?** → `docs/dev/unit-tests.md`
 - **Registry migrations?** → `docs/dev/registry-migrations.md`
+- **Debug flags / toast testing?** → `docs/dev/debug-flags.md`
 **All dev docs:** `docs/dev/`
 ## Architecture Overview
 ### `SceneManager` System

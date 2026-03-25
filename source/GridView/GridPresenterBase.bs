@@ -15,10 +15,14 @@ class GridPresenterBase
   ' Reference to the log instance
   private log
 
+  ' Cached filter options from API (invalid = not loaded, {} = load failed)
+  protected apiFilters
+
   ' Constructor - view is set later via onInit()
   sub new()
     m.view = invalid
     m.log = invalid
+    m.apiFilters = invalid
   end sub
 
   ' ============================================================================
@@ -36,11 +40,13 @@ class GridPresenterBase
   ' ============================================================================
 
   ' Called after presenter is attached to BaseGridView
-  ' Stores view reference and performs initialization
+  ' Stores view reference and creates shared task nodes
   ' @param {object} view - Reference to BaseGridView component
   ' Override in subclass but call super.onInit(view) first
   sub onInit(view as object)
     m.view = view
+    ' Task node stored on view (component scope) so observer callbacks work
+    m.view.getFiltersTask = CreateObject("roSGNode", "GetFiltersTask")
   end sub
 
   ' ============================================================================
@@ -143,12 +149,71 @@ class GridPresenterBase
   end sub
 
   ' ============================================================================
+  ' Dynamic Filters
+  ' ============================================================================
+
+  ' Load dynamic filter options (Genres, Years, Ratings) from the Jellyfin API.
+  ' Call from configureLoadTask() in subclasses that need dynamic filters.
+  ' Results arrive via onFiltersLoaded() and are cached in m.apiFilters.
+  ' @param {object} parentItem - The library item to load filters for
+  ' @param {string} itemType - The item type to filter (e.g., "Movie", "Series")
+  sub loadFilters(parentItem as object, itemType as string)
+    if not isValid(m.view) or not isValid(m.view.getFiltersTask) then return
+
+    m.view.getFiltersTask.observeField("filters", "onPresenterFiltersLoaded")
+    m.view.getFiltersTask.params = {
+      userid: m.view.global.user.id,
+      parentid: parentItem.Id,
+      includeitemtypes: itemType
+    }
+    m.view.getFiltersTask.control = "RUN"
+  end sub
+
+  ' Called when filters are loaded from API (via onPresenterFiltersLoaded bridge in BaseGridView).
+  ' Caches the result in m.apiFilters and shows a toast on failure.
+  ' @param {object} event - roSGNodeEvent for the "filters" field change
+  sub onFiltersLoaded(event as object)
+    m.apiFilters = event.getData()
+    if not isValid(m.view) or not isValid(m.view.getFiltersTask) then return
+
+    m.view.getFiltersTask.unobserveField("filters")
+
+    errorMsg = m.view.getFiltersTask.error
+    if errorMsg <> ""
+      m.showToast(errorMsg)
+    end if
+  end sub
+
+  ' ============================================================================
+  ' Toast Notifications
+  ' ============================================================================
+
+  ' Show a toast notification via the scene-level Toast component.
+  ' Safe to call from presenter classes (routes through view's scene reference).
+  ' @param {string} message - The message to display
+  ' @param {string} [toastType="error"] - "error", "success", or "info"
+  sub showToast(message as string, toastType = "error" as string)
+    if not isValid(m.view) then return
+    scene = m.view.top.getScene()
+    if isValid(scene)
+      scene.callFunc("showToast", message, toastType)
+    end if
+  end sub
+
+  ' ============================================================================
   ' Cleanup
   ' ============================================================================
 
   ' Called when presenter is being destroyed
   ' Override to clean up resources, stop tasks, unobserve fields
+  ' Always call super.destroy() at the end of overrides
   sub destroy()
+    if isValid(m.view) and isValid(m.view.getFiltersTask)
+      m.view.getFiltersTask.control = "stop"
+      m.view.getFiltersTask.unobserveField("filters")
+      m.view.getFiltersTask = invalid
+    end if
+    m.apiFilters = invalid
     m.view = invalid
     m.log = invalid
   end sub

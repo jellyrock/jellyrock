@@ -44,11 +44,6 @@ namespace tests
       m.assertInvalid(resumeButton)
     end function
 
-    @it("has 1 LoadingButton placeholder before itemContent arrives")
-    function _()
-      m.assertEqual(m.buttonGrp.getChildCount(), 1)
-      m.assertEqual(m.buttonGrp.getChild(0).subtype(), "LoadingButton")
-    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Resume button insertion")

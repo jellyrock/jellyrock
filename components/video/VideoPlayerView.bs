@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
@@ -1027,10 +1029,9 @@ sub ReportPlayback(state = "update" as string)
     m.originalClosedCaptionState = invalid
   end if
 
-  ' Report playstate via worker task
-  playstateTask = m.global.playstateTask
-  playstateTask.setFields({ status: state, params: params })
-  playstateTask.control = "RUN"
+  ' Report playstate via side-effect task
+  req = GetApi().BuildPlaystateRequest(state, params)
+  if isValid(req) then SubmitSideEffect(req)
 
   m.log.debug("end ReportPlayback", state, int(m.top.position))
 end sub

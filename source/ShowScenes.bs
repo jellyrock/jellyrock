@@ -681,42 +681,26 @@ function CreateItemDetailsGroup(item as object) as dynamic
 
   startLoadingSpinner()
 
-  itemData = ItemDetailsMetaData(item.id)
-  if not isValid(itemData)
-    stopLoadingSpinner()
-    return invalid
-  end if
-
   group = CreateObject("roSGNode", "ItemDetails")
   group.observeField("quickPlayNode", m.port)
-  group.observeField("refreshItemDetailsData", m.port)
   group.overhangTitle = ""
   group.optionsAvailable = false
-  group.trailerAvailable = false
 
   ' Push scene asap to prevent extra button presses while fetching data
   m.global.sceneManager.callFunc("pushScene", group)
-  group.itemContent = itemData
 
-  ' Type-specific post-load setup
-  if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
-    trailerData = GetApi().GetLocalTrailers(item.id)
-    if isValid(trailerData)
-      group.trailerAvailable = trailerData.Count() > 0
-    end if
-  end if
+  ' Tell the component to load itself (triggers onItemIdChanged)
+  group.itemType = isValid(item.type) ? item.type : ""
+  group.itemId = item.id
 
   ' Watch for button presses
   buttons = group.findNode("buttons")
   buttons.observeField("buttonSelected", m.port)
 
-  ' Set up and load item extras
+  ' Set up extras observer
   extras = group.findNode("extrasGrid")
   extras.observeField("selectedItem", m.port)
-  ' type and loadParts are called once by itemContentChanged() in ItemDetails.bs on first content load,
-  ' and again on explicit refresh via the refreshExtrasData field toggle.
 
-  stopLoadingSpinner()
   return group
 end function
 

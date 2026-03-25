@@ -1,34 +1,26 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
-import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.top.functionName = "loadProgramDetails"
-
 end sub
 
+' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
 sub loadProgramDetails()
-
   channelIndex = m.top.ChannelIndex
   programIndex = m.top.ProgramIndex
 
-  params = {
-    UserId: m.global.user.id
-  }
-
-  url = Substitute("LiveTv/Programs/{0}", m.top.programId)
-
-  resp = APIRequest(url, params)
-  data = getJson(resp)
-
-  if not isValid(data)
+  res = fetchRes(GetApi().BuildGetLiveTvProgramRequest(m.top.programId, { UserId: m.global.user.id }), "liveTvProgram")
+  if not isValid(res) or not res.ok or not isValid(res.json)
     m.top.programDetails = {}
     return
   end if
 
   transformer = JellyfinDataTransformer()
-  node = transformer.transformBaseItem(data)
+  node = transformer.transformBaseItem(res.json)
+
   ' Set hdSmallIconUrl for TimeGrid recording indicator (ContentNode built-in read by Roku TimeGrid).
   ' Must be set again here because ReplaceChild() in schedule.bs replaces the lightweight schedule
   ' item with this fully-loaded node, so the indicator must be preserved.
@@ -46,5 +38,4 @@ sub loadProgramDetails()
     programIndex: programIndex,
     isRecording: isValidAndNotEmpty(node.timerId)
   }
-
 end sub

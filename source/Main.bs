@@ -89,89 +89,70 @@ sub Main (args as dynamic) as void
         handleFontDownloadCompletion(fontDownloadTask)
       end if
     else if isNodeEvent(msg, "quickPlayNode")
-      ' measure processing time
-      timeSpan = CreateObject("roTimespan")
-
-      group = m.global.sceneManager.callFunc("getActiveScene")
       reportingNode = msg.getRoSGNode()
       itemNode = invalid
-      print "quickplay reportingNode=", reportingNode
       if isValid(reportingNode) and isValid(reportingNode.quickPlayNode)
         itemNode = reportingNode.quickPlayNode
-        reportingNodeType = reportingNode.subtype()
-        print "Quick Play reporting node type=", reportingNodeType
       end if
-      print "Quick Play started. itemNode=", itemNode
       if isValid(itemNode) and isValid(itemNode.id) and itemNode.id <> ""
-        ' make sure there is a type and convert type to lowercase
         itemType = invalid
         if isValid(itemNode.type) and itemNode.type <> ""
           itemType = Lcase(itemNode.type)
         end if
 
-        ' can't play the item without knowing what type it is
         if isValid(itemType)
           startLoadingSpinner()
-          m.global.queueManager.callFunc("clear") ' empty queue/playlist
-          m.global.queueManager.callFunc("resetShuffle") ' turn shuffle off
+          m.global.queueManager.callFunc("clear")
+          m.global.queueManager.callFunc("resetShuffle")
 
+          ' Synchronous types (no API calls) — handle inline
           if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
             quickplay.video(itemNode)
+            m.global.queueManager.callFunc("playQueue")
           else if itemType = "audio"
             quickplay.audio(itemNode)
-          else if itemType = "musicalbum"
-            quickplay.album(itemNode)
-          else if itemType = "musicartist"
-            quickplay.artist(itemNode)
-          else if itemType = "series"
-            quickplay.series(itemNode)
-          else if itemType = "season"
-            quickplay.season(itemNode)
-          else if itemType = "boxset"
-            quickplay.boxset(itemNode)
-          else if itemType = "collectionfolder"
-            quickplay.collectionFolder(itemNode)
-          else if itemType = "playlist"
-            quickplay.playlist(itemNode)
-          else if itemType = "userview"
-            quickplay.userView(itemNode)
-          else if itemType = "folder"
-            quickplay.folder(itemNode)
+            m.global.queueManager.callFunc("playQueue")
           else if itemType = "musicvideo"
             quickplay.musicVideo(itemNode)
-          else if itemType = "person"
-            quickplay.person(itemNode)
-          else if itemType = "tvchannel"
-            quickplay.tvChannel(itemNode)
-          else if itemType = "program"
-            quickplay.program(itemNode)
+            m.global.queueManager.callFunc("playQueue")
           else if itemType = "photo"
             quickplay.photo(itemNode)
-          else if itemType = "photoalbum"
-            quickplay.photoAlbum(itemNode)
+          else if itemType = "tvchannel"
+            quickplay.tvChannel(itemNode)
+            m.global.queueManager.callFunc("playQueue")
+          else if itemType = "program"
+            quickplay.program(itemNode)
+            m.global.queueManager.callFunc("playQueue")
+          else
+            ' All other types need API calls — delegate to QuickPlayTask
+            m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+            m.activeQuickPlayTask.input = {
+              action: itemType,
+              id: itemNode.id,
+              seriesId: itemNode.seriesId,
+              collectionType: itemNode.collectionType,
+              folderType: itemNode.folderType,
+              movieCount: itemNode.movieCount,
+              seriesCount: itemNode.seriesCount,
+              channelId: itemNode.channelId
+            }
+            m.activeQuickPlayTask.observeField("output", m.port)
+            m.activeQuickPlayTask.control = "RUN"
           end if
-          m.global.queueManager.callFunc("playQueue")
         end if
       end if
-      elapsed = timeSpan.TotalMilliseconds() / 1000
-      print "Quick Play finished loading in " + elapsed.toStr() + " seconds."
-    else if isNodeEvent(msg, "refreshItemDetailsData")
-      startLoadingSpinner()
-
-      currentScene = m.global.sceneManager.callFunc("getActiveScene")
-
-      if isValid(currentScene) and isValid(currentScene.itemContent) and isValidAndNotEmpty(currentScene.itemContent.id)
-        ' Use ItemDetailsMetaData (same as initial load) so People/Genres/Studios/UserData are all present.
-        updatedItem = ItemDetailsMetaData(currentScene.itemContent.id)
-        if isValid(updatedItem)
-          currentScene.itemContent = updatedItem
-          if updatedItem.playbackPositionTicks > 0
-            m.global.queueManager.callFunc("setTopStartingPoint", updatedItem.playbackPositionTicks)
-          end if
-        end if
+    else if isNodeEvent(msg, "output")
+      task = msg.getRoSGNode()
+      if isValid(task) and task.subtype() = "QuickPlayTask"
+        handleQuickPlayOutput(task)
       end if
-
-      stopLoadingSpinner()
+    else if isNodeEvent(msg, "done")
+      resultNode = msg.getRoSGNode()
+      if isValid(resultNode) and resultNode.isSameNode(m.favoriteResultNode)
+        handleFavoriteToggleDone()
+      else if isValid(resultNode) and resultNode.isSameNode(m.watchedResultNode)
+        handleWatchedToggleDone()
+      end if
     else if isNodeEvent(msg, "selectedItem")
       ' If you select a library from ANYWHERE, follow this flow
       selectedItem = msg.getData()
@@ -251,23 +232,11 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "Photo"
           quickplay.photo(selectedItem)
         else if selectedItemType = "PhotoAlbum"
-          print "a photo album was selected"
-          print "selectedItem=", selectedItem
-
-          ' grab all photos inside photo album
-          photoAlbumData = GetApi().GetItemsByQuery({
-            "parentId": selectedItem.id,
-            "includeItemTypes": "Photo",
-            "Recursive": true
-          })
-          print "photoAlbumData=", photoAlbumData
-
-          if isValid(photoAlbumData) and isValidAndNotEmpty(photoAlbumData.items)
-            photoPlayer = CreateObject("roSgNode", "PhotoDetails")
-            photoPlayer.itemsArray = photoAlbumData.items
-            photoPlayer.itemIndex = 0
-            m.global.sceneManager.callfunc("pushScene", photoPlayer)
-          end if
+          ' Load photo album contents via QuickPlayTask
+          m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+          m.activeQuickPlayTask.input = { action: "loadPhotoAlbum", id: selectedItem.id }
+          m.activeQuickPlayTask.observeField("output", m.port)
+          m.activeQuickPlayTask.control = "RUN"
         else if selectedItemType = "MusicArtist"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "MusicAlbum"
@@ -311,13 +280,36 @@ sub Main (args as dynamic) as void
       options.visible = true
       options.setFocus(true)
 
-      dialog = createObject("roSGNode", "ProgressDialog")
-      dialog.title = tr("Loading Search Data")
-      m.scene.dialog = dialog
-      results = SearchMedia(query)
-      dialog.close = true
-      options.itemData = results
-      options.query = query
+      m.searchDialog = createObject("roSGNode", "ProgressDialog")
+      m.searchDialog.title = tr("Loading Search Data")
+      m.scene.dialog = m.searchDialog
+
+      m.searchGroup = group
+      m.searchQuery = query
+
+      m.searchTask = CreateObject("roSGNode", "SearchTask")
+      m.searchTask.query = query
+      m.searchTask.observeField("results", m.port)
+      m.searchTask.control = "RUN"
+    else if isNodeEvent(msg, "results")
+      ' Search results arrived from SearchTask
+      task = msg.getRoSGNode()
+      task.unobserveField("results")
+      results = task.results
+      task.control = "STOP"
+      m.searchTask = invalid
+
+      if isValid(m.searchDialog)
+        m.searchDialog.close = true
+        m.searchDialog = invalid
+      end if
+
+      if isValid(m.searchGroup) and isValid(results)
+        searchOptions = m.searchGroup.findNode("SearchSelect")
+        searchOptions.itemData = results
+        searchOptions.query = m.searchQuery
+      end if
+      m.searchGroup = invalid
     else if isNodeEvent(msg, "itemSelected")
       ' Search item selected
       startLoadingSpinner()
@@ -356,376 +348,309 @@ sub Main (args as dynamic) as void
         message_dialog("This type is not yet supported: " + node.type + ".")
       end if
     else if isNodeEvent(msg, "buttonSelected")
-      print "buttonSelected event received"
-      print "msg=", msg
       ' If a button is selected, we have some determining to do
       btn = getButton(msg)
-      print "btn=", btn
-      if not isValid(btn)
-        print "No button found in message"
-        return
-      end if
-      group = m.global.sceneManager.callFunc("getActiveScene")
+      if not isValid(btn) then print "No button found in buttonSelected event"
 
-      if btn.id = "playButton"
-        if not isValid(group) then return
+      ' Guard: skip if spinner is active — disableRemote prevents FUTURE key events
+      ' but cannot clear events already queued in m.port from rapid presses.
+      if isValid(btn) and not m.scene.isLoading
+        group = m.global.sceneManager.callFunc("getActiveScene")
 
-        ' User chose Play button from movie detail view
-        startLoadingSpinner()
-        ' Check if a specific Audio Stream was selected
-        audio_stream_idx = 0
-        if isValid(group.selectedAudioStreamIndex)
-          audio_stream_idx = group.selectedAudioStreamIndex
-        end if
+        if btn.id = "playButton"
+          if not isValid(group) then return
 
-        if isValid(group.itemContent)
-          ' Series on ItemDetails: "Play All" queues all episodes from the beginning
-          if group.subtype() = "ItemDetails" and group.itemContent.type = "Series"
-            allEpData = GetApi().GetEpisodes(group.itemContent.id, {
-              SortBy: "IndexNumber,SortName",
-              SortOrder: "Ascending"
-            })
-            if isValid(allEpData) and isValid(allEpData.Items) and allEpData.Items.count() > 0
-              ' Exclude Season 0 (Specials) from Play All
-              regularEps = []
-              for each ep in allEpData.Items
-                if isValid(ep.ParentIndexNumber) and ep.ParentIndexNumber > 0
-                  regularEps.push(ep)
-                end if
-              end for
-              if regularEps.count() > 0
+          ' User chose Play button from movie detail view
+          startLoadingSpinner()
+          ' Check if a specific Audio Stream was selected
+          audio_stream_idx = 0
+          if isValid(group.selectedAudioStreamIndex)
+            audio_stream_idx = group.selectedAudioStreamIndex
+          end if
+
+          if isValid(group.itemContent)
+            ' Types requiring API calls — delegate to QuickPlayTask
+            itemContentType = group.itemContent.type
+            if group.subtype() = "ItemDetails" and (itemContentType = "Series" or itemContentType = "Season" or itemContentType = "BoxSet" or itemContentType = "MusicArtist" or itemContentType = "MusicAlbum" or itemContentType = "Playlist")
+              m.global.queueManager.callFunc("clear")
+              m.global.queueManager.callFunc("resetShuffle")
+              m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+              m.activeQuickPlayTask.input = {
+                action: "playAll" + itemContentType,
+                id: group.itemContent.id,
+                seriesId: group.itemContent.seriesId
+              }
+              m.activeQuickPlayTask.observeField("output", m.port)
+              m.activeQuickPlayTask.control = "RUN"
+            else
+              queueItem = nodeHelpers.createQueueItem(group.itemContent)
+              if not isValid(queueItem) then return
+              queueItem.selectedAudioStreamIndex = audio_stream_idx
+              ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
+              if isValidAndNotEmpty(group.selectedVideoStreamId)
+                queueItem.id = group.selectedVideoStreamId
+              end if
+
+              ' ItemDetails: Play button always starts from beginning (Resume button handles resume)
+              if group.subtype() = "ItemDetails"
+                queueItem.startingPoint = 0
                 m.global.queueManager.callFunc("clear")
-                m.global.queueManager.callFunc("set", regularEps)
+                m.global.queueManager.callFunc("push", queueItem)
+                m.global.queueManager.callFunc("playQueue")
+              end if
+            end if
+          end if
+
+          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "main_group"
+            buttons = group.findNode("buttons")
+            if isValid(buttons)
+              group.lastFocus = group.findNode("buttons")
+            end if
+          end if
+
+          if isValid(group.lastFocus)
+            group.lastFocus.setFocus(true)
+          end if
+
+        else if btn.id = "resumeButton"
+          if not isValid(group) then return
+
+          ' User chose Resume button from detail view
+          startLoadingSpinner()
+          ' Check if a specific Audio Stream was selected
+          audio_stream_idx = 0
+          if isValid(group.selectedAudioStreamIndex)
+            audio_stream_idx = group.selectedAudioStreamIndex
+          end if
+
+          if isValid(group.itemContent)
+            ' Series on ItemDetails: resume the next-up episode stored on the component
+            if group.subtype() = "ItemDetails" and group.itemContent.type = "Series"
+              nextEp = group.nextUpEpisode
+              if isValid(nextEp) and isValidAndNotEmpty(nextEp.id)
+                queueItem = nodeHelpers.createQueueItem(nextEp)
+                if not isValid(queueItem)
+                  stopLoadingSpinner()
+                  return
+                end if
+                queueItem.startingPoint = nextEp.playbackPositionTicks
+                m.global.queueManager.callFunc("clear")
+                m.global.queueManager.callFunc("push", queueItem)
                 m.global.queueManager.callFunc("playQueue")
               else
                 stopLoadingSpinner()
               end if
             else
-              stopLoadingSpinner()
-            end if
-          else if group.subtype() = "ItemDetails" and group.itemContent.type = "Season"
-            ' Season "Play All": queue all episodes for this season in order
-            item = group.itemContent
-            allEpData = GetApi().GetEpisodes(item.seriesId, {
-              SeasonId: item.id,
-              SortBy: "IndexNumber,SortName",
-              SortOrder: "Ascending"
-            })
-            if isValid(allEpData) and isValid(allEpData.Items) and allEpData.Items.count() > 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("set", allEpData.Items)
-              m.global.queueManager.callFunc("playQueue")
-            else
-              stopLoadingSpinner()
-            end if
-          else if group.subtype() = "ItemDetails" and group.itemContent.type = "BoxSet"
-            ' BoxSet "Play All": queue all movies in collection in alphabetical order
-            item = group.itemContent
-            boxsetData = GetApi().GetItemsByQuery({
-              "ParentId": item.id,
-              "SortBy": "SortName",
-              "SortOrder": "Ascending",
-              "EnableTotalRecordCount": false
-            })
-            if isValid(boxsetData) and isValid(boxsetData.Items) and boxsetData.Items.count() > 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("set", boxsetData.Items)
-              m.global.queueManager.callFunc("playQueue")
-            else
-              stopLoadingSpinner()
-            end if
-          else if group.subtype() = "ItemDetails" and group.itemContent.type = "MusicArtist"
-            ' MusicArtist "Play All": queue all songs by this artist sorted by name
-            item = group.itemContent
-            artistTracksData = CreateArtistMix(item.id)
-            if isValid(artistTracksData) and isValid(artistTracksData.Items) and artistTracksData.Items.count() > 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("resetShuffle")
-              m.global.queueManager.callFunc("set", artistTracksData.Items)
-              m.global.queueManager.callFunc("playQueue")
-            else
-              stopLoadingSpinner()
-            end if
-          else if group.subtype() = "ItemDetails" and group.itemContent.type = "MusicAlbum"
-            ' MusicAlbum "Play All": queue all tracks on this album in track order
-            item = group.itemContent
-            albumTracksData = GetApi().GetItemsByQuery({
-              "parentId": item.id,
-              "includeitemtypes": "Audio",
-              "SortBy": "ParentIndexNumber,IndexNumber,SortName",
-              "SortOrder": "Ascending",
-              "EnableTotalRecordCount": false
-            })
-            if isValid(albumTracksData) and isValid(albumTracksData.Items) and albumTracksData.Items.count() > 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("resetShuffle")
-              m.global.queueManager.callFunc("set", albumTracksData.Items)
-              m.global.queueManager.callFunc("playQueue")
-            else
-              stopLoadingSpinner()
-            end if
-          else if group.subtype() = "ItemDetails" and group.itemContent.type = "Playlist"
-            ' Playlist "Play All": queue all items in playlist order
-            item = group.itemContent
-            playlistData = GetApi().GetPlaylistItems(item.id, {
-              "SortBy": "ListItemOrder",
-              "SortOrder": "Ascending",
-              "EnableTotalRecordCount": false,
-              "limit": 500
-            })
-            if isValid(playlistData) and isValid(playlistData.Items) and playlistData.Items.count() > 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("resetShuffle")
-              m.global.queueManager.callFunc("set", playlistData.Items)
-              m.global.queueManager.callFunc("playQueue")
-            else
-              stopLoadingSpinner()
-            end if
-          else
-            queueItem = nodeHelpers.createQueueItem(group.itemContent)
-            if not isValid(queueItem) then return
-            queueItem.selectedAudioStreamIndex = audio_stream_idx
-            ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
-            if isValidAndNotEmpty(group.selectedVideoStreamId)
-              queueItem.id = group.selectedVideoStreamId
-            end if
-
-            ' ItemDetails: Play button always starts from beginning (Resume button handles resume)
-            if group.subtype() = "ItemDetails"
-              queueItem.startingPoint = 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("push", queueItem)
-              m.global.queueManager.callFunc("playQueue")
-            end if
-          end if
-        end if
-
-        if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "main_group"
-          buttons = group.findNode("buttons")
-          if isValid(buttons)
-            group.lastFocus = group.findNode("buttons")
-          end if
-        end if
-
-        if isValid(group.lastFocus)
-          group.lastFocus.setFocus(true)
-        end if
-
-      else if btn.id = "resumeButton"
-        if not isValid(group) then return
-
-        ' User chose Resume button from detail view
-        startLoadingSpinner()
-        ' Check if a specific Audio Stream was selected
-        audio_stream_idx = 0
-        if isValid(group.selectedAudioStreamIndex)
-          audio_stream_idx = group.selectedAudioStreamIndex
-        end if
-
-        if isValid(group.itemContent)
-          ' Series on ItemDetails: resume the next-up episode stored on the component
-          if group.subtype() = "ItemDetails" and group.itemContent.type = "Series"
-            nextEp = group.nextUpEpisode
-            if isValid(nextEp) and isValidAndNotEmpty(nextEp.id)
-              queueItem = nodeHelpers.createQueueItem(nextEp)
-              if not isValid(queueItem)
-                stopLoadingSpinner()
-                return
+              queueItem = nodeHelpers.createQueueItem(group.itemContent)
+              if not isValid(queueItem) then return
+              queueItem.selectedAudioStreamIndex = audio_stream_idx
+              ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
+              if isValidAndNotEmpty(group.selectedVideoStreamId)
+                queueItem.id = group.selectedVideoStreamId
               end if
-              queueItem.startingPoint = nextEp.playbackPositionTicks
+
+              ' Set starting point to saved position
+              if group.itemContent.playbackPositionTicks > 0
+                queueItem.startingPoint = group.itemContent.playbackPositionTicks
+              else
+                queueItem.startingPoint = 0
+              end if
+
               m.global.queueManager.callFunc("clear")
               m.global.queueManager.callFunc("push", queueItem)
               m.global.queueManager.callFunc("playQueue")
-            else
-              stopLoadingSpinner()
             end if
-          else
-            queueItem = nodeHelpers.createQueueItem(group.itemContent)
-            if not isValid(queueItem) then return
-            queueItem.selectedAudioStreamIndex = audio_stream_idx
-            ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
-            if isValidAndNotEmpty(group.selectedVideoStreamId)
-              queueItem.id = group.selectedVideoStreamId
-            end if
-
-            ' Set starting point to saved position
-            if group.itemContent.playbackPositionTicks > 0
-              queueItem.startingPoint = group.itemContent.playbackPositionTicks
-            else
-              queueItem.startingPoint = 0
-            end if
-
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", queueItem)
-            m.global.queueManager.callFunc("playQueue")
           end if
-        end if
 
-        if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "main_group"
-          buttons = group.findNode("buttons")
-          if isValid(buttons)
-            group.lastFocus = group.findNode("buttons")
+          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "main_group"
+            buttons = group.findNode("buttons")
+            if isValid(buttons)
+              group.lastFocus = group.findNode("buttons")
+            end if
           end if
-        end if
 
-        if isValid(group.lastFocus)
-          group.lastFocus.setFocus(true)
-        end if
+          if isValid(group.lastFocus)
+            group.lastFocus.setFocus(true)
+          end if
 
-      else if btn.id = "trailerButton"
-        print "trailerButton pressed"
-        ' User chose to play a trailer from the movie detail view
-        startLoadingSpinner()
-        dialog = createObject("roSGNode", "ProgressDialog")
-        dialog.title = tr("Loading trailer")
-        m.scene.dialog = dialog
-
-        trailerData = GetApi().GetLocalTrailers(group.id)
-
-        if isValid(trailerData) and isValid(trailerData[0]) and isValid(trailerData[0].id)
+        else if btn.id = "trailerButton"
+          ' User chose to play a trailer — delegate to QuickPlayTask
+          startLoadingSpinner()
           m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("set", trailerData)
-          m.global.queueManager.callFunc("playQueue")
-          dialog.close = true
-        else
-          stopLoadingSpinner()
-        end if
-
-        if isValid(group) and isValid(group.lastFocus)
-          group.lastFocus.setFocus(true)
-        end if
-      else if btn.id = "watchedButton"
-        item = group.itemContent
-        if isValid(item) and isValidAndNotEmpty(item.id)
-          ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of episodes)
-          if item.type = "Series"
-            m.pendingWatchedItemId = item.id
-            m.pendingWatchedIsCurrentlyWatched = item.isWatched
-            if item.isWatched
-              confirmMsg = tr("Mark all episodes in this series as unwatched?")
-              confirmBtn = tr("Mark Unwatched")
+          m.global.queueManager.callFunc("resetShuffle")
+          m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+          m.activeQuickPlayTask.input = { action: "loadTrailers", id: group.id }
+          m.activeQuickPlayTask.observeField("output", m.port)
+          m.activeQuickPlayTask.control = "RUN"
+        else if btn.id = "watchedButton"
+          item = group.itemContent
+          if isValid(item) and isValidAndNotEmpty(item.id)
+            ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of episodes)
+            if item.type = "Series"
+              watchedButton = group.findNode("watchedButton")
+              m.pendingWatchedItemId = item.id
+              ' Read current state from button — writing to itemContent triggers a full rebuild
+              m.pendingWatchedIsCurrentlyWatched = isValid(watchedButton) and watchedButton.selected
+              if m.pendingWatchedIsCurrentlyWatched
+                confirmMsg = tr("Mark all episodes in this series as unwatched?")
+                confirmBtn = tr("Mark Unwatched")
+              else
+                confirmMsg = tr("Mark all episodes in this series as watched?")
+                confirmBtn = tr("Mark Watched")
+              end if
+              m.global.sceneManager.callFunc("optionDialog", tr("Watched"), [confirmMsg], [tr("Cancel"), confirmBtn])
             else
-              confirmMsg = tr("Mark all episodes in this series as watched?")
-              confirmBtn = tr("Mark Watched")
+              watchedButton = group.findNode("watchedButton")
+              if isValid(watchedButton) and watchedButton.loading then continue while ' Already in-flight
+              ' Read current state from button — writing to itemContent triggers a full rebuild
+              isCurrentlyWatched = isValid(watchedButton) and watchedButton.selected
+              if isCurrentlyWatched
+                req = GetApi().BuildUnmarkPlayedRequest(item.id)
+              else
+                req = GetApi().BuildMarkPlayedRequest(item.id)
+              end if
+              newWatchedState = not isCurrentlyWatched
+              if isValid(watchedButton) then watchedButton.loading = true
+              ' Set resume button to loading while we wait for async response
+              if newWatchedState
+                resumeButton = group.findNode("resumeButton")
+                if isValid(resumeButton) then resumeButton.loading = true
+              end if
+              resultNode = submitApiRequest(req, "watchedToggle")
+              if isValid(resultNode)
+                m.watchedResultNode = resultNode
+                m.pendingWatchedButton = watchedButton
+                m.pendingWatchedNewState = newWatchedState
+                m.pendingWatchedItemType = item.type
+                m.watchedResultNode.observeField("done", m.port)
+              else
+                ' Pool not ready — fall back to fire-and-forget + direct update
+                SubmitSideEffect(req)
+                if isValid(watchedButton)
+                  watchedButton.selected = newWatchedState
+                  watchedButton.loading = false
+                end if
+                ' Remove stale resume button when marking as watched
+                if newWatchedState
+                  removeResumeButtonFromGroup(group)
+                end if
+              end if
             end if
-            m.global.sceneManager.callFunc("optionDialog", tr("Watched"), [confirmMsg], [tr("Cancel"), confirmBtn])
-          else
+          end if
+        else if btn.id = "favoriteButton"
+          item = group.itemContent
+          favoriteButton = group.findNode("favoriteButton")
+          if isValid(item) and isValidAndNotEmpty(item.id) and isValid(favoriteButton)
+            if favoriteButton.loading then continue while ' Already in-flight
+            ' Read current state from button — writing to itemContent triggers a full rebuild
+            newState = not favoriteButton.selected
+            if newState
+              req = GetApi().BuildMarkFavoriteRequest(item.id)
+            else
+              req = GetApi().BuildUnmarkFavoriteRequest(item.id)
+            end if
+            favoriteButton.loading = true
+            resultNode = submitApiRequest(req, "favoriteToggle")
+            if isValid(resultNode)
+              m.favoriteResultNode = resultNode
+              m.pendingFavoriteButton = favoriteButton
+              m.pendingFavoriteNewState = newState
+              m.favoriteResultNode.observeField("done", m.port)
+            else
+              ' Pool not ready — fall back to fire-and-forget
+              SubmitSideEffect(req)
+              favoriteButton.selected = newState
+              favoriteButton.loading = false
+            end if
+          end if
+        else if btn.id = "refreshButton"
+          ' Trigger data refresh for the current screen
+          if isValid(group)
             startLoadingSpinner()
-            if item.isWatched
-              GetApi().UnmarkPlayed(item.id)
-            else
-              GetApi().MarkPlayed(item.id)
-            end if
-            ' Refresh from server to get authoritative state
+            group.refreshExtrasData = not group.refreshExtrasData
             group.refreshItemDetailsData = not group.refreshItemDetailsData
           end if
-        end if
-      else if btn.id = "favoriteButton"
-        print "favoriteButton pressed"
-        movie = group.itemContent
-        favoriteButton = group.findNode("favoriteButton")
-        if isValid(movie) and isValidAndNotEmpty(movie.id) and isValid(favoriteButton)
-          startLoadingSpinner()
-          if movie.isFavorite
-            GetApi().UnmarkFavorite(movie.id)
-            movie.isFavorite = false
-            favoriteButton.selected = false
-          else
-            GetApi().MarkFavorite(movie.id)
-            movie.isFavorite = true
-            favoriteButton.selected = true
+        else if btn.id = "shuffleButton"
+          ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added.
+          ' API calls run off the render thread via GetShuffleItemsTask; result handled by "shuffleItems" event.
+          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
+            startLoadingSpinner()
+            item = group.itemContent
+            m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
+            m.shuffleTask.shuffleInput = { type: item.type, id: item.id, seriesId: item.seriesId }
+            m.shuffleTask.observeField("shuffleItems", m.port)
+            m.shuffleTask.control = "RUN"
           end if
-          stopLoadingSpinner()
-        end if
-      else if btn.id = "refreshButton"
-        ' Trigger data refresh for the current screen
-        if isValid(group)
-          group.refreshExtrasData = not group.refreshExtrasData
-          group.refreshItemDetailsData = not group.refreshItemDetailsData
-        end if
-      else if btn.id = "shuffleButton"
-        ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added.
-        ' API calls run off the render thread via GetShuffleItemsTask; result handled by "shuffleItems" event.
-        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
-          startLoadingSpinner()
-          item = group.itemContent
-          m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
-          m.shuffleTask.shuffleInput = { type: item.type, id: item.id, seriesId: item.seriesId }
-          m.shuffleTask.observeField("shuffleItems", m.port)
-          m.shuffleTask.control = "RUN"
-        end if
-      else if btn.id = "instantMixButton"
-        ' Instant Mix: create a radio-like queue seeded by this item (MusicArtist, MusicAlbum, or Audio)
-        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
-          startLoadingSpinner()
-          instantMixData = CreateInstantMix(group.itemContent.id)
-          if isValid(instantMixData) and isValid(instantMixData.Items) and instantMixData.Items.count() > 0
+        else if btn.id = "instantMixButton"
+          ' Instant Mix — delegate to QuickPlayTask
+          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
+            startLoadingSpinner()
             m.global.queueManager.callFunc("clear")
             m.global.queueManager.callFunc("resetShuffle")
-            m.global.queueManager.callFunc("set", instantMixData.Items)
-            m.global.queueManager.callFunc("playQueue")
-          else
-            stopLoadingSpinner()
+            m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+            m.activeQuickPlayTask.input = { action: "instantMix", id: group.itemContent.id }
+            m.activeQuickPlayTask.observeField("output", m.port)
+            m.activeQuickPlayTask.control = "RUN"
           end if
-        end if
-      else if btn.id = "goToSeriesButton"
-        ' Navigate to the parent series detail screen
-        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.seriesId)
-          seriesRef = CreateObject("roSGNode", "ContentNode")
-          seriesRef.id = group.itemContent.seriesId
-          seriesRef.type = "Series"
-          CreateItemDetailsGroup(seriesRef)
-        end if
-      else if btn.id = "goToAlbumButton"
-        ' Navigate to the album detail screen for the current Audio item
-        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.albumId)
-          albumRef = CreateObject("roSGNode", "ContentNode")
-          albumRef.id = group.itemContent.albumId
-          albumRef.type = "MusicAlbum"
-          CreateItemDetailsGroup(albumRef)
-        end if
-      else if btn.id = "goToArtistButton"
-        ' Navigate to the artist detail screen for the current MusicAlbum.
-        ' Prefers albumArtists (primary album artist); falls back to artistItems when only one artist.
-        if isValid(group) and isValid(group.itemContent)
-          item = group.itemContent
-          artistId = ""
-          if isValid(item.albumArtists) and item.albumArtists.count() > 0
-            firstAlbumArtist = item.albumArtists[0]
-            if isValid(firstAlbumArtist) and isValidAndNotEmpty(firstAlbumArtist.Id)
-              artistId = firstAlbumArtist.Id
+        else if btn.id = "goToSeriesButton"
+          ' Navigate to the parent series detail screen
+          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.seriesId)
+            seriesRef = CreateObject("roSGNode", "ContentNode")
+            seriesRef.id = group.itemContent.seriesId
+            seriesRef.type = "Series"
+            CreateItemDetailsGroup(seriesRef)
+          end if
+        else if btn.id = "goToAlbumButton"
+          ' Navigate to the album detail screen for the current Audio item
+          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.albumId)
+            albumRef = CreateObject("roSGNode", "ContentNode")
+            albumRef.id = group.itemContent.albumId
+            albumRef.type = "MusicAlbum"
+            CreateItemDetailsGroup(albumRef)
+          end if
+        else if btn.id = "goToArtistButton"
+          ' Navigate to the artist detail screen for the current MusicAlbum.
+          ' Prefers albumArtists (primary album artist); falls back to artistItems when only one artist.
+          if isValid(group) and isValid(group.itemContent)
+            item = group.itemContent
+            artistId = ""
+            if isValid(item.albumArtists) and item.albumArtists.count() > 0
+              firstAlbumArtist = item.albumArtists[0]
+              if isValid(firstAlbumArtist) and isValidAndNotEmpty(firstAlbumArtist.Id)
+                artistId = firstAlbumArtist.Id
+              end if
+            end if
+            if artistId = "" and isValid(item.artistItems) and item.artistItems.count() = 1
+              firstArtistItem = item.artistItems[0]
+              if isValid(firstArtistItem) and isValidAndNotEmpty(firstArtistItem.Id)
+                artistId = firstArtistItem.Id
+              end if
+            end if
+            if isValidAndNotEmpty(artistId)
+              artistRef = CreateObject("roSGNode", "ContentNode")
+              artistRef.id = artistId
+              artistRef.type = "MusicArtist"
+              CreateItemDetailsGroup(artistRef)
             end if
           end if
-          if artistId = "" and isValid(item.artistItems) and item.artistItems.count() = 1
-            firstArtistItem = item.artistItems[0]
-            if isValid(firstArtistItem) and isValidAndNotEmpty(firstArtistItem.Id)
-              artistId = firstArtistItem.Id
-            end if
+        else if btn.id = "deleteButton"
+          print "deleteButton pressed"
+          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
+            m.pendingDeleteItemId = group.itemContent.id
+            m.global.sceneManager.callFunc("optionDialog", tr("Delete"), [tr("Are you sure you want to delete this item? This action cannot be undone.")], [tr("Cancel"), tr("Delete")])
           end if
-          if isValidAndNotEmpty(artistId)
-            artistRef = CreateObject("roSGNode", "ContentNode")
-            artistRef.id = artistId
-            artistRef.type = "MusicArtist"
-            CreateItemDetailsGroup(artistRef)
+        else
+          ' If there are no other button matches, check if this is a simple "OK" Dialog & Close if so
+          dialog = msg.getRoSGNode()
+          if dialog.id = "OKDialog"
+            dialog.unobserveField("buttonSelected")
+            dialog.close = true
+            return
           end if
-        end if
-      else if btn.id = "deleteButton"
-        print "deleteButton pressed"
-        if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
-          m.pendingDeleteItemId = group.itemContent.id
-          m.global.sceneManager.callFunc("optionDialog", tr("Delete"), [tr("Are you sure you want to delete this item? This action cannot be undone.")], [tr("Cancel"), tr("Delete")])
-        end if
-      else
-        ' If there are no other button matches, check if this is a simple "OK" Dialog & Close if so
-        dialog = msg.getRoSGNode()
-        if dialog.id = "OKDialog"
-          dialog.unobserveField("buttonSelected")
-          dialog.close = true
-          return
-        end if
 
-        print "ERROR: Unhandled button id: " + btn.id
-      end if
+          print "ERROR: Unhandled button id: " + btn.id
+        end if
+      end if ' isValid(btn) and not m.scene.isLoading
     else if isNodeEvent(msg, "optionSelected")
       button = msg.getRoSGNode()
       group = m.global.sceneManager.callFunc("getActiveScene")
@@ -811,19 +736,11 @@ sub Main (args as dynamic) as void
       else if isValid(event.audioCodecCapabilityChanged)
         ' The audio codec capability has changed if true.
         print "event.audioCodecCapabilityChanged = ", event.audioCodecCapabilityChanged
-
-        postTask = createObject("roSGNode", "PostTask")
-        postTask.arrayData = getDeviceCapabilities()
-        postTask.apiUrl = "/Sessions/Capabilities/Full"
-        postTask.control = "RUN"
+        SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
       else if isValid(event.videoCodecCapabilityChanged)
         ' The video codec capability has changed if true.
         print "event.videoCodecCapabilityChanged = ", event.videoCodecCapabilityChanged
-
-        postTask = createObject("roSGNode", "PostTask")
-        postTask.arrayData = getDeviceCapabilities()
-        postTask.apiUrl = "/Sessions/Capabilities/Full"
-        postTask.control = "RUN"
+        SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
       else if isValid(event.appFocus)
         ' It is set to False when the System Overlay (such as the confirm partner button HUD or the caption control overlay) takes focus and True when the channel regains focus
         print "event.appFocus = ", event.appFocus
@@ -856,7 +773,7 @@ sub Main (args as dynamic) as void
         else if isValid(m.pendingDeleteItemId)
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Delete")
             ' User confirmed deletion
-            GetApi().DeleteItem(m.pendingDeleteItemId)
+            SubmitSideEffect(GetApi().BuildDeleteItemRequest(m.pendingDeleteItemId))
             m.pendingDeleteItemId = invalid
             m.global.sceneManager.callFunc("popScene")
           else
@@ -867,19 +784,42 @@ sub Main (args as dynamic) as void
         else if isValid(m.pendingWatchedItemId)
           if popupNode.returnData.indexSelected = 1
             ' User confirmed — mark/unmark all episodes
-            startLoadingSpinner()
             if m.pendingWatchedIsCurrentlyWatched
-              GetApi().UnmarkPlayed(m.pendingWatchedItemId)
+              req = GetApi().BuildUnmarkPlayedRequest(m.pendingWatchedItemId)
             else
-              GetApi().MarkPlayed(m.pendingWatchedItemId)
+              req = GetApi().BuildMarkPlayedRequest(m.pendingWatchedItemId)
             end if
+            newWatchedState = not m.pendingWatchedIsCurrentlyWatched
             m.pendingWatchedItemId = invalid
             m.pendingWatchedIsCurrentlyWatched = invalid
             activeGroup = m.global.sceneManager.callFunc("getActiveScene")
+            watchedButton = invalid
             if isValid(activeGroup)
-              activeGroup.refreshItemDetailsData = not activeGroup.refreshItemDetailsData
+              watchedButton = activeGroup.findNode("watchedButton")
+            end if
+            if isValid(watchedButton) then watchedButton.loading = true
+            ' Set resume button to loading while we wait for async data
+            resumeButton = invalid
+            if isValid(activeGroup) then resumeButton = activeGroup.findNode("resumeButton")
+            if isValid(resumeButton) then resumeButton.loading = true
+            resultNode = submitApiRequest(req, "watchedToggle")
+            if isValid(resultNode)
+              m.watchedResultNode = resultNode
+              m.pendingWatchedButton = watchedButton
+              m.pendingWatchedNewState = newWatchedState
+              m.pendingWatchedItemType = "Series"
+              m.watchedResultNode.observeField("done", m.port)
             else
-              stopLoadingSpinner()
+              ' Pool not ready — fall back to fire-and-forget + direct update
+              SubmitSideEffect(req)
+              if isValid(watchedButton)
+                watchedButton.selected = newWatchedState
+                watchedButton.loading = false
+              end if
+              ' Series: refresh resume data to reflect new watched state
+              if isValid(activeGroup)
+                activeGroup.refreshResumeData = not activeGroup.refreshResumeData
+              end if
             end if
           else
             ' User cancelled
@@ -1058,4 +998,160 @@ sub calculateFontScaleFactor()
     print "WARNING - calculateFontScaleFactor: Failed to calculate scale factor, using default"
   end if
 
+end sub
+
+' Handles the output from QuickPlayTask — queues items, opens photo player, or plays trailers.
+sub handleQuickPlayOutput(task as object)
+  output = task.output
+  task.unobserveField("output")
+  task.control = "STOP"
+  m.activeQuickPlayTask = invalid
+
+  if not isValid(output) or not isValidAndNotEmpty(output.items)
+    stopLoadingSpinner()
+    return
+  end if
+
+  if output.action = "queue"
+    quickplay.pushToQueue(output.items)
+    if output.firstItemStartingPoint > 0
+      m.global.queueManager.callFunc("setTopStartingPoint", output.firstItemStartingPoint)
+    end if
+    if output.shuffle and m.global.queueManager.callFunc("getCount") > 1
+      m.global.queueManager.callFunc("toggleShuffle")
+    end if
+    m.global.queueManager.callFunc("playQueue")
+  else if output.action = "photo"
+    photoPlayer = CreateObject("roSgNode", "PhotoDetails")
+    photoPlayer.isSlideshow = true
+    photoPlayer.isRandom = false
+    photoPlayer.itemsArray = output.items
+    photoPlayer.itemIndex = 0
+    m.global.sceneManager.callfunc("pushScene", photoPlayer)
+    stopLoadingSpinner()
+  else if output.action = "trailer"
+    if isValid(output.items[0]) and isValidAndNotEmpty(output.items[0].id)
+      m.global.queueManager.callFunc("clear")
+      m.global.queueManager.callFunc("set", output.items)
+      m.global.queueManager.callFunc("playQueue")
+    else
+      stopLoadingSpinner()
+    end if
+  end if
+end sub
+
+sub handleFavoriteToggleDone()
+  res = m.favoriteResultNode.result
+  m.favoriteResultNode.unobserveField("done")
+  m.favoriteResultNode = invalid
+
+  ' Debug error injection — compiled out in production (bs_const=debug=false)
+  #if debug
+    if isValid(m.global.debug) and m.global.debug.forceFavoriteFail
+      res = { ok: false }
+    end if
+  #end if
+
+  if isValid(res) and res.ok
+    if isValid(m.pendingFavoriteButton)
+      m.pendingFavoriteButton.selected = m.pendingFavoriteNewState
+    end if
+  else
+    ' Revert button to original state on failure
+    if isValid(m.pendingFavoriteButton)
+      m.pendingFavoriteButton.selected = not m.pendingFavoriteNewState
+    end if
+    displayToast(tr("Failed to update favorite"), "error")
+  end if
+
+  if isValid(m.pendingFavoriteButton)
+    m.pendingFavoriteButton.loading = false
+  end if
+  m.pendingFavoriteButton = invalid
+  m.pendingFavoriteNewState = invalid
+end sub
+
+sub handleWatchedToggleDone()
+  res = m.watchedResultNode.result
+  m.watchedResultNode.unobserveField("done")
+  m.watchedResultNode = invalid
+
+  ' Debug error injection — compiled out in production (bs_const=debug=false)
+  #if debug
+    if isValid(m.global.debug) and m.global.debug.forceWatchedFail
+      res = { ok: false }
+    end if
+  #end if
+
+  if isValid(res) and res.ok
+    if isValid(m.pendingWatchedButton)
+      m.pendingWatchedButton.selected = m.pendingWatchedNewState
+    end if
+    ' Update resume button to reflect new watched state
+    activeGroup = m.global.sceneManager.callFunc("getActiveScene")
+    if isValid(activeGroup)
+      if m.pendingWatchedItemType = "Series"
+        ' Series: re-fetch next-up episode (may change or disappear)
+        activeGroup.refreshResumeData = not activeGroup.refreshResumeData
+      else if m.pendingWatchedNewState
+        ' Non-Series marking watched: server clears playback position, remove stale resume button
+        removeResumeButtonFromGroup(activeGroup)
+      end if
+    end if
+  else
+    ' Revert button to original state on failure
+    if isValid(m.pendingWatchedButton)
+      m.pendingWatchedButton.selected = not m.pendingWatchedNewState
+    end if
+    ' Revert resume button loading state on failure
+    activeGroup = m.global.sceneManager.callFunc("getActiveScene")
+    if isValid(activeGroup)
+      resumeButton = activeGroup.findNode("resumeButton")
+      if isValid(resumeButton) then resumeButton.loading = false
+    end if
+    displayToast(tr("Failed to update watched status"), "error")
+  end if
+
+  if isValid(m.pendingWatchedButton)
+    m.pendingWatchedButton.loading = false
+  end if
+  m.pendingWatchedButton = invalid
+  m.pendingWatchedNewState = invalid
+  m.pendingWatchedItemType = invalid
+end sub
+
+' removeResumeButtonFromGroup: Remove the resume button from an ItemDetails button group.
+' Used after marking an item as watched — the server clears playback position so the
+' resume button is stale. Focus is preserved on the nearest remaining button.
+sub removeResumeButtonFromGroup(group as object)
+  resumeButton = group.findNode("resumeButton")
+  if not isValid(resumeButton) then return
+
+  buttonGrp = group.findNode("buttons")
+  if not isValid(buttonGrp) then return
+
+  currentFocusIndex = buttonGrp.buttonFocused
+  resumeIndex = -1
+  for i = 0 to buttonGrp.getChildCount() - 1
+    child = buttonGrp.getChild(i)
+    if isValid(child) and child.isSameNode(resumeButton)
+      resumeIndex = i
+      exit for
+    end if
+  end for
+
+  wasFocused = resumeButton.isInFocusChain()
+  buttonGrp.removeChild(resumeButton)
+
+  if resumeIndex >= 0 and currentFocusIndex >= resumeIndex
+    focusIdx = currentFocusIndex - 1
+    if focusIdx < 0 then focusIdx = 0
+    buttonGrp.buttonFocused = focusIdx
+  end if
+  if wasFocused
+    nextButton = buttonGrp.getChild(buttonGrp.buttonFocused)
+    if isValid(nextButton)
+      nextButton.setFocus(true)
+    end if
+  end if
 end sub

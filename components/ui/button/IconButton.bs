@@ -2,6 +2,8 @@ import "pkg:/source/utils/misc.bs"
 
 const focusBorderOffset = 6 ' Used for positioning calculations only (matches 6px border in 9-patch image); does NOT control actual border rendering
 const textExtension = 12 ' Text extends 6px on each side to prevent label wrapping
+const spinnerSize = 42 ' Spinner rendered smaller than 64px icon frame — icons have transparent padding so this matches the visible icon area
+const defaultIconSize = 64 ' Default icon dimensions used for layout when icon hasn't loaded yet
 
 ' LAYOUT NOTE FOR DEVELOPERS:
 ' IconButton text extends 12px wider than the button (6px on each side) to prevent label wrapping.
@@ -14,9 +16,11 @@ sub init()
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.buttonIcon = m.top.findNode("buttonIcon")
   m.buttonIcon.ObserveField("loadStatus", "OnImageLoadStatusChanged")
+  m.buttonSpinner = m.top.findNode("buttonSpinner")
   m.buttonText = m.top.findNode("buttonText")
 
   m.top.observeField("enabled", "onEnabledChanged")
+  m.top.observeField("loading", "onLoadingChanged")
   m.top.observeField("background", "onBackgroundChanged")
   m.top.observeField("iconBackground", "onIconBackgroundChanged")
   m.top.observeField("icon", "onIconChanged")
@@ -178,4 +182,39 @@ sub setFocusBorderSize()
 
   ' Update button and text positioning using shared method
   updateButtonPositioning()
+end sub
+
+' onLoadingChanged: Swap icon for a spinner while loading.
+' Does NOT set enabled=false — button stays focusable. OK blocking is handled by JRButtonGroup.
+sub onLoadingChanged()
+  if m.top.loading
+    m.buttonIcon.visible = false
+    m.buttonSpinner.visible = true
+
+    ' Size the spinner
+    m.buttonSpinner.poster.width = spinnerSize
+    m.buttonSpinner.poster.height = spinnerSize
+
+    ' If icon hasn't loaded yet, the background has no dimensions — apply default layout
+    if m.buttonBackground.width < 1
+      paddingPixels = 15
+      btnWidth = defaultIconSize + (paddingPixels * 4)
+      btnHeight = defaultIconSize + (paddingPixels * 2)
+      m.buttonBackground.width = btnWidth
+      m.buttonBackground.height = btnHeight
+      m.buttonBorder.width = btnWidth
+      m.buttonBorder.height = btnHeight
+      updateButtonPositioning()
+    end if
+
+    ' Center spinner in button background
+    buttonOffset = textExtension / 2
+    m.buttonSpinner.translation = [
+      buttonOffset + (m.buttonBackground.width - spinnerSize) / 2,
+      (m.buttonBackground.height - spinnerSize) / 2
+    ]
+  else
+    m.buttonSpinner.visible = false
+    m.buttonIcon.visible = true
+  end if
 end sub

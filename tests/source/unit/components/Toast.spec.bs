@@ -1,0 +1,120 @@
+namespace tests
+
+  @suite("Toast - Node interface and defaults")
+  class ToastTests extends tests.BaseTestSuite
+
+    private toast as object
+
+    protected override function setup()
+      super.setup()
+      m.toast = CreateObject("roSGNode", "Toast")
+    end function
+
+    protected override function teardown()
+      m.toast = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has message field")
+    function _()
+      m.assertTrue(m.toast.doesExist("message"))
+    end function
+
+    @it("has toastType field")
+    function _()
+      m.assertTrue(m.toast.doesExist("toastType"))
+    end function
+
+    @it("has show field")
+    function _()
+      m.assertTrue(m.toast.doesExist("show"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("message defaults to empty string")
+    function _()
+      m.assertEqual(m.toast.message, "")
+    end function
+
+    @it("toastType defaults to error")
+    function _()
+      m.assertEqual(m.toast.toastType, "error")
+    end function
+
+    @it("show defaults to false")
+    function _()
+      m.assertFalse(m.toast.show)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Child nodes exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has toastContainer group")
+    function _()
+      m.assertNotInvalid(m.toast.findNode("toastContainer"))
+    end function
+
+    @it("has toastBackground poster")
+    function _()
+      m.assertNotInvalid(m.toast.findNode("toastBackground"))
+    end function
+
+    @it("has toastIcon poster")
+    function _()
+      m.assertNotInvalid(m.toast.findNode("toastIcon"))
+    end function
+
+    @it("has toastMessage label")
+    function _()
+      m.assertNotInvalid(m.toast.findNode("toastMessage"))
+    end function
+
+    @it("has fadeIn animation")
+    function _()
+      m.assertNotInvalid(m.toast.findNode("fadeIn"))
+    end function
+
+    @it("has fadeOut animation")
+    function _()
+      m.assertNotInvalid(m.toast.findNode("fadeOut"))
+    end function
+
+    @it("has dismissTimer")
+    function _()
+      m.assertNotInvalid(m.toast.findNode("dismissTimer"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Icon poster has correct load params for texture memory")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Roku XML numeric attributes are parsed as Floats, not Integers
+    @it("toastIcon has loadWidth 32")
+    function _()
+      icon = m.toast.findNode("toastIcon")
+      m.assertEqual(icon.loadWidth, 32.0)
+    end function
+
+    @it("toastIcon has loadHeight 32")
+    function _()
+      icon = m.toast.findNode("toastIcon")
+      m.assertEqual(icon.loadHeight, 32.0)
+    end function
+
+    ' Roku lowercases string field values set in XML
+    @it("toastIcon has loadDisplayMode limitSize")
+    function _()
+      icon = m.toast.findNode("toastIcon")
+      m.assertEqual(icon.loadDisplayMode, "limitsize")
+    end function
+
+  end class
+
+end namespace

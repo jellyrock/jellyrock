@@ -1,0 +1,67 @@
+namespace tests
+
+  @suite("Constants - Semantic colors and icon paths")
+  class ConstantsSemanticTests extends tests.BaseTestSuite
+
+    private constants as object
+
+    protected override function setup()
+      super.setup()
+      m.constants = CreateObject("roSGNode", "Constants")
+    end function
+
+    protected override function teardown()
+      m.constants = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Semantic color fields exist and have defaults")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has colorSuccess with green default")
+    function _()
+      m.assertEqual(m.constants.colorSuccess, "0x16A34A")
+    end function
+
+    @it("has colorError with red default")
+    function _()
+      m.assertEqual(m.constants.colorError, "0xDC2626")
+    end function
+
+    @it("has colorWarning with amber default")
+    function _()
+      m.assertEqual(m.constants.colorWarning, "0xEAB308")
+    end function
+
+    @it("has colorInfo with blue default")
+    function _()
+      m.assertEqual(m.constants.colorInfo, "0x2563EB")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Toast icon paths exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has iconSuccess path")
+    function _()
+      m.assertEqual(m.constants.iconSuccess, "pkg:/images/icons/check.png")
+    end function
+
+    @it("has iconError path")
+    function _()
+      m.assertEqual(m.constants.iconError, "pkg:/images/icons/error.png")
+    end function
+
+    @it("has iconWarning path")
+    function _()
+      m.assertEqual(m.constants.iconWarning, "pkg:/images/icons/warning.png")
+    end function
+
+    @it("has iconInfo path")
+    function _()
+      m.assertEqual(m.constants.iconInfo, "pkg:/images/icons/info.png")
+    end function
+
+  end class
+
+end namespace

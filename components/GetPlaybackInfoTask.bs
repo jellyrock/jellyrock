@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
@@ -11,7 +12,7 @@ end sub
 ' Returns an array of playback info to be displayed during playback.
 ' In the future, with a custom playback info view, we can return an associated array.
 sub getPlaybackInfoTask()
-  sessions = GetApi().GetSessions({ "deviceId": m.global.device.serverDeviceName })
+  sessions = fetchJson(GetApi().BuildGetSessionsRequest({ "deviceId": m.global.device.serverDeviceName }), "sessions")
 
   ' Use cached playback info instead of making redundant API call
   if isValid(m.top.cachedPlaybackInfo)

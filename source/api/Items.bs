@@ -65,9 +65,6 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   mediaStreams = invalid
   if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources) and isValid(videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams)
     mediaStreams = videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams
-    ' print "ItemPostPlaybackInfo videoMetadata =", videoMetadata
-    ' print "ItemPostPlaybackInfo videoMetadata.mediaSourcesData =", videoMetadata.mediaSourcesData
-    ' print "ItemPostPlaybackInfo mediaStreams =", mediaStreams
   end if
 
   ' DOVI not supported using MKV container, so force remux for DOVI content
@@ -87,8 +84,6 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     ' Only proceed with DOVI logic if device supports DOVI
     if deviceSupportsDovi
       for each stream in mediaStreams
-        ' print "deviceSupportsDovi mediaStreams stream =", stream
-
         ' always use the first video stream for now
         ' Note: don't force remux on AV1 codec - see #194
         if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
@@ -164,7 +159,6 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
       ' Find the audio stream with the matching Jellyfin index
       selectedAudioStream = invalid
       for each stream in mediaStreams
-        ' print "ItemPostPlaybackInfo mediaStreams stream =", stream
         if isValid(stream.index) and stream.index = audioTrackIndex
           selectedAudioStream = stream
           exit for
@@ -228,83 +222,39 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
   end if
 
-  return GetApi().PostPlaybackInfo(id, postData)
+  return fetchJson(GetApi().BuildPostPlaybackInfoRequest(id, postData), "playbackInfo")
 end function
 
-' Search across all libraries
-function searchMedia(query as string)
-  if query = "" then return []
+' Render-thread wrapper: delegates search to SearchTask (task thread) and blocks until complete.
+' Used by Main.bs SearchBox flow which shows a ProgressDialog while waiting.
+function searchMedia(query as string) as object
+  if query = "" then return { Items: [], TotalRecordCount: 0 }
 
-  transformer = JellyfinDataTransformer()
-  allItems = []
+  searchTask = CreateObject("roSGNode", "SearchTask")
+  port = CreateObject("roMessagePort")
+  searchTask.observeField("results", port)
+  searchTask.query = query
+  searchTask.control = "RUN"
 
-  ' Regular library items — Person and MusicArtist are fetched via dedicated endpoints below.
-  ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
-  data = GetApi().GetItemsByQuery({
-    "searchTerm": query,
-    "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
-    "EnableTotalRecordCount": false,
-    "Recursive": true,
-    "limit": 100
-  })
-  if isValid(data) and isValid(data.Items)
-    for each item in data.Items
-      ' Live TV recordings come back from /Items as the content type (Movie/Episode).
-      ' The only reliable discriminator is the container format: recordings are always
-      ' stored as MPEG transport streams ("ts"), while library items never are.
-      if LCase(item.Container ?? "") = "ts"
-        item.Type = "Recording"
-      end if
-      allItems.push(transformer.transformBaseItem(item))
-    end for
+  ' Block until SearchTask completes (30s timeout matches fetchRes)
+  msg = wait(30000, port)
+  searchTask.unobserveField("results")
+  searchTask.control = "STOP"
+
+  if isValid(msg) and isValid(searchTask.results)
+    return searchTask.results
   end if
-
-  ' People — /Items does not return Person type; /Persons endpoint required.
-  personData = GetApi().GetPersons({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  })
-  if isValid(personData) and isValid(personData.Items)
-    for each item in personData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  ' Artists — /Items does not return MusicArtist type; /Artists endpoint required.
-  artistData = GetApi().GetArtists({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  })
-  if isValid(artistData) and isValid(artistData.Items)
-    for each item in artistData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  ' Live TV Programs — /LiveTv/Programs searches the full EPG; /Items only covers recordings.
-  programData = GetApi().GetLiveTVPrograms({
-    "SearchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
-  })
-  if isValid(programData) and isValid(programData.Items)
-    for each item in programData.Items
-      allItems.push(transformer.transformBaseItem(item))
-    end for
-  end if
-
-  result = {}
-  result.Items = allItems
-  result.TotalRecordCount = allItems.count()
-  return result
+  return { Items: [], TotalRecordCount: 0 }
 end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.
-function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string)
-  data = GetApi().GetItem(id, { "fields": fields })
+function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string, forceRefresh = false as boolean)
+  req = GetApi().BuildGetItemRequest(id, { "fields": fields })
+  if forceRefresh and isValid(req)
+    req.headers = { "Cache-Control": "no-cache" }
+  end if
+  data = fetchJson(req, "itemMetaData")
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
   return transformer.transformBaseItem(data)
@@ -312,13 +262,13 @@ end function
 
 ' MetaData for an item detail screen — includes People, Genres, and Studios in addition to
 ' Chapters and Trickplay. Use this instead of ItemMetaData() when populating a detail view.
-function ItemDetailsMetaData(id as string)
-  return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People")
+function ItemDetailsMetaData(id as string, forceRefresh = false as boolean)
+  return ItemMetaData(id, "Chapters,Trickplay,Genres,Studios,People", forceRefresh)
 end function
 
 ' Music Artist Data
 function ArtistOverview(name as string)
-  data = GetApi().GetArtistByName(name)
+  data = fetchJson(GetApi().BuildGetArtistByNameRequest(name), "artistOverview")
   if not isValid(data) then return invalid
   return data.overview
 end function
@@ -327,13 +277,13 @@ end function
 ' Sorted by year descending so the discography reads newest-first.
 ' Does NOT include albums the artist merely contributes to — see AppearsOnList().
 function MusicAlbumList(id as string)
-  data = GetApi().GetItemsByQuery({
+  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
     "AlbumArtistIds": id,
     "includeitemtypes": "MusicAlbum",
     "sortBy": "PremiereDate,ProductionYear,SortName",
     "SortOrder": "Descending",
     "Recursive": true
-  })
+  }), "albumList")
   if not isValid(data) then return invalid
   if not isValid(data.Items) then return invalid
   transformer = JellyfinDataTransformer()
@@ -350,13 +300,13 @@ end function
 ' but are NOT tagged as the album artist — so this row is mutually exclusive with MusicAlbumList().
 ' Sorted by year descending.
 function AppearsOnList(id as string)
-  data = GetApi().GetItemsByQuery({
+  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
     "ContributingArtistIds": id,
     "includeitemtypes": "MusicAlbum",
     "sortBy": "PremiereDate,ProductionYear,SortName",
     "SortOrder": "Descending",
     "Recursive": true
-  })
+  }), "appearsOn")
   if not isValid(data) then return invalid
   if not isValid(data.Items) then return invalid
   transformer = JellyfinDataTransformer()
@@ -381,7 +331,7 @@ function GetSongsByArtist(id as string, params = {} as object)
     paramArray.AddReplace(param, params[param])
   end for
 
-  data = GetApi().GetItemsByQuery(paramArray)
+  data = fetchJson(GetApi().BuildGetItemsByQueryRequest(paramArray), "songsByArtist")
   results = []
 
   if not isValid(data) then return invalid
@@ -401,14 +351,14 @@ end function
 ' so songs on compilation albums or items with mismatched album-level tags still surface.
 ' @param {string} id - MusicArtist item ID
 function GetSongsByArtistBroad(id as string) as dynamic
-  data = GetApi().GetItemsByQuery({
+  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
     "ArtistIds": id,
     "includeitemtypes": "Audio",
     "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
     "Recursive": true,
     "Limit": 100,
     "EnableTotalRecordCount": false
-  })
+  }), "songsByArtistBroad")
 
   if not isValid(data) then return invalid
   if not isValid(data.Items) then return invalid
@@ -425,11 +375,11 @@ end function
 
 ' Get Songs that are on an Album
 function MusicSongList(id as string)
-  data = GetApi().GetItemsByQuery({
+  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
     "parentId": id,
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
-  })
+  }), "songList")
 
   results = []
 
@@ -445,38 +395,17 @@ function MusicSongList(id as string)
   return data
 end function
 
-' Get Songs that are on an Album
+' Get audio item metadata (raw, no transform)
 function AudioItem(id as string)
-  return GetApi().GetItemRaw(id, {
+  return fetchJson(GetApi().BuildGetItemRawRequest(id, {
     "includeitemtypes": "Audio",
     "sortBy": "SortName"
-  })
-end function
-
-' Get Instant Mix based on item
-function CreateInstantMix(id as string)
-  return GetApi().GetInstantMix(id, { "Limit": 201 })
-end function
-
-' Get Instant Mix based on item
-function CreateArtistMix(id as string)
-  return GetApi().GetItemsByQuery({
-    "ArtistIds": id,
-    "Recursive": "true",
-    "MediaTypes": "Audio",
-    "Filters": "IsNotFolder",
-    "SortBy": "SortName",
-    "Limit": 300,
-    "Fields": "Chapters",
-    "ExcludeLocationTypes": "Virtual",
-    "EnableTotalRecordCount": false,
-    "CollapseBoxSetItems": false
-  })
+  }), "audioItem")
 end function
 
 ' Get Intro Videos for an item
 function GetIntroVideos(id as string)
-  return GetApi().GetIntros(id)
+  return fetchJson(GetApi().BuildGetIntrosRequest(id), "intros")
 end function
 
 function AudioStream(id as string)
@@ -522,9 +451,7 @@ end function
 ' @param {string} itemId - The Audio item ID
 ' @returns {dynamic} LyricDto: { Metadata: {...}, Lyrics: [{Start: ticks, Text: string}] }, or invalid
 function GetItemLyrics(itemId as string) as dynamic
-  url = Substitute("Audio/{0}/Lyrics", itemId)
-  resp = APIRequest(url, {})
-  return getJson(resp)
+  return fetchJson(GetApi().BuildGetItemLyricsRequest(itemId), "lyrics")
 end function
 
 function BackdropImage(id as string)
@@ -536,7 +463,7 @@ end function
 
 ' Seasons for a TV Show
 function TVSeasons(id as string) as dynamic
-  data = GetApi().GetSeasons(id)
+  data = fetchJson(GetApi().BuildGetSeasonsRequest(id), "seasons")
   ' validate data
   if not isValid(data) or not isValid(data.Items) then return invalid
 

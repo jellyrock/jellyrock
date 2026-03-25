@@ -1,78 +1,80 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.top.functionName = "getShuffleItems"
 end sub
 
-' Fetches items to shuffle for Series, Season, and Person item types off the render thread.
+' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
+' Fetches items to shuffle for Series, Season, and Person item types.
 ' Writes the combined result array to m.top.shuffleItems (empty array = nothing to play).
 sub getShuffleItems()
   input = m.top.shuffleInput
   items = []
 
   if input.type = "Series"
-    data = GetApi().GetEpisodes(input.id, { SortBy: "Random", Limit: 200 })
+    data = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, { SortBy: "Random", Limit: 200 }), "shuffleSeriesEpisodes")
     if isValid(data) and isValid(data.Items) then items = data.Items
+
   else if input.type = "Season"
-    ' Shuffle episodes within this season only
-    data = GetApi().GetEpisodes(input.seriesId, { SeasonId: input.id, SortBy: "Random", Limit: 200 })
+    data = fetchJson(GetApi().BuildGetEpisodesRequest(input.seriesId, { SeasonId: input.id, SortBy: "Random", Limit: 200 }), "shuffleSeasonEpisodes")
     if isValid(data) and isValid(data.Items) then items = data.Items
+
   else if input.type = "Person"
-    ' All movies featuring this person (watched or not — rewatching a film is fine)
-    moviesData = GetApi().GetItemsByQuery({
+    ' Movies featuring this person (rewatching is fine)
+    moviesData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Movie",
       Limit: 250
-    })
-    ' Watched episodes/recordings only — avoids spoiling shows the user is mid-way through
-    episodesData = GetApi().GetItemsByQuery({
+    }), "shufflePersonMovies")
+    ' Watched episodes/recordings only — avoids spoiling in-progress shows
+    episodesData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       personIds: input.id,
       recursive: true,
       includeItemTypes: "Episode,Recording",
       isPlayed: true,
       Limit: 250
-    })
+    }), "shufflePersonEpisodes")
     if isValid(moviesData) and isValid(moviesData.Items) then items.append(moviesData.Items)
     if isValid(episodesData) and isValid(episodesData.Items) then items.append(episodesData.Items)
+
   else if input.type = "BoxSet"
-    data = GetApi().GetItemsByQuery({
+    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "ParentId": input.id,
       "SortBy": "Random",
       "Limit": 200,
       "EnableTotalRecordCount": false
-    })
+    }), "shuffleBoxSet")
     if isValid(data) and isValid(data.Items) then items = data.Items
+
   else if input.type = "MusicArtist"
-    ' All Audio tracks by this artist in any capacity (album artist OR contributing).
-    ' Uses ArtistIds (broad) to match GetSongsByArtistBroad — includes songs on compilation
-    ' albums and "Appears On" albums where AlbumArtistIds alone would miss them.
-    data = GetApi().GetItemsByQuery({
+    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "ArtistIds": input.id,
       "includeitemtypes": "Audio",
       "SortBy": "Random",
       "Recursive": true,
       "Limit": 200,
       "EnableTotalRecordCount": false
-    })
+    }), "shuffleArtist")
     if isValid(data) and isValid(data.Items) then items = data.Items
+
   else if input.type = "MusicAlbum"
-    ' All Audio tracks on this album — client-side shuffle applied by the caller
-    data = GetApi().GetItemsByQuery({
+    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "parentId": input.id,
       "includeitemtypes": "Audio",
       "SortBy": "SortName",
       "Limit": 200,
       "EnableTotalRecordCount": false
-    })
+    }), "shuffleAlbum")
     if isValid(data) and isValid(data.Items) then items = data.Items
+
   else if input.type = "Playlist"
-    ' All items in this playlist — client-side shuffle applied by the caller
-    data = GetApi().GetPlaylistItems(input.id, {
+    data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
       "Limit": 500,
       "EnableTotalRecordCount": false
-    })
+    }), "shufflePlaylist")
     if isValid(data) and isValid(data.Items) then items = data.Items
   end if
 

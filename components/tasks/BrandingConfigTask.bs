@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -8,14 +8,18 @@ sub init()
   m.top.functionName = "fetchBrandingConfig"
 end sub
 
-' Fetch branding configuration from server
-' Updates m.global.server.splashscreenEnabled based on server response
-' Sets to true/false when task completes successfully (may remain invalid if interrupted)
-' IMPORTANT: Non-blocking - never throws errors that stop app flow
+' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
+' Fetches branding configuration from server and updates m.global.server.splashscreenEnabled.
+' Sets responseCode to 200 on success, -1 on failure.
+' IMPORTANT: Non-blocking — never throws errors that stop app flow.
 sub fetchBrandingConfig()
   m.log.info("Fetching branding configuration from server")
 
-  configData = GetApi().GetBrandingConfiguration()
+  res = fetchRes(GetApi().BuildGetBrandingConfigurationRequest(), "brandingConfig")
+  configData = invalid
+  if isValid(res) and res.ok
+    configData = res.json
+  end if
 
   if isValid(configData)
     m.log.debug("Branding config response received", formatJson(configData))
@@ -26,14 +30,14 @@ sub fetchBrandingConfig()
       serverNode.splashscreenEnabled = configData.SplashscreenEnabled
       m.log.info("Splashscreen status cached", "enabled:", configData.SplashscreenEnabled)
     else
-      ' API returned data but no SplashscreenEnabled field - default to false
+      ' API returned data but no SplashscreenEnabled field — default to false
       serverNode.splashscreenEnabled = false
       m.log.warn("SplashscreenEnabled field not found in response - defaulting to false")
     end if
 
     m.top.responseCode = 200
   else
-    ' API call failed - default to false, log warning, continue normally
+    ' API call failed — default to false, log warning, continue normally
     m.log.warn("Failed to fetch branding configuration - defaulting to disabled")
     m.global.server.splashscreenEnabled = false
     m.top.responseCode = -1

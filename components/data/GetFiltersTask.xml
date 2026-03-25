@@ -3,5 +3,6 @@
   <interface>
     <field id="params" type="assocarray" />
     <field id="filters" type="assocarray" />
+    <field id="error" type="string" value="" />
   </interface>
 </component>

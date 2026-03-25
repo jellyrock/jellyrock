@@ -1,0 +1,152 @@
+import "pkg:/source/utils/misc.bs"
+
+' Layout constants — padding synced to TextButton (30px)
+const TOAST_PADDING = 30
+const TOAST_ICON_SIZE = 32
+const TOAST_ICON_GAP = 12
+const TOAST_MAX_WIDTH = 800
+' 5% action safe zone: 1920 * 0.05 = 96px from each edge
+const TOAST_ACTION_SAFE_MARGIN = 96
+const TOAST_RIGHT_EDGE = 1824 ' 1920 - TOAST_ACTION_SAFE_MARGIN
+const TOAST_BOTTOM_EDGE = 984 ' 1080 - TOAST_ACTION_SAFE_MARGIN
+
+sub init()
+  m.container = m.top.findNode("toastContainer")
+  m.toastBackground = m.top.findNode("toastBackground")
+  m.toastIcon = m.top.findNode("toastIcon")
+  m.toastMessage = m.top.findNode("toastMessage")
+  m.fadeIn = m.top.findNode("fadeIn")
+  m.fadeOut = m.top.findNode("fadeOut")
+  m.dismissTimer = m.top.findNode("dismissTimer")
+
+  m.dismissTimer.observeField("fire", "onDismissTimer")
+  m.fadeOut.observeField("state", "onFadeOutComplete")
+
+  ' Enable render tracking for text measurement (same pattern as TextButton)
+  m.top.enableRenderTracking = true
+  m.top.observeField("renderTracking", "onRenderComplete")
+
+  m.container.opacity = 0
+  m.top.visible = false
+end sub
+
+sub onShow()
+  if not m.top.show then return
+
+  constants = m.global.constants
+  toastType = m.top.toastType
+
+  ' Set icon and icon color based on toast type
+  if toastType = "success"
+    m.toastIcon.uri = constants.iconSuccess
+    m.toastIcon.blendColor = constants.colorSuccess
+  else if toastType = "warning"
+    m.toastIcon.uri = constants.iconWarning
+    m.toastIcon.blendColor = constants.colorWarning
+  else if toastType = "info"
+    m.toastIcon.uri = constants.iconInfo
+    m.toastIcon.blendColor = constants.colorInfo
+  else
+    ' Default: error
+    m.toastIcon.uri = constants.iconError
+    m.toastIcon.blendColor = constants.colorError
+  end if
+
+  ' Set background to app's secondary background color
+  m.toastBackground.blendColor = constants.colorBackgroundSecondary
+
+  ' Set message text
+  m.toastMessage.text = m.top.message
+
+  ' Stop any in-progress animations
+  m.fadeOut.control = "stop"
+  m.dismissTimer.control = "stop"
+
+  ' Show container so render tracking can measure the label
+  m.top.visible = true
+  m.container.opacity = 0
+
+  ' Size and position — if already rendered, do it now; otherwise wait for onRenderComplete
+  if m.top.renderTracking = "full"
+    sizeAndPosition()
+  end if
+end sub
+
+' Called when the component has rendered and we can measure the label accurately
+sub onRenderComplete()
+  if m.top.renderTracking <> "full" then return
+  if not m.top.show then return
+  sizeAndPosition()
+end sub
+
+' Measure text, size the toast, and anchor right edge to action safe zone
+sub sizeAndPosition()
+  if not isValid(m.toastMessage) then return
+  if m.toastMessage.text.Len() = 0 then return
+
+  ' Reset label size to allow accurate measurement of text content
+  m.toastMessage.width = 0
+  m.toastMessage.height = 0
+
+  ' Get accurate text dimensions from rendered label
+  boundingRect = m.toastMessage.localBoundingRect()
+  textWidth = boundingRect.width
+
+  ' If not rendered yet, wait for next onRenderComplete
+  if textWidth = 0 then return
+
+  ' Calculate toast width: padding + icon + gap + text + padding
+  contentWidth = TOAST_ICON_SIZE + TOAST_ICON_GAP + textWidth
+  toastWidth = contentWidth + (TOAST_PADDING * 2)
+
+  ' Clamp to max width
+  if toastWidth > TOAST_MAX_WIDTH
+    toastWidth = TOAST_MAX_WIDTH
+  end if
+
+  ' Calculate height from font size (same approach as TextButton)
+  fontSize = m.toastMessage.font.size
+  visibleTextHeight = fontSize * 0.7
+  toastHeight = visibleTextHeight + (TOAST_PADDING * 2)
+
+  ' Ensure toast is at least as tall as icon + padding
+  minHeight = TOAST_ICON_SIZE + (TOAST_PADDING * 2)
+  if toastHeight < minHeight
+    toastHeight = minHeight
+  end if
+
+  ' Size background
+  m.toastBackground.width = toastWidth
+  m.toastBackground.height = toastHeight
+
+  ' Position icon — vertically centered
+  iconY = (toastHeight - TOAST_ICON_SIZE) / 2
+  m.toastIcon.translation = [TOAST_PADDING, iconY]
+
+  ' Position label — after icon + gap, vertically centered
+  labelX = TOAST_PADDING + TOAST_ICON_SIZE + TOAST_ICON_GAP
+  labelWidth = toastWidth - labelX - TOAST_PADDING
+  m.toastMessage.width = labelWidth
+  m.toastMessage.height = toastHeight
+  m.toastMessage.translation = [labelX, 0]
+
+  ' Anchor toast: right edge at action safe boundary, bottom at action safe boundary
+  toastX = TOAST_RIGHT_EDGE - toastWidth
+  toastY = TOAST_BOTTOM_EDGE - toastHeight
+  m.top.translation = [toastX, toastY]
+
+  ' Fade in and start dismiss timer
+  m.fadeIn.control = "start"
+  m.dismissTimer.control = "start"
+end sub
+
+sub onDismissTimer()
+  m.fadeOut.control = "start"
+end sub
+
+sub onFadeOutComplete()
+  if m.fadeOut.state = "stopped"
+    m.top.visible = false
+    m.container.opacity = 0
+  end if
+end sub

@@ -89,3 +89,10 @@ enum
 codec
 DLNA
 lookups
+quickplay
+Orchestrator
+non-Jellyfin
+playstate
+AAs
+injectable
+BrighterScript's

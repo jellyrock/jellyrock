@@ -53,13 +53,16 @@
     <extrasSlider id="itemExtras" />
   </children>
   <interface>
+    <field id="itemId" type="string" onChange="onItemIdChanged" />
+    <field id="itemType" type="string" />
     <field id="itemContent" type="node" onChange="itemContentChanged" />
     <field id="trailerAvailable" type="bool" onChange="trailerAvailableChanged" value="false" />
     <field id="selectedAudioStreamIndex" type="integer" />
     <field id="selectedVideoStreamId" type="string" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
-    <field id="refreshItemDetailsData" type="bool" alwaysNotify="true" />
+    <field id="refreshItemDetailsData" type="bool" alwaysNotify="true" onChange="onRefreshItemDetailsData" />
     <field id="refreshExtrasData" type="bool" alwaysNotify="true" onChange="onRefreshExtrasData" />
     <field id="nextUpEpisode" type="node" onChange="nextUpEpisodeChanged" />
+    <field id="refreshResumeData" type="boolean" value="false" alwaysNotify="true" onChange="onRefreshResumeData" />
   </interface>
 </component>

@@ -1,6 +1,6 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -8,53 +8,42 @@ sub init()
   m.top.functionName = "RecordOrCancelProgram"
 end sub
 
+' Orchestrator Task: uses ApiTask pool for GET then SideEffectTask for POST/DELETE.
 sub RecordOrCancelProgram()
-  if isValid(m.top.programDetails)
-    ' Are we setting up a recording or canceling one?
-    TimerId = invalid
-    if isValidAndNotEmpty(m.top.programDetails.timerId)
-      TimerId = m.top.programDetails.timerId
+  if not isValid(m.top.programDetails) then return
+
+  timerId = invalid
+  if isValidAndNotEmpty(m.top.programDetails.timerId)
+    timerId = m.top.programDetails.timerId
+  end if
+
+  if not isValid(timerId)
+    ' Creating a recording: GET defaults then POST timer
+    res = fetchRes(GetApi().BuildGetLiveTvTimerDefaultsRequest(m.top.programDetails.id), "liveTvTimerDefaults")
+    defaults = invalid
+    if isValid(res) and res.ok
+      defaults = res.json
     end if
 
-    if not isValid(TimerId)
-      ' Setting up a recording...
-      programId = m.top.programDetails.id
-
-      ' Get Live TV default params from server...
-      url = "LiveTv/Timers/Defaults"
-      params = {
-        programId: programId
-      }
-
-      resp = APIRequest(url, params)
-      data = getJson(resp)
-
-      if isValid(data)
-        ' Create recording timer...
-        if m.top.recordSeries = true
-          url = "LiveTv/SeriesTimers"
-        else
-          url = "LiveTv/Timers"
-        end if
-        resp = APIRequest(url)
-        postJson(resp, FormatJson(data))
-        m.top.programDetails.hdSmallIconUrl = "pkg:/images/red.png"
-      else
-        ' Error msg to user?
-        m.log.error("Could not retrieve live TV Defaults from Server")
-      end if
-    else
-      ' Cancelling a recording...
+    if isValid(defaults)
+      ' POST the timer — fire-and-forget (caller checks recordOperationDone, not response)
       if m.top.recordSeries = true
-        TimerId = m.top.programDetails.seriesTimerId
-        url = Substitute("LiveTv/SeriesTimers/{0}", TimerId)
+        SubmitSideEffect(GetApi().BuildCreateSeriesTimerRequest(defaults))
       else
-        url = Substitute("LiveTv/Timers/{0}", TimerId)
+        SubmitSideEffect(GetApi().BuildCreateTimerRequest(defaults))
       end if
-      resp = APIRequest(url)
-      deleteVoid(resp)
-      m.top.programDetails.hdSmallIconUrl = invalid
+      m.top.programDetails.hdSmallIconUrl = "pkg:/images/red.png"
+    else
+      m.log.error("Could not retrieve live TV Defaults from Server")
     end if
+  else
+    ' Cancelling a recording — fire-and-forget DELETE
+    if m.top.recordSeries = true
+      SubmitSideEffect(GetApi().BuildCancelSeriesTimerRequest(m.top.programDetails.seriesTimerId))
+    else
+      SubmitSideEffect(GetApi().BuildCancelTimerRequest(timerId))
+    end if
+    m.top.programDetails.hdSmallIconUrl = invalid
   end if
 
   m.top.recordOperationDone = true

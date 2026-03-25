@@ -1,5 +1,5 @@
-import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/roku_modules/rr/Requests.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -10,10 +10,11 @@ end sub
 sub downloadFallbackFont()
   print "FontDownloadTask: Starting fallback font download..."
 
-  ' Check if server supports fallback fonts
-  configEncoding = GetApi().GetConfigurationByName("encoding")
+  authArgs = { headers: { Authorization: buildAuthHeader() }, timeout: 10000, useCache: false }
 
-  if not isValid(configEncoding) or not isValid(configEncoding.EnableFallbackFont) or not configEncoding.EnableFallbackFont
+  ' Check if server supports fallback fonts
+  r = rr_Requests().get(buildURL("/system/configuration/encoding"), authArgs)
+  if not r.ok or not isValid(r.json) or not r.json.EnableFallbackFont
     print "FontDownloadTask: Server does not support fallback fonts"
     m.top.errorMessage = "Server does not support fallback fonts"
     m.top.fontDownloadSuccess = false
@@ -23,18 +24,8 @@ sub downloadFallbackFont()
 
   ' Get list of available fonts
   re = CreateObject("roRegex", "Name.:.(.*?).,.Size", "s")
-  fontReq = APIRequest("FallbackFont/Fonts")
-
-  if not isValid(fontReq)
-    print "FontDownloadTask: Failed to create API request for font list"
-    m.top.errorMessage = "Failed to create API request for font list"
-    m.top.fontDownloadSuccess = false
-    m.top.fontDownloadCompleted = true
-    return
-  end if
-
-  filename = fontReq.GetToString()
-  if not isValid(filename)
+  r = rr_Requests().get(buildURL("FallbackFont/Fonts"), authArgs)
+  if not r.ok or r.text = ""
     print "FontDownloadTask: Failed to get font list from server"
     m.top.errorMessage = "Failed to get font list from server"
     m.top.fontDownloadSuccess = false
@@ -43,7 +34,7 @@ sub downloadFallbackFont()
   end if
 
   ' Extract font filename from response
-  filename = re.match(filename)
+  filename = re.match(r.text)
   if not isValid(filename) or filename.count() = 0
     print "FontDownloadTask: Could not parse font filename from server response"
     m.top.errorMessage = "Could not parse font filename from server response"
@@ -55,7 +46,8 @@ sub downloadFallbackFont()
   filename = filename[1]
   print "FontDownloadTask: Font filename: " + filename
 
-  ' Download the font file
+  ' Download the font file directly to final location using roUrlTransfer.
+  ' rr_Requests cannot write binary data to a file; roUrlTransfer.GetToFile() is required.
   fontFileReq = APIRequest("FallbackFont/Fonts/" + filename)
   if not isValid(fontFileReq)
     print "FontDownloadTask: Failed to create API request for font file"
@@ -65,7 +57,6 @@ sub downloadFallbackFont()
     return
   end if
 
-  ' Download the font file directly to final location
   fontFileReq.gettofile("tmp:/font")
 
   ' Wait a moment for file to be fully written

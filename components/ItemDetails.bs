@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -31,13 +33,9 @@ sub init()
   m.itemDescriptionInLayout = true ' itemDescription is a static XML child, so it starts in layout
 
   m.buttonGrp = m.top.findNode("buttons")
-  ' LoadingButton placeholder gives focus a home before itemContent arrives.
-  ' setupButtons() clears it and builds the real button set once item type is known.
-  loadingButton = CreateObject("roSGNode", "LoadingButton")
-  loadingButton.id = "loadingButton"
-  m.buttonGrp.appendChild(loadingButton)
-  m.buttonGrp.setFocus(true)
-  m.top.lastFocus = m.buttonGrp
+  ' Button group starts hidden — no buttons until setupButtons() builds the real set.
+  ' Focus stays on the component (scene manager sets it) until buttons are ready.
+  m.buttonGrp.visible = false
 
   ' Item logo - positioned at fixed Y position
   m.itemLogo = m.top.findNode("itemLogo")
@@ -69,6 +67,9 @@ sub init()
   ' Dynamic button refs — reset by setupButtons() on each content load
   m.optionsButton = invalid
   m.shuffleButton = invalid
+  m.shuffleLoadingButton = invalid
+  m.resumeLoadingButton = invalid
+  m.personMediaFireCount = 0
 
   ' First episode task (Series Play button)
   m.loadFirstEpisodeTask = CreateObject("roSGNode", "LoadItemsTask")
@@ -89,6 +90,13 @@ sub init()
   ' Audio: fetch lyrics in the background for the description area
   m.loadLyricsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.loadLyricsTask.itemsToLoad = "lyrics"
+
+  ' Self-loading: fetch item details metadata via task (triggered by onItemIdChanged)
+  m.loadDetailsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.loadDetailsTask.itemsToLoad = "metaDataDetails"
+
+  ' Trailer check result node (Pattern 1: submitApiRequest, trivial callback)
+  m.trailerResultNode = invalid
 
   m.isFirstRun = true
 
@@ -135,7 +143,9 @@ sub OnScreenShown()
 
   ' Restore focus to last focused element
   if m.extrasGrp.opacity = 1
-    m.top.lastFocus.setFocus(true)
+    if isValid(m.top.lastFocus)
+      m.top.lastFocus.setFocus(true)
+    end if
   else
     if isValid(m.top.lastFocus) and m.top.lastFocus.visible
       m.top.lastFocus.setFocus(true)
@@ -151,6 +161,122 @@ sub OnScreenShown()
     if not isValid(m.top.lastFocus) or m.top.lastFocus.id <> "itemDescription"
       m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
     end if
+  end if
+end sub
+
+' Triggered when CreateItemDetailsGroup sets itemId — kicks off async data load
+sub onItemIdChanged()
+  itemId = m.top.itemId
+  if not isValidAndNotEmpty(itemId) then return
+
+  m.loadDetailsTask.unobserveField("content")
+  m.loadDetailsTask.control = "STOP"
+
+  m.loadDetailsTask.itemId = itemId
+  m.loadDetailsTask.forceRefresh = false
+  m.loadDetailsTask.observeField("content", "onDetailsLoaded")
+  m.loadDetailsTask.control = "RUN"
+end sub
+
+' Callback when initial item details metadata arrives from the task
+sub onDetailsLoaded()
+  m.loadDetailsTask.unobserveField("content")
+  content = m.loadDetailsTask.content
+  m.loadDetailsTask.content = []
+
+  if isValidAndNotEmpty(content) and isValid(content[0])
+    m.top.itemContent = content[0]
+  else
+    stopLoadingSpinner()
+    return
+  end if
+
+  stopLoadingSpinner()
+end sub
+
+' Callback when trailer availability check completes
+sub onTrailerCheckDone()
+  res = m.trailerResultNode.result
+  m.trailerResultNode.unobserveField("done")
+  m.trailerResultNode = invalid
+  if isValid(res) and res.ok and isValid(res.json)
+    m.top.trailerAvailable = res.json.Count() > 0
+  else
+    m.top.trailerAvailable = false
+  end if
+end sub
+
+' Triggered by refreshResumeData field toggle (watched toggle on Series).
+' Re-fetches ONLY the next-up/resume episode — no full rebuild, no setupButtons().
+' The existing nextUpEpisodeChanged() handles adding/removing/updating the resume button.
+sub onRefreshResumeData()
+  item = m.top.itemContent
+  if not isValid(item) or item.type <> "Series" then return
+
+  m.loadSeriesResumeTask.unobserveField("content")
+  m.loadSeriesResumeTask.control = "STOP"
+  m.loadSeriesResumeTask.itemId = item.id
+  m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
+  m.loadSeriesResumeTask.control = "RUN"
+end sub
+
+' Triggered by refreshItemDetailsData field toggle (return from playback, refresh button).
+' Refreshes silently in the background — no spinner, no input blocking.
+' The UI already has data from the initial load so the user can navigate freely.
+sub onRefreshItemDetailsData()
+  itemId = m.top.itemId
+  if not isValidAndNotEmpty(itemId) then return
+
+  ' Series: show resume loading state immediately while we wait for fresh data.
+  ' If a resume button exists, set it to loading. If not, create a loading placeholder
+  ' so the user sees a skeleton instead of a button popping in unexpectedly.
+  if isValid(m.top.itemContent) and m.top.itemContent.type = "Series"
+    resumeButton = m.top.findNode("resumeButton")
+    if isValid(resumeButton)
+      resumeButton.loading = true
+    else if not isValid(m.top.findNode("resumeLoadingButton"))
+      m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
+      m.resumeLoadingButton.id = "resumeLoadingButton"
+      m.resumeLoadingButton.icon = "pkg:/images/icons/resume.png"
+      if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
+        m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
+      else
+        m.resumeLoadingButton.text = tr("Resume")
+      end if
+      m.resumeLoadingButton.loading = true
+      m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
+      ' Shift focus index to account for the new button at position 0
+      m.buttonGrp.buttonFocused = m.buttonGrp.buttonFocused + 1
+    end if
+  end if
+
+  m.loadDetailsTask.unobserveField("content")
+  m.loadDetailsTask.control = "STOP"
+
+  m.loadDetailsTask.itemId = itemId
+  m.loadDetailsTask.forceRefresh = true
+  m.loadDetailsTask.observeField("content", "onRefreshDetailsLoaded")
+  m.loadDetailsTask.control = "RUN"
+end sub
+
+' Callback when refreshed item details metadata arrives
+sub onRefreshDetailsLoaded()
+  m.loadDetailsTask.unobserveField("content")
+  content = m.loadDetailsTask.content
+  m.loadDetailsTask.content = []
+
+  if isValidAndNotEmpty(content) and isValid(content[0])
+    m.top.itemContent = content[0]
+    if content[0].playbackPositionTicks > 0
+      m.global.queueManager.callFunc("setTopStartingPoint", content[0].playbackPositionTicks)
+    end if
+  end if
+
+  ' Stop spinner only when this screen is the active scene (watched/refresh button flow).
+  ' If a video player or other scene is on top, the spinner belongs to that flow — don't touch it.
+  activeScene = m.global.sceneManager.callFunc("getActiveScene")
+  if isValid(activeScene) and activeScene.isSameNode(m.top)
+    stopLoadingSpinner()
   end if
 end sub
 
@@ -183,37 +309,58 @@ sub trailerAvailableChanged()
   end if
 end sub
 
-' nextUpEpisodeChanged: For Series — create/remove Resume button based on nextUpEpisode
+' nextUpEpisodeChanged: For Series — create/remove Resume button based on nextUpEpisode.
+' On first load, replaces the LoadingButton placeholder from setupButtons().
+' On refresh, inserts/updates/removes the Resume button directly.
 sub nextUpEpisodeChanged()
   item = m.top.nextUpEpisode
   resumeButton = m.top.findNode("resumeButton")
+  loadingButton = m.top.findNode("resumeLoadingButton")
 
   if isValid(item) and isValidAndNotEmpty(item.id)
     resumeText = getResumeButtonText(item)
     if not isValid(resumeButton)
-      currentFocusIndex = m.buttonGrp.buttonFocused
-      currentFocusedButton = invalid
-      if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
-        currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
-      end if
-
       resumeButton = CreateObject("roSGNode", "ResumeButton")
       resumeButton.id = "resumeButton"
       resumeButton.icon = "pkg:/images/icons/resume.png"
       resumeButton.text = resumeText
       resumeButton.playbackPositionTicks = item.playbackPositionTicks
       resumeButton.runtimeTicks = item.runTimeTicks
-      m.buttonGrp.insertChild(resumeButton, 0)
 
-      if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
-        m.buttonGrp.buttonFocused = 0
-      else if isValid(currentFocusIndex) and currentFocusIndex >= 0
-        m.buttonGrp.buttonFocused = currentFocusIndex + 1
+      if isValid(loadingButton)
+        ' Swap the LoadingButton placeholder for the real resume button.
+        ' The user may have moved focus to another button before async data arrived,
+        ' so capture which button has focus before the remove/insert.
+        loadingIndex = getButtonIndex("resumeLoadingButton")
+        wasFocused = loadingButton.isInFocusChain()
+        currentFocusIndex = m.buttonGrp.buttonFocused
+        m.buttonGrp.removeChild(loadingButton)
+        m.resumeLoadingButton = invalid
+        m.buttonGrp.insertChild(resumeButton, loadingIndex)
+        ' Remove then insert at same index is a net-zero index shift,
+        ' so the original focusIndex is still correct.
+        m.buttonGrp.buttonFocused = currentFocusIndex
+        if wasFocused
+          focusButtonGroupChild()
+        end if
       else
-        m.buttonGrp.buttonFocused = 0
+        ' No placeholder (refresh path) — insert at position 0
+        currentFocusIndex = m.buttonGrp.buttonFocused
+        currentFocusedButton = invalid
+        if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
+          currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
+        end if
+
+        m.buttonGrp.insertChild(resumeButton, 0)
+
+        if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
+          m.buttonGrp.buttonFocused = 0
+        else if isValid(currentFocusIndex) and currentFocusIndex >= 0
+          m.buttonGrp.buttonFocused = currentFocusIndex + 1
+        else
+          m.buttonGrp.buttonFocused = 0
+        end if
       end if
-      ' Only move actual focus when the button group already owns it — avoid stealing
-      ' focus from the extras row or description when the button arrives asynchronously.
       if m.buttonGrp.isInFocusChain()
         focusButtonGroupChild()
       end if
@@ -222,8 +369,24 @@ sub nextUpEpisodeChanged()
       resumeButton.text = resumeText
       resumeButton.playbackPositionTicks = item.playbackPositionTicks
       resumeButton.runtimeTicks = item.runTimeTicks
+      resumeButton.loading = false
     end if
   else
+    ' No resume data — remove the LoadingButton placeholder if still present
+    if isValid(loadingButton)
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      loadingIndex = getButtonIndex("resumeLoadingButton")
+      m.buttonGrp.removeChild(loadingButton)
+      m.resumeLoadingButton = invalid
+      if isValid(loadingIndex) and loadingIndex >= 0 and currentFocusIndex >= loadingIndex
+        focusIdx = currentFocusIndex - 1
+        if focusIdx < 0 then focusIdx = 0
+        m.buttonGrp.buttonFocused = focusIdx
+      end if
+      if m.buttonGrp.isInFocusChain()
+        focusButtonGroupChild()
+      end if
+    end if
     removeResumeButtonWithFocus(resumeButton)
   end if
 end sub
@@ -1148,6 +1311,13 @@ sub itemContentChanged()
 
     setupButtons(item)
 
+    ' Person Shuffle: on refresh (extras already loaded), the extras chain won't re-fire
+    ' because only refreshItemDetailsData was toggled. Resolve the loading placeholder
+    ' immediately from the already-known personHasMedia value.
+    if item.type = "Person" and m.extrasLoaded
+      onPersonHasMediaChanged()
+    end if
+
     ' Media tracks and stream options are only relevant for playable types.
     ' MusicArtist/MusicAlbum have no track info. Audio shows audio codec only.
     ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space.
@@ -1210,15 +1380,30 @@ sub itemContentChanged()
       manageResumeButton()
     end if
 
-    ' Series: kick off background fetch of resume/next-up episode for the Resume button
+    ' Series: kick off background fetch of resume/next-up episode for the Resume button.
+    ' Don't reset nextUpEpisode here — setupButtons() just created a LoadingButton placeholder
+    ' and resetting to invalid would trigger nextUpEpisodeChanged() which removes it immediately.
+    ' onSeriesResumeLoaded() handles both the data and no-data cases.
     if item.type = "Series"
       ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
       m.loadSeriesResumeTask.unobserveField("content")
       m.loadSeriesResumeTask.control = "STOP"
-      m.top.nextUpEpisode = invalid
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
       m.loadSeriesResumeTask.control = "RUN"
+    end if
+
+    ' Trailer availability check — re-run on every content change so refreshes get fresh data.
+    ' trailerAvailableChanged() adds or removes the button when the result arrives.
+    if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
+      if isValid(m.trailerResultNode)
+        m.trailerResultNode.unobserveField("done")
+        m.trailerResultNode = invalid
+      end if
+      m.trailerResultNode = submitApiRequest(GetApi().BuildGetLocalTrailersRequest(m.top.itemId), "trailerCheck")
+      if isValid(m.trailerResultNode)
+        m.trailerResultNode.observeField("done", "onTrailerCheckDone")
+      end if
     end if
 
     ' Season: kick off background fetch of parent series metadata for ratings/runtime/genres/logo
@@ -1243,7 +1428,6 @@ sub itemContentChanged()
   end if
 
   m.buttonGrp.visible = true
-  stopLoadingSpinner()
 
   ' Re-hide description and tracks if extras slider is still active (e.g. returning from sub-screen)
   if m.extrasActive
@@ -1832,25 +2016,27 @@ sub focusButtonGroupChild()
 end sub
 
 ' setupButtons: Build the complete button set for the given item type.
-' Clears all existing buttons (including the LoadingButton placeholder from init()) and adds
-' the correct sync buttons in order. Async buttons (Series Resume, Trailer, Person Shuffle)
-' are handled separately by their existing observers.
+' Clears all existing buttons and adds the correct sync buttons in order.
+' Loading placeholders are added for async buttons (Series Resume, Person Shuffle) so
+' the button row renders at its final width immediately. The async handlers replace or remove
+' the placeholders when data arrives.
 ' Called on every itemContentChanged — the button list is rebuilt from scratch each time.
 sub setupButtons(item as object)
   ' Capture focus state BEFORE clearing — removing buttons nulls out focus, so
   ' isInFocusChain() would return false even if buttons were focused a moment ago.
   wasButtonGroupFocused = m.buttonGrp.isInFocusChain()
+  isInitialLoad = not m.buttonGrp.visible
   ' Capture the focused button's ID so we can restore to the same button after the rebuild.
   ' Falling back to index 0 only when the previously-focused button no longer exists (e.g. Delete
-  ' was removed because canDelete changed) or when this is the initial load (LoadingButton).
+  ' was removed because canDelete changed) or when this is the initial load.
   focusedButtonId = ""
   focusIndex = m.buttonGrp.buttonFocused
   if focusIndex >= 0 and focusIndex < m.buttonGrp.getChildCount()
     focusedBtn = m.buttonGrp.getChild(focusIndex)
-    if isValid(focusedBtn) and focusedBtn.id <> "loadingButton" then focusedButtonId = focusedBtn.id
+    if isValid(focusedBtn) then focusedButtonId = focusedBtn.id
   end if
 
-  ' Clear everything (LoadingButton placeholder + any buttons from a previous content load)
+  ' Clear everything from a previous content load
   while m.buttonGrp.getChildCount() > 0
     m.buttonGrp.removeChild(m.buttonGrp.getChild(0))
   end while
@@ -1860,6 +2046,23 @@ sub setupButtons(item as object)
   m.shuffleButton = invalid
 
   itemType = item.type
+
+  ' Series Resume placeholder — shows a loading IconButton at position 0 while the seriesResume
+  ' task fetches the next-up episode. nextUpEpisodeChanged() replaces or removes it.
+  ' Preserves the episode-specific text (e.g. "Resume S2E3") from prior data if available
+  ' so the user sees a consistent label through the loading transition.
+  if itemType = "Series"
+    m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
+    m.resumeLoadingButton.id = "resumeLoadingButton"
+    m.resumeLoadingButton.icon = "pkg:/images/icons/resume.png"
+    if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
+      m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
+    else
+      m.resumeLoadingButton.text = tr("Resume")
+    end if
+    m.resumeLoadingButton.loading = true
+    m.buttonGrp.appendChild(m.resumeLoadingButton)
+  end if
 
   ' Play button — all types except Person
   if itemType <> "Person"
@@ -1874,6 +2077,15 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(playButton)
   end if
 
+  ' Shuffle button — Series, Season, BoxSet, MusicArtist, MusicAlbum, Playlist (not Audio; Person shuffle is async)
+  if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
+    m.shuffleButton = CreateObject("roSGNode", "IconButton")
+    m.shuffleButton.id = "shuffleButton"
+    m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
+    m.shuffleButton.text = tr("Shuffle")
+    m.buttonGrp.appendChild(m.shuffleButton)
+  end if
+
   ' Watched button — not for Person, music types, or Playlist (Playlist Watched is added async
   ' by onPlaylistContentKindChanged() once the items chain confirms the playlist contains video items)
   if itemType <> "Person" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist"
@@ -1884,13 +2096,19 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(watchedButton)
   end if
 
-  ' Shuffle button — Series, Season, BoxSet, MusicArtist, MusicAlbum, Playlist (not Audio; Person shuffle is async)
-  if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
-    m.shuffleButton = CreateObject("roSGNode", "IconButton")
-    m.shuffleButton.id = "shuffleButton"
-    m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
-    m.shuffleButton.text = tr("Shuffle")
-    m.buttonGrp.appendChild(m.shuffleButton)
+  ' Person Shuffle placeholder — shows a loading IconButton while the extras chain determines
+  ' whether this person has playable media. onPersonHasMediaChanged() replaces or removes it.
+  if itemType = "Person"
+    m.shuffleLoadingButton = CreateObject("roSGNode", "IconButton")
+    m.shuffleLoadingButton.id = "shuffleLoadingButton"
+    m.shuffleLoadingButton.icon = "pkg:/images/icons/shuffle.png"
+    m.shuffleLoadingButton.text = tr("Shuffle")
+    m.shuffleLoadingButton.loading = true
+    m.buttonGrp.appendChild(m.shuffleLoadingButton)
+    ' Guard counter: the ExtrasRowList observer fires multiple times — first a reset
+    ' (personHasMedia=false at chain start), then the definitive answer(s). We skip the
+    ' first fire (the reset) so the placeholder stays visible until a real answer arrives.
+    m.personMediaFireCount = 0
   end if
 
   ' Instant Mix button — MusicArtist, MusicAlbum, Audio (grouped with play buttons before Favorite)
@@ -1953,7 +2171,8 @@ sub setupButtons(item as object)
     end if
   end if
 
-  ' Trailer button — restore on refresh (on first load, trailerAvailableChanged adds it async)
+  ' Trailer button — on refresh, restored from prior run while the async re-check runs.
+  ' trailerAvailableChanged() will add/remove it if the server state changed.
   ' Must come before Delete to match the insertion order used in trailerAvailableChanged()
   if m.top.trailerAvailable
     trailerButton = CreateObject("roSGNode", "IconButton")
@@ -1979,11 +2198,9 @@ sub setupButtons(item as object)
   refreshButton.text = tr("Refresh")
   m.buttonGrp.appendChild(refreshButton)
 
-  ' Person Shuffle: if personHasMedia was already set before this refresh, restore the button now.
-  ' On first load this is a no-op; onPersonHasMediaChanged fires later via the extras chain.
-  if itemType = "Person"
-    onPersonHasMediaChanged()
-  end if
+  ' Show the button group (hidden until first setupButtons call)
+  m.buttonGrp.visible = true
+  m.top.lastFocus = m.buttonGrp
 
   ' Restore focus to the same button the user was on before the rebuild, identified by ID.
   ' Falls back to index 0 when the button no longer exists or this is the initial load.
@@ -1993,56 +2210,96 @@ sub setupButtons(item as object)
     if restoredIndex < 0 then restoredIndex = 0
   end if
   m.buttonGrp.buttonFocused = restoredIndex
-  if wasButtonGroupFocused
+  if isInitialLoad or wasButtonGroupFocused
     focusButtonGroupChild()
   end if
 end sub
 
 ' onPersonHasMediaChanged: Show or hide the Shuffle button once the person extras chain completes.
+' On first load, replaces the LoadingButton placeholder from setupButtons().
+' On refresh, inserts/removes the Shuffle button directly.
 ' Fires via alwaysNotify so it triggers even when personHasMedia stays the same value (e.g. on refresh).
 sub onPersonHasMediaChanged()
   if not isValid(m.top.itemContent) or m.top.itemContent.type <> "Person" then return
+
+  loadingButton = m.top.findNode("shuffleLoadingButton")
+
+  m.personMediaFireCount++
+
   if m.extrasGrid.personHasMedia
     if not isValid(m.shuffleButton)
       m.shuffleButton = CreateObject("roSGNode", "IconButton")
       m.shuffleButton.id = "shuffleButton"
       m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
       m.shuffleButton.text = tr("Shuffle")
-      ' Insert before Favorite so button order is: Shuffle · Favorite · Refresh
-      currentFocusIndex = m.buttonGrp.buttonFocused
-      favoriteButtonIndex = getButtonIndex("favoriteButton")
-      insertIndex = 0
-      if favoriteButtonIndex >= 0 then insertIndex = favoriteButtonIndex
-      m.buttonGrp.insertChild(m.shuffleButton, insertIndex)
 
-      if currentFocusIndex = 0
-        ' User is on the default button (index 0) — Shuffle takes that position, follow it.
-        m.buttonGrp.buttonFocused = 0
-        if m.buttonGrp.isInFocusChain()
+      if isValid(loadingButton)
+        ' Swap the LoadingButton placeholder for the real shuffle button.
+        ' The user may have moved focus to another button before async data arrived,
+        ' so capture which button has focus before the remove/insert.
+        loadingIndex = getButtonIndex("shuffleLoadingButton")
+        wasFocused = loadingButton.isInFocusChain()
+        currentFocusIndex = m.buttonGrp.buttonFocused
+        m.buttonGrp.removeChild(loadingButton)
+        m.shuffleLoadingButton = invalid
+        m.buttonGrp.insertChild(m.shuffleButton, loadingIndex)
+        ' Remove then insert at same index is a net-zero index shift,
+        ' so the original focusIndex is still correct.
+        m.buttonGrp.buttonFocused = currentFocusIndex
+        if wasFocused
           focusButtonGroupChild()
         end if
       else
-        ' User moved focus away from the default — shift index to track their button, don't steal.
-        m.buttonGrp.buttonFocused = currentFocusIndex + 1
+        ' No placeholder (refresh path) — insert before Favorite
+        currentFocusIndex = m.buttonGrp.buttonFocused
+        favoriteButtonIndex = getButtonIndex("favoriteButton")
+        insertIndex = 0
+        if favoriteButtonIndex >= 0 then insertIndex = favoriteButtonIndex
+        m.buttonGrp.insertChild(m.shuffleButton, insertIndex)
+
+        if currentFocusIndex = 0
+          m.buttonGrp.buttonFocused = 0
+        else
+          m.buttonGrp.buttonFocused = currentFocusIndex + 1
+        end if
+      end if
+
+      if m.buttonGrp.isInFocusChain()
+        focusButtonGroupChild()
       end if
     end if
-  else
+  else if m.personMediaFireCount > 1
+    ' Skip the first false (ExtrasRowList reset at chain start). Any subsequent false is
+    ' a definitive answer from the completed chain — safe to remove the placeholder.
+    if isValid(loadingButton)
+      currentFocusIndex = m.buttonGrp.buttonFocused
+      loadingIndex = getButtonIndex("shuffleLoadingButton")
+      wasFocused = loadingButton.isInFocusChain()
+      m.buttonGrp.removeChild(loadingButton)
+      m.shuffleLoadingButton = invalid
+      if isValid(loadingIndex) and loadingIndex >= 0 and currentFocusIndex >= loadingIndex
+        focusIdx = currentFocusIndex - 1
+        if focusIdx < 0 then focusIdx = 0
+        m.buttonGrp.buttonFocused = focusIdx
+      end if
+      if wasFocused
+        focusButtonGroupChild()
+      end if
+    end if
+
+    ' Remove the real shuffle button if present (refresh path where media disappeared)
     if isValid(m.shuffleButton)
       currentFocusIndex = m.buttonGrp.buttonFocused
       shuffleIndex = getButtonIndex("shuffleButton")
       m.buttonGrp.removeChild(m.shuffleButton)
       m.shuffleButton = invalid
 
-      ' Shuffle was at or before the focused button — shift the index down by one so
-      ' buttonFocused still tracks the same button after the removal.
       if isValid(shuffleIndex) and shuffleIndex >= 0 and currentFocusIndex >= shuffleIndex
         focusIndex = currentFocusIndex - 1
         if focusIndex < 0 then focusIndex = 0
         m.buttonGrp.buttonFocused = focusIndex
       end if
 
-      ' Re-anchor Roku RSG focus if the button group is active — the removed node may
-      ' have been the physically-focused child, leaving focus orphaned.
       if m.buttonGrp.isInFocusChain()
         focusButtonGroupChild()
       end if
@@ -2217,7 +2474,30 @@ sub onSeriesResumeLoaded()
   if isValid(content) and content.count() > 0
     m.top.nextUpEpisode = content[0]
   else
+    ' Setting invalid to invalid won't fire onChange, so remove the loading button directly
+    removeResumeLoadingButton()
     m.top.nextUpEpisode = invalid
+  end if
+end sub
+
+' removeResumeLoadingButton: Remove the resume LoadingButton placeholder if still present.
+' Called when async data confirms no resume episode exists (nextUpEpisode stays invalid).
+sub removeResumeLoadingButton()
+  loadingButton = m.top.findNode("resumeLoadingButton")
+  if not isValid(loadingButton) then return
+
+  currentFocusIndex = m.buttonGrp.buttonFocused
+  loadingIndex = getButtonIndex("resumeLoadingButton")
+  wasFocused = loadingButton.isInFocusChain()
+  m.buttonGrp.removeChild(loadingButton)
+  m.resumeLoadingButton = invalid
+  if isValid(loadingIndex) and loadingIndex >= 0 and currentFocusIndex >= loadingIndex
+    focusIdx = currentFocusIndex - 1
+    if focusIdx < 0 then focusIdx = 0
+    m.buttonGrp.buttonFocused = focusIdx
+  end if
+  if wasFocused
+    focusButtonGroupChild()
   end if
 end sub
 
@@ -2376,6 +2656,10 @@ end function
 sub destroy()
   m.log.verbose("destroy")
 
+  ' Safety net: stop the loading spinner in case the component is destroyed
+  ' while the initial load or a refresh is still in flight.
+  stopLoadingSpinner()
+
   ' Unobserve m.top programmatic observer (may or may not be active depending on flow)
   m.top.unobserveField("itemContent")
 
@@ -2407,6 +2691,15 @@ sub destroy()
   m.loadLyricsTask.control = "STOP"
   m.loadLyricsTask = invalid
 
+  m.loadDetailsTask.unobserveField("content")
+  m.loadDetailsTask.control = "STOP"
+  m.loadDetailsTask = invalid
+
+  if isValid(m.trailerResultNode)
+    m.trailerResultNode.unobserveField("done")
+    m.trailerResultNode = invalid
+  end if
+
   ' Clear node references
   m.extrasGrp = invalid
   m.extrasGrid = invalid
@@ -2427,6 +2720,8 @@ sub destroy()
   m.directorGenreGroup = invalid
   m.optionsButton = invalid
   m.shuffleButton = invalid
+  m.shuffleLoadingButton = invalid
+  m.resumeLoadingButton = invalid
   m.endsAtNode = invalid
 
   ' Clear data caches

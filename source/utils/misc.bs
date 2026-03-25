@@ -599,6 +599,18 @@ sub stopLoadingSpinner()
   m.scene.isLoading = false
 end sub
 
+' displayToast: Display a transient toast notification via the scene-level Toast component.
+' @param {string} message - The message to display
+' @param {string} [toastType="error"] - "error", "success", or "info"
+sub displayToast(message as string, toastType = "error" as string)
+  if not isValid(m.scene)
+    m.scene = m.top.getScene()
+  end if
+  if isValid(m.scene)
+    m.scene.callFunc("showToast", message, toastType)
+  end if
+end sub
+
 ' accepts the raw json string of /system/info/public and returns
 ' a boolean indicating if ProductName is "Jellyfin Server"
 function isJellyfinServer(systemInfo as object) as boolean

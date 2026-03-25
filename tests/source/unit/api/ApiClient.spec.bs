@@ -99,234 +99,185 @@ namespace tests
     @describe("Edge Cases - Empty User")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns invalid when userId is empty for GetItem")
+    @it("returns invalid from BuildGetItemRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetItem(m.testItemId)
+      result = m.apiClient.BuildGetItemRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetItemsByQuery when userId is empty")
+    @it("returns invalid from BuildGetItemsByQueryRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetItemsByQuery({})
+      result = m.apiClient.BuildGetItemsByQueryRequest({})
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetResumeItems when userId is empty")
+    @it("returns invalid from BuildGetResumeItemsRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetResumeItems({})
+      result = m.apiClient.BuildGetResumeItemsRequest({})
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetSuggestions when userId is empty")
+    @it("returns invalid from BuildGetLatestMediaRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetSuggestions({})
+      result = m.apiClient.BuildGetLatestMediaRequest({})
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetLatestMedia when userId is empty")
+    @it("returns invalid from BuildGetViewsRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetLatestMedia({})
+      result = m.apiClient.BuildGetViewsRequest()
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetViews when userId is empty")
+    @it("returns invalid from BuildGetIntrosRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetViews()
+      result = m.apiClient.BuildGetIntrosRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetIntros when userId is empty")
+    @it("returns invalid from BuildGetLocalTrailersRequest V1 when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(1)
+
+      result = m.apiClient.BuildGetLocalTrailersRequest(m.testItemId)
+
+      localUser.id = originalId
+      m.setApiVersion(originalApiVersion)
+
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildMarkFavoriteRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetIntros(m.testItemId)
+      result = m.apiClient.BuildMarkFavoriteRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetLocalTrailers when userId is empty")
+    @it("returns invalid from BuildUnmarkFavoriteRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetLocalTrailers(m.testItemId)
+      result = m.apiClient.BuildUnmarkFavoriteRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from GetSpecialFeatures when userId is empty")
+    @it("returns invalid from BuildMarkPlayedRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.GetSpecialFeatures(m.testItemId)
+      result = m.apiClient.BuildMarkPlayedRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from MarkFavorite when userId is empty")
+    @it("returns invalid from BuildUnmarkPlayedRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.MarkFavorite(m.testItemId)
+      result = m.apiClient.BuildUnmarkPlayedRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from UnmarkFavorite when userId is empty")
+    @it("returns invalid from BuildGetItemRawRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.UnmarkFavorite(m.testItemId)
+      result = m.apiClient.BuildGetItemRawRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from MarkPlayed when userId is empty")
+    @it("returns invalid from BuildGetInstantMixRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.MarkPlayed(m.testItemId)
+      result = m.apiClient.BuildGetInstantMixRequest(m.testItemId)
 
       localUser.id = originalId
 
       m.assertInvalid(result)
     end function
 
-    @it("returns invalid from UnmarkPlayed when userId is empty")
+    @it("returns invalid from BuildGetNextUpRequest when userId is empty")
     function _()
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
 
-      result = m.apiClient.UnmarkPlayed(m.testItemId)
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from UpdateRating when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.UpdateRating(m.testItemId, { rating: 5 })
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from DeleteRating when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.DeleteRating(m.testItemId)
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from GetNextUp when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.GetNextUp({})
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from GetUpcoming when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.GetUpcoming({})
-
-      localUser.id = originalId
-
-      m.assertInvalid(result)
-    end function
-
-    @it("returns invalid from GetSimilarShows when userId is empty")
-    function _()
-      localUser = m.global.user
-      originalId = localUser.id
-      localUser.id = ""
-
-      result = m.apiClient.GetSimilarShows(m.testItemId)
+      result = m.apiClient.BuildGetNextUpRequest({})
 
       localUser.id = originalId
 
@@ -374,7 +325,7 @@ namespace tests
       api = GetApi()
       m.assertNotInvalid(api)
       ' Verify it has the expected methods
-      m.assertTrue(api.GetItem <> invalid, "GetApi should return object with GetItem method")
+      m.assertTrue(api.BuildGetItemRequest <> invalid, "GetApi should return object with BuildGetItemRequest method")
     end function
 
   end class

@@ -7,5 +7,6 @@
     <field id="metadata" type="assocarray" />
     <field id="peopleList" type="array" />
     <field id="content" type="array" />
+    <field id="forceRefresh" type="bool" value="false" />
   </interface>
 </component>

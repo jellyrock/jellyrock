@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  ApiQueueTask — FIFO request queue coordinator (Architecture C, continuous-server).
+
+  Requests arrive as ApiResultNode children (appended by fetchRes). The coordinator
+  reads ALL unprocessed children when woken up, dispatches to free ApiTask pool slots,
+  and routes completed responses back to each ApiResultNode.
+
+  Children instead of a shared field: SceneGraph can coalesce port events when multiple
+  Task threads write to the same field rapidly. Children are immune — the coordinator
+  reads the node tree, not event data, so no request is ever lost.
+
+  Only this task's thread touches the dispatch queue — no TOCTOU race.
+-->
+<component name="ApiQueueTask" extends="Task">
+  <interface>
+    <!--
+      Wake-up signal. fetchRes() writes here after appending a child node.
+      The coordinator ignores the value — it reads children instead.
+      alwaysNotify ensures the observer fires even when consecutive requests
+      write the same requestId string (without it, SceneGraph silently drops
+      writes that don't change the value, permanently stalling the pool).
+    -->
+    <field id="enqueue" type="string" alwaysNotify="true" />
+    <!--
+      Set to true by runQueueLoop() after ALL pool slots are ready and the
+      enqueue observer is registered. fetchRes() waits on this before
+      appending children so that the full pipeline is operational.
+    -->
+    <field id="ready" type="boolean" value="false" />
+  </interface>
+</component>

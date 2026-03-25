@@ -1,21 +1,15 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
-import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.top.functionName = "loadChannels"
 end sub
 
+' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
 sub loadChannels()
-  globalUser = m.global.user
-
-  results = []
-
-  sort_field = m.top.sortField
-
   if m.top.sortAscending = true
     sort_order = "Ascending"
   else
@@ -24,10 +18,10 @@ sub loadChannels()
 
   params = {
     includeItemTypes: "LiveTvChannel",
-    SortBy: sort_field,
+    SortBy: m.top.sortField,
     SortOrder: sort_order,
     recursive: m.top.recursive,
-    UserId: globalUser.id
+    UserId: m.global.user.id
   }
 
   ' Handle special case when getting names starting with numeral
@@ -39,7 +33,7 @@ sub loadChannels()
     end if
   end if
 
-  'Append voice search when there is text
+  ' Append voice search when there is text
   if m.top.searchTerm <> ""
     params.searchTerm = m.top.searchTerm
   end if
@@ -48,34 +42,37 @@ sub loadChannels()
     params.append({ isFavorite: true })
   end if
 
-  data = GetApi().GetItemsByQuery(params)
+  res = fetchRes(GetApi().BuildGetItemsByQueryRequest(params), "liveTvChannels")
+  results = []
 
-  if not isValid(data.TotalRecordCount)
-    m.top.channels = results
-    return
+  if isValid(res) and res.ok and isValid(res.json)
+    if not isValid(res.json.TotalRecordCount)
+      m.top.channels = results
+      return
+    end if
+
+    transformer = JellyfinDataTransformer()
+    for each item in res.json.Items
+      node = transformer.transformBaseItem(item)
+
+      ' Format title with channel number for TimeGrid channel gutter display
+      if isValidAndNotEmpty(node.channelNumber)
+        node.title = `${tr("CH")} ${node.channelNumber} ${node.name}`
+      end if
+
+      ' Set hdSmallIconUrl for TimeGrid channel icon (ContentNode built-in read by Roku TimeGrid)
+      if isValidAndNotEmpty(node.primaryImageTag)
+        node.hdsmalliconurl = ImageURL(node.id, "Primary", { maxHeight: 60, tag: node.primaryImageTag })
+      end if
+
+      ' Favorites appear at the top of the channel list
+      if node.isFavorite
+        results.Unshift(node)
+      else
+        results.push(node)
+      end if
+    end for
   end if
 
-
-  transformer = JellyfinDataTransformer()
-  for each item in data.Items
-    node = transformer.transformBaseItem(item)
-
-    ' Format title with channel number for TimeGrid channel gutter display
-    if isValidAndNotEmpty(node.channelNumber)
-      node.title = `${tr("CH")} ${node.channelNumber} ${node.name}`
-    end if
-
-    ' Set hdSmallIconUrl for TimeGrid channel icon (ContentNode built-in read by Roku TimeGrid)
-    if isValidAndNotEmpty(node.primaryImageTag)
-      node.hdsmalliconurl = ImageURL(node.id, "Primary", { maxHeight: 60, tag: node.primaryImageTag })
-    end if
-
-    ' Favorites appear at the top of the channel list
-    if node.isFavorite
-      results.Unshift(node)
-    else
-      results.push(node)
-    end if
-  end for
   m.top.channels = results
 end sub

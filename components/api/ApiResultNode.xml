@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  ApiResultNode — per-request vehicle for the API queue system.
+  Created by fetchRes() and appended as a child of ApiQueueTask.
+
+  Inbound:  'request' carries the request AA to execute.
+  Outbound: 'result' carries the response AA; 'done' signals completion.
+  The waiting orchestrator Task observes 'done' via a port and reads 'result'.
+-->
+<component name="ApiResultNode" extends="Node">
+  <interface>
+    <field id="request" type="assocarray" />
+    <field id="result" type="assocarray" />
+    <field id="done" type="boolean" value="false" />
+  </interface>
+</component>

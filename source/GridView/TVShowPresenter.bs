@@ -174,8 +174,8 @@ class TVShowPresenter extends GridPresenterBase
 
   ' Cleanup TV show-specific resources
   override sub destroy()
-    m.view = invalid
     m.log.info("TVShowPresenter destroyed")
+    super.destroy()
   end sub
 
 end class

@@ -1,0 +1,69 @@
+import "pkg:/source/GridView/GridPresenterBase.bs"
+
+namespace tests
+
+  @suite("GridPresenterBase - Base presenter lifecycle")
+  class GridPresenterBaseTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Constructor")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates without crashing")
+    function _()
+      presenter = new GridPresenterBase()
+      m.assertNotInvalid(presenter)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("destroy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles destroy when view is already invalid")
+    function _()
+      presenter = new GridPresenterBase()
+      ' No onInit called — view is invalid. Should not crash.
+      presenter.destroy()
+      m.assertTrue(true)
+    end function
+
+    @it("handles double destroy without crashing")
+    function _()
+      presenter = new GridPresenterBase()
+      presenter.destroy()
+      presenter.destroy()
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default options")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty arrays for views, sort, and filter")
+    function _()
+      presenter = new GridPresenterBase()
+      options = presenter.getOptions(invalid)
+      m.assertArrayCount(options.views, 0)
+      m.assertArrayCount(options.sort, 0)
+      m.assertArrayCount(options.filter, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showToast()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not crash when view is invalid")
+    function _()
+      presenter = new GridPresenterBase()
+      ' view is invalid — should return early without crashing
+      presenter.showToast("test message")
+      m.assertTrue(true)
+    end function
+
+  end class
+
+end namespace
