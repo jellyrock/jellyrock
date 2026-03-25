@@ -10,6 +10,7 @@
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" />
     <Poster id="buttonIcon" width="64" loadWidth="64" height="64" loadHeight="64" loadDisplayMode="limitSize" />
+    <Spinner id="buttonSpinner" visible="false" />
     <LabelPrimarySmaller id="buttonText" horizAlign="center" wrap="true" maxLines="2" lineSpacing="4" />
   </children>
   <interface>
@@ -25,5 +26,6 @@
     <field id="escape" type="string" value="" />
     <field id="enableBorder" type="boolean" value="true" />
     <field id="enabled" type="boolean" value="true" />
+    <field id="loading" type="boolean" value="false" />
   </interface>
 </component>

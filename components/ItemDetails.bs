@@ -1967,7 +1967,7 @@ end sub
 
 ' setupButtons: Build the complete button set for the given item type.
 ' Clears all existing buttons and adds the correct sync buttons in order.
-' LoadingButton placeholders are added for async buttons (Series Resume, Person Shuffle) so
+' Loading placeholders are added for async buttons (Series Resume, Person Shuffle) so
 ' the button row renders at its final width immediately. The async handlers replace or remove
 ' the placeholders when data arrives.
 ' Called on every itemContentChanged — the button list is rebuilt from scratch each time.
@@ -1997,11 +1997,14 @@ sub setupButtons(item as object)
 
   itemType = item.type
 
-  ' Series Resume placeholder — shows a LoadingButton at position 0 while the seriesResume
+  ' Series Resume placeholder — shows a loading IconButton at position 0 while the seriesResume
   ' task fetches the next-up episode. nextUpEpisodeChanged() replaces or removes it.
   if itemType = "Series"
-    m.resumeLoadingButton = CreateObject("roSGNode", "LoadingButton")
+    m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
     m.resumeLoadingButton.id = "resumeLoadingButton"
+    m.resumeLoadingButton.icon = "pkg:/images/icons/resume.png"
+    m.resumeLoadingButton.text = tr("Resume")
+    m.resumeLoadingButton.loading = true
     m.buttonGrp.appendChild(m.resumeLoadingButton)
   end if
 
@@ -2037,11 +2040,14 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(watchedButton)
   end if
 
-  ' Person Shuffle placeholder — shows a LoadingButton while the extras chain determines
+  ' Person Shuffle placeholder — shows a loading IconButton while the extras chain determines
   ' whether this person has playable media. onPersonHasMediaChanged() replaces or removes it.
   if itemType = "Person"
-    m.shuffleLoadingButton = CreateObject("roSGNode", "LoadingButton")
+    m.shuffleLoadingButton = CreateObject("roSGNode", "IconButton")
     m.shuffleLoadingButton.id = "shuffleLoadingButton"
+    m.shuffleLoadingButton.icon = "pkg:/images/icons/shuffle.png"
+    m.shuffleLoadingButton.text = tr("Shuffle")
+    m.shuffleLoadingButton.loading = true
     m.buttonGrp.appendChild(m.shuffleLoadingButton)
     ' Guard counter: the ExtrasRowList observer fires multiple times — first a reset
     ' (personHasMedia=false at chain start), then the definitive answer(s). We skip the
