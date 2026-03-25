@@ -355,11 +355,39 @@ function hasDependentVisibility(settingName as string) as boolean
   return false
 end function
 
-' Refresh the current menu level (re-filter visibleWhen and re-render)
+' Refresh the current menu level in-place (re-filter visibleWhen and re-render)
+' Rebuilds filtered children and content without touching the navigation stack
 sub refreshCurrentMenu()
   currentSection = m.userLocation.peek()
-  m.userLocation.pop()
-  LoadMenu(currentSection)
+  savedIndex = m.settingsMenu.itemFocused
+
+  ' Rebuild filtered children list
+  filteredChildren = []
+  for each item in currentSection.children
+    if isValid(item.visibleWhen) and not isSettingVisible(item.visibleWhen)
+      continue for
+    end if
+    filteredChildren.push(item)
+  end for
+  currentSection.filteredChildren = filteredChildren
+
+  ' Rebuild content nodes
+  result = CreateObject("roSGNode", "ContentNode")
+  for each item in filteredChildren
+    listItem = result.CreateChild("ContentNode")
+    listItem.title = tr(item.title)
+    listItem.Description = tr(item.description)
+    listItem.id = item.id
+  end for
+  m.settingsMenu.content = result
+
+  ' Restore focus, clamping to new list bounds
+  if savedIndex >= filteredChildren.Count()
+    savedIndex = filteredChildren.Count() - 1
+  end if
+  if savedIndex >= 0
+    m.settingsMenu.jumpToItem = savedIndex
+  end if
 end sub
 
 ' Backup current custom color values before applying a preset
@@ -458,6 +486,7 @@ sub onExitConfirmResponse()
     ' User selected "No" or closed dialog - restore custom colors and stay
     restoreCustomColors()
     user.settings.Save("uiTheme", "custom")
+    refreshCurrentMenu()
     m.settingsMenu.setFocus(true)
     return
   end if
