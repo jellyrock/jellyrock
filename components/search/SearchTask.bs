@@ -16,7 +16,7 @@ end sub
 ' Searches multiple Jellyfin endpoints for media matching the query.
 ' Runs on SearchTask thread — fetchJson blocks waiting for ApiPool responses.
 function searchMedia(query as string)
-  if query = "" then return []
+  if query = "" then return { Items: [], TotalRecordCount: 0 }
 
   transformer = JellyfinDataTransformer()
   allItems = []
