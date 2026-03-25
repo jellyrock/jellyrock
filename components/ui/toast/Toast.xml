@@ -2,17 +2,23 @@
 <!--
   Toast: Non-interactive, auto-dismissing notification.
   Lives on JRScene. Shown via displayToast() global helper or scene.callFunc("showToast").
-  Supports "error", "success", and "info" types with distinct background colors.
+  Supports "error", "success", "warning", and "info" types with distinct icon colors.
+  Width auto-scales to message content. Right-anchored to 5% action safe edge.
 -->
 <component name="Toast" extends="Group">
   <children>
-    <Poster id="toastBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
-    <LabelPrimarySmall id="toastMessage" vertAlign="center" />
+    <Group id="toastContainer">
+      <Poster id="toastBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+      <Poster id="toastIcon"
+        loadWidth="32" loadHeight="32" width="32" height="32"
+        loadDisplayMode="limitSize" />
+      <LabelPrimaryMedium id="toastMessage" vertAlign="center" />
+    </Group>
     <Animation id="fadeIn" duration="0.3" repeat="false" easeFunction="outCubic">
-      <FloatFieldInterpolator key="[0, 1]" keyValue="[0, 1]" fieldToInterp="opacity" />
+      <FloatFieldInterpolator key="[0, 1]" keyValue="[0, 1]" fieldToInterp="toastContainer.opacity" />
     </Animation>
     <Animation id="fadeOut" duration="0.3" repeat="false" easeFunction="inCubic">
-      <FloatFieldInterpolator key="[0, 1]" keyValue="[1, 0]" fieldToInterp="opacity" />
+      <FloatFieldInterpolator key="[0, 1]" keyValue="[1, 0]" fieldToInterp="toastContainer.opacity" />
     </Animation>
     <Timer id="dismissTimer" repeat="false" duration="4" />
   </children>
