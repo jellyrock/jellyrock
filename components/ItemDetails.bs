@@ -201,6 +201,8 @@ sub onTrailerCheckDone()
   m.trailerResultNode = invalid
   if isValid(res) and res.ok and isValid(res.json)
     m.top.trailerAvailable = res.json.Count() > 0
+  else
+    m.top.trailerAvailable = false
   end if
 end sub
 
@@ -1426,7 +1428,6 @@ sub itemContentChanged()
   end if
 
   m.buttonGrp.visible = true
-  stopLoadingSpinner()
 
   ' Re-hide description and tracks if extras slider is still active (e.g. returning from sub-screen)
   if m.extrasActive
