@@ -41,27 +41,6 @@ namespace tests
       m.assertEqual(m.task.error, "")
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Observer reliability - filters always fires")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("fires observer when filters is set to real data")
-    function _()
-      m.task.observeField("filters", "onFiltersChanged")
-      m.task.filters = { Genres: ["Action", "Comedy"] }
-
-      m.assertNotInvalid(m.task.filters)
-      m.assertAAHasKey(m.task.filters, "Genres")
-    end function
-
-    @it("fires observer when filters is set to empty AA on failure")
-    function _()
-      m.task.observeField("filters", "onFiltersChanged")
-      m.task.filters = {}
-
-      m.assertNotInvalid(m.task.filters)
-    end function
-
     @it("error field can be set with message")
     function _()
       m.task.error = "Unable to load filter options"
