@@ -182,11 +182,13 @@ namespace tests
       localUser = m.global.user
       originalId = localUser.id
       localUser.id = ""
-      m.global.server.apiVersion = 1
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(1)
 
       result = m.apiClient.BuildGetLocalTrailersRequest(m.testItemId)
 
       localUser.id = originalId
+      m.setApiVersion(originalApiVersion)
 
       m.assertInvalid(result)
     end function
