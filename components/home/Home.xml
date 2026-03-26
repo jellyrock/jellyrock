@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="Home" extends="JRScreen">
   <children>
+    <VoiceTextEditBox id="homeVoiceBox" visible="true" width="40" translation="[0, 0]" />
     <HomeRows id="homeRows" />
 
     <OptionsSlider id="options" />
-
-    <!-- Renders on top of all content so Roku firmware can find and focus it for voice input.
-         Top-left corner ensures no row content overlaps it. -->
-    <VoiceTextEditBox id="voiceBox" voiceEnabled="true" visible="true" width="40" translation="[0, 0]" />
   </children>
   <interface>
     <field id="selectedItem" type="node" alwaysNotify="true" />

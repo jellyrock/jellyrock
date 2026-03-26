@@ -32,9 +32,19 @@ sub init()
 
   ' Set initial focus for scene navigation
   m.top.lastFocus = searchBox
+  m.isFirstRun = true
+
 end sub
 
 sub OnScreenShown()
+  if m.isFirstRun
+    m.isFirstRun = false
+    ' Skip focus on first show — caller (Main.bs) sets focus after pushScene,
+    ' so setting it here too causes a double-focus race condition on the
+    ' DynamicMiniKeyboard that intermittently prevents the voice prompt overlay.
+    return
+  end if
+
   ' Restore focus for scene navigation
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
@@ -153,6 +163,14 @@ end function
 ' Called automatically by SceneManager.popScene() / clearScenes()
 sub destroy()
   m.log.verbose("destroy")
+
+  ' Fully release the voice route before teardown — the DynamicMiniKeyboard's
+  ' textEditBox claims the firmware's global voice route via voiceEnabled + active.
+  ' Both must be cleared: active=false stops input capture, voiceEnabled=false
+  ' releases the "only one voiceEnabled at a time" slot so the returning screen's
+  ' VoiceTextEditBox can reclaim it.
+  m.searchAlphabox.textEditBox.voiceEnabled = false
+  m.searchAlphabox.textEditBox.active = false
 
   ' Unobserve child node observers
   m.searchAlphabox.unobserveField("focusedChild")
