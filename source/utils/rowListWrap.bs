@@ -12,56 +12,71 @@ function wrapRowFocus(key as string, press as boolean) as boolean
   if LCase(m.top.rowFocusAnimationStyle) <> "fixedfocuswrap" then return false
   if key <> "left" and key <> "right" then return false
 
-  indices = m.top.rowItemFocused
-  if type(indices) <> "roArray" or indices.count() < 2 then return false
+  result = getWrapTarget(key, m.top.rowItemFocused, m.top.content, m.top.rowItemSize, m.top.rowItemSpacing, m.top.focusXOffset, m.top.itemSize)
+  if result <> invalid
+    m.top.jumpToRowItem = result
+    return true
+  end if
 
-  rowIndex = indices[0]
-  itemIndex = indices[1]
-  if rowIndex < 0 then return false
+  return false
+end function
 
-  content = m.top.content
-  if not isValid(content) then return false
+' Pure calculation: determines the wrap target for a short-row boundary navigation.
+' Returns [rowIndex, targetItemIndex] if wrap should occur, or invalid if native RowList should handle it.
+' @param {string} key - "left" or "right"
+' @param {dynamic} rowItemFocused - RowList rowItemFocused field ([rowIndex, itemIndex] array)
+' @param {dynamic} content - RowList content node tree
+' @param {dynamic} rowItemSize - RowList rowItemSize field (flat [w,h] or array-of-pairs [[w,h],...])
+' @param {dynamic} rowItemSpacing - RowList rowItemSpacing field (flat [x,y] or nested [[x,y]])
+' @param {dynamic} focusXOffset - RowList focusXOffset field (array like [96] or empty [])
+' @param {dynamic} itemSize - RowList itemSize field ([containerWidth, containerHeight])
+' @return {object} [rowIndex, targetItemIndex] or invalid
+function getWrapTarget(key as string, rowItemFocused as dynamic, content as dynamic, rowItemSize as dynamic, rowItemSpacing as dynamic, focusXOffset as dynamic, itemSize as dynamic) as object
+  if type(rowItemFocused) <> "roArray" or rowItemFocused.count() < 2 then return invalid
+
+  rowIndex = rowItemFocused[0]
+  itemIndex = rowItemFocused[1]
+  if rowIndex < 0 then return invalid
+
+  if not isValid(content) then return invalid
 
   row = content.getChild(rowIndex)
-  if not isValid(row) then return false
+  if not isValid(row) then return invalid
 
   itemCount = row.getChildCount()
-  if itemCount <= 0 then return false
+  if itemCount <= 0 then return invalid
 
   ' Only act at row boundaries
   atStart = (key = "left" and itemIndex = 0)
   atEnd = (key = "right" and itemIndex = itemCount - 1)
-  if not atStart and not atEnd then return false
+  if not atStart and not atEnd then return invalid
 
   ' Determine item width for this row.
   ' rowItemSize can be a flat pair [w, h] (all rows share one size)
   ' or an array-of-pairs [[w1,h1], [w2,h2], ...] (one size per row).
-  rowSizes = m.top.rowItemSize
-  if type(rowSizes) <> "roArray" or rowSizes.count() = 0 then return false
+  if type(rowItemSize) <> "roArray" or rowItemSize.count() = 0 then return invalid
 
-  if type(rowSizes[0]) = "roArray"
+  if type(rowItemSize[0]) = "roArray"
     ' Array-of-pairs: one [w,h] per row
-    if rowIndex >= rowSizes.count() then return false
-    itemWidth = rowSizes[rowIndex][0]
+    if rowIndex >= rowItemSize.count() then return invalid
+    itemWidth = rowItemSize[rowIndex][0]
   else
     ' Single flat pair [w, h] — same size for all rows
-    itemWidth = rowSizes[0]
+    itemWidth = rowItemSize[0]
   end if
 
   ' Determine item spacing.
   ' rowItemSpacing can be a flat pair [x, y] or nested [[x, y]].
-  spacing = m.top.rowItemSpacing
-  itemSpacing = 0
-  if type(spacing) = "roArray" and spacing.count() > 0
-    if type(spacing[0]) = "roArray"
-      itemSpacing = spacing[0][0]
+  spacing = 0
+  if type(rowItemSpacing) = "roArray" and rowItemSpacing.count() > 0
+    if type(rowItemSpacing[0]) = "roArray"
+      spacing = rowItemSpacing[0][0]
     else
-      itemSpacing = spacing[0]
+      spacing = rowItemSpacing[0]
     end if
   end if
 
   ' Determine focus X offset — handle empty or missing focusXOffset.
-  focusXOffset = m.top.focusXOffset
   focusOffset = 0
   if type(focusXOffset) = "roArray" and focusXOffset.count() > 0
     focusOffset = focusXOffset[0]
@@ -69,23 +84,20 @@ function wrapRowFocus(key as string, press as boolean) as boolean
 
   ' Derive visible width from itemSize (row container width) instead of hardcoding 1920.
   ' itemSize[0] is the actual RowList row width, which varies by layout (e.g. 1920 vs 1703).
-  rowContainerSize = m.top.itemSize
   visibleWidth = 1920 ' fallback for safety
-  if type(rowContainerSize) = "roArray" and rowContainerSize.count() > 0
-    visibleWidth = rowContainerSize[0]
+  if type(itemSize) = "roArray" and itemSize.count() > 0
+    visibleWidth = itemSize[0]
   end if
   visibleWidth = visibleWidth - focusOffset
 
-  totalContentWidth = itemCount * itemWidth + (itemCount - 1) * itemSpacing
+  totalContentWidth = itemCount * itemWidth + (itemCount - 1) * spacing
 
   ' Only intercept short rows — let native fixedFocusWrap handle long rows
-  if totalContentWidth > visibleWidth then return false
+  if totalContentWidth > visibleWidth then return invalid
 
   if atStart
-    m.top.jumpToRowItem = [rowIndex, itemCount - 1]
-  else
-    m.top.jumpToRowItem = [rowIndex, 0]
+    return [rowIndex, itemCount - 1]
   end if
 
-  return true
+  return [rowIndex, 0]
 end function
