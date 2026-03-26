@@ -10,7 +10,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
-const ITEM_DETAILS_EXTRAS_PADDING = 48
+const ITEM_DETAILS_EXTRAS_PADDING = 24
 ' Minimum display height for the logo image — images too small are scaled up (aspect ratio preserved).
 const LOGO_MIN_DISPLAY_HEIGHT = 212 ' Note: LOGO_MAX_DISPLAY_WIDTH takes precedence for very wide/flat logos; this minimum may not be reached.
 ' Maximum display width for the logo image — prevents very wide/flat logos from overlapping buttons
@@ -57,7 +57,6 @@ sub init()
   m.itemDetailsSlider = m.top.findNode("itemDetailsSlider")
   m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
   m.extrasActive = false
-  m.animationTargetCalculated = false
   m.extrasLoaded = false
 
   ' Inner group: title + infoGroup + directorGenreGroup (never changes during activate/deactivate)
@@ -1283,7 +1282,6 @@ function getHistory() as string
 end function
 
 sub itemContentChanged()
-  m.animationTargetCalculated = false
   m.seasonSeriesData = invalid
   item = m.top.itemContent
 
@@ -1840,19 +1838,15 @@ end sub
 sub onItemDetailsRendered()
   if m.itemDetails.renderTracking = "none" then return
   updateTextGradient()
-  ' Only calculate animation target once per content load — itemInfoRows height is stable after metadata is set.
-  if not m.animationTargetCalculated
-    m.animationTargetCalculated = true
-    updateItemDetailsAnimationTarget()
-  end if
 end sub
 
 ' updateItemDetailsAnimationTarget: Slide itemDetails so the bottom of itemInfoRows sits just
 ' above the extras pane. boundingRect() on a child returns LOCAL coords relative to the parent's
 ' translation point, so we use translation[1] (not boundingRect().y) as the screen origin.
+' Called just-in-time from the DOWN key handler to guarantee the layout is fully settled
+' (text wrapping complete) before measuring. Eager calculation via renderTracking races
+' with async text layout, producing stale targets — especially for long descriptions.
 sub updateItemDetailsAnimationTarget()
-  if m.extrasActive then return
-
   currentTransY = m.itemDetails.translation[1]
   itemInfoRowsLocalRect = m.itemInfoRows.boundingRect()
   screenBottomOfInfoRows = currentTransY + itemInfoRowsLocalRect.y + itemInfoRowsLocalRect.height
@@ -2456,9 +2450,6 @@ sub onSeasonSeriesDataLoaded()
 
   populateInfoGroupSeason(m.top.itemContent, m.global.user.settings)
 
-  ' Row heights changed — reset so onItemDetailsRendered() recalculates the extras animation target
-  m.animationTargetCalculated = false
-
   ' Update logo using series data if the season didn't carry parentLogoItemId
   if isValid(m.itemLogo) and not m.itemLogo.visible
     setItemLogo(m.seasonSeriesData)
@@ -2513,8 +2504,6 @@ sub onLyricsLoaded()
   m.itemDescription.text = content[0]
   m.itemDescription.visible = true
   setDescriptionInLayout(true)
-  ' Row heights changed — reset so onItemDetailsRendered() recalculates the extras animation target
-  m.animationTargetCalculated = false
 end sub
 
 ' onFirstEpisodeLoaded: Start playback of first episode for Series Play button
@@ -2579,6 +2568,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.top.lastFocus = m.extrasGrid
     m.extrasGrid.setFocus(true)
 
+    ' Calculate animation target with the fully-settled layout before activating extras
+    updateItemDetailsAnimationTarget()
     activateExtras()
 
     ' Hide description and tracks before sliding up so they don't show during the transition
