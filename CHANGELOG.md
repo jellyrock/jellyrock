@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - two-tier API task pool, async button UX, and toast notifications ([#414](https://github.com/jellyrock/jellyrock/pull/414))
 - Theme preset system with conditional settings ([#410](https://github.com/jellyrock/jellyrock/pull/410))
 
+### Fixed
+
+- bug in itemDetails animation target after opening extras rows ([#416](https://github.com/jellyrock/jellyrock/pull/416))
+
 ### Dependencies
 
 - Update @rokucommunity/bslint from v0.8.39 to v0.8.41 ([#403](https://github.com/jellyrock/jellyrock/pull/403), [#415](https://github.com/jellyrock/jellyrock/pull/415))
