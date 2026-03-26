@@ -154,6 +154,7 @@ sub Main (args as dynamic) as void
           searchKey.textEditBox.setFocus(true)
         else
           group = CreateSearchPage()
+          group.skipInitialFocus = true
           m.global.sceneManager.callFunc("pushScene", group)
           searchKey = group.findNode("SearchBox").findNode("search_Key")
           searchKey.text = voiceQuery

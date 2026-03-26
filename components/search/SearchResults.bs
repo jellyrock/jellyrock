@@ -32,16 +32,14 @@ sub init()
 
   ' Set initial focus for scene navigation
   m.top.lastFocus = searchBox
-  m.isFirstRun = true
 
 end sub
 
 sub OnScreenShown()
-  if m.isFirstRun
-    m.isFirstRun = false
-    ' Skip focus on first show — caller (Main.bs) sets focus after pushScene,
-    ' so setting it here too causes a double-focus race condition on the
-    ' DynamicMiniKeyboard that intermittently prevents the voice prompt overlay.
+  if m.top.skipInitialFocus
+    m.top.skipInitialFocus = false
+    ' Caller will set focus after pushScene — skip here to avoid a double-focus
+    ' race on the DynamicMiniKeyboard that prevents the voice prompt overlay.
     return
   end if
 
@@ -169,11 +167,13 @@ sub destroy()
   ' Both must be cleared: active=false stops input capture, voiceEnabled=false
   ' releases the "only one voiceEnabled at a time" slot so the returning screen's
   ' VoiceTextEditBox can reclaim it.
-  m.searchAlphabox.textEditBox.voiceEnabled = false
-  m.searchAlphabox.textEditBox.active = false
+  if isValid(m.searchAlphabox) and isValid(m.searchAlphabox.textEditBox)
+    m.searchAlphabox.textEditBox.voiceEnabled = false
+    m.searchAlphabox.textEditBox.active = false
+  end if
 
   ' Unobserve child node observers
-  m.searchAlphabox.unobserveField("focusedChild")
+  if isValid(m.searchAlphabox) then m.searchAlphabox.unobserveField("focusedChild")
   m.searchSelect.unobserveField("rowItemFocused")
 
   ' Stop and release task node (observer may already be cleared by loadResults())
