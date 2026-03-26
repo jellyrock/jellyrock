@@ -1,0 +1,86 @@
+namespace tests
+
+  @suite("Home - Voice Search")
+  class HomeVoiceSearchTests extends tests.BaseTestSuite
+
+    protected override sub setup()
+      super.setup()
+
+      m.home = CreateObject("roSGNode", "Home")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.home = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("VoiceTextEditBox setup")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates voiceBox child node")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+      m.assertNotInvalid(voiceBox)
+    end function
+
+    @it("configures voiceBox with voiceEnabled true")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+      m.assertTrue(voiceBox.voiceEnabled)
+    end function
+
+    @it("configures voiceBox with active true")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+      m.assertTrue(voiceBox.active)
+    end function
+
+    @it("configures voiceBox as nearly invisible")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+      m.assertTrue(voiceBox.opacity < 0.01)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Voice query propagation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets voiceQuery when voiceBox text changes to non-empty value")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+      voiceBox.text = "star wars"
+
+      m.assertEqual(m.home.voiceQuery, "star wars")
+    end function
+
+    @it("does not set voiceQuery when voiceBox text is empty")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+      voiceBox.text = ""
+
+      m.assertEqual(m.home.voiceQuery, "")
+    end function
+
+    @it("resets voiceBox text after capturing query")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+      voiceBox.text = "lord of the rings"
+
+      m.assertEqual(voiceBox.text, "")
+    end function
+
+    @it("handles multiple sequential voice searches")
+    function _()
+      voiceBox = m.home.findNode("voiceBox")
+
+      voiceBox.text = "first query"
+      m.assertEqual(m.home.voiceQuery, "first query")
+
+      voiceBox.text = "second query"
+      m.assertEqual(m.home.voiceQuery, "second query")
+    end function
+
+  end class
+
+end namespace
