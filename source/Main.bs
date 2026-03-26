@@ -141,6 +141,17 @@ sub Main (args as dynamic) as void
           end if
         end if
       end if
+    else if isNodeEvent(msg, "voiceQuery")
+      ' Voice search from Home screen — open SearchResults with spoken query pre-populated
+      voiceQuery = msg.getData()
+      if isValidAndNotEmpty(voiceQuery)
+        group = CreateSearchPage()
+        m.global.sceneManager.callFunc("pushScene", group)
+        searchKey = group.findNode("SearchBox").findNode("search_Key")
+        searchKey.text = voiceQuery
+        searchKey.setFocus(true)
+        searchKey.active = true
+      end if
     else if isNodeEvent(msg, "output")
       task = msg.getRoSGNode()
       if isValid(task) and task.subtype() = "QuickPlayTask"

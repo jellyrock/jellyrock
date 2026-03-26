@@ -4,10 +4,15 @@
     <HomeRows id="homeRows" />
 
     <OptionsSlider id="options" />
+
+    <!-- Renders on top of all content so Roku firmware can find and focus it for voice input.
+         Top-left corner ensures no row content overlaps it. -->
+    <VoiceTextEditBox id="voiceBox" voiceEnabled="true" visible="true" width="40" translation="[0, 0]" />
   </children>
   <interface>
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="quickPlayNode" type="node" />
+    <field id="voiceQuery" type="string" alwaysNotify="true" />
     <function name="refresh" />
     <function name="loadLibraries" />
   </interface>

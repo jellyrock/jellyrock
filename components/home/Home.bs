@@ -21,6 +21,14 @@ sub init()
   m.homeRows.observeField("selectedItem", "onRowItemSelected")
   m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
 
+  ' Voice search setup (same pattern as BaseGridView)
+  m.voiceBox = m.top.findNode("voiceBox")
+  m.voiceBox.opacity = 0.0001
+  m.voiceBox.voiceEnabled = true
+  m.voiceBox.active = true
+  m.voiceBox.hintText = tr("Use voice remote to search")
+  m.voiceBox.observeField("text", "onVoiceSearch")
+
   ' Tab configuration
   m.top.overhangTabs = [
     { title: tr("Home"), id: "home" },
@@ -118,6 +126,22 @@ sub OnScreenHidden()
     overhang.isLogoVisible = false
     overhang.currentUser = ""
   end if
+end sub
+
+' ============================================
+' VOICE SEARCH
+' ============================================
+
+' onVoiceSearch: Fires when voice input is captured by the hidden VoiceTextEditBox.
+' Signals Main.bs to open SearchResults with the spoken query pre-populated.
+sub onVoiceSearch()
+  voiceText = m.voiceBox.text
+  if voiceText = "" then return
+
+  ' Reset for next voice search
+  m.voiceBox.text = ""
+
+  m.top.voiceQuery = voiceText
 end sub
 
 ' ============================================
@@ -245,6 +269,12 @@ sub destroy()
   m.log.verbose("destroy")
 
   m.top.unobserveField("selectedTabId")
+
+  ' Release voice box
+  if isValid(m.voiceBox)
+    m.voiceBox.unobserveField("text")
+    m.voiceBox = invalid
+  end if
 
   ' Release tab bar observer
   if isValid(m.tabBar)
