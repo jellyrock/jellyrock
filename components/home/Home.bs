@@ -155,10 +155,10 @@ sub initVoiceBox()
   end if
 
   m.voiceBox.opacity = 0.0001
+  m.voiceBox.hintText = tr("Use voice remote to search")
   m.voiceBox.voiceEnabled = true
   m.voiceBox.active = true
   m.voiceBox.observeField("text", "onVoiceSearch")
-  m.voiceBox.hintText = tr("Use voice remote to search")
 end sub
 
 ' onVoiceSearch: Fires when voice input is captured by the hidden VoiceTextEditBox.
