@@ -148,7 +148,7 @@ sub Main (args as dynamic) as void
         ' Guard: skip if a SearchResults is already the active scene (prevents duplicate pushes
         ' when voice system fires multiple text changes for a single input)
         activeScene = m.global.sceneManager.callFunc("getActiveScene")
-        if isValid(activeScene) and activeScene.subtype() = "searchResults"
+        if isValid(activeScene) and activeScene.subtype() = "SearchResults"
           searchKey = activeScene.findNode("SearchBox").findNode("search_Key")
           searchKey.text = voiceQuery
           searchKey.textEditBox.setFocus(true)
