@@ -1,6 +1,7 @@
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/rowListWrap.bs"
 
 ' Default RowList translation.y — places the focused row (TOP) 18px below the panel top edge.
 const EXTRAS_ROWLIST_DEFAULT_Y = 18
@@ -883,6 +884,8 @@ end sub
 ' in sync with the RowList floatingFocus animation rather than after it completes.
 ' Returns false so the RowList handles the actual navigation.
 function onKeyEvent(key as string, press as boolean) as boolean
+  if wrapRowFocus(key, press) then return true
+
   if press
     rowCount = m.top.content.getChildCount()
     if key = "down" and m.lastFocusedRowIndex < rowCount - 1

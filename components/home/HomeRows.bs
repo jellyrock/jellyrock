@@ -1,6 +1,7 @@
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/rowListWrap.bs"
 
 sub init()
   m.top.itemComponentName = "JRRowItem"
@@ -725,6 +726,8 @@ sub updateBackdropForFocusedItem()
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
+  if wrapRowFocus(key, press) then return true
+
   if press
     if key = "play"
       print "play was pressed from homerow"

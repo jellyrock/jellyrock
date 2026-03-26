@@ -1,0 +1,56 @@
+import "pkg:/source/utils/misc.bs"
+
+' Wraps focus to the opposite end of a short row when the user navigates past the boundary.
+' Short rows (where all items fit on screen) don't trigger native fixedFocusWrap behavior,
+' so this function manually handles the wrap via jumpToRowItem.
+' Must be called from a component scope where m.top is a RowList (or extension of one).
+' @param {string} key - The key pressed
+' @param {boolean} press - Whether this is a key press (true) or release (false)
+' @return {boolean} true if the wrap was handled, false to let native RowList handle navigation
+function wrapRowFocus(key as string, press as boolean) as boolean
+  if not press then return false
+  if LCase(m.top.rowFocusAnimationStyle) <> "fixedfocuswrap" then return false
+  if key <> "left" and key <> "right" then return false
+
+  indices = m.top.rowItemFocused
+  if not isValidAndNotEmpty(indices) then return false
+
+  rowIndex = indices[0]
+  itemIndex = indices[1]
+  if rowIndex < 0 then return false
+
+  content = m.top.content
+  if not isValid(content) then return false
+
+  row = content.getChild(rowIndex)
+  if not isValid(row) then return false
+
+  itemCount = row.getChildCount()
+  if itemCount <= 0 then return false
+
+  ' Only act at row boundaries
+  atStart = (key = "left" and itemIndex = 0)
+  atEnd = (key = "right" and itemIndex = itemCount - 1)
+  if not atStart and not atEnd then return false
+
+  ' Calculate if all items fit in the visible row width (native wrap won't trigger for short rows)
+  rowSizes = m.top.rowItemSize
+  if not isValidAndNotEmpty(rowSizes) or rowIndex >= rowSizes.count() then return false
+
+  itemWidth = rowSizes[rowIndex][0]
+  itemSpacing = m.top.rowItemSpacing[0][0]
+  focusOffset = m.top.focusXOffset[0]
+  totalContentWidth = itemCount * itemWidth + (itemCount - 1) * itemSpacing
+  visibleWidth = 1920 - focusOffset
+
+  ' Only intercept short rows — let native fixedFocusWrap handle long rows
+  if totalContentWidth > visibleWidth then return false
+
+  if atStart
+    m.top.jumpToRowItem = [rowIndex, itemCount - 1]
+  else
+    m.top.jumpToRowItem = [rowIndex, 0]
+  end if
+
+  return true
+end function
