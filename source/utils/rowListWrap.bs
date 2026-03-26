@@ -1,0 +1,103 @@
+import "pkg:/source/utils/misc.bs"
+
+' Wraps focus to the opposite end of a short row when the user navigates past the boundary.
+' Short rows (where all items fit on screen) don't trigger native fixedFocusWrap behavior,
+' so this function manually handles the wrap via jumpToRowItem.
+' Must be called from a component scope where m.top is a RowList (or extension of one).
+' @param {string} key - The key pressed
+' @param {boolean} press - Whether this is a key press (true) or release (false)
+' @return {boolean} true if the wrap was handled, false to let native RowList handle navigation
+function wrapRowFocus(key as string, press as boolean) as boolean
+  if not press then return false
+  if LCase(m.top.rowFocusAnimationStyle) <> "fixedfocuswrap" then return false
+  if key <> "left" and key <> "right" then return false
+
+  result = getWrapTarget(key, m.top.rowItemFocused, m.top.content, m.top.rowItemSize, m.top.rowItemSpacing, m.top.focusXOffset, m.top.itemSize)
+  if result <> invalid
+    m.top.jumpToRowItem = result
+    return true
+  end if
+
+  return false
+end function
+
+' Pure calculation: determines the wrap target for a short-row boundary navigation.
+' Returns [rowIndex, targetItemIndex] if wrap should occur, or invalid if native RowList should handle it.
+' @param {string} key - "left" or "right"
+' @param {dynamic} rowItemFocused - RowList rowItemFocused field ([rowIndex, itemIndex] array)
+' @param {dynamic} content - RowList content node tree
+' @param {dynamic} rowItemSize - RowList rowItemSize field (flat [w,h] or array-of-pairs [[w,h],...])
+' @param {dynamic} rowItemSpacing - RowList rowItemSpacing field (flat [x,y] or nested [[x,y]])
+' @param {dynamic} focusXOffset - RowList focusXOffset field (array like [96] or empty [])
+' @param {dynamic} itemSize - RowList itemSize field ([containerWidth, containerHeight])
+' @return {object} [rowIndex, targetItemIndex] or invalid
+function getWrapTarget(key as string, rowItemFocused as dynamic, content as dynamic, rowItemSize as dynamic, rowItemSpacing as dynamic, focusXOffset as dynamic, itemSize as dynamic) as object
+  if type(rowItemFocused) <> "roArray" or rowItemFocused.count() < 2 then return invalid
+
+  rowIndex = rowItemFocused[0]
+  itemIndex = rowItemFocused[1]
+  if rowIndex < 0 then return invalid
+
+  if not isValid(content) then return invalid
+
+  row = content.getChild(rowIndex)
+  if not isValid(row) then return invalid
+
+  itemCount = row.getChildCount()
+  if itemCount <= 0 then return invalid
+
+  ' Only act at row boundaries
+  atStart = (key = "left" and itemIndex = 0)
+  atEnd = (key = "right" and itemIndex = itemCount - 1)
+  if not atStart and not atEnd then return invalid
+
+  ' Determine item width for this row.
+  ' rowItemSize can be a flat pair [w, h] (all rows share one size)
+  ' or an array-of-pairs [[w1,h1], [w2,h2], ...] (one size per row).
+  if type(rowItemSize) <> "roArray" or rowItemSize.count() = 0 then return invalid
+
+  if type(rowItemSize[0]) = "roArray"
+    ' Array-of-pairs: one [w,h] per row
+    if rowIndex >= rowItemSize.count() then return invalid
+    itemWidth = rowItemSize[rowIndex][0]
+  else
+    ' Single flat pair [w, h] — same size for all rows
+    itemWidth = rowItemSize[0]
+  end if
+
+  ' Determine item spacing.
+  ' rowItemSpacing can be a flat pair [x, y] or nested [[x, y]].
+  spacing = 0
+  if type(rowItemSpacing) = "roArray" and rowItemSpacing.count() > 0
+    if type(rowItemSpacing[0]) = "roArray"
+      spacing = rowItemSpacing[0][0]
+    else
+      spacing = rowItemSpacing[0]
+    end if
+  end if
+
+  ' Determine focus X offset — handle empty or missing focusXOffset.
+  focusOffset = 0
+  if type(focusXOffset) = "roArray" and focusXOffset.count() > 0
+    focusOffset = focusXOffset[0]
+  end if
+
+  ' Derive visible width from itemSize (row container width) instead of hardcoding 1920.
+  ' itemSize[0] is the actual RowList row width, which varies by layout (e.g. 1920 vs 1703).
+  visibleWidth = 1920 ' fallback for safety
+  if type(itemSize) = "roArray" and itemSize.count() > 0
+    visibleWidth = itemSize[0]
+  end if
+  visibleWidth = visibleWidth - focusOffset
+
+  totalContentWidth = itemCount * itemWidth + (itemCount - 1) * spacing
+
+  ' Only intercept short rows — let native fixedFocusWrap handle long rows
+  if totalContentWidth > visibleWidth then return invalid
+
+  if atStart
+    return [rowIndex, itemCount - 1]
+  end if
+
+  return [rowIndex, 0]
+end function

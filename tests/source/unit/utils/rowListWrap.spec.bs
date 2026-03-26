@@ -1,0 +1,257 @@
+import "pkg:/source/utils/rowListWrap.bs"
+
+namespace tests
+
+  @suite("rowListWrap - getWrapTarget horizontal wrap for short rows")
+  class RowListWrapTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' Helper: builds a ContentNode tree with one row containing `childCount` items.
+    private function buildContent(childCount as integer) as object
+      content = CreateObject("roSGNode", "ContentNode")
+      row = content.createChild("ContentNode")
+      for i = 0 to childCount - 1
+        row.createChild("ContentNode")
+      end for
+      return content
+    end function
+
+    ' Helper: builds a ContentNode tree with multiple rows of varying child counts.
+    private function buildMultiRowContent(childCounts as object) as object
+      content = CreateObject("roSGNode", "ContentNode")
+      for each count in childCounts
+        row = content.createChild("ContentNode")
+        for i = 0 to count - 1
+          row.createChild("ContentNode")
+        end for
+      end for
+      return content
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("short-row wrap — left/right at boundaries")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("wraps from first item to last item on left press")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [0], [1920, 400])
+      m.assertNotInvalid(result)
+      m.assertEqual(result[0], 0)
+      m.assertEqual(result[1], 2)
+    end function
+
+    @it("wraps from last item to first item on right press")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("right", [0, 2], content, [[200, 300]], [20, 0], [0], [1920, 400])
+      m.assertNotInvalid(result)
+      m.assertEqual(result[0], 0)
+      m.assertEqual(result[1], 0)
+    end function
+
+    @it("wraps correctly for a single-item row")
+    function _()
+      content = m.buildContent(1)
+
+      leftResult = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [0], [1920, 400])
+      m.assertNotInvalid(leftResult)
+      m.assertEqual(leftResult[1], 0)
+
+      rightResult = getWrapTarget("right", [0, 0], content, [[200, 300]], [20, 0], [0], [1920, 400])
+      m.assertNotInvalid(rightResult)
+      m.assertEqual(rightResult[1], 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("long-row pass-through")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for long rows — lets native fixedFocusWrap handle them")
+    function _()
+      content = m.buildContent(20)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [0], [1920, 400])
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid at end of long row")
+    function _()
+      content = m.buildContent(20)
+      result = getWrapTarget("right", [0, 19], content, [[200, 300]], [20, 0], [0], [1920, 400])
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("not at boundary — pass-through")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when not at a row boundary")
+    function _()
+      content = m.buildContent(3)
+      m.assertInvalid(getWrapTarget("left", [0, 1], content, [[200, 300]], [20, 0], [0], [1920, 400]))
+      m.assertInvalid(getWrapTarget("right", [0, 1], content, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowItemFocused robustness")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when rowItemFocused is a single-element array")
+    function _()
+      content = m.buildContent(3)
+      m.assertInvalid(getWrapTarget("left", [0], content, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+    @it("returns invalid when rowItemFocused is an empty array")
+    function _()
+      content = m.buildContent(3)
+      m.assertInvalid(getWrapTarget("left", [], content, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+    @it("returns invalid when rowItemFocused is invalid")
+    function _()
+      content = m.buildContent(3)
+      m.assertInvalid(getWrapTarget("left", invalid, content, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+    @it("returns invalid when rowIndex is negative")
+    function _()
+      content = m.buildContent(3)
+      m.assertInvalid(getWrapTarget("left", [-1, 0], content, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowItemSize shape handling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles flat pair rowItemSize [w, h]")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [200, 300], [20, 0], [0], [1920, 400])
+      m.assertNotInvalid(result)
+      m.assertEqual(result[1], 2)
+    end function
+
+    @it("handles array-of-pairs rowItemSize [[w1,h1], [w2,h2]]")
+    function _()
+      content = m.buildMultiRowContent([3, 3])
+      result = getWrapTarget("left", [1, 0], content, [[200, 300], [250, 300]], [20, 0], [0], [1920, 400])
+      m.assertNotInvalid(result)
+      m.assertEqual(result[0], 1)
+      m.assertEqual(result[1], 2)
+    end function
+
+    @it("returns invalid when rowItemSize is empty")
+    function _()
+      content = m.buildContent(3)
+      m.assertInvalid(getWrapTarget("left", [0, 0], content, [], [20, 0], [0], [1920, 400]))
+    end function
+
+    @it("returns invalid when rowIndex exceeds array-of-pairs count")
+    function _()
+      content = m.buildMultiRowContent([3, 3])
+      ' Only one size pair but accessing row 1
+      m.assertInvalid(getWrapTarget("left", [1, 0], content, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowItemSpacing shape handling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles flat pair rowItemSpacing [x, y]")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [30, 0], [0], [1920, 400])
+      m.assertNotInvalid(result)
+    end function
+
+    @it("handles nested rowItemSpacing [[x, y]]")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [[20, 0]], [0], [1920, 400])
+      m.assertNotInvalid(result)
+    end function
+
+    @it("handles empty rowItemSpacing gracefully (treats spacing as 0)")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [], [0], [1920, 400])
+      m.assertNotInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("focusXOffset robustness")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles empty focusXOffset [] (treats offset as 0)")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [], [1920, 400])
+      m.assertNotInvalid(result)
+    end function
+
+    @it("accounts for focusXOffset in visible width calculation")
+    function _()
+      ' 9 items * 200px + 8 * 20px = 1960px total content
+      ' With focusXOffset=96: visibleWidth = 1920 - 96 = 1824 → 1960 > 1824 → long row
+      content = m.buildContent(9)
+      m.assertInvalid(getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [96], [1920, 400]))
+    end function
+
+    @it("handles invalid focusXOffset gracefully")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], invalid, [1920, 400])
+      m.assertNotInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("visibleWidth derived from itemSize")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses itemSize width instead of hardcoded 1920")
+    function _()
+      ' 8 items * 200px + 7 * 20px = 1740px total content
+      ' With itemSize[0]=1703: 1740 > 1703 → long row (native wrap)
+      ' With hardcoded 1920: 1740 < 1920 → would incorrectly classify as short
+      content = m.buildContent(8)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [], [1703, 400])
+      m.assertInvalid(result)
+    end function
+
+    @it("correctly identifies short row in narrower container")
+    function _()
+      ' 3 items * 200px + 2 * 20px = 640px total content < 1703 → short row
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [], [1703, 400])
+      m.assertNotInvalid(result)
+    end function
+
+    @it("falls back to 1920 when itemSize is invalid")
+    function _()
+      content = m.buildContent(3)
+      result = getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [0], invalid)
+      m.assertNotInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("content robustness")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when content is invalid")
+    function _()
+      m.assertInvalid(getWrapTarget("left", [0, 0], invalid, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+    @it("returns invalid when row has no children")
+    function _()
+      content = m.buildContent(0)
+      m.assertInvalid(getWrapTarget("left", [0, 0], content, [[200, 300]], [20, 0], [0], [1920, 400]))
+    end function
+
+  end class
+
+end namespace

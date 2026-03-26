@@ -1,4 +1,5 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/rowListWrap.bs"
 
 sub init()
   constants = m.global.constants
@@ -24,6 +25,10 @@ sub init()
   end if
 
 end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  return wrapRowFocus(key, press)
+end function
 
 sub applyFallbackFontScale()
   ' Get the current font size if one is set, or use a default
