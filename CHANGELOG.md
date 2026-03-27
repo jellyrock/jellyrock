@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add voice search from Home screen ([#421](https://github.com/jellyrock/jellyrock/pull/421))
 - add horizontal wrap for short RowList rows ([#420](https://github.com/jellyrock/jellyrock/pull/420))
 
 ## [2.5.0](https://github.com/jellyrock/jellyrock/compare/v2.4.0...v2.5.0) - 2026-03-26
