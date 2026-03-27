@@ -236,8 +236,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
 
   ' Determine final subtitle_idx BEFORE calling ItemPostPlaybackInfo to avoid duplicate API calls.
   ' defaultSubtitleTrackFromVid() only needs meta and audio_stream_idx, both available at this point.
+  ' Pass mediaSourceId so subtitle selection uses the correct source's streams (not always mediaSources[0]).
   if subtitle_idx = SubtitleSelection.notset
-    subtitle_idx = defaultSubtitleTrackFromVid(meta, audio_stream_idx)
+    subtitle_idx = defaultSubtitleTrackFromVid(meta, audio_stream_idx, mediaSourceId)
   end if
 
   ' PlayStart requires the time to be in seconds

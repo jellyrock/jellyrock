@@ -536,7 +536,7 @@ sub onVideoSourceChange()
 
   m.LoadMetaDataTask.selectedSubtitleIndex = -2 ' Reset to auto-detect for new source
   m.LoadMetaDataTask.selectedAudioStreamIndex = audioStreamIdx
-  m.LoadMetaDataTask.itemId = newSourceId
+  m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.mediaSourceId = newSourceId
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   m.LoadMetaDataTask.control = "RUN"
@@ -596,7 +596,6 @@ sub onVideoContentLoaded()
   m.top.PlaySessionId = videoContent[0].PlaySessionId
   m.top.videoId = videoContent[0].id
   m.top.container = videoContent[0].container
-  m.top.mediaSourceId = videoContent[0].mediaSourceId
   m.top.fullSubtitleData = videoContent[0].fullSubtitleData
   m.top.fullAudioData = videoContent[0].fullAudioData
   m.top.audioIndex = videoContent[0].audioIndex
