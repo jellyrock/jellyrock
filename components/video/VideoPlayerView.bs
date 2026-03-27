@@ -36,6 +36,9 @@ sub init()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.itemType = m.currentItem.type
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.currentItem.selectedAudioStreamIndex
+  if isValidAndNotEmpty(m.currentItem.mediaSourceId)
+    m.LoadMetaDataTask.mediaSourceId = m.currentItem.mediaSourceId
+  end if
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   m.LoadMetaDataTask.control = "RUN"
 

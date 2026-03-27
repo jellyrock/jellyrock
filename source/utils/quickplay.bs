@@ -29,7 +29,8 @@ namespace quickplay
     if not isValid(queueItem) then return
 
     ' Select best video source for device capabilities
-    ' When multiple sources exist, override the queue item ID with the best source
+    ' When multiple sources exist, set mediaSourceId so LoadVideoContentTask uses the
+    ' preferred source without overwriting the base item ID needed for metadata/reporting.
     audioStreams = itemNode.audioStreams
     if isValid(itemNode.mediaSourcesData) and isValidAndNotEmpty(itemNode.mediaSourcesData.mediaSources)
       mediaSources = itemNode.mediaSourcesData.mediaSources
@@ -37,7 +38,7 @@ namespace quickplay
         bestSourceIndex = findBestVideoSource(mediaSources)
         bestSource = mediaSources[bestSourceIndex]
         if isValidAndNotEmpty(bestSource.Id)
-          queueItem.id = bestSource.Id
+          queueItem.mediaSourceId = bestSource.Id
         end if
         ' Use the selected source's audio streams for best audio selection
         if isValid(bestSource.MediaStreams)

@@ -174,6 +174,51 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("video source selection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets mediaSourceId instead of overwriting id when multiple sources exist")
+    function setsMediaSourceIdNotId()
+      mockData = MockDataLoader.LoadItem("movie-quickplay-multi-source")
+
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
+      itemNode.id = mockData.id
+      itemNode.type = mockData.type
+      itemNode.name = mockData.name
+      itemNode.title = mockData.name
+      ' Set mediaSourcesData as the transformer would
+      itemNode.mediaSourcesData = { mediaSources: mockData.MediaSources }
+
+      quickplay.video(itemNode)
+
+      m.assertEqual(m.global.queueManager.callFunc("getCount"), 1)
+      queueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
+      m.assertNotInvalid(queueItem)
+      ' id must remain the base item ID for metadata lookups and playback reporting
+      m.assertEqual(queueItem.id, mockData.id)
+      ' mediaSourceId should be set to the selected source's Id
+      m.assertNotInvalid(queueItem.mediaSourceId)
+      m.assertNotEmpty(queueItem.mediaSourceId)
+    end function
+
+    @it("preserves original id with single source (no mediaSourceId override)")
+    function preservesIdWithSingleSource()
+      mockData = MockDataLoader.LoadItem("movie-quickplay-basic")
+
+      itemNode = CreateObject("roSGNode", "JellyfinBaseItem")
+      itemNode.id = mockData.id
+      itemNode.type = mockData.type
+      itemNode.name = mockData.name
+      itemNode.title = mockData.name
+      itemNode.mediaSourcesData = { mediaSources: mockData.MediaSources }
+
+      quickplay.video(itemNode)
+
+      queueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
+      m.assertEqual(queueItem.id, mockData.id)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("node independence verification")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
