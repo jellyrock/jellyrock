@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- run captionTask VTT fetch on Task thread ([#425](https://github.com/jellyrock/jellyrock/pull/425))
+
 ## [2.6.0](https://github.com/jellyrock/jellyrock/compare/v2.5.0...v2.6.0) - 2026-03-27
 
 ### Added
