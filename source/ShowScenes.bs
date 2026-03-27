@@ -631,6 +631,7 @@ function CreateHomeGroup()
 
   group.observeField("selectedItem", m.port)
   group.observeField("quickPlayNode", m.port)
+  group.observeField("voiceQuery", m.port)
 
   sidepanel = group.findNode("options")
   sidepanel.observeField("closeSidePanel", m.port)
@@ -706,7 +707,7 @@ end function
 
 function CreateSearchPage()
   ' Search + Results Page
-  group = CreateObject("roSGNode", "searchResults")
+  group = CreateObject("roSGNode", "SearchResults")
   group.observeField("quickPlayNode", m.port)
   options = group.findNode("searchSelect")
   options.observeField("itemSelected", m.port)

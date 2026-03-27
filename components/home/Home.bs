@@ -21,6 +21,11 @@ sub init()
   m.homeRows.observeField("selectedItem", "onRowItemSelected")
   m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
 
+  ' Voice search setup — matches BaseGridView's pattern:
+  ' Set voiceEnabled once in init(), never set it to false.
+  ' Only toggle active on screen show/hide.
+  initVoiceBox()
+
   ' Tab configuration
   m.top.overhangTabs = [
     { title: tr("Home"), id: "home" },
@@ -84,8 +89,16 @@ sub OnScreenShown()
     end if
   end if
 
-  ' Set focus to the active content
-  if isValid(m.top.lastFocus)
+  ' Re-activate voice capture — matching BaseGridView's OnScreenShown pattern.
+  ' Only toggle active; voiceEnabled was set once in init() and never changed.
+  if isValid(m.voiceBox)
+    m.voiceBox.active = true
+  end if
+
+  ' Set focus to the active content.
+  ' Skip voiceBox — SceneManager may save it as lastFocus when voice input
+  ' triggers a pushScene, but it's a hidden capture element, not a valid focus target.
+  if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
     m.top.lastFocus.setFocus(true)
   else if isValid(m.activeContent)
     m.activeContent.setFocus(true)
@@ -112,12 +125,52 @@ end sub
 sub OnScreenHidden()
   m.log.info("OnScreenHidden")
 
+  ' Deactivate voice so other screens can claim the voice route.
+  ' Only toggle active — never set voiceEnabled=false (matches BaseGridView pattern).
+  if isValid(m.voiceBox)
+    m.voiceBox.active = false
+  end if
+
   scene = m.top.getScene()
   overhang = scene.findNode("overhang")
   if isValid(overhang)
     overhang.isLogoVisible = false
     overhang.currentUser = ""
   end if
+end sub
+
+' ============================================
+' VOICE SEARCH
+' ============================================
+
+' initVoiceBox: One-time voice setup in init() — matches BaseGridView's pattern.
+' Sets voiceEnabled=true ONCE and never sets it back to false. The firmware
+' silently manages voiceEnabled when other screens claim voice routing.
+' Only `active` is toggled on screen show/hide.
+sub initVoiceBox()
+  m.voiceBox = m.top.findNode("homeVoiceBox")
+  if not isValid(m.voiceBox)
+    m.log.error("initVoiceBox: homeVoiceBox not found!")
+    return
+  end if
+
+  m.voiceBox.opacity = 0.0001
+  m.voiceBox.hintText = tr("Use voice remote to search")
+  m.voiceBox.voiceEnabled = true
+  m.voiceBox.active = true
+  m.voiceBox.observeField("text", "onVoiceSearch")
+end sub
+
+' onVoiceSearch: Fires when voice input is captured by the hidden VoiceTextEditBox.
+' Signals Main.bs to open SearchResults with the spoken query pre-populated.
+sub onVoiceSearch()
+  voiceText = m.voiceBox.text
+  if voiceText = "" then return
+
+  ' Reset for next voice search
+  m.voiceBox.text = ""
+
+  m.top.voiceQuery = voiceText
 end sub
 
 ' ============================================
@@ -245,6 +298,13 @@ sub destroy()
   m.log.verbose("destroy")
 
   m.top.unobserveField("selectedTabId")
+
+  ' Release voice box — match BaseGridView: never set voiceEnabled=false,
+  ' just unobserve and release the reference.
+  if isValid(m.voiceBox)
+    m.voiceBox.unobserveField("text")
+    m.voiceBox = invalid
+  end if
 
   ' Release tab bar observer
   if isValid(m.tabBar)

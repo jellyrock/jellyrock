@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="Home" extends="JRScreen">
   <children>
+    <VoiceTextEditBox id="homeVoiceBox" visible="true" width="40" translation="[0, 0]" />
     <HomeRows id="homeRows" />
 
     <OptionsSlider id="options" />
@@ -8,6 +9,7 @@
   <interface>
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="quickPlayNode" type="node" />
+    <field id="voiceQuery" type="string" alwaysNotify="true" />
     <function name="refresh" />
     <function name="loadLibraries" />
   </interface>

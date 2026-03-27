@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="searchResults" extends="JRScreen">
+<component name="SearchResults" extends="JRScreen">
   <children>
     <LayoutGroup layoutDirection="horiz" id="SearchAlphabox" translation="[70, 120]">
       <SearchBox id="SearchBox" visible="true" focusable="true" />
@@ -17,5 +17,6 @@
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
     <field id="searchAlpha" type="string" alias="SearchBox.search_values" alwaysNotify="true" onChange="searchMedias" />
+    <field id="skipInitialFocus" type="boolean" value="false" />
   </interface>
 </component>

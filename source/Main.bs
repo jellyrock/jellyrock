@@ -141,6 +141,26 @@ sub Main (args as dynamic) as void
           end if
         end if
       end if
+    else if isNodeEvent(msg, "voiceQuery")
+      ' Voice search from Home screen — open SearchResults with spoken query pre-populated
+      voiceQuery = msg.getData()
+      if isValidAndNotEmpty(voiceQuery)
+        ' Guard: skip if a SearchResults is already the active scene (prevents duplicate pushes
+        ' when voice system fires multiple text changes for a single input)
+        activeScene = m.global.sceneManager.callFunc("getActiveScene")
+        if isValid(activeScene) and activeScene.subtype() = "SearchResults"
+          searchKey = activeScene.findNode("SearchBox").findNode("search_Key")
+          searchKey.text = voiceQuery
+          searchKey.textEditBox.setFocus(true)
+        else
+          group = CreateSearchPage()
+          group.skipInitialFocus = true
+          m.global.sceneManager.callFunc("pushScene", group)
+          searchKey = group.findNode("SearchBox").findNode("search_Key")
+          searchKey.text = voiceQuery
+          searchKey.textEditBox.setFocus(true)
+        end if
+      end if
     else if isNodeEvent(msg, "output")
       task = msg.getRoSGNode()
       if isValid(task) and task.subtype() = "QuickPlayTask"

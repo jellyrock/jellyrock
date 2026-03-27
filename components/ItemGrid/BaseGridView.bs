@@ -130,6 +130,12 @@ sub OnScreenShown()
   ' Clear global backdrop - we handle our own backdrops
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
+  ' Re-activate voice capture — the voiceBox loses its active connection to the
+  ' Roku firmware when this screen is removed from the scene tree during pushScene.
+  if isValid(m.voiceBox)
+    m.voiceBox.active = true
+  end if
+
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
