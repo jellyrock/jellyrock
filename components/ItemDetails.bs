@@ -1341,15 +1341,32 @@ sub itemContentChanged()
       SetUpAudioOptions(allStreams)
       updateOptionsButtonVisibility()
     else if item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Playlist"
-      if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
-        m.top.selectedVideoStreamId = item.mediaSourceId
-      end if
-
-      allStreams = []
       mediaSources = invalid
       if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
         mediaSources = item.mediaSourcesData.mediaSources
-        if isValid(mediaSources[0].MediaStreams)
+      end if
+
+      ' Select best video source based on device capabilities instead of always using first
+      if m.top.selectedVideoStreamId = "" and isValid(mediaSources) and mediaSources.Count() > 0
+        bestSourceIndex = findBestVideoSource(mediaSources)
+        m.top.selectedVideoStreamId = mediaSources[bestSourceIndex].Id ?? item.mediaSourceId
+      else if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
+        m.top.selectedVideoStreamId = item.mediaSourceId
+      end if
+
+      ' Use the selected source's MediaStreams (not always mediaSources[0])
+      allStreams = []
+      if isValid(mediaSources)
+        for each source in mediaSources
+          if source.Id = m.top.selectedVideoStreamId
+            if isValid(source.MediaStreams)
+              allStreams = source.MediaStreams
+            end if
+            exit for
+          end if
+        end for
+        ' Fallback to first source if selected source not found
+        if allStreams.Count() = 0 and isValid(mediaSources[0]) and isValid(mediaSources[0].MediaStreams)
           allStreams = mediaSources[0].MediaStreams
         end if
       end if

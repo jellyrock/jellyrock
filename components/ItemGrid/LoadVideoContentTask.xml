@@ -4,6 +4,9 @@
   <interface>
     <field id="itemId" type="string" />
     <field id="selectedAudioStreamIndex" type="integer" value="0" />
+    <!-- MediaSource ID for video source selection. Empty string = auto-detect best source.
+         Set when user explicitly selects a video source from OSD or ItemDetails. -->
+    <field id="mediaSourceId" type="string" value="" />
     <field id="selectedSubtitleIndex" type="integer" value="-2" />
     <field id="isIntro" type="boolean" />
     <field id="startIndex" type="integer" value="0" />
