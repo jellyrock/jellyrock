@@ -5,7 +5,8 @@ import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.log = log.Logger("captionTask")
-  m.top.observeField("url", "fetchCaption")
+  m.top.functionName = "fetchCaption"
+  m.top.observeField("captionData", "onCaptionDataReceived")
   m.top.currentCaption = []
   m.top.currentPos = 0
   m.lastCaptionTexts = invalid
@@ -68,9 +69,9 @@ function arraysEqual(arr1, arr2) as boolean
   return true
 end function
 
+' Runs on the Task thread via functionName. HTTP requests require a Task thread.
 sub fetchCaption()
   m.log.debug("Start fetchCaption()", m.top.url)
-  m.captionTimer.control = "stop"
   re = CreateObject("roRegex", "(http.*?\.vtt)", "s")
   url = re.match(m.top.url)[0]
 
@@ -79,17 +80,36 @@ sub fetchCaption()
     if r.ok
       vttContent = r.text
       m.log.debug("VTT content received, length:", vttContent.len())
-      m.captionList = parseVTT(vttContent)
-      m.log.info("Parsed", m.captionList.count(), "caption entries")
-      m.captionTimer.control = "start"
+      entries = parseVTT(vttContent)
+      m.log.info("Parsed", entries.count(), "caption entries")
+      m.top.captionData = { entries: entries }
     else
       m.log.error("Failed to fetch captions. HTTP response code:", r.statusCode)
+      m.top.captionData = { entries: [] }
     end if
   else
     m.log.warn("No valid VTT URL found in:", m.top.url)
-    m.captionTimer.control = "stop"
+    m.top.captionData = { entries: [] }
   end if
   m.log.debug("End fetchCaption()")
+end sub
+
+' Render-thread callback: receives parsed VTT data from the task thread and manages the caption timer
+sub onCaptionDataReceived()
+  m.captionTimer.control = "stop"
+  captionData = m.top.captionData
+
+  if isValid(captionData) and isValid(captionData.entries) and captionData.entries.count() > 0
+    m.captionList = captionData.entries
+    m.lastCaptionTexts = invalid
+    m.captionTimer.control = "start"
+    m.log.debug("Caption data received, starting timer with", m.captionList.count(), "entries")
+  else
+    m.captionList = []
+    m.lastCaptionTexts = invalid
+    m.top.currentCaption = []
+    m.log.debug("No caption data, timer stopped")
+  end if
 end sub
 
 function newlabel(txt)

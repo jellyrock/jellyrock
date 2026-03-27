@@ -388,12 +388,14 @@ sub onAllowCaptionsChange()
 
 end sub
 
-' Set caption url to server subtitle track
+' Set caption url to server subtitle track and run the fetch task
 sub loadCaption()
   m.log.debug("loadCaption() called", m.top.subtitleTrack, m.top.suppressCaptions)
-  if m.top.suppressCaptions
+  if m.top.suppressCaptions and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
     m.log.debug("Setting captionTask.url", m.top.subtitleTrack)
+    m.captionTask.control = "STOP"
     m.captionTask.url = m.top.subtitleTrack
+    m.captionTask.control = "RUN"
   end if
 end sub
 
@@ -441,14 +443,17 @@ sub onSubtitleChange()
         m.top.globalCaptionMode = "On"
         ' Manually load the caption since loadCaption() observer may have already fired
         ' with the wrong suppressCaptions value
-        if isValid(m.captionTask) and isValid(m.top.subtitleTrack)
+        if isValid(m.captionTask) and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
+          m.captionTask.control = "STOP"
           m.captionTask.url = m.top.subtitleTrack
+          m.captionTask.control = "RUN"
         end if
         toggleCaption()
       else
         ' Explicitly clean up custom subtitle system when switching away from custom subs
         m.captionGroup.visible = false
         if isValid(m.captionTask)
+          m.captionTask.control = "STOP"
           m.captionTask.url = ""
         end if
       end if
