@@ -22,6 +22,7 @@ sub CreateVideoPlayerView()
   m.view.observeField("selectPlaybackInfoPressed", "onSelectPlaybackInfoPressed")
   m.view.observeField("selectSubtitlePressed", "onSelectSubtitlePressed")
   m.view.observeField("selectAudioPressed", "onSelectAudioPressed")
+  m.view.observeField("selectVideoSourcePressed", "onSelectVideoSourcePressed")
 
   mediaSourceId = m.global.queueManager.callFunc("getCurrentItem").mediaSourceId
 
@@ -125,6 +126,39 @@ sub onSelectSubtitlePressed()
   sceneManager.observeField("returnData", "onSelectionMade")
 end sub
 
+' onSelectVideoSourcePressed: Display video source selection dialog
+'
+sub onSelectVideoSourcePressed()
+  videoSourceData = {
+    data: []
+  }
+
+  if not isValid(m.view.fullVideoSourceData) then return
+
+  hasMultipleSources = m.view.fullVideoSourceData.Count() > 1
+
+  for each source in m.view.fullVideoSourceData
+    sourceItem = {
+      "Index": source.Id,
+      "IsExternal": false,
+      "Track": {
+        "description": formatVideoSourceTitle(source, hasMultipleSources)
+      },
+      "Type": "videosourceselection"
+    }
+
+    if m.view.mediaSourceId = source.Id
+      sourceItem.selected = true
+    end if
+
+    videoSourceData.data.push(sourceItem)
+  end for
+
+  sceneManager = m.global.sceneManager
+  sceneManager.callFunc("radioDialog", tr("Select Video Source"), videoSourceData)
+  sceneManager.observeField("returnData", "onSelectionMade")
+end sub
+
 ' User has selected something from the radioDialog popup
 sub onSelectionMade()
   sceneManager = m.global.sceneManager
@@ -142,6 +176,11 @@ sub onSelectionMade()
     processAudioSelection()
     return
   end if
+
+  if LCase(sceneManager.returnData.type) = "videosourceselection"
+    processVideoSourceSelection()
+    return
+  end if
 end sub
 
 
@@ -153,6 +192,19 @@ sub processAudioSelection()
   if isValid(selectedAudioTrack)
     if isValid(selectedAudioTrack.index)
       m.view.audioIndex = selectedAudioTrack.index
+    end if
+  end if
+end sub
+
+' processVideoSourceSelection: Video source selection handler
+' Triggers video reload with the new MediaSource ID
+sub processVideoSourceSelection()
+  selectedSource = m.global.sceneManager.returnData
+
+  if isValid(selectedSource) and isValid(selectedSource.index)
+    ' Only trigger reload if source actually changed
+    if selectedSource.index <> m.view.mediaSourceId
+      m.view.mediaSourceId = selectedSource.index
     end if
   end if
 end sub

@@ -41,6 +41,7 @@
       <IconButton id="itemBack" icon="pkg:/images/icons/itemPrevious.png" />
       <IconButton id="videoPlayPause" icon="pkg:/images/icons/play.png" />
       <IconButton id="itemNext" icon="pkg:/images/icons/itemNext.png" />
+      <IconButton id="showVideoSourceMenu" icon="pkg:/images/icons/videoFile.png" />
       <IconButton id="showAudioMenu" icon="pkg:/images/icons/musicNote.png" />
       <IconButton id="showSubtitleMenu" icon="pkg:/images/icons/closedCaptions.png" />
       <IconButton id="chapterList" icon="pkg:/images/icons/chapters.png" />
@@ -63,6 +64,10 @@
     <field id="isSeries" type="boolean" value="false" />
     <field id="hasChapters" type="boolean" value="false" />
     <field id="numAudioStreams" type="integer" />
+    <field id="numVideoSources" type="integer" />
+    <!-- Active video source tag (e.g., "[B&W]", "[Colorized]") appended to OSD title
+         when multiple video sources exist. Set by VideoPlayerView. -->
+    <field id="videoSourceTag" type="string" value="" />
     <field id="runTimeMinutes" type="integer" />
 
     <!-- Playback state (set by VideoPlayerView) -->
