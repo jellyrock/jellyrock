@@ -1,0 +1,194 @@
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  @suite("videoSourceSelection - findBestVideoSource()")
+  class VideoSourceSelectionTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' Helper to create mock device video capabilities for deterministic testing
+    private function createMockVideoCaps(maxHeight as integer, canDecode4k as boolean, supportsHdr10 as boolean, supportsDolbyVision = false as boolean, supportsHlg = false as boolean) as object
+      return {
+        maxHeight: maxHeight,
+        maxWidth: int(maxHeight * 16 / 9),
+        canDecode4k: canDecode4k,
+        supportsHdr10: supportsHdr10,
+        supportsDolbyVision: supportsDolbyVision,
+        supportsHlg: supportsHlg,
+        _isMock: true
+      }
+    end function
+
+    ' Helper to create a mock MediaSource with a video stream
+    private function createMockSource(id as string, height as integer, codec as string, videoRange as string, supportsDirectPlay as boolean, bitrate = 0 as integer) as object
+      return {
+        Id: id,
+        SupportsDirectPlay: supportsDirectPlay,
+        Bitrate: bitrate,
+        MediaStreams: [
+          { Type: "Video", Height: height, Width: int(height * 16 / 9), Codec: codec, VideoRange: videoRange, IsInterlaced: false }
+        ]
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Edge cases")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns 0 when mediaSources is invalid")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      m.assertEqual(findBestVideoSource(invalid, caps), 0)
+    end function
+
+    @it("returns 0 when mediaSources is empty")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      m.assertEqual(findBestVideoSource([], caps), 0)
+    end function
+
+    @it("returns 0 when only one source exists")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [m.createMockSource("src1", 1080, "h264", "SDR", true)]
+      m.assertEqual(findBestVideoSource(sources, caps), 0)
+    end function
+
+    @it("returns 0 when source has no MediaStreams")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [
+        { Id: "src1", SupportsDirectPlay: true, MediaStreams: invalid },
+        { Id: "src2", SupportsDirectPlay: true, MediaStreams: invalid }
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Resolution selection - 4K device")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("4K device selects 4K source over 1080p")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [
+        m.createMockSource("src1", 1080, "h264", "SDR", true),
+        m.createMockSource("src2", 2160, "hevc", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+    @it("4K device selects 4K source even if listed first")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [
+        m.createMockSource("src1", 2160, "hevc", "SDR", true),
+        m.createMockSource("src2", 1080, "h264", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Resolution selection - 1080p device")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("1080p device selects 1080p source over 4K")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [
+        m.createMockSource("src1", 2160, "hevc", "SDR", true),
+        m.createMockSource("src2", 1080, "h264", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+    @it("1080p device selects 1080p over 720p")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [
+        m.createMockSource("src1", 720, "h264", "SDR", true),
+        m.createMockSource("src2", 1080, "h264", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+    @it("1080p device prefers 1080p over 720p even when 4K is also present")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [
+        m.createMockSource("src1", 2160, "hevc", "HDR", true),
+        m.createMockSource("src2", 720, "h264", "SDR", true),
+        m.createMockSource("src3", 1080, "h264", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("HDR selection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("HDR device prefers HDR source at same resolution")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [
+        m.createMockSource("src1", 2160, "hevc", "SDR", true),
+        m.createMockSource("src2", 2160, "hevc", "HDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+    @it("non-HDR device prefers SDR source at same resolution")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, false)
+      sources = [
+        m.createMockSource("src1", 2160, "hevc", "HDR", true),
+        m.createMockSource("src2", 2160, "hevc", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+    @it("HDR device still prefers higher resolution over HDR at lower resolution")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [
+        m.createMockSource("src1", 1080, "h264", "HDR", true),
+        m.createMockSource("src2", 2160, "hevc", "SDR", true)
+      ]
+      ' 2160 SDR (score: 2160+200) > 1080 HDR (score: 1080+500+200)
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Direct play preference")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("prefers direct-playable source when otherwise equal")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [
+        m.createMockSource("src1", 1080, "h264", "SDR", false),
+        m.createMockSource("src2", 1080, "h264", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Bitrate tiebreaker")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("prefers higher bitrate when resolution and other factors are equal")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [
+        m.createMockSource("src1", 1080, "h264", "SDR", true, 5000000),
+        m.createMockSource("src2", 1080, "h264", "SDR", true, 20000000)
+      ]
+      m.assertEqual(findBestVideoSource(sources, caps), 1)
+    end function
+
+  end class
+
+end namespace
