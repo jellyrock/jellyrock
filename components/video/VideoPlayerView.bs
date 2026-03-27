@@ -454,7 +454,10 @@ sub onSubtitleChange()
         m.captionGroup.visible = false
         if isValid(m.captionTask)
           m.captionTask.control = "STOP"
-          m.captionTask.url = ""
+          ' captionTask no longer observes url, so setting url="" is a no-op.
+          ' Publish empty captionData through the bridge so onCaptionDataReceived
+          ' stops the caption timer and clears currentCaption on the render thread.
+          m.captionTask.captionData = { entries: [] }
         end if
       end if
     end if

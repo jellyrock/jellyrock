@@ -72,23 +72,31 @@ end function
 ' Runs on the Task thread via functionName. HTTP requests require a Task thread.
 sub fetchCaption()
   m.log.debug("Start fetchCaption()", m.top.url)
-  re = CreateObject("roRegex", "(http.*?\.vtt)", "s")
-  url = re.match(m.top.url)[0]
 
-  if isValid(url)
-    r = rr_Requests().get(url, { timeout: 10000, useCache: false })
-    if r.ok
-      vttContent = r.text
-      m.log.debug("VTT content received, length:", vttContent.len())
-      entries = parseVTT(vttContent)
-      m.log.info("Parsed", entries.count(), "caption entries")
-      m.top.captionData = { entries: entries }
-    else
-      m.log.error("Failed to fetch captions. HTTP response code:", r.statusCode)
-      m.top.captionData = { entries: [] }
-    end if
-  else
+  ' Immediately clear captions via the bridge field so the render-thread handler
+  ' stops the caption timer and clears currentCaption before the fetch begins.
+  ' This prevents stale captions from a previous track showing during the request.
+  m.top.captionData = { entries: [] }
+
+  re = CreateObject("roRegex", "(http.*?\.vtt)", "s")
+  matchResult = re.match(m.top.url)
+
+  if not isValid(matchResult) or matchResult.count() = 0
     m.log.warn("No valid VTT URL found in:", m.top.url)
+    m.log.debug("End fetchCaption()")
+    return
+  end if
+
+  url = matchResult[0]
+  r = rr_Requests().get(url, { timeout: 10000, useCache: false })
+  if r.ok
+    vttContent = r.text
+    m.log.debug("VTT content received, length:", vttContent.len())
+    entries = parseVTT(vttContent)
+    m.log.info("Parsed", entries.count(), "caption entries")
+    m.top.captionData = { entries: entries }
+  else
+    m.log.error("Failed to fetch captions. HTTP response code:", r.statusCode)
     m.top.captionData = { entries: [] }
   end if
   m.log.debug("End fetchCaption()")
