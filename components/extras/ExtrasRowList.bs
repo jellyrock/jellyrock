@@ -3,6 +3,7 @@ import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 ' Default RowList translation.y — places the focused row (TOP) 18px below the panel top edge.
 const EXTRAS_ROWLIST_DEFAULT_Y = 18
@@ -73,6 +74,7 @@ sub init()
 
   ' Permanent root content node — never replaced.
   m.top.content = CreateObject("roSGNode", "ContentNode")
+  initTextureManager(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
 
   ' Named row refs — reused across refreshes so the RowList never loses focus position.
   ' Each ref is invalid until that row's data loads for the first time.
@@ -905,6 +907,21 @@ function populateRow(rowRef as object, title as string, items as object, rowHeig
   for each item in items
     rowRef.appendChild(item)
   end for
+
+  ' Activate texture management after the first row populates (layout is stable enough).
+  ' activateTextureManager from "init" → "active" only runs once; subsequent calls
+  ' when already "active" are harmless (state doesn't change, no observer fire).
+  if isValid(m.top.content) and m.top.content.hasField("textureManagerState") and m.top.content.textureManagerState = "init"
+    focusedRow = 0
+    focusedCol = 0
+    if isValid(m.top.rowItemFocused) and m.top.rowItemFocused.count() >= 2
+      focusedRow = m.top.rowItemFocused[0]
+      focusedCol = m.top.rowItemFocused[1]
+    end if
+    updateTextureBufferRange(m.top.content, focusedRow, focusedCol, m.top.numRows)
+    activateTextureManager(m.top.content)
+  end if
+
   return rowRef
 end function
 
@@ -932,6 +949,7 @@ end sub
 sub onRowItemFocused()
   rowIndex = m.top.rowItemFocused[0]
   m.top.focusedItem = m.top.content.getChild(rowIndex).getChild(m.top.rowItemFocused[1])
+  updateTextureBufferRange(m.top.content, rowIndex, m.top.rowItemFocused[1], m.top.numRows)
 
   ' Skip panel position recalculation when horizontal item scrolling fires rowItemFocused
   ' without an actual row change (avoids redundant translation/targetTranslationY updates).

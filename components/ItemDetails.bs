@@ -9,6 +9,7 @@ import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
 const ITEM_DETAILS_EXTRAS_PADDING = 24
@@ -139,6 +140,14 @@ end sub
 
 ' OnScreenShown: Callback when view is presented on screen
 sub OnScreenShown()
+  ' Restore texture management — reactivate and restore buffer range so cells reload.
+  if isValid(m.extrasGrid) and isValid(m.extrasGrid.content)
+    if isValid(m.extrasGrid.rowItemFocused) and m.extrasGrid.rowItemFocused.count() >= 2
+      updateTextureBufferRange(m.extrasGrid.content, m.extrasGrid.rowItemFocused[0], m.extrasGrid.rowItemFocused[1], m.extrasGrid.numRows)
+    end if
+    activateTextureManager(m.extrasGrid.content)
+  end if
+
   ' Set backdrop from item data (only if itemContent is already loaded)
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
     device = m.global.device
@@ -167,6 +176,11 @@ sub OnScreenShown()
       m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
     end if
   end if
+end sub
+
+sub OnScreenHidden()
+  m.log.info("OnScreenHidden")
+  hideTextureManager(m.extrasGrid.content)
 end sub
 
 ' Triggered when CreateItemDetailsGroup sets itemId — kicks off async data load
@@ -3231,6 +3245,7 @@ end function
 ' Called automatically by SceneManager.popScene() / clearScenes()
 sub destroy()
   m.log.verbose("destroy")
+  destroyTextureManager(m.extrasGrid.content)
 
   ' Safety net: stop the loading spinner in case the component is destroyed
   ' while the initial load or a refresh is still in flight.

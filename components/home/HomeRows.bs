@@ -2,6 +2,7 @@ import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.top.itemComponentName = "JRRowItem"
@@ -11,6 +12,7 @@ sub init()
   m.top.content = CreateObject("roSGNode", "ContentNode")
 
   updateSize()
+  initTextureManager(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
 
   m.top.setfocus(true)
 
@@ -50,6 +52,11 @@ sub loadLibraries()
 
   ' Create skeleton rows for all non-latestmedia sections
   createSkeletonRows()
+
+  ' Set initial buffer range now that skeleton rows exist. This lets shouldLoadTexture()
+  ' use buffer logic immediately — cells outside the buffer skip image fetch during init,
+  ' preventing HTTP cache pollution that would mask texture management on first scroll.
+  updateTextureBufferRange(m.top.content, 0, 0, m.top.numRows)
 
   ' Show rows immediately — no timer hack needed since skeletons are in place
   m.top.showRowCounter = [true]
@@ -215,6 +222,20 @@ sub onLibrariesLoaded()
     insertLatestMediaSkeletons()
     setRowItemSize()
     m.initialLoadComplete = true
+
+    ' Layout is stable — activate texture management so cells can start
+    ' unloading off-screen textures. Before this point, all cells keep
+    ' their textures loaded to prevent visual glitches during layout changes.
+    ' Recalculate buffer range first — the initial updateTextureBufferRange ran
+    ' when the content root had 0 children, leaving loadedRowRange at [-1,-1,-1,-1].
+    focusedRow = 0
+    focusedCol = 0
+    if isValid(m.top.rowItemFocused) and m.top.rowItemFocused.count() >= 2
+      focusedRow = m.top.rowItemFocused[0]
+      focusedCol = m.top.rowItemFocused[1]
+    end if
+    updateTextureBufferRange(m.top.content, focusedRow, focusedCol, m.top.numRows)
+    activateTextureManager(m.top.content)
   end if
 
   ' Fire off latestmedia data tasks
@@ -706,6 +727,7 @@ end sub
 
 ' Observer for rowItemFocused field - delegates to updateBackdropForFocusedItem
 sub onItemFocused()
+  updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
   updateBackdropForFocusedItem()
 end sub
 
@@ -751,6 +773,8 @@ end function
 ' destroy: Full teardown releasing all resources before component removal
 ' Called by Home.bs destroy() before nulling the homeRows reference
 sub destroy()
+  destroyTextureManager(m.top.content)
+
   ' Unobserve m.top fields
   m.top.unobserveField("rowItemSelected")
   m.top.unobserveField("rowItemFocused")

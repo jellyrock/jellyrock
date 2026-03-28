@@ -3,6 +3,7 @@ import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.top.itemComponentName = "JRRowItem"
@@ -11,6 +12,7 @@ sub init()
   m.top.content = CreateObject("roSGNode", "ContentNode")
 
   updateSize()
+  initTextureManager(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
 
   m.top.setFocus(true)
 
@@ -72,6 +74,7 @@ end sub
 sub loadFavorites()
   if not m.initialLoadComplete
     createSkeletonRows()
+    updateTextureBufferRange(m.top.content, 0, 0, m.top.numRows)
     m.top.showRowCounter = [true]
   end if
 
@@ -186,6 +189,17 @@ sub onFavoritesLoaded()
   end if
 
   updateBackdropForFocusedItem()
+
+  ' All rows populated — activate texture management so off-screen cells unload.
+  ' Recalculate buffer range first — rows were added after the initial range calculation.
+  focusedRow = 0
+  focusedCol = 0
+  if isValid(m.top.rowItemFocused) and m.top.rowItemFocused.count() >= 2
+    focusedRow = m.top.rowItemFocused[0]
+    focusedCol = m.top.rowItemFocused[1]
+  end if
+  updateTextureBufferRange(m.top.content, focusedRow, focusedCol, m.top.numRows)
+  activateTextureManager(m.top.content)
 end sub
 
 ' Find a row by its sectionId
@@ -303,6 +317,7 @@ sub itemSelected()
 end sub
 
 sub onItemFocused()
+  updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
   updateBackdropForFocusedItem()
 end sub
 
@@ -343,6 +358,8 @@ end function
 ' ============================================
 
 sub destroy()
+  destroyTextureManager(m.top.content)
+
   m.top.unobserveField("rowItemSelected")
   m.top.unobserveField("rowItemFocused")
 

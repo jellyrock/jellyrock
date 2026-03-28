@@ -4,6 +4,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.log = new log.Logger("Home")
@@ -152,6 +153,14 @@ sub OnScreenShown()
     refresh()
   end if
 
+  ' Restore texture management — reactivate and restore buffer range so cells reload.
+  if isValid(m.activeContent) and isValid(m.activeContent.content)
+    if isValid(m.activeContent.rowItemFocused) and m.activeContent.rowItemFocused.count() >= 2
+      updateTextureBufferRange(m.activeContent.content, m.activeContent.rowItemFocused[0], m.activeContent.rowItemFocused[1], m.activeContent.numRows)
+    end if
+    activateTextureManager(m.activeContent.content)
+  end if
+
   ' Re-evaluate backdrop setting visibility (updates when user changes setting from Settings screen)
   scene.callFunc("refreshBackdropSetting")
 end sub
@@ -159,6 +168,11 @@ end sub
 ' JRScreen hook called when the screen is hidden by the screen manager
 sub OnScreenHidden()
   m.log.info("OnScreenHidden")
+
+  ' Release texture memory — cells with renderTracking "none" unload their URIs.
+  if isValid(m.activeContent) and isValid(m.activeContent.content)
+    hideTextureManager(m.activeContent.content)
+  end if
 
   ' Deactivate voice so other screens can claim the voice route.
   ' Only toggle active — never set voiceEnabled=false (matches BaseGridView pattern).
