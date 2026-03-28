@@ -1784,7 +1784,9 @@ sub setDateAdded(item as object)
 
   ' Set X position only — Y is deferred to anchorDateLabel() which runs after the
   ' button group layout settles (via renderTracking observer).
-  m.dateCreatedLabel.translation = [1920 - 96 - 450, 0]
+  ' Preserve the existing Y so that on refresh the label keeps its correct position
+  ' from the previous positioning cycle rather than resetting to 0 (top of screen).
+  m.dateCreatedLabel.translation = [1920 - 96 - 450, m.dateCreatedLabel.translation[1]]
   m.dateCreatedLabel.visible = true
 end sub
 
