@@ -1,0 +1,196 @@
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  @suite("streamSelection - resolveAudioLanguagePreference()")
+  class ResolveAudioLanguagePreferenceTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+      ' Set baseline Roku locale for tests
+      m.global.device.locale = "en_US"
+    end function
+
+    ' Helper to create mock user settings node
+    private function createMockUserSettings(playbackAudioLanguagePreference as dynamic, playbackAudioLanguageCustom = "" as dynamic) as object
+      mockSettings = {
+        playbackAudioLanguagePreference: playbackAudioLanguagePreference,
+        playbackAudioLanguageCustom: playbackAudioLanguageCustom
+      }
+      return mockSettings
+    end function
+
+    ' Helper to create mock user config node
+    private function createMockUserConfig(audioLanguagePreference as dynamic) as object
+      mockConfig = {
+        audioLanguagePreference: audioLanguagePreference
+      }
+      return mockConfig
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyRock override setting tests")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns web client value when JellyRock setting is 'webclient'")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("jpn")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "jpn")
+    end function
+
+    @it("returns mapped Roku locale when setting is 'roku' with English locale")
+    function _()
+      m.global.device.locale = "en_US"
+      settings = m.createMockUserSettings("roku")
+      config = m.createMockUserConfig("jpn")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "eng")
+    end function
+
+    @it("returns mapped Roku locale when setting is 'roku' with French locale")
+    function _()
+      m.global.device.locale = "fr_CA"
+      settings = m.createMockUserSettings("roku")
+      config = m.createMockUserConfig("eng")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "fra")
+    end function
+
+    @it("returns empty string when setting is 'roku' but locale is empty")
+    function _()
+      m.global.device.locale = ""
+      settings = m.createMockUserSettings("roku")
+      config = m.createMockUserConfig("eng")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "")
+    end function
+
+    @it("returns custom code when setting is 'custom' and code is valid 3-letter code")
+    function _()
+      settings = m.createMockUserSettings("custom", "jpn")
+      config = m.createMockUserConfig("eng")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "jpn")
+    end function
+
+    @it("returns empty string when setting is 'custom' but custom code is empty")
+    function _()
+      settings = m.createMockUserSettings("custom", "")
+      config = m.createMockUserConfig("eng")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "")
+    end function
+
+    @it("returns empty string when setting is 'custom' but code is too short")
+    function _()
+      settings = m.createMockUserSettings("custom", "en")
+      config = m.createMockUserConfig("eng")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "")
+    end function
+
+    @it("returns empty string when setting is 'custom' but code is too long")
+    function _()
+      settings = m.createMockUserSettings("custom", "english")
+      config = m.createMockUserConfig("eng")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "")
+    end function
+
+    @it("lowercases custom code for consistent matching")
+    function _()
+      settings = m.createMockUserSettings("custom", "ENG")
+      config = m.createMockUserConfig("")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "eng")
+    end function
+
+    @it("uses web client setting when JellyRock setting is empty string")
+    function _()
+      settings = m.createMockUserSettings("")
+      config = m.createMockUserConfig("fra")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "fra")
+    end function
+
+    @it("uses web client setting when JellyRock setting is unexpected value")
+    function _()
+      settings = m.createMockUserSettings("invalid_value")
+      config = m.createMockUserConfig("deu")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "deu")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Web client setting fallback tests")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns web client value when no JellyRock override")
+    function _()
+      settings = m.createMockUserSettings("")
+      config = m.createMockUserConfig("spa")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "spa")
+    end function
+
+    @it("returns empty string when web client value is empty and no override")
+    function _()
+      settings = m.createMockUserSettings("")
+      config = m.createMockUserConfig("")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Invalid input handling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty string when both settings and config are invalid")
+    function _()
+      result = resolveAudioLanguagePreference(invalid, invalid)
+      m.assertEqual(result, "")
+    end function
+
+    @it("returns web client value when settings is invalid but config is valid")
+    function _()
+      config = m.createMockUserConfig("por")
+      result = resolveAudioLanguagePreference(invalid, config)
+      m.assertEqual(result, "por")
+    end function
+
+    @it("returns empty string when settings is valid but config is invalid")
+    function _()
+      settings = m.createMockUserSettings("")
+      result = resolveAudioLanguagePreference(settings, invalid)
+      m.assertEqual(result, "")
+    end function
+
+    @it("handles missing playbackAudioLanguagePreference field gracefully")
+    function _()
+      settings = {}
+      config = m.createMockUserConfig("ita")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "ita")
+    end function
+
+    @it("handles missing audioLanguagePreference field on config gracefully")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = {}
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "")
+    end function
+
+    @it("handles missing playbackAudioLanguageCustom field when setting is 'custom'")
+    function _()
+      settings = { playbackAudioLanguagePreference: "custom" }
+      config = m.createMockUserConfig("eng")
+      result = resolveAudioLanguagePreference(settings, config)
+      m.assertEqual(result, "")
+    end function
+
+  end class
+
+end namespace

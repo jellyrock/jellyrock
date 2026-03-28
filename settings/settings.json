@@ -75,6 +75,74 @@
         "default": "true"
       },
       {
+        "title": "Language Preferences",
+        "description": "Override the web client's audio and subtitle language preferences for this device.",
+        "children": [
+          {
+            "title": "Audio Language Preference",
+            "description": "Override the web client's audio language preference. Controls which language audio track is preferred during playback.",
+            "settingName": "playbackAudioLanguagePreference",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Use Roku Language",
+                "id": "roku"
+              },
+              {
+                "title": "Custom",
+                "id": "custom"
+              }
+            ]
+          },
+          {
+            "title": "Custom Audio Language Code",
+            "description": "Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa).",
+            "settingName": "playbackAudioLanguageCustom",
+            "type": "alpha",
+            "default": "",
+            "visibleWhen": { "settingName": "playbackAudioLanguagePreference", "value": "custom" }
+          },
+          {
+            "title": "Subtitle Language Preference",
+            "description": "Override the web client's subtitle language preference. Controls which language subtitle track is preferred during playback.",
+            "settingName": "playbackSubtitleLanguagePreference",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Use Audio Language",
+                "id": "audio"
+              },
+              {
+                "title": "Use Roku Language",
+                "id": "roku"
+              },
+              {
+                "title": "Custom",
+                "id": "custom"
+              }
+            ]
+          },
+          {
+            "title": "Custom Subtitle Language Code",
+            "description": "Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa).",
+            "settingName": "playbackSubtitleLanguageCustom",
+            "type": "alpha",
+            "default": "",
+            "visibleWhen": { "settingName": "playbackSubtitleLanguagePreference", "value": "custom" }
+          }
+        ]
+      },
+      {
         "title": "Maximum Resolution",
         "description": "Configure the maximum resolution when transcoding video files to this device.",
         "settingName": "playbackResolutionMax",
