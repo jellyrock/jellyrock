@@ -27,6 +27,7 @@ sub init()
   m.integerSetting = m.top.findNode("integerSetting")
   m.radioSetting = m.top.findNode("radioSetting")
   m.hexSetting = m.top.findNode("hexSetting")
+  m.alphaSetting = m.top.findNode("alphaSetting")
 
   m.integerSetting.observeField("submit", "onKeyGridSubmit")
   m.integerSetting.observeField("escape", "onKeyGridEscape")
@@ -34,6 +35,10 @@ sub init()
   m.hexSetting.observeField("submit", "onHexKeyGridSubmit")
   m.hexSetting.observeField("escape", "onHexKeyGridEscape")
   m.hexSetting.observeField("reset", "onHexResetRequested")
+
+  m.alphaSetting.observeField("submit", "onAlphaKeyGridSubmit")
+  m.alphaSetting.observeField("escape", "onAlphaKeyGridEscape")
+  m.alphaSetting.observeField("reset", "onAlphaResetRequested")
 
   m.settingsMenu.setFocus(true)
   m.settingsMenu.observeField("itemFocused", "settingFocused")
@@ -135,6 +140,68 @@ sub onResetDialogResponse()
   m.hexSetting.findNode("resetButton").setFocus(true)
 end sub
 
+sub onAlphaKeyGridSubmit()
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
+  newValue = LCase(m.alphaSetting.text)
+
+  ' Validate alpha input is exactly 3 letters
+  if Len(newValue) <> 3
+    m.global.sceneManager.callFunc("userMessage", tr("Invalid Language Code"), tr("Please enter exactly 3 letters (e.g., eng, jpn, fra)."))
+    return
+  end if
+
+  ' Update node field - observer handles registry persistence
+  user.settings.Save(selectedSetting.settingName, newValue)
+
+  m.settingsMenu.setFocus(true)
+end sub
+
+sub onAlphaKeyGridEscape()
+  if m.alphaSetting.escape = "left" or m.alphaSetting.escape = "back"
+    m.settingsMenu.setFocus(true)
+  end if
+end sub
+
+' Called when reset button is selected in AlphaKeyboard
+sub onAlphaResetRequested()
+  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Yes"), tr("No")])
+  m.global.sceneManager.observeFieldScoped("dataReturned", "onAlphaResetDialogResponse")
+end sub
+
+' Handle user response from alpha reset confirmation dialog
+sub onAlphaResetDialogResponse()
+  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+
+  returnData = m.global.sceneManager.returnData
+  if not isValid(returnData) then return
+
+  ' User selected "No" or closed dialog
+  if returnData.indexSelected <> 0
+    m.alphaSetting.findNode("resetButton").setFocus(true)
+    return
+  end if
+
+  ' User confirmed reset - get default value from config tree
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
+  configEntry = findConfigTreeKey(selectedSetting.settingName, m.configTree)
+
+  if not isValid(configEntry) or not isValid(configEntry.default)
+    m.log.warn("Could not find default value for setting", selectedSetting.settingName)
+    m.alphaSetting.findNode("resetButton").setFocus(true)
+    return
+  end if
+
+  defaultValue = configEntry.default
+
+  ' Update node field - observer handles registry persistence
+  user.settings.Save(selectedSetting.settingName, defaultValue)
+
+  ' Update the UI
+  m.alphaSetting.text = defaultValue
+
+  m.alphaSetting.findNode("resetButton").setFocus(true)
+end sub
+
 sub LoadMenu(configSection)
   if not isValid(configSection.children)
     ' Load parent menu
@@ -193,6 +260,7 @@ sub settingFocused()
   m.integerSetting.visible = false
   m.radioSetting.visible = false
   m.hexSetting.visible = false
+  m.alphaSetting.visible = false
 
   userSettings = m.global.user.settings
 
@@ -242,6 +310,15 @@ sub settingFocused()
       m.hexSetting.text = ""
     end if
     m.hexSetting.visible = true
+  else if selectedSetting.type = "alpha"
+    ' Alpha text input type (used for language codes)
+    textValue = userSettings[selectedSetting.settingName]
+    if isValid(textValue)
+      m.alphaSetting.text = textValue
+    else
+      m.alphaSetting.text = ""
+    end if
+    m.alphaSetting.visible = true
   else
     m.log.warn("Unknown setting type", selectedSetting.type)
   end if
@@ -262,6 +339,8 @@ sub settingSelected()
       m.radioSetting.setFocus(true)
     else if selectedItem.type = "text"
       m.hexSetting.setFocus(true)
+    else if selectedItem.type = "alpha"
+      m.alphaSetting.setFocus(true)
     end if
   else if isValid(selectedItem.children) and selectedItem.children.Count() > 0 ' Show sub menu
     LoadMenu(selectedItem)
