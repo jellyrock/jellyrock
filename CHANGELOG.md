@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (ItemDetails) preserve date label Y position on refresh (#427 follow-up) ([c76c272](https://github.com/jellyrock/jellyrock/commit/c76c2723))
 - (ItemDetails) restore item logo for primary-image fallback types ([#427](https://github.com/jellyrock/jellyrock/pull/427))
 - run captionTask VTT fetch on Task thread ([#425](https://github.com/jellyrock/jellyrock/pull/425))
 
