@@ -48,6 +48,7 @@ sub loadItems()
 
   id = m.top.itemId
   mediaSourceId = invalid
+  if m.top.mediaSourceId <> "" then mediaSourceId = m.top.mediaSourceId
   audio_stream_idx = m.top.selectedAudioStreamIndex
   forceTranscoding = m.top.forceTranscoding
   bypassDoviPreservation = m.top.bypassDoviPreservation
@@ -90,14 +91,33 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     mediaSources = meta.mediaSourcesData.mediaSources
   end if
 
+  ' Select best video source if no specific source was requested
+  if not isValid(mediaSourceId) and isValid(mediaSources) and mediaSources.Count() > 1
+    bestSourceIndex = findBestVideoSource(mediaSources)
+    mediaSourceId = mediaSources[bestSourceIndex].Id
+    m.log.info("Auto-selected video source", "index", bestSourceIndex, "mediaSourceId", mediaSourceId)
+  end if
+
   ' Re-determine audio stream index if no manual selection was made
   ' Task field = 0 means no manual selection (default value)
   ' Task field > 0 means user manually selected from MovieDetails/TVListDetails - preserve it
   if m.top.selectedAudioStreamIndex = 0
-    if isValid(mediaSources) and isValid(mediaSources[0].MediaStreams)
+    ' Use the selected source's MediaStreams for audio selection when available
+    selectedSourceStreams = invalid
+    if isValid(mediaSourceId) and isValid(mediaSources)
+      for each source in mediaSources
+        if source.Id = mediaSourceId and isValid(source.MediaStreams)
+          selectedSourceStreams = source.MediaStreams
+          exit for
+        end if
+      end for
+    end if
+    if isValid(selectedSourceStreams)
       ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
       playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-
+      audio_stream_idx = findBestAudioStreamIndex(selectedSourceStreams, playDefault, userSession.config.audioLanguagePreference)
+    else if isValid(mediaSources) and isValid(mediaSources[0].MediaStreams)
+      playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
       audio_stream_idx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, userSession.config.audioLanguagePreference)
     else
       ' MediaStreams not available - keep existing behavior of using 0
@@ -216,8 +236,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
 
   ' Determine final subtitle_idx BEFORE calling ItemPostPlaybackInfo to avoid duplicate API calls.
   ' defaultSubtitleTrackFromVid() only needs meta and audio_stream_idx, both available at this point.
+  ' Pass mediaSourceId so subtitle selection uses the correct source's streams (not always mediaSources[0]).
   if subtitle_idx = SubtitleSelection.notset
-    subtitle_idx = defaultSubtitleTrackFromVid(meta, audio_stream_idx)
+    subtitle_idx = defaultSubtitleTrackFromVid(meta, audio_stream_idx, mediaSourceId)
   end if
 
   ' PlayStart requires the time to be in seconds

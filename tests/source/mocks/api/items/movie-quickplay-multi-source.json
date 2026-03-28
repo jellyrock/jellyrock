@@ -1,0 +1,75 @@
+{
+  "id": "movie-quickplay-multi-source-001",
+  "type": "Movie",
+  "name": "Multi Source Movie",
+  "MediaStreams": [
+    {
+      "Type": "Video",
+      "Index": 0,
+      "Height": 1080,
+      "Width": 1920,
+      "Codec": "h264",
+      "VideoRange": "SDR",
+      "IsInterlaced": false
+    },
+    {
+      "Type": "Audio",
+      "Index": 1,
+      "IsDefault": true,
+      "channels": 2,
+      "codec": "aac"
+    }
+  ],
+  "MediaSources": [
+    {
+      "Id": "source-1080p",
+      "SupportsDirectPlay": true,
+      "Bitrate": 8000000,
+      "MediaStreams": [
+        {
+          "Type": "Video",
+          "Index": 0,
+          "Height": 1080,
+          "Width": 1920,
+          "Codec": "h264",
+          "VideoRange": "SDR",
+          "IsInterlaced": false
+        },
+        {
+          "Type": "Audio",
+          "Index": 1,
+          "IsDefault": true,
+          "channels": 2,
+          "codec": "aac"
+        }
+      ]
+    },
+    {
+      "Id": "source-4k",
+      "SupportsDirectPlay": true,
+      "Bitrate": 20000000,
+      "MediaStreams": [
+        {
+          "Type": "Video",
+          "Index": 0,
+          "Height": 2160,
+          "Width": 3840,
+          "Codec": "hevc",
+          "VideoRange": "HDR10",
+          "IsInterlaced": false
+        },
+        {
+          "Type": "Audio",
+          "Index": 1,
+          "IsDefault": true,
+          "channels": 6,
+          "codec": "eac3"
+        }
+      ]
+    }
+  ],
+  "UserData": {
+    "isFavorite": false,
+    "played": false
+  }
+}

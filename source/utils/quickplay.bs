@@ -28,16 +28,40 @@ namespace quickplay
     queueItem = nodeHelpers.createQueueItem(itemNode)
     if not isValid(queueItem) then return
 
+    ' Select best video source for device capabilities
+    ' When multiple sources exist, set mediaSourceId so LoadVideoContentTask uses the
+    ' preferred source without overwriting the base item ID needed for metadata/reporting.
+    audioStreams = itemNode.audioStreams
+    if isValid(itemNode.mediaSourcesData) and isValidAndNotEmpty(itemNode.mediaSourcesData.mediaSources)
+      mediaSources = itemNode.mediaSourcesData.mediaSources
+      if mediaSources.Count() > 1
+        bestSourceIndex = findBestVideoSource(mediaSources)
+        bestSource = mediaSources[bestSourceIndex]
+        if isValidAndNotEmpty(bestSource.Id)
+          queueItem.mediaSourceId = bestSource.Id
+        end if
+        ' Use the selected source's audio streams for best audio selection
+        if isValid(bestSource.MediaStreams)
+          audioStreams = []
+          for each stream in bestSource.MediaStreams
+            if isValid(stream.Type) and LCase(stream.Type) = "audio"
+              audioStreams.push(stream)
+            end if
+          end for
+        end if
+      end if
+    end if
+
     ' Get user session for audio selection
     localUser = m.global.user
 
-    ' audioStreams is pre-filtered to audio-only by the transformer.
+    ' audioStreams is pre-filtered to audio-only by the transformer (or re-filtered above).
     ' findBestAudioStreamIndex filters by Type="audio" internally, so passing
     ' pre-filtered audio streams works correctly.
     audioStreamIndex = 0
-    if isValidAndNotEmpty(itemNode.audioStreams)
+    if isValidAndNotEmpty(audioStreams)
       playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-      audioStreamIndex = findBestAudioStreamIndex(itemNode.audioStreams, playDefault, localUser.config.audioLanguagePreference)
+      audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, localUser.config.audioLanguagePreference)
     end if
 
     ' Resume position from typed field; startingPoint is computed here, not stored on node

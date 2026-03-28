@@ -6,6 +6,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/session.bs"
+import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/trickplay.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
@@ -35,6 +36,9 @@ sub init()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.itemType = m.currentItem.type
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.currentItem.selectedAudioStreamIndex
+  if isValidAndNotEmpty(m.currentItem.mediaSourceId)
+    m.LoadMetaDataTask.mediaSourceId = m.currentItem.mediaSourceId
+  end if
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   m.LoadMetaDataTask.control = "RUN"
 
@@ -280,6 +284,12 @@ sub handleShowAudioMenuAction()
   m.top.selectAudioPressed = true
 end sub
 
+' handleShowVideoSourceMenuAction: Handles action to show video source selection menu
+'
+sub handleShowVideoSourceMenuAction()
+  m.top.selectVideoSourcePressed = true
+end sub
+
 ' handleShowVideoInfoPopupAction: Handles action to show video info popup
 '
 sub handleShowVideoInfoPopupAction()
@@ -323,6 +333,11 @@ sub onOSDAction()
 
   if action = "showaudiomenu"
     handleShowAudioMenuAction()
+    return
+  end if
+
+  if action = "showvideosourcemenu"
+    handleShowVideoSourceMenuAction()
     return
   end if
 
@@ -494,6 +509,39 @@ sub onAudioIndexChange()
   m.LoadMetaDataTask.control = "RUN"
 end sub
 
+' onVideoSourceChange: Handles video source switching from OSD
+' Saves position, stops playback, re-selects audio for the new source's streams,
+' and reloads video content with the new MediaSource ID.
+sub onVideoSourceChange()
+  newSourceId = m.top.mediaSourceId
+  if not isValidAndNotEmpty(newSourceId) then return
+
+  ' Save the current video position
+  m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
+
+  m.top.control = "stop"
+
+  ' Re-determine best audio stream for the new source's MediaStreams
+  audioStreamIdx = 0
+  if isValid(m.top.fullVideoSourceData)
+    for each source in m.top.fullVideoSourceData
+      if source.Id = newSourceId and isValid(source.MediaStreams)
+        localUser = m.global.user
+        playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
+        audioStreamIdx = findBestAudioStreamIndex(source.MediaStreams, playDefault, localUser.config.audioLanguagePreference)
+        exit for
+      end if
+    end for
+  end if
+
+  m.LoadMetaDataTask.selectedSubtitleIndex = -2 ' Reset to auto-detect for new source
+  m.LoadMetaDataTask.selectedAudioStreamIndex = audioStreamIdx
+  m.LoadMetaDataTask.itemId = m.currentItem.id
+  m.LoadMetaDataTask.mediaSourceId = newSourceId
+  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  m.LoadMetaDataTask.control = "RUN"
+end sub
+
 sub onPlaybackErrorDialogClosed(msg)
   sourceNode = msg.getRoSGNode()
   sourceNode.unobserveField("buttonSelected")
@@ -548,7 +596,6 @@ sub onVideoContentLoaded()
   m.top.PlaySessionId = videoContent[0].PlaySessionId
   m.top.videoId = videoContent[0].id
   m.top.container = videoContent[0].container
-  m.top.mediaSourceId = videoContent[0].mediaSourceId
   m.top.fullSubtitleData = videoContent[0].fullSubtitleData
   m.top.fullAudioData = videoContent[0].fullAudioData
   m.top.audioIndex = videoContent[0].audioIndex
@@ -559,12 +606,47 @@ sub onVideoContentLoaded()
   m.top.doviDirectPlayFallbackAvailable = isValid(videoContent[0].doviDirectPlayFallbackAvailable) and videoContent[0].doviDirectPlayFallbackAvailable
   m.top.transcodeAvailable = isValid(videoContent[0].transcodeAvailable) and videoContent[0].transcodeAvailable
 
+  ' Unobserve mediaSourceId before setting to prevent observer loop
+  m.top.unobserveField("mediaSourceId")
+  m.top.mediaSourceId = videoContent[0].mediaSourceId
+  m.top.observeField("mediaSourceId", "onVideoSourceChange")
+
   ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
   m.LoadMetaDataTask.bypassDoviPreservation = false
   m.LoadMetaDataTask.forceTranscoding = false
 
   ' Pass JellyfinBaseItem node to OSD for typed field access
   if isValid(videoContent[0].meta)
+    ' Populate video source data for OSD source switching.
+    ' Only update if the new metadata has more sources than what we already have —
+    ' a source-switch reload fetches metadata for a single MediaSource ID,
+    ' which loses the parent item's full source list.
+    if isValid(videoContent[0].meta.mediaSourcesData) and isValidAndNotEmpty(videoContent[0].meta.mediaSourcesData.mediaSources)
+      newSources = videoContent[0].meta.mediaSourcesData.mediaSources
+      existingCount = 0
+      if isValid(m.top.fullVideoSourceData) then existingCount = m.top.fullVideoSourceData.Count()
+      if newSources.Count() >= existingCount
+        m.top.fullVideoSourceData = newSources
+      end if
+    end if
+    ' Pre-set video source count on OSD BEFORE itemData triggers onItemDataChanged().
+    ' A source-switch reload returns metadata for a single MediaSource, so
+    ' hasMultipleVideoSources would be false. Override with the preserved count
+    ' so setButtonStates() keeps the video source button.
+    if isValid(m.top.fullVideoSourceData) and m.top.fullVideoSourceData.Count() > 1
+      m.osd.numVideoSources = m.top.fullVideoSourceData.Count()
+      ' Set the active source's name tag for the OSD title (e.g., "[B&W]", "[Colorized]")
+      currentSourceId = videoContent[0].mediaSourceId
+      m.osd.videoSourceTag = ""
+      for each source in m.top.fullVideoSourceData
+        if source.Id = currentSourceId and isValidAndNotEmpty(source.Name)
+          m.osd.videoSourceTag = source.Name
+          exit for
+        end if
+      end for
+    else
+      m.osd.videoSourceTag = ""
+    end if
     m.osd.itemData = videoContent[0].meta
   end if
 
@@ -1239,6 +1321,7 @@ sub destroy()
   m.top.unobserveField("content")
   m.top.unobserveField("selectedSubtitle")
   m.top.unobserveField("audioIndex")
+  m.top.unobserveField("mediaSourceId")
   m.top.unobserveField("allowCaptions")
   m.top.unobserveField("subtitleTrack")
   m.top.unobserveField("globalCaptionMode")

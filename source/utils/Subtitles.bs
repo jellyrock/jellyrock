@@ -23,8 +23,9 @@ end function
 '
 ' @param {object} meta - metadata object containing MediaSources with MediaStreams
 ' @param {integer} selectedAudioIndex - index of selected audio stream (used for Smart mode language matching)
+' @param {dynamic} [mediaSourceId=invalid] - optional MediaSource ID to use instead of mediaSources[0]
 ' @return {integer} subtitle track index or SubtitleSelection.none if not found
-function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integer) as integer
+function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integer, mediaSourceId = invalid as dynamic) as integer
   userSession = m.global.user
   if userSession.config.subtitleMode = "None"
     return SubtitleSelection.none ' No subtitles desired: return none
@@ -35,8 +36,24 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
     mediaSources = meta.mediaSourcesData.mediaSources
   end if
-  if not isValid(mediaSources) or not isValidAndNotEmpty(mediaSources[0].MediaStreams) then return SubtitleSelection.none
-  allStreams = mediaSources[0].MediaStreams
+  if not isValid(mediaSources) then return SubtitleSelection.none
+
+  ' Use the selected source's MediaStreams when a specific mediaSourceId is provided,
+  ' matching the pattern used for audio stream selection in LoadVideoContentTask.
+  allStreams = invalid
+  if isValidAndNotEmpty(mediaSourceId)
+    for each source in mediaSources
+      if source.Id = mediaSourceId and isValidAndNotEmpty(source.MediaStreams)
+        allStreams = source.MediaStreams
+        exit for
+      end if
+    end for
+  end if
+  ' Fall back to first source if no match or no mediaSourceId provided
+  if not isValid(allStreams)
+    if not isValidAndNotEmpty(mediaSources[0].MediaStreams) then return SubtitleSelection.none
+    allStreams = mediaSources[0].MediaStreams
+  end if
 
   subtitles = sortSubtitles(allStreams)
 

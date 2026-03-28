@@ -41,9 +41,14 @@ namespace tests
     end function
 
     protected override function teardown()
-      ' Clear queue after each test
+      ' Clear queue after each test - force complete reset
       if isValid(m.global.queueManager)
         m.global.queueManager.callFunc("clear")
+        ' Ensure queue is completely empty by verifying count
+        queueCount = m.global.queueManager.callFunc("getCount")
+        if queueCount > 0
+          m.global.queueManager.callFunc("clear")
+        end if
       end if
       super.teardown()
     end function
@@ -171,6 +176,68 @@ namespace tests
       m.assertNotInvalid(queueItem.selectedAudioStreamIndex)
       ' Original node's audioStreams should be unchanged
       m.assertNotInvalid(itemNode.audioStreams)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("video source selection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets mediaSourceId instead of overwriting id when multiple sources exist")
+    function setsMediaSourceIdNotId()
+      ' Verify queue is empty at start
+      m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
+
+      multiSourceMock = MockDataLoader.LoadItem("movie-quickplay-multi-source")
+      m.assertNotInvalid(multiSourceMock)
+      m.assertEqual(multiSourceMock.id, "movie-quickplay-multi-source-001")
+
+      multiSourceItem = CreateObject("roSGNode", "JellyfinBaseItem")
+      multiSourceItem.id = multiSourceMock.id
+      multiSourceItem.type = multiSourceMock.type
+      multiSourceItem.name = multiSourceMock.name
+      multiSourceItem.title = multiSourceMock.name
+      ' Set mediaSourcesData as the transformer would
+      multiSourceItem.mediaSourcesData = { mediaSources: multiSourceMock.MediaSources }
+
+      quickplay.video(multiSourceItem)
+
+      m.assertEqual(m.global.queueManager.callFunc("getCount"), 1)
+      multiSourceQueueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
+      m.assertNotInvalid(multiSourceQueueItem)
+      ' id must remain the base item ID for metadata lookups and playback reporting
+      m.assertEqual(multiSourceQueueItem.id, multiSourceMock.id)
+      ' mediaSourceId should be set to the selected source's Id
+      m.assertNotInvalid(multiSourceQueueItem.mediaSourceId)
+      m.assertNotEmpty(multiSourceQueueItem.mediaSourceId)
+
+      ' Explicitly pop the item to ensure clean state
+      m.global.queueManager.callFunc("pop")
+      m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
+    end function
+
+    @it("preserves original id with single source (no mediaSourceId override)")
+    function preservesIdWithSingleSource()
+      ' Verify queue is empty at start
+      m.assertEqual(m.global.queueManager.callFunc("getCount"), 0)
+
+      ' Use unique variable names to avoid any scope issues
+      singleSourceMock = MockDataLoader.LoadItem("movie-quickplay-basic")
+      m.assertNotInvalid(singleSourceMock)
+      m.assertEqual(singleSourceMock.id, "movie-quickplay-basic-001")
+
+      singleSourceItem = CreateObject("roSGNode", "JellyfinBaseItem")
+      singleSourceItem.id = singleSourceMock.id
+      singleSourceItem.type = singleSourceMock.type
+      singleSourceItem.name = singleSourceMock.name
+      singleSourceItem.title = singleSourceMock.name
+      singleSourceItem.mediaSourcesData = { mediaSources: singleSourceMock.MediaSources }
+
+      quickplay.video(singleSourceItem)
+
+      m.assertEqual(m.global.queueManager.callFunc("getCount"), 1)
+      singleSourceQueueItem = m.global.queueManager.callFunc("getItemByIndex", 0)
+      m.assertNotInvalid(singleSourceQueueItem)
+      m.assertEqual(singleSourceQueueItem.id, singleSourceMock.id)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

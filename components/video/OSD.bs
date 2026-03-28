@@ -67,6 +67,13 @@ sub onItemDataChanged()
   ' Cache item reference for use in display methods
   m.itemData = item
 
+  ' Preserve the original item name from the first load.
+  ' Source-switch reloads fetch metadata for an alternate version whose name
+  ' may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
+  if not isValidAndNotEmpty(m.originalItemName)
+    m.originalItemName = item.name
+  end if
+
   itemType = item.type
 
   ' Determine isMovie/isSeries flags for ratings display settings.
@@ -105,6 +112,13 @@ sub onItemDataChanged()
 
   ' Stream counts - read pre-computed values from item node
   m.top.numAudioStreams = item.audioStreamCount
+  ' Only update video source count from meta if it's higher than the current value.
+  ' During a source-switch reload, the reloaded meta represents a single MediaSource
+  ' and hasMultipleVideoSources will be false, but the original source list is still valid.
+  metaVideoSources = item.hasMultipleVideoSources ? 2 : 1
+  if metaVideoSources > m.top.numVideoSources
+    m.top.numVideoSources = metaVideoSources
+  end if
 
   ' Runtime — for TvChannel, use the currently-airing program's runtime if available
   runTimeTicks = item.runTimeTicks
@@ -147,6 +161,10 @@ sub setButtonStates()
 
   ' Remove these buttons as needed
 
+  ' Video Sources - hide for single source or live TV
+  if m.top.numVideoSources < 2 or m.itemData.type = "TvChannel"
+    m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showVideoSourceMenu"))
+  end if
   ' Audio Track
   if m.top.numAudioStreams < 2
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showAudioMenu"))
@@ -206,7 +224,15 @@ sub setVideoTitle()
   if item.type = "TvChannel" and isValid(item.currentProgram) and isValidAndNotEmpty(item.currentProgram.name)
     m.videoTitle.text = item.currentProgram.name
   else
-    m.videoTitle.text = item.name
+    ' Use preserved original name (m.originalItemName) to avoid alternate version names
+    ' that may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
+    ' Falls back to item.name on first load before the original is cached.
+    title = m.originalItemName ?? item.name
+    ' Append active video source tag when multiple sources exist (e.g., "[B&W]")
+    if isValidAndNotEmpty(m.top.videoSourceTag)
+      title += " " + m.top.videoSourceTag
+    end if
+    m.videoTitle.text = title
   end if
 end sub
 

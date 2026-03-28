@@ -1,4 +1,6 @@
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
 
 ' streamSelection.bs
 ' Comprehensive audio and video stream selection utilities
@@ -660,6 +662,150 @@ function getTranscodeReasons(url as string) as object
   end if
 
   return []
+end function
+
+' getDeviceVideoCapabilities: Detects device video resolution and HDR support
+'
+' Strategy:
+' - Use cached m.global.device values for resolution (render-thread safe, no object creation)
+' - Use canPlay4k() for 4K eligibility (HDCP 2.2 + HEVC decode check)
+' - Use roDeviceInfo.GetDisplayProperties() for HDR format detection
+'
+' @param {dynamic} [mockCapabilities=invalid] - Optional mock for unit testing (must have _isMock=true)
+' @returns {object} - AssocArray with:
+'   maxHeight (integer) - Maximum display height in pixels
+'   maxWidth (integer) - Maximum display width in pixels
+'   canDecode4k (boolean) - True if device can play 4K content
+'   supportsHdr10 (boolean) - True if display supports HDR10
+'   supportsDolbyVision (boolean) - True if display supports Dolby Vision
+'   supportsHlg (boolean) - True if display supports HLG
+function getDeviceVideoCapabilities(mockCapabilities = invalid as dynamic) as object
+  ' Testing mode: return mock capabilities directly
+  if isValid(mockCapabilities) and isValid(mockCapabilities._isMock) and mockCapabilities._isMock = true
+    return mockCapabilities
+  end if
+
+  ' Production mode: detect from hardware
+  maxHeight = 1080
+  maxWidth = 1920
+  if isValid(m.global) and isValid(m.global.device)
+    if isValid(m.global.device.videoHeight) then maxHeight = m.global.device.videoHeight
+    if isValid(m.global.device.videoWidth) then maxWidth = m.global.device.videoWidth
+  end if
+
+  canDecode4k = canPlay4k()
+
+  supportsHdr10 = false
+  supportsDolbyVision = false
+  supportsHlg = false
+
+  if canDecode4k
+    di = CreateObject("roDeviceInfo")
+    dp = di.GetDisplayProperties()
+    supportsHdr10 = dp.Hdr10 = true
+    supportsDolbyVision = dp.DolbyVision = true
+    supportsHlg = dp.HLG = true
+  end if
+
+  return {
+    maxHeight: maxHeight,
+    maxWidth: maxWidth,
+    canDecode4k: canDecode4k,
+    supportsHdr10: supportsHdr10,
+    supportsDolbyVision: supportsDolbyVision,
+    supportsHlg: supportsHlg
+  }
+end function
+
+' findBestVideoSource: Selects the optimal MediaSource for the device's capabilities
+'
+' Scoring algorithm:
+' 1. Resolution fit (primary): Prefer highest resolution at or below device max.
+'    Sources exceeding device max receive a penalty (will likely transcode).
+' 2. HDR match (secondary): If device supports HDR, prefer HDR sources.
+'    If device does NOT support HDR, prefer SDR (avoids tone-mapping transcode).
+' 3. Direct play (tertiary): Prefer sources the server says can direct play.
+' 4. Bitrate (tiebreaker): Higher bitrate wins among otherwise-equal sources.
+'
+' @param {object} mediaSources - Array of MediaSource objects from Jellyfin API
+' @param {dynamic} [deviceCapabilities=invalid] - Optional device capabilities (for testing)
+' @returns {integer} - Array index of the best MediaSource (0-based)
+function findBestVideoSource(mediaSources as dynamic, deviceCapabilities = invalid as dynamic) as integer
+  if not isValid(mediaSources) or mediaSources.Count() = 0 then return 0
+  if mediaSources.Count() = 1 then return 0
+
+  caps = getDeviceVideoCapabilities(deviceCapabilities)
+
+  bestIndex = 0
+  bestScore = -99999
+
+  for i = 0 to mediaSources.Count() - 1
+    source = mediaSources[i]
+    if not isValid(source) then continue for
+
+    ' Find the first video stream in this source
+    videoStream = invalid
+    if isValid(source.MediaStreams)
+      videoStream = getFirstVideoStream(source.MediaStreams)
+    end if
+
+    score = 0
+    sourceHeight = 0
+    sourceVideoRange = "SDR"
+
+    if isValid(videoStream)
+      if isValid(videoStream.Height) then sourceHeight = videoStream.Height
+      if isValid(videoStream.VideoRange) then sourceVideoRange = videoStream.VideoRange
+    end if
+
+    ' --- Resolution fit (primary: up to 10000 points) ---
+    ' Sources at or below device max get positive score proportional to resolution
+    ' Sources above device max get a penalty
+    if sourceHeight > 0
+      if sourceHeight <= caps.maxHeight
+        ' Higher resolution = higher score (within device capability)
+        score += sourceHeight
+      else
+        ' Exceeds device max: penalize proportional to overshoot
+        ' Still prefer a 4K source over garbage, but rank below fitting sources
+        score += caps.maxHeight - (sourceHeight - caps.maxHeight)
+      end if
+    end if
+
+    ' --- HDR match (secondary: up to 500 points) ---
+    isHdrSource = LCase(sourceVideoRange) <> "sdr"
+    deviceSupportsHdr = caps.supportsHdr10 or caps.supportsDolbyVision or caps.supportsHlg
+
+    if isHdrSource
+      if deviceSupportsHdr
+        ' Device supports HDR and source is HDR: bonus
+        score += 500
+      else
+        ' Device does NOT support HDR: penalty (tone-mapping transcode)
+        score -= 500
+      end if
+    end if
+
+    ' --- Direct play (tertiary: 200 points) ---
+    if isValid(source.SupportsDirectPlay) and source.SupportsDirectPlay = true
+      score += 200
+    end if
+
+    ' --- Bitrate tiebreaker (up to ~50 points, normalized) ---
+    if isValid(source.Bitrate) and source.Bitrate > 0
+      ' Normalize bitrate to a small range so it only breaks ties
+      ' Typical bitrates: 5Mbps (5000000) to 80Mbps (80000000)
+      ' Divide by 1000000 to get 5-80 range
+      score += int(source.Bitrate / 1000000)
+    end if
+
+    if score > bestScore
+      bestScore = score
+      bestIndex = i
+    end if
+  end for
+
+  return bestIndex
 end function
 
 ' applyLiveDirectPlayFallback: Flags that a transcode retry is available for live streams
