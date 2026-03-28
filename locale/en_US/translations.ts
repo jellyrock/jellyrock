@@ -1160,6 +1160,10 @@
       <translation>Select Subtitles</translation>
     </message>
     <message>
+      <source>Select Video Source</source>
+      <translation>Select Video Source</translation>
+    </message>
+    <message>
       <source>Select when to show titles.</source>
       <translation>Select when to show titles.</translation>
       <extracomment>Settings Menu - Description for option</extracomment>
