@@ -1,0 +1,222 @@
+
+namespace tests
+
+  @suite("textureManager.bs - Texture Manager Utilities")
+  class TextureManagerTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("calculateTextureVisibleWidth()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("calculates visible width from itemSize minus focusXOffset")
+    function _()
+      m.assertEqual(calculateTextureVisibleWidth([1920, 441], [96]), 1824)
+    end function
+
+    @it("uses full itemSize width when focusXOffset is empty")
+    function _()
+      m.assertEqual(calculateTextureVisibleWidth([1703, 441], []), 1703)
+    end function
+
+    @it("falls back to 1920 when itemSize is invalid")
+    function _()
+      m.assertEqual(calculateTextureVisibleWidth(invalid, [96]), 1824)
+    end function
+
+    @it("falls back to 1920 when itemSize is empty array")
+    function _()
+      m.assertEqual(calculateTextureVisibleWidth([], []), 1920)
+    end function
+
+    @it("handles invalid focusXOffset gracefully")
+    function _()
+      m.assertEqual(calculateTextureVisibleWidth([1920, 441], invalid), 1920)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("calculateTextureItemSpacing()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("extracts spacing from flat pair [x, y]")
+    function _()
+      m.assertEqual(calculateTextureItemSpacing([30, 0]), 30)
+    end function
+
+    @it("extracts spacing from nested pair [[x, y]]")
+    function _()
+      m.assertEqual(calculateTextureItemSpacing([[20, 0]]), 20)
+    end function
+
+    @it("returns 0 for empty array")
+    function _()
+      m.assertEqual(calculateTextureItemSpacing([]), 0)
+    end function
+
+    @it("returns 0 for invalid input")
+    function _()
+      m.assertEqual(calculateTextureItemSpacing(invalid), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("initTextureManager()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds texture fields to content root")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      m.assertTrue(root.hasField("loadedRowRange"))
+      m.assertTrue(root.hasField("focusedColumns"))
+      m.assertTrue(root.hasField("textureVisibleWidth"))
+      m.assertTrue(root.hasField("textureItemSpacing"))
+      m.assertTrue(root.hasField("textureManagerState"))
+      m.assertEqual(root.textureManagerState, "init")
+      m.assertEqual(root.textureVisibleWidth, 1824)
+      m.assertEqual(root.textureItemSpacing, 30)
+    end function
+
+    @it("resets state to init on re-init")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      activateTextureManager(root)
+      m.assertEqual(root.textureManagerState, "active")
+      initTextureManager(root, [1703, 441], [], [20, 0])
+      m.assertEqual(root.textureManagerState, "init")
+      m.assertEqual(root.textureVisibleWidth, 1703)
+    end function
+
+    @it("handles invalid contentRoot gracefully")
+    function _()
+      initTextureManager(invalid, [1920, 441], [96], [30, 0])
+      ' Should not crash
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("activateTextureManager()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets state to active")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      m.assertEqual(root.textureManagerState, "init")
+      activateTextureManager(root)
+      m.assertEqual(root.textureManagerState, "active")
+    end function
+
+    @it("handles invalid contentRoot gracefully")
+    function _()
+      activateTextureManager(invalid)
+      m.assertTrue(true)
+    end function
+
+    @it("handles contentRoot without textureManagerState field")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      activateTextureManager(root)
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hideTextureManager()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets state to hidden")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      activateTextureManager(root)
+      hideTextureManager(root)
+      m.assertEqual(root.textureManagerState, "hidden")
+    end function
+
+    @it("handles invalid contentRoot gracefully")
+    function _()
+      hideTextureManager(invalid)
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("destroyTextureManager()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets state to destroyed")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      activateTextureManager(root)
+      destroyTextureManager(root)
+      m.assertEqual(root.textureManagerState, "destroyed")
+    end function
+
+    @it("handles invalid contentRoot gracefully")
+    function _()
+      destroyTextureManager(invalid)
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("updateTextureBufferRange()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets correct range for focused row 0 with 3 visible rows")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      for i = 0 to 4
+        root.createChild("ContentNode")
+      end for
+      updateTextureBufferRange(root, 0, 0, 3)
+      m.assertEqual(root.loadedRowRange, [0, 0, 2, 3])
+    end function
+
+    @it("sets correct range for focused row 2 with 3 visible rows")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      for i = 0 to 6
+        root.createChild("ContentNode")
+      end for
+      updateTextureBufferRange(root, 2, 0, 3)
+      m.assertEqual(root.loadedRowRange, [1, 2, 4, 5])
+    end function
+
+    @it("clamps buffer to total row count")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      for i = 0 to 2
+        root.createChild("ContentNode")
+      end for
+      updateTextureBufferRange(root, 1, 0, 3)
+      m.assertEqual(root.loadedRowRange, [0, 1, 2, 2])
+    end function
+
+    @it("tracks focused column per row")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      for i = 0 to 4
+        root.createChild("ContentNode")
+      end for
+      updateTextureBufferRange(root, 0, 3, 3)
+      m.assertEqual(root.focusedColumns[0], 3)
+      updateTextureBufferRange(root, 1, 5, 3)
+      m.assertEqual(root.focusedColumns[1], 5)
+      m.assertEqual(root.focusedColumns[0], 3)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("TEXTURE_BUFFER_THRESHOLD constant")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is set to 20")
+    function _()
+      m.assertEqual(TEXTURE_BUFFER_THRESHOLD, 20)
+    end function
+
+  end class
+
+end namespace
