@@ -44,6 +44,11 @@ sub init()
   ' Date added label - positioned at bottom right
   m.dateCreatedLabel = m.top.findNode("dateCreatedLabel")
 
+  ' Re-anchor date label (and logo, if loaded) after the button group layout settles.
+  ' setDateAdded() runs before setupButtons(), so its boundingRect() call would see an
+  ' empty group. This observer fires after the render thread computes the real height.
+  m.buttonGrp.observeField("renderTracking", "onButtonGrpRendered")
+
   ' Gradient overlay - dynamically sized to span from itemDetails to extrasSlider
   m.itemTextGradient = m.top.findNode("itemTextGradient")
   m.itemDetails = m.top.findNode("itemDetails")
@@ -1760,11 +1765,41 @@ sub setDateAdded(item as object)
   dateAdded.toLocalTime()
   m.dateCreatedLabel.text = tr("Added") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
 
-  ' Position at bottom right: screen is 1920x1080, with 96px padding
+  ' Set X position only — Y is deferred to anchorDateLabel() which runs after the
+  ' button group layout settles (via renderTracking observer).
+  m.dateCreatedLabel.translation = [1920 - 96 - 450, 0]
+  m.dateCreatedLabel.visible = true
+end sub
+
+' anchorDateLabel: Derive the date label's Y position from the button group's rendered rect.
+' Returns dateLabelY so callers (e.g. logo positioning) can use it without duplicating the math.
+' Safe to call multiple times — idempotent.
+' @return {float} dateLabelY — the Y coordinate used for the date label
+function anchorDateLabel() as float
   buttonRect = m.buttonGrp.boundingRect()
   buttonBottom = buttonRect.y + buttonRect.height
-  m.dateCreatedLabel.translation = [1920 - 96 - 450, buttonBottom - 30]
-  m.dateCreatedLabel.visible = true
+  dateLabelY = buttonBottom - 30
+
+  if isValid(m.dateCreatedLabel) and m.dateCreatedLabel.visible
+    m.dateCreatedLabel.translation = [m.dateCreatedLabel.translation[0], dateLabelY]
+  end if
+
+  return dateLabelY
+end function
+
+' onButtonGrpRendered: Fires after the render thread settles the button group layout.
+' Re-anchors the date label and repositions the logo (if already loaded) so both
+' elements reflect the true button group height.
+sub onButtonGrpRendered()
+  if m.buttonGrp.renderTracking = "none" then return
+
+  dateLabelY = anchorDateLabel()
+
+  ' If the logo is already loaded and visible, reposition it relative to the new dateLabelY.
+  if isValid(m.itemLogo) and m.itemLogo.visible
+    logoY = dateLabelY - m.itemLogo.height - 18
+    m.itemLogo.translation = [m.itemLogo.translation[0], logoY]
+  end if
 end sub
 
 ' onLogoLoadStatusChanged: Position logo to the right, with its bottom just above the date label.
@@ -1815,17 +1850,7 @@ sub onLogoLoadStatusChanged()
       rightEdge = 1920 * 0.95
       logoX = rightEdge - displayWidth
 
-      ' Always derive dateLabelY from the button group's rendered rect.
-      ' setDateAdded() runs before setupButtons() so its boundingRect() call sees an
-      ' empty/hidden group and stamps the label at the wrong Y. Re-anchor here when
-      ' the layout is settled (this callback fires after the event loop, by which time
-      ' setupButtons() has run and the render thread has computed the full button height).
-      buttonRect = m.buttonGrp.boundingRect()
-      buttonBottom = buttonRect.y + buttonRect.height
-      dateLabelY = buttonBottom - 30
-      if isValid(m.dateCreatedLabel) and m.dateCreatedLabel.visible
-        m.dateCreatedLabel.translation = [m.dateCreatedLabel.translation[0], dateLabelY]
-      end if
+      dateLabelY = anchorDateLabel()
       logoY = dateLabelY - displayHeight - 18
 
       m.itemLogo.translation = [logoX, logoY]
