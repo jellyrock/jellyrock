@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - (ItemDetails) restore item logo for primary-image fallback types ([#427](https://github.com/jellyrock/jellyrock/pull/427))
 - run captionTask VTT fetch on Task thread ([#425](https://github.com/jellyrock/jellyrock/pull/425))
 
+### Dependencies
+
+- Update brighterscript from v0.70.4 to v0.71.0 ([#426](https://github.com/jellyrock/jellyrock/pull/426))
+
 ## [2.6.0](https://github.com/jellyrock/jellyrock/compare/v2.5.0...v2.6.0) - 2026-03-27
 
 ### Added
