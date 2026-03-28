@@ -1,0 +1,100 @@
+
+namespace tests
+
+  @suite("placeholderImage.bs - Placeholder Image Utilities")
+  class PlaceholderImageTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getPlaceholderImagePath(itemType)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns movie placeholder for Movie and BoxSet")
+    @params("Movie", "pkg:/images/placeholders/movie.png")
+    @params("BoxSet", "pkg:/images/placeholders/movie.png")
+    function _(itemType, expected)
+      m.assertEqual(getPlaceholderImagePath(itemType), expected)
+    end function
+
+    @it("returns person placeholder for Person")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("Person"), "pkg:/images/placeholders/person.png")
+    end function
+
+    @it("returns playCircle placeholder for video/episode types")
+    @params("Episode", "pkg:/images/placeholders/playCircle.png")
+    @params("Video", "pkg:/images/placeholders/playCircle.png")
+    @params("MusicVideo", "pkg:/images/placeholders/playCircle.png")
+    @params("Recording", "pkg:/images/placeholders/playCircle.png")
+    @params("Program", "pkg:/images/placeholders/playCircle.png")
+    @params("Series", "pkg:/images/placeholders/playCircle.png")
+    @params("Season", "pkg:/images/placeholders/playCircle.png")
+    function _(itemType, expected)
+      m.assertEqual(getPlaceholderImagePath(itemType), expected)
+    end function
+
+    @it("returns album placeholder for MusicAlbum")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("MusicAlbum"), "pkg:/images/placeholders/album.png")
+    end function
+
+    @it("returns artist placeholder for MusicArtist")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("MusicArtist"), "pkg:/images/placeholders/artist.png")
+    end function
+
+    @it("returns musicNote placeholder for Audio")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("Audio"), "pkg:/images/placeholders/musicNote.png")
+    end function
+
+    @it("returns playlist placeholder for Playlist")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("Playlist"), "pkg:/images/placeholders/playlist.png")
+    end function
+
+    @it("returns photo placeholder for Photo")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("Photo"), "pkg:/images/placeholders/photo.png")
+    end function
+
+    @it("returns photoAlbum placeholder for PhotoAlbum")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("PhotoAlbum"), "pkg:/images/placeholders/photoAlbum.png")
+    end function
+
+    @it("returns folder fallback for unknown or unmatched types")
+    @params("CollectionFolder", "pkg:/images/placeholders/folder.png")
+    @params("UserView", "pkg:/images/placeholders/folder.png")
+    @params("Channel", "pkg:/images/placeholders/folder.png")
+    @params("TvChannel", "pkg:/images/placeholders/folder.png")
+    @params("SomeUnknownType", "pkg:/images/placeholders/folder.png")
+    @params("", "pkg:/images/placeholders/folder.png")
+    function _(itemType, expected)
+      m.assertEqual(getPlaceholderImagePath(itemType), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isPlaceholderUri(uri)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns true for placeholder paths")
+    @params("pkg:/images/placeholders/movie.png", true)
+    @params("pkg:/images/placeholders/person.png", true)
+    @params("pkg:/images/placeholders/folder.png", true)
+    @params("pkg:/images/placeholders/playCircle.png", true)
+    function _(uri, expected)
+      m.assertEqual(isPlaceholderUri(uri), expected)
+    end function
+
+    @it("returns false for non-placeholder URIs")
+    @params("https://jellyfin.example.com/Items/abc123/Images/Primary", false)
+    @params("pkg:/images/media_type_icons/live_tv_white.png", false)
+    @params("pkg:/images/spinner.png", false)
+    @params("", false)
+    function _(uri, expected)
+      m.assertEqual(isPlaceholderUri(uri), expected)
+    end function
+
+  end class
+
+end namespace
