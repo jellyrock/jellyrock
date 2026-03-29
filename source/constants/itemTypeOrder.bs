@@ -28,7 +28,6 @@ namespace itemTypeOrder
   ]
 
   ' Types displayed in the Favorites home tab, in web-client display order.
-  ' Excluded: "Program" (Live TV programs) — programs cannot be favorited, only the channel can.
   ' Excluded: "Book" — not yet supported.
   const FAVORITES = [
     "Movie", ' Movies
@@ -41,6 +40,7 @@ namespace itemTypeOrder
     "Audio", ' Songs
     "Video", ' Videos
     "MusicVideo", ' Music Videos
+    "Program", ' Programs
     "TvChannel", ' Channels
     "Recording", ' Recordings
     "PhotoAlbum", ' Photo Albums

@@ -34,6 +34,7 @@ sub init()
     "Audio": tr("Songs"),
     "Video": tr("Videos"),
     "MusicVideo": tr("Music Videos"),
+    "Program": tr("Programs"),
     "TvChannel": tr("Channels"),
     "Recording": tr("Recordings"),
     "PhotoAlbum": tr("Photo Albums"),
@@ -226,12 +227,12 @@ end function
 ' Returns the appropriate slot size for a Jellyfin item type.
 ' Follows the same logic as SearchRow.bs getSlotSizeForType.
 ' WIDE  (16:9) — Episode, Video, MusicVideo, PhotoAlbum, Photo
-' SQUARE (1:1) — Music types, Playlist, TvChannel, Recording
+' SQUARE (1:1) — Music types, Playlist, Program, TvChannel, Recording
 ' PORTRAIT (2:3) — all others (Movie, Series, Person, BoxSet, etc.)
 function getSlotSizeForType(itemType as string) as object
   if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "PhotoAlbum" or itemType = "Photo"
     return rowSlotSize.WIDE
-  else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "TvChannel" or itemType = "Recording"
+  else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "Program" or itemType = "TvChannel" or itemType = "Recording"
     return rowSlotSize.SQUARE
   end if
   return rowSlotSize.PORTRAIT
