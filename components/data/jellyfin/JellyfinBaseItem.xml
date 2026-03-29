@@ -150,6 +150,14 @@
     <field id="hasLyrics" type="boolean" value="false" />
 
     <!-- ==================== -->
+    <!-- PHOTO EXIF           -->
+    <!-- ==================== -->
+    <field id="imageWidth" type="integer" value="0" />
+    <field id="imageHeight" type="integer" value="0" />
+    <field id="cameraMake" type="string" value="" />
+    <field id="cameraModel" type="string" value="" />
+
+    <!-- ==================== -->
     <!-- CHILD/ITEM COUNTS    -->
     <!-- ==================== -->
     <field id="childCount" type="integer" value="0" />

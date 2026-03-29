@@ -219,6 +219,12 @@ class JellyfinDataTransformer
         m.transformProgramFields(item, apiData)
       else if itemType = "MusicAlbum" or itemType = "Audio" or itemType = "MusicArtist" or itemType = "MusicVideo"
         m.transformMusicFields(item, apiData)
+      else if itemType = "Photo"
+        item.albumName = apiData.Album ?? ""
+        item.imageWidth = isValid(apiData.Width) ? apiData.Width : 0
+        item.imageHeight = isValid(apiData.Height) ? apiData.Height : 0
+        item.cameraMake = apiData.CameraMake ?? ""
+        item.cameraModel = apiData.CameraModel ?? ""
       end if
 
       ' ── User data (flattened for performance; fields stay invalid if UserData absent) ──
