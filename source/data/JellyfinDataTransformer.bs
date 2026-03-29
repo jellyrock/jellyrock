@@ -696,7 +696,13 @@ class JellyfinDataTransformer
       if isValidAndNotEmpty(episodeTitle)
         return episodeTitle
       end if
-      return apiData.ChannelName ?? ""
+      ' Build "CH X - ChannelName" subtitle for channel context
+      chanNumStr = (apiData.ChannelNumber ?? "").toStr().trim()
+      chanName = apiData.ChannelName ?? ""
+      parts = []
+      if chanNumStr <> "" then parts.push(tr("CH") + " " + chanNumStr)
+      if isValidAndNotEmpty(chanName) then parts.push(chanName)
+      return parts.join(" - ")
 
     else if itemType = "Season"
       return apiData.SeriesName ?? ""

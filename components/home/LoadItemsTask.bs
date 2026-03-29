@@ -377,13 +377,14 @@ sub loadItems()
     end if
   else if m.top.itemsToLoad = "channelPrograms"
     ' Upcoming (not yet aired) programs on a Live TV channel, sorted by start time.
+    ' ChannelInfo required for subtitle display (channel name) in JRRowItem.
     data = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
       "ChannelIds": m.top.itemId,
       "HasAired": false,
       "SortBy": "StartDate",
       "SortOrder": "Ascending",
       "Limit": 20,
-      "Fields": "PrimaryImageAspectRatio,Overview",
+      "Fields": "ChannelInfo,PrimaryImageAspectRatio,Overview",
       "EnableTotalRecordCount": false
     }), "channelPrograms")
     if isValid(data) and isValid(data.Items)

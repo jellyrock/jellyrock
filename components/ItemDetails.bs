@@ -505,6 +505,18 @@ function createDividerNode(dividerId as string) as object
   return labelNode
 end function
 
+' createTimeLabel: Creates a time label with an optional lowercase am/pm suffix.
+' In 24h mode returns a single label; in 12h mode appends the period to the time text.
+function createTimeLabel(labelId as string, timeText as string, periodText as string) as object
+  node = createInfoLabel(labelId)
+  if periodText <> ""
+    node.text = timeText + " " + periodText
+  else
+    node.text = timeText
+  end if
+  return node
+end function
+
 ' displayInfoNode: Add a node to the info group, prepending a bullet divider if needed
 sub displayInfoNode(node as object)
   if not isValid(node) then return
@@ -728,8 +740,10 @@ sub populateInfoGroup()
     populateInfoGroupTvChannel(item, userSettings)
   else if item.type = "Program"
     populateInfoGroupProgram(item, userSettings)
+  else if item.type = "Recording"
+    populateInfoGroupRecording(item, userSettings)
   else
-    ' Movie, Video, Recording
+    ' Movie, Video
     populateInfoGroupMovie(item, userSettings)
   end if
 end sub
@@ -771,9 +785,8 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
   end if
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -821,9 +834,8 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   end if
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -877,9 +889,8 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
   end if
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -951,9 +962,8 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
 
   ' "Ends At" is only meaningful when we have a valid avg episode runtime to calculate with
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -1046,14 +1056,13 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
   end if
 
   if isValid(seriesData) and seriesData.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     ' Compute end time directly from series runTimeTicks — do NOT swap m.top.itemContent,
     ' as that fires itemContentChanged() synchronously causing reentrancy and row duplication.
     m.endsAtDurationSeconds = int(seriesData.runTimeTicks / 10000000.0)
     endDate = CreateObject("roDateTime")
     endDate.fromSeconds(endDate.asSeconds() + m.endsAtDurationSeconds)
     endDate.toLocalTime()
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", formatTime(endDate))
+    m.endsAtNode = createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(endDate), getTimePeriod(endDate))
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -1189,9 +1198,8 @@ sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
   end if
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -1237,9 +1245,8 @@ sub populateInfoGroupPlaylist(item as object, userSettings as object)
   end if
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -1274,9 +1281,8 @@ sub populateInfoGroupAudio(item as object, userSettings as object)
   end if
 
   if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
-    m.endsAtNode = createInfoLabel("ends-at")
     m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
-    m.endsAtNode.text = tr("Ends at %1").Replace("%1", getEndTime())
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -1352,8 +1358,8 @@ end sub
 
 ' populateInfoGroupTvChannel: Info rows for TvChannel (Live TV)
 ' Displays metadata from the current program (the channel is a vessel for what's airing).
-' Row 1: CH N · OfficialRating · CommunityRating · S#E# · Program Name · Runtime · Ends At
-' Row 2: Genres (or category flags) · Broadcast time
+' Row 1: CH N · OfficialRating · CommunityRating · S#E# · Program Name · Runtime · BroadcastTime · Ends At
+' Row 2: Genres (or category flags)
 sub populateInfoGroupTvChannel(item as object, userSettings as object)
   if isValidAndNotEmpty(item.channelNumber)
     chanNode = createInfoLabel("channelNumber")
@@ -1399,17 +1405,36 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
       end if
     end if
 
+    ' Broadcast time range on Row 1
+    if isValidAndNotEmpty(prog.startDate) and isValidAndNotEmpty(prog.endDate)
+      startDt = createObject("roDateTime")
+      startDt.FromISO8601String(prog.startDate)
+      startDt.toLocalTime()
+      broadcastEndDt = createObject("roDateTime")
+      broadcastEndDt.FromISO8601String(prog.endDate)
+      broadcastEndDt.toLocalTime()
+      startPeriod = getTimePeriod(startDt)
+      endPeriod = getTimePeriod(broadcastEndDt)
+      ' Omit start period when same as end (e.g., "9:00 - 10:00 PM")
+      if startPeriod = endPeriod
+        timeText = formatTime(startDt) + " - " + formatTime(broadcastEndDt)
+        periodText = endPeriod
+      else
+        timeText = formatTime(startDt) + " " + startPeriod + " - " + formatTime(broadcastEndDt)
+        periodText = endPeriod
+      end if
+      displayInfoNode(createTimeLabel("broadcastTime", timeText, periodText))
+    end if
+
     ' "Ends at" for the current program
     if not userSettings.uiDesignHideClock and isValidAndNotEmpty(prog.endDate)
       endDt = createObject("roDateTime")
       endDt.FromISO8601String(prog.endDate)
       endDt.toLocalTime()
-      endsAtNode = createInfoLabel("ends-at")
-      endsAtNode.text = tr("Ends at %1").Replace("%1", formatTime(endDt))
-      displayInfoNode(endsAtNode)
+      displayInfoNode(createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(endDt), getTimePeriod(endDt)))
     end if
 
-    ' Row 2: genres and broadcast time
+    ' Row 2: genres (or category flags)
     if prog.genres.count() > 0
       genreNode = createInfoLabel("genre")
       genreNode.text = prog.genres.join(" / ")
@@ -1426,24 +1451,12 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
         displayDirectorGenreNode(catNode)
       end if
     end if
-
-    if isValidAndNotEmpty(prog.startDate) and isValidAndNotEmpty(prog.endDate)
-      startDt = createObject("roDateTime")
-      startDt.FromISO8601String(prog.startDate)
-      startDt.toLocalTime()
-      broadcastEndDt = createObject("roDateTime")
-      broadcastEndDt.FromISO8601String(prog.endDate)
-      broadcastEndDt.toLocalTime()
-      timeNode = createInfoLabel("broadcastTime")
-      timeNode.text = formatTime(startDt) + " - " + formatTime(broadcastEndDt)
-      displayDirectorGenreNode(timeNode)
-    end if
   end if
 end sub
 
 ' populateInfoGroupProgram: Info rows for Program (Live TV EPG entry)
-' Row 1: Year · OfficialRating · CommunityRating · S#E# · Premiere/New/Repeat · Runtime · Ends At
-' Row 2: Channel name & number · Broadcast time · Genres (or category flags)
+' Row 1: Year · OfficialRating · CommunityRating · S#E# · Premiere/Repeat · Runtime · CH X - ChanName · BroadcastTime · Ends At
+' Row 2: Genres (or category flags)
 sub populateInfoGroupProgram(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -1494,26 +1507,17 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     displayInfoNode(runtimeNode)
   end if
 
-  ' "Ends at" — only for live programs with valid broadcast times
-  if item.isLive and not userSettings.uiDesignHideClock and isValidAndNotEmpty(item.endDate)
-    endDt = createObject("roDateTime")
-    endDt.FromISO8601String(item.endDate)
-    endDt.toLocalTime()
-    endsAtNode = createInfoLabel("ends-at")
-    endsAtNode.text = tr("Ends at %1").Replace("%1", formatTime(endDt))
-    displayInfoNode(endsAtNode)
-  end if
-
-  ' Row 2: channel info
+  ' Channel info on Row 1
   channelParts = []
-  if isValidAndNotEmpty(item.channelName) then channelParts.push(item.channelName)
   if isValidAndNotEmpty(item.channelNumber) then channelParts.push(tr("CH") + " " + item.channelNumber)
+  if isValidAndNotEmpty(item.channelName) then channelParts.push(item.channelName)
   if channelParts.count() > 0
     channelNode = createInfoLabel("channelInfo")
     channelNode.text = channelParts.join(" - ")
-    displayDirectorGenreNode(channelNode)
+    displayInfoNode(channelNode)
   end if
 
+  ' Broadcast time range on Row 1
   if isValidAndNotEmpty(item.startDate) and isValidAndNotEmpty(item.endDate)
     startDt = createObject("roDateTime")
     startDt.FromISO8601String(item.startDate)
@@ -1521,12 +1525,27 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     broadcastEndDt = createObject("roDateTime")
     broadcastEndDt.FromISO8601String(item.endDate)
     broadcastEndDt.toLocalTime()
-    timeNode = createInfoLabel("broadcastTime")
-    timeNode.text = formatTime(startDt) + " - " + formatTime(broadcastEndDt)
-    displayDirectorGenreNode(timeNode)
+    startPeriod = getTimePeriod(startDt)
+    endPeriod = getTimePeriod(broadcastEndDt)
+    if startPeriod = endPeriod
+      timeText = formatTime(startDt) + " - " + formatTime(broadcastEndDt)
+      periodText = endPeriod
+    else
+      timeText = formatTime(startDt) + " " + startPeriod + " - " + formatTime(broadcastEndDt)
+      periodText = endPeriod
+    end if
+    displayInfoNode(createTimeLabel("broadcastTime", timeText, periodText))
   end if
 
-  ' Genres: prefer full genre list, fall back to category flags
+  ' "Ends at" — only for live programs with valid broadcast times
+  if item.isLive and not userSettings.uiDesignHideClock and isValidAndNotEmpty(item.endDate)
+    endDt = createObject("roDateTime")
+    endDt.FromISO8601String(item.endDate)
+    endDt.toLocalTime()
+    displayInfoNode(createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(endDt), getTimePeriod(endDt)))
+  end if
+
+  ' Row 2: genres (or category flags)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
@@ -1542,6 +1561,76 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
       catNode.text = categories.join(" / ")
       displayDirectorGenreNode(catNode)
     end if
+  end if
+end sub
+
+' populateInfoGroupRecording: Info rows for Recording (Live TV recorded content)
+' Row 1: PremiereYear · OfficialRating · CommunityRating · S#E# · Runtime · CH X - ChanName · Recorded: Date
+' Row 2: Genres
+sub populateInfoGroupRecording(item as object, userSettings as object)
+  ' Premiere year: prefer PremiereDate year, fall back to ProductionYear (which is recording year)
+  premiereYear = 0
+  if isValidAndNotEmpty(item.premiereDate)
+    premDt = createObject("roDateTime")
+    premDt.FromISO8601String(item.premiereDate)
+    premiereYear = premDt.getYear()
+  end if
+  if premiereYear = 0 and item.productionYear > 0
+    premiereYear = item.productionYear
+  end if
+  if premiereYear > 0
+    yearNode = createInfoLabel("releaseYear")
+    yearNode.text = stri(premiereYear).trim()
+    displayInfoNode(yearNode)
+  end if
+
+  if isValidAndNotEmpty(item.officialRating)
+    ratingNode = createInfoLabel("officialRating")
+    ratingNode.text = item.officialRating
+    displayInfoNode(ratingNode)
+  end if
+
+  if userSettings.uiMoviesShowRatings and item.communityRating > 0
+    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
+    communityRatingNode.id = "communityRating"
+    communityRatingNode.rating = item.communityRating
+    displayInfoNode(communityRatingNode)
+  end if
+
+  if item.parentIndexNumber > 0 and item.indexNumber > 0
+    episodeNode = createInfoLabel("episodeInfo")
+    episodeNode.text = "S" + stri(item.parentIndexNumber).trim() + "E" + stri(item.indexNumber).trim()
+    displayInfoNode(episodeNode)
+  end if
+
+  if item.runTimeTicks > 0
+    runtimeNode = createInfoLabel("runtime")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    displayInfoNode(runtimeNode)
+  end if
+
+  ' Channel info
+  channelParts = []
+  if isValidAndNotEmpty(item.channelNumber) then channelParts.push(tr("CH") + " " + item.channelNumber)
+  if isValidAndNotEmpty(item.channelName) then channelParts.push(item.channelName)
+  if channelParts.count() > 0
+    channelNode = createInfoLabel("channelInfo")
+    channelNode.text = channelParts.join(" - ")
+    displayInfoNode(channelNode)
+  end if
+
+  ' Recorded date from startDate (when recording began)
+  if isValidAndNotEmpty(item.startDate)
+    recordedNode = createInfoLabel("recordedDate")
+    recordedNode.text = tr("Recorded") + ": " + formatIsoDateVideo(item.startDate)
+    displayInfoNode(recordedNode)
+  end if
+
+  ' Row 2: genres
+  if item.genres.count() > 0
+    genreNode = createInfoLabel("genre")
+    genreNode.text = item.genres.join(" / ")
+    displayDirectorGenreNode(genreNode)
   end if
 end sub
 
@@ -1905,21 +1994,25 @@ function getRuntime() as integer
   return round(m.top.itemContent.runTimeTicks / 600000000.0)
 end function
 
-function getEndTime() as string
+' createEndsAtNode: Build an "Ends at" time label with AM/PM support and store it
+' on m.endsAtNode for dynamic clock updates. Used by types with runTimeTicks-based durations.
+sub createEndsAtNode()
   date = CreateObject("roDateTime")
-  duration_s = int(m.top.itemContent.runTimeTicks / 10000000.0)
-  date.fromSeconds(date.asSeconds() + duration_s)
+  date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
   date.toLocalTime()
-  return formatTime(date)
-end function
+  m.endsAtNode = createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(date), getTimePeriod(date))
+end sub
 
-' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes
+' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes.
 sub onClockMinuteChanged()
   if not isValid(m.endsAtNode) then return
   date = CreateObject("roDateTime")
   date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
   date.toLocalTime()
-  m.endsAtNode.text = tr("Ends at %1").Replace("%1", formatTime(date))
+  periodText = getTimePeriod(date)
+  endsAtText = tr("Ends at") + " " + formatTime(date)
+  if periodText <> "" then endsAtText += " " + periodText
+  m.endsAtNode.text = endsAtText
 end sub
 
 sub updateFavoriteButton()
@@ -2524,13 +2617,17 @@ sub setupButtons(item as object)
       recordButton = CreateObject("roSGNode", "IconButton")
       recordButton.id = "recordButton"
       recordButton.icon = "pkg:/images/icons/record.png"
-      recordButton.iconBackground = m.global.constants.colorError
-      recordButton.iconFocusBackground = m.global.constants.colorError
-      ' Check existing recording state
+      ' Check existing recording state — colorError icon when active
+      isRecording = false
       if itemType = "Program" and isValidAndNotEmpty(item.timerId)
-        recordButton.text = tr("Cancel Recording")
+        isRecording = true
       else if itemType = "TvChannel" and isValid(item.currentProgram) and isValidAndNotEmpty(item.currentProgram.timerId)
+        isRecording = true
+      end if
+      if isRecording
         recordButton.text = tr("Cancel Recording")
+        recordButton.iconBackground = m.global.constants.colorError
+        recordButton.iconFocusBackground = m.global.constants.colorError
       else
         recordButton.text = tr("Record")
       end if

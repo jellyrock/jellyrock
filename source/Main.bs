@@ -1194,12 +1194,18 @@ sub handleRecordResult(task as object)
   task.control = "STOP"
 
   if isValid(res) and res.ok
-    ' Toggle button label to reflect new state
+    ' Toggle button label and icon color to reflect new state
     if isValid(m.pendingRecordButton)
       if m.pendingRecordIsCancel
         m.pendingRecordButton.text = tr("Record")
+        ' Revert to default icon color (white)
+        m.pendingRecordButton.iconBackground = m.global.constants.colorTextPrimary
+        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorTextPrimary
       else
         m.pendingRecordButton.text = tr("Cancel Recording")
+        ' Active recording — red icon
+        m.pendingRecordButton.iconBackground = m.global.constants.colorError
+        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorError
       end if
     end if
     if res.action = "record"
