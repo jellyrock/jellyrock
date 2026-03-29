@@ -359,6 +359,39 @@ sub loadItems()
         if isValid(node) then results.push(node)
       end for
     end if
+  else if m.top.itemsToLoad = "photoAlbumItems"
+    ' All photos in a PhotoAlbum, sorted by name.
+    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+      "ParentId": m.top.itemId,
+      "IncludeItemTypes": "Photo",
+      "SortBy": "SortName",
+      "SortOrder": "Ascending",
+      "Fields": "PrimaryImageAspectRatio",
+      "EnableTotalRecordCount": false
+    }), "photoAlbumItems")
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
+      end for
+    end if
+  else if m.top.itemsToLoad = "channelPrograms"
+    ' Upcoming (not yet aired) programs on a Live TV channel, sorted by start time.
+    data = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
+      "ChannelIds": m.top.itemId,
+      "HasAired": false,
+      "SortBy": "StartDate",
+      "SortOrder": "Ascending",
+      "Limit": 20,
+      "Fields": "PrimaryImageAspectRatio,Overview",
+      "EnableTotalRecordCount": false
+    }), "channelPrograms")
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        node = m.transformer.transformBaseItem(item)
+        if isValid(node) then results.push(node)
+      end for
+    end if
   end if
 
   m.top.content = results
