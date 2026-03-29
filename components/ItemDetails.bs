@@ -1426,14 +1426,6 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
       displayInfoNode(createTimeLabel("broadcastTime", timeText, periodText))
     end if
 
-    ' "Ends at" for the current program
-    if not userSettings.uiDesignHideClock and isValidAndNotEmpty(prog.endDate)
-      endDt = createObject("roDateTime")
-      endDt.FromISO8601String(prog.endDate)
-      endDt.toLocalTime()
-      displayInfoNode(createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(endDt), getTimePeriod(endDt)))
-    end if
-
     ' Row 2: genres (or category flags)
     if prog.genres.count() > 0
       genreNode = createInfoLabel("genre")
