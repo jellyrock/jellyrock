@@ -62,6 +62,14 @@ sub init()
   m.LoadPlaylistItemsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.LoadPlaylistItemsTask.itemsToLoad = "playlistItems"
 
+  ' PhotoAlbum items task — loads all photos in a PhotoAlbum
+  m.LoadPhotoAlbumItemsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadPhotoAlbumItemsTask.itemsToLoad = "photoAlbumItems"
+
+  ' Channel programs task — loads upcoming programs on a Live TV channel
+  m.LoadChannelProgramsTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.LoadChannelProgramsTask.itemsToLoad = "channelPrograms"
+
   ' Permanent root content node — never replaced.
   m.top.content = CreateObject("roSGNode", "ContentNode")
 
@@ -84,6 +92,8 @@ sub init()
   m.rowAlbumSongs = invalid
   m.rowAlbumArtistAlbums = invalid
   m.rowPlaylistItems = invalid
+  m.rowPhotoAlbumItems = invalid
+  m.rowChannelPrograms = invalid
 
   ' Track row heights for rowHeights array (per-row height customization)
   m.rowHeights = []
@@ -142,6 +152,10 @@ sub cancelInFlightChain()
   m.LoadAlbumSongsTask.unobserveField("content")
   m.LoadPlaylistItemsTask.control = "STOP"
   m.LoadPlaylistItemsTask.unobserveField("content")
+  m.LoadPhotoAlbumItemsTask.control = "STOP"
+  m.LoadPhotoAlbumItemsTask.unobserveField("content")
+  m.LoadChannelProgramsTask.control = "STOP"
+  m.LoadChannelProgramsTask.unobserveField("content")
 end sub
 
 ' loadParts: Start the extras loading chain appropriate for the item type.
@@ -153,6 +167,10 @@ end sub
 '   Season                    → Episodes ("Season X") → People → LikeThis
 '   BoxSet                    → BoxSetItems ("Movies") → People → LikeThis
 '   MusicArtist               → Albums → Appears On → Songs → ArtistSimilar
+'   Photo                     → LikeThis
+'   PhotoAlbum                → Album Photos → LikeThis
+'   TvChannel                 → Upcoming Programs → LikeThis
+'   Program                   → More on Channel → LikeThis
 ' m.top.type must be set before calling this function (done by ShowScenes.bs).
 sub loadParts(data as object)
   cancelInFlightChain()
@@ -237,6 +255,38 @@ sub loadParts(data as object)
       m.LoadAlbumSongsTask.control = "RUN"
     else
       ' No album — skip tracklist row and go straight to More Like This
+      m.LikeThisTask.itemId = m.top.parentId
+      m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+      m.LikeThisTask.control = "RUN"
+    end if
+  else if itemType = "Photo"
+    ' Chain: More Like This
+    m.top.rowItemSize = [rowSlotSize.WIDE]
+    m.LikeThisTask.itemId = m.top.parentId
+    m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+    m.LikeThisTask.control = "RUN"
+  else if itemType = "PhotoAlbum"
+    ' Chain: Album Photos → More Like This
+    m.top.rowItemSize = [rowSlotSize.WIDE]
+    m.LoadPhotoAlbumItemsTask.itemId = m.top.parentId
+    m.LoadPhotoAlbumItemsTask.observeField("content", "onPhotoAlbumItemsLoaded")
+    m.LoadPhotoAlbumItemsTask.control = "RUN"
+  else if itemType = "TvChannel"
+    ' Chain: Upcoming Programs → More Like This
+    m.top.rowItemSize = [rowSlotSize.SQUARE]
+    m.LoadChannelProgramsTask.itemId = m.top.parentId
+    m.LoadChannelProgramsTask.observeField("content", "onChannelProgramsLoaded")
+    m.LoadChannelProgramsTask.control = "RUN"
+  else if itemType = "Program"
+    ' Chain: More on this Channel → More Like This
+    m.programChannelId = data.channelId
+    m.top.rowItemSize = [rowSlotSize.SQUARE]
+    if isValidAndNotEmpty(data.channelId)
+      m.LoadChannelProgramsTask.itemId = data.channelId
+      m.LoadChannelProgramsTask.observeField("content", "onProgramChannelProgramsLoaded")
+      m.LoadChannelProgramsTask.control = "RUN"
+    else
+      ' No channel — skip to More Like This
       m.LikeThisTask.itemId = m.top.parentId
       m.LikeThisTask.observeField("content", "onLikeThisLoaded")
       m.LikeThisTask.control = "RUN"
@@ -489,7 +539,17 @@ sub onLikeThisLoaded()
       end for
       newSizes.push(rowSlotSize.WIDE)
       m.top.rowItemSize = newSizes
-    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist"
+    else if itemType = "Photo" or itemType = "PhotoAlbum"
+      ' Photo/PhotoAlbum use WIDE slots (landscape images). Rebuild from actual content child
+      ' count with WIDE for all rows — the preceding Photos row (if any) is also WIDE.
+      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_WIDE)
+      newSizes = []
+      childCount = m.top.content.getChildCount()
+      for i = 0 to childCount - 1
+        newSizes.push(rowSlotSize.WIDE)
+      end for
+      m.top.rowItemSize = newSizes
+    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "Program"
       ' Music and Playlist rows use square slots — Playlist primary images are 1:1.
       m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
       addRowSize(rowSlotSize.SQUARE)
@@ -502,8 +562,8 @@ sub onLikeThisLoaded()
     m.rowLikeThis = invalid
   end if
 
-  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, BoxSet, music types, or Playlist
-  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist"
+  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, BoxSet, music types, Playlist, Photo, PhotoAlbum, TvChannel, or Program
+  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist" and itemType <> "Photo" and itemType <> "PhotoAlbum" and itemType <> "TvChannel" and itemType <> "Program"
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
     m.SpecialFeaturesTask.control = "RUN"
@@ -754,6 +814,64 @@ sub onAudioAlbumTracksLoaded()
     m.rowAlbumSongs = invalid
   end if
 
+  m.LikeThisTask.itemId = m.top.parentId
+  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+  m.LikeThisTask.control = "RUN"
+end sub
+
+' onPhotoAlbumItemsLoaded: Build "Photos" row then chain to More Like This (PhotoAlbum only)
+sub onPhotoAlbumItemsLoaded()
+  items = m.LoadPhotoAlbumItemsTask.content
+  m.LoadPhotoAlbumItemsTask.unobserveField("content")
+  m.LoadPhotoAlbumItemsTask.content = []
+
+  if isValid(items) and items.count() > 0
+    m.rowPhotoAlbumItems = populateRow(m.rowPhotoAlbumItems, tr("Photos"), items, rowSlotSize.ROW_HEIGHT_WIDE)
+  else if isValid(m.rowPhotoAlbumItems)
+    removeRow(m.rowPhotoAlbumItems)
+    m.rowPhotoAlbumItems = invalid
+  end if
+
+  ' Chain to More Like This
+  m.LikeThisTask.itemId = m.top.parentId
+  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+  m.LikeThisTask.control = "RUN"
+end sub
+
+' onChannelProgramsLoaded: Build "Up Next" row then chain to More Like This (TvChannel only)
+sub onChannelProgramsLoaded()
+  items = m.LoadChannelProgramsTask.content
+  m.LoadChannelProgramsTask.unobserveField("content")
+  m.LoadChannelProgramsTask.content = []
+
+  if isValid(items) and items.count() > 0
+    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, tr("Up Next"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+  else if isValid(m.rowChannelPrograms)
+    removeRow(m.rowChannelPrograms)
+    m.rowChannelPrograms = invalid
+  end if
+
+  ' Chain to More Like This
+  m.LikeThisTask.itemId = m.top.parentId
+  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
+  m.LikeThisTask.control = "RUN"
+end sub
+
+' onProgramChannelProgramsLoaded: Build "More on this Channel" row then chain to More Like This (Program only)
+sub onProgramChannelProgramsLoaded()
+  items = m.LoadChannelProgramsTask.content
+  m.LoadChannelProgramsTask.unobserveField("content")
+  m.LoadChannelProgramsTask.content = []
+
+  if isValid(items) and items.count() > 0
+    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, tr("More on this Channel"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+    addRowSize(rowSlotSize.SQUARE)
+  else if isValid(m.rowChannelPrograms)
+    removeRow(m.rowChannelPrograms)
+    m.rowChannelPrograms = invalid
+  end if
+
+  ' Chain to More Like This
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
   m.LikeThisTask.control = "RUN"
