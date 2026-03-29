@@ -166,13 +166,10 @@ sub Main (args as dynamic) as void
       if isValid(task) and task.subtype() = "QuickPlayTask"
         handleQuickPlayOutput(task)
       end if
-    else if isNodeEvent(msg, "recordOperationDone")
-      ' Recording created or cancelled — refresh ItemDetails to update Record button label
-      group = m.global.sceneManager.callFunc("getActiveScene")
-      if isValid(group) and group.isSubType("ItemDetails")
-        startLoadingSpinner()
-        group.refreshExtrasData = not group.refreshExtrasData
-        group.refreshItemDetailsData = not group.refreshItemDetailsData
+    else if isNodeEvent(msg, "result")
+      task = msg.getRoSGNode()
+      if isValid(task) and task.subtype() = "RecordProgramTask"
+        handleRecordResult(task)
       end if
     else if isNodeEvent(msg, "done")
       resultNode = msg.getRoSGNode()
@@ -685,6 +682,8 @@ sub Main (args as dynamic) as void
           end if
         else if btn.id = "recordButton"
           item = group.itemContent
+          recordButton = group.findNode("recordButton")
+          if isValid(recordButton) and recordButton.loading then continue while ' Already in-flight
           programToRecord = invalid
           if item.type = "TvChannel" and isValid(item.currentProgram)
             programToRecord = item.currentProgram
@@ -692,9 +691,12 @@ sub Main (args as dynamic) as void
             programToRecord = item
           end if
           if isValid(programToRecord)
+            if isValid(recordButton) then recordButton.loading = true
+            m.pendingRecordButton = recordButton
+            m.pendingRecordIsCancel = isValidAndNotEmpty(programToRecord.timerId)
             recordTask = CreateObject("roSGNode", "RecordProgramTask")
             recordTask.programDetails = programToRecord
-            recordTask.observeField("recordOperationDone", m.port)
+            recordTask.observeField("result", m.port)
             recordTask.control = "RUN"
           end if
         else if btn.id = "deleteButton"
@@ -1184,6 +1186,41 @@ sub handleWatchedToggleDone()
   m.pendingWatchedButton = invalid
   m.pendingWatchedNewState = invalid
   m.pendingWatchedItemType = invalid
+end sub
+
+sub handleRecordResult(task as object)
+  res = task.result
+  task.unobserveField("result")
+  task.control = "STOP"
+
+  if isValid(res) and res.ok
+    ' Toggle button label to reflect new state
+    if isValid(m.pendingRecordButton)
+      if m.pendingRecordIsCancel
+        m.pendingRecordButton.text = tr("Record")
+      else
+        m.pendingRecordButton.text = tr("Cancel Recording")
+      end if
+    end if
+    if res.action = "record"
+      displayToast(tr("Recording scheduled"), "success")
+    else
+      displayToast(tr("Recording cancelled"), "success")
+    end if
+  else
+    ' Failed — button label stays as-is (no state change)
+    if isValid(res) and res.action = "record"
+      displayToast(tr("Failed to schedule recording"), "error")
+    else
+      displayToast(tr("Failed to cancel recording"), "error")
+    end if
+  end if
+
+  if isValid(m.pendingRecordButton)
+    m.pendingRecordButton.loading = false
+  end if
+  m.pendingRecordButton = invalid
+  m.pendingRecordIsCancel = invalid
 end sub
 
 ' removeResumeButtonFromGroup: Remove the resume button from an ItemDetails button group.

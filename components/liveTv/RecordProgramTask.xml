@@ -4,6 +4,6 @@
   <interface>
     <field id="programDetails" type="node" value="" />
     <field id="recordSeries" type="boolean" value="false" />
-    <field id="recordOperationDone" type="boolean" value="" />
+    <field id="result" type="assocarray" value="" />
   </interface>
 </component>
