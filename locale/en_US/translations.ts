@@ -513,6 +513,14 @@
       <extracomment>Sort option - sorts folders first, then by name</extracomment>
     </message>
     <message>
+      <source>Force Transcode Anamorphic Video</source>
+      <translation>Force Transcode Anamorphic Video</translation>
+    </message>
+    <message>
+      <source>Force transcoding of anamorphic video (non-square pixels). Enable this if you see squished or stretched video during playback.</source>
+      <translation>Force transcoding of anamorphic video (non-square pixels). Enable this if you see squished or stretched video during playback.</translation>
+    </message>
+    <message>
       <source>Friday</source>
       <translation>Friday</translation>
       <extracomment>Day of Week</extracomment>
