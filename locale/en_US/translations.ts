@@ -496,6 +496,14 @@
       <translation>Exit JellyRock</translation>
     </message>
     <message>
+      <source>Failed to cancel recording</source>
+      <translation>Failed to cancel recording</translation>
+    </message>
+    <message>
+      <source>Failed to schedule recording</source>
+      <translation>Failed to schedule recording</translation>
+    </message>
+    <message>
       <source>Failed to update favorite</source>
       <translation>Failed to update favorite</translation>
     </message>
@@ -571,6 +579,10 @@
     <message>
       <source>Go to Artist</source>
       <translation>Go to Artist</translation>
+    </message>
+    <message>
+      <source>Go to Channel</source>
+      <translation>Go to Channel</translation>
     </message>
     <message>
       <source>Go to Series</source>
@@ -668,6 +680,10 @@
       <translation>JellyRock (Black)</translation>
     </message>
     <message>
+      <source>Kids</source>
+      <translation>Kids</translation>
+    </message>
+    <message>
       <source>Language Preferences</source>
       <translation>Language Preferences</translation>
     </message>
@@ -688,10 +704,6 @@
     <message>
       <source>LIVE</source>
       <translation>LIVE</translation>
-    </message>
-    <message>
-      <source>Loading Channel Data</source>
-      <translation>Loading Channel Data</translation>
     </message>
     <message>
       <source>Loading Search Data</source>
@@ -781,6 +793,10 @@
       <translation>More Like This</translation>
     </message>
     <message>
+      <source>More on this Channel</source>
+      <translation>More on this Channel</translation>
+    </message>
+    <message>
       <source>Movie</source>
       <translation>Movie</translation>
     </message>
@@ -823,6 +839,10 @@
     <message>
       <source>Networks</source>
       <translation>Networks</translation>
+    </message>
+    <message>
+      <source>News</source>
+      <translation>News</translation>
     </message>
     <message>
       <source>Next Episode</source>
@@ -939,8 +959,16 @@
       <translation>People</translation>
     </message>
     <message>
+      <source>photo</source>
+      <translation>photo</translation>
+    </message>
+    <message>
       <source>Photo Albums</source>
       <translation>Photo Albums</translation>
+    </message>
+    <message>
+      <source>photos</source>
+      <translation>photos</translation>
     </message>
     <message>
       <source>Photos</source>
@@ -1023,6 +1051,10 @@
       <translation>Preferred Surround Audio Codec</translation>
     </message>
     <message>
+      <source>Premiere</source>
+      <translation>Premiere</translation>
+    </message>
+    <message>
       <source>Present</source>
       <translation>Present</translation>
     </message>
@@ -1037,6 +1069,10 @@
     <message>
       <source>Primary</source>
       <translation>Primary</translation>
+    </message>
+    <message>
+      <source>Programs</source>
+      <translation>Programs</translation>
     </message>
     <message>
       <source>Progress bars and accents. Default: 3B82F6</source>
@@ -1084,6 +1120,18 @@
     <message>
       <source>Record Series</source>
       <translation>Record Series</translation>
+    </message>
+    <message>
+      <source>Recorded</source>
+      <translation>Recorded</translation>
+    </message>
+    <message>
+      <source>Recording cancelled</source>
+      <translation>Recording cancelled</translation>
+    </message>
+    <message>
+      <source>Recording scheduled</source>
+      <translation>Recording scheduled</translation>
     </message>
     <message>
       <source>Recordings</source>
@@ -1310,6 +1358,10 @@
       <extracomment>Video size</extracomment>
     </message>
     <message>
+      <source>Slideshow</source>
+      <translation>Slideshow</translation>
+    </message>
+    <message>
       <source>Slideshow Off</source>
       <translation>Slideshow Off</translation>
       <extracomment>Photo view option - view single photos</extracomment>
@@ -1346,6 +1398,10 @@
     <message>
       <source>Splash Screen Image</source>
       <translation>Splash Screen Image</translation>
+    </message>
+    <message>
+      <source>Sports</source>
+      <translation>Sports</translation>
     </message>
     <message>
       <source>Start over from the beginning.</source>
@@ -1516,6 +1572,10 @@
       <translation>Unplayed</translation>
     </message>
     <message>
+      <source>Up Next</source>
+      <translation>Up Next</translation>
+    </message>
+    <message>
       <source>Use Audio Language</source>
       <translation>Use Audio Language</translation>
     </message>
@@ -1601,6 +1661,10 @@
     <message>
       <source>View Channel</source>
       <translation>View Channel</translation>
+    </message>
+    <message>
+      <source>Watch</source>
+      <translation>Watch</translation>
     </message>
     <message>
       <source>Watched</source>
