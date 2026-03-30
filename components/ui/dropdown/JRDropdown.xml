@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="JRDropdown" extends="Group" focusable="true">
+  <children>
+    <!-- Trigger button area -->
+    <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+    <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+    <LayoutGroup id="triggerContent" layoutDirection="horz" itemSpacings="[9]">
+      <Poster id="triggerIcon" visible="false" width="36" height="36" loadWidth="36" loadHeight="36" loadDisplayMode="limitSize" />
+      <LabelSecondaryMedium id="triggerLabel" width="150" horizAlign="left" vertAlign="center" ellipsizeOnBoundary="true" />
+    </LayoutGroup>
+
+    <!-- Dropdown menu (positioned below trigger, initially hidden) -->
+    <Group id="menuContainer" visible="false">
+      <Poster id="menuBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+      <LayoutGroup id="menuItems" layoutDirection="vert" itemSpacings="[0]" />
+    </Group>
+  </children>
+  <interface>
+    <!-- Input -->
+    <field id="triggerText" type="string" onChange="onTriggerTextChanged" />
+    <field id="triggerIconUri" type="string" onChange="onTriggerIconChanged" />
+    <field id="triggerIconBlendColor" type="color" value="0xFFFFFFFF" onChange="onTriggerIconBlendColorChanged" />
+    <field id="items" type="array" onChange="onItemsChanged" />
+    <field id="autoOpen" type="boolean" value="false" />
+    <field id="selectedItemId" type="string" onChange="onSelectedItemChanged" />
+    <field id="menuWidth" type="integer" value="300" />
+    <field id="padding" type="integer" value="15" />
+
+    <!-- Output -->
+    <field id="selectedAction" type="string" alwaysNotify="true" />
+    <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
+    <field id="requestFocusExit" type="string" alwaysNotify="true" />
+
+    <!-- Functions -->
+    <function name="destroy" />
+  </interface>
+</component>

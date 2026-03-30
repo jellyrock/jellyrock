@@ -1,0 +1,61 @@
+sub init()
+  m.itemBackground = m.top.findNode("itemBackground")
+  m.itemBorder = m.top.findNode("itemBorder")
+  m.itemLabel = m.top.findNode("itemLabel")
+
+  constants = m.global.constants
+  m.colorPrimary = constants.colorPrimary
+  m.colorBackgroundSecondary = constants.colorBackgroundSecondary
+  m.colorTextPrimary = constants.colorTextPrimary
+  m.colorTextSecondary = constants.colorTextSecondary
+  m.colorSecondary = constants.colorSecondary
+
+  ' Default visual state: unfocused
+  m.itemLabel.color = m.colorTextSecondary
+
+  ' Apply initial sizing
+  onSizeChanged()
+end sub
+
+sub onTextChanged()
+  m.itemLabel.text = m.top.text
+end sub
+
+sub onSizeChanged()
+  itemWidth = m.top.itemWidth
+  itemHeight = m.top.itemHeight
+  padding = 20
+
+  ' Size the 9-patch background and border to fill the item area
+  m.itemBackground.width = itemWidth
+  m.itemBackground.height = itemHeight
+  m.itemBorder.width = itemWidth
+  m.itemBorder.height = itemHeight
+
+  m.itemLabel.width = itemWidth - (padding * 2)
+  m.itemLabel.height = itemHeight
+  m.itemLabel.translation = [padding, 0]
+end sub
+
+' Updates visual state based on virtual isFocused and isSelected fields.
+' Focused state uses button-like styling: 9-patch border + background (same as TextButton).
+' JRDropdown manages focus externally — this item never receives real Roku focus.
+sub onFocusStateChanged()
+  if m.top.isFocused
+    ' Button-like focus: show border in primary color, background in secondary
+    m.itemBorder.blendColor = m.colorPrimary
+    m.itemBackground.blendColor = m.colorBackgroundSecondary
+    m.itemBorder.visible = true
+    m.itemBackground.visible = true
+    m.itemLabel.color = m.colorTextPrimary
+  else
+    ' Hide button visuals when unfocused
+    m.itemBorder.visible = false
+    m.itemBackground.visible = false
+    if m.top.isSelected
+      m.itemLabel.color = m.colorSecondary
+    else
+      m.itemLabel.color = m.colorTextSecondary
+    end if
+  end if
+end sub

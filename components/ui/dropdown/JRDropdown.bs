@@ -1,0 +1,353 @@
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  ' Cache node references
+  m.buttonBackground = m.top.findNode("buttonBackground")
+  m.buttonBorder = m.top.findNode("buttonBorder")
+  m.triggerContent = m.top.findNode("triggerContent")
+  m.triggerIcon = m.top.findNode("triggerIcon")
+  m.triggerLabel = m.top.findNode("triggerLabel")
+  m.menuContainer = m.top.findNode("menuContainer")
+  m.menuBackground = m.top.findNode("menuBackground")
+
+  m.menuItems = m.top.findNode("menuItems")
+
+  ' State
+  m.isOpen = false
+  m.focusedItemIndex = 0
+
+  ' Cache theme colors
+  constants = m.global.constants
+  m.colorPrimary = constants.colorPrimary
+  m.colorBackgroundSecondary = constants.colorBackgroundSecondary
+  m.colorTextPrimary = constants.colorTextPrimary
+  m.colorTextSecondary = constants.colorTextSecondary
+
+  ' Trigger button: unfocused state (transparent, only text visible — JRTab pattern)
+  m.buttonBackground.visible = false
+  m.buttonBorder.visible = false
+
+  ' Enable render tracking for trigger button sizing
+  m.top.enableRenderTracking = true
+  m.top.observeField("renderTracking", "onRenderComplete")
+  m.top.observeField("focusedChild", "onFocusChanged")
+end sub
+
+' ============================================
+' TRIGGER BUTTON
+' ============================================
+
+sub onTriggerTextChanged()
+  m.triggerLabel.text = m.top.triggerText
+  if m.top.renderTracking = "full"
+    sizeTriggerButton()
+  end if
+end sub
+
+sub onTriggerIconChanged()
+  uri = m.top.triggerIconUri
+  if isValidAndNotEmpty(uri)
+    m.triggerIcon.uri = uri
+    m.triggerIcon.visible = true
+  else
+    m.triggerIcon.visible = false
+  end if
+  if m.top.renderTracking = "full"
+    sizeTriggerButton()
+  end if
+end sub
+
+sub onTriggerIconBlendColorChanged()
+  m.triggerIcon.blendColor = m.top.triggerIconBlendColor
+end sub
+
+sub onRenderComplete()
+  if m.top.renderTracking <> "full" then return
+  sizeTriggerButton()
+end sub
+
+' Sizes the trigger button background and border to fit the content.
+' Uses the same padding-based approach as TextButton.
+sub sizeTriggerButton()
+  if not isValid(m.triggerLabel) then return
+
+  ' Measure the trigger content bounding rect
+  contentRect = m.triggerContent.localBoundingRect()
+  if contentRect.width = 0 then return
+
+  padding = m.top.padding
+  buttonWidth = contentRect.width + (padding * 2)
+  buttonHeight = contentRect.height + (padding * 2)
+
+  ' Size background and border
+  m.buttonBackground.width = buttonWidth
+  m.buttonBackground.height = buttonHeight
+  m.buttonBorder.width = buttonWidth
+  m.buttonBorder.height = buttonHeight
+
+  ' Center the content within the button
+  m.triggerContent.translation = [padding, padding]
+
+  ' Position menu below the trigger button
+  positionMenu(buttonWidth, buttonHeight)
+end sub
+
+' Positions the dropdown menu directly below the trigger button
+sub positionMenu(buttonWidth as integer, buttonHeight as integer)
+  menuWidth = m.top.menuWidth
+  if menuWidth < buttonWidth
+    menuWidth = buttonWidth
+  end if
+
+  ' Align menu left edge with button left edge, expanding rightward
+  menuY = buttonHeight + 6 ' 6px gap below trigger
+
+  m.menuContainer.translation = [0, menuY]
+
+  ' Size menu background (height set in onItemsChanged after items are created)
+  m.menuBackground.width = menuWidth
+end sub
+
+' ============================================
+' MENU ITEMS
+' ============================================
+
+' Rebuilds menu item children when the items array changes
+sub onItemsChanged()
+  items = m.top.items
+
+  ' Clear existing items
+  m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
+  m.focusedItemIndex = 0
+
+  if not isValidAndNotEmpty(items) then return
+
+  menuWidth = m.top.menuWidth
+
+  ' Ensure menu width is at least as wide as trigger button
+  buttonWidth = m.buttonBackground.width
+  if menuWidth < buttonWidth
+    menuWidth = int(buttonWidth)
+  end if
+
+  ' Calculate item height from font size + padding
+  constants = m.global.constants
+  itemHeight = int(constants.fontSizeMedium * 0.7) + 40 ' 20px padding top + bottom
+
+  for each item in items
+    menuItem = CreateObject("roSGNode", "JRDropdownItem")
+    menuItem.text = item.title
+    menuItem.itemId = item.id
+    menuItem.itemWidth = menuWidth
+    menuItem.itemHeight = itemHeight
+    m.menuItems.appendChild(menuItem)
+  end for
+
+  ' Size menu panel to fit all items
+  totalHeight = items.count() * itemHeight
+  m.menuBackground.height = totalHeight
+  m.menuBackground.width = menuWidth
+
+  ' Update selection indicator if selectedItemId is set
+  if isValidAndNotEmpty(m.top.selectedItemId)
+    onSelectedItemChanged()
+  end if
+end sub
+
+' Updates the isSelected visual on menu items to match selectedItemId
+sub onSelectedItemChanged()
+  selectedId = m.top.selectedItemId
+  for i = 0 to m.menuItems.getChildCount() - 1
+    item = m.menuItems.getChild(i)
+    item.isSelected = (item.itemId = selectedId)
+  end for
+end sub
+
+' ============================================
+' FOCUS MANAGEMENT
+' ============================================
+
+' Called when the dropdown gains or loses focus.
+' Shows/hides the trigger button border. Menu requires OK press to open.
+sub onFocusChanged()
+  hasFocus = m.top.isInFocusChain()
+
+  if hasFocus
+    ' Show trigger button focus visuals (only when menu is closed)
+    if not m.isOpen
+      showTriggerFocus()
+    end if
+    m.triggerLabel.color = m.colorTextPrimary
+  else
+    ' Hide all focus visuals and close menu
+    hideTriggerFocus()
+    m.triggerLabel.color = m.colorTextSecondary
+    closeMenu()
+  end if
+end sub
+
+' Shows focus border/background on the trigger button
+sub showTriggerFocus()
+  m.buttonBorder.blendColor = m.colorPrimary
+  m.buttonBackground.blendColor = m.colorBackgroundSecondary
+  m.buttonBorder.visible = true
+  m.buttonBackground.visible = true
+end sub
+
+' Hides focus border/background on the trigger button
+sub hideTriggerFocus()
+  m.buttonBorder.visible = false
+  m.buttonBackground.visible = false
+end sub
+
+sub openMenu()
+  if m.isOpen then return
+  if m.menuItems.getChildCount() = 0 then return
+
+  m.isOpen = true
+  m.focusedItemIndex = 0
+  m.menuContainer.visible = true
+
+  ' Hide trigger border — the focused menu item's own border indicates focus
+  hideTriggerFocus()
+  m.menuBackground.blendColor = m.colorBackgroundSecondary
+
+  updateFocusedItemVisuals()
+end sub
+
+sub closeMenu()
+  if not m.isOpen then return
+
+  m.isOpen = false
+  m.menuContainer.visible = false
+
+  ' Clear focus on all items
+  for i = 0 to m.menuItems.getChildCount() - 1
+    m.menuItems.getChild(i).isFocused = false
+  end for
+
+  ' Restore trigger focus border if still focused
+  if m.top.isInFocusChain()
+    showTriggerFocus()
+  end if
+end sub
+
+' Updates the isFocused visual state on menu item children
+sub updateFocusedItemVisuals()
+  for i = 0 to m.menuItems.getChildCount() - 1
+    m.menuItems.getChild(i).isFocused = (i = m.focusedItemIndex)
+  end for
+end sub
+
+' ============================================
+' KEY HANDLING
+' ============================================
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  if m.isOpen
+    return handleMenuKeyEvent(key)
+  else
+    return handleClosedKeyEvent(key)
+  end if
+end function
+
+' Key handling when the dropdown menu is open
+function handleMenuKeyEvent(key as string) as boolean
+  itemCount = m.menuItems.getChildCount()
+
+  if key = "down"
+    if m.focusedItemIndex < itemCount - 1
+      ' Move focus down within menu
+      m.focusedItemIndex++
+      updateFocusedItemVisuals()
+    else
+      ' Past last item — close and return focus to content
+      closeMenu()
+      m.top.requestFocusReturn = true
+    end if
+    return true
+
+  else if key = "up"
+    if m.focusedItemIndex > 0
+      ' Move focus up within menu
+      m.focusedItemIndex--
+      updateFocusedItemVisuals()
+    else
+      ' Past first item — close and exit left (to last tab)
+      closeMenu()
+      m.top.requestFocusExit = "left"
+    end if
+    return true
+
+  else if key = "OK"
+    ' Select the focused item
+    selectedItem = m.menuItems.getChild(m.focusedItemIndex)
+    if isValid(selectedItem)
+      m.top.selectedAction = selectedItem.itemId
+    end if
+    closeMenu()
+    return true
+
+  else if key = "left"
+    closeMenu()
+    m.top.requestFocusExit = "left"
+    return true
+
+  else if key = "right"
+    closeMenu()
+    m.top.requestFocusExit = "right"
+    return true
+
+  else if key = "back"
+    closeMenu()
+    return true
+  end if
+
+  return false
+end function
+
+' Key handling when the dropdown menu is closed
+function handleClosedKeyEvent(key as string) as boolean
+  if key = "OK"
+    openMenu()
+    return true
+
+  else if key = "down"
+    m.top.requestFocusReturn = true
+    return true
+
+  else if key = "left"
+    m.top.requestFocusExit = "left"
+    return true
+
+  else if key = "right"
+    m.top.requestFocusExit = "right"
+    return true
+  end if
+
+  ' BACK: don't consume — let it bubble to JRScene for normal back navigation
+  return false
+end function
+
+' ============================================
+' TEARDOWN
+' ============================================
+
+sub destroy()
+  m.top.unobserveField("focusedChild")
+  m.top.unobserveField("renderTracking")
+
+  ' Clear menu items
+  m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
+
+  m.buttonBackground = invalid
+  m.buttonBorder = invalid
+  m.triggerContent = invalid
+  m.triggerIcon = invalid
+  m.triggerLabel = invalid
+  m.menuContainer = invalid
+  m.menuBackground = invalid
+  m.menuItems = invalid
+end sub
