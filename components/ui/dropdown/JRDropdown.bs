@@ -88,6 +88,9 @@ sub sizeTriggerButton()
   ' Center the content within the button
   m.triggerContent.translation = [padding, padding]
 
+  ' Publish computed width so parent can reposition if needed (e.g., right-aligning)
+  m.top.triggerWidth = int(buttonWidth)
+
   ' Position menu below the trigger button
   positionMenu(buttonWidth, buttonHeight)
 end sub
@@ -130,7 +133,8 @@ sub onItemsChanged()
     menuWidth = int(buttonWidth)
   end if
 
-  ' Calculate item height from font size + padding
+  ' Calculate item height from font size + padding.
+  ' fontSizeMedium is the em-height; actual rendered line height is ~70%.
   constants = m.global.constants
   itemHeight = int(constants.fontSizeMedium * 0.7) + 40 ' 20px padding top + bottom
 
@@ -275,9 +279,8 @@ function handleMenuKeyEvent(key as string) as boolean
       m.focusedItemIndex--
       updateFocusedItemVisuals()
     else
-      ' Past first item — close and exit left (to last tab)
+      ' Past first item — close menu and return to trigger button
       closeMenu()
-      m.top.requestFocusExit = "left"
     end if
     return true
 

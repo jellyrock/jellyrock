@@ -90,10 +90,7 @@ sub OnScreenShown()
 
     ' Hide clock if user preference is set
     if globalUser.settings.uiDesignHideClock
-      clock = overhang.findNode("clock")
-      if isValid(clock)
-        overhang.removeChild(clock)
-      end if
+      overhang.callFunc("hideClock")
     end if
   end if
 

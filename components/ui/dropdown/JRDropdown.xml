@@ -21,12 +21,12 @@
     <field id="triggerIconUri" type="string" onChange="onTriggerIconChanged" />
     <field id="triggerIconBlendColor" type="color" value="0xFFFFFFFF" onChange="onTriggerIconBlendColorChanged" />
     <field id="items" type="array" onChange="onItemsChanged" />
-    <field id="autoOpen" type="boolean" value="false" />
     <field id="selectedItemId" type="string" onChange="onSelectedItemChanged" />
     <field id="menuWidth" type="integer" value="300" />
     <field id="padding" type="integer" value="15" />
 
     <!-- Output -->
+    <field id="triggerWidth" type="integer" value="0" />
     <field id="selectedAction" type="string" alwaysNotify="true" />
     <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
     <field id="requestFocusExit" type="string" alwaysNotify="true" />

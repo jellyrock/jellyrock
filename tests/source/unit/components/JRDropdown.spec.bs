@@ -1,0 +1,271 @@
+namespace tests
+
+  @suite("JRDropdown - Node interface and defaults")
+  class JRDropdownTests extends tests.BaseTestSuite
+
+    private dropdown as object
+
+    protected override function setup()
+      super.setup()
+      m.dropdown = CreateObject("roSGNode", "JRDropdown")
+    end function
+
+    protected override function teardown()
+      m.dropdown = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has triggerText field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("triggerText"))
+    end function
+
+    @it("has triggerIconUri field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("triggerIconUri"))
+    end function
+
+    @it("has triggerIconBlendColor field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("triggerIconBlendColor"))
+    end function
+
+    @it("has items field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("items"))
+    end function
+
+    @it("has selectedItemId field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("selectedItemId"))
+    end function
+
+    @it("has menuWidth field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("menuWidth"))
+    end function
+
+    @it("has padding field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("padding"))
+    end function
+
+    @it("has triggerWidth output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("triggerWidth"))
+    end function
+
+    @it("has selectedAction output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("selectedAction"))
+    end function
+
+    @it("has requestFocusReturn output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("requestFocusReturn"))
+    end function
+
+    @it("has requestFocusExit output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("requestFocusExit"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("triggerText defaults to empty string")
+    function _()
+      m.assertEqual(m.dropdown.triggerText, "")
+    end function
+
+    @it("menuWidth defaults to 300")
+    function _()
+      m.assertEqual(m.dropdown.menuWidth, 300)
+    end function
+
+    @it("padding defaults to 15")
+    function _()
+      m.assertEqual(m.dropdown.padding, 15)
+    end function
+
+    @it("triggerWidth defaults to 0")
+    function _()
+      m.assertEqual(m.dropdown.triggerWidth, 0)
+    end function
+
+    @it("requestFocusReturn defaults to false")
+    function _()
+      m.assertFalse(m.dropdown.requestFocusReturn)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Child nodes exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has buttonBackground poster")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("buttonBackground"))
+    end function
+
+    @it("has buttonBorder poster")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("buttonBorder"))
+    end function
+
+    @it("has triggerContent layout group")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("triggerContent"))
+    end function
+
+    @it("has triggerIcon poster")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("triggerIcon"))
+    end function
+
+    @it("has triggerLabel label")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("triggerLabel"))
+    end function
+
+    @it("has menuContainer group")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("menuContainer"))
+    end function
+
+    @it("has menuBackground poster")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("menuBackground"))
+    end function
+
+    @it("has menuItems layout group")
+    function _()
+      m.assertNotInvalid(m.dropdown.findNode("menuItems"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Initial visual state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("buttonBackground is hidden by default")
+    function _()
+      m.assertFalse(m.dropdown.findNode("buttonBackground").visible)
+    end function
+
+    @it("buttonBorder is hidden by default")
+    function _()
+      m.assertFalse(m.dropdown.findNode("buttonBorder").visible)
+    end function
+
+    @it("triggerIcon is hidden by default")
+    function _()
+      m.assertFalse(m.dropdown.findNode("triggerIcon").visible)
+    end function
+
+    @it("menuContainer is hidden by default")
+    function _()
+      m.assertFalse(m.dropdown.findNode("menuContainer").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Trigger text")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("updates trigger label text when triggerText changes")
+    function _()
+      m.dropdown.triggerText = "TestUser"
+      label = m.dropdown.findNode("triggerLabel")
+      m.assertEqual(label.text, "TestUser")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Trigger icon")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows trigger icon when URI is set")
+    function _()
+      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
+      icon = m.dropdown.findNode("triggerIcon")
+      m.assertTrue(icon.visible)
+      m.assertEqual(icon.uri, "pkg:/images/icons/person_36px.png")
+    end function
+
+    @it("hides trigger icon when URI is cleared")
+    function _()
+      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
+      m.dropdown.triggerIconUri = ""
+      icon = m.dropdown.findNode("triggerIcon")
+      m.assertFalse(icon.visible)
+    end function
+
+    @it("applies blend color to trigger icon")
+    function _()
+      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
+      m.dropdown.triggerIconBlendColor = "0xFF0000FF"
+      icon = m.dropdown.findNode("triggerIcon")
+      m.assertEqual(icon.blendColor, "0xFF0000FF")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Menu items")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates menu item children from items array")
+    function _()
+      m.dropdown.items = [
+        { title: "Item 1", id: "item_1" },
+        { title: "Item 2", id: "item_2" },
+        { title: "Item 3", id: "item_3" }
+      ]
+      menuItems = m.dropdown.findNode("menuItems")
+      m.assertNodeCount(menuItems, 3)
+    end function
+
+    @it("clears previous items when items array is replaced")
+    function _()
+      m.dropdown.items = [
+        { title: "Item 1", id: "item_1" },
+        { title: "Item 2", id: "item_2" }
+      ]
+      m.dropdown.items = [
+        { title: "New Item", id: "new_1" }
+      ]
+      menuItems = m.dropdown.findNode("menuItems")
+      m.assertNodeCount(menuItems, 1)
+    end function
+
+    @it("creates no children for empty items array")
+    function _()
+      m.dropdown.items = []
+      menuItems = m.dropdown.findNode("menuItems")
+      m.assertNodeCount(menuItems, 0)
+    end function
+
+    @it("sets correct text and itemId on created menu items")
+    function _()
+      m.dropdown.items = [
+        { title: "Sign out", id: "sign_out" }
+      ]
+      menuItems = m.dropdown.findNode("menuItems")
+      item = menuItems.getChild(0)
+      m.assertEqual(item.text, "Sign out")
+      m.assertEqual(item.itemId, "sign_out")
+    end function
+
+    @it("sets item width to menuWidth")
+    function _()
+      m.dropdown.menuWidth = 400
+      m.dropdown.items = [
+        { title: "Item 1", id: "item_1" }
+      ]
+      menuItems = m.dropdown.findNode("menuItems")
+      item = menuItems.getChild(0)
+      m.assertEqual(item.itemWidth, 400)
+    end function
+
+  end class
+
+end namespace

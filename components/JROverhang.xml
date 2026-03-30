@@ -20,7 +20,6 @@
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <function name="getTabBar" />
     <function name="getUserDropdown" />
-    <field id="userMenuAction" type="string" alwaysNotify="true" />
-    <field id="requestUserMenuFocusReturn" type="boolean" value="false" alwaysNotify="true" />
+    <function name="hideClock" />
   </interface>
 </component>

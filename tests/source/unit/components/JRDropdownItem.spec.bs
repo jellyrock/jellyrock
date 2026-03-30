@@ -1,0 +1,180 @@
+namespace tests
+
+  @suite("JRDropdownItem - Node interface and defaults")
+  class JRDropdownItemTests extends tests.BaseTestSuite
+
+    private item as object
+
+    protected override function setup()
+      super.setup()
+      m.item = CreateObject("roSGNode", "JRDropdownItem")
+    end function
+
+    protected override function teardown()
+      m.item = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has text field")
+    function _()
+      m.assertTrue(m.item.doesExist("text"))
+    end function
+
+    @it("has itemId field")
+    function _()
+      m.assertTrue(m.item.doesExist("itemId"))
+    end function
+
+    @it("has isFocused field")
+    function _()
+      m.assertTrue(m.item.doesExist("isFocused"))
+    end function
+
+    @it("has isSelected field")
+    function _()
+      m.assertTrue(m.item.doesExist("isSelected"))
+    end function
+
+    @it("has itemWidth field")
+    function _()
+      m.assertTrue(m.item.doesExist("itemWidth"))
+    end function
+
+    @it("has itemHeight field")
+    function _()
+      m.assertTrue(m.item.doesExist("itemHeight"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("text defaults to empty string")
+    function _()
+      m.assertEqual(m.item.text, "")
+    end function
+
+    @it("itemId defaults to empty string")
+    function _()
+      m.assertEqual(m.item.itemId, "")
+    end function
+
+    @it("isFocused defaults to false")
+    function _()
+      m.assertFalse(m.item.isFocused)
+    end function
+
+    @it("isSelected defaults to false")
+    function _()
+      m.assertFalse(m.item.isSelected)
+    end function
+
+    @it("itemWidth defaults to 300")
+    function _()
+      m.assertEqual(m.item.itemWidth, 300)
+    end function
+
+    @it("itemHeight defaults to 60")
+    function _()
+      m.assertEqual(m.item.itemHeight, 60)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Child nodes exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has itemBackground poster")
+    function _()
+      m.assertNotInvalid(m.item.findNode("itemBackground"))
+    end function
+
+    @it("has itemBorder poster")
+    function _()
+      m.assertNotInvalid(m.item.findNode("itemBorder"))
+    end function
+
+    @it("has itemLabel label")
+    function _()
+      m.assertNotInvalid(m.item.findNode("itemLabel"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Initial visual state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("itemBackground is hidden by default")
+    function _()
+      m.assertFalse(m.item.findNode("itemBackground").visible)
+    end function
+
+    @it("itemBorder is hidden by default")
+    function _()
+      m.assertFalse(m.item.findNode("itemBorder").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Text updates")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("updates label text when text field changes")
+    function _()
+      m.item.text = "Change user"
+      label = m.item.findNode("itemLabel")
+      m.assertEqual(label.text, "Change user")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Focus visual state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows border and background when isFocused is true")
+    function _()
+      m.item.isFocused = true
+      m.assertTrue(m.item.findNode("itemBorder").visible)
+      m.assertTrue(m.item.findNode("itemBackground").visible)
+    end function
+
+    @it("hides border and background when isFocused is false")
+    function _()
+      m.item.isFocused = true
+      m.item.isFocused = false
+      m.assertFalse(m.item.findNode("itemBorder").visible)
+      m.assertFalse(m.item.findNode("itemBackground").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Sizing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sizes background to match itemWidth and itemHeight")
+    function _()
+      m.item.itemWidth = 400
+      m.item.itemHeight = 50
+      bg = m.item.findNode("itemBackground")
+      m.assertEqual(bg.width, 400)
+      m.assertEqual(bg.height, 50)
+    end function
+
+    @it("sizes border to match itemWidth and itemHeight")
+    function _()
+      m.item.itemWidth = 400
+      m.item.itemHeight = 50
+      border = m.item.findNode("itemBorder")
+      m.assertEqual(border.width, 400)
+      m.assertEqual(border.height, 50)
+    end function
+
+    @it("sets label width with padding offset")
+    function _()
+      m.item.itemWidth = 400
+      label = m.item.findNode("itemLabel")
+      ' 20px padding on each side: 400 - 40 = 360
+      m.assertEqual(label.width, 360)
+    end function
+
+  end class
+
+end namespace

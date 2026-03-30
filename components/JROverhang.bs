@@ -9,6 +9,7 @@ sub init()
   m.logoPoster = createLogoPoster() ' save node to memory for faster load time
   m.title = m.top.findNode("title")
   m.clock = m.top.findNode("clock")
+  m.isClockHidden = false
 
   ' Create user dropdown
   m.userDropdown = CreateObject("roSGNode", "JRDropdown")
@@ -17,13 +18,12 @@ sub init()
   m.userDropdown.visible = false ' hidden until user logs in
   m.top.appendChild(m.userDropdown)
 
+  ' Reposition dropdown when trigger button width changes (e.g., username change while clock is hidden)
+  m.userDropdown.observeField("triggerWidth", "onDropdownTriggerWidthChanged")
+
   ' Position dropdown so trigger text aligns vertically with overhang title/tabs.
   ' The trigger button has 30px padding, so offset the dropdown upward to compensate.
   positionUserDropdown()
-
-  ' Observe dropdown events
-  m.userDropdown.observeField("selectedAction", "onDropdownAction")
-  m.userDropdown.observeField("requestFocusReturn", "onDropdownFocusReturn")
 
   ' Create animations programmatically to avoid interpolator field reference issues
   createSlideAnimations()
@@ -116,16 +116,6 @@ sub currentUserChanged()
   end if
 end sub
 
-' Proxy dropdown selectedAction to overhang's userMenuAction field
-sub onDropdownAction()
-  m.top.userMenuAction = m.userDropdown.selectedAction
-end sub
-
-' Proxy dropdown requestFocusReturn to overhang's field for Home screen to observe
-sub onDropdownFocusReturn()
-  m.top.requestUserMenuFocusReturn = true
-end sub
-
 ' Returns the user dropdown reference for direct focus management by screens
 function getUserDropdown() as object
   return m.userDropdown
@@ -171,16 +161,54 @@ sub onUserDropdownRequestsTabs()
 end sub
 
 ' ============================================
-' LOGO
+' POSITIONING
 ' ============================================
 
-' Positions the user dropdown so trigger content aligns with the overhang user area.
-' Offsets by the trigger button padding so the icon/text visually starts at x=1450, y=54.
+' Hides the overhang clock and repositions the user dropdown to fill the freed space.
+' Called by Home.bs when the user's uiDesignHideClock setting is enabled.
+sub hideClock()
+  if isValid(m.clock)
+    m.top.removeChild(m.clock)
+    m.clock = invalid
+  end if
+  m.isClockHidden = true
+  positionUserDropdown()
+end sub
+
+' Repositions the dropdown when its trigger button width changes.
+' Only matters when clock is hidden (right-aligned mode), since
+' the left-aligned default position doesn't depend on trigger width.
+sub onDropdownTriggerWidthChanged()
+  if m.isClockHidden
+    positionUserDropdown()
+  end if
+end sub
+
+' Positions the user dropdown in the overhang.
+' When the clock is visible, the dropdown is left-aligned at x=1450 (its original position).
+' When the clock is hidden, the dropdown is right-aligned so its right edge meets the
+' 5% action-safe boundary (x=1824), matching where the clock's right edge sits.
 sub positionUserDropdown()
   if not isValid(m.userDropdown) then return
 
   dropdownPadding = m.userDropdown.padding
-  m.userDropdown.translation = [1450 - dropdownPadding, 54 - dropdownPadding]
+  yPos = 54 - dropdownPadding
+
+  if m.isClockHidden
+    ' Right-align: position so the trigger button's right edge lands at x=1824.
+    ' triggerWidth includes padding on both sides, so the full button ends at 1824.
+    triggerWidth = m.userDropdown.triggerWidth
+    if triggerWidth > 0
+      xPos = 1824 - triggerWidth - dropdownPadding
+    else
+      ' Trigger hasn't rendered yet — use default position; will reposition on triggerWidth change
+      xPos = 1450 - dropdownPadding
+    end if
+  else
+    xPos = 1450 - dropdownPadding
+  end if
+
+  m.userDropdown.translation = [xPos, yPos]
 end sub
 
 ' component boolean field isVisible has changed value
