@@ -154,8 +154,9 @@ namespace tests
       m.item.itemWidth = 400
       m.item.itemHeight = 50
       bg = m.item.findNode("itemBackground")
-      m.assertEqual(bg.width, 400)
-      m.assertEqual(bg.height, 50)
+      ' Poster width/height are floats
+      m.assertEqual(bg.width, 400.0)
+      m.assertEqual(bg.height, 50.0)
     end function
 
     @it("sizes border to match itemWidth and itemHeight")
@@ -163,8 +164,8 @@ namespace tests
       m.item.itemWidth = 400
       m.item.itemHeight = 50
       border = m.item.findNode("itemBorder")
-      m.assertEqual(border.width, 400)
-      m.assertEqual(border.height, 50)
+      m.assertEqual(border.width, 400.0)
+      m.assertEqual(border.height, 50.0)
     end function
 
     @it("sets label width with padding offset")
@@ -172,7 +173,7 @@ namespace tests
       m.item.itemWidth = 400
       label = m.item.findNode("itemLabel")
       ' 20px padding on each side: 400 - 40 = 360
-      m.assertEqual(label.width, 360)
+      m.assertEqual(label.width, 360.0)
     end function
 
   end class

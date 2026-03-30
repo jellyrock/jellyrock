@@ -206,7 +206,8 @@ namespace tests
       m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
       m.dropdown.triggerIconBlendColor = "0xFF0000FF"
       icon = m.dropdown.findNode("triggerIcon")
-      m.assertEqual(icon.blendColor, "0xFF0000FF")
+      ' Color fields are stored as integers — 0xFF0000FF = -16776961
+      m.assertEqual(icon.blendColor, &hFF0000FF)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
