@@ -116,6 +116,15 @@ end sub
 ' When the tab bar gains or loses focus, update tab visuals
 sub onFocusChanged()
   hasFocus = m.top.isInFocusChain()
+
+  ' Sync internal index from interface field on focus gain.
+  ' The external setter (e.g., overhang returning focus from dropdown)
+  ' may not have triggered onFocusedTabIndexChanged yet due to async
+  ' field observers, so read the authoritative value directly.
+  if hasFocus
+    m.focusedTabIndex = m.top.focusedTabIndex
+  end if
+
   updateFocusedTabVisuals()
 
   ' Clear focus indicator on all tabs when losing focus
@@ -156,14 +165,24 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if tabCount = 0 then return false
 
   if key = "right"
-    ' Move focus right, wrapping at the end
-    m.focusedTabIndex = (m.focusedTabIndex + 1) mod tabCount
-    updateFocusedTabVisuals()
+    if m.focusedTabIndex = tabCount - 1
+      ' At last tab — signal focus transfer to user dropdown (wraps right)
+      m.top.requestFocusToUserMenu = "right"
+    else
+      ' Move focus right within tabs
+      m.focusedTabIndex = m.focusedTabIndex + 1
+      updateFocusedTabVisuals()
+    end if
     return true
   else if key = "left"
-    ' Move focus left, wrapping at the beginning
-    m.focusedTabIndex = (m.focusedTabIndex - 1 + tabCount) mod tabCount
-    updateFocusedTabVisuals()
+    if m.focusedTabIndex = 0
+      ' At first tab — signal focus transfer to user dropdown (wraps left)
+      m.top.requestFocusToUserMenu = "left"
+    else
+      ' Move focus left within tabs
+      m.focusedTabIndex = m.focusedTabIndex - 1
+      updateFocusedTabVisuals()
+    end if
     return true
   else if key = "OK"
     selectTab(m.focusedTabIndex)
@@ -177,6 +196,24 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' UP: don't consume — let it bubble (nothing above the tab bar)
   return false
 end function
+
+' Called when focusedTabIndex is set externally (e.g., returning from user dropdown).
+' Syncs internal state and updates visuals.
+sub onFocusedTabIndexChanged()
+  newIndex = m.top.focusedTabIndex
+  tabCount = m.tabContainer.getChildCount()
+  if tabCount = 0 then return
+
+  ' Clamp to valid range
+  if newIndex < 0
+    newIndex = 0
+  else if newIndex >= tabCount
+    newIndex = tabCount - 1
+  end if
+
+  m.focusedTabIndex = newIndex
+  updateFocusedTabVisuals()
+end sub
 
 sub destroy()
   m.top.unobserveField("focusedChild")

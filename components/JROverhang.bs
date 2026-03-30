@@ -8,10 +8,22 @@ sub init()
   m.logo = m.top.findNode("logo")
   m.logoPoster = createLogoPoster() ' save node to memory for faster load time
   m.title = m.top.findNode("title")
-  m.user = m.top.findNode("username")
-  m.userGroup = m.top.findNode("userGroup")
   m.clock = m.top.findNode("clock")
-  m.userImage = m.top.findNode("userImage")
+  m.isClockHidden = false
+
+  ' Create user dropdown
+  m.userDropdown = CreateObject("roSGNode", "JRDropdown")
+  m.userDropdown.id = "userDropdown"
+  m.userDropdown.menuWidth = 300
+  m.userDropdown.visible = false ' hidden until user logs in
+  m.top.appendChild(m.userDropdown)
+
+  ' Reposition dropdown when trigger button width changes (e.g., username change while clock is hidden)
+  m.userDropdown.observeField("triggerWidth", "onDropdownTriggerWidthChanged")
+
+  ' Position dropdown so trigger text aligns vertically with overhang title/tabs.
+  ' The trigger button has 30px padding, so offset the dropdown upward to compensate.
+  positionUserDropdown()
 
   ' Create animations programmatically to avoid interpolator field reference issues
   createSlideAnimations()
@@ -66,62 +78,138 @@ sub titleChanged()
   m.title.text = m.top.title
 end sub
 
+' ============================================
+' USER DROPDOWN
+' ============================================
+
 sub currentUserChanged()
-  m.user.text = m.top.currentUser
+  username = m.top.currentUser
 
-  if not isValid(m.userPoster) or (m.userPoster.userId <> m.global.user.id)
-    m.userPoster = createUserPoster() ' save node to memory for faster load time
-  end if
+  if username = ""
+    ' No user logged in — hide the dropdown
+    m.userDropdown.visible = false
+    m.userDropdown.triggerText = ""
+    m.userDropdown.triggerIconUri = ""
+  else
+    ' User logged in — configure and show the dropdown
+    m.userDropdown.triggerText = username
+    m.userDropdown.visible = true
 
-  if m.top.currentUser = ""
-    ' no user logged in, remove image if it exists
-    if isValid(m.userImage)
-      m.userGroup.removeChild(m.userImage)
-      m.userImage = invalid
-    end if
-  else if not isValid(m.userImage)
-    ' user logged in but no image, add it
-    m.userImage = m.userPoster
-    if m.userImage.tag = ""
-      m.userGroup.itemSpacings = 9 ' default image is padded
+    ' Set user avatar image
+    localUser = m.global.user
+    if isValidAndNotEmpty(localUser.primaryImageTag)
+      m.userDropdown.triggerIconBlendColor = "0xFFFFFFFF"
+      if m.global.server.serverUrl <> ""
+        m.userDropdown.triggerIconUri = GetUserAvatarURL(localUser, 36, 36)
+      end if
     else
-      m.userGroup.itemSpacings = 15
+      m.userDropdown.triggerIconBlendColor = m.global.constants.colorTextSecondary
+      m.userDropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
     end if
 
-    m.userGroup.insertChild(m.userImage, 0)
+    ' Set menu items — user-related actions only
+    m.userDropdown.items = [
+      { title: tr("Change user"), id: "change_user" },
+      { title: tr("Change server"), id: "change_server" },
+      { title: tr("Sign out"), id: "sign_out" }
+    ]
   end if
 end sub
 
-function createUserPoster() as object
-  localUser = m.global.user
-  userImage = createObject("roSGNode", "Poster")
+' Returns the user dropdown reference for direct focus management by screens
+function getUserDropdown() as object
+  return m.userDropdown
+end function
 
-  userImage.id = "userImage"
-  userImage.width = 36
-  userImage.loadWidth = 36
-  userImage.height = 36
-  userImage.loadHeight = 36
-  userImage.loadDisplayMode = "limitSize"
-  userImage.addFields({
-    userId: localUser.id
-  })
+' ============================================
+' FOCUS BRIDGING: TAB BAR <-> USER DROPDOWN
+' ============================================
 
-  if isValidAndNotEmpty(localUser.primaryImageTag)
-    ' reset defaults
-    userImage.blendColor = "0xFFFFFFFF"
-
-    if m.global.server.serverUrl <> ""
-      userImage.uri = GetUserAvatarURL(localUser, 36, 36)
+' Called when tab bar signals RIGHT at last tab — transfer focus to dropdown.
+' Falls back to wrapping to the first tab if the dropdown is not available.
+sub onTabBarRequestsUserMenu()
+  if isValid(m.userDropdown) and m.userDropdown.visible
+    m.userDropdown.setFocus(true)
+  else if isValid(m.tabBar)
+    ' No dropdown available — wrap based on direction
+    direction = m.tabBar.requestFocusToUserMenu
+    tabCount = m.tabBar.findNode("tabContainer").getChildCount()
+    if direction = "right"
+      m.tabBar.focusedTabIndex = 0
     else
-      print "ERROR: No server URL set, cannot load user image"
+      m.tabBar.focusedTabIndex = tabCount - 1
     end if
+  end if
+end sub
+
+' Called when user dropdown signals LEFT or RIGHT exit — return focus to tab bar
+sub onUserDropdownRequestsTabs()
+  if not isValid(m.tabBar) then return
+
+  direction = m.userDropdown.requestFocusExit
+  tabCount = m.tabBar.findNode("tabContainer").getChildCount()
+
+  if direction = "right"
+    ' Wrap to first tab
+    m.tabBar.focusedTabIndex = 0
   else
-    userImage.blendColor = m.global.constants.colorTextSecondary
-    userImage.uri = "pkg:/images/icons/person_36px.png"
+    ' Go to last tab
+    m.tabBar.focusedTabIndex = tabCount - 1
   end if
 
-  return userImage
-end function
+  m.tabBar.setFocus(true)
+end sub
+
+' ============================================
+' POSITIONING
+' ============================================
+
+' Hides the overhang clock and repositions the user dropdown to fill the freed space.
+' Called by Home.bs when the user's uiDesignHideClock setting is enabled.
+sub hideClock()
+  if isValid(m.clock)
+    m.top.removeChild(m.clock)
+    m.clock = invalid
+  end if
+  m.isClockHidden = true
+  positionUserDropdown()
+end sub
+
+' Repositions the dropdown when its trigger button width changes.
+' Only matters when clock is hidden (right-aligned mode), since
+' the left-aligned default position doesn't depend on trigger width.
+sub onDropdownTriggerWidthChanged()
+  if m.isClockHidden
+    positionUserDropdown()
+  end if
+end sub
+
+' Positions the user dropdown in the overhang.
+' When the clock is visible, the dropdown is left-aligned at x=1450 (its original position).
+' When the clock is hidden, the dropdown is right-aligned so its right edge meets the
+' 5% action-safe boundary (x=1824), matching where the clock's right edge sits.
+sub positionUserDropdown()
+  if not isValid(m.userDropdown) then return
+
+  dropdownPadding = m.userDropdown.padding
+  yPos = 54 - dropdownPadding
+
+  if m.isClockHidden
+    ' Right-align: position so the trigger button's right edge lands at x=1824.
+    ' triggerWidth includes padding on both sides, so the full button ends at 1824.
+    triggerWidth = m.userDropdown.triggerWidth
+    if triggerWidth > 0
+      xPos = 1824 - triggerWidth - dropdownPadding
+    else
+      ' Trigger hasn't rendered yet — use default position; will reposition on triggerWidth change
+      xPos = 1450 - dropdownPadding
+    end if
+  else
+    xPos = 1450 - dropdownPadding
+  end if
+
+  m.userDropdown.translation = [xPos, yPos]
+end sub
 
 ' component boolean field isVisible has changed value
 sub isLogoVisibleChanged()
@@ -158,6 +246,10 @@ function createLogoPoster()
   return logoPoster
 end function
 
+' ============================================
+' TAB BAR
+' ============================================
+
 ' onTabsChanged: Swaps between title label and tab bar.
 ' Empty/invalid tabs restores the title label; non-empty creates a JRTabBar.
 sub onTabsChanged()
@@ -177,7 +269,14 @@ sub onTabsChanged()
   if not isValid(m.tabBar)
     m.tabBar = CreateObject("roSGNode", "JRTabBar")
     m.tabBar.observeField("selectedTabId", "onTabBarSelectionChanged")
+    m.tabBar.observeField("requestFocusToUserMenu", "onTabBarRequestsUserMenu")
     m.top.appendChild(m.tabBar)
+  end if
+
+  ' Set up focus bridging between tab bar and dropdown
+  if isValid(m.userDropdown)
+    m.userDropdown.unobserveField("requestFocusExit") ' prevent stacking
+    m.userDropdown.observeField("requestFocusExit", "onUserDropdownRequestsTabs")
   end if
 
   m.tabBar.visible = true

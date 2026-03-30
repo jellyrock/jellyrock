@@ -5,10 +5,7 @@
     <Poster id="logo" translation="[96, 54]" uri="pkg:/images/branding/logo.png" height="39" width="180" />
     <!-- Title -->
     <ScrollingLabelPrimaryLarge translation="[360, 51]" id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
-    <!-- User -->
-    <LayoutGroup id="userGroup" layoutDirection="horz" itemSpacings="[15]" translation="[1450, 54]">
-      <LabelSecondaryMedium id="username" width="219" horizAlign="left" vertAlign="center" />
-    </LayoutGroup>
+    <!-- User dropdown (created programmatically in init) -->
     <!-- Clock -->
     <Clock />
 
@@ -22,5 +19,7 @@
     <field id="tabs" type="array" onChange="onTabsChanged" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <function name="getTabBar" />
+    <function name="getUserDropdown" />
+    <function name="hideClock" />
   </interface>
 </component>

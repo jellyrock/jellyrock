@@ -723,47 +723,25 @@ sub Main (args as dynamic) as void
     else if isNodeEvent(msg, "optionSelected")
       button = msg.getRoSGNode()
       group = m.global.sceneManager.callFunc("getActiveScene")
-      if button.id = "goto_search" and isValid(group)
-        ' Exit out of the side panel
+      actionId = button.id
+
+      ' Close the side panel before handling the action
+      if isValid(group)
         panel = group.findNode("options")
-        panel.visible = false
+        if isValid(panel)
+          panel.visible = false
+        end if
         if isValid(group.lastFocus)
           group.lastFocus.setFocus(true)
         else
           group.setFocus(true)
         end if
-        group = CreateSearchPage()
-        m.global.sceneManager.callFunc("pushScene", group)
-        group.findNode("SearchBox").findNode("search_Key").setFocus(true)
-        group.findNode("SearchBox").findNode("search_Key").active = true
-      else if button.id = "change_server"
-        startLoadingSpinner()
-        unset_setting("server")
-        server.Delete()
-        SignOut(false)
-        m.global.sceneManager.callFunc("clearScenes")
-        goto app_start
-      else if button.id = "change_user"
-        startLoadingSpinner()
-        SignOut(false)
-        m.global.sceneManager.callFunc("clearScenes")
-        goto app_start
-      else if button.id = "sign_out"
-        startLoadingSpinner()
-        SignOut()
-        m.global.sceneManager.callFunc("clearScenes")
-        goto app_start
-      else if button.id = "settings"
-        ' Exit out of the side panel
-        panel = group.findNode("options")
-        panel.visible = false
-        if isValid(group) and isValid(group.lastFocus)
-          group.lastFocus.setFocus(true)
-        else
-          group.setFocus(true)
-        end if
-        m.global.sceneManager.callFunc("settings")
       end if
+
+      if handleMenuAction(actionId) then goto app_start
+    else if isNodeEvent(msg, "userMenuAction")
+      actionId = msg.getData()
+      if handleMenuAction(actionId) then goto app_start
     else if type(msg) = "roDeviceInfoEvent"
       event = msg.GetInfo()
 
@@ -1267,3 +1245,35 @@ sub removeResumeButtonFromGroup(group as object)
     end if
   end if
 end sub
+
+' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
+' Returns true if the caller should goto app_start (session-ending actions).
+function handleMenuAction(actionId as string) as boolean
+  if actionId = "goto_search"
+    group = CreateSearchPage()
+    m.global.sceneManager.callFunc("pushScene", group)
+    group.findNode("SearchBox").findNode("search_Key").setFocus(true)
+    group.findNode("SearchBox").findNode("search_Key").active = true
+  else if actionId = "settings"
+    m.global.sceneManager.callFunc("settings")
+  else if actionId = "change_server"
+    startLoadingSpinner()
+    unset_setting("server")
+    server.Delete()
+    SignOut(false)
+    m.global.sceneManager.callFunc("clearScenes")
+    return true
+  else if actionId = "change_user"
+    startLoadingSpinner()
+    SignOut(false)
+    m.global.sceneManager.callFunc("clearScenes")
+    return true
+  else if actionId = "sign_out"
+    startLoadingSpinner()
+    SignOut()
+    m.global.sceneManager.callFunc("clearScenes")
+    return true
+  end if
+
+  return false
+end function

@@ -10,6 +10,7 @@
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="quickPlayNode" type="node" />
     <field id="voiceQuery" type="string" alwaysNotify="true" />
+    <field id="userMenuAction" type="string" alwaysNotify="true" />
     <function name="refresh" />
     <function name="loadLibraries" />
   </interface>

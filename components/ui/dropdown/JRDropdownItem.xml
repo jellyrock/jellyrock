@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="JRDropdownItem" extends="Group">
+  <children>
+    <!-- Button-style focus visuals (same 9-patch images as TextButton) -->
+    <Poster id="itemBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+    <Poster id="itemBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+    <LabelPrimaryMedium id="itemLabel" vertAlign="center" />
+  </children>
+  <interface>
+    <field id="text" type="string" onChange="onTextChanged" />
+    <field id="itemId" type="string" />
+    <field id="isFocused" type="boolean" value="false" onChange="onFocusStateChanged" />
+    <field id="isSelected" type="boolean" value="false" onChange="onFocusStateChanged" />
+    <field id="itemWidth" type="integer" value="300" onChange="onSizeChanged" />
+    <field id="itemHeight" type="integer" value="60" onChange="onSizeChanged" />
+  </interface>
+</component>

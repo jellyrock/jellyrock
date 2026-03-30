@@ -80,12 +80,17 @@ sub OnScreenShown()
       m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
     end if
 
+    ' Cache user dropdown reference and observe its events
+    userDropdown = overhang.callFunc("getUserDropdown")
+    if isValid(userDropdown)
+      m.userDropdown = userDropdown
+      m.userDropdown.observeField("requestFocusReturn", "onUserDropdownFocusReturn")
+      m.userDropdown.observeField("selectedAction", "onUserMenuAction")
+    end if
+
     ' Hide clock if user preference is set
     if globalUser.settings.uiDesignHideClock
-      clock = overhang.findNode("clock")
-      if isValid(clock)
-        overhang.removeChild(clock)
-      end if
+      overhang.callFunc("hideClock")
     end if
   end if
 
@@ -281,6 +286,20 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
+' User dropdown signals DOWN was pressed — return focus to active content
+sub onUserDropdownFocusReturn()
+  if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
+  end if
+end sub
+
+' User dropdown menu item was selected — proxy to Home's interface for Main.bs
+sub onUserMenuAction()
+  if isValid(m.userDropdown)
+    m.top.userMenuAction = m.userDropdown.selectedAction
+  end if
+end sub
+
 ' Tab bar signals DOWN was pressed — return focus to active content
 sub onTabBarFocusReturn()
   if isValid(m.activeContent)
@@ -310,6 +329,13 @@ sub destroy()
   if isValid(m.tabBar)
     m.tabBar.unobserveField("requestFocusReturn")
     m.tabBar = invalid
+  end if
+
+  ' Release user dropdown observers
+  if isValid(m.userDropdown)
+    m.userDropdown.unobserveField("requestFocusReturn")
+    m.userDropdown.unobserveField("selectedAction")
+    m.userDropdown = invalid
   end if
 
   ' Destroy active tab content
