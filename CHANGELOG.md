@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (playback) add language preference override settings ([#428](https://github.com/jellyrock/jellyrock/pull/428))
 - intelligent video source selection and OSD source switching ([#424](https://github.com/jellyrock/jellyrock/pull/424))
 
 ### Fixed
