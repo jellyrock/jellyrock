@@ -1448,13 +1448,23 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupProgram: Info rows for Program (Live TV EPG entry)
-' Row 1: Year · OfficialRating · CommunityRating · S#E# · Premiere/Repeat · Runtime · CH X - ChanName · BroadcastTime · Ends At
+' Row 1: Year · CH X - ChanName · OfficialRating · CommunityRating · S#E# · Premiere/Repeat · Runtime · BroadcastTime · Ends At
 ' Row 2: Genres (or category flags)
 sub populateInfoGroupProgram(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
     yearNode.text = stri(item.productionYear).trim()
     displayInfoNode(yearNode)
+  end if
+
+  ' Channel info — early position mirrors TvChannel's "channel identity first" layout
+  channelParts = []
+  if isValidAndNotEmpty(item.channelNumber) then channelParts.push(tr("CH") + " " + item.channelNumber)
+  if isValidAndNotEmpty(item.channelName) then channelParts.push(item.channelName)
+  if channelParts.count() > 0
+    channelNode = createInfoLabel("channelInfo")
+    channelNode.text = channelParts.join(" - ")
+    displayInfoNode(channelNode)
   end if
 
   if isValidAndNotEmpty(item.officialRating)
@@ -1498,16 +1508,6 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     runtimeNode = createInfoLabel("runtime")
     runtimeNode.text = stri(programRuntimeMins).trim() + " " + tr("mins")
     displayInfoNode(runtimeNode)
-  end if
-
-  ' Channel info on Row 1
-  channelParts = []
-  if isValidAndNotEmpty(item.channelNumber) then channelParts.push(tr("CH") + " " + item.channelNumber)
-  if isValidAndNotEmpty(item.channelName) then channelParts.push(item.channelName)
-  if channelParts.count() > 0
-    channelNode = createInfoLabel("channelInfo")
-    channelNode.text = channelParts.join(" - ")
-    displayInfoNode(channelNode)
   end if
 
   ' Broadcast time range on Row 1
