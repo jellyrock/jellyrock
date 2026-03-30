@@ -97,7 +97,7 @@ end sub
 
 ' Called when reset button is selected in HexKeyboard
 sub onHexResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Yes"), tr("No")])
+  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Cancel"), tr("Reset")])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onResetDialogResponse")
 end sub
 
@@ -108,8 +108,8 @@ sub onResetDialogResponse()
   returnData = m.global.sceneManager.returnData
   if not isValid(returnData) then return
 
-  ' User selected "No" or closed dialog
-  if returnData.indexSelected <> 0
+  ' User selected "Cancel" or closed dialog
+  if returnData.indexSelected <> 1
     m.hexSetting.findNode("resetButton").setFocus(true)
     return
   end if
@@ -175,7 +175,7 @@ end sub
 
 ' Called when reset button is selected in AlphaKeyboard
 sub onAlphaResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Yes"), tr("No")])
+  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Cancel"), tr("Reset")])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onAlphaResetDialogResponse")
 end sub
 
@@ -186,8 +186,8 @@ sub onAlphaResetDialogResponse()
   returnData = m.global.sceneManager.returnData
   if not isValid(returnData) then return
 
-  ' User selected "No" or closed dialog
-  if returnData.indexSelected <> 0
+  ' User selected "Cancel" or closed dialog
+  if returnData.indexSelected <> 1
     m.alphaSetting.findNode("resetButton").setFocus(true)
     return
   end if
@@ -491,6 +491,22 @@ sub refreshCurrentMenu()
     listItem.Description = tr(item.description)
     listItem.id = item.id
   end for
+
+  ' Re-inject reset button at root level
+  if m.userLocation.Count() = 1
+    resetItem = {
+      title: "Reset User Settings",
+      description: "Reset all settings to their default values. Your login session will not be affected.",
+      type: "action",
+      actionId: "resetUserSettings"
+    }
+    filteredChildren.push(resetItem)
+    listItem = result.CreateChild("ContentNode")
+    listItem.title = tr(resetItem.title)
+    listItem.Description = tr(resetItem.description)
+    listItem.id = "resetUserSettings"
+  end if
+
   m.settingsMenu.content = result
 
   ' Restore focus, clamping to new list bounds
@@ -586,6 +602,9 @@ sub executeResetUserSettings()
   ' Reload all defaults from settings.json onto the settings node
   user.settings.SaveDefaults()
 
+  ' globalRememberMe was reset to false — clear auto-login state
+  unset_setting("active_user")
+
   ' Clear per-library display settings
   localUser.settings.displaySettings = {}
 
@@ -596,6 +615,9 @@ sub executeResetUserSettings()
   m.themeColorsChanged = true
 
   m.log.info("User settings reset complete", { deletedKeys: keysToDelete.Count() })
+
+  ' Show success feedback (toast lives on JRScene, persists across scene transitions)
+  m.top.getScene().callFunc("showToast", tr("Settings reset to defaults"), "success")
 
   ' Exit settings and reload home with fresh theme colors
   performSettingsExit()
