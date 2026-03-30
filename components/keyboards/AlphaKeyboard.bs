@@ -1,3 +1,5 @@
+import "pkg:/source/utils/misc.bs"
+
 sub init()
   m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/AlphaKeyboardKDF.json"
   m.top.keyGrid.mode = "alphanumeric"
@@ -64,81 +66,34 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return false
   end if
 
-  ' Handle edge navigation for 7x4 grid layout:
+  ' Edge navigation for 7x4 grid layout:
   ' Row 1: A  B  C  D  E  F  G
   ' Row 2: H  I  J  K  L  M  N
   ' Row 3: O  P  Q  R  S  T  U
   ' Row 4: V  W  X  Y  Z  [backspace]  [submit]
 
+  focused = m.top.focusedChild.keyFocused
+  leftEdgeKeys = ["A", "H", "O", "V"]
+  rightEdgeKeys = ["G", "N", "U", "submit"]
+  bottomRowKeys = ["V", "W", "X", "Y", "Z", "backspace", "submit"]
+
   if key = "left"
-    ' Left edge: column 0 (keys: A, H, O, V) and textEditBox
-    if m.top.textEditBox.hasFocus()
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "A"
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "H"
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "O"
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "V"
+    if m.top.textEditBox.hasFocus() or inArray(leftEdgeKeys, focused)
       m.top.escape = key
       return true
     end if
-  end if
-
-  if key = "right"
-    ' Right edge: column 6 (keys: G, N, U, submit) and textEditBox
-    if m.top.textEditBox.hasFocus()
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "G"
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "N"
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "U"
-      m.top.escape = key
-      return true
-    else if m.top.focusedChild.keyFocused = "submit"
+  else if key = "right"
+    if m.top.textEditBox.hasFocus() or inArray(rightEdgeKeys, focused)
       m.top.escape = key
       return true
     end if
-  end if
-
-  if key = "up"
-    ' Top edge: textEditBox
+  else if key = "up"
     if m.top.textEditBox.hasFocus()
       m.top.escape = key
       return true
     end if
-  end if
-
-  if key = "down"
-    ' Bottom edge: row 4 (keys: V, W, X, Y, Z, backspace, submit) -> focus reset button
-    if m.top.focusedChild.keyFocused = "V"
-      m.resetButton.setFocus(true)
-      return true
-    else if m.top.focusedChild.keyFocused = "W"
-      m.resetButton.setFocus(true)
-      return true
-    else if m.top.focusedChild.keyFocused = "X"
-      m.resetButton.setFocus(true)
-      return true
-    else if m.top.focusedChild.keyFocused = "Y"
-      m.resetButton.setFocus(true)
-      return true
-    else if m.top.focusedChild.keyFocused = "Z"
-      m.resetButton.setFocus(true)
-      return true
-    else if m.top.focusedChild.keyFocused = "backspace"
-      m.resetButton.setFocus(true)
-      return true
-    else if m.top.focusedChild.keyFocused = "submit"
+  else if key = "down"
+    if inArray(bottomRowKeys, focused)
       m.resetButton.setFocus(true)
       return true
     end if

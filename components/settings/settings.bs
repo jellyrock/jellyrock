@@ -144,8 +144,19 @@ sub onAlphaKeyGridSubmit()
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
   newValue = LCase(m.alphaSetting.text)
 
-  ' Validate alpha input is exactly 3 letters
-  if Len(newValue) <> 3
+  ' Validate alpha input is exactly 3 letters (a-z only)
+  isValidCode = Len(newValue) = 3
+  if isValidCode
+    for i = 0 to 2
+      charCode = Asc(Mid(newValue, i + 1, 1))
+      if charCode < 97 or charCode > 122
+        isValidCode = false
+        exit for
+      end if
+    end for
+  end if
+
+  if not isValidCode
     m.global.sceneManager.callFunc("userMessage", tr("Invalid Language Code"), tr("Please enter exactly 3 letters (e.g., eng, jpn, fra)."))
     return
   end if
