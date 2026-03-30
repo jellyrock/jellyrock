@@ -137,6 +137,10 @@ class SessionDataTransformer
     end if
     settingsNode.playbackPlayNextEpisode = settingsData["playbackPlayNextEpisode"] ?? ""
     settingsNode.playbackPlayDefaultAudioTrack = settingsData["playbackPlayDefaultAudioTrack"] ?? ""
+    settingsNode.playbackAudioLanguagePreference = settingsData["playbackAudioLanguagePreference"] ?? ""
+    settingsNode.playbackAudioLanguageCustom = settingsData["playbackAudioLanguageCustom"] ?? ""
+    settingsNode.playbackSubtitleLanguagePreference = settingsData["playbackSubtitleLanguagePreference"] ?? ""
+    settingsNode.playbackSubtitleLanguageCustom = settingsData["playbackSubtitleLanguageCustom"] ?? ""
     settingsNode.playbackPreferredMultichannelCodec = settingsData["playbackPreferredMultichannelCodec"] ?? ""
     settingsNode.playbackSubsOnlyText = toBoolean(settingsData["playbackSubsOnlyText"])
     settingsNode.playbackForceTranscodeAnamorphic = toBoolean(settingsData["playbackForceTranscodeAnamorphic"])

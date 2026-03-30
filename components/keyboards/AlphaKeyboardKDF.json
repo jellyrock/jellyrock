@@ -1,0 +1,69 @@
+{
+  "keyboardWidthFHD": 770,
+  "keyboardHeightFHD": 300,
+  "keyboardWidthHD": 504,
+  "keyboardHeightHD": 200,
+  "sections": [
+    {
+      "grids": [
+        {
+          "rows": [
+            {
+              "keys": [
+                { "label": "A" },
+                { "label": "B" },
+                { "label": "C" },
+                { "label": "D" },
+                { "label": "E" },
+                { "label": "F" },
+                { "label": "G" }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "H" },
+                { "label": "I" },
+                { "label": "J" },
+                { "label": "K" },
+                { "label": "L" },
+                { "label": "M" },
+                { "label": "N" }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "O" },
+                { "label": "P" },
+                { "label": "Q" },
+                { "label": "R" },
+                { "label": "S" },
+                { "label": "T" },
+                { "label": "U" }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "V" },
+                { "label": "W" },
+                { "label": "X" },
+                { "label": "Y" },
+                { "label": "Z" },
+                {
+                  "icon": "theme:DKB_DeleteKeyBitmap",
+                  "focusIcon": "theme:DKB_DeleteKeyFocusBitmap",
+                  "autoRepeat": 1,
+                  "strOut": "backspace"
+                },
+                {
+                  "icon": "pkg:/images/icons/check-white.png",
+                  "focusIcon": "pkg:/images/icons/check-black.png",
+                  "strOut": "submit"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

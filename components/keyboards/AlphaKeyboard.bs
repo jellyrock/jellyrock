@@ -1,0 +1,112 @@
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/AlphaKeyboardKDF.json"
+  m.top.keyGrid.mode = "alphanumeric"
+
+  m.resetButton = m.top.findNode("resetButton")
+  globalConstants = m.global.constants
+  m.resetButton.border = globalConstants.colorBackgroundPrimary
+  m.resetButton.background = globalConstants.colorBackgroundPrimary
+  m.resetButton.focusBackground = globalConstants.colorBackgroundPrimary
+
+  m.top.keyGrid.enableRenderTracking = true
+  m.top.keyGrid.observeField("renderTracking", "onKeyGridRendered")
+end sub
+
+' Position reset button below the keyboard grid, aligned to right edge
+sub onKeyGridRendered()
+  if m.top.keyGrid.renderTracking <> "full" then return
+
+  keyGridRect = m.top.keyGrid.localBoundingRect()
+  keyGridY = m.top.keyGrid.translation[1]
+  buttonY = keyGridY + keyGridRect.height + 15
+
+  if m.resetButton.ready
+    positionResetButton(keyGridRect.width, buttonY)
+  else
+    m.pendingButtonY = buttonY
+    m.pendingKeyGridWidth = keyGridRect.width
+    m.resetButton.observeField("ready", "onResetButtonReady")
+  end if
+end sub
+
+sub onResetButtonReady()
+  m.resetButton.unobserveField("ready")
+  positionResetButton(m.pendingKeyGridWidth, m.pendingButtonY)
+end sub
+
+sub positionResetButton(keyGridWidth as float, buttonY as float)
+  buttonRect = m.resetButton.localBoundingRect()
+  buttonX = keyGridWidth - buttonRect.width
+  m.resetButton.translation = [buttonX, buttonY]
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if key = "back"
+    m.top.escape = key
+    return true
+  end if
+
+  if not press then return false
+
+  ' Handle reset button focus
+  if m.resetButton.hasFocus()
+    if key = "up"
+      ' Return focus to keyGrid (will focus last used key)
+      m.top.keyGrid.setFocus(true)
+      return true
+    else if key = "left"
+      m.top.escape = key
+      return true
+    else if key = "OK"
+      m.top.reset = true
+      return true
+    end if
+    return false
+  end if
+
+  ' Edge navigation for 7x4 grid layout:
+  ' Row 1: A  B  C  D  E  F  G
+  ' Row 2: H  I  J  K  L  M  N
+  ' Row 3: O  P  Q  R  S  T  U
+  ' Row 4: V  W  X  Y  Z  [backspace]  [submit]
+
+  focused = m.top.focusedChild.keyFocused
+  leftEdgeKeys = ["A", "H", "O", "V"]
+  rightEdgeKeys = ["G", "N", "U", "submit"]
+  bottomRowKeys = ["V", "W", "X", "Y", "Z", "backspace", "submit"]
+
+  if key = "left"
+    if m.top.textEditBox.hasFocus() or inArray(leftEdgeKeys, focused)
+      m.top.escape = key
+      return true
+    end if
+  else if key = "right"
+    if m.top.textEditBox.hasFocus() or inArray(rightEdgeKeys, focused)
+      m.top.escape = key
+      return true
+    end if
+  else if key = "up"
+    if m.top.textEditBox.hasFocus()
+      m.top.escape = key
+      return true
+    end if
+  else if key = "down"
+    if inArray(bottomRowKeys, focused)
+      m.resetButton.setFocus(true)
+      return true
+    end if
+  end if
+
+  return false
+end function
+
+function keySelected(key as string) as boolean
+  if key = "submit"
+    m.top.submit = true
+    return true
+  end if
+
+  return false
+end function

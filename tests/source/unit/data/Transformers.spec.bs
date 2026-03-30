@@ -680,6 +680,10 @@ namespace tests
       m.assertEqual(result.playbackMpeg4, true)
       m.assertEqual(result.playbackTryDirectH264ProfileLevel, false)
       m.assertEqual(result.playbackTryDirectHevcProfileLevel, false)
+      m.assertEqual(result.playbackAudioLanguagePreference, "custom")
+      m.assertEqual(result.playbackAudioLanguageCustom, "jpn")
+      m.assertEqual(result.playbackSubtitleLanguagePreference, "audio")
+      m.assertEqual(result.playbackSubtitleLanguageCustom, "")
 
       ' UI Settings
       m.assertEqual(result.uiGeneralEpisodeImages, "always")

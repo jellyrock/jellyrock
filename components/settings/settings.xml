@@ -33,5 +33,7 @@
 
     <HexKeyboard translation="[1034, 510]" id="hexSetting" visible="false" />
 
+    <AlphaKeyboard translation="[882, 500]" id="alphaSetting" visible="false" />
+
   </children>
 </component>

@@ -61,7 +61,7 @@ namespace quickplay
     audioStreamIndex = 0
     if isValidAndNotEmpty(audioStreams)
       playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-      audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, localUser.config.audioLanguagePreference)
+      audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
     end if
 
     ' Resume position from typed field; startingPoint is computed here, not stored on node

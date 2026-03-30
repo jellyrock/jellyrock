@@ -115,10 +115,10 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     if isValid(selectedSourceStreams)
       ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
       playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audio_stream_idx = findBestAudioStreamIndex(selectedSourceStreams, playDefault, userSession.config.audioLanguagePreference)
+      audio_stream_idx = findBestAudioStreamIndex(selectedSourceStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
     else if isValid(mediaSources) and isValid(mediaSources[0].MediaStreams)
       playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audio_stream_idx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, userSession.config.audioLanguagePreference)
+      audio_stream_idx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
     else
       ' MediaStreams not available - keep existing behavior of using 0
       ' This should never happen since ItemMetaData() just fetched metadata

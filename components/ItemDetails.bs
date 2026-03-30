@@ -1562,7 +1562,7 @@ sub SetDefaultAudioTrack(mediaStreams as object)
 
   localUser = m.global.user
   playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-  selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, localUser.config.audioLanguagePreference)
+  selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
 
   defaultAudioStream = invalid
   for each stream in mediaStreams

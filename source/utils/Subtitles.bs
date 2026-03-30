@@ -96,18 +96,20 @@ function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, 
 
   subtitleMode = isValid(localUser.config.subtitleMode) ? LCase(localUser.config.subtitleMode) : ""
 
+  prefLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
+
   allowSmartMode = false
 
   ' Only evaluate selected audio language if we have a value
   if selectedAudioLanguage <> ""
-    allowSmartMode = selectedAudioLanguage <> localUser.config.subtitleLanguagePreference
+    allowSmartMode = selectedAudioLanguage <> prefLang
   end if
 
   for each item in sortedSubtitles
     ' Only auto-select subtitle if language matches SubtitleLanguagePreference
     languageMatch = true
-    if localUser.config.subtitleLanguagePreference <> ""
-      languageMatch = (localUser.config.subtitleLanguagePreference = item.Track.Language)
+    if prefLang <> ""
+      languageMatch = (prefLang = item.Track.Language)
     end if
 
     ' Ensure textuality of subtitle matches preference passed as arg
@@ -210,7 +212,7 @@ function sortSubtitles(MediaStreams)
   tracks = { "forced": [], "default": [], "normal": [], "textForced": [], "textDefault": [], "textNormal": [] }
   ' ONE rendezvous to get user node
   localUser = m.global.user
-  prefered_lang = localUser.config.subtitleLanguagePreference
+  prefered_lang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
   for each stream in MediaStreams
     if stream.type = "Subtitle"
 

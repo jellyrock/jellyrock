@@ -37,6 +37,10 @@
     <field id="playbackTryDirectH264ProfileLevel" type="boolean" alwaysNotify="true" />
     <field id="playbackTryDirectHevcProfileLevel" type="boolean" alwaysNotify="true" />
     <field id="playbackPlayDefaultAudioTrack" type="string" alwaysNotify="true" />
+    <field id="playbackAudioLanguagePreference" type="string" alwaysNotify="true" />
+    <field id="playbackAudioLanguageCustom" type="string" alwaysNotify="true" />
+    <field id="playbackSubtitleLanguagePreference" type="string" alwaysNotify="true" />
+    <field id="playbackSubtitleLanguageCustom" type="string" alwaysNotify="true" />
 
     <!-- UI Settings -->
     <field id="uiGeneralEpisodeImages" type="string" alwaysNotify="true" />

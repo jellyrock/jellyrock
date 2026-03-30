@@ -528,7 +528,7 @@ sub onVideoSourceChange()
       if source.Id = newSourceId and isValid(source.MediaStreams)
         localUser = m.global.user
         playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-        audioStreamIdx = findBestAudioStreamIndex(source.MediaStreams, playDefault, localUser.config.audioLanguagePreference)
+        audioStreamIdx = findBestAudioStreamIndex(source.MediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
         exit for
       end if
     end for
