@@ -62,6 +62,11 @@ Settings relating to playback and supported codec and media types.
 - [Cinema Mode](#playbackCinemaMode)
 - [Custom Subtitles](#playbackSubsCustom)
 - [Decode Multichannel Audio](#playbackDecodeMultichannelAudio)
+- [Language Preferences](#playback-language-preferences)
+  - [Audio Language Preference](#playbackAudioLanguagePreference)
+  - [Custom Audio Language Code](#playbackAudioLanguageCustom)
+  - [Subtitle Language Preference](#playbackSubtitleLanguagePreference)
+  - [Custom Subtitle Language Code](#playbackSubtitleLanguageCustom)
 - [Maximum Resolution](#playbackResolutionMax)
 - [Next Episode Button Time](#playbackNextUpButtonSeconds)
 - [Play Default Audio Track](#playbackPlayDefaultAudioTrack)
@@ -230,6 +235,62 @@ Set the maximum bitrate in Mbps. Set to 0 to use Roku's specifications. This set
 | Setting Name | `playbackBitrateLimit` |
 | Type | `integer` |
 | Default | `0` |
+
+### Language Preferences
+
+<a id="playback-language-preferences"></a>
+
+Override the web client's audio and subtitle language preferences for this device.
+
+<h4 id="playbackAudioLanguagePreference">Audio Language Preference</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-language-preferences">Language Preferences</a> › <a href="#playbackAudioLanguagePreference">Audio Language Preference</a>
+
+Override the web client's audio language preference. Controls which language audio track is preferred during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackAudioLanguagePreference` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Use Roku Language</td><td><code>roku</code></td></tr><tr><td>Custom</td><td><code>custom</code></td></tr></tbody></table> |
+
+<h4 id="playbackAudioLanguageCustom">Custom Audio Language Code</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-language-preferences">Language Preferences</a> › <a href="#playbackAudioLanguageCustom">Custom Audio Language Code</a>
+
+Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa).
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackAudioLanguageCustom` |
+| Type | `alpha` |
+| Default | `` |
+
+<h4 id="playbackSubtitleLanguagePreference">Subtitle Language Preference</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-language-preferences">Language Preferences</a> › <a href="#playbackSubtitleLanguagePreference">Subtitle Language Preference</a>
+
+Override the web client's subtitle language preference. Controls which language subtitle track is preferred during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSubtitleLanguagePreference` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Use Audio Language</td><td><code>audio</code></td></tr><tr><td>Use Roku Language</td><td><code>roku</code></td></tr><tr><td>Custom</td><td><code>custom</code></td></tr></tbody></table> |
+
+<h4 id="playbackSubtitleLanguageCustom">Custom Subtitle Language Code</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-language-preferences">Language Preferences</a> › <a href="#playbackSubtitleLanguageCustom">Custom Subtitle Language Code</a>
+
+Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa).
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSubtitleLanguageCustom` |
+| Type | `alpha` |
+| Default | `` |
 
 ### Video Codec Support
 
