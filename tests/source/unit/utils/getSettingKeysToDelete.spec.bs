@@ -1,0 +1,121 @@
+
+namespace tests
+
+  @suite("config.bs - getSettingKeysToDelete()")
+  class GetSettingKeysToDeleteTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getSettingKeysToDelete(allKeys, preserveKeys)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' NOTE: BrightScript roAssociativeArray is case-insensitive by default.
+    ' `for each key in aa` returns keys in lowercase, so test data uses
+    ' lowercase keys to match real runtime behavior.
+
+    @it("preserves all session keys and deletes setting keys")
+    function _()
+      allKeys = {
+        authtoken: "token123",
+        username: "testuser",
+        serverid: "server456",
+        primaryimagetag: "img789",
+        lastrunversion: "2.7.0",
+        playbackcinemamode: "true",
+        uitheme: "jellyrock"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 2)
+      m.assertTrue(inArray(result, "playbackcinemamode"))
+      m.assertTrue(inArray(result, "uitheme"))
+    end function
+
+    @it("returns empty array when registry only has session keys")
+    function _()
+      allKeys = {
+        authtoken: "token123",
+        username: "testuser",
+        serverid: "server456"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 0)
+    end function
+
+    @it("returns empty array when registry is empty")
+    function _()
+      allKeys = {}
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 0)
+    end function
+
+    @it("deletes display setting keys")
+    function _()
+      allKeys = {
+        authtoken: "token123",
+        "display.lib1.sortfield": "Name",
+        "display.lib1.sortascending": "true",
+        "display.lib2.view": "grid"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 3)
+      m.assertTrue(inArray(result, "display.lib1.sortfield"))
+      m.assertTrue(inArray(result, "display.lib1.sortascending"))
+      m.assertTrue(inArray(result, "display.lib2.view"))
+    end function
+
+    @it("deletes all keys when no preserve keys match")
+    function _()
+      allKeys = {
+        playbackcinemamode: "true",
+        uitheme: "custom",
+        uithemecolorprimary: "AA00FF"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 3)
+    end function
+
+    @it("handles mixed session and setting keys correctly")
+    function _()
+      allKeys = {
+        authtoken: "token",
+        username: "user",
+        serverid: "srv",
+        primaryimagetag: "img",
+        lastrunversion: "2.7.0",
+        playbackbitratelimit: "40",
+        playbackbitratemaxlimited: "true",
+        uitheme: "jellyrock",
+        uithemecolorprimary: "AA00FF",
+        homesection0: "resume",
+        "display.abc.sortfield": "Name"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 6)
+      ' Verify session keys are NOT in the delete list
+      m.assertFalse(inArray(result, "authtoken"))
+      m.assertFalse(inArray(result, "username"))
+      m.assertFalse(inArray(result, "serverid"))
+      m.assertFalse(inArray(result, "primaryimagetag"))
+      m.assertFalse(inArray(result, "lastrunversion"))
+    end function
+
+  end class
+
+end namespace

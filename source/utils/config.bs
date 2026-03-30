@@ -146,6 +146,29 @@ function isGlobalSetting(key as string) as boolean
   return key.StartsWith("global")
 end function
 
+' Filter registry keys to find those that should be deleted during a settings reset
+' Preserves session/identity keys, deletes everything else
+' @param {object} allKeys - associative array of all registry key-value pairs
+' @param {object} preserveKeys - array of key names to preserve
+' @return {object} - array of key names that should be deleted
+function getSettingKeysToDelete(allKeys as object, preserveKeys as object) as object
+  keysToDelete = []
+  for each key in allKeys
+    shouldPreserve = false
+    for each preserveKey in preserveKeys
+      ' Case-insensitive compare: roAssociativeArray iteration returns lowercase keys
+      if LCase(key) = LCase(preserveKey)
+        shouldPreserve = true
+        exit for
+      end if
+    end for
+    if not shouldPreserve
+      keysToDelete.push(key)
+    end if
+  end for
+  return keysToDelete
+end function
+
 ' Recursivly search the config tree for entry with settingname equal to key
 function findConfigTreeKey(key as string, tree)
   for each item in tree
