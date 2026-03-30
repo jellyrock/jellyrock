@@ -11,7 +11,7 @@ sub init()
   m.colorSecondary = constants.colorSecondary
 
   ' Default visual state: unfocused
-  m.itemLabel.color = m.colorTextSecondary
+  m.itemLabel.color = m.colorTextPrimary
 
   ' Apply initial sizing
   onSizeChanged()
@@ -55,7 +55,7 @@ sub onFocusStateChanged()
     if m.top.isSelected
       m.itemLabel.color = m.colorSecondary
     else
-      m.itemLabel.color = m.colorTextSecondary
+      m.itemLabel.color = m.colorTextPrimary
     end if
   end if
 end sub
