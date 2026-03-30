@@ -49,4 +49,71 @@ namespace itemTypeOrder
     "BoxSet" ' Collections
   ]
 
+  ' ── ItemDetails exclusion lists ──
+  ' Used with inArray() to gate features by item type. When adding a new type,
+  ' check each list to decide whether the type belongs.
+
+  ' Types that have no playable media streams (no video/audio codec tracks).
+  ' Controls: setTracksInLayout, media source selection in itemContentChanged.
+  const NO_MEDIA_TRACKS = [
+    "Series",
+    "Season",
+    "Person",
+    "BoxSet",
+    "MusicArtist",
+    "MusicAlbum",
+    "Playlist",
+    "Photo",
+    "PhotoAlbum",
+    "TvChannel",
+    "Program"
+  ]
+
+  ' Types that do not track playback position (no resume button).
+  ' Controls: manageResumeButton in itemContentChanged.
+  const NO_RESUME = [
+    "Series",
+    "Season",
+    "MusicArtist",
+    "MusicAlbum",
+    "Audio",
+    "Playlist",
+    "Photo",
+    "PhotoAlbum",
+    "TvChannel",
+    "Program"
+  ]
+
+  ' Types where the watched/unwatched toggle does not apply.
+  ' Controls: watchedButton in setupButtons.
+  const NO_WATCHED = [
+    "Person",
+    "MusicArtist",
+    "MusicAlbum",
+    "Audio",
+    "Playlist",
+    "Photo",
+    "PhotoAlbum",
+    "TvChannel",
+    "Program"
+  ]
+
+  ' Types that cannot have special features (behind-the-scenes, etc.).
+  ' Controls: SpecialFeatures chain in ExtrasRowList onLikeThisLoaded.
+  const NO_SPECIAL_FEATURES = [
+    "MusicVideo",
+    "Episode",
+    "Series",
+    "Season",
+    "BoxSet",
+    "MusicArtist",
+    "MusicAlbum",
+    "Audio",
+    "Playlist",
+    "Photo",
+    "PhotoAlbum",
+    "TvChannel",
+    "Program"
+  ]
+
 end namespace

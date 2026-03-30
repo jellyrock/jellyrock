@@ -2,6 +2,7 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/constants/extrasLayout.bs"
+import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
@@ -1062,7 +1063,7 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
     endDate = CreateObject("roDateTime")
     endDate.fromSeconds(endDate.asSeconds() + m.endsAtDurationSeconds)
     endDate.toLocalTime()
-    m.endsAtNode = createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(endDate), getTimePeriod(endDate))
+    m.endsAtNode = createTimeLabel("ends-at", tr("Ends at %1").Replace("%1", formatTime(endDate)), getTimePeriod(endDate))
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -1534,7 +1535,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     endDt = createObject("roDateTime")
     endDt.FromISO8601String(item.endDate)
     endDt.toLocalTime()
-    displayInfoNode(createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(endDt), getTimePeriod(endDt)))
+    displayInfoNode(createTimeLabel("ends-at", tr("Ends at %1").Replace("%1", formatTime(endDt)), getTimePeriod(endDt)))
   end if
 
   ' Row 2: genres (or category flags)
@@ -1557,7 +1558,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupRecording: Info rows for Recording (Live TV recorded content)
-' Row 1: PremiereYear · OfficialRating · CommunityRating · S#E# · Runtime · CH X - ChanName · Recorded: Date
+' Row 1: PremiereYear · OfficialRating · CommunityRating · S#E# · Runtime · Ends At · CH X - ChanName · Recorded: Date
 ' Row 2: Genres
 sub populateInfoGroupRecording(item as object, userSettings as object)
   ' Premiere year: prefer PremiereDate year, fall back to ProductionYear (which is recording year)
@@ -1599,6 +1600,12 @@ sub populateInfoGroupRecording(item as object, userSettings as object)
     runtimeNode = createInfoLabel("runtime")
     runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
     displayInfoNode(runtimeNode)
+  end if
+
+  if item.runTimeTicks > 0 and not userSettings.uiDesignHideClock
+    m.endsAtDurationSeconds = int(m.top.itemContent.runTimeTicks / 10000000.0)
+    createEndsAtNode()
+    displayInfoNode(m.endsAtNode)
   end if
 
   ' Channel info
@@ -1708,7 +1715,7 @@ sub itemContentChanged()
     ' Media tracks and stream options are only relevant for playable types.
     ' MusicArtist/MusicAlbum have no track info. Audio shows audio codec only.
     ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space.
-    setTracksInLayout(item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Playlist" and item.type <> "Photo" and item.type <> "PhotoAlbum" and item.type <> "TvChannel" and item.type <> "Program")
+    setTracksInLayout(not inArray(itemTypeOrder.NO_MEDIA_TRACKS, item.type))
 
     if item.type = "Audio"
       ' Audio: show audio codec only — no video source selection or subtitle display
@@ -1724,7 +1731,7 @@ sub itemContentChanged()
       SetDefaultAudioTrack(allStreams)
       SetUpAudioOptions(allStreams)
       updateOptionsButtonVisibility()
-    else if item.type <> "Series" and item.type <> "Season" and item.type <> "Person" and item.type <> "BoxSet" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Playlist" and item.type <> "Photo" and item.type <> "PhotoAlbum" and item.type <> "TvChannel" and item.type <> "Program"
+    else if not inArray(itemTypeOrder.NO_MEDIA_TRACKS, item.type)
       mediaSources = invalid
       if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
         mediaSources = item.mediaSourcesData.mediaSources
@@ -1780,7 +1787,7 @@ sub itemContentChanged()
     ' Series: Resume based on nextUpEpisode (managed by nextUpEpisodeChanged observer)
     ' Season: No resume — NextUp API does not support SeasonId filtering
     ' Music types: no resume — play state for music is not tracked via playbackPositionTicks
-    if item.type <> "Series" and item.type <> "Season" and item.type <> "MusicArtist" and item.type <> "MusicAlbum" and item.type <> "Audio" and item.type <> "Playlist" and item.type <> "Photo" and item.type <> "PhotoAlbum" and item.type <> "TvChannel" and item.type <> "Program"
+    if not inArray(itemTypeOrder.NO_RESUME, item.type)
       manageResumeButton()
     end if
 
@@ -1992,7 +1999,7 @@ sub createEndsAtNode()
   date = CreateObject("roDateTime")
   date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
   date.toLocalTime()
-  m.endsAtNode = createTimeLabel("ends-at", tr("Ends at") + " " + formatTime(date), getTimePeriod(date))
+  m.endsAtNode = createTimeLabel("ends-at", tr("Ends at %1").Replace("%1", formatTime(date)), getTimePeriod(date))
 end sub
 
 ' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes.
@@ -2001,10 +2008,10 @@ sub onClockMinuteChanged()
   date = CreateObject("roDateTime")
   date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
   date.toLocalTime()
+  timeStr = formatTime(date)
   periodText = getTimePeriod(date)
-  endsAtText = tr("Ends at") + " " + formatTime(date)
-  if periodText <> "" then endsAtText += " " + periodText
-  m.endsAtNode.text = endsAtText
+  if periodText <> "" then timeStr += " " + periodText
+  m.endsAtNode.text = tr("Ends at %1").Replace("%1", timeStr)
 end sub
 
 sub updateFavoriteButton()
@@ -2651,7 +2658,7 @@ sub setupButtons(item as object)
 
   ' Watched button — not for Person, music types, Playlist, Photo, PhotoAlbum, TvChannel, or Program
   ' (Playlist Watched is added async by onPlaylistContentKindChanged() once the items chain confirms video items)
-  if itemType <> "Person" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist" and itemType <> "Photo" and itemType <> "PhotoAlbum" and itemType <> "TvChannel" and itemType <> "Program"
+  if not inArray(itemTypeOrder.NO_WATCHED, itemType)
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
     watchedButton.icon = "pkg:/images/icons/check.png"

@@ -1,5 +1,6 @@
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 
@@ -549,8 +550,8 @@ sub onLikeThisLoaded()
         newSizes.push(rowSlotSize.WIDE)
       end for
       m.top.rowItemSize = newSizes
-    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "Program"
-      ' Music and Playlist rows use square slots — Playlist primary images are 1:1.
+    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "Program" or itemType = "TvChannel"
+      ' Music, Playlist, Program, and TvChannel rows use square slots — primary images are 1:1.
       m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
       addRowSize(rowSlotSize.SQUARE)
     else
@@ -562,8 +563,8 @@ sub onLikeThisLoaded()
     m.rowLikeThis = invalid
   end if
 
-  ' SpecialFeatures only for Movie / Video / Recording — not MusicVideo, Episode, Series, Season, BoxSet, music types, Playlist, Photo, PhotoAlbum, TvChannel, or Program
-  if itemType <> "MusicVideo" and itemType <> "Episode" and itemType <> "Series" and itemType <> "Season" and itemType <> "BoxSet" and itemType <> "MusicArtist" and itemType <> "MusicAlbum" and itemType <> "Audio" and itemType <> "Playlist" and itemType <> "Photo" and itemType <> "PhotoAlbum" and itemType <> "TvChannel" and itemType <> "Program"
+  ' SpecialFeatures only for Movie / Video / Recording
+  if not inArray(itemTypeOrder.NO_SPECIAL_FEATURES, itemType)
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
     m.SpecialFeaturesTask.control = "RUN"

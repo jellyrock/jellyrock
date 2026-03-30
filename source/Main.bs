@@ -44,6 +44,9 @@ sub Main (args as dynamic) as void
   ' load home page - this may be delayed if UI fallback fonts are enabled
   loadHomeScreen()
 
+  ' Reset transient state used by button handlers across scene transitions
+  m.photoAlbumShuffleMode = false
+
   ' Handle input messages
   input = CreateObject("roInput")
   input.SetMessagePort(m.port)
