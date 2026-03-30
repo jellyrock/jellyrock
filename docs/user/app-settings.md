@@ -70,6 +70,7 @@ Settings relating to playback and supported codec and media types.
 - [Preserve DoVi](#playbackPreserveDovi)
 - [Text Subtitles Only](#playbackSubsOnlyText)
 - [Video Codec Support](#playback-video-codec-support)
+  - [Force Transcode Anamorphic Video](#playbackForceTranscodeAnamorphic)
   - [MPEG-2](#playbackMpeg2)
   - [MPEG-4](#playbackMpeg4)
 - [Video Profile Level Support](#playback-video-profile-level-support)
@@ -235,6 +236,18 @@ Set the maximum bitrate in Mbps. Set to 0 to use Roku's specifications. This set
 <a id="playback-video-codec-support"></a>
 
 Enable or disable Direct Play support for certain codecs.
+
+<h4 id="playbackForceTranscodeAnamorphic">Force Transcode Anamorphic Video</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-video-codec-support">Video Codec Support</a> › <a href="#playbackForceTranscodeAnamorphic">Force Transcode Anamorphic Video</a>
+
+Force transcoding of anamorphic video (non-square pixels). Enable this if you see squished or stretched video during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackForceTranscodeAnamorphic` |
+| Type | `bool` |
+| Default | `false` |
 
 <h4 id="playbackMpeg2">MPEG-2</h4>
 
