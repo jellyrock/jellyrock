@@ -1,0 +1,17 @@
+{
+  "ButtonPlay": "Play",
+  "ButtonResume": "Resume",
+  "ButtonCancel": "Cancel",
+  "ButtonDelete": "Delete",
+  "ButtonSearch": "Search",
+  "HeaderHome": "Home",
+  "HeaderSettings": "Settings",
+  "LabelEpisodeCountZero": "No episodes",
+  "LabelEpisodeCountOne": "1 episode",
+  "LabelEpisodeCountMany": "{0} episodes",
+  "MessageNoResults": "No results found",
+  "MessageVideoStartsIn": "Video will start in {0} seconds",
+  "MessageSearchResults": "{0} results for \"{1}\"",
+  "ErrorConnectionFailed": "Could not connect to server",
+  "LabelSearchNow": "Search now"
+}

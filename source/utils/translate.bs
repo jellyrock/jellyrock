@@ -1,0 +1,141 @@
+' Custom translation system — replaces Roku's built-in tr() to support 118+ languages.
+' Translation data is loaded into m.global as flat roAssociativeArray objects
+' for O(1) key lookups. Two AAs are kept in memory: the active locale and
+' en-us as fallback (~150KB total including AA overhead).
+
+' Translate a key, optionally substituting indexed placeholders {0}, {1}, etc.
+' Falls back to en-us if key is missing from active locale, or returns the key
+' itself if missing from both (makes untranslated strings visible during dev).
+' @param {string} key - Translation key (e.g. "ButtonPlay", "MessageVideoStartsIn")
+' @param {object} params - Optional array of string replacements for {0}, {1}, etc.
+' @return {string} Translated string, or the key itself if not found
+function translate(key as string, params = invalid as object) as string
+  value = m.global.translations[key]
+
+  ' Fallback to en-us
+  if not isValid(value)
+    value = m.global.translationsFallback[key]
+  end if
+
+  ' Fallback to key itself (visible during development)
+  if not isValid(value)
+    return key
+  end if
+
+  ' Substitute indexed placeholders
+  if isValid(params) and params.Count() > 0
+    for i = 0 to params.Count() - 1
+      value = value.Replace("{" + i.toStr() + "}", params[i])
+    end for
+  end if
+
+  return value
+end function
+
+' Translate a plural key using zero/one/many suffix convention.
+' Selects the appropriate variant based on count, then delegates to translate().
+' @param {string} baseKey - Base key without suffix (e.g. "LabelEpisodeCount")
+' @param {integer} count - The count to determine plural form
+' @param {object} params - Optional placeholder params
+' @return {string} Translated plural string
+function translatePlural(baseKey as string, count as integer, params = invalid as object) as string
+  if count = 0
+    suffix = "Zero"
+  else if count = 1
+    suffix = "One"
+  else
+    suffix = "Many"
+  end if
+
+  return translate(baseKey + suffix, params)
+end function
+
+' Load translation files for a given locale into m.global.
+' Always loads en-us as fallback. When the active locale IS en-us,
+' both m.global.translations and m.global.translationsFallback reference
+' the same AA (no double memory).
+' @param {string} locale - Locale code in custom format (e.g. "fr-ca", "pt-br")
+sub loadTranslations(locale as string)
+  if locale = "" then locale = "en-us"
+
+  ' Always load en-us as fallback
+  fallbackJson = ReadAsciiFile("pkg:/locale/custom/en-us.json")
+  fallbackAA = ParseJson(fallbackJson)
+  if not isValid(fallbackAA) then fallbackAA = {}
+
+  ' Load requested locale
+  if locale = "en-us"
+    ' Same reference — no double memory
+    activeAA = fallbackAA
+  else
+    activeAA = loadLocaleFile(locale)
+    if not isValid(activeAA)
+      ' No file found for this locale — fall back to en-us
+      activeAA = fallbackAA
+      locale = "en-us"
+    end if
+  end if
+
+  m.global.setFields({
+    translations: activeAA,
+    translationsFallback: fallbackAA,
+    translationLocale: locale
+  })
+end sub
+
+' Try to load a locale JSON file, falling back to base language.
+' e.g. "fr-ca" tries fr-ca.json first, then fr.json.
+' @param {string} locale - Locale code (e.g. "fr-ca")
+' @return {object} Parsed roAssociativeArray, or invalid if no file found
+function loadLocaleFile(locale as string) as object
+  json = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
+  aa = ParseJson(json)
+  if isValid(aa) then return aa
+
+  ' Try base language: "fr-ca" -> "fr"
+  dashPos = Instr(1, locale, "-")
+  if dashPos > 0
+    baseLang = Left(locale, dashPos - 1)
+    json = ReadAsciiFile("pkg:/locale/custom/" + baseLang + ".json")
+    return ParseJson(json)
+  end if
+
+  return invalid
+end function
+
+' Determine which locale to load using the fallback cascade.
+' Pre-login (isPostLogin=false): device locale -> en-us
+' Post-login (isPostLogin=true): user setting -> server language -> device locale -> en-us
+' @param {boolean} isPostLogin - Whether a user is authenticated
+' @param {string} serverLanguage - Language from server CustomPrefs.language (empty if unavailable)
+' @return {string} Resolved locale code in custom format (e.g. "fr-ca", "en-us")
+function resolveTranslationLocale(isPostLogin = false as boolean, serverLanguage = "" as string) as string
+  ' Priority 1: Per-user language override (only available post-login)
+  if isPostLogin
+    userLocale = get_user_setting("translationLocale")
+    if isValidAndNotEmpty(userLocale) then return userLocale
+  end if
+
+  ' Priority 2: Server CustomPrefs.language (post-login only)
+  if isPostLogin and isValidAndNotEmpty(serverLanguage)
+    return LCase(serverLanguage)
+  end if
+
+  ' Priority 3: Roku device locale
+  deviceLocale = m.global.device.locale
+  if isValidAndNotEmpty(deviceLocale)
+    return mapRokuLocaleToTranslationLocale(deviceLocale)
+  end if
+
+  ' Priority 4: Hardcoded default
+  return "en-us"
+end function
+
+' Convert Roku's locale format to our lowercase-hyphenated format.
+' e.g. "en_US" -> "en-us", "fr_CA" -> "fr-ca"
+' @param {string} rokuLocale - Roku locale from roDeviceInfo.GetCurrentLocale()
+' @return {string} Locale code in custom format
+function mapRokuLocaleToTranslationLocale(rokuLocale as string) as string
+  if rokuLocale = "" then return "en-us"
+  return LCase(rokuLocale.Replace("_", "-"))
+end function

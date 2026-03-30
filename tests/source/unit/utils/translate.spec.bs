@@ -1,0 +1,134 @@
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  @suite("translate - translate()")
+  class TranslateTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+      ' Set up translation AAs directly on m.global for unit testing
+      ' (avoids file I/O — loadTranslations() is tested separately in integration)
+      m.global.setFields({
+        translations: {
+          "ButtonPlay": "Lire",
+          "HeaderHome": "Accueil",
+          "MessageVideoStartsIn": "La vidéo commencera dans {0} secondes",
+          "MessageSearchResults": "{0} résultats pour ""{1}""",
+          "LabelEpisodeCountZero": "Aucun épisode",
+          "LabelEpisodeCountOne": "1 épisode",
+          "LabelEpisodeCountMany": "{0} épisodes"
+        },
+        translationsFallback: {
+          "ButtonPlay": "Play",
+          "ButtonCancel": "Cancel",
+          "HeaderHome": "Home",
+          "MessageVideoStartsIn": "Video will start in {0} seconds",
+          "MessageSearchResults": "{0} results for ""{1}""",
+          "ErrorConnectionFailed": "Could not connect to server",
+          "LabelEpisodeCountZero": "No episodes",
+          "LabelEpisodeCountOne": "1 episode",
+          "LabelEpisodeCountMany": "{0} episodes"
+        },
+        translationLocale: "fr"
+      })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Basic key lookup")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns translated value for existing key in active locale")
+    function _()
+      result = translate("ButtonPlay")
+      m.assertEqual(result, "Lire")
+    end function
+
+    @it("returns translated value for another existing key")
+    function _()
+      result = translate("HeaderHome")
+      m.assertEqual(result, "Accueil")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Fallback behavior")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("falls back to en-us when key is missing from active locale")
+    function _()
+      ' ButtonCancel exists in fallback but not in active locale
+      result = translate("ButtonCancel")
+      m.assertEqual(result, "Cancel")
+    end function
+
+    @it("falls back to en-us for error messages missing from active locale")
+    function _()
+      result = translate("ErrorConnectionFailed")
+      m.assertEqual(result, "Could not connect to server")
+    end function
+
+    @it("returns key itself when missing from both active and fallback")
+    function _()
+      result = translate("NonExistentKey")
+      m.assertEqual(result, "NonExistentKey")
+    end function
+
+    @it("returns key itself for empty string key")
+    function _()
+      result = translate("")
+      m.assertEqual(result, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Placeholder substitution")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("substitutes a single {0} placeholder")
+    function _()
+      result = translate("MessageVideoStartsIn", ["5"])
+      m.assertEqual(result, "La vidéo commencera dans 5 secondes")
+    end function
+
+    @it("substitutes multiple {0} and {1} placeholders")
+    function _()
+      result = translate("MessageSearchResults", ["42", "test"])
+      m.assertEqual(result, "42 résultats pour ""test""")
+    end function
+
+    @it("returns translated string without substitution when params is invalid")
+    function _()
+      result = translate("MessageVideoStartsIn")
+      m.assertEqual(result, "La vidéo commencera dans {0} secondes")
+    end function
+
+    @it("returns translated string without substitution when params is empty array")
+    function _()
+      result = translate("MessageVideoStartsIn", [])
+      m.assertEqual(result, "La vidéo commencera dans {0} secondes")
+    end function
+
+    @it("substitutes placeholders in fallback string")
+    function _()
+      ' Use a key that only exists in fallback but has placeholders
+      ' ErrorConnectionFailed has no placeholders, so test with a key in fallback
+      ' MessageVideoStartsIn exists in active, so test fallback by using a key
+      ' only in fallback. Let's add one for this test.
+      m.global.translationsFallback["MessageFallbackTest"] = "Hello {0}, welcome to {1}"
+      result = translate("MessageFallbackTest", ["Charlie", "JellyRock"])
+      m.assertEqual(result, "Hello Charlie, welcome to JellyRock")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Edge cases")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles key with empty string value in active locale")
+    function _()
+      m.global.translations["EmptyValue"] = ""
+      result = translate("EmptyValue")
+      ' Empty string is valid (not invalid), so it should return the empty string
+      m.assertEqual(result, "")
+    end function
+
+  end class
+end namespace

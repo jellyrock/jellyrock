@@ -8,6 +8,9 @@ sub Main (args as dynamic) as void
   m.global = m.screen.getGlobalNode()
   setGlobals()
 
+  ' Load translations using device locale (pre-login, no user context yet)
+  loadTranslations(resolveTranslationLocale())
+
   user.settings.SaveDefaults()
 
   ' Enable auto-sync AFTER loading defaults

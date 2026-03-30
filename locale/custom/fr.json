@@ -1,0 +1,17 @@
+{
+  "ButtonPlay": "Lire",
+  "ButtonResume": "Reprendre",
+  "ButtonCancel": "Annuler",
+  "ButtonDelete": "Supprimer",
+  "ButtonSearch": "Rechercher",
+  "HeaderHome": "Accueil",
+  "HeaderSettings": "Paramètres",
+  "LabelEpisodeCountZero": "Aucun épisode",
+  "LabelEpisodeCountOne": "1 épisode",
+  "LabelEpisodeCountMany": "{0} épisodes",
+  "MessageNoResults": "Aucun résultat trouvé",
+  "MessageVideoStartsIn": "La vidéo commencera dans {0} secondes",
+  "MessageSearchResults": "{0} résultats pour \"{1}\"",
+  "ErrorConnectionFailed": "Impossible de se connecter au serveur",
+  "LabelSearchNow": "Rechercher maintenant"
+}

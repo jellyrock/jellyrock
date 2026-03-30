@@ -5,10 +5,11 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("Settings")
-  m.top.overhangTitle = tr("Settings")
+  m.top.overhangTitle = translate("HeaderSettings")
   m.top.optionsAvailable = false
 
   m.userLocation = []
