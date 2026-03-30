@@ -341,6 +341,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   ' codec's hardware ceiling. Many encoders tag 1080p content with inflated levels (e.g. 5.1)
   ' even though the actual decode workload is within Roku's capability. But for resolutions
   ' above the hardware limit (e.g. 4K h264), no level tolerance will help — skip the override.
+  ' Both height and width are checked to catch ultrawide or non-standard aspect ratios.
   if m.playbackInfo.MediaSources[0].MediaStreams.Count() > 0 and not isLive
     ' Find first video stream - MediaStreams[0] might be subtitle/audio
     videoStream = getFirstVideoStream(m.playbackInfo.MediaSources[0].MediaStreams)
@@ -349,14 +350,27 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
       tryDirectPlay = tryDirectPlay or (userSettings.playbackTryDirectHevcProfileLevel and videoStream.codec = "hevc")
 
       ' Check source resolution against hardware ceiling before allowing override
-      if tryDirectPlay and isValid(videoStream.Height)
-        sourceHeight = videoStream.Height
-        if type(sourceHeight) = "roString" or type(sourceHeight) = "String"
-          sourceHeight = sourceHeight.toInt()
+      if tryDirectPlay
+        sourceHeight = 0
+        sourceWidth = 0
+
+        if isValid(videoStream.Height)
+          sourceHeight = videoStream.Height
+          if type(sourceHeight) = "roString" or type(sourceHeight) = "String"
+            sourceHeight = sourceHeight.toInt()
+          end if
+        end if
+
+        if isValid(videoStream.Width)
+          sourceWidth = videoStream.Width
+          if type(sourceWidth) = "roString" or type(sourceWidth) = "String"
+            sourceWidth = sourceWidth.toInt()
+          end if
         end if
 
         ' h264: Roku hardware ceiling is 1080p — 4K h264 is physically impossible to decode
-        if videoStream.codec = "h264" and sourceHeight > 1080
+        ' Check both dimensions to catch ultrawide or non-standard aspect ratios
+        if videoStream.codec = "h264" and (sourceHeight > 1080 or sourceWidth > 1920)
           tryDirectPlay = false
         end if
         ' hevc: no additional guard needed — Roku supports up to 4K hevc natively
