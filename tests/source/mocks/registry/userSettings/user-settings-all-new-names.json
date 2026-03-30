@@ -10,6 +10,7 @@
   "playbackPlayNextEpisode": "enabled",
   "playbackPreferredMultichannelCodec": "eac3",
   "playbackSubsOnlyText": "false",
+  "playbackForceTranscodeAnamorphic": "false",
   "playbackMpeg2": "false",
   "playbackMpeg4": "true",
   "playbackTryDirectH264ProfileLevel": "false",

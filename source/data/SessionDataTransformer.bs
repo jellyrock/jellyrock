@@ -139,6 +139,7 @@ class SessionDataTransformer
     settingsNode.playbackPlayDefaultAudioTrack = settingsData["playbackPlayDefaultAudioTrack"] ?? ""
     settingsNode.playbackPreferredMultichannelCodec = settingsData["playbackPreferredMultichannelCodec"] ?? ""
     settingsNode.playbackSubsOnlyText = toBoolean(settingsData["playbackSubsOnlyText"])
+    settingsNode.playbackForceTranscodeAnamorphic = toBoolean(settingsData["playbackForceTranscodeAnamorphic"])
     settingsNode.playbackMpeg2 = toBoolean(settingsData["playbackMpeg2"])
     settingsNode.playbackMpeg4 = toBoolean(settingsData["playbackMpeg4"])
     settingsNode.playbackTryDirectH264ProfileLevel = toBoolean(settingsData["playbackTryDirectH264ProfileLevel"])

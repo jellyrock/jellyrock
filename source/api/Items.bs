@@ -144,7 +144,9 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
           end for
 
           for each codecProfile in postData.DeviceProfile.CodecProfiles
-            ' Codec field is a comma-separated list of aliases (e.g. "h264,avc")
+            ' Codec field is a comma-separated list of aliases set by getCodecProfiles().
+            ' Known values: "h264,avc", "h265,hevc", "vp9", "vp8", "av1", "mpeg2video", "mpeg4".
+            ' Substring match is safe: no other codec contains "h264" as a substring.
             if isValid(codecProfile.Codec) and Instr(1, LCase(codecProfile.Codec), "h264") > 0
               applyResolutionCapToProfile(codecProfile, h264CapHeight, h264CapWidth, true)
             end if

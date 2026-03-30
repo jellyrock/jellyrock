@@ -350,30 +350,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
       tryDirectPlay = tryDirectPlay or (userSettings.playbackTryDirectHevcProfileLevel and videoStream.codec = "hevc")
 
       ' Check source resolution against hardware ceiling before allowing override
-      if tryDirectPlay
-        sourceHeight = 0
-        sourceWidth = 0
-
-        if isValid(videoStream.Height)
-          sourceHeight = videoStream.Height
-          if type(sourceHeight) = "roString" or type(sourceHeight) = "String"
-            sourceHeight = sourceHeight.toInt()
-          end if
-        end if
-
-        if isValid(videoStream.Width)
-          sourceWidth = videoStream.Width
-          if type(sourceWidth) = "roString" or type(sourceWidth) = "String"
-            sourceWidth = sourceWidth.toInt()
-          end if
-        end if
-
-        ' h264: Roku hardware ceiling is 1080p — 4K h264 is physically impossible to decode
-        ' Check both dimensions to catch ultrawide or non-standard aspect ratios
-        if videoStream.codec = "h264" and (sourceHeight > 1080 or sourceWidth > 1920)
-          tryDirectPlay = false
-        end if
-        ' hevc: no additional guard needed — Roku supports up to 4K hevc natively
+      if tryDirectPlay and not isWithinH264HardwareCeiling(videoStream)
+        tryDirectPlay = false
       end if
     else
       tryDirectPlay = false

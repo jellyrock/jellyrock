@@ -835,12 +835,6 @@ function getCodecProfiles() as object
     "Codec": "h264,avc",
     "Conditions": [
       {
-        "Condition": "NotEquals",
-        "Property": "IsAnamorphic",
-        "Value": "true",
-        "IsRequired": false
-      },
-      {
         "Condition": "EqualsAny",
         "Property": "VideoProfile",
         "Value": h264AssProfiles.Keys().join("|"),
@@ -866,6 +860,11 @@ function getCodecProfiles() as object
     "Value": h264LevelString,
     "IsRequired": false
   })
+
+  anamorphicCondition = getAnamorphicCondition()
+  if anamorphicCondition.count() > 0
+    h264ProfileArray.Conditions.push(anamorphicCondition)
+  end if
 
   ' set max resolution
   h264ProfileArray.Conditions.Append(resolutionConditions)
@@ -910,6 +909,11 @@ function getCodecProfiles() as object
       mpeg2ProfileArray.Conditions.push(bitRateArray)
     end if
 
+    anamorphicCondition = getAnamorphicCondition()
+    if anamorphicCondition.count() > 0
+      mpeg2ProfileArray.Conditions.push(anamorphicCondition)
+    end if
+
     codecProfiles.push(mpeg2ProfileArray)
   end if
 
@@ -930,6 +934,11 @@ function getCodecProfiles() as object
 
     ' set max resolution
     mpeg4ProfileArray.Conditions.Append(resolutionConditions)
+
+    anamorphicCondition = getAnamorphicCondition()
+    if anamorphicCondition.count() > 0
+      mpeg4ProfileArray.Conditions.push(anamorphicCondition)
+    end if
 
     codecProfiles.push(mpeg4ProfileArray)
   end if
@@ -981,6 +990,11 @@ function getCodecProfiles() as object
       av1ProfileArray.Conditions.push(bitRateArray)
     end if
 
+    anamorphicCondition = getAnamorphicCondition()
+    if anamorphicCondition.count() > 0
+      av1ProfileArray.Conditions.push(anamorphicCondition)
+    end if
+
     codecProfiles.push(av1ProfileArray)
   end if
 
@@ -1004,12 +1018,6 @@ function getCodecProfiles() as object
       "Type": "Video",
       "Codec": "h265,hevc",
       "Conditions": [
-        {
-          "Condition": "NotEquals",
-          "Property": "IsAnamorphic",
-          "Value": "true",
-          "IsRequired": false
-        },
         {
           "Condition": "EqualsAny",
           "Property": "VideoProfile",
@@ -1043,6 +1051,11 @@ function getCodecProfiles() as object
     bitRateArray = GetBitRateLimit("h265")
     if bitRateArray.count() > 0
       hevcProfileArray.Conditions.push(bitRateArray)
+    end if
+
+    anamorphicCondition = getAnamorphicCondition()
+    if anamorphicCondition.count() > 0
+      hevcProfileArray.Conditions.push(anamorphicCondition)
     end if
 
     codecProfiles.push(hevcProfileArray)
@@ -1083,6 +1096,11 @@ function getCodecProfiles() as object
       vp9ProfileArray.Conditions.push(bitRateArray)
     end if
 
+    anamorphicCondition = getAnamorphicCondition()
+    if anamorphicCondition.count() > 0
+      vp9ProfileArray.Conditions.push(anamorphicCondition)
+    end if
+
     codecProfiles.push(vp9ProfileArray)
   end if
 
@@ -1104,6 +1122,11 @@ function getCodecProfiles() as object
 
     ' set max resolution
     vp8ProfileArray.Conditions.Append(resolutionConditions)
+
+    anamorphicCondition = getAnamorphicCondition()
+    if anamorphicCondition.count() > 0
+      vp8ProfileArray.Conditions.push(anamorphicCondition)
+    end if
 
     codecProfiles.push(vp8ProfileArray)
   end if
@@ -1233,6 +1256,52 @@ function GetBitRateLimit(codec as string) as object
     end if
   end if
   return {}
+end function
+
+' Returns an IsAnamorphic codec profile condition when the user has enabled
+' forced transcoding of anamorphic video. Returns empty object when disabled.
+' @return {object} - Condition AA or empty AA
+function getAnamorphicCondition() as object
+  if m.global.user.settings.playbackForceTranscodeAnamorphic
+    return {
+      "Condition": "NotEquals",
+      "Property": "IsAnamorphic",
+      "Value": "true",
+      "IsRequired": false
+    }
+  end if
+  return {}
+end function
+
+' Checks whether a video stream's resolution is within the h264 hardware
+' decoding ceiling (1080p / 1920x1080). Returns true for non-h264 codecs
+' since they have higher ceilings handled elsewhere.
+' Handles Height/Width fields arriving as strings or integers, and defaults
+' to 0 (within ceiling) when metadata is missing.
+' @param videoStream {object} - MediaStream object with codec, Height, Width
+' @return {boolean} - true if within ceiling or not h264, false if exceeds ceiling
+function isWithinH264HardwareCeiling(videoStream as object) as boolean
+  if not isValid(videoStream) or not isValid(videoStream.codec) then return false
+  if videoStream.codec <> "h264" then return true
+
+  sourceHeight = 0
+  sourceWidth = 0
+
+  if isValid(videoStream.Height)
+    sourceHeight = videoStream.Height
+    if type(sourceHeight) = "roString" or type(sourceHeight) = "String"
+      sourceHeight = sourceHeight.toInt()
+    end if
+  end if
+
+  if isValid(videoStream.Width)
+    sourceWidth = videoStream.Width
+    if type(sourceWidth) = "roString" or type(sourceWidth) = "String"
+      sourceWidth = sourceWidth.toInt()
+    end if
+  end if
+
+  return sourceHeight <= 1080 and sourceWidth <= 1920
 end function
 
 function getResolutionConditions(isRequired = false as boolean) as object

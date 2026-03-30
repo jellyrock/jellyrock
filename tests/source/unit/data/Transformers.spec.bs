@@ -675,6 +675,7 @@ namespace tests
       m.assertEqual(result.playbackPlayNextEpisode, "enabled")
       m.assertEqual(result.playbackPreferredMultichannelCodec, "eac3")
       m.assertEqual(result.playbackSubsOnlyText, false)
+      m.assertEqual(result.playbackForceTranscodeAnamorphic, false)
       m.assertEqual(result.playbackMpeg2, false)
       m.assertEqual(result.playbackMpeg4, true)
       m.assertEqual(result.playbackTryDirectH264ProfileLevel, false)

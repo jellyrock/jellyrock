@@ -31,6 +31,7 @@
     <field id="playbackPlayNextEpisode" type="string" alwaysNotify="true" />
     <field id="playbackPreferredMultichannelCodec" type="string" alwaysNotify="true" />
     <field id="playbackSubsOnlyText" type="boolean" alwaysNotify="true" />
+    <field id="playbackForceTranscodeAnamorphic" type="boolean" alwaysNotify="true" />
     <field id="playbackMpeg2" type="boolean" alwaysNotify="true" />
     <field id="playbackMpeg4" type="boolean" alwaysNotify="true" />
     <field id="playbackTryDirectH264ProfileLevel" type="boolean" alwaysNotify="true" />

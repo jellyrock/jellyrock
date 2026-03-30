@@ -204,6 +204,13 @@
         "description": "Enable or disable Direct Play support for certain codecs.",
         "children": [
           {
+            "title": "Force Transcode Anamorphic Video",
+            "description": "Force transcoding of anamorphic video (non-square pixels). Enable this if you see squished or stretched video during playback.",
+            "settingName": "playbackForceTranscodeAnamorphic",
+            "type": "bool",
+            "default": "false"
+          },
+          {
             "title": "MPEG-2",
             "description": "Support Direct Play of MPEG-2 content (e.g., Live TV). This will prevent transcoding of MPEG-2 content, but uses significantly more bandwidth.",
             "settingName": "playbackMpeg2",

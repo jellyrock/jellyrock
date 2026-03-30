@@ -716,6 +716,102 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isWithinH264HardwareCeiling()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns true for 1080p h264")
+    function _()
+      videoStream = { codec: "h264", Height: 1080, Width: 1920 }
+      m.assertTrue(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("returns false for 4K h264")
+    function _()
+      videoStream = { codec: "h264", Height: 2160, Width: 3840 }
+      m.assertFalse(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("returns false for ultrawide h264 exceeding width")
+    function _()
+      videoStream = { codec: "h264", Height: 1080, Width: 2560 }
+      m.assertFalse(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("returns false for h264 exceeding height only")
+    function _()
+      videoStream = { codec: "h264", Height: 1440, Width: 1920 }
+      m.assertFalse(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("returns true for hevc regardless of resolution")
+    function _()
+      videoStream = { codec: "hevc", Height: 2160, Width: 3840 }
+      m.assertTrue(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("returns true for 720p h264")
+    function _()
+      videoStream = { codec: "h264", Height: 720, Width: 1280 }
+      m.assertTrue(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("handles Height and Width as strings")
+    function _()
+      videoStream = { codec: "h264", Height: "2160", Width: "3840" }
+      m.assertFalse(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("defaults to within ceiling when Height and Width are missing")
+    function _()
+      videoStream = { codec: "h264" }
+      m.assertTrue(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    @it("returns false for invalid videoStream")
+    function _()
+      m.assertFalse(isWithinH264HardwareCeiling(invalid))
+    end function
+
+    @it("returns false for missing codec")
+    function _()
+      videoStream = { Height: 1080, Width: 1920 }
+      m.assertFalse(isWithinH264HardwareCeiling(videoStream))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getAnamorphicCondition()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty object when playbackForceTranscodeAnamorphic is false")
+    function _()
+      m.global.user.settings.playbackForceTranscodeAnamorphic = false
+
+      result = getAnamorphicCondition()
+
+      m.assertEqual(result.count(), 0, "Should return empty AA when setting is disabled")
+    end function
+
+    @it("returns IsAnamorphic NotEquals condition when setting is true")
+    function _()
+      m.global.user.settings.playbackForceTranscodeAnamorphic = true
+
+      result = getAnamorphicCondition()
+
+      m.assertEqual(result.Condition, "NotEquals", "Condition should be NotEquals")
+      m.assertEqual(result.Property, "IsAnamorphic", "Property should be IsAnamorphic")
+      m.assertEqual(result.Value, "true", "Value should be 'true'")
+    end function
+
+    @it("condition is not required")
+    function _()
+      m.global.user.settings.playbackForceTranscodeAnamorphic = true
+
+      result = getAnamorphicCondition()
+
+      m.assertFalse(result.IsRequired, "IsRequired should be false")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getDeviceBufferSize()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
