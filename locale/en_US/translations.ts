@@ -117,6 +117,10 @@
       <translation>Are you sure you want to exit JellyRock?</translation>
     </message>
     <message>
+      <source>Are you sure you want to reset all settings to their default values? Your login session will not be affected.</source>
+      <translation>Are you sure you want to reset all settings to their default values? Your login session will not be affected.</translation>
+    </message>
+    <message>
       <source>Are you sure? This will reset the setting to its default value.</source>
       <translation>Are you sure? This will reset the setting to its default value.</translation>
     </message>
@@ -1176,6 +1180,10 @@
       <translation>Reset Setting</translation>
     </message>
     <message>
+      <source>Reset User Settings</source>
+      <translation>Reset User Settings</translation>
+    </message>
+    <message>
       <source>Resumable</source>
       <translation>Resumable</translation>
     </message>
@@ -1317,6 +1325,10 @@
     <message>
       <source>Settings relating to the appearance of the Home screen and the program in general.</source>
       <translation>Settings relating to the appearance of the Home screen and the program in general.</translation>
+    </message>
+    <message>
+      <source>Settings reset to defaults</source>
+      <translation>Settings reset to defaults</translation>
     </message>
     <message>
       <source>Settings that apply when Grid views are enabled.</source>
