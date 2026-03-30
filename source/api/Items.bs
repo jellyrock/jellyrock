@@ -144,8 +144,9 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
           end for
 
           for each codecProfile in postData.DeviceProfile.CodecProfiles
-            if isValid(codecProfile.Codec) and LCase(codecProfile.Codec) = "h264"
-              applyResolutionCapToProfile(codecProfile, h264CapHeight, h264CapWidth)
+            ' Codec field is a comma-separated list of aliases (e.g. "h264,avc")
+            if isValid(codecProfile.Codec) and Instr(1, LCase(codecProfile.Codec), "h264") > 0
+              applyResolutionCapToProfile(codecProfile, h264CapHeight, h264CapWidth, true)
             end if
           end for
         end if

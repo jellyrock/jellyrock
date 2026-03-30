@@ -625,9 +625,30 @@ namespace tests
       m.assertArrayCount(codecProfile.Conditions, 1, "Should not add when a stricter cap already exists")
     end function
 
-    @it("adds cap when existing Height condition is above maxHeight")
+    @it("replaces existing Height condition when it is above maxHeight")
     function _()
       ' Device-level cap is 2160 (4K Roku), but H264 needs to be capped at 1080
+      codecProfile = {
+        "Codec": "h264",
+        "Conditions": [
+          { "Property": "Height", "Value": "2160", "Condition": "LessThanEqual", "IsRequired": false },
+          { "Property": "Width", "Value": "3840", "Condition": "LessThanEqual", "IsRequired": false }
+        ]
+      }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920)
+
+      ' Should replace in-place, not stack duplicates
+      m.assertArrayCount(codecProfile.Conditions, 2, "Should replace existing conditions, not add duplicates")
+      m.assertEqual(codecProfile.Conditions[0].Property, "Height", "Height condition should be replaced")
+      m.assertEqual(codecProfile.Conditions[0].Value, "1080", "Height value should be updated to 1080")
+      m.assertEqual(codecProfile.Conditions[1].Property, "Width", "Width condition should be replaced")
+      m.assertEqual(codecProfile.Conditions[1].Value, "1920", "Width value should be updated to 1920")
+    end function
+
+    @it("replaces existing Height and adds Width when only Height exists")
+    function _()
+      ' Edge case: profile has Height but no Width (e.g. legacy profile)
       codecProfile = {
         "Codec": "h264",
         "Conditions": [{ "Property": "Height", "Value": "2160", "Condition": "LessThanEqual", "IsRequired": false }]
@@ -635,11 +656,27 @@ namespace tests
 
       applyResolutionCapToProfile(codecProfile, 1080, 1920)
 
-      m.assertArrayCount(codecProfile.Conditions, 3, "Should add Height and Width on top of existing 4K cap")
-      m.assertEqual(codecProfile.Conditions[1].Property, "Height", "Added Height condition")
-      m.assertEqual(codecProfile.Conditions[1].Value, "1080")
-      m.assertEqual(codecProfile.Conditions[2].Property, "Width", "Added Width condition")
-      m.assertEqual(codecProfile.Conditions[2].Value, "1920")
+      m.assertArrayCount(codecProfile.Conditions, 2, "Should replace Height and add Width")
+      m.assertEqual(codecProfile.Conditions[0].Property, "Height", "Height should be replaced in-place")
+      m.assertEqual(codecProfile.Conditions[0].Value, "1080")
+      m.assertEqual(codecProfile.Conditions[1].Property, "Width", "Width should be pushed")
+      m.assertEqual(codecProfile.Conditions[1].Value, "1920")
+    end function
+
+    @it("preserves isRequired flag when replacing existing conditions")
+    function _()
+      codecProfile = {
+        "Codec": "h264",
+        "Conditions": [
+          { "Property": "Height", "Value": "2160", "Condition": "LessThanEqual", "IsRequired": false },
+          { "Property": "Width", "Value": "3840", "Condition": "LessThanEqual", "IsRequired": false }
+        ]
+      }
+
+      applyResolutionCapToProfile(codecProfile, 1080, 1920, true)
+
+      m.assertTrue(codecProfile.Conditions[0].IsRequired, "Replaced Height condition should be required")
+      m.assertTrue(codecProfile.Conditions[1].IsRequired, "Replaced Width condition should be required")
     end function
 
     @it("respects isRequired parameter")
