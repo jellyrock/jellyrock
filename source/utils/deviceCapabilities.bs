@@ -835,12 +835,6 @@ function getCodecProfiles() as object
     "Codec": "h264,avc",
     "Conditions": [
       {
-        "Condition": "NotEquals",
-        "Property": "IsAnamorphic",
-        "Value": "true",
-        "IsRequired": false
-      },
-      {
         "Condition": "EqualsAny",
         "Property": "VideoProfile",
         "Value": h264AssProfiles.Keys().join("|"),
@@ -866,6 +860,16 @@ function getCodecProfiles() as object
     "Value": h264LevelString,
     "IsRequired": false
   })
+
+  ' force transcode anamorphic video when user setting is enabled
+  if globalUserSettings.playbackForceTranscodeAnamorphic
+    h264ProfileArray.Conditions.push({
+      "Condition": "NotEquals",
+      "Property": "IsAnamorphic",
+      "Value": "true",
+      "IsRequired": false
+    })
+  end if
 
   ' set max resolution
   h264ProfileArray.Conditions.Append(resolutionConditions)
@@ -910,6 +914,16 @@ function getCodecProfiles() as object
       mpeg2ProfileArray.Conditions.push(bitRateArray)
     end if
 
+    ' force transcode anamorphic video when user setting is enabled
+    if globalUserSettings.playbackForceTranscodeAnamorphic
+      mpeg2ProfileArray.Conditions.push({
+        "Condition": "NotEquals",
+        "Property": "IsAnamorphic",
+        "Value": "true",
+        "IsRequired": false
+      })
+    end if
+
     codecProfiles.push(mpeg2ProfileArray)
   end if
 
@@ -930,6 +944,16 @@ function getCodecProfiles() as object
 
     ' set max resolution
     mpeg4ProfileArray.Conditions.Append(resolutionConditions)
+
+    ' force transcode anamorphic video when user setting is enabled
+    if globalUserSettings.playbackForceTranscodeAnamorphic
+      mpeg4ProfileArray.Conditions.push({
+        "Condition": "NotEquals",
+        "Property": "IsAnamorphic",
+        "Value": "true",
+        "IsRequired": false
+      })
+    end if
 
     codecProfiles.push(mpeg4ProfileArray)
   end if
@@ -981,6 +1005,16 @@ function getCodecProfiles() as object
       av1ProfileArray.Conditions.push(bitRateArray)
     end if
 
+    ' force transcode anamorphic video when user setting is enabled
+    if globalUserSettings.playbackForceTranscodeAnamorphic
+      av1ProfileArray.Conditions.push({
+        "Condition": "NotEquals",
+        "Property": "IsAnamorphic",
+        "Value": "true",
+        "IsRequired": false
+      })
+    end if
+
     codecProfiles.push(av1ProfileArray)
   end if
 
@@ -1004,12 +1038,6 @@ function getCodecProfiles() as object
       "Type": "Video",
       "Codec": "h265,hevc",
       "Conditions": [
-        {
-          "Condition": "NotEquals",
-          "Property": "IsAnamorphic",
-          "Value": "true",
-          "IsRequired": false
-        },
         {
           "Condition": "EqualsAny",
           "Property": "VideoProfile",
@@ -1043,6 +1071,16 @@ function getCodecProfiles() as object
     bitRateArray = GetBitRateLimit("h265")
     if bitRateArray.count() > 0
       hevcProfileArray.Conditions.push(bitRateArray)
+    end if
+
+    ' force transcode anamorphic video when user setting is enabled
+    if globalUserSettings.playbackForceTranscodeAnamorphic
+      hevcProfileArray.Conditions.push({
+        "Condition": "NotEquals",
+        "Property": "IsAnamorphic",
+        "Value": "true",
+        "IsRequired": false
+      })
     end if
 
     codecProfiles.push(hevcProfileArray)
@@ -1083,6 +1121,16 @@ function getCodecProfiles() as object
       vp9ProfileArray.Conditions.push(bitRateArray)
     end if
 
+    ' force transcode anamorphic video when user setting is enabled
+    if globalUserSettings.playbackForceTranscodeAnamorphic
+      vp9ProfileArray.Conditions.push({
+        "Condition": "NotEquals",
+        "Property": "IsAnamorphic",
+        "Value": "true",
+        "IsRequired": false
+      })
+    end if
+
     codecProfiles.push(vp9ProfileArray)
   end if
 
@@ -1104,6 +1152,16 @@ function getCodecProfiles() as object
 
     ' set max resolution
     vp8ProfileArray.Conditions.Append(resolutionConditions)
+
+    ' force transcode anamorphic video when user setting is enabled
+    if globalUserSettings.playbackForceTranscodeAnamorphic
+      vp8ProfileArray.Conditions.push({
+        "Condition": "NotEquals",
+        "Property": "IsAnamorphic",
+        "Value": "true",
+        "IsRequired": false
+      })
+    end if
 
     codecProfiles.push(vp8ProfileArray)
   end if
