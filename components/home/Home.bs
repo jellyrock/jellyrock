@@ -70,22 +70,43 @@ sub OnScreenShown()
     overhang.currentUser = globalUser.name
     m.overhang = overhang
 
-    ' Cache tab bar reference and observe for focus return once — for the
-    ' lifetime of this screen. Observing on each UP keypress would stack
-    ' duplicate observers if focus ever returned to content via a path that
-    ' bypassed onTabBarFocusReturn (e.g. tab switch via OK).
-    tabBar = overhang.callFunc("getTabBar")
-    if isValid(tabBar)
-      m.tabBar = tabBar
-      m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
+    ' Cache overhang element references and observe their events ONCE.
+    ' OnScreenShown runs on every return (e.g. back from Settings) —
+    ' calling observeField again would stack duplicate observers, causing
+    ' actions to fire N times (1 extra per show).
+    if not isValid(m.tabBar)
+      tabBar = overhang.callFunc("getTabBar")
+      if isValid(tabBar)
+        m.tabBar = tabBar
+        m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
+      end if
     end if
 
-    ' Cache user dropdown reference and observe its events
-    userDropdown = overhang.callFunc("getUserDropdown")
-    if isValid(userDropdown)
-      m.userDropdown = userDropdown
-      m.userDropdown.observeField("requestFocusReturn", "onUserDropdownFocusReturn")
-      m.userDropdown.observeField("selectedAction", "onUserMenuAction")
+    if not isValid(m.userDropdown)
+      userDropdown = overhang.callFunc("getUserDropdown")
+      if isValid(userDropdown)
+        m.userDropdown = userDropdown
+        m.userDropdown.observeField("requestFocusReturn", "onUserDropdownFocusReturn")
+        m.userDropdown.observeField("selectedAction", "onUserMenuAction")
+      end if
+    end if
+
+    ' Enable overhang icons (search + settings) and observe their events once
+    overhang.showIcons = true
+    if not isValid(m.searchIcon)
+      overhang.observeField("iconAction", "onOverhangIconAction")
+
+      searchIcon = overhang.callFunc("getSearchIcon")
+      if isValid(searchIcon)
+        m.searchIcon = searchIcon
+        m.searchIcon.observeField("requestFocusReturn", "onIconFocusReturn")
+      end if
+
+      settingsIcon = overhang.callFunc("getSettingsIcon")
+      if isValid(settingsIcon)
+        m.settingsIcon = settingsIcon
+        m.settingsIcon.observeField("requestFocusReturn", "onIconFocusReturn")
+      end if
     end if
 
     ' Hide clock if user preference is set
@@ -100,10 +121,16 @@ sub OnScreenShown()
     m.voiceBox.active = true
   end if
 
-  ' Set focus to the active content.
-  ' Skip voiceBox — SceneManager may save it as lastFocus when voice input
-  ' triggers a pushScene, but it's a hidden capture element, not a valid focus target.
-  if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
+  ' Restore focus. Priority:
+  ' 1. Overhang element that triggered the last navigation (icon/dropdown action)
+  '    — these are children of the overhang, not Home, so SceneManager's
+  '    lastFocus walk can't find them.
+  ' 2. SceneManager's lastFocus (normal in-group focus restoration).
+  ' 3. Active content (fallback).
+  if isValid(m.lastOverhangFocus)
+    m.lastOverhangFocus.setFocus(true)
+    m.lastOverhangFocus = invalid
+  else if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
     m.top.lastFocus.setFocus(true)
   else if isValid(m.activeContent)
     m.activeContent.setFocus(true)
@@ -140,6 +167,7 @@ sub OnScreenHidden()
   overhang = scene.findNode("overhang")
   if isValid(overhang)
     overhang.isLogoVisible = false
+    overhang.showIcons = false
     overhang.currentUser = ""
   end if
 end sub
@@ -293,10 +321,47 @@ sub onUserDropdownFocusReturn()
   end if
 end sub
 
-' User dropdown menu item was selected — proxy to Home's interface for Main.bs
+' User dropdown menu item was selected — proxy to Home's interface for Main.bs.
+' Saves the dropdown so OnScreenShown can restore focus when the user returns,
+' then moves focus into Home's tree so pushScene can properly manage focus transfer.
 sub onUserMenuAction()
   if isValid(m.userDropdown)
+    m.lastOverhangFocus = m.userDropdown
+
+    ' Move focus to Home group (not activeContent — that would visibly highlight
+    ' a row item before the screen transition). m.top is in Home's tree, which
+    ' satisfies SceneManager.pushScene() without any visible focus jump.
+    m.top.setFocus(true)
+
     m.top.userMenuAction = m.userDropdown.selectedAction
+  end if
+end sub
+
+' Overhang icon (search/settings) was pressed — proxy to Home's interface for Main.bs.
+' Saves the focused icon for focus restoration on return, then moves focus to
+' Home group BEFORE firing the action. This ensures SceneManager.pushScene()
+' can find focus in Home's tree. We focus m.top (not activeContent) to avoid
+' a visible focus jump to the row list before the screen transition.
+sub onOverhangIconAction()
+  if isValid(m.overhang)
+    ' Determine which icon fired the action and save it for focus restoration
+    if isValid(m.searchIcon) and m.searchIcon.hasFocus()
+      m.lastOverhangFocus = m.searchIcon
+    else if isValid(m.settingsIcon) and m.settingsIcon.hasFocus()
+      m.lastOverhangFocus = m.settingsIcon
+    end if
+
+    ' Move focus to Home group — not activeContent (avoids visible row highlight)
+    m.top.setFocus(true)
+
+    m.top.userMenuAction = m.overhang.iconAction
+  end if
+end sub
+
+' Overhang icon signals DOWN was pressed — return focus to active content
+sub onIconFocusReturn()
+  if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
   end if
 end sub
 
@@ -336,6 +401,20 @@ sub destroy()
     m.userDropdown.unobserveField("requestFocusReturn")
     m.userDropdown.unobserveField("selectedAction")
     m.userDropdown = invalid
+  end if
+
+  ' Release overhang icon observers
+  m.lastOverhangFocus = invalid
+  if isValid(m.overhang)
+    m.overhang.unobserveField("iconAction")
+  end if
+  if isValid(m.searchIcon)
+    m.searchIcon.unobserveField("requestFocusReturn")
+    m.searchIcon = invalid
+  end if
+  if isValid(m.settingsIcon)
+    m.settingsIcon.unobserveField("requestFocusReturn")
+    m.settingsIcon = invalid
   end if
 
   ' Destroy active tab content
