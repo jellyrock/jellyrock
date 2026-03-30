@@ -8,32 +8,36 @@ namespace tests
     @describe("getSettingKeysToDelete(allKeys, preserveKeys)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    ' NOTE: BrightScript roAssociativeArray is case-insensitive by default.
+    ' `for each key in aa` returns keys in lowercase, so test data uses
+    ' lowercase keys to match real runtime behavior.
+
     @it("preserves all session keys and deletes setting keys")
     function _()
       allKeys = {
-        authToken: "token123",
+        authtoken: "token123",
         username: "testuser",
-        serverId: "server456",
-        primaryImageTag: "img789",
-        LastRunVersion: "2.7.0",
-        playbackCinemaMode: "true",
-        uiTheme: "jellyrock"
+        serverid: "server456",
+        primaryimagetag: "img789",
+        lastrunversion: "2.7.0",
+        playbackcinemamode: "true",
+        uitheme: "jellyrock"
       }
       preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
 
       result = getSettingKeysToDelete(allKeys, preserveKeys)
 
       m.assertEqual(result.Count(), 2)
-      m.assertTrue(inArray(result, "playbackCinemaMode"))
-      m.assertTrue(inArray(result, "uiTheme"))
+      m.assertTrue(inArray(result, "playbackcinemamode"))
+      m.assertTrue(inArray(result, "uitheme"))
     end function
 
     @it("returns empty array when registry only has session keys")
     function _()
       allKeys = {
-        authToken: "token123",
+        authtoken: "token123",
         username: "testuser",
-        serverId: "server456"
+        serverid: "server456"
       }
       preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
 
@@ -55,9 +59,9 @@ namespace tests
     @it("deletes display setting keys")
     function _()
       allKeys = {
-        authToken: "token123",
-        "display.lib1.sortField": "Name",
-        "display.lib1.sortAscending": "true",
+        authtoken: "token123",
+        "display.lib1.sortfield": "Name",
+        "display.lib1.sortascending": "true",
         "display.lib2.view": "grid"
       }
       preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
@@ -65,17 +69,17 @@ namespace tests
       result = getSettingKeysToDelete(allKeys, preserveKeys)
 
       m.assertEqual(result.Count(), 3)
-      m.assertTrue(inArray(result, "display.lib1.sortField"))
-      m.assertTrue(inArray(result, "display.lib1.sortAscending"))
+      m.assertTrue(inArray(result, "display.lib1.sortfield"))
+      m.assertTrue(inArray(result, "display.lib1.sortascending"))
       m.assertTrue(inArray(result, "display.lib2.view"))
     end function
 
     @it("deletes all keys when no preserve keys match")
     function _()
       allKeys = {
-        playbackCinemaMode: "true",
-        uiTheme: "custom",
-        uiThemeColorPrimary: "AA00FF"
+        playbackcinemamode: "true",
+        uitheme: "custom",
+        uithemecolorprimary: "AA00FF"
       }
       preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
 
@@ -87,17 +91,17 @@ namespace tests
     @it("handles mixed session and setting keys correctly")
     function _()
       allKeys = {
-        authToken: "token",
+        authtoken: "token",
         username: "user",
-        serverId: "srv",
-        primaryImageTag: "img",
-        LastRunVersion: "2.7.0",
-        playbackBitrateLimit: "40",
-        playbackBitrateMaxLimited: "true",
-        uiTheme: "jellyrock",
-        uiThemeColorPrimary: "AA00FF",
-        homeSection0: "resume",
-        "display.abc.sortField": "Name"
+        serverid: "srv",
+        primaryimagetag: "img",
+        lastrunversion: "2.7.0",
+        playbackbitratelimit: "40",
+        playbackbitratemaxlimited: "true",
+        uitheme: "jellyrock",
+        uithemecolorprimary: "AA00FF",
+        homesection0: "resume",
+        "display.abc.sortfield": "Name"
       }
       preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
 
@@ -105,11 +109,11 @@ namespace tests
 
       m.assertEqual(result.Count(), 6)
       ' Verify session keys are NOT in the delete list
-      m.assertFalse(inArray(result, "authToken"))
+      m.assertFalse(inArray(result, "authtoken"))
       m.assertFalse(inArray(result, "username"))
-      m.assertFalse(inArray(result, "serverId"))
-      m.assertFalse(inArray(result, "primaryImageTag"))
-      m.assertFalse(inArray(result, "LastRunVersion"))
+      m.assertFalse(inArray(result, "serverid"))
+      m.assertFalse(inArray(result, "primaryimagetag"))
+      m.assertFalse(inArray(result, "lastrunversion"))
     end function
 
   end class

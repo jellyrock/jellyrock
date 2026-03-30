@@ -156,7 +156,8 @@ function getSettingKeysToDelete(allKeys as object, preserveKeys as object) as ob
   for each key in allKeys
     shouldPreserve = false
     for each preserveKey in preserveKeys
-      if key = preserveKey
+      ' Case-insensitive compare: roAssociativeArray iteration returns lowercase keys
+      if LCase(key) = LCase(preserveKey)
         shouldPreserve = true
         exit for
       end if
