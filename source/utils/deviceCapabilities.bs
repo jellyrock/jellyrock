@@ -856,15 +856,16 @@ function getCodecProfiles() as object
     ]
   }
 
-  ' check user setting before adding video level restrictions
-  if not globalUserSettings.playbackTryDirectH264ProfileLevel
-    h264ProfileArray.Conditions.push({
-      "Condition": "LessThanEqual",
-      "Property": "VideoLevel",
-      "Value": h264LevelString,
-      "IsRequired": false
-    })
-  end if
+  ' Always send VideoLevel so the server produces compatible transcodes.
+  ' The playbackTryDirectH264ProfileLevel setting is handled client-side in
+  ' LoadVideoContentTask — if the only transcode reason is VideoLevelNotSupported,
+  ' the client will attempt direct play with a transcode fallback.
+  h264ProfileArray.Conditions.push({
+    "Condition": "LessThanEqual",
+    "Property": "VideoLevel",
+    "Value": h264LevelString,
+    "IsRequired": false
+  })
 
   ' set max resolution
   h264ProfileArray.Conditions.Append(resolutionConditions)
@@ -1024,15 +1025,16 @@ function getCodecProfiles() as object
       ]
     }
 
-    ' check user setting before adding VideoLevel restrictions
-    if not globalUserSettings.playbackTryDirectHevcProfileLevel
-      hevcProfileArray.Conditions.push({
-        "Condition": "LessThanEqual",
-        "Property": "VideoLevel",
-        "Value": hevcLevelString,
-        "IsRequired": false
-      })
-    end if
+    ' Always send VideoLevel so the server produces compatible transcodes.
+    ' The playbackTryDirectHevcProfileLevel setting is handled client-side in
+    ' LoadVideoContentTask — if the only transcode reason is VideoLevelNotSupported,
+    ' the client will attempt direct play with a transcode fallback.
+    hevcProfileArray.Conditions.push({
+      "Condition": "LessThanEqual",
+      "Property": "VideoLevel",
+      "Value": hevcLevelString,
+      "IsRequired": false
+    })
 
     ' set max resolution
     hevcProfileArray.Conditions.Append(resolutionConditions)
@@ -1286,6 +1288,8 @@ end function
 
 ' Apply a paired Height + Width resolution cap to a codec profile's Conditions.
 ' No-ops if a Height condition at or below maxHeight already exists.
+' When the existing cap is wider than maxHeight, replaces it (avoids duplicate conditions
+' that can confuse the server's condition evaluation order).
 ' @param codecProfile {object} - The codec profile AA containing a Conditions array
 ' @param maxHeight {integer} - The max height to cap at (e.g. 1080)
 ' @param maxWidth {integer} - The max width to cap at (e.g. 1920)
@@ -1293,26 +1297,55 @@ end function
 sub applyResolutionCapToProfile(codecProfile as object, maxHeight as integer, maxWidth as integer, isRequired = false as boolean)
   if not isValid(codecProfile) or not isValid(codecProfile.Conditions) then return
 
-  for each condition in codecProfile.Conditions
-    if isValid(condition.Property) and condition.Property = "Height"
-      if condition.Value.toInt() <= maxHeight
-        return ' Resolution cap already present
+  ' Scan for existing Height/Width conditions and track their indices
+  heightIndex = -1
+  widthIndex = -1
+  for i = 0 to codecProfile.Conditions.count() - 1
+    condition = codecProfile.Conditions[i]
+    if isValid(condition.Property)
+      if condition.Property = "Height"
+        if condition.Value.toInt() <= maxHeight
+          return ' Existing cap is already at or below the target — nothing to do
+        end if
+        heightIndex = i
+      else if condition.Property = "Width"
+        widthIndex = i
       end if
     end if
   end for
 
-  codecProfile.Conditions.push({
-    "Condition": "LessThanEqual",
-    "Property": "Height",
-    "Value": maxHeight.toStr(),
-    "IsRequired": isRequired
-  })
-  codecProfile.Conditions.push({
-    "Condition": "LessThanEqual",
-    "Property": "Width",
-    "Value": maxWidth.toStr(),
-    "IsRequired": isRequired
-  })
+  ' Replace existing conditions in-place to avoid duplicates
+  if heightIndex >= 0
+    codecProfile.Conditions[heightIndex] = {
+      "Condition": "LessThanEqual",
+      "Property": "Height",
+      "Value": maxHeight.toStr(),
+      "IsRequired": isRequired
+    }
+  else
+    codecProfile.Conditions.push({
+      "Condition": "LessThanEqual",
+      "Property": "Height",
+      "Value": maxHeight.toStr(),
+      "IsRequired": isRequired
+    })
+  end if
+
+  if widthIndex >= 0
+    codecProfile.Conditions[widthIndex] = {
+      "Condition": "LessThanEqual",
+      "Property": "Width",
+      "Value": maxWidth.toStr(),
+      "IsRequired": isRequired
+    }
+  else
+    codecProfile.Conditions.push({
+      "Condition": "LessThanEqual",
+      "Property": "Width",
+      "Value": maxWidth.toStr(),
+      "IsRequired": isRequired
+    })
+  end if
 end sub
 
 ' Receives and returns an assArray of supported profiles and levels for each video codec
