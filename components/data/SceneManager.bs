@@ -397,16 +397,18 @@ sub refreshThemeColors()
       titleLabel.color = constants.colorTextPrimary
     end if
 
-    ' Update username label color (LabelSecondaryMedium uses colorTextSecondary)
-    usernameLabel = m.overhang.findNode("username")
-    if isValid(usernameLabel)
-      usernameLabel.color = constants.colorTextSecondary
-    end if
+    ' Update user dropdown elements (username label and default user icon)
+    userDropdown = m.overhang.callFunc("getUserDropdown")
+    if isValid(userDropdown)
+      usernameLabel = userDropdown.findNode("triggerLabel")
+      if isValid(usernameLabel)
+        usernameLabel.color = constants.colorTextSecondary
+      end if
 
-    ' Update user image blendColor if it's the default icon (not a profile picture)
-    userImage = m.overhang.findNode("userImage")
-    if isValid(userImage) and userImage.uri = "pkg:/images/icons/person_36px.png"
-      userImage.blendColor = constants.colorTextSecondary
+      userImage = userDropdown.findNode("triggerIcon")
+      if isValid(userImage) and userImage.uri = "pkg:/images/icons/person_36px.png"
+        userImage.blendColor = constants.colorTextSecondary
+      end if
     end if
 
     ' Update clock label colors (LabelSecondaryLarger/Large use colorTextSecondary)
