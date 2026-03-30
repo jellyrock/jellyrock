@@ -1,0 +1,147 @@
+namespace tests
+
+  @suite("JROverhangIcon - Node interface and defaults")
+  class JROverhangIconTests extends tests.BaseTestSuite
+
+    private icon as object
+
+    protected override function setup()
+      super.setup()
+      m.icon = CreateObject("roSGNode", "JROverhangIcon")
+    end function
+
+    protected override function teardown()
+      m.icon = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has icon field")
+    function _()
+      m.assertTrue(m.icon.doesExist("icon"))
+    end function
+
+    @it("has actionId field")
+    function _()
+      m.assertTrue(m.icon.doesExist("actionId"))
+    end function
+
+    @it("has selectedAction field")
+    function _()
+      m.assertTrue(m.icon.doesExist("selectedAction"))
+    end function
+
+    @it("has requestFocusExit field")
+    function _()
+      m.assertTrue(m.icon.doesExist("requestFocusExit"))
+    end function
+
+    @it("has requestFocusReturn field")
+    function _()
+      m.assertTrue(m.icon.doesExist("requestFocusReturn"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("icon defaults to empty string")
+    function _()
+      m.assertEqual(m.icon.icon, "")
+    end function
+
+    @it("actionId defaults to empty string")
+    function _()
+      m.assertEqual(m.icon.actionId, "")
+    end function
+
+    @it("requestFocusReturn defaults to false")
+    function _()
+      m.assertFalse(m.icon.requestFocusReturn)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Child nodes exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has buttonBackground poster")
+    function _()
+      m.assertNotInvalid(m.icon.findNode("buttonBackground"))
+    end function
+
+    @it("has buttonBorder poster")
+    function _()
+      m.assertNotInvalid(m.icon.findNode("buttonBorder"))
+    end function
+
+    @it("has buttonIcon poster")
+    function _()
+      m.assertNotInvalid(m.icon.findNode("buttonIcon"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Initial visual state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("buttonBackground is hidden by default")
+    function _()
+      m.assertFalse(m.icon.findNode("buttonBackground").visible)
+    end function
+
+    @it("buttonBorder is hidden by default")
+    function _()
+      m.assertFalse(m.icon.findNode("buttonBorder").visible)
+    end function
+
+    @it("buttonIcon is visible by default")
+    function _()
+      m.assertTrue(m.icon.findNode("buttonIcon").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Button sizing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("background is sized to 66x66")
+    function _()
+      bg = m.icon.findNode("buttonBackground")
+      m.assertEqual(bg.width, 66.0)
+      m.assertEqual(bg.height, 66.0)
+    end function
+
+    @it("border is sized to 66x66")
+    function _()
+      border = m.icon.findNode("buttonBorder")
+      m.assertEqual(border.width, 66.0)
+      m.assertEqual(border.height, 66.0)
+    end function
+
+    @it("icon poster is 42x42")
+    function _()
+      poster = m.icon.findNode("buttonIcon")
+      m.assertEqual(poster.width, 42.0)
+      m.assertEqual(poster.height, 42.0)
+    end function
+
+    @it("icon is centered at offset [12, 12] within the button")
+    function _()
+      poster = m.icon.findNode("buttonIcon")
+      m.assertEqual(poster.translation, [12.0, 12.0])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Icon URI updates")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("updates buttonIcon URI when icon field changes")
+    function _()
+      m.icon.icon = "pkg:/images/icons/search.png"
+      poster = m.icon.findNode("buttonIcon")
+      m.assertEqual(poster.uri, "pkg:/images/icons/search.png")
+    end function
+
+  end class
+
+end namespace
