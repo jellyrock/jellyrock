@@ -44,6 +44,9 @@ sub Main (args as dynamic) as void
   ' load home page - this may be delayed if UI fallback fonts are enabled
   loadHomeScreen()
 
+  ' Reset transient state used by button handlers across scene transitions
+  m.photoAlbumShuffleMode = false
+
   ' Handle input messages
   input = CreateObject("roInput")
   input.SetMessagePort(m.port)
@@ -166,6 +169,11 @@ sub Main (args as dynamic) as void
       if isValid(task) and task.subtype() = "QuickPlayTask"
         handleQuickPlayOutput(task)
       end if
+    else if isNodeEvent(msg, "result")
+      task = msg.getRoSGNode()
+      if isValid(task) and task.subtype() = "RecordProgramTask"
+        handleRecordResult(task)
+      end if
     else if isNodeEvent(msg, "done")
       resultNode = msg.getRoSGNode()
       if isValid(resultNode) and resultNode.isSameNode(m.favoriteResultNode)
@@ -179,6 +187,10 @@ sub Main (args as dynamic) as void
       if isValid(selectedItem)
         startLoadingSpinner()
         selectedItemType = selectedItem.type
+
+        ' Normalize alias types to their canonical forms
+        if selectedItemType = "LiveTvChannel" then selectedItemType = "TvChannel"
+        if selectedItemType = "LiveTvProgram" or selectedItemType = "TvProgram" then selectedItemType = "Program"
 
         if selectedItemType = "CollectionFolder"
           group = CreateLibraryView(selectedItem)
@@ -218,45 +230,11 @@ sub Main (args as dynamic) as void
         else if selectedItemType = "Video"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "TvChannel" or selectedItemType = "Program"
-          ' User selected a Live TV channel / program
-          ' Show Channel Loading spinner
-          dialog = createObject("roSGNode", "ProgressDialog")
-          dialog.title = tr("Loading Channel Data")
-          m.scene.dialog = dialog
-
-          queueItem = nodeHelpers.createQueueItem(selectedItem)
-
-          ' User selected a program — play the channel the program is on instead
-          if LCase(selectedItemType) = "program"
-            queueItem.id = selectedItem.channelId
-            queueItem.type = "TvChannel"
-          end if
-
-          ' Display playback options dialog if there is a saved resume position
-          ' Guard: ChannelData (Phase 6) doesn't have playbackPositionTicks field
-          resumeTicks = 0
-          if isValid(selectedItem.playbackPositionTicks)
-            resumeTicks = selectedItem.playbackPositionTicks
-          end if
-          if resumeTicks > 0
-            dialog.close = true
-            m.global.queueManager.callFunc("hold", queueItem)
-            playbackOptionDialog(resumeTicks)
-          else
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", queueItem)
-            m.global.queueManager.callFunc("playQueue")
-            dialog.close = true
-          end if
-
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Photo"
-          quickplay.photo(selectedItem)
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "PhotoAlbum"
-          ' Load photo album contents via QuickPlayTask
-          m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-          m.activeQuickPlayTask.input = { action: "loadPhotoAlbum", id: selectedItem.id }
-          m.activeQuickPlayTask.observeField("output", m.port)
-          m.activeQuickPlayTask.control = "RUN"
+          group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "MusicArtist"
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "MusicAlbum"
@@ -334,38 +312,44 @@ sub Main (args as dynamic) as void
       ' Search item selected
       startLoadingSpinner()
       node = getMsgPicker(msg)
-      ' TODO - swap this based on target.mediatype
-      ' types: [ Series (Show), Episode, Movie, Audio, Person, Studio, MusicArtist, Recording ]
-      if node.type = "Series"
+
+      ' Normalize alias types to their canonical forms
+      nodeType = node.type
+      if nodeType = "LiveTvChannel" then nodeType = "TvChannel"
+      if nodeType = "LiveTvProgram" or nodeType = "TvProgram" then nodeType = "Program"
+
+      if nodeType = "Series"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "Movie"
+      else if nodeType = "Movie"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "MusicArtist"
+      else if nodeType = "MusicArtist"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "MusicAlbum"
+      else if nodeType = "MusicAlbum"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "Audio"
+      else if nodeType = "Audio"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "MusicVideo"
+      else if nodeType = "MusicVideo"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "Person"
+      else if nodeType = "Person"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "BoxSet"
+      else if nodeType = "BoxSet"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "TvChannel"
-        m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem(node))
-        m.global.queueManager.callFunc("playQueue")
-      else if node.type = "Episode"
+      else if nodeType = "TvChannel" or nodeType = "Program"
         group = CreateItemDetailsGroup(node)
-      else if LCase(node.type) = "recording"
+      else if nodeType = "Episode"
         group = CreateItemDetailsGroup(node)
-      else if node.type = "Playlist"
+      else if LCase(nodeType) = "recording"
+        group = CreateItemDetailsGroup(node)
+      else if nodeType = "Playlist"
+        group = CreateItemDetailsGroup(node)
+      else if nodeType = "Photo" or nodeType = "PhotoAlbum"
+        group = CreateItemDetailsGroup(node)
+      else if nodeType = "Video"
         group = CreateItemDetailsGroup(node)
       else
         ' TODO - switch on more node types
         stopLoadingSpinner()
-        message_dialog("This type is not yet supported: " + node.type + ".")
+        message_dialog("This type is not yet supported: " + nodeType + ".")
       end if
     else if isNodeEvent(msg, "buttonSelected")
       ' If a button is selected, we have some determining to do
@@ -592,14 +576,23 @@ sub Main (args as dynamic) as void
           end if
         else if btn.id = "shuffleButton"
           ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added.
-          ' API calls run off the render thread via GetShuffleItemsTask; result handled by "shuffleItems" event.
           if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
             startLoadingSpinner()
             item = group.itemContent
-            m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
-            m.shuffleTask.shuffleInput = { type: item.type, id: item.id, seriesId: item.seriesId }
-            m.shuffleTask.observeField("shuffleItems", m.port)
-            m.shuffleTask.control = "RUN"
+            if item.type = "PhotoAlbum"
+              ' PhotoAlbum shuffle: launch random slideshow
+              m.photoAlbumShuffleMode = true
+              m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+              m.activeQuickPlayTask.input = { action: "loadPhotoAlbum", id: item.id }
+              m.activeQuickPlayTask.observeField("output", m.port)
+              m.activeQuickPlayTask.control = "RUN"
+            else
+              ' API calls run off the render thread via GetShuffleItemsTask; result handled by "shuffleItems" event.
+              m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
+              m.shuffleTask.shuffleInput = { type: item.type, id: item.id, seriesId: item.seriesId }
+              m.shuffleTask.observeField("shuffleItems", m.port)
+              m.shuffleTask.control = "RUN"
+            end if
           end if
         else if btn.id = "instantMixButton"
           ' Instant Mix — delegate to QuickPlayTask
@@ -652,6 +645,62 @@ sub Main (args as dynamic) as void
               artistRef.type = "MusicArtist"
               CreateItemDetailsGroup(artistRef)
             end if
+          end if
+        else if btn.id = "viewPhotoButton"
+          ' Open Photo in the PhotoDetails viewer
+          if isValid(group) and isValid(group.itemContent)
+            quickplay.photo(group.itemContent)
+          end if
+        else if btn.id = "slideshowButton"
+          ' Launch sequential slideshow for PhotoAlbum
+          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
+            startLoadingSpinner()
+            m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+            m.activeQuickPlayTask.input = { action: "loadPhotoAlbum", id: group.itemContent.id }
+            m.activeQuickPlayTask.observeField("output", m.port)
+            m.activeQuickPlayTask.control = "RUN"
+          end if
+        else if btn.id = "watchChannelButton"
+          ' Play a Live TV channel (TvChannel or Program's channel)
+          if isValid(group) and isValid(group.itemContent)
+            startLoadingSpinner()
+            item = group.itemContent
+            queueItem = nodeHelpers.createQueueItem(item)
+            ' Program: play the channel the program is on
+            if item.type = "Program" and isValidAndNotEmpty(item.channelId)
+              queueItem.id = item.channelId
+              queueItem.type = "TvChannel"
+            end if
+            m.global.queueManager.callFunc("clear")
+            m.global.queueManager.callFunc("push", queueItem)
+            m.global.queueManager.callFunc("playQueue")
+          end if
+        else if btn.id = "goToChannelButton"
+          ' Navigate to the TvChannel detail screen for this Program
+          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.channelId)
+            channelRef = CreateObject("roSGNode", "ContentNode")
+            channelRef.id = group.itemContent.channelId
+            channelRef.type = "TvChannel"
+            CreateItemDetailsGroup(channelRef)
+          end if
+        else if btn.id = "recordButton"
+          item = group.itemContent
+          recordButton = group.findNode("recordButton")
+          if isValid(recordButton) and recordButton.loading then continue while ' Already in-flight
+          programToRecord = invalid
+          if item.type = "TvChannel" and isValid(item.currentProgram)
+            programToRecord = item.currentProgram
+          else if item.type = "Program"
+            programToRecord = item
+          end if
+          if isValid(programToRecord)
+            if isValid(recordButton) then recordButton.loading = true
+            m.pendingRecordButton = recordButton
+            m.pendingRecordIsCancel = isValidAndNotEmpty(programToRecord.timerId)
+            recordTask = CreateObject("roSGNode", "RecordProgramTask")
+            recordTask.programDetails = programToRecord
+            recordTask.observeField("result", m.port)
+            recordTask.control = "RUN"
           end if
         else if btn.id = "deleteButton"
           print "deleteButton pressed"
@@ -1044,7 +1093,9 @@ sub handleQuickPlayOutput(task as object)
   else if output.action = "photo"
     photoPlayer = CreateObject("roSgNode", "PhotoDetails")
     photoPlayer.isSlideshow = true
-    photoPlayer.isRandom = false
+    ' PhotoAlbum shuffle sets isRandom=true for random slideshow
+    photoPlayer.isRandom = m.photoAlbumShuffleMode = true
+    m.photoAlbumShuffleMode = false
     photoPlayer.itemsArray = output.items
     photoPlayer.itemIndex = 0
     m.global.sceneManager.callfunc("pushScene", photoPlayer)
@@ -1138,6 +1189,47 @@ sub handleWatchedToggleDone()
   m.pendingWatchedButton = invalid
   m.pendingWatchedNewState = invalid
   m.pendingWatchedItemType = invalid
+end sub
+
+sub handleRecordResult(task as object)
+  res = task.result
+  task.unobserveField("result")
+  task.control = "STOP"
+
+  if isValid(res) and res.ok
+    ' Toggle button label and icon color to reflect new state
+    if isValid(m.pendingRecordButton)
+      if m.pendingRecordIsCancel
+        m.pendingRecordButton.text = tr("Record")
+        ' Revert to default icon color (white)
+        m.pendingRecordButton.iconBackground = m.global.constants.colorTextPrimary
+        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorTextPrimary
+      else
+        m.pendingRecordButton.text = tr("Cancel Recording")
+        ' Active recording — red icon
+        m.pendingRecordButton.iconBackground = m.global.constants.colorError
+        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorError
+      end if
+    end if
+    if res.action = "record"
+      displayToast(tr("Recording scheduled"), "success")
+    else
+      displayToast(tr("Recording cancelled"), "success")
+    end if
+  else
+    ' Failed — button label stays as-is (no state change)
+    if isValid(res) and res.action = "record"
+      displayToast(tr("Failed to schedule recording"), "error")
+    else
+      displayToast(tr("Failed to cancel recording"), "error")
+    end if
+  end if
+
+  if isValid(m.pendingRecordButton)
+    m.pendingRecordButton.loading = false
+  end if
+  m.pendingRecordButton = invalid
+  m.pendingRecordIsCancel = invalid
 end sub
 
 ' removeResumeButtonFromGroup: Remove the resume button from an ItemDetails button group.

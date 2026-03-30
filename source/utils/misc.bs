@@ -100,6 +100,15 @@ function formatTime(time) as string
 
 end function
 
+' Returns "am" or "pm" for 12h clock, empty string for 24h.
+function getTimePeriod(time as object) as string
+  if m.global.device.clockFormat <> "12h" then return ""
+  if time.getHours() >= 12
+    return "pm"
+  end if
+  return "am"
+end function
+
 ' convert iso date string to a human readable date string
 ' eg. "March 13th, 2014"
 function formatIsoDateVideo(isoDateString as string) as string

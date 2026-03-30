@@ -8,9 +8,12 @@ sub init()
   m.top.functionName = "RecordOrCancelProgram"
 end sub
 
-' Orchestrator Task: uses ApiTask pool for GET then SideEffectTask for POST/DELETE.
+' Orchestrator Task: uses ApiTask pool for GET/POST/DELETE with result feedback.
 sub RecordOrCancelProgram()
-  if not isValid(m.top.programDetails) then return
+  if not isValid(m.top.programDetails)
+    m.top.result = { ok: false, action: "unknown" }
+    return
+  end if
 
   timerId = invalid
   if isValidAndNotEmpty(m.top.programDetails.timerId)
@@ -26,25 +29,44 @@ sub RecordOrCancelProgram()
     end if
 
     if isValid(defaults)
-      ' POST the timer — fire-and-forget (caller checks recordOperationDone, not response)
       if m.top.recordSeries = true
-        SubmitSideEffect(GetApi().BuildCreateSeriesTimerRequest(defaults))
+        createRes = fetchRes(GetApi().BuildCreateSeriesTimerRequest(defaults), "createSeriesTimer")
       else
-        SubmitSideEffect(GetApi().BuildCreateTimerRequest(defaults))
+        createRes = fetchRes(GetApi().BuildCreateTimerRequest(defaults), "createTimer")
       end if
-      m.top.programDetails.hdSmallIconUrl = "pkg:/images/red.png"
+      if isValid(createRes) and createRes.ok
+        m.top.programDetails.hdSmallIconUrl = "pkg:/images/red.png"
+        ' POST /LiveTv/Timers returns 204 No Content — no timer ID in the response.
+        ' Re-fetch the program item to get the server-assigned TimerId so subsequent
+        ' presses trigger cancel instead of attempting a duplicate create.
+        refreshRes = fetchRes(GetApi().BuildGetItemRequest(m.top.programDetails.id), "refreshProgram")
+        if isValid(refreshRes) and refreshRes.ok and isValid(refreshRes.json)
+          m.top.programDetails.timerId = refreshRes.json.TimerId ?? ""
+          m.top.programDetails.seriesTimerId = refreshRes.json.SeriesTimerId ?? ""
+        end if
+        m.top.result = { ok: true, action: "record" }
+      else
+        m.log.error("Failed to create recording timer")
+        m.top.result = { ok: false, action: "record" }
+      end if
     else
       m.log.error("Could not retrieve live TV Defaults from Server")
+      m.top.result = { ok: false, action: "record" }
     end if
   else
-    ' Cancelling a recording — fire-and-forget DELETE
+    ' Cancelling a recording
     if m.top.recordSeries = true
-      SubmitSideEffect(GetApi().BuildCancelSeriesTimerRequest(m.top.programDetails.seriesTimerId))
+      cancelRes = fetchRes(GetApi().BuildCancelSeriesTimerRequest(m.top.programDetails.seriesTimerId), "cancelSeriesTimer")
     else
-      SubmitSideEffect(GetApi().BuildCancelTimerRequest(timerId))
+      cancelRes = fetchRes(GetApi().BuildCancelTimerRequest(timerId), "cancelTimer")
     end if
-    m.top.programDetails.hdSmallIconUrl = invalid
+    if isValid(cancelRes) and cancelRes.ok
+      m.top.programDetails.hdSmallIconUrl = invalid
+      m.top.programDetails.timerId = ""
+      m.top.result = { ok: true, action: "cancel" }
+    else
+      m.log.error("Failed to cancel recording timer")
+      m.top.result = { ok: false, action: "cancel" }
+    end if
   end if
-
-  m.top.recordOperationDone = true
 end sub
