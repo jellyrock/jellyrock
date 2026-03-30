@@ -10,6 +10,11 @@
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Output: signals the parent screen to take focus back (e.g., on DOWN press) -->
     <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
+    <!-- Output: signals LEFT/RIGHT at tab boundary to transfer focus to user dropdown.
+         Value is the direction pressed ("left" or "right") for correct fallback wrapping. -->
+    <field id="requestFocusToUserMenu" type="string" alwaysNotify="true" />
+    <!-- Input/Output: externally settable focused tab index (e.g., when returning from user dropdown) -->
+    <field id="focusedTabIndex" type="integer" value="0" onChange="onFocusedTabIndexChanged" alwaysNotify="true" />
     <!-- Output: signals when the first tab has finished rendering/sizing -->
     <field id="ready" type="boolean" value="false" alwaysNotify="true" />
     <function name="destroy" />
