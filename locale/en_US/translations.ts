@@ -155,6 +155,10 @@
       <translation>Audio Codec</translation>
     </message>
     <message>
+      <source>Audio Language Preference</source>
+      <translation>Audio Language Preference</translation>
+    </message>
+    <message>
       <source>Auto - Use TV resolution</source>
       <translation>Auto - Use TV resolution</translation>
       <extracomment>User Setting - Option title</extracomment>
@@ -300,6 +304,14 @@
       <translation>Custom</translation>
     </message>
     <message>
+      <source>Custom Audio Language Code</source>
+      <translation>Custom Audio Language Code</translation>
+    </message>
+    <message>
+      <source>Custom Subtitle Language Code</source>
+      <translation>Custom Subtitle Language Code</translation>
+    </message>
+    <message>
       <source>Custom Subtitles</source>
       <translation>Custom Subtitles</translation>
       <extracomment>Name of a setting - custom subtitles that support CJK fonts</extracomment>
@@ -432,6 +444,10 @@
     <message>
       <source>Ends at %1</source>
       <translation>Ends at %1</translation>
+    </message>
+    <message>
+      <source>Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa).</source>
+      <translation>Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa).</translation>
     </message>
     <message>
       <source>Enter a password</source>
@@ -622,6 +638,10 @@
       <translation>Invalid Color</translation>
     </message>
     <message>
+      <source>Invalid Language Code</source>
+      <translation>Invalid Language Code</translation>
+    </message>
+    <message>
       <source>Item</source>
       <translation>Item</translation>
     </message>
@@ -646,6 +666,10 @@
     <message>
       <source>JellyRock (Black)</source>
       <translation>JellyRock (Black)</translation>
+    </message>
+    <message>
+      <source>Language Preferences</source>
+      <translation>Language Preferences</translation>
     </message>
     <message>
       <source>Level</source>
@@ -882,6 +906,18 @@
       <extracomment>User Setting - Setting option title</extracomment>
     </message>
     <message>
+      <source>Override the web client&apos;s audio and subtitle language preferences for this device.</source>
+      <translation>Override the web client&apos;s audio and subtitle language preferences for this device.</translation>
+    </message>
+    <message>
+      <source>Override the web client&apos;s audio language preference. Controls which language audio track is preferred during playback.</source>
+      <translation>Override the web client&apos;s audio language preference. Controls which language audio track is preferred during playback.</translation>
+    </message>
+    <message>
+      <source>Override the web client&apos;s subtitle language preference. Controls which language subtitle track is preferred during playback.</source>
+      <translation>Override the web client&apos;s subtitle language preference. Controls which language subtitle track is preferred during playback.</translation>
+    </message>
+    <message>
       <source>Override web client audio preference. When enabled, use the IsDefault flag to select audio track. When disabled, prefer language match and ignore IsDefault.</source>
       <translation>Override web client audio preference. When enabled, use the IsDefault flag to select audio track. When disabled, prefer language match and ignore IsDefault.</translation>
     </message>
@@ -973,6 +1009,10 @@
     <message>
       <source>Playlists</source>
       <translation>Playlists</translation>
+    </message>
+    <message>
+      <source>Please enter exactly 3 letters (e.g., eng, jpn, fra).</source>
+      <translation>Please enter exactly 3 letters (e.g., eng, jpn, fra).</translation>
     </message>
     <message>
       <source>Please enter exactly 6 hex characters (0-9, A-F).</source>
@@ -1344,6 +1384,10 @@
       <translation>Submit</translation>
     </message>
     <message>
+      <source>Subtitle Language Preference</source>
+      <translation>Subtitle Language Preference</translation>
+    </message>
+    <message>
       <source>Subtitles</source>
       <translation>Subtitles</translation>
     </message>
@@ -1472,6 +1516,10 @@
       <translation>Unplayed</translation>
     </message>
     <message>
+      <source>Use Audio Language</source>
+      <translation>Use Audio Language</translation>
+    </message>
+    <message>
       <source>Use custom subtitle rendering for external VTT subtitle files. Enables fallback fonts from the server and removes some formatting tags from misformatted subtitles. Note: May not fully support all Roku caption preferences.</source>
       <translation>Use custom subtitle rendering for external VTT subtitle files. Enables fallback fonts from the server and removes some formatting tags from misformatted subtitles. Note: May not fully support all Roku caption preferences.</translation>
     </message>
@@ -1479,6 +1527,10 @@
       <source>Use Episode Image</source>
       <translation>Use Episode Image</translation>
       <extracomment>User Setting - Setting option title</extracomment>
+    </message>
+    <message>
+      <source>Use Roku Language</source>
+      <translation>Use Roku Language</translation>
     </message>
     <message>
       <source>Use Show Image</source>
