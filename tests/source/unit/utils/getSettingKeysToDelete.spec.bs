@@ -1,0 +1,117 @@
+
+namespace tests
+
+  @suite("config.bs - getSettingKeysToDelete()")
+  class GetSettingKeysToDeleteTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getSettingKeysToDelete(allKeys, preserveKeys)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("preserves all session keys and deletes setting keys")
+    function _()
+      allKeys = {
+        authToken: "token123",
+        username: "testuser",
+        serverId: "server456",
+        primaryImageTag: "img789",
+        LastRunVersion: "2.7.0",
+        playbackCinemaMode: "true",
+        uiTheme: "jellyrock"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 2)
+      m.assertTrue(inArray(result, "playbackCinemaMode"))
+      m.assertTrue(inArray(result, "uiTheme"))
+    end function
+
+    @it("returns empty array when registry only has session keys")
+    function _()
+      allKeys = {
+        authToken: "token123",
+        username: "testuser",
+        serverId: "server456"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 0)
+    end function
+
+    @it("returns empty array when registry is empty")
+    function _()
+      allKeys = {}
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 0)
+    end function
+
+    @it("deletes display setting keys")
+    function _()
+      allKeys = {
+        authToken: "token123",
+        "display.lib1.sortField": "Name",
+        "display.lib1.sortAscending": "true",
+        "display.lib2.view": "grid"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 3)
+      m.assertTrue(inArray(result, "display.lib1.sortField"))
+      m.assertTrue(inArray(result, "display.lib1.sortAscending"))
+      m.assertTrue(inArray(result, "display.lib2.view"))
+    end function
+
+    @it("deletes all keys when no preserve keys match")
+    function _()
+      allKeys = {
+        playbackCinemaMode: "true",
+        uiTheme: "custom",
+        uiThemeColorPrimary: "AA00FF"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 3)
+    end function
+
+    @it("handles mixed session and setting keys correctly")
+    function _()
+      allKeys = {
+        authToken: "token",
+        username: "user",
+        serverId: "srv",
+        primaryImageTag: "img",
+        LastRunVersion: "2.7.0",
+        playbackBitrateLimit: "40",
+        playbackBitrateMaxLimited: "true",
+        uiTheme: "jellyrock",
+        uiThemeColorPrimary: "AA00FF",
+        homeSection0: "resume",
+        "display.abc.sortField": "Name"
+      }
+      preserveKeys = ["authToken", "username", "serverId", "primaryImageTag", "LastRunVersion"]
+
+      result = getSettingKeysToDelete(allKeys, preserveKeys)
+
+      m.assertEqual(result.Count(), 6)
+      ' Verify session keys are NOT in the delete list
+      m.assertFalse(inArray(result, "authToken"))
+      m.assertFalse(inArray(result, "username"))
+      m.assertFalse(inArray(result, "serverId"))
+      m.assertFalse(inArray(result, "primaryImageTag"))
+      m.assertFalse(inArray(result, "LastRunVersion"))
+    end function
+
+  end class
+
+end namespace
