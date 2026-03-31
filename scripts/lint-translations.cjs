@@ -1,344 +1,192 @@
 #!/usr/bin/env node
 
-// Cross-platform XML translation linter for Jellyfin Roku Client
-// Validates XML syntax and checks for duplicate source strings
-// Compatible with Windows, macOS, and Linux
+// Validates JSON translation files in locale/custom/:
+// - Valid JSON syntax for all locale files
+// - All en-us keys present in each locale file (coverage report)
+// - Placeholder parity ({0}, {1} counts match source)
+// - No orphaned keys (keys in locale not in en-us)
+// - Plural completeness (if FooOne exists, FooZero and FooMany must too)
+// - File size warnings
 
 const fs = require('fs');
 const path = require('path');
-const xml2js = require('xml2js');
 const fg = require('fast-glob');
 
-// Configuration
-const LOCALE_DIR = path.join(process.cwd(), 'locale');
-const TRANSLATION_FILE_PATTERN = '**/translations.ts';
+const LOCALE_DIR = path.join(process.cwd(), 'locale/custom');
+const EN_US_FILE = 'en-us.json';
 
-// ANSI color codes for better terminal output
 const colors = {
   reset: '\x1b[0m',
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
   blue: '\x1b[34m',
-  magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   bold: '\x1b[1m'
 };
 
-// Cross-platform console styling
-function colorize(text, color) {
-  // Skip colors on Windows CMD if not supporting ANSI
-  if (process.platform === 'win32' && !process.env.FORCE_COLOR && !process.stdout.isTTY) {
-    return text;
-  }
+function c(text, color) {
+  if (process.platform === 'win32' && !process.env.FORCE_COLOR && !process.stdout.isTTY) return text;
   return `${colors[color]}${text}${colors.reset}`;
 }
 
-function logError(message, filePath = null, lineNumber = null) {
-  const prefix = colorize('✗ ERROR:', 'red');
-  let output = `${prefix} ${message}`;
-  
-  if (filePath) {
-    const relativePath = path.relative(process.cwd(), filePath);
-    output += ` ${colorize('in', 'magenta')} ${colorize(relativePath, 'cyan')}`;
-  }
-  
-  if (lineNumber) {
-    output += ` ${colorize('at line', 'magenta')} ${colorize(lineNumber, 'yellow')}`;
-  }
-  
-  console.error(output);
+// Extract {0}, {1}, etc. placeholders from a string
+function extractPlaceholders(str) {
+  const matches = str.match(/\{(\d+)\}/g);
+  return matches ? matches.sort() : [];
 }
 
-function logWarning(message, filePath = null) {
-  const prefix = colorize('⚠ WARNING:', 'yellow');
-  let output = `${prefix} ${message}`;
-  
-  if (filePath) {
-    const relativePath = path.relative(process.cwd(), filePath);
-    output += ` ${colorize('in', 'magenta')} ${colorize(relativePath, 'cyan')}`;
-  }
-  
-  console.warn(output);
-}
-
-function logSuccess(message) {
-  const prefix = colorize('✓ SUCCESS:', 'green');
-  console.log(`${prefix} ${message}`);
-}
-
-function logInfo(message) {
-  const prefix = colorize('ℹ INFO:', 'blue');
-  console.log(`${prefix} ${message}`);
-}
-
-/**
- * Validates XML syntax using xml2js parser
- * @param {string} filePath - Path to the XML file
- * @param {string} xmlContent - Content of the XML file
- * @returns {Promise<{valid: boolean, error?: string, lineNumber?: number}>}
- */
-async function validateXmlSyntax(filePath, xmlContent) {
-  try {
-    const parser = new xml2js.Parser({
-      strict: true,
-      normalize: true,
-      normalizeTags: false,
-      explicitArray: true
-    });
-    
-    await parser.parseStringPromise(xmlContent);
-    return { valid: true };
-  } catch (error) {
-    // Try to extract line number from error message
-    const lineMatch = error.message.match(/Line:\s*(\d+)/i);
-    const lineNumber = lineMatch ? parseInt(lineMatch[1], 10) : null;
-    
-    return {
-      valid: false,
-      error: error.message,
-      lineNumber
-    };
-  }
-}
-
-/**
- * Extracts source strings from parsed XML translation data
- * @param {Object} parsedXml - Parsed XML object from xml2js
- * @returns {Array<{source: string, line: number}>}
- */
-function extractSourceStrings(parsedXml) {
-  const sources = [];
-  
-  if (!parsedXml?.TS?.context) {
-    return sources;
-  }
-  
-  const contexts = Array.isArray(parsedXml.TS.context) 
-    ? parsedXml.TS.context 
-    : [parsedXml.TS.context];
-  
-  contexts.forEach(context => {
-    if (!context.message) return;
-    
-    const messages = Array.isArray(context.message) 
-      ? context.message 
-      : [context.message];
-    
-    messages.forEach((message, index) => {
-      if (message?.source?.[0]) {
-        const sourceText = message.source[0].toString().trim();
-        if (sourceText) {
-          sources.push({
-            source: sourceText,
-            line: index + 1 // Approximate line number (not perfect but helpful)
-          });
-        }
-      }
-    });
-  });
-  
-  return sources;
-}
-
-/**
- * Finds duplicate source strings in a list
- * @param {Array<{source: string, line: number}>} sources - Array of source objects
- * @returns {Array<{source: string, lines: Array<number>}>}
- */
-function findDuplicates(sources) {
-  const sourceMap = new Map();
-  
-  sources.forEach(({ source, line }) => {
-    if (!sourceMap.has(source)) {
-      sourceMap.set(source, []);
-    }
-    sourceMap.get(source).push(line);
-  });
-  
-  return Array.from(sourceMap.entries())
-    .filter(([, lines]) => lines.length > 1)
-    .map(([source, lines]) => ({ source, lines }));
-}
-
-/**
- * Validates a single translation file
- * @param {string} filePath - Path to the translation file
- * @returns {Promise<{valid: boolean, errors: Array, warnings: Array}>}
- */
-async function validateTranslationFile(filePath) {
+// Check plural completeness: if FooOne exists, FooZero and FooMany should too
+function checkPluralCompleteness(keys) {
   const errors = [];
-  const warnings = [];
-  
-  try {
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      errors.push(`Translation file not found: ${filePath}`);
-      return { valid: false, errors, warnings };
-    }
-    
-    // Read file content
-    const xmlContent = fs.readFileSync(filePath, 'utf8');
-    
-    // Validate XML syntax
-    const syntaxResult = await validateXmlSyntax(filePath, xmlContent);
-    if (!syntaxResult.valid) {
-      logError(`XML syntax error: ${syntaxResult.error}`, filePath, syntaxResult.lineNumber);
-      errors.push(`XML syntax error: ${syntaxResult.error}`);
-      return { valid: false, errors, warnings };
-    }
-    
-    // Parse XML for duplicate checking
-    const parser = new xml2js.Parser({ explicitArray: true });
-    const parsedXml = await parser.parseStringPromise(xmlContent);
-    
-    // Extract and check for duplicates
-    const sources = extractSourceStrings(parsedXml);
-    const duplicates = findDuplicates(sources);
-    
-    if (duplicates.length > 0) {
-      duplicates.forEach(({ source, lines }) => {
-        logError(
-          `Duplicate source string found: "${source}" appears ${lines.length} times`,
-          filePath
-        );
-        logError(`  → Found at lines: ${lines.join(', ')}`, filePath);
-        errors.push(`Duplicate source: "${source}" (lines: ${lines.join(', ')})`);
-      });
-    }
-    
-    // Additional validation checks
-    if (sources.length === 0) {
-      logWarning('No translation messages found in file', filePath);
-      warnings.push('No translation messages found');
-    }
-    
-    // Check for empty source strings
-    const emptySources = sources.filter(({ source }) => !source.trim());
-    if (emptySources.length > 0) {
-      logWarning(`Found ${emptySources.length} empty source strings`, filePath);
-      warnings.push(`${emptySources.length} empty source strings found`);
-    }
-    
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings,
-      stats: {
-        totalMessages: sources.length,
-        duplicateCount: duplicates.length,
-        emptySourceCount: emptySources.length
+  const pluralSuffixes = ['Zero', 'One', 'Many'];
+
+  const baseKeys = new Set();
+  for (const key of keys) {
+    for (const suffix of pluralSuffixes) {
+      if (key.endsWith(suffix)) {
+        baseKeys.add(key.slice(0, -suffix.length));
+        break;
       }
-    };
-    
-  } catch (error) {
-    const errorMessage = `Unexpected error: ${error.message}`;
-    logError(errorMessage, filePath);
-    errors.push(errorMessage);
-    return { valid: false, errors, warnings };
+    }
   }
+
+  for (const base of baseKeys) {
+    const missing = pluralSuffixes.filter(s => !keys.includes(base + s));
+    if (missing.length > 0) {
+      errors.push(`Incomplete plural set "${base}": missing ${missing.map(s => base + s).join(', ')}`);
+    }
+  }
+
+  return errors;
 }
 
-/**
- * Main function to lint all translation files
- */
-async function lintTranslations() {
-  console.log(colorize('\n🔍 Linting XML Translation Files', 'bold'));
-  console.log(colorize('=====================================', 'blue'));
-  
+async function main() {
+  console.log(c('\nValidating JSON Translation Files', 'bold'));
+  console.log(c('==================================', 'blue'));
+
+  // Load en-us.json (reference)
+  const enUsPath = path.join(LOCALE_DIR, EN_US_FILE);
+  if (!fs.existsSync(enUsPath)) {
+    console.error(c('ERROR: en-us.json not found', 'red'));
+    process.exit(1);
+  }
+
+  let enUs;
   try {
-    // Find all translation files
-    const pattern = path.join(LOCALE_DIR, TRANSLATION_FILE_PATTERN).replace(/\\/g, '/');
-    const translationFiles = await fg([pattern], {
-      absolute: true,
-      onlyFiles: true
+    enUs = JSON.parse(fs.readFileSync(enUsPath, 'utf8'));
+  } catch (err) {
+    console.error(c(`ERROR: en-us.json has invalid JSON: ${err.message}`, 'red'));
+    process.exit(1);
+  }
+
+  const enUsKeys = Object.keys(enUs);
+  console.log(`\n${c('Reference:', 'cyan')} en-us.json (${enUsKeys.length} keys)\n`);
+
+  // Check plural completeness in en-us
+  const pluralErrors = checkPluralCompleteness(enUsKeys);
+  pluralErrors.forEach(e => console.error(c(`  PLURAL: ${e}`, 'yellow')));
+
+  // Find all locale JSON files (exclude languages.json)
+  const localeFiles = await fg(['*.json', '!languages.json'], {
+    cwd: LOCALE_DIR,
+    absolute: true,
+    onlyFiles: true
+  });
+
+  let totalErrors = 0;
+  let totalWarnings = 0;
+  const coverageReport = [];
+
+  for (const filePath of localeFiles) {
+    const fileName = path.basename(filePath);
+    if (fileName === EN_US_FILE) continue;
+
+    const relativePath = path.relative(process.cwd(), filePath);
+    let locale;
+    let errors = 0;
+    let warnings = 0;
+
+    // 1. Valid JSON
+    try {
+      locale = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (err) {
+      console.error(c(`\u2717 ${relativePath}: Invalid JSON — ${err.message}`, 'red'));
+      totalErrors++;
+      continue;
+    }
+
+    const localeKeys = Object.keys(locale);
+    const localeKeySet = new Set(localeKeys);
+
+    // 2. Orphaned keys (in locale but not in en-us)
+    const orphans = localeKeys.filter(k => !(k in enUs));
+    if (orphans.length > 0) {
+      console.error(c(`  ${fileName}: ${orphans.length} orphaned key(s)`, 'red'));
+      orphans.slice(0, 5).forEach(k => console.error(`    - ${k}`));
+      if (orphans.length > 5) console.error(`    ... and ${orphans.length - 5} more`);
+      errors += orphans.length;
+    }
+
+    // 3. Placeholder parity
+    for (const key of localeKeys) {
+      if (!(key in enUs)) continue;
+      const enPlaceholders = extractPlaceholders(enUs[key]);
+      const localePlaceholders = extractPlaceholders(locale[key]);
+
+      if (JSON.stringify(enPlaceholders) !== JSON.stringify(localePlaceholders)) {
+        console.error(c(`  ${fileName}: Placeholder mismatch for "${key}"`, 'red'));
+        console.error(`    en-us: ${enPlaceholders.join(', ') || '(none)'}  locale: ${localePlaceholders.join(', ') || '(none)'}`);
+        errors++;
+      }
+    }
+
+    // 4. Coverage
+    const covered = enUsKeys.filter(k => localeKeySet.has(k)).length;
+    const coverage = ((covered / enUsKeys.length) * 100).toFixed(1);
+    coverageReport.push({ file: fileName, covered, total: enUsKeys.length, coverage });
+
+    // 5. File size warning (>500KB)
+    const stat = fs.statSync(filePath);
+    if (stat.size > 500 * 1024) {
+      console.warn(c(`  ${fileName}: File size ${(stat.size / 1024).toFixed(0)}KB exceeds 500KB`, 'yellow'));
+      warnings++;
+    }
+
+    // 6. Plural completeness
+    const localePluralErrors = checkPluralCompleteness(localeKeys);
+    // Only warn, don't error — locales may intentionally omit some plural forms
+    localePluralErrors.forEach(e => {
+      console.warn(c(`  ${fileName} PLURAL: ${e}`, 'yellow'));
+      warnings++;
     });
-    
-    if (translationFiles.length === 0) {
-      logWarning(`No translation files found in ${LOCALE_DIR}`);
-      logInfo('Expected pattern: locale/**/translations.ts');
-      process.exit(1);
+
+    totalErrors += errors;
+    totalWarnings += warnings;
+
+    if (errors === 0) {
+      console.log(c(`\u2713 ${fileName}`, 'green') + ` — ${coverage}% coverage (${covered}/${enUsKeys.length})`);
     }
-    
-    logInfo(`Found ${translationFiles.length} translation file(s) to validate`);
-    console.log('');
-    
-    let totalErrors = 0;
-    let totalWarnings = 0;
-    let validFiles = 0;
-    const results = [];
-    
-    // Validate each file
-    for (const filePath of translationFiles) {
-      const relativePath = path.relative(process.cwd(), filePath);
-      console.log(colorize(`Validating: ${relativePath}`, 'cyan'));
-      
-      const result = await validateTranslationFile(filePath);
-      results.push({ filePath: relativePath, ...result });
-      
-      if (result.valid) {
-        logSuccess(`Valid XML syntax, no duplicates found`);
-        if (result.stats) {
-          console.log(`  → ${result.stats.totalMessages} translation messages`);
-        }
-        validFiles++;
-      } else {
-        totalErrors += result.errors.length;
-      }
-      
-      if (result.warnings.length > 0) {
-        totalWarnings += result.warnings.length;
-      }
-      
-      console.log('');
-    }
-    
-    // Summary
-    console.log(colorize('Summary:', 'bold'));
-    console.log(colorize('========', 'blue'));
-    console.log(`Files processed: ${translationFiles.length}`);
-    console.log(`${colorize('Valid files:', 'green')} ${validFiles}`);
-    console.log(`${colorize('Files with errors:', 'red')} ${translationFiles.length - validFiles}`);
-    console.log(`${colorize('Total errors:', 'red')} ${totalErrors}`);
-    console.log(`${colorize('Total warnings:', 'yellow')} ${totalWarnings}`);
-    
-    if (totalErrors > 0) {
-      console.log('');
-      logError('Translation validation failed!');
-      console.log('\nTo fix duplicate issues:');
-      console.log('1. Remove duplicate <source> entries from translation files');
-      console.log('2. Ensure each translation string appears only once');
-      console.log('3. Run this script again to verify fixes');
-      
-      process.exit(1);
-    } else {
-      console.log('');
-      logSuccess('All translation files are valid!');
-      
-      if (totalWarnings > 0) {
-        console.log(`\n${colorize('Note:', 'yellow')} ${totalWarnings} warning(s) found. Please review them when possible.`);
-      }
-      
-      process.exit(0);
-    }
-    
-  } catch (error) {
-    logError(`Failed to lint translations: ${error.message}`);
-    console.error('\nStack trace:');
-    console.error(error.stack);
+  }
+
+  // Coverage summary
+  console.log(c('\nCoverage Report:', 'bold'));
+  console.log(c('================', 'blue'));
+  coverageReport
+    .sort((a, b) => parseFloat(b.coverage) - parseFloat(a.coverage))
+    .forEach(({ file, covered, total, coverage }) => {
+      const color = coverage >= 80 ? 'green' : coverage >= 50 ? 'yellow' : 'red';
+      console.log(`  ${c(coverage.padStart(6) + '%', color)} ${file} (${covered}/${total})`);
+    });
+
+  console.log(c('\nSummary:', 'bold'));
+  console.log(`  Files: ${localeFiles.length - 1}`); // exclude en-us
+  console.log(`  Errors: ${c(String(totalErrors), totalErrors > 0 ? 'red' : 'green')}`);
+  console.log(`  Warnings: ${c(String(totalWarnings), totalWarnings > 0 ? 'yellow' : 'green')}`);
+
+  if (totalErrors > 0) {
     process.exit(1);
   }
 }
 
-// Handle CLI execution
-if (require.main === module) {
-  lintTranslations();
-}
-
-module.exports = {
-  lintTranslations,
-  validateTranslationFile,
-  validateXmlSyntax,
-  findDuplicates,
-  extractSourceStrings
-};
+main().catch(err => { console.error(err); process.exit(1); });

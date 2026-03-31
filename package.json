@@ -50,6 +50,7 @@
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"!CLAUDE.md\" \"!out/\" \"!build/\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!tasks/\" \"!.opencode/**/*.md\"",
     "lint:spelling": "spellchecker -d dictionary.txt --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!docs/user/app-settings.md\" \"!CHANGELOG.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
     "lint:translations": "node scripts/lint-translations.cjs",
+    "validate:translations": "node scripts/validate-translations.cjs",
     "postinstall": "npm run ropm",
     "ropm": "ropm copy && node scripts/ropm-hook.cjs",
     "update-translations": "node scripts/update-translations.cjs",
