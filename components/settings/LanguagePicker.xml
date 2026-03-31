@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="LanguagePicker" extends="LayoutGroup">
+  <interface>
+    <field id="languages" type="array" onChange="onLanguagesChanged" />
+    <field id="selectedCode" type="string" value="" alwaysNotify="true" onChange="onSelectedCodeChanged" />
+  </interface>
+
+  <children>
+    <DynamicMiniKeyboard id="keyboard" />
+
+    <RadioButtonList id="resultsList"
+      itemSize="[500,48]"
+      numRows="8"
+      vertFocusAnimationStyle="floatingFocus" />
+  </children>
+</component>

@@ -61,6 +61,7 @@
   "LabelAlbumTracks": "Album Tracks",
   "LabelAlbums": "Albums",
   "LabelAll": "all",
+  "LabelAutomatic": "Automatic",
   "LabelAll2": "All",
   "LabelAlwaysHide": "Always Hide",
   "LabelAlwaysShow": "Always Show",
@@ -269,6 +270,7 @@
   "LabelRowLayout": "Row Layout",
   "LabelRuntime": "RUNTIME",
   "LabelS": "S",
+  "LabelSearchLanguages": "Search languages",
   "LabelSearchNow": "Search now",
   "LabelSeasons": "Seasons",
   "LabelSecondary": "Secondary",
@@ -409,5 +411,7 @@
   "MessageWhenTranscodingMultichannelAudioPreferThis": "When transcoding multichannel audio, prefer this codec. EAC3 supports up to 7.1 channels with better compression. AC3 is more widely compatible. DTS is an alternative for systems that prefer it. This only affects 6 and 8 channel transcoding profiles.",
   "MessageYouCanSearchForTitlesPeople": "You can search for Titles, People, Live TV Channels and more",
   "MessageYourCustomColorsWillBeReplaced": "Your custom colors will be replaced by the selected theme. Continue?",
+  "SettingDescDisplayLanguage": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language.",
+  "SettingDisplayLanguage": "Display Language",
   "SettingResetAllSettingsToTheirDefault": "Reset all settings to their default values. Your login session will not be affected."
 }

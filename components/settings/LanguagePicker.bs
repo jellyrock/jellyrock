@@ -1,0 +1,136 @@
+import "pkg:/source/utils/translate.bs"
+
+sub init()
+  m.top.layoutDirection = "horiz"
+  m.top.itemSpacings = [40]
+
+  m.keyboard = m.top.findNode("keyboard")
+  m.keyboard.keyGrid.keyDefinitionUri = "pkg:/components/data/CustomAddressKDF.json"
+  m.keyboard.textEditBox.hintText = translate("LabelSearchLanguages")
+  m.keyboard.observeField("text", "onFilterChanged")
+
+  m.resultsList = m.top.findNode("resultsList")
+  m.resultsList.observeField("checkedItem", "onLanguageSelected")
+
+  m.allLanguages = []
+  m.suppressSelection = false
+end sub
+
+' Re-filter when selectedCode changes externally (e.g. settings.bs sets it on focus)
+sub onSelectedCodeChanged()
+  if m.allLanguages.count() > 0
+    filterLanguages()
+  end if
+end sub
+
+' Called when the languages array is set from settings.bs
+sub onLanguagesChanged()
+  m.allLanguages = m.top.languages
+  filterLanguages()
+end sub
+
+' Rebuild the filtered list when search text changes
+sub onFilterChanged()
+  filterLanguages()
+end sub
+
+' Filter the language list based on keyboard text
+sub filterLanguages()
+  filterText = LCase(m.keyboard.text)
+  content = CreateObject("roSGNode", "ContentNode")
+  m.filteredLanguages = []
+  checkedIndex = -1
+
+  ' Always show "Automatic" at the top — it's the reset-to-default option
+  automaticLang = invalid
+  for each lang in m.allLanguages
+    if lang.code = ""
+      automaticLang = lang
+      exit for
+    end if
+  end for
+
+  if automaticLang <> invalid
+    item = content.CreateChild("ContentNode")
+    item.title = formatLanguageTitle(automaticLang)
+    m.filteredLanguages.push(automaticLang)
+    if m.top.selectedCode = ""
+      checkedIndex = 0
+    end if
+  end if
+
+  ' Add filtered results below (skip Automatic since it's already pinned)
+  for each lang in m.allLanguages
+    if lang.code = "" then continue for
+
+    if filterText = "" or matchesFilter(lang, filterText)
+      item = content.CreateChild("ContentNode")
+      item.title = formatLanguageTitle(lang)
+      m.filteredLanguages.push(lang)
+
+      if lang.code = m.top.selectedCode
+        checkedIndex = m.filteredLanguages.count() - 1
+      end if
+    end if
+  end for
+
+  ' Suppress before setting content — RadioButtonList resets checkedItem on content change
+  m.suppressSelection = true
+  m.resultsList.content = content
+
+  if checkedIndex >= 0
+    m.resultsList.jumpToItem = checkedIndex
+    m.resultsList.checkedItem = checkedIndex
+  else
+    ' Selected language not in filtered results — clear any stale checkmark
+    m.resultsList.checkedItem = -1
+  end if
+  m.suppressSelection = false
+end sub
+
+' Format a language entry for display
+function formatLanguageTitle(lang as object) as string
+  if lang.code = ""
+    return translate("LabelAutomatic")
+  else if lang.nativeName = lang.name
+    return lang.nativeName
+  end if
+  return lang.nativeName + " (" + lang.name + ")"
+end function
+
+' Check if a language matches the filter text (searches both names and code)
+function matchesFilter(lang as object, filterText as string) as boolean
+  if LCase(lang.name).Instr(filterText) >= 0 then return true
+  if LCase(lang.nativeName).Instr(filterText) >= 0 then return true
+  if LCase(lang.code).Instr(filterText) >= 0 then return true
+  return false
+end function
+
+' User selected a language from the filtered list
+sub onLanguageSelected()
+  if m.suppressSelection then return
+
+  selectedIndex = m.resultsList.checkedItem
+  if selectedIndex < 0 or selectedIndex >= m.filteredLanguages.count() then return
+
+  selectedLang = m.filteredLanguages[selectedIndex]
+  m.top.selectedCode = selectedLang.code
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  ' Right from keyboard -> focus the results list
+  if key = "right" and m.keyboard.isInFocusChain()
+    m.resultsList.setFocus(true)
+    return true
+  end if
+
+  ' Left from results list -> focus the keyboard
+  if key = "left" and m.resultsList.isInFocusChain()
+    m.keyboard.setFocus(true)
+    return true
+  end if
+
+  return false
+end function

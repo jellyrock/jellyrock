@@ -571,6 +571,15 @@
         "description": "Settings relating to the appearance of the Home screen and the program in general.",
         "children": [
           {
+            "title": "Display Language",
+            "description": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language.",
+            "settingName": "translationLocale",
+            "type": "languagePicker",
+            "default": "",
+            "titleKey": "SettingDisplayLanguage",
+            "descriptionKey": "SettingDescDisplayLanguage"
+          },
+          {
             "title": "Backdrop Images",
             "description": "Control display of backdrop images throughout the app. Enable for full visual experience, disable for better performance or accessibility.",
             "settingName": "uiShowBackdrop",

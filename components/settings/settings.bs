@@ -6,6 +6,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/translateLocale.bs"
 
 sub init()
   m.log = log.Logger("Settings")
@@ -14,7 +15,13 @@ sub init()
 
   m.userLocation = []
   m.themeColorsChanged = false
+  m.languageChanged = false
   m.customColorBackup = invalid
+
+  ' Load available languages for the language picker
+  languagesJson = ReadAsciiFile("pkg:/locale/custom/languages.json")
+  m.availableLanguages = ParseJson(languagesJson)
+  if not isValid(m.availableLanguages) then m.availableLanguages = []
 
   versionLabel = m.top.findNode("versionLabel")
   versionLabel.text = "v" + m.global.app.version
@@ -29,6 +36,7 @@ sub init()
   m.radioSetting = m.top.findNode("radioSetting")
   m.hexSetting = m.top.findNode("hexSetting")
   m.alphaSetting = m.top.findNode("alphaSetting")
+  m.languagePicker = m.top.findNode("languagePicker")
 
   m.integerSetting.observeField("submit", "onKeyGridSubmit")
   m.integerSetting.observeField("escape", "onKeyGridEscape")
@@ -40,6 +48,10 @@ sub init()
   m.alphaSetting.observeField("submit", "onAlphaKeyGridSubmit")
   m.alphaSetting.observeField("escape", "onAlphaKeyGridEscape")
   m.alphaSetting.observeField("reset", "onAlphaResetRequested")
+
+  m.languagePicker.observeField("selectedCode", "onLanguagePickerSelected")
+  m.languagePicker.languages = m.availableLanguages
+  m.suppressLanguagePicker = false
 
   m.settingsMenu.setFocus(true)
   m.settingsMenu.observeField("itemFocused", "settingFocused")
@@ -248,6 +260,8 @@ sub LoadMenu(configSection)
     resetItem = {
       title: "Reset User Settings",
       description: "Reset all settings to their default values. Your login session will not be affected.",
+      titleKey: "LabelResetUserSettings",
+      descriptionKey: "SettingResetAllSettingsToTheirDefault",
       type: "action",
       actionId: "resetUserSettings"
     }
@@ -288,6 +302,7 @@ sub settingFocused()
   m.radioSetting.visible = false
   m.hexSetting.visible = false
   m.alphaSetting.visible = false
+  m.languagePicker.visible = false
 
   userSettings = m.global.user.settings
 
@@ -346,6 +361,13 @@ sub settingFocused()
       m.alphaSetting.text = ""
     end if
     m.alphaSetting.visible = true
+  else if selectedSetting.type = "languagePicker"
+    selectedValue = userSettings[selectedSetting.settingName]
+    if not isValid(selectedValue) then selectedValue = ""
+    m.suppressLanguagePicker = true
+    m.languagePicker.selectedCode = selectedValue
+    m.suppressLanguagePicker = false
+    m.languagePicker.visible = true
   else if selectedSetting.type = "action"
     ' Action items show description only, no setting controls
   else
@@ -376,6 +398,8 @@ sub settingSelected()
       m.hexSetting.setFocus(true)
     else if selectedItem.type = "alpha"
       m.alphaSetting.setFocus(true)
+    else if selectedItem.type = "languagePicker"
+      m.languagePicker.findNode("keyboard").setFocus(true)
     end if
   else if isValid(selectedItem.children) and selectedItem.children.Count() > 0 ' Show sub menu
     LoadMenu(selectedItem)
@@ -415,6 +439,10 @@ end sub
 sub radioSettingChanged()
   if not isValid(m.radioSetting.focusedChild) then return
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
+
+  ' Language picker is handled by onLanguagePickerSelected(), not the radio control
+  if selectedSetting.type = "languagePicker" then return
+
   selectedOption = selectedSetting.options[m.radioSetting.checkedItem]
   newValue = selectedOption.id
 
@@ -498,6 +526,8 @@ sub refreshCurrentMenu()
     resetItem = {
       title: "Reset User Settings",
       description: "Reset all settings to their default values. Your login session will not be affected.",
+      titleKey: "LabelResetUserSettings",
+      descriptionKey: "SettingResetAllSettingsToTheirDefault",
       type: "action",
       actionId: "resetUserSettings"
     }
@@ -691,16 +721,40 @@ sub onExitConfirmResponse()
   performSettingsExit()
 end sub
 
+' Handle language selection from LanguagePicker component
+sub onLanguagePickerSelected()
+  ' Guard against being triggered during init or programmatic selectedCode changes
+  if m.suppressLanguagePicker then return
+  if not isValid(m.userLocation) or m.userLocation.count() = 0 then return
+
+  newLocale = m.languagePicker.selectedCode
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
+
+  ' Save to user registry (empty string = automatic)
+  user.settings.Save(selectedSetting.settingName, newLocale)
+
+  ' Resolve and load the new locale
+  if newLocale = ""
+    resolvedLocale = resolveTranslationLocale(true)
+  else
+    resolvedLocale = newLocale
+  end if
+
+  if resolvedLocale <> m.global.translationLocale
+    loadTranslations(resolvedLocale)
+    m.languageChanged = true
+  end if
+end sub
+
 ' Perform the actual settings exit (apply theme changes and navigate)
 sub performSettingsExit()
-  if m.themeColorsChanged
-    ' Apply theme color overrides and refresh UI
-    applyThemeColorOverrides(m.global.user.settings)
-    m.global.sceneManager.callFunc("refreshThemeColors")
-    ' Clear all scenes and reload home with fresh theme colors
+  if m.themeColorsChanged or m.languageChanged
+    if m.themeColorsChanged
+      applyThemeColorOverrides(m.global.user.settings)
+      m.global.sceneManager.callFunc("refreshThemeColors")
+    end if
     m.global.sceneManager.callFunc("reloadHome")
   else
-    ' No theme changes - just pop the settings screen
     m.global.sceneManager.callFunc("popScene")
   end if
 end sub
