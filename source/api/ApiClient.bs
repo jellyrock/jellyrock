@@ -270,6 +270,19 @@ class ApiClient
     return { method: "GET", url: buildURL(Substitute("/users/{0}/items/{1}/intros", userId, itemId)) }
   end function
 
+  ' Build a request AA for GetMediaSegments, for use with fetchJson().
+  ' Only available on Jellyfin 10.10.0+ servers.
+  ' @param itemId - The item ID
+  ' @param includeSegmentTypes - Optional comma-separated segment types to filter (e.g., "Intro,Outro")
+  ' @returns Request AA: { method, url }
+  function BuildGetMediaSegmentsRequest(itemId as string, includeSegmentTypes = "" as string) as object
+    params = {}
+    if includeSegmentTypes <> ""
+      params.includeSegmentTypes = includeSegmentTypes
+    end if
+    return { method: "GET", url: buildURL(Substitute("/MediaSegments/{0}", itemId), params) }
+  end function
+
   ' Build a request AA for GetItemLyrics, for use with fetchJson().
   ' @param itemId - The Audio item ID
   ' @returns Request AA: { method, url }
