@@ -1,3 +1,4 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 const OVERHANG_ICON_SIZE = 66 ' Button size: matches dropdown trigger height
@@ -5,6 +6,8 @@ const OVERHANG_ICON_PADDING = 12 ' Padding between icon and button edge
 const OVERHANG_ICON_POSTER_SIZE = 42 ' Icon display size (66 - 12*2 = 42); source PNGs scaled down via limitSize
 
 sub init()
+  m.log = new log.Logger("JROverhangIcon")
+
   m.buttonBackground = m.top.findNode("buttonBackground")
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.buttonIcon = m.top.findNode("buttonIcon")

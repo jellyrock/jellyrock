@@ -344,10 +344,13 @@ end sub
 ' a visible focus jump to the row list before the screen transition.
 sub onOverhangIconAction()
   if isValid(m.overhang)
-    ' Determine which icon fired the action and save it for focus restoration
-    if isValid(m.searchIcon) and m.searchIcon.hasFocus()
+    ' Determine which icon fired the action and save it for focus restoration.
+    ' Use the action ID rather than hasFocus() — the field observer callback
+    ' may fire after focus has already moved, making hasFocus() unreliable.
+    action = m.overhang.iconAction
+    if action = "goto_search" and isValid(m.searchIcon)
       m.lastOverhangFocus = m.searchIcon
-    else if isValid(m.settingsIcon) and m.settingsIcon.hasFocus()
+    else if action = "settings" and isValid(m.settingsIcon)
       m.lastOverhangFocus = m.settingsIcon
     end if
 

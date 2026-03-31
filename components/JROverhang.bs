@@ -355,7 +355,7 @@ sub positionOverhangIcons()
   if not isValid(m.searchIcon) or not isValid(m.settingsIcon) then return
   if not isValid(m.userDropdown) then return
 
-  iconSize = 66 ' JROverhangIcon button size
+  iconSize = 66 ' Must match OVERHANG_ICON_SIZE in JROverhangIcon.bs
   gap = 24 ' Equal spacing between elements
 
   ' Anchor from the dropdown's visible left edge.
@@ -363,7 +363,8 @@ sub positionOverhangIcons()
   ' (set by positionUserDropdown), and the buttonBackground starts at [0,0]
   ' within the dropdown, so translation[0] IS the visible button edge.
   dropdownX = m.userDropdown.translation[0]
-  yPos = 39 ' Matches clock y and dropdown y position
+  dropdownPadding = m.userDropdown.padding
+  yPos = 54 - dropdownPadding ' Aligns with dropdown (54 is the overhang baseline)
 
   settingsX = dropdownX - gap - iconSize
   searchX = settingsX - gap - iconSize
