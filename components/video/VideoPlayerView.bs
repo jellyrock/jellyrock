@@ -7,6 +7,9 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/enums/MediaSegmentAction.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/trickplay.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
@@ -75,14 +78,20 @@ sub init()
     if isValid(clockNode[0]) then clockNode[0].parent.removeChild(clockNode[0].node)
   end if
 
-  'Play Next Episode button
-  m.notifyButtons = m.top.findNode("notifyButtons")
-  m.nextEpisodeButton = m.top.findNode("nextEpisode")
-  m.nextEpisodeButton.setFocus(false)
+  ' Video notifications (Next Episode + Media Segments)
+  m.nextEpisodeNotification = m.top.findNode("nextEpisodeNotification")
+  m.nextEpisodeNotification.notificationType = "nextEpisode"
+  m.nextEpisodeNotification.observeField("action", "onNextEpisodeNotificationAction")
   m.nextupbuttonseconds = userSettings.playbackNextUpButtonSeconds
 
-  m.showNextEpisodeButtonAnimation = m.top.findNode("showNextEpisodeButton")
-  m.hideNextEpisodeButtonAnimation = m.top.findNode("hideNextEpisodeButton")
+  m.segmentNotification = m.top.findNode("segmentNotification")
+  m.segmentNotification.notificationType = "segment"
+  m.segmentNotification.observeField("action", "onSegmentNotificationAction")
+
+  ' Media segment tracking state
+  m.mediaSegments = []
+  m.processedSegments = {}
+  m.activeSegmentId = ""
 
   m.checkedForNextEpisode = false
   m.getNextEpisodeTask = createObject("roSGNode", "GetNextEpisodeTask")
@@ -648,6 +657,15 @@ sub onVideoContentLoaded()
       m.osd.videoSourceTag = ""
     end if
     m.osd.itemData = videoContent[0].meta
+
+    ' Extract media segments from metadata node for segment detection during playback
+    if isValid(videoContent[0].meta.mediaSegments)
+      m.mediaSegments = videoContent[0].meta.mediaSegments
+    else
+      m.mediaSegments = []
+    end if
+    m.processedSegments = {}
+    m.activeSegmentId = ""
   end if
 
   ' Attempt to add logo to OSD
@@ -774,62 +792,50 @@ sub onNextEpisodeDataLoaded()
   end if
 end sub
 
-'
-' Runs Next Episode button animation and sets focus to button
+' Show the Next Episode notification with countdown text
 sub showNextEpisodeButton()
   if m.osd.visible then return
   if m.top.content.contenttype <> 4 then return ' only display when content is type "Episode"
   if m.nextupbuttonseconds = 0 then return ' is the button disabled?
-  if m.nextEpisodeButton.opacity <> 0 then return
+  if m.nextEpisodeNotification.state = "showing" then return
 
-  ' Button always shows for manual next episode selection
-  ' Auto-play setting only controls automatic advancement (not button visibility)
+  ' Don't show Next Episode while segment notification is active
+  if m.segmentNotification.state = "showing" then return
 
-  ' Set button text with countdown FIRST, before making visible
-  updateCount()
+  ' Set text before showing
+  updateNextEpisodeCount()
 
-  ' Make visible so button can render with correct text
-  m.nextEpisodeButton.visible = true
-
-  ' align button with bottom right edge with 5% padding
-  boundingRect = m.notifyButtons.localBoundingRect()
-
-  ' Use boundingRect height if valid and button has rendered with text (height > 35)
-  ' Height < 35 means button hasn't finished rendering with countdown text yet
-  if boundingRect.height <> invalid and boundingRect.height > 35
-    buttonHeight = boundingRect.height
-  else
-    buttonHeight = 83 ' default height
-  end if
-
-  m.notifyButtons.translation = [
-    1920 - (1920 * 0.05),
-    1080 - (1080 * 0.05) - buttonHeight
-  ]
-
-  ' Start opacity animation
-  m.showNextEpisodeButtonAnimation.control = "start"
-  m.nextEpisodeButton.setFocus(true)
+  m.nextEpisodeNotification.visible = true
+  m.nextEpisodeNotification.callFunc("show")
 end sub
 
-'
-'Update count down text
-sub updateCount()
+' Update Next Episode countdown text
+sub updateNextEpisodeCount()
   nextEpisodeCountdown = Int(m.top.duration - m.top.position)
   if nextEpisodeCountdown < 0
     nextEpisodeCountdown = 0
   end if
-  m.nextEpisodeButton.text = tr("Next Episode") + " " + nextEpisodeCountdown.toStr().trim()
+  m.nextEpisodeNotification.text = tr("Next Episode") + " " + nextEpisodeCountdown.toStr().trim()
 end sub
 
-'
-' Runs hide Next Episode button animation and sets focus back to video
+' Hide the Next Episode notification
 sub hideNextEpisodeButton()
-  if not isValid(m.hideNextEpisodeButtonAnimation) then return
+  if not isValid(m.nextEpisodeNotification) then return
+  m.nextEpisodeNotification.callFunc("dismiss")
+end sub
 
-  m.hideNextEpisodeButtonAnimation.control = "start"
-  m.nextEpisodeButton.setFocus(false)
-  m.top.setFocus(true)
+' Handler for Next Episode notification action
+sub onNextEpisodeNotificationAction()
+  action = m.nextEpisodeNotification.action
+  if action = "activated"
+    m.top.control = "stop"
+    m.top.state = "finished"
+  else if action = "dismissed"
+    ' Only restore video focus if OSD didn't take focus during the dismiss animation
+    if not m.osd.visible
+      m.top.setFocus(true)
+    end if
+  end if
 end sub
 
 ' Checks if we need to display the Next Episode button
@@ -840,28 +846,108 @@ sub checkTimeToDisplayNextEpisode()
   ' Don't show Next Episode button if trickPlayBar is visible
   if m.top.trickPlayBar.visible then return
 
+  ' Don't show while segment notification is active — it takes priority
+  if m.segmentNotification.state = "showing" then return
+
   if isValid(m.top.duration) and isValid(m.top.position)
     nextEpisodeCountdown = Int(m.top.duration - m.top.position)
 
-    if nextEpisodeCountdown < 0 and m.nextEpisodeButton.opacity = 0.9
+    if nextEpisodeCountdown < 0 and m.nextEpisodeNotification.state = "showing"
       hideNextEpisodeButton()
       return
     else if nextEpisodeCountdown > 1 and int(m.top.position) >= (m.top.duration - m.nextupbuttonseconds - 1)
-      if m.nextEpisodeButton.opacity = 0
-        ' First time showing - showNextEpisodeButton will set the text
+      if m.nextEpisodeNotification.state <> "showing"
         showNextEpisodeButton()
       else
-        ' Button already showing - just update the countdown text
-        updateCount()
+        ' Notification already showing — just update the countdown text
+        updateNextEpisodeCount()
       end if
       return
     end if
   end if
 
-  ' If button is showing but shouldn't be, hide it
-  if m.nextEpisodeButton.visible or m.nextEpisodeButton.hasFocus()
-    m.nextEpisodeButton.visible = false
-    m.nextEpisodeButton.setFocus(false)
+  ' If notification is showing but shouldn't be, hide it
+  if m.nextEpisodeNotification.state = "showing"
+    hideNextEpisodeButton()
+  end if
+end sub
+
+' Check media segments and trigger appropriate actions based on current playback position
+sub checkMediaSegments()
+  if m.mediaSegments.Count() = 0 then return
+  if m.osd.visible then return
+  if m.top.trickPlayBar.visible then return
+
+  userSession = m.global.user
+  segment = findActiveSegment(m.mediaSegments, m.top.position)
+
+  if isValid(segment)
+    segmentId = segment.Id ?? ""
+    if segmentId = "" then return
+
+    ' Already processed this segment — don't re-trigger
+    if m.processedSegments.DoesExist(segmentId) then return
+
+    segmentType = segment.Type ?? ""
+    action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
+
+    if action = MediaSegmentAction.skip
+      ' Auto-skip: seek to end of segment immediately
+      seekPosition = segmentTicksToSeconds(segment.EndTicks)
+      m.top.seek = seekPosition
+      m.processedSegments[segmentId] = true
+      m.activeSegmentId = ""
+    else if action = MediaSegmentAction.askToSkip
+      ' Only show notification if not already showing for this segment
+      if m.activeSegmentId <> segmentId
+        m.activeSegmentId = segmentId
+
+        ' Suppress Next Episode notification while segment notification is active
+        if m.nextEpisodeNotification.state = "showing"
+          hideNextEpisodeButton()
+        end if
+
+        m.segmentNotification.text = tr("Skip") + " " + tr(segmentType)
+        m.segmentNotification.visible = true
+        m.segmentNotification.callFunc("show")
+      end if
+    end if
+    ' MediaSegmentAction.none — do nothing
+  else
+    ' Not inside any segment — dismiss segment notification if showing
+    if m.segmentNotification.state = "showing"
+      m.segmentNotification.callFunc("dismiss")
+    end if
+    m.activeSegmentId = ""
+  end if
+end sub
+
+' Handler for segment notification action
+sub onSegmentNotificationAction()
+  action = m.segmentNotification.action
+  if action = "activated"
+    ' Seek to end of the active segment
+    for each segment in m.mediaSegments
+      segmentId = segment.Id ?? ""
+      if segmentId = m.activeSegmentId
+        seekPosition = segmentTicksToSeconds(segment.EndTicks)
+        m.top.seek = seekPosition
+        exit for
+      end if
+    end for
+    m.processedSegments[m.activeSegmentId] = true
+    m.activeSegmentId = ""
+    m.top.setFocus(true)
+  else if action = "dismissed"
+    ' Mark as processed so we don't re-show
+    if m.activeSegmentId <> ""
+      m.processedSegments[m.activeSegmentId] = true
+      m.activeSegmentId = ""
+    end if
+    ' Only restore video focus if OSD didn't take focus during the dismiss animation
+    if not m.osd.visible
+      m.top.setFocus(true)
+    end if
   end if
 end sub
 
@@ -889,8 +975,9 @@ sub onPositionChanged()
   ' Check if dialog is open
   m.dialog = m.top.getScene().findNode("dialogBackground")
   if not isValid(m.dialog)
-    ' Do not show Next Episode button for intro videos
+    ' Do not check segments or next episode for intro videos
     if not m.LoadMetaDataTask.isIntro
+      checkMediaSegments()
       checkTimeToDisplayNextEpisode()
     end if
   end if
@@ -1215,16 +1302,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
-  if key = "OK" and m.nextEpisodeButton.hasfocus() and not m.top.trickPlayBar.visible
-    m.top.control = "stop"
-    m.top.state = "finished"
-    hideNextEpisodeButton()
-    return true
-  else
-    'Hide Next Episode Button
-    if m.nextEpisodeButton.opacity > 0 or m.nextEpisodeButton.hasFocus()
-      m.nextEpisodeButton.opacity = 0
-      m.nextEpisodeButton.setFocus(false)
+  ' VideoNotification components handle OK key internally via their onKeyEvent.
+  ' For non-OK keys, dismiss any visible notifications and restore focus.
+  if m.nextEpisodeNotification.state = "showing" or m.segmentNotification.state = "showing"
+    ' OK is handled by the notification's onKeyEvent — don't intercept here
+    if key <> "OK"
+      if m.segmentNotification.state = "showing"
+        m.segmentNotification.callFunc("dismiss")
+      end if
+      if m.nextEpisodeNotification.state = "showing"
+        m.nextEpisodeNotification.callFunc("dismiss")
+      end if
       m.top.setFocus(true)
     end if
   end if
@@ -1378,12 +1466,28 @@ sub destroy()
     m.trickplayCarousel = invalid
   end if
 
+  ' Destroy notification components
+  if isValid(m.segmentNotification)
+    m.segmentNotification.unobserveField("action")
+    m.segmentNotification.callFunc("destroy")
+    m.segmentNotification = invalid
+  end if
+
+  if isValid(m.nextEpisodeNotification)
+    m.nextEpisodeNotification.unobserveField("action")
+    m.nextEpisodeNotification.callFunc("destroy")
+    m.nextEpisodeNotification = invalid
+  end if
+
+  ' Clear segment state
+  m.mediaSegments = []
+  m.processedSegments = {}
+  m.activeSegmentId = ""
+
   ' Clear remaining node references
   m.osd = invalid
   m.chapterList = invalid
   m.chapterMenu = invalid
   m.chapterContent = invalid
-  m.notifyButtons = invalid
-  m.nextEpisodeButton = invalid
   m.captionGroup = invalid
 end sub

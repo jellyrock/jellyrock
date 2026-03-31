@@ -51,15 +51,7 @@
       </LabelList>
     </Rectangle>
 
-    <JRButtonGroup id="notifyButtons" horizAlignment="right">
-      <TextButton id="nextEpisode" text="" opacity="0" visible="false" />
-    </JRButtonGroup>
-    <!--animation for the play next episode button-->
-    <Animation id="showNextEpisodeButton" duration="1.0" repeat="false" easeFunction="inQuad">
-      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, .9]" fieldToInterp="nextEpisode.opacity" />
-    </Animation>
-    <Animation id="hideNextEpisodeButton" duration=".25" repeat="false" easeFunction="inQuad">
-      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[.9, 0]" fieldToInterp="nextEpisode.opacity" />
-    </Animation>
+    <VideoNotification id="segmentNotification" visible="false" />
+    <VideoNotification id="nextEpisodeNotification" visible="false" />
   </children>
 </component>
