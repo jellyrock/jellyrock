@@ -169,7 +169,7 @@ namespace tests
         root.createChild("ContentNode")
       end for
       updateTextureBufferRange(root, 0, 0, 3)
-      m.assertEqual(root.loadedRowRange, [0, 0, 2, 3])
+      m.assertEqual(root.loadedRowRange, [0, 0, 2, 4])
     end function
 
     @it("sets correct range for focused row 2 with 3 visible rows")
@@ -180,7 +180,7 @@ namespace tests
         root.createChild("ContentNode")
       end for
       updateTextureBufferRange(root, 2, 0, 3)
-      m.assertEqual(root.loadedRowRange, [1, 2, 4, 5])
+      m.assertEqual(root.loadedRowRange, [0, 2, 4, 6])
     end function
 
     @it("clamps buffer to total row count")

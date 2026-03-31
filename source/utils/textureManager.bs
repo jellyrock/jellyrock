@@ -14,7 +14,7 @@
 '
 ' Vertical range (loadedRowRange):
 '   4-element array: [bufferStart, visibleStart, visibleEnd, bufferEnd]
-'   Buffer rows (±1 from visible) keep ALL items loaded in active state.
+'   Buffer rows (±2 from visible) keep ALL items loaded in active state.
 '   Visible rows use horizontal buffer for long rows.
 '
 ' Horizontal buffer (focusedColumns + textureVisibleWidth + textureItemSpacing):
@@ -97,7 +97,7 @@ function calculateTextureItemSpacing(rowItemSpacing as dynamic) as integer
 end function
 
 ' Calculates and sets the loaded row range and focused column based on current focus.
-' The vertical range includes all visible rows plus a 1-row buffer above and below.
+' The vertical range includes all visible rows plus a 2-row buffer above and below.
 '
 ' @param contentRoot - the RowList's root ContentNode (m.top.content)
 ' @param focusedRow - index of the currently focused row (rowItemFocused[0])
@@ -117,10 +117,10 @@ sub updateTextureBufferRange(contentRoot as object, focusedRow as integer, focus
   visibleEnd = focusedRow + numVisibleRows - 1
   if visibleEnd >= totalRows then visibleEnd = totalRows - 1
 
-  bufferStart = focusedRow - 1
+  bufferStart = focusedRow - 2
   if bufferStart < 0 then bufferStart = 0
 
-  bufferEnd = visibleEnd + 1
+  bufferEnd = visibleEnd + 2
   if bufferEnd >= totalRows then bufferEnd = totalRows - 1
 
   ' Only set loadedRowRange if it actually changed
