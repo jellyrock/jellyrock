@@ -1,8 +1,9 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.buttons = m.top.findNode("buttons")
-  m.buttons.buttons = [tr("Video"), tr("Audio")]
+  m.buttons.buttons = [translate("LabelVideo"), translate("LabelAudio")]
   m.buttons.selectedIndex = 0
   m.buttons.setFocus(true)
 

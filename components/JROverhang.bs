@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ImageHelpers.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.top.id = "overhang"
@@ -132,9 +133,9 @@ sub currentUserChanged()
 
     ' Set menu items — user-related actions only
     m.userDropdown.items = [
-      { title: tr("Change user"), id: "change_user" },
-      { title: tr("Change server"), id: "change_server" },
-      { title: tr("Sign out"), id: "sign_out" }
+      { title: translate("LabelChangeUser"), id: "change_user" },
+      { title: translate("LabelChangeServer"), id: "change_server" },
+      { title: translate("ButtonSignOut"), id: "sign_out" }
     ]
   end if
 

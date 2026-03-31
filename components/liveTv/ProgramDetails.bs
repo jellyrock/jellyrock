@@ -2,6 +2,7 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
 
@@ -32,8 +33,15 @@ sub init()
 
   m.buttons = m.top.findNode("buttons")
   m.viewChannelButton = m.top.findNode("viewChannelButton")
+  m.viewChannelButton.text = translate("ButtonViewChannel")
   m.recordButton = m.top.findNode("recordButton")
+  m.recordButton.text = translate("ButtonRecord")
   m.recordSeriesButton = m.top.findNode("recordSeriesButton")
+  m.recordSeriesButton.text = translate("ButtonRecordSeries")
+
+  m.top.findNode("isLiveText").text = translate("LabelLive")
+  m.top.findNode("isRepeatText").text = translate("ButtonRepeat")
+  m.top.findNode("noScheduleInfoLabel").text = translate("LabelNoScheduleInformation")
 
   m.focusAnimation.observeField("state", "onAnimationComplete")
   m.buttons.observeField("buttonSelected", "onButtonSelected")
@@ -65,7 +73,7 @@ sub setupLabels()
   end if
 end sub
 
-sub updateLabels(recordText = tr("Record"), recordSeriesText = tr("Record Series"))
+sub updateLabels(recordText = translate("ButtonRecord"), recordSeriesText = translate("ButtonRecordSeries"))
   m.recordButton.text = recordText
   m.recordSeriesButton.text = recordSeriesText
 end sub
@@ -144,21 +152,21 @@ sub programUpdated()
 
   if startDate.AsSeconds() < now.AsSeconds() and endDate.AsSeconds() > now.AsSeconds()
     if day = "today"
-      m.broadcastDetails.text = tr("Started at") + " " + formatTime(localStartDate)
+      m.broadcastDetails.text = translate("LabelStartedAt") + " " + formatTime(localStartDate)
     else
-      m.broadcastDetails.text = tr("Started") + " " + tr(day) + ", " + formatTime(localStartDate)
+      m.broadcastDetails.text = translate("LabelStarted") + " " + translate(day) + ", " + formatTime(localStartDate)
     end if
   else if startDate.AsSeconds() > now.AsSeconds()
     if day = "today"
-      m.broadcastDetails.text = tr("Starts at") + " " + formatTime(localStartDate)
+      m.broadcastDetails.text = translate("LabelStartsAt") + " " + formatTime(localStartDate)
     else
-      m.broadcastDetails.text = tr("Starts") + " " + tr(day) + ", " + formatTime(localStartDate)
+      m.broadcastDetails.text = translate("LabelStarts") + " " + translate(day) + ", " + formatTime(localStartDate)
     end if
   else
     if day = "today"
-      m.broadcastDetails.text = tr("Ended at") + " " + formatTime(localStartDate)
+      m.broadcastDetails.text = translate("LabelEndedAt") + " " + formatTime(localStartDate)
     else
-      m.broadcastDetails.text = tr("Ended") + " " + tr(day) + ", " + formatTime(localStartDate)
+      m.broadcastDetails.text = translate("LabelEnded") + " " + translate(day) + ", " + formatTime(localStartDate)
     end if
   end if
 
@@ -167,9 +175,9 @@ sub programUpdated()
   ' If currently being recorded, change button to "Stop Recording"
   if isValidAndNotEmpty(prog.timerId)
     if isValidAndNotEmpty(prog.seriesTimerId)
-      updateLabels(tr("Cancel Recording"), tr("Cancel Series Recording"))
+      updateLabels(translate("LabelCancelRecording"), translate("LabelCancelSeriesRecording"))
     else
-      updateLabels(tr("Cancel Recording"), tr("Record Series"))
+      updateLabels(translate("LabelCancelRecording"), translate("ButtonRecordSeries"))
     end if
   else
     updateLabels()
@@ -197,20 +205,20 @@ end sub
 function getRelativeDayName(date) as string
   now = createObject("roDateTime")
   ' needed for update-translations script to prevent strings from being removed
-  ' tr("today")
-  ' tr("yesterday")
-  ' tr("tomorrow")
-  ' tr("Monday")
-  ' tr("Tuesday")
-  ' tr("Wednesday")
-  ' tr("Thursday")
-  ' tr("Friday")
-  ' tr("Saturday")
-  ' tr("Sunday")
+  ' translate("DayToday")
+  ' translate("DayYesterday")
+  ' translate("DayTomorrow")
+  ' translate("DayMonday")
+  ' translate("DayTuesday")
+  ' translate("DayWednesday")
+  ' translate("DayThursday")
+  ' translate("DayFriday")
+  ' translate("DaySaturday")
+  ' translate("DaySunday")
 
   ' Check for Today
   if now.AsDateString("short-date-dashes") = date.AsDateString("short-date-dashes")
-    return "today"
+    return "DayToday"
   end if
 
   ' Check for Yesterday
@@ -218,14 +226,14 @@ function getRelativeDayName(date) as string
   dateMidnight = date.AsSeconds() - (date.AsSeconds() mod 86400)
 
   if todayMidnight - dateMidnight = 86400
-    return "yesterday"
+    return "DayYesterday"
   end if
 
   if dateMidnight - todayMidnight = 86400
-    return "tomorrow"
+    return "DayTomorrow"
   end if
 
-  return date.GetWeekday()
+  return "Day" + date.GetWeekday()
 
 end function
 

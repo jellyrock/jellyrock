@@ -1,4 +1,5 @@
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.top.itemComponentName = "ConfigItem"
@@ -34,11 +35,11 @@ function onDialogButton()
   d = m.dialog
   button_text = d.buttons[d.buttonSelected]
 
-  if button_text = tr("OK")
+  if button_text = translate("ButtonOk")
     m.configField.value = d.text
     dismiss_dialog()
     return true
-  else if button_text = tr("Cancel")
+  else if button_text = translate("ButtonCancel")
     dismiss_dialog()
     return true
   end if
@@ -50,7 +51,7 @@ sub configListShowDialog(configField)
   dialog = createObject("roSGNode", "StandardKeyboardDialog")
   m.configField = configField
   dialog.title = configField.label
-  dialog.buttons = [tr("OK"), tr("Cancel")]
+  dialog.buttons = [translate("ButtonOk"), translate("ButtonCancel")]
   m.greenPalette = createObject("roSGNode", "RSGPalette")
   m.greenPalette.colors = {
     DialogBackgroundColor: "#2A2B2A"

@@ -1,6 +1,7 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("OSD")
@@ -16,6 +17,7 @@ sub init()
   m.videoLogo.loadHeight = osdLogoSize.height
   m.videoTitle = m.top.findNode("videoTitle")
   m.videoSubtitleGroup = m.top.findNode("videoSubtitleGroup")
+  m.top.findNode("endsAtText").text = translate("LabelEndsAt")
   m.videoPlayPause = m.top.findNode("videoPlayPause")
   m.videoPositionTime = m.top.findNode("videoPositionTime")
   m.videoRemainingTime = m.top.findNode("videoRemainingTime")
@@ -262,21 +264,21 @@ sub setVideoSubTitle()
     '
     ' Season number
     if item.parentIndexNumber > 0
-      episodeInfoText = episodeInfoText + `${tr("S")}${item.parentIndexNumber}`
+      episodeInfoText = episodeInfoText + `${translate("LabelS")}${item.parentIndexNumber}`
     else
-      episodeInfoText = episodeInfoText + `${tr("S")}?`
+      episodeInfoText = episodeInfoText + `${translate("LabelS")}?`
     end if
     ' Episode number
     if item.indexNumber > 0
-      episodeInfoText = episodeInfoText + `${tr("E")}${item.indexNumber}`
+      episodeInfoText = episodeInfoText + `${translate("LabelE")}${item.indexNumber}`
     else
-      episodeInfoText = episodeInfoText + `${tr("E")}??`
+      episodeInfoText = episodeInfoText + `${translate("LabelE")}??`
     end if
     ' Episode number end
     if item.indexNumberEnd > 0 and item.indexNumberEnd > item.indexNumber
       ' add entry for every episode eg. S6:E1E2
       for i = item.indexNumber + 1 to item.indexNumberEnd
-        episodeInfoText = episodeInfoText + `${tr("E")}${item.indexNumberEnd}`
+        episodeInfoText = episodeInfoText + `${translate("LabelE")}${item.indexNumberEnd}`
       end for
     end if
     ' Episode name
@@ -307,10 +309,10 @@ sub setVideoSubTitle()
         ' Episode info: S1E2 - Episode Name
         episodeInfoText = ""
         if currentProgram.parentIndexNumber > 0
-          episodeInfoText = episodeInfoText + `${tr("S")}${currentProgram.parentIndexNumber}`
+          episodeInfoText = episodeInfoText + `${translate("LabelS")}${currentProgram.parentIndexNumber}`
         end if
         if currentProgram.indexNumber > 0
-          episodeInfoText = episodeInfoText + `${tr("E")}${currentProgram.indexNumber}`
+          episodeInfoText = episodeInfoText + `${translate("LabelE")}${currentProgram.indexNumber}`
         end if
         if isValidAndNotEmpty(currentProgram.name)
           if isValidAndNotEmpty(episodeInfoText)
@@ -334,7 +336,7 @@ sub setVideoSubTitle()
     ' Channel number (e.g. "CH 4") — always shown when available
     if isValidAndNotEmpty(item.channelNumber)
       channelNumberNode = createSubtitleLabelNode("channelNumber")
-      channelNumberNode.text = `${tr("CH")} ${item.channelNumber}`
+      channelNumberNode.text = `${translate("LabelCh")} ${item.channelNumber}`
       displaySubtitleNode(channelNumberNode)
     end if
   end if
@@ -395,9 +397,9 @@ sub setVideoSubTitle()
     runTimeNode = createSubtitleLabelNode("videoRunTime")
 
     if m.top.runTimeMinutes < 2
-      runTimeText = `${m.top.runTimeMinutes} ` + tr("min")
+      runTimeText = `${m.top.runTimeMinutes} ` + translate("LabelMin")
     else
-      runTimeText = `${m.top.runTimeMinutes} ` + tr("mins")
+      runTimeText = `${m.top.runTimeMinutes} ` + translate("LabelMins")
     end if
 
     runTimeNode.text = runTimeText
@@ -415,7 +417,7 @@ sub onProgressPercentageChanged()
 
   if itemType = "TvChannel"
     m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
-    m.videoRemainingTime.text = tr("LIVE")
+    m.videoRemainingTime.text = translate("LabelLive2")
     m.progressBar.width = m.progressBarBackground.width ' set to full width
   else
     m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)

@@ -9,7 +9,7 @@ import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("Settings")
-  m.top.overhangTitle = translate("HeaderSettings")
+  m.top.overhangTitle = translate("LabelSettings")
   m.top.optionsAvailable = false
 
   m.userLocation = []
@@ -75,7 +75,7 @@ sub onHexKeyGridSubmit()
 
   ' Validate hex color input
   if not isValidHexColor(newValue)
-    m.global.sceneManager.callFunc("userMessage", tr("Invalid Color"), tr("Please enter exactly 6 hex characters (0-9, A-F)."))
+    m.global.sceneManager.callFunc("userMessage", translate("ErrorInvalidColor"), translate("LabelPleaseEnterExactly6HexCharacters09A"))
     return
   end if
 
@@ -98,7 +98,7 @@ end sub
 
 ' Called when reset button is selected in HexKeyboard
 sub onHexResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Cancel"), tr("Reset")])
+  m.global.sceneManager.callFunc("optionDialog", translate("LabelResetSetting"), translate("MessageAreYouSureThisWillReset"), [translate("ButtonCancel"), translate("ButtonReset")])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onResetDialogResponse")
 end sub
 
@@ -158,7 +158,7 @@ sub onAlphaKeyGridSubmit()
   end if
 
   if not isValidCode
-    m.global.sceneManager.callFunc("userMessage", tr("Invalid Language Code"), tr("Please enter exactly 3 letters (e.g., eng, jpn, fra)."))
+    m.global.sceneManager.callFunc("userMessage", translate("ErrorInvalidLanguageCode"), translate("MessagePleaseEnterExactly3LettersEG"))
     return
   end if
 
@@ -176,7 +176,7 @@ end sub
 
 ' Called when reset button is selected in AlphaKeyboard
 sub onAlphaResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Cancel"), tr("Reset")])
+  m.global.sceneManager.callFunc("optionDialog", translate("LabelResetSetting"), translate("MessageAreYouSureThisWillReset"), [translate("ButtonCancel"), translate("ButtonReset")])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onAlphaResetDialogResponse")
 end sub
 
@@ -238,8 +238,8 @@ sub LoadMenu(configSection)
 
   for each item in filteredChildren
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(item.title)
-    listItem.Description = tr(item.description)
+    listItem.title = translate(item.titleKey)
+    listItem.Description = translate(item.descriptionKey)
     listItem.id = item.id
   end for
 
@@ -253,8 +253,8 @@ sub LoadMenu(configSection)
     }
     filteredChildren.push(resetItem)
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(resetItem.title)
-    listItem.Description = tr(resetItem.description)
+    listItem.title = translate(resetItem.titleKey)
+    listItem.Description = translate(resetItem.descriptionKey)
     listItem.id = "resetUserSettings"
   end if
 
@@ -269,9 +269,9 @@ sub LoadMenu(configSection)
   for each level in m.userLocation
     if isValid(level.title)
       if m.path.text = ""
-        m.path.text = tr(level.title)
+        m.path.text = translate(level.titleKey)
       else
-        m.path.text += " / " + tr(level.title)
+        m.path.text += " / " + translate(level.titleKey)
       end if
     end if
   end for
@@ -280,7 +280,7 @@ end sub
 sub settingFocused()
 
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
-  m.settingDesc.text = tr(selectedSetting.Description)
+  m.settingDesc.text = translate(selectedSetting.descriptionKey)
 
   ' Hide Settings
   m.boolSetting.visible = false
@@ -317,7 +317,7 @@ sub settingFocused()
     itemIndex = 0
     for each item in m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused].options
       listItem = radioContent.CreateChild("ContentNode")
-      listItem.title = tr(item.title)
+      listItem.title = translate(item.titleKey)
       listItem.id = item.id
       if selectedValue = item.id
         m.radioSetting.checkedItem = itemIndex
@@ -488,8 +488,8 @@ sub refreshCurrentMenu()
   result = CreateObject("roSGNode", "ContentNode")
   for each item in filteredChildren
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(item.title)
-    listItem.Description = tr(item.description)
+    listItem.title = translate(item.titleKey)
+    listItem.Description = translate(item.descriptionKey)
     listItem.id = item.id
   end for
 
@@ -503,8 +503,8 @@ sub refreshCurrentMenu()
     }
     filteredChildren.push(resetItem)
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(resetItem.title)
-    listItem.Description = tr(resetItem.description)
+    listItem.title = translate(resetItem.titleKey)
+    listItem.Description = translate(resetItem.descriptionKey)
     listItem.id = "resetUserSettings"
   end if
 
@@ -557,7 +557,7 @@ end function
 
 ' Show confirmation dialog before resetting all user settings
 sub confirmResetUserSettings()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset User Settings"), tr("Are you sure you want to reset all settings to their default values? Your login session will not be affected."), [tr("Cancel"), tr("Reset")])
+  m.global.sceneManager.callFunc("optionDialog", translate("LabelResetUserSettings"), translate("MessageAreYouSureYouWantTo2"), [translate("ButtonCancel"), translate("ButtonReset")])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onResetUserSettingsResponse")
 end sub
 
@@ -618,7 +618,7 @@ sub executeResetUserSettings()
   m.log.info("User settings reset complete", { deletedKeys: keysToDelete.Count() })
 
   ' Show success feedback (toast lives on JRScene, persists across scene transitions)
-  m.top.getScene().callFunc("showToast", tr("Settings reset to defaults"), "success")
+  m.top.getScene().callFunc("showToast", translate("LabelSettingsResetToDefaults"), "success")
 
   ' Exit settings and reload home with fresh theme colors
   performSettingsExit()
@@ -664,7 +664,7 @@ end function
 sub exitSettingsAndReloadHome()
   ' Check if custom colors will be lost (user switched from Custom to a preset)
   if isValid(m.customColorBackup) and m.global.user.settings.uiTheme <> "custom" and hasCustomColorsChanged()
-    m.global.sceneManager.callFunc("optionDialog", tr("Replace Custom Colors"), tr("Your custom colors will be replaced by the selected theme. Continue?"), [tr("Yes"), tr("No")])
+    m.global.sceneManager.callFunc("optionDialog", translate("LabelReplaceCustomColors"), translate("MessageYourCustomColorsWillBeReplaced"), [translate("LabelYes"), translate("LabelNo")])
     m.global.sceneManager.observeFieldScoped("dataReturned", "onExitConfirmResponse")
     return
   end if

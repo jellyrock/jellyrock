@@ -10,6 +10,7 @@ import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
 const ITEM_DETAILS_EXTRAS_PADDING = 24
@@ -258,7 +259,7 @@ sub onRefreshItemDetailsData()
       if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
         m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
       else
-        m.resumeLoadingButton.text = tr("Resume")
+        m.resumeLoadingButton.text = translate("ButtonResume")
       end if
       m.resumeLoadingButton.loading = true
       m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
@@ -304,7 +305,7 @@ sub trailerAvailableChanged()
       trailerButton = CreateObject("roSGNode", "IconButton")
       trailerButton.id = "trailerButton"
       trailerButton.icon = "pkg:/images/icons/playOutline.png"
-      trailerButton.text = tr("Play Trailer")
+      trailerButton.text = translate("LabelPlayTrailer")
       ' Insert before Delete (if present) to match setupButtons() ordering, else before Refresh
       deleteButtonIndex = getButtonIndex("deleteButton")
       if deleteButtonIndex >= 0
@@ -414,9 +415,9 @@ end sub
 ' @return {string} Localised button label
 function getResumeButtonText(item as object) as string
   if item.parentIndexNumber > 0 and item.indexNumber > 0
-    return tr("Resume") + " S" + item.parentIndexNumber.toStr() + "E" + item.indexNumber.toStr()
+    return translate("ButtonResume") + " S" + item.parentIndexNumber.toStr() + "E" + item.indexNumber.toStr()
   end if
-  return tr("Resume")
+  return translate("ButtonResume")
 end function
 
 ' manageResumeButton: Add or remove Resume button based on playback position (non-Series types)
@@ -441,7 +442,7 @@ sub manageResumeButton()
         resumeButton = CreateObject("roSGNode", "ResumeButton")
         resumeButton.id = "resumeButton"
         resumeButton.icon = "pkg:/images/icons/resume.png"
-        resumeButton.text = tr("Resume")
+        resumeButton.text = translate("ButtonResume")
         resumeButton.playbackPositionTicks = item.playbackPositionTicks
         resumeButton.runtimeTicks = item.runTimeTicks
         m.buttonGrp.insertChild(resumeButton, 0)
@@ -562,7 +563,7 @@ sub populateDescriptionGroup()
     if isValidAndNotEmpty(item.overview)
       m.itemDescription.text = item.overview
     else
-      m.itemDescription.text = tr("Biographical information for this person is not currently available.")
+      m.itemDescription.text = translate("MessageBiographicalInformationForThisPersonIs")
     end if
     m.itemDescription.tagline = ""
     m.itemDescription.maxLines = 8
@@ -577,7 +578,7 @@ sub populateDescriptionGroup()
     if isValidAndNotEmpty(item.overview)
       m.itemDescription.text = item.overview
     else
-      m.itemDescription.text = tr("No biography available for this artist.")
+      m.itemDescription.text = translate("LabelNoBiographyAvailableForThisArtist")
     end if
     m.itemDescription.tagline = ""
     m.itemDescription.maxLines = 8
@@ -793,7 +794,7 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -819,7 +820,7 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
   end if
   if directors.count() > 0
     directorNode = createInfoLabel("director")
-    directorNode.text = tr("Directed by %1").Replace("%1", directors.join(", "))
+    directorNode.text = translate("MessageDirectedBy1", [directors.join(", ")])
     displayDirectorGenreNode(directorNode)
   end if
 end sub
@@ -842,7 +843,7 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -872,7 +873,7 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   end if
   if directors.count() > 0
     directorNode = createInfoLabel("director")
-    directorNode.text = tr("Directed by %1").Replace("%1", directors.join(", "))
+    directorNode.text = translate("MessageDirectedBy1", [directors.join(", ")])
     displayDirectorGenreNode(directorNode)
   end if
 end sub
@@ -897,7 +898,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -928,7 +929,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
   end if
   if directors.count() > 0
     directorNode = createInfoLabel("director")
-    directorNode.text = tr("Directed by %1").Replace("%1", directors.join(", "))
+    directorNode.text = translate("MessageDirectedBy1", [directors.join(", ")])
     displayDirectorGenreNode(directorNode)
   end if
 end sub
@@ -946,7 +947,7 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
     else if item.status = "Ended"
       ' Ended but no endDate available — show production year only
     else
-      yearText = yearText + " - " + tr("Present")
+      yearText = yearText + " - " + translate("LabelPresent")
     end if
     yearNode = createInfoLabel("releaseYear")
     yearNode.text = yearText
@@ -969,7 +970,7 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
   ' Average episode runtime (Jellyfin stores avg episode length in runTimeTicks for Series)
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -1019,8 +1020,8 @@ sub populateInfoGroupBoxSet(item as object, userSettings as object)
 
   if item.childCount > 0
     movieCountNode = createInfoLabel("movieCount")
-    movieLabel = tr("Movie")
-    if item.childCount <> 1 then movieLabel = tr("Movies")
+    movieLabel = translate("LabelMovie")
+    if item.childCount <> 1 then movieLabel = translate("LabelMovies")
     movieCountNode.text = stri(item.childCount).trim() + " " + movieLabel
     displayInfoNode(movieCountNode)
   end if
@@ -1064,7 +1065,7 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
 
   if isValid(seriesData) and seriesData.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(round(seriesData.runTimeTicks / 600000000.0)).trim() + " " + tr("mins")
+    runtimeNode.text = stri(round(seriesData.runTimeTicks / 600000000.0)).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -1075,7 +1076,7 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
     endDate = CreateObject("roDateTime")
     endDate.fromSeconds(endDate.asSeconds() + m.endsAtDurationSeconds)
     endDate.toLocalTime()
-    m.endsAtNode = createTimeLabel("ends-at", tr("Ends at %1").Replace("%1", formatTime(endDate)), getTimePeriod(endDate))
+    m.endsAtNode = createTimeLabel("ends-at", translate("MessageEndsAt1", [formatTime(endDate)]), getTimePeriod(endDate))
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -1088,7 +1089,7 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
 
   if item.childCount > 0
     episodeCountNode = createInfoLabel("episodeCount")
-    episodeCountNode.text = stri(item.childCount).trim() + " " + tr("episodes")
+    episodeCountNode.text = stri(item.childCount).trim() + " " + translate("LabelEpisodes")
     displayDirectorGenreNode(episodeCountNode)
   end if
 
@@ -1137,7 +1138,7 @@ sub populateInfoGroupPerson(item as object)
         end if
       end if
     end if
-    lifeString = lifeString + " · " + stri(age).trim() + " " + tr("years old")
+    lifeString = lifeString + " · " + stri(age).trim() + " " + translate("LabelYearsOld")
 
     lifeNode = createInfoLabel("personLife")
     lifeNode.text = lifeString
@@ -1147,15 +1148,15 @@ sub populateInfoGroupPerson(item as object)
   ' Row 2: movie count / episode count (only shown when the API returns non-zero values)
   if item.movieCount > 0
     movieCountNode = createInfoLabel("personMovieCount")
-    movieLabel = tr("Movie")
-    if item.movieCount <> 1 then movieLabel = tr("Movies")
+    movieLabel = translate("LabelMovie")
+    if item.movieCount <> 1 then movieLabel = translate("LabelMovies")
     movieCountNode.text = stri(item.movieCount).trim() + " " + movieLabel
     displayDirectorGenreNode(movieCountNode)
   end if
   if item.episodeCount > 0
     episodeCountNode = createInfoLabel("personEpisodeCount")
-    episodeLabel = tr("Episode")
-    if item.episodeCount <> 1 then episodeLabel = tr("Episodes")
+    episodeLabel = translate("LabelEpisode")
+    if item.episodeCount <> 1 then episodeLabel = translate("LabelEpisodes2")
     episodeCountNode.text = stri(item.episodeCount).trim() + " " + episodeLabel
     displayDirectorGenreNode(episodeCountNode)
   end if
@@ -1167,16 +1168,16 @@ end sub
 sub populateInfoGroupMusicArtist(item as object)
   if item.albumCount > 0
     albumCountNode = createInfoLabel("albumCount")
-    albumLabel = tr("Album")
-    if item.albumCount <> 1 then albumLabel = tr("Albums")
+    albumLabel = translate("LabelAlbum")
+    if item.albumCount <> 1 then albumLabel = translate("LabelAlbums")
     albumCountNode.text = stri(item.albumCount).trim() + " " + albumLabel
     displayInfoNode(albumCountNode)
   end if
 
   if item.songCount > 0
     songCountNode = createInfoLabel("songCount")
-    songLabel = tr("Song")
-    if item.songCount <> 1 then songLabel = tr("Songs")
+    songLabel = translate("LabelSong")
+    if item.songCount <> 1 then songLabel = translate("LabelSongs")
     songCountNode.text = stri(item.songCount).trim() + " " + songLabel
     displayInfoNode(songCountNode)
   end if
@@ -1206,7 +1207,7 @@ sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -1230,8 +1231,8 @@ sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
 
   if item.childCount > 0
     trackCountNode = createInfoLabel("trackCount")
-    trackLabel = tr("Track")
-    if item.childCount <> 1 then trackLabel = tr("Tracks")
+    trackLabel = translate("LabelTrack")
+    if item.childCount <> 1 then trackLabel = translate("LabelTracks")
     trackCountNode.text = stri(item.childCount).trim() + " " + trackLabel
     displayDirectorGenreNode(trackCountNode)
   end if
@@ -1245,15 +1246,15 @@ end sub
 sub populateInfoGroupPlaylist(item as object, userSettings as object)
   if item.childCount > 0
     itemCountNode = createInfoLabel("itemCount")
-    itemLabel = tr("Item")
-    if item.childCount <> 1 then itemLabel = tr("Items")
+    itemLabel = translate("LabelItem")
+    if item.childCount <> 1 then itemLabel = translate("LabelItems")
     itemCountNode.text = stri(item.childCount).trim() + " " + itemLabel
     displayInfoNode(itemCountNode)
   end if
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -1276,20 +1277,20 @@ end sub
 sub populateInfoGroupAudio(item as object, userSettings as object)
   if item.indexNumber > 0
     trackNode = createInfoLabel("trackNumber")
-    trackNode.text = tr("Track %1").Replace("%1", stri(item.indexNumber).trim())
+    trackNode.text = translate("MessageTrack1", [stri(item.indexNumber).trim()])
     displayInfoNode(trackNode)
   end if
 
   ' Only show disc number when there is more than one disc in the album
   if item.parentIndexNumber > 1
     discNode = createInfoLabel("discNumber")
-    discNode.text = tr("Disc %1").Replace("%1", stri(item.parentIndexNumber).trim())
+    discNode.text = translate("MessageDisc1", [stri(item.parentIndexNumber).trim()])
     displayInfoNode(discNode)
   end if
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -1362,8 +1363,8 @@ end sub
 sub populateInfoGroupPhotoAlbum(item as object)
   if item.childCount > 0
     countNode = createInfoLabel("photoCount")
-    countLabel = tr("photo")
-    if item.childCount <> 1 then countLabel = tr("photos")
+    countLabel = translate("LabelPhoto")
+    if item.childCount <> 1 then countLabel = translate("LabelPhotos")
     countNode.text = stri(item.childCount).trim() + " " + countLabel
     displayInfoNode(countNode)
   end if
@@ -1376,7 +1377,7 @@ end sub
 sub populateInfoGroupTvChannel(item as object, userSettings as object)
   if isValidAndNotEmpty(item.channelNumber)
     chanNode = createInfoLabel("channelNumber")
-    chanNode.text = tr("CH") + " " + item.channelNumber
+    chanNode.text = translate("LabelCh") + " " + item.channelNumber
     displayInfoNode(chanNode)
   end if
 
@@ -1413,7 +1414,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
       runtimeMins = int(prog.PlayDuration / 60)
       if runtimeMins > 0
         runtimeNode = createInfoLabel("runtime")
-        runtimeNode.text = stri(runtimeMins).trim() + " " + tr("mins")
+        runtimeNode.text = stri(runtimeMins).trim() + " " + translate("LabelMins")
         displayInfoNode(runtimeNode)
       end if
     end if
@@ -1446,10 +1447,10 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
       displayDirectorGenreNode(genreNode)
     else
       categories = []
-      if prog.isNews then categories.push(tr("News"))
-      if prog.isSports then categories.push(tr("Sports"))
-      if prog.isKids then categories.push(tr("Kids"))
-      if prog.isMovie then categories.push(tr("Movie"))
+      if prog.isNews then categories.push(translate("LabelNews"))
+      if prog.isSports then categories.push(translate("LabelSports"))
+      if prog.isKids then categories.push(translate("LabelKids"))
+      if prog.isMovie then categories.push(translate("LabelMovie"))
       if categories.count() > 0
         catNode = createInfoLabel("programCategories")
         catNode.text = categories.join(" / ")
@@ -1471,7 +1472,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
 
   ' Channel info — early position mirrors TvChannel's "channel identity first" layout
   channelParts = []
-  if isValidAndNotEmpty(item.channelNumber) then channelParts.push(tr("CH") + " " + item.channelNumber)
+  if isValidAndNotEmpty(item.channelNumber) then channelParts.push(translate("LabelCh") + " " + item.channelNumber)
   if isValidAndNotEmpty(item.channelName) then channelParts.push(item.channelName)
   if channelParts.count() > 0
     channelNode = createInfoLabel("channelInfo")
@@ -1501,11 +1502,11 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
   ' Scheduling badges — Premiere/New indicates first broadcast, Repeat indicates rerun
   if item.isPremiere
     premiereNode = createInfoLabel("premiereIndicator")
-    premiereNode.text = tr("Premiere")
+    premiereNode.text = translate("LabelPremiere")
     displayInfoNode(premiereNode)
   else if item.isRepeat
     repeatNode = createInfoLabel("repeatIndicator")
-    repeatNode.text = tr("Repeat")
+    repeatNode.text = translate("ButtonRepeat")
     displayInfoNode(repeatNode)
   end if
 
@@ -1518,7 +1519,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
   end if
   if programRuntimeMins > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(programRuntimeMins).trim() + " " + tr("mins")
+    runtimeNode.text = stri(programRuntimeMins).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -1547,7 +1548,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     endDt = createObject("roDateTime")
     endDt.FromISO8601String(item.endDate)
     endDt.toLocalTime()
-    displayInfoNode(createTimeLabel("ends-at", tr("Ends at %1").Replace("%1", formatTime(endDt)), getTimePeriod(endDt)))
+    displayInfoNode(createTimeLabel("ends-at", translate("MessageEndsAt1", [formatTime(endDt)]), getTimePeriod(endDt)))
   end if
 
   ' Row 2: genres (or category flags)
@@ -1557,10 +1558,10 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     displayDirectorGenreNode(genreNode)
   else
     categories = []
-    if item.isNews then categories.push(tr("News"))
-    if item.isSports then categories.push(tr("Sports"))
-    if item.isKids then categories.push(tr("Kids"))
-    if item.isMovie then categories.push(tr("Movie"))
+    if item.isNews then categories.push(translate("LabelNews"))
+    if item.isSports then categories.push(translate("LabelSports"))
+    if item.isKids then categories.push(translate("LabelKids"))
+    if item.isMovie then categories.push(translate("LabelMovie"))
     if categories.count() > 0
       catNode = createInfoLabel("programCategories")
       catNode.text = categories.join(" / ")
@@ -1610,7 +1611,7 @@ sub populateInfoGroupRecording(item as object, userSettings as object)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
-    runtimeNode.text = stri(getRuntime()).trim() + " " + tr("mins")
+    runtimeNode.text = stri(getRuntime()).trim() + " " + translate("LabelMins")
     displayInfoNode(runtimeNode)
   end if
 
@@ -1622,7 +1623,7 @@ sub populateInfoGroupRecording(item as object, userSettings as object)
 
   ' Channel info
   channelParts = []
-  if isValidAndNotEmpty(item.channelNumber) then channelParts.push(tr("CH") + " " + item.channelNumber)
+  if isValidAndNotEmpty(item.channelNumber) then channelParts.push(translate("LabelCh") + " " + item.channelNumber)
   if isValidAndNotEmpty(item.channelName) then channelParts.push(item.channelName)
   if channelParts.count() > 0
     channelNode = createInfoLabel("channelInfo")
@@ -1633,7 +1634,7 @@ sub populateInfoGroupRecording(item as object, userSettings as object)
   ' Recorded date from startDate (when recording began)
   if isValidAndNotEmpty(item.startDate)
     recordedNode = createInfoLabel("recordedDate")
-    recordedNode.text = tr("Recorded") + ": " + formatIsoDateVideo(item.startDate)
+    recordedNode.text = translate("LabelRecorded") + ": " + formatIsoDateVideo(item.startDate)
     displayInfoNode(recordedNode)
   end if
 
@@ -1658,7 +1659,7 @@ function getHistory() as string
   end if
   if isValidAndNotEmpty(item.airTime)
     if isValid(airwords)
-      airwords = airwords + " " + tr("at") + " " + item.airTime
+      airwords = airwords + " " + translate("LabelAt") + " " + item.airTime
     else
       airwords = item.airTime
     end if
@@ -1676,7 +1677,7 @@ function getHistory() as string
 
   if isValid(studio)
     if isValid(airwords)
-      words = words + " " + tr("on") + " " + studio
+      words = words + " " + translate("LabelOn") + " " + studio
     else
       words = studio
     end if
@@ -1868,13 +1869,13 @@ sub SetUpVideoOptions(streams)
       codec = formatVideoSourceTitle(streams[i], hasMultipleSources)
 
       if not codecDetailsSet
-        setFieldText("video_codec", tr("Video") + ": " + codec)
+        setFieldText("video_codec", translate("LabelVideo") + ": " + codec)
         codecDetailsSet = true
       end if
 
       videos.push({
         "Title": codec,
-        "Description": tr("Video"),
+        "Description": translate("LabelVideo"),
         "Selected": m.top.selectedVideoStreamId = streams[i].id,
         "StreamID": streams[i].id,
         "video_codec": codec
@@ -1938,7 +1939,7 @@ sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
   end for
 
   if subtitleCount = 0
-    setFieldText("subtitle_codec", tr("Subtitles") + ": " + tr("None"))
+    setFieldText("subtitle_codec", translate("LabelSubtitles") + ": " + translate("LabelNone"))
     return
   end if
 
@@ -1947,12 +1948,12 @@ sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
   if selectedIndex >= 0
     for i = 0 to streams.count() - 1
       if isValid(streams[i].index) and streams[i].index = selectedIndex
-        setFieldText("subtitle_codec", tr("Subtitles") + ": " + formatSubtitleDisplayTitle(streams[i]))
+        setFieldText("subtitle_codec", translate("LabelSubtitles") + ": " + formatSubtitleDisplayTitle(streams[i]))
         exit for
       end if
     end for
   else
-    setFieldText("subtitle_codec", tr("Subtitles") + ": " + tr("Off"))
+    setFieldText("subtitle_codec", translate("LabelSubtitles") + ": " + translate("LabelOff"))
   end if
 
   if subtitleCount > 1
@@ -1978,7 +1979,7 @@ sub SetDefaultAudioTrack(mediaStreams as object)
   m.top.selectedAudioStreamIndex = selectedIndex
 
   if isValid(defaultAudioStream)
-    setFieldText("audio_codec", tr("Audio") + ": " + formatAudioDisplayTitle(defaultAudioStream))
+    setFieldText("audio_codec", translate("LabelAudio") + ": " + formatAudioDisplayTitle(defaultAudioStream))
   end if
 end sub
 
@@ -2011,7 +2012,7 @@ sub createEndsAtNode()
   date = CreateObject("roDateTime")
   date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
   date.toLocalTime()
-  m.endsAtNode = createTimeLabel("ends-at", tr("Ends at %1").Replace("%1", formatTime(date)), getTimePeriod(date))
+  m.endsAtNode = createTimeLabel("ends-at", translate("MessageEndsAt1", [formatTime(date)]), getTimePeriod(date))
 end sub
 
 ' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes.
@@ -2023,7 +2024,7 @@ sub onClockMinuteChanged()
   timeStr = formatTime(date)
   periodText = getTimePeriod(date)
   if periodText <> "" then timeStr += " " + periodText
-  m.endsAtNode.text = tr("Ends at %1").Replace("%1", timeStr)
+  m.endsAtNode.text = translate("MessageEndsAt1", [timeStr])
 end sub
 
 sub updateFavoriteButton()
@@ -2220,7 +2221,7 @@ sub setDateAdded(item as object)
   end if
 
   dateAdded.toLocalTime()
-  m.dateCreatedLabel.text = tr("Added") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
+  m.dateCreatedLabel.text = translate("LabelAdded") + " " + dateAdded.AsDateString("short-month-no-weekday") + " " + formatTime(dateAdded)
 
   ' Set X position only — Y is deferred to anchorDateLabel() which runs after the
   ' button group layout settles (via renderTracking observer).
@@ -2386,7 +2387,7 @@ sub updateOptionsButtonVisibility()
     m.optionsButton = CreateObject("roSGNode", "IconButton")
     m.optionsButton.id = "optionsButton"
     m.optionsButton.icon = "pkg:/images/icons/settings.png"
-    m.optionsButton.text = tr("Options")
+    m.optionsButton.text = translate("LabelOptions")
 
     playButtonIndex = getButtonIndex("playButton")
     if playButtonIndex >= 0
@@ -2538,7 +2539,7 @@ sub setupButtons(item as object)
     if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
       m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
     else
-      m.resumeLoadingButton.text = tr("Resume")
+      m.resumeLoadingButton.text = translate("ButtonResume")
     end if
     m.resumeLoadingButton.loading = true
     m.buttonGrp.appendChild(m.resumeLoadingButton)
@@ -2549,7 +2550,7 @@ sub setupButtons(item as object)
     viewPhotoButton = CreateObject("roSGNode", "IconButton")
     viewPhotoButton.id = "viewPhotoButton"
     viewPhotoButton.icon = "pkg:/images/icons/play.png"
-    viewPhotoButton.text = tr("View")
+    viewPhotoButton.text = translate("LabelView")
     m.buttonGrp.appendChild(viewPhotoButton)
   end if
 
@@ -2558,7 +2559,7 @@ sub setupButtons(item as object)
     slideshowButton = CreateObject("roSGNode", "IconButton")
     slideshowButton.id = "slideshowButton"
     slideshowButton.icon = "pkg:/images/icons/play.png"
-    slideshowButton.text = tr("Slideshow")
+    slideshowButton.text = translate("LabelSlideshow")
     m.buttonGrp.appendChild(slideshowButton)
   end if
 
@@ -2617,7 +2618,7 @@ sub setupButtons(item as object)
       watchChannelButton.icon = "pkg:/images/icons/play.png"
     end if
 
-    watchChannelButton.text = tr("Watch")
+    watchChannelButton.text = translate("LabelWatch")
     m.buttonGrp.appendChild(watchChannelButton)
   end if
 
@@ -2636,11 +2637,11 @@ sub setupButtons(item as object)
         isRecording = true
       end if
       if isRecording
-        recordButton.text = tr("Cancel Recording")
+        recordButton.text = translate("LabelCancelRecording")
         recordButton.iconBackground = m.global.constants.colorError
         recordButton.iconFocusBackground = m.global.constants.colorError
       else
-        recordButton.text = tr("Record")
+        recordButton.text = translate("ButtonRecord")
       end if
       m.buttonGrp.appendChild(recordButton)
     end if
@@ -2652,9 +2653,9 @@ sub setupButtons(item as object)
     playButton.id = "playButton"
     playButton.icon = "pkg:/images/icons/play.png"
     if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
-      playButton.text = tr("Play All")
+      playButton.text = translate("LabelPlayAll")
     else
-      playButton.text = tr("Play")
+      playButton.text = translate("ButtonPlay")
     end if
     m.buttonGrp.appendChild(playButton)
   end if
@@ -2664,7 +2665,7 @@ sub setupButtons(item as object)
     m.shuffleButton = CreateObject("roSGNode", "IconButton")
     m.shuffleButton.id = "shuffleButton"
     m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
-    m.shuffleButton.text = tr("Shuffle")
+    m.shuffleButton.text = translate("ButtonShuffle")
     m.buttonGrp.appendChild(m.shuffleButton)
   end if
 
@@ -2674,7 +2675,7 @@ sub setupButtons(item as object)
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
     watchedButton.icon = "pkg:/images/icons/check.png"
-    watchedButton.text = tr("Watched")
+    watchedButton.text = translate("LabelWatched")
     m.buttonGrp.appendChild(watchedButton)
   end if
 
@@ -2684,7 +2685,7 @@ sub setupButtons(item as object)
     m.shuffleLoadingButton = CreateObject("roSGNode", "IconButton")
     m.shuffleLoadingButton.id = "shuffleLoadingButton"
     m.shuffleLoadingButton.icon = "pkg:/images/icons/shuffle.png"
-    m.shuffleLoadingButton.text = tr("Shuffle")
+    m.shuffleLoadingButton.text = translate("ButtonShuffle")
     m.shuffleLoadingButton.loading = true
     m.buttonGrp.appendChild(m.shuffleLoadingButton)
     ' Guard counter: the ExtrasRowList observer fires multiple times — first a reset
@@ -2698,7 +2699,7 @@ sub setupButtons(item as object)
     instantMixButton = CreateObject("roSGNode", "IconButton")
     instantMixButton.id = "instantMixButton"
     instantMixButton.icon = "pkg:/images/icons/instantMix.png"
-    instantMixButton.text = tr("Instant Mix")
+    instantMixButton.text = translate("LabelInstantMix")
     m.buttonGrp.appendChild(instantMixButton)
   end if
 
@@ -2706,7 +2707,7 @@ sub setupButtons(item as object)
   favoriteButton = CreateObject("roSGNode", "IconButton")
   favoriteButton.id = "favoriteButton"
   favoriteButton.icon = "pkg:/images/icons/heart.png"
-  favoriteButton.text = tr("Favorite")
+  favoriteButton.text = translate("LabelFavorite")
   m.buttonGrp.appendChild(favoriteButton)
 
   ' Go to Series button — Season, Episode, and Program (when program is a series)
@@ -2714,7 +2715,7 @@ sub setupButtons(item as object)
     goToSeriesButton = CreateObject("roSGNode", "IconButton")
     goToSeriesButton.id = "goToSeriesButton"
     goToSeriesButton.icon = "pkg:/images/icons/tv.png"
-    goToSeriesButton.text = tr("Go to Series")
+    goToSeriesButton.text = translate("LabelGoToSeries")
     m.buttonGrp.appendChild(goToSeriesButton)
   end if
 
@@ -2723,7 +2724,7 @@ sub setupButtons(item as object)
     goToChannelButton = CreateObject("roSGNode", "IconButton")
     goToChannelButton.id = "goToChannelButton"
     goToChannelButton.icon = "pkg:/images/icons/tv.png"
-    goToChannelButton.text = tr("Go to Channel")
+    goToChannelButton.text = translate("LabelGoToChannel")
     m.buttonGrp.appendChild(goToChannelButton)
   end if
 
@@ -2732,7 +2733,7 @@ sub setupButtons(item as object)
     goToAlbumButton = CreateObject("roSGNode", "IconButton")
     goToAlbumButton.id = "goToAlbumButton"
     goToAlbumButton.icon = "pkg:/images/icons/album.png"
-    goToAlbumButton.text = tr("Go to Album")
+    goToAlbumButton.text = translate("LabelGoToAlbum")
     m.buttonGrp.appendChild(goToAlbumButton)
   end if
 
@@ -2757,7 +2758,7 @@ sub setupButtons(item as object)
       goToArtistButton = CreateObject("roSGNode", "IconButton")
       goToArtistButton.id = "goToArtistButton"
       goToArtistButton.icon = "pkg:/images/icons/baseline_person_white_48dp.png"
-      goToArtistButton.text = tr("Go to Artist")
+      goToArtistButton.text = translate("LabelGoToArtist")
       m.buttonGrp.appendChild(goToArtistButton)
     end if
   end if
@@ -2769,7 +2770,7 @@ sub setupButtons(item as object)
     trailerButton = CreateObject("roSGNode", "IconButton")
     trailerButton.id = "trailerButton"
     trailerButton.icon = "pkg:/images/icons/playOutline.png"
-    trailerButton.text = tr("Play Trailer")
+    trailerButton.text = translate("LabelPlayTrailer")
     m.buttonGrp.appendChild(trailerButton)
   end if
 
@@ -2778,7 +2779,7 @@ sub setupButtons(item as object)
     deleteButton = CreateObject("roSGNode", "IconButton")
     deleteButton.id = "deleteButton"
     deleteButton.icon = "pkg:/images/icons/delete.png"
-    deleteButton.text = tr("Delete")
+    deleteButton.text = translate("ButtonDelete")
     m.buttonGrp.appendChild(deleteButton)
   end if
 
@@ -2786,7 +2787,7 @@ sub setupButtons(item as object)
   refreshButton = CreateObject("roSGNode", "IconButton")
   refreshButton.id = "refreshButton"
   refreshButton.icon = "pkg:/images/icons/refresh.png"
-  refreshButton.text = tr("Refresh")
+  refreshButton.text = translate("ButtonRefresh")
   m.buttonGrp.appendChild(refreshButton)
 
   ' Show the button group (hidden until first setupButtons call)
@@ -2822,7 +2823,7 @@ sub onPersonHasMediaChanged()
       m.shuffleButton = CreateObject("roSGNode", "IconButton")
       m.shuffleButton.id = "shuffleButton"
       m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
-      m.shuffleButton.text = tr("Shuffle")
+      m.shuffleButton.text = translate("ButtonShuffle")
 
       if isValid(loadingButton)
         ' Swap the LoadingButton placeholder for the real shuffle button.
@@ -2920,7 +2921,7 @@ sub onPlaylistContentKindChanged()
       watchedButton = CreateObject("roSGNode", "IconButton")
       watchedButton.id = "watchedButton"
       watchedButton.icon = "pkg:/images/icons/check.png"
-      watchedButton.text = tr("Watched")
+      watchedButton.text = translate("LabelWatched")
 
       currentFocusIndex = m.buttonGrp.buttonFocused
       favoriteButtonIndex = getButtonIndex("favoriteButton")
@@ -2960,11 +2961,11 @@ sub onPlaylistContentKindChanged()
   itemCountNode = m.top.findNode("itemCount")
   if isValid(itemCountNode) and childCount > 0
     if kind = "audio"
-      label = tr("Track")
-      if childCount <> 1 then label = tr("Tracks")
+      label = translate("LabelTrack")
+      if childCount <> 1 then label = translate("LabelTracks")
     else
-      label = tr("Item")
-      if childCount <> 1 then label = tr("Items")
+      label = translate("LabelItem")
+      if childCount <> 1 then label = translate("LabelItems")
     end if
     itemCountNode.text = stri(childCount).trim() + " " + label
   end if
@@ -2991,7 +2992,7 @@ sub audioOptionsClosed()
     m.top.selectedAudioStreamIndex = m.options.audioStreamIndex
     for each stream in m.top.itemContent.audioStreams
       if stream.index = m.top.selectedAudioStreamIndex
-        setFieldText("audio_codec", tr("Audio") + ": " + formatAudioDisplayTitle(stream))
+        setFieldText("audio_codec", translate("LabelAudio") + ": " + formatAudioDisplayTitle(stream))
         exit for
       end if
     end for
@@ -3004,7 +3005,7 @@ end sub
 sub videoOptionsClosed()
   if m.options.videoStreamId <> m.top.selectedVideoStreamId
     m.top.selectedVideoStreamId = m.options.videoStreamId
-    setFieldText("video_codec", tr("Video") + ": " + m.options.video_codec)
+    setFieldText("video_codec", translate("LabelVideo") + ": " + m.options.video_codec)
     m.top.unobserveField("itemContent")
     mediaSources = m.top.itemContent.mediaSourcesData.mediaSources
     for each mediaSource in mediaSources
@@ -3112,7 +3113,7 @@ sub onFirstEpisodeLoaded()
     m.top.quickPlayNode = content[0]
   else
     m.log.warn("Series Play: could not load first episode for series", m.top.itemContent.id)
-    m.global.sceneManager.callFunc("standardDialog", tr("Playback Error"), { data: ["<p>" + tr("Could not load the first episode.") + "</p>"] })
+    m.global.sceneManager.callFunc("standardDialog", translate("ErrorPlaybackError"), { data: ["<p>" + translate("ErrorCouldNotLoadTheFirstEpisode") + "</p>"] })
   end if
 end sub
 

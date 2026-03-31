@@ -1,4 +1,5 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Layout constants
 const DIALOG_WIDTH = 1600
@@ -76,6 +77,7 @@ sub init()
 
   ' OK button (centered below dialog)
   m.okButton = m.top.findNode("okButton")
+  m.okButton.text = translate("ButtonOk")
   m.okButton.minWidth = 200
   m.okButton.translation = [dialogX + (DIALOG_WIDTH / 2) - 100, dialogY + DIALOG_HEIGHT + BUTTON_TOP_MARGIN]
 

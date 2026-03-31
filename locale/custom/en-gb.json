@@ -1,0 +1,18 @@
+{
+  "LabelCriticRating": "Critics Rating",
+  "LabelDateAdded": "Date Added",
+  "LabelDatePlayed": "Date Played",
+  "LabelFavorite": "Favourite",
+  "LabelImdbRating": "IMDb Rating",
+  "LabelNoItems": "This {0} contains no items",
+  "LabelOfficialRating": "Parental Rating",
+  "LabelOnlyDisplayTextSubtitlesToMinimize": "Only display text subtitles to minimise transcoding.",
+  "LabelOrEnterServerUrlManually": "If no server is listed above, you may also enter the server URL manually:",
+  "LabelPickAJellyfinServerFromThe": "Select an available Jellyfin server from your local network:",
+  "LabelPlayCount": "Play Count",
+  "LabelReleaseDate": "Release Date",
+  "LabelRuntime": "Run Time",
+  "LabelTitle": "Name",
+  "MessageBringTheTheaterExperienceStraightTo": "Bring the theatre experience straight to your living room with the ability to play custom intros before the main feature.",
+  "MessageSupportDirectPlayOfMpeg2Content": "Support Direct Play of MPEG-2 content (e.g., Live TV). This will prevent transcoding of MPEG-2 content but uses significantly more bandwidth."
+}

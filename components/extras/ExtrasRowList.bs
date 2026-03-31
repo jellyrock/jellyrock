@@ -4,6 +4,7 @@ import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Default RowList translation.y — places the focused row (TOP) 18px below the panel top edge.
 const EXTRAS_ROWLIST_DEFAULT_Y = 18
@@ -320,7 +321,7 @@ sub onSeasonsLoaded()
   m.LoadSeasonsTask.unobserveField("content")
 
   if isValid(seasons) and seasons.count() > 0
-    m.rowSeasons = populateRow(m.rowSeasons, tr("Seasons"), seasons, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    m.rowSeasons = populateRow(m.rowSeasons, translate("LabelSeasons"), seasons, rowSlotSize.ROW_HEIGHT_PORTRAIT)
   else if isValid(m.rowSeasons)
     removeRow(m.rowSeasons)
     m.rowSeasons = invalid
@@ -366,9 +367,9 @@ sub onSeasonEpisodesLoaded()
 
     if orderedEpisodes.count() > 0
       if isValid(m.currentEpisodeSeasonNumber) and m.currentEpisodeSeasonNumber > 0
-        rowTitle = tr("More from Season %1").Replace("%1", stri(m.currentEpisodeSeasonNumber).trim())
+        rowTitle = translate("MessageMoreFromSeason1", [stri(m.currentEpisodeSeasonNumber).trim()])
       else
-        rowTitle = tr("More Episodes")
+        rowTitle = translate("LabelMoreEpisodes")
       end if
       m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
       m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes, rowSlotSize.ROW_HEIGHT_WIDE)
@@ -393,7 +394,7 @@ sub onSeasonAllEpisodesLoaded()
 
   if isValid(episodes) and episodes.count() > 0
     m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-    m.rowEpisodes = populateRow(m.rowEpisodes, tr("Episodes"), episodes, rowSlotSize.ROW_HEIGHT_WIDE)
+    m.rowEpisodes = populateRow(m.rowEpisodes, translate("LabelEpisodes2"), episodes, rowSlotSize.ROW_HEIGHT_WIDE)
   else if isValid(m.rowEpisodes)
     removeRow(m.rowEpisodes)
     m.rowEpisodes = invalid
@@ -411,7 +412,7 @@ sub onBoxSetItemsLoaded()
   m.LoadBoxSetItemsTask.content = []
 
   if isValid(content) and content.count() > 0
-    m.rowBoxSetItems = populateRow(m.rowBoxSetItems, tr("Movies"), content, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    m.rowBoxSetItems = populateRow(m.rowBoxSetItems, translate("LabelMovies"), content, rowSlotSize.ROW_HEIGHT_PORTRAIT)
   else if isValid(m.rowBoxSetItems)
     removeRow(m.rowBoxSetItems)
     m.rowBoxSetItems = invalid
@@ -428,7 +429,7 @@ sub onAdditionalPartsLoaded()
   m.LoadAdditionalPartsTask.unobserveField("content")
 
   if isValid(parts) and parts.count() > 0
-    m.rowAdditionalParts = populateRow(m.rowAdditionalParts, tr("Additional Parts"), parts, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    m.rowAdditionalParts = populateRow(m.rowAdditionalParts, translate("LabelAdditionalParts"), parts, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
   else
     if isValid(m.rowAdditionalParts)
@@ -473,10 +474,10 @@ sub onPlaylistItemsLoaded()
   if isValid(items) and items.count() > 0
     if allAudio
       m.top.rowItemSize = [rowSlotSize.SQUARE]
-      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, tr("Playlist Items"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, translate("LabelPlaylistItems"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
     else
       m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, tr("Playlist Items"), items, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, translate("LabelPlaylistItems"), items, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     end if
   else if isValid(m.rowPlaylistItems)
     removeRow(m.rowPlaylistItems)
@@ -505,7 +506,7 @@ sub onPeopleLoaded()
   people = m.LoadPeopleTask.content
   m.loadPeopleTask.unobserveField("content")
   if isValid(people) and people.count() > 0
-    m.rowCast = populateRow(m.rowCast, tr("Cast & Crew"), people, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    m.rowCast = populateRow(m.rowCast, translate("LabelCastCrew"), people, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowCast)
     removeRow(m.rowCast)
@@ -530,7 +531,7 @@ sub onLikeThisLoaded()
     ' MusicVideo and Video items are always landscape (≥4:3) and have no portrait posters —
     ' use a wide slot so the image URL logic fetches Thumb/Backdrop instead of Primary.
     if itemType = "MusicVideo" or itemType = "Video"
-      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_WIDE)
+      m.rowLikeThis = populateRow(m.rowLikeThis, translate("LabelMoreLikeThis"), data, rowSlotSize.ROW_HEIGHT_WIDE)
       ' Cannot use addRowSize() here. loadParts() seeds rowItemSize with a phantom PORTRAIT
       ' element before any rows exist, which offsets all addRowSize() indices by one and would
       ' leave this row still mapped to PORTRAIT. Instead, rebuild the array from the actual
@@ -545,7 +546,7 @@ sub onLikeThisLoaded()
     else if itemType = "Photo" or itemType = "PhotoAlbum"
       ' Photo/PhotoAlbum use WIDE slots (landscape images). Rebuild from actual content child
       ' count with WIDE for all rows — the preceding Photos row (if any) is also WIDE.
-      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_WIDE)
+      m.rowLikeThis = populateRow(m.rowLikeThis, translate("LabelMoreLikeThis"), data, rowSlotSize.ROW_HEIGHT_WIDE)
       newSizes = []
       childCount = m.top.content.getChildCount()
       for i = 0 to childCount - 1
@@ -554,10 +555,10 @@ sub onLikeThisLoaded()
       m.top.rowItemSize = newSizes
     else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "Program" or itemType = "TvChannel"
       ' Music, Playlist, Program, and TvChannel rows use square slots — primary images are 1:1.
-      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
+      m.rowLikeThis = populateRow(m.rowLikeThis, translate("LabelMoreLikeThis"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
       addRowSize(rowSlotSize.SQUARE)
     else
-      m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+      m.rowLikeThis = populateRow(m.rowLikeThis, translate("LabelMoreLikeThis"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
       addRowSize(rowSlotSize.PORTRAIT)
     end if
   else if isValid(m.rowLikeThis)
@@ -577,7 +578,7 @@ function onSpecialFeaturesLoaded()
   data = m.SpecialFeaturesTask.content
   m.SpecialFeaturesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, tr("Special Features"), data, rowSlotSize.ROW_HEIGHT_WIDE)
+    m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, translate("LabelSpecialFeatures"), data, rowSlotSize.ROW_HEIGHT_WIDE)
     m.top.visible = true
     addRowSize(rowSlotSize.WIDE)
   else if isValid(m.rowSpecialFeatures)
@@ -592,7 +593,7 @@ sub onMoviesLoaded()
   data = m.LoadMoviesTask.content
   m.LoadMoviesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowMovies = populateRow(m.rowMovies, tr("Movies"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    m.rowMovies = populateRow(m.rowMovies, translate("LabelMovies"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
@@ -610,7 +611,7 @@ sub onShowsLoaded()
   m.LoadShowsTask.unobserveField("content")
   if isValid(data) and data.count() > 0
     ' personTVShows loads Episode items — use WIDE slot for episode screenshots
-    m.rowTvShows = populateRow(m.rowTvShows, tr("Episodes"), data, rowSlotSize.ROW_HEIGHT_WIDE)
+    m.rowTvShows = populateRow(m.rowTvShows, translate("LabelEpisodes2"), data, rowSlotSize.ROW_HEIGHT_WIDE)
     addRowSize(rowSlotSize.WIDE)
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
@@ -627,7 +628,7 @@ sub onSeriesLoaded()
   data = m.LoadSeriesTask.content
   m.LoadSeriesTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowSeries = populateRow(m.rowSeries, tr("Series"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
+    m.rowSeries = populateRow(m.rowSeries, translate("LabelSeries"), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
     addRowSize(rowSlotSize.PORTRAIT)
   else if isValid(m.rowSeries)
     removeRow(m.rowSeries)
@@ -646,7 +647,7 @@ sub onArtistAlbumsLoaded()
   m.LoadArtistAlbumsTask.content = []
 
   if isValid(content) and content.count() > 0
-    m.rowArtistAlbums = populateRow(m.rowArtistAlbums, tr("Albums"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowArtistAlbums = populateRow(m.rowArtistAlbums, translate("LabelAlbums"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowArtistAlbums)
     removeRow(m.rowArtistAlbums)
@@ -665,7 +666,7 @@ sub onArtistAppearsOnLoaded()
   m.LoadArtistAppearsOnTask.content = []
 
   if isValid(content) and content.count() > 0
-    m.rowArtistAppearsOn = populateRow(m.rowArtistAppearsOn, tr("Appears On"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowArtistAppearsOn = populateRow(m.rowArtistAppearsOn, translate("LabelAppearsOn"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowArtistAppearsOn)
     removeRow(m.rowArtistAppearsOn)
@@ -686,7 +687,7 @@ sub onArtistSongsLoaded()
   m.LoadArtistSongsTask.content = []
 
   if isValid(content) and content.count() > 0
-    m.rowArtistSongs = populateRow(m.rowArtistSongs, tr("Songs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowArtistSongs = populateRow(m.rowArtistSongs, translate("LabelSongs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowArtistSongs)
     removeRow(m.rowArtistSongs)
@@ -704,7 +705,7 @@ sub onArtistSimilarLoaded()
   data = m.LoadArtistSimilarTask.content
   m.LoadArtistSimilarTask.unobserveField("content")
   if isValid(data) and data.count() > 0
-    m.rowLikeThis = populateRow(m.rowLikeThis, tr("More Like This"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowLikeThis = populateRow(m.rowLikeThis, translate("LabelMoreLikeThis"), data, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowLikeThis)
     removeRow(m.rowLikeThis)
@@ -719,7 +720,7 @@ sub onAlbumSongsLoaded()
   m.LoadAlbumSongsTask.content = []
 
   if isValid(content) and content.count() > 0
-    m.rowAlbumSongs = populateRow(m.rowAlbumSongs, tr("Songs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowAlbumSongs = populateRow(m.rowAlbumSongs, translate("LabelSongs"), content, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowAlbumSongs)
     removeRow(m.rowAlbumSongs)
@@ -755,7 +756,7 @@ sub onAlbumArtistAlbumsLoaded()
   end if
 
   if filtered.count() > 0
-    m.rowAlbumArtistAlbums = populateRow(m.rowAlbumArtistAlbums, tr("More Albums"), filtered, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowAlbumArtistAlbums = populateRow(m.rowAlbumArtistAlbums, translate("LabelMoreAlbums"), filtered, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowAlbumArtistAlbums)
     removeRow(m.rowAlbumArtistAlbums)
@@ -802,9 +803,9 @@ sub onAudioAlbumTracksLoaded()
 
     if orderedTracks.count() > 0
       if isValidAndNotEmpty(m.currentAlbumName)
-        rowTitle = tr("More from %1").Replace("%1", m.currentAlbumName)
+        rowTitle = translate("MessageMoreFrom1", [m.currentAlbumName])
       else
-        rowTitle = tr("Album Tracks")
+        rowTitle = translate("LabelAlbumTracks")
       end if
       m.rowAlbumSongs = populateRow(m.rowAlbumSongs, rowTitle, orderedTracks, rowSlotSize.ROW_HEIGHT_SQUARE)
       addRowSize(rowSlotSize.SQUARE)
@@ -829,7 +830,7 @@ sub onPhotoAlbumItemsLoaded()
   m.LoadPhotoAlbumItemsTask.content = []
 
   if isValid(items) and items.count() > 0
-    m.rowPhotoAlbumItems = populateRow(m.rowPhotoAlbumItems, tr("Photos"), items, rowSlotSize.ROW_HEIGHT_WIDE)
+    m.rowPhotoAlbumItems = populateRow(m.rowPhotoAlbumItems, translate("LabelPhotos2"), items, rowSlotSize.ROW_HEIGHT_WIDE)
   else if isValid(m.rowPhotoAlbumItems)
     removeRow(m.rowPhotoAlbumItems)
     m.rowPhotoAlbumItems = invalid
@@ -848,7 +849,7 @@ sub onChannelProgramsLoaded()
   m.LoadChannelProgramsTask.content = []
 
   if isValid(items) and items.count() > 0
-    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, tr("Up Next"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate("LabelUpNext"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
   else if isValid(m.rowChannelPrograms)
     removeRow(m.rowChannelPrograms)
     m.rowChannelPrograms = invalid
@@ -867,7 +868,7 @@ sub onProgramChannelProgramsLoaded()
   m.LoadChannelProgramsTask.content = []
 
   if isValid(items) and items.count() > 0
-    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, tr("More on this Channel"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate("LabelMoreOnThisChannel"), items, rowSlotSize.ROW_HEIGHT_SQUARE)
     addRowSize(rowSlotSize.SQUARE)
   else if isValid(m.rowChannelPrograms)
     removeRow(m.rowChannelPrograms)

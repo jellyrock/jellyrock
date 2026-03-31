@@ -13,17 +13,17 @@ function translate(key as string, params = invalid as object) as string
   value = m.global.translations[key]
 
   ' Fallback to en-us
-  if not isValid(value)
+  if value = invalid
     value = m.global.translationsFallback[key]
   end if
 
   ' Fallback to key itself (visible during development)
-  if not isValid(value)
+  if value = invalid
     return key
   end if
 
   ' Substitute indexed placeholders
-  if isValid(params) and params.Count() > 0
+  if params <> invalid and params.Count() > 0
     for i = 0 to params.Count() - 1
       value = value.Replace("{" + i.toStr() + "}", params[i])
     end for
@@ -61,7 +61,7 @@ sub loadTranslations(locale as string)
   ' Always load en-us as fallback
   fallbackJson = ReadAsciiFile("pkg:/locale/custom/en-us.json")
   fallbackAA = ParseJson(fallbackJson)
-  if not isValid(fallbackAA) then fallbackAA = {}
+  if fallbackAA = invalid then fallbackAA = {}
 
   ' Load requested locale
   if locale = "en-us"
@@ -69,7 +69,7 @@ sub loadTranslations(locale as string)
     activeAA = fallbackAA
   else
     activeAA = loadLocaleFile(locale)
-    if not isValid(activeAA)
+    if activeAA = invalid
       ' No file found for this locale — fall back to en-us
       activeAA = fallbackAA
       locale = "en-us"
@@ -90,7 +90,7 @@ end sub
 function loadLocaleFile(locale as string) as object
   json = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
   aa = ParseJson(json)
-  if isValid(aa) then return aa
+  if aa <> invalid then return aa
 
   ' Try base language: "fr-ca" -> "fr"
   dashPos = Instr(1, locale, "-")
@@ -101,41 +101,4 @@ function loadLocaleFile(locale as string) as object
   end if
 
   return invalid
-end function
-
-' Determine which locale to load using the fallback cascade.
-' Pre-login (isPostLogin=false): device locale -> en-us
-' Post-login (isPostLogin=true): user setting -> server language -> device locale -> en-us
-' @param {boolean} isPostLogin - Whether a user is authenticated
-' @param {string} serverLanguage - Language from server CustomPrefs.language (empty if unavailable)
-' @return {string} Resolved locale code in custom format (e.g. "fr-ca", "en-us")
-function resolveTranslationLocale(isPostLogin = false as boolean, serverLanguage = "" as string) as string
-  ' Priority 1: Per-user language override (only available post-login)
-  if isPostLogin
-    userLocale = get_user_setting("translationLocale")
-    if isValidAndNotEmpty(userLocale) then return userLocale
-  end if
-
-  ' Priority 2: Server CustomPrefs.language (post-login only)
-  if isPostLogin and isValidAndNotEmpty(serverLanguage)
-    return LCase(serverLanguage)
-  end if
-
-  ' Priority 3: Roku device locale
-  deviceLocale = m.global.device.locale
-  if isValidAndNotEmpty(deviceLocale)
-    return mapRokuLocaleToTranslationLocale(deviceLocale)
-  end if
-
-  ' Priority 4: Hardcoded default
-  return "en-us"
-end function
-
-' Convert Roku's locale format to our lowercase-hyphenated format.
-' e.g. "en_US" -> "en-us", "fr_CA" -> "fr-ca"
-' @param {string} rokuLocale - Roku locale from roDeviceInfo.GetCurrentLocale()
-' @return {string} Locale code in custom format
-function mapRokuLocaleToTranslationLocale(rokuLocale as string) as string
-  if rokuLocale = "" then return "en-us"
-  return LCase(rokuLocale.Replace("_", "-"))
 end function

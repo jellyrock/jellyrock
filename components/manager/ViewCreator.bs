@@ -2,6 +2,7 @@ import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Play Audio
 sub CreateAudioPlayerView()
@@ -70,7 +71,7 @@ sub onSelectAudioPressed()
     audioData.data.push(audioStreamItem)
   end for
   sceneManager = m.global.sceneManager
-  sceneManager.callFunc("radioDialog", tr("Select Audio"), audioData)
+  sceneManager.callFunc("radioDialog", translate("LabelSelectAudio"), audioData)
   sceneManager.observeField("returnData", "onSelectionMade")
 end sub
 
@@ -122,7 +123,7 @@ sub onSelectSubtitlePressed()
   })
 
   sceneManager = m.global.sceneManager
-  sceneManager.callFunc("radioDialog", tr("Select Subtitles"), subtitleData)
+  sceneManager.callFunc("radioDialog", translate("LabelSelectSubtitles"), subtitleData)
   sceneManager.observeField("returnData", "onSelectionMade")
 end sub
 
@@ -155,7 +156,7 @@ sub onSelectVideoSourcePressed()
   end for
 
   sceneManager = m.global.sceneManager
-  sceneManager.callFunc("radioDialog", tr("Select Video Source"), videoSourceData)
+  sceneManager.callFunc("radioDialog", translate("LabelSelectVideoSource"), videoSourceData)
   sceneManager.observeField("returnData", "onSelectionMade")
 end sub
 
@@ -260,7 +261,7 @@ end sub
 sub onSelectPlaybackInfoPressed()
   ' Check if we already have playback info and show it in a popup
   if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    m.global.sceneManager.callFunc("standardDialog", tr("Playback Info"), m.playbackData.playbackinfo)
+    m.global.sceneManager.callFunc("standardDialog", translate("LabelPlaybackInfo"), m.playbackData.playbackinfo)
     return
   end if
 
@@ -275,7 +276,7 @@ sub onPlaybackInfoLoaded()
 
   ' Check if we have playback info and show it in a popup
   if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    m.global.sceneManager.callFunc("standardDialog", tr("Playback Info"), m.playbackData.playbackinfo)
+    m.global.sceneManager.callFunc("standardDialog", translate("LabelPlaybackInfo"), m.playbackData.playbackinfo)
   end if
 end sub
 

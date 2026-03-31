@@ -7,7 +7,7 @@
 
     <SearchRow id="searchSelect" focusable="true" />
 
-    <LabelPrimaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="You can search for Titles, People, Live TV Channels and more" translation="[470, 440]" />
+    <LabelPrimaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="" translation="[470, 440]" />
 
     <OptionsSlider id="options" />
   </children>

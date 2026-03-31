@@ -1,12 +1,15 @@
 import "pkg:/source/api/baserequest.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("UserSelect")
   m.log.verbose("Initializing UserSelect component")
 
   m.top.optionsAvailable = false
+  m.top.findNode("selectUserLabel").text = translate("LabelSelectAUser")
+  m.top.findNode("manualLoginButton").text = translate("ButtonManualLogin")
   m.buttons = m.top.findNode("buttons")
 
   m.buttons.callFunc("center")

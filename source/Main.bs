@@ -282,7 +282,7 @@ sub Main (args as dynamic) as void
       options.setFocus(true)
 
       m.searchDialog = createObject("roSGNode", "ProgressDialog")
-      m.searchDialog.title = tr("Loading Search Data")
+      m.searchDialog.title = translate("LabelLoadingSearchData")
       m.scene.dialog = m.searchDialog
 
       m.searchGroup = group
@@ -499,13 +499,13 @@ sub Main (args as dynamic) as void
               ' Read current state from button — writing to itemContent triggers a full rebuild
               m.pendingWatchedIsCurrentlyWatched = isValid(watchedButton) and watchedButton.selected
               if m.pendingWatchedIsCurrentlyWatched
-                confirmMsg = tr("Mark all episodes in this series as unwatched?")
-                confirmBtn = tr("Mark Unwatched")
+                confirmMsg = translate("MessageMarkAllEpisodesInThisSeries")
+                confirmBtn = translate("ButtonMarkUnwatched")
               else
-                confirmMsg = tr("Mark all episodes in this series as watched?")
-                confirmBtn = tr("Mark Watched")
+                confirmMsg = translate("MessageMarkAllEpisodesInThisSeries2")
+                confirmBtn = translate("ButtonMarkWatched")
               end if
-              m.global.sceneManager.callFunc("optionDialog", tr("Watched"), [confirmMsg], [tr("Cancel"), confirmBtn])
+              m.global.sceneManager.callFunc("optionDialog", translate("LabelWatched"), [confirmMsg], [translate("ButtonCancel"), confirmBtn])
             else
               watchedButton = group.findNode("watchedButton")
               if isValid(watchedButton) and watchedButton.loading then continue while ' Already in-flight
@@ -709,7 +709,7 @@ sub Main (args as dynamic) as void
           print "deleteButton pressed"
           if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
             m.pendingDeleteItemId = group.itemContent.id
-            m.global.sceneManager.callFunc("optionDialog", tr("Delete"), [tr("Are you sure you want to delete this item? This action cannot be undone.")], [tr("Cancel"), tr("Delete")])
+            m.global.sceneManager.callFunc("optionDialog", translate("ButtonDelete"), [translate("ErrorAreYouSureYouWantTo")], [translate("ButtonCancel"), translate("ButtonDelete")])
           end if
         else
           ' If there are no other button matches, check if this is a simple "OK" Dialog & Close if so
@@ -815,13 +815,13 @@ sub Main (args as dynamic) as void
         ' Handle exit confirmation dialog
         if m.global.sceneManager.pendingExitConfirmation = true
           m.global.sceneManager.pendingExitConfirmation = false
-          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Exit")
+          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate("ButtonExit")
             ' User confirmed exit
             m.scene.exit = true
           end if
           ' Handle delete confirmation dialog
         else if isValid(m.pendingDeleteItemId)
-          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = tr("Delete")
+          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate("ButtonDelete")
             ' User confirmed deletion
             SubmitSideEffect(GetApi().BuildDeleteItemRequest(m.pendingDeleteItemId))
             m.pendingDeleteItemId = invalid
@@ -956,7 +956,7 @@ sub initializeFallbackFont()
   m.waitForFontDownload = (m.global.user.settings.uiFontFallback = true)
 
   if m.waitForFontDownload
-    startLoadingSpinner(true, tr("Downloading Fallback Font"))
+    startLoadingSpinner(true, translate("LabelDownloadingFallbackFont"))
     print "UI fallback fonts enabled - app will wait for font download completion"
   else
     print "Only subtitle fallback fonts enabled - app will continue loading normally"
@@ -1113,7 +1113,7 @@ sub handleFavoriteToggleDone()
     if isValid(m.pendingFavoriteButton)
       m.pendingFavoriteButton.selected = not m.pendingFavoriteNewState
     end if
-    displayToast(tr("Failed to update favorite"), "error")
+    displayToast(translate("ErrorFailedToUpdateFavorite"), "error")
   end if
 
   if isValid(m.pendingFavoriteButton)
@@ -1161,7 +1161,7 @@ sub handleWatchedToggleDone()
       resumeButton = activeGroup.findNode("resumeButton")
       if isValid(resumeButton) then resumeButton.loading = false
     end if
-    displayToast(tr("Failed to update watched status"), "error")
+    displayToast(translate("ErrorFailedToUpdateWatchedStatus"), "error")
   end if
 
   if isValid(m.pendingWatchedButton)
@@ -1181,28 +1181,28 @@ sub handleRecordResult(task as object)
     ' Toggle button label and icon color to reflect new state
     if isValid(m.pendingRecordButton)
       if m.pendingRecordIsCancel
-        m.pendingRecordButton.text = tr("Record")
+        m.pendingRecordButton.text = translate("ButtonRecord")
         ' Revert to default icon color (white)
         m.pendingRecordButton.iconBackground = m.global.constants.colorTextPrimary
         m.pendingRecordButton.iconFocusBackground = m.global.constants.colorTextPrimary
       else
-        m.pendingRecordButton.text = tr("Cancel Recording")
+        m.pendingRecordButton.text = translate("LabelCancelRecording")
         ' Active recording — red icon
         m.pendingRecordButton.iconBackground = m.global.constants.colorError
         m.pendingRecordButton.iconFocusBackground = m.global.constants.colorError
       end if
     end if
     if res.action = "record"
-      displayToast(tr("Recording scheduled"), "success")
+      displayToast(translate("LabelRecordingScheduled"), "success")
     else
-      displayToast(tr("Recording cancelled"), "success")
+      displayToast(translate("LabelRecordingCancelled"), "success")
     end if
   else
     ' Failed — button label stays as-is (no state change)
     if isValid(res) and res.action = "record"
-      displayToast(tr("Failed to schedule recording"), "error")
+      displayToast(translate("ErrorFailedToScheduleRecording"), "error")
     else
-      displayToast(tr("Failed to cancel recording"), "error")
+      displayToast(translate("ErrorFailedToCancelRecording"), "error")
     end if
   end if
 

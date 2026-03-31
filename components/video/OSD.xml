@@ -24,7 +24,7 @@
 
     <!-- Ends at time -->
     <LayoutGroup id="endsAtGroup" itemSpacings="[12]" layoutDirection="horiz" horizAlignment="right" translation="[1824,759]">
-      <LabelSecondaryMedium id="endsAtText" bold="true" text="Ends at" />
+      <LabelSecondaryMedium id="endsAtText" bold="true" text="" />
       <LabelSecondaryMedium id="endsAtTime" bold="true" />
     </LayoutGroup>
 

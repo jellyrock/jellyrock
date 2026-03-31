@@ -32,9 +32,9 @@ class TVShowPresenter extends GridPresenterBase
 
     ' TV show views
     options.views = [
-      { "Title": tr("Shows"), "Name": "Shows" },
-      { "Title": tr("Networks"), "Name": "Networks" },
-      { "Title": tr("Genres"), "Name": "Genres" }
+      { "Title": translate("LabelShows"), "Name": "Shows" },
+      { "Title": translate("LabelNetworks"), "Name": "Networks" },
+      { "Title": translate("LabelGenres"), "Name": "Genres" }
     ]
 
     ' Sort options vary by view - get current view from presenter's view reference
@@ -46,26 +46,26 @@ class TVShowPresenter extends GridPresenterBase
     if viewLower = "genres"
       ' Genre view only has title sort
       options.sort = [
-        { "Title": tr("TITLE"), "Name": "SortName" }
+        { "Title": translate("LabelTitle"), "Name": "SortName" }
       ]
       options.filter = []
     else
       ' Standard TV show sort options
       options.sort = [
-        { "Title": tr("TITLE"), "Name": "SortName" },
-        { "Title": tr("Random"), "Name": "Random" },
-        { "Title": tr("IMDB_RATING"), "Name": "CommunityRating,SortName" },
-        { "Title": tr("DATE_SHOW_ADDED"), "Name": "DateCreated,SortName" },
-        { "Title": tr("DATE_EPISODE_ADDED"), "Name": "DateLastContentAdded,SortName" },
-        { "Title": tr("DATE_PLAYED"), "Name": "SeriesDatePlayed,SortName" },
-        { "Title": tr("OFFICIAL_RATING"), "Name": "OfficialRating,SortName" },
-        { "Title": tr("RELEASE_DATE"), "Name": "PremiereDate,SortName" }
+        { "Title": translate("LabelTitle"), "Name": "SortName" },
+        { "Title": translate("LabelRandom"), "Name": "Random" },
+        { "Title": translate("LabelImdbRating"), "Name": "CommunityRating,SortName" },
+        { "Title": translate("LabelDateShowAdded"), "Name": "DateCreated,SortName" },
+        { "Title": translate("LabelDateEpisodeAdded"), "Name": "DateLastContentAdded,SortName" },
+        { "Title": translate("LabelDatePlayed"), "Name": "SeriesDatePlayed,SortName" },
+        { "Title": translate("LabelOfficialRating"), "Name": "OfficialRating,SortName" },
+        { "Title": translate("LabelReleaseDate"), "Name": "PremiereDate,SortName" }
       ]
       options.filter = [
-        { "Title": tr("All"), "Name": "All" },
-        { "Title": tr("Favorites"), "Name": "Favorites" },
-        { "Title": tr("Played"), "Name": "Played" },
-        { "Title": tr("Unplayed"), "Name": "Unplayed" }
+        { "Title": translate("LabelAll2"), "Name": "All" },
+        { "Title": translate("LabelFavorites2"), "Name": "Favorites" },
+        { "Title": translate("LabelPlayed"), "Name": "Played" },
+        { "Title": translate("LabelUnplayed"), "Name": "Unplayed" }
       ]
     end if
 
