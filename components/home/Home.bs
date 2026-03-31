@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
@@ -30,8 +31,8 @@ sub init()
 
   ' Tab configuration
   m.top.overhangTabs = [
-    { title: translate("LabelHome"), id: "home" },
-    { title: translate("LabelFavorites2"), id: "favorites" }
+    { title: translate(translationKeys.LabelHome), id: "home" },
+    { title: translate(translationKeys.LabelFavorites2), id: "favorites" }
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")
@@ -204,7 +205,7 @@ sub initVoiceBox()
   end if
 
   m.voiceBox.opacity = 0.0001
-  m.voiceBox.hintText = translate("LabelUseVoiceRemoteToSearch")
+  m.voiceBox.hintText = translate(translationKeys.LabelUseVoiceRemoteToSearch)
   m.voiceBox.voiceEnabled = true
   m.voiceBox.active = true
   m.voiceBox.observeField("text", "onVoiceSearch")

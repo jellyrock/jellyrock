@@ -4,6 +4,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.top.itemComponentName = "JRRowItem"
@@ -146,19 +147,19 @@ function createSkeletonRow(sectionType as string) as object
   row = CreateObject("roSGNode", "HomeRow")
 
   if sectionType = "resume"
-    row.title = translate("LabelContinueWatching")
+    row.title = translate(translationKeys.LabelContinueWatching)
     row.sectionId = "resume"
     row.cursorSize = rowSlotSize.WIDE
   else if sectionType = "nextup"
-    row.title = translate("LabelNextUp")
+    row.title = translate(translationKeys.LabelNextUp)
     row.sectionId = "nextup"
     row.cursorSize = rowSlotSize.WIDE
   else if sectionType = "livetv"
-    row.title = translate("LabelOnNow")
+    row.title = translate(translationKeys.LabelOnNow)
     row.sectionId = "livetv"
     row.cursorSize = rowSlotSize.SQUARE
   else if sectionType = "librarybuttons" or sectionType = "smalllibrarytiles"
-    row.title = translate("LabelMyMedia")
+    row.title = translate(translationKeys.LabelMyMedia)
     row.sectionId = "library"
     row.cursorSize = rowSlotSize.LIBRARY
   else
@@ -272,7 +273,7 @@ sub insertLatestMediaSkeletons()
       end if
 
       row = CreateObject("roSGNode", "HomeRow")
-      row.title = `${translate("LabelRecentlyAddedIn")} ${lib.name}`
+      row.title = `${translate(translationKeys.LabelRecentlyAddedIn)} ${lib.name}`
       row.sectionId = sectionId
       row.cursorSize = slotSize
 
@@ -415,10 +416,10 @@ end sub
 ' @param {string} sectionId - The sectionId
 ' @return {object} { title: string, slotSize: array } or invalid if unknown
 function getRowConfigForSection(sectionId as string) as object
-  if sectionId = "resume" then return { title: translate("LabelContinueWatching"), slotSize: rowSlotSize.WIDE }
-  if sectionId = "nextup" then return { title: translate("LabelNextUp"), slotSize: rowSlotSize.WIDE }
-  if sectionId = "livetv" then return { title: translate("LabelOnNow"), slotSize: rowSlotSize.SQUARE }
-  if sectionId = "library" then return { title: translate("LabelMyMedia"), slotSize: rowSlotSize.LIBRARY }
+  if sectionId = "resume" then return { title: translate(translationKeys.LabelContinueWatching), slotSize: rowSlotSize.WIDE }
+  if sectionId = "nextup" then return { title: translate(translationKeys.LabelNextUp), slotSize: rowSlotSize.WIDE }
+  if sectionId = "livetv" then return { title: translate(translationKeys.LabelOnNow), slotSize: rowSlotSize.SQUARE }
+  if sectionId = "library" then return { title: translate(translationKeys.LabelMyMedia), slotSize: rowSlotSize.LIBRARY }
 
   ' latestmedia rows: derive title and slotSize from the library data
   if sectionId.startsWith("latest_") and isValidAndNotEmpty(m.filteredLatest)
@@ -433,7 +434,7 @@ function getRowConfigForSection(sectionId as string) as object
             slotSize = rowSlotSize.SQUARE
           end if
         end if
-        return { title: `${translate("LabelRecentlyAddedIn")} ${lib.name}`, slotSize: slotSize }
+        return { title: `${translate(translationKeys.LabelRecentlyAddedIn)} ${lib.name}`, slotSize: slotSize }
       end if
     end for
   end if

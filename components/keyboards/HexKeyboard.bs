@@ -1,11 +1,12 @@
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/HexKeyboardKDF.json"
   m.top.keyGrid.mode = "alphanumeric"
 
   m.resetButton = m.top.findNode("resetButton")
-  m.resetButton.text = translate("ButtonReset")
+  m.resetButton.text = translate(translationKeys.ButtonReset)
   globalConstants = m.global.constants
   m.resetButton.border = globalConstants.colorBackgroundPrimary
   m.resetButton.background = globalConstants.colorBackgroundPrimary

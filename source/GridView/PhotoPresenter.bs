@@ -40,20 +40,20 @@ class PhotoPresenter extends GridPresenterBase
   override function getOptions(_parentItem as object) as object
     return {
       views: [
-        { "Title": translate("LabelSlideshowOff"), "Name": "singlephoto" },
-        { "Title": translate("LabelSlideshowOn"), "Name": "slideshowphoto" },
-        { "Title": translate("LabelRandomOff"), "Name": "singlephoto" },
-        { "Title": translate("LabelRandomOn"), "Name": "randomphoto" }
+        { "Title": translate(translationKeys.LabelSlideshowOff), "Name": "singlephoto" },
+        { "Title": translate(translationKeys.LabelSlideshowOn), "Name": "slideshowphoto" },
+        { "Title": translate(translationKeys.LabelRandomOff), "Name": "singlephoto" },
+        { "Title": translate(translationKeys.LabelRandomOn), "Name": "randomphoto" }
       ],
       sort: [
-        { "Title": translate("LabelTitle"), "Name": "SortName" },
-        { "Title": translate("LabelDateAdded"), "Name": "DateCreated" },
-        { "Title": translate("LabelDatePlayed"), "Name": "DatePlayed" },
-        { "Title": translate("LabelRandom"), "Name": "Random" }
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ],
       filter: [
-        { "Title": translate("LabelAll2"), "Name": "All" },
-        { "Title": translate("LabelFavorites2"), "Name": "Favorites" }
+        { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" }
       ]
     }
   end function

@@ -12,6 +12,7 @@ import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/trickplay.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
 ' The trickPlayBar is part of the Video node and doesn't expose child IDs,
@@ -573,8 +574,8 @@ end sub
 
 sub showPlaybackErrorDialog(errorMessage = "" as string)
   dialog = createObject("roSGNode", "Dialog")
-  dialog.title = translate("ErrorDuringPlayback")
-  dialog.buttons = [translate("ButtonOk")]
+  dialog.title = translate(translationKeys.ErrorDuringPlayback)
+  dialog.buttons = [translate(translationKeys.ButtonOk)]
   dialog.message = errorMessage
   dialog.observeField("buttonSelected", "onPlaybackErrorButtonSelected")
   dialog.observeField("wasClosed", "onPlaybackErrorDialogClosed")
@@ -600,7 +601,7 @@ sub onVideoContentLoaded()
     if isValidAndNotEmpty(taskErrorMsg)
       showPlaybackErrorDialog(taskErrorMsg)
     else
-      showPlaybackErrorDialog(translate("ErrorThereWasAnErrorRetrievingThe"))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
     end if
     return
   end if
@@ -768,7 +769,7 @@ sub populateChapterMenu()
 
   if not isValidAndNotEmpty(m.chapters)
     chapterItem = CreateObject("roSGNode", "ContentNode")
-    chapterItem.title = translate("LabelNoChapterDataFound")
+    chapterItem.title = translate(translationKeys.LabelNoChapterDataFound)
     chapterItem.playstart = m.playbackEnum.null
     m.chapterContent.appendChild(chapterItem)
     return
@@ -828,7 +829,7 @@ sub updateNextEpisodeCount()
   if nextEpisodeCountdown < 0
     nextEpisodeCountdown = 0
   end if
-  m.nextEpisodeButton.text = translate("LabelNextEpisode") + " " + nextEpisodeCountdown.toStr().trim()
+  m.nextEpisodeButton.text = translate(translationKeys.LabelNextEpisode) + " " + nextEpisodeCountdown.toStr().trim()
 end sub
 
 ' Hide the Next Episode notification
@@ -1217,7 +1218,7 @@ sub onState()
         m.trickplayCarousel.visible = false
       end if
       stopLoadingSpinner()
-      showPlaybackErrorDialog(translate("ErrorDuringPlayback"))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorDuringPlayback))
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
@@ -1323,7 +1324,7 @@ sub bufferCheck()
       m.top.callFunc("refresh")
     else
       ' If buffering has stopped Display dialog
-      showPlaybackErrorDialog(translate("ErrorThereWasAnErrorRetrievingThe"))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
 
       ' Stop playback and exit player
       m.top.control = "stop"

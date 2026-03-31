@@ -688,7 +688,7 @@ class JellyfinDataTransformer
       ' integer responses (isValidAndNotEmpty() rejects non-string primitives).
       chanNumStr = (apiData.Number ?? "").toStr().trim()
       if chanNumStr <> ""
-        return translate("LabelCh") + " " + chanNumStr
+        return translate(translationKeys.LabelCh) + " " + chanNumStr
       end if
       return ""
 
@@ -701,7 +701,7 @@ class JellyfinDataTransformer
       chanNumStr = (apiData.ChannelNumber ?? "").toStr().trim()
       chanName = apiData.ChannelName ?? ""
       parts = []
-      if chanNumStr <> "" then parts.push(translate("LabelCh") + " " + chanNumStr)
+      if chanNumStr <> "" then parts.push(translate(translationKeys.LabelCh) + " " + chanNumStr)
       if isValidAndNotEmpty(chanName) then parts.push(chanName)
       return parts.join(" - ")
 

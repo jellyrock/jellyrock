@@ -4,6 +4,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.log = log.Logger("AudioPlayerView")
@@ -487,7 +488,7 @@ end sub
 sub setTrackNumberDisplay()
   position = stri(m.queueManager.callFunc("getPosition") + 1).trim()
   count = stri(m.queueManager.callFunc("getCount")).trim()
-  setFieldTextValue("numberofsongs", translate("LabelTrack") + " " + translate("Message1Of2", [position, count]))
+  setFieldTextValue("numberofsongs", translate(translationKeys.LabelTrack) + " " + translate(translationKeys.Message1Of2, [position, count]))
 end sub
 
 sub LoadNextSong()

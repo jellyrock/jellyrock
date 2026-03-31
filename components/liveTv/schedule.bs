@@ -1,6 +1,7 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.log = log.Logger("Schedule")
@@ -60,7 +61,7 @@ end sub
 sub channelsearchTermSet()
   m.scheduleGrid.jumpToChannel = 0
   'Reset filter if user says all
-  if LCase(m.top.searchTerm) = LCase(translate("LabelAll")) or m.LoadChannelsTask.searchTerm = LCase(translate("LabelAll"))
+  if LCase(m.top.searchTerm) = LCase(translate(translationKeys.LabelAll)) or m.LoadChannelsTask.searchTerm = LCase(translate(translationKeys.LabelAll))
     m.top.searchTerm = " "
     m.LoadChannelsTask.searchTerm = " "
     startLoadingSpinner()

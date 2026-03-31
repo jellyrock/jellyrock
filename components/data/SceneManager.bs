@@ -1,6 +1,7 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.log = log.Logger("SceneManager")
@@ -73,7 +74,7 @@ end sub
 sub popScene()
   ' If this is the last scene on the stack, show exit confirmation instead of immediately exiting
   if m.groups.count() <= 1
-    optionDialog(translate("LabelExitJellyrock"), [translate("MessageAreYouSureYouWantTo")], [translate("ButtonCancel"), translate("ButtonExit")])
+    optionDialog(translate(translationKeys.LabelExitJellyrock), [translate(translationKeys.MessageAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonExit)])
     m.top.pendingExitConfirmation = true
     return
   end if
@@ -265,7 +266,7 @@ sub userMessage(title as string, message as string)
   dialog = createObject("roSGNode", "StandardMessageDialog")
   dialog.title = title
   dialog.message = message
-  dialog.buttons = [translate("ButtonOk")]
+  dialog.buttons = [translate(translationKeys.ButtonOk)]
   dialog.observeField("buttonSelected", "dismissDialog")
   m.scene.dialog = dialog
 end sub
@@ -288,7 +289,7 @@ sub standardDialog(title, message)
   dialog.observeField("buttonSelected", "dismissDialog")
   dialog.title = title
   dialog.contentData = message
-  dialog.buttons = [translate("ButtonOk")]
+  dialog.buttons = [translate(translationKeys.ButtonOk)]
 
   m.scene.dialog = dialog
 end sub
@@ -311,7 +312,7 @@ sub radioDialog(title, message)
   dialog.observeField("buttonSelected", "dismissDialog")
   dialog.title = title
   dialog.contentData = message
-  dialog.buttons = [translate("ButtonOk")]
+  dialog.buttons = [translate(translationKeys.ButtonOk)]
 
   m.scene.dialog = dialog
 end sub

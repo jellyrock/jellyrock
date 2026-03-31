@@ -1,4 +1,5 @@
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.top.layoutDirection = "horiz"
@@ -6,7 +7,7 @@ sub init()
 
   m.keyboard = m.top.findNode("keyboard")
   m.keyboard.keyGrid.keyDefinitionUri = "pkg:/components/data/CustomAddressKDF.json"
-  m.keyboard.textEditBox.hintText = translate("LabelSearchLanguages")
+  m.keyboard.textEditBox.hintText = translate(translationKeys.LabelSearchLanguages)
   m.keyboard.observeField("text", "onFilterChanged")
 
   m.resultsList = m.top.findNode("resultsList")
@@ -91,7 +92,7 @@ end sub
 ' Format a language entry for display
 function formatLanguageTitle(lang as object) as string
   if lang.code = ""
-    return translate("LabelAutomatic")
+    return translate(translationKeys.LabelAutomatic)
   else if lang.nativeName = lang.name
     return lang.nativeName
   end if

@@ -16,6 +16,7 @@ import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/Subtitles.bs"
 import "pkg:/source/utils/trickplay.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.top.functionName = "loadItems"
@@ -270,7 +271,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audio_stream_idx, subtitle_idx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
   if not isValid(m.playbackInfo)
     m.log.error("ItemPostPlaybackInfo returned invalid response")
-    m.top.errorMsg = translate("ErrorThereWasAnErrorRetrievingPlayback")
+    m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
     video.content = invalid
     return
   end if
@@ -280,9 +281,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     errorCode = m.playbackInfo.ErrorCode
     m.log.error("PlaybackInfo returned error code", "errorCode", errorCode, "itemId", video.id)
     if errorCode = "NoCompatibleStream"
-      m.top.errorMsg = translate("LabelNoCompatibleStreamsAreAvailableFor")
+      m.top.errorMsg = translate(translationKeys.LabelNoCompatibleStreamsAreAvailableFor)
     else
-      m.top.errorMsg = translate("ErrorTheServerWasUnableToStart") + " (" + errorCode + ")"
+      m.top.errorMsg = translate(translationKeys.ErrorTheServerWasUnableToStart) + " (" + errorCode + ")"
     end if
     video.content = invalid
     return
@@ -384,7 +385,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
       ' Server did not provide a transcode URL — surface a message to the user via the task field
       ' so VideoPlayerView shows one dialog (not two).
       m.log.error("Server did not provide a TranscodingUrl", "itemId", video.id)
-      m.top.errorMsg = translate("ErrorAnErrorWasEncounteredWhilePlaying")
+      m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
       video.content = invalid
       return
     end if

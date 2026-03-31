@@ -20,6 +20,7 @@ import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.log = log.Logger("BaseGridView")
@@ -53,7 +54,7 @@ sub init()
   m.voiceBox.voiceEnabled = true
   m.voiceBox.active = true
   m.voiceBox.observeField("text", "onVoiceFilter")
-  m.voiceBox.hintText = translate("LabelUseVoiceRemoteToSearch")
+  m.voiceBox.hintText = translate(translationKeys.LabelUseVoiceRemoteToSearch)
 
   ' Sort/filter defaults
   m.sortField = "SortName"
@@ -506,7 +507,7 @@ sub ItemDataLoaded(msg)
   ' If there are no items to display, show message
   if m.loadedItems = 0
     m.presentationInfo.visible = false
-    m.emptyText.text = translate("LabelNoItems", [m.top.parentItem.type])
+    m.emptyText.text = translate(translationKeys.LabelNoItems, [m.top.parentItem.type])
     m.emptyText.visible = true
   end if
 
@@ -1056,41 +1057,41 @@ sub updateTitle()
   m.top.overhangTitle = m.top.parentItem.title
 
   if m.filter = "Favorites"
-    m.top.overhangTitle = m.top.parentItem.title + " " + translate("LabelFavorites")
+    m.top.overhangTitle = m.top.parentItem.title + " " + translate(translationKeys.LabelFavorites)
   end if
 
   ' Voice search and alpha filters take precedence over view-specific titles
   ' Check trim() to avoid showing "(Filtered by )" with empty/whitespace values
   if m.voiceBox.text.trim() <> ""
-    m.top.overhangTitle = translate("MessageFilteredBy", [m.top.parentItem.title, m.voiceBox.text])
+    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.voiceBox.text])
     return
   end if
 
   if m.loadItemsTask.nameStartsWith.trim() <> ""
-    m.top.overhangTitle = translate("MessageFilteredBy", [m.top.parentItem.title, m.loadItemsTask.nameStartsWith])
+    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.loadItemsTask.nameStartsWith])
     return
   end if
 
   ' View-specific titles (only when no active filters)
   lowerView = LCase(m.view)
   if lowerView = "networks"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate("LabelNetworks"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelNetworks))
   else if lowerView = "studios"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate("LabelStudios"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelStudios))
   else if lowerView = "genres"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate("LabelGenres"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelGenres))
   else if lowerView = "artistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate("LabelArtists"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelArtists))
   else if lowerView = "albumartistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate("LabelAlbumArtists"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbumArtists))
   else if lowerView = "albums"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate("LabelAlbums"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbums))
   end if
 
   ' Add item count if enabled
   actInt = m.itemGrid.itemFocused + 1
   if m.showItemCount and m.loadItemsTask.totalRecordCount > 0 and lowerView <> "genres"
-    m.top.overhangTitle += " (" + translate("Message1Of2", [actInt.toStr(), m.loadItemsTask.totalRecordCount.toStr()]) + ")"
+    m.top.overhangTitle += " (" + translate(translationKeys.Message1Of2, [actInt.toStr(), m.loadItemsTask.totalRecordCount.toStr()]) + ")"
   end if
 end sub
 

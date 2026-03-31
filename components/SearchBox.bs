@@ -6,6 +6,7 @@ import "pkg:/source/api/Items.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.top.layoutDirection = "vert"
@@ -13,7 +14,7 @@ sub init()
   m.top.vertAlignment = "top"
   m.top.visible = false
   m.searchText = m.top.findNode("search_Key")
-  m.searchText.textEditBox.hintText = translate("ButtonSearch")
+  m.searchText.textEditBox.hintText = translate(translationKeys.ButtonSearch)
   m.searchText.keyGrid.keyDefinitionUri = "pkg:/components/data/CustomAddressKDF.json"
   m.searchText.textEditBox.voiceEnabled = true
   m.searchText.textEditBox.active = true
@@ -22,7 +23,7 @@ sub init()
 
   'set lable text
   m.label = m.top.findNode("text")
-  m.label.text = translate("LabelSearchNow")
+  m.label.text = translate(translationKeys.LabelSearchNow)
 
 end sub
 

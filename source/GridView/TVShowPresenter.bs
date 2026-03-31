@@ -32,9 +32,9 @@ class TVShowPresenter extends GridPresenterBase
 
     ' TV show views
     options.views = [
-      { "Title": translate("LabelShows"), "Name": "Shows" },
-      { "Title": translate("LabelNetworks"), "Name": "Networks" },
-      { "Title": translate("LabelGenres"), "Name": "Genres" }
+      { "Title": translate(translationKeys.LabelShows), "Name": "Shows" },
+      { "Title": translate(translationKeys.LabelNetworks), "Name": "Networks" },
+      { "Title": translate(translationKeys.LabelGenres), "Name": "Genres" }
     ]
 
     ' Sort options vary by view - get current view from presenter's view reference
@@ -46,26 +46,26 @@ class TVShowPresenter extends GridPresenterBase
     if viewLower = "genres"
       ' Genre view only has title sort
       options.sort = [
-        { "Title": translate("LabelTitle"), "Name": "SortName" }
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" }
       ]
       options.filter = []
     else
       ' Standard TV show sort options
       options.sort = [
-        { "Title": translate("LabelTitle"), "Name": "SortName" },
-        { "Title": translate("LabelRandom"), "Name": "Random" },
-        { "Title": translate("LabelImdbRating"), "Name": "CommunityRating,SortName" },
-        { "Title": translate("LabelDateShowAdded"), "Name": "DateCreated,SortName" },
-        { "Title": translate("LabelDateEpisodeAdded"), "Name": "DateLastContentAdded,SortName" },
-        { "Title": translate("LabelDatePlayed"), "Name": "SeriesDatePlayed,SortName" },
-        { "Title": translate("LabelOfficialRating"), "Name": "OfficialRating,SortName" },
-        { "Title": translate("LabelReleaseDate"), "Name": "PremiereDate,SortName" }
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" },
+        { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating,SortName" },
+        { "Title": translate(translationKeys.LabelDateShowAdded), "Name": "DateCreated,SortName" },
+        { "Title": translate(translationKeys.LabelDateEpisodeAdded), "Name": "DateLastContentAdded,SortName" },
+        { "Title": translate(translationKeys.LabelDatePlayed), "Name": "SeriesDatePlayed,SortName" },
+        { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating,SortName" },
+        { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate,SortName" }
       ]
       options.filter = [
-        { "Title": translate("LabelAll2"), "Name": "All" },
-        { "Title": translate("LabelFavorites2"), "Name": "Favorites" },
-        { "Title": translate("LabelPlayed"), "Name": "Played" },
-        { "Title": translate("LabelUnplayed"), "Name": "Unplayed" }
+        { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" },
+        { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
+        { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
       ]
     end if
 

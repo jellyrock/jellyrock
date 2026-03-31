@@ -2,6 +2,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 sub init()
   m.log = log.Logger("PhotoDetails")
@@ -139,14 +140,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
     if m.slideshowTimer.control = "start"
       ' stop the slideshow if the user hits "pause"
       m.slideshowTimer.control = "stop"
-      m.status.text = translate("LabelSlideshowPaused")
+      m.status.text = translate(translationKeys.LabelSlideshowPaused)
       if m.textBackground.opacity = 0
         m.showStatusAnimation.control = "start"
       end if
       m.statusTimer.control = "start"
     else
       ' start the slideshow if the user hits "play"
-      m.status.text = translate("LabelSlideshowResumed")
+      m.status.text = translate(translationKeys.LabelSlideshowResumed)
       if m.textBackground.opacity = 0
         m.showStatusAnimation.control = "start"
       end if

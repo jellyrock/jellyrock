@@ -1,4 +1,5 @@
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 sub init()
   m.name = m.top.findNode("label")
   m.value = m.top.findNode("value")
@@ -9,7 +10,7 @@ sub init()
   m.name.vertAlign = "center"
   m.name.horizAlign = "center"
 
-  m.value.hintText = translate("LabelEnterAUsername")
+  m.value.hintText = translate(translationKeys.LabelEnterAUsername)
   m.value.maxTextLength = 120
 end sub
 
@@ -18,7 +19,7 @@ sub itemContentChanged()
 
   m.name.text = data.label
   if data.type = "password"
-    m.value.hintText = translate("LabelEnterAPassword")
+    m.value.hintText = translate(translationKeys.LabelEnterAPassword)
     m.value.secureMode = true
   end if
 

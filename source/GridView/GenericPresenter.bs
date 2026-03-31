@@ -31,26 +31,26 @@ class GenericPresenter extends GridPresenterBase
       ' Boxset-specific options with Folders sort
       return {
         views: [
-          { "Title": translate("LabelDefault"), "Name": "default" }
+          { "Title": translate(translationKeys.LabelDefault), "Name": "default" }
         ],
         sort: [
-          { "Title": translate("LabelTitle"), "Name": "SortName" },
-          { "Title": translate("LabelRandom"), "Name": "Random" },
-          { "Title": translate("LabelImdbRating"), "Name": "CommunityRating" },
-          { "Title": translate("LabelCriticRating"), "Name": "CriticRating" },
-          { "Title": translate("LabelDateAdded"), "Name": "DateCreated" },
-          { "Title": translate("LabelDatePlayed"), "Name": "DatePlayed" },
-          { "Title": translate("LabelFolders"), "Name": "IsFolder,SortName" },
-          { "Title": translate("LabelOfficialRating"), "Name": "OfficialRating" },
-          { "Title": translate("LabelPlayCount"), "Name": "PlayCount" },
-          { "Title": translate("LabelReleaseDate"), "Name": "PremiereDate" },
-          { "Title": translate("LabelRuntime"), "Name": "Runtime" }
+          { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+          { "Title": translate(translationKeys.LabelRandom), "Name": "Random" },
+          { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
+          { "Title": translate(translationKeys.LabelCriticRating), "Name": "CriticRating" },
+          { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+          { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+          { "Title": translate(translationKeys.LabelFolders), "Name": "IsFolder,SortName" },
+          { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
+          { "Title": translate(translationKeys.LabelPlayCount), "Name": "PlayCount" },
+          { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
+          { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" }
         ],
         filter: [
-          { "Title": translate("LabelAll2"), "Name": "All" },
-          { "Title": translate("LabelFavorites2"), "Name": "Favorites" },
-          { "Title": translate("LabelPlayed"), "Name": "Played" },
-          { "Title": translate("LabelUnplayed"), "Name": "Unplayed" }
+          { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+          { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" },
+          { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
+          { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
         ]
       }
     end if
@@ -58,17 +58,17 @@ class GenericPresenter extends GridPresenterBase
     ' Default generic options
     return {
       views: [
-        { "Title": translate("LabelDefault"), "Name": "default" }
+        { "Title": translate(translationKeys.LabelDefault), "Name": "default" }
       ],
       sort: [
-        { "Title": translate("LabelTitle"), "Name": "SortName" },
-        { "Title": translate("LabelDateAdded"), "Name": "DateCreated" },
-        { "Title": translate("LabelDatePlayed"), "Name": "DatePlayed" },
-        { "Title": translate("LabelRandom"), "Name": "Random" }
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ],
       filter: [
-        { "Title": translate("LabelAll2"), "Name": "All" },
-        { "Title": translate("LabelFavorites2"), "Name": "Favorites" }
+        { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" }
       ]
     }
   end function
