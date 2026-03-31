@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="JROverhangIcon" extends="Group" focusable="true">
+  <children>
+    <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+    <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+    <Poster id="buttonIcon" width="42" height="42" loadWidth="42" loadHeight="42" loadDisplayMode="limitSize" />
+  </children>
+  <interface>
+    <!-- Input -->
+    <field id="icon" type="string" onChange="onIconChanged" />
+    <field id="actionId" type="string" />
+
+    <!-- Output -->
+    <field id="selectedAction" type="string" alwaysNotify="true" />
+    <field id="requestFocusExit" type="string" alwaysNotify="true" />
+    <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
+  </interface>
+</component>

@@ -21,6 +21,29 @@ sub init()
   ' Reposition dropdown when trigger button width changes (e.g., username change while clock is hidden)
   m.userDropdown.observeField("triggerWidth", "onDropdownTriggerWidthChanged")
 
+  ' Create overhang icon buttons (search and settings shortcuts)
+  m.searchIcon = CreateObject("roSGNode", "JROverhangIcon")
+  m.searchIcon.id = "searchIcon"
+  m.searchIcon.icon = "pkg:/images/icons/search.png"
+  m.searchIcon.actionId = "goto_search"
+  m.searchIcon.visible = false
+  m.top.appendChild(m.searchIcon)
+
+  m.settingsIcon = CreateObject("roSGNode", "JROverhangIcon")
+  m.settingsIcon.id = "settingsIcon"
+  m.settingsIcon.icon = "pkg:/images/icons/settings.png"
+  m.settingsIcon.actionId = "settings"
+  m.settingsIcon.visible = false
+  m.top.appendChild(m.settingsIcon)
+
+  ' Observe icon actions — proxy to overhang-level iconAction field
+  m.searchIcon.observeField("selectedAction", "onIconAction")
+  m.settingsIcon.observeField("selectedAction", "onIconAction")
+
+  ' Observe icon focus exit signals for focus bridging
+  m.searchIcon.observeField("requestFocusExit", "onSearchIconRequestsFocusExit")
+  m.settingsIcon.observeField("requestFocusExit", "onSettingsIconRequestsFocusExit")
+
   ' Position dropdown so trigger text aligns vertically with overhang title/tabs.
   ' The trigger button has 30px padding, so offset the dropdown upward to compensate.
   positionUserDropdown()
@@ -114,6 +137,26 @@ sub currentUserChanged()
       { title: tr("Sign out"), id: "sign_out" }
     ]
   end if
+
+  ' Refresh icon visibility — depends on both currentUser and showIcons
+  updateIconVisibility()
+end sub
+
+' Controls icon visibility. Icons require both showIcons=true (set by the active screen)
+' AND a logged-in user. This lets screens opt in (Home) without icons appearing on
+' screens that only set currentUser (e.g., Settings).
+sub showIconsChanged()
+  updateIconVisibility()
+end sub
+
+sub updateIconVisibility()
+  shouldShow = m.top.showIcons and m.top.currentUser <> ""
+  m.searchIcon.visible = shouldShow
+  m.settingsIcon.visible = shouldShow
+
+  if shouldShow
+    positionOverhangIcons()
+  end if
 end sub
 
 ' Returns the user dropdown reference for direct focus management by screens
@@ -121,43 +164,133 @@ function getUserDropdown() as object
   return m.userDropdown
 end function
 
-' ============================================
-' FOCUS BRIDGING: TAB BAR <-> USER DROPDOWN
-' ============================================
+' Returns the search icon reference for focus return observers
+function getSearchIcon() as object
+  return m.searchIcon
+end function
 
-' Called when tab bar signals RIGHT at last tab — transfer focus to dropdown.
-' Falls back to wrapping to the first tab if the dropdown is not available.
+' Returns the settings icon reference for focus return observers
+function getSettingsIcon() as object
+  return m.settingsIcon
+end function
+
+' Proxies icon selectedAction to the overhang-level iconAction field
+sub onIconAction(msg as object)
+  node = msg.getRoSGNode()
+  m.top.iconAction = node.actionId
+end sub
+
+' ============================================
+' FOCUS BRIDGING: TAB BAR <-> ICONS <-> DROPDOWN
+' ============================================
+' Focus chain (left to right): TabBar → Search → Settings → Dropdown
+' Wraps: TabBar LEFT at first tab → Dropdown, Dropdown RIGHT → TabBar first tab
+
+' Called when tab bar signals at its boundary — route into the icon/dropdown chain.
 sub onTabBarRequestsUserMenu()
-  if isValid(m.userDropdown) and m.userDropdown.visible
-    m.userDropdown.setFocus(true)
-  else if isValid(m.tabBar)
-    ' No dropdown available — wrap based on direction
-    direction = m.tabBar.requestFocusToUserMenu
-    tabCount = m.tabBar.findNode("tabContainer").getChildCount()
-    if direction = "right"
-      m.tabBar.focusedTabIndex = 0
+  direction = m.tabBar.requestFocusToUserMenu
+
+  if direction = "right"
+    ' Last tab → next element rightward: search icon (or dropdown if icons hidden)
+    if m.searchIcon.visible
+      m.searchIcon.setFocus(true)
+    else if isValid(m.userDropdown) and m.userDropdown.visible
+      m.userDropdown.setFocus(true)
     else
+      ' Nothing to the right — wrap to first tab
+      m.tabBar.focusedTabIndex = 0
+    end if
+  else if direction = "left"
+    ' First tab → wrap to rightmost element: dropdown (or settings/search if dropdown hidden)
+    if isValid(m.userDropdown) and m.userDropdown.visible
+      m.userDropdown.setFocus(true)
+    else if m.settingsIcon.visible
+      m.settingsIcon.setFocus(true)
+    else if m.searchIcon.visible
+      m.searchIcon.setFocus(true)
+    else
+      ' Nothing — wrap to last tab
+      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
       m.tabBar.focusedTabIndex = tabCount - 1
     end if
   end if
 end sub
 
-' Called when user dropdown signals LEFT or RIGHT exit — return focus to tab bar
-sub onUserDropdownRequestsTabs()
-  if not isValid(m.tabBar) then return
+' Called when search icon signals LEFT or RIGHT exit
+sub onSearchIconRequestsFocusExit()
+  direction = m.searchIcon.requestFocusExit
 
-  direction = m.userDropdown.requestFocusExit
-  tabCount = m.tabBar.findNode("tabContainer").getChildCount()
-
-  if direction = "right"
-    ' Wrap to first tab
-    m.tabBar.focusedTabIndex = 0
-  else
-    ' Go to last tab
-    m.tabBar.focusedTabIndex = tabCount - 1
+  if direction = "left"
+    ' Search → left: tab bar last tab (or wrap to dropdown if no tabs)
+    if isValid(m.tabBar) and m.tabBar.visible
+      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
+      m.tabBar.focusedTabIndex = tabCount - 1
+      m.tabBar.setFocus(true)
+    else if isValid(m.userDropdown) and m.userDropdown.visible
+      m.userDropdown.setFocus(true)
+    else if m.settingsIcon.visible
+      m.settingsIcon.setFocus(true)
+    end if
+  else if direction = "right"
+    ' Search → right: settings icon
+    if m.settingsIcon.visible
+      m.settingsIcon.setFocus(true)
+    else if isValid(m.userDropdown) and m.userDropdown.visible
+      m.userDropdown.setFocus(true)
+    end if
   end if
+end sub
 
-  m.tabBar.setFocus(true)
+' Called when settings icon signals LEFT or RIGHT exit
+sub onSettingsIconRequestsFocusExit()
+  direction = m.settingsIcon.requestFocusExit
+
+  if direction = "left"
+    ' Settings → left: search icon
+    if m.searchIcon.visible
+      m.searchIcon.setFocus(true)
+    else if isValid(m.tabBar) and m.tabBar.visible
+      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
+      m.tabBar.focusedTabIndex = tabCount - 1
+      m.tabBar.setFocus(true)
+    end if
+  else if direction = "right"
+    ' Settings → right: dropdown
+    if isValid(m.userDropdown) and m.userDropdown.visible
+      m.userDropdown.setFocus(true)
+    else if isValid(m.tabBar) and m.tabBar.visible
+      m.tabBar.focusedTabIndex = 0
+      m.tabBar.setFocus(true)
+    end if
+  end if
+end sub
+
+' Called when user dropdown signals LEFT or RIGHT exit
+sub onUserDropdownRequestsTabs()
+  direction = m.userDropdown.requestFocusExit
+
+  if direction = "left"
+    ' Dropdown → left: settings icon (or search, or tab bar)
+    if m.settingsIcon.visible
+      m.settingsIcon.setFocus(true)
+    else if m.searchIcon.visible
+      m.searchIcon.setFocus(true)
+    else if isValid(m.tabBar) and m.tabBar.visible
+      tabCount = m.tabBar.findNode("tabContainer").getChildCount()
+      m.tabBar.focusedTabIndex = tabCount - 1
+      m.tabBar.setFocus(true)
+    end if
+  else if direction = "right"
+    ' Dropdown → right: wrap to tab bar first tab (or search if no tabs)
+    if isValid(m.tabBar) and m.tabBar.visible
+      m.tabBar.focusedTabIndex = 0
+      m.tabBar.setFocus(true)
+    else if m.searchIcon.visible
+      m.searchIcon.setFocus(true)
+    else if m.settingsIcon.visible
+      m.settingsIcon.setFocus(true)
+    end if
+  end if
 end sub
 
 ' ============================================
@@ -209,6 +342,35 @@ sub positionUserDropdown()
   end if
 
   m.userDropdown.translation = [xPos, yPos]
+
+  ' Reposition icons relative to the dropdown whenever it moves
+  if m.searchIcon.visible
+    positionOverhangIcons()
+  end if
+end sub
+
+' Positions the search and settings icons to the left of the user dropdown
+' with equal spacing between all three elements (search, settings, dropdown).
+sub positionOverhangIcons()
+  if not isValid(m.searchIcon) or not isValid(m.settingsIcon) then return
+  if not isValid(m.userDropdown) then return
+
+  iconSize = 66 ' Must match OVERHANG_ICON_SIZE in JROverhangIcon.bs
+  gap = 24 ' Equal spacing between elements
+
+  ' Anchor from the dropdown's visible left edge.
+  ' The dropdown's translation already includes its own padding offset
+  ' (set by positionUserDropdown), and the buttonBackground starts at [0,0]
+  ' within the dropdown, so translation[0] IS the visible button edge.
+  dropdownX = m.userDropdown.translation[0]
+  dropdownPadding = m.userDropdown.padding
+  yPos = 54 - dropdownPadding ' Aligns with dropdown (54 is the overhang baseline)
+
+  settingsX = dropdownX - gap - iconSize
+  searchX = settingsX - gap - iconSize
+
+  m.settingsIcon.translation = [settingsX, yPos]
+  m.searchIcon.translation = [searchX, yPos]
 end sub
 
 ' component boolean field isVisible has changed value

@@ -633,6 +633,14 @@ sub OnScreenShown()
 
   overhang.isLogoVisible = true
   overhang.currentUser = m.global.user.name
+
+  ' Ensure settings menu has focus every time this screen is shown.
+  ' init() calls setFocus before the node is in the scene graph (silently fails),
+  ' and SceneManager's fallback focuses the Group, not settingsMenu — breaking
+  ' all BACK key handling since onKeyEvent checks settingsMenu.focusedChild.
+  if isValid(m.settingsMenu)
+    m.settingsMenu.setFocus(true)
+  end if
 end sub
 
 ' JRScreen hook that gets ran as needed.
