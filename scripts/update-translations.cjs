@@ -23,13 +23,21 @@ const SOURCE_PATTERNS = [
   '!out/**'
 ];
 
-// Extract translate("Key") and translate("Key", [...]) calls
+// Extract translation keys from code — supports both patterns:
+// - translate(translationKeys.Key) — compile-time safe constant references
+// - translate("Key") — dynamic string calls (settings.bs, etc.)
 function extractTranslateKeys(code) {
   const keys = new Set();
-
-  // Match translate("Key") and translate("Key", ...)
-  const translateRegex = /\btranslate\(\s*"([^"]+)"/g;
   let match;
+
+  // Match translate(translationKeys.Key) and translate(translationKeys.Key, ...)
+  const constRegex = /\btranslate\(\s*translationKeys\.(\w+)/g;
+  while ((match = constRegex.exec(code)) !== null) {
+    keys.add(match[1]);
+  }
+
+  // Match translate("Key") and translate("Key", ...) — dynamic string calls
+  const translateRegex = /\btranslate\(\s*"([^"]+)"/g;
   while ((match = translateRegex.exec(code)) !== null) {
     keys.add(match[1]);
   }
@@ -43,7 +51,20 @@ function extractTranslateKeys(code) {
     keys.add(baseKey + 'Many');
   }
 
-  // Match titleKey: "Key" and descriptionKey: "Key" in hardcoded objects
+  // Match translationKeys.Key anywhere (covers comments, return values, etc.)
+  // Requires PascalCase key (uppercase start) to avoid matching import paths like translationKeys.bs
+  const refRegex = /\btranslationKeys\.([A-Z]\w*)/g;
+  while ((match = refRegex.exec(code)) !== null) {
+    keys.add(match[1]);
+  }
+
+  // Match titleKey: translationKeys.Key (compile-time safe settings objects)
+  const constPropRegex = /\b(?:titleKey|descriptionKey):\s*translationKeys\.(\w+)/g;
+  while ((match = constPropRegex.exec(code)) !== null) {
+    keys.add(match[1]);
+  }
+
+  // Match titleKey: "Key" and descriptionKey: "Key" (dynamic string objects)
   const keyPropRegex = /\b(?:titleKey|descriptionKey):\s*"([^"]+)"/g;
   while ((match = keyPropRegex.exec(code)) !== null) {
     keys.add(match[1]);
