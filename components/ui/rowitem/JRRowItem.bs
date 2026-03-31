@@ -1,9 +1,9 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 ' Vertical gap between the bottom of the poster (= bottom of the RowList focus ring)
 ' and the first text label. Prevents the focus border from overlapping the title.
