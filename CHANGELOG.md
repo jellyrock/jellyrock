@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add search and settings icon buttons to overhang ([#438](https://github.com/jellyrock/jellyrock/pull/438))
 - add user dropdown to overhang ([#437](https://github.com/jellyrock/jellyrock/pull/437))
 - add Reset User Settings button ([#436](https://github.com/jellyrock/jellyrock/pull/436))
 
