@@ -127,6 +127,9 @@ sub OnScreenShown()
   '    lastFocus walk can't find them.
   ' 2. SceneManager's lastFocus (normal in-group focus restoration).
   ' 3. Active content (fallback).
+  ' Reset overhang element tracking so the next UP defaults to the active tab
+  m.lastOverhangElement = invalid
+
   if isValid(m.lastOverhangFocus)
     m.lastOverhangFocus.setFocus(true)
     m.lastOverhangFocus = invalid
@@ -289,11 +292,20 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  ' UP at top of content → focus the tab bar in the overhang
+  ' UP at top of content → focus the overhang.
+  ' First entry after screen show defaults to the tab bar (active tab).
+  ' Subsequent entries restore the last overhang element the user was on.
   if key = "up"
     activeRows = getActiveRows()
     rowItemFocused = activeRows?.rowItemFocused
     if isValid(activeRows) and type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0
+      ' Restore last overhang element if the user has visited before
+      if isValid(m.lastOverhangElement)
+        m.lastOverhangElement.setFocus(true)
+        return true
+      end if
+
+      ' First visit — default to the tab bar (active tab)
       ' Lazy-init: tab bar may not exist during first OnScreenShown (pushScene
       ' calls OnScreenShown before registerOverhangData creates the tab bar)
       if not isValid(m.tabBar) and isValid(m.overhang)
@@ -316,6 +328,7 @@ end function
 
 ' User dropdown signals DOWN was pressed — return focus to active content
 sub onUserDropdownFocusReturn()
+  m.lastOverhangElement = m.userDropdown
   if isValid(m.activeContent)
     m.activeContent.setFocus(true)
   end if
@@ -362,7 +375,8 @@ sub onOverhangIconAction()
 end sub
 
 ' Overhang icon signals DOWN was pressed — return focus to active content
-sub onIconFocusReturn()
+sub onIconFocusReturn(msg as object)
+  m.lastOverhangElement = msg.getRoSGNode()
   if isValid(m.activeContent)
     m.activeContent.setFocus(true)
   end if
@@ -370,6 +384,7 @@ end sub
 
 ' Tab bar signals DOWN was pressed — return focus to active content
 sub onTabBarFocusReturn()
+  m.lastOverhangElement = m.tabBar
   if isValid(m.activeContent)
     m.activeContent.setFocus(true)
   end if
@@ -408,6 +423,7 @@ sub destroy()
 
   ' Release overhang icon observers
   m.lastOverhangFocus = invalid
+  m.lastOverhangElement = invalid
   if isValid(m.overhang)
     m.overhang.unobserveField("iconAction")
   end if
