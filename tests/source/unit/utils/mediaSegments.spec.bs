@@ -1,0 +1,333 @@
+import "pkg:/source/enums/MediaSegmentAction.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/utils/mediaSegments.bs"
+
+namespace tests
+
+  @suite("mediaSegments.bs - supportsMediaSegments()")
+  class SupportsMediaSegmentsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("version boundary detection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns false for server below 10.10.0")
+    @params("10.9.0")
+    @params("10.9.99")
+    @params("10.8.13")
+    @params("10.0.0")
+    function _(version)
+      m.global.server.version = version
+      m.assertFalse(supportsMediaSegments())
+    end function
+
+    @it("returns true for server at or above 10.10.0")
+    @params("10.10.0")
+    @params("10.10.1")
+    @params("10.11.0")
+    @params("11.0.0")
+    function _(version)
+      m.global.server.version = version
+      m.assertTrue(supportsMediaSegments())
+    end function
+
+    @it("returns false for empty version string")
+    function _()
+      m.global.server.version = ""
+      m.assertFalse(supportsMediaSegments())
+    end function
+
+  end class
+
+  @suite("mediaSegments.bs - resolveSegmentAction()")
+  class ResolveSegmentActionTests extends tests.BaseTestSuite
+
+    ' Helper to create mock user settings
+    private function createMockSettings(overrides = {} as object) as object
+      return overrides
+    end function
+
+    ' Helper to create mock user config
+    private function createMockConfig(overrides = {} as object) as object
+      return overrides
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("built-in defaults when no overrides exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns AskToSkip for Intro when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.intro, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns AskToSkip for Outro when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.outro, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns None for Commercial when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.commercial, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    @it("returns None for Preview when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.preview, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    @it("returns None for Recap when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.recap, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    @it("returns None for Unknown when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.unknown, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyRock override settings take priority")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns Skip when JellyRock override is 'skip'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "skip" })
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.none })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("returns AskToSkip when JellyRock override is 'askToSkip'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionCommercial: "askToSkip" })
+      config = m.createMockConfig({ segmentActionCommercial: MediaSegmentAction.none })
+      result = resolveSegmentAction(MediaSegmentType.commercial, settings, config)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns None when JellyRock override is 'none'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "none" })
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.askToSkip })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("web client config fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses web client config value when JellyRock setting is 'webclient'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "webclient" })
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.skip })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("uses web client config value when JellyRock setting is empty")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionOutro: "" })
+      config = m.createMockConfig({ segmentActionOutro: MediaSegmentAction.skip })
+      result = resolveSegmentAction(MediaSegmentType.outro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("falls back to built-in default when web client config is empty and JellyRock is 'webclient'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "webclient" })
+      config = m.createMockConfig({ segmentActionIntro: "" })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("falls back to built-in default when web client config field is missing")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionRecap: "webclient" })
+      config = m.createMockConfig()
+      result = resolveSegmentAction(MediaSegmentType.recap, settings, config)
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("invalid input handling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns built-in default when both settings and config are invalid")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.intro, invalid, invalid)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns built-in default for non-Intro/Outro when both are invalid")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.commercial, invalid, invalid)
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    @it("uses web client config when settings is invalid")
+    function _()
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.skip })
+      result = resolveSegmentAction(MediaSegmentType.intro, invalid, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("uses built-in default when settings is valid but config is invalid")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "webclient" })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, invalid)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("all 6 segment types tested with override")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("override works for each segment type")
+    @params("Intro", "playbackSegmentActionIntro")
+    @params("Outro", "playbackSegmentActionOutro")
+    @params("Commercial", "playbackSegmentActionCommercial")
+    @params("Preview", "playbackSegmentActionPreview")
+    @params("Recap", "playbackSegmentActionRecap")
+    @params("Unknown", "playbackSegmentActionUnknown")
+    function _(segmentType, settingKey)
+      settings = {}
+      settings[settingKey] = "skip"
+      result = resolveSegmentAction(segmentType, settings, m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+  end class
+
+  @suite("mediaSegments.bs - findActiveSegment()")
+  class FindActiveSegmentTests extends tests.BaseTestSuite
+
+    ' Helper to create a segment (ticks = seconds * 10000000)
+    private function createSegment(id as string, segType as string, startSeconds as float, endSeconds as float) as object
+      return {
+        Id: id,
+        Type: segType,
+        StartTicks: startSeconds * 10000000,
+        EndTicks: endSeconds * 10000000
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("segment detection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns segment when position is inside it")
+    function _()
+      segments = [m.createSegment("seg1", "Intro", 5.0, 30.0)]
+      result = findActiveSegment(segments, 15.0)
+      m.assertNotInvalid(result)
+      m.assertEqual(result.Id, "seg1")
+    end function
+
+    @it("returns segment at start boundary (inclusive)")
+    function _()
+      segments = [m.createSegment("seg1", "Intro", 10.0, 40.0)]
+      result = findActiveSegment(segments, 10.0)
+      m.assertNotInvalid(result)
+      m.assertEqual(result.Id, "seg1")
+    end function
+
+    @it("returns invalid at end boundary (exclusive)")
+    function _()
+      segments = [m.createSegment("seg1", "Intro", 10.0, 40.0)]
+      result = findActiveSegment(segments, 40.0)
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when position is before all segments")
+    function _()
+      segments = [m.createSegment("seg1", "Intro", 30.0, 60.0)]
+      result = findActiveSegment(segments, 5.0)
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when position is after all segments")
+    function _()
+      segments = [m.createSegment("seg1", "Intro", 10.0, 40.0)]
+      result = findActiveSegment(segments, 50.0)
+      m.assertInvalid(result)
+    end function
+
+    @it("returns correct segment when multiple segments exist")
+    function _()
+      segments = [
+        m.createSegment("intro", "Intro", 5.0, 30.0),
+        m.createSegment("outro", "Outro", 1200.0, 1260.0)
+      ]
+      result = findActiveSegment(segments, 1230.0)
+      m.assertNotInvalid(result)
+      m.assertEqual(result.Id, "outro")
+    end function
+
+    @it("returns invalid for empty segments array")
+    function _()
+      result = findActiveSegment([], 10.0)
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when segments is invalid")
+    function _()
+      result = findActiveSegment(invalid, 10.0)
+      m.assertInvalid(result)
+    end function
+
+    @it("returns first matching segment when position is in overlap")
+    function _()
+      segments = [
+        m.createSegment("seg1", "Intro", 10.0, 40.0),
+        m.createSegment("seg2", "Commercial", 30.0, 60.0)
+      ]
+      ' Position 35 is inside both segments - first one wins
+      result = findActiveSegment(segments, 35.0)
+      m.assertNotInvalid(result)
+      m.assertEqual(result.Id, "seg1")
+    end function
+
+  end class
+
+  @suite("mediaSegments.bs - segmentTicksToSeconds()")
+  class SegmentTicksToSecondsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("tick conversion")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts ticks to seconds correctly")
+    function _()
+      result = segmentTicksToSeconds(300000000)
+      m.assertEqual(result, 30.0)
+    end function
+
+    @it("converts zero ticks")
+    function _()
+      result = segmentTicksToSeconds(0)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("returns 0 for invalid ticks")
+    function _()
+      result = segmentTicksToSeconds(invalid)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("handles large tick values (2 hours)")
+    function _()
+      result = segmentTicksToSeconds(72000000000&)
+      m.assertEqual(result, 7200.0)
+    end function
+
+  end class
+
+end namespace

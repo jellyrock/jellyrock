@@ -1,0 +1,88 @@
+import "pkg:/source/enums/MediaSegmentAction.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/utils/misc.bs"
+
+' supportsMediaSegments: Checks if the connected Jellyfin server supports the MediaSegments API.
+'
+' The /MediaSegments/{itemId} endpoint was introduced in Jellyfin 10.10.0.
+' Servers below 10.10.0 do not have this endpoint and will return 404.
+'
+' @returns {boolean} - true if server supports media segments
+function supportsMediaSegments() as boolean
+  return versionChecker(m.global.server.version, "10.10.0")
+end function
+
+' resolveSegmentAction: Resolves the action to take for a given media segment type.
+'
+' Checks JellyRock per-type override setting first, then falls back to web client
+' DisplayPreferences CustomPrefs value, then falls back to built-in defaults.
+'
+' Built-in defaults (matching Jellyfin web client):
+'   Intro = AskToSkip, Outro = AskToSkip, all others = None
+'
+' @param {string} segmentType - MediaSegmentType value ("Intro", "Outro", etc.)
+' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
+' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
+' @returns {string} - MediaSegmentAction value ("None", "AskToSkip", "Skip")
+function resolveSegmentAction(segmentType as string, userSettings as object, userConfig as object) as string
+  ' Built-in defaults matching web client
+  if segmentType = MediaSegmentType.intro or segmentType = MediaSegmentType.outro
+    defaultValue = MediaSegmentAction.askToSkip
+  else
+    defaultValue = MediaSegmentAction.none
+  end if
+
+  ' Try web client setting from config node (loaded from DisplayPreferences CustomPrefs)
+  configFieldKey = "segmentAction" + segmentType
+  if isValid(userConfig) and isValid(userConfig[configFieldKey]) and userConfig[configFieldKey] <> ""
+    defaultValue = userConfig[configFieldKey]
+  end if
+
+  ' Check for JellyRock override setting
+  settingKey = "playbackSegmentAction" + segmentType
+  if isValid(userSettings) and isValid(userSettings[settingKey]) and userSettings[settingKey] <> ""
+    overrideValue = userSettings[settingKey]
+    if overrideValue = "skip"
+      return MediaSegmentAction.skip
+    else if overrideValue = "askToSkip"
+      return MediaSegmentAction.askToSkip
+    else if overrideValue = "none"
+      return MediaSegmentAction.none
+    end if
+    ' "webclient" or unrecognized -> fall through to web client value
+  end if
+
+  return defaultValue
+end function
+
+' findActiveSegment: Finds the media segment containing the current playback position.
+'
+' Linear scan over the segments array (typically 2-5 items).
+' Returns the first segment where StartTicks <= position < EndTicks.
+'
+' @param {array} segments - Array of MediaSegmentDto objects ({Id, Type, StartTicks, EndTicks})
+' @param {float} positionSeconds - Current playback position in seconds
+' @returns {dynamic} - The active MediaSegmentDto or invalid if not inside any segment
+function findActiveSegment(segments as object, positionSeconds as float) as dynamic
+  if not isValid(segments) then return invalid
+
+  for each segment in segments
+    startSeconds = segmentTicksToSeconds(segment.StartTicks)
+    endSeconds = segmentTicksToSeconds(segment.EndTicks)
+
+    if positionSeconds >= startSeconds and positionSeconds < endSeconds
+      return segment
+    end if
+  end for
+
+  return invalid
+end function
+
+' segmentTicksToSeconds: Converts Jellyfin ticks (100-nanosecond units) to seconds.
+'
+' @param {dynamic} ticks - Tick count (10,000,000 ticks = 1 second)
+' @returns {float} - Position in seconds
+function segmentTicksToSeconds(ticks as dynamic) as float
+  if not isValid(ticks) then return 0
+  return ticks / 10000000#
+end function
