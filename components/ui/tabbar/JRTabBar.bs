@@ -117,13 +117,12 @@ end sub
 sub onFocusChanged()
   hasFocus = m.top.isInFocusChain()
 
-  ' Sync internal index from interface field on focus gain.
-  ' The external setter (e.g., overhang returning focus from dropdown)
-  ' may not have triggered onFocusedTabIndexChanged yet due to async
-  ' field observers, so read the authoritative value directly.
-  if hasFocus
-    m.focusedTabIndex = m.top.focusedTabIndex
-  end if
+  ' Internal m.focusedTabIndex is already kept in sync by:
+  '   - onTabsChanged / syncSelectedTab (resets to selected tab on rebuild/return)
+  '   - onFocusedTabIndexChanged (external sets, e.g. dropdown return)
+  '   - onKeyEvent left/right (user navigation within the tab bar)
+  ' No sync needed here — reading the interface field would clobber the
+  ' remembered position with a stale value.
 
   updateFocusedTabVisuals()
 
