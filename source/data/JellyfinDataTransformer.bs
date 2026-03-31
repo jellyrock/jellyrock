@@ -676,10 +676,8 @@ class JellyfinDataTransformer
 
     else if itemType = "BoxSet" or itemType = "PhotoAlbum" or itemType = "Playlist"
       count = apiData.ChildCount ?? 0
-      if count = 1
-        return "1 item"
-      else if count > 1
-        return str(count).trim() + " items"
+      if count > 0
+        return translatePlural("LabelItemCount", count, [str(count).trim()])
       end if
       return ""
 

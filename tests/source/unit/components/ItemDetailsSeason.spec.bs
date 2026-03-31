@@ -1,0 +1,76 @@
+namespace tests
+
+  ' Tests for Season support in ItemDetails:
+  ' populateInfoGroupSeason() episode count label using translatePlural().
+  @suite("ItemDetails - Season support")
+  class ItemDetailsSeasonTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    ' Returns a JellyfinBaseItem node pre-populated as a Season.
+    private function makeSeason() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "season-001"
+      item.type = "Season"
+      item.name = "Season 1"
+      item.seriesName = "Test Show"
+      item.productionYear = 2020
+      item.childCount = 10
+      return item
+    end function
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.itemDetails = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("populateInfoGroupSeason() — episode count label")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows plural 'Episodes' label when childCount > 1")
+    function _()
+      item = m.makeSeason()
+      item.childCount = 10
+      m.itemDetails.itemContent = item
+
+      episodeCountNode = m.itemDetails.findNode("episodeCount")
+      m.assertNotInvalid(episodeCountNode)
+      m.assertEqual(episodeCountNode.text, "10 Episodes")
+    end function
+
+    @it("shows singular 'Episode' label when childCount = 1")
+    function _()
+      item = m.makeSeason()
+      item.childCount = 1
+      m.itemDetails.itemContent = item
+
+      episodeCountNode = m.itemDetails.findNode("episodeCount")
+      m.assertNotInvalid(episodeCountNode)
+      m.assertEqual(episodeCountNode.text, "1 Episode")
+    end function
+
+    @it("omits episode count node when childCount = 0")
+    function _()
+      item = m.makeSeason()
+      item.childCount = 0
+      m.itemDetails.itemContent = item
+
+      episodeCountNode = m.itemDetails.findNode("episodeCount")
+      m.assertInvalid(episodeCountNode)
+    end function
+
+  end class
+
+end namespace
