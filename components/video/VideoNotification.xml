@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  VideoNotification: A reusable, focusable notification component for position-triggered
+  interactive overlays during video playback (e.g., "Skip Intro", "Next Episode 30").
+
+  Usage:
+    - Parent creates an instance and observes the "action" field
+    - Call show() to display with fade-in animation and set focus
+    - Call dismiss() to hide with fade-out animation
+    - "action" fires "activated" on OK press, "dismissed" on timer/other key/manual dismiss
+    - Call destroy() during parent cleanup
+-->
+<component name="VideoNotification" extends="Group">
+  <interface>
+    <field id="text" type="string" value="" />
+    <field id="notificationType" type="string" value="" />
+    <field id="action" type="string" value="" alwaysNotify="true" />
+    <field id="autoDismissSeconds" type="integer" value="0" />
+    <field id="state" type="string" value="hidden" />
+
+    <function name="show" />
+    <function name="dismiss" />
+    <function name="destroy" />
+  </interface>
+
+  <children>
+    <TextButton id="actionButton" text="" opacity="0" visible="false" />
+
+    <Animation id="fadeInAnimation" duration="0.5" repeat="false" easeFunction="inQuad">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 0.9]" fieldToInterp="actionButton.opacity" />
+    </Animation>
+    <Animation id="fadeOutAnimation" duration="0.25" repeat="false" easeFunction="inQuad">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.9, 0]" fieldToInterp="actionButton.opacity" />
+    </Animation>
+
+    <Timer id="autoDismissTimer" repeat="false" />
+  </children>
+</component>

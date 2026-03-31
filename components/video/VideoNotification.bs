@@ -1,0 +1,125 @@
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.actionButton = m.top.findNode("actionButton")
+  m.fadeInAnimation = m.top.findNode("fadeInAnimation")
+  m.fadeOutAnimation = m.top.findNode("fadeOutAnimation")
+  m.autoDismissTimer = m.top.findNode("autoDismissTimer")
+
+  m.top.observeField("text", "onTextChanged")
+  m.autoDismissTimer.observeField("fire", "onAutoDismissTimerFired")
+  m.fadeOutAnimation.observeField("state", "onFadeOutAnimationState")
+end sub
+
+sub onTextChanged()
+  m.actionButton.text = m.top.text
+end sub
+
+' Show the notification: position bottom-right with 5% safe zone, fade in, set focus
+sub show()
+  if m.top.state = "showing" then return
+
+  m.top.state = "showing"
+  m.top.action = ""
+
+  ' Stop any in-progress fade out
+  m.fadeOutAnimation.control = "stop"
+
+  ' Make visible so button can render and we can measure it
+  m.actionButton.visible = true
+
+  ' Position to bottom-right with 5% safe zone padding
+  positionBottomRight()
+
+  ' Start fade-in animation
+  m.fadeInAnimation.control = "start"
+  m.actionButton.setFocus(true)
+
+  ' Start auto-dismiss timer if configured
+  if m.top.autoDismissSeconds > 0
+    m.autoDismissTimer.duration = m.top.autoDismissSeconds
+    m.autoDismissTimer.control = "start"
+  end if
+end sub
+
+' Dismiss the notification: fade out and release focus
+sub dismiss()
+  if m.top.state = "hidden" or m.top.state = "dismissing" then return
+
+  m.top.state = "dismissing"
+  m.autoDismissTimer.control = "stop"
+  m.fadeInAnimation.control = "stop"
+  m.fadeOutAnimation.control = "start"
+  ' Focus stays on button during fade-out to prevent key events going nowhere.
+  ' Focus is released in onFadeOutAnimationState when animation completes.
+end sub
+
+' Called when fade-out animation state changes.
+' Guard with m.top.state = "dismissing" so externally stopped animations
+' (e.g., show() interrupting a fade-out) don't incorrectly transition to hidden.
+sub onFadeOutAnimationState()
+  if m.fadeOutAnimation.state = "stopped" and m.top.state = "dismissing"
+    m.actionButton.visible = false
+    m.actionButton.setFocus(false)
+    m.top.state = "hidden"
+    if m.top.action = ""
+      m.top.action = "dismissed"
+    end if
+  end if
+end sub
+
+sub onAutoDismissTimerFired()
+  dismiss()
+end sub
+
+' Position the notification button in the bottom-right corner with 5% safe zone
+sub positionBottomRight()
+  boundingRect = m.actionButton.localBoundingRect()
+
+  ' Use boundingRect height if valid and button has rendered (height > 35)
+  if isValid(boundingRect.height) and boundingRect.height > 35
+    buttonHeight = boundingRect.height
+  else
+    buttonHeight = 83 ' default height matching existing Next Episode button
+  end if
+
+  if isValid(boundingRect.width) and boundingRect.width > 0
+    buttonWidth = boundingRect.width
+  else
+    buttonWidth = 250 ' reasonable default
+  end if
+
+  m.top.translation = [
+    1920 - (1920 * 0.05) - buttonWidth,
+    1080 - (1080 * 0.05) - buttonHeight
+  ]
+end sub
+
+' Clean up all references and observers
+sub destroy()
+  m.autoDismissTimer.control = "stop"
+  m.autoDismissTimer.unobserveField("fire")
+  m.fadeOutAnimation.unobserveField("state")
+  m.top.unobserveField("text")
+
+  m.actionButton = invalid
+  m.fadeInAnimation = invalid
+  m.fadeOutAnimation = invalid
+  m.autoDismissTimer = invalid
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if m.top.state <> "showing" then return false
+  if not press then return false
+
+  if key = "OK"
+    m.autoDismissTimer.control = "stop"
+    m.top.action = "activated"
+    dismiss()
+    return true
+  end if
+
+  ' Any other key press dismisses the notification
+  dismiss()
+  return false
+end function
