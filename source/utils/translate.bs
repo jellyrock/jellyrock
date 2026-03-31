@@ -10,6 +10,7 @@
 ' @param {object} params - Optional array of string replacements for {0}, {1}, etc.
 ' @return {string} Translated string, or the key itself if not found
 function translate(key as string, params = invalid as object) as string
+  if key = invalid or key = "" then return ""
   value = m.global.translations[key]
 
   ' Fallback to en-us

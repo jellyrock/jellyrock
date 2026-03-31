@@ -51,6 +51,7 @@
     <field id="playbackSegmentActionUnknown" type="string" alwaysNotify="true" />
 
     <!-- UI Settings -->
+    <field id="translationLocale" type="string" alwaysNotify="true" />
     <field id="uiGeneralEpisodeImages" type="string" alwaysNotify="true" />
 
     <!-- Theme Color Settings -->
