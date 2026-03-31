@@ -103,8 +103,9 @@ end function
 ' @param focusedRow - index of the currently focused row (rowItemFocused[0])
 ' @param focusedColumn - index of the currently focused column (rowItemFocused[1])
 ' @param numVisibleRows - number of rows visible on screen (RowList.numRows)
-sub updateTextureBufferRange(contentRoot as object, focusedRow as integer, focusedColumn as integer, numVisibleRows as integer)
+sub updateTextureBufferRange(contentRoot as object, focusedRow as dynamic, focusedColumn as dynamic, numVisibleRows as integer)
   if not isValid(contentRoot) or not contentRoot.hasField("loadedRowRange") then return
+  if not isValid(focusedRow) or not isValid(focusedColumn) then return
 
   totalRows = contentRoot.getChildCount()
   if totalRows = 0
