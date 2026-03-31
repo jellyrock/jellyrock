@@ -40,12 +40,13 @@ namespace tests
 
     @it("returns translated value for existing key in active locale")
     function _()
-      result = translate("ButtonPlay")
+      result = translate(translationKeys.ButtonPlay)
       m.assertEqual(result, "Lire")
     end function
 
     @it("returns translated value for another existing key")
     function _()
+      ' HeaderHome is a test-only mock key (not in en-us.json)
       result = translate("HeaderHome")
       m.assertEqual(result, "Accueil")
     end function
@@ -57,12 +58,13 @@ namespace tests
     @it("falls back to en-us when key is missing from active locale")
     function _()
       ' ButtonCancel exists in fallback but not in active locale
-      result = translate("ButtonCancel")
+      result = translate(translationKeys.ButtonCancel)
       m.assertEqual(result, "Cancel")
     end function
 
     @it("falls back to en-us for error messages missing from active locale")
     function _()
+      ' ErrorConnectionFailed is a test-only mock key
       result = translate("ErrorConnectionFailed")
       m.assertEqual(result, "Could not connect to server")
     end function
@@ -85,6 +87,7 @@ namespace tests
 
     @it("substitutes a single {0} placeholder")
     function _()
+      ' MessageVideoStartsIn is a test-only mock key
       result = translate("MessageVideoStartsIn", ["5"])
       m.assertEqual(result, "La vidéo commencera dans 5 secondes")
     end function
