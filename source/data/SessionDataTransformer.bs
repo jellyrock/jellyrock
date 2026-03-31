@@ -149,6 +149,14 @@ class SessionDataTransformer
     settingsNode.playbackTryDirectH264ProfileLevel = toBoolean(settingsData["playbackTryDirectH264ProfileLevel"])
     settingsNode.playbackTryDirectHevcProfileLevel = toBoolean(settingsData["playbackTryDirectHevcProfileLevel"])
 
+    ' Media Segment Settings
+    settingsNode.playbackSegmentActionCommercial = settingsData["playbackSegmentActionCommercial"] ?? ""
+    settingsNode.playbackSegmentActionIntro = settingsData["playbackSegmentActionIntro"] ?? ""
+    settingsNode.playbackSegmentActionOutro = settingsData["playbackSegmentActionOutro"] ?? ""
+    settingsNode.playbackSegmentActionPreview = settingsData["playbackSegmentActionPreview"] ?? ""
+    settingsNode.playbackSegmentActionRecap = settingsData["playbackSegmentActionRecap"] ?? ""
+    settingsNode.playbackSegmentActionUnknown = settingsData["playbackSegmentActionUnknown"] ?? ""
+
     ' UI Settings
     settingsNode.uiGeneralEpisodeImages = settingsData["uiGeneralEpisodeImages"] ?? ""
     settingsNode.uiFontFallback = toBoolean(settingsData["uiFontFallback"])

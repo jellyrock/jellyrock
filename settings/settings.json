@@ -184,6 +184,162 @@
         ]
       },
       {
+        "title": "Media Segments",
+        "description": "Control how media segments (Intro, Outro, etc.) are handled during playback. Requires Jellyfin server 10.10.0 or newer with segment detection configured.",
+        "children": [
+          {
+            "title": "Commercial Action",
+            "description": "Action to take when a Commercial segment is detected during playback.",
+            "settingName": "playbackSegmentActionCommercial",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Auto Skip",
+                "id": "skip"
+              },
+              {
+                "title": "Show Skip Button",
+                "id": "askToSkip"
+              },
+              {
+                "title": "Do Nothing",
+                "id": "none"
+              }
+            ]
+          },
+          {
+            "title": "Intro Action",
+            "description": "Action to take when an Intro segment is detected during playback.",
+            "settingName": "playbackSegmentActionIntro",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Auto Skip",
+                "id": "skip"
+              },
+              {
+                "title": "Show Skip Button",
+                "id": "askToSkip"
+              },
+              {
+                "title": "Do Nothing",
+                "id": "none"
+              }
+            ]
+          },
+          {
+            "title": "Outro Action",
+            "description": "Action to take when an Outro segment is detected during playback.",
+            "settingName": "playbackSegmentActionOutro",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Auto Skip",
+                "id": "skip"
+              },
+              {
+                "title": "Show Skip Button",
+                "id": "askToSkip"
+              },
+              {
+                "title": "Do Nothing",
+                "id": "none"
+              }
+            ]
+          },
+          {
+            "title": "Preview Action",
+            "description": "Action to take when a Preview segment is detected during playback.",
+            "settingName": "playbackSegmentActionPreview",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Auto Skip",
+                "id": "skip"
+              },
+              {
+                "title": "Show Skip Button",
+                "id": "askToSkip"
+              },
+              {
+                "title": "Do Nothing",
+                "id": "none"
+              }
+            ]
+          },
+          {
+            "title": "Recap Action",
+            "description": "Action to take when a Recap segment is detected during playback.",
+            "settingName": "playbackSegmentActionRecap",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Auto Skip",
+                "id": "skip"
+              },
+              {
+                "title": "Show Skip Button",
+                "id": "askToSkip"
+              },
+              {
+                "title": "Do Nothing",
+                "id": "none"
+              }
+            ]
+          },
+          {
+            "title": "Unknown Action",
+            "description": "Action to take when an Unknown segment type is detected during playback.",
+            "settingName": "playbackSegmentActionUnknown",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient"
+              },
+              {
+                "title": "Auto Skip",
+                "id": "skip"
+              },
+              {
+                "title": "Show Skip Button",
+                "id": "askToSkip"
+              },
+              {
+                "title": "Do Nothing",
+                "id": "none"
+              }
+            ]
+          }
+        ]
+      },
+      {
         "title": "Next Episode Button Time",
         "description": "Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable.",
         "settingName": "playbackNextUpButtonSeconds",
