@@ -1,15 +1,15 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/enums/MediaSegmentAction.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
-import "pkg:/source/enums/MediaSegmentAction.bs"
-import "pkg:/source/enums/MediaSegmentType.bs"
-import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/trickplay.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
@@ -92,8 +92,8 @@ sub init()
 
   ' Media segment tracking state
   m.mediaSegments = []
-  m.skippedSegments = {}     ' Permanent: segments the user activated "Skip" on
-  m.dismissedSegmentId = ""  ' Transient: dismissed this visit, cleared on segment exit
+  m.skippedSegments = {} ' Permanent: segments the user activated "Skip" on
+  m.dismissedSegmentId = "" ' Transient: dismissed this visit, cleared on segment exit
   m.activeSegmentId = ""
 
   m.checkedForNextEpisode = false
