@@ -1021,7 +1021,7 @@ sub populateInfoGroupBoxSet(item as object, userSettings as object)
 
   if item.childCount > 0
     movieCountNode = createInfoLabel("movieCount")
-    movieCountNode.text = translatePlural("LabelMovieCount", item.childCount, [stri(item.childCount).trim()])
+    movieCountNode.text = translatePlural(translationKeys.LabelMovieCount, item.childCount, [stri(item.childCount).trim()])
     displayInfoNode(movieCountNode)
   end if
 
@@ -1088,7 +1088,7 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
 
   if item.childCount > 0
     episodeCountNode = createInfoLabel("episodeCount")
-    episodeCountNode.text = translatePlural("LabelEpisodeCount", item.childCount, [stri(item.childCount).trim()])
+    episodeCountNode.text = translatePlural(translationKeys.LabelEpisodeCount, item.childCount, [stri(item.childCount).trim()])
     displayDirectorGenreNode(episodeCountNode)
   end if
 
@@ -1137,7 +1137,7 @@ sub populateInfoGroupPerson(item as object)
         end if
       end if
     end if
-    lifeString = lifeString + " · " + translatePlural("LabelYearsOldCount", age, [stri(age).trim()])
+    lifeString = lifeString + " · " + translatePlural(translationKeys.LabelYearsOldCount, age, [stri(age).trim()])
 
     lifeNode = createInfoLabel("personLife")
     lifeNode.text = lifeString
@@ -1147,12 +1147,12 @@ sub populateInfoGroupPerson(item as object)
   ' Row 2: movie count / episode count (only shown when the API returns non-zero values)
   if item.movieCount > 0
     movieCountNode = createInfoLabel("personMovieCount")
-    movieCountNode.text = translatePlural("LabelMovieCount", item.movieCount, [stri(item.movieCount).trim()])
+    movieCountNode.text = translatePlural(translationKeys.LabelMovieCount, item.movieCount, [stri(item.movieCount).trim()])
     displayDirectorGenreNode(movieCountNode)
   end if
   if item.episodeCount > 0
     episodeCountNode = createInfoLabel("personEpisodeCount")
-    episodeCountNode.text = translatePlural("LabelEpisodeCount", item.episodeCount, [stri(item.episodeCount).trim()])
+    episodeCountNode.text = translatePlural(translationKeys.LabelEpisodeCount, item.episodeCount, [stri(item.episodeCount).trim()])
     displayDirectorGenreNode(episodeCountNode)
   end if
 end sub
@@ -1163,13 +1163,13 @@ end sub
 sub populateInfoGroupMusicArtist(item as object)
   if item.albumCount > 0
     albumCountNode = createInfoLabel("albumCount")
-    albumCountNode.text = translatePlural("LabelAlbumCount", item.albumCount, [stri(item.albumCount).trim()])
+    albumCountNode.text = translatePlural(translationKeys.LabelAlbumCount, item.albumCount, [stri(item.albumCount).trim()])
     displayInfoNode(albumCountNode)
   end if
 
   if item.songCount > 0
     songCountNode = createInfoLabel("songCount")
-    songCountNode.text = translatePlural("LabelSongCount", item.songCount, [stri(item.songCount).trim()])
+    songCountNode.text = translatePlural(translationKeys.LabelSongCount, item.songCount, [stri(item.songCount).trim()])
     displayInfoNode(songCountNode)
   end if
 
@@ -1222,7 +1222,7 @@ sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
 
   if item.childCount > 0
     trackCountNode = createInfoLabel("trackCount")
-    trackCountNode.text = translatePlural("LabelTrackCount", item.childCount, [stri(item.childCount).trim()])
+    trackCountNode.text = translatePlural(translationKeys.LabelTrackCount, item.childCount, [stri(item.childCount).trim()])
     displayDirectorGenreNode(trackCountNode)
   end if
 end sub
@@ -1235,7 +1235,7 @@ end sub
 sub populateInfoGroupPlaylist(item as object, userSettings as object)
   if item.childCount > 0
     itemCountNode = createInfoLabel("itemCount")
-    itemCountNode.text = translatePlural("LabelItemCount", item.childCount, [stri(item.childCount).trim()])
+    itemCountNode.text = translatePlural(translationKeys.LabelItemCount, item.childCount, [stri(item.childCount).trim()])
     displayInfoNode(itemCountNode)
   end if
 
@@ -1350,7 +1350,7 @@ end sub
 sub populateInfoGroupPhotoAlbum(item as object)
   if item.childCount > 0
     countNode = createInfoLabel("photoCount")
-    countNode.text = translatePlural("LabelPhotoCount", item.childCount, [stri(item.childCount).trim()])
+    countNode.text = translatePlural(translationKeys.LabelPhotoCount, item.childCount, [stri(item.childCount).trim()])
     displayInfoNode(countNode)
   end if
 end sub
@@ -2946,9 +2946,9 @@ sub onPlaylistContentKindChanged()
   itemCountNode = m.top.findNode("itemCount")
   if isValid(itemCountNode) and childCount > 0
     if kind = "audio"
-      itemCountNode.text = translatePlural("LabelTrackCount", childCount, [stri(childCount).trim()])
+      itemCountNode.text = translatePlural(translationKeys.LabelTrackCount, childCount, [stri(childCount).trim()])
     else
-      itemCountNode.text = translatePlural("LabelItemCount", childCount, [stri(childCount).trim()])
+      itemCountNode.text = translatePlural(translationKeys.LabelItemCount, childCount, [stri(childCount).trim()])
     end if
   end if
 end sub

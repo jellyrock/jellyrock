@@ -85,6 +85,35 @@ class TranslationKeysPlugin {
       }
     }
 
+    // Detect plural base keys (where XZero, XOne, XMany all exist but X does not)
+    // These are used with translatePlural() for compile-time safety
+    const keySet = new Set(keys);
+    const pluralBases = new Set();
+    const suffixes = ['Zero', 'One', 'Many'];
+    for (const key of keys) {
+      for (const suffix of suffixes) {
+        if (key.endsWith(suffix)) {
+          const base = key.slice(0, -suffix.length);
+          if (!keySet.has(base) && !pluralBases.has(base)) {
+            if (suffixes.every(s => keySet.has(base + s))) {
+              pluralBases.add(base);
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    if (pluralBases.size > 0) {
+      lines.push('');
+      lines.push("  ' Plural base keys — use with translatePlural()");
+      for (const base of [...pluralBases].sort()) {
+        if (/^[a-zA-Z_]\w*$/.test(base)) {
+          lines.push(`  const ${base} = "${base}"`);
+        }
+      }
+    }
+
     lines.push('end namespace');
     lines.push(''); // trailing newline
     return lines.join('\n');

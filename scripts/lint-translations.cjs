@@ -96,6 +96,14 @@ async function main() {
 
   let totalErrors = 0;
   let totalWarnings = 0;
+
+  // Check en-us.json key sort order
+  const sortedKeys = [...enUsKeys].sort();
+  if (JSON.stringify(enUsKeys) !== JSON.stringify(sortedKeys)) {
+    const firstUnsorted = enUsKeys.find((k, i) => k !== sortedKeys[i]);
+    console.error(c(`  en-us.json keys are not sorted alphabetically (first: "${firstUnsorted}")`, 'red'));
+    totalErrors++;
+  }
   const coverageReport = [];
 
   for (const filePath of localeFiles) {

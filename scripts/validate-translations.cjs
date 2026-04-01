@@ -34,6 +34,7 @@ function extractPlaceholders(str) {
 
 function extractTranslateKeys(code) {
   const keys = new Set();
+  const pluralBaseKeys = new Set();
   let match;
 
   // Match translate(translationKeys.Key) — compile-time safe constant references
@@ -52,6 +53,17 @@ function extractTranslateKeys(code) {
   const pluralRegex = /\btranslatePlural\(\s*"([^"]+)"/g;
   while ((match = pluralRegex.exec(code)) !== null) {
     const baseKey = match[1];
+    pluralBaseKeys.add(baseKey);
+    keys.add(baseKey + 'Zero');
+    keys.add(baseKey + 'One');
+    keys.add(baseKey + 'Many');
+  }
+
+  // Match translatePlural(translationKeys.BaseKey, ...) — compile-time safe plural calls
+  const pluralConstRegex = /\btranslatePlural\(\s*translationKeys\.(\w+)/g;
+  while ((match = pluralConstRegex.exec(code)) !== null) {
+    const baseKey = match[1];
+    pluralBaseKeys.add(baseKey);
     keys.add(baseKey + 'Zero');
     keys.add(baseKey + 'One');
     keys.add(baseKey + 'Many');
@@ -59,9 +71,12 @@ function extractTranslateKeys(code) {
 
   // Match translationKeys.Key anywhere (covers comments, return values, etc.)
   // Requires PascalCase key (uppercase start) to avoid matching import paths like translationKeys.bs
+  // Skip plural base keys — they don't exist in en-us.json directly (only Zero/One/Many variants do)
   const refRegex = /\btranslationKeys\.([A-Z]\w*)/g;
   while ((match = refRegex.exec(code)) !== null) {
-    keys.add(match[1]);
+    if (!pluralBaseKeys.has(match[1])) {
+      keys.add(match[1]);
+    }
   }
 
   // Match titleKey: translationKeys.Key (compile-time safe settings objects)

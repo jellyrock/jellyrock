@@ -2,6 +2,11 @@
 ' Translation data is loaded into m.global as flat roAssociativeArray objects
 ' for O(1) key lookups. Two AAs are kept in memory: the active locale and
 ' en-us as fallback (~150KB total including AA overhead).
+'
+' Regional locale layering: when a regional locale like "de-de" is requested,
+' the base language ("de") is loaded first, then regional translations are
+' overlaid on top. This ensures users get the maximum number of translated
+' strings — regional-specific where available, base language otherwise.
 
 ' Translate a key, optionally substituting indexed placeholders {0}, {1}, etc.
 ' Falls back to en-us if key is missing from active locale, or returns the key
@@ -84,21 +89,39 @@ sub loadTranslations(locale as string)
   })
 end sub
 
-' Try to load a locale JSON file, falling back to base language.
-' e.g. "fr-ca" tries fr-ca.json first, then fr.json.
-' @param {string} locale - Locale code (e.g. "fr-ca")
+' Load a locale's translations, layering regional over base when applicable.
+' For regional locales (e.g. "fr-ca"), loads the base language ("fr") first,
+' then overlays regional translations on top. Regional values win on conflicts.
+' For base locales (e.g. "fr"), loads directly.
+' @param {string} locale - Locale code (e.g. "fr-ca", "de")
 ' @return {object} Parsed roAssociativeArray, or invalid if no file found
 function loadLocaleFile(locale as string) as object
-  json = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
-  aa = ParseJson(json)
-  if aa <> invalid then return aa
-
-  ' Try base language: "fr-ca" -> "fr"
+  ' Check if this is a regional locale (contains a hyphen)
   dashPos = Instr(1, locale, "-")
+
   if dashPos > 0
+    ' Regional locale — layer base under regional
     baseLang = Left(locale, dashPos - 1)
-    json = ReadAsciiFile("pkg:/locale/custom/" + baseLang + ".json")
-    return ParseJson(json)
+    baseJson = ReadAsciiFile("pkg:/locale/custom/" + baseLang + ".json")
+    baseAA = ParseJson(baseJson)
+
+    regionalJson = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
+    regionalAA = ParseJson(regionalJson)
+
+    if baseAA <> invalid and regionalAA <> invalid
+      ' Layer: start with base, overlay regional on top
+      baseAA.Append(regionalAA)
+      return baseAA
+    else if regionalAA <> invalid
+      return regionalAA
+    else if baseAA <> invalid
+      return baseAA
+    end if
+  else
+    ' Base locale — load directly
+    json = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
+    aa = ParseJson(json)
+    if aa <> invalid then return aa
   end if
 
   return invalid
