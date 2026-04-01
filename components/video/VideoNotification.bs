@@ -7,12 +7,20 @@ sub init()
   m.autoDismissTimer = m.top.findNode("autoDismissTimer")
 
   m.top.observeField("text", "onTextChanged")
+  m.actionButton.observeField("ready", "onActionButtonReady")
   m.autoDismissTimer.observeField("fire", "onAutoDismissTimerFired")
   m.fadeOutAnimation.observeField("state", "onFadeOutAnimationState")
 end sub
 
 sub onTextChanged()
   m.actionButton.text = m.top.text
+end sub
+
+' Reposition when TextButton finishes rendering with its actual width
+sub onActionButtonReady()
+  if m.top.state = "showing" or m.top.state = "paused"
+    positionBottomRight()
+  end if
 end sub
 
 ' Show the notification: position bottom-right with 5% safe zone, fade in, set focus
@@ -122,6 +130,7 @@ sub destroy()
   m.autoDismissTimer.control = "stop"
   m.autoDismissTimer.unobserveField("fire")
   m.fadeOutAnimation.unobserveField("state")
+  m.actionButton.unobserveField("ready")
   m.top.unobserveField("text")
 
   m.actionButton = invalid
