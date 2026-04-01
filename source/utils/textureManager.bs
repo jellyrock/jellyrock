@@ -112,7 +112,10 @@ end function
 ' @param numVisibleRows - number of rows visible on screen (RowList.numRows)
 sub updateTextureBufferRange(contentRoot as object, focusedRow as dynamic, focusedColumn as dynamic, numVisibleRows as integer)
   if not isValid(contentRoot) or not contentRoot.hasField("loadedRowRange") then return
-  if not isValid(focusedRow) or not isValid(focusedColumn) then return
+  if not isValid(focusedRow) or not isValid(focusedColumn)
+    contentRoot.loadedRowRange = [-1, -1, -1, -1]
+    return
+  end if
 
   totalRows = contentRoot.getChildCount()
   if totalRows = 0 or focusedRow < 0 or focusedColumn < 0 or focusedRow >= totalRows
@@ -167,7 +170,10 @@ end sub
 ' @param numVisibleRows - number of rows visible on screen (itemGrid.numRows)
 sub updateGridTextureBufferRange(contentRoot as object, focusedIndex as dynamic, numColumns as integer, numVisibleRows as integer)
   if not isValid(contentRoot) or not contentRoot.hasField("loadedRowRange") then return
-  if not isValid(focusedIndex) or numColumns <= 0 then return
+  if not isValid(focusedIndex) or numColumns <= 0
+    contentRoot.loadedRowRange = [-1, -1, -1, -1]
+    return
+  end if
 
   totalItems = contentRoot.getChildCount()
   if totalItems = 0 or focusedIndex < 0 or focusedIndex >= totalItems
