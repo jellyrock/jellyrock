@@ -264,6 +264,142 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("updateGridTextureBufferRange()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets correct range for focused item 0 in a 6-column 3-visible-row grid")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      ' 30 items = 5 rows in a 6-column grid
+      for i = 0 to 29
+        root.createChild("ContentNode")
+      end for
+      updateGridTextureBufferRange(root, 0, 6, 3)
+      ' focusedRow=0, visible=[0,2], buffer=[0,4]
+      m.assertEqual(root.loadedRowRange, [0, 0, 2, 4])
+    end function
+
+    @it("sets correct range for focused item in middle of grid")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      ' 60 items = 10 rows in a 6-column grid
+      for i = 0 to 59
+        root.createChild("ContentNode")
+      end for
+      ' Focus on item 24 = row 4, visible=[4,6], buffer=[2,8]
+      updateGridTextureBufferRange(root, 24, 6, 3)
+      m.assertEqual(root.loadedRowRange, [2, 4, 6, 8])
+    end function
+
+    @it("clamps buffer to total rows derived from flat item count")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      ' 7 items = 2 rows in a 6-column grid (row 0: 6 items, row 1: 1 item)
+      for i = 0 to 6
+        root.createChild("ContentNode")
+      end for
+      ' Focus on item 0 = row 0, visible=[0,1], buffer=[0,1] (only 2 rows exist)
+      updateGridTextureBufferRange(root, 0, 6, 3)
+      m.assertEqual(root.loadedRowRange, [0, 0, 1, 1])
+    end function
+
+    @it("handles partial last row correctly")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      ' 13 items = 3 rows in a 5-column grid (5, 5, 3)
+      for i = 0 to 12
+        root.createChild("ContentNode")
+      end for
+      ' Focus on item 5 = row 1, visible=[1,2], buffer=[0,2]
+      updateGridTextureBufferRange(root, 5, 5, 2)
+      m.assertEqual(root.loadedRowRange, [0, 1, 2, 2])
+    end function
+
+    @it("resets range for empty grid")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      updateGridTextureBufferRange(root, 0, 6, 3)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
+    @it("resets range for negative focusedIndex")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      for i = 0 to 11
+        root.createChild("ContentNode")
+      end for
+      updateGridTextureBufferRange(root, -1, 6, 3)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
+    @it("resets range for out-of-bounds focusedIndex")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      for i = 0 to 11
+        root.createChild("ContentNode")
+      end for
+      updateGridTextureBufferRange(root, 100, 6, 3)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
+    @it("handles invalid focusedIndex gracefully")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      for i = 0 to 11
+        root.createChild("ContentNode")
+      end for
+      updateGridTextureBufferRange(root, invalid, 6, 3)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
+    @it("handles zero numColumns gracefully")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      for i = 0 to 11
+        root.createChild("ContentNode")
+      end for
+      updateGridTextureBufferRange(root, 0, 0, 3)
+      ' Should return early without crashing (numColumns <= 0 guard)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
+    @it("does not update focusedColumns (no horizontal buffer for grids)")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      for i = 0 to 29
+        root.createChild("ContentNode")
+      end for
+      updateGridTextureBufferRange(root, 15, 6, 3)
+      ' focusedColumns should remain empty — grid doesn't track per-row column
+      m.assertEqual(root.focusedColumns, [])
+    end function
+
+    @it("does not re-set range when values are unchanged")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, invalid, invalid, invalid)
+      for i = 0 to 29
+        root.createChild("ContentNode")
+      end for
+      updateGridTextureBufferRange(root, 0, 6, 3)
+      expectedRange = root.loadedRowRange
+      ' Call again with same focus — range should be identical
+      updateGridTextureBufferRange(root, 1, 6, 3)
+      ' Row 0 → row 0 (item 1 is still in row 0), so range unchanged
+      m.assertEqual(root.loadedRowRange, expectedRange)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("TEXTURE_BUFFER_THRESHOLD constant")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
