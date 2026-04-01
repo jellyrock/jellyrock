@@ -136,6 +136,8 @@ sub itemContentChanged()
     m.itemPoster.uri = posterUri
   else
     m.isTextureUnloaded = true
+    m.itemPoster.uri = ""
+    m.backdrop.visible = true
   end if
 
   'If Poster not loaded, ensure "blue box" is shown until loaded
@@ -204,8 +206,8 @@ sub setupGridTextureObserver()
   contentRoot = item.getParent()
   if not isValid(contentRoot) then return
 
-  ' Cache flat index for row position calculations
-  m.cachedFlatIndex = findGridFlatIndex(contentRoot, item)
+  ' Cache flat index for row position calculations (O(1) lookup via BaseGridView)
+  m.cachedFlatIndex = m.itemGrid.callFunc("getItemFlatIndex", item.id)
 
   ' One-time observer setup — only run once per content root
   if isValid(m.contentRoot) and m.contentRoot.isSameNode(contentRoot) then return
@@ -228,17 +230,6 @@ sub setupGridTextureObserver()
     m.contentRoot.observeField("loadedRowRange", "onLoadedRowRangeChanged")
   end if
 end sub
-
-' Returns the flat index of item within contentRoot's children.
-' @param contentRoot - the MarkupGrid's root ContentNode
-' @param item - the item node to find
-' @returns flat index, or -1 if not found
-function findGridFlatIndex(contentRoot as object, item as object) as integer
-  for i = 0 to contentRoot.getChildCount() - 1
-    if contentRoot.getChild(i).isSameNode(item) then return i
-  end for
-  return -1
-end function
 
 ' Returns this cell's row position relative to the managed row ranges.
 ' Derives the grid row from the cached flat index and numColumns.

@@ -34,6 +34,7 @@ sub init()
 
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
+  m.flatIndexMap = {}
   initTextureManager(m.data, invalid, invalid, invalid)
 
   m.genreData = CreateObject("roSGNode", "ContentNode")
@@ -481,8 +482,11 @@ sub ItemDataLoaded(msg)
     m.itemGrid.jumpToItem = 0
   end if
 
-  for each item in itemData
+  startIndex = m.data.getChildCount()
+  for i = 0 to itemData.count() - 1
+    item = itemData[i]
     m.data.appendChild(item)
+    m.flatIndexMap[item.id] = startIndex + i
   end for
 
   ' Update the stored counts
@@ -782,6 +786,7 @@ sub optionsClosed()
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
     initTextureManager(m.data, invalid, invalid, invalid)
     loadInitialItems()
   end if
@@ -801,6 +806,7 @@ sub alphaSelectedChanged()
 
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
     initTextureManager(m.data, invalid, invalid, invalid)
 
     m.genreData = CreateObject("roSGNode", "ContentNode")
@@ -838,6 +844,7 @@ sub onVoiceFilter()
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
     initTextureManager(m.data, invalid, invalid, invalid)
     m.top.alphaSelected = ""
 
@@ -1028,6 +1035,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.loadItemsTask.genreIds = ""
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
     initTextureManager(m.data, invalid, invalid, invalid)
     loadInitialItems()
     return true
@@ -1081,6 +1089,17 @@ sub updateTitle()
     m.top.overhangTitle += " (" + tr("%1 of %2").Replace("%1", actInt.toStr()).Replace("%2", m.loadItemsTask.totalRecordCount.toStr()) + ")"
   end if
 end sub
+
+' Returns the flat index of an item within the grid's content root.
+' Called by GridItem via callFunc for O(1) index lookup (avoids O(N) child scan).
+' @param itemId - the Jellyfin item ID to look up
+' @returns flat index, or -1 if not found
+function getItemFlatIndex(itemId as string) as integer
+  if isValid(m.flatIndexMap) and m.flatIndexMap.doesExist(itemId)
+    return m.flatIndexMap[itemId]
+  end if
+  return -1
+end function
 
 ' destroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()

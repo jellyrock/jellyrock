@@ -88,5 +88,6 @@
     <field id="jumpToItem" type="integer" value="" />
     <field id="gridTitles" type="string" />
     <field id="currentView" type="string" value="" />
+    <function name="getItemFlatIndex" />
   </interface>
 </component>
