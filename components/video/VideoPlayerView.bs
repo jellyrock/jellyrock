@@ -92,7 +92,8 @@ sub init()
 
   ' Media segment tracking state
   m.mediaSegments = []
-  m.processedSegments = {}
+  m.skippedSegments = {}     ' Permanent: segments the user activated "Skip" on
+  m.dismissedSegmentId = ""  ' Transient: dismissed this visit, cleared on segment exit
   m.activeSegmentId = ""
 
   m.checkedForNextEpisode = false
@@ -232,6 +233,9 @@ sub handleHideAction(resume as boolean)
   if resume
     m.top.control = "resume"
   end if
+
+  ' Re-check segments after OSD closes — re-shows paused notification if still in segment
+  checkMediaSegments()
 end sub
 
 ' handleChapterListAction: Handles action to show chapter list
@@ -666,7 +670,8 @@ sub onVideoContentLoaded()
     else
       m.mediaSegments = []
     end if
-    m.processedSegments = {}
+    m.skippedSegments = {}
+    m.dismissedSegmentId = ""
     m.activeSegmentId = ""
   end if
 
@@ -887,26 +892,41 @@ sub checkMediaSegments()
     segmentId = segment.Id ?? ""
     if segmentId = "" then return
 
-    ' Already processed this segment — don't re-trigger
-    if m.processedSegments.DoesExist(segmentId) then return
-
     segmentType = segment.Type ?? ""
     action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
 
     if action = MediaSegmentAction.skip
+      ' Auto-skip only fires once per segment
+      if m.skippedSegments.DoesExist(segmentId) then return
+
       ' Auto-skip: seek to end of segment immediately
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
       m.top.seek = seekPosition
-      m.processedSegments[segmentId] = true
+      m.skippedSegments[segmentId] = true
       m.activeSegmentId = ""
     else if action = MediaSegmentAction.askToSkip
-      ' Only show notification if not already showing for this segment
-      if m.activeSegmentId <> segmentId
+      ' Dismissed this visit — don't re-show until user leaves and re-enters the segment
+      if segmentId = m.dismissedSegmentId then return
+
+      ' Re-show notification if it was paused (hidden for OSD)
+      if m.segmentNotification.state = "paused" and m.activeSegmentId = segmentId
+        m.segmentNotification.visible = true
+        m.segmentNotification.callFunc("show")
+      else if m.activeSegmentId <> segmentId
+        ' Show notification for a new segment
         m.activeSegmentId = segmentId
 
         ' Suppress Next Episode notification while segment notification is active
         if m.nextEpisodeNotification.state = "showing"
           hideNextEpisodeButton()
+        end if
+
+        ' Commercial and Recap segments stay visible for the entire segment.
+        ' Other types auto-dismiss after 10 seconds.
+        if segmentType = MediaSegmentType.commercial or segmentType = MediaSegmentType.recap
+          m.segmentNotification.autoDismissSeconds = 0
+        else
+          m.segmentNotification.autoDismissSeconds = 10
         end if
 
         m.segmentNotification.text = tr("Skip") + " " + tr(segmentType)
@@ -916,11 +936,14 @@ sub checkMediaSegments()
     end if
     ' MediaSegmentAction.none — do nothing
   else
-    ' Not inside any segment — dismiss segment notification if showing
+    ' Not inside any segment — dismiss segment notification if showing or paused
     if m.segmentNotification.state = "showing"
+      m.segmentNotification.callFunc("dismiss")
+    else if m.segmentNotification.state = "paused"
       m.segmentNotification.callFunc("dismiss")
     end if
     m.activeSegmentId = ""
+    m.dismissedSegmentId = ""
   end if
 end sub
 
@@ -937,13 +960,13 @@ sub onSegmentNotificationAction()
         exit for
       end if
     end for
-    m.processedSegments[m.activeSegmentId] = true
+    m.skippedSegments[m.activeSegmentId] = true
     m.activeSegmentId = ""
     m.top.setFocus(true)
   else if action = "dismissed"
-    ' Mark as processed so we don't re-show
+    ' Mark as dismissed for this visit — allows re-show if user leaves and re-enters the segment
     if m.activeSegmentId <> ""
-      m.processedSegments[m.activeSegmentId] = true
+      m.dismissedSegmentId = m.activeSegmentId
       m.activeSegmentId = ""
     end if
     ' Only restore video focus if OSD didn't take focus during the dismiss animation
@@ -1314,12 +1337,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   ' VideoNotification components handle OK key internally via their onKeyEvent.
-  ' For non-OK keys, dismiss any visible notifications and restore focus.
+  ' For non-OK keys, hide notifications (paused state) so they can re-show after OSD closes.
+  ' Next Episode is dismissed permanently since it's time-based, not position-based.
   if m.nextEpisodeNotification.state = "showing" or m.segmentNotification.state = "showing"
     ' OK is handled by the notification's onKeyEvent — don't intercept here
     if key <> "OK"
       if m.segmentNotification.state = "showing"
-        m.segmentNotification.callFunc("dismiss")
+        m.segmentNotification.callFunc("hide")
       end if
       if m.nextEpisodeNotification.state = "showing"
         m.nextEpisodeNotification.callFunc("dismiss")
@@ -1494,7 +1518,8 @@ sub destroy()
 
   ' Clear segment state
   m.mediaSegments = []
-  m.processedSegments = {}
+  m.skippedSegments = {}
+  m.dismissedSegmentId = ""
   m.activeSegmentId = ""
 
   ' Clear remaining node references

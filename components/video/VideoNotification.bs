@@ -42,9 +42,29 @@ sub show()
   end if
 end sub
 
+' Hide the notification without triggering "dismissed" action.
+' Used when OSD opens to temporarily pause the notification so it can be re-shown later.
+sub hide()
+  if m.top.state <> "showing" then return
+  m.top.state = "paused"
+  m.autoDismissTimer.control = "stop"
+  m.fadeInAnimation.control = "stop"
+  m.actionButton.visible = false
+  m.actionButton.opacity = 0
+end sub
+
 ' Dismiss the notification: fade out and release focus
 sub dismiss()
   if m.top.state = "hidden" or m.top.state = "dismissing" then return
+
+  ' If paused (hidden for OSD), skip fade-out — button is already invisible
+  if m.top.state = "paused"
+    m.top.state = "hidden"
+    if m.top.action = ""
+      m.top.action = "dismissed"
+    end if
+    return
+  end if
 
   m.top.state = "dismissing"
   m.autoDismissTimer.control = "stop"
@@ -121,7 +141,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
-  ' Any other key press dismisses the notification
-  dismiss()
+  ' Non-OK keys: return false so the parent (VideoPlayerView) can decide
+  ' whether to hide() (pausable for OSD) or dismiss() (permanent).
   return false
 end function

@@ -19,6 +19,7 @@
     <field id="state" type="string" value="hidden" />
 
     <function name="show" />
+    <function name="hide" />
     <function name="dismiss" />
     <function name="destroy" />
   </interface>
