@@ -904,12 +904,16 @@ sub checkMediaSegments()
 
       ' If skipping an outro near the video's end, force finish for correct watched status
       ' and auto-play trigger. Uses same pattern as next episode button activation.
+      ' IMPORTANT: return immediately — setting state="finished" synchronously triggers
+      ' the teardown chain (onState → ViewCreator → popScene → destroy), invalidating
+      ' all m. references before the next line would execute.
       if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
         m.top.control = "stop"
         m.top.state = "finished"
-      else
-        m.top.seek = seekPosition
+        return
       end if
+
+      m.top.seek = seekPosition
       m.skippedSegments[segmentId] = true
       m.activeSegmentId = ""
     else if action = MediaSegmentAction.askToSkip
@@ -967,13 +971,17 @@ sub onSegmentNotificationAction()
         segmentType = segment.Type ?? ""
 
         ' If skipping an outro that ends near the video's end, force a finished state
-        ' so the server correctly marks the item as watched and auto-play triggers
+        ' so the server correctly marks the item as watched and auto-play triggers.
+        ' IMPORTANT: return immediately — setting state="finished" synchronously triggers
+        ' the teardown chain (onState → ViewCreator → popScene → destroy), invalidating
+        ' all m. references before the next line would execute.
         if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
           m.top.control = "stop"
           m.top.state = "finished"
-        else
-          m.top.seek = seekPosition
+          return
         end if
+
+        m.top.seek = seekPosition
         exit for
       end if
     end for
