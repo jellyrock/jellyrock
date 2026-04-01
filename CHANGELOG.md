@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - overhang focus always defaults to active tab ([#441](https://github.com/jellyrock/jellyrock/pull/441))
 
+### Dependencies
+
+- Update dotenv from v17.3.1 to v17.4.0 ([#445](https://github.com/jellyrock/jellyrock/pull/445))
+
 ## [2.8.0](https://github.com/jellyrock/jellyrock/compare/v2.7.0...v2.8.0) - 2026-03-31
 
 ### Added
