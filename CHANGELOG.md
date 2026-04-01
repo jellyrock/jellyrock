@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- add RowList texture management and placeholder images ([#443](https://github.com/jellyrock/jellyrock/pull/443))
+
 ### Fixed
 
 - overhang focus always defaults to active tab ([#441](https://github.com/jellyrock/jellyrock/pull/441))
