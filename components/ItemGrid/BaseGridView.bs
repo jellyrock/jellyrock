@@ -18,6 +18,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.log = log.Logger("BaseGridView")
@@ -33,6 +34,7 @@ sub init()
 
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
+  initTextureManager(m.data, invalid, invalid, invalid)
 
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.focusXOffset = 0
@@ -136,11 +138,21 @@ sub OnScreenShown()
     m.voiceBox.active = true
   end if
 
+  ' Restore texture management after returning from a pushed screen
+  if isValid(m.data) and m.data.hasField("textureManagerState")
+    updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
+    activateTextureManager(m.data)
+  end if
+
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
     m.top.setFocus(true)
   end if
+end sub
+
+sub OnScreenHidden()
+  hideTextureManager(m.data)
 end sub
 
 ' ============================================================================
@@ -478,6 +490,12 @@ sub ItemDataLoaded(msg)
   m.loadedRows = m.loadedItems / m.itemGrid.numColumns
   m.loading = false
 
+  ' Update texture buffer range and activate after data is loaded
+  if m.loadedItems > 0
+    updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
+    activateTextureManager(m.data)
+  end if
+
   ' If there are no items to display, show message
   if m.loadedItems = 0
     m.presentationInfo.visible = false
@@ -515,6 +533,9 @@ sub onItemFocused()
   itemInt = m.itemGrid.itemFocused
 
   if itemInt = -1 then return
+
+  ' Update texture buffer range on every focus change
+  updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
 
   updateTitle()
   m.selectedFavoriteItem = m.itemGrid.content.getChild(m.itemGrid.itemFocused)
@@ -752,6 +773,7 @@ sub optionsClosed()
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    initTextureManager(m.data, invalid, invalid, invalid)
     loadInitialItems()
   end if
 
@@ -770,6 +792,7 @@ sub alphaSelectedChanged()
 
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    initTextureManager(m.data, invalid, invalid, invalid)
 
     m.genreData = CreateObject("roSGNode", "ContentNode")
     m.genreList.content = m.genreData
@@ -806,6 +829,7 @@ sub onVoiceFilter()
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    initTextureManager(m.data, invalid, invalid, invalid)
     m.top.alphaSelected = ""
 
     ' Store voice text before any other operations
@@ -995,6 +1019,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.loadItemsTask.genreIds = ""
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    initTextureManager(m.data, invalid, invalid, invalid)
     loadInitialItems()
     return true
   end if
@@ -1052,6 +1077,9 @@ end sub
 ' Called automatically by SceneManager.popScene() / clearScenes()
 sub destroy()
   m.log.verbose("destroy")
+
+  ' Destroy texture manager — force-unloads all grid item textures
+  destroyTextureManager(m.data)
 
   ' Unobserve child node observers
   m.genreList.unobserveField("rowItemFocused")
