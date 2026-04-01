@@ -28,10 +28,10 @@
     <TextButton id="actionButton" text="" opacity="0" visible="false" />
 
     <Animation id="fadeInAnimation" duration="0.5" repeat="false" easeFunction="inQuad">
-      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 0.9]" fieldToInterp="actionButton.opacity" />
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="actionButton.opacity" />
     </Animation>
     <Animation id="fadeOutAnimation" duration="0.25" repeat="false" easeFunction="inQuad">
-      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.9, 0]" fieldToInterp="actionButton.opacity" />
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[1.0, 0]" fieldToInterp="actionButton.opacity" />
     </Animation>
 
     <Timer id="autoDismissTimer" repeat="false" />
