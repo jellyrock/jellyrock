@@ -9,8 +9,8 @@
 '   "init"      — Content loading, layout unstable. Cells freeze current state (no-op).
 '   "active"    — Normal operation. Short rows (≤ threshold) use renderTracking only.
 '                  Long rows (> threshold) use horizontal buffer logic.
-'   "hidden"    — Screen hidden or tab switched. Cells with renderTracking <> "none"
-'                  stay loaded; all others unload.
+'   "hidden"    — Screen hidden (pushed behind another). Freeze/no-op — all textures
+'                  stay loaded so returning is instant. renderTracking changes ignored.
 '   "destroyed" — Component being torn down. All cells force-unload unconditionally.
 '
 ' Vertical range (loadedRowRange):
@@ -219,8 +219,8 @@ sub activateTextureManager(contentRoot as object)
 end sub
 
 ' Hides texture management when the screen is no longer visible.
-' Cells with renderTracking <> "none" stay loaded (Roku keeps them allocated);
-' all others unload to free texture memory.
+' Freezes all cells in their current state — textures stay loaded so returning
+' is instant. renderTracking changes are ignored while hidden.
 '
 ' @param contentRoot - the RowList's root ContentNode (m.top.content)
 sub hideTextureManager(contentRoot as object)
