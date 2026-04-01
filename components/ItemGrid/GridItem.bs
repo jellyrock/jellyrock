@@ -2,6 +2,7 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.log = log.Logger("GridItem")
@@ -12,6 +13,24 @@ sub init()
   m.backdrop = m.top.findNode("backdrop")
 
   m.itemPoster.observeField("loadStatus", "onPosterLoadStatusChanged")
+
+  ' Enable render tracking for texture management
+  m.top.enableRenderTracking = true
+  m.top.observeField("renderTracking", "onRenderTrackingChanged")
+
+  ' URI cache for texture management.
+  ' When a cell scrolls off-screen, its poster URI is cleared to release texture memory.
+  ' This cache holds the real URI so it can be restored when the cell scrolls back.
+  m.cachedPosterUri = ""
+  m.cachedLoadDisplayMode = "scaleToZoom"
+  m.isTextureUnloaded = false
+
+  ' Reference to the MarkupGrid's root ContentNode — used to observe loadedRowRange.
+  ' Set once in setupGridTextureObserver() when the first itemContent is assigned.
+  m.contentRoot = invalid
+  ' Cached flat index of this cell's itemContent within the content root.
+  ' Recomputed on each cell recycle (itemContentChanged).
+  m.cachedFlatIndex = -1
 
   ' Add some padding space when Item Titles are always showing
   if m.itemText.visible then m.itemText.maxWidth = 224
@@ -38,6 +57,9 @@ sub itemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
 
+  setupGridTextureObserver()
+  m.isTextureUnloaded = false
+
   if itemData.isWatched
     m.itemPoster.isWatched = true
   end if
@@ -47,63 +69,73 @@ sub itemContentChanged()
   end if
 
   itemType = LCase(itemData.type)
+  posterUri = ""
 
   if itemType = "movie" or itemType = "musicvideo"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "series"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "boxset"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "tvchannel"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "folder" or itemType = "collectionfolder" or itemType = "channelfolderitem" or itemType = "photoalbum"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
     m.itemPoster.loadDisplayMode = m.itemGrid.imageDisplayMode
   else if itemType = "genre" or itemType = "studio"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "musicgenre"
     ' Music genres use square 1:1 sizing
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
     setSquarePosterLayout()
     m.itemPoster.loadDisplayMode = "scaleToFit"
   else if itemType = "video" or itemType = "recording"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "playlist"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "photo"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else if itemType = "episode"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     if isValidAndNotEmpty(itemData.seriesName)
       m.itemText.text = itemData.seriesName + " - " + itemData.title
     else
       m.itemText.text = itemData.title
     end if
   else if itemType = "musicartist"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
     setSquarePosterLayout()
     m.itemPoster.loadDisplayMode = "limitSize"
   else if itemType = "musicalbum"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
     setSquarePosterLayout()
     m.itemPoster.loadDisplayMode = "limitSize"
   else if itemType = "audio"
-    m.itemPoster.uri = getItemPosterUrl(itemData)
+    posterUri = getItemPosterUrl(itemData)
     m.itemText.text = itemData.title
   else
     m.log.warn("Unhandled Grid Item Type", itemData.type)
+  end if
+
+  ' Cache URI for texture management and conditionally load
+  m.cachedPosterUri = posterUri
+  m.cachedLoadDisplayMode = m.itemPoster.loadDisplayMode
+  if posterUri = "" or shouldLoadGridTexture()
+    m.itemPoster.uri = posterUri
+  else
+    m.isTextureUnloaded = true
   end if
 
   'If Poster not loaded, ensure "blue box" is shown until loaded
@@ -147,8 +179,218 @@ end sub
 
 'Hide backdrop and text when poster loaded
 sub onPosterLoadStatusChanged()
+  ' Ignore status changes from intentional texture unloads (uri cleared to free memory)
+  if m.isTextureUnloaded then return
+
   if m.itemPoster.loadStatus = "ready"
     m.backdrop.visible = false
     m.posterText.visible = false
   end if
+end sub
+
+' ============================================================================
+' Texture Management
+' ============================================================================
+
+' One-time setup: observes loadedRowRange and textureManagerState on the
+' MarkupGrid's content root. The content root is the direct parent of
+' itemContent in the content tree (flat model, unlike RowList's 2-level hierarchy):
+'   contentRoot → itemNode (itemContent)
+' Called from itemContentChanged. Skips if already connected.
+sub setupGridTextureObserver()
+  item = m.top.itemContent
+  if not isValid(item) then return
+
+  contentRoot = item.getParent()
+  if not isValid(contentRoot) then return
+
+  ' Cache flat index for row position calculations
+  m.cachedFlatIndex = findGridFlatIndex(contentRoot, item)
+
+  ' One-time observer setup — only run once per content root
+  if isValid(m.contentRoot) and m.contentRoot.isSameNode(contentRoot) then return
+
+  ' Content root changed (view switch, filter, etc.) — reconnect observers
+  if isValid(m.contentRoot)
+    if m.contentRoot.hasField("textureManagerState")
+      m.contentRoot.unobserveField("textureManagerState")
+    end if
+    if m.contentRoot.hasField("loadedRowRange")
+      m.contentRoot.unobserveField("loadedRowRange")
+    end if
+  end if
+
+  m.contentRoot = contentRoot
+  if m.contentRoot.hasField("textureManagerState")
+    m.contentRoot.observeField("textureManagerState", "onTextureManagerStateChanged")
+  end if
+  if m.contentRoot.hasField("loadedRowRange")
+    m.contentRoot.observeField("loadedRowRange", "onLoadedRowRangeChanged")
+  end if
+end sub
+
+' Returns the flat index of item within contentRoot's children.
+' @param contentRoot - the MarkupGrid's root ContentNode
+' @param item - the item node to find
+' @returns flat index, or -1 if not found
+function findGridFlatIndex(contentRoot as object, item as object) as integer
+  for i = 0 to contentRoot.getChildCount() - 1
+    if contentRoot.getChild(i).isSameNode(item) then return i
+  end for
+  return -1
+end function
+
+' Returns this cell's row position relative to the managed row ranges.
+' Derives the grid row from the cached flat index and numColumns.
+' @returns "visible" if in a visible row, "buffer" if in a vertical buffer row,
+'          or "outside" if not in any managed range
+function getGridRowPosition() as string
+  if not isValid(m.contentRoot) or not m.contentRoot.hasField("loadedRowRange") then return "outside"
+
+  range = m.contentRoot.loadedRowRange
+  if not isValid(range) or range.count() < 4 then return "outside"
+
+  if m.cachedFlatIndex < 0 then return "outside"
+
+  markupGrid = m.top.GetParent() ' JRMarkupGrid
+  if not isValid(markupGrid) then return "outside"
+  numColumns = markupGrid.numColumns
+  if numColumns <= 0 then return "outside"
+
+  rowIndex = int(m.cachedFlatIndex / numColumns)
+
+  ' Visible rows: visibleStart..visibleEnd
+  if rowIndex >= range[1] and rowIndex <= range[2] then return "visible"
+
+  ' Buffer rows: bufferStart..visibleStart-1 or visibleEnd+1..bufferEnd
+  if rowIndex >= range[0] and rowIndex < range[1] then return "buffer"
+  if rowIndex > range[2] and rowIndex <= range[3] then return "buffer"
+
+  return "outside"
+end function
+
+' Returns the current texture manager state from the content root.
+' @returns "init", "active", "hidden", "destroyed", or "init" if unavailable
+function getGridTextureManagerState() as string
+  if not isValid(m.contentRoot) or not m.contentRoot.hasField("textureManagerState")
+    return "init"
+  end if
+  return m.contentRoot.textureManagerState
+end function
+
+' Determines whether this cell should load its poster during initial render.
+' Mirrors evaluateGridTextureState logic: managed rows trust buffer logic,
+' outside rows trust renderTracking.
+function shouldLoadGridTexture() as boolean
+  state = getGridTextureManagerState()
+
+  ' Init/hidden: allow load (freeze = don't change current state)
+  if state = "init" or state = "hidden"
+    return true
+  end if
+
+  ' Destroyed: never load
+  if state = "destroyed"
+    return false
+  end if
+
+  ' Active: check row position
+  rowPosition = getGridRowPosition()
+  if rowPosition = "visible" or rowPosition = "buffer"
+    return true
+  end if
+
+  ' Outside managed ranges — renderTracking decides
+  return m.top.renderTracking <> "none"
+end function
+
+' Central texture decision — called when renderTracking, textureManagerState,
+' or loadedRowRange changes.
+'
+' State machine (same as JRRowItem but without horizontal buffer):
+'   "destroyed" → force unload everything (no guards)
+'   "init"      → no-op (freeze state during layout changes)
+'   "hidden"    → no-op (freeze — screen is behind another on the stack)
+'   "active"    → managed rows (visible + buffer): always loaded.
+'                  Outside rows: renderTracking decides.
+sub evaluateGridTextureState()
+  state = getGridTextureManagerState()
+
+  ' Destroyed: force-unload everything unconditionally
+  if state = "destroyed"
+    forceUnloadGridTexture()
+    return
+  end if
+
+  ' Init: freeze — layout recalculations cause spurious renderTracking changes.
+  if state = "init"
+    return
+  end if
+
+  ' Hidden: freeze — screen is behind another on the stack. Textures stay
+  ' loaded so returning is instant. renderTracking flips to "none" when
+  ' visible=false propagates, but we must not react to it.
+  if state = "hidden"
+    return
+  end if
+
+  ' Active: for managed rows, trust our own buffer logic over renderTracking.
+  rowPosition = getGridRowPosition()
+
+  if rowPosition = "buffer" or rowPosition = "visible"
+    ' All items in visible + buffer rows stay loaded (no horizontal buffer for grids)
+    reloadGridTexture()
+    return
+  end if
+
+  ' Outside managed ranges — renderTracking decides
+  if m.top.renderTracking <> "none"
+    reloadGridTexture()
+  else
+    unloadGridTexture()
+  end if
+end sub
+
+' Clears poster URI to release texture memory when the cell is off-screen.
+' Items with no real image (cachedPosterUri = "") are skipped — they already show
+' a lightweight local placeholder that costs negligible texture memory.
+sub unloadGridTexture()
+  if m.cachedPosterUri = "" or m.isTextureUnloaded then return
+
+  m.isTextureUnloaded = true
+  m.itemPoster.uri = ""
+  m.backdrop.visible = true
+end sub
+
+' Force-unloads textures unconditionally — used only during destroy().
+' Ignores m.isTextureUnloaded and m.cachedPosterUri guards so every cell releases memory.
+sub forceUnloadGridTexture()
+  m.isTextureUnloaded = true
+  m.itemPoster.uri = ""
+  m.backdrop.visible = true
+end sub
+
+' Restores poster URI from cache when the cell scrolls back on screen.
+' The backdrop will show briefly while the image reloads from Roku's HTTP cache.
+sub reloadGridTexture()
+  if m.cachedPosterUri <> "" and m.itemPoster.uri <> m.cachedPosterUri
+    m.isTextureUnloaded = false
+    m.itemPoster.loadDisplayMode = m.cachedLoadDisplayMode
+    m.itemPoster.uri = m.cachedPosterUri
+  end if
+end sub
+
+' Fires when the cell scrolls in/out of the visible area.
+sub onRenderTrackingChanged()
+  evaluateGridTextureState()
+end sub
+
+' Fires when textureManagerState changes (init → active, active → hidden, etc.)
+sub onTextureManagerStateChanged()
+  evaluateGridTextureState()
+end sub
+
+' Fires when the parent screen updates the loaded row range (focus change).
+sub onLoadedRowRangeChanged()
+  evaluateGridTextureState()
 end sub
