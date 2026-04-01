@@ -1,0 +1,179 @@
+' Texture Manager Utility
+'
+' State machine managing texture memory for RowList-based screens.
+' JRRowItem cells observe fields on the content root and load/unload
+' textures based on the current state and their position.
+'
+' States:
+'   "init"      — Content loading, layout unstable. Cells freeze current state (no-op).
+'   "active"    — Normal operation. Short rows (≤ threshold) use renderTracking only.
+'                  Long rows (> threshold) use horizontal buffer logic.
+'   "hidden"    — Screen hidden or tab switched. Cells with renderTracking <> "none"
+'                  stay loaded; all others unload.
+'   "destroyed" — Component being torn down. All cells force-unload unconditionally.
+'
+' Vertical range (loadedRowRange):
+'   4-element array: [bufferStart, visibleStart, visibleEnd, bufferEnd]
+'   Buffer rows (±2 from visible) keep ALL items loaded in active state.
+'   Visible rows use horizontal buffer for long rows.
+'
+' Horizontal buffer (focusedColumns + textureVisibleWidth + textureItemSpacing):
+'   Only applies to rows with > TEXTURE_BUFFER_THRESHOLD items.
+'   Visible columns ± 1 buffer item keep textures loaded; rest unloaded.
+'
+' Flow:
+'   1. Parent calls initTextureManager() after creating content root
+'   2. Parent calls updateTextureBufferRange() after skeleton rows + on every focus change
+'   3. Parent calls activateTextureManager() once initial content is fully loaded
+'   4. Parent calls hideTextureManager() on OnScreenHidden
+'   5. Parent calls activateTextureManager() on OnScreenShown (after restoring range)
+'   6. Parent calls destroyTextureManager() in destroy()
+'   7. JRRowItem observes textureManagerState, loadedRowRange, focusedColumns
+
+' Maximum items a row can have before horizontal buffer logic kicks in.
+' Rows at or below this count use renderTracking only — all items stay loaded
+' when on screen because they fit comfortably in texture memory.
+const TEXTURE_BUFFER_THRESHOLD = 20
+
+' Adds texture management fields to a RowList content root node.
+' Sets initial state to "init" — cells will not unload during layout changes.
+'
+' @param contentRoot - the RowList's root ContentNode (m.top.content)
+' @param itemSize - RowList itemSize field ([containerWidth, containerHeight])
+' @param focusXOffset - RowList focusXOffset field (array like [96] or empty [])
+' @param rowItemSpacing - RowList rowItemSpacing field (flat [x,y] or nested [[x,y]])
+sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset as dynamic, rowItemSpacing as dynamic)
+  if not isValid(contentRoot) then return
+
+  visibleWidth = calculateTextureVisibleWidth(itemSize, focusXOffset)
+  itemSpacing = calculateTextureItemSpacing(rowItemSpacing)
+
+  if not contentRoot.hasField("loadedRowRange")
+    contentRoot.addFields({
+      loadedRowRange: [-1, -1, -1, -1],
+      focusedColumns: [],
+      textureVisibleWidth: visibleWidth,
+      textureItemSpacing: itemSpacing,
+      textureManagerState: "init"
+    })
+  else
+    ' Fields may already exist from a previous init — update layout values
+    contentRoot.textureVisibleWidth = visibleWidth
+    contentRoot.textureItemSpacing = itemSpacing
+    contentRoot.textureManagerState = "init"
+  end if
+end sub
+
+' Calculates the usable row width for determining how many items fit on screen.
+' @param itemSize - RowList itemSize field ([containerWidth, containerHeight])
+' @param focusXOffset - RowList focusXOffset field (array like [96] or empty [])
+' @return usable pixel width
+function calculateTextureVisibleWidth(itemSize as dynamic, focusXOffset as dynamic) as integer
+  visibleWidth = 1920 ' fallback
+  if type(itemSize) = "roArray" and itemSize.count() > 0
+    visibleWidth = itemSize[0]
+  end if
+
+  if type(focusXOffset) = "roArray" and focusXOffset.count() > 0
+    visibleWidth = visibleWidth - focusXOffset[0]
+  end if
+
+  return visibleWidth
+end function
+
+' Extracts horizontal item spacing from the RowList rowItemSpacing field.
+' @param rowItemSpacing - flat [x,y] or nested [[x,y]]
+' @return horizontal spacing in pixels
+function calculateTextureItemSpacing(rowItemSpacing as dynamic) as integer
+  spacing = 0
+  if type(rowItemSpacing) = "roArray" and rowItemSpacing.count() > 0
+    if type(rowItemSpacing[0]) = "roArray"
+      spacing = rowItemSpacing[0][0]
+    else
+      spacing = rowItemSpacing[0]
+    end if
+  end if
+  return spacing
+end function
+
+' Calculates and sets the loaded row range and focused column based on current focus.
+' The vertical range includes all visible rows plus a 2-row buffer above and below.
+'
+' @param contentRoot - the RowList's root ContentNode (m.top.content)
+' @param focusedRow - index of the currently focused row (rowItemFocused[0])
+' @param focusedColumn - index of the currently focused column (rowItemFocused[1])
+' @param numVisibleRows - number of rows visible on screen (RowList.numRows)
+sub updateTextureBufferRange(contentRoot as object, focusedRow as dynamic, focusedColumn as dynamic, numVisibleRows as integer)
+  if not isValid(contentRoot) or not contentRoot.hasField("loadedRowRange") then return
+  if not isValid(focusedRow) or not isValid(focusedColumn) then return
+
+  totalRows = contentRoot.getChildCount()
+  if totalRows = 0 or focusedRow < 0 or focusedColumn < 0 or focusedRow >= totalRows
+    contentRoot.loadedRowRange = [-1, -1, -1, -1]
+    return
+  end if
+
+  ' --- Vertical range ---
+  visibleStart = focusedRow
+  visibleEnd = focusedRow + numVisibleRows - 1
+  if visibleEnd >= totalRows then visibleEnd = totalRows - 1
+
+  bufferStart = focusedRow - 2
+  if bufferStart < 0 then bufferStart = 0
+
+  bufferEnd = visibleEnd + 2
+  if bufferEnd >= totalRows then bufferEnd = totalRows - 1
+
+  ' Only set loadedRowRange if it actually changed
+  currentRange = contentRoot.loadedRowRange
+  rowRangeChanged = true
+  if isValid(currentRange) and currentRange.count() >= 4 and currentRange[0] = bufferStart and currentRange[1] = visibleStart and currentRange[2] = visibleEnd and currentRange[3] = bufferEnd
+    rowRangeChanged = false
+  end if
+
+  if rowRangeChanged
+    contentRoot.loadedRowRange = [bufferStart, visibleStart, visibleEnd, bufferEnd]
+  end if
+
+  ' --- Horizontal: track focused column per row ---
+  if contentRoot.hasField("focusedColumns")
+    cols = contentRoot.focusedColumns
+    ' Extend array if needed (new rows added since last update)
+    while cols.count() <= focusedRow
+      cols.push(0)
+    end while
+    if cols[focusedRow] <> focusedColumn
+      cols[focusedRow] = focusedColumn
+      contentRoot.focusedColumns = cols
+    end if
+  end if
+end sub
+
+' Activates texture management after initial content load or on OnScreenShown.
+' Transitions state from "init" or "hidden" to "active", enabling buffer-based
+' texture management. Callers should update loadedRowRange before calling this.
+'
+' @param contentRoot - the RowList's root ContentNode (m.top.content)
+sub activateTextureManager(contentRoot as object)
+  if not isValid(contentRoot) or not contentRoot.hasField("textureManagerState") then return
+  contentRoot.textureManagerState = "active"
+end sub
+
+' Hides texture management when the screen is no longer visible.
+' Cells with renderTracking <> "none" stay loaded (Roku keeps them allocated);
+' all others unload to free texture memory.
+'
+' @param contentRoot - the RowList's root ContentNode (m.top.content)
+sub hideTextureManager(contentRoot as object)
+  if not isValid(contentRoot) or not contentRoot.hasField("textureManagerState") then return
+  contentRoot.textureManagerState = "hidden"
+end sub
+
+' Destroys texture management during component teardown.
+' All cells force-unload unconditionally — no guards, no buffer checks.
+'
+' @param contentRoot - the RowList's root ContentNode (m.top.content)
+sub destroyTextureManager(contentRoot as object)
+  if not isValid(contentRoot) or not contentRoot.hasField("textureManagerState") then return
+  contentRoot.textureManagerState = "destroyed"
+end sub

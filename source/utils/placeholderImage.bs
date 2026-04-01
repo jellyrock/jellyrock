@@ -1,0 +1,39 @@
+' Returns the local placeholder image path for a given Jellyfin item type.
+' Used when an item has no image URL or the image fails to load.
+' The placeholder icon is displayed centered on the backdrop rectangle
+' using loadDisplayMode="limitSize" so it renders at its natural size.
+'
+' @param itemType - Jellyfin item type string (e.g., "Movie", "Person")
+' @returns pkg:/ path to the appropriate placeholder image
+function getPlaceholderImagePath(itemType as string) as string
+  if itemType = "Movie" or itemType = "BoxSet"
+    return "pkg:/images/placeholders/movie.png"
+  else if itemType = "Person"
+    return "pkg:/images/placeholders/person.png"
+  else if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "Recording" or itemType = "Program" or itemType = "Series" or itemType = "Season"
+    return "pkg:/images/placeholders/playCircle.png"
+  else if itemType = "MusicAlbum"
+    return "pkg:/images/placeholders/album.png"
+  else if itemType = "MusicArtist"
+    return "pkg:/images/placeholders/artist.png"
+  else if itemType = "Audio"
+    return "pkg:/images/placeholders/musicNote.png"
+  else if itemType = "Playlist"
+    return "pkg:/images/placeholders/playlist.png"
+  else if itemType = "Photo"
+    return "pkg:/images/placeholders/photo.png"
+  else if itemType = "PhotoAlbum"
+    return "pkg:/images/placeholders/photoAlbum.png"
+  end if
+  return "pkg:/images/placeholders/folder.png"
+end function
+
+' Checks whether a URI points to a local placeholder image.
+' Used to guard onPosterLoadStatusChanged from hiding the backdrop
+' when a placeholder loads successfully.
+'
+' @param uri - the poster URI to check
+' @returns true if the URI is a placeholder path
+function isPlaceholderUri(uri as string) as boolean
+  return uri.startsWith("pkg:/images/placeholders/")
+end function

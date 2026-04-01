@@ -9,6 +9,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.log = log.Logger("SearchResults")
@@ -43,11 +44,24 @@ sub OnScreenShown()
     return
   end if
 
+  ' Restore texture management — reactivate and restore buffer range so cells reload.
+  if isValid(m.searchSelect) and isValid(m.searchSelect.content)
+    updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
+    activateTextureManager(m.searchSelect.content)
+  end if
+
   ' Restore focus for scene navigation
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
     m.top.setFocus(true)
+  end if
+end sub
+
+sub OnScreenHidden()
+  m.log.info("OnScreenHidden")
+  if isValid(m.searchSelect) and isValid(m.searchSelect.content)
+    hideTextureManager(m.searchSelect.content)
   end if
 end sub
 
@@ -77,6 +91,8 @@ sub onSearchItemFocused()
   if not isValid(m.searchSelect.rowItemFocused) or m.searchSelect.rowItemFocused[0] = -1 or m.searchSelect.rowItemFocused[1] = -1
     return
   end if
+
+  updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
 
   ' Get focused item from search results
   rowContent = m.searchSelect.content.getChild(m.searchSelect.rowItemFocused[0])
@@ -161,6 +177,7 @@ end function
 ' Called automatically by SceneManager.popScene() / clearScenes()
 sub destroy()
   m.log.verbose("destroy")
+  destroyTextureManager(m.searchSelect.content)
 
   ' Fully release the voice route before teardown — the DynamicMiniKeyboard's
   ' textEditBox claims the firmware's global voice route via voiceEnabled + active.

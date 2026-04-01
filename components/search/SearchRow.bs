@@ -8,12 +8,12 @@ import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.top.itemComponentName = "BrowseRowItem"
-  m.top.content = getData()
 
-  ' override defaults
+  ' Set layout before initTextureManager so it calculates correct visible width
   m.top.rowLabelOffset = [0, 21]
   m.top.vertFocusAnimationStyle = "fixedFocus"
   m.top.rowFocusAnimationStyle = "fixedFocus"
@@ -24,6 +24,9 @@ sub init()
   m.top.itemSize = [1325, rowSlotSize.ROW_HEIGHT_PORTRAIT]
   m.top.itemSpacing = [0, 0]
   m.top.numRows = 3
+
+  m.top.content = getData()
+  initTextureManager(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
 end sub
 
 function getData()
@@ -72,7 +75,10 @@ function getData()
   end for
 
   m.top.content = data
+  initTextureManager(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
   applyRowSizes(data)
+  updateTextureBufferRange(m.top.content, 0, 0, m.top.numRows)
+  activateTextureManager(m.top.content)
   return data
 end function
 
