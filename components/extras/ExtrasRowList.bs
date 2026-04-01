@@ -912,13 +912,7 @@ function populateRow(rowRef as object, title as string, items as object, rowHeig
   ' activateTextureManager from "init" → "active" only runs once; subsequent calls
   ' when already "active" are harmless (state doesn't change, no observer fire).
   if isValid(m.top.content) and m.top.content.hasField("textureManagerState") and m.top.content.textureManagerState = "init"
-    focusedRow = 0
-    focusedCol = 0
-    if isValid(m.top.rowItemFocused) and m.top.rowItemFocused.count() >= 2
-      focusedRow = m.top.rowItemFocused[0]
-      focusedCol = m.top.rowItemFocused[1]
-    end if
-    updateTextureBufferRange(m.top.content, focusedRow, focusedCol, m.top.numRows)
+    updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
     activateTextureManager(m.top.content)
   end if
 

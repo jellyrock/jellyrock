@@ -216,6 +216,39 @@ namespace tests
       m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
     end function
 
+    @it("resets range when focusedRow is negative")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      for i = 0 to 4
+        root.createChild("ContentNode")
+      end for
+      updateTextureBufferRange(root, -1, 0, 3)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
+    @it("resets range when focusedColumn is negative")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      for i = 0 to 4
+        root.createChild("ContentNode")
+      end for
+      updateTextureBufferRange(root, 0, -1, 3)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
+    @it("resets range when focusedRow is out of bounds")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode")
+      initTextureManager(root, [1920, 441], [96], [30, 0])
+      for i = 0 to 4
+        root.createChild("ContentNode")
+      end for
+      updateTextureBufferRange(root, 10, 0, 3)
+      m.assertEqual(root.loadedRowRange, [-1, -1, -1, -1])
+    end function
+
     @it("tracks focused column per row")
     function _()
       root = CreateObject("roSGNode", "ContentNode")

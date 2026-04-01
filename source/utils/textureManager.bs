@@ -108,7 +108,7 @@ sub updateTextureBufferRange(contentRoot as object, focusedRow as dynamic, focus
   if not isValid(focusedRow) or not isValid(focusedColumn) then return
 
   totalRows = contentRoot.getChildCount()
-  if totalRows = 0
+  if totalRows = 0 or focusedRow < 0 or focusedColumn < 0 or focusedRow >= totalRows
     contentRoot.loadedRowRange = [-1, -1, -1, -1]
     return
   end if
@@ -151,7 +151,7 @@ end sub
 
 ' Activates texture management after initial content load or on OnScreenShown.
 ' Transitions state from "init" or "hidden" to "active", enabling buffer-based
-' texture management. Bumps loadedRowRange to trigger re-evaluation on all cells.
+' texture management. Callers should update loadedRowRange before calling this.
 '
 ' @param contentRoot - the RowList's root ContentNode (m.top.content)
 sub activateTextureManager(contentRoot as object)

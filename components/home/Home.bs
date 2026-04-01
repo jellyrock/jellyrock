@@ -155,9 +155,7 @@ sub OnScreenShown()
 
   ' Restore texture management — reactivate and restore buffer range so cells reload.
   if isValid(m.activeContent) and isValid(m.activeContent.content)
-    if isValid(m.activeContent.rowItemFocused) and m.activeContent.rowItemFocused.count() >= 2
-      updateTextureBufferRange(m.activeContent.content, m.activeContent.rowItemFocused[0], m.activeContent.rowItemFocused[1], m.activeContent.numRows)
-    end if
+    updateTextureBufferRange(m.activeContent.content, m.activeContent.rowItemFocused[0], m.activeContent.rowItemFocused[1], m.activeContent.numRows)
     activateTextureManager(m.activeContent.content)
   end if
 

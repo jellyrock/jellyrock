@@ -192,13 +192,7 @@ sub onFavoritesLoaded()
 
   ' All rows populated — activate texture management so off-screen cells unload.
   ' Recalculate buffer range first — rows were added after the initial range calculation.
-  focusedRow = 0
-  focusedCol = 0
-  if isValid(m.top.rowItemFocused) and m.top.rowItemFocused.count() >= 2
-    focusedRow = m.top.rowItemFocused[0]
-    focusedCol = m.top.rowItemFocused[1]
-  end if
-  updateTextureBufferRange(m.top.content, focusedRow, focusedCol, m.top.numRows)
+  updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
   activateTextureManager(m.top.content)
 end sub
 

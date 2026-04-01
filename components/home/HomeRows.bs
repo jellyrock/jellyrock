@@ -228,13 +228,7 @@ sub onLibrariesLoaded()
     ' their textures loaded to prevent visual glitches during layout changes.
     ' Recalculate buffer range first — the initial updateTextureBufferRange ran
     ' when the content root had 0 children, leaving loadedRowRange at [-1,-1,-1,-1].
-    focusedRow = 0
-    focusedCol = 0
-    if isValid(m.top.rowItemFocused) and m.top.rowItemFocused.count() >= 2
-      focusedRow = m.top.rowItemFocused[0]
-      focusedCol = m.top.rowItemFocused[1]
-    end if
-    updateTextureBufferRange(m.top.content, focusedRow, focusedCol, m.top.numRows)
+    updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
     activateTextureManager(m.top.content)
   end if
 
