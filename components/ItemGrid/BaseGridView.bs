@@ -505,6 +505,14 @@ sub ItemDataLoaded(msg)
 
   stopLoadingSpinner()
 
+  ' Auto-load remaining items immediately (don't wait for scroll trigger).
+  ' With texture management, only visible + buffer rows (~48 items) have loaded
+  ' textures regardless of total ContentNode count, so loading all items is safe.
+  if m.loadedItems > 0 and m.loadedItems < m.loadItemsTask.totalRecordCount
+    m.loadItemsTask.limit = m.loadItemsTask.totalRecordCount - m.loadedItems
+    loadMoreData()
+  end if
+
   ' Return focus to options menu if it was opened while library was loading
   if m.options.visible
     m.options.setFocus(true)
@@ -516,7 +524,8 @@ sub loadMoreData()
   m.log.debug("start loadMoreData()")
   if m.loading = true then return
 
-  prepareDataLoad(false)
+  m.loadItemsTask.control = "stop"
+  m.emptyText.visible = false
   m.loading = true
   m.loadItemsTask.startIndex = m.loadedItems
   m.loadItemsTask.observeField("content", "ItemDataLoaded")
