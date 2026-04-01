@@ -1,0 +1,58 @@
+namespace tests
+
+  @suite("captionTask - destroy()")
+  class CaptionTaskDestroyTests extends tests.BaseTestSuite
+
+    private captionTask as object
+
+    protected override sub setup()
+      super.setup()
+      m.captionTask = CreateObject("roSGNode", "captionTask")
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.captionTask = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("destroy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not crash when called")
+    function _()
+      m.captionTask.callFunc("destroy")
+      m.assertTrue(true)
+    end function
+
+    @it("does not crash when called after receiving empty caption data")
+    function _()
+      m.captionTask.captionData = { entries: [] }
+      m.captionTask.callFunc("destroy")
+      m.assertTrue(true)
+    end function
+
+    @it("does not crash when called after receiving caption data")
+    function _()
+      m.captionTask.captionData = { entries: [{ "start": 0, "end": 1000, "text": "Hello" }] }
+      m.captionTask.callFunc("destroy")
+      m.assertTrue(true)
+    end function
+
+    @it("clears currentCaption after destroy")
+    function _()
+      m.captionTask.captionData = { entries: [{ "start": 0, "end": 1000, "text": "Hello" }] }
+      m.captionTask.callFunc("destroy")
+      m.assertArrayCount(m.captionTask.currentCaption, 0)
+    end function
+
+    @it("does not crash when called twice (idempotent)")
+    function _()
+      m.captionTask.callFunc("destroy")
+      m.captionTask.callFunc("destroy")
+      m.assertTrue(true)
+    end function
+
+  end class
+
+end namespace

@@ -1362,6 +1362,7 @@ sub destroy()
     m.captionTask.control = "STOP"
     m.captionTask.unobserveField("currentCaption")
     m.captionTask.unobserveField("useThis")
+    m.captionTask.callFunc("destroy")
     m.captionTask = invalid
   end if
 
