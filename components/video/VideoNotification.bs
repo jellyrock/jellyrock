@@ -60,7 +60,9 @@ end sub
 sub onFadeOutAnimationState()
   if m.fadeOutAnimation.state = "stopped" and m.top.state = "dismissing"
     m.actionButton.visible = false
-    m.actionButton.setFocus(false)
+    ' Focus management is the parent's responsibility via the action observer.
+    ' Calling setFocus(false) here would race with the parent's setFocus(true)
+    ' and can leave nothing focused on some Roku firmware versions.
     m.top.state = "hidden"
     if m.top.action = ""
       m.top.action = "dismissed"

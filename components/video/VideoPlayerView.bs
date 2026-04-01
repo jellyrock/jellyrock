@@ -87,6 +87,8 @@ sub init()
   m.segmentNotification = m.top.findNode("segmentNotification")
   m.segmentNotification.notificationType = "segment"
   m.segmentNotification.observeField("action", "onSegmentNotificationAction")
+  m.segmentNotification.observeField("state", "onNotificationStateChanged")
+  m.nextEpisodeNotification.observeField("state", "onNotificationStateChanged")
 
   ' Media segment tracking state
   m.mediaSegments = []
@@ -951,6 +953,15 @@ sub onSegmentNotificationAction()
   end if
 end sub
 
+' Safety net: ensure focus isn't orphaned after notification dismissal animation completes
+sub onNotificationStateChanged()
+  if m.segmentNotification.state = "hidden" or m.nextEpisodeNotification.state = "hidden"
+    if not m.osd.visible and not m.top.hasFocus()
+      m.top.setFocus(true)
+    end if
+  end if
+end sub
+
 ' When Video Player state changes
 sub onPositionChanged()
   ' Pass video position data into OSD
@@ -1469,12 +1480,14 @@ sub destroy()
   ' Destroy notification components
   if isValid(m.segmentNotification)
     m.segmentNotification.unobserveField("action")
+    m.segmentNotification.unobserveField("state")
     m.segmentNotification.callFunc("destroy")
     m.segmentNotification = invalid
   end if
 
   if isValid(m.nextEpisodeNotification)
     m.nextEpisodeNotification.unobserveField("action")
+    m.nextEpisodeNotification.unobserveField("state")
     m.nextEpisodeNotification.callFunc("destroy")
     m.nextEpisodeNotification = invalid
   end if
