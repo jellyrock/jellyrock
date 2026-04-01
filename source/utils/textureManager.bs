@@ -1,27 +1,29 @@
 ' Texture Manager Utility
 '
-' State machine managing texture memory for RowList-based screens.
-' JRRowItem cells observe fields on the content root and load/unload
-' textures based on the current state and their position.
+' State machine managing texture memory for RowList and MarkupGrid screens.
+' Cell components (JRRowItem for RowList, GridItem for MarkupGrid) observe fields
+' on the content root and load/unload textures based on the current state and
+' their position.
 '
 ' States:
 '   "init"      — Content loading, layout unstable. Cells freeze current state (no-op).
 '   "active"    — Normal operation. Short rows (≤ threshold) use renderTracking only.
 '                  Long rows (> threshold) use horizontal buffer logic.
-'   "hidden"    — Screen hidden or tab switched. Cells with renderTracking <> "none"
-'                  stay loaded; all others unload.
+'   "hidden"    — Screen hidden (pushed behind another). Freeze/no-op — all textures
+'                  stay loaded so returning is instant. renderTracking changes ignored.
 '   "destroyed" — Component being torn down. All cells force-unload unconditionally.
 '
 ' Vertical range (loadedRowRange):
 '   4-element array: [bufferStart, visibleStart, visibleEnd, bufferEnd]
 '   Buffer rows (±2 from visible) keep ALL items loaded in active state.
-'   Visible rows use horizontal buffer for long rows.
+'   Visible rows use horizontal buffer for long rows (RowList only).
 '
 ' Horizontal buffer (focusedColumns + textureVisibleWidth + textureItemSpacing):
-'   Only applies to rows with > TEXTURE_BUFFER_THRESHOLD items.
+'   Only applies to RowList rows with > TEXTURE_BUFFER_THRESHOLD items.
 '   Visible columns ± 1 buffer item keep textures loaded; rest unloaded.
+'   Not used for MarkupGrid (all columns fit on screen).
 '
-' Flow:
+' Flow (RowList):
 '   1. Parent calls initTextureManager() after creating content root
 '   2. Parent calls updateTextureBufferRange() after skeleton rows + on every focus change
 '   3. Parent calls activateTextureManager() once initial content is fully loaded
@@ -29,6 +31,11 @@
 '   5. Parent calls activateTextureManager() on OnScreenShown (after restoring range)
 '   6. Parent calls destroyTextureManager() in destroy()
 '   7. JRRowItem observes textureManagerState, loadedRowRange, focusedColumns
+'
+' Flow (MarkupGrid):
+'   Same as RowList but uses updateGridTextureBufferRange() instead of
+'   updateTextureBufferRange(). GridItem observes textureManagerState and
+'   loadedRowRange (no focusedColumns — no horizontal buffer for grids).
 
 ' Maximum items a row can have before horizontal buffer logic kicks in.
 ' Rows at or below this count use renderTracking only — all items stay loaded
@@ -105,7 +112,10 @@ end function
 ' @param numVisibleRows - number of rows visible on screen (RowList.numRows)
 sub updateTextureBufferRange(contentRoot as object, focusedRow as dynamic, focusedColumn as dynamic, numVisibleRows as integer)
   if not isValid(contentRoot) or not contentRoot.hasField("loadedRowRange") then return
-  if not isValid(focusedRow) or not isValid(focusedColumn) then return
+  if not isValid(focusedRow) or not isValid(focusedColumn)
+    contentRoot.loadedRowRange = [-1, -1, -1, -1]
+    return
+  end if
 
   totalRows = contentRoot.getChildCount()
   if totalRows = 0 or focusedRow < 0 or focusedColumn < 0 or focusedRow >= totalRows
@@ -149,6 +159,55 @@ sub updateTextureBufferRange(contentRoot as object, focusedRow as dynamic, focus
   end if
 end sub
 
+' Calculates and sets the loaded row range for a MarkupGrid based on current focus.
+' Unlike updateTextureBufferRange() which works with hierarchical RowList content
+' (children = rows), this works with flat MarkupGrid content (children = items)
+' and derives row indices from the flat item index and column count.
+'
+' @param contentRoot - the MarkupGrid's root ContentNode (m.data / m.itemGrid.content)
+' @param focusedIndex - flat index of the focused item (itemGrid.itemFocused)
+' @param numColumns - number of columns in the grid (itemGrid.numColumns)
+' @param numVisibleRows - number of rows visible on screen (itemGrid.numRows)
+sub updateGridTextureBufferRange(contentRoot as object, focusedIndex as dynamic, numColumns as integer, numVisibleRows as integer)
+  if not isValid(contentRoot) or not contentRoot.hasField("loadedRowRange") then return
+  if not isValid(focusedIndex) or numColumns <= 0
+    contentRoot.loadedRowRange = [-1, -1, -1, -1]
+    return
+  end if
+
+  totalItems = contentRoot.getChildCount()
+  if totalItems = 0 or focusedIndex < 0 or focusedIndex >= totalItems
+    contentRoot.loadedRowRange = [-1, -1, -1, -1]
+    return
+  end if
+
+  ' Derive row from flat index
+  focusedRow = int(focusedIndex / numColumns)
+  totalRows = int((totalItems + numColumns - 1) / numColumns) ' ceiling division
+
+  ' --- Vertical range (same ±2 buffer as RowList) ---
+  visibleStart = focusedRow
+  visibleEnd = focusedRow + numVisibleRows - 1
+  if visibleEnd >= totalRows then visibleEnd = totalRows - 1
+
+  bufferStart = focusedRow - 2
+  if bufferStart < 0 then bufferStart = 0
+
+  bufferEnd = visibleEnd + 2
+  if bufferEnd >= totalRows then bufferEnd = totalRows - 1
+
+  ' Only set loadedRowRange if it actually changed
+  currentRange = contentRoot.loadedRowRange
+  rowRangeChanged = true
+  if isValid(currentRange) and currentRange.count() >= 4 and currentRange[0] = bufferStart and currentRange[1] = visibleStart and currentRange[2] = visibleEnd and currentRange[3] = bufferEnd
+    rowRangeChanged = false
+  end if
+
+  if rowRangeChanged
+    contentRoot.loadedRowRange = [bufferStart, visibleStart, visibleEnd, bufferEnd]
+  end if
+end sub
+
 ' Activates texture management after initial content load or on OnScreenShown.
 ' Transitions state from "init" or "hidden" to "active", enabling buffer-based
 ' texture management. Callers should update loadedRowRange before calling this.
@@ -160,8 +219,8 @@ sub activateTextureManager(contentRoot as object)
 end sub
 
 ' Hides texture management when the screen is no longer visible.
-' Cells with renderTracking <> "none" stay loaded (Roku keeps them allocated);
-' all others unload to free texture memory.
+' Freezes all cells in their current state — textures stay loaded so returning
+' is instant. renderTracking changes are ignored while hidden.
 '
 ' @param contentRoot - the RowList's root ContentNode (m.top.content)
 sub hideTextureManager(contentRoot as object)

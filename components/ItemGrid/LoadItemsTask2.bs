@@ -9,7 +9,7 @@ sub init()
   m.top.functionName = "loadItems"
   m.transformer = JellyfinDataTransformer()
 
-  m.top.limit = 60
+  m.top.limit = 100
   usersettingLimit = m.global.user.settings.itemGridLimit
 
   if isValid(usersettingLimit)

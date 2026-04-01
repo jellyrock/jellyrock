@@ -18,6 +18,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/textureManager.bs"
 
 sub init()
   m.log = log.Logger("BaseGridView")
@@ -33,6 +34,8 @@ sub init()
 
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
+  m.flatIndexMap = {}
+  initTextureManager(m.data, invalid, invalid, invalid)
 
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.focusXOffset = 0
@@ -136,11 +139,21 @@ sub OnScreenShown()
     m.voiceBox.active = true
   end if
 
+  ' Restore texture management after returning from a pushed screen
+  if isValid(m.data) and m.data.hasField("textureManagerState")
+    updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
+    activateTextureManager(m.data)
+  end if
+
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
     m.top.setFocus(true)
   end if
+end sub
+
+sub OnScreenHidden()
+  hideTextureManager(m.data)
 end sub
 
 ' ============================================================================
@@ -469,14 +482,25 @@ sub ItemDataLoaded(msg)
     m.itemGrid.jumpToItem = 0
   end if
 
-  for each item in itemData
+  startIndex = m.data.getChildCount()
+  for i = 0 to itemData.count() - 1
+    item = itemData[i]
     m.data.appendChild(item)
+    if isValidAndNotEmpty(item.id)
+      m.flatIndexMap[item.id] = startIndex + i
+    end if
   end for
 
   ' Update the stored counts
   m.loadedItems = m.itemGrid.content.getChildCount()
   m.loadedRows = m.loadedItems / m.itemGrid.numColumns
   m.loading = false
+
+  ' Update texture buffer range and activate after data is loaded
+  if m.loadedItems > 0
+    updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
+    activateTextureManager(m.data)
+  end if
 
   ' If there are no items to display, show message
   if m.loadedItems = 0
@@ -486,6 +510,15 @@ sub ItemDataLoaded(msg)
   end if
 
   stopLoadingSpinner()
+
+  ' Auto-load remaining items in chunks (don't wait for scroll trigger).
+  ' Each chunk uses the normal page size (itemGridLimit); the recursive
+  ' ItemDataLoaded → loadMoreData cycle continues until all items are loaded.
+  ' With texture management, only visible + buffer rows have loaded textures
+  ' regardless of total ContentNode count, so loading all items is safe.
+  if m.loadedItems > 0 and m.loadedItems < m.loadItemsTask.totalRecordCount
+    loadMoreData()
+  end if
 
   ' Return focus to options menu if it was opened while library was loading
   if m.options.visible
@@ -498,7 +531,8 @@ sub loadMoreData()
   m.log.debug("start loadMoreData()")
   if m.loading = true then return
 
-  prepareDataLoad(false)
+  m.loadItemsTask.control = "stop"
+  m.emptyText.visible = false
   m.loading = true
   m.loadItemsTask.startIndex = m.loadedItems
   m.loadItemsTask.observeField("content", "ItemDataLoaded")
@@ -515,6 +549,9 @@ sub onItemFocused()
   itemInt = m.itemGrid.itemFocused
 
   if itemInt = -1 then return
+
+  ' Update texture buffer range on every focus change
+  updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
 
   updateTitle()
   m.selectedFavoriteItem = m.itemGrid.content.getChild(m.itemGrid.itemFocused)
@@ -752,6 +789,8 @@ sub optionsClosed()
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
+    initTextureManager(m.data, invalid, invalid, invalid)
     loadInitialItems()
   end if
 
@@ -770,6 +809,8 @@ sub alphaSelectedChanged()
 
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
+    initTextureManager(m.data, invalid, invalid, invalid)
 
     m.genreData = CreateObject("roSGNode", "ContentNode")
     m.genreList.content = m.genreData
@@ -806,6 +847,8 @@ sub onVoiceFilter()
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
+    initTextureManager(m.data, invalid, invalid, invalid)
     m.top.alphaSelected = ""
 
     ' Store voice text before any other operations
@@ -995,6 +1038,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.loadItemsTask.genreIds = ""
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
+    m.flatIndexMap = {}
+    initTextureManager(m.data, invalid, invalid, invalid)
     loadInitialItems()
     return true
   end if
@@ -1048,10 +1093,25 @@ sub updateTitle()
   end if
 end sub
 
+' Returns the flat index of an item within the grid's content root.
+' Called by GridItem via callFunc for O(1) index lookup (avoids O(N) child scan).
+' @param itemId - the Jellyfin item ID to look up
+' @returns flat index, or -1 if not found
+function getItemFlatIndex(itemId as string) as integer
+  if not isValidAndNotEmpty(itemId) then return -1
+  if isValid(m.flatIndexMap) and m.flatIndexMap.doesExist(itemId)
+    return m.flatIndexMap[itemId]
+  end if
+  return -1
+end function
+
 ' destroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
 sub destroy()
   m.log.verbose("destroy")
+
+  ' Destroy texture manager — force-unloads all grid item textures
+  destroyTextureManager(m.data)
 
   ' Unobserve child node observers
   m.genreList.unobserveField("rowItemFocused")
