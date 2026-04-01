@@ -1136,6 +1136,10 @@ sub onState()
       m.bufferCheckTimer.control = "start"
       m.bufferCheckTimer.ObserveField("fire", "bufferCheck")
     end if
+    ' Show non-blocking spinner for mid-playback buffering (seek, network stall)
+    if m.playReported
+      startLoadingSpinner(false)
+    end if
   else if m.top.state = "error"
     m.log.error(m.top.errorCode, m.top.errorMsg, m.top.errorStr, m.playReported, m.top.transcodeAvailable)
 
@@ -1164,9 +1168,11 @@ sub onState()
       if isValid(m.trickplayCarousel)
         m.trickplayCarousel.visible = false
       end if
+      stopLoadingSpinner()
       showPlaybackErrorDialog(tr("Error During Playback"))
     end if
   else if m.top.state = "playing"
+    stopLoadingSpinner()
     ' Check if next episode is available
     if isValid(m.top.showID)
       if m.top.showID <> "" and not m.checkedForNextEpisode and m.top.content.contenttype = 4
@@ -1184,9 +1190,11 @@ sub onState()
     end if
     m.playbackTimer.control = "start"
   else if m.top.state = "paused"
+    stopLoadingSpinner()
     m.playbackTimer.control = "stop"
     ReportPlayback()
   else if m.top.state = "stopped"
+    stopLoadingSpinner()
     m.playbackTimer.control = "stop"
     m.playbackTimer.unobserveField("fire")
     m.bufferCheckTimer.control = "stop"
@@ -1198,6 +1206,7 @@ sub onState()
       m.trickplayCarousel.callFunc("reset")
     end if
   else if m.top.state = "finished"
+    stopLoadingSpinner()
     m.playbackTimer.control = "stop"
     m.playbackTimer.unobserveField("fire")
     m.bufferCheckTimer.control = "stop"
