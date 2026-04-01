@@ -216,10 +216,13 @@ sub destroy()
   ' after the player has already been destroyed.
   m.top.unobserveField("captionData")
 
-  ' Stop and release caption timer
-  m.captionTimer.unobserveField("fire")
-  m.captionTimer.control = "stop"
-  m.captionTimer = invalid
+  ' Stop and release caption timer (guarded — safe if destroy() is called
+  ' twice or if init() partially failed and m.captionTimer was never set)
+  if isValid(m.captionTimer)
+    m.captionTimer.unobserveField("fire")
+    m.captionTimer.control = "stop"
+    m.captionTimer = invalid
+  end if
 
   ' Clear references
   m.captionList = invalid

@@ -46,6 +46,13 @@ namespace tests
       m.assertArrayCount(m.captionTask.currentCaption, 0)
     end function
 
+    @it("does not crash when called twice (idempotent)")
+    function _()
+      m.captionTask.callFunc("destroy")
+      m.captionTask.callFunc("destroy")
+      m.assertTrue(true)
+    end function
+
   end class
 
 end namespace
