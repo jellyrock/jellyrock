@@ -486,7 +486,9 @@ sub ItemDataLoaded(msg)
   for i = 0 to itemData.count() - 1
     item = itemData[i]
     m.data.appendChild(item)
-    m.flatIndexMap[item.id] = startIndex + i
+    if isValidAndNotEmpty(item.id)
+      m.flatIndexMap[item.id] = startIndex + i
+    end if
   end for
 
   ' Update the stored counts
@@ -509,11 +511,12 @@ sub ItemDataLoaded(msg)
 
   stopLoadingSpinner()
 
-  ' Auto-load remaining items immediately (don't wait for scroll trigger).
-  ' With texture management, only visible + buffer rows (~48 items) have loaded
-  ' textures regardless of total ContentNode count, so loading all items is safe.
+  ' Auto-load remaining items in chunks (don't wait for scroll trigger).
+  ' Each chunk uses the normal page size (itemGridLimit); the recursive
+  ' ItemDataLoaded → loadMoreData cycle continues until all items are loaded.
+  ' With texture management, only visible + buffer rows have loaded textures
+  ' regardless of total ContentNode count, so loading all items is safe.
   if m.loadedItems > 0 and m.loadedItems < m.loadItemsTask.totalRecordCount
-    m.loadItemsTask.limit = m.loadItemsTask.totalRecordCount - m.loadedItems
     loadMoreData()
   end if
 
@@ -1095,6 +1098,7 @@ end sub
 ' @param itemId - the Jellyfin item ID to look up
 ' @returns flat index, or -1 if not found
 function getItemFlatIndex(itemId as string) as integer
+  if not isValidAndNotEmpty(itemId) then return -1
   if isValid(m.flatIndexMap) and m.flatIndexMap.doesExist(itemId)
     return m.flatIndexMap[itemId]
   end if
