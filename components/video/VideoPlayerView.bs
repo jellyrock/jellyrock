@@ -901,7 +901,15 @@ sub checkMediaSegments()
 
       ' Auto-skip: seek to end of segment immediately
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
-      m.top.seek = seekPosition
+
+      ' If skipping an outro near the video's end, force finish for correct watched status
+      ' and auto-play trigger. Uses same pattern as next episode button activation.
+      if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+        m.top.control = "stop"
+        m.top.state = "finished"
+      else
+        m.top.seek = seekPosition
+      end if
       m.skippedSegments[segmentId] = true
       m.activeSegmentId = ""
     else if action = MediaSegmentAction.askToSkip
@@ -956,7 +964,16 @@ sub onSegmentNotificationAction()
       segmentId = segment.Id ?? ""
       if segmentId = m.activeSegmentId
         seekPosition = segmentTicksToSeconds(segment.EndTicks)
-        m.top.seek = seekPosition
+        segmentType = segment.Type ?? ""
+
+        ' If skipping an outro that ends near the video's end, force a finished state
+        ' so the server correctly marks the item as watched and auto-play triggers
+        if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+          m.top.control = "stop"
+          m.top.state = "finished"
+        else
+          m.top.seek = seekPosition
+        end if
         exit for
       end if
     end for
