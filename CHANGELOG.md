@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- dismiss stale segment notifications on back-to-back transitions ([#448](https://github.com/jellyrock/jellyrock/pull/448))
 - captionTask crash on orphaned timer after player teardown ([#446](https://github.com/jellyrock/jellyrock/pull/446))
 - overhang focus always defaults to active tab ([#441](https://github.com/jellyrock/jellyrock/pull/441))
 
