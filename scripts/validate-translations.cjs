@@ -124,7 +124,7 @@ async function main() {
   }
 
   // 1. Validate all locale JSON files
-  const localeFiles = await fg(['*.json', '!languages.json'], {
+  const localeFiles = await fg(['*.json'], {
     cwd: LOCALE_DIR,
     absolute: true
   });

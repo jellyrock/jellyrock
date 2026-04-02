@@ -250,7 +250,7 @@ class MoviePresenter extends GridPresenterBase
       if item.runTimeTicks > 0
         runtime = int(item.runTimeTicks / 600000000.0 + 0.5) ' Round to nearest minute
         runtimeNode = m.createInfoLabelNode("runtime")
-        runtimeNode.text = str(runtime).trim() + " mins"
+        runtimeNode.text = str(runtime).trim() + " " + translate(translationKeys.LabelMins)
         m.displayInfoNode(movieInfoGroup, runtimeNode)
       end if
     end if

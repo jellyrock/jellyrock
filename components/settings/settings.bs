@@ -20,7 +20,7 @@ sub init()
   m.customColorBackup = invalid
 
   ' Load available languages for the language picker
-  languagesJson = ReadAsciiFile("pkg:/locale/custom/languages.json")
+  languagesJson = ReadAsciiFile("pkg:/locale/languages.json")
   m.availableLanguages = ParseJson(languagesJson)
   if not isValid(m.availableLanguages) then m.availableLanguages = []
 

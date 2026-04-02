@@ -87,8 +87,8 @@ async function main() {
   const pluralErrors = checkPluralCompleteness(enUsKeys);
   pluralErrors.forEach(e => console.error(c(`  PLURAL: ${e}`, 'yellow')));
 
-  // Find all locale JSON files (exclude languages.json)
-  const localeFiles = await fg(['*.json', '!languages.json'], {
+  // Find all locale JSON files
+  const localeFiles = await fg(['*.json'], {
     cwd: LOCALE_DIR,
     absolute: true,
     onlyFiles: true
