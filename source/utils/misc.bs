@@ -1,4 +1,6 @@
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/translate.bs"
+import "pkg:/source/translationKeys.bs"
 
 function isNodeEvent(msg, field as string) as boolean
   return type(msg) = "roSGNodeEvent" and msg.getField() = field
@@ -225,7 +227,7 @@ function show_dialog(message as string, options = [], defaultSelection = 0) as i
 end function
 
 function message_dialog(message = "" as string)
-  return show_dialog(message, ["OK"])
+  return show_dialog(message, [translate(translationKeys.ButtonOk)])
 end function
 
 function option_dialog(options, message = "", defaultSelection = 0) as integer

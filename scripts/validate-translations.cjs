@@ -215,6 +215,20 @@ async function main() {
     hardcodedViolations.forEach(v => errors.push(`  ${v}`));
   }
 
+  // 4. Verify all locale files have a languages.json entry
+  const languagesPath = path.join(ROOT_DIR, 'locale/languages.json');
+  if (fs.existsSync(languagesPath)) {
+    const languages = JSON.parse(fs.readFileSync(languagesPath, 'utf8'));
+    const langCodes = new Set(languages.map(l => l.code).filter(c => c !== ''));
+    const localeCodes = localeFiles
+      .map(f => path.basename(f, '.json'))
+      .filter(c => c !== 'en-us');
+    const missingFromLangs = localeCodes.filter(c => !langCodes.has(c)).sort();
+    if (missingFromLangs.length > 0) {
+      errors.push(`${missingFromLangs.length} locale file(s) missing from languages.json: ${missingFromLangs.join(', ')}`);
+    }
+  }
+
   // Report
   if (errors.length > 0) {
     console.error(`\nTranslation validation failed (${errors.length} error(s)):\n`);

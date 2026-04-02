@@ -251,7 +251,7 @@ sub Main (args as dynamic) as void
         else
           ' TODO - switch on more node types
           stopLoadingSpinner()
-          message_dialog("This type is not yet supported: " + selectedItemType + ".")
+          message_dialog(translate(translationKeys.ErrorTypeNotYetSupported, [selectedItemType]))
         end if
       end if
     else if isNodeEvent(msg, "movieSelected")
@@ -352,7 +352,7 @@ sub Main (args as dynamic) as void
       else
         ' TODO - switch on more node types
         stopLoadingSpinner()
-        message_dialog("This type is not yet supported: " + nodeType + ".")
+        message_dialog(translate(translationKeys.ErrorTypeNotYetSupported, [nodeType]))
       end if
     else if isNodeEvent(msg, "buttonSelected")
       ' If a button is selected, we have some determining to do

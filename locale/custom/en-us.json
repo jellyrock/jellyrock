@@ -39,6 +39,7 @@
   "ErrorFailedToScheduleRecording": "Failed to schedule recording",
   "ErrorFailedToUpdateFavorite": "Failed to update favorite",
   "ErrorFailedToUpdateWatchedStatus": "Failed to update watched status",
+  "ErrorImageTypeNotSupported": "This image type is not supported.",
   "ErrorInvalidColor": "Invalid Color",
   "ErrorInvalidLanguageCode": "Invalid Language Code",
   "ErrorLoginAttemptFailed": "Login attempt failed.",
@@ -47,6 +48,7 @@
   "ErrorThereWasAnErrorAuthenticatingVia": "There was an error authenticating via Quick Connect.",
   "ErrorThereWasAnErrorRetrievingPlayback": "There was an error retrieving playback information from the server.",
   "ErrorThereWasAnErrorRetrievingThe": "There was an error retrieving the data for this item from the server.",
+  "ErrorTypeNotYetSupported": "This type is not yet supported: {0}.",
   "ErrorUnableToGetPlaybackInformation": "Unable to get playback information",
   "Label1080p": "1080p",
   "Label360p": "360p",
@@ -445,7 +447,7 @@
   "MessageWhenTranscodingMultichannelAudioPreferThis": "When transcoding multichannel audio, prefer this codec. EAC3 supports up to 7.1 channels with better compression. AC3 is more widely compatible. DTS is an alternative for systems that prefer it. This only affects 6 and 8 channel transcoding profiles.",
   "MessageYouCanSearchForTitlesPeople": "You can search for Titles, People, Live TV Channels and more",
   "MessageYourCustomColorsWillBeReplaced": "Your custom colors will be replaced by the selected theme. Continue?",
-  "SettingDescDisplayLanguage": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language.",
+  "SettingDescDisplayLanguage": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language. Changes take effect after leaving Settings.",
   "SettingDisplayLanguage": "Display Language",
   "SettingResetAllSettingsToTheirDefault": "Reset all settings to their default values. Your login session will not be affected."
 }

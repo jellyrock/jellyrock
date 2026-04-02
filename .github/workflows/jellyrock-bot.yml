@@ -78,11 +78,11 @@ jobs:
       - name: Check for en-us.json changes
         id: check_changes
         run: |
-          if git diff --quiet locale/custom/en-us.json; then
+          if git diff --quiet locale/custom/en-us.json locale/languages.json; then
             echo "ℹ️ No translation source changes to commit"
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
-            echo "✅ en-us.json has new keys"
+            echo "✅ Translation source files have changes"
             echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
 
@@ -90,8 +90,8 @@ jobs:
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           git pull --rebase --autostash origin main
-          git add locale/custom/en-us.json
-          git commit -m "chore(translation): auto-add missing keys to en-us.json"
+          git add locale/custom/en-us.json locale/languages.json
+          git commit -m "chore(translation): auto-update translation source files"
 
       - name: Push changes to main
         if: steps.check_changes.outputs.has_changes == 'true'

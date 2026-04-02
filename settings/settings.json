@@ -610,7 +610,7 @@
         "children": [
           {
             "title": "Display Language",
-            "description": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language.",
+            "description": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language. Changes take effect after leaving Settings.",
             "settingName": "translationLocale",
             "type": "languagePicker",
             "default": "",

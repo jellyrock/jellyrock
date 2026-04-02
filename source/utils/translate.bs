@@ -29,7 +29,7 @@ function translate(key as string, params = invalid as object) as string
   end if
 
   ' Substitute indexed placeholders
-  if params <> invalid and params.Count() > 0
+  if params <> invalid and type(params) = "roArray" and params.Count() > 0
     for i = 0 to params.Count() - 1
       value = value.Replace("{" + i.toStr() + "}", params[i])
     end for

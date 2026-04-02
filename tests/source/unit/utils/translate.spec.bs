@@ -133,5 +133,17 @@ namespace tests
       m.assertEqual(result, "")
     end function
 
+    @it("handles non-array params gracefully without crashing")
+    function _()
+      result = translate("MessageVideoStartsIn", "not an array")
+      m.assertEqual(result, "La vidéo commencera dans {0} secondes")
+    end function
+
+    @it("handles associative array params gracefully without crashing")
+    function _()
+      result = translate("MessageVideoStartsIn", { "0": "5" })
+      m.assertEqual(result, "La vidéo commencera dans {0} secondes")
+    end function
+
   end class
 end namespace
