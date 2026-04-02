@@ -1,4 +1,3 @@
-import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 
 namespace tests
