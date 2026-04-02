@@ -961,7 +961,17 @@ sub checkMediaSegments()
         end if
 
         m.log.info("Showing skip notification", segmentType, segmentId)
-        m.segmentNotification.text = tr("Skip") + " " + tr(segmentType)
+        segmentTypeLabels = {
+          "Intro": translate(translationKeys.LabelIntro),
+          "Outro": translate(translationKeys.LabelOutro),
+          "Commercial": translate(translationKeys.LabelCommercial),
+          "Preview": translate(translationKeys.LabelPreview),
+          "Recap": translate(translationKeys.LabelRecap),
+          "Unknown": translate(translationKeys.LabelUnknown)
+        }
+        segmentLabel = segmentTypeLabels[segmentType]
+        if not isValidAndNotEmpty(segmentLabel) then segmentLabel = segmentType
+        m.segmentNotification.text = translate(translationKeys.ButtonSkip) + " " + segmentLabel
         m.segmentNotification.visible = true
         m.segmentNotification.callFunc("show")
       end if

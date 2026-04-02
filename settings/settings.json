@@ -239,6 +239,8 @@
       {
         "title": "Media Segments",
         "description": "Control how media segments (Intro, Outro, etc.) are handled during playback. Requires Jellyfin server 10.10.0 or newer with segment detection configured.",
+        "titleKey": "LabelMediaSegments",
+        "descriptionKey": "MessageControlHowMediaSegmentsAreHandled",
         "children": [
           {
             "title": "Commercial Action",
@@ -246,22 +248,28 @@
             "settingName": "playbackSegmentActionCommercial",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelCommercialAction",
+            "descriptionKey": "MessageActionWhenCommercialSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -271,22 +279,28 @@
             "settingName": "playbackSegmentActionIntro",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelIntroAction",
+            "descriptionKey": "MessageActionWhenIntroSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -296,22 +310,28 @@
             "settingName": "playbackSegmentActionOutro",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelOutroAction",
+            "descriptionKey": "MessageActionWhenOutroSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -321,22 +341,28 @@
             "settingName": "playbackSegmentActionPreview",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelPreviewAction",
+            "descriptionKey": "MessageActionWhenPreviewSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -346,22 +372,28 @@
             "settingName": "playbackSegmentActionRecap",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelRecapAction",
+            "descriptionKey": "MessageActionWhenRecapSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -371,22 +403,28 @@
             "settingName": "playbackSegmentActionUnknown",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelUnknownAction",
+            "descriptionKey": "MessageActionWhenUnknownSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           }
