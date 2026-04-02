@@ -1,0 +1,41 @@
+import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/utils/mediaSegments.bs"
+
+namespace tests
+
+  @suite("mediaSegments.bs - supportsMediaSegments()")
+  class SupportsMediaSegmentsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("version boundary detection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns false for server below 10.10.0")
+    @params("10.9.0")
+    @params("10.9.99")
+    @params("10.8.13")
+    @params("10.0.0")
+    function _(version)
+      m.global.server.version = version
+      m.assertFalse(supportsMediaSegments())
+    end function
+
+    @it("returns true for server at or above 10.10.0")
+    @params("10.10.0")
+    @params("10.10.1")
+    @params("10.11.0")
+    @params("11.0.0")
+    function _(version)
+      m.global.server.version = version
+      m.assertTrue(supportsMediaSegments())
+    end function
+
+    @it("returns false for empty version string")
+    function _()
+      m.global.server.version = ""
+      m.assertFalse(supportsMediaSegments())
+    end function
+
+  end class
+
+end namespace
