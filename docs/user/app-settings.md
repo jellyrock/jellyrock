@@ -68,6 +68,13 @@ Settings relating to playback and supported codec and media types.
   - [Subtitle Language Preference](#playbackSubtitleLanguagePreference)
   - [Custom Subtitle Language Code](#playbackSubtitleLanguageCustom)
 - [Maximum Resolution](#playbackResolutionMax)
+- [Media Segments](#playback-media-segments)
+  - [Commercial Action](#playbackSegmentActionCommercial)
+  - [Intro Action](#playbackSegmentActionIntro)
+  - [Outro Action](#playbackSegmentActionOutro)
+  - [Preview Action](#playbackSegmentActionPreview)
+  - [Recap Action](#playbackSegmentActionRecap)
+  - [Unknown Action](#playbackSegmentActionUnknown)
 - [Next Episode Button Time](#playbackNextUpButtonSeconds)
 - [Play Default Audio Track](#playbackPlayDefaultAudioTrack)
 - [Play Next Episode Automatically](#playbackPlayNextEpisode)
@@ -291,6 +298,90 @@ Enter a 3-letter ISO 639-2 language code (e.g., eng, jpn, fra, deu, spa).
 | Setting Name | `playbackSubtitleLanguageCustom` |
 | Type | `alpha` |
 | Default | `` |
+
+### Media Segments
+
+<a id="playback-media-segments"></a>
+
+Control how media segments (Intro, Outro, etc.) are handled during playback. Requires Jellyfin server 10.10.0 or newer with segment detection configured.
+
+<h4 id="playbackSegmentActionCommercial">Commercial Action</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-media-segments">Media Segments</a> › <a href="#playbackSegmentActionCommercial">Commercial Action</a>
+
+Action to take when a Commercial segment is detected during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSegmentActionCommercial` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Auto Skip</td><td><code>skip</code></td></tr><tr><td>Show Skip Button</td><td><code>askToSkip</code></td></tr><tr><td>Do Nothing</td><td><code>none</code></td></tr></tbody></table> |
+
+<h4 id="playbackSegmentActionIntro">Intro Action</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-media-segments">Media Segments</a> › <a href="#playbackSegmentActionIntro">Intro Action</a>
+
+Action to take when an Intro segment is detected during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSegmentActionIntro` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Auto Skip</td><td><code>skip</code></td></tr><tr><td>Show Skip Button</td><td><code>askToSkip</code></td></tr><tr><td>Do Nothing</td><td><code>none</code></td></tr></tbody></table> |
+
+<h4 id="playbackSegmentActionOutro">Outro Action</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-media-segments">Media Segments</a> › <a href="#playbackSegmentActionOutro">Outro Action</a>
+
+Action to take when an Outro segment is detected during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSegmentActionOutro` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Auto Skip</td><td><code>skip</code></td></tr><tr><td>Show Skip Button</td><td><code>askToSkip</code></td></tr><tr><td>Do Nothing</td><td><code>none</code></td></tr></tbody></table> |
+
+<h4 id="playbackSegmentActionPreview">Preview Action</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-media-segments">Media Segments</a> › <a href="#playbackSegmentActionPreview">Preview Action</a>
+
+Action to take when a Preview segment is detected during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSegmentActionPreview` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Auto Skip</td><td><code>skip</code></td></tr><tr><td>Show Skip Button</td><td><code>askToSkip</code></td></tr><tr><td>Do Nothing</td><td><code>none</code></td></tr></tbody></table> |
+
+<h4 id="playbackSegmentActionRecap">Recap Action</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-media-segments">Media Segments</a> › <a href="#playbackSegmentActionRecap">Recap Action</a>
+
+Action to take when a Recap segment is detected during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSegmentActionRecap` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Auto Skip</td><td><code>skip</code></td></tr><tr><td>Show Skip Button</td><td><code>askToSkip</code></td></tr><tr><td>Do Nothing</td><td><code>none</code></td></tr></tbody></table> |
+
+<h4 id="playbackSegmentActionUnknown">Unknown Action</h4>
+
+<a href="#playback">Playback</a> › <a href="#playback-media-segments">Media Segments</a> › <a href="#playbackSegmentActionUnknown">Unknown Action</a>
+
+Action to take when an Unknown segment type is detected during playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSegmentActionUnknown` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Auto Skip</td><td><code>skip</code></td></tr><tr><td>Show Skip Button</td><td><code>askToSkip</code></td></tr><tr><td>Do Nothing</td><td><code>none</code></td></tr></tbody></table> |
 
 ### Video Codec Support
 
