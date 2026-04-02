@@ -1,0 +1,81 @@
+import "pkg:/source/utils/mediaSegments.bs"
+
+namespace tests
+
+  @suite("mediaSegments.bs - findSegmentById()")
+  class FindSegmentByIdTests extends tests.BaseTestSuite
+
+    ' Helper to create a segment
+    private function createSegment(id as string, segType as string, startSeconds as float, endSeconds as float) as object
+      return {
+        Id: id,
+        Type: segType,
+        StartTicks: startSeconds * 10000000,
+        EndTicks: endSeconds * 10000000
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("segment lookup by Id")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns matching segment when Id exists")
+    function _()
+      segments = [
+        m.createSegment("seg1", "Intro", 5.0, 30.0),
+        m.createSegment("seg2", "Outro", 1200.0, 1260.0)
+      ]
+      result = findSegmentById(segments, "seg2")
+      m.assertNotInvalid(result)
+      m.assertEqual(result.Id, "seg2")
+      m.assertEqual(result.Type, "Outro")
+    end function
+
+    @it("returns first match when Id exists")
+    function _()
+      segments = [
+        m.createSegment("seg1", "Intro", 5.0, 30.0),
+        m.createSegment("seg2", "Outro", 1200.0, 1260.0),
+        m.createSegment("seg3", "Commercial", 600.0, 630.0)
+      ]
+      result = findSegmentById(segments, "seg1")
+      m.assertNotInvalid(result)
+      m.assertEqual(result.Id, "seg1")
+    end function
+
+    @it("returns invalid when Id not found")
+    function _()
+      segments = [m.createSegment("seg1", "Intro", 5.0, 30.0)]
+      result = findSegmentById(segments, "nonexistent")
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid for empty segments array")
+    function _()
+      result = findSegmentById([], "seg1")
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when segments is invalid")
+    function _()
+      result = findSegmentById(invalid, "seg1")
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid when segmentId is empty string")
+    function _()
+      segments = [m.createSegment("seg1", "Intro", 5.0, 30.0)]
+      result = findSegmentById(segments, "")
+      m.assertInvalid(result)
+    end function
+
+    @it("handles segments with missing Id field")
+    function _()
+      segments = [{ Type: "Intro", StartTicks: 50000000, EndTicks: 300000000 }]
+      result = findSegmentById(segments, "seg1")
+      m.assertInvalid(result)
+    end function
+
+  end class
+
+end namespace

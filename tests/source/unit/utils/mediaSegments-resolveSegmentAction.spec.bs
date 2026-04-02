@@ -33,28 +33,28 @@ namespace tests
       m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
-    @it("returns None for Commercial when no settings or config")
+    @it("returns AskToSkip for Commercial when no settings or config")
     function _()
       result = resolveSegmentAction(MediaSegmentType.commercial, m.createMockSettings(), m.createMockConfig())
-      m.assertEqual(result, MediaSegmentAction.none)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
-    @it("returns None for Preview when no settings or config")
+    @it("returns AskToSkip for Preview when no settings or config")
     function _()
       result = resolveSegmentAction(MediaSegmentType.preview, m.createMockSettings(), m.createMockConfig())
-      m.assertEqual(result, MediaSegmentAction.none)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
-    @it("returns None for Recap when no settings or config")
+    @it("returns AskToSkip for Recap when no settings or config")
     function _()
       result = resolveSegmentAction(MediaSegmentType.recap, m.createMockSettings(), m.createMockConfig())
-      m.assertEqual(result, MediaSegmentAction.none)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
-    @it("returns None for Unknown when no settings or config")
+    @it("returns AskToSkip for Unknown when no settings or config")
     function _()
       result = resolveSegmentAction(MediaSegmentType.unknown, m.createMockSettings(), m.createMockConfig())
-      m.assertEqual(result, MediaSegmentAction.none)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -118,7 +118,7 @@ namespace tests
       settings = m.createMockSettings({ playbackSegmentActionRecap: "webclient" })
       config = m.createMockConfig()
       result = resolveSegmentAction(MediaSegmentType.recap, settings, config)
-      m.assertEqual(result, MediaSegmentAction.none)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -131,10 +131,10 @@ namespace tests
       m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
-    @it("returns built-in default for non-Intro/Outro when both are invalid")
+    @it("returns built-in default for all types when both are invalid")
     function _()
       result = resolveSegmentAction(MediaSegmentType.commercial, invalid, invalid)
-      m.assertEqual(result, MediaSegmentAction.none)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
     end function
 
     @it("uses web client config when settings is invalid")

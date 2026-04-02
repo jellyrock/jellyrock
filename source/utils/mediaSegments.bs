@@ -17,20 +17,15 @@ end function
 ' Checks JellyRock per-type override setting first, then falls back to web client
 ' DisplayPreferences CustomPrefs value, then falls back to built-in defaults.
 '
-' Built-in defaults (matching Jellyfin web client):
-'   Intro = AskToSkip, Outro = AskToSkip, all others = None
+' Built-in defaults:
+'   All types = AskToSkip
 '
 ' @param {string} segmentType - MediaSegmentType value ("Intro", "Outro", etc.)
 ' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
 ' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
 ' @returns {string} - MediaSegmentAction value ("None", "AskToSkip", "Skip")
 function resolveSegmentAction(segmentType as string, userSettings as object, userConfig as object) as string
-  ' Built-in defaults matching web client
-  if segmentType = MediaSegmentType.intro or segmentType = MediaSegmentType.outro
-    defaultValue = MediaSegmentAction.askToSkip
-  else
-    defaultValue = MediaSegmentAction.none
-  end if
+  defaultValue = MediaSegmentAction.askToSkip
 
   ' Try web client setting from config node (loaded from DisplayPreferences CustomPrefs)
   configFieldKey = "segmentAction" + segmentType
@@ -71,6 +66,27 @@ function findActiveSegment(segments as object, positionSeconds as float) as dyna
     endSeconds = segmentTicksToSeconds(segment.EndTicks)
 
     if positionSeconds >= startSeconds and positionSeconds < endSeconds
+      return segment
+    end if
+  end for
+
+  return invalid
+end function
+
+' findSegmentById: Finds a media segment by its Id.
+'
+' Linear scan over the segments array (typically 2-5 items).
+' Prefer this over caching segment objects, since the segments array can be
+' replaced during content loading (audio/subtitle track changes).
+'
+' @param {array} segments - Array of MediaSegmentDto objects
+' @param {string} segmentId - The segment Id to find
+' @returns {dynamic} - The matching MediaSegmentDto or invalid if not found
+function findSegmentById(segments as object, segmentId as string) as dynamic
+  if not isValid(segments) or segmentId = "" then return invalid
+
+  for each segment in segments
+    if (segment.Id ?? "") = segmentId
       return segment
     end if
   end for

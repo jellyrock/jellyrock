@@ -87,7 +87,7 @@ Some Jellyfin API endpoints are only available on specific server versions. Thes
 
 **Media Segments (10.10.0+):**
 
-The `MediaSegments` API provides segment timing data (intro, outro, recap, preview, commercial, unknown) for video items. JellyRock fetches segments during video content loading and supports three action modes per segment type: auto-skip, show skip button, or do nothing. User action preferences are loaded from the server's `DisplayPreferences` `CustomPrefs` (key format: `segmentTypeAction__[Type]`) with optional per-device overrides via JellyRock settings.
+The `MediaSegments` API provides segment timing data (intro, outro, recap, preview, commercial, unknown) for video items. JellyRock fetches segments during video content loading and supports three action modes per segment type: auto-skip, show skip button, or do nothing. All segment types default to "show skip button" (AskToSkip). User action preferences are loaded from the server's `DisplayPreferences` `CustomPrefs` (key format: `segmentTypeAction__[Type]`) with optional per-device overrides via JellyRock settings.
 
 **Key Files:**
 

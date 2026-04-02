@@ -1,6 +1,8 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = log.Logger("VideoNotification")
   m.actionButton = m.top.findNode("actionButton")
   m.fadeInAnimation = m.top.findNode("fadeInAnimation")
   m.fadeOutAnimation = m.top.findNode("fadeOutAnimation")
@@ -27,6 +29,7 @@ end sub
 sub show()
   if m.top.state = "showing" then return
 
+  m.log.info("Showing notification", m.top.text)
   m.top.state = "showing"
   m.top.action = ""
 
@@ -45,6 +48,7 @@ sub show()
 
   ' Start auto-dismiss timer if configured
   if m.top.autoDismissSeconds > 0
+    m.log.verbose("Auto-dismiss timer started", m.top.autoDismissSeconds)
     m.autoDismissTimer.duration = m.top.autoDismissSeconds
     m.autoDismissTimer.control = "start"
   end if
@@ -54,6 +58,7 @@ end sub
 ' Used when OSD opens to temporarily pause the notification so it can be re-shown later.
 sub hide()
   if m.top.state <> "showing" then return
+  m.log.verbose("Notification paused (hidden for OSD)")
   m.top.state = "paused"
   m.autoDismissTimer.control = "stop"
   m.fadeInAnimation.control = "stop"
@@ -67,6 +72,7 @@ sub dismiss()
 
   ' If paused (hidden for OSD), skip fade-out — button is already invisible
   if m.top.state = "paused"
+    m.log.verbose("Dismissed from paused state")
     m.top.state = "hidden"
     if m.top.action = ""
       m.top.action = "dismissed"
@@ -74,6 +80,7 @@ sub dismiss()
     return
   end if
 
+  m.log.info("Dismissing notification")
   m.top.state = "dismissing"
   m.autoDismissTimer.control = "stop"
   m.fadeInAnimation.control = "stop"
@@ -87,6 +94,7 @@ end sub
 ' (e.g., show() interrupting a fade-out) don't incorrectly transition to hidden.
 sub onFadeOutAnimationState()
   if m.fadeOutAnimation.state = "stopped" and m.top.state = "dismissing"
+    m.log.verbose("Fade-out complete, state -> hidden")
     m.actionButton.visible = false
     ' Focus management is the parent's responsibility via the action observer.
     ' Calling setFocus(false) here would race with the parent's setFocus(true)
@@ -127,6 +135,7 @@ end sub
 
 ' Clean up all references and observers
 sub destroy()
+  m.log.verbose("Destroying notification")
   m.autoDismissTimer.control = "stop"
   m.autoDismissTimer.unobserveField("fire")
   m.fadeOutAnimation.unobserveField("state")
@@ -144,6 +153,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
   if key = "OK"
+    m.log.info("Notification activated via OK press")
     m.autoDismissTimer.control = "stop"
     m.top.action = "activated"
     dismiss()

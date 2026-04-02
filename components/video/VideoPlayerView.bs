@@ -835,8 +835,8 @@ end sub
 sub onNextEpisodeNotificationAction()
   action = m.nextEpisodeNotification.action
   if action = "activated"
-    m.top.control = "stop"
-    m.top.state = "finished"
+    forceFinishPlayback()
+    return
   else if action = "dismissed"
     ' Only restore video focus if OSD didn't take focus during the dismiss animation
     if not m.osd.visible
@@ -879,6 +879,15 @@ sub checkTimeToDisplayNextEpisode()
   end if
 end sub
 
+' Forces playback to finished state for proper watched-status and auto-play.
+' Triggers synchronous teardown (onState -> ViewCreator -> popScene -> destroy),
+' invalidating all m. references. Callers MUST return immediately after calling.
+sub forceFinishPlayback()
+  m.log.info("Force-finishing playback")
+  m.top.control = "stop"
+  m.top.state = "finished"
+end sub
+
 ' Check media segments and trigger appropriate actions based on current playback position
 sub checkMediaSegments()
   if m.mediaSegments.Count() = 0 then return
@@ -894,6 +903,7 @@ sub checkMediaSegments()
 
     segmentType = segment.Type ?? ""
     action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
+    m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
 
     if action = MediaSegmentAction.skip
       ' Auto-skip only fires once per segment
@@ -902,17 +912,13 @@ sub checkMediaSegments()
       ' Auto-skip: seek to end of segment immediately
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
 
-      ' If skipping an outro near the video's end, force finish for correct watched status
-      ' and auto-play trigger. Uses same pattern as next episode button activation.
-      ' IMPORTANT: return immediately — setting state="finished" synchronously triggers
-      ' the teardown chain (onState → ViewCreator → popScene → destroy), invalidating
-      ' all m. references before the next line would execute.
+      ' Outro ending near video end: force finish for watched-status and auto-play
       if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
-        m.top.control = "stop"
-        m.top.state = "finished"
+        forceFinishPlayback()
         return
       end if
 
+      m.log.info("Auto-skipping segment", segmentType, "to", seekPosition)
       m.top.seek = seekPosition
       m.skippedSegments[segmentId] = true
       m.activeSegmentId = ""
@@ -922,6 +928,7 @@ sub checkMediaSegments()
 
       ' Re-show notification if it was paused (hidden for OSD)
       if m.segmentNotification.state = "paused" and m.activeSegmentId = segmentId
+        m.log.verbose("Re-showing paused segment notification", segmentId)
         m.segmentNotification.visible = true
         m.segmentNotification.callFunc("show")
       else if m.activeSegmentId <> segmentId
@@ -941,6 +948,7 @@ sub checkMediaSegments()
           m.segmentNotification.autoDismissSeconds = 10
         end if
 
+        m.log.info("Showing skip notification", segmentType, segmentId)
         m.segmentNotification.text = tr("Skip") + " " + tr(segmentType)
         m.segmentNotification.visible = true
         m.segmentNotification.callFunc("show")
@@ -949,9 +957,8 @@ sub checkMediaSegments()
     ' MediaSegmentAction.none — do nothing
   else
     ' Not inside any segment — dismiss segment notification if showing or paused
-    if m.segmentNotification.state = "showing"
-      m.segmentNotification.callFunc("dismiss")
-    else if m.segmentNotification.state = "paused"
+    if m.segmentNotification.state = "showing" or m.segmentNotification.state = "paused"
+      m.log.verbose("Left segment, dismissing notification")
       m.segmentNotification.callFunc("dismiss")
     end if
     m.activeSegmentId = ""
@@ -963,32 +970,27 @@ end sub
 sub onSegmentNotificationAction()
   action = m.segmentNotification.action
   if action = "activated"
-    ' Seek to end of the active segment
-    for each segment in m.mediaSegments
-      segmentId = segment.Id ?? ""
-      if segmentId = m.activeSegmentId
-        seekPosition = segmentTicksToSeconds(segment.EndTicks)
-        segmentType = segment.Type ?? ""
+    m.log.info("Segment skip activated by user", m.activeSegmentId)
+    segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
+    if isValid(segment)
+      seekPosition = segmentTicksToSeconds(segment.EndTicks)
+      segmentType = segment.Type ?? ""
 
-        ' If skipping an outro that ends near the video's end, force a finished state
-        ' so the server correctly marks the item as watched and auto-play triggers.
-        ' IMPORTANT: return immediately — setting state="finished" synchronously triggers
-        ' the teardown chain (onState → ViewCreator → popScene → destroy), invalidating
-        ' all m. references before the next line would execute.
-        if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
-          m.top.control = "stop"
-          m.top.state = "finished"
-          return
-        end if
-
-        m.top.seek = seekPosition
-        exit for
+      ' Outro ending near video end: force finish for watched-status and auto-play
+      if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+        forceFinishPlayback()
+        return
       end if
-    end for
+
+      m.top.seek = seekPosition
+    else
+      m.log.warn("Active segment not found for skip", m.activeSegmentId)
+    end if
     m.skippedSegments[m.activeSegmentId] = true
     m.activeSegmentId = ""
     m.top.setFocus(true)
   else if action = "dismissed"
+    m.log.verbose("Segment notification dismissed", m.activeSegmentId)
     ' Mark as dismissed for this visit — allows re-show if user leaves and re-enters the segment
     if m.activeSegmentId <> ""
       m.dismissedSegmentId = m.activeSegmentId
