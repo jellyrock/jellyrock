@@ -1,5 +1,4 @@
 import "pkg:/source/enums/MediaSegmentAction.bs"
-import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' supportsMediaSegments: Checks if the connected Jellyfin server supports the MediaSegments API.
