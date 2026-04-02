@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- (ci) gate device tests behind environment approval ([fe16ab4](https://github.com/jellyrock/jellyrock/commit/fe16ab49))
+
 ## [2.9.0](https://github.com/jellyrock/jellyrock/compare/v2.8.0...v2.9.0) - 2026-04-02
 
 ### Added
