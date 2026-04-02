@@ -2,7 +2,12 @@ name: Device Unit Tests
 
 # SECURITY NOTE: This workflow uses pull_request_target to allow fork PRs access to secrets.
 # This is required for external contributors to run tests on the physical Roku device.
-# Repository has approval workflows enabled - external PRs require manual approval before running.
+#
+# IMPORTANT: The `all-tests` job uses the `roku-device` environment which requires
+# manual approval from a maintainer before running. This is the correct gate for
+# pull_request_target — the standard "require approval for outside collaborators"
+# setting does NOT apply to pull_request_target events.
+#
 # See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk
 
 on:
@@ -69,6 +74,10 @@ jobs:
     if: needs.check-skip.outputs.should_skip != 'true' && github.actor != 'jellyrock[bot]'
     runs-on: [self-hosted, roku-device]
     timeout-minutes: 15
+    # Requires manual approval from a maintainer before this job runs.
+    # This is the correct protection for pull_request_target — environment protection
+    # rules gate at the job level regardless of who opened the PR.
+    environment: roku-device
     steps:
       # Explicitly checkout PR code - pull_request_target defaults to base branch
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
