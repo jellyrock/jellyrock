@@ -975,6 +975,11 @@ end sub
 sub onSegmentNotificationAction()
   action = m.segmentNotification.action
   if action = "activated"
+    if m.activeSegmentId = ""
+      m.log.warn("Segment skip activated with no active segment")
+      return
+    end if
+
     m.log.info("Segment skip activated by user", m.activeSegmentId)
     segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
     if isValid(segment)
@@ -988,10 +993,10 @@ sub onSegmentNotificationAction()
       end if
 
       m.top.seek = seekPosition
+      m.skippedSegments[m.activeSegmentId] = true
     else
       m.log.warn("Active segment not found for skip", m.activeSegmentId)
     end if
-    m.skippedSegments[m.activeSegmentId] = true
     m.activeSegmentId = ""
     m.top.setFocus(true)
   else if action = "dismissed"
