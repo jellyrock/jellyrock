@@ -923,6 +923,11 @@ sub checkMediaSegments()
         return
       end if
 
+      ' Dismiss notification from a prior segment (e.g. back-to-back askToSkip → skip)
+      if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
+        m.segmentNotification.callFunc("dismiss")
+      end if
+
       m.log.info("Auto-skipping segment", segmentType, "to", seekPosition)
       m.top.seek = seekPosition
       m.skippedSegments[segmentId] = true
@@ -958,8 +963,13 @@ sub checkMediaSegments()
         m.segmentNotification.visible = true
         m.segmentNotification.callFunc("show")
       end if
+    else
+      ' MediaSegmentAction.none — dismiss stale notification from a prior segment
+      if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
+        m.segmentNotification.callFunc("dismiss")
+      end if
+      m.activeSegmentId = ""
     end if
-    ' MediaSegmentAction.none — do nothing
   else
     ' Not inside any segment — dismiss segment notification if visible or paused
     if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"

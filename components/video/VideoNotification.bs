@@ -25,26 +25,27 @@ sub onActionButtonReady()
   end if
 end sub
 
-' Show the notification: position bottom-right with 5% safe zone, fade in, set focus
+' Show the notification: position bottom-right with 5% safe zone, fade in, set focus.
+' Safe to call while already showing — restarts the auto-dismiss timer and repositions
+' for updated text/autoDismissSeconds (e.g. contiguous segment transitions).
 sub show()
-  if m.top.state = "showing" then return
-
   m.log.info("Showing notification", m.top.text)
-  m.top.state = "showing"
   m.top.action = ""
 
-  ' Stop any in-progress fade out
+  ' Stop any in-progress timers and animations
+  m.autoDismissTimer.control = "stop"
   m.fadeOutAnimation.control = "stop"
 
-  ' Make visible so button can render and we can measure it
-  m.actionButton.visible = true
+  ' Only fade in and grab focus when not already visible
+  if m.top.state <> "showing"
+    m.top.state = "showing"
+    m.actionButton.visible = true
+    m.fadeInAnimation.control = "start"
+    m.actionButton.setFocus(true)
+  end if
 
-  ' Position to bottom-right with 5% safe zone padding
+  ' Reposition in case text width changed
   positionBottomRight()
-
-  ' Start fade-in animation
-  m.fadeInAnimation.control = "start"
-  m.actionButton.setFocus(true)
 
   ' Start auto-dismiss timer if configured
   if m.top.autoDismissSeconds > 0
