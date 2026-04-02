@@ -799,6 +799,11 @@ sub onNextEpisodeDataLoaded()
   end if
 end sub
 
+' Check if a VideoNotification is visually present (including during fade-out animation)
+function isNotificationVisible(notification as object) as boolean
+  return notification.state = "showing" or notification.state = "dismissing"
+end function
+
 ' Show the Next Episode notification with countdown text
 sub showNextEpisodeButton()
   if m.osd.visible then return
@@ -806,8 +811,8 @@ sub showNextEpisodeButton()
   if m.nextupbuttonseconds = 0 then return ' is the button disabled?
   if m.nextEpisodeNotification.state = "showing" then return
 
-  ' Don't show Next Episode while segment notification is active
-  if m.segmentNotification.state = "showing" then return
+  ' Don't show Next Episode while segment notification is active (including fade-out)
+  if isNotificationVisible(m.segmentNotification) then return
 
   ' Set text before showing
   updateNextEpisodeCount()
@@ -853,13 +858,13 @@ sub checkTimeToDisplayNextEpisode()
   ' Don't show Next Episode button if trickPlayBar is visible
   if m.top.trickPlayBar.visible then return
 
-  ' Don't show while segment notification is active — it takes priority
-  if m.segmentNotification.state = "showing" then return
+  ' Don't show while segment notification is active (including fade-out) — it takes priority
+  if isNotificationVisible(m.segmentNotification) then return
 
   if isValid(m.top.duration) and isValid(m.top.position)
     nextEpisodeCountdown = Int(m.top.duration - m.top.position)
 
-    if nextEpisodeCountdown < 0 and m.nextEpisodeNotification.state = "showing"
+    if nextEpisodeCountdown < 0 and isNotificationVisible(m.nextEpisodeNotification)
       hideNextEpisodeButton()
       return
     else if nextEpisodeCountdown > 1 and int(m.top.position) >= (m.top.duration - m.nextupbuttonseconds - 1)
@@ -873,8 +878,8 @@ sub checkTimeToDisplayNextEpisode()
     end if
   end if
 
-  ' If notification is showing but shouldn't be, hide it
-  if m.nextEpisodeNotification.state = "showing"
+  ' If notification is visible but shouldn't be, hide it
+  if isNotificationVisible(m.nextEpisodeNotification)
     hideNextEpisodeButton()
   end if
 end sub
@@ -936,7 +941,7 @@ sub checkMediaSegments()
         m.activeSegmentId = segmentId
 
         ' Suppress Next Episode notification while segment notification is active
-        if m.nextEpisodeNotification.state = "showing"
+        if isNotificationVisible(m.nextEpisodeNotification)
           hideNextEpisodeButton()
         end if
 
@@ -956,8 +961,8 @@ sub checkMediaSegments()
     end if
     ' MediaSegmentAction.none — do nothing
   else
-    ' Not inside any segment — dismiss segment notification if showing or paused
-    if m.segmentNotification.state = "showing" or m.segmentNotification.state = "paused"
+    ' Not inside any segment — dismiss segment notification if visible or paused
+    if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
       m.log.verbose("Left segment, dismissing notification")
       m.segmentNotification.callFunc("dismiss")
     end if
@@ -1374,8 +1379,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   ' VideoNotification components handle OK key internally via their onKeyEvent.
   ' For non-OK keys, hide notifications (paused state) so they can re-show after OSD closes.
-  ' Next Episode is dismissed permanently since it's time-based, not position-based.
-  if m.nextEpisodeNotification.state = "showing" or m.segmentNotification.state = "showing"
+  ' Next Episode is dismissed but will re-appear on subsequent position updates if still in the time window.
+  if isNotificationVisible(m.nextEpisodeNotification) or isNotificationVisible(m.segmentNotification)
     ' OK is handled by the notification's onKeyEvent — don't intercept here
     if key <> "OK"
       if m.segmentNotification.state = "showing"
