@@ -55,6 +55,30 @@
       <translation>8k</translation>
     </message>
     <message>
+      <source>Action to take when a Commercial segment is detected during playback.</source>
+      <translation>Action to take when a Commercial segment is detected during playback.</translation>
+    </message>
+    <message>
+      <source>Action to take when a Preview segment is detected during playback.</source>
+      <translation>Action to take when a Preview segment is detected during playback.</translation>
+    </message>
+    <message>
+      <source>Action to take when a Recap segment is detected during playback.</source>
+      <translation>Action to take when a Recap segment is detected during playback.</translation>
+    </message>
+    <message>
+      <source>Action to take when an Intro segment is detected during playback.</source>
+      <translation>Action to take when an Intro segment is detected during playback.</translation>
+    </message>
+    <message>
+      <source>Action to take when an Outro segment is detected during playback.</source>
+      <translation>Action to take when an Outro segment is detected during playback.</translation>
+    </message>
+    <message>
+      <source>Action to take when an Unknown segment type is detected during playback.</source>
+      <translation>Action to take when an Unknown segment type is detected during playback.</translation>
+    </message>
+    <message>
       <source>Added</source>
       <translation>Added</translation>
     </message>
@@ -168,6 +192,10 @@
       <extracomment>User Setting - Option title</extracomment>
     </message>
     <message>
+      <source>Auto Skip</source>
+      <translation>Auto Skip</translation>
+    </message>
+    <message>
       <source>Backdrop Images</source>
       <translation>Backdrop Images</translation>
     </message>
@@ -262,6 +290,10 @@
       <translation>Collections</translation>
     </message>
     <message>
+      <source>Commercial Action</source>
+      <translation>Commercial Action</translation>
+    </message>
+    <message>
       <source>Community and Critical Ratings</source>
       <translation>Community and Critical Ratings</translation>
       <extracomment>User Setting - Setting title</extracomment>
@@ -290,6 +322,10 @@
     <message>
       <source>Control display of backdrop images throughout the app. Enable for full visual experience, disable for better performance or accessibility.</source>
       <translation>Control display of backdrop images throughout the app. Enable for full visual experience, disable for better performance or accessibility.</translation>
+    </message>
+    <message>
+      <source>Control how media segments (Intro, Outro, etc.) are handled during playback. Requires Jellyfin server 10.10.0 or newer with segment detection configured.</source>
+      <translation>Control how media segments (Intro, Outro, etc.) are handled during playback. Requires Jellyfin server 10.10.0 or newer with segment detection configured.</translation>
     </message>
     <message>
       <source>Control whether the server&apos;s splash screen image is displayed on the User Select screen. Server admin must enable this feature in branding settings.</source>
@@ -395,6 +431,10 @@
     <message>
       <source>Disc %1</source>
       <translation>Disc %1</translation>
+    </message>
+    <message>
+      <source>Do Nothing</source>
+      <translation>Do Nothing</translation>
     </message>
     <message>
       <source>Dolby Digital (AC3)</source>
@@ -650,6 +690,10 @@
       <translation>Instant Mix</translation>
     </message>
     <message>
+      <source>Intro Action</source>
+      <translation>Intro Action</translation>
+    </message>
+    <message>
       <source>Invalid Color</source>
       <translation>Invalid Color</translation>
     </message>
@@ -762,6 +806,10 @@
       <source>Maximum Resolution</source>
       <translation>Maximum Resolution</translation>
       <extracomment>User Setting - Title</extracomment>
+    </message>
+    <message>
+      <source>Media Segments</source>
+      <translation>Media Segments</translation>
     </message>
     <message>
       <source>min</source>
@@ -930,6 +978,10 @@
       <extracomment>User Setting - Setting option title</extracomment>
     </message>
     <message>
+      <source>Outro Action</source>
+      <translation>Outro Action</translation>
+    </message>
+    <message>
       <source>Override the web client&apos;s audio and subtitle language preferences for this device.</source>
       <translation>Override the web client&apos;s audio and subtitle language preferences for this device.</translation>
     </message>
@@ -1071,6 +1123,10 @@
       <translation>Preserve DoVi</translation>
     </message>
     <message>
+      <source>Preview Action</source>
+      <translation>Preview Action</translation>
+    </message>
+    <message>
       <source>Primary</source>
       <translation>Primary</translation>
     </message>
@@ -1112,6 +1168,10 @@
     <message>
       <source>Reason</source>
       <translation>Reason</translation>
+    </message>
+    <message>
+      <source>Recap Action</source>
+      <translation>Recap Action</translation>
     </message>
     <message>
       <source>Recently Added in</source>
@@ -1349,6 +1409,10 @@
       <translation>Show On Hover</translation>
     </message>
     <message>
+      <source>Show Skip Button</source>
+      <translation>Show Skip Button</translation>
+    </message>
+    <message>
       <source>Shows</source>
       <translation>Shows</translation>
     </message>
@@ -1368,6 +1432,10 @@
       <source>Size</source>
       <translation>Size</translation>
       <extracomment>Video size</extracomment>
+    </message>
+    <message>
+      <source>Skip</source>
+      <translation>Skip</translation>
     </message>
     <message>
       <source>Slideshow</source>
@@ -1578,6 +1646,10 @@
     <message>
       <source>Unable to get playback information</source>
       <translation>Unable to get playback information</translation>
+    </message>
+    <message>
+      <source>Unknown Action</source>
+      <translation>Unknown Action</translation>
     </message>
     <message>
       <source>Unplayed</source>
