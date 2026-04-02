@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add media segment detection and skip notifications ([#447](https://github.com/jellyrock/jellyrock/pull/447))
 - add texture management to MarkupGrid ([#444](https://github.com/jellyrock/jellyrock/pull/444))
 - add RowList texture management and placeholder images ([#443](https://github.com/jellyrock/jellyrock/pull/443))
 
