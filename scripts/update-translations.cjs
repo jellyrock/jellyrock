@@ -159,16 +159,23 @@ async function main() {
     console.log('');
   }
 
-  // Auto-add missing keys if --fix
-  if (FIX_MODE && missingKeys.length > 0) {
-    console.log('Adding missing keys to en-us.json...');
-    missingKeys.forEach(k => { enUs[k] = k; });
+  // Auto-fix en-us.json: add missing keys and ensure sort order
+  if (FIX_MODE) {
+    if (missingKeys.length > 0) {
+      console.log('Adding missing keys to en-us.json...');
+      missingKeys.forEach(k => { enUs[k] = k; });
+      console.log(`Added ${missingKeys.length} keys (values set to key name for translation)`);
+    }
 
-    // Sort keys and write
+    // Always sort keys and write to ensure consistent order
     const sorted = {};
     Object.keys(enUs).sort().forEach(k => { sorted[k] = enUs[k]; });
-    fs.writeFileSync(EN_US_PATH, JSON.stringify(sorted, null, 2) + '\n');
-    console.log(`Added ${missingKeys.length} keys (values set to key name for translation)`);
+    const output = JSON.stringify(sorted, null, 2) + '\n';
+    const current = fs.readFileSync(EN_US_PATH, 'utf8');
+    if (output !== current) {
+      fs.writeFileSync(EN_US_PATH, output);
+      console.log('Sorted en-us.json keys alphabetically');
+    }
   }
 
   // Summary

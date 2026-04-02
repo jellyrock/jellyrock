@@ -8,6 +8,8 @@
 // - No orphaned keys (keys in locale files not in en-us.json)
 // - Placeholder parity between en-us and all locales
 // - All translate()/translatePlural() keys exist in en-us.json
+// - No hardcoded string literals in translate()/translatePlural() calls
+//   (must use translationKeys.* constants for compile-time safety)
 
 const fs = require('fs');
 const path = require('path');
@@ -35,6 +37,7 @@ function extractPlaceholders(str) {
 function extractTranslateKeys(code) {
   const keys = new Set();
   const pluralBaseKeys = new Set();
+  const hardcodedErrors = []; // violations: translate("string") instead of translationKeys.*
   let match;
 
   // Match translate(translationKeys.Key) — compile-time safe constant references
@@ -43,13 +46,18 @@ function extractTranslateKeys(code) {
     keys.add(match[1]);
   }
 
-  // Match translate("Key") — dynamic string calls (settings.bs, etc.)
+  // Match translate("Key") — flag as error (should use translationKeys.*)
   const translateRegex = /\btranslate\(\s*"([^"]+)"/g;
   while ((match = translateRegex.exec(code)) !== null) {
-    keys.add(match[1]);
+    keys.add(match[1]); // still validate the key exists
+    hardcodedErrors.push({
+      pattern: `translate("${match[1]}")`,
+      suggestion: `translate(translationKeys.${match[1]})`,
+      index: match.index
+    });
   }
 
-  // Match translatePlural("BaseKey", ...) — generates Zero/One/Many variants
+  // Match translatePlural("BaseKey", ...) — flag as error (should use translationKeys.*)
   const pluralRegex = /\btranslatePlural\(\s*"([^"]+)"/g;
   while ((match = pluralRegex.exec(code)) !== null) {
     const baseKey = match[1];
@@ -57,6 +65,11 @@ function extractTranslateKeys(code) {
     keys.add(baseKey + 'Zero');
     keys.add(baseKey + 'One');
     keys.add(baseKey + 'Many');
+    hardcodedErrors.push({
+      pattern: `translatePlural("${baseKey}", ...)`,
+      suggestion: `translatePlural(translationKeys.${baseKey}, ...)`,
+      index: match.index
+    });
   }
 
   // Match translatePlural(translationKeys.BaseKey, ...) — compile-time safe plural calls
@@ -85,13 +98,19 @@ function extractTranslateKeys(code) {
     keys.add(match[1]);
   }
 
-  // Match titleKey: "Key" and descriptionKey: "Key" (dynamic string objects)
+  // Match titleKey: "Key" and descriptionKey: "Key" — flag as error (should use translationKeys.*)
   const keyPropRegex = /\b(?:titleKey|descriptionKey):\s*"([^"]+)"/g;
   while ((match = keyPropRegex.exec(code)) !== null) {
-    keys.add(match[1]);
+    keys.add(match[1]); // still validate the key exists
+    const prop = match[0].match(/^(titleKey|descriptionKey)/)[1];
+    hardcodedErrors.push({
+      pattern: `${prop}: "${match[1]}"`,
+      suggestion: `${prop}: translationKeys.${match[1]}`,
+      index: match.index
+    });
   }
 
-  return keys;
+  return { keys, pluralBaseKeys, hardcodedErrors };
 }
 
 function extractSettingsKeys(jsonData) {
@@ -160,13 +179,26 @@ async function main() {
 
   // 2. Check that all code keys exist in en-us.json
   const usedKeys = new Set();
+  const hardcodedViolations = [];
   const files = await fg(SOURCE_PATTERNS, { cwd: ROOT_DIR, absolute: true });
   for (const filePath of files) {
     const code = fs.readFileSync(filePath, 'utf8');
-    extractTranslateKeys(code).forEach(k => usedKeys.add(k));
+    const result = extractTranslateKeys(code);
+    result.keys.forEach(k => usedKeys.add(k));
+
+    // Collect hardcoded string violations with file and line info
+    if (result.hardcodedErrors.length > 0) {
+      const relativePath = path.relative(ROOT_DIR, filePath);
+      for (const violation of result.hardcodedErrors) {
+        const lineNum = code.substring(0, violation.index).split('\n').length;
+        hardcodedViolations.push(
+          `${relativePath}:${lineNum} \u2014 ${violation.pattern} \u2192 ${violation.suggestion}`
+        );
+      }
+    }
   }
 
-  // Also check settings.json
+  // Also check settings.json (key existence only — string literals are expected in JSON)
   const settingsPath = path.join(ROOT_DIR, 'settings/settings.json');
   if (fs.existsSync(settingsPath)) {
     extractSettingsKeys(JSON.parse(fs.readFileSync(settingsPath, 'utf8'))).forEach(k => usedKeys.add(k));
@@ -175,6 +207,12 @@ async function main() {
   const missing = [...usedKeys].filter(k => !(k in enUs)).sort();
   if (missing.length > 0) {
     errors.push(`en-us.json missing ${missing.length} key(s) used in code: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '...' : ''}`);
+  }
+
+  // 3. Flag hardcoded translation keys (must use translationKeys.* constants)
+  if (hardcodedViolations.length > 0) {
+    errors.push(`${hardcodedViolations.length} hardcoded translation key(s) found (use translationKeys.* constants instead):`);
+    hardcodedViolations.forEach(v => errors.push(`  ${v}`));
   }
 
   // Report
