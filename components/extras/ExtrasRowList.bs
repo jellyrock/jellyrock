@@ -1,11 +1,11 @@
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
-import "pkg:/source/translationKeys.bs"
 
 ' Default RowList translation.y — places the focused row (TOP) 18px below the panel top edge.
 const EXTRAS_ROWLIST_DEFAULT_Y = 18

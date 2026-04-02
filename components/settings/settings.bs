@@ -1,12 +1,12 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
-import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/translateLocale.bs"
 
 sub init()

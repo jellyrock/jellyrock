@@ -4,15 +4,15 @@ import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
-import "pkg:/source/utils/trickplay.bs"
 import "pkg:/source/utils/translate.bs"
-import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/trickplay.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
 ' The trickPlayBar is part of the Video node and doesn't expose child IDs,
