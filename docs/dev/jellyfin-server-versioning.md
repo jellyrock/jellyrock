@@ -71,7 +71,36 @@ Different Jellyfin versions return different fields in API responses. JellyRock 
 
 **Note:** Some fields like `ImageTags` and `BackdropImageTags` are not in the `ItemFields` enum but are returned when `EnableImageTypes` is specified.
 
-### 4. Authentication Compatibility
+### 4. Version-Gated API Endpoints
+
+Some Jellyfin API endpoints are only available on specific server versions. These are guarded by direct version checks using `versionChecker()` rather than the `apiVersion` dispatch system.
+
+| Endpoint | Min Version | Guard Function | Purpose |
+| -------- | ----------- | -------------- | ------- |
+| `GET /MediaSegments/{itemId}` | 10.10.0 | `supportsMediaSegments()` | Fetch intro/outro/recap/preview/commercial segments for skip functionality |
+
+**How it works:**
+
+- Guard functions call `versionChecker(m.global.server.version, "x.y.z")` to compare the raw server version string
+- Callers check the guard before making the API request — the endpoint simply isn't called on older servers
+- No `apiVersion` dispatch needed because these are top-level paths, not user-scoped endpoints
+
+**Media Segments (10.10.0+):**
+
+The `MediaSegments` API provides segment timing data (intro, outro, recap, preview, commercial, unknown) for video items. JellyRock fetches segments during video content loading and supports three action modes per segment type: auto-skip, show skip button, or do nothing. All segment types default to "show skip button" (AskToSkip). User action preferences are loaded from the server's `DisplayPreferences` `CustomPrefs` (key format: `segmentTypeAction__[Type]`) with optional per-device overrides via JellyRock settings.
+
+**Key Files:**
+
+- `source/utils/mediaSegments.bs` - `supportsMediaSegments()` guard, `resolveSegmentAction()`, `findActiveSegment()`
+- `source/enums/MediaSegmentType.bs` - Segment type enum (Intro, Outro, Commercial, Preview, Recap, Unknown)
+- `source/enums/MediaSegmentAction.bs` - Action mode enum (None, AskToSkip, Skip)
+- `source/api/ApiClient.bs` - `BuildGetMediaSegmentsRequest()` request builder
+- `source/api/Items.bs` - `GetMediaSegments()` helper (guards with `supportsMediaSegments()`)
+- `components/ItemGrid/LoadVideoContentTask.bs` - Fetches segments after metadata load
+- `components/video/VideoNotification.bs` - Reusable notification component for skip prompts
+- `components/video/VideoPlayerView.bs` - Segment detection and action handling during playback
+
+### 5. Authentication Compatibility
 
 Most authentication flows work across all versions, with one exception:
 
@@ -83,7 +112,7 @@ Most authentication flows work across all versions, with one exception:
 
 Username/password authentication works identically across all versions.
 
-### 5. Client Interface Versioning
+### 6. Client Interface Versioning
 
 The `GetApi()` client provides a unified interface that hides version complexity:
 
@@ -141,6 +170,7 @@ All code references this value to determine behavior.
 | Device Profile | `source/utils/deviceCapabilities.bs`, `source/utils/deviceCapabilities.v1.bs`, `source/utils/deviceCapabilities.v2.bs` |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
 | Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
+| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/Items.bs` (GetMediaSegments) |
 
 ## Adding Support for New Server Versions
 

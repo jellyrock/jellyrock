@@ -36,6 +36,14 @@
     <!-- Playback Settings -->
     <field id="enableNextEpisodeAutoPlay" type="boolean" />
 
+    <!-- Media Segment Action Preferences (from web client DisplayPreferences CustomPrefs) -->
+    <field id="segmentActionCommercial" type="string" />
+    <field id="segmentActionIntro" type="string" />
+    <field id="segmentActionOutro" type="string" />
+    <field id="segmentActionPreview" type="string" />
+    <field id="segmentActionRecap" type="string" />
+    <field id="segmentActionUnknown" type="string" />
+
     <!-- View Organization -->
     <field id="orderedViews" type="array" />
     <field id="latestItemsExcludes" type="array" />

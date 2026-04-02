@@ -1,0 +1,166 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.log = log.Logger("VideoNotification")
+  m.actionButton = m.top.findNode("actionButton")
+  m.fadeInAnimation = m.top.findNode("fadeInAnimation")
+  m.fadeOutAnimation = m.top.findNode("fadeOutAnimation")
+  m.autoDismissTimer = m.top.findNode("autoDismissTimer")
+
+  m.top.observeField("text", "onTextChanged")
+  m.actionButton.observeField("ready", "onActionButtonReady")
+  m.autoDismissTimer.observeField("fire", "onAutoDismissTimerFired")
+  m.fadeOutAnimation.observeField("state", "onFadeOutAnimationState")
+end sub
+
+sub onTextChanged()
+  m.actionButton.text = m.top.text
+end sub
+
+' Reposition when TextButton finishes rendering with its actual width
+sub onActionButtonReady()
+  if m.top.state = "showing" or m.top.state = "paused"
+    positionBottomRight()
+  end if
+end sub
+
+' Show the notification: position bottom-right with 5% safe zone, fade in, set focus
+sub show()
+  if m.top.state = "showing" then return
+
+  m.log.info("Showing notification", m.top.text)
+  m.top.state = "showing"
+  m.top.action = ""
+
+  ' Stop any in-progress fade out
+  m.fadeOutAnimation.control = "stop"
+
+  ' Make visible so button can render and we can measure it
+  m.actionButton.visible = true
+
+  ' Position to bottom-right with 5% safe zone padding
+  positionBottomRight()
+
+  ' Start fade-in animation
+  m.fadeInAnimation.control = "start"
+  m.actionButton.setFocus(true)
+
+  ' Start auto-dismiss timer if configured
+  if m.top.autoDismissSeconds > 0
+    m.log.verbose("Auto-dismiss timer started", m.top.autoDismissSeconds)
+    m.autoDismissTimer.duration = m.top.autoDismissSeconds
+    m.autoDismissTimer.control = "start"
+  end if
+end sub
+
+' Hide the notification without triggering "dismissed" action.
+' Used when OSD opens to temporarily pause the notification so it can be re-shown later.
+sub hide()
+  if m.top.state <> "showing" then return
+  m.log.verbose("Notification paused (hidden for OSD)")
+  m.top.state = "paused"
+  m.autoDismissTimer.control = "stop"
+  m.fadeInAnimation.control = "stop"
+  m.actionButton.visible = false
+  m.actionButton.opacity = 0
+end sub
+
+' Dismiss the notification: fade out and release focus
+sub dismiss()
+  if m.top.state = "hidden" or m.top.state = "dismissing" then return
+
+  ' If paused (hidden for OSD), skip fade-out — button is already invisible
+  if m.top.state = "paused"
+    m.log.verbose("Dismissed from paused state")
+    m.top.state = "hidden"
+    if m.top.action = ""
+      m.top.action = "dismissed"
+    end if
+    return
+  end if
+
+  m.log.info("Dismissing notification")
+  m.top.state = "dismissing"
+  m.autoDismissTimer.control = "stop"
+  m.fadeInAnimation.control = "stop"
+  m.fadeOutAnimation.control = "start"
+  ' Focus stays on button during fade-out to prevent key events going nowhere.
+  ' Focus is released in onFadeOutAnimationState when animation completes.
+end sub
+
+' Called when fade-out animation state changes.
+' Guard with m.top.state = "dismissing" so externally stopped animations
+' (e.g., show() interrupting a fade-out) don't incorrectly transition to hidden.
+sub onFadeOutAnimationState()
+  if m.fadeOutAnimation.state = "stopped" and m.top.state = "dismissing"
+    m.log.verbose("Fade-out complete, state -> hidden")
+    m.actionButton.visible = false
+    ' Focus management is the parent's responsibility via the action observer.
+    ' Calling setFocus(false) here would race with the parent's setFocus(true)
+    ' and can leave nothing focused on some Roku firmware versions.
+    m.top.state = "hidden"
+    if m.top.action = ""
+      m.top.action = "dismissed"
+    end if
+  end if
+end sub
+
+sub onAutoDismissTimerFired()
+  dismiss()
+end sub
+
+' Position the notification button in the bottom-right corner with 5% safe zone
+sub positionBottomRight()
+  boundingRect = m.actionButton.localBoundingRect()
+
+  ' Use boundingRect height if valid and button has rendered (height > 35)
+  if isValid(boundingRect.height) and boundingRect.height > 35
+    buttonHeight = boundingRect.height
+  else
+    buttonHeight = 83 ' default height matching existing Next Episode button
+  end if
+
+  if isValid(boundingRect.width) and boundingRect.width > 0
+    buttonWidth = boundingRect.width
+  else
+    buttonWidth = 250 ' reasonable default
+  end if
+
+  m.top.translation = [
+    1920 - (1920 * 0.05) - buttonWidth,
+    1080 - (1080 * 0.05) - buttonHeight
+  ]
+end sub
+
+' Clean up all references and observers
+sub destroy()
+  m.log.verbose("Destroying notification")
+  m.autoDismissTimer.control = "stop"
+  m.autoDismissTimer.unobserveField("fire")
+  m.fadeOutAnimation.unobserveField("state")
+  m.actionButton.unobserveField("ready")
+  m.top.unobserveField("text")
+
+  m.actionButton = invalid
+  m.fadeInAnimation = invalid
+  m.fadeOutAnimation = invalid
+  m.autoDismissTimer = invalid
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if m.top.state <> "showing" then return false
+  if not press then return false
+
+  if key = "OK"
+    m.log.info("Notification activated via OK press")
+    m.autoDismissTimer.control = "stop"
+    m.top.action = "activated"
+    dismiss()
+    return true
+  end if
+
+  ' Non-OK keys: return false so the parent (VideoPlayerView) can decide
+  ' whether to hide() (pausable for OSD) or dismiss() (permanent).
+  return false
+end function

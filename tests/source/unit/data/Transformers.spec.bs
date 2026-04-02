@@ -685,6 +685,14 @@ namespace tests
       m.assertEqual(result.playbackSubtitleLanguagePreference, "audio")
       m.assertEqual(result.playbackSubtitleLanguageCustom, "")
 
+      ' Media Segment Settings
+      m.assertEqual(result.playbackSegmentActionCommercial, "webclient")
+      m.assertEqual(result.playbackSegmentActionIntro, "askToSkip")
+      m.assertEqual(result.playbackSegmentActionOutro, "webclient")
+      m.assertEqual(result.playbackSegmentActionPreview, "none")
+      m.assertEqual(result.playbackSegmentActionRecap, "webclient")
+      m.assertEqual(result.playbackSegmentActionUnknown, "none")
+
       ' UI Settings
       m.assertEqual(result.uiGeneralEpisodeImages, "always")
       m.assertEqual(result.uiTheme, "custom")

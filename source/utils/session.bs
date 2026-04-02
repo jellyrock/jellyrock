@@ -545,6 +545,17 @@ namespace user
         else
           unset_user_setting("displayLiveTvLanding")
         end if
+
+        ' Extract media segment action preferences from CustomPrefs
+        ' Web client stores these with key format: segmentTypeAction__[Type]
+        segmentTypes = ["Intro", "Outro", "Commercial", "Preview", "Recap", "Unknown"]
+        for each segmentType in segmentTypes
+          customPrefsKey = "segmentTypeAction__" + segmentType
+          configFieldKey = "segmentAction" + segmentType
+          if isValid(jsonResponse.CustomPrefs[customPrefsKey])
+            userNode.config[configFieldKey] = jsonResponse.CustomPrefs[customPrefsKey]
+          end if
+        end for
       else
         print "LoadUserPreferences: No valid CustomPrefs from server, using defaults"
         user.SaveUserHomeSections(user.getDefaultHomeSections())

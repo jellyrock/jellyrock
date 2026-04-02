@@ -1,0 +1,38 @@
+import "pkg:/source/utils/mediaSegments.bs"
+
+namespace tests
+
+  @suite("mediaSegments.bs - segmentTicksToSeconds()")
+  class SegmentTicksToSecondsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("tick conversion")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts ticks to seconds correctly")
+    function _()
+      result = segmentTicksToSeconds(300000000)
+      m.assertEqual(result, 30.0)
+    end function
+
+    @it("converts zero ticks")
+    function _()
+      result = segmentTicksToSeconds(0)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("returns 0 for invalid ticks")
+    function _()
+      result = segmentTicksToSeconds(invalid)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("handles large tick values (2 hours)")
+    function _()
+      result = segmentTicksToSeconds(72000000000&)
+      m.assertEqual(result, 7200.0)
+    end function
+
+  end class
+
+end namespace

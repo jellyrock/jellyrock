@@ -1,0 +1,174 @@
+import "pkg:/source/enums/MediaSegmentAction.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/utils/mediaSegments.bs"
+
+namespace tests
+
+  @suite("mediaSegments.bs - resolveSegmentAction()")
+  class ResolveSegmentActionTests extends tests.BaseTestSuite
+
+    ' Helper to create mock user settings
+    private function createMockSettings(overrides = {} as object) as object
+      return overrides
+    end function
+
+    ' Helper to create mock user config
+    private function createMockConfig(overrides = {} as object) as object
+      return overrides
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("built-in defaults when no overrides exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns AskToSkip for Intro when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.intro, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns AskToSkip for Outro when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.outro, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns AskToSkip for Commercial when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.commercial, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns AskToSkip for Preview when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.preview, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns AskToSkip for Recap when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.recap, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns AskToSkip for Unknown when no settings or config")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.unknown, m.createMockSettings(), m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyRock override settings take priority")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns Skip when JellyRock override is 'skip'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "skip" })
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.none })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("returns AskToSkip when JellyRock override is 'askToSkip'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionCommercial: "askToSkip" })
+      config = m.createMockConfig({ segmentActionCommercial: MediaSegmentAction.none })
+      result = resolveSegmentAction(MediaSegmentType.commercial, settings, config)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns None when JellyRock override is 'none'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "none" })
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.askToSkip })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.none)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("web client config fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses web client config value when JellyRock setting is 'webclient'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "webclient" })
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.skip })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("uses web client config value when JellyRock setting is empty")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionOutro: "" })
+      config = m.createMockConfig({ segmentActionOutro: MediaSegmentAction.skip })
+      result = resolveSegmentAction(MediaSegmentType.outro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("falls back to built-in default when web client config is empty and JellyRock is 'webclient'")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "webclient" })
+      config = m.createMockConfig({ segmentActionIntro: "" })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, config)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("falls back to built-in default when web client config field is missing")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionRecap: "webclient" })
+      config = m.createMockConfig()
+      result = resolveSegmentAction(MediaSegmentType.recap, settings, config)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("invalid input handling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns built-in default when both settings and config are invalid")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.intro, invalid, invalid)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("returns built-in default for all types when both are invalid")
+    function _()
+      result = resolveSegmentAction(MediaSegmentType.commercial, invalid, invalid)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    @it("uses web client config when settings is invalid")
+    function _()
+      config = m.createMockConfig({ segmentActionIntro: MediaSegmentAction.skip })
+      result = resolveSegmentAction(MediaSegmentType.intro, invalid, config)
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+    @it("uses built-in default when settings is valid but config is invalid")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "webclient" })
+      result = resolveSegmentAction(MediaSegmentType.intro, settings, invalid)
+      m.assertEqual(result, MediaSegmentAction.askToSkip)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("all 6 segment types tested with override")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("override works for each segment type")
+    @params("Intro", "playbackSegmentActionIntro")
+    @params("Outro", "playbackSegmentActionOutro")
+    @params("Commercial", "playbackSegmentActionCommercial")
+    @params("Preview", "playbackSegmentActionPreview")
+    @params("Recap", "playbackSegmentActionRecap")
+    @params("Unknown", "playbackSegmentActionUnknown")
+    function _(segmentType, settingKey)
+      settings = {}
+      settings[settingKey] = "skip"
+      result = resolveSegmentAction(segmentType, settings, m.createMockConfig())
+      m.assertEqual(result, MediaSegmentAction.skip)
+    end function
+
+  end class
+
+end namespace

@@ -42,6 +42,14 @@
     <field id="playbackSubtitleLanguagePreference" type="string" alwaysNotify="true" />
     <field id="playbackSubtitleLanguageCustom" type="string" alwaysNotify="true" />
 
+    <!-- Media Segment Settings -->
+    <field id="playbackSegmentActionCommercial" type="string" alwaysNotify="true" />
+    <field id="playbackSegmentActionIntro" type="string" alwaysNotify="true" />
+    <field id="playbackSegmentActionOutro" type="string" alwaysNotify="true" />
+    <field id="playbackSegmentActionPreview" type="string" alwaysNotify="true" />
+    <field id="playbackSegmentActionRecap" type="string" alwaysNotify="true" />
+    <field id="playbackSegmentActionUnknown" type="string" alwaysNotify="true" />
+
     <!-- UI Settings -->
     <field id="uiGeneralEpisodeImages" type="string" alwaysNotify="true" />
 
