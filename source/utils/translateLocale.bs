@@ -61,6 +61,9 @@ end function
 function normalizeLocaleCode(code as string) as string
   if code = "" then return "en_US"
 
+  ' Preserve BCP-47 private-use subtags (x-...) before normalizing
+  if LCase(Left(code, 2)) = "x-" then return LCase(code)
+
   ' Replace hyphens with underscores for uniform processing
   normalized = code.Replace("-", "_")
 

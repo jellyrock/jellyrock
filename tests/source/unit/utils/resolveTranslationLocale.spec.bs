@@ -209,5 +209,17 @@ namespace tests
       m.assertEqual(result, "en_US")
     end function
 
+    @it("preserves x- private-use subtag as lowercase")
+    function _()
+      result = normalizeLocaleCode("x-pirate")
+      m.assertEqual(result, "x-pirate")
+    end function
+
+    @it("normalizes x- private-use subtag case")
+    function _()
+      result = normalizeLocaleCode("X-Pirate")
+      m.assertEqual(result, "x-pirate")
+    end function
+
   end class
 end namespace
