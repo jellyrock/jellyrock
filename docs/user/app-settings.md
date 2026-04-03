@@ -464,6 +464,7 @@ Attempt Direct Play for HEVC media with unsupported profile levels before fallin
 Settings relating to how the application looks.
 
 - [General](#user-interface-general)
+  - [Display Language](#translationLocale)
   - [Backdrop Images](#uiShowBackdrop)
   - [Episode Images Next Up](#uiGeneralEpisodeImages)
   - [Fallback Fonts](#uiFontFallback)
@@ -501,6 +502,18 @@ Settings relating to how the application looks.
 <a id="user-interface-general"></a>
 
 Settings relating to the appearance of the Home screen and the program in general.
+
+<h4 id="translationLocale">Display Language</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#translationLocale">Display Language</a>
+
+Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language. Changes take effect after leaving Settings.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `translationLocale` |
+| Type | `languagePicker` |
+| Default | `` |
 
 <h4 id="uiShowBackdrop">Backdrop Images</h4>
 
