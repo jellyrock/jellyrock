@@ -50,7 +50,7 @@ CI validates that all referenced keys exist.
 ## Maintenance Scripts
 
 | Command | Purpose |
-|---|---|
+| --- | --- |
 | `npm run update-translations -- --fix` | Sort en_US.json, sync languages.json with locale files |
 | `npm run update-translations` | Report missing/orphan keys and unsynchronized locales (exits 1 if issues found) |
 | `npm run validate:translations` | Validate key usage, placeholder parity, hardcoded strings, languages.json alignment |

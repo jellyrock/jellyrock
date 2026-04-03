@@ -38,7 +38,7 @@ translate(translationKeys.MyNewKey, ["value"])
 Keys use PascalCase with a category prefix:
 
 | Prefix | Usage | Example |
-|---|---|---|
+| --- | --- | --- |
 | `Button` | Button labels | `ButtonPlay`, `ButtonCancel` |
 | `Label` | UI labels and headings | `LabelSearch`, `LabelCinemaMode` |
 | `Message` | Longer descriptive text | `MessageRememberMe` |
@@ -111,7 +111,7 @@ The `title` and `description` fields are kept as the English source of truth alo
 Locale files follow standard conventions for Weblate compatibility:
 
 | Type | Convention | Example |
-|---|---|---|
+| --- | --- | --- |
 | Base languages | Lowercase | `fr.json`, `de.json` |
 | Regional variants | Underscore + uppercase region | `fr_CA.json`, `de_DE.json` |
 | Chinese (script codes) | Underscore + script code | `zh_Hans.json`, `zh_Hant.json`, `zh_Hant_HK.json` |
@@ -144,7 +144,7 @@ Language changes take effect after leaving Settings (the `reloadHome` mechanism 
 Translation integrity is enforced by three scripts that run as part of `npm run lint`:
 
 | Script | What it checks |
-|---|---|
+| --- | --- |
 | `validate:translations` | All `translate()` / `translationKeys.*` references exist in en_US.json; no hardcoded string literals; placeholder parity; languages.json alignment |
 | `lint:translations` | All locale JSON files are valid; no orphaned keys; coverage report |
 | `lint:xml-translations` | No stale XML `translationKey` attributes from the old system |

@@ -20,17 +20,12 @@
     "nativeName": "অসমীয়া"
   },
   {
-    "code": "be_BY",
+    "code": "be",
     "name": "Belarusian",
     "nativeName": "Беларуская"
   },
   {
     "code": "bg",
-    "name": "Bulgarian",
-    "nativeName": "Български"
-  },
-  {
-    "code": "bg_BG",
     "name": "Bulgarian",
     "nativeName": "Български"
   },
@@ -80,11 +75,6 @@
     "nativeName": "Deutsch"
   },
   {
-    "code": "de_DE",
-    "name": "German (Germany)",
-    "nativeName": "Deutsch (Deutschland)"
-  },
-  {
     "code": "dv",
     "name": "Divehi",
     "nativeName": "ދިވެހި"
@@ -128,11 +118,6 @@
     "code": "es_DO",
     "name": "Spanish (Dominican Republic)",
     "nativeName": "Español (República Dominicana)"
-  },
-  {
-    "code": "es_ES",
-    "name": "Spanish (Spain)",
-    "nativeName": "Español (España)"
   },
   {
     "code": "es_MX",
@@ -210,7 +195,7 @@
     "nativeName": "עברית (ישראל)"
   },
   {
-    "code": "hi_IN",
+    "code": "hi",
     "name": "Hindi",
     "nativeName": "हिन्दी"
   },
@@ -240,7 +225,7 @@
     "nativeName": "Bahasa Indonesia"
   },
   {
-    "code": "is_IS",
+    "code": "is",
     "name": "Icelandic",
     "nativeName": "Íslenska"
   },
@@ -248,11 +233,6 @@
     "code": "it",
     "name": "Italian",
     "nativeName": "Italiano"
-  },
-  {
-    "code": "it_IT",
-    "name": "Italian (Italy)",
-    "nativeName": "Italiano (Italia)"
   },
   {
     "code": "ja",
@@ -300,7 +280,7 @@
     "nativeName": "Lëtzebuergesch"
   },
   {
-    "code": "lt_LT",
+    "code": "lt",
     "name": "Lithuanian",
     "nativeName": "Lietuvių"
   },
@@ -428,11 +408,6 @@
     "code": "sl",
     "name": "Slovenian",
     "nativeName": "Slovenščina"
-  },
-  {
-    "code": "sl_SI",
-    "name": "Slovenian (Slovenia)",
-    "nativeName": "Slovenščina (Slovenija)"
   },
   {
     "code": "so",

@@ -3,8 +3,8 @@
 ' for O(1) key lookups. Two AAs are kept in memory: the active locale and
 ' en_US as fallback (~150KB total including AA overhead).
 '
-' Regional locale layering: when a regional locale like "de_DE" is requested,
-' the base language ("de") is loaded first, then regional translations are
+' Regional locale layering: when a regional locale like "fr_CA" is requested,
+' the base language ("fr") is loaded first, then regional translations are
 ' overlaid on top. This ensures users get the maximum number of translated
 ' strings — regional-specific where available, base language otherwise.
 '
