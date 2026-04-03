@@ -34,13 +34,12 @@ end sub
 
 function onDialogButton()
   d = m.dialog
-  button_text = d.buttons[d.buttonSelected]
 
-  if button_text = translate(translationKeys.ButtonOk)
+  if d.buttonSelected = 0 ' OK
     m.configField.value = d.text
     dismiss_dialog()
     return true
-  else if button_text = translate(translationKeys.ButtonCancel)
+  else if d.buttonSelected = 1 ' Cancel
     dismiss_dialog()
     return true
   end if

@@ -131,18 +131,17 @@ end sub
 
 function onDialogButton()
   d = m.dialog
-  button_text = d.buttons[d.buttonSelected]
 
-  if button_text = translate(translationKeys.ButtonOk)
+  if d.buttonSelected = 0 ' OK
     m.serverUrlTextbox.text = d.text
     m.dialog.close = true
     return true
-  else if button_text = translate(translationKeys.ButtonCancel)
+  else if d.buttonSelected = 1 ' Cancel
     m.dialog.close = true
     return true
-  else
-    return false
   end if
+
+  return false
 end function
 
 sub clearErrorMessage()
