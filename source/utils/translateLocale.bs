@@ -1,0 +1,88 @@
+' Locale resolution functions for the custom translation system.
+' Separated from translate.bs because these depend on config.bs (get_user_setting)
+' which is not available in all component scopes. These functions are only called
+' from source/ context (Main.bs, session.bs) where config.bs is auto-scoped.
+
+' Determine which locale to load using the fallback cascade.
+' Pre-login (isPostLogin=false): device locale -> en_US
+' Post-login (isPostLogin=true): user setting -> server language -> device locale -> en_US
+' @param {boolean} isPostLogin - Whether a user is authenticated
+' @param {string} serverLanguage - Language from server CustomPrefs.language (empty if unavailable)
+' @return {string} Resolved locale code in standard format (e.g. "fr_CA", "en_US", "zh_Hans")
+function resolveTranslationLocale(isPostLogin = false as boolean, serverLanguage = "" as string) as string
+  ' Priority 1: Per-user language override (only available post-login)
+  if isPostLogin
+    userLocale = get_user_setting("translationLocale")
+    if isValidAndNotEmpty(userLocale) then return userLocale
+  end if
+
+  ' Priority 2: Server CustomPrefs.language (post-login only)
+  ' Normalize because Jellyfin may send various formats (e.g. "zh-CN", "pt-BR")
+  if isPostLogin and isValidAndNotEmpty(serverLanguage)
+    return normalizeLocaleCode(serverLanguage)
+  end if
+
+  ' Priority 3: Roku device locale
+  deviceLocale = m.global.device.locale
+  if isValidAndNotEmpty(deviceLocale)
+    return mapRokuLocaleToTranslationLocale(deviceLocale)
+  end if
+
+  ' Priority 4: Hardcoded default
+  return "en_US"
+end function
+
+' Convert Roku's locale format to our standard format.
+' Roku sends underscore format (e.g. "en_US", "fr_CA", "zh_CN").
+' Most pass through directly since they already match our convention,
+' except Chinese locales which use script codes instead of region codes.
+' @param {string} rokuLocale - Roku locale from roDeviceInfo.GetCurrentLocale()
+' @return {string} Locale code in standard format
+function mapRokuLocaleToTranslationLocale(rokuLocale as string) as string
+  if rokuLocale = "" then return "en_US"
+
+  ' Chinese script code mapping — Roku uses region codes, we use script codes
+  rokuLocaleLower = LCase(rokuLocale)
+  if rokuLocaleLower = "zh_cn" then return "zh_Hans"
+  if rokuLocaleLower = "zh_tw" then return "zh_Hant"
+  if rokuLocaleLower = "zh_hk" then return "zh_Hant_HK"
+
+  ' All other Roku locales already match our format (e.g. en_US, fr_CA, de_DE)
+  return rokuLocale
+end function
+
+' Normalize any locale code to our standard filename convention.
+' Handles input from Jellyfin server, user settings, or any external source.
+' Convention: base languages lowercase (e.g. "fr"), regional variants use
+' underscore with uppercase region (e.g. "fr_CA"), Chinese uses script codes
+' (e.g. "zh_Hans", "zh_Hant", "zh_Hant_HK"), numeric regions stay numeric (e.g. "es_419").
+' @param {string} code - Locale code in any format (e.g. "fr-ca", "pt-BR", "zh-CN")
+' @return {string} Normalized locale code matching our filename convention
+function normalizeLocaleCode(code as string) as string
+  if code = "" then return "en_US"
+
+  ' Preserve BCP-47 private-use subtags (x-...) before normalizing
+  if LCase(Left(code, 2)) = "x-" then return LCase(code)
+
+  ' Replace hyphens with underscores for uniform processing
+  normalized = code.Replace("-", "_")
+
+  ' Chinese script code mapping (case-insensitive)
+  normalizedLower = LCase(normalized)
+  if normalizedLower = "zh_cn" or normalizedLower = "zh_hans" then return "zh_Hans"
+  if normalizedLower = "zh_tw" or normalizedLower = "zh_hant" then return "zh_Hant"
+  if normalizedLower = "zh_hk" or normalizedLower = "zh_hant_hk" then return "zh_Hant_HK"
+
+  ' Find the first underscore to split lang from region
+  underscorePos = Instr(1, normalized, "_")
+
+  if underscorePos > 0
+    ' Regional locale: lowercase lang + uppercase region
+    lang = LCase(Left(normalized, underscorePos - 1))
+    region = Mid(normalized, underscorePos + 1)
+    return lang + "_" + UCase(region)
+  end if
+
+  ' Base locale: lowercase
+  return LCase(normalized)
+end function

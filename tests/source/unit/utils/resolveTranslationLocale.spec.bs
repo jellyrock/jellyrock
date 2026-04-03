@@ -1,0 +1,225 @@
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  @suite("translate - resolveTranslationLocale()")
+  class ResolveTranslationLocaleTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+      ' Set a known device locale for baseline
+      m.global.device.locale = "en_US"
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Pre-login resolution (isPostLogin=false)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns mapped device locale for en_US")
+    function _()
+      m.global.device.locale = "en_US"
+      result = resolveTranslationLocale()
+      m.assertEqual(result, "en_US")
+    end function
+
+    @it("returns mapped device locale for fr_CA")
+    function _()
+      m.global.device.locale = "fr_CA"
+      result = resolveTranslationLocale()
+      m.assertEqual(result, "fr_CA")
+    end function
+
+    @it("returns mapped device locale for de_DE")
+    function _()
+      m.global.device.locale = "de_DE"
+      result = resolveTranslationLocale()
+      m.assertEqual(result, "de_DE")
+    end function
+
+    @it("returns en_US when device locale is empty")
+    function _()
+      m.global.device.locale = ""
+      result = resolveTranslationLocale()
+      m.assertEqual(result, "en_US")
+    end function
+
+    @it("ignores server language when pre-login even if provided")
+    function _()
+      m.global.device.locale = "en_US"
+      result = resolveTranslationLocale(false, "fr")
+      m.assertEqual(result, "en_US")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Post-login resolution (isPostLogin=true)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns normalized server language when post-login and no user override")
+    function _()
+      m.global.device.locale = "en_US"
+      result = resolveTranslationLocale(true, "fr")
+      m.assertEqual(result, "fr")
+    end function
+
+    @it("normalizes hyphenated server language to underscore format")
+    function _()
+      result = resolveTranslationLocale(true, "PT-BR")
+      m.assertEqual(result, "pt_BR")
+    end function
+
+    @it("normalizes Chinese server language to script code")
+    function _()
+      result = resolveTranslationLocale(true, "zh-CN")
+      m.assertEqual(result, "zh_Hans")
+    end function
+
+    @it("returns device locale when post-login but no server language")
+    function _()
+      m.global.device.locale = "es_MX"
+      result = resolveTranslationLocale(true, "")
+      m.assertEqual(result, "es_MX")
+    end function
+
+    @it("returns en_US when post-login with no server language and empty device locale")
+    function _()
+      m.global.device.locale = ""
+      result = resolveTranslationLocale(true, "")
+      m.assertEqual(result, "en_US")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("mapRokuLocaleToTranslationLocale()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps en_US to en_US")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("en_US")
+      m.assertEqual(result, "en_US")
+    end function
+
+    @it("maps fr_CA to fr_CA")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("fr_CA")
+      m.assertEqual(result, "fr_CA")
+    end function
+
+    @it("maps pt_BR to pt_BR")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("pt_BR")
+      m.assertEqual(result, "pt_BR")
+    end function
+
+    @it("maps de_DE to de_DE")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("de_DE")
+      m.assertEqual(result, "de_DE")
+    end function
+
+    @it("maps zh_CN to zh_Hans")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("zh_CN")
+      m.assertEqual(result, "zh_Hans")
+    end function
+
+    @it("maps zh_TW to zh_Hant")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("zh_TW")
+      m.assertEqual(result, "zh_Hant")
+    end function
+
+    @it("maps zh_HK to zh_Hant_HK")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("zh_HK")
+      m.assertEqual(result, "zh_Hant_HK")
+    end function
+
+    @it("returns en_US for empty string")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("")
+      m.assertEqual(result, "en_US")
+    end function
+
+    @it("passes through base locale unchanged")
+    function _()
+      result = mapRokuLocaleToTranslationLocale("ja")
+      m.assertEqual(result, "ja")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("normalizeLocaleCode()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns en_US for empty string")
+    function _()
+      result = normalizeLocaleCode("")
+      m.assertEqual(result, "en_US")
+    end function
+
+    @it("normalizes hyphenated regional to underscore uppercase")
+    function _()
+      result = normalizeLocaleCode("fr-ca")
+      m.assertEqual(result, "fr_CA")
+    end function
+
+    @it("normalizes mixed-case hyphenated to underscore uppercase")
+    function _()
+      result = normalizeLocaleCode("pt-BR")
+      m.assertEqual(result, "pt_BR")
+    end function
+
+    @it("passes through base locale as lowercase")
+    function _()
+      result = normalizeLocaleCode("fr")
+      m.assertEqual(result, "fr")
+    end function
+
+    @it("normalizes zh-cn to zh_Hans")
+    function _()
+      result = normalizeLocaleCode("zh-cn")
+      m.assertEqual(result, "zh_Hans")
+    end function
+
+    @it("normalizes zh-tw to zh_Hant")
+    function _()
+      result = normalizeLocaleCode("zh-tw")
+      m.assertEqual(result, "zh_Hant")
+    end function
+
+    @it("normalizes zh-hk to zh_Hant_HK")
+    function _()
+      result = normalizeLocaleCode("zh-hk")
+      m.assertEqual(result, "zh_Hant_HK")
+    end function
+
+    @it("normalizes zh_CN to zh_Hans")
+    function _()
+      result = normalizeLocaleCode("zh_CN")
+      m.assertEqual(result, "zh_Hans")
+    end function
+
+    @it("preserves numeric region codes")
+    function _()
+      result = normalizeLocaleCode("es-419")
+      m.assertEqual(result, "es_419")
+    end function
+
+    @it("passes through already-normalized code")
+    function _()
+      result = normalizeLocaleCode("en_US")
+      m.assertEqual(result, "en_US")
+    end function
+
+    @it("preserves x- private-use subtag as lowercase")
+    function _()
+      result = normalizeLocaleCode("x-pirate")
+      m.assertEqual(result, "x-pirate")
+    end function
+
+    @it("normalizes x- private-use subtag case")
+    function _()
+      result = normalizeLocaleCode("X-Pirate")
+      m.assertEqual(result, "x-pirate")
+    end function
+
+  end class
+end namespace

@@ -13,7 +13,8 @@
   ],
   "plugins": [
     "@rokucommunity/bslint",
-    "roku-log-bsc-plugin"
+    "roku-log-bsc-plugin",
+    "./scripts/bsc-plugin-translation-keys.cjs"
   ],
   "rokuLog": {
     "strip": true,

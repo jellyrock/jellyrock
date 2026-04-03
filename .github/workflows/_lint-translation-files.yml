@@ -18,3 +18,7 @@ jobs:
         run: npm ci
       - name: Lint translation files
         run: npm run lint:translations
+      - name: Validate translation key usage
+        run: npm run validate:translations
+      - name: Lint XML translation attributes
+        run: npm run lint:xml-translations

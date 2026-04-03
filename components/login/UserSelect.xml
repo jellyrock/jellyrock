@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="UserSelect" extends="JRScreen">
   <children>
-    <LabelPrimaryLarge text="Select a User" horizAlign="center" height="100" width="1920" translation="[0, 200]" />
+    <LabelPrimaryLarge id="selectUserLabel" text="" horizAlign="center" height="100" width="1920" translation="[0, 200]" />
 
     <UserRow id="userRow" translation="[130, 360]" />
 
     <JRButtonGroup id="buttons" translation="[0,850]">
-      <TextButton id="manualLoginButton" minWidth="300" text="Manual Login" />
+      <TextButton id="manualLoginButton" minWidth="300" text="" />
     </JRButtonGroup>
   </children>
   <interface>

@@ -35,5 +35,7 @@
 
     <AlphaKeyboard translation="[882, 500]" id="alphaSetting" visible="false" />
 
+    <LanguagePicker translation="[784, 440]" id="languagePicker" visible="false" />
+
   </children>
 </component>

@@ -1224,7 +1224,7 @@ namespace tests
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
-      m.assertEqual(result.subtitle, "5 items")
+      m.assertEqual(result.subtitle, "5 Items")
     end function
 
     @it("computes BoxSet subtitle singular")
@@ -1238,7 +1238,7 @@ namespace tests
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
-      m.assertEqual(result.subtitle, "1 item")
+      m.assertEqual(result.subtitle, "1 Item")
     end function
 
     @it("computes Playlist subtitle with many items")
@@ -1252,7 +1252,7 @@ namespace tests
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
-      m.assertEqual(result.subtitle, "12 items")
+      m.assertEqual(result.subtitle, "12 Items")
     end function
 
     @it("computes Playlist subtitle singular")
@@ -1266,7 +1266,7 @@ namespace tests
 
       result = transformer.transformBaseItem(apiData, "10.8.0")
 
-      m.assertEqual(result.subtitle, "1 item")
+      m.assertEqual(result.subtitle, "1 Item")
     end function
 
     @it("computes Playlist subtitle with zero items")

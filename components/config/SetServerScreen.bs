@@ -1,10 +1,17 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("SetServerScreen")
   m.top.setFocus(true)
+
+  m.top.findNode("prompt").text = translate(translationKeys.LabelConnectToServer)
+  m.top.findNode("serverPickerHint").text = translate(translationKeys.LabelPickAJellyfinServerFromThe)
+  m.top.findNode("manualEntryHint").text = translate(translationKeys.LabelOrEnterServerUrlManually)
+  m.top.findNode("submit").text = translate(translationKeys.ButtonSubmit)
 
   m.serverPicker = m.top.findNode("serverPicker")
   m.serverUrlTextbox = m.top.findNode("serverUrlTextbox")
@@ -109,8 +116,8 @@ end sub
 
 sub ShowKeyboard()
   dialog = createObject("roSGNode", "StandardKeyboardDialog")
-  dialog.title = tr("Enter the server name or ip address")
-  dialog.buttons = [tr("OK"), tr("Cancel")]
+  dialog.title = translate(translationKeys.LabelEnterTheServerNameOrIp)
+  dialog.buttons = [translate(translationKeys.ButtonOk), translate(translationKeys.ButtonCancel)]
   dialog.text = m.serverUrlTextbox.text
   greenPalette = createObject("roSGNode", "RSGPalette")
   greenPalette.colors = { DialogBackgroundColor: "#2A2B2A" }
@@ -124,18 +131,17 @@ end sub
 
 function onDialogButton()
   d = m.dialog
-  button_text = d.buttons[d.buttonSelected]
 
-  if button_text = tr("OK")
+  if d.buttonSelected = 0 ' OK
     m.serverUrlTextbox.text = d.text
     m.dialog.close = true
     return true
-  else if button_text = tr("Cancel")
+  else if d.buttonSelected = 1 ' Cancel
     m.dialog.close = true
     return true
-  else
-    return false
   end if
+
+  return false
 end function
 
 sub clearErrorMessage()

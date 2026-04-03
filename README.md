@@ -2,6 +2,7 @@
 [![JellyRock](resources/branding/release/channel-poster_sd.png "Download JellyRock ")](https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock)
 
 [![Current Release](https://img.shields.io/github/release/jellyrock/jellyrock.svg?logo=github "Current Release")](https://github.com/jellyrock/jellyrock/releases)
+[![Translation status](https://translate.jellyrock.app/widget/jellyrock/svg-badge.svg)](https://translate.jellyrock.app/engage/jellyrock/)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
 [![License](https://img.shields.io/github/license/jellyrock/jellyrock.svg "GPL 2.0 License")](LICENSE)
 [![API docs](https://img.shields.io/badge/API%20docs-purple)](https://jellyrock.github.io/api-docs/)
@@ -86,3 +87,9 @@ npm run build # OR npm run build:prod
 - [TDD Workflow](docs/dev/unit-tests-tdd.md)
 - [Unit Tests](docs/dev/unit-tests.md)
 - [Jellyfin Server Versioning](docs/dev/jellyfin-server-versioning.md)
+
+## Translations
+
+JellyRock uses Weblate for translations: <https://translate.jellyrock.app/projects/jellyrock>
+
+[![Translation status](https://translate.jellyrock.app/widget/jellyrock/multi-auto.svg)](https://translate.jellyrock.app/engage/jellyrock/)

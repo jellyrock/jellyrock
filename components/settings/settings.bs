@@ -1,19 +1,34 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/translateLocale.bs"
 
 sub init()
   m.log = log.Logger("Settings")
-  m.top.overhangTitle = tr("Settings")
+  m.top.overhangTitle = translate(translationKeys.LabelSettings)
   m.top.optionsAvailable = false
 
   m.userLocation = []
   m.themeColorsChanged = false
+  m.languageChanged = false
   m.customColorBackup = invalid
+
+  ' Load available languages for the language picker
+  languagesJson = ReadAsciiFile("pkg:/locale/languages.json")
+  m.availableLanguages = ParseJson(languagesJson)
+  if not isValid(m.availableLanguages) then m.availableLanguages = []
+  ' Normalize language entries so downstream code can safely access all fields
+  for each lang in m.availableLanguages
+    if not isValid(lang.name) then lang.name = ""
+    if not isValid(lang.nativeName) then lang.nativeName = ""
+    if not isValid(lang.code) then lang.code = ""
+  end for
 
   versionLabel = m.top.findNode("versionLabel")
   versionLabel.text = "v" + m.global.app.version
@@ -28,6 +43,7 @@ sub init()
   m.radioSetting = m.top.findNode("radioSetting")
   m.hexSetting = m.top.findNode("hexSetting")
   m.alphaSetting = m.top.findNode("alphaSetting")
+  m.languagePicker = m.top.findNode("languagePicker")
 
   m.integerSetting.observeField("submit", "onKeyGridSubmit")
   m.integerSetting.observeField("escape", "onKeyGridEscape")
@@ -39,6 +55,10 @@ sub init()
   m.alphaSetting.observeField("submit", "onAlphaKeyGridSubmit")
   m.alphaSetting.observeField("escape", "onAlphaKeyGridEscape")
   m.alphaSetting.observeField("reset", "onAlphaResetRequested")
+
+  m.languagePicker.observeField("selectedCode", "onLanguagePickerSelected")
+  m.languagePicker.languages = m.availableLanguages
+  m.suppressLanguagePicker = false
 
   m.settingsMenu.setFocus(true)
   m.settingsMenu.observeField("itemFocused", "settingFocused")
@@ -74,7 +94,7 @@ sub onHexKeyGridSubmit()
 
   ' Validate hex color input
   if not isValidHexColor(newValue)
-    m.global.sceneManager.callFunc("userMessage", tr("Invalid Color"), tr("Please enter exactly 6 hex characters (0-9, A-F)."))
+    m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ErrorInvalidColor), translate(translationKeys.LabelPleaseEnterExactly6HexCharacters09A))
     return
   end if
 
@@ -97,7 +117,7 @@ end sub
 
 ' Called when reset button is selected in HexKeyboard
 sub onHexResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Cancel"), tr("Reset")])
+  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onResetDialogResponse")
 end sub
 
@@ -157,7 +177,7 @@ sub onAlphaKeyGridSubmit()
   end if
 
   if not isValidCode
-    m.global.sceneManager.callFunc("userMessage", tr("Invalid Language Code"), tr("Please enter exactly 3 letters (e.g., eng, jpn, fra)."))
+    m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ErrorInvalidLanguageCode), translate(translationKeys.MessagePleaseEnterExactly3LettersEG))
     return
   end if
 
@@ -175,7 +195,7 @@ end sub
 
 ' Called when reset button is selected in AlphaKeyboard
 sub onAlphaResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset Setting"), tr("Are you sure? This will reset the setting to its default value."), [tr("Cancel"), tr("Reset")])
+  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onAlphaResetDialogResponse")
 end sub
 
@@ -237,8 +257,8 @@ sub LoadMenu(configSection)
 
   for each item in filteredChildren
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(item.title)
-    listItem.Description = tr(item.description)
+    listItem.title = translate(item.titleKey)
+    listItem.Description = translate(item.descriptionKey)
     listItem.id = item.id
   end for
 
@@ -247,13 +267,15 @@ sub LoadMenu(configSection)
     resetItem = {
       title: "Reset User Settings",
       description: "Reset all settings to their default values. Your login session will not be affected.",
+      titleKey: translationKeys.LabelResetUserSettings,
+      descriptionKey: translationKeys.SettingResetAllSettingsToTheirDefault,
       type: "action",
       actionId: "resetUserSettings"
     }
     filteredChildren.push(resetItem)
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(resetItem.title)
-    listItem.Description = tr(resetItem.description)
+    listItem.title = translate(resetItem.titleKey)
+    listItem.Description = translate(resetItem.descriptionKey)
     listItem.id = "resetUserSettings"
   end if
 
@@ -268,9 +290,9 @@ sub LoadMenu(configSection)
   for each level in m.userLocation
     if isValid(level.title)
       if m.path.text = ""
-        m.path.text = tr(level.title)
+        m.path.text = translate(level.titleKey)
       else
-        m.path.text += " / " + tr(level.title)
+        m.path.text += " / " + translate(level.titleKey)
       end if
     end if
   end for
@@ -279,7 +301,7 @@ end sub
 sub settingFocused()
 
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
-  m.settingDesc.text = tr(selectedSetting.Description)
+  m.settingDesc.text = translate(selectedSetting.descriptionKey)
 
   ' Hide Settings
   m.boolSetting.visible = false
@@ -287,6 +309,7 @@ sub settingFocused()
   m.radioSetting.visible = false
   m.hexSetting.visible = false
   m.alphaSetting.visible = false
+  m.languagePicker.visible = false
 
   userSettings = m.global.user.settings
 
@@ -316,7 +339,7 @@ sub settingFocused()
     itemIndex = 0
     for each item in m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused].options
       listItem = radioContent.CreateChild("ContentNode")
-      listItem.title = tr(item.title)
+      listItem.title = translate(item.titleKey)
       listItem.id = item.id
       if selectedValue = item.id
         m.radioSetting.checkedItem = itemIndex
@@ -345,6 +368,13 @@ sub settingFocused()
       m.alphaSetting.text = ""
     end if
     m.alphaSetting.visible = true
+  else if selectedSetting.type = "languagePicker"
+    selectedValue = userSettings[selectedSetting.settingName]
+    if not isValid(selectedValue) then selectedValue = ""
+    m.suppressLanguagePicker = true
+    m.languagePicker.selectedCode = selectedValue
+    m.suppressLanguagePicker = false
+    m.languagePicker.visible = true
   else if selectedSetting.type = "action"
     ' Action items show description only, no setting controls
   else
@@ -375,6 +405,8 @@ sub settingSelected()
       m.hexSetting.setFocus(true)
     else if selectedItem.type = "alpha"
       m.alphaSetting.setFocus(true)
+    else if selectedItem.type = "languagePicker"
+      m.languagePicker.findNode("keyboard").setFocus(true)
     end if
   else if isValid(selectedItem.children) and selectedItem.children.Count() > 0 ' Show sub menu
     LoadMenu(selectedItem)
@@ -414,6 +446,10 @@ end sub
 sub radioSettingChanged()
   if not isValid(m.radioSetting.focusedChild) then return
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
+
+  ' Language picker is handled by onLanguagePickerSelected(), not the radio control
+  if selectedSetting.type = "languagePicker" then return
+
   selectedOption = selectedSetting.options[m.radioSetting.checkedItem]
   newValue = selectedOption.id
 
@@ -487,8 +523,8 @@ sub refreshCurrentMenu()
   result = CreateObject("roSGNode", "ContentNode")
   for each item in filteredChildren
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(item.title)
-    listItem.Description = tr(item.description)
+    listItem.title = translate(item.titleKey)
+    listItem.Description = translate(item.descriptionKey)
     listItem.id = item.id
   end for
 
@@ -497,13 +533,15 @@ sub refreshCurrentMenu()
     resetItem = {
       title: "Reset User Settings",
       description: "Reset all settings to their default values. Your login session will not be affected.",
+      titleKey: translationKeys.LabelResetUserSettings,
+      descriptionKey: translationKeys.SettingResetAllSettingsToTheirDefault,
       type: "action",
       actionId: "resetUserSettings"
     }
     filteredChildren.push(resetItem)
     listItem = result.CreateChild("ContentNode")
-    listItem.title = tr(resetItem.title)
-    listItem.Description = tr(resetItem.description)
+    listItem.title = translate(resetItem.titleKey)
+    listItem.Description = translate(resetItem.descriptionKey)
     listItem.id = "resetUserSettings"
   end if
 
@@ -556,7 +594,7 @@ end function
 
 ' Show confirmation dialog before resetting all user settings
 sub confirmResetUserSettings()
-  m.global.sceneManager.callFunc("optionDialog", tr("Reset User Settings"), tr("Are you sure you want to reset all settings to their default values? Your login session will not be affected."), [tr("Cancel"), tr("Reset")])
+  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageAreYouSureYouWantTo2), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onResetUserSettingsResponse")
 end sub
 
@@ -617,7 +655,7 @@ sub executeResetUserSettings()
   m.log.info("User settings reset complete", { deletedKeys: keysToDelete.Count() })
 
   ' Show success feedback (toast lives on JRScene, persists across scene transitions)
-  m.top.getScene().callFunc("showToast", tr("Settings reset to defaults"), "success")
+  m.top.getScene().callFunc("showToast", translate(translationKeys.LabelSettingsResetToDefaults), "success")
 
   ' Exit settings and reload home with fresh theme colors
   performSettingsExit()
@@ -663,7 +701,7 @@ end function
 sub exitSettingsAndReloadHome()
   ' Check if custom colors will be lost (user switched from Custom to a preset)
   if isValid(m.customColorBackup) and m.global.user.settings.uiTheme <> "custom" and hasCustomColorsChanged()
-    m.global.sceneManager.callFunc("optionDialog", tr("Replace Custom Colors"), tr("Your custom colors will be replaced by the selected theme. Continue?"), [tr("Yes"), tr("No")])
+    m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelReplaceCustomColors), translate(translationKeys.MessageYourCustomColorsWillBeReplaced), [translate(translationKeys.LabelYes), translate(translationKeys.LabelNo)])
     m.global.sceneManager.observeFieldScoped("dataReturned", "onExitConfirmResponse")
     return
   end if
@@ -690,16 +728,40 @@ sub onExitConfirmResponse()
   performSettingsExit()
 end sub
 
+' Handle language selection from LanguagePicker component
+sub onLanguagePickerSelected()
+  ' Guard against being triggered during init or programmatic selectedCode changes
+  if m.suppressLanguagePicker then return
+  if not isValid(m.userLocation) or m.userLocation.count() = 0 then return
+
+  newLocale = m.languagePicker.selectedCode
+  selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
+
+  ' Save to user registry (empty string = automatic)
+  user.settings.Save(selectedSetting.settingName, newLocale)
+
+  ' Resolve and load the new locale
+  if newLocale = ""
+    resolvedLocale = resolveTranslationLocale(true)
+  else
+    resolvedLocale = newLocale
+  end if
+
+  if resolvedLocale <> m.global.translationLocale
+    loadTranslations(resolvedLocale)
+    m.languageChanged = true
+  end if
+end sub
+
 ' Perform the actual settings exit (apply theme changes and navigate)
 sub performSettingsExit()
-  if m.themeColorsChanged
-    ' Apply theme color overrides and refresh UI
-    applyThemeColorOverrides(m.global.user.settings)
-    m.global.sceneManager.callFunc("refreshThemeColors")
-    ' Clear all scenes and reload home with fresh theme colors
+  if m.themeColorsChanged or m.languageChanged
+    if m.themeColorsChanged
+      applyThemeColorOverrides(m.global.user.settings)
+      m.global.sceneManager.callFunc("refreshThemeColors")
+    end if
     m.global.sceneManager.callFunc("reloadHome")
   else
-    ' No theme changes - just pop the settings screen
     m.global.sceneManager.callFunc("popScene")
   end if
 end sub

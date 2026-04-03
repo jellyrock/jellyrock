@@ -1,0 +1,19 @@
+{
+  "ButtonCancel": "ކެންސަލް",
+  "ButtonDelete": "ޑިލީޓްކޮއްލާ",
+  "ButtonManualLogin": "މެނުއަލް ލޮގިން",
+  "ButtonOk": "ރަނގަޅު",
+  "ButtonResume": "ރެޒިއުމް",
+  "ButtonSignIn": "ސައިން އިން",
+  "ButtonSubmit": "ފޮނުވާލާ",
+  "LabelAlbums": "އަލްބަމްތައް",
+  "LabelAll": "ހުރިހާ",
+  "LabelArtists": "ފަންނާނުން",
+  "LabelAudio": "އޯޑިއޯ",
+  "LabelChannels": "ޗެނަލްތައް",
+  "LabelCollections": "ކަލެކްޝަންތައް",
+  "LabelCustom": "ކަސްޓަމް",
+  "LabelDefault": "ޑީފޯލްޓް",
+  "LabelDirectPlaying": "ޑައިރެކްޓް ޕްލޭއިންގ",
+  "MessageTheSourceFileIsEntirelyCompatible": "ސޯސް ފައިލް އެއްކޮށް މި ކްލައިންޓާ ގުޅޭ ސެޝަނަށް ފައިލް ލިބެމުންދަނީ ބަދަލެއް ނުގެނެސް."
+}

@@ -48,29 +48,29 @@ class MoviePresenter extends GridPresenterBase
   override function getOptions(parentItem as object) as object
     options = {
       views: [
-        { "Title": tr("Movies (Presentation)"), "Name": "Movies" },
-        { "Title": tr("Movies (Grid)"), "Name": "MoviesGrid" },
-        { "Title": tr("Studios"), "Name": "Studios" },
-        { "Title": tr("Genres"), "Name": "Genres" }
+        { "Title": translate(translationKeys.LabelMoviesPresentation), "Name": "Movies" },
+        { "Title": translate(translationKeys.LabelMoviesGrid), "Name": "MoviesGrid" },
+        { "Title": translate(translationKeys.LabelStudios), "Name": "Studios" },
+        { "Title": translate(translationKeys.LabelGenres), "Name": "Genres" }
       ],
       sort: [
-        { "Title": tr("TITLE"), "Name": "SortName" },
-        { "Title": tr("IMDB_RATING"), "Name": "CommunityRating" },
-        { "Title": tr("CRITIC_RATING"), "Name": "CriticRating" },
-        { "Title": tr("DATE_ADDED"), "Name": "DateCreated" },
-        { "Title": tr("DATE_PLAYED"), "Name": "DatePlayed" },
-        { "Title": tr("OFFICIAL_RATING"), "Name": "OfficialRating" },
-        { "Title": tr("PLAY_COUNT"), "Name": "PlayCount" },
-        { "Title": tr("RELEASE_DATE"), "Name": "PremiereDate" },
-        { "Title": tr("RUNTIME"), "Name": "Runtime" },
-        { "Title": tr("Random"), "Name": "Random" }
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
+        { "Title": translate(translationKeys.LabelCriticRating), "Name": "CriticRating" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+        { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
+        { "Title": translate(translationKeys.LabelPlayCount), "Name": "PlayCount" },
+        { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
+        { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ],
       filter: [
-        { "Title": tr("All"), "Name": "All" },
-        { "Title": tr("Favorites"), "Name": "Favorites" },
-        { "Title": tr("Played"), "Name": "Played" },
-        { "Title": tr("Unplayed"), "Name": "Unplayed" },
-        { "Title": tr("Resumable"), "Name": "Resumable" }
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
+        { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
+        { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" },
+        { "Title": translate(translationKeys.LabelResumable), "Name": "Resumable" }
       ]
     }
 
@@ -78,21 +78,21 @@ class MoviePresenter extends GridPresenterBase
     if isValid(parentItem) and parentItem.type = "Genre"
       ' Genre view has limited options
       options.views = [
-        { "Title": tr("Movies (Presentation)"), "Name": "Movies" },
-        { "Title": tr("Movies (Grid)"), "Name": "MoviesGrid" }
+        { "Title": translate(translationKeys.LabelMoviesPresentation), "Name": "Movies" },
+        { "Title": translate(translationKeys.LabelMoviesGrid), "Name": "MoviesGrid" }
       ]
     end if
 
     ' Add dynamic filters from API if loaded
     if isValid(m.apiFilters)
       if isValid(m.apiFilters.Genres)
-        options.filter.push({ "Title": tr("Genres"), "Name": "Genres", "Options": m.apiFilters.Genres, "Delimiter": "|", "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres, "Delimiter": "|", "CheckedState": [] })
       end if
       if isValid(m.apiFilters.OfficialRatings)
-        options.filter.push({ "Title": tr("Parental Ratings"), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings, "Delimiter": "|", "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings, "Delimiter": "|", "CheckedState": [] })
       end if
       if isValid(m.apiFilters.Years)
-        options.filter.push({ "Title": tr("Years"), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": ",", "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": ",", "CheckedState": [] })
       end if
     end if
 
@@ -250,7 +250,7 @@ class MoviePresenter extends GridPresenterBase
       if item.runTimeTicks > 0
         runtime = int(item.runTimeTicks / 600000000.0 + 0.5) ' Round to nearest minute
         runtimeNode = m.createInfoLabelNode("runtime")
-        runtimeNode.text = str(runtime).trim() + " mins"
+        runtimeNode.text = str(runtime).trim() + " " + translate(translationKeys.LabelMins)
         m.displayInfoNode(movieInfoGroup, runtimeNode)
       end if
     end if

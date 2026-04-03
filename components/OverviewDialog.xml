@@ -28,7 +28,7 @@
     <Rectangle id="scrollThumb" width="12" />
 
     <!-- OK button -->
-    <TextButton id="okButton" text="OK" />
+    <TextButton id="okButton" text="" />
   </children>
   <interface>
     <field id="title" type="string" onChange="onTitleChanged" />

@@ -10,7 +10,8 @@
   "plugins": [
     "@rokucommunity/bslint",
     "brighterscript-xml-plugin",
-    "roku-log-bsc-plugin"
+    "roku-log-bsc-plugin",
+    "./scripts/bsc-plugin-translation-keys.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {

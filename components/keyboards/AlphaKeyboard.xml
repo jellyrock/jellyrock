@@ -2,7 +2,7 @@
 
 <component name="AlphaKeyboard" extends="DynamicCustomKeyboard">
   <children>
-    <TextButton id="resetButton" text="Reset" />
+    <TextButton id="resetButton" text="" />
   </children>
   <interface>
     <function name="keySelected" />

@@ -7,6 +7,7 @@ import "pkg:/source/api/userauth.bs"
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
@@ -14,6 +15,7 @@ import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/Subtitles.bs"
+import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
 
 sub init()
@@ -269,7 +271,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audio_stream_idx, subtitle_idx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
   if not isValid(m.playbackInfo)
     m.log.error("ItemPostPlaybackInfo returned invalid response")
-    m.top.errorMsg = tr("There was an error retrieving playback information from the server.")
+    m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
     video.content = invalid
     return
   end if
@@ -279,9 +281,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     errorCode = m.playbackInfo.ErrorCode
     m.log.error("PlaybackInfo returned error code", "errorCode", errorCode, "itemId", video.id)
     if errorCode = "NoCompatibleStream"
-      m.top.errorMsg = tr("No compatible streams are available for this item.")
+      m.top.errorMsg = translate(translationKeys.LabelNoCompatibleStreamsAreAvailableFor)
     else
-      m.top.errorMsg = tr("The server was unable to start playback.") + " (" + errorCode + ")"
+      m.top.errorMsg = translate(translationKeys.ErrorTheServerWasUnableToStart) + " (" + errorCode + ")"
     end if
     video.content = invalid
     return
@@ -383,7 +385,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
       ' Server did not provide a transcode URL — surface a message to the user via the task field
       ' so VideoPlayerView shows one dialog (not two).
       m.log.error("Server did not provide a TranscodingUrl", "itemId", video.id)
-      m.top.errorMsg = tr("An error was encountered while playing this item. The server did not provide the required transcoding data.")
+      m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
       video.content = invalid
       return
     end if

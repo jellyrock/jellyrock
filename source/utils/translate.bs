@@ -1,0 +1,180 @@
+' Custom translation system — replaces Roku's built-in tr() to support 118+ languages.
+' Translation data is loaded into m.global as flat roAssociativeArray objects
+' for O(1) key lookups. Two AAs are kept in memory: the active locale and
+' en_US as fallback (~150KB total including AA overhead).
+'
+' Regional locale layering: when a regional locale like "fr_CA" is requested,
+' the base language ("fr") is loaded first, then regional translations are
+' overlaid on top. This ensures users get the maximum number of translated
+' strings — regional-specific where available, base language otherwise.
+'
+' Chinese script code layering: Chinese locales use script codes (zh_Hans,
+' zh_Hant, zh_Hant_HK) instead of region codes. For zh_Hant_HK, three layers
+' are loaded: zh -> zh_Hant -> zh_Hant_HK, maximizing translation coverage.
+
+' Translate a key, optionally substituting indexed placeholders {0}, {1}, etc.
+' Falls back to en_US if key is missing from active locale, or returns the key
+' itself if missing from both (makes untranslated strings visible during dev).
+' @param {string} key - Translation key (e.g. "ButtonPlay", "MessageVideoStartsIn")
+' @param {object} params - Optional array of string replacements for {0}, {1}, etc.
+' @return {string} Translated string, or the key itself if not found
+function translate(key as string, params = invalid as object) as string
+  if key = invalid or key = "" then return ""
+  value = m.global.translations[key]
+
+  ' Fallback to en_US
+  if value = invalid
+    value = m.global.translationsFallback[key]
+  end if
+
+  ' Fallback to key itself (visible during development)
+  if value = invalid
+    return key
+  end if
+
+  ' Substitute indexed placeholders
+  if params <> invalid and type(params) = "roArray" and params.Count() > 0
+    for i = 0 to params.Count() - 1
+      value = value.Replace("{" + i.toStr() + "}", params[i])
+    end for
+  end if
+
+  return value
+end function
+
+' Translate a plural key using zero/one/many suffix convention.
+' Selects the appropriate variant based on count, then delegates to translate().
+' @param {string} baseKey - Base key without suffix (e.g. "LabelEpisodeCount")
+' @param {integer} count - The count to determine plural form
+' @param {object} params - Optional placeholder params
+' @return {string} Translated plural string
+function translatePlural(baseKey as string, count as integer, params = invalid as object) as string
+  if count = 0
+    suffix = "Zero"
+  else if count = 1
+    suffix = "One"
+  else
+    suffix = "Many"
+  end if
+
+  return translate(baseKey + suffix, params)
+end function
+
+' Load translation files for a given locale into m.global.
+' Always loads en_US as fallback. When the active locale IS en_US,
+' both m.global.translations and m.global.translationsFallback reference
+' the same AA (no double memory).
+' @param {string} locale - Locale code in standard format (e.g. "fr_CA", "pt_BR", "zh_Hans")
+sub loadTranslations(locale as string)
+  if locale = "" then locale = "en_US"
+
+  ' Always load en_US as fallback
+  fallbackJson = ReadAsciiFile("pkg:/locale/custom/en_US.json")
+  fallbackAA = ParseJson(fallbackJson)
+  if fallbackAA = invalid then fallbackAA = {}
+
+  ' Load requested locale
+  if locale = "en_US"
+    ' Same reference — no double memory
+    activeAA = fallbackAA
+  else
+    activeAA = loadLocaleFile(locale)
+    if activeAA = invalid
+      ' No file found for this locale — fall back to en_US
+      activeAA = fallbackAA
+      locale = "en_US"
+    end if
+  end if
+
+  m.global.setFields({
+    translations: activeAA,
+    translationsFallback: fallbackAA,
+    translationLocale: locale
+  })
+end sub
+
+' Load a locale's translations, layering regional over base when applicable.
+' For regional locales (e.g. "fr_CA"), loads the base language ("fr") first,
+' then overlays regional translations on top. Regional values win on conflicts.
+' For Chinese script codes (e.g. "zh_Hant_HK"), uses 3-layer loading:
+' zh -> zh_Hant -> zh_Hant_HK for maximum translation coverage.
+' For base locales (e.g. "fr"), loads directly.
+' @param {string} locale - Locale code (e.g. "fr_CA", "de", "zh_Hans", "zh_Hant_HK")
+' @return {object} Parsed roAssociativeArray, or invalid if no file found
+function loadLocaleFile(locale as string) as object
+  ' Chinese script code locales: zh_Hans, zh_Hant, zh_Hant_HK
+  ' These use script codes instead of region codes and need special layering
+  if Left(locale, 3) = "zh_"
+    return loadChineseLocaleFile(locale)
+  end if
+
+  ' Check if this is a regional locale (contains an underscore)
+  underscorePos = Instr(1, locale, "_")
+
+  if underscorePos > 0
+    ' Regional locale — layer base under regional
+    baseLang = Left(locale, underscorePos - 1)
+    baseJson = ReadAsciiFile("pkg:/locale/custom/" + baseLang + ".json")
+    baseAA = ParseJson(baseJson)
+
+    regionalJson = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
+    regionalAA = ParseJson(regionalJson)
+
+    if baseAA <> invalid and regionalAA <> invalid
+      ' Layer: start with base, overlay regional on top
+      baseAA.Append(regionalAA)
+      return baseAA
+    else if regionalAA <> invalid
+      return regionalAA
+    else if baseAA <> invalid
+      return baseAA
+    end if
+  else
+    ' Base locale — load directly
+    json = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
+    aa = ParseJson(json)
+    if aa <> invalid then return aa
+  end if
+
+  return invalid
+end function
+
+' Load Chinese locale translations with script code layering.
+' Chinese locales use script codes (Hans=Simplified, Hant=Traditional)
+' instead of region codes. Supports 3-layer loading for maximum coverage:
+'   zh_Hans:    zh.json -> zh_Hans.json (2 layers)
+'   zh_Hant:    zh.json -> zh_Hant.json (2 layers)
+'   zh_Hant_HK: zh.json -> zh_Hant.json -> zh_Hant_HK.json (3 layers)
+' @param {string} locale - Chinese locale code (e.g. "zh_Hans", "zh_Hant", "zh_Hant_HK")
+' @return {object} Parsed roAssociativeArray, or invalid if no file found
+function loadChineseLocaleFile(locale as string) as object
+  ' Layer 1: Base Chinese (zh.json)
+  baseJson = ReadAsciiFile("pkg:/locale/custom/zh.json")
+  result = ParseJson(baseJson)
+
+  ' Layer 2: Script variant (zh_Hant.json for zh_Hant_HK, or the locale itself)
+  if locale = "zh_Hant_HK"
+    intermediateJson = ReadAsciiFile("pkg:/locale/custom/zh_Hant.json")
+    intermediateAA = ParseJson(intermediateJson)
+    if intermediateAA <> invalid
+      if result <> invalid
+        result.Append(intermediateAA)
+      else
+        result = intermediateAA
+      end if
+    end if
+  end if
+
+  ' Final layer: The exact locale file
+  localeJson = ReadAsciiFile("pkg:/locale/custom/" + locale + ".json")
+  localeAA = ParseJson(localeJson)
+  if localeAA <> invalid
+    if result <> invalid
+      result.Append(localeAA)
+    else
+      result = localeAA
+    end if
+  end if
+
+  return result
+end function

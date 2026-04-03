@@ -61,7 +61,10 @@ sub setGlobals()
   m.global.addFields({
     appLoaded: false,
     server: serverNode,
-    user: userNode
+    user: userNode,
+    translations: {},
+    translationsFallback: {},
+    translationLocale: ""
   })
   ' Save Constants
   setConstants()

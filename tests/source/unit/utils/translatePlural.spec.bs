@@ -1,0 +1,117 @@
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  @suite("translate - translatePlural()")
+  class TranslatePluralTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+      m.global.setFields({
+        translations: {
+          "LabelEpisodeCountZero": "Aucun épisode",
+          "LabelEpisodeCountOne": "1 épisode",
+          "LabelEpisodeCountMany": "{0} épisodes",
+          "LabelItemCountMany": "{0} éléments"
+        },
+        translationsFallback: {
+          "LabelEpisodeCountZero": "No episodes",
+          "LabelEpisodeCountOne": "1 episode",
+          "LabelEpisodeCountMany": "{0} episodes",
+          "LabelTrackCountZero": "No tracks",
+          "LabelTrackCountOne": "1 track",
+          "LabelTrackCountMany": "{0} tracks"
+        },
+        translationLocale: "fr"
+      })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Plural form selection")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("selects Zero suffix for count = 0")
+    function _()
+      result = translatePlural("LabelEpisodeCount", 0)
+      m.assertEqual(result, "Aucun épisode")
+    end function
+
+    @it("selects One suffix for count = 1")
+    function _()
+      result = translatePlural("LabelEpisodeCount", 1)
+      m.assertEqual(result, "1 épisode")
+    end function
+
+    @it("selects Many suffix for count = 2")
+    function _()
+      result = translatePlural("LabelEpisodeCount", 2, ["2"])
+      m.assertEqual(result, "2 épisodes")
+    end function
+
+    @it("selects Many suffix for count = 100")
+    function _()
+      result = translatePlural("LabelEpisodeCount", 100, ["100"])
+      m.assertEqual(result, "100 épisodes")
+    end function
+
+    @it("selects Many suffix for large count")
+    function _()
+      result = translatePlural("LabelEpisodeCount", 9999, ["9999"])
+      m.assertEqual(result, "9999 épisodes")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Fallback behavior")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("falls back to en-us when plural variant is missing from active locale")
+    function _()
+      ' LabelTrackCount only exists in fallback
+      result = translatePlural("LabelTrackCount", 0)
+      m.assertEqual(result, "No tracks")
+    end function
+
+    @it("falls back to en-us for One variant missing from active locale")
+    function _()
+      result = translatePlural("LabelTrackCount", 1)
+      m.assertEqual(result, "1 track")
+    end function
+
+    @it("falls back to en-us for Many variant with placeholder")
+    function _()
+      result = translatePlural("LabelTrackCount", 5, ["5"])
+      m.assertEqual(result, "5 tracks")
+    end function
+
+    @it("returns key+suffix when base key has no plural variants at all")
+    function _()
+      result = translatePlural("NonExistentBase", 1)
+      m.assertEqual(result, "NonExistentBaseOne")
+    end function
+
+    @it("returns key+suffix for zero variant of non-existent key")
+    function _()
+      result = translatePlural("NonExistentBase", 0)
+      m.assertEqual(result, "NonExistentBaseZero")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Partial plural sets")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("handles active locale having only Many variant")
+    function _()
+      ' LabelItemCount only has Many in active locale
+      result = translatePlural("LabelItemCount", 5, ["5"])
+      m.assertEqual(result, "5 éléments")
+    end function
+
+    @it("falls back for missing Zero variant when only Many exists")
+    function _()
+      ' LabelItemCount Zero doesn't exist in either locale
+      result = translatePlural("LabelItemCount", 0)
+      m.assertEqual(result, "LabelItemCountZero")
+    end function
+
+  end class
+end namespace

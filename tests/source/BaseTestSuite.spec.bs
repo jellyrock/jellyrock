@@ -1,3 +1,4 @@
+import "pkg:/source/utils/translate.bs"
 
 namespace tests
 
@@ -32,6 +33,9 @@ namespace tests
         ' Initialize global constants, app info, and device info
         ' This creates: m.global.appLoaded, m.global.constants, m.global.app, m.global.device
         setGlobals()
+        ' Load en-us translations so component tests get resolved strings
+        ' (mirrors Main.bs which calls loadTranslations() right after setGlobals())
+        loadTranslations("en-us")
       catch e
         ' If setGlobals() fails (e.g., roAppInfo/roDeviceInfo not available in test env),
         ' create minimal mock data to allow tests to run

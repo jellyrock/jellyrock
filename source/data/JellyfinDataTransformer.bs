@@ -1,5 +1,7 @@
 import "pkg:/source/api/Image.bs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Transforms Jellyfin API responses to JellyfinBaseItem content nodes.
 ' Follows the type defaults pattern: fields have XML-declared defaults ("", 0, false).
@@ -675,10 +677,8 @@ class JellyfinDataTransformer
 
     else if itemType = "BoxSet" or itemType = "PhotoAlbum" or itemType = "Playlist"
       count = apiData.ChildCount ?? 0
-      if count = 1
-        return "1 item"
-      else if count > 1
-        return str(count).trim() + " items"
+      if count > 0
+        return translatePlural(translationKeys.LabelItemCount, count, [str(count).trim()])
       end if
       return ""
 
@@ -687,7 +687,7 @@ class JellyfinDataTransformer
       ' integer responses (isValidAndNotEmpty() rejects non-string primitives).
       chanNumStr = (apiData.Number ?? "").toStr().trim()
       if chanNumStr <> ""
-        return tr("CH") + " " + chanNumStr
+        return translate(translationKeys.LabelCh) + " " + chanNumStr
       end if
       return ""
 
@@ -700,7 +700,7 @@ class JellyfinDataTransformer
       chanNumStr = (apiData.ChannelNumber ?? "").toStr().trim()
       chanName = apiData.ChannelName ?? ""
       parts = []
-      if chanNumStr <> "" then parts.push(tr("CH") + " " + chanNumStr)
+      if chanNumStr <> "" then parts.push(translate(translationKeys.LabelCh) + " " + chanNumStr)
       if isValidAndNotEmpty(chanName) then parts.push(chanName)
       return parts.join(" - ")
 

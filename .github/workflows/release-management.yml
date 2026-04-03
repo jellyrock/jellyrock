@@ -165,8 +165,93 @@ jobs:
             echo "ℹ️ No existing PR found for branch: $BRANCH_NAME"
           fi
 
-  update-version-files:
+  # ============================================================================
+  # Merge Translations from Weblate Branch
+  # Pulls all translation files (except en_US.json and languages.json which are
+  # owned by main) from the weblate branch into the release branch.
+  # Validates translations before allowing version bump to proceed.
+  # ============================================================================
+  merge-translations:
     needs: validate-and-prepare
+    runs-on: ubuntu-latest
+    concurrency:
+      group: bot-push-release-${{ needs.validate-and-prepare.outputs.branch_name }}
+      cancel-in-progress: false
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Configure Git as the GitHub App Bot
+        run: |
+          APP_USER_ID=$(gh api "/users/jellyrock[bot]" --jq .id)
+          git config --global user.name "jellyrock[bot]"
+          git config --global user.email "${APP_USER_ID}+jellyrock[bot]@users.noreply.github.com"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout release branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.validate-and-prepare.outputs.branch_name }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify weblate branch exists
+        run: |
+          if ! git ls-remote --exit-code --heads origin weblate > /dev/null 2>&1; then
+            echo "::error::The 'weblate' branch does not exist. Cannot merge translations for release."
+            exit 1
+          fi
+
+      - name: Merge translations from weblate branch
+        run: |
+          git fetch origin weblate
+
+          # Pull all locale files from weblate
+          git checkout origin/weblate -- locale/custom/
+
+          # Restore developer-owned files from the release branch
+          # (main owns en_US.json and languages.json, not weblate)
+          git checkout ${{ needs.validate-and-prepare.outputs.branch_name }} -- locale/custom/en_US.json
+
+          # Check for changes
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "ℹ️ No translation changes to merge"
+            exit 0
+          fi
+
+          echo "✅ Translation files updated from weblate branch"
+
+      - name: Validate translations
+        run: |
+          npm run lint:translations
+          npm run validate:translations
+
+      - name: Commit translation updates
+        run: |
+          git add locale/custom/
+          if git diff --cached --quiet; then
+            echo "ℹ️ No changes to commit"
+          else
+            git commit -m "chore: merge translations from weblate branch"
+            git push origin ${{ needs.validate-and-prepare.outputs.branch_name }}
+          fi
+
+  update-version-files:
+    needs: [validate-and-prepare, merge-translations]
     runs-on: ubuntu-latest
     concurrency:
       group: bot-push-release-${{ needs.validate-and-prepare.outputs.branch_name }}

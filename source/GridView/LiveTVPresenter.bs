@@ -37,15 +37,15 @@ class LiveTVPresenter extends GridPresenterBase
   override function getOptions(_parentItem as object) as object
     return {
       views: [
-        { "Title": tr("Channels"), "Name": "livetv" },
-        { "Title": tr("TV Guide"), "Name": "tvGuide" }
+        { "Title": translate(translationKeys.LabelChannels), "Name": "livetv" },
+        { "Title": translate(translationKeys.LabelTvGuide), "Name": "tvGuide" }
       ],
       sort: [
-        { "Title": tr("TITLE"), "Name": "SortName" }
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" }
       ],
       filter: [
-        { "Title": tr("All"), "Name": "All" },
-        { "Title": tr("Favorites"), "Name": "Favorites" }
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" }
       ]
     }
   end function

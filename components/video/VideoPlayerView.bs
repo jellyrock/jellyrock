@@ -4,12 +4,14 @@ import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
@@ -95,6 +97,14 @@ sub init()
   m.skippedSegments = {} ' Permanent: segments the user activated "Skip" on
   m.dismissedSegmentId = "" ' Transient: dismissed this visit, cleared on segment exit
   m.activeSegmentId = ""
+  m.segmentTypeLabels = {
+    "Intro": translate(translationKeys.LabelIntro),
+    "Outro": translate(translationKeys.LabelOutro),
+    "Commercial": translate(translationKeys.LabelCommercial),
+    "Preview": translate(translationKeys.LabelPreview),
+    "Recap": translate(translationKeys.LabelRecap),
+    "Unknown": translate(translationKeys.LabelUnknown)
+  }
 
   m.checkedForNextEpisode = false
   m.getNextEpisodeTask = createObject("roSGNode", "GetNextEpisodeTask")
@@ -572,8 +582,8 @@ end sub
 
 sub showPlaybackErrorDialog(errorMessage = "" as string)
   dialog = createObject("roSGNode", "Dialog")
-  dialog.title = tr("Error During Playback")
-  dialog.buttons = [tr("OK")]
+  dialog.title = translate(translationKeys.ErrorDuringPlayback)
+  dialog.buttons = [translate(translationKeys.ButtonOk)]
   dialog.message = errorMessage
   dialog.observeField("buttonSelected", "onPlaybackErrorButtonSelected")
   dialog.observeField("wasClosed", "onPlaybackErrorDialogClosed")
@@ -599,7 +609,7 @@ sub onVideoContentLoaded()
     if isValidAndNotEmpty(taskErrorMsg)
       showPlaybackErrorDialog(taskErrorMsg)
     else
-      showPlaybackErrorDialog(tr("There was an error retrieving the data for this item from the server."))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
     end if
     return
   end if
@@ -767,7 +777,7 @@ sub populateChapterMenu()
 
   if not isValidAndNotEmpty(m.chapters)
     chapterItem = CreateObject("roSGNode", "ContentNode")
-    chapterItem.title = tr("No Chapter Data Found")
+    chapterItem.title = translate(translationKeys.LabelNoChapterDataFound)
     chapterItem.playstart = m.playbackEnum.null
     m.chapterContent.appendChild(chapterItem)
     return
@@ -827,7 +837,7 @@ sub updateNextEpisodeCount()
   if nextEpisodeCountdown < 0
     nextEpisodeCountdown = 0
   end if
-  m.nextEpisodeNotification.text = tr("Next Episode") + " " + nextEpisodeCountdown.toStr().trim()
+  m.nextEpisodeNotification.text = translate(translationKeys.LabelNextEpisode) + " " + nextEpisodeCountdown.toStr().trim()
 end sub
 
 ' Hide the Next Episode notification
@@ -959,7 +969,9 @@ sub checkMediaSegments()
         end if
 
         m.log.info("Showing skip notification", segmentType, segmentId)
-        m.segmentNotification.text = tr("Skip") + " " + tr(segmentType)
+        segmentLabel = m.segmentTypeLabels[segmentType]
+        if not isValidAndNotEmpty(segmentLabel) then segmentLabel = segmentType
+        m.segmentNotification.text = translate(translationKeys.ButtonSkip) + " " + segmentLabel
         m.segmentNotification.visible = true
         m.segmentNotification.callFunc("show")
       end if
@@ -1216,7 +1228,7 @@ sub onState()
         m.trickplayCarousel.visible = false
       end if
       stopLoadingSpinner()
-      showPlaybackErrorDialog(tr("Error During Playback"))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorDuringPlayback))
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
@@ -1322,7 +1334,7 @@ sub bufferCheck()
       m.top.callFunc("refresh")
     else
       ' If buffering has stopped Display dialog
-      showPlaybackErrorDialog(tr("There was an error retrieving the data for this item from the server."))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
 
       ' Stop playback and exit player
       m.top.control = "stop"

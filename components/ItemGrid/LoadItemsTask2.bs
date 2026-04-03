@@ -2,7 +2,9 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("LoadItemsTask2")
@@ -84,7 +86,7 @@ sub loadItems()
   end if
 
   'reset data
-  if LCase(m.top.searchTerm) = LCase(tr("all"))
+  if LCase(m.top.searchTerm) = LCase(translate(translationKeys.LabelAll))
     params.searchTerm = " "
   else if m.top.searchTerm <> ""
     params.searchTerm = m.top.searchTerm
@@ -218,7 +220,7 @@ sub loadItems()
         if isValid(genreData) and genreData.Items.Count() > 5
           ' Add View All item to the start of the row — transform the genre item itself
           viewAllNode = m.transformer.transformBaseItem(item)
-          viewAllNode.title = tr("View All") + " " + item.name
+          viewAllNode.title = translate(translationKeys.LabelViewAll) + " " + item.name
           ' Set library context for genre navigation (genre items have no parentId from API)
           if not isValidAndNotEmpty(viewAllNode.parentId)
             viewAllNode.parentId = m.top.itemId

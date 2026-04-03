@@ -8,7 +8,9 @@
         "description": "Remember the currently logged in user and try to log them in again next time you start the JellyRock app.",
         "settingName": "globalRememberMe",
         "type": "bool",
-        "default": "false"
+        "default": "false",
+        "titleKey": "MessageRememberMe",
+        "descriptionKey": "MessageRememberTheCurrentlyLoggedInUser"
       },
       {
         "title": "Splash Screen Image",
@@ -19,15 +21,21 @@
         "options": [
           {
             "title": "Enabled",
-            "id": "enabled"
+            "id": "enabled",
+            "titleKey": "LabelEnabled"
           },
           {
             "title": "Disabled",
-            "id": "disabled"
+            "id": "disabled",
+            "titleKey": "LabelDisabled"
           }
-        ]
+        ],
+        "titleKey": "LabelSplashScreenImage",
+        "descriptionKey": "MessageControlWhetherTheServerSSplash"
       }
-    ]
+    ],
+    "titleKey": "LabelGlobal",
+    "descriptionKey": "MessageGlobalSettingsThatAffectEveryoneThat"
   },
   {
     "title": "Playback",
@@ -42,37 +50,49 @@
             "description": "Enable or disable the 'Maximum Bitrate' setting.",
             "settingName": "playbackBitrateMaxLimited",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelEnableLimit",
+            "descriptionKey": "LabelEnableOrDisableTheMaximumBitrate"
           },
           {
             "title": "Maximum Bitrate",
             "description": "Set the maximum bitrate in Mbps. Set to 0 to use Roku's specifications. This setting must be enabled to take effect.",
             "settingName": "playbackBitrateLimit",
             "type": "integer",
-            "default": "0"
+            "default": "0",
+            "titleKey": "LabelMaximumBitrate",
+            "descriptionKey": "MessageSetTheMaximumBitrateInMbps"
           }
-        ]
+        ],
+        "titleKey": "LabelBitrateLimit",
+        "descriptionKey": "LabelConfigureTheMaximumPlaybackBitrate"
       },
       {
         "title": "Cinema Mode",
         "description": "Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.",
         "settingName": "playbackCinemaMode",
         "type": "bool",
-        "default": "false"
+        "default": "false",
+        "titleKey": "LabelCinemaMode",
+        "descriptionKey": "MessageBringTheTheaterExperienceStraightTo"
       },
       {
         "title": "Custom Subtitles",
         "description": "Use custom subtitle rendering for external VTT subtitle files. Enables fallback fonts from the server and removes some formatting tags from misformatted subtitles. Note: May not fully support all Roku caption preferences.",
         "settingName": "playbackSubsCustom",
         "type": "bool",
-        "default": "true"
+        "default": "true",
+        "titleKey": "LabelCustomSubtitles",
+        "descriptionKey": "MessageUseCustomSubtitleRenderingForExternal"
       },
       {
         "title": "Decode Multichannel Audio",
         "description": "Allow the Roku to decode multichannel audio formats (AAC, FLAC, etc.) to stereo. When disabled, forces the server to transcode to 2-channel audio instead of relying on Roku's downmix, which may improve audio quality on some systems.",
         "settingName": "playbackDecodeMultichannelAudio",
         "type": "bool",
-        "default": "true"
+        "default": "true",
+        "titleKey": "LabelDecodeMultichannelAudio",
+        "descriptionKey": "MessageAllowTheRokuToDecodeMultichannel"
       },
       {
         "title": "Language Preferences",
@@ -87,17 +107,22 @@
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Use Roku Language",
-                "id": "roku"
+                "id": "roku",
+                "titleKey": "LabelUseRokuLanguage"
               },
               {
                 "title": "Custom",
-                "id": "custom"
+                "id": "custom",
+                "titleKey": "LabelCustom"
               }
-            ]
+            ],
+            "titleKey": "LabelAudioLanguagePreference",
+            "descriptionKey": "MessageOverrideTheWebClientSAudio2"
           },
           {
             "title": "Custom Audio Language Code",
@@ -105,7 +130,12 @@
             "settingName": "playbackAudioLanguageCustom",
             "type": "alpha",
             "default": "",
-            "visibleWhen": { "settingName": "playbackAudioLanguagePreference", "value": "custom" }
+            "visibleWhen": {
+              "settingName": "playbackAudioLanguagePreference",
+              "value": "custom"
+            },
+            "titleKey": "LabelCustomAudioLanguageCode",
+            "descriptionKey": "MessageEnterA3LetterIso6392LanguageCode"
           },
           {
             "title": "Subtitle Language Preference",
@@ -116,21 +146,27 @@
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Use Audio Language",
-                "id": "audio"
+                "id": "audio",
+                "titleKey": "LabelUseAudioLanguage"
               },
               {
                 "title": "Use Roku Language",
-                "id": "roku"
+                "id": "roku",
+                "titleKey": "LabelUseRokuLanguage"
               },
               {
                 "title": "Custom",
-                "id": "custom"
+                "id": "custom",
+                "titleKey": "LabelCustom"
               }
-            ]
+            ],
+            "titleKey": "LabelSubtitleLanguagePreference",
+            "descriptionKey": "MessageOverrideTheWebClientSSubtitle"
           },
           {
             "title": "Custom Subtitle Language Code",
@@ -138,9 +174,16 @@
             "settingName": "playbackSubtitleLanguageCustom",
             "type": "alpha",
             "default": "",
-            "visibleWhen": { "settingName": "playbackSubtitleLanguagePreference", "value": "custom" }
+            "visibleWhen": {
+              "settingName": "playbackSubtitleLanguagePreference",
+              "value": "custom"
+            },
+            "titleKey": "LabelCustomSubtitleLanguageCode",
+            "descriptionKey": "MessageEnterA3LetterIso6392LanguageCode"
           }
-        ]
+        ],
+        "titleKey": "LabelLanguagePreferences",
+        "descriptionKey": "MessageOverrideTheWebClientSAudio"
       },
       {
         "title": "Maximum Resolution",
@@ -151,41 +194,53 @@
         "options": [
           {
             "title": "Off - Attempt to direct play all resolutions",
-            "id": "off"
+            "id": "off",
+            "titleKey": "LabelOffAttemptToDirectPlayAll"
           },
           {
             "title": "Auto - Use TV resolution",
-            "id": "auto"
+            "id": "auto",
+            "titleKey": "LabelAutoUseTvResolution"
           },
           {
             "title": "360p",
-            "id": "360"
+            "id": "360",
+            "titleKey": "Label360p"
           },
           {
             "title": "480p",
-            "id": "480"
+            "id": "480",
+            "titleKey": "Label480p"
           },
           {
             "title": "720p",
-            "id": "720"
+            "id": "720",
+            "titleKey": "Label720p"
           },
           {
             "title": "1080p",
-            "id": "1080"
+            "id": "1080",
+            "titleKey": "Label1080p"
           },
           {
             "title": "4k",
-            "id": "2160"
+            "id": "2160",
+            "titleKey": "Label4k"
           },
           {
             "title": "8k",
-            "id": "4320"
+            "id": "4320",
+            "titleKey": "Label8k"
           }
-        ]
+        ],
+        "titleKey": "LabelMaximumResolution",
+        "descriptionKey": "MessageConfigureTheMaximumResolutionWhenTranscoding"
       },
       {
         "title": "Media Segments",
         "description": "Control how media segments (Intro, Outro, etc.) are handled during playback. Requires Jellyfin server 10.10.0 or newer with segment detection configured.",
+        "titleKey": "LabelMediaSegments",
+        "descriptionKey": "MessageControlHowMediaSegmentsAreHandled",
         "children": [
           {
             "title": "Commercial Action",
@@ -193,22 +248,28 @@
             "settingName": "playbackSegmentActionCommercial",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelCommercialAction",
+            "descriptionKey": "MessageActionWhenCommercialSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -218,22 +279,28 @@
             "settingName": "playbackSegmentActionIntro",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelIntroAction",
+            "descriptionKey": "MessageActionWhenIntroSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -243,22 +310,28 @@
             "settingName": "playbackSegmentActionOutro",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelOutroAction",
+            "descriptionKey": "MessageActionWhenOutroSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -268,22 +341,28 @@
             "settingName": "playbackSegmentActionPreview",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelPreviewAction",
+            "descriptionKey": "MessageActionWhenPreviewSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -293,22 +372,28 @@
             "settingName": "playbackSegmentActionRecap",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelRecapAction",
+            "descriptionKey": "MessageActionWhenRecapSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           },
@@ -318,22 +403,28 @@
             "settingName": "playbackSegmentActionUnknown",
             "type": "radio",
             "default": "webclient",
+            "titleKey": "LabelUnknownAction",
+            "descriptionKey": "MessageActionWhenUnknownSegmentDetected",
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Auto Skip",
-                "id": "skip"
+                "id": "skip",
+                "titleKey": "LabelAutoSkip"
               },
               {
                 "title": "Show Skip Button",
-                "id": "askToSkip"
+                "id": "askToSkip",
+                "titleKey": "LabelShowSkipButton"
               },
               {
                 "title": "Do Nothing",
-                "id": "none"
+                "id": "none",
+                "titleKey": "LabelDoNothing"
               }
             ]
           }
@@ -344,7 +435,9 @@
         "description": "Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable.",
         "settingName": "playbackNextUpButtonSeconds",
         "type": "integer",
-        "default": "30"
+        "default": "30",
+        "titleKey": "LabelNextEpisodeButtonTime",
+        "descriptionKey": "MessageSetHowManySecondsBeforeThe"
       },
       {
         "title": "Play Default Audio Track",
@@ -355,17 +448,22 @@
         "options": [
           {
             "title": "Use Web Client Setting",
-            "id": "webclient"
+            "id": "webclient",
+            "titleKey": "LabelUseWebClientSetting"
           },
           {
             "title": "Enabled",
-            "id": "enabled"
+            "id": "enabled",
+            "titleKey": "LabelEnabled"
           },
           {
             "title": "Disabled",
-            "id": "disabled"
+            "id": "disabled",
+            "titleKey": "LabelDisabled"
           }
-        ]
+        ],
+        "titleKey": "LabelPlayDefaultAudioTrack",
+        "descriptionKey": "MessageOverrideWebClientAudioPreferenceWhen"
       },
       {
         "title": "Play Next Episode Automatically",
@@ -376,17 +474,22 @@
         "options": [
           {
             "title": "Use Web Client Setting",
-            "id": "webclient"
+            "id": "webclient",
+            "titleKey": "LabelUseWebClientSetting"
           },
           {
             "title": "Enabled",
-            "id": "enabled"
+            "id": "enabled",
+            "titleKey": "LabelEnabled"
           },
           {
             "title": "Disabled",
-            "id": "disabled"
+            "id": "disabled",
+            "titleKey": "LabelDisabled"
           }
-        ]
+        ],
+        "titleKey": "LabelPlayNextEpisodeAutomatically",
+        "descriptionKey": "MessageWhenFinishedPlayingASingleEpisode"
       },
       {
         "title": "Preferred Surround Audio Codec",
@@ -397,31 +500,40 @@
         "options": [
           {
             "title": "Dolby Digital Plus (EAC3)",
-            "id": "eac3"
+            "id": "eac3",
+            "titleKey": "LabelDolbyDigitalPlusEac3"
           },
           {
             "title": "Dolby Digital (AC3)",
-            "id": "ac3"
+            "id": "ac3",
+            "titleKey": "LabelDolbyDigitalAc3"
           },
           {
             "title": "DTS",
-            "id": "dts"
+            "id": "dts",
+            "titleKey": "LabelDts"
           }
-        ]
+        ],
+        "titleKey": "LabelPreferredSurroundAudioCodec",
+        "descriptionKey": "MessageWhenTranscodingMultichannelAudioPreferThis"
       },
       {
         "title": "Preserve DoVi",
         "description": "Preserve Dolby Vision content when possible by forcing remux instead of direct playback when using MKV container files. This ensures proper Dolby Vision playback on supported devices.",
         "settingName": "playbackPreserveDovi",
         "type": "bool",
-        "default": "true"
+        "default": "true",
+        "titleKey": "LabelPreserveDovi",
+        "descriptionKey": "MessagePreserveDolbyVisionContentWhenPossible"
       },
       {
         "title": "Text Subtitles Only",
         "description": "Only display text subtitles to minimize transcoding.",
         "settingName": "playbackSubsOnlyText",
         "type": "bool",
-        "default": "false"
+        "default": "false",
+        "titleKey": "LabelTextSubtitlesOnly",
+        "descriptionKey": "LabelOnlyDisplayTextSubtitlesToMinimize"
       },
       {
         "title": "Video Codec Support",
@@ -432,23 +544,31 @@
             "description": "Force transcoding of anamorphic video (non-square pixels). Enable this if you see squished or stretched video during playback.",
             "settingName": "playbackForceTranscodeAnamorphic",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelForceTranscodeAnamorphicVideo",
+            "descriptionKey": "MessageForceTranscodingOfAnamorphicVideoNon"
           },
           {
             "title": "MPEG-2",
             "description": "Support Direct Play of MPEG-2 content (e.g., Live TV). This will prevent transcoding of MPEG-2 content, but uses significantly more bandwidth.",
             "settingName": "playbackMpeg2",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelMpeg2",
+            "descriptionKey": "MessageSupportDirectPlayOfMpeg2Content"
           },
           {
             "title": "MPEG-4",
             "description": "Support Direct Play of MPEG-4 content. This may need to be disabled for playback of DIVX encoded video files.",
             "settingName": "playbackMpeg4",
             "type": "bool",
-            "default": "true"
+            "default": "true",
+            "titleKey": "LabelMpeg4",
+            "descriptionKey": "MessageSupportDirectPlayOfMpeg4Content"
           }
-        ]
+        ],
+        "titleKey": "LabelVideoCodecSupport",
+        "descriptionKey": "MessageEnableOrDisableDirectPlaySupport"
       },
       {
         "title": "Video Profile Level Support",
@@ -459,18 +579,26 @@
             "description": "Attempt Direct Play for H.264 media with unsupported profile levels before falling back to transcoding if it fails.",
             "settingName": "playbackTryDirectH264ProfileLevel",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelH264",
+            "descriptionKey": "MessageAttemptDirectPlayForH264Media"
           },
           {
             "title": "HEVC",
             "description": "Attempt Direct Play for HEVC media with unsupported profile levels before falling back to transcoding if it fails.",
             "settingName": "playbackTryDirectHevcProfileLevel",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelHevc",
+            "descriptionKey": "MessageAttemptDirectPlayForHevcMedia"
           }
-        ]
+        ],
+        "titleKey": "LabelVideoProfileLevelSupport",
+        "descriptionKey": "LabelAttemptDirectPlayOfPotentiallyUnsupported"
       }
-    ]
+    ],
+    "titleKey": "LabelPlayback",
+    "descriptionKey": "MessageSettingsRelatingToPlaybackAndSupported"
   },
   {
     "title": "User Interface",
@@ -481,6 +609,15 @@
         "description": "Settings relating to the appearance of the Home screen and the program in general.",
         "children": [
           {
+            "title": "Display Language",
+            "description": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language. Changes take effect after leaving Settings.",
+            "settingName": "translationLocale",
+            "type": "languagePicker",
+            "default": "",
+            "titleKey": "SettingDisplayLanguage",
+            "descriptionKey": "SettingDescDisplayLanguage"
+          },
+          {
             "title": "Backdrop Images",
             "description": "Control display of backdrop images throughout the app. Enable for full visual experience, disable for better performance or accessibility.",
             "settingName": "uiShowBackdrop",
@@ -489,13 +626,17 @@
             "options": [
               {
                 "title": "Enabled",
-                "id": "enabled"
+                "id": "enabled",
+                "titleKey": "LabelEnabled"
               },
               {
                 "title": "Disabled",
-                "id": "disabled"
+                "id": "disabled",
+                "titleKey": "LabelDisabled"
               }
-            ]
+            ],
+            "titleKey": "LabelBackdropImages",
+            "descriptionKey": "MessageControlDisplayOfBackdropImagesThroughout"
           },
           {
             "title": "Episode Images Next Up",
@@ -506,45 +647,58 @@
             "options": [
               {
                 "title": "Use Web Client Setting",
-                "id": "webclient"
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
               },
               {
                 "title": "Use Episode Image",
-                "id": "episode"
+                "id": "episode",
+                "titleKey": "LabelUseEpisodeImage"
               },
               {
                 "title": "Use Show Image",
-                "id": "show"
+                "id": "show",
+                "titleKey": "LabelUseShowImage"
               }
-            ]
+            ],
+            "titleKey": "LabelEpisodeImagesNextUp",
+            "descriptionKey": "MessageWhatTypeOfImagesToUse"
           },
           {
             "title": "Fallback Fonts",
             "description": "Replace Roku's system font with the fallback font provided by the Jellyfin server. Fallback fonts must be configured and enabled by the server admin for this to work. JellyRock will need to be restarted.",
             "settingName": "uiFontFallback",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelFallbackFonts",
+            "descriptionKey": "MessageReplaceRokuSSystemFontWith"
           },
           {
             "title": "Hide Clock",
             "description": "Hide all clocks in JellyRock. JellyRock will need to be closed and reopened for changes to take effect.",
             "settingName": "uiDesignHideClock",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelHideClock",
+            "descriptionKey": "MessageHideAllClocksInJellyrockJellyrock"
           },
           {
             "title": "Max Days Next Up",
             "description": "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.",
             "settingName": "uiDetailsMaxDaysNextUp",
             "type": "integer",
-            "default": "0"
+            "default": "0",
+            "titleKey": "LabelMaxDaysNextUp",
+            "descriptionKey": "MessageSetTheMaximumAmountOfDays"
           },
           {
             "title": "Rewatching Next Up",
             "description": "Show already watched episodes in 'Next Up' sections.",
             "settingName": "uiDetailsEnableRewatchingNextUp",
             "type": "bool",
-            "default": "false"
+            "default": "false",
+            "titleKey": "LabelRewatchingNextUp",
+            "descriptionKey": "LabelShowAlreadyWatchedEpisodesInNext"
           },
           {
             "title": "Row Layout",
@@ -555,13 +709,17 @@
             "options": [
               {
                 "title": "Original",
-                "id": "original"
+                "id": "original",
+                "titleKey": "LabelOriginal"
               },
               {
                 "title": "Full Width",
-                "id": "fullwidth"
+                "id": "fullwidth",
+                "titleKey": "LabelFullWidth"
               }
-            ]
+            ],
+            "titleKey": "LabelRowLayout",
+            "descriptionKey": "LabelChooseHowRowsAreDisplayedThroughout"
           },
           {
             "title": "Theme Colors",
@@ -585,7 +743,8 @@
                       "uiThemeColorTextPrimary": "F0F0F0",
                       "uiThemeColorTextSecondary": "A8A8A8",
                       "uiThemeColorTextDisabled": "4A4A4A"
-                    }
+                    },
+                    "titleKey": "LabelJellyrock"
                   },
                   {
                     "title": "JellyRock (Black)",
@@ -598,13 +757,17 @@
                       "uiThemeColorTextPrimary": "F0F0F0",
                       "uiThemeColorTextSecondary": "A8A8A8",
                       "uiThemeColorTextDisabled": "4A4A4A"
-                    }
+                    },
+                    "titleKey": "LabelJellyrockBlack"
                   },
                   {
                     "title": "Custom",
-                    "id": "custom"
+                    "id": "custom",
+                    "titleKey": "LabelCustom"
                   }
-                ]
+                ],
+                "titleKey": "LabelTheme",
+                "descriptionKey": "MessageSelectAColorThemeChooseCustom"
               },
               {
                 "title": "Background - Primary",
@@ -612,7 +775,12 @@
                 "settingName": "uiThemeColorBackgroundPrimary",
                 "type": "text",
                 "default": "0D1117",
-                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+                "visibleWhen": {
+                  "settingName": "uiTheme",
+                  "value": "custom"
+                },
+                "titleKey": "LabelBackgroundPrimary",
+                "descriptionKey": "LabelMainBackgroundColorDefault0d1117"
               },
               {
                 "title": "Background - Secondary",
@@ -620,7 +788,12 @@
                 "settingName": "uiThemeColorBackgroundSecondary",
                 "type": "text",
                 "default": "161B22",
-                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+                "visibleWhen": {
+                  "settingName": "uiTheme",
+                  "value": "custom"
+                },
+                "titleKey": "LabelBackgroundSecondary",
+                "descriptionKey": "LabelPanelCardBackgroundColorDefault161b22"
               },
               {
                 "title": "Primary",
@@ -628,7 +801,12 @@
                 "settingName": "uiThemeColorPrimary",
                 "type": "text",
                 "default": "8B5CF6",
-                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+                "visibleWhen": {
+                  "settingName": "uiTheme",
+                  "value": "custom"
+                },
+                "titleKey": "LabelPrimary",
+                "descriptionKey": "LabelFocusHighlightsAndButtonsDefault8b5cf6"
               },
               {
                 "title": "Secondary",
@@ -636,7 +814,12 @@
                 "settingName": "uiThemeColorSecondary",
                 "type": "text",
                 "default": "3B82F6",
-                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+                "visibleWhen": {
+                  "settingName": "uiTheme",
+                  "value": "custom"
+                },
+                "titleKey": "LabelSecondary",
+                "descriptionKey": "LabelProgressBarsAndAccentsDefault3b82f6"
               },
               {
                 "title": "Text - Disabled",
@@ -644,7 +827,12 @@
                 "settingName": "uiThemeColorTextDisabled",
                 "type": "text",
                 "default": "4A4A4A",
-                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+                "visibleWhen": {
+                  "settingName": "uiTheme",
+                  "value": "custom"
+                },
+                "titleKey": "LabelTextDisabled",
+                "descriptionKey": "LabelMutedDisabledInactiveTextDefault4a4a4a"
               },
               {
                 "title": "Text - Primary",
@@ -652,7 +840,12 @@
                 "settingName": "uiThemeColorTextPrimary",
                 "type": "text",
                 "default": "F0F0F0",
-                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+                "visibleWhen": {
+                  "settingName": "uiTheme",
+                  "value": "custom"
+                },
+                "titleKey": "LabelTextPrimary",
+                "descriptionKey": "LabelMainTextColorDefaultF0f0f0"
               },
               {
                 "title": "Text - Secondary",
@@ -660,18 +853,29 @@
                 "settingName": "uiThemeColorTextSecondary",
                 "type": "text",
                 "default": "A8A8A8",
-                "visibleWhen": { "settingName": "uiTheme", "value": "custom" }
+                "visibleWhen": {
+                  "settingName": "uiTheme",
+                  "value": "custom"
+                },
+                "titleKey": "LabelTextSecondary",
+                "descriptionKey": "LabelSecondaryTextDefaultA8a8a8"
               }
-            ]
+            ],
+            "titleKey": "LabelThemeColors",
+            "descriptionKey": "MessageCustomizeTheAppSColorScheme"
           },
           {
             "title": "Use Web Client's Home Section Arrangement",
             "description": "Make the arrangement of the Roku home view sections match the web client's home screen. JellyRock will need to be closed and reopened for change to take effect.",
             "settingName": "uiHomeUseWebArrangement",
             "type": "bool",
-            "default": "true"
+            "default": "true",
+            "titleKey": "LabelUseWebClientSHomeSection",
+            "descriptionKey": "MessageMakeTheArrangementOfTheRoku"
           }
-        ]
+        ],
+        "titleKey": "LabelGeneral",
+        "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf4"
       },
       {
         "title": "Libraries",
@@ -690,7 +894,9 @@
                     "description": "Show item count in the library and index of selected item.",
                     "settingName": "itemGridShowItemCount",
                     "type": "bool",
-                    "default": "false"
+                    "default": "false",
+                    "titleKey": "LabelItemCount",
+                    "descriptionKey": "MessageShowItemCountInTheLibrary"
                   },
                   {
                     "title": "Item Titles",
@@ -701,35 +907,48 @@
                     "options": [
                       {
                         "title": "Show On Hover",
-                        "id": "showonhover"
+                        "id": "showonhover",
+                        "titleKey": "LabelShowOnHover"
                       },
                       {
                         "title": "Always Show",
-                        "id": "showalways"
+                        "id": "showalways",
+                        "titleKey": "LabelAlwaysShow"
                       },
                       {
                         "title": "Always Hide",
-                        "id": "hidealways"
+                        "id": "hidealways",
+                        "titleKey": "LabelAlwaysHide"
                       }
-                    ]
+                    ],
+                    "titleKey": "LabelItemTitles",
+                    "descriptionKey": "LabelSelectWhenToShowTitles"
                   }
-                ]
+                ],
+                "titleKey": "LabelGridViewSettings",
+                "descriptionKey": "LabelSettingsThatApplyWhenGridViews"
               },
               {
                 "title": "Hide Taglines",
                 "description": "Hides tagline text on details pages.",
                 "settingName": "uiDetailsHideTagline",
                 "type": "bool",
-                "default": "false"
+                "default": "false",
+                "titleKey": "LabelHideTaglines",
+                "descriptionKey": "LabelHidesTaglineTextOnDetailsPages"
               },
               {
                 "title": "Return to Top",
                 "description": "Use the replay button to slowly animate to the first item in the folder. (If disabled, the folder will reset to the first item immediately).",
                 "settingName": "itemGridReset",
                 "type": "bool",
-                "default": "true"
+                "default": "true",
+                "titleKey": "LabelReturnToTop",
+                "descriptionKey": "MessageUseTheReplayButtonToSlowly"
               }
-            ]
+            ],
+            "titleKey": "LabelGeneral",
+            "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf"
           },
           {
             "title": "Movies",
@@ -740,7 +959,9 @@
                 "description": "Ratings for how good a movie is.",
                 "settingName": "uiMoviesShowRatings",
                 "type": "bool",
-                "default": "true"
+                "default": "true",
+                "titleKey": "LabelCommunityAndCriticalRatings",
+                "descriptionKey": "LabelRatingsForHowGoodAMovie"
               },
               {
                 "title": "Default View",
@@ -751,15 +972,21 @@
                 "options": [
                   {
                     "title": "Movies (Presentation)",
-                    "id": "Movies"
+                    "id": "Movies",
+                    "titleKey": "LabelMoviesPresentation"
                   },
                   {
                     "title": "Movies (Grid)",
-                    "id": "MoviesGrid"
+                    "id": "MoviesGrid",
+                    "titleKey": "LabelMoviesGrid"
                   }
-                ]
+                ],
+                "titleKey": "LabelDefaultView",
+                "descriptionKey": "LabelDefaultViewForMovieLibraries"
               }
-            ]
+            ],
+            "titleKey": "LabelMovies",
+            "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf2"
           },
           {
             "title": "TV Shows",
@@ -770,26 +997,38 @@
                 "description": "Blur images of unwatched episodes.",
                 "settingName": "uiTvShowsBlurUnwatched",
                 "type": "bool",
-                "default": "false"
+                "default": "false",
+                "titleKey": "LabelBlurUnwatchedEpisodes",
+                "descriptionKey": "LabelBlurImagesOfUnwatchedEpisodes"
               },
               {
                 "title": "Disable Community Rating for Episodes",
                 "description": "Hide the star and community rating for episodes of a TV show. This is to prevent spoilers of an upcoming good/bad episode.",
                 "settingName": "uiTvShowsDisableCommunityRating",
                 "type": "bool",
-                "default": "false"
+                "default": "false",
+                "titleKey": "LabelDisableCommunityRatingForEpisodes",
+                "descriptionKey": "MessageHideTheStarAndCommunityRating"
               },
               {
                 "title": "Disable Unwatched Episode Count",
                 "description": "If enabled, the number of unwatched episodes in a series/season will be removed.",
                 "settingName": "uiTvShowsDisableUnwatchedCount",
                 "type": "bool",
-                "default": "false"
+                "default": "false",
+                "titleKey": "LabelDisableUnwatchedEpisodeCount",
+                "descriptionKey": "MessageIfEnabledTheNumberOfUnwatched"
               }
-            ]
+            ],
+            "titleKey": "LabelTvShows",
+            "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf3"
           }
-        ]
+        ],
+        "titleKey": "LabelLibraries",
+        "descriptionKey": "LabelSettingsRelatingToTheAppearanceOf"
       }
-    ]
+    ],
+    "titleKey": "LabelUserInterface",
+    "descriptionKey": "LabelSettingsRelatingToHowTheApplication"
   }
 ]

@@ -42,7 +42,8 @@
   "retainStagingDir": true,
   "plugins": [
     "rooibos-roku",
-    "@rokucommunity/bslint"
+    "@rokucommunity/bslint",
+    "./scripts/bsc-plugin-translation-keys.cjs"
   ],
   "rooibos": {
     "tags": ["!migration", "!registry"],

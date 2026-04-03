@@ -2,7 +2,14 @@ name: lint-translation-files
 on:
   pull_request:
     paths:
-      - "locale/*/translations.ts"
+      - "locale/custom/*.json"
+      - "source/**/*.bs"
+      - "components/**/*.bs"
+      - "components/**/*.xml"
+      - "settings/settings.json"
+      - "scripts/lint-translations.cjs"
+      - "scripts/validate-translations.cjs"
+      - "scripts/lint-xml-translations.cjs"
 
 jobs:
   run:

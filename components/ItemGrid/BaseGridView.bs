@@ -13,12 +13,14 @@ import "pkg:/source/GridView/MusicPresenter.bs"
 import "pkg:/source/GridView/PhotoPresenter.bs"
 import "pkg:/source/GridView/TVShowPresenter.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("BaseGridView")
@@ -52,7 +54,7 @@ sub init()
   m.voiceBox.voiceEnabled = true
   m.voiceBox.active = true
   m.voiceBox.observeField("text", "onVoiceFilter")
-  m.voiceBox.hintText = tr("Use voice remote to search")
+  m.voiceBox.hintText = translate(translationKeys.LabelUseVoiceRemoteToSearch)
 
   ' Sort/filter defaults
   m.sortField = "SortName"
@@ -505,7 +507,7 @@ sub ItemDataLoaded(msg)
   ' If there are no items to display, show message
   if m.loadedItems = 0
     m.presentationInfo.visible = false
-    m.emptyText.text = tr("NO_ITEMS").Replace("%1", m.top.parentItem.type)
+    m.emptyText.text = translate(translationKeys.LabelNoItems, [m.top.parentItem.type])
     m.emptyText.visible = true
   end if
 
@@ -1055,41 +1057,41 @@ sub updateTitle()
   m.top.overhangTitle = m.top.parentItem.title
 
   if m.filter = "Favorites"
-    m.top.overhangTitle = m.top.parentItem.title + " " + tr("(Favorites)")
+    m.top.overhangTitle = m.top.parentItem.title + " (" + translate(translationKeys.LabelFavorites) + ")"
   end if
 
   ' Voice search and alpha filters take precedence over view-specific titles
   ' Check trim() to avoid showing "(Filtered by )" with empty/whitespace values
   if m.voiceBox.text.trim() <> ""
-    m.top.overhangTitle = m.top.parentItem.title + tr(" (Filtered by ") + m.voiceBox.text + ")"
+    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.voiceBox.text])
     return
   end if
 
   if m.loadItemsTask.nameStartsWith.trim() <> ""
-    m.top.overhangTitle = m.top.parentItem.title + tr(" (Filtered by ") + m.loadItemsTask.nameStartsWith + ")"
+    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.loadItemsTask.nameStartsWith])
     return
   end if
 
   ' View-specific titles (only when no active filters)
   lowerView = LCase(m.view)
   if lowerView = "networks"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tr("Networks"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelNetworks))
   else if lowerView = "studios"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tr("Studios"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelStudios))
   else if lowerView = "genres"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tr("Genres"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelGenres))
   else if lowerView = "artistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tr("Artists"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelArtists))
   else if lowerView = "albumartistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tr("Album Artists"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbumArtists))
   else if lowerView = "albums"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tr("Albums"))
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbums))
   end if
 
   ' Add item count if enabled
   actInt = m.itemGrid.itemFocused + 1
   if m.showItemCount and m.loadItemsTask.totalRecordCount > 0 and lowerView <> "genres"
-    m.top.overhangTitle += " (" + tr("%1 of %2").Replace("%1", actInt.toStr()).Replace("%2", m.loadItemsTask.totalRecordCount.toStr()) + ")"
+    m.top.overhangTitle += " (" + translate(translationKeys.Message1Of2, [actInt.toStr(), m.loadItemsTask.totalRecordCount.toStr()]) + ")"
   end if
 end sub
 

@@ -2,7 +2,9 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/ApiPool.bs"
 import "pkg:/source/api/Image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.top.functionName = "loadChannels"
@@ -57,7 +59,7 @@ sub loadChannels()
 
       ' Format title with channel number for TimeGrid channel gutter display
       if isValidAndNotEmpty(node.channelNumber)
-        node.title = `${tr("CH")} ${node.channelNumber} ${node.name}`
+        node.title = `${translate(translationKeys.LabelCh)} ${node.channelNumber} ${node.name}`
       end if
 
       ' Set hdSmallIconUrl for TimeGrid channel icon (ContentNode built-in read by Roku TimeGrid)

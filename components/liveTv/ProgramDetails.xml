@@ -18,11 +18,11 @@
           <LayoutGroup id="episodeDetailsGroup" layoutDirection="horiz" itemSpacings="[10]">
             <Group id="isLive">
               <Poster id="isLiveBackground" uri="pkg:/images/9patch/filled-rounded.9.png" blendColor="#FF0000" />
-              <LabelPrimarySmallest id="isLiveText" text="Live" translation="[8,4]" bold="true" />
+              <LabelPrimarySmallest id="isLiveText" text="" translation="[8,4]" bold="true" />
             </Group>
             <Group id="isRepeat">
               <Poster id="isRepeatBackground" uri="pkg:/images/9patch/filled-rounded.9.png" blendColor="#009688" />
-              <LabelPrimarySmallest id="isRepeatText" text="Repeat" translation="[8,4]" bold="true" />
+              <LabelPrimarySmallest id="isRepeatText" text="" translation="[8,4]" bold="true" />
             </Group>
             <LabelPrimarySmall id="episodeNumber" />
             <LabelPrimarySmall id="episodeTitle" />
@@ -37,9 +37,9 @@
           <LabelSecondarySmall id="overview" wrap="true" width="1210" />
 
           <JRButtonGroup id="buttons" opacity="0">
-            <TextButton id="viewChannelButton" text="View Channel" />
-            <TextButton id="recordButton" text="Record" />
-            <TextButton id="recordSeriesButton" text="Record Series" />
+            <TextButton id="viewChannelButton" text="" />
+            <TextButton id="recordButton" text="" />
+            <TextButton id="recordSeriesButton" text="" />
           </JRButtonGroup>
 
         </LayoutGroup>
@@ -49,7 +49,7 @@
     <!-- When no schedule information to display  -->
     <LayoutGroup id="noInformation" translation="[96, 300]">
       <LabelPrimaryLarge id="noInfoChannelName" bold="true" />
-      <LabelPrimarySmall text="No schedule information" />
+      <LabelPrimarySmall id="noScheduleInfoLabel" text="" />
     </LayoutGroup>
     <Animation id="focusAnimation" duration="0.2" repeat="false" easeFunction="linear">
       <FloatFieldInterpolator id="buttonsFocusAnimationOpacity" key="[0.0, 1]" fieldToInterp="buttons.opacity" />

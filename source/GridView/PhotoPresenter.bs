@@ -40,20 +40,20 @@ class PhotoPresenter extends GridPresenterBase
   override function getOptions(_parentItem as object) as object
     return {
       views: [
-        { "Title": tr("Slideshow Off"), "Name": "singlephoto" },
-        { "Title": tr("Slideshow On"), "Name": "slideshowphoto" },
-        { "Title": tr("Random Off"), "Name": "singlephoto" },
-        { "Title": tr("Random On"), "Name": "randomphoto" }
+        { "Title": translate(translationKeys.LabelSlideshowOff), "Name": "singlephoto" },
+        { "Title": translate(translationKeys.LabelSlideshowOn), "Name": "slideshowphoto" },
+        { "Title": translate(translationKeys.LabelRandomOff), "Name": "singlephoto" },
+        { "Title": translate(translationKeys.LabelRandomOn), "Name": "randomphoto" }
       ],
       sort: [
-        { "Title": tr("TITLE"), "Name": "SortName" },
-        { "Title": tr("DATE_ADDED"), "Name": "DateCreated" },
-        { "Title": tr("DATE_PLAYED"), "Name": "DatePlayed" },
-        { "Title": tr("Random"), "Name": "Random" }
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ],
       filter: [
-        { "Title": tr("All"), "Name": "All" },
-        { "Title": tr("Favorites"), "Name": "Favorites" }
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" }
       ]
     }
   end function

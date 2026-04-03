@@ -1,0 +1,23 @@
+{
+  "ButtonCancel": "रद्द गर्नुहोस्",
+  "ButtonOk": "हुन्छ",
+  "ButtonResume": "सुचारु गर्नुहोस्",
+  "ButtonSubmit": "पेश गर्नुहोस्",
+  "LabelAlbums": "एल्बमहरू",
+  "LabelAll": "सबै",
+  "LabelArtists": "कलाकारहरू",
+  "LabelChannels": "च्यानलहरू",
+  "LabelCollections": "संग्रह",
+  "LabelContinueWatching": "हेर्न जारी राख्नुहोस्",
+  "LabelDefault": "पूर्वनिर्धारित",
+  "LabelFavorites": "मनपर्ने",
+  "LabelFolders": "फोल्डरहरू",
+  "LabelGenres": "विधाहरू",
+  "LabelLive": "प्रत्यक्ष",
+  "LabelMovies": "चलचित्रहरू",
+  "LabelMusicVideos": "सांगीतिक भिडियोहरू",
+  "LabelPhotos": "तस्बिरहरु",
+  "LabelPlaylists": "प्लेलिस्टहरू",
+  "LabelShows": "शोहरू",
+  "LabelSongs": "गीतहरू"
+}

@@ -341,7 +341,7 @@ function CreateServerGroup()
   new_options = []
   sidepanel = screen.findNode("options")
   opt = CreateObject("roSGNode", "OptionsButton")
-  opt.title = tr("Delete Saved")
+  opt.title = translate(translationKeys.LabelDeleteSaved)
   opt.id = "delete_saved"
   opt.observeField("optionSelected", port)
   new_options.push(opt)
@@ -400,7 +400,7 @@ function CreateServerGroup()
             ' Maybe don't unset setting, but offer as a prompt
             ' Server not found, is it online? New values / Retry
             print "Server not found, is it online? New values / Retry"
-            screen.errorMessage = tr("Server not found, is it online?")
+            screen.errorMessage = translate(translationKeys.MessageServerNotFoundIsItOnline)
             SignOut(false)
           else
             screen.visible = false
@@ -481,11 +481,11 @@ function CreateSigninGroup(userName = "")
   m.global.sceneManager.callFunc("pushScene", group)
   port = CreateObject("roMessagePort")
 
-  group.findNode("prompt").text = tr("Sign In")
+  group.findNode("prompt").text = translate(translationKeys.ButtonSignIn)
 
   config = group.findNode("configOptions")
   username_field = CreateObject("roSGNode", "ConfigData")
-  username_field.label = tr("Username")
+  username_field.label = translate(translationKeys.LabelUsername)
   username_field.field = "username"
   username_field.type = "string"
   if userName = "" and isValid(get_setting("username"))
@@ -494,7 +494,7 @@ function CreateSigninGroup(userName = "")
     username_field.value = userName
   end if
   password_field = CreateObject("roSGNode", "ConfigData")
-  password_field.label = tr("Password")
+  password_field.label = translate(translationKeys.LabelPassword)
   password_field.field = "password"
   password_field.type = "password"
   registryPassword = get_setting("password")
@@ -506,14 +506,14 @@ function CreateSigninGroup(userName = "")
   items = CreateObject("roSGNode", "ContentNode")
   items.role = "content"
   saveCheckBox = CreateObject("roSGNode", "ContentNode")
-  saveCheckBox.title = tr("Save Credentials?")
+  saveCheckBox.title = translate(translationKeys.MessageSaveCredentials)
   items.appendChild(saveCheckBox)
   checkbox.content = items
   quickConnect = group.findNode("quickConnect")
   ' Quick Connect only supported for server version 10.8+ right now...
   if versionChecker(m.global.server.version, "10.8.0")
     ' Add option for Quick Connect
-    quickConnect.text = tr("Quick Connect")
+    quickConnect.text = translate(translationKeys.ButtonQuickConnect)
     quickConnect.observeField("buttonSelected", port)
   else
     quickConnect.visible = false
@@ -574,19 +574,19 @@ function CreateSigninGroup(userName = "")
           end if
           stopLoadingSpinner()
           print "Login attempt failed..."
-          group.findNode("alert").text = tr("Login attempt failed.")
+          group.findNode("alert").text = translate(translationKeys.ErrorLoginAttemptFailed)
         else if buttonSelected.id = "quickConnect"
           json = initQuickConnect()
           if not isValid(json)
-            group.findNode("alert").text = tr("Quick Connect not available.")
+            group.findNode("alert").text = translate(translationKeys.LabelQuickConnectNotAvailable)
           else
             ' Server user is talking to is at least 10.8 and has quick connect enabled...
             m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
             m.quickConnectDialog.saveCredentials = checkbox.checkedState[0]
             m.quickConnectDialog.quickConnectJson = json
-            m.quickConnectDialog.title = tr("Quick Connect")
-            m.quickConnectDialog.message = [tr("Here is your Quick Connect code: ") + json.Code, tr("(Dialog will close automatically)")]
-            m.quickConnectDialog.buttons = [tr("Cancel")]
+            m.quickConnectDialog.title = translate(translationKeys.ButtonQuickConnect)
+            m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code]), translate(translationKeys.LabelDialogWillCloseAutomatically)]
+            m.quickConnectDialog.buttons = [translate(translationKeys.ButtonCancel)]
             m.quickConnectDialog.observeField("authenticated", port)
             m.scene.dialog = m.quickConnectDialog
           end if
@@ -600,9 +600,9 @@ function CreateSigninGroup(userName = "")
           else
             dialog = createObject("roSGNode", "Dialog")
             dialog.id = "QuickConnectError"
-            dialog.title = tr("Quick Connect")
-            dialog.buttons = [tr("OK")]
-            dialog.message = tr("There was an error authenticating via Quick Connect.")
+            dialog.title = translate(translationKeys.ButtonQuickConnect)
+            dialog.buttons = [translate(translationKeys.ButtonOk)]
+            dialog.message = translate(translationKeys.ErrorThereWasAnErrorAuthenticatingVia)
             m.scene.dialog = dialog
             m.scene.dialog.observeField("buttonSelected", port)
           end if
@@ -626,7 +626,7 @@ end function
 function CreateHomeGroup()
   ' Main screen after logging in. Shows the user's libraries
   group = CreateObject("roSGNode", "Home")
-  group.overhangTitle = tr("Home")
+  group.overhangTitle = translate(translationKeys.LabelHome)
   group.optionsAvailable = true
 
   group.observeField("selectedItem", m.port)
@@ -639,7 +639,7 @@ function CreateHomeGroup()
   new_options = []
 
   o = CreateObject("roSGNode", "OptionsButton")
-  o.title = tr("Search")
+  o.title = translate(translationKeys.ButtonSearch)
   o.id = "goto_search"
   o.observeField("optionSelected", m.port)
   new_options.push(o)
@@ -647,28 +647,28 @@ function CreateHomeGroup()
 
   ' Add settings option to menu
   o = CreateObject("roSGNode", "OptionsButton")
-  o.title = tr("Settings")
+  o.title = translate(translationKeys.LabelSettings)
   o.id = "settings"
   o.observeField("optionSelected", m.port)
   new_options.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
-  o.title = tr("Change user")
+  o.title = translate(translationKeys.LabelChangeUser)
   o.id = "change_user"
   o.observeField("optionSelected", m.port)
   new_options.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
-  o.title = tr("Change server")
+  o.title = translate(translationKeys.LabelChangeServer)
   o.id = "change_server"
   o.observeField("optionSelected", m.port)
   new_options.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
-  o.title = tr("Sign out")
+  o.title = translate(translationKeys.ButtonSignOut)
   o.id = "sign_out"
   o.observeField("optionSelected", m.port)
   new_options.push(o)
@@ -720,10 +720,10 @@ end function
 sub playbackOptionDialog(time as longinteger)
 
   resumeData = [
-    tr("Resume playing at ") + ticksToHuman(time) + ".",
-    tr("Start over from the beginning.")
+    translate(translationKeys.MessageResumePlayingAt, [ticksToHuman(time)]),
+    translate(translationKeys.LabelStartOverFromTheBeginning)
   ]
 
   stopLoadingSpinner()
-  m.global.sceneManager.callFunc("optionDialog", tr("Playback Options"), [], resumeData)
+  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelPlaybackOptions), [], resumeData)
 end sub
