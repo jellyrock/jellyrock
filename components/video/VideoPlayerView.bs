@@ -97,6 +97,14 @@ sub init()
   m.skippedSegments = {} ' Permanent: segments the user activated "Skip" on
   m.dismissedSegmentId = "" ' Transient: dismissed this visit, cleared on segment exit
   m.activeSegmentId = ""
+  m.segmentTypeLabels = {
+    "Intro": translate(translationKeys.LabelIntro),
+    "Outro": translate(translationKeys.LabelOutro),
+    "Commercial": translate(translationKeys.LabelCommercial),
+    "Preview": translate(translationKeys.LabelPreview),
+    "Recap": translate(translationKeys.LabelRecap),
+    "Unknown": translate(translationKeys.LabelUnknown)
+  }
 
   m.checkedForNextEpisode = false
   m.getNextEpisodeTask = createObject("roSGNode", "GetNextEpisodeTask")
@@ -829,7 +837,7 @@ sub updateNextEpisodeCount()
   if nextEpisodeCountdown < 0
     nextEpisodeCountdown = 0
   end if
-  m.nextEpisodeButton.text = translate(translationKeys.LabelNextEpisode) + " " + nextEpisodeCountdown.toStr().trim()
+  m.nextEpisodeNotification.text = translate(translationKeys.LabelNextEpisode) + " " + nextEpisodeCountdown.toStr().trim()
 end sub
 
 ' Hide the Next Episode notification
@@ -961,15 +969,7 @@ sub checkMediaSegments()
         end if
 
         m.log.info("Showing skip notification", segmentType, segmentId)
-        segmentTypeLabels = {
-          "Intro": translate(translationKeys.LabelIntro),
-          "Outro": translate(translationKeys.LabelOutro),
-          "Commercial": translate(translationKeys.LabelCommercial),
-          "Preview": translate(translationKeys.LabelPreview),
-          "Recap": translate(translationKeys.LabelRecap),
-          "Unknown": translate(translationKeys.LabelUnknown)
-        }
-        segmentLabel = segmentTypeLabels[segmentType]
+        segmentLabel = m.segmentTypeLabels[segmentType]
         if not isValidAndNotEmpty(segmentLabel) then segmentLabel = segmentType
         m.segmentNotification.text = translate(translationKeys.ButtonSkip) + " " + segmentLabel
         m.segmentNotification.visible = true
