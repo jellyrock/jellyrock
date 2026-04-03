@@ -2,9 +2,9 @@
 
 // Validates JSON translation files in locale/custom/:
 // - Valid JSON syntax for all locale files
-// - All en-us keys present in each locale file (coverage report)
+// - All en_US keys present in each locale file (coverage report)
 // - Placeholder parity ({0}, {1} counts match source)
-// - No orphaned keys (keys in locale not in en-us)
+// - No orphaned keys (keys in locale not in en_US)
 // - Plural completeness (if FooOne exists, FooZero and FooMany must too)
 // - File size warnings
 
@@ -13,7 +13,7 @@ const path = require('path');
 const fg = require('fast-glob');
 
 const LOCALE_DIR = path.join(process.cwd(), 'locale/custom');
-const EN_US_FILE = 'en-us.json';
+const EN_US_FILE = 'en_US.json';
 
 const colors = {
   reset: '\x1b[0m',
@@ -65,10 +65,10 @@ async function main() {
   console.log(c('\nValidating JSON Translation Files', 'bold'));
   console.log(c('==================================', 'blue'));
 
-  // Load en-us.json (reference)
+  // Load en_US.json (reference)
   const enUsPath = path.join(LOCALE_DIR, EN_US_FILE);
   if (!fs.existsSync(enUsPath)) {
-    console.error(c('ERROR: en-us.json not found', 'red'));
+    console.error(c('ERROR: en_US.json not found', 'red'));
     process.exit(1);
   }
 
@@ -76,14 +76,14 @@ async function main() {
   try {
     enUs = JSON.parse(fs.readFileSync(enUsPath, 'utf8'));
   } catch (err) {
-    console.error(c(`ERROR: en-us.json has invalid JSON: ${err.message}`, 'red'));
+    console.error(c(`ERROR: en_US.json has invalid JSON: ${err.message}`, 'red'));
     process.exit(1);
   }
 
   const enUsKeys = Object.keys(enUs);
-  console.log(`\n${c('Reference:', 'cyan')} en-us.json (${enUsKeys.length} keys)\n`);
+  console.log(`\n${c('Reference:', 'cyan')} en_US.json (${enUsKeys.length} keys)\n`);
 
-  // Check plural completeness in en-us
+  // Check plural completeness in en_US
   const pluralErrors = checkPluralCompleteness(enUsKeys);
   pluralErrors.forEach(e => console.error(c(`  PLURAL: ${e}`, 'yellow')));
 
@@ -97,11 +97,11 @@ async function main() {
   let totalErrors = 0;
   let totalWarnings = 0;
 
-  // Check en-us.json key sort order
+  // Check en_US.json key sort order
   const sortedKeys = [...enUsKeys].sort();
   if (JSON.stringify(enUsKeys) !== JSON.stringify(sortedKeys)) {
     const firstUnsorted = enUsKeys.find((k, i) => k !== sortedKeys[i]);
-    console.error(c(`  en-us.json keys are not sorted alphabetically (first: "${firstUnsorted}")`, 'red'));
+    console.error(c(`  en_US.json keys are not sorted alphabetically (first: "${firstUnsorted}")`, 'red'));
     totalErrors++;
   }
   const coverageReport = [];
@@ -127,7 +127,7 @@ async function main() {
     const localeKeys = Object.keys(locale);
     const localeKeySet = new Set(localeKeys);
 
-    // 2. Orphaned keys (in locale but not in en-us)
+    // 2. Orphaned keys (in locale but not in en_US)
     const orphans = localeKeys.filter(k => !(k in enUs));
     if (orphans.length > 0) {
       console.error(c(`  ${fileName}: ${orphans.length} orphaned key(s)`, 'red'));
@@ -144,7 +144,7 @@ async function main() {
 
       if (JSON.stringify(enPlaceholders) !== JSON.stringify(localePlaceholders)) {
         console.error(c(`  ${fileName}: Placeholder mismatch for "${key}"`, 'red'));
-        console.error(`    en-us: ${enPlaceholders.join(', ') || '(none)'}  locale: ${localePlaceholders.join(', ') || '(none)'}`);
+        console.error(`    en_US: ${enPlaceholders.join(', ') || '(none)'}  locale: ${localePlaceholders.join(', ') || '(none)'}`);
         errors++;
       }
     }
@@ -188,7 +188,7 @@ async function main() {
     });
 
   console.log(c('\nSummary:', 'bold'));
-  console.log(`  Files: ${localeFiles.length - 1}`); // exclude en-us
+  console.log(`  Files: ${localeFiles.length - 1}`); // exclude en_US
   console.log(`  Errors: ${c(String(totalErrors), totalErrors > 0 ? 'red' : 'green')}`);
   console.log(`  Warnings: ${c(String(totalWarnings), totalWarnings > 0 ? 'yellow' : 'green')}`);
 

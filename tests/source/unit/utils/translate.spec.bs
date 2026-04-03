@@ -48,7 +48,7 @@ namespace tests
 
     @it("returns translated value for another existing key")
     function _()
-      ' HeaderHome is a test-only mock key (not in en-us.json)
+      ' HeaderHome is a test-only mock key (not in en_US.json)
       result = translate("HeaderHome")
       m.assertEqual(result, "Accueil")
     end function
@@ -57,14 +57,14 @@ namespace tests
     @describe("Fallback behavior")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("falls back to en-us when key is missing from active locale")
+    @it("falls back to en_US when key is missing from active locale")
     function _()
       ' ButtonCancel exists in fallback but not in active locale
       result = translate(translationKeys.ButtonCancel)
       m.assertEqual(result, "Cancel")
     end function
 
-    @it("falls back to en-us for error messages missing from active locale")
+    @it("falls back to en_US for error messages missing from active locale")
     function _()
       ' ErrorConnectionFailed is a test-only mock key
       result = translate("ErrorConnectionFailed")

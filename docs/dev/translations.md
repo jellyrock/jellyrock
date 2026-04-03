@@ -17,7 +17,7 @@ translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])
 
 ## Adding a New Translated String
 
-1. Add the key to `locale/custom/en-us.json` in alphabetical order:
+1. Add the key to `locale/custom/en_US.json` in alphabetical order:
 
 ```json
 "MyNewKey": "My new string with {0} placeholder"
@@ -48,7 +48,7 @@ Keys use PascalCase with a category prefix:
 
 ## Plurals
 
-Plural strings use a zero/one/many suffix convention. Define three keys in `en-us.json`:
+Plural strings use a zero/one/many suffix convention. Define three keys in `en_US.json`:
 
 ```json
 "LabelEpisodeCountZero": "No episodes",
@@ -69,7 +69,7 @@ translatePlural(translationKeys.LabelEpisodeCount, item.childCount, [stri(item.c
 Use indexed `{0}`, `{1}`, etc. in translation values. Pass replacements as a string array:
 
 ```brightscript
-' en-us.json: "ErrorTypeNotYetSupported": "This type is not yet supported: {0}."
+' en_US.json: "ErrorTypeNotYetSupported": "This type is not yet supported: {0}."
 translate(translationKeys.ErrorTypeNotYetSupported, [selectedItemType])
 ```
 
@@ -88,7 +88,7 @@ import "pkg:/source/translationKeys.bs"
 
 ## Settings Integration
 
-Every entry in `settings/settings.json` has `titleKey` and `descriptionKey` fields that reference en-us.json keys. The settings UI calls `translate(item.titleKey)` to render translated titles and descriptions.
+Every entry in `settings/settings.json` has `titleKey` and `descriptionKey` fields that reference en_US.json keys. The settings UI calls `translate(item.titleKey)` to render translated titles and descriptions.
 
 When adding a new setting, include both fields:
 
@@ -106,23 +106,36 @@ When adding a new setting, include both fields:
 
 The `title` and `description` fields are kept as the English source of truth alongside the keys. See the [Adding User Settings Guide](new-user-setting.md) for the full process.
 
+## Locale Filename Convention
+
+Locale files follow standard conventions for Weblate compatibility:
+
+| Type | Convention | Example |
+|---|---|---|
+| Base languages | Lowercase | `fr.json`, `de.json` |
+| Regional variants | Underscore + uppercase region | `fr_CA.json`, `de_DE.json` |
+| Chinese (script codes) | Underscore + script code | `zh_Hans.json`, `zh_Hant.json`, `zh_Hant_HK.json` |
+| Numeric regions | Underscore + number | `es_419.json` |
+
 ## Fallback Behavior
 
 `translate()` uses a 3-level fallback:
 
-1. Active locale (e.g. `fr-ca.json`)
-2. English fallback (`en-us.json`)
+1. Active locale (e.g. `fr_CA.json`)
+2. English fallback (`en_US.json`)
 3. The key itself (makes missing translations visible during development)
 
-Regional locales (e.g. `fr-ca`) layer over their base language (`fr`), so users get the maximum number of translated strings.
+Regional locales (e.g. `fr_CA`) layer over their base language (`fr`), so users get the maximum number of translated strings. Chinese locales use 3-layer loading: `zh` → `zh_Hant` → `zh_Hant_HK`.
 
 ## Locale Resolution
 
 The locale is resolved at two points in the app lifecycle:
 
-**Pre-login:** Roku device locale → `en-us`
+**Pre-login:** Roku device locale → `en_US`
 
-**Post-login:** User setting → Jellyfin server language → Roku device locale → `en-us`
+**Post-login:** User setting → Jellyfin server language → Roku device locale → `en_US`
+
+Server language codes are normalized via `normalizeLocaleCode()` to match our filename convention (e.g. `zh-CN` → `zh_Hans`, `pt-BR` → `pt_BR`).
 
 Language changes take effect after leaving Settings (the `reloadHome` mechanism rebuilds the UI).
 
@@ -132,7 +145,7 @@ Translation integrity is enforced by three scripts that run as part of `npm run 
 
 | Script | What it checks |
 |---|---|
-| `validate:translations` | All `translate()` / `translationKeys.*` references exist in en-us.json; no hardcoded string literals; placeholder parity; languages.json alignment |
+| `validate:translations` | All `translate()` / `translationKeys.*` references exist in en_US.json; no hardcoded string literals; placeholder parity; languages.json alignment |
 | `lint:translations` | All locale JSON files are valid; no orphaned keys; coverage report |
 | `lint:xml-translations` | No stale XML `translationKey` attributes from the old system |
 
@@ -140,10 +153,10 @@ Translation integrity is enforced by three scripts that run as part of `npm run 
 
 The JellyRock bot (`jellyrock-bot.yml`) runs on every push to main:
 
-1. Sorts `en-us.json` keys alphabetically
+1. Sorts `en_US.json` keys alphabetically
 2. Syncs new locale files into `languages.json` so they appear in the language picker
-3. Pushes `en-us.json` and `languages.json` to the `weblate` branch for community translators
+3. Pushes `en_US.json` and `languages.json` to the `weblate` branch for community translators
 
-Missing keys are caught at build time — the BSC plugin generates `translationKeys` constants from en-us.json, so referencing a key that doesn't exist is a compile error.
+Missing keys are caught at build time — the BSC plugin generates `translationKeys` constants from en_US.json, so referencing a key that doesn't exist is a compile error.
 
 Run locally with `npm run update-translations -- --fix`.

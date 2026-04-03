@@ -2,8 +2,8 @@
 # This workflow runs sequentially to avoid git conflicts when pushing to main
 #
 # Jobs:
-# 1. update-translation-source: Scans code for new translate() keys, updates en-us.json
-# 2. sync-translations-to-weblate: Syncs en-us.json + languages.json to weblate branch
+# 1. update-translation-source: Scans code for new translate() keys, updates en_US.json
+# 2. sync-translations-to-weblate: Syncs en_US.json + languages.json to weblate branch
 # 3. update-settings-docs: Updates settings documentation (only when settings.json changes)
 # 4. sync-changelog: Syncs changelog with unreleased changes
 #
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   # ============================================================================
   # Job 1: Translation Source Maintenance
-  # Sorts en-us.json alphabetically and syncs languages.json with locale files.
+  # Sorts en_US.json alphabetically and syncs languages.json with locale files.
   # Missing keys are caught at build time by the BSC translation-keys plugin.
   # ============================================================================
   update-translation-source:
@@ -72,13 +72,13 @@ jobs:
       - name: Install NPM dependencies
         run: npm ci
 
-      - name: Sort en-us.json and sync languages.json
+      - name: Sort en_US.json and sync languages.json
         run: npm run update-translations -- --fix
 
-      - name: Check for en-us.json changes
+      - name: Check for en_US.json changes
         id: check_changes
         run: |
-          if git diff --quiet locale/custom/en-us.json locale/languages.json; then
+          if git diff --quiet locale/custom/en_US.json locale/languages.json; then
             echo "ℹ️ No translation source changes to commit"
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
@@ -86,11 +86,11 @@ jobs:
             echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Commit en-us.json changes
+      - name: Commit en_US.json changes
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           git pull --rebase --autostash origin main
-          git add locale/custom/en-us.json locale/languages.json
+          git add locale/custom/en_US.json locale/languages.json
           git commit -m "chore(translation): auto-update translation source files"
 
       - name: Push changes to main
@@ -99,7 +99,7 @@ jobs:
 
   # ============================================================================
   # Job 2: Sync Source Files to Weblate Branch
-  # Copies en-us.json (source strings) and languages.json (metadata) to the
+  # Copies en_US.json (source strings) and languages.json (metadata) to the
   # weblate branch so Weblate picks up new/changed keys.
   # One-way sync: main → weblate. Fails if the weblate branch does not exist.
   # ============================================================================
@@ -140,7 +140,7 @@ jobs:
       - name: Sync source files to weblate branch
         run: |
           # Save developer-owned files from main
-          cp locale/custom/en-us.json /tmp/en-us.json
+          cp locale/custom/en_US.json /tmp/en_US.json
           cp locale/languages.json /tmp/languages.json
 
           # Switch to weblate branch
@@ -148,18 +148,18 @@ jobs:
           git checkout weblate
 
           # Copy updated files
-          cp /tmp/en-us.json locale/custom/en-us.json
+          cp /tmp/en_US.json locale/custom/en_US.json
           mkdir -p locale
           cp /tmp/languages.json locale/languages.json
 
           # Check for changes
-          if git diff --quiet locale/custom/en-us.json locale/languages.json; then
+          if git diff --quiet locale/custom/en_US.json locale/languages.json; then
             echo "ℹ️ No changes to sync to weblate branch"
             exit 0
           fi
 
           # Commit and push
-          git add locale/custom/en-us.json locale/languages.json
+          git add locale/custom/en_US.json locale/languages.json
           git commit -m "chore: sync source files from main"
           git push origin weblate
 

@@ -5,9 +5,9 @@
 //
 // Checks:
 // - All locale JSON files are valid JSON
-// - No orphaned keys (keys in locale files not in en-us.json)
-// - Placeholder parity between en-us and all locales
-// - All translate()/translatePlural() keys exist in en-us.json
+// - No orphaned keys (keys in locale files not in en_US.json)
+// - Placeholder parity between en_US and all locales
+// - All translate()/translatePlural() keys exist in en_US.json
 // - No hardcoded string literals in translate()/translatePlural() calls
 //   (must use translationKeys.* constants for compile-time safety)
 
@@ -17,7 +17,7 @@ const fg = require('fast-glob');
 
 const ROOT_DIR = process.cwd();
 const LOCALE_DIR = path.join(ROOT_DIR, 'locale/custom');
-const EN_US_PATH = path.join(LOCALE_DIR, 'en-us.json');
+const EN_US_PATH = path.join(LOCALE_DIR, 'en_US.json');
 
 const SOURCE_PATTERNS = [
   'source/**/*.bs',
@@ -84,7 +84,7 @@ function extractTranslateKeys(code) {
 
   // Match translationKeys.Key anywhere (covers comments, return values, etc.)
   // Requires PascalCase key (uppercase start) to avoid matching import paths like translationKeys.bs
-  // Skip plural base keys — they don't exist in en-us.json directly (only Zero/One/Many variants do)
+  // Skip plural base keys — they don't exist in en_US.json directly (only Zero/One/Many variants do)
   const refRegex = /\btranslationKeys\.([A-Z]\w*)/g;
   while ((match = refRegex.exec(code)) !== null) {
     if (!pluralBaseKeys.has(match[1])) {
@@ -128,9 +128,9 @@ function extractSettingsKeys(jsonData) {
 async function main() {
   const errors = [];
 
-  // Load en-us.json
+  // Load en_US.json
   if (!fs.existsSync(EN_US_PATH)) {
-    console.error('ERROR: locale/custom/en-us.json not found');
+    console.error('ERROR: locale/custom/en_US.json not found');
     process.exit(1);
   }
 
@@ -138,7 +138,7 @@ async function main() {
   try {
     enUs = JSON.parse(fs.readFileSync(EN_US_PATH, 'utf8'));
   } catch (err) {
-    console.error(`ERROR: en-us.json invalid JSON: ${err.message}`);
+    console.error(`ERROR: en_US.json invalid JSON: ${err.message}`);
     process.exit(1);
   }
 
@@ -150,7 +150,7 @@ async function main() {
 
   for (const filePath of localeFiles) {
     const fileName = path.basename(filePath);
-    if (fileName === 'en-us.json') continue;
+    if (fileName === 'en_US.json') continue;
 
     let locale;
     try {
@@ -172,12 +172,12 @@ async function main() {
       const enP = extractPlaceholders(enUs[key]);
       const locP = extractPlaceholders(locale[key]);
       if (JSON.stringify(enP) !== JSON.stringify(locP)) {
-        errors.push(`${fileName}: Placeholder mismatch for "${key}" (en-us: ${enP.join(',')} vs ${locP.join(',')})`);
+        errors.push(`${fileName}: Placeholder mismatch for "${key}" (en_US: ${enP.join(',')} vs ${locP.join(',')})`);
       }
     }
   }
 
-  // 2. Check that all code keys exist in en-us.json
+  // 2. Check that all code keys exist in en_US.json
   const usedKeys = new Set();
   const hardcodedViolations = [];
   const files = await fg(SOURCE_PATTERNS, { cwd: ROOT_DIR, absolute: true });
@@ -206,7 +206,7 @@ async function main() {
 
   const missing = [...usedKeys].filter(k => !(k in enUs)).sort();
   if (missing.length > 0) {
-    errors.push(`en-us.json missing ${missing.length} key(s) used in code: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '...' : ''}`);
+    errors.push(`en_US.json missing ${missing.length} key(s) used in code: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '...' : ''}`);
   }
 
   // 3. Flag hardcoded translation keys (must use translationKeys.* constants)
@@ -222,7 +222,7 @@ async function main() {
     const langCodes = new Set(languages.map(l => l.code).filter(c => c !== ''));
     const localeCodes = localeFiles
       .map(f => path.basename(f, '.json'))
-      .filter(c => c !== 'en-us');
+      .filter(c => c !== 'en_US');
     const missingFromLangs = localeCodes.filter(c => !langCodes.has(c)).sort();
     if (missingFromLangs.length > 0) {
       errors.push(`${missingFromLangs.length} locale file(s) missing from languages.json: ${missingFromLangs.join(', ')}`);

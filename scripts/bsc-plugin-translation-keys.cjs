@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const VIRTUAL_FILE_PKG_PATH = 'pkg:/source/translationKeys.bs';
-const DEFAULT_BASE_FILE = 'locale/custom/en-us.json';
+const DEFAULT_BASE_FILE = 'locale/custom/en_US.json';
 
 class TranslationKeysPlugin {
   constructor() {

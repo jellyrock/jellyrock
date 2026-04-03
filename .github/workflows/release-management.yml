@@ -167,7 +167,7 @@ jobs:
 
   # ============================================================================
   # Merge Translations from Weblate Branch
-  # Pulls all translation files (except en-us.json and languages.json which are
+  # Pulls all translation files (except en_US.json and languages.json which are
   # owned by main) from the weblate branch into the release branch.
   # Validates translations before allowing version bump to proceed.
   # ============================================================================
@@ -224,8 +224,8 @@ jobs:
           git checkout origin/weblate -- locale/custom/
 
           # Restore developer-owned files from the release branch
-          # (main owns en-us.json and languages.json, not weblate)
-          git checkout HEAD -- locale/custom/en-us.json
+          # (main owns en_US.json and languages.json, not weblate)
+          git checkout HEAD -- locale/custom/en_US.json
 
           # Check for changes
           if git diff --quiet && git diff --cached --quiet; then

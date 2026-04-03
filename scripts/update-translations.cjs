@@ -1,8 +1,8 @@
 // Scans the codebase for translate() and translatePlural() calls,
-// compares against locale/custom/en-us.json, and reports:
-// - Keys used in code but missing from en-us.json
-// - Keys in en-us.json not used in code (orphans)
-// With --fix: sorts en-us.json alphabetically and syncs languages.json.
+// compares against locale/custom/en_US.json, and reports:
+// - Keys used in code but missing from en_US.json
+// - Keys in en_US.json not used in code (orphans)
+// With --fix: sorts en_US.json alphabetically and syncs languages.json.
 
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +10,7 @@ const fg = require('fast-glob');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const FIX_MODE = process.argv.includes('--fix');
-const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en-us.json');
+const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en_US.json');
 const LOCALE_DIR = path.join(ROOT_DIR, 'locale/custom');
 const LANGUAGES_JSON_PATH = path.join(ROOT_DIR, 'locale/languages.json');
 const SETTINGS_JSON_PATH = path.join(ROOT_DIR, 'settings/settings.json');
@@ -22,11 +22,11 @@ const LANGUAGE_METADATA = {
   'af': { name: 'Afrikaans', nativeName: 'Afrikaans' },
   'ar': { name: 'Arabic', nativeName: '\u0627\u0644\u0639\u0631\u0628\u064a\u0629' },
   'as': { name: 'Assamese', nativeName: '\u0985\u09b8\u09ae\u09c0\u09af\u09bc\u09be' },
-  'be-by': { name: 'Belarusian', nativeName: '\u0411\u0435\u043b\u0430\u0440\u0443\u0441\u043a\u0430\u044f' },
+  'be_BY': { name: 'Belarusian', nativeName: '\u0411\u0435\u043b\u0430\u0440\u0443\u0441\u043a\u0430\u044f' },
   'bg': { name: 'Bulgarian', nativeName: '\u0411\u044a\u043b\u0433\u0430\u0440\u0441\u043a\u0438' },
-  'bg-bg': { name: 'Bulgarian', nativeName: '\u0411\u044a\u043b\u0433\u0430\u0440\u0441\u043a\u0438' },
+  'bg_BG': { name: 'Bulgarian', nativeName: '\u0411\u044a\u043b\u0433\u0430\u0440\u0441\u043a\u0438' },
   'bn': { name: 'Bengali', nativeName: '\u09ac\u09be\u0982\u09b2\u09be' },
-  'bn-bd': { name: 'Bengali (Bangladesh)', nativeName: '\u09ac\u09be\u0982\u09b2\u09be (\u09ac\u09be\u0982\u09b2\u09be\u09a6\u09c7\u09b6)' },
+  'bn_BD': { name: 'Bengali (Bangladesh)', nativeName: '\u09ac\u09be\u0982\u09b2\u09be (\u09ac\u09be\u0982\u09b2\u09be\u09a6\u09c7\u09b6)' },
   'br': { name: 'Breton', nativeName: 'Brezhoneg' },
   'ca': { name: 'Catalan', nativeName: 'Catal\u00e0' },
   'ckb': { name: 'Central Kurdish', nativeName: '\u06a9\u0648\u0631\u062f\u06cc' },
@@ -34,18 +34,18 @@ const LANGUAGE_METADATA = {
   'cy': { name: 'Welsh', nativeName: 'Cymraeg' },
   'da': { name: 'Danish', nativeName: 'Dansk' },
   'de': { name: 'German', nativeName: 'Deutsch' },
-  'de-de': { name: 'German (Germany)', nativeName: 'Deutsch (Deutschland)' },
+  'de_DE': { name: 'German (Germany)', nativeName: 'Deutsch (Deutschland)' },
   'dv': { name: 'Divehi', nativeName: '\u078b\u07a8\u0788\u07ac\u0780\u07a8' },
   'el': { name: 'Greek', nativeName: '\u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac' },
-  'en-gb': { name: 'English (UK)', nativeName: 'English (UK)' },
-  'en-us': { name: 'English (US)', nativeName: 'English (US)' },
+  'en_GB': { name: 'English (UK)', nativeName: 'English (UK)' },
+  'en_US': { name: 'English (US)', nativeName: 'English (US)' },
   'eo': { name: 'Esperanto', nativeName: 'Esperanto' },
   'es': { name: 'Spanish', nativeName: 'Espa\u00f1ol' },
-  'es-419': { name: 'Spanish (Latin America)', nativeName: 'Espa\u00f1ol (Latinoam\u00e9rica)' },
-  'es-ar': { name: 'Spanish (Argentina)', nativeName: 'Espa\u00f1ol (Argentina)' },
-  'es-do': { name: 'Spanish (Dominican Republic)', nativeName: 'Espa\u00f1ol (Rep\u00fablica Dominicana)' },
-  'es-es': { name: 'Spanish (Spain)', nativeName: 'Espa\u00f1ol (Espa\u00f1a)' },
-  'es-mx': { name: 'Spanish (Mexico)', nativeName: 'Espa\u00f1ol (M\u00e9xico)' },
+  'es_419': { name: 'Spanish (Latin America)', nativeName: 'Espa\u00f1ol (Latinoam\u00e9rica)' },
+  'es_AR': { name: 'Spanish (Argentina)', nativeName: 'Espa\u00f1ol (Argentina)' },
+  'es_DO': { name: 'Spanish (Dominican Republic)', nativeName: 'Espa\u00f1ol (Rep\u00fablica Dominicana)' },
+  'es_ES': { name: 'Spanish (Spain)', nativeName: 'Espa\u00f1ol (Espa\u00f1a)' },
+  'es_MX': { name: 'Spanish (Mexico)', nativeName: 'Espa\u00f1ol (M\u00e9xico)' },
   'et': { name: 'Estonian', nativeName: 'Eesti' },
   'eu': { name: 'Basque', nativeName: 'Euskara' },
   'fa': { name: 'Persian', nativeName: '\u0641\u0627\u0631\u0633\u06cc' },
@@ -53,22 +53,22 @@ const LANGUAGE_METADATA = {
   'fil': { name: 'Filipino', nativeName: 'Filipino' },
   'fo': { name: 'Faroese', nativeName: 'F\u00f8royskt' },
   'fr': { name: 'French', nativeName: 'Fran\u00e7ais' },
-  'fr-ca': { name: 'French (Canada)', nativeName: 'Fran\u00e7ais (Canada)' },
+  'fr_CA': { name: 'French (Canada)', nativeName: 'Fran\u00e7ais (Canada)' },
   'ga': { name: 'Irish', nativeName: 'Gaeilge' },
   'gl': { name: 'Galician', nativeName: 'Galego' },
   'gsw': { name: 'Swiss German', nativeName: 'Schwyzerd\u00fctsch' },
   'gu': { name: 'Gujarati', nativeName: '\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0' },
   'he': { name: 'Hebrew', nativeName: '\u05e2\u05d1\u05e8\u05d9\u05ea' },
-  'he-il': { name: 'Hebrew (Israel)', nativeName: '\u05e2\u05d1\u05e8\u05d9\u05ea (\u05d9\u05e9\u05e8\u05d0\u05dc)' },
-  'hi-in': { name: 'Hindi', nativeName: '\u0939\u093f\u0928\u094d\u0926\u0940' },
+  'he_IL': { name: 'Hebrew (Israel)', nativeName: '\u05e2\u05d1\u05e8\u05d9\u05ea (\u05d9\u05e9\u05e8\u05d0\u05dc)' },
+  'hi_IN': { name: 'Hindi', nativeName: '\u0939\u093f\u0928\u094d\u0926\u0940' },
   'hr': { name: 'Croatian', nativeName: 'Hrvatski' },
   'ht': { name: 'Haitian Creole', nativeName: 'Krey\u00f2l Ayisyen' },
   'hu': { name: 'Hungarian', nativeName: 'Magyar' },
   'hy': { name: 'Armenian', nativeName: '\u0540\u0561\u0575\u0565\u0580\u0565\u0576' },
   'id': { name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
-  'is-is': { name: 'Icelandic', nativeName: '\u00cdslenska' },
+  'is_IS': { name: 'Icelandic', nativeName: '\u00cdslenska' },
   'it': { name: 'Italian', nativeName: 'Italiano' },
-  'it-it': { name: 'Italian (Italy)', nativeName: 'Italiano (Italia)' },
+  'it_IT': { name: 'Italian (Italy)', nativeName: 'Italiano (Italia)' },
   'ja': { name: 'Japanese', nativeName: '\u65e5\u672c\u8a9e' },
   'jbo': { name: 'Lojban', nativeName: 'la .lojban.' },
   'ka': { name: 'Georgian', nativeName: '\u10e5\u10d0\u10e0\u10d7\u10e3\u10da\u10d8' },
@@ -78,7 +78,7 @@ const LANGUAGE_METADATA = {
   'ko': { name: 'Korean', nativeName: '\ud55c\uad6d\uc5b4' },
   'kw': { name: 'Cornish', nativeName: 'Kernewek' },
   'lb': { name: 'Luxembourgish', nativeName: 'L\u00ebtzebuergesch' },
-  'lt-lt': { name: 'Lithuanian', nativeName: 'Lietuvi\u0173' },
+  'lt_LT': { name: 'Lithuanian', nativeName: 'Lietuvi\u0173' },
   'lv': { name: 'Latvian', nativeName: 'Latvie\u0161u' },
   'mg': { name: 'Malagasy', nativeName: 'Malagasy' },
   'mi': { name: 'M\u0101ori', nativeName: 'Te Reo M\u0101ori' },
@@ -97,14 +97,14 @@ const LANGUAGE_METADATA = {
   'pl': { name: 'Polish', nativeName: 'Polski' },
   'pr': { name: 'Pirate', nativeName: 'Pirate' },
   'pt': { name: 'Portuguese', nativeName: 'Portugu\u00eas' },
-  'pt-br': { name: 'Portuguese (Brazil)', nativeName: 'Portugu\u00eas (Brasil)' },
-  'pt-pt': { name: 'Portuguese (Portugal)', nativeName: 'Portugu\u00eas (Portugal)' },
+  'pt_BR': { name: 'Portuguese (Brazil)', nativeName: 'Portugu\u00eas (Brasil)' },
+  'pt_PT': { name: 'Portuguese (Portugal)', nativeName: 'Portugu\u00eas (Portugal)' },
   'ro': { name: 'Romanian', nativeName: 'Rom\u00e2n\u0103' },
   'ru': { name: 'Russian', nativeName: '\u0420\u0443\u0441\u0441\u043a\u0438\u0439' },
   'si': { name: 'Sinhala', nativeName: '\u0dc3\u0dd2\u0d82\u0dc4\u0dbd' },
   'sk': { name: 'Slovak', nativeName: 'Sloven\u010dina' },
   'sl': { name: 'Slovenian', nativeName: 'Sloven\u0161\u010dina' },
-  'sl-si': { name: 'Slovenian (Slovenia)', nativeName: 'Sloven\u0161\u010dina (Slovenija)' },
+  'sl_SI': { name: 'Slovenian (Slovenia)', nativeName: 'Sloven\u0161\u010dina (Slovenija)' },
   'so': { name: 'Somali', nativeName: 'Soomaali' },
   'sq': { name: 'Albanian', nativeName: 'Shqip' },
   'sr': { name: 'Serbian', nativeName: '\u0421\u0440\u043f\u0441\u043a\u0438' },
@@ -115,12 +115,12 @@ const LANGUAGE_METADATA = {
   'tr': { name: 'Turkish', nativeName: 'T\u00fcrk\u00e7e' },
   'ug': { name: 'Uyghur', nativeName: '\u0626\u06c7\u064a\u063a\u06c7\u0631\u0686\u06d5' },
   'uk': { name: 'Ukrainian', nativeName: '\u0423\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430' },
-  'ur-pk': { name: 'Urdu', nativeName: '\u0627\u0631\u062f\u0648' },
+  'ur_PK': { name: 'Urdu', nativeName: '\u0627\u0631\u062f\u0648' },
   'uz': { name: 'Uzbek', nativeName: 'O\u02bbzbekcha' },
   'vi': { name: 'Vietnamese', nativeName: 'Ti\u1ebfng Vi\u1ec7t' },
-  'zh-cn': { name: 'Chinese (Simplified)', nativeName: '\u7b80\u4f53\u4e2d\u6587' },
-  'zh-hk': { name: 'Chinese (Hong Kong)', nativeName: '\u7e41\u9ad4\u4e2d\u6587\uff08\u9999\u6e2f\uff09' },
-  'zh-tw': { name: 'Chinese (Traditional)', nativeName: '\u7e41\u9ad4\u4e2d\u6587' },
+  'zh_Hans': { name: 'Chinese (Simplified)', nativeName: '\u7b80\u4f53\u4e2d\u6587' },
+  'zh_Hant_HK': { name: 'Chinese (Hong Kong)', nativeName: '\u7e41\u9ad4\u4e2d\u6587\uff08\u9999\u6e2f\uff09' },
+  'zh_Hant': { name: 'Chinese (Traditional)', nativeName: '\u7e41\u9ad4\u4e2d\u6587' },
   'zu': { name: 'Zulu', nativeName: 'isiZulu' },
 };
 
@@ -176,7 +176,7 @@ function extractTranslateKeys(code) {
 
   // Match translationKeys.Key anywhere (covers comments, return values, etc.)
   // Requires PascalCase key (uppercase start) to avoid matching import paths like translationKeys.bs
-  // Skip plural base keys — they don't exist in en-us.json directly (only Zero/One/Many variants do)
+  // Skip plural base keys — they don't exist in en_US.json directly (only Zero/One/Many variants do)
   const refRegex = /\btranslationKeys\.([A-Z]\w*)/g;
   while ((match = refRegex.exec(code)) !== null) {
     if (!pluralBaseKeys.has(match[1])) {
@@ -221,7 +221,7 @@ function extractSettingsKeys(jsonData) {
 async function main() {
   console.log('Scanning codebase for translation keys...\n');
 
-  // Load en-us.json
+  // Load en_US.json
   if (!fs.existsSync(EN_US_PATH)) {
     console.error(`ERROR: ${EN_US_PATH} not found`);
     process.exit(1);
@@ -249,12 +249,12 @@ async function main() {
   }
 
   console.log(`Total unique keys used in code: ${usedKeys.size}`);
-  console.log(`Total keys defined in en-us.json: ${definedKeys.size}\n`);
+  console.log(`Total keys defined in en_US.json: ${definedKeys.size}\n`);
 
-  // Find missing keys (used in code but not in en-us.json)
+  // Find missing keys (used in code but not in en_US.json)
   const missingKeys = [...usedKeys].filter(k => !definedKeys.has(k)).sort();
 
-  // Find orphan keys (in en-us.json but not used in code)
+  // Find orphan keys (in en_US.json but not used in code)
   const orphanKeys = [...definedKeys].filter(k => !usedKeys.has(k)).sort();
 
   // Report
@@ -270,7 +270,7 @@ async function main() {
     console.log('');
   }
 
-  // Auto-fix en-us.json: ensure sort order
+  // Auto-fix en_US.json: ensure sort order
   if (FIX_MODE) {
     // Sort keys and write to ensure consistent order
     const sorted = {};
@@ -279,7 +279,7 @@ async function main() {
     const current = fs.readFileSync(EN_US_PATH, 'utf8');
     if (output !== current) {
       fs.writeFileSync(EN_US_PATH, output);
-      console.log('Sorted en-us.json keys alphabetically');
+      console.log('Sorted en_US.json keys alphabetically');
     }
   }
 
@@ -287,7 +287,7 @@ async function main() {
   // Sync languages.json with locale files
   // ============================================================
   const localeFiles = fs.readdirSync(LOCALE_DIR)
-    .filter(f => f.endsWith('.json') && f !== 'en-us.json')
+    .filter(f => f.endsWith('.json') && f !== 'en_US.json')
     .map(f => f.replace('.json', ''));
 
   let languages = [];
@@ -330,7 +330,7 @@ async function main() {
   // Summary
   console.log('\n=== Summary ===');
   console.log(`Keys in code: ${usedKeys.size}`);
-  console.log(`Keys in en-us.json: ${definedKeys.size}`);
+  console.log(`Keys in en_US.json: ${definedKeys.size}`);
   console.log(`Missing keys: ${missingKeys.length}`);
   console.log(`Orphan keys: ${orphanKeys.length}`);
   console.log(`Missing locales in languages.json: ${missingLangs.length}`);
