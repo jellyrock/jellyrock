@@ -2,7 +2,7 @@
 // compares against locale/custom/en-us.json, and reports:
 // - Keys used in code but missing from en-us.json
 // - Keys in en-us.json not used in code (orphans)
-// Optionally auto-adds missing keys with --fix flag.
+// With --fix: sorts en-us.json alphabetically and syncs languages.json.
 
 const fs = require('fs');
 const path = require('path');
@@ -270,15 +270,9 @@ async function main() {
     console.log('');
   }
 
-  // Auto-fix en-us.json: add missing keys and ensure sort order
+  // Auto-fix en-us.json: ensure sort order
   if (FIX_MODE) {
-    if (missingKeys.length > 0) {
-      console.log('Adding missing keys to en-us.json...');
-      missingKeys.forEach(k => { enUs[k] = k; });
-      console.log(`Added ${missingKeys.length} keys (values set to key name for translation)`);
-    }
-
-    // Always sort keys and write to ensure consistent order
+    // Sort keys and write to ensure consistent order
     const sorted = {};
     Object.keys(enUs).sort().forEach(k => { sorted[k] = enUs[k]; });
     const output = JSON.stringify(sorted, null, 2) + '\n';

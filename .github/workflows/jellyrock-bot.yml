@@ -25,9 +25,9 @@ concurrency:
 
 jobs:
   # ============================================================================
-  # Job 1: Translation Source Updates
-  # Scans code for translate()/translatePlural() calls and settings.json keys,
-  # auto-adds any missing keys to en-us.json, and commits to main.
+  # Job 1: Translation Source Maintenance
+  # Sorts en-us.json alphabetically and syncs languages.json with locale files.
+  # Missing keys are caught at build time by the BSC translation-keys plugin.
   # ============================================================================
   update-translation-source:
     if: github.actor != 'jellyrock[bot]'
@@ -72,7 +72,7 @@ jobs:
       - name: Install NPM dependencies
         run: npm ci
 
-      - name: Auto-add missing translation keys
+      - name: Sort en-us.json and sync languages.json
         run: npm run update-translations -- --fix
 
       - name: Check for en-us.json changes
