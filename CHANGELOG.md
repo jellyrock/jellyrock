@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- add .editorconfig file to ensure consistant styling ([2a07113](https://github.com/jellyrock/jellyrock/commit/2a071131))
 - custom translation engine with 98 locales and Weblate CI/CD ([#451](https://github.com/jellyrock/jellyrock/pull/451))
 
 ### Fixed
