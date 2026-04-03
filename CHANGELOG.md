@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- custom translation engine with 103 locales and Weblate CI/CD ([#451](https://github.com/jellyrock/jellyrock/pull/451))
+
 ### Fixed
 
 - (ci) gate device tests behind environment approval ([fe16ab4](https://github.com/jellyrock/jellyrock/commit/fe16ab49))
