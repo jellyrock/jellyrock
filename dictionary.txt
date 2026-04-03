@@ -97,3 +97,7 @@ AAs
 injectable
 BrighterScript's
 outro
+Weblate
+PRs
+unsynchronized
+autocomplete

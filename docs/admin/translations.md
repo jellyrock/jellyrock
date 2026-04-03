@@ -10,7 +10,7 @@ These tasks are handled by CI and require no manual intervention:
 - **Language registry** — The bot auto-adds new locale files to `languages.json` so they appear in the language picker
 - **Weblate sync** — The bot pushes updated source strings to the `weblate` branch after every main push
 - **Release translation merge** — The release workflow auto-merges translations from the `weblate` branch into release prep PRs
-- **Build-time key safety** — The BSC plugin generates `translationKeys` constants from en_US.json, so missing keys are compile errors (caught before code reaches main)
+- **Build-time key safety** — The `BSC` plugin generates `translationKeys` constants from en_US.json, so missing keys are compile errors (caught before code reaches main)
 - **Validation** — CI rejects PRs with orphaned translations, placeholder mismatches, or hardcoded string literals
 
 ## What Needs Manual Maintenance
