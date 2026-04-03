@@ -279,7 +279,7 @@ sub setVideoSubTitle()
     if item.indexNumberEnd > 0 and item.indexNumberEnd > item.indexNumber
       ' add entry for every episode eg. S6:E1E2
       for i = item.indexNumber + 1 to item.indexNumberEnd
-        episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${item.indexNumberEnd}`
+        episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${i}`
       end for
     end if
     ' Episode name

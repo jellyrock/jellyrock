@@ -47,7 +47,7 @@ class GenericPresenter extends GridPresenterBase
           { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" }
         ],
         filter: [
-          { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+          { "Title": translate(translationKeys.LabelAll), "Name": "All" },
           { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" },
           { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
           { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
@@ -67,7 +67,7 @@ class GenericPresenter extends GridPresenterBase
         { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ],
       filter: [
-        { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
         { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" }
       ]
     }

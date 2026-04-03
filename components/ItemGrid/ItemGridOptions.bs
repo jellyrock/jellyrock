@@ -182,7 +182,7 @@ sub optionsSet()
   else
     filterContent = CreateObject("roSGNode", "ContentNode")
     entry = filterContent.CreateChild("ContentNode")
-    entry.title = translate(translationKeys.LabelAll2)
+    entry.title = translate(translationKeys.LabelAll)
     m.filterNames.push("All")
     m.menus[2].content = filterContent
     m.menus[2].checkedItem = 0

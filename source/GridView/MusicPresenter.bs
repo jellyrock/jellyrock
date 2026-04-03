@@ -62,7 +62,7 @@ class MusicPresenter extends GridPresenterBase
         { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ]
       options.filter = [
-        { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
         { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" }
       ]
     else
@@ -75,7 +75,7 @@ class MusicPresenter extends GridPresenterBase
         { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ]
       options.filter = [
-        { "Title": translate(translationKeys.LabelAll2), "Name": "All" },
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
         { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" }
       ]
     end if
