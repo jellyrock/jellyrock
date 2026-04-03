@@ -23,6 +23,12 @@ sub init()
   languagesJson = ReadAsciiFile("pkg:/locale/languages.json")
   m.availableLanguages = ParseJson(languagesJson)
   if not isValid(m.availableLanguages) then m.availableLanguages = []
+  ' Normalize language entries so downstream code can safely access all fields
+  for each lang in m.availableLanguages
+    if not isValid(lang.name) then lang.name = ""
+    if not isValid(lang.nativeName) then lang.nativeName = ""
+    if not isValid(lang.code) then lang.code = ""
+  end for
 
   versionLabel = m.top.findNode("versionLabel")
   versionLabel.text = "v" + m.global.app.version
