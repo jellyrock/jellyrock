@@ -225,7 +225,7 @@ jobs:
 
           # Restore developer-owned files from the release branch
           # (main owns en_US.json and languages.json, not weblate)
-          git checkout HEAD -- locale/custom/en_US.json
+          git checkout ${{ needs.validate-and-prepare.outputs.branch_name }} -- locale/custom/en_US.json
 
           # Check for changes
           if git diff --quiet && git diff --cached --quiet; then
