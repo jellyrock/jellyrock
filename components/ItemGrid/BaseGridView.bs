@@ -1057,7 +1057,7 @@ sub updateTitle()
   m.top.overhangTitle = m.top.parentItem.title
 
   if m.filter = "Favorites"
-    m.top.overhangTitle = m.top.parentItem.title + " " + translate(translationKeys.LabelFavorites)
+    m.top.overhangTitle = m.top.parentItem.title + " " + translate(translationKeys.LabelFavoritesParenthetical)
   end if
 
   ' Voice search and alpha filters take precedence over view-specific titles

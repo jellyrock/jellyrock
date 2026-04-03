@@ -418,7 +418,7 @@ sub onProgressPercentageChanged()
 
   if itemType = "TvChannel"
     m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
-    m.videoRemainingTime.text = translate(translationKeys.LabelLive2)
+    m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
     m.progressBar.width = m.progressBarBackground.width ' set to full width
   else
     m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)

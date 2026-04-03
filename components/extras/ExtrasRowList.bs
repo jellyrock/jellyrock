@@ -395,7 +395,7 @@ sub onSeasonAllEpisodesLoaded()
 
   if isValid(episodes) and episodes.count() > 0
     m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-    m.rowEpisodes = populateRow(m.rowEpisodes, translate(translationKeys.LabelEpisodes2), episodes, rowSlotSize.ROW_HEIGHT_WIDE)
+    m.rowEpisodes = populateRow(m.rowEpisodes, translate(translationKeys.LabelEpisodes), episodes, rowSlotSize.ROW_HEIGHT_WIDE)
   else if isValid(m.rowEpisodes)
     removeRow(m.rowEpisodes)
     m.rowEpisodes = invalid
@@ -612,7 +612,7 @@ sub onShowsLoaded()
   m.LoadShowsTask.unobserveField("content")
   if isValid(data) and data.count() > 0
     ' personTVShows loads Episode items — use WIDE slot for episode screenshots
-    m.rowTvShows = populateRow(m.rowTvShows, translate(translationKeys.LabelEpisodes2), data, rowSlotSize.ROW_HEIGHT_WIDE)
+    m.rowTvShows = populateRow(m.rowTvShows, translate(translationKeys.LabelEpisodes), data, rowSlotSize.ROW_HEIGHT_WIDE)
     addRowSize(rowSlotSize.WIDE)
     ' Signal early — we already know there is media, no need to wait for the full chain
     m.top.personHasMedia = true
@@ -831,7 +831,7 @@ sub onPhotoAlbumItemsLoaded()
   m.LoadPhotoAlbumItemsTask.content = []
 
   if isValid(items) and items.count() > 0
-    m.rowPhotoAlbumItems = populateRow(m.rowPhotoAlbumItems, translate(translationKeys.LabelPhotos2), items, rowSlotSize.ROW_HEIGHT_WIDE)
+    m.rowPhotoAlbumItems = populateRow(m.rowPhotoAlbumItems, translate(translationKeys.LabelPhotos), items, rowSlotSize.ROW_HEIGHT_WIDE)
   else if isValid(m.rowPhotoAlbumItems)
     removeRow(m.rowPhotoAlbumItems)
     m.rowPhotoAlbumItems = invalid

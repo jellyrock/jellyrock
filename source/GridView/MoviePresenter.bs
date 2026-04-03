@@ -67,7 +67,7 @@ class MoviePresenter extends GridPresenterBase
       ],
       filter: [
         { "Title": translate(translationKeys.LabelAll), "Name": "All" },
-        { "Title": translate(translationKeys.LabelFavorites2), "Name": "Favorites" },
+        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
         { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
         { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" },
         { "Title": translate(translationKeys.LabelResumable), "Name": "Resumable" }

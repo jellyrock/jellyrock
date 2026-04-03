@@ -32,7 +32,7 @@ sub init()
   ' Tab configuration
   m.top.overhangTabs = [
     { title: translate(translationKeys.LabelHome), id: "home" },
-    { title: translate(translationKeys.LabelFavorites2), id: "favorites" }
+    { title: translate(translationKeys.LabelFavorites), id: "favorites" }
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")

@@ -30,7 +30,7 @@ sub init()
   m.typeLabels = {
     "Movie": translate(translationKeys.LabelMovies),
     "Series": translate(translationKeys.LabelSeries),
-    "Episode": translate(translationKeys.LabelEpisodes2),
+    "Episode": translate(translationKeys.LabelEpisodes),
     "Person": translate(translationKeys.LabelPeople),
     "Playlist": translate(translationKeys.LabelPlaylists),
     "MusicArtist": translate(translationKeys.LabelArtists),
@@ -42,7 +42,7 @@ sub init()
     "TvChannel": translate(translationKeys.LabelChannels),
     "Recording": translate(translationKeys.LabelRecordings),
     "PhotoAlbum": translate(translationKeys.LabelPhotoAlbums),
-    "Photo": translate(translationKeys.LabelPhotos2),
+    "Photo": translate(translationKeys.LabelPhotos),
     "BoxSet": translate(translationKeys.LabelCollections)
   }
   m.initialLoadComplete = false
