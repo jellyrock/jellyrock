@@ -151,23 +151,28 @@ sub programUpdated()
   localStartDate.FromISO8601String(prog.startDate)
   localStartDate.ToLocalTime()
 
+  ' Get End Date in local timezone for display to user
+  localEndDate = createObject("roDateTime")
+  localEndDate.FromISO8601String(prog.endDate)
+  localEndDate.ToLocalTime()
+
   if startDate.AsSeconds() < now.AsSeconds() and endDate.AsSeconds() > now.AsSeconds()
-    if day = "today"
+    if day = translationKeys.DayToday
       m.broadcastDetails.text = translate(translationKeys.LabelStartedAt) + " " + formatTime(localStartDate)
     else
       m.broadcastDetails.text = translate(translationKeys.LabelStarted) + " " + translate(day) + ", " + formatTime(localStartDate)
     end if
   else if startDate.AsSeconds() > now.AsSeconds()
-    if day = "today"
+    if day = translationKeys.DayToday
       m.broadcastDetails.text = translate(translationKeys.LabelStartsAt) + " " + formatTime(localStartDate)
     else
       m.broadcastDetails.text = translate(translationKeys.LabelStarts) + " " + translate(day) + ", " + formatTime(localStartDate)
     end if
   else
-    if day = "today"
-      m.broadcastDetails.text = translate(translationKeys.LabelEndedAt) + " " + formatTime(localStartDate)
+    if day = translationKeys.DayToday
+      m.broadcastDetails.text = translate(translationKeys.LabelEndedAt) + " " + formatTime(localEndDate)
     else
-      m.broadcastDetails.text = translate(translationKeys.LabelEnded) + " " + translate(day) + ", " + formatTime(localStartDate)
+      m.broadcastDetails.text = translate(translationKeys.LabelEnded) + " " + translate(day) + ", " + formatTime(localEndDate)
     end if
   end if
 
@@ -205,11 +210,6 @@ end sub
 ' Get relative date name for a date (yesterday, today, tomorrow, or otherwise weekday name )
 function getRelativeDayName(date) as string
   now = createObject("roDateTime")
-  ' Weekday keys referenced dynamically by "Day" + date.GetWeekday() below:
-  ' translationKeys.DayMonday, translationKeys.DayTuesday, translationKeys.DayWednesday
-  ' translationKeys.DayThursday, translationKeys.DayFriday, translationKeys.DaySaturday
-  ' translationKeys.DaySunday
-
   ' Check for Today
   if now.AsDateString("short-date-dashes") = date.AsDateString("short-date-dashes")
     return translationKeys.DayToday
@@ -227,7 +227,17 @@ function getRelativeDayName(date) as string
     return translationKeys.DayTomorrow
   end if
 
-  return "Day" + date.GetWeekday()
+  ' GetWeekday() returns 0 (Sunday) through 6 (Saturday)
+  weekdays = [
+    translationKeys.DaySunday,
+    translationKeys.DayMonday,
+    translationKeys.DayTuesday,
+    translationKeys.DayWednesday,
+    translationKeys.DayThursday,
+    translationKeys.DayFriday,
+    translationKeys.DaySaturday
+  ]
+  return weekdays[date.GetWeekday()]
 
 end function
 
