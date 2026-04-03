@@ -56,6 +56,8 @@
     "**/.git": true,
     "**/node_modules/**": true,
     "locale/**": true,
+    "locale/custom/en_US.json": false,
+    "scripts/**": true,
     "build/**": true,
     "out/**": true,
     ".vscode/settings.json": true,
