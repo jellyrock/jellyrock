@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- custom translation engine with 103 locales and Weblate CI/CD ([#451](https://github.com/jellyrock/jellyrock/pull/451))
+- custom translation engine with 98 locales and Weblate CI/CD ([#451](https://github.com/jellyrock/jellyrock/pull/451))
 
 ### Fixed
 
