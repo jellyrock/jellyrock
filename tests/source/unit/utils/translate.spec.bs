@@ -17,7 +17,8 @@ namespace tests
           "MessageSearchResults": "{0} résultats pour ""{1}""",
           "LabelEpisodeCountZero": "Aucun épisode",
           "LabelEpisodeCountOne": "1 épisode",
-          "LabelEpisodeCountMany": "{0} épisodes"
+          "LabelEpisodeCountMany": "{0} épisodes",
+          "EmptyValue": ""
         },
         translationsFallback: {
           "ButtonPlay": "Play",
@@ -28,7 +29,8 @@ namespace tests
           "ErrorConnectionFailed": "Could not connect to server",
           "LabelEpisodeCountZero": "No episodes",
           "LabelEpisodeCountOne": "1 episode",
-          "LabelEpisodeCountMany": "{0} episodes"
+          "LabelEpisodeCountMany": "{0} episodes",
+          "MessageFallbackTest": "Hello {0}, welcome to {1}"
         },
         translationLocale: "fr"
       })
@@ -112,11 +114,7 @@ namespace tests
 
     @it("substitutes placeholders in fallback string")
     function _()
-      ' Use a key that only exists in fallback but has placeholders
-      ' ErrorConnectionFailed has no placeholders, so test with a key in fallback
-      ' MessageVideoStartsIn exists in active, so test fallback by using a key
-      ' only in fallback. Let's add one for this test.
-      m.global.translationsFallback["MessageFallbackTest"] = "Hello {0}, welcome to {1}"
+      ' MessageFallbackTest only exists in fallback (set up in setup())
       result = translate("MessageFallbackTest", ["Charlie", "JellyRock"])
       m.assertEqual(result, "Hello Charlie, welcome to JellyRock")
     end function
@@ -127,7 +125,7 @@ namespace tests
 
     @it("handles key with empty string value in active locale")
     function _()
-      m.global.translations["EmptyValue"] = ""
+      ' EmptyValue is set to "" in active locale (set up in setup())
       result = translate("EmptyValue")
       ' Empty string is valid (not invalid), so it should return the empty string
       m.assertEqual(result, "")
