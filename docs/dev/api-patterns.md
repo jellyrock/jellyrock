@@ -70,7 +70,7 @@ Use `roUrlTransfer` + `port.WaitMessage()` for the HTTP request. **Do NOT use `r
 
 `FontDownloadTask` still uses `rr_Requests()` safely because it has no render-thread timers — the collision window is negligible. Tasks with timers (like `captionTask`) must use `roUrlTransfer` + `WaitMessage()` instead.
 
-Examples: `captionTask` (roUrlTransfer + WaitMessage), `FontDownloadTask` (rr_Requests), `ServerDiscoveryTask` (roUrlTransfer + wait)
+Examples: `captionTask` (`roUrlTransfer` + `WaitMessage`), `FontDownloadTask` (rr_Requests), `ServerDiscoveryTask` (`roUrlTransfer` + wait)
 
 ## Decision Tree
 
