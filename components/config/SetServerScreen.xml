@@ -2,7 +2,7 @@
 <component name="SetServerScreen" extends="JRScreen">
   <interface>
     <field id="serverUrl" type="string" alias="serverUrlTextbox.text" />
-    <field id="serverWidth" alias="serverUrlOutline.width,serverUrlTextbox.width,serverUrlContainer.width,submitSizer.width" value="1620" />
+    <field id="serverWidth" alias="serverUrlOutline.width,serverUrlTextbox.width,serverUrlContainer.width" value="1620" />
     <field id="serverHeight" alias="serverUrlOutline.height,serverUrlTextbox.height,serverUrlContainer.height" value="60" />
     <field id="errorMessage" type="string" alias="errorMessage.text" />
   </interface>
