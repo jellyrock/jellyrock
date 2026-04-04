@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- resolve captionTask data race crash ([#453](https://github.com/jellyrock/jellyrock/pull/453))
 - (translation) rebuild translation key constants when en_US.json is edited ([a2ac7fb](https://github.com/jellyrock/jellyrock/commit/a2ac7fbb))
 - (translation) use ellipsis instead of three dots ([6440cf2](https://github.com/jellyrock/jellyrock/commit/6440cf24))
 - (ci) gate device tests behind environment approval ([fe16ab4](https://github.com/jellyrock/jellyrock/commit/fe16ab49))
