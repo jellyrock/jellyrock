@@ -53,6 +53,18 @@ namespace tests
       m.assertTrue(true)
     end function
 
+    @it("updateCaption does not crash after destroy")
+    function _()
+      m.captionTask.captionData = { entries: [{ "start": 0, "end": 1000, "text": "Hello" }] }
+      m.captionTask.playerState = "playingOn"
+      m.captionTask.currentPos = 500
+      m.captionTask.callFunc("destroy")
+      ' Simulate a late timer fire — the defensive guard in updateCaption()
+      ' should return early when m.tags/m.captionList are invalid
+      m.captionTask.callFunc("updateCaption")
+      m.assertTrue(true)
+    end function
+
   end class
 
 end namespace

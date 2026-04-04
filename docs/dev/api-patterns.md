@@ -64,9 +64,13 @@ Non-blocking, serialized, no response observed.
 
 ### Pattern 4: Dedicated Task (non-API)
 
-Direct `rr_Requests()` in a standalone Task. For non-Jellyfin HTTP, binary downloads, timer-driven loops.
+Standalone Task for non-Jellyfin HTTP, binary downloads, or timer-driven loops.
 
-Examples: `captionTask`, `FontDownloadTask`, `ServerDiscoveryTask`
+Use `roUrlTransfer` + `port.WaitMessage()` for the HTTP request. **Do NOT use `rr_Requests()` in Tasks with active render-thread timers or frequent field observers.** `rr_Requests_run()` is a standalone function whose `m` resolves to the component's shared `m` AA; its busy-polling loop reads `m.top` thousands of times per second from the task thread, racing with any render-thread code that also reads `m`. This data race corrupts the AA's internal state and causes intermittent crashes.
+
+`FontDownloadTask` still uses `rr_Requests()` safely because it has no render-thread timers — the collision window is negligible. Tasks with timers (like `captionTask`) must use `roUrlTransfer` + `WaitMessage()` instead.
+
+Examples: `captionTask` (roUrlTransfer + WaitMessage), `FontDownloadTask` (rr_Requests), `ServerDiscoveryTask` (roUrlTransfer + wait)
 
 ## Decision Tree
 
