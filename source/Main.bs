@@ -729,8 +729,9 @@ sub Main (args as dynamic) as void
       actionId = button.id
 
       ' Close the side panel before handling the action
+      ' Search from scene — panel may be reparented to optionsPanelOverlay while open
       if isValid(group)
-        panel = group.findNode("options")
+        panel = m.scene.findNode("options")
         if isValid(panel)
           panel.visible = false
         end if

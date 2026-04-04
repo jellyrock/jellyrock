@@ -4,6 +4,8 @@
     <BackdropFader id="imageFader" translation="[0, 0]" />
     <Group id="content" />
     <JROverhang id="overhang" />
+    <!-- Container for OptionsSlider when open, rendered above overhang for correct z-order -->
+    <Group id="optionsPanelOverlay" />
     <LabelPrimaryLarge id="loadingText" height="225" width="1266" horizAlign="center" vertAlign="bottom" wrap="true" translation="[327, 210]" visible="false" />
     <Spinner id="spinner" translation="[897, 477]" />
     <Toast id="toast" visible="false" />

@@ -1,17 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="OptionsSlider" extends="PanelSet">
+<component name="OptionsSlider" extends="Group">
   <children>
-    <ListPanel id="panel">
+    <!-- Wrapper group animated for slide in/out. Starts off-screen left. -->
+    <Group id="sliderGroup" translation="[-700, 0]">
+      <!-- Color set in OptionsSlider.bs init() from constants (colorBlack + alpha90) -->
       <Rectangle id="backdrop"
-        translation="[0, 0]"
-        color="#101010DD"
-        width="575"
+        width="700"
         height="1080" />
-      <LabelList id="panelList">
+      <LabelList id="panelList"
+        translation="[132, 175]"
+        itemSize="[510, 66]"
+        numRows="10"
+        drawFocusFeedback="true">
         <ContentNode id="fieldList" role="content" />
       </LabelList>
-    </ListPanel>
+    </Group>
+
+    <!-- Slide-in animation following ExtrasSlider pattern -->
+    <Animation id="slideInAnim" duration="0.25" repeat="false" easeFunction="outCubic">
+      <!-- keyValue set in OptionsSlider.bs before each animation start -->
+      <Vector2DFieldInterpolator id="slideInInterp"
+        key="[0.0, 1.0]"
+        fieldToInterp="sliderGroup.translation" />
+    </Animation>
   </children>
+
   <interface>
     <field id="buttons" type="nodearray" onChange="setFields" />
     <field id="options" type="nodearray" onChange="setFields" />
