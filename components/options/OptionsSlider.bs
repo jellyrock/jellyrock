@@ -1,16 +1,35 @@
 sub init()
   m.top.visible = false
 
-  panel = m.top.findNode("panel")
-  panel.panelSize = "small"
-  panel.leftPosition = 96
-  panel.focusable = true
-  panel.hasNextPanel = false
-  panel.leftOnly = true
+  m.sliderGroup = m.top.findNode("sliderGroup")
+  m.slideInAnim = m.top.findNode("slideInAnim")
+  m.slideInInterp = m.top.findNode("slideInInterp")
+  m.panelOverlay = m.top.getScene().findNode("optionsPanelOverlay")
 
-  list = m.top.findNode("panelList")
+  constants = m.global.constants
+  m.top.findNode("backdrop").color = constants.colorBlack + constants.alpha90
 
-  panel.list = list
+  m.top.observeField("visible", "onVisibleChanged")
+end sub
+
+sub onVisibleChanged()
+  if m.top.visible
+    ' Reparent to overlay container (after overhang in JRScene) for correct z-order
+    m.originalParent = m.top.getParent()
+    m.panelOverlay.appendChild(m.top)
+    ' Animate slide-in from left
+    m.slideInInterp.keyValue = [[-700, 0], [0, 0]]
+    m.slideInAnim.control = "start"
+  else
+    ' Reset position to off-screen for next open
+    m.slideInAnim.control = "stop"
+    m.sliderGroup.translation = [-700, 0]
+    ' Reparent back to original screen
+    if m.originalParent <> invalid
+      m.originalParent.appendChild(m.top)
+      m.originalParent = invalid
+    end if
+  end if
 end sub
 
 sub setFields()
