@@ -1,5 +1,4 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/roku_modules/rr/Requests.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -70,34 +69,66 @@ function arraysEqual(arr1, arr2) as boolean
 end function
 
 ' Runs on the Task thread via functionName. HTTP requests require a Task thread.
+'
+' Uses raw roUrlTransfer + WaitMessage instead of rr_Requests().
+' rr_Requests_run() is a standalone function whose m resolves to the component's
+' shared m AA. Its busy-polling loop reads m.top thousands of times per second
+' from the task thread, racing with the render thread's 100ms caption timer that
+' reads m.tags/m.captionList from the same unsynchronized m AA — corrupting it
+' and causing the &hf3 crash on m.tags.replaceAll().
+' WaitMessage() blocks at the OS level without touching m, eliminating the race.
 sub fetchCaption()
-  m.log.debug("Start fetchCaption()", m.top.url)
+  ' Cache m.top into a local so the rest of this function minimizes touches to
+  ' the shared m AA. m is unsynchronized between threads; a single read
+  ' to grab the node reference is far safer than repeated lookups.
+  ' Note: m.log calls remain but are stripped from production builds.
+  top = m.top
 
-  ' Immediately clear captions via the bridge field so the render-thread handler
+  m.log.debug("Start fetchCaption()", top.url)
+
+  ' Clear captions immediately via the bridge field so the render-thread handler
   ' stops the caption timer and clears currentCaption before the fetch begins.
   ' This prevents stale captions from a previous track showing during the request.
-  m.top.captionData = { entries: [] }
+  top.captionData = { entries: [] }
 
   re = CreateObject("roRegex", "(http.*?\.vtt)", "s")
-  matchResult = re.match(m.top.url)
+  matchResult = re.match(top.url)
 
   if not isValid(matchResult) or matchResult.count() = 0
-    m.log.warn("No valid VTT URL found in:", m.top.url)
+    m.log.warn("No valid VTT URL found in:", top.url)
     m.log.debug("End fetchCaption()")
     return
   end if
 
   url = matchResult[0]
-  r = rr_Requests().get(url, { timeout: 10000, useCache: false })
-  if r.ok
-    vttContent = r.text
-    m.log.debug("VTT content received, length:", vttContent.len())
-    entries = parseVTT(vttContent)
-    m.log.info("Parsed", entries.count(), "caption entries")
-    m.top.captionData = { entries: entries }
+
+  urlTransfer = CreateObject("roUrlTransfer")
+  if url.Left(8) = "https://"
+    urlTransfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
+  end if
+  port = CreateObject("roMessagePort")
+  urlTransfer.SetMessagePort(port)
+  urlTransfer.SetUrl(url)
+  urlTransfer.AddHeader("Cache-Control", "no-cache")
+
+  if urlTransfer.AsyncGetToString()
+    msg = port.WaitMessage(10000)
+    if type(msg) = "roUrlEvent" and msg.GetResponseCode() = 200
+      vttContent = msg.GetString()
+      m.log.debug("VTT content received, length:", vttContent.len())
+      entries = parseVTT(vttContent)
+      m.log.info("Parsed", entries.count(), "caption entries")
+      top.captionData = { entries: entries }
+    else if type(msg) = "roUrlEvent"
+      m.log.error("Caption fetch failed — URL:", url, "responseCode:", msg.GetResponseCode(), "reason:", msg.GetFailureReason())
+      top.captionData = { entries: [] }
+    else
+      m.log.error("Caption fetch timed out — URL:", url)
+      top.captionData = { entries: [] }
+    end if
   else
-    m.log.error("Failed to fetch captions. HTTP response code:", r.statusCode)
-    m.top.captionData = { entries: [] }
+    m.log.error("Failed to initiate caption download")
+    top.captionData = { entries: [] }
   end if
   m.log.debug("End fetchCaption()")
 end sub
@@ -160,6 +191,10 @@ end function
 
 sub updateCaption()
   if LCase(m.top.playerState) = "playingon"
+    ' Guard against m fields being invalid (e.g. destroy() was called but a
+    ' final queued timer event still fires before the observer is removed)
+    if not isValid(m.tags) or not isValid(m.captionList) then return
+
     m.top.currentPos = m.top.currentPos + 100
     texts = []
     for each entry in m.captionList
