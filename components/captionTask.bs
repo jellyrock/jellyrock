@@ -78,9 +78,10 @@ end function
 ' and causing the &hf3 crash on m.tags.replaceAll().
 ' WaitMessage() blocks at the OS level without touching m, eliminating the race.
 sub fetchCaption()
-  ' Cache m.top into a local so the rest of this function never touches the
-  ' shared m AA again. m is unsynchronized between threads; a single read
+  ' Cache m.top into a local so the rest of this function minimizes touches to
+  ' the shared m AA. m is unsynchronized between threads; a single read
   ' to grab the node reference is far safer than repeated lookups.
+  ' Note: m.log calls remain but are stripped from production builds.
   top = m.top
 
   m.log.debug("Start fetchCaption()", top.url)
@@ -108,6 +109,7 @@ sub fetchCaption()
   port = CreateObject("roMessagePort")
   urlTransfer.SetMessagePort(port)
   urlTransfer.SetUrl(url)
+  urlTransfer.AddHeader("Cache-Control", "no-cache")
 
   if urlTransfer.AsyncGetToString()
     msg = port.WaitMessage(10000)
@@ -117,8 +119,11 @@ sub fetchCaption()
       entries = parseVTT(vttContent)
       m.log.info("Parsed", entries.count(), "caption entries")
       top.captionData = { entries: entries }
+    else if type(msg) = "roUrlEvent"
+      m.log.error("Caption fetch failed — URL:", url, "responseCode:", msg.GetResponseCode(), "reason:", msg.GetFailureReason())
+      top.captionData = { entries: [] }
     else
-      m.log.error("Failed to fetch captions")
+      m.log.error("Caption fetch timed out — URL:", url)
       top.captionData = { entries: [] }
     end if
   else
