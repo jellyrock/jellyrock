@@ -36,6 +36,7 @@ sub setFields()
   options = m.top.options
   buttons = m.top.buttons
   row = m.top.findNode("fieldList")
+  if row = invalid then return
 
   row.clear()
   row.appendChildren(options)
