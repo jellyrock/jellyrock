@@ -742,7 +742,7 @@ end function
 ' getFirstVideoStream: Finds the first video stream in MediaStreams array
 ' MediaStreams[0] is not always a video stream - it could be subtitle or audio
 '
-' @param {array} mediaStreams - Array of media streams from playback info
+' @param {roArray} mediaStreams - Array of media streams from playback info
 ' @return {object} First video stream object, or invalid if not found
 function getFirstVideoStream(mediaStreams as object) as dynamic
   if not isValid(mediaStreams) then return invalid

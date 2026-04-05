@@ -752,8 +752,8 @@ sub preloadAdjacentTiles(centerThumbnailIndex as integer)
 end sub
 
 ' Sorts tile indexes by priority: closest to current position first, then by scrub direction
-' @param {Array} tileIndexes - Array of tile indexes to sort
-' @return {Array} - Sorted array of tile indexes
+' @param {roArray} tileIndexes - Array of tile indexes to sort
+' @return {roArray} - Sorted array of tile indexes
 function prioritizeTileQueue(tileIndexes as object) as object
   if not isValid(tileIndexes) or tileIndexes.count() <= 1 then return tileIndexes
 
@@ -875,7 +875,7 @@ end function
 
 ' Requests multiple tiles to be loaded via queue system
 ' Prevents request cancellation by queuing instead of stopping in-flight requests
-' @param {Array} tileIndexes - Array of tile indexes to load
+' @param {roArray} tileIndexes - Array of tile indexes to load
 sub requestTiles(tileIndexes as dynamic)
   if not isValid(tileIndexes) or tileIndexes.count() = 0 then return
 
@@ -901,7 +901,7 @@ sub requestTiles(tileIndexes as dynamic)
 end sub
 
 ' Starts the tile loader task with specified tiles
-' @param {Array} tileIndexes - Array of tile indexes to load
+' @param {roArray} tileIndexes - Array of tile indexes to load
 sub startTileLoader(tileIndexes as dynamic)
   m.log.debug("Starting tile loader", tileIndexes)
   m.taskRunning = true
@@ -994,7 +994,7 @@ end sub
 
 ' Refreshes posters that were waiting for newly loaded tiles
 ' Only updates posters that have thumbnails in the newly loaded tiles
-' @param {AssocArray} loadedTiles - Map of tileIndex -> cachePath
+' @param {roAssociativeArray} loadedTiles - Map of tileIndex -> cachePath
 sub refreshPostersWithNewTiles(loadedTiles as object)
   ' Check each poster to see if its thumbnail is in a newly loaded tile
   for i = 0 to 4

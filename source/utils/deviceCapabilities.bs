@@ -1146,9 +1146,9 @@ end function
 ' filterCodecProfileConditions: Removes conditions with specified properties from codec profiles
 ' Used for version compatibility - e.g., removing VideoRangeType for pre-10.9 servers
 '
-' @param {array} codecProfiles - Array of codec profile objects
-' @param {array} propertiesToRemove - Array of property names to filter out
-' @return {array} Filtered codec profiles
+' @param {roArray} codecProfiles - Array of codec profile objects
+' @param {roArray} propertiesToRemove - Array of property names to filter out
+' @return {roArray} Filtered codec profiles
 function filterCodecProfileConditions(codecProfiles as object, propertiesToRemove as object) as object
   filteredProfiles = []
 

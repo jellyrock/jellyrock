@@ -54,9 +54,9 @@ end function
 ' Linear scan over the segments array (typically 2-5 items).
 ' Returns the first segment where StartTicks <= position < EndTicks.
 '
-' @param {array} segments - Array of MediaSegmentDto objects ({Id, Type, StartTicks, EndTicks})
+' @param {roArray} segments - Array of MediaSegmentDto objects ({Id, Type, StartTicks, EndTicks})
 ' @param {float} positionSeconds - Current playback position in seconds
-' @returns {dynamic} - The active MediaSegmentDto or invalid if not inside any segment
+' @returns {dynamic} The active MediaSegmentDto or invalid if not inside any segment
 function findActiveSegment(segments as object, positionSeconds as float) as dynamic
   if not isValid(segments) then return invalid
 
@@ -78,9 +78,9 @@ end function
 ' Prefer this over caching segment objects, since the segments array can be
 ' replaced during content loading (audio/subtitle track changes).
 '
-' @param {array} segments - Array of MediaSegmentDto objects
+' @param {roArray} segments - Array of MediaSegmentDto objects
 ' @param {string} segmentId - The segment Id to find
-' @returns {dynamic} - The matching MediaSegmentDto or invalid if not found
+' @returns {dynamic} The matching MediaSegmentDto or invalid if not found
 function findSegmentById(segments as object, segmentId as string) as dynamic
   if not isValid(segments) or segmentId = "" then return invalid
 

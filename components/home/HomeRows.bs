@@ -104,7 +104,7 @@ end sub
 
 ' buildSectionPlan: Reads homeSection0-6 settings, returns ordered array of sections to display
 '
-' @return {array} of { type: string, settingIndex: integer }
+' @return {roArray} Array of { type: string, settingIndex: integer }
 function buildSectionPlan() as object
   plan = []
   userSettings = m.global.user.settings
@@ -686,8 +686,8 @@ end sub
 
 ' Gets an item from content at specified row and item indices
 ' Performs all necessary bounds checking and validation
-' @param {array} indices - [rowIndex, itemIndex]
-' @return {dynamic} - ContentNode if valid, invalid otherwise
+' @param {roArray} indices - [rowIndex, itemIndex]
+' @return {dynamic} ContentNode if valid, invalid otherwise
 function getItemAtIndices(indices as object) as dynamic
   if not isValidAndNotEmpty(indices) or not isValid(m.top.content)
     return invalid
