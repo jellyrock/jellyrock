@@ -252,32 +252,22 @@ namespace tests
       m.assertTrue(result.transformedAt > 0)
     end function
 
-    #if debug
-      @it("DEBUG MODE: populates rawApiData field")
-      function _()
-        transformer = new JellyfinDataTransformer()
+    @it("populates rawApiData field only in debug mode")
+    function _()
+      transformer = new JellyfinDataTransformer()
 
-        apiData = MockDataLoader.LoadItem("movie-basic")
+      apiData = MockDataLoader.LoadItem("movie-basic")
 
-        result = transformer.transformBaseItem(apiData, "10.8.0")
+      result = transformer.transformBaseItem(apiData, "10.8.0")
 
-        m.assertNotInvalid(result)
+      m.assertNotInvalid(result)
+      #if debug
         m.assertNotInvalid(result.rawApiData, "rawApiData should be populated in debug mode")
         m.assertEqual(result.rawApiData.Id, "movie123")
-      end function
-    #else
-      @it("PRODUCTION MODE: does not populate rawApiData field")
-      function _()
-        transformer = new JellyfinDataTransformer()
-
-        apiData = MockDataLoader.LoadItem("movie-basic")
-
-        result = transformer.transformBaseItem(apiData, "10.8.0")
-
-        m.assertNotInvalid(result)
+      #else
         m.assertInvalid(result.rawApiData, "rawApiData should NOT be populated in production mode")
-      end function
-    #end if
+      #end if
+    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("SessionDataTransformer")
@@ -571,86 +561,60 @@ namespace tests
       m.assertInvalid(result)
     end function
 
-    #if debug
-      @it("DEBUG MODE: populates rawServerInfo field")
-      function _()
-        transformer = new SessionDataTransformer()
+    @it("populates rawServerInfo field only in debug mode")
+    function _()
+      transformer = new SessionDataTransformer()
 
-        serverData = MockDataLoader.LoadServer("default")
+      serverData = MockDataLoader.LoadServer("default")
 
-        result = transformer.transformServerInfo(serverData)
+      result = transformer.transformServerInfo(serverData)
 
-        m.assertNotInvalid(result)
+      m.assertNotInvalid(result)
+      #if debug
         m.assertNotInvalid(result.rawServerInfo, "rawServerInfo should be populated in debug mode")
         m.assertEqual(result.rawServerInfo.Id, "test-server-123")
-      end function
+      #else
+        m.assertInvalid(result.rawServerInfo, "rawServerInfo should NOT be populated in production mode")
+      #end if
+    end function
 
-      @it("DEBUG MODE: populates rawUserData, rawConfigData, rawPolicyData fields")
-      function _()
-        transformer = new SessionDataTransformer()
+    @it("populates rawUserData, rawConfigData, rawPolicyData fields only in debug mode")
+    function _()
+      transformer = new SessionDataTransformer()
 
-        userData = MockDataLoader.LoadUser("admin")
+      userData = MockDataLoader.LoadUser("admin")
 
-        result = transformer.transformUserInfo(userData)
+      result = transformer.transformUserInfo(userData)
 
-        m.assertNotInvalid(result)
+      m.assertNotInvalid(result)
+      #if debug
         m.assertNotInvalid(result.rawUserData, "rawUserData should be populated in debug mode")
         m.assertNotInvalid(result.config.rawConfigData, "rawConfigData should be populated in debug mode on config node")
         m.assertNotInvalid(result.policy.rawPolicyData, "rawPolicyData should be populated in debug mode on policy node")
         m.assertEqual(result.rawUserData.id, "admin-user-456")
-      end function
-
-      @it("DEBUG MODE: populates rawSettings field")
-      function _()
-        transformer = new SessionDataTransformer()
-
-        settingsData = MockDataLoader.LoadRegistryUserSettings("user-settings")
-
-        result = transformer.transformUserSettings(settingsData)
-
-        m.assertNotInvalid(result)
-        m.assertNotInvalid(result.rawSettings, "rawSettings should be populated in debug mode")
-        m.assertTrue(result.rawSettings.Count() > 0)
-      end function
-    #else
-      @it("PRODUCTION MODE: does not populate rawServerInfo field")
-      function _()
-        transformer = new SessionDataTransformer()
-
-        serverData = MockDataLoader.LoadServer("default")
-
-        result = transformer.transformServerInfo(serverData)
-
-        m.assertNotInvalid(result)
-        m.assertInvalid(result.rawServerInfo, "rawServerInfo should NOT be populated in production mode")
-      end function
-
-      @it("PRODUCTION MODE: does not populate rawUserData, rawConfigData, rawPolicyData fields")
-      function _()
-        transformer = new SessionDataTransformer()
-
-        userData = MockDataLoader.LoadUser("admin")
-
-        result = transformer.transformUserInfo(userData)
-
-        m.assertNotInvalid(result)
+      #else
         m.assertInvalid(result.rawUserData, "rawUserData should NOT be populated in production mode")
         m.assertInvalid(result.rawConfigData, "rawConfigData should NOT be populated in production mode")
         m.assertInvalid(result.rawPolicyData, "rawPolicyData should NOT be populated in production mode")
-      end function
+      #end if
+    end function
 
-      @it("PRODUCTION MODE: does not populate rawSettings field")
-      function _()
-        transformer = new SessionDataTransformer()
+    @it("populates rawSettings field only in debug mode")
+    function _()
+      transformer = new SessionDataTransformer()
 
-        settingsData = MockDataLoader.LoadRegistryUserSettings("user-settings")
+      settingsData = MockDataLoader.LoadRegistryUserSettings("user-settings")
 
-        result = transformer.transformUserSettings(settingsData)
+      result = transformer.transformUserSettings(settingsData)
 
-        m.assertNotInvalid(result)
+      m.assertNotInvalid(result)
+      #if debug
+        m.assertNotInvalid(result.rawSettings, "rawSettings should be populated in debug mode")
+        m.assertTrue(result.rawSettings.Count() > 0)
+      #else
         m.assertInvalid(result.rawSettings, "rawSettings should NOT be populated in production mode")
-      end function
-    #end if
+      #end if
+    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Complete Settings Coverage - NEW Names")
