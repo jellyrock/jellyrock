@@ -29,7 +29,7 @@
   "editor.insertSpaces": true,
   "editor.formatOnSave": true,
   "brightscript.output.hyperlinkFormat": "FilenameAndFunction",
-  "brightscript.bsdk": "node_modules/brighterscript",
+  "brightscript.bsdk": "1.0.0-alpha.50",
   "brightscript.projects": [
     {
       "path": "bsconfig.json",

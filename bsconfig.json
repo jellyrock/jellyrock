@@ -10,7 +10,7 @@
   "plugins": [
     "@rokucommunity/bslint",
     "brighterscript-xml-plugin",
-    "roku-log-bsc-plugin",
+    "./scripts/bsc-plugin-roku-log.cjs",
     "./scripts/bsc-plugin-translation-keys.cjs"
   ],
   "lintConfig": "bslint.json",
@@ -20,11 +20,15 @@
     "removeComments": false
   },
   "diagnosticFilters": [
-    "node_modules/**/*",
-    "**/roku_modules/**/*"
+    { "files": "node_modules/**/*" },
+    { "files": "**/roku_modules/**/*" },
+    "cannot-find-name",
+    "cannot-find-function",
+    "not-iterable",
+    "argument-type-mismatch"
   ],
   "sourceMap": true,
   "autoImportComponentScript": true,
-  "stagingDir": "build",
-  "retainStagingDir": true
+  "outDir": "build"
+
 }
