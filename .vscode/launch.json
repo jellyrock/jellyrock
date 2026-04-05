@@ -6,6 +6,7 @@
       "type": "brightscript",
       "request": "launch",
       "rootDir": "${workspaceFolder}/build",
+      "outDir": "${workspaceFolder}/build",
       "preLaunchTask": "build-dev",
       "stopOnEntry": false,
       // To enable RALE:
@@ -23,6 +24,7 @@
       "type": "brightscript",
       "request": "launch",
       "rootDir": "${workspaceFolder}/build",
+      "outDir": "${workspaceFolder}/build",
       "stopOnEntry": false,
       // To enable RALE:
       // set "brightscript.debug.raleTrackerTaskFileLocation": "/absolute/path/to/rale/TrackerTask.xml" in your vscode user settings
@@ -41,6 +43,7 @@
       "consoleOutput": "full",
       "internalConsoleOptions": "neverOpen",
       "preLaunchTask": "build-tests-unit",
+      "outDir": "${workspaceFolder}/build",
       "retainStagingFolder": true,
       "stopOnEntry": false,
       "files": [
@@ -72,6 +75,7 @@
       "consoleOutput": "full",
       "internalConsoleOptions": "neverOpen",
       "preLaunchTask": "build-tdd",
+      "outDir": "${workspaceFolder}/build",
       "retainStagingFolder": true,
       "stopOnEntry": false,
       "files": [
@@ -103,6 +107,7 @@
       "consoleOutput": "full",
       "internalConsoleOptions": "neverOpen",
       "preLaunchTask": "build-tests-integration",
+      "outDir": "${workspaceFolder}/build",
       "retainStagingFolder": true,
       "stopOnEntry": false,
       "files": [
@@ -134,6 +139,7 @@
       "consoleOutput": "full",
       "internalConsoleOptions": "neverOpen",
       "preLaunchTask": "build-tests-all",
+      "outDir": "${workspaceFolder}/build",
       "retainStagingFolder": true,
       "stopOnEntry": false,
       "files": [
