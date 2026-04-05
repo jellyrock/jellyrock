@@ -137,6 +137,7 @@ end sub
 ' Clean up all references and observers
 sub destroy()
   m.log.verbose("Destroying notification")
+  m.top.state = "hidden"
   m.autoDismissTimer.control = "stop"
   m.autoDismissTimer.unobserveField("fire")
   m.fadeOutAnimation.unobserveField("state")
