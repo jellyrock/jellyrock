@@ -505,7 +505,7 @@ sub Main (args as dynamic) as void
                 confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries2)
                 confirmBtn = translate(translationKeys.ButtonMarkWatched)
               end if
-              m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelWatched), [confirmMsg], [translate(translationKeys.ButtonCancel), confirmBtn])
+              m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelWatched), [confirmMsg], [translate(translationKeys.ButtonCancel), confirmBtn])
             else
               watchedButton = group.findNode("watchedButton")
               if isValid(watchedButton) and watchedButton.loading then continue while ' Already in-flight
@@ -709,7 +709,7 @@ sub Main (args as dynamic) as void
           print "deleteButton pressed"
           if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
             m.pendingDeleteItemId = group.itemContent.id
-            m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.ButtonDelete), [translate(translationKeys.ErrorAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonDelete)])
+            m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.ButtonDelete), [translate(translationKeys.ErrorAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonDelete)])
           end if
         else
           ' If there are no other button matches, check if this is a simple "OK" Dialog & Close if so

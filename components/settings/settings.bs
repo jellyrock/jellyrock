@@ -117,7 +117,7 @@ end sub
 
 ' Called when reset button is selected in HexKeyboard
 sub onHexResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onResetDialogResponse")
 end sub
 
@@ -195,7 +195,7 @@ end sub
 
 ' Called when reset button is selected in AlphaKeyboard
 sub onAlphaResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onAlphaResetDialogResponse")
 end sub
 
@@ -594,7 +594,7 @@ end function
 
 ' Show confirmation dialog before resetting all user settings
 sub confirmResetUserSettings()
-  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageAreYouSureYouWantTo2), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageAreYouSureYouWantTo2), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
   m.global.sceneManager.observeFieldScoped("dataReturned", "onResetUserSettingsResponse")
 end sub
 
@@ -701,7 +701,7 @@ end function
 sub exitSettingsAndReloadHome()
   ' Check if custom colors will be lost (user switched from Custom to a preset)
   if isValid(m.customColorBackup) and m.global.user.settings.uiTheme <> "custom" and hasCustomColorsChanged()
-    m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelReplaceCustomColors), translate(translationKeys.MessageYourCustomColorsWillBeReplaced), [translate(translationKeys.LabelYes), translate(translationKeys.LabelNo)])
+    m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelReplaceCustomColors), translate(translationKeys.MessageYourCustomColorsWillBeReplaced), [translate(translationKeys.LabelYes), translate(translationKeys.LabelNo)])
     m.global.sceneManager.observeFieldScoped("dataReturned", "onExitConfirmResponse")
     return
   end if

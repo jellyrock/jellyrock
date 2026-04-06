@@ -725,5 +725,5 @@ sub playbackOptionDialog(time as longinteger)
   ]
 
   stopLoadingSpinner()
-  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelPlaybackOptions), [], resumeData)
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelPlaybackOptions), [], resumeData)
 end sub

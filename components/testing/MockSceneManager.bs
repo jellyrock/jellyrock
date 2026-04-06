@@ -58,5 +58,5 @@ function isDialogOpen() as boolean
   return false
 end function
 
-sub optionDialog(_title as string, _message as string, _options as object)
+sub showConfirmationDialog(_title as string, _message as string, _options as object)
 end sub
