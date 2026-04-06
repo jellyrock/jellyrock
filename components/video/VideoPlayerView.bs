@@ -779,8 +779,10 @@ sub onVideoContentLoaded()
   if isValid(m.top.audioIndex)
     if isValid(videoContent[0].isTranscoded) and videoContent[0].isTranscoded
       ' Transcoded streams contain only the server-selected audio track.
-      ' Let Roku auto-select (only one track available).
-      m.log.debug("Transcoded stream: letting Roku auto-select audio", "jellyfinIndex", m.top.audioIndex)
+      ' Reset audioTrack so Roku auto-selects the single available track
+      ' (avoids stale values from prior direct play selecting a non-existent track).
+      m.top.audioTrack = ""
+      m.log.debug("Transcoded stream: reset audioTrack for auto-select", "jellyfinIndex", m.top.audioIndex)
     else
       ' Direct play: map Jellyfin index to Roku Track identifier.
       ' Pass availableAudioTracks for language-based matching when available (e.g., audio change reload).
