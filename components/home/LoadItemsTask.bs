@@ -276,7 +276,7 @@ sub loadItems()
   else if m.top.itemsToLoad = "boxsetitems"
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "ParentId": m.top.itemId,
-      "SortBy": "SortName",
+      "SortBy": "PremiereDate,SortName",
       "SortOrder": "Ascending",
       "Fields": "PrimaryImageAspectRatio,Overview",
       "EnableTotalRecordCount": false
