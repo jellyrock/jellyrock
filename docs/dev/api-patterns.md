@@ -91,7 +91,7 @@ Examples: `captionTask` (`roUrlTransfer` + `WaitMessage`), `FontDownloadTask` (r
 
 | File | Purpose |
 | ------ | ------- |
-| `source/api/ApiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `SubmitSideEffect()` |
+| `source/api/apiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `SubmitSideEffect()` |
 | `source/api/ApiClient.bs` | `Build*Request()` methods that create request AAs |
 | `components/api/ApiQueueTask.bs` | FIFO coordinator for the pool |
 | `components/api/ApiTask.bs` | Pool worker that executes HTTP requests |

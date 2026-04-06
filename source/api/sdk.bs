@@ -1,4 +1,4 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/baseRequest.bs"
 
 ' Jellyfin SDK — thin wrappers around API endpoints.
 ' Only used by ApiClient (via GetApi()). Do NOT call these functions directly.

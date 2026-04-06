@@ -23,8 +23,8 @@ Jellyfin 10.9 introduced breaking changes to user API endpoints by removing `/Us
 
 - `source/api/ApiClient.bs` - Dispatcher that routes to appropriate version and injects defaults
 - `source/api/sdk.bs` - Base SDK with static endpoints (shows, artists, items, etc.)
-- `source/api/sdk.v1.bs` - 10.7.x - 10.8.x user endpoint implementations
-- `source/api/sdk.v2.bs` - 10.9+ user endpoint implementations
+- `source/api/sdkV1.bs` - 10.7.x - 10.8.x user endpoint implementations
+- `source/api/sdkV2.bs` - 10.9+ user endpoint implementations
 
 ### 2. Device Profile Versioning
 
@@ -95,7 +95,7 @@ The `MediaSegments` API provides segment timing data (intro, outro, recap, previ
 - `source/enums/MediaSegmentType.bs` - Segment type enum (Intro, Outro, Commercial, Preview, Recap, Unknown)
 - `source/enums/MediaSegmentAction.bs` - Action mode enum (None, AskToSkip, Skip)
 - `source/api/ApiClient.bs` - `BuildGetMediaSegmentsRequest()` request builder
-- `source/api/Items.bs` - `GetMediaSegments()` helper (guards with `supportsMediaSegments()`)
+- `source/api/items.bs` - `GetMediaSegments()` helper (guards with `supportsMediaSegments()`)
 - `components/ItemGrid/LoadVideoContentTask.bs` - Fetches segments after metadata load
 - `components/video/VideoNotification.bs` - Reusable notification component for skip prompts
 - `components/video/VideoPlayerView.bs` - Segment detection and action handling during playback
@@ -166,11 +166,11 @@ All code references this value to determine behavior.
 
 | System | Key Files |
 | ------ | --------- |
-| API Endpoints | `source/api/ApiClient.bs` (dispatcher), `source/api/sdk.bs` (static), `source/api/sdk.v1.bs` (`V1` user), `source/api/sdk.v2.bs` (`V2` user) |
+| API Endpoints | `source/api/ApiClient.bs` (dispatcher), `source/api/sdk.bs` (static), `source/api/sdkV1.bs` (`V1` user), `source/api/sdkV2.bs` (`V2` user) |
 | Device Profile | `source/utils/deviceCapabilities.bs`, `source/utils/deviceCapabilities.v1.bs`, `source/utils/deviceCapabilities.v2.bs` |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
 | Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
-| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/Items.bs` (GetMediaSegments) |
+| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments) |
 
 ## Adding Support for New Server Versions
 

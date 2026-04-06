@@ -1,4 +1,4 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/baseRequest.bs"
 
 ' V1 user endpoint shims — covers Jellyfin 10.7.x and 10.8.x
 ' All paths use the /Users/{userId}/ prefix that was removed in 10.9.

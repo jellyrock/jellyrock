@@ -3,8 +3,8 @@
 ' Uses presenter pattern for media-type-specific behavior.
 ' Combines common functionality from ItemGrid, MovieLibraryView, and MusicLibraryView.
 
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/Image.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"

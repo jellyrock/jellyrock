@@ -1,5 +1,5 @@
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/Image.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/image.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"

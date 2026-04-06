@@ -9,14 +9,14 @@ The API architecture follows a **3-layer abstraction model**, where each layer b
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 3: Domain Helpers                                    │
-│  (source/api/ImageHelpers.bs)                               │
+│  (source/api/imageHelpers.bs)                               │
 │  • Type-safe node wrappers                                  │
 │  • JellyfinUser, JellyfinBaseItem specific functions        │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 2: Business Logic Utilities                          │
-│  (source/api/Image.bs)                                      │
+│  (source/api/image.bs)                                      │
 │  • Validation + defaults + error handling                   │
 │  • Prevents 404s, sets standard dimensions                  │
 └─────────────────────────────────────────────────────────────┘
@@ -89,8 +89,8 @@ url = GetApi().GetUserImageURL(userId, "primary", 0, {
 
 ## Layer 2: Business Logic (Validation & Defaults)
 
-**File:** `source/api/Image.bs`  
-**Import:** `import "pkg:/source/api/Image.bs"`
+**File:** `source/api/image.bs`  
+**Import:** `import "pkg:/source/api/image.bs"`
 
 This layer adds:
 
@@ -133,8 +133,8 @@ url = UserImageURL(userId, {
 
 ## Layer 3: Domain Helpers (Type-Safe Wrappers)
 
-**File:** `source/api/ImageHelpers.bs`  
-**Import:** `import "pkg:/source/api/ImageHelpers.bs"`
+**File:** `source/api/imageHelpers.bs`  
+**Import:** `import "pkg:/source/api/imageHelpers.bs"`
 
 The highest-level layer provides **type-safe, node-specific functions** that extract data from Jellyfin content nodes automatically.
 
@@ -208,7 +208,7 @@ Use this flowchart to determine which layer to use:
 ### Loading User Avatar in a Component
 
 ```brighterscript
-import "pkg:/source/api/ImageHelpers.bs"
+import "pkg:/source/api/imageHelpers.bs"
 
 sub loadUserImage()
   ' Layer 3: Cleanest, handles validation
@@ -224,7 +224,7 @@ end sub
 ### Loading Item Poster with Fallbacks
 
 ```brighterscript
-import "pkg:/source/api/ImageHelpers.bs"
+import "pkg:/source/api/imageHelpers.bs"
 
 sub loadItemPoster(item as object)
   ' Layer 3: Tries multiple image types automatically
@@ -235,7 +235,7 @@ end sub
 ### Custom Image with Specific Requirements
 
 ```brighterscript
-import "pkg:/source/api/Image.bs"
+import "pkg:/source/api/image.bs"
 
 sub loadCustomImage(itemId, imageTag)
   ' Layer 2: Custom size with validation
@@ -320,8 +320,8 @@ If you encounter code using the wrong endpoint:
 ## References
 
 - `source/api/ApiClient.bs` - Layer 1: Raw API client
-- `source/api/Image.bs` - Layer 2: Business logic utilities
-- `source/api/ImageHelpers.bs` - Layer 3: Domain helpers
+- `source/api/image.bs` - Layer 2: Business logic utilities
+- `source/api/imageHelpers.bs` - Layer 3: Domain helpers
 - `tests/source/unit/api/sdk.versioning.spec.bs` - `V1/V2` endpoint tests
 - `tests/source/unit/api/ImageURL.spec.bs` - Validation tests
 - `docs/dev/sdk-api-versioning.md` - `V1` vs `V2` API differences

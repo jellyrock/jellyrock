@@ -3,8 +3,8 @@
 ' Organized via namespaces for clean code organization
 
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/userauth.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
