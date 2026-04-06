@@ -526,5 +526,8 @@ jobs:
             --prerelease=false \
             out/${{ steps.create_zip.outputs.zip_name }}
 
+          # Set discussion category so publishing the draft auto-creates an Announcements discussion
+          gh release edit "$TAG_NAME" --discussion-category "Announcements"
+
           echo "✅ Created draft release: $TAG_NAME"
           echo "📝 Remember to add your scheduled release date before publishing!"

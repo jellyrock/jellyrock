@@ -157,7 +157,7 @@ jobs:
           gh release upload "$TAG_NAME" "out/${{ steps.create_zip.outputs.zip_name }}" --clobber
 
           # Update release body
-          gh release edit "$TAG_NAME" --notes "$UPDATED_BODY"
+          gh release edit "$TAG_NAME" --notes "$UPDATED_BODY" --discussion-category "Announcements"
 
           echo "✅ Updated draft release $TAG_NAME with new ZIP"
           echo "📝 The release is ready for you to add the scheduled date and publish!"
