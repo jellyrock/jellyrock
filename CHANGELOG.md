@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- explicitly mark episode as watched when skipping outro ([#458](https://github.com/jellyrock/jellyrock/pull/458))
 - set state to hidden in VideoNotification.destroy() to prevent crash ([4a91606](https://github.com/jellyrock/jellyrock/commit/4a916066))
 - resolve captionTask data race crash ([#453](https://github.com/jellyrock/jellyrock/pull/453))
 - (translation) rebuild translation key constants when en_US.json is edited ([a2ac7fb](https://github.com/jellyrock/jellyrock/commit/a2ac7fbb))
