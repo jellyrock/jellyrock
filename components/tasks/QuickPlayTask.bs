@@ -614,7 +614,7 @@ end sub
 sub doPlayAllBoxset(input as object, items as object)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
     "ParentId": input.id,
-    "SortBy": "PremiereDate,SortName",
+    "SortBy": "PremiereDate,ProductionYear,SortName",
     "SortOrder": "Ascending",
     "EnableTotalRecordCount": false
   }), "qp_playAllBoxset")
