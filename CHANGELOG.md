@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- audio/subtitle track selection and playback position ([#464](https://github.com/jellyrock/jellyrock/pull/464))
 - sort BoxSet/Collection movies by release date ([#463](https://github.com/jellyrock/jellyrock/pull/463))
 - report position at video duration when force-finishing playback ([98d8ac9](https://github.com/jellyrock/jellyrock/commit/98d8ac91))
 
