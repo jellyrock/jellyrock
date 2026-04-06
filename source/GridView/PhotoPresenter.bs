@@ -70,14 +70,14 @@ class PhotoPresenter extends GridPresenterBase
 
     ' Determine slideshow and random state from view mode
     if viewMode = "singlephoto"
-      set_user_setting("photosSlideshow", "false")
-      set_user_setting("photosRandom", "false")
+      setUserSetting("photosSlideshow", "false")
+      setUserSetting("photosRandom", "false")
     else if viewMode = "slideshowphoto"
-      set_user_setting("photosSlideshow", "true")
-      set_user_setting("photosRandom", "false")
+      setUserSetting("photosSlideshow", "true")
+      setUserSetting("photosRandom", "false")
     else if viewMode = "randomphoto"
-      set_user_setting("photosRandom", "true")
-      set_user_setting("photosSlideshow", "false")
+      setUserSetting("photosRandom", "true")
+      setUserSetting("photosSlideshow", "false")
     end if
   end sub
 

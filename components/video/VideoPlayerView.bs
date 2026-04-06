@@ -461,7 +461,7 @@ end sub
 sub onSubtitleChange()
   switchWithoutRefresh = true
 
-  if m.top.SelectedSubtitle <> SubtitleSelection.none
+  if m.top.SelectedSubtitle <> SubtitleSelection.NONE
     ' If the global caption mode is off, then Roku can't display the subtitles natively and needs a video stop/start
     if LCase(m.top.globalCaptionMode) <> "on" then switchWithoutRefresh = false
   end if
@@ -972,7 +972,7 @@ sub checkMediaSegments()
     action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
     m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
 
-    if action = MediaSegmentAction.skip
+    if action = MediaSegmentAction.SKIP
       ' Auto-skip only fires once per segment
       if m.skippedSegments.DoesExist(segmentId) then return
 
@@ -980,7 +980,7 @@ sub checkMediaSegments()
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
 
       ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
         forceFinishPlayback()
         return
       end if
@@ -994,7 +994,7 @@ sub checkMediaSegments()
       m.top.seek = seekPosition
       m.skippedSegments[segmentId] = true
       m.activeSegmentId = ""
-    else if action = MediaSegmentAction.askToSkip
+    else if action = MediaSegmentAction.ASK_TO_SKIP
       ' Dismissed this visit — don't re-show until user leaves and re-enters the segment
       if segmentId = m.dismissedSegmentId then return
 
@@ -1014,7 +1014,7 @@ sub checkMediaSegments()
 
         ' Commercial and Recap segments stay visible for the entire segment.
         ' Other types auto-dismiss after 10 seconds.
-        if segmentType = MediaSegmentType.commercial or segmentType = MediaSegmentType.recap
+        if segmentType = MediaSegmentType.COMMERCIAL or segmentType = MediaSegmentType.RECAP
           m.segmentNotification.autoDismissSeconds = 0
         else
           m.segmentNotification.autoDismissSeconds = 10
@@ -1028,7 +1028,7 @@ sub checkMediaSegments()
         m.segmentNotification.callFunc("show")
       end if
     else
-      ' MediaSegmentAction.none — dismiss stale notification from a prior segment
+      ' MediaSegmentAction.NONE — dismiss stale notification from a prior segment
       if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
         m.segmentNotification.callFunc("dismiss")
       end if
@@ -1061,7 +1061,7 @@ sub onSegmentNotificationAction()
       segmentType = segment.Type ?? ""
 
       ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
         forceFinishPlayback()
         return
       end if
@@ -1430,7 +1430,7 @@ end function
 ' availSubtitleTrackIdx: Returns Roku's index for requested subtitle track
 '
 ' @param {string} tracknameToFind - TrackName for subtitle we're looking to match
-' @return {integer} indicating Roku's index for requested subtitle track. Returns SubtitleSelection.none if not found
+' @return {integer} indicating Roku's index for requested subtitle track. Returns SubtitleSelection.NONE if not found
 function availSubtitleTrackIdx(tracknameToFind as string) as integer
   idx = 0
   for each availTrack in m.top.availableSubtitleTracks
@@ -1442,7 +1442,7 @@ function availSubtitleTrackIdx(tracknameToFind as string) as integer
     end if
     idx = idx + 1
   end for
-  return SubtitleSelection.none
+  return SubtitleSelection.NONE
 end function
 
 function onKeyEvent(key as string, press as boolean) as boolean

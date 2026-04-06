@@ -3,6 +3,6 @@
   <interface>
     <field id="selected" type="boolean" value="false" />
     <field id="streamId" type="string" />
-    <field id="video_codec" type="string" />
+    <field id="videoCodec" type="string" />
   </interface>
 </component>

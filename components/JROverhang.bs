@@ -27,7 +27,7 @@ sub init()
   m.searchIcon = CreateObject("roSGNode", "JROverhangIcon")
   m.searchIcon.id = "searchIcon"
   m.searchIcon.icon = "pkg:/images/icons/search.png"
-  m.searchIcon.actionId = "goto_search"
+  m.searchIcon.actionId = "gotoSearch"
   m.searchIcon.visible = false
   m.top.appendChild(m.searchIcon)
 
@@ -134,9 +134,9 @@ sub currentUserChanged()
 
     ' Set menu items — user-related actions only
     m.userDropdown.items = [
-      { title: translate(translationKeys.LabelChangeUser), id: "change_user" },
-      { title: translate(translationKeys.LabelChangeServer), id: "change_server" },
-      { title: translate(translationKeys.ButtonSignOut), id: "sign_out" }
+      { title: translate(translationKeys.LabelChangeUser), id: "changeUser" },
+      { title: translate(translationKeys.LabelChangeServer), id: "changeServer" },
+      { title: translate(translationKeys.ButtonSignOut), id: "signOut" }
     ]
   end if
 

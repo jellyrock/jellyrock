@@ -2,9 +2,9 @@ import "pkg:/source/api/ApiClient.bs"
 
 function LoginFlow()
   'Collect Jellyfin server and user information
-  start_login:
+  startLogin:
 
-  serverUrl = get_setting("server")
+  serverUrl = getSetting("server")
   if isValid(serverUrl)
     print "Previous server connection saved to registry"
     ' Pass originalUrl to preserve user's input for re-discovery on each connection
@@ -51,10 +51,10 @@ function LoginFlow()
 
   localUser = m.global.user
 
-  activeUser = get_setting("active_user")
+  activeUser = getSetting("active_user")
   if not isValid(activeUser)
     print "No active user found in registry"
-    user_select:
+    userSelect:
     SendPerformanceBeacon("AppDialogInitiate") ' Roku Performance monitoring - Dialog Starting
 
     publicUsers = GetPublicUsers()
@@ -108,9 +108,9 @@ function LoginFlow()
       if userSelected = "backPressed"
         ' User wants to change server - clear all scenes and restart
         server.Delete()
-        unset_setting("server")
+        unsetSetting("server")
         m.global.sceneManager.callFunc("clearScenes")
-        goto start_login
+        goto startLogin
       else if userSelected <> ""
         startLoadingSpinner()
         print "A public user was selected with username=" + userSelected
@@ -124,7 +124,7 @@ function LoginFlow()
           end if
         end for
         ' try to login with token from registry
-        myToken = get_user_setting("authToken")
+        myToken = getUserSetting("authToken")
         if isValid(myToken)
           ' check if token is valid
           print "Auth token found in registry for selected user"
@@ -133,9 +133,9 @@ function LoginFlow()
           currentUser = AboutMe()
           if not isValid(currentUser)
             print "Auth token is no longer valid - deleting token"
-            unset_user_setting("authToken")
-            unset_user_setting("username")
-            unset_user_setting("primaryImageTag")
+            unsetUserSetting("authToken")
+            unsetUserSetting("username")
+            unsetUserSetting("primaryImageTag")
           else
             print "Success! Auth token is still valid"
             user.Login(currentUser, true)
@@ -146,7 +146,7 @@ function LoginFlow()
         end if
         'Try to login without password. If the token is valid, we're done
         print "Attempting to login with no password"
-        userData = get_token(userSelected, "")
+        userData = getToken(userSelected, "")
         if isValid(userData)
           print "login success!"
           user.Login(userData, true)
@@ -163,20 +163,20 @@ function LoginFlow()
     SendPerformanceBeacon("AppDialogComplete") ' Roku Performance monitoring - Dialog Closed
     if passwordEntry = "backPressed"
       if numPubUsers > 0
-        goto user_select
+        goto userSelect
       else
         server.Delete()
-        unset_setting("server")
-        goto start_login
+        unsetSetting("server")
+        goto startLogin
       end if
     end if
   else
     print "Active user found in registry"
     localUser.id = activeUser
 
-    myUsername = get_user_setting("username")
-    myAuthToken = get_user_setting("authToken")
-    myPrimaryImageTag = get_user_setting("primaryImageTag")
+    myUsername = getUserSetting("username")
+    myAuthToken = getUserSetting("authToken")
+    myPrimaryImageTag = getUserSetting("primaryImageTag")
     if isValid(myAuthToken) and isValid(myUsername)
       print "Auth token found in registry"
       localUser.authToken = myAuthToken
@@ -190,7 +190,7 @@ function LoginFlow()
         print "Auth token is no longer valid"
         'Try to login without password. If the token is valid, we're done
         print "Attempting to login with no password"
-        userData = get_token(myUsername, "")
+        userData = getToken(myUsername, "")
         if isValid(userData)
           print "login success!"
           user.Login(userData, true)
@@ -198,12 +198,12 @@ function LoginFlow()
         else
           print "Auth failed. Password required"
           print "delete token and restart login flow"
-          unset_user_setting("authToken")
-          unset_user_setting("username")
+          unsetUserSetting("authToken")
+          unsetUserSetting("username")
           if isValid(myPrimaryImageTag)
-            unset_user_setting("primaryImageTag")
+            unsetUserSetting("primaryImageTag")
           end if
-          goto start_login
+          goto startLogin
         end if
       else
         print "Success! Auth token is still valid"
@@ -216,9 +216,9 @@ function LoginFlow()
 
   if not isValid(localUser.id) or not isValid(localUser.authToken)
     print "Login failed, restart flow"
-    unset_setting("active_user")
+    unsetSetting("active_user")
     user.Logout()
-    goto start_login
+    goto startLogin
   end if
 
   m.global.sceneManager.callFunc("clearScenes")
@@ -236,7 +236,7 @@ sub SaveServerList()
   serverUrl = globalServer.serverUrl
   serverId = globalServer.id
   serverName = globalServer.name
-  originalUrl = get_setting("server") ' set correctly by server.UpdateURL() before this is called
+  originalUrl = getSetting("server") ' set correctly by server.UpdateURL() before this is called
 
   if isValid(serverUrl)
     serverUrl = LCase(serverUrl) ' canonical URL always lowercase for comparison
@@ -246,7 +246,7 @@ sub SaveServerList()
   end if
 
   savedServers = { serverList: [] }
-  saved = get_setting("saved_servers")
+  saved = getSetting("saved_servers")
   if isValid(saved)
     parsed = ParseJson(saved)
     if isValid(parsed) and isValid(parsed.serverList)
@@ -271,7 +271,7 @@ sub SaveServerList()
       savedServers.serverList[i].id = serverId
       savedServers.serverList[i].baseUrl = serverUrl ' keep canonical URL current (e.g. HTTP→HTTPS)
       savedServers.serverList[i].originalUrl = originalUrl
-      set_setting("saved_servers", FormatJson(savedServers))
+      setSetting("saved_servers", FormatJson(savedServers))
       return
     end if
   end for
@@ -286,7 +286,7 @@ sub SaveServerList()
     iconWidth: 120,
     iconHeight: 120
   })
-  set_setting("saved_servers", FormatJson(savedServers))
+  setSetting("saved_servers", FormatJson(savedServers))
 end sub
 
 sub DeleteFromServerList(idOrUrl as string)
@@ -295,7 +295,7 @@ sub DeleteFromServerList(idOrUrl as string)
   ' ID match is tried first so deletion is correct even when the saved entry's baseUrl
   ' differs from the picker item's baseUrl (e.g. a saved HTTPS entry matched via SSDP
   ' on HTTP — the picker item carries the SSDP baseUrl, not the saved one).
-  saved = get_setting("saved_servers")
+  saved = getSetting("saved_servers")
   if not isValid(saved) then return
 
   savedServers = ParseJson(saved)
@@ -312,7 +312,7 @@ sub DeleteFromServerList(idOrUrl as string)
       newServers.serverList.Push(item)
     end if
   end for
-  set_setting("saved_servers", FormatJson(newServers))
+  setSetting("saved_servers", FormatJson(newServers))
 end sub
 
 ' Roku Performance monitoring
@@ -338,14 +338,14 @@ function CreateServerGroup()
   buttons = screen.findNode("buttons")
   buttons.observeField("buttonSelected", port)
   'create delete saved server option
-  new_options = []
+  newOptions = []
   sidepanel = screen.findNode("options")
   opt = CreateObject("roSGNode", "OptionsButton")
   opt.title = translate(translationKeys.LabelDeleteSaved)
-  opt.id = "delete_saved"
+  opt.id = "deleteSaved"
   opt.observeField("optionSelected", port)
-  new_options.push(opt)
-  sidepanel.options = new_options
+  newOptions.push(opt)
+  sidepanel.options = newOptions
   sidepanel.observeField("closeSidePanel", port)
 
   screen.observeField("backPressed", port)
@@ -390,8 +390,8 @@ function CreateServerGroup()
             ' Compare using canonical URL from global state against pre-connection URL
             canonicalUrl = m.global.server.serverUrl
             if previousServerUrl <> canonicalUrl
-              set_setting("username", "")
-              set_setting("password", "")
+              setSetting("username", "")
+              setSetting("password", "")
             end if
           end if
           m.scene.isLoading = false
@@ -411,7 +411,7 @@ function CreateServerGroup()
             end if
           end if
         end if
-      else if nodeName = "delete_saved"
+      else if nodeName = "deleteSaved"
         serverPicker = screen.findNode("serverPicker")
         itemToDelete = serverPicker.content.getChild(serverPicker.itemFocused)
         ' Prefer id for deletion — robust when the picker item's baseUrl differs from
@@ -484,22 +484,22 @@ function CreateSigninGroup(userName = "")
   group.findNode("prompt").text = translate(translationKeys.ButtonSignIn)
 
   config = group.findNode("configOptions")
-  username_field = CreateObject("roSGNode", "ConfigData")
-  username_field.label = translate(translationKeys.LabelUsername)
-  username_field.field = "username"
-  username_field.type = "string"
-  if userName = "" and isValid(get_setting("username"))
-    username_field.value = get_setting("username")
+  usernameField = CreateObject("roSGNode", "ConfigData")
+  usernameField.label = translate(translationKeys.LabelUsername)
+  usernameField.field = "username"
+  usernameField.type = "string"
+  if userName = "" and isValid(getSetting("username"))
+    usernameField.value = getSetting("username")
   else
-    username_field.value = userName
+    usernameField.value = userName
   end if
-  password_field = CreateObject("roSGNode", "ConfigData")
-  password_field.label = translate(translationKeys.LabelPassword)
-  password_field.field = "password"
-  password_field.type = "password"
-  registryPassword = get_setting("password")
+  passwordField = CreateObject("roSGNode", "ConfigData")
+  passwordField.label = translate(translationKeys.LabelPassword)
+  passwordField.field = "password"
+  passwordField.type = "password"
+  registryPassword = getSetting("password")
   if isValid(registryPassword)
-    password_field.value = registryPassword
+    passwordField.value = registryPassword
   end if
   ' Add checkbox for saving credentials
   checkbox = group.findNode("onOff")
@@ -519,7 +519,7 @@ function CreateSigninGroup(userName = "")
     quickConnect.visible = false
   end if
 
-  items = [username_field, password_field]
+  items = [usernameField, passwordField]
   config.configItems = items
 
   buttons = group.findNode("buttons")
@@ -556,16 +556,16 @@ function CreateSigninGroup(userName = "")
         if buttonSelected.id = "submit"
           startLoadingSpinner()
           ' Validate credentials
-          activeUser = get_token(userName.value, password.value)
+          activeUser = getToken(userName.value, password.value)
           if isValid(activeUser)
             print "activeUser=", activeUser
             if checkbox.checkedState[0] = true
               ' save credentials
               user.Login(activeUser, true)
-              set_user_setting("authToken", activeUser.token)
-              set_user_setting("username", userName.value)
+              setUserSetting("authToken", activeUser.token)
+              setUserSetting("username", userName.value)
               if isValidAndNotEmpty(activeUser.json.PrimaryImageTag)
-                set_user_setting("primaryImageTag", activeUser.json.PrimaryImageTag)
+                setUserSetting("primaryImageTag", activeUser.json.PrimaryImageTag)
               end if
             else
               user.Login(activeUser)
@@ -636,13 +636,13 @@ function CreateHomeGroup()
 
   sidepanel = group.findNode("options")
   sidepanel.observeField("closeSidePanel", m.port)
-  new_options = []
+  newOptions = []
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.ButtonSearch)
-  o.id = "goto_search"
+  o.id = "gotoSearch"
   o.observeField("optionSelected", m.port)
-  new_options.push(o)
+  newOptions.push(o)
   o = invalid
 
   ' Add settings option to menu
@@ -650,30 +650,30 @@ function CreateHomeGroup()
   o.title = translate(translationKeys.LabelSettings)
   o.id = "settings"
   o.observeField("optionSelected", m.port)
-  new_options.push(o)
+  newOptions.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.LabelChangeUser)
-  o.id = "change_user"
+  o.id = "changeUser"
   o.observeField("optionSelected", m.port)
-  new_options.push(o)
+  newOptions.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.LabelChangeServer)
-  o.id = "change_server"
+  o.id = "changeServer"
   o.observeField("optionSelected", m.port)
-  new_options.push(o)
+  newOptions.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.ButtonSignOut)
-  o.id = "sign_out"
+  o.id = "signOut"
   o.observeField("optionSelected", m.port)
-  new_options.push(o)
+  newOptions.push(o)
 
-  sidepanel.options = new_options
+  sidepanel.options = newOptions
 
   return group
 end function

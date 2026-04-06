@@ -51,21 +51,21 @@ sub loadItems()
   id = m.top.itemId
   mediaSourceId = invalid
   if m.top.mediaSourceId <> "" then mediaSourceId = m.top.mediaSourceId
-  audio_stream_idx = m.top.selectedAudioStreamIndex
+  audioStreamIdx = m.top.selectedAudioStreamIndex
   forceTranscoding = m.top.forceTranscoding
   bypassDoviPreservation = m.top.bypassDoviPreservation
 
-  m.top.content = [LoadItems_VideoPlayer(id, mediaSourceId, audio_stream_idx, forceTranscoding, bypassDoviPreservation)]
+  m.top.content = [LoadItems_VideoPlayer(id, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)]
 end sub
 
-function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audio_stream_idx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean) as dynamic
+function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean) as dynamic
 
   video = {}
   video.id = id
   video.content = createObject("RoSGNode", "ContentNode")
   video.content.addField("trickplayMetadata", "assocarray", false)
 
-  LoadItems_AddVideoContent(video, mediaSourceId, audio_stream_idx, forceTranscoding, bypassDoviPreservation)
+  LoadItems_AddVideoContent(video, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)
 
   if not isValid(video.content)
     return invalid
@@ -74,7 +74,7 @@ function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audio_str
   return video
 end function
 
-sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_stream_idx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean)
+sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean)
 
   meta = ItemMetaData(video.id)
   if not isValid(meta)
@@ -117,14 +117,14 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     if isValid(selectedSourceStreams)
       ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
       playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audio_stream_idx = findBestAudioStreamIndex(selectedSourceStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
+      audioStreamIdx = findBestAudioStreamIndex(selectedSourceStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
     else if isValid(mediaSources) and isValid(mediaSources[0].MediaStreams)
       playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audio_stream_idx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
+      audioStreamIdx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
     else
       ' MediaStreams not available - keep existing behavior of using 0
       ' This should never happen since ItemMetaData() just fetched metadata
-      audio_stream_idx = 0
+      audioStreamIdx = 0
     end if
     m.log.debug("Audio stream auto-selected", "audio_stream_idx", audio_stream_idx)
   else
@@ -150,7 +150,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     end if
   end if
 
-  subtitle_idx = m.top.selectedSubtitleIndex
+  subtitleIdx = m.top.selectedSubtitleIndex
   videotype = LCase(meta.type)
 
   ' Check for any Live TV streams or Recordings coming from other places other than the TV Guide.
@@ -239,11 +239,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
     playbackPosition = currentItem.startingPoint
   end if
 
-  ' Determine final subtitle_idx BEFORE calling ItemPostPlaybackInfo to avoid duplicate API calls.
-  ' defaultSubtitleTrackFromVid() only needs meta and audio_stream_idx, both available at this point.
+  ' Determine final subtitleIdx BEFORE calling ItemPostPlaybackInfo to avoid duplicate API calls.
+  ' defaultSubtitleTrackFromVid() only needs meta and audioStreamIdx, both available at this point.
   ' Pass mediaSourceId so subtitle selection uses the correct source's streams (not always mediaSources[0]).
-  if subtitle_idx = SubtitleSelection.notset
-    subtitle_idx = defaultSubtitleTrackFromVid(meta, audio_stream_idx, mediaSourceId)
+  if subtitleIdx = SubtitleSelection.NOT_SET
+    subtitleIdx = defaultSubtitleTrackFromVid(meta, audioStreamIdx, mediaSourceId)
   end if
 
   ' PlayStart requires the time to be in seconds
@@ -271,8 +271,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   if not isValid(mediaSourceId) then mediaSourceId = video.id
   if isLive then mediaSourceId = ""
 
-  ' Call ItemPostPlaybackInfo ONCE with final subtitle_idx
-  m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audio_stream_idx, subtitle_idx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
+  ' Call ItemPostPlaybackInfo ONCE with final subtitleIdx
+  m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
   if not isValid(m.playbackInfo)
     m.log.error("ItemPostPlaybackInfo returned invalid response")
     m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
@@ -298,12 +298,12 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
   addSubtitlesToVideo(video, meta)
 
-  ' Set video.SelectedSubtitle based on final subtitle_idx
-  video.SelectedSubtitle = subtitle_idx
+  ' Set video.SelectedSubtitle based on final subtitleIdx
+  video.SelectedSubtitle = subtitleIdx
 
   video.videoId = video.id
   video.mediaSourceId = mediaSourceId
-  video.audioIndex = audio_stream_idx
+  video.audioIndex = audioStreamIdx
   video.playbackInfo = m.playbackInfo
 
   video.PlaySessionId = m.playbackInfo.PlaySessionId
@@ -389,7 +389,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
 
   if video.directPlaySupported
     video.isTranscoded = false
-    setupVideoContentWithAuth(video, mediaSourceId, audio_stream_idx)
+    setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
     applyLiveDirectPlayFallback(video, meta)
   else
     if not isValid(m.playbackInfo.MediaSources[0].TranscodingUrl)
@@ -418,7 +418,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
 
   setCertificateAuthority(video.content)
   ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
-  video.audioTrack = getRokuAudioTrackPosition(audio_stream_idx, video.fullAudioData)
+  video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
 
 ' setupVideoContentWithAuth: Configures video content URL and applies authentication
@@ -434,9 +434,9 @@ end sub
 '
 ' @param {object} video - Video object containing content node to configure
 ' @param {dynamic} mediaSourceId - Media source ID or empty string for live streams
-' @param {integer} audio_stream_idx - Selected audio stream index
-sub setupVideoContentWithAuth(video, mediaSourceId, audio_stream_idx)
-  fully_external = false
+' @param {integer} audioStreamIdx - Selected audio stream index
+sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
+  fullyExternal = false
   protocol = LCase(m.playbackInfo.MediaSources[0].Protocol)
 
   if protocol <> "file"
@@ -452,7 +452,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audio_stream_idx)
       end if
     else
       ' External stream - use raw URL without modification
-      fully_external = true
+      fullyExternal = true
       video.content.url = m.playbackInfo.MediaSources[0].Path
     end if
   else
@@ -461,7 +461,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audio_stream_idx)
       "Static": "true",
       "Container": video.container,
       "PlaySessionId": video.PlaySessionId,
-      "AudioStreamIndex": audio_stream_idx
+      "AudioStreamIndex": audioStreamIdx
     }
 
     if mediaSourceId <> ""
@@ -472,7 +472,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audio_stream_idx)
   end if
 
   ' Apply Jellyfin authentication only for internal streams
-  if not fully_external
+  if not fullyExternal
     video.content = authRequest(video.content)
   end if
 end sub

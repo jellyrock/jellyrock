@@ -1,8 +1,8 @@
 enum MediaSegmentType
-  unknown = "Unknown"
-  intro = "Intro"
-  outro = "Outro"
-  preview = "Preview"
-  commercial = "Commercial"
-  recap = "Recap"
+  UNKNOWN = "Unknown"
+  INTRO = "Intro"
+  OUTRO = "Outro"
+  PREVIEW = "Preview"
+  COMMERCIAL = "Commercial"
+  RECAP = "Recap"
 end enum

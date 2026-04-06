@@ -43,7 +43,7 @@ sub ScanForServersComplete(event)
 
   ' Load saved servers upfront — used in both passes below
   savedServers = { serverList: [] }
-  saved = get_setting("saved_servers")
+  saved = getSetting("saved_servers")
   if isValid(saved)
     parsed = ParseJson(saved)
     if isValid(parsed) and isValid(parsed.serverList)

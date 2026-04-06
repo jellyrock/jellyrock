@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="OptionsData" extends="ContentNode">
   <interface>
-    <field id="base_title" type="string" />
-    <field id="choices" type="array" onChange="update_title" />
-    <field id="config_key" type="string" />
-    <field id="value_index" type="integer" />
-    <field id="global_setting" type="boolean" value="false" />
-    <field id="value" type="string" onChange="update_title" />
+    <field id="baseTitle" type="string" />
+    <field id="choices" type="array" onChange="updateTitle" />
+    <field id="configKey" type="string" />
+    <field id="valueIndex" type="integer" />
+    <field id="globalSetting" type="boolean" value="false" />
+    <field id="value" type="string" onChange="updateTitle" />
     <function name="press" />
   </interface>
 </component>

@@ -430,7 +430,7 @@ sub boolSettingChanged()
 
     ' Special handling for globalRememberMe - set active_user in global registry
     if selectedSetting.settingName = "globalRememberMe"
-      set_setting("active_user", m.global.user.id)
+      setSetting("active_user", m.global.user.id)
     end if
   else
     ' Update node field - observer handles registry persistence
@@ -438,7 +438,7 @@ sub boolSettingChanged()
 
     ' Special handling for globalRememberMe - remove active_user from global registry
     if selectedSetting.settingName = "globalRememberMe"
-      unset_setting("active_user")
+      unsetSetting("active_user")
     end if
   end if
 end sub
@@ -634,14 +634,14 @@ sub executeResetUserSettings()
   keysToDelete = getSettingKeysToDelete(allRegistryData, sessionKeys)
 
   for each key in keysToDelete
-    registry_delete(key, userId)
+    registryDelete(key, userId)
   end for
 
   ' Reload all defaults from settings.json onto the settings node
   user.settings.SaveDefaults()
 
   ' globalRememberMe was reset to false — clear auto-login state
-  unset_setting("active_user")
+  unsetSetting("active_user")
 
   ' Clear per-library display settings
   localUser.settings.displaySettings = {}

@@ -20,8 +20,8 @@ end function
 function getButton(msg, subnode = "buttons" as string) as object
   buttons = msg.getRoSGNode().findNode(subnode)
   if not isValid(buttons) then return invalid
-  active_button = buttons.focusedChild
-  return active_button
+  activeButton = buttons.focusedChild
+  return activeButton
 end function
 
 function leftPad(base as string, fill as string, length as integer) as string
@@ -157,7 +157,7 @@ function addOrdinalSuffix(day as integer) as string
   end if
 end function
 
-function div_ceiling(a as integer, b as integer) as integer
+function divCeiling(a as integer, b as integer) as integer
   if a < b then return 1
   if int(a / b) = a / b
     return a / b
@@ -166,7 +166,7 @@ function div_ceiling(a as integer, b as integer) as integer
 end function
 
 'Returns the item selected or -1 on backpress or other unhandled closure of dialog.
-function get_dialog_result(dialog, port)
+function getDialogResult(dialog, port)
   while isValid(dialog)
     msg = wait(0, port)
     if isNodeEvent(msg, "backPressed")
@@ -193,7 +193,7 @@ function lastFocusedChild(obj as object) as object
   end if
 end function
 
-function show_dialog(message as string, options = [], defaultSelection = 0) as integer
+function showDialog(message as string, options = [], defaultSelection = 0) as integer
   lastFocus = lastFocusedChild(m.scene)
 
   dialog = createObject("roSGNode", "JRMessageDialog")
@@ -218,7 +218,7 @@ function show_dialog(message as string, options = [], defaultSelection = 0) as i
   dialog.observeField("backPressed", port)
   dialog.findNode("optionList").observeField("itemSelected", port)
 
-  result = get_dialog_result(dialog, port)
+  result = getDialogResult(dialog, port)
 
   m.scene.removeChildIndex(m.scene.getChildCount() - 1)
   lastFocus.setFocus(true)
@@ -226,12 +226,12 @@ function show_dialog(message as string, options = [], defaultSelection = 0) as i
   return result
 end function
 
-function message_dialog(message = "" as string)
-  return show_dialog(message, [translate(translationKeys.ButtonOk)])
+function messageDialog(message = "" as string)
+  return showDialog(message, [translate(translationKeys.ButtonOk)])
 end function
 
-function option_dialog(options, message = "", defaultSelection = 0) as integer
-  return show_dialog(message, options, defaultSelection)
+function optionDialog(options, message = "", defaultSelection = 0) as integer
+  return showDialog(message, options, defaultSelection)
 end function
 
 ' take an incomplete url string and use it to make educated guesses about
@@ -240,7 +240,7 @@ end function
 function inferServerUrl(url as string) as string
   ' if this server is already stored, just use the value directly
   ' the server had to get resolved in the first place to get into the registry
-  saved = get_setting("saved_servers")
+  saved = getSetting("saved_servers")
   if isValid(saved)
     savedServers = ParseJson(saved)
     if isValid(savedServers.lookup(url)) then return url
@@ -852,7 +852,7 @@ end function
 ' @returns {string} - Global splash screen setting value ("enabled" or "disabled")
 function getGlobalSplashScreenSetting() as string
   ' Read from global registry (returns invalid if user never changed it)
-  globalSetting = get_setting("globalSplashScreen")
+  globalSetting = getSetting("globalSplashScreen")
 
   ' If not in registry (user never changed it), get default from settings.json
   if not isValid(globalSetting) or globalSetting = ""

@@ -74,7 +74,7 @@ end sub
 sub popScene()
   ' If this is the last scene on the stack, show exit confirmation instead of immediately exiting
   if m.groups.count() <= 1
-    optionDialog(translate(translationKeys.LabelExitJellyrock), [translate(translationKeys.MessageAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonExit)])
+    showConfirmationDialog(translate(translationKeys.LabelExitJellyrock), [translate(translationKeys.MessageAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonExit)])
     m.top.pendingExitConfirmation = true
     return
   end if
@@ -318,7 +318,7 @@ sub radioDialog(title, message)
 end sub
 
 ' Display dialog to user with an OK button
-sub optionDialog(title, message, buttons)
+sub showConfirmationDialog(title, message, buttons)
   constants = m.global.constants
   m.top.dataReturned = false
   m.top.returnData = invalid

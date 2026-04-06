@@ -16,42 +16,42 @@ end sub
 sub loadFromRegistry(id as string)
   m.top.id = id
 
-  m.top.username = get_user_setting("username")
-  m.top.token = get_user_setting("authToken")
+  m.top.username = getUserSetting("username")
+  m.top.token = getUserSetting("authToken")
 end sub
 
 sub saveToRegistry()
-  users = parseJson(get_setting("available_users", "[]"))
-  this_user = invalid
+  users = parseJson(getSetting("available_users", "[]"))
+  thisUser = invalid
   for each userItem in users
-    if userItem.id = m.top.id then this_user = userItem
+    if userItem.id = m.top.id then thisUser = userItem
   end for
-  if not isValid(this_user)
+  if not isValid(thisUser)
     users.push({
       id: m.top.id,
       username: m.top.username,
       server: m.global.server.serverUrl ' Note: 'server' here is a property name, not variable
     })
-    set_setting("available_users", formatJson(users))
+    setSetting("available_users", formatJson(users))
   end if
 end sub
 
 sub removeFromRegistry()
-  new_users = []
-  users = parseJson(get_setting("available_users", "[]"))
+  newUsers = []
+  users = parseJson(getSetting("available_users", "[]"))
   for each userItem in users
-    if m.top.id <> userItem.id then new_users.push(userItem)
+    if m.top.id <> userItem.id then newUsers.push(userItem)
   end for
 
-  set_setting("available_users", formatJson(new_users))
+  setSetting("available_users", formatJson(newUsers))
 end sub
 
 function getPreference(key as string)
-  return get_user_setting("pref-" + key)
+  return getUserSetting("pref-" + key)
 end function
 
 function setPreference(key as string, value as string)
-  return set_user_setting("pref-" + key, value)
+  return setUserSetting("pref-" + key, value)
 end function
 
 sub setServer(hostname as string)

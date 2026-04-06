@@ -42,8 +42,8 @@ function getData()
   data = CreateObject("roSGNode", "ContentNode")
   ' Ordering follows itemTypeOrder.SEARCH (web-client section sort order).
   ' AssocArrays have no guaranteed order, so a separate array drives row creation.
-  type_array = itemTypeOrder.SEARCH
-  content_types = {
+  typeArray = itemTypeOrder.SEARCH
+  contentTypes = {
     "Movie": { "label": "Movies", "count": 0 },
     "Series": { "label": "Shows", "count": 0 },
     "Episode": { "label": "Episodes", "count": 0 },
@@ -63,15 +63,15 @@ function getData()
   }
 
   for each item in itemData.Items
-    if isValid(content_types[item.type])
-      content_types[item.type].count += 1
+    if isValid(contentTypes[item.type])
+      contentTypes[item.type].count += 1
     end if
   end for
 
-  for each ctype in type_array
-    content_type = content_types[ctype]
-    if content_type.count > 0
-      addRow(data, content_type.label, ctype)
+  for each ctype in typeArray
+    contentType = contentTypes[ctype]
+    if contentType.count > 0
+      addRow(data, contentType.label, ctype)
     end if
   end for
 
@@ -83,12 +83,12 @@ function getData()
   return data
 end function
 
-sub addRow(data, title, type_filter)
+sub addRow(data, title, typeFilter)
   itemData = m.top.itemData
   row = data.CreateChild("ContentNode")
   row.title = title
   for each item in itemData.Items
-    if item.type = type_filter
+    if item.type = typeFilter
       row.appendChild(item)
     end if
   end for

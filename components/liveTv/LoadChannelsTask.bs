@@ -13,15 +13,15 @@ end sub
 ' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
 sub loadChannels()
   if m.top.sortAscending = true
-    sort_order = "Ascending"
+    sortOrder = "Ascending"
   else
-    sort_order = "Descending"
+    sortOrder = "Descending"
   end if
 
   params = {
     includeItemTypes: "LiveTvChannel",
     SortBy: m.top.sortField,
-    SortOrder: sort_order,
+    SortOrder: sortOrder,
     recursive: m.top.recursive,
     UserId: m.global.user.id
   }

@@ -1717,8 +1717,8 @@ sub itemContentChanged()
 
     if item.type = "Audio"
       ' Audio: show audio codec only — no video source selection or subtitle display
-      setFieldText("video_codec", "")
-      setFieldText("subtitle_codec", "")
+      setFieldText("videoCodec", "")
+      setFieldText("subtitleCodec", "")
       allStreams = []
       if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
         mediaSources = item.mediaSourcesData.mediaSources
@@ -1854,7 +1854,7 @@ sub SetUpVideoOptions(streams)
       codec = formatVideoSourceTitle(streams[i], hasMultipleSources)
 
       if not codecDetailsSet
-        setFieldText("video_codec", translate(translationKeys.LabelVideo) + ": " + codec)
+        setFieldText("videoCodec", translate(translationKeys.LabelVideo) + ": " + codec)
         codecDetailsSet = true
       end if
 
@@ -1863,13 +1863,13 @@ sub SetUpVideoOptions(streams)
         "Description": translate(translationKeys.LabelVideo),
         "Selected": m.top.selectedVideoStreamId = streams[i].id,
         "StreamID": streams[i].id,
-        "video_codec": codec
+        "videoCodec": codec
       })
     end if
   end for
 
   if streams.count() > 1
-    m.top.findnode("video_codec_count").text = "+" + stri(streams.Count() - 1).trim()
+    m.top.findnode("videoCodecCount").text = "+" + stri(streams.Count() - 1).trim()
   end if
 
   options = {}
@@ -1892,7 +1892,7 @@ sub SetUpAudioOptions(streams)
   end for
 
   if tracks.count() > 1
-    m.top.findnode("audio_codec_count").text = "+" + stri(tracks.Count() - 1).trim()
+    m.top.findnode("audioCodecCount").text = "+" + stri(tracks.Count() - 1).trim()
   end if
 
   options = {}
@@ -1911,7 +1911,7 @@ end sub
 ' @param {object} streams - Array of MediaStream objects (all types: video, audio, subtitle)
 ' @param {integer} selectedAudioStreamIndex - Server-side index of the selected audio stream
 sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
-  subtitleCountNode = m.top.findNode("subtitle_codec_count")
+  subtitleCountNode = m.top.findNode("subtitleCodecCount")
   if isValid(subtitleCountNode) then subtitleCountNode.text = ""
 
   if not isValid(streams) then return
@@ -1924,7 +1924,7 @@ sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
   end for
 
   if subtitleCount = 0
-    setFieldText("subtitle_codec", translate(translationKeys.LabelSubtitles) + ": " + translate(translationKeys.LabelNone))
+    setFieldText("subtitleCodec", translate(translationKeys.LabelSubtitles) + ": " + translate(translationKeys.LabelNone))
     return
   end if
 
@@ -1933,16 +1933,16 @@ sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
   if selectedIndex >= 0
     for i = 0 to streams.count() - 1
       if isValid(streams[i].index) and streams[i].index = selectedIndex
-        setFieldText("subtitle_codec", translate(translationKeys.LabelSubtitles) + ": " + formatSubtitleDisplayTitle(streams[i]))
+        setFieldText("subtitleCodec", translate(translationKeys.LabelSubtitles) + ": " + formatSubtitleDisplayTitle(streams[i]))
         exit for
       end if
     end for
   else
-    setFieldText("subtitle_codec", translate(translationKeys.LabelSubtitles) + ": " + translate(translationKeys.LabelOff))
+    setFieldText("subtitleCodec", translate(translationKeys.LabelSubtitles) + ": " + translate(translationKeys.LabelOff))
   end if
 
   if subtitleCount > 1
-    m.top.findNode("subtitle_codec_count").text = "+" + stri(subtitleCount - 1).trim()
+    m.top.findNode("subtitleCodecCount").text = "+" + stri(subtitleCount - 1).trim()
   end if
 end sub
 
@@ -1964,7 +1964,7 @@ sub SetDefaultAudioTrack(mediaStreams as object)
   m.top.selectedAudioStreamIndex = selectedIndex
 
   if isValid(defaultAudioStream)
-    setFieldText("audio_codec", translate(translationKeys.LabelAudio) + ": " + formatAudioDisplayTitle(defaultAudioStream))
+    setFieldText("audioCodec", translate(translationKeys.LabelAudio) + ": " + formatAudioDisplayTitle(defaultAudioStream))
   end if
 end sub
 
@@ -2974,7 +2974,7 @@ sub audioOptionsClosed()
     m.top.selectedAudioStreamIndex = m.options.audioStreamIndex
     for each stream in m.top.itemContent.audioStreams
       if stream.index = m.top.selectedAudioStreamIndex
-        setFieldText("audio_codec", translate(translationKeys.LabelAudio) + ": " + formatAudioDisplayTitle(stream))
+        setFieldText("audioCodec", translate(translationKeys.LabelAudio) + ": " + formatAudioDisplayTitle(stream))
         exit for
       end if
     end for
@@ -2987,7 +2987,7 @@ end sub
 sub videoOptionsClosed()
   if m.options.videoStreamId <> m.top.selectedVideoStreamId
     m.top.selectedVideoStreamId = m.options.videoStreamId
-    setFieldText("video_codec", translate(translationKeys.LabelVideo) + ": " + m.options.video_codec)
+    setFieldText("videoCodec", translate(translationKeys.LabelVideo) + ": " + m.options.videoCodec)
     m.top.unobserveField("itemContent")
     mediaSources = m.top.itemContent.mediaSourcesData.mediaSources
     for each mediaSource in mediaSources

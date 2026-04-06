@@ -28,7 +28,7 @@ sub init()
   ' Cache search keyboard reference and observe focus changes
   ' to adjust alphabet layout when voice button popup appears
   searchBox = m.top.findNode("SearchBox")
-  m.searchAlphabox = searchBox.findNode("search_Key")
+  m.searchAlphabox = searchBox.findNode("searchKey")
   m.searchAlphabox.observeField("focusedChild", "onKeyboardFocusChange")
 
   ' Observe row item focus for backdrop updates

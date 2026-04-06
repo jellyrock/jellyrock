@@ -29,61 +29,61 @@ namespace tests
     @describe("Edge cases - validation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns SubtitleSelection.none when meta is invalid")
+    @it("returns SubtitleSelection.NONE when meta is invalid")
     function _()
       result = defaultSubtitleTrackFromVid(invalid, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
-    @it("returns SubtitleSelection.none when mediaSourcesData is missing")
+    @it("returns SubtitleSelection.NONE when mediaSourcesData is missing")
     function _()
       meta = { id: "test-id" }
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
-    @it("returns SubtitleSelection.none when mediaSources is missing")
+    @it("returns SubtitleSelection.NONE when mediaSources is missing")
     function _()
       meta = {
         id: "test-id",
         mediaSourcesData: {}
       }
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
-    @it("returns SubtitleSelection.none when mediaSources is empty array")
+    @it("returns SubtitleSelection.NONE when mediaSources is empty array")
     function _()
       meta = {
         id: "test-id",
         mediaSourcesData: { mediaSources: [] }
       }
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
-    @it("returns SubtitleSelection.none when MediaStreams is missing")
+    @it("returns SubtitleSelection.NONE when MediaStreams is missing")
     function _()
       meta = {
         id: "test-id",
         mediaSourcesData: { mediaSources: [{}] }
       }
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Subtitle mode 'None'")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns SubtitleSelection.none when subtitleMode = 'None'")
+    @it("returns SubtitleSelection.NONE when subtitleMode = 'None'")
     function _()
       m.global.user.config.subtitleMode = "None"
       meta = m.createMetaWithSubtitles([
         { Type: "Subtitle", index: 2, language: "eng", IsTextSubtitleStream: true, IsForced: true, displaytitle: "English (Forced)" }
       ])
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -103,7 +103,7 @@ namespace tests
       m.assertEqual(result, 2)
     end function
 
-    @it("returns SubtitleSelection.none when only non-text subs exist and playbackSubsOnlyText = true")
+    @it("returns SubtitleSelection.NONE when only non-text subs exist and playbackSubsOnlyText = true")
     function _()
       m.global.user.settings.playbackSubsOnlyText = true
       m.global.user.config.subtitleMode = "Always"
@@ -113,7 +113,7 @@ namespace tests
         { Type: "Subtitle", index: 2, language: "eng", IsTextSubtitleStream: false, IsForced: false, displaytitle: "English", DeliveryMethod: "Encode" }
       ])
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
     @it("returns non-text subtitle when playbackSubsOnlyText = false")
@@ -193,7 +193,7 @@ namespace tests
       m.assertEqual(result, 2)
     end function
 
-    @it("returns SubtitleSelection.none when no forced subs and subtitleMode = 'OnlyForced'")
+    @it("returns SubtitleSelection.NONE when no forced subs and subtitleMode = 'OnlyForced'")
     function _()
       m.global.user.config.subtitleMode = "OnlyForced"
       m.global.user.config.subtitleLanguagePreference = "eng"
@@ -202,14 +202,14 @@ namespace tests
         { Type: "Subtitle", index: 2, language: "eng", IsTextSubtitleStream: true, IsForced: false, IsDefault: false, displaytitle: "English", DeliveryUrl: "/normal" }
       ])
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Subtitle mode 'Smart' with audio language matching")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns SubtitleSelection.none when audio matches subtitle preference in Smart mode")
+    @it("returns SubtitleSelection.NONE when audio matches subtitle preference in Smart mode")
     function _()
       m.global.user.config.subtitleMode = "Smart"
       m.global.user.config.subtitleLanguagePreference = "eng"
@@ -220,7 +220,7 @@ namespace tests
         { Type: "Subtitle", index: 2, language: "eng", IsTextSubtitleStream: true, IsForced: false, IsDefault: false, displaytitle: "English", DeliveryUrl: "/eng" }
       ])
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
     @it("returns subtitle when audio does NOT match subtitle preference in Smart mode")
@@ -255,7 +255,7 @@ namespace tests
     @describe("Language preference matching")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns SubtitleSelection.none when no matching language")
+    @it("returns SubtitleSelection.NONE when no matching language")
     function _()
       m.global.user.config.subtitleMode = "Always"
       m.global.user.config.subtitleLanguagePreference = "eng"
@@ -264,7 +264,7 @@ namespace tests
         { Type: "Subtitle", index: 2, language: "spa", IsTextSubtitleStream: true, IsForced: false, IsDefault: false, displaytitle: "Spanish", DeliveryUrl: "/spa" }
       ])
       result = defaultSubtitleTrackFromVid(meta, 1)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
     @it("respects empty language preference")
@@ -377,7 +377,7 @@ namespace tests
       ' Audio stream 99 not found, selectedAudioLanguage will be ""
       ' Smart mode correctly returns none when audio language is unknown (no forced/default to fall back to)
       result = defaultSubtitleTrackFromVid(meta, 99)
-      m.assertEqual(result, SubtitleSelection.none)
+      m.assertEqual(result, SubtitleSelection.NONE)
     end function
 
   end class

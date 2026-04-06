@@ -22,7 +22,7 @@ sub Main (args as dynamic) as void
   runRegistryUserMigrations()
   ' update LastRunVersion now that migrations are finished
   if m.global.app.version <> m.global.app.lastRunVersion
-    set_setting("LastRunVersion", m.global.app.version)
+    setSetting("LastRunVersion", m.global.app.version)
   end if
   if m.wasMigrated then printRegistry()
 
@@ -33,7 +33,7 @@ sub Main (args as dynamic) as void
   ' setup global nodes now that the screen has been shown
   setGlobalNodes()
 
-  app_start:
+  appStart:
   m.global.sceneManager.callFunc("clearScenes")
   ' First thing to do is validate the ability to use the API
   if not LoginFlow() then return
@@ -155,14 +155,14 @@ sub Main (args as dynamic) as void
         ' when voice system fires multiple text changes for a single input)
         activeScene = m.global.sceneManager.callFunc("getActiveScene")
         if isValid(activeScene) and activeScene.subtype() = "SearchResults"
-          searchKey = activeScene.findNode("SearchBox").findNode("search_Key")
+          searchKey = activeScene.findNode("SearchBox").findNode("searchKey")
           searchKey.text = voiceQuery
           searchKey.textEditBox.setFocus(true)
         else
           group = CreateSearchPage()
           group.skipInitialFocus = true
           m.global.sceneManager.callFunc("pushScene", group)
-          searchKey = group.findNode("SearchBox").findNode("search_Key")
+          searchKey = group.findNode("SearchBox").findNode("searchKey")
           searchKey.text = voiceQuery
           searchKey.textEditBox.setFocus(true)
         end if
@@ -251,7 +251,7 @@ sub Main (args as dynamic) as void
         else
           ' TODO - switch on more node types
           stopLoadingSpinner()
-          message_dialog(translate(translationKeys.ErrorTypeNotYetSupported, [selectedItemType]))
+          messageDialog(translate(translationKeys.ErrorTypeNotYetSupported, [selectedItemType]))
         end if
       end if
     else if isNodeEvent(msg, "movieSelected")
@@ -274,8 +274,8 @@ sub Main (args as dynamic) as void
       m.global.queueManager.callFunc("set", screenContent.albumData.items)
       m.global.queueManager.callFunc("setPosition", selectedIndex)
       m.global.queueManager.callFunc("playQueue")
-    else if isNodeEvent(msg, "search_value")
-      query = msg.getRoSGNode().search_value
+    else if isNodeEvent(msg, "searchValue")
+      query = msg.getRoSGNode().searchValue
       group.findNode("SearchBox").visible = false
       options = group.findNode("SearchSelect")
       options.visible = true
@@ -352,7 +352,7 @@ sub Main (args as dynamic) as void
       else
         ' TODO - switch on more node types
         stopLoadingSpinner()
-        message_dialog(translate(translationKeys.ErrorTypeNotYetSupported, [nodeType]))
+        messageDialog(translate(translationKeys.ErrorTypeNotYetSupported, [nodeType]))
       end if
     else if isNodeEvent(msg, "buttonSelected")
       ' If a button is selected, we have some determining to do
@@ -370,9 +370,9 @@ sub Main (args as dynamic) as void
           ' User chose Play button from movie detail view
           startLoadingSpinner()
           ' Check if a specific Audio Stream was selected
-          audio_stream_idx = 0
+          audioStreamIdx = 0
           if isValid(group.selectedAudioStreamIndex)
-            audio_stream_idx = group.selectedAudioStreamIndex
+            audioStreamIdx = group.selectedAudioStreamIndex
           end if
 
           if isValid(group.itemContent)
@@ -392,7 +392,7 @@ sub Main (args as dynamic) as void
             else
               queueItem = nodeHelpers.createQueueItem(group.itemContent)
               if not isValid(queueItem) then return
-              queueItem.selectedAudioStreamIndex = audio_stream_idx
+              queueItem.selectedAudioStreamIndex = audioStreamIdx
               ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
               if isValidAndNotEmpty(group.selectedVideoStreamId)
                 queueItem.id = group.selectedVideoStreamId
@@ -408,7 +408,7 @@ sub Main (args as dynamic) as void
             end if
           end if
 
-          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "main_group"
+          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "mainGroup"
             buttons = group.findNode("buttons")
             if isValid(buttons)
               group.lastFocus = group.findNode("buttons")
@@ -425,9 +425,9 @@ sub Main (args as dynamic) as void
           ' User chose Resume button from detail view
           startLoadingSpinner()
           ' Check if a specific Audio Stream was selected
-          audio_stream_idx = 0
+          audioStreamIdx = 0
           if isValid(group.selectedAudioStreamIndex)
-            audio_stream_idx = group.selectedAudioStreamIndex
+            audioStreamIdx = group.selectedAudioStreamIndex
           end if
 
           if isValid(group.itemContent)
@@ -450,7 +450,7 @@ sub Main (args as dynamic) as void
             else
               queueItem = nodeHelpers.createQueueItem(group.itemContent)
               if not isValid(queueItem) then return
-              queueItem.selectedAudioStreamIndex = audio_stream_idx
+              queueItem.selectedAudioStreamIndex = audioStreamIdx
               ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
               if isValidAndNotEmpty(group.selectedVideoStreamId)
                 queueItem.id = group.selectedVideoStreamId
@@ -469,7 +469,7 @@ sub Main (args as dynamic) as void
             end if
           end if
 
-          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "main_group"
+          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "mainGroup"
             buttons = group.findNode("buttons")
             if isValid(buttons)
               group.lastFocus = group.findNode("buttons")
@@ -742,10 +742,10 @@ sub Main (args as dynamic) as void
         end if
       end if
 
-      if handleMenuAction(actionId) then goto app_start
+      if handleMenuAction(actionId) then goto appStart
     else if isNodeEvent(msg, "userMenuAction")
       actionId = msg.getData()
-      if handleMenuAction(actionId) then goto app_start
+      if handleMenuAction(actionId) then goto appStart
     else if type(msg) = "roDeviceInfoEvent"
       event = msg.GetInfo()
 
@@ -991,7 +991,7 @@ sub createAndShowHomeGroup()
     ' has the current user ran this version before?
     usersLastRunVersion = m.global.user.lastRunVersion
     if not isValid(usersLastRunVersion) or not versionChecker(usersLastRunVersion, m.global.app.version)
-      set_user_setting("LastRunVersion", m.global.app.version)
+      setUserSetting("LastRunVersion", m.global.app.version)
     end if
   end if
 end sub
@@ -1251,28 +1251,28 @@ sub removeResumeButtonFromGroup(group as object)
 end sub
 
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
-' Returns true if the caller should goto app_start (session-ending actions).
+' Returns true if the caller should goto appStart (session-ending actions).
 function handleMenuAction(actionId as string) as boolean
-  if actionId = "goto_search"
+  if actionId = "gotoSearch"
     group = CreateSearchPage()
     m.global.sceneManager.callFunc("pushScene", group)
-    group.findNode("SearchBox").findNode("search_Key").setFocus(true)
-    group.findNode("SearchBox").findNode("search_Key").active = true
+    group.findNode("SearchBox").findNode("searchKey").setFocus(true)
+    group.findNode("SearchBox").findNode("searchKey").active = true
   else if actionId = "settings"
     m.global.sceneManager.callFunc("settings")
-  else if actionId = "change_server"
+  else if actionId = "changeServer"
     startLoadingSpinner()
-    unset_setting("server")
+    unsetSetting("server")
     server.Delete()
     SignOut(false)
     m.global.sceneManager.callFunc("clearScenes")
     return true
-  else if actionId = "change_user"
+  else if actionId = "changeUser"
     startLoadingSpinner()
     SignOut(false)
     m.global.sceneManager.callFunc("clearScenes")
     return true
-  else if actionId = "sign_out"
+  else if actionId = "signOut"
     startLoadingSpinner()
     SignOut()
     m.global.sceneManager.callFunc("clearScenes")

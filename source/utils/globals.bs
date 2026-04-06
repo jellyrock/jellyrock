@@ -226,7 +226,7 @@ end function
 ' Save information from roAppInfo to m.global.app
 sub SaveAppToGlobal()
   appInfo = CreateObject("roAppInfo")
-  lastRunVersion = get_setting("LastRunVersion")
+  lastRunVersion = getSetting("LastRunVersion")
 
   ' Create and populate AppInfo content node
   appNode = CreateObject("roSGNode", "AppInfo")

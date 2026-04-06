@@ -23,12 +23,12 @@ sub loadItems()
   globalUser = m.global.user
   results = []
 
-  sort_field = m.top.sortField
+  sortField = m.top.sortField
 
   if m.top.sortAscending = true
-    sort_order = "Ascending"
+    sortOrder = "Ascending"
   else
-    sort_order = "Descending"
+    sortOrder = "Descending"
   end if
 
   if m.top.ItemType = "LogoImage"
@@ -52,8 +52,8 @@ sub loadItems()
   params = {
     limit: m.top.limit,
     StartIndex: m.top.startIndex,
-    SortBy: sort_field,
-    SortOrder: sort_order,
+    SortBy: sortField,
+    SortOrder: sortOrder,
     recursive: m.top.recursive,
     Fields: fields,
     StudioIds: m.top.studioIds,

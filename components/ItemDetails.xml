@@ -14,16 +14,16 @@
 
       <LayoutGroup id="itemTracks" layoutDirection="horiz" itemSpacings="[24]">
         <LayoutGroup id="videoTrack" layoutDirection="horiz" itemSpacings="[6]">
-          <LabelSecondarySmaller id="video_codec" vertAlign="bottom" />
-          <LabelSecondarySmallest id="video_codec_count" vertAlign="top" />
+          <LabelSecondarySmaller id="videoCodec" vertAlign="bottom" />
+          <LabelSecondarySmallest id="videoCodecCount" vertAlign="top" />
         </LayoutGroup>
         <LayoutGroup id="audioTrack" layoutDirection="horiz" itemSpacings="[6]">
-          <LabelSecondarySmaller id="audio_codec" vertAlign="bottom" />
-          <LabelSecondarySmallest id="audio_codec_count" vertAlign="top" />
+          <LabelSecondarySmaller id="audioCodec" vertAlign="bottom" />
+          <LabelSecondarySmallest id="audioCodecCount" vertAlign="top" />
         </LayoutGroup>
         <LayoutGroup id="subtitleTrack" layoutDirection="horiz" itemSpacings="[6]">
-          <LabelSecondarySmaller id="subtitle_codec" vertAlign="bottom" />
-          <LabelSecondarySmallest id="subtitle_codec_count" vertAlign="top" />
+          <LabelSecondarySmaller id="subtitleCodec" vertAlign="bottom" />
+          <LabelSecondarySmallest id="subtitleCodecCount" vertAlign="top" />
         </LayoutGroup>
       </LayoutGroup>
     </LayoutGroup>

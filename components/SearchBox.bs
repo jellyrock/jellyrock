@@ -13,7 +13,7 @@ sub init()
   m.top.horizAlignment = "center"
   m.top.vertAlignment = "top"
   m.top.visible = false
-  m.searchText = m.top.findNode("search_Key")
+  m.searchText = m.top.findNode("searchKey")
   m.searchText.textEditBox.hintText = translate(translationKeys.ButtonSearch)
   m.searchText.keyGrid.keyDefinitionUri = "pkg:/components/data/CustomAddressKDF.json"
   m.searchText.textEditBox.voiceEnabled = true
@@ -28,8 +28,8 @@ sub init()
 end sub
 
 sub searchMedias()
-  m.top.search_values = m.searchText.text
-  if m.top.search_values.len() > 1
+  m.top.searchValues = m.searchText.text
+  if m.top.searchValues.len() > 1
     m.searchText.textEditBox.leadingEllipsis = true
   else
     m.searchText.textEditBox.leadingEllipsis = false
