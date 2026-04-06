@@ -25,6 +25,7 @@ sub init()
   m.log = log.Logger("VideoPlayerView")
   ' Hide the overhang on init to prevent showing 2 clocks
   m.top.getScene().findNode("overhang").visible = false
+  m.forceFinished = false
   userSettings = m.global.user.settings
   m.currentItem = m.global.queueManager.callFunc("getCurrentItem")
   m.originalClosedCaptionState = invalid
@@ -917,6 +918,10 @@ sub forceFinishPlayback()
     m.log.info("Force-finishing playback — no item ID, skipping mark-played")
   end if
 
+  ' Tell ReportPlayback to report position at end of video so the server
+  ' sees a natural completion — matching the mark-played request.
+  m.forceFinished = true
+
   m.top.control = "stop"
   m.top.state = "finished"
 end sub
@@ -1306,10 +1311,17 @@ sub ReportPlayback(state = "update" as string)
 
   m.log.debug("start ReportPlayback", state, int(m.top.position))
 
+  ' When force-finished, report position at end of video so the server
+  ' sees a natural completion — matching the mark-played request.
+  positionSeconds = m.top.position
+  if m.forceFinished and (state = "stop" or state = "finished")
+    positionSeconds = m.top.duration
+  end if
+
   params = {
     "ItemId": m.top.id,
     "PlaySessionId": m.top.PlaySessionId,
-    "PositionTicks": int(m.top.position) * 10000000&, 'Ensure a LongInteger is used
+    "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
     "IsPaused": (m.top.state = "paused")
   }
   if isValid(m.top.content) and isValid(m.top.content.live) and m.top.content.live
