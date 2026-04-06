@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- report position at video duration when force-finishing playback ([98d8ac9](https://github.com/jellyrock/jellyrock/commit/98d8ac91))
+
 ## [2.10.0](https://github.com/jellyrock/jellyrock/compare/v2.9.0...v2.10.0) - 2026-04-06
 
 ### Added
