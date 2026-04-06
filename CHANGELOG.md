@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- sort BoxSet/Collection movies by release date ([#463](https://github.com/jellyrock/jellyrock/pull/463))
 - report position at video duration when force-finishing playback ([98d8ac9](https://github.com/jellyrock/jellyrock/commit/98d8ac91))
 
 ## [2.10.0](https://github.com/jellyrock/jellyrock/compare/v2.9.0...v2.10.0) - 2026-04-06
