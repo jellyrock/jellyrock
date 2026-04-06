@@ -774,26 +774,47 @@ function getFirstAudioStreamIndex(streams as dynamic) as integer
   return 0
 end function
 
-' Converts a Jellyfin audio stream index to a Roku 1-indexed track position
-' @param {integer} jellyfinAudioIndex - The Jellyfin audio stream index to find
-' @param {dynamic} audioStreamsArray - Array of audio streams (must have .index field)
-' @returns {string} - Roku track position as string (1-indexed), defaults to "1"
-function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsArray as dynamic) as string
-  if not isValid(audioStreamsArray) then return "1"
-  if audioStreamsArray.Count() = 0 then return "1"
-
-  ' Find the array position of the stream with matching Jellyfin index
-  for i = 0 to audioStreamsArray.Count() - 1
-    if isValid(audioStreamsArray[i].index)
-      if audioStreamsArray[i].index = jellyfinAudioIndex
-        ' Convert 0-indexed array position to 1-indexed Roku track
-        return (i + 1).ToStr()
+' Converts a Jellyfin audio stream index to a Roku audioTrack Track identifier.
+' For MKV direct play, Roku exposes tracks using 1-based MKV track numbers that
+' include ALL track types (video, audio, subtitle). Jellyfin's stream Index is 0-based
+' and also counts all track types, so Roku Track = Jellyfin Index + 1.
+'
+' When availableAudioTracks is provided (populated by Roku during active playback),
+' matches by language for robustness against non-standard MKV track numbering.
+' Falls back to Index + 1 mapping when availableAudioTracks is not available
+' (e.g., before playback starts or for non-MKV containers).
+'
+' @param {integer} jellyfinAudioIndex - The Jellyfin audio stream index
+' @param {dynamic} audioStreamsArray - Jellyfin fullAudioData array (must have .index and .Language fields)
+' @param {dynamic} [availableAudioTracks=invalid] - Roku's availableAudioTracks array (has .Track and .Language)
+' @returns {string} - Roku Track identifier string for audioTrack field
+function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsArray as dynamic, availableAudioTracks = invalid as dynamic) as string
+  ' When Roku's availableAudioTracks is populated, match by language for accuracy
+  if isValid(availableAudioTracks) and isValid(audioStreamsArray)
+    ' Find the language of the selected Jellyfin stream
+    selectedLanguage = ""
+    for each stream in audioStreamsArray
+      if isValid(stream.index) and stream.index = jellyfinAudioIndex
+        if isValid(stream.Language)
+          selectedLanguage = LCase(stream.Language)
+        end if
+        exit for
       end if
-    end if
-  end for
+    end for
 
-  ' Default to first track if not found
-  return "1"
+    if selectedLanguage <> ""
+      for each rokuTrack in availableAudioTracks
+        if isValid(rokuTrack.Track) and isValid(rokuTrack.Language)
+          if LCase(rokuTrack.Language) = selectedLanguage
+            return rokuTrack.Track
+          end if
+        end if
+      end for
+    end if
+  end if
+
+  ' Fallback: Roku Track = Jellyfin Index + 1 (MKV 1-based track numbering)
+  return (jellyfinAudioIndex + 1).ToStr()
 end function
 
 ' resolveSplashScreen: Resolves whether to show the splash screen on User Select screen

@@ -506,8 +506,10 @@ sub onSubtitleChange()
 
   if switchWithoutRefresh then return
 
+  m.log.info("Subtitle change requires stream reload", "subtitleIndex", m.top.SelectedSubtitle, "position", m.top.position)
+
   ' Save the current video position
-  m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
 
   m.top.control = "stop"
 
@@ -518,13 +520,27 @@ sub onSubtitleChange()
   m.LoadMetaDataTask.control = "RUN"
 end sub
 
-' Event handler for when audioIndex changes
+' Event handler for when audioIndex changes.
+' For direct play: switches audio track directly using Roku's availableAudioTracks
+' (no stop/reload needed since all tracks are in the container).
+' For transcoded: must reload since the server needs to re-encode with the selected track.
 sub onAudioIndexChange()
-  ' Skip initial audio index setting
-  if m.top.position = 0 then return
+  m.log.info("Audio index changed by user", "newIndex", m.top.audioIndex, "isTranscoded", m.top.isTranscoded, "position", m.top.position, "currentAudioTrack", m.top.audioTrack)
+
+  ' Direct play: all audio tracks are in the container — just switch the Roku track
+  if not m.top.isTranscoded and isValid(m.top.availableAudioTracks)
+    newTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
+    m.log.info("Direct play audio switch", "jellyfinIndex", m.top.audioIndex, "rokuTrack", newTrack)
+    m.top.audioTrack = newTrack
+    ReportPlayback()
+    return
+  end if
+
+  ' Transcoded or availableAudioTracks not available: must reload
+  m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
 
   ' Save the current video position
-  m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
 
   m.top.control = "stop"
 
@@ -543,7 +559,7 @@ sub onVideoSourceChange()
   if not isValidAndNotEmpty(newSourceId) then return
 
   ' Save the current video position
-  m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
 
   m.top.control = "stop"
 
@@ -618,13 +634,18 @@ sub onVideoContentLoaded()
 
   m.top.observeField("state", "onState")
 
+  m.log.info("onVideoContentLoaded", "audioIndex", videoContent[0].audioIndex, "isTranscoded", videoContent[0].isTranscoded, "PlayStart", videoContent[0].content.PlayStart, "audioTrackCount", videoContent[0].fullAudioData.Count())
+
   m.top.content = videoContent[0].content
   m.top.PlaySessionId = videoContent[0].PlaySessionId
   m.top.videoId = videoContent[0].id
   m.top.container = videoContent[0].container
+  m.top.isTranscoded = isValid(videoContent[0].isTranscoded) and videoContent[0].isTranscoded
   m.top.fullSubtitleData = videoContent[0].fullSubtitleData
   m.top.fullAudioData = videoContent[0].fullAudioData
+  m.top.unobserveField("audioIndex")
   m.top.audioIndex = videoContent[0].audioIndex
+  m.top.observeField("audioIndex", "onAudioIndexChange")
   m.top.transcodeParams = videoContent[0].transcodeparams
   m.chapters = videoContent[0].chapters
   m.top.showID = videoContent[0].showID
@@ -756,10 +777,16 @@ sub onVideoContentLoaded()
   m.top.observeField("selectedSubtitle", "onSubtitleChange")
 
   if isValid(m.top.audioIndex)
-    ' Convert Jellyfin audio stream index to Roku's 1-indexed audio track position
-    m.top.audioTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData)
-  else
-    m.top.audioTrack = "1"
+    if isValid(videoContent[0].isTranscoded) and videoContent[0].isTranscoded
+      ' Transcoded streams contain only the server-selected audio track.
+      ' Let Roku auto-select (only one track available).
+      m.log.debug("Transcoded stream: letting Roku auto-select audio", "jellyfinIndex", m.top.audioIndex)
+    else
+      ' Direct play: map Jellyfin index to Roku Track identifier.
+      ' Pass availableAudioTracks for language-based matching when available (e.g., audio change reload).
+      m.top.audioTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
+      m.log.debug("Direct play: mapped audioTrack", "jellyfinIndex", m.top.audioIndex, "rokuTrack", m.top.audioTrack)
+    end if
   end if
 
   ' Make video player visible now that content is loaded and ready to play
@@ -1188,7 +1215,7 @@ end sub
 ' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
 ' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
 sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
-  m.global.queueManager.callFunc("setTopStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
   ' Prevents ViewCreator popping the scene when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
@@ -1205,6 +1232,22 @@ end sub
 ' When Video Player state changes
 sub onState()
   m.log.debug("start onState", m.top.state)
+
+  ' On first play, verify audioTrack matches the intended Jellyfin selection using
+  ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
+  ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
+  if m.top.state = "playing" and not m.playReported
+    if isValid(m.top.availableAudioTracks) and isValid(m.top.audioIndex) and not m.top.isTranscoded
+      correctedTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
+      if correctedTrack <> m.top.audioTrack
+        m.log.info("Correcting audioTrack on first play", "was", m.top.audioTrack, "corrected", correctedTrack, "jellyfinIndex", m.top.audioIndex)
+        m.top.audioTrack = correctedTrack
+      else
+        m.log.debug("audioTrack verified correct on first play", "audioTrack", m.top.audioTrack, "jellyfinIndex", m.top.audioIndex)
+      end if
+    end if
+  end if
+
   if isValid(m.captionTask)
     m.captionTask.playerState = m.top.state + m.top.globalCaptionMode
   end if
