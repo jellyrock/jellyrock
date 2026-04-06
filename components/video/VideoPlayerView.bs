@@ -898,7 +898,16 @@ end sub
 ' Triggers synchronous teardown (onState -> ViewCreator -> popScene -> destroy),
 ' invalidating all m. references. Callers MUST return immediately after calling.
 sub forceFinishPlayback()
-  m.log.info("Force-finishing playback")
+  m.log.info("Force-finishing playback — marking as watched", m.top.id)
+
+  ' Explicitly mark as watched via dedicated API endpoint.
+  ' Uses the API pool (not SideEffectTask) so it can't be overwritten
+  ' by the playstate report that fires during teardown.
+  if m.top.id <> ""
+    req = GetApi().BuildMarkPlayedRequest(m.top.id)
+    if isValid(req) then submitApiRequest(req, "forceFinishMarkPlayed")
+  end if
+
   m.top.control = "stop"
   m.top.state = "finished"
 end sub
