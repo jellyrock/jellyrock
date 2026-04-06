@@ -126,6 +126,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
       ' This should never happen since ItemMetaData() just fetched metadata
       audio_stream_idx = 0
     end if
+    m.log.debug("Audio stream auto-selected", "audio_stream_idx", audio_stream_idx)
+  else
+    m.log.debug("Audio stream manually selected", "audio_stream_idx", audio_stream_idx)
   end if
 
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
@@ -245,6 +248,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
 
   ' PlayStart requires the time to be in seconds
   video.content.PlayStart = int(playbackPosition / 10000000)
+  m.log.debug("Playback position resolved", "startingPoint", playbackPosition, "PlayStart", video.content.PlayStart)
 
   ' Build complete trickplay config using utility function for fail-fast validation
   ' meta.trickplayData is the pre-extracted Trickplay AA from the transformer
@@ -331,6 +335,13 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   end if
 
   addAudioStreamsToVideo(video)
+
+  audioIndexList = []
+  for each audioTrackEntry in video.fullAudioData
+    audioIndexList.push(audioTrackEntry.Index)
+  end for
+  m.log.debug("fullAudioData built", "count", video.fullAudioData.Count(), "jellyfinIndices", audioIndexList, "selectedAudioStreamIdx", audio_stream_idx)
+
   if isLive
     video.transcodeParams = {
       "MediaSourceId": m.playbackInfo.MediaSources[0].Id,
@@ -406,7 +417,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audio_s
   end if
 
   setCertificateAuthority(video.content)
-  ' Convert Jellyfin audio stream index to Roku's 1-indexed audio track position
+  ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
   video.audioTrack = getRokuAudioTrackPosition(audio_stream_idx, video.fullAudioData)
 end sub
 

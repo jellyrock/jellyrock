@@ -54,6 +54,8 @@ sub onSelectAudioPressed()
     data: []
   }
 
+  m.log.debug("onSelectAudioPressed", "currentAudioIndex", m.view.audioIndex, "trackCount", m.view.fullAudioData.Count())
+
   for each item in m.view.fullAudioData
 
     audioStreamItem = {
@@ -65,9 +67,11 @@ sub onSelectAudioPressed()
       "Type": "audioselection"
     }
 
-    if m.view.audioIndex = item.Index
+    isSelected = m.view.audioIndex = item.Index
+    if isSelected
       audioStreamItem.selected = true
     end if
+    m.log.debug("Audio track item", "jellyfinIndex", item.Index, "isSelected", isSelected, "title", formatAudioDisplayTitle(item))
 
     audioData.data.push(audioStreamItem)
   end for
@@ -193,7 +197,10 @@ sub processAudioSelection()
 
   if isValid(selectedAudioTrack)
     if isValid(selectedAudioTrack.index)
+      m.log.info("processAudioSelection", "selectedJellyfinIndex", selectedAudioTrack.index, "previousAudioIndex", m.view.audioIndex)
       m.view.audioIndex = selectedAudioTrack.index
+    else
+      m.log.warn("processAudioSelection: selectedAudioTrack.index is invalid", selectedAudioTrack)
     end if
   end if
 end sub

@@ -1066,7 +1066,7 @@ sub handleQuickPlayOutput(task as object)
   if output.action = "queue"
     quickplay.pushToQueue(output.items)
     if output.firstItemStartingPoint > 0
-      m.global.queueManager.callFunc("setTopStartingPoint", output.firstItemStartingPoint)
+      m.global.queueManager.callFunc("setCurrentStartingPoint", output.firstItemStartingPoint)
     end if
     if output.shuffle and m.global.queueManager.callFunc("getCount") > 1
       m.global.queueManager.callFunc("toggleShuffle")

@@ -287,7 +287,7 @@ sub onRefreshDetailsLoaded()
   if isValidAndNotEmpty(content) and isValid(content[0])
     m.top.itemContent = content[0]
     if content[0].playbackPositionTicks > 0
-      m.global.queueManager.callFunc("setTopStartingPoint", content[0].playbackPositionTicks)
+      m.global.queueManager.callFunc("setCurrentStartingPoint", content[0].playbackPositionTicks)
     end if
   end if
 
