@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - unused field alias ([c4c6948](https://github.com/jellyrock/jellyrock/commit/c4c6948f))
 
+### Dependencies
+
+- Update dotenv from v17.4.0 to v17.4.1 ([#456](https://github.com/jellyrock/jellyrock/pull/456))
+
 ## [2.9.0](https://github.com/jellyrock/jellyrock/compare/v2.8.0...v2.9.0) - 2026-04-02
 
 ### Added
