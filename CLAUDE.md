@@ -84,9 +84,10 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - **Cannot modify CHANGELOG.md** (CI-controlled only)
 - **Cannot execute build/deploy** (IDE handles compilation)
 ### Code Standards
+- **Follow the [Code Style Guide](docs/dev/code-style.md)** for all naming conventions, formatting rules, and BrightScript-specific patterns
 - Use `roku-log` for component and class logging
 - Use print statements sparingly and only when absolutely necessary (roku-log only works in components/classes)
 - Fix issues at source, not usage points
 - Use comments for JSDoc style function definitions, complex code, any Roku specific oddities, and best practices
 - Update/create unit tests for all changes
-- 2 spaces indentation, PascalCase class names - camelCase everything else
+- 2 spaces indentation, PascalCase class/enum/component names, lowerCamelCase everything else, UPPER_SNAKE_CASE constants and enum members
