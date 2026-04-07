@@ -8,6 +8,12 @@ namespace tests
     private mockQueueManager
     private mockSceneManager
     private lastBackgroundImageCall
+    protected resolution1080p as object
+    protected resolution4K as object
+    protected resolution720p as object
+    protected size1080p as object
+    protected size4K as object
+    protected size720p as object
 
     protected override function setup()
       super.setup()

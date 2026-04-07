@@ -28,26 +28,26 @@ namespace MockDataLoader
   end function
 
   ' Get list of all available mock servers
-  ' @returns {array} Array of server names (without .json extension)
+  ' @returns {roArray} Array of server names (without .json extension)
   function GetAvailableServers() as object
     return getFilesFromDirectory("pkg:/source/tests/mocks/servers/")
   end function
 
   ' Get list of all available mock users
-  ' @returns {array} Array of user names (without .json extension)
+  ' @returns {roArray} Array of user names (without .json extension)
   function GetAvailableUsers() as object
     return getFilesFromDirectory("pkg:/source/tests/mocks/users/")
   end function
 
   ' Get list of all available mock devices
-  ' @returns {array} Array of device names (without .json extension)
+  ' @returns {roArray} Array of device names (without .json extension)
   function GetAvailableDevices() as object
     return getFilesFromDirectory("pkg:/source/tests/mocks/devices/")
   end function
 
   ' Internal: Get all .json files from a directory
   ' @param {string} dirPath - Full path to directory
-  ' @returns {array} Array of file names without .json extension
+  ' @returns {roArray} Array of file names without .json extension
   function getFilesFromDirectory(dirPath as string) as object
     files = []
     dir = CreateObject("roFileSystem")

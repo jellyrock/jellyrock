@@ -3,6 +3,13 @@ namespace tests
   @suite("misc.bs - Audio Stream Functions")
   class MiscAudioStreamsTests extends tests.BaseTestSuite
 
+    protected standardStreams as object
+    protected nonContiguousStreams as object
+    protected audioFirstStreams as object
+    protected noAudioStreams as object
+    protected missingIndexStreams as object
+    protected multiLanguageStreams as object
+
     protected override function setup()
       super.setup()
       ' Setup mock stream data with various configurations

@@ -4,6 +4,12 @@ namespace tests
   @suite("misc.bs - Validation Utilities")
   class MiscValidationTests extends tests.BaseTestSuite
 
+    protected myArray as dynamic
+    protected myAssArray as object
+    protected myEmptyArray as dynamic
+    protected myEmptyList as dynamic
+    protected myList as dynamic
+
     protected override function setup()
       super.setup()
       ' Shared test data for all validation tests
