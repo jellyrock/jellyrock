@@ -27,48 +27,6 @@ namespace MockDataLoader
     return loadJSONFile(filePath)
   end function
 
-  ' Get list of all available mock servers
-  ' @returns {roArray} Array of server names (without .json extension)
-  function GetAvailableServers() as object
-    return getFilesFromDirectory("pkg:/source/tests/mocks/servers/")
-  end function
-
-  ' Get list of all available mock users
-  ' @returns {roArray} Array of user names (without .json extension)
-  function GetAvailableUsers() as object
-    return getFilesFromDirectory("pkg:/source/tests/mocks/users/")
-  end function
-
-  ' Get list of all available mock devices
-  ' @returns {roArray} Array of device names (without .json extension)
-  function GetAvailableDevices() as object
-    return getFilesFromDirectory("pkg:/source/tests/mocks/devices/")
-  end function
-
-  ' Internal: Get all .json files from a directory
-  ' @param {string} dirPath - Full path to directory
-  ' @returns {roArray} Array of file names without .json extension
-  function getFilesFromDirectory(dirPath as string) as object
-    files = []
-    dir = CreateObject("roFileSystem")
-    fileList = dir.FindRecurse(dirPath, "json")
-
-    if isValidAndNotEmpty(fileList)
-      for each filePath in fileList
-        ' Extract filename from full path
-        parts = filePath.split("/")
-        fileName = parts[parts.count() - 1]
-        ' Only process files with .json extension
-        if fileName.endsWith(".json")
-          fileName = Left(fileName, Len(fileName) - 5)
-          files.push(fileName)
-        end if
-      end for
-    end if
-
-    return files
-  end function
-
   ' Load mock device profile data
   ' @param {string} profileName - Name of device profile mock file without extension
   ' @returns {object} Device profile data or invalid if file not found
