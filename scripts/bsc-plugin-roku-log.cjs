@@ -163,7 +163,7 @@ class RokuLogPlugin {
     let text = result.data.toString();
 
     if (brighterscript.isXmlFile(event.file)) {
-      text = text.replace(/<!(--.*?--)?>/gim, '');
+      text = text.replace(/<!(--[\s\S]*?--)?>/gi, '');
     } else {
       text = text.replace(/^(?: *|\t*)('[^\n]*)/gim, '');
     }
@@ -215,7 +215,7 @@ function createGuardStatement(callExpression) {
 
   return new IfStatement({
     if: createToken(TokenKind.If, 'if'),
-    then: createToken(TokenKind.Then, ''),
+    then: createToken(TokenKind.Then, 'then'),
     condition,
     thenBranch: body
   });
