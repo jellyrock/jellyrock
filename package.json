@@ -47,7 +47,7 @@
     "format": "npx bsfmt --write",
     "lint": "npm run check-formatting && npm run lint:bs && npm run validate && npm run lint:json && npm run lint:markdown && npm run lint:spelling && npm run lint:translations && npm run validate:translations && npm run lint:xml-translations",
     "lint:bs": "bslint",
-    "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts ./",
+    "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,out,locale ./",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"!CLAUDE.md\" \"!out/\" \"!build/\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!tasks/\" \"!.opencode/**/*.md\"",
     "lint:spelling": "spellchecker -d dictionary.txt --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!docs/user/app-settings.md\" \"!CHANGELOG.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
     "lint:translations": "node scripts/lint-translations.cjs",
