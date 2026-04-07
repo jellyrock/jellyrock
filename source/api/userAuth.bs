@@ -3,7 +3,7 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
 
-function get_token(username as string, password as string)
+function getToken(username as string, password as string)
   json = GetApi().AuthenticateByName(username, password)
 
   if not isValid(json) then return invalid
@@ -30,18 +30,18 @@ end function
 
 sub SignOut(deleteSavedEntry = true as boolean)
   if deleteSavedEntry
-    unset_user_setting("authToken")
-    unset_user_setting("username")
+    unsetUserSetting("authToken")
+    unsetUserSetting("username")
   end if
-  unset_setting("active_user")
+  unsetSetting("active_user")
   user.Logout()
   m.global.sceneManager.currentUser = ""
   group = m.global.sceneManager.callFunc("getActiveScene")
-  group.optionsAvailable = false
+  group.isOptionsAvailable = false
 end sub
 
 function AvailableUsers()
-  users = parseJson(get_setting("available_users", "[]"))
+  users = parseJson(getSetting("available_users", "[]"))
   return users
 end function
 

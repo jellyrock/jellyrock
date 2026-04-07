@@ -17,7 +17,7 @@ This guide documents the complete process for creating and testing registry migr
 
 ## Overview
 
-Registry migrations run in `source/Main.bs` **before** any data transformers or session loading occurs. This means:
+Registry migrations run in `source/main.bs` **before** any data transformers or session loading occurs. This means:
 
 - Migrations execute once per app version update
 - By the time `SessionDataTransformer` loads, **only NEW names exist** in the registry
@@ -200,7 +200,7 @@ grep -r "oldSettingName" source/ components/
 Common places to check:
 
 - `source/utils/deviceCapabilities.bs` - Device profile logic
-- `source/ShowScenes.bs` - Scene configuration
+- `source/showScenes.bs` - Scene configuration
 - Component logic that reads settings directly
 
 **Example:**

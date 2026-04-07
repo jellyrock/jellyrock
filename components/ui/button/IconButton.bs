@@ -19,8 +19,8 @@ sub init()
   m.buttonSpinner = m.top.findNode("buttonSpinner")
   m.buttonText = m.top.findNode("buttonText")
 
-  m.top.observeField("enabled", "onEnabledChanged")
-  m.top.observeField("loading", "onLoadingChanged")
+  m.top.observeField("isEnabled", "onEnabledChanged")
+  m.top.observeField("isLoading", "onLoadingChanged")
   m.top.observeField("background", "onBackgroundChanged")
   m.top.observeField("iconBackground", "onIconBackgroundChanged")
   m.top.observeField("icon", "onIconChanged")
@@ -29,7 +29,7 @@ sub init()
   m.top.observeField("width", "onWidthChanged")
   m.top.observeField("padding", "onPaddingChanged")
   m.top.observeField("focusedChild", "onFocusChanged")
-  m.top.observeField("selected", "onSelectedChanged")
+  m.top.observeField("isButtonSelected", "onSelectedChanged")
 
   applyTheme()
 end sub
@@ -58,7 +58,7 @@ sub onFocusChanged()
     ' Button background
     m.buttonBackground.blendColor = m.top.focusBackground
     ' Button icon - respect selected state when focused
-    if m.top.selected
+    if m.top.isButtonSelected
       m.buttonIcon.blendColor = m.iconSelectedColor
     else
       m.buttonIcon.blendColor = m.top.iconFocusBackground
@@ -69,7 +69,7 @@ sub onFocusChanged()
     ' Button background
     m.buttonBackground.blendColor = m.top.background
     ' Button icon - respect selected state when not focused
-    if m.top.selected
+    if m.top.isButtonSelected
       m.buttonIcon.blendColor = m.iconSelectedColor
     else
       m.buttonIcon.blendColor = m.top.iconBackground
@@ -87,7 +87,7 @@ end sub
 
 sub onIconBackgroundChanged()
   ' Only apply if not in selected state
-  if not m.top.selected
+  if not m.top.isButtonSelected
     m.buttonIcon.blendColor = m.top.iconBackground
   end if
 end sub
@@ -135,7 +135,7 @@ end sub
 sub onEnabledChanged()
   constants = m.global.constants
 
-  if m.top.enabled
+  if m.top.isEnabled
     m.top.background = constants.colorBackgroundSecondary
     m.top.iconBackground = constants.colorTextPrimary
   else
@@ -145,7 +145,7 @@ sub onEnabledChanged()
 end sub
 
 sub onSelectedChanged()
-  if m.top.selected
+  if m.top.isButtonSelected
     ' Active/selected state - use secondary color for icon
     m.buttonIcon.blendColor = m.iconSelectedColor
   else
@@ -187,7 +187,7 @@ end sub
 ' onLoadingChanged: Swap icon for a spinner while loading.
 ' Does NOT set enabled=false — button stays focusable. OK blocking is handled by JRButtonGroup.
 sub onLoadingChanged()
-  if m.top.loading
+  if m.top.isLoading
     m.buttonIcon.visible = false
     m.buttonSpinner.visible = true
 

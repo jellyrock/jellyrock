@@ -6,11 +6,11 @@ sub init()
   m.top.id = "clock"
   if m.global.user.settings.uiDesignHideClock
     ' If hideclick setting is enabled, exit without setting any variables
-    m.hideClock = true
+    m.shouldHideClock = true
     return
   end if
 
-  m.hideClock = false
+  m.shouldHideClock = false
   m.hours = m.top.findNode("hours")
   m.minutes = m.top.findNode("minutes")
   m.timeSeperator = m.top.findNode("timeSeperator")
@@ -27,7 +27,7 @@ end sub
 ' onCurrentTimeTimerFire: Code that runs every time the currentTimeTimer fires
 '
 sub updateTime()
-  if m.hideClock then return
+  if m.shouldHideClock then return
 
   currentTime = CreateObject("roDateTime")
   currentTime.ToLocalTime()
@@ -62,7 +62,7 @@ sub updateTime()
 end sub
 
 sub resetTime()
-  if m.hideClock then return
+  if m.shouldHideClock then return
 
   m.currentTimeTimer.control = "stop"
   m.currentTimeTimer.control = "start"

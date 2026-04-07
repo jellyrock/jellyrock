@@ -1,5 +1,5 @@
 enum MediaSegmentAction
-  none = "None"
-  askToSkip = "AskToSkip"
-  skip = "Skip"
+  NONE = "None"
+  ASK_TO_SKIP = "AskToSkip"
+  SKIP = "Skip"
 end enum

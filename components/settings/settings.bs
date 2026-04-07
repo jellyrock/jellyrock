@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
@@ -12,7 +12,7 @@ import "pkg:/source/utils/translateLocale.bs"
 sub init()
   m.log = log.Logger("Settings")
   m.top.overhangTitle = translate(translationKeys.LabelSettings)
-  m.top.optionsAvailable = false
+  m.top.isOptionsAvailable = false
 
   m.userLocation = []
   m.themeColorsChanged = false
@@ -117,13 +117,13 @@ end sub
 
 ' Called when reset button is selected in HexKeyboard
 sub onHexResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
-  m.global.sceneManager.observeFieldScoped("dataReturned", "onResetDialogResponse")
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
+  m.global.sceneManager.observeFieldScoped("isDataReturned", "onResetDialogResponse")
 end sub
 
 ' Handle user response from reset confirmation dialog
 sub onResetDialogResponse()
-  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
 
   returnData = m.global.sceneManager.returnData
   if not isValid(returnData) then return
@@ -195,13 +195,13 @@ end sub
 
 ' Called when reset button is selected in AlphaKeyboard
 sub onAlphaResetRequested()
-  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
-  m.global.sceneManager.observeFieldScoped("dataReturned", "onAlphaResetDialogResponse")
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
+  m.global.sceneManager.observeFieldScoped("isDataReturned", "onAlphaResetDialogResponse")
 end sub
 
 ' Handle user response from alpha reset confirmation dialog
 sub onAlphaResetDialogResponse()
-  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
 
   returnData = m.global.sceneManager.returnData
   if not isValid(returnData) then return
@@ -430,7 +430,7 @@ sub boolSettingChanged()
 
     ' Special handling for globalRememberMe - set active_user in global registry
     if selectedSetting.settingName = "globalRememberMe"
-      set_setting("active_user", m.global.user.id)
+      setSetting("active_user", m.global.user.id)
     end if
   else
     ' Update node field - observer handles registry persistence
@@ -438,7 +438,7 @@ sub boolSettingChanged()
 
     ' Special handling for globalRememberMe - remove active_user from global registry
     if selectedSetting.settingName = "globalRememberMe"
-      unset_setting("active_user")
+      unsetSetting("active_user")
     end if
   end if
 end sub
@@ -594,13 +594,13 @@ end function
 
 ' Show confirmation dialog before resetting all user settings
 sub confirmResetUserSettings()
-  m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageAreYouSureYouWantTo2), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
-  m.global.sceneManager.observeFieldScoped("dataReturned", "onResetUserSettingsResponse")
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageAreYouSureYouWantTo2), [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonReset)])
+  m.global.sceneManager.observeFieldScoped("isDataReturned", "onResetUserSettingsResponse")
 end sub
 
 ' Handle user response from reset user settings confirmation dialog
 sub onResetUserSettingsResponse()
-  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
 
   returnData = m.global.sceneManager.returnData
   if not isValid(returnData) or returnData.indexSelected <> 1
@@ -634,14 +634,14 @@ sub executeResetUserSettings()
   keysToDelete = getSettingKeysToDelete(allRegistryData, sessionKeys)
 
   for each key in keysToDelete
-    registry_delete(key, userId)
+    registryDelete(key, userId)
   end for
 
   ' Reload all defaults from settings.json onto the settings node
   user.settings.SaveDefaults()
 
   ' globalRememberMe was reset to false — clear auto-login state
-  unset_setting("active_user")
+  unsetSetting("active_user")
 
   ' Clear per-library display settings
   localUser.settings.displaySettings = {}
@@ -701,8 +701,8 @@ end function
 sub exitSettingsAndReloadHome()
   ' Check if custom colors will be lost (user switched from Custom to a preset)
   if isValid(m.customColorBackup) and m.global.user.settings.uiTheme <> "custom" and hasCustomColorsChanged()
-    m.global.sceneManager.callFunc("optionDialog", translate(translationKeys.LabelReplaceCustomColors), translate(translationKeys.MessageYourCustomColorsWillBeReplaced), [translate(translationKeys.LabelYes), translate(translationKeys.LabelNo)])
-    m.global.sceneManager.observeFieldScoped("dataReturned", "onExitConfirmResponse")
+    m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelReplaceCustomColors), translate(translationKeys.MessageYourCustomColorsWillBeReplaced), [translate(translationKeys.LabelYes), translate(translationKeys.LabelNo)])
+    m.global.sceneManager.observeFieldScoped("isDataReturned", "onExitConfirmResponse")
     return
   end if
 
@@ -711,7 +711,7 @@ end sub
 
 ' Handle user response from exit confirmation dialog
 sub onExitConfirmResponse()
-  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
 
   returnData = m.global.sceneManager.returnData
   if not isValid(returnData) or returnData.indexSelected <> 0
@@ -824,7 +824,7 @@ sub destroy()
   m.radioSetting.unobserveField("checkedItem")
 
   ' Unobserve scoped observer on sceneManager (may be active if reset dialog was open)
-  m.global.sceneManager.unobserveFieldScoped("dataReturned")
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
 
   ' Clear node references
   m.settingsMenu = invalid

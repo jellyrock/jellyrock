@@ -345,12 +345,12 @@ sub onSeasonEpisodesLoaded()
     current = invalid
     before = []
     after = []
-    foundCurrent = false
+    isFoundCurrent = false
     for each ep in episodes
       if ep.id = m.currentEpisodeId
         current = ep
-        foundCurrent = true
-      else if foundCurrent
+        isFoundCurrent = true
+      else if isFoundCurrent
         after.push(ep)
       else
         before.push(ep)
@@ -459,12 +459,12 @@ sub onPlaylistItemsLoaded()
   m.top.rowItemSize = []
 
   hasVideos = false
-  allAudio = false
+  isAllAudio = false
   if isValid(items) and items.count() > 0
-    allAudio = true ' assume all-audio until a non-Audio item is found
+    isAllAudio = true ' assume all-audio until a non-Audio item is found
     for each item in items
       if item.type <> "Audio"
-        allAudio = false
+        isAllAudio = false
         if item.type = "Movie" or item.type = "Episode" or item.type = "Video" or item.type = "MusicVideo" or item.type = "Recording"
           hasVideos = true
         end if
@@ -473,7 +473,7 @@ sub onPlaylistItemsLoaded()
   end if
 
   if isValid(items) and items.count() > 0
-    if allAudio
+    if isAllAudio
       m.top.rowItemSize = [rowSlotSize.SQUARE]
       m.rowPlaylistItems = populateRow(m.rowPlaylistItems, translate(translationKeys.LabelPlaylistItems), items, rowSlotSize.ROW_HEIGHT_SQUARE)
     else
@@ -491,7 +491,7 @@ sub onPlaylistItemsLoaded()
     kind = "unknown"
   else if hasVideos
     kind = "video"
-  else if allAudio
+  else if isAllAudio
     kind = "audio"
   else
     kind = "mixed"
@@ -781,12 +781,12 @@ sub onAudioAlbumTracksLoaded()
     current = invalid
     before = []
     after = []
-    foundCurrent = false
+    isFoundCurrent = false
     for each track in tracks
       if track.id = m.currentAudioId
         current = track
-        foundCurrent = true
-      else if foundCurrent
+        isFoundCurrent = true
+      else if isFoundCurrent
         after.push(track)
       else
         before.push(track)

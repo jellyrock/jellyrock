@@ -2,6 +2,6 @@
 <component name="AlbumTrackList" extends="MarkupList">
   <interface>
     <field id="MusicArtistAlbumData" type="assocarray" onChange="getData" />
-    <field id="doneLoading" type="boolean" value="false" />
+    <field id="isDoneLoading" type="boolean" value="false" />
   </interface>
 </component>

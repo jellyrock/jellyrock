@@ -14,7 +14,7 @@ namespace tests
       return {
         maxChannels: maxChannels,
         supports8Channel: supports8Channel,
-        _isMock: true ' Flag to indicate testing mode - skip real hardware checks
+        isMock: true ' Flag to indicate testing mode - skip real hardware checks
       }
     end function
 

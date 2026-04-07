@@ -5,7 +5,7 @@
     <LabelSecondarySmallest id="totalLengthTimestamp" width="100" height="25" horizAlign="left" translation="[1230,838]" />
 
     <LayoutGroup id="toplevel" layoutDirection="vert" horizAlignment="center" translation="[960,175]" itemSpacings="[40]">
-      <LayoutGroup id="main_group" layoutDirection="vert" horizAlignment="center" itemSpacings="[15]">
+      <LayoutGroup id="mainGroup" layoutDirection="vert" horizAlignment="center" itemSpacings="[15]">
         <Poster id="albumCover" width="500" height="500" loadWidth="500" loadHeight="500" loadDisplayMode="limitSize" />
         <LabelPrimaryMedium id="artist" width="900" height="25" horizAlign="center" />
         <LabelPrimaryMedium id="song" width="900" height="25" horizAlign="center" />

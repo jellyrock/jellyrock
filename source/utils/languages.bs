@@ -5,9 +5,9 @@
 '
 ' @returns {object} - AssocArray of language code to display name mappings
 function getSubtitleLanguages()
-  if isValid(m._languageCache) then return m._languageCache
+  if isValid(m.languageCache) then return m.languageCache
 
-  m._languageCache = {
+  m.languageCache = {
     "aar": "Afar",
     "abk": "Abkhazian",
     "ace": "Achinese",
@@ -498,5 +498,5 @@ function getSubtitleLanguages()
     "zza": "Zaza; Dimili; Dimli; Kirdki; Kirmanjki; Zazaki"
   }
 
-  return m._languageCache
+  return m.languageCache
 end function

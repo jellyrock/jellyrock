@@ -11,6 +11,6 @@
   <interface>
     <field id="request" type="assocarray" />
     <field id="result" type="assocarray" />
-    <field id="done" type="boolean" value="false" />
+    <field id="isDone" type="boolean" value="false" />
   </interface>
 </component>

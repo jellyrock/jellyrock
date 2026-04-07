@@ -10,7 +10,7 @@
   <children>
     <LayoutGroup translation="[150,150]" itemSpacings="[39]">
       <LayoutGroup>
-        <LabelPrimaryLarge text="" id="prompt" bold="true" />
+        <LabelPrimaryLarge text="" id="prompt" isBold="true" />
         <LabelPrimaryMedium id="serverPickerHint" text="" />
       </LayoutGroup>
       <!--background for server picker-->

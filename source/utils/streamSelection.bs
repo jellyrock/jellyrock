@@ -492,9 +492,9 @@ function isStreamDirectPlayable(stream as object, deviceCapabilities as object) 
   if not isValid(stream.codec) then return false
   if not isValid(stream.channels) then return false
 
-  ' Testing mode: If _isMock flag is present, trust the capabilities without real hardware checks
+  ' Testing mode: If isMock flag is present, trust the capabilities without real hardware checks
   ' This allows deterministic unit testing on any hardware configuration
-  if isValid(deviceCapabilities._isMock) and deviceCapabilities._isMock = true
+  if isValid(deviceCapabilities.isMock) and deviceCapabilities.isMock = true
     ' For mock mode, assume stream is playable if channels are within device max
     if stream.channels = 8
       return deviceCapabilities.supports8Channel
@@ -755,7 +755,7 @@ end function
 ' - Use canPlay4k() for 4K eligibility (HDCP 2.2 + HEVC decode check)
 ' - Use roDeviceInfo.GetDisplayProperties() for HDR format detection
 '
-' @param {dynamic} [mockCapabilities=invalid] - Optional mock for unit testing (must have _isMock=true)
+' @param {dynamic} [mockCapabilities=invalid] - Optional mock for unit testing (must have isMock=true)
 ' @returns {object} - AssocArray with:
 '   maxHeight (integer) - Maximum display height in pixels
 '   maxWidth (integer) - Maximum display width in pixels
@@ -765,7 +765,7 @@ end function
 '   supportsHlg (boolean) - True if display supports HLG
 function getDeviceVideoCapabilities(mockCapabilities = invalid as dynamic) as object
   ' Testing mode: return mock capabilities directly
-  if isValid(mockCapabilities) and isValid(mockCapabilities._isMock) and mockCapabilities._isMock = true
+  if isValid(mockCapabilities) and isValid(mockCapabilities.isMock) and mockCapabilities.isMock = true
     return mockCapabilities
   end if
 
@@ -894,12 +894,12 @@ end function
 
 ' applyLiveDirectPlayFallback: Flags that a transcode retry is available for live streams
 ' attempting direct play. Live direct play may fail on Roku if the server overestimates
-' compatibility. VideoPlayerView observes transcodeAvailable to retry with transcoding on error.
+' compatibility. VideoPlayerView observes isTranscodeAvailable to retry with transcoding on error.
 '
 ' @param {object} video - Video object to update
 ' @param {object} meta - Video metadata containing the live stream flag
 sub applyLiveDirectPlayFallback(video as object, meta as object)
   if meta.live
-    video.transcodeAvailable = true
+    video.isTranscodeAvailable = true
   end if
 end sub

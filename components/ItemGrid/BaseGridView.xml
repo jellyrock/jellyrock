@@ -65,7 +65,7 @@
       itemSpacing="[0, 60]" />
 
     <!-- Empty state message -->
-    <LabelPrimaryLarge id="emptyText" bold="true" width="1910" horizAlign="center" vertAlign="center" height="64" translation="[0, 540]" visible="false" />
+    <LabelPrimaryLarge id="emptyText" isBold="true" width="1910" horizAlign="center" vertAlign="center" height="64" translation="[0, 540]" visible="false" />
 
     <!-- Options dialog -->
     <ItemGridOptions id="options" visible="false" />
@@ -83,7 +83,7 @@
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
     <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" onChange="alphaSelectedChanged" />
-    <field id="alphaActive" type="boolean" value="false" onChange="alphaActiveChanged" />
+    <field id="isAlphaActive" type="boolean" value="false" onChange="alphaActiveChanged" />
     <field id="showItemTitles" type="string" value="showonhover" />
     <field id="jumpToItem" type="integer" value="" />
     <field id="gridTitles" type="string" />

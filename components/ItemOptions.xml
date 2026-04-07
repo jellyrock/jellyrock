@@ -23,7 +23,7 @@
     <field id="buttons" type="nodearray" />
     <field id="options" type="assocarray" onChange="optionsSet" />
     <field id="videoStreamId" type="string" />
-    <field id="video_codec" type="string" />
+    <field id="videoCodec" type="string" />
     <field id="audioStreamIndex" type="integer" />
   </interface>
 </component>

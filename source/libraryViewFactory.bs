@@ -21,7 +21,7 @@ function CreateLibraryView(libraryItem as object) as dynamic
   view.presenterType = presenterType
 
   view.parentItem = libraryItem
-  view.optionsAvailable = true
+  view.isOptionsAvailable = true
 
   return view
 end function

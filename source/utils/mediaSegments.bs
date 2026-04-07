@@ -24,7 +24,7 @@ end function
 ' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
 ' @returns {string} - MediaSegmentAction value ("None", "AskToSkip", "Skip")
 function resolveSegmentAction(segmentType as string, userSettings as object, userConfig as object) as string
-  defaultValue = MediaSegmentAction.askToSkip
+  defaultValue = MediaSegmentAction.ASK_TO_SKIP
 
   ' Try web client setting from config node (loaded from DisplayPreferences CustomPrefs)
   configFieldKey = "segmentAction" + segmentType
@@ -37,11 +37,11 @@ function resolveSegmentAction(segmentType as string, userSettings as object, use
   if isValid(userSettings) and isValid(userSettings[settingKey]) and userSettings[settingKey] <> ""
     overrideValue = userSettings[settingKey]
     if overrideValue = "skip"
-      return MediaSegmentAction.skip
+      return MediaSegmentAction.SKIP
     else if overrideValue = "askToSkip"
-      return MediaSegmentAction.askToSkip
+      return MediaSegmentAction.ASK_TO_SKIP
     else if overrideValue = "none"
-      return MediaSegmentAction.none
+      return MediaSegmentAction.NONE
     end if
     ' "webclient" or unrecognized -> fall through to web client value
   end if

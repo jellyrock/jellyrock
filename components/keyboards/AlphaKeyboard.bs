@@ -25,17 +25,17 @@ sub onKeyGridRendered()
   keyGridY = m.top.keyGrid.translation[1]
   buttonY = keyGridY + keyGridRect.height + 15
 
-  if m.resetButton.ready
+  if m.resetButton.isReady
     positionResetButton(keyGridRect.width, buttonY)
   else
     m.pendingButtonY = buttonY
     m.pendingKeyGridWidth = keyGridRect.width
-    m.resetButton.observeField("ready", "onResetButtonReady")
+    m.resetButton.observeField("isReady", "onResetButtonReady")
   end if
 end sub
 
 sub onResetButtonReady()
-  m.resetButton.unobserveField("ready")
+  m.resetButton.unobserveField("isReady")
   positionResetButton(m.pendingKeyGridWidth, m.pendingButtonY)
 end sub
 

@@ -1,5 +1,5 @@
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/userauth.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/utils/config.bs"
 
 sub init()
@@ -13,7 +13,7 @@ sub monitorQuickConnect()
     loggedIn = AuthenticateViaQuickConnect(m.top.secret)
     if loggedIn
       currentUser = AboutMe()
-      user.Login(currentUser, m.top.saveCredentials)
+      user.Login(currentUser, m.top.shouldSaveCredentials)
       user.LoadUserPreferences()
       m.top.authenticated = 1
       return

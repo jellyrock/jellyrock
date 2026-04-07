@@ -3,8 +3,8 @@
 ' Organized via namespaces for clean code organization
 
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/userauth.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
@@ -47,7 +47,7 @@ namespace server
       if urlToPersist = ""
         urlToPersist = url
       end if
-      set_setting("server", urlToPersist)
+      setSetting("server", urlToPersist)
     else
       ' Reset on failure
       server.Delete()
@@ -81,7 +81,7 @@ namespace server
     serverNode.id = myServerInfo.Id ?? ""
     serverNode.name = myServerInfo.ServerName ?? ""
     serverNode.localURL = myServerInfo.LocalAddress ?? ""
-    serverNode.startupWizardCompleted = myServerInfo.StartupWizardCompleted ?? false
+    serverNode.isStartupWizardCompleted = myServerInfo.StartupWizardCompleted ?? false
     serverNode.version = myServerInfo.Version ?? ""
     serverNode.apiVersion = resolveApiVersion(serverNode.version)
 
@@ -312,14 +312,14 @@ namespace user
 
       if saveCredentials
         if isValidAndNotEmpty(myPrimaryImageTag)
-          registry_write("primaryImageTag", myPrimaryImageTag, userNode.id)
+          registryWrite("primaryImageTag", myPrimaryImageTag, userNode.id)
         end if
         if isValidAndNotEmpty(myAuthToken)
-          registry_write("authToken", myAuthToken, userNode.id)
+          registryWrite("authToken", myAuthToken, userNode.id)
         end if
       end if
     else
-      ' Data from UserData object (get_token response)
+      ' Data from UserData object (getToken response)
       myPrimaryImageTag = userData.json.User.PrimaryImageTag
       myAuthToken = userData.json.AccessToken
 
@@ -346,11 +346,11 @@ namespace user
 
       if saveCredentials
         if isValidAndNotEmpty(myPrimaryImageTag)
-          registry_write("primaryImageTag", myPrimaryImageTag, userNode.id)
+          registryWrite("primaryImageTag", myPrimaryImageTag, userNode.id)
         end if
 
         if isValidAndNotEmpty(myAuthToken)
-          registry_write("authToken", myAuthToken, userNode.id)
+          registryWrite("authToken", myAuthToken, userNode.id)
         end if
       end if
     end if
@@ -428,17 +428,17 @@ namespace user
     userNode.settings.callFunc("enableAutoSync")
 
     ' Save credentials if requested
-    set_user_setting("serverId", m.global.server.id)
+    setUserSetting("serverId", m.global.server.id)
     if saveCredentials
-      set_user_setting("authToken", userNode.authToken)
-      set_user_setting("username", userNode.name)
+      setUserSetting("authToken", userNode.authToken)
+      setUserSetting("username", userNode.name)
       if isValid(userNode.primaryImageTag)
-        set_user_setting("primaryImageTag", userNode.primaryImageTag)
+        setUserSetting("primaryImageTag", userNode.primaryImageTag)
       end if
     end if
 
     if userNode.settings.globalRememberMe
-      set_setting("active_user", userNode.id)
+      setSetting("active_user", userNode.id)
     end if
 
     ' Post-login setup
@@ -543,9 +543,9 @@ namespace user
         end if
 
         if isValid(jsonResponse.CustomPrefs["landing-livetv"])
-          set_user_setting("displayLiveTvLanding", jsonResponse.CustomPrefs["landing-livetv"])
+          setUserSetting("displayLiveTvLanding", jsonResponse.CustomPrefs["landing-livetv"])
         else
-          unset_user_setting("displayLiveTvLanding")
+          unsetUserSetting("displayLiveTvLanding")
         end if
 
         ' Extract media segment action preferences from CustomPrefs
@@ -622,9 +622,9 @@ namespace user
       if not isValid(rowType) then rowType = "none"
 
       if inArray(rowTypes, rowType)
-        set_user_setting(newHomeSectionKey, "none")
+        setUserSetting(newHomeSectionKey, "none")
       else
-        set_user_setting(newHomeSectionKey, rowType)
+        setUserSetting(newHomeSectionKey, rowType)
         if rowType <> "none"
           rowTypes.push(rowType)
         end if
@@ -724,7 +724,7 @@ namespace user.settings
   ' Reset setting to its XML default value
   ' NOTE: This does NOT delete from registry - observer always saves changes
   ' Use this for "reset to default" functionality
-  ' For sensitive fields (token, username), use unset_user_setting() instead
+  ' For sensitive fields (token, username), use unsetUserSetting() instead
   sub Delete(name as string)
     if name = "" then return
 
@@ -772,7 +772,7 @@ namespace user.settings
     for each key in globalRegistry
       ' Only load keys that start with "global" (actual global settings)
       if isGlobalSetting(key)
-        value = get_setting(key)
+        value = getSetting(key)
         if isValid(value)
           user.settings.Save(key, value)
         end if

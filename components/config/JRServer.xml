@@ -10,7 +10,7 @@
     <Poster id="focusBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
     <Poster id="poster" width="78" loadWidth="78" height="78" loadHeight="78" loadDisplayMode="scaleToFit" translation="[12,11]" />
 
-    <LabelPrimaryMedium id="name" bold="true" horizAlign="left" height="65" translation="[100,12]" />
+    <LabelPrimaryMedium id="name" isBold="true" horizAlign="left" height="65" translation="[100,12]" />
     <LabelPrimaryMedium id="baseUrl" horizAlign="left" height="65" translation="[100,55]" />
   </children>
 

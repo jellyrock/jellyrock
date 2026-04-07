@@ -6,7 +6,7 @@
     <Poster id="itemIcon" width="50" height="50" translation="[204,32]" />
     <LabelPrimaryMedium id="posterText" width="254" height="386" translation="[5,27]" horizAlign="center" vertAlign="center" ellipsizeOnBoundary="true" wrap="true" />
 
-    <ScrollingLabelPrimarySmaller id="itemText" bold="true" horizAlign="center" maxWidth="264" repeatCount="0" visible="false" />
+    <ScrollingLabelPrimarySmaller id="itemText" isBold="true" horizAlign="center" maxWidth="264" repeatCount="0" visible="false" />
   </children>
 
   <interface>

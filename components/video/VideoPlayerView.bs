@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
@@ -68,11 +68,11 @@ sub init()
   m.top.observeField("audioIndex", "onAudioIndexChange")
 
   ' Custom Caption Function
-  m.top.observeField("allowCaptions", "onAllowCaptionsChange")
+  m.top.observeField("shouldAllowCaptions", "onAllowCaptionsChange")
 
   m.playbackTimer.observeField("fire", "ReportPlayback")
   m.bufferPercentage = 0 ' Track whether content is being loaded
-  m.playReported = false
+  m.isPlayReported = false
   m.top.transcodeReasons = []
   m.bufferCheckTimer.duration = 30
 
@@ -236,7 +236,7 @@ end sub
 sub handleHideAction(resume as boolean)
   m.osd.visible = false
   m.chapterList.visible = false
-  m.osd.showChapterList = false
+  m.osd.shouldShowChapterList = false
   m.chapterList.setFocus(false)
   m.osd.hasFocus = false
   m.osd.setFocus(false)
@@ -252,7 +252,7 @@ end sub
 ' handleChapterListAction: Handles action to show chapter list
 '
 sub handleChapterListAction()
-  m.chapterList.visible = m.osd.showChapterList
+  m.chapterList.visible = m.osd.shouldShowChapterList
 
   if not m.chapterList.visible then return
 
@@ -417,7 +417,7 @@ end function
 
 ' Only setup caption items if captions are allowed
 sub onAllowCaptionsChange()
-  if not m.top.allowCaptions then return
+  if not m.top.shouldAllowCaptions then return
 
   m.captionGroup = m.top.findNode("captionGroup")
   m.captionGroup.createchildren(9, "LayoutGroup")
@@ -459,18 +459,18 @@ end sub
 
 ' Event handler for when selectedSubtitle changes
 sub onSubtitleChange()
-  switchWithoutRefresh = true
+  shouldSwitchWithoutRefresh = true
 
-  if m.top.SelectedSubtitle <> SubtitleSelection.none
+  if m.top.SelectedSubtitle <> SubtitleSelection.NONE
     ' If the global caption mode is off, then Roku can't display the subtitles natively and needs a video stop/start
-    if LCase(m.top.globalCaptionMode) <> "on" then switchWithoutRefresh = false
+    if LCase(m.top.globalCaptionMode) <> "on" then shouldSwitchWithoutRefresh = false
   end if
 
   ' If previous sustitle was encoded, then we need to a video stop/start to change subtitle content
-  if m.top.previousSubtitleWasEncoded then switchWithoutRefresh = false
+  if m.top.isPreviousSubtitleEncoded then shouldSwitchWithoutRefresh = false
 
   ' Update custom subtitle behavior based on new selection
-  if m.top.allowCaptions
+  if m.top.shouldAllowCaptions
     shouldUseCustomSubtitles = shouldUseCustomSubtitlesForCurrentSelection()
 
     m.log.debug("Subtitle changed", shouldUseCustomSubtitles, m.top.suppressCaptions)
@@ -504,7 +504,7 @@ sub onSubtitleChange()
     end if
   end if
 
-  if switchWithoutRefresh then return
+  if shouldSwitchWithoutRefresh then return
 
   m.log.info("Subtitle change requires stream reload", "subtitleIndex", m.top.SelectedSubtitle, "position", m.top.position)
 
@@ -650,8 +650,8 @@ sub onVideoContentLoaded()
   m.chapters = videoContent[0].chapters
   m.top.showID = videoContent[0].showID
   m.top.cachedPlaybackInfo = videoContent[0].playbackInfo
-  m.top.doviDirectPlayFallbackAvailable = isValid(videoContent[0].doviDirectPlayFallbackAvailable) and videoContent[0].doviDirectPlayFallbackAvailable
-  m.top.transcodeAvailable = isValid(videoContent[0].transcodeAvailable) and videoContent[0].transcodeAvailable
+  m.top.isDoviDirectPlayFallbackAvailable = isValid(videoContent[0].isDoviDirectPlayFallbackAvailable) and videoContent[0].isDoviDirectPlayFallbackAvailable
+  m.top.isTranscodeAvailable = isValid(videoContent[0].isTranscodeAvailable) and videoContent[0].isTranscodeAvailable
 
   ' Unobserve mediaSourceId before setting to prevent observer loop
   m.top.unobserveField("mediaSourceId")
@@ -659,8 +659,8 @@ sub onVideoContentLoaded()
   m.top.observeField("mediaSourceId", "onVideoSourceChange")
 
   ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
-  m.LoadMetaDataTask.bypassDoviPreservation = false
-  m.LoadMetaDataTask.forceTranscoding = false
+  m.LoadMetaDataTask.shouldBypassDoviPreservation = false
+  m.LoadMetaDataTask.shouldForceTranscoding = false
 
   ' Pass JellyfinBaseItem node to OSD for typed field access
   if isValid(videoContent[0].meta)
@@ -725,11 +725,11 @@ sub onVideoContentLoaded()
     m.trickplayCarousel.trickplayConfig = videoContent[0].content.trickplayMetadata
     m.trickplayCarousel.videoDuration = m.top.duration
   else
-    m.trickplayCarousel.visible = false
+    m.trickplayCarousel.isVisible = false
   end if
 
   ' Allow custom captions for all videos including intro videos
-  m.top.allowCaptions = true
+  m.top.shouldAllowCaptions = true
 
   ' Allow default subtitles
   m.top.unobserveField("selectedSubtitle")
@@ -748,7 +748,7 @@ sub onVideoContentLoaded()
   ' Update custom subtitle behavior based on the selected subtitle
   ' IMPORTANT: This must happen BEFORE setting subtitleTrack to ensure suppressCaptions
   ' is set correctly when the loadCaption() observer fires
-  if m.top.allowCaptions
+  if m.top.shouldAllowCaptions
     shouldUseCustomSubtitles = shouldUseCustomSubtitlesForCurrentSelection()
     m.top.suppressCaptions = shouldUseCustomSubtitles
   end if
@@ -972,7 +972,7 @@ sub checkMediaSegments()
     action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
     m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
 
-    if action = MediaSegmentAction.skip
+    if action = MediaSegmentAction.SKIP
       ' Auto-skip only fires once per segment
       if m.skippedSegments.DoesExist(segmentId) then return
 
@@ -980,7 +980,7 @@ sub checkMediaSegments()
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
 
       ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
         forceFinishPlayback()
         return
       end if
@@ -994,7 +994,7 @@ sub checkMediaSegments()
       m.top.seek = seekPosition
       m.skippedSegments[segmentId] = true
       m.activeSegmentId = ""
-    else if action = MediaSegmentAction.askToSkip
+    else if action = MediaSegmentAction.ASK_TO_SKIP
       ' Dismissed this visit — don't re-show until user leaves and re-enters the segment
       if segmentId = m.dismissedSegmentId then return
 
@@ -1014,7 +1014,7 @@ sub checkMediaSegments()
 
         ' Commercial and Recap segments stay visible for the entire segment.
         ' Other types auto-dismiss after 10 seconds.
-        if segmentType = MediaSegmentType.commercial or segmentType = MediaSegmentType.recap
+        if segmentType = MediaSegmentType.COMMERCIAL or segmentType = MediaSegmentType.RECAP
           m.segmentNotification.autoDismissSeconds = 0
         else
           m.segmentNotification.autoDismissSeconds = 10
@@ -1028,7 +1028,7 @@ sub checkMediaSegments()
         m.segmentNotification.callFunc("show")
       end if
     else
-      ' MediaSegmentAction.none — dismiss stale notification from a prior segment
+      ' MediaSegmentAction.NONE — dismiss stale notification from a prior segment
       if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
         m.segmentNotification.callFunc("dismiss")
       end if
@@ -1061,7 +1061,7 @@ sub onSegmentNotificationAction()
       segmentType = segment.Type ?? ""
 
       ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.outro and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
         forceFinishPlayback()
         return
       end if
@@ -1135,7 +1135,7 @@ sub onPositionChanged()
   ' This prevents the carousel from flashing back on between OK press and trickPlayBar closing
   if isValid(m.trickplayCarousel) and not m.carouselHiddenForSeek
     trickPlayBarVisible = m.top.trickPlayBar.visible and not m.osd.visible
-    m.trickplayCarousel.visible = trickPlayBarVisible
+    m.trickplayCarousel.isVisible = trickPlayBarVisible
 
     ' Reset seek tracking when trickPlayBar closes (user confirmed or cancelled seek)
     if not trickPlayBarVisible
@@ -1147,7 +1147,7 @@ sub onPositionChanged()
 
   ' Update trickplay carousel position during normal playback only
   ' When trickPlayBar is visible, onTrickPlayBarTextChange is the authoritative source
-  if isValid(m.trickplayCarousel) and m.trickplayCarousel.visible and not m.top.trickPlayBar.visible
+  if isValid(m.trickplayCarousel) and m.trickplayCarousel.isVisible and not m.top.trickPlayBar.visible
     updateTrickplayCarousel(m.top.position)
   end if
 end sub
@@ -1207,7 +1207,7 @@ sub onTrickPlayBarTextChange()
   m.isTrackingSeek = true
 
   ' Update carousel to match
-  if isValid(m.trickplayCarousel) and m.trickplayCarousel.visible
+  if isValid(m.trickplayCarousel) and m.trickplayCarousel.isVisible
     updateTrickplayCarousel(seekTime)
   end if
 end sub
@@ -1221,8 +1221,8 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' Prevents ViewCreator popping the scene when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
-  m.LoadMetaDataTask.bypassDoviPreservation = bypassDovi
-  m.LoadMetaDataTask.forceTranscoding = forceTranscode
+  m.LoadMetaDataTask.shouldBypassDoviPreservation = bypassDovi
+  m.LoadMetaDataTask.shouldForceTranscoding = forceTranscode
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
@@ -1238,7 +1238,7 @@ sub onState()
   ' On first play, verify audioTrack matches the intended Jellyfin selection using
   ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
   ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
-  if m.top.state = "playing" and not m.playReported
+  if m.top.state = "playing" and not m.isPlayReported
     if isValid(m.top.availableAudioTracks) and isValid(m.top.audioIndex) and not m.top.isTranscoded
       correctedTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
       if correctedTrack <> m.top.audioTrack
@@ -1264,11 +1264,11 @@ sub onState()
       m.bufferCheckTimer.ObserveField("fire", "bufferCheck")
     end if
     ' Show non-blocking spinner for mid-playback buffering (seek, network stall)
-    if m.playReported
+    if m.isPlayReported
       startLoadingSpinner(false)
     end if
   else if m.top.state = "error"
-    m.log.error(m.top.errorCode, m.top.errorMsg, m.top.errorStr, m.playReported, m.top.transcodeAvailable)
+    m.log.error(m.top.errorCode, m.top.errorMsg, m.top.errorStr, m.isPlayReported, m.top.isTranscodeAvailable)
 
     print m.top.errorInfo
 
@@ -1277,13 +1277,13 @@ sub onState()
     ' retry with direct play by bypassing the DoVi container profile injection.
     isBufferLoopError = isValid(m.top.errorInfo) and isValid(m.top.errorInfo.source) and m.top.errorInfo.source = "buffer:loop:"
 
-    if isBufferLoopError and m.top.doviDirectPlayFallbackAvailable
+    if isBufferLoopError and m.top.isDoviDirectPlayFallbackAvailable
       m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
-      m.top.doviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
+      m.top.isDoviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
       retryPlayback(true, false)
-    else if not m.playReported and m.top.transcodeAvailable
+    else if not m.isPlayReported and m.top.isTranscodeAvailable
       m.log.warn("Direct play failed; falling back to transcode", m.currentItem.id)
-      m.top.transcodeAvailable = false ' prevent retry loop if transcode also fails
+      m.top.isTranscodeAvailable = false ' prevent retry loop if transcode also fails
       retryPlayback(false, true)
     else
       ' If an error was encountered, stop timers and display dialog
@@ -1293,7 +1293,7 @@ sub onState()
       m.bufferCheckTimer.unobserveField("fire")
       ' Ensure trickplay carousel is cleaned up on error just like stopped/finished states
       if isValid(m.trickplayCarousel)
-        m.trickplayCarousel.visible = false
+        m.trickplayCarousel.isVisible = false
       end if
       stopLoadingSpinner()
       showPlaybackErrorDialog(translate(translationKeys.ErrorDuringPlayback))
@@ -1309,9 +1309,9 @@ sub onState()
       end if
     end if
 
-    if m.playReported = false
+    if m.isPlayReported = false
       ReportPlayback("start")
-      m.playReported = true
+      m.isPlayReported = true
     else
       ReportPlayback()
     end if
@@ -1327,9 +1327,9 @@ sub onState()
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     ReportPlayback("stop")
-    m.playReported = false
+    m.isPlayReported = false
     if isValid(m.trickplayCarousel)
-      m.trickplayCarousel.visible = false
+      m.trickplayCarousel.isVisible = false
       m.trickplayCarousel.callFunc("reset")
     end if
   else if m.top.state = "finished"
@@ -1340,11 +1340,11 @@ sub onState()
     m.bufferCheckTimer.unobserveField("fire")
     ReportPlayback("finished")
     if isValid(m.trickplayCarousel)
-      m.trickplayCarousel.visible = false
+      m.trickplayCarousel.isVisible = false
       m.trickplayCarousel.callFunc("reset")
     end if
   else
-    m.log.warning("Unhandled state", m.top.state, m.playReported, m.playFinished)
+    m.log.warning("Unhandled state", m.top.state, m.isPlayReported, m.playFinished)
   end if
   m.log.debug("end onState", m.top.state)
 end sub
@@ -1430,7 +1430,7 @@ end function
 ' availSubtitleTrackIdx: Returns Roku's index for requested subtitle track
 '
 ' @param {string} tracknameToFind - TrackName for subtitle we're looking to match
-' @return {integer} indicating Roku's index for requested subtitle track. Returns SubtitleSelection.none if not found
+' @return {integer} indicating Roku's index for requested subtitle track. Returns SubtitleSelection.NONE if not found
 function availSubtitleTrackIdx(tracknameToFind as string) as integer
   idx = 0
   for each availTrack in m.top.availableSubtitleTracks
@@ -1442,7 +1442,7 @@ function availSubtitleTrackIdx(tracknameToFind as string) as integer
     end if
     idx = idx + 1
   end for
-  return SubtitleSelection.none
+  return SubtitleSelection.NONE
 end function
 
 function onKeyEvent(key as string, press as boolean) as boolean
@@ -1465,7 +1465,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
     if key = "back" or key = "replay"
       m.chapterList.visible = false
-      m.osd.showChapterList = false
+      m.osd.shouldShowChapterList = false
       m.chapterMenu.setFocus(false)
       m.osd.hasFocus = true
       m.osd.setFocus(true)
@@ -1559,7 +1559,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.isTrackingSeek = false
     if isValid(m.trickplayCarousel)
       ' Hide carousel immediately on seek confirmation
-      m.trickplayCarousel.visible = false
+      m.trickplayCarousel.isVisible = false
       ' Set flag to prevent auto-show (line 790 guard) until trickPlayBar closes (line 797 reset)
       ' This prevents carousel flashing back on between OK press and trickPlayBar closing
       m.carouselHiddenForSeek = true
@@ -1571,7 +1571,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' Handle left/right/FF/RW keys - show carousel, observer syncs position from trickPlayBar text
   if not m.osd.visible and (key = "left" or key = "right" or key = "fastforward" or key = "rewind")
     if isValid(m.trickplayCarousel)
-      m.trickplayCarousel.visible = true
+      m.trickplayCarousel.isVisible = true
     end if
     return false
   end if
@@ -1588,7 +1588,7 @@ sub destroy()
   m.top.unobserveField("selectedSubtitle")
   m.top.unobserveField("audioIndex")
   m.top.unobserveField("mediaSourceId")
-  m.top.unobserveField("allowCaptions")
+  m.top.unobserveField("shouldAllowCaptions")
   m.top.unobserveField("subtitleTrack")
   m.top.unobserveField("globalCaptionMode")
   m.top.unobserveField("position")

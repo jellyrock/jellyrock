@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' QuickPlayTask: Orchestrator task for all quickplay, Play All, Instant Mix,
@@ -32,7 +32,7 @@ sub executeQuickPlay()
 
   action = LCase(input.action)
   items = []
-  shuffle = false
+  shouldShuffle = false
   outputAction = "queue"
   firstItemStartingPoint = 0& ' LongInteger
 
@@ -40,7 +40,7 @@ sub executeQuickPlay()
     doAlbum(input, items)
   else if action = "musicartist" or action = "artist"
     doArtist(input, items)
-    shuffle = true
+    shouldShuffle = true
   else if action = "boxset"
     doBoxset(input, items)
   else if action = "series"
@@ -49,29 +49,29 @@ sub executeQuickPlay()
     firstItemStartingPoint = doSeason(input, items)
   else if action = "person"
     doPerson(input, items)
-    shuffle = true
+    shouldShuffle = true
   else if action = "playlist"
     doPlaylist(input, items)
-    shuffle = true
+    shouldShuffle = true
   else if action = "folder"
     result = doFolder(input)
     if isValid(result)
       items = result.items
-      shuffle = result.shuffle
+      shouldShuffle = result.shuffle
       outputAction = result.action
     end if
   else if action = "collectionfolder"
     result = doCollectionFolder(input)
     if isValid(result)
       items = result.items
-      shuffle = result.shuffle
+      shouldShuffle = result.shuffle
       outputAction = result.action
     end if
   else if action = "userview"
     result = doUserView(input)
     if isValid(result)
       items = result.items
-      shuffle = result.shuffle
+      shouldShuffle = result.shuffle
       outputAction = result.action
     end if
   else if action = "photoalbum"
@@ -102,7 +102,7 @@ sub executeQuickPlay()
   m.top.output = {
     action: outputAction,
     items: items,
-    shuffle: shuffle,
+    shuffle: shouldShuffle,
     firstItemStartingPoint: firstItemStartingPoint
   }
 end sub
@@ -315,7 +315,7 @@ end sub
 
 function doFolder(input as object) as dynamic
   items = []
-  shuffle = true
+  shouldShuffle = true
   outputAction = "queue"
 
   paramArray = {
@@ -364,7 +364,7 @@ function doFolder(input as object) as dynamic
       if seriesCount = 1
         ' Single series — delegate to series quickplay
         doSeries({ id: folderData.items[0].Id }, items)
-        shuffle = false
+        shouldShuffle = false
       else
         doMultipleSeries(folderData.items, items)
       end if
@@ -376,19 +376,19 @@ function doFolder(input as object) as dynamic
     end if
   end if
 
-  return { action: outputAction, items: items, shuffle: shuffle }
+  return { action: outputAction, items: items, shuffle: shouldShuffle }
 end function
 
 function doCollectionFolder(input as object) as dynamic
   items = []
-  shuffle = true
+  shouldShuffle = true
   outputAction = "queue"
 
   collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
 
   if collectionType = "movies"
     doVideoContainer(input, items)
-    shuffle = false
+    shouldShuffle = false
   else if collectionType = "music"
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "parentId": input.id,
@@ -424,10 +424,10 @@ function doCollectionFolder(input as object) as dynamic
         items.append(innerData.Items)
       end if
     end if
-    shuffle = false
+    shouldShuffle = false
   else if collectionType = "tvshows" or collectionType = "collectionfolder"
     doVideoContainer(input, items)
-    shuffle = false
+    shouldShuffle = false
   else if collectionType = "musicvideos"
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "parentId": input.id,
@@ -442,7 +442,7 @@ function doCollectionFolder(input as object) as dynamic
     if isValid(data) and isValidAndNotEmpty(data.items)
       items.append(data.Items)
     end if
-    shuffle = false
+    shouldShuffle = false
   else if collectionType = "homevideos"
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
       "parentId": input.id,
@@ -456,12 +456,12 @@ function doCollectionFolder(input as object) as dynamic
     end if
   end if
 
-  return { action: outputAction, items: items, shuffle: shuffle }
+  return { action: outputAction, items: items, shuffle: shouldShuffle }
 end function
 
 function doUserView(input as object) as dynamic
   items = []
-  shuffle = true
+  shouldShuffle = true
   outputAction = "queue"
 
   collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
@@ -504,13 +504,13 @@ function doUserView(input as object) as dynamic
       myChannel.Type = "TvChannel"
       items.push(myChannel)
     end if
-    shuffle = false
+    shouldShuffle = false
   else if collectionType = "movies" or collectionType = "tvshows"
     doVideoContainer(input, items)
-    shuffle = false
+    shouldShuffle = false
   end if
 
-  return { action: outputAction, items: items, shuffle: shuffle }
+  return { action: outputAction, items: items, shuffle: shouldShuffle }
 end function
 
 ' Helper: video container logic (movies or tvshows collection)

@@ -13,16 +13,16 @@
 
       <Group translation="[ 96, 160 ]">
         <LayoutGroup itemSpacings="[4,20, 20, 20, 40]">
-          <LabelPrimaryLarge id="programName" bold="true" />
+          <LabelPrimaryLarge id="programName" isBold="true" />
 
           <LayoutGroup id="episodeDetailsGroup" layoutDirection="horiz" itemSpacings="[10]">
             <Group id="isLive">
               <Poster id="isLiveBackground" uri="pkg:/images/9patch/filled-rounded.9.png" blendColor="#FF0000" />
-              <LabelPrimarySmallest id="isLiveText" text="" translation="[8,4]" bold="true" />
+              <LabelPrimarySmallest id="isLiveText" text="" translation="[8,4]" isBold="true" />
             </Group>
             <Group id="isRepeat">
               <Poster id="isRepeatBackground" uri="pkg:/images/9patch/filled-rounded.9.png" blendColor="#009688" />
-              <LabelPrimarySmallest id="isRepeatText" text="" translation="[8,4]" bold="true" />
+              <LabelPrimarySmallest id="isRepeatText" text="" translation="[8,4]" isBold="true" />
             </Group>
             <LabelPrimarySmall id="episodeNumber" />
             <LabelPrimarySmall id="episodeTitle" />
@@ -48,7 +48,7 @@
     </Group>
     <!-- When no schedule information to display  -->
     <LayoutGroup id="noInformation" translation="[96, 300]">
-      <LabelPrimaryLarge id="noInfoChannelName" bold="true" />
+      <LabelPrimaryLarge id="noInfoChannelName" isBold="true" />
       <LabelPrimarySmall id="noScheduleInfoLabel" text="" />
     </LayoutGroup>
     <Animation id="focusAnimation" duration="0.2" repeat="false" easeFunction="linear">
@@ -56,9 +56,9 @@
     </Animation>
   </children>
   <interface>
-    <field id="WatchSelectedChannel" type="boolean" value="false" />
-    <field id="recordSelectedChannel" type="boolean" value="false" />
-    <field id="recordSeriesSelectedChannel" type="boolean" value="false" />
+    <field id="shouldWatchSelectedChannel" type="boolean" value="false" />
+    <field id="shouldRecordSelectedChannel" type="boolean" value="false" />
+    <field id="shouldRecordSeriesSelectedChannel" type="boolean" value="false" />
     <field id="channel" type="node" onchange="channelUpdated" />
     <field id="favorite" type="node" onchange="channelUpdated" />
     <field id="programDetails" type="node" onchange="programUpdated" />

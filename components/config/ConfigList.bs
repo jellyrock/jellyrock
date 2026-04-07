@@ -37,10 +37,10 @@ function onDialogButton()
 
   if d.buttonSelected = 0 ' OK
     m.configField.value = d.text
-    dismiss_dialog()
+    dismissDialog()
     return true
   else if d.buttonSelected = 1 ' Cancel
-    dismiss_dialog()
+    dismissDialog()
     return true
   end if
   return false
@@ -72,6 +72,6 @@ sub configListShowDialog(configField)
   dialog.observeField("buttonSelected", "onDialogButton")
 end sub
 
-sub dismiss_dialog()
+sub dismissDialog()
   m.dialog.close = true
 end sub

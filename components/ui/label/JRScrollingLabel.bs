@@ -29,13 +29,13 @@ sub applyFallbackFontScale()
   end if
 end sub
 
-sub onBoldChanged()
+sub onIsBoldChanged()
   ' ignore bold field when using fallback font
   if m.global.user.settings.uiFontFallback = true then return
 
   oldFontSize = m.top.font.size
 
-  if m.top.bold
+  if m.top.isBold
     m.top.font = "font:MediumBoldSystemFont"
   else
     m.top.font = "font:MediumSystemFont"

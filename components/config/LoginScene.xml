@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="LoginScene" extends="JRScreen">
   <children>
-    <LabelPrimaryLarge text="" id="prompt" translation="[150, 150]" bold="true" />
+    <LabelPrimaryLarge text="" id="prompt" translation="[150, 150]" isBold="true" />
     <ConfigList id="configOptions" translation="[150, 240]" />
     <CheckList id="onOff" translation="[200, 450]" />
     <JRButtonGroup id="buttons" itemSpacings="[72]" translation="[150,550]">

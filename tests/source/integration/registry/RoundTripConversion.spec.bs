@@ -28,7 +28,7 @@ namespace tests
       m.global.user.id = testUserId
 
       ' GIVEN: Save boolean true
-      set_user_setting("uiDesignHideClock", true)
+      setUserSetting("uiDesignHideClock", true)
 
       ' THEN: Registry contains string "true"
       reg = CreateObject("roRegistrySection", testUserId)
@@ -54,7 +54,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("uiFontFallback", false)
+      setUserSetting("uiFontFallback", false)
 
       reg = CreateObject("roRegistrySection", testUserId)
       registryValue = reg.read("uiFontFallback")
@@ -76,7 +76,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("playbackBitrateLimit", 8000)
+      setUserSetting("playbackBitrateLimit", 8000)
 
       reg = CreateObject("roRegistrySection", testUserId)
       registryValue = reg.read("playbackBitrateLimit")
@@ -85,7 +85,7 @@ namespace tests
 
       ' Note: SessionDataTransformer does not handle playback settings yet
       ' This test verifies registry I/O only
-      value = get_user_setting("playbackBitrateLimit")
+      value = getUserSetting("playbackBitrateLimit")
       m.assertTrue(m.isStringType(value))
       m.assertEqual(value, "8000")
 
@@ -97,7 +97,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("uiRowLayout", "landscape")
+      setUserSetting("uiRowLayout", "landscape")
 
       reg = CreateObject("roRegistrySection", testUserId)
       registryValue = reg.read("uiRowLayout")
@@ -119,7 +119,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("uiGeneralEpisodeImages", "")
+      setUserSetting("uiGeneralEpisodeImages", "")
 
       reg = CreateObject("roRegistrySection", testUserId)
       registryValue = reg.read("uiGeneralEpisodeImages")

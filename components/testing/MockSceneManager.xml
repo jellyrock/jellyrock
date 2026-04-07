@@ -26,10 +26,10 @@
     <function name="radioDialog" />
     <function name="dismissDialog" />
     <function name="isDialogOpen" />
-    <function name="optionDialog" />
+    <function name="showConfirmationDialog" />
     <field id="currentUser" type="string" />
     <field id="returnData" type="assocarray" />
-    <field id="dataReturned" type="boolean" />
-    <field id="pendingExitConfirmation" type="boolean" value="false" />
+    <field id="isDataReturned" type="boolean" />
+    <field id="isPendingExitConfirmation" type="boolean" value="false" />
   </interface>
 </component>

@@ -18,11 +18,11 @@ namespace tests
     function _()
       testUserId = "test-registry-bool-true-001"
 
-      ' Mock m.global.user.id for set_user_setting()
+      ' Mock m.global.user.id for setUserSetting()
       m.global.user.id = testUserId
 
       ' WHEN: Save boolean setting
-      set_user_setting("uiDesignHideClock", true)
+      setUserSetting("uiDesignHideClock", true)
 
       ' THEN: Registry contains string "true"
       reg = CreateObject("roRegistrySection", testUserId)
@@ -38,7 +38,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("uiFontFallback", false)
+      setUserSetting("uiFontFallback", false)
 
       reg = CreateObject("roRegistrySection", testUserId)
       value = reg.read("uiFontFallback")
@@ -53,7 +53,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("playbackBitrateLimit", 8000)
+      setUserSetting("playbackBitrateLimit", 8000)
 
       reg = CreateObject("roRegistrySection", testUserId)
       value = reg.read("playbackBitrateLimit")
@@ -68,7 +68,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("uiRowLayout", "landscape")
+      setUserSetting("uiRowLayout", "landscape")
 
       reg = CreateObject("roRegistrySection", testUserId)
       value = reg.read("uiRowLayout")
@@ -83,7 +83,7 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      set_user_setting("displayLiveTvLanding", "")
+      setUserSetting("displayLiveTvLanding", "")
 
       reg = CreateObject("roRegistrySection", testUserId)
       value = reg.read("displayLiveTvLanding")
@@ -99,7 +99,7 @@ namespace tests
       m.global.user.id = testUserId
 
       ' Custom setting (not in standard 42)
-      set_user_setting("testFloat", 3.14)
+      setUserSetting("testFloat", 3.14)
 
       reg = CreateObject("roRegistrySection", testUserId)
       value = reg.read("testFloat")
@@ -201,11 +201,11 @@ namespace tests
       }
 
       for each key in boolSettings
-        set_user_setting(key, boolSettings[key])
+        setUserSetting(key, boolSettings[key])
       end for
 
       ' Save global setting (goes to test-global when user ID starts with "test-")
-      set_setting("globalRememberMe", false)
+      setSetting("globalRememberMe", false)
 
       ' Load and transform
       registryData = RegistryReadAll(testUserId)
@@ -224,7 +224,7 @@ namespace tests
       m.assertEqual(settings.globalRememberMe, false, "globalRememberMe should have XML default value (false)")
 
       ' Verify global setting is in test-global section (debug mode)
-      globalValue = get_setting("globalRememberMe")
+      globalValue = getSetting("globalRememberMe")
       m.assertEqual(globalValue, "false")
 
     end function
@@ -245,7 +245,7 @@ namespace tests
       }
 
       for each key in stringSettings
-        set_user_setting(key, stringSettings[key])
+        setUserSetting(key, stringSettings[key])
       end for
 
       ' Load and transform
@@ -268,11 +268,11 @@ namespace tests
       m.global.user.id = testUserId
 
       ' Save mixed types
-      set_user_setting("uiDesignHideClock", true) ' Boolean
-      set_user_setting("uiRowLayout", "landscape") ' String
-      set_user_setting("uiFontFallback", false) ' Boolean
-      set_user_setting("homeSection0", "librarybuttons") ' String
-      set_setting("globalRememberMe", true) ' Boolean - global setting (goes to test-global when user ID starts with "test-")
+      setUserSetting("uiDesignHideClock", true) ' Boolean
+      setUserSetting("uiRowLayout", "landscape") ' String
+      setUserSetting("uiFontFallback", false) ' Boolean
+      setUserSetting("homeSection0", "librarybuttons") ' String
+      setSetting("globalRememberMe", true) ' Boolean - global setting (goes to test-global when user ID starts with "test-")
 
       ' Load and transform
       registryData = RegistryReadAll(testUserId)
@@ -298,7 +298,7 @@ namespace tests
       m.assertEqual(settings.globalRememberMe, false, "globalRememberMe should have XML default value (false)")
 
       ' Verify global setting is in test-global section (debug mode)
-      globalValue = get_setting("globalRememberMe")
+      globalValue = getSetting("globalRememberMe")
       m.assertTrue(type(globalValue) = "roString" or type(globalValue) = "String", "globalValue should be string type")
       m.assertEqual(globalValue, "true")
 
@@ -315,7 +315,7 @@ namespace tests
       m.global.user.id = testUserId
 
       ' Read non-existent setting
-      value = get_user_setting("nonExistentSetting")
+      value = getUserSetting("nonExistentSetting")
 
       m.assertInvalid(value)
 
@@ -328,14 +328,14 @@ namespace tests
       m.global.user.id = testUserId
 
       ' Save initial value
-      set_user_setting("uiRowLayout", "landscape")
+      setUserSetting("uiRowLayout", "landscape")
 
       ' Verify initial value
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("uiRowLayout"), "landscape")
 
       ' Overwrite with new value
-      set_user_setting("uiRowLayout", "portrait")
+      setUserSetting("uiRowLayout", "portrait")
 
       ' Verify new value
       reg = CreateObject("roRegistrySection", testUserId)
@@ -350,14 +350,14 @@ namespace tests
       m.global.user.id = testUserId
 
       ' Save setting
-      set_user_setting("uiDesignHideClock", true)
+      setUserSetting("uiDesignHideClock", true)
 
       ' Verify it exists
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("uiDesignHideClock"))
 
       ' Delete setting
-      unset_user_setting("uiDesignHideClock")
+      unsetUserSetting("uiDesignHideClock")
 
       ' Verify it's deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -372,14 +372,14 @@ namespace tests
       m.global.user.id = testUserId
 
       ' Save 9 user settings and 1 global setting
-      set_setting("globalRememberMe", true) ' Global setting (goes to test-global in debug mode)
-      set_user_setting("uiDesignHideClock", false)
-      set_user_setting("uiRowLayout", "landscape")
-      set_user_setting("homeSection0", "librarybuttons")
-      set_user_setting("homeSection1", "resume")
-      set_user_setting("uiFontFallback", true)
-      set_user_setting("displayLiveTvLanding", "guide")
-      set_user_setting("uiHomeUseWebArrangement", false)
+      setSetting("globalRememberMe", true) ' Global setting (goes to test-global in debug mode)
+      setUserSetting("uiDesignHideClock", false)
+      setUserSetting("uiRowLayout", "landscape")
+      setUserSetting("homeSection0", "librarybuttons")
+      setUserSetting("homeSection1", "resume")
+      setUserSetting("uiFontFallback", true)
+      setUserSetting("displayLiveTvLanding", "guide")
+      setUserSetting("uiHomeUseWebArrangement", false)
 
       ' Verify user settings exist in user registry section
       reg = CreateObject("roRegistrySection", testUserId)
@@ -418,7 +418,7 @@ namespace tests
 
       for i = 0 to specialValues.Count() - 1
         settingName = "testSpecial" + i.ToStr()
-        set_user_setting(settingName, specialValues[i])
+        setUserSetting(settingName, specialValues[i])
 
         ' Verify in registry
         reg = CreateObject("roRegistrySection", testUserId)

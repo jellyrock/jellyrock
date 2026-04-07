@@ -18,7 +18,7 @@ function getData()
 
   m.top.content = data
 
-  m.top.doneLoading = true
+  m.top.isDoneLoading = true
 
   return data
 end function

@@ -3,7 +3,7 @@
   <children>
     <LayoutGroup layoutDirection="vert" itemSpacings="[15]">
       <Poster id="profileImage" width="300" loadWidth="300" height="300" loadHeight="300" loadDisplayMode="limitSize" />
-      <LabelPrimaryMedium id="profileName" bold="true" horizAlign="center" vertAlign="center" height="64" width="300" />
+      <LabelPrimaryMedium id="profileName" isBold="true" horizAlign="center" vertAlign="center" height="64" width="300" />
     </LayoutGroup>
   </children>
   <interface>

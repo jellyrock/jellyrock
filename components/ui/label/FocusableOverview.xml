@@ -20,7 +20,7 @@
     <field id="height" type="integer" onChange="onSizeChanged" />
     <field id="maxLines" type="integer" onChange="onMaxLinesChanged" value="0" />
     <field id="taglineMaxLines" type="integer" onChange="onTaglineMaxLinesChanged" value="0" />
-    <field id="showBackground" type="bool" onChange="onShowBackgroundChanged" value="false" />
+    <field id="shouldShowBackground" type="bool" onChange="onShouldShowBackgroundChanged" value="false" />
     <field id="horizAlign" type="string" onChange="onHorizAlignChanged" />
     <field id="vertAlign" type="string" onChange="onVertAlignChanged" />
   </interface>

@@ -35,14 +35,14 @@ m.top.getScene().testToast = "Just a message"          ' defaults to error type
 3. From the BrightScript console:
 
 ```brightscript
-m.global.debug.forceFiltersFail = true
+m.global.debug.shouldForceFiltersFail = true
 ```
 
 1. Navigate to a movie library — the filter task takes the failure branch, and a toast appears
 2. Turn it off:
 
 ```brightscript
-m.global.debug.forceFiltersFail = false
+m.global.debug.shouldForceFiltersFail = false
 ```
 
 ---
@@ -106,9 +106,9 @@ The system uses BrighterScript's `#if debug` conditional compilation:
 
 | Flag | What It Does | Where to Test |
 | ------ | ------------- | --------------- |
-| `forceFiltersFail` | Skips the API call in `GetFiltersTask` and simulates a failure response | Navigate to any library with dynamic filters (e.g., Movies) |
-| `forceFavoriteFail` | Forces the favorite toggle API response to appear failed | Press the favorite button on any `ItemDetails` screen |
-| `forceWatchedFail` | Forces the watched toggle API response to appear failed | Press the watched button on any `ItemDetails` screen |
+| `shouldForceFiltersFail` | Skips the API call in `GetFiltersTask` and simulates a failure response | Navigate to any library with dynamic filters (e.g., Movies) |
+| `shouldForceFavoriteFail` | Forces the favorite toggle API response to appear failed | Press the favorite button on any `ItemDetails` screen |
+| `shouldForceWatchedFail` | Forces the watched toggle API response to appear failed | Press the watched button on any `ItemDetails` screen |
 
 ---
 
@@ -121,8 +121,8 @@ Follow these steps when adding error injection to a new feature:
 ```xml
 <!-- components/data/DebugFlags.xml -->
 <interface>
-  <field id="forceFiltersFail" type="boolean" value="false" />
-  <field id="forceMyNewThingFail" type="boolean" value="false" />  <!-- ADD -->
+  <field id="shouldForceFiltersFail" type="boolean" value="false" />
+  <field id="shouldForceMyNewThingFail" type="boolean" value="false" />  <!-- ADD -->
 </interface>
 ```
 
@@ -134,7 +134,7 @@ Place the `#if debug` block **before** the real API call so it short-circuits ea
 sub myTask()
   ' Debug error injection — compiled out in production (bs_const=debug=false)
   #if debug
-    if isValid(m.global.debug) and m.global.debug.forceMyNewThingFail
+    if isValid(m.global.debug) and m.global.debug.shouldForceMyNewThingFail
       m.top.error = "[DEBUG] Forced failure"
       m.top.result = {}    ' or whatever the failure shape is
       return
@@ -153,9 +153,9 @@ Add your flag to the table in this document so other developers know it exists.
 
 ```brightscript
 ' From BrightScript console (port 8085):
-m.global.debug.forceMyNewThingFail = true
+m.global.debug.shouldForceMyNewThingFail = true
 ' Navigate to the feature, verify the error path fires
-m.global.debug.forceMyNewThingFail = false
+m.global.debug.shouldForceMyNewThingFail = false
 ```
 
 ---

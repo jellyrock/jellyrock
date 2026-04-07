@@ -24,7 +24,7 @@ namespace tests
       m.global.user.id = testUserId
 
       ' GIVEN: Set global setting in test-global registry (not real app registry)
-      set_setting("globalSplashScreen", "disabled")
+      setSetting("globalSplashScreen", "disabled")
 
       ' Verify it's in test-global section (safety check)
       testGlobalReg = CreateObject("roRegistrySection", "test-global")
@@ -71,7 +71,7 @@ namespace tests
       m.global.user.id = testUserId
 
       ' GIVEN: Set registry to empty string
-      set_setting("globalSplashScreen", "")
+      setSetting("globalSplashScreen", "")
 
       ' Verify it's in test-global section
       testGlobalReg = CreateObject("roRegistrySection", "test-global")
@@ -116,14 +116,14 @@ namespace tests
 
     end function
 
-    @it("round-trip: set global setting via set_setting() and read via getGlobalSplashScreenSetting()")
+    @it("round-trip: set global setting via setSetting() and read via getGlobalSplashScreenSetting()")
     function _()
       testUserId = "test-splash-registry-005"
 
       m.global.user.id = testUserId
 
       ' GIVEN: Set "enabled" in test-global registry
-      set_setting("globalSplashScreen", "enabled")
+      setSetting("globalSplashScreen", "enabled")
 
       ' Verify isolation - setting goes to test-global
       testGlobalReg = CreateObject("roRegistrySection", "test-global")
@@ -137,7 +137,7 @@ namespace tests
       m.assertEqual(result, "enabled")
 
       ' WHEN: Change to "disabled"
-      set_setting("globalSplashScreen", "disabled")
+      setSetting("globalSplashScreen", "disabled")
 
       ' Verify it updated in test-global
       m.assertEqual(testGlobalReg.read("globalSplashScreen"), "disabled")

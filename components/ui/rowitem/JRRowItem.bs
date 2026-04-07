@@ -169,7 +169,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     useEpisodeImages = (globalUser.config.useEpisodeImagesInNextUpAndResume = true)
   end if
 
-  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, m.top.applyEpisodeImageSetting)
+  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, m.top.shouldApplyEpisodeImageSetting)
 
   ' Blur unwatched episodes when the user setting is enabled.
   ' Guard posterUri <> "" to avoid appending to an empty string, which would produce
@@ -250,7 +250,7 @@ sub initBackdropText(slotWidth as float, posterHeight as float)
 
   backdropText = CreateObject("roSGNode", "LabelPrimaryLarger")
   backdropText.id = "backdropText"
-  backdropText.bold = true
+  backdropText.isBold = true
   backdropText.width = slotWidth - 18
   backdropText.height = posterHeight - 18
   backdropText.translation = [9, 9]

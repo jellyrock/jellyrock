@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -9,7 +9,7 @@ sub init()
 end sub
 
 ' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
-' Fetches branding configuration from server and updates m.global.server.splashscreenEnabled.
+' Fetches branding configuration from server and updates m.global.server.isSplashscreenEnabled.
 ' Sets responseCode to 200 on success, -1 on failure.
 ' IMPORTANT: Non-blocking — never throws errors that stop app flow.
 sub fetchBrandingConfig()
@@ -27,11 +27,11 @@ sub fetchBrandingConfig()
     ' Update global server node with splashscreen status
     serverNode = m.global.server
     if isValid(configData.SplashscreenEnabled)
-      serverNode.splashscreenEnabled = configData.SplashscreenEnabled
+      serverNode.isSplashscreenEnabled = configData.SplashscreenEnabled
       m.log.info("Splashscreen status cached", "enabled:", configData.SplashscreenEnabled)
     else
       ' API returned data but no SplashscreenEnabled field — default to false
-      serverNode.splashscreenEnabled = false
+      serverNode.isSplashscreenEnabled = false
       m.log.warn("SplashscreenEnabled field not found in response - defaulting to false")
     end if
 
@@ -39,7 +39,7 @@ sub fetchBrandingConfig()
   else
     ' API call failed — default to false, log warning, continue normally
     m.log.warn("Failed to fetch branding configuration - defaulting to disabled")
-    m.global.server.splashscreenEnabled = false
+    m.global.server.isSplashscreenEnabled = false
     m.top.responseCode = -1
     m.top.failureReason = "API call failed or returned invalid"
   end if
