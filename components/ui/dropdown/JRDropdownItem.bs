@@ -52,7 +52,7 @@ sub onFocusStateChanged()
     ' Hide button visuals when unfocused
     m.itemBorder.visible = false
     m.itemBackground.visible = false
-    if m.top.isButtonSelected
+    if m.top.isSelected
       m.itemLabel.color = m.colorSecondary
     else
       m.itemLabel.color = m.colorTextPrimary

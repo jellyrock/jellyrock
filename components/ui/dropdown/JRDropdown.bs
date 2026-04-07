@@ -163,7 +163,7 @@ sub onSelectedItemChanged()
   selectedId = m.top.selectedItemId
   for i = 0 to m.menuItems.getChildCount() - 1
     item = m.menuItems.getChild(i)
-    item.isButtonSelected = (item.itemId = selectedId)
+    item.isSelected = (item.itemId = selectedId)
   end for
 end sub
 
