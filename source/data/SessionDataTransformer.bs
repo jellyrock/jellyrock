@@ -20,7 +20,6 @@ class SessionDataTransformer
       serverNode.name = serverData.name ?? ""
       serverNode.version = serverData.version ?? ""
       serverNode.productName = serverData.productName ?? ""
-      serverNode.operatingSystem = serverData.operatingSystem ?? ""
 
       ' Normalize serverUrl to ensure consistent format
       ' Handles legacy registry values that may not be normalized

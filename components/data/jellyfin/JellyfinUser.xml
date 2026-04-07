@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  LOADING STATE PATTERN: SENTINEL VALUES
+  LOADING STATE PATTERN: SENTINEL + EXPLICIT
 
   RULE: If user.id = "" AND user.authToken = "", user is NOT authenticated
-  RULE: If user.id <> "", user IS authenticated and loaded
+  RULE: If user.id <> "", user IS authenticated
+  RULE: isLoaded tracks whether full user data has been fetched from server
 
   User node only exists in m.global.user after successful login.
   Empty configuration/policy fields are VALID defaults.
@@ -24,6 +25,10 @@
 
     <!-- User Settings (nested node) -->
     <field id="settings" type="node" />
+
+    <!-- Loading State -->
+    <field id="isLoaded" type="boolean" value="false" />
+    <field id="loadedAt" type="longinteger" value="0" />
 
     <!-- App State -->
     <field id="lastRunVersion" type="string" value="" />
