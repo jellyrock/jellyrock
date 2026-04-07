@@ -288,8 +288,7 @@ sub standardDialog(title, message)
   dialog.palette = dlgPalette
   dialog.observeField("buttonSelected", "dismissDialog")
   dialog.title = title
-  dialog.contentData = message
-  dialog.buttons = [translate(translationKeys.ButtonOk)]
+  dialog.setField("contentData", message) ' setField: BSC cannot resolve custom fields on built-in dialog subtypes
 
   m.scene.dialog = dialog
 end sub
@@ -311,8 +310,8 @@ sub radioDialog(title, message)
   dialog.palette = dlgPalette
   dialog.observeField("buttonSelected", "dismissDialog")
   dialog.title = title
-  dialog.contentData = message
-  dialog.buttons = [translate(translationKeys.ButtonOk)]
+  dialog.setField("contentData", message) ' setField: BSC cannot resolve custom fields on built-in dialog subtypes
+  dialog.setField("buttons", [translate(translationKeys.ButtonOk)])
 
   m.scene.dialog = dialog
 end sub

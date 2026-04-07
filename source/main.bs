@@ -74,6 +74,7 @@ sub Main (args as dynamic) as void
   ' This now only references m. fields so could be placed anywhere, in theory
   ' "group" is always "whats on the screen"
   ' m.scene's children is the "previous view" stack
+  group = invalid
   while true
     msg = wait(0, m.port)
     if type(msg) = "roSGScreenEvent" and msg.isScreenClosed()
@@ -611,18 +612,12 @@ sub Main (args as dynamic) as void
         else if btn.id = "goToSeriesButton"
           ' Navigate to the parent series detail screen
           if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.seriesId)
-            seriesRef = CreateObject("roSGNode", "ContentNode")
-            seriesRef.id = group.itemContent.seriesId
-            seriesRef.type = "Series"
-            CreateItemDetailsGroup(seriesRef)
+            CreateItemDetailsGroup({ id: group.itemContent.seriesId, type: "Series" })
           end if
         else if btn.id = "goToAlbumButton"
           ' Navigate to the album detail screen for the current Audio item
           if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.albumId)
-            albumRef = CreateObject("roSGNode", "ContentNode")
-            albumRef.id = group.itemContent.albumId
-            albumRef.type = "MusicAlbum"
-            CreateItemDetailsGroup(albumRef)
+            CreateItemDetailsGroup({ id: group.itemContent.albumId, type: "MusicAlbum" })
           end if
         else if btn.id = "goToArtistButton"
           ' Navigate to the artist detail screen for the current MusicAlbum.
@@ -643,10 +638,7 @@ sub Main (args as dynamic) as void
               end if
             end if
             if isValidAndNotEmpty(artistId)
-              artistRef = CreateObject("roSGNode", "ContentNode")
-              artistRef.id = artistId
-              artistRef.type = "MusicArtist"
-              CreateItemDetailsGroup(artistRef)
+              CreateItemDetailsGroup({ id: artistId, type: "MusicArtist" })
             end if
           end if
         else if btn.id = "viewPhotoButton"
@@ -681,10 +673,7 @@ sub Main (args as dynamic) as void
         else if btn.id = "goToChannelButton"
           ' Navigate to the TvChannel detail screen for this Program
           if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.channelId)
-            channelRef = CreateObject("roSGNode", "ContentNode")
-            channelRef.id = group.itemContent.channelId
-            channelRef.type = "TvChannel"
-            CreateItemDetailsGroup(channelRef)
+            CreateItemDetailsGroup({ id: group.itemContent.channelId, type: "TvChannel" })
           end if
         else if btn.id = "recordButton"
           item = group.itemContent
