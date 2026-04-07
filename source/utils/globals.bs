@@ -240,7 +240,7 @@ sub refreshThemeOnNode(node as object, constants as object)
       node.color = constants.colorTextDisabled
     end if
 
-  ' TextButton and subtypes (JRTab, etc.) — update focus-state colors
+    ' TextButton and subtypes (JRTab, etc.) — update focus-state colors
   else if node.isSubType("TextButton")
     node.focusBorder = constants.colorPrimary
     node.focusBackground = constants.colorBackgroundSecondary
@@ -256,7 +256,7 @@ sub refreshThemeOnNode(node as object, constants as object)
       end for
     end if
 
-  ' JROverhangIcon — update the icon poster's unfocused blend color
+    ' JROverhangIcon — update the icon poster's unfocused blend color
   else if subtype = "JROverhangIcon"
     buttonIcon = node.findNode("buttonIcon")
     if isValid(buttonIcon)
