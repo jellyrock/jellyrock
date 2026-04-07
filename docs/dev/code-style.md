@@ -162,7 +162,7 @@ end function
 
 Files containing type definitions (classes, components, enums) use PascalCase.
 
-```
+```text
 source/api/ApiClient.bs          ' class ApiClient
 source/enums/MediaSegmentType.bs ' enum MediaSegmentType
 components/ItemDetails.xml       ' component ItemDetails
@@ -173,7 +173,7 @@ components/ItemDetails.bs        ' companion script
 
 Files containing only functions, subs, or namespace definitions use `lowerCamelCase`. Single-word names are naturally valid.
 
-```
+```text
 source/utils/config.bs           ' utility functions
 source/utils/nodeHelpers.bs      ' namespace nodeHelpers
 source/api/baseRequest.bs        ' utility functions
@@ -184,7 +184,7 @@ source/constants/imageSize.bs    ' namespace imageSize
 
 Component XML and BS files must share the same PascalCase base name. BrighterScript auto-scopes them together.
 
-```
+```text
 components/video/VideoPlayerView.xml
 components/video/VideoPlayerView.bs
 ```
