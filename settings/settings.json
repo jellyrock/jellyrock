@@ -761,6 +761,104 @@
                     "titleKey": "LabelJellyrockBlack"
                   },
                   {
+                    "title": "Emerald",
+                    "id": "emerald",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "10B981",
+                      "uiThemeColorSecondary": "14B8A6",
+                      "uiThemeColorBackgroundPrimary": "0F1419",
+                      "uiThemeColorBackgroundSecondary": "1A2028",
+                      "uiThemeColorTextPrimary": "F0F0F0",
+                      "uiThemeColorTextSecondary": "A0AEC0",
+                      "uiThemeColorTextDisabled": "4A5568"
+                    },
+                    "titleKey": "LabelEmerald"
+                  },
+                  {
+                    "title": "Ember",
+                    "id": "ember",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "EF4444",
+                      "uiThemeColorSecondary": "F97316",
+                      "uiThemeColorBackgroundPrimary": "0D1117",
+                      "uiThemeColorBackgroundSecondary": "161B22",
+                      "uiThemeColorTextPrimary": "F0F0F0",
+                      "uiThemeColorTextSecondary": "A8A8A8",
+                      "uiThemeColorTextDisabled": "4A4A4A"
+                    },
+                    "titleKey": "LabelEmber"
+                  },
+                  {
+                    "title": "Rose",
+                    "id": "rose",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "F472B6",
+                      "uiThemeColorSecondary": "E879F9",
+                      "uiThemeColorBackgroundPrimary": "0D1117",
+                      "uiThemeColorBackgroundSecondary": "161B22",
+                      "uiThemeColorTextPrimary": "F0F0F0",
+                      "uiThemeColorTextSecondary": "A8A8A8",
+                      "uiThemeColorTextDisabled": "4A4A4A"
+                    },
+                    "titleKey": "LabelRose"
+                  },
+                  {
+                    "title": "Ocean",
+                    "id": "ocean",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "3B82F6",
+                      "uiThemeColorSecondary": "06B6D4",
+                      "uiThemeColorBackgroundPrimary": "0B1120",
+                      "uiThemeColorBackgroundSecondary": "131D2E",
+                      "uiThemeColorTextPrimary": "E8EDF5",
+                      "uiThemeColorTextSecondary": "94A3B8",
+                      "uiThemeColorTextDisabled": "475569"
+                    },
+                    "titleKey": "LabelOcean"
+                  },
+                  {
+                    "title": "Dusk",
+                    "id": "dusk",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "F59E0B",
+                      "uiThemeColorSecondary": "D97706",
+                      "uiThemeColorBackgroundPrimary": "151210",
+                      "uiThemeColorBackgroundSecondary": "1F1B18",
+                      "uiThemeColorTextPrimary": "F5F0EB",
+                      "uiThemeColorTextSecondary": "B0A898",
+                      "uiThemeColorTextDisabled": "5C5549"
+                    },
+                    "titleKey": "LabelDusk"
+                  },
+                  {
+                    "title": "Midnight",
+                    "id": "midnight",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "60A5FA",
+                      "uiThemeColorSecondary": "38BDF8",
+                      "uiThemeColorBackgroundPrimary": "000000",
+                      "uiThemeColorBackgroundSecondary": "0A0A0A",
+                      "uiThemeColorTextPrimary": "F0F0F0",
+                      "uiThemeColorTextSecondary": "A0A0A0",
+                      "uiThemeColorTextDisabled": "454545"
+                    },
+                    "titleKey": "LabelMidnight"
+                  },
+                  {
+                    "title": "High Contrast",
+                    "id": "high-contrast",
+                    "presetValues": {
+                      "uiThemeColorPrimary": "FBBF24",
+                      "uiThemeColorSecondary": "38BDF8",
+                      "uiThemeColorBackgroundPrimary": "000000",
+                      "uiThemeColorBackgroundSecondary": "1A1A1A",
+                      "uiThemeColorTextPrimary": "FFFFFF",
+                      "uiThemeColorTextSecondary": "D4D4D4",
+                      "uiThemeColorTextDisabled": "737373"
+                    },
+                    "titleKey": "LabelHighContrast"
+                  },
+                  {
                     "title": "Custom",
                     "id": "custom",
                     "titleKey": "LabelCustom"
