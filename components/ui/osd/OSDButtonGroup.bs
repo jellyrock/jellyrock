@@ -16,7 +16,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = currentFocus + 1 to m.top.getChildCount() - 1
         button = m.top.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           m.top.buttonFocused = i
           button.setFocus(true)
@@ -28,7 +28,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = 0 to buttonMenuRight.getChildCount() - 1
         button = buttonMenuRight.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           buttonMenuRight.buttonFocused = i
           button.setFocus(true)
@@ -41,7 +41,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = currentFocus - 1 to 0 step -1
         button = m.top.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           m.top.buttonFocused = i
           button.setFocus(true)
@@ -53,7 +53,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = buttonMenuRight.getChildCount() - 1 to 0 step -1
         button = buttonMenuRight.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           buttonMenuRight.buttonFocused = i
           button.setFocus(true)
@@ -66,7 +66,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = currentFocus + 1 to m.top.getChildCount() - 1
         button = m.top.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           m.top.buttonFocused = i
           button.setFocus(true)
@@ -78,7 +78,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = 0 to buttonMenuLeft.getChildCount() - 1
         button = buttonMenuLeft.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           buttonMenuLeft.buttonFocused = i
           button.setFocus(true)
@@ -92,7 +92,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = currentFocus - 1 to 0 step -1
         button = m.top.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           m.top.buttonFocused = i
           button.setFocus(true)
@@ -105,7 +105,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       for i = buttonMenuLeft.getChildCount() - 1 to 0 step -1
         button = buttonMenuLeft.getChild(i)
 
-        if button.enabled
+        if button.isEnabled
           currentFocusButton.setFocus(false)
           buttonMenuLeft.buttonFocused = i
           button.setFocus(true)

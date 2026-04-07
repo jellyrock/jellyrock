@@ -5,7 +5,7 @@
     <field id="choices" type="array" onChange="updateTitle" />
     <field id="configKey" type="string" />
     <field id="valueIndex" type="integer" />
-    <field id="globalSetting" type="boolean" value="false" />
+    <field id="isGlobalSetting" type="boolean" value="false" />
     <field id="value" type="string" onChange="updateTitle" />
     <function name="press" />
   </interface>

@@ -13,7 +13,7 @@ sub init()
   m.log.verbose("init")
 
   m.isFirstRun = true
-  m.top.optionsAvailable = true
+  m.top.isOptionsAvailable = true
 
   ' HomeRows starts in XML as the default tab content
   m.homeRows = m.top.findNode("homeRows")
@@ -95,7 +95,7 @@ sub OnScreenShown()
     end if
 
     ' Enable overhang icons (search + settings) and observe their events once
-    overhang.showIcons = true
+    overhang.shouldShowIcons = true
     if not isValid(m.searchIcon)
       overhang.observeField("iconAction", "onOverhangIconAction")
 
@@ -184,7 +184,7 @@ sub OnScreenHidden()
   overhang = scene.findNode("overhang")
   if isValid(overhang)
     overhang.isLogoVisible = false
-    overhang.showIcons = false
+    overhang.shouldShowIcons = false
     overhang.currentUser = ""
   end if
 end sub

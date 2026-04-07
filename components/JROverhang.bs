@@ -87,7 +87,7 @@ sub createSlideAnimations()
 end sub
 
 sub isVisibleChanged()
-  if m.top.disableMoveAnimation
+  if m.top.isMoveAnimationDisabled
     m.top.translation = [0, 0]
     return
   end if
@@ -147,12 +147,12 @@ end sub
 ' Controls icon visibility. Icons require both showIcons=true (set by the active screen)
 ' AND a logged-in user. This lets screens opt in (Home) without icons appearing on
 ' screens that only set currentUser (e.g., Settings).
-sub showIconsChanged()
+sub shouldShowIconsChanged()
   updateIconVisibility()
 end sub
 
 sub updateIconVisibility()
-  shouldShow = m.top.showIcons and m.top.currentUser <> ""
+  shouldShow = m.top.shouldShowIcons and m.top.currentUser <> ""
   m.searchIcon.visible = shouldShow
   m.settingsIcon.visible = shouldShow
 
@@ -423,7 +423,7 @@ sub onTabsChanged()
     ' No tabs — hide the tab bar (preserve it for instant reuse on return)
     ' and restore the title label
     if isValid(m.tabBar)
-      m.tabBar.unobserveField("ready") ' cancel any pending ready observer before restoring title
+      m.tabBar.unobserveField("isReady") ' cancel any pending ready observer before restoring title
       m.tabBar.visible = false
     end if
     m.title.visible = true
@@ -456,11 +456,11 @@ sub onTabsChanged()
   ' After setting tabs, check if they were preserved (return path) or rebuilt (init).
   ' Preserved tabs are already sized → hide title instantly.
   ' Rebuilt tabs need render tracking → keep title visible until ready.
-  if m.tabBar.ready
+  if m.tabBar.isReady
     m.title.visible = false
   else
-    m.tabBar.unobserveField("ready") ' prevent stacking duplicate observers on rapid tab changes
-    m.tabBar.observeField("ready", "onTabBarReady")
+    m.tabBar.unobserveField("isReady") ' prevent stacking duplicate observers on rapid tab changes
+    m.tabBar.observeField("isReady", "onTabBarReady")
   end if
 end sub
 
@@ -468,7 +468,7 @@ end sub
 ' fully-formed tab bar in a single frame — no blank gap or sizing dance.
 sub onTabBarReady()
   if isValid(m.tabBar)
-    m.tabBar.unobserveField("ready")
+    m.tabBar.unobserveField("isReady")
   end if
   m.title.visible = false
 end sub

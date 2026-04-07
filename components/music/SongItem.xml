@@ -2,9 +2,9 @@
 <component name="SongItem" extends="Group">
   <children>
     <LayoutGroup layoutDirection="horiz" horizAlignment="left" itemSpacings="[5, 0]" translation="[0, 15]">
-      <LabelPrimarySmall id="trackNumber" horizAlign="left" vertAlign="center" width="80" bold="true" />
-      <LabelPrimarySmall id="itemText" horizAlign="left" vertAlign="center" width="930" bold="true" />
-      <LabelPrimarySmall id="tracklength" horizAlign="right" vertAlign="center" width="150" bold="true" />
+      <LabelPrimarySmall id="trackNumber" horizAlign="left" vertAlign="center" width="80" isBold="true" />
+      <LabelPrimarySmall id="itemText" horizAlign="left" vertAlign="center" width="930" isBold="true" />
+      <LabelPrimarySmall id="tracklength" horizAlign="right" vertAlign="center" width="150" isBold="true" />
     </LayoutGroup>
   </children>
   <interface>

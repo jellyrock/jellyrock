@@ -2,7 +2,7 @@
 <component name="CriticRating" extends="Group">
   <children>
     <Poster id="tomatoIcon" loadDisplayMode="limitSize" translation="[0, 0]" />
-    <LabelPrimaryMedium id="criticRating" bold="true" />
+    <LabelPrimaryMedium id="criticRating" isBold="true" />
   </children>
   <interface>
     <field id="rating" type="float" onChange="onRatingChanged" />

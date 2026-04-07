@@ -5,7 +5,7 @@ sub init()
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.buttonText = m.top.findNode("buttonText")
 
-  m.top.observeField("enabled", "onEnabledChanged")
+  m.top.observeField("isEnabled", "onEnabledChanged")
   m.top.observeField("background", "onBackgroundChanged")
   m.top.observeField("border", "onBorderChanged")
   m.top.observeField("textColor", "onTextColorChanged")
@@ -140,7 +140,7 @@ sub setSizeAndCenterText()
   onFocusChanged()
 
   ' Signal that the button is ready (sized and visible)
-  m.top.ready = true
+  m.top.isReady = true
 end sub
 
 sub onPaddingChanged()
@@ -162,7 +162,7 @@ end sub
 sub onEnabledChanged()
   constants = m.global.constants
 
-  if m.top.enabled
+  if m.top.isEnabled
     m.top.background = constants.colorBackgroundSecondary
     m.top.border = constants.colorBackgroundSecondary
     m.top.textColor = constants.colorTextPrimary

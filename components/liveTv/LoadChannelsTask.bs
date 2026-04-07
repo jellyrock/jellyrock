@@ -22,7 +22,7 @@ sub loadChannels()
     includeItemTypes: "LiveTvChannel",
     SortBy: m.top.sortField,
     SortOrder: sortOrder,
-    recursive: m.top.recursive,
+    recursive: m.top.isRecursive,
     UserId: m.global.user.id
   }
 

@@ -269,7 +269,7 @@ class MoviePresenter extends GridPresenterBase
         genreNode.width = 900
         genreNode.height = 0
         genreNode.text = item.genres.join(" / ")
-        genreNode.bold = true
+        genreNode.isBold = true
         movieGenresGroup.appendChild(genreNode)
       end if
     end if
@@ -356,7 +356,7 @@ class MoviePresenter extends GridPresenterBase
     labelNode.vertAlign = "center"
     labelNode.width = 0
     labelNode.height = 0
-    labelNode.bold = true
+    labelNode.isBold = true
     return labelNode
   end function
 
@@ -370,7 +370,7 @@ class MoviePresenter extends GridPresenterBase
     dividerNode.width = 0
     dividerNode.height = 40
     dividerNode.text = "•"
-    dividerNode.bold = true
+    dividerNode.isBold = true
     return dividerNode
   end function
 

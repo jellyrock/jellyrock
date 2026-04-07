@@ -17,8 +17,8 @@ sub downloadFallbackFont()
   if not r.ok or not isValid(r.json) or not r.json.EnableFallbackFont
     print "FontDownloadTask: Server does not support fallback fonts"
     m.top.errorMessage = "Server does not support fallback fonts"
-    m.top.fontDownloadSuccess = false
-    m.top.fontDownloadCompleted = true
+    m.top.isFontDownloadSuccess = false
+    m.top.isFontDownloadCompleted = true
     return
   end if
 
@@ -28,8 +28,8 @@ sub downloadFallbackFont()
   if not r.ok or r.text = ""
     print "FontDownloadTask: Failed to get font list from server"
     m.top.errorMessage = "Failed to get font list from server"
-    m.top.fontDownloadSuccess = false
-    m.top.fontDownloadCompleted = true
+    m.top.isFontDownloadSuccess = false
+    m.top.isFontDownloadCompleted = true
     return
   end if
 
@@ -38,8 +38,8 @@ sub downloadFallbackFont()
   if not isValid(filename) or filename.count() = 0
     print "FontDownloadTask: Could not parse font filename from server response"
     m.top.errorMessage = "Could not parse font filename from server response"
-    m.top.fontDownloadSuccess = false
-    m.top.fontDownloadCompleted = true
+    m.top.isFontDownloadSuccess = false
+    m.top.isFontDownloadCompleted = true
     return
   end if
 
@@ -52,8 +52,8 @@ sub downloadFallbackFont()
   if not isValid(fontFileReq)
     print "FontDownloadTask: Failed to create API request for font file"
     m.top.errorMessage = "Failed to create API request for font file"
-    m.top.fontDownloadSuccess = false
-    m.top.fontDownloadCompleted = true
+    m.top.isFontDownloadSuccess = false
+    m.top.isFontDownloadCompleted = true
     return
   end if
 
@@ -67,12 +67,12 @@ sub downloadFallbackFont()
   if not fs.Exists("tmp:/font")
     print "FontDownloadTask: Font file was not created successfully"
     m.top.errorMessage = "Font file was not created successfully"
-    m.top.fontDownloadSuccess = false
-    m.top.fontDownloadCompleted = true
+    m.top.isFontDownloadSuccess = false
+    m.top.isFontDownloadCompleted = true
     return
   end if
 
   print "FontDownloadTask: Fallback font downloaded successfully"
-  m.top.fontDownloadSuccess = true
-  m.top.fontDownloadCompleted = true
+  m.top.isFontDownloadSuccess = true
+  m.top.isFontDownloadCompleted = true
 end sub

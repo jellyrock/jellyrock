@@ -4,14 +4,14 @@ sub init()
   m.previouslyDisplayedSection = 0
 end sub
 
-sub onFocusChange()
-  if m.top.focus
+sub onIsFocusedChange()
+  if m.top.isFocused
     m.top.getChild(m.top.displayedIndex).setFocus(true)
   end if
 end sub
 
 sub displayedIndexChanged()
-  if not m.top.affectsFocus then return
+  if not m.top.shouldAffectFocus then return
 
   if m.top.displayedIndex < 0
     return

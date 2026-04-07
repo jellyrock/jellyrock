@@ -37,7 +37,7 @@ sub SignOut(deleteSavedEntry = true as boolean)
   user.Logout()
   m.global.sceneManager.currentUser = ""
   group = m.global.sceneManager.callFunc("getActiveScene")
-  group.optionsAvailable = false
+  group.isOptionsAvailable = false
 end sub
 
 function AvailableUsers()

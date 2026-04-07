@@ -81,19 +81,19 @@ sub ScanForServersComplete(event)
 
   ' Pass 2: Add saved servers not found by SSDP (e.g. remote servers)
   for each savedServer in savedServers.serverList
-    alreadyListed = false
+    isAlreadyListed = false
     for each listed in m.servers
       if isValidAndNotEmpty(listed.id) and isValidAndNotEmpty(savedServer.id)
         if listed.id = savedServer.id
-          alreadyListed = true
+          isAlreadyListed = true
           exit for
         end if
       else if LCase(listed.baseUrl) = savedServer.baseUrl
-        alreadyListed = true
+        isAlreadyListed = true
         exit for
       end if
     end for
-    if not alreadyListed
+    if not isAlreadyListed
       savedServer.isSaved = true ' mark as deletable — this server exists in saved_servers
       items.update([savedServer], true)
       m.servers.push(savedServer)
@@ -166,7 +166,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   m.log.debug("SetServerScreen onKeyEvent", key, press)
 
   if not press then return true
-  handled = true
+  isHandled = true
 
   if key = "OK" and m.serverPicker.hasFocus()
     item = m.serverPicker.content.getChild(m.serverPicker.itemFocused)
@@ -210,17 +210,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
       item = m.serverPicker.content.getChild(m.serverPicker.itemFocused)
       if m.servers.Count() > 0 and item.isSaved = true
         'Can only delete previously saved servers, not locally discovered ones
-        'So if we are on a saved item, let the options dialog be shown (handled elsewhere)
-        handled = false
+        'So if we are on a saved item, let the options dialog be shown (isHandled elsewhere)
+        isHandled = false
       end if
     end if
   else
-    handled = false
+    isHandled = false
   end if
   'show/hide input box outline
   m.serverUrlOutline.visible = m.serverUrlContainer.isInFocusChain()
 
-  return handled
+  return isHandled
 end function
 
 ' destroy: Full teardown releasing all resources before component removal

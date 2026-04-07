@@ -22,7 +22,7 @@
     <field id="isLocalHTTPS" type="boolean" value="false" />
 
     <!-- Server Status -->
-    <field id="startupWizardCompleted" type="boolean" value="false" />
+    <field id="isStartupWizardCompleted" type="boolean" value="false" />
     <!-- API Version: 1 = pre-10.9 (uses /users/{id}/ paths), 2 = 10.9+ (top-level paths) -->
     <field id="apiVersion" type="integer" value="0" />
 
@@ -32,7 +32,7 @@
     <field id="lastConnected" type="longinteger" value="0" />
 
     <!-- Branding Cache (invalid = not loaded yet, true/false = loaded) -->
-    <field id="splashscreenEnabled" type="boolean" />
+    <field id="isSplashscreenEnabled" type="boolean" />
 
     <!-- DEBUG ONLY: Raw server info for debugging - only populated when bs_const=debug=true -->
     <field id="rawServerInfo" type="assocarray" />

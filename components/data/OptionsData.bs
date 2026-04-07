@@ -33,7 +33,7 @@ sub press()
   if m.top.configKey = "" or not isValid(m.top.configKey)
     return
   end if
-  if m.top.globalSetting
+  if m.top.isGlobalSetting
     setSetting(m.top.configKey, m.top.value)
   else
     setUserSetting(m.top.configKey, m.top.value)

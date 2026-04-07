@@ -5,7 +5,7 @@
 
     <LayoutGroup id="itemDetails" layoutDirection="vert" vertAlignment="bottom" itemSpacings="[12]" translation="[96, 775]" enableRenderTracking="true">
       <LayoutGroup id="itemInfoRows" layoutDirection="vert">
-        <LabelPrimaryLargest id="videoTitle" bold="true" />
+        <LabelPrimaryLargest id="videoTitle" isBold="true" />
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="infoGroup" />
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="directorGenreGroup" />
       </LayoutGroup>

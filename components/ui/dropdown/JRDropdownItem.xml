@@ -10,7 +10,7 @@
     <field id="text" type="string" onChange="onTextChanged" />
     <field id="itemId" type="string" />
     <field id="isFocused" type="boolean" value="false" onChange="onFocusStateChanged" />
-    <field id="isSelected" type="boolean" value="false" onChange="onFocusStateChanged" />
+    <field id="isButtonSelected" type="boolean" value="false" onChange="onFocusStateChanged" />
     <field id="itemWidth" type="integer" value="300" onChange="onSizeChanged" />
     <field id="itemHeight" type="integer" value="60" onChange="onSizeChanged" />
   </interface>

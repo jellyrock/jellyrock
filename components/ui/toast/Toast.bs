@@ -30,8 +30,8 @@ sub init()
   m.top.visible = false
 end sub
 
-sub onShow()
-  if not m.top.show then return
+sub onShouldShow()
+  if not m.top.shouldShow then return
 
   constants = m.global.constants
   toastType = m.top.toastType
@@ -75,7 +75,7 @@ end sub
 ' Called when the component has rendered and we can measure the label accurately
 sub onRenderComplete()
   if m.top.renderTracking <> "full" then return
-  if not m.top.show then return
+  if not m.top.shouldShow then return
   sizeAndPosition()
 end sub
 

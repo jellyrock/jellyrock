@@ -22,26 +22,26 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   apiQueue = m.global.apiQueue
   if not isValid(apiQueue) then return invalid
 
-  ' Startup ordering guard: the coordinator sets ready=true only AFTER all 3 pool
+  ' Startup ordering guard: the coordinator sets isReady=true only AFTER all 3 pool
   ' tasks have registered their request observers AND the coordinator has registered
   ' its own observers. This guarantees the full pipeline (pool → coordinator →
   ' callers) is operational before any request flows.
   ' After the first request this check costs a single field-read rendezvous; it is
   ' effectively free for the rest of the session once the pipeline is up.
-  if not apiQueue.ready
+  if not apiQueue.isReady
     readyPort = CreateObject("roMessagePort")
-    apiQueue.observeField("ready", readyPort)
-    ' Double-check after registering: ready may have become true in the narrow window
+    apiQueue.observeField("isReady", readyPort)
+    ' Double-check after registering: isReady may have become true in the narrow window
     ' between the first check and observeField(), in which case we skip the wait.
     ' Loop with short waits: a single 5s wait can miss the event if the coordinator
     ' becomes ready between observeField and the first wait (event consumed by
     ' the observe itself on some firmware). Re-checking actual field state each
     ' iteration makes this immune to event delivery quirks.
     for _attempt = 0 to 50
-      if apiQueue.ready then exit for
+      if apiQueue.isReady then exit for
       wait(200, readyPort)
     end for
-    apiQueue.unobserveField("ready")
+    apiQueue.unobserveField("isReady")
   end if
 
   req.requestId = requestId
@@ -55,7 +55,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   ' Observe BEFORE appending. If the request completes before we reach wait(),
   ' the 'done' event is already in the port queue and wait() returns immediately.
   port = CreateObject("roMessagePort")
-  resultNode.observeField("done", port)
+  resultNode.observeField("isDone", port)
 
   ' Append the result node as a child of the coordinator. The coordinator reads
   ' ALL unprocessed children when woken up — this is immune to event coalescing,
@@ -66,7 +66,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
 
   msg = wait(30000, port)
   if type(msg) = "roSGNodeEvent"
-    resultNode.unobserveField("done")
+    resultNode.unobserveField("isDone")
     return resultNode.result
   end if
   ' Timeout: clean up the observer to prevent a stale reference to the dead port.
@@ -75,7 +75,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   ' When the coordinator eventually delivers the response it will write to the
   ' abandoned node (no crash), free the slot, and dispatch the next queued
   ' request normally. The node is pruned at the 50-child threshold.
-  resultNode.unobserveField("done")
+  resultNode.unobserveField("isDone")
   return invalid
 end function
 
@@ -113,7 +113,7 @@ function submitApiRequest(req as dynamic, requestId as string) as dynamic
   if not isValid(req) then return invalid
 
   apiQueue = m.global.apiQueue
-  if not isValid(apiQueue) or not apiQueue.ready then return invalid
+  if not isValid(apiQueue) or not apiQueue.isReady then return invalid
 
   req.requestId = requestId
 

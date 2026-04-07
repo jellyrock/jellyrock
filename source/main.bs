@@ -88,7 +88,7 @@ sub Main (args as dynamic) as void
       else
         group.setFocus(true)
       end if
-    else if isNodeEvent(msg, "fontDownloadCompleted")
+    else if isNodeEvent(msg, "isFontDownloadCompleted")
       ' Handle font download completion
       fontDownloadTask = msg.getRoSGNode()
       if isValid(fontDownloadTask)
@@ -160,7 +160,7 @@ sub Main (args as dynamic) as void
           searchKey.textEditBox.setFocus(true)
         else
           group = CreateSearchPage()
-          group.skipInitialFocus = true
+          group.shouldSkipInitialFocus = true
           m.global.sceneManager.callFunc("pushScene", group)
           searchKey = group.findNode("SearchBox").findNode("searchKey")
           searchKey.text = voiceQuery
@@ -177,7 +177,7 @@ sub Main (args as dynamic) as void
       if isValid(task) and task.subtype() = "RecordProgramTask"
         handleRecordResult(task)
       end if
-    else if isNodeEvent(msg, "done")
+    else if isNodeEvent(msg, "isDone")
       resultNode = msg.getRoSGNode()
       if isValid(resultNode) and resultNode.isSameNode(m.favoriteResultNode)
         handleFavoriteToggleDone()
@@ -359,7 +359,7 @@ sub Main (args as dynamic) as void
       btn = getButton(msg)
       if not isValid(btn) then print "No button found in buttonSelected event"
 
-      ' Guard: skip if spinner is active — disableRemote prevents FUTURE key events
+      ' Guard: skip if spinner is active — isRemoteDisabled prevents FUTURE key events
       ' but cannot clear events already queued in m.port from rapid presses.
       if isValid(btn) and not m.scene.isLoading
         group = m.global.sceneManager.callFunc("getActiveScene")
@@ -497,7 +497,7 @@ sub Main (args as dynamic) as void
               watchedButton = group.findNode("watchedButton")
               m.pendingWatchedItemId = item.id
               ' Read current state from button — writing to itemContent triggers a full rebuild
-              m.pendingWatchedIsCurrentlyWatched = isValid(watchedButton) and watchedButton.selected
+              m.pendingWatchedIsCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
               if m.pendingWatchedIsCurrentlyWatched
                 confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries)
                 confirmBtn = translate(translationKeys.ButtonMarkUnwatched)
@@ -508,20 +508,20 @@ sub Main (args as dynamic) as void
               m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelWatched), [confirmMsg], [translate(translationKeys.ButtonCancel), confirmBtn])
             else
               watchedButton = group.findNode("watchedButton")
-              if isValid(watchedButton) and watchedButton.loading then continue while ' Already in-flight
+              if isValid(watchedButton) and watchedButton.isLoading then continue while ' Already in-flight
               ' Read current state from button — writing to itemContent triggers a full rebuild
-              isCurrentlyWatched = isValid(watchedButton) and watchedButton.selected
+              isCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
               if isCurrentlyWatched
                 req = GetApi().BuildUnmarkPlayedRequest(item.id)
               else
                 req = GetApi().BuildMarkPlayedRequest(item.id)
               end if
               newWatchedState = not isCurrentlyWatched
-              if isValid(watchedButton) then watchedButton.loading = true
+              if isValid(watchedButton) then watchedButton.isLoading = true
               ' Set resume button to loading while we wait for async response
               if newWatchedState
                 resumeButton = group.findNode("resumeButton")
-                if isValid(resumeButton) then resumeButton.loading = true
+                if isValid(resumeButton) then resumeButton.isLoading = true
               end if
               resultNode = submitApiRequest(req, "watchedToggle")
               if isValid(resultNode)
@@ -529,13 +529,13 @@ sub Main (args as dynamic) as void
                 m.pendingWatchedButton = watchedButton
                 m.pendingWatchedNewState = newWatchedState
                 m.pendingWatchedItemType = item.type
-                m.watchedResultNode.observeField("done", m.port)
+                m.watchedResultNode.observeField("isDone", m.port)
               else
                 ' Pool not ready — fall back to fire-and-forget + direct update
                 SubmitSideEffect(req)
                 if isValid(watchedButton)
-                  watchedButton.selected = newWatchedState
-                  watchedButton.loading = false
+                  watchedButton.isButtonSelected = newWatchedState
+                  watchedButton.isLoading = false
                 end if
                 ' Remove stale resume button when marking as watched
                 if newWatchedState
@@ -548,26 +548,26 @@ sub Main (args as dynamic) as void
           item = group.itemContent
           favoriteButton = group.findNode("favoriteButton")
           if isValid(item) and isValidAndNotEmpty(item.id) and isValid(favoriteButton)
-            if favoriteButton.loading then continue while ' Already in-flight
+            if favoriteButton.isLoading then continue while ' Already in-flight
             ' Read current state from button — writing to itemContent triggers a full rebuild
-            newState = not favoriteButton.selected
+            newState = not favoriteButton.isButtonSelected
             if newState
               req = GetApi().BuildMarkFavoriteRequest(item.id)
             else
               req = GetApi().BuildUnmarkFavoriteRequest(item.id)
             end if
-            favoriteButton.loading = true
+            favoriteButton.isLoading = true
             resultNode = submitApiRequest(req, "favoriteToggle")
             if isValid(resultNode)
               m.favoriteResultNode = resultNode
               m.pendingFavoriteButton = favoriteButton
               m.pendingFavoriteNewState = newState
-              m.favoriteResultNode.observeField("done", m.port)
+              m.favoriteResultNode.observeField("isDone", m.port)
             else
               ' Pool not ready — fall back to fire-and-forget
               SubmitSideEffect(req)
-              favoriteButton.selected = newState
-              favoriteButton.loading = false
+              favoriteButton.isButtonSelected = newState
+              favoriteButton.isLoading = false
             end if
           end if
         else if btn.id = "refreshButton"
@@ -689,7 +689,7 @@ sub Main (args as dynamic) as void
         else if btn.id = "recordButton"
           item = group.itemContent
           recordButton = group.findNode("recordButton")
-          if isValid(recordButton) and recordButton.loading then continue while ' Already in-flight
+          if isValid(recordButton) and recordButton.isLoading then continue while ' Already in-flight
           programToRecord = invalid
           if item.type = "TvChannel" and isValid(item.currentProgram)
             programToRecord = item.currentProgram
@@ -697,7 +697,7 @@ sub Main (args as dynamic) as void
             programToRecord = item
           end if
           if isValid(programToRecord)
-            if isValid(recordButton) then recordButton.loading = true
+            if isValid(recordButton) then recordButton.isLoading = true
             m.pendingRecordButton = recordButton
             m.pendingRecordIsCancel = isValidAndNotEmpty(programToRecord.timerId)
             recordTask = CreateObject("roSGNode", "RecordProgramTask")
@@ -808,14 +808,14 @@ sub Main (args as dynamic) as void
           m.global.queueManager.callFunc("playQueue")
         end if
       end if
-    else if isNodeEvent(msg, "dataReturned")
+    else if isNodeEvent(msg, "isDataReturned")
       popupNode = msg.getRoSGNode()
       stopLoadingSpinner()
       if isValid(popupNode) and isValid(popupNode.returnData)
         print "popupNode.returnData = ", popupNode.returnData
         ' Handle exit confirmation dialog
-        if m.global.sceneManager.pendingExitConfirmation = true
-          m.global.sceneManager.pendingExitConfirmation = false
+        if m.global.sceneManager.isPendingExitConfirmation = true
+          m.global.sceneManager.isPendingExitConfirmation = false
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate(translationKeys.ButtonExit)
             ' User confirmed exit
             m.scene.exit = true
@@ -848,24 +848,24 @@ sub Main (args as dynamic) as void
             if isValid(activeGroup)
               watchedButton = activeGroup.findNode("watchedButton")
             end if
-            if isValid(watchedButton) then watchedButton.loading = true
+            if isValid(watchedButton) then watchedButton.isLoading = true
             ' Set resume button to loading while we wait for async data
             resumeButton = invalid
             if isValid(activeGroup) then resumeButton = activeGroup.findNode("resumeButton")
-            if isValid(resumeButton) then resumeButton.loading = true
+            if isValid(resumeButton) then resumeButton.isLoading = true
             resultNode = submitApiRequest(req, "watchedToggle")
             if isValid(resultNode)
               m.watchedResultNode = resultNode
               m.pendingWatchedButton = watchedButton
               m.pendingWatchedNewState = newWatchedState
               m.pendingWatchedItemType = "Series"
-              m.watchedResultNode.observeField("done", m.port)
+              m.watchedResultNode.observeField("isDone", m.port)
             else
               ' Pool not ready — fall back to fire-and-forget + direct update
               SubmitSideEffect(req)
               if isValid(watchedButton)
-                watchedButton.selected = newWatchedState
-                watchedButton.loading = false
+                watchedButton.isButtonSelected = newWatchedState
+                watchedButton.isLoading = false
               end if
               ' Series: refresh resume data to reflect new watched state
               if isValid(activeGroup)
@@ -950,7 +950,7 @@ sub initializeFallbackFont()
 
   ' Create and start font download task
   fontDownloadTask = CreateObject("roSGNode", "FontDownloadTask")
-  fontDownloadTask.observeField("fontDownloadCompleted", m.port)
+  fontDownloadTask.observeField("isFontDownloadCompleted", m.port)
   fontDownloadTask.control = "RUN"
 
   ' Store whether we need to wait for completion (UI fonts enabled)
@@ -973,7 +973,7 @@ sub loadHomeScreen()
   end if
 
   ' Otherwise, we'll wait for the font download to complete
-  ' The actual loading will happen in the message loop when we receive fontDownloadCompleted
+  ' The actual loading will happen in the message loop when we receive isFontDownloadCompleted
   print "Waiting for font download completion before loading home screen"
 end sub
 
@@ -998,7 +998,7 @@ end sub
 
 ' Handle font download completion and optionally calculate scale factor
 sub handleFontDownloadCompletion(fontDownloadTask as object)
-  if not fontDownloadTask.fontDownloadSuccess
+  if not fontDownloadTask.isFontDownloadSuccess
     print "WARNING: Font download failed: " + fontDownloadTask.errorMessage
   else
 
@@ -1010,7 +1010,7 @@ sub handleFontDownloadCompletion(fontDownloadTask as object)
   end if
 
   ' Clean up the task
-  fontDownloadTask.unobserveField("fontDownloadCompleted")
+  fontDownloadTask.unobserveField("isFontDownloadCompleted")
   fontDownloadTask = invalid
 
   ' If we were waiting for font download, now load the home screen
@@ -1095,30 +1095,30 @@ end sub
 
 sub handleFavoriteToggleDone()
   res = m.favoriteResultNode.result
-  m.favoriteResultNode.unobserveField("done")
+  m.favoriteResultNode.unobserveField("isDone")
   m.favoriteResultNode = invalid
 
   ' Debug error injection — compiled out in production (bs_const=debug=false)
   #if debug
-    if isValid(m.global.debug) and m.global.debug.forceFavoriteFail
+    if isValid(m.global.debug) and m.global.debug.shouldForceFavoriteFail
       res = { ok: false }
     end if
   #end if
 
   if isValid(res) and res.ok
     if isValid(m.pendingFavoriteButton)
-      m.pendingFavoriteButton.selected = m.pendingFavoriteNewState
+      m.pendingFavoriteButton.isButtonSelected = m.pendingFavoriteNewState
     end if
   else
     ' Revert button to original state on failure
     if isValid(m.pendingFavoriteButton)
-      m.pendingFavoriteButton.selected = not m.pendingFavoriteNewState
+      m.pendingFavoriteButton.isButtonSelected = not m.pendingFavoriteNewState
     end if
     displayToast(translate(translationKeys.ErrorFailedToUpdateFavorite), "error")
   end if
 
   if isValid(m.pendingFavoriteButton)
-    m.pendingFavoriteButton.loading = false
+    m.pendingFavoriteButton.isLoading = false
   end if
   m.pendingFavoriteButton = invalid
   m.pendingFavoriteNewState = invalid
@@ -1126,19 +1126,19 @@ end sub
 
 sub handleWatchedToggleDone()
   res = m.watchedResultNode.result
-  m.watchedResultNode.unobserveField("done")
+  m.watchedResultNode.unobserveField("isDone")
   m.watchedResultNode = invalid
 
   ' Debug error injection — compiled out in production (bs_const=debug=false)
   #if debug
-    if isValid(m.global.debug) and m.global.debug.forceWatchedFail
+    if isValid(m.global.debug) and m.global.debug.shouldForceWatchedFail
       res = { ok: false }
     end if
   #end if
 
   if isValid(res) and res.ok
     if isValid(m.pendingWatchedButton)
-      m.pendingWatchedButton.selected = m.pendingWatchedNewState
+      m.pendingWatchedButton.isButtonSelected = m.pendingWatchedNewState
     end if
     ' Update resume button to reflect new watched state
     activeGroup = m.global.sceneManager.callFunc("getActiveScene")
@@ -1154,19 +1154,19 @@ sub handleWatchedToggleDone()
   else
     ' Revert button to original state on failure
     if isValid(m.pendingWatchedButton)
-      m.pendingWatchedButton.selected = not m.pendingWatchedNewState
+      m.pendingWatchedButton.isButtonSelected = not m.pendingWatchedNewState
     end if
     ' Revert resume button loading state on failure
     activeGroup = m.global.sceneManager.callFunc("getActiveScene")
     if isValid(activeGroup)
       resumeButton = activeGroup.findNode("resumeButton")
-      if isValid(resumeButton) then resumeButton.loading = false
+      if isValid(resumeButton) then resumeButton.isLoading = false
     end if
     displayToast(translate(translationKeys.ErrorFailedToUpdateWatchedStatus), "error")
   end if
 
   if isValid(m.pendingWatchedButton)
-    m.pendingWatchedButton.loading = false
+    m.pendingWatchedButton.isLoading = false
   end if
   m.pendingWatchedButton = invalid
   m.pendingWatchedNewState = invalid
@@ -1208,7 +1208,7 @@ sub handleRecordResult(task as object)
   end if
 
   if isValid(m.pendingRecordButton)
-    m.pendingRecordButton.loading = false
+    m.pendingRecordButton.isLoading = false
   end if
   m.pendingRecordButton = invalid
   m.pendingRecordIsCancel = invalid

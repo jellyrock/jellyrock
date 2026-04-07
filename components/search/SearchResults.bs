@@ -18,7 +18,7 @@ sub init()
   ' Clear backdrop immediately when search screen opens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
-  m.top.optionsAvailable = false
+  m.top.isOptionsAvailable = false
   m.searchSelect = m.top.findnode("searchSelect")
   m.searchTask = CreateObject("roSGNode", "SearchTask")
 
@@ -40,8 +40,8 @@ sub init()
 end sub
 
 sub OnScreenShown()
-  if m.top.skipInitialFocus
-    m.top.skipInitialFocus = false
+  if m.top.shouldSkipInitialFocus
+    m.top.shouldSkipInitialFocus = false
     ' Caller will set focus after pushScene — skip here to avoid a double-focus
     ' race on the DynamicMiniKeyboard that prevents the voice prompt overlay.
     return

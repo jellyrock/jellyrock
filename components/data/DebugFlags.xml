@@ -5,8 +5,8 @@
 <component name="DebugFlags" extends="ContentNode">
   <interface>
     <!-- API Error Injection -->
-    <field id="forceFiltersFail" type="boolean" value="false" />
-    <field id="forceFavoriteFail" type="boolean" value="false" />
-    <field id="forceWatchedFail" type="boolean" value="false" />
+    <field id="shouldForceFiltersFail" type="boolean" value="false" />
+    <field id="shouldForceFavoriteFail" type="boolean" value="false" />
+    <field id="shouldForceWatchedFail" type="boolean" value="false" />
   </interface>
 </component>

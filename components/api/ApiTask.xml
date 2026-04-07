@@ -10,6 +10,6 @@
       ready before it starts dispatching — this prevents the startup race
       where a request field write arrives before the observer is registered.
     -->
-    <field id="ready" type="boolean" value="false" />
+    <field id="isReady" type="boolean" value="false" />
   </interface>
 </component>

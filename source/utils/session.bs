@@ -81,7 +81,7 @@ namespace server
     serverNode.id = myServerInfo.Id ?? ""
     serverNode.name = myServerInfo.ServerName ?? ""
     serverNode.localURL = myServerInfo.LocalAddress ?? ""
-    serverNode.startupWizardCompleted = myServerInfo.StartupWizardCompleted ?? false
+    serverNode.isStartupWizardCompleted = myServerInfo.StartupWizardCompleted ?? false
     serverNode.version = myServerInfo.Version ?? ""
     serverNode.apiVersion = resolveApiVersion(serverNode.version)
 

@@ -54,7 +54,7 @@ sub loadItems()
     StartIndex: m.top.startIndex,
     SortBy: sortField,
     SortOrder: sortOrder,
-    recursive: m.top.recursive,
+    recursive: m.top.isRecursive,
     Fields: fields,
     StudioIds: m.top.studioIds,
     genreIds: m.top.genreIds

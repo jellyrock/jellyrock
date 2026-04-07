@@ -21,11 +21,11 @@
     <field id="iconFocusBackground" type="color" value="" />
     <field id="text" type="string" value="" />
     <field id="icon" type="string" value="" />
-    <field id="selected" type="boolean" value="false" />
-    <field id="focus" type="boolean" />
+    <field id="isButtonSelected" type="boolean" value="false" onChange="onSelectedChanged" />
+    <field id="isFocused" type="boolean" />
     <field id="escape" type="string" value="" />
     <field id="enableBorder" type="boolean" value="true" />
-    <field id="enabled" type="boolean" value="true" />
-    <field id="loading" type="boolean" value="false" />
+    <field id="isEnabled" type="boolean" value="true" />
+    <field id="isLoading" type="boolean" value="false" />
   </interface>
 </component>

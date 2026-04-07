@@ -93,7 +93,7 @@ class GenericPresenter extends GridPresenterBase
 
   override sub configureLoadTask(task as object, _parentItem as object, _viewMode as string)
     ' Generic presenter uses whatever item type is in the folder
-    task.recursive = false
+    task.isRecursive = false
   end sub
 
 end class

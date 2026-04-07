@@ -28,7 +28,7 @@ sub init()
   m.log = log.Logger("ItemDetails")
   m.extrasGrp = m.top.findNode("extrasGrp")
   m.extrasGrid = m.top.findNode("extrasGrid")
-  m.top.optionsAvailable = false
+  m.top.isOptionsAvailable = false
 
   m.options = m.top.findNode("itemOptions")
   m.infoGroup = m.top.findNode("infoGroup")
@@ -192,7 +192,7 @@ sub onItemIdChanged()
   m.loadDetailsTask.control = "STOP"
 
   m.loadDetailsTask.itemId = itemId
-  m.loadDetailsTask.forceRefresh = false
+  m.loadDetailsTask.shouldForceRefresh = false
   m.loadDetailsTask.observeField("content", "onDetailsLoaded")
   m.loadDetailsTask.control = "RUN"
 end sub
@@ -216,7 +216,7 @@ end sub
 ' Callback when trailer availability check completes
 sub onTrailerCheckDone()
   res = m.trailerResultNode.result
-  m.trailerResultNode.unobserveField("done")
+  m.trailerResultNode.unobserveField("isDone")
   m.trailerResultNode = invalid
   if isValid(res) and res.ok and isValid(res.json)
     m.top.trailerAvailable = res.json.Count() > 0
@@ -252,7 +252,7 @@ sub onRefreshItemDetailsData()
   if isValid(m.top.itemContent) and m.top.itemContent.type = "Series"
     resumeButton = m.top.findNode("resumeButton")
     if isValid(resumeButton)
-      resumeButton.loading = true
+      resumeButton.isLoading = true
     else if not isValid(m.top.findNode("resumeLoadingButton"))
       m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
       m.resumeLoadingButton.id = "resumeLoadingButton"
@@ -262,7 +262,7 @@ sub onRefreshItemDetailsData()
       else
         m.resumeLoadingButton.text = translate(translationKeys.ButtonResume)
       end if
-      m.resumeLoadingButton.loading = true
+      m.resumeLoadingButton.isLoading = true
       m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
       ' Shift focus index to account for the new button at position 0
       m.buttonGrp.buttonFocused = m.buttonGrp.buttonFocused + 1
@@ -273,7 +273,7 @@ sub onRefreshItemDetailsData()
   m.loadDetailsTask.control = "STOP"
 
   m.loadDetailsTask.itemId = itemId
-  m.loadDetailsTask.forceRefresh = true
+  m.loadDetailsTask.shouldForceRefresh = true
   m.loadDetailsTask.observeField("content", "onRefreshDetailsLoaded")
   m.loadDetailsTask.control = "RUN"
 end sub
@@ -388,7 +388,7 @@ sub nextUpEpisodeChanged()
       resumeButton.text = resumeText
       resumeButton.playbackPositionTicks = item.playbackPositionTicks
       resumeButton.runtimeTicks = item.runTimeTicks
-      resumeButton.loading = false
+      resumeButton.isLoading = false
     end if
   else
     ' No resume data — remove the LoadingButton placeholder if still present
@@ -501,7 +501,7 @@ function createInfoLabel(labelId as string) as object
   labelNode = CreateObject("roSGNode", "LabelPrimaryMedium")
   labelNode.id = labelId
   labelNode.vertAlign = "center"
-  labelNode.bold = true
+  labelNode.isBold = true
   return labelNode
 end function
 
@@ -516,7 +516,7 @@ function createDividerNode(dividerId as string) as object
   labelNode.height = 40
   labelNode.width = 0
   labelNode.text = "•"
-  labelNode.bold = true
+  labelNode.isBold = true
   return labelNode
 end function
 
@@ -1806,12 +1806,12 @@ sub itemContentChanged()
     ' trailerAvailableChanged() adds or removes the button when the result arrives.
     if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
       if isValid(m.trailerResultNode)
-        m.trailerResultNode.unobserveField("done")
+        m.trailerResultNode.unobserveField("isDone")
         m.trailerResultNode = invalid
       end if
       m.trailerResultNode = submitApiRequest(GetApi().BuildGetLocalTrailersRequest(m.top.itemId), "trailerCheck")
       if isValid(m.trailerResultNode)
-        m.trailerResultNode.observeField("done", "onTrailerCheckDone")
+        m.trailerResultNode.observeField("isDone", "onTrailerCheckDone")
       end if
     end if
 
@@ -2017,9 +2017,9 @@ sub updateFavoriteButton()
   favoriteButton = m.top.findNode("favoriteButton")
   if isValid(favoriteButton)
     if isValid(fave) and fave
-      favoriteButton.selected = true
+      favoriteButton.isButtonSelected = true
     else
-      favoriteButton.selected = false
+      favoriteButton.isButtonSelected = false
     end if
   end if
 end sub
@@ -2029,9 +2029,9 @@ sub updateWatchedButton()
   watchedButton = m.top.findNode("watchedButton")
   if isValid(watchedButton)
     if watched
-      watchedButton.selected = true
+      watchedButton.isButtonSelected = true
     else
-      watchedButton.selected = false
+      watchedButton.isButtonSelected = false
     end if
   end if
 end sub
@@ -2526,7 +2526,7 @@ sub setupButtons(item as object)
     else
       m.resumeLoadingButton.text = translate(translationKeys.ButtonResume)
     end if
-    m.resumeLoadingButton.loading = true
+    m.resumeLoadingButton.isLoading = true
     m.buttonGrp.appendChild(m.resumeLoadingButton)
   end if
 
@@ -2671,7 +2671,7 @@ sub setupButtons(item as object)
     m.shuffleLoadingButton.id = "shuffleLoadingButton"
     m.shuffleLoadingButton.icon = "pkg:/images/icons/shuffle.png"
     m.shuffleLoadingButton.text = translate(translationKeys.ButtonShuffle)
-    m.shuffleLoadingButton.loading = true
+    m.shuffleLoadingButton.isLoading = true
     m.buttonGrp.appendChild(m.shuffleLoadingButton)
     ' Guard counter: the ExtrasRowList observer fires multiple times — first a reset
     ' (personHasMedia=false at chain start), then the definitive answer(s). We skip the
@@ -3268,7 +3268,7 @@ sub destroy()
   m.loadDetailsTask = invalid
 
   if isValid(m.trailerResultNode)
-    m.trailerResultNode.unobserveField("done")
+    m.trailerResultNode.unobserveField("isDone")
     m.trailerResultNode = invalid
   end if
 

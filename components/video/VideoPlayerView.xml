@@ -9,21 +9,21 @@
     <field id="PlaySessionId" type="string" />
     <field id="Subtitles" type="array" />
     <field id="SelectedSubtitle" type="integer" value="-2" alwaysNotify="true" />
-    <field id="previousSubtitleWasEncoded" type="boolean" />
+    <field id="isPreviousSubtitleEncoded" type="boolean" />
     <field id="container" type="string" />
-    <field id="directPlaySupported" type="boolean" />
-    <field id="systemOverlay" type="boolean" value="false" />
+    <field id="isDirectPlaySupported" type="boolean" />
+    <field id="isSystemOverlay" type="boolean" value="false" />
     <field id="showID" type="string" />
     <field id="lastFocus" type="node" />
 
     <field id="transcodeParams" type="assocarray" />
-    <field id="transcodeAvailable" type="boolean" value="false" />
+    <field id="isTranscodeAvailable" type="boolean" value="false" />
     <field id="isTranscoded" type="boolean" />
     <field id="transcodeReasons" type="array" />
     <!-- Set when DoVi preservation forced a transcode (VideoRangeTypeNotSupported).
-         On a buffer:loop: error the player retries with bypassDoviPreservation=true
+         On a buffer:loop: error the player retries with shouldBypassDoviPreservation=true
          to allow the server to grant direct play instead. -->
-    <field id="doviDirectPlayFallbackAvailable" type="boolean" value="false" />
+    <field id="isDoviDirectPlayFallbackAvailable" type="boolean" value="false" />
     <!-- Prevents ViewCreator from popping the scene during a DoVi fallback retry. -->
     <field id="isRetrying" type="boolean" value="false" />
 
@@ -33,7 +33,7 @@
     <field id="fullAudioData" type="array" />
     <field id="fullVideoSourceData" type="array" />
     <field id="audioIndex" type="integer" />
-    <field id="allowCaptions" type="boolean" value="false" />
+    <field id="shouldAllowCaptions" type="boolean" value="false" />
     <field id="cachedPlaybackInfo" type="assocarray" />
     <function name="destroy" />
   </interface>

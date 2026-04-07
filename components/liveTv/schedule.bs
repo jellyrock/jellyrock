@@ -9,9 +9,9 @@ sub init()
   m.scheduleGrid = m.top.findNode("scheduleGrid")
   m.detailsPane = m.top.findNode("detailsPane")
 
-  m.detailsPane.observeField("watchSelectedChannel", "onWatchChannelSelected")
-  m.detailsPane.observeField("recordSelectedChannel", "onRecordChannelSelected")
-  m.detailsPane.observeField("recordSeriesSelectedChannel", "onRecordSeriesChannelSelected")
+  m.detailsPane.observeField("shouldWatchSelectedChannel", "onWatchChannelSelected")
+  m.detailsPane.observeField("shouldRecordSelectedChannel", "onRecordChannelSelected")
+  m.detailsPane.observeField("shouldRecordSeriesSelectedChannel", "onRecordSeriesChannelSelected")
   m.gridStartDate = CreateObject("roDateTime")
   m.scheduleGrid.contentStartTime = m.gridStartDate.AsSeconds() - 1800
   m.gridEndDate = createObject("roDateTime")
@@ -253,7 +253,7 @@ end sub
 
 ' Handle user selecting "Record Channel" from Program Details
 sub onRecordChannelSelected()
-  if m.detailsPane.recordSelectedChannel = false then return
+  if m.detailsPane.shouldRecordSelectedChannel = false then return
 
   ' Set focus back to grid before showing channel, to ensure grid has focus when we return
   focusProgramDetails(false)
@@ -262,14 +262,14 @@ sub onRecordChannelSelected()
 
   m.RecordProgramTask = createObject("roSGNode", "RecordProgramTask")
   m.RecordProgramTask.programDetails = m.detailsPane.programDetails
-  m.RecordProgramTask.recordSeries = false
+  m.RecordProgramTask.shouldRecordSeries = false
   m.RecordProgramTask.observeField("recordOperationDone", "onRecordOperationDone")
   m.RecordProgramTask.control = "RUN"
 end sub
 
 ' Handle user selecting "Record Series" from Program Details
 sub onRecordSeriesChannelSelected()
-  if m.detailsPane.recordSeriesSelectedChannel = false then return
+  if m.detailsPane.shouldRecordSeriesSelectedChannel = false then return
 
   ' Set focus back to grid before showing channel, to ensure grid has focus when we return
   focusProgramDetails(false)
@@ -278,13 +278,13 @@ sub onRecordSeriesChannelSelected()
 
   m.RecordProgramTask = createObject("roSGNode", "RecordProgramTask")
   m.RecordProgramTask.programDetails = m.detailsPane.programDetails
-  m.RecordProgramTask.recordSeries = true
+  m.RecordProgramTask.shouldRecordSeries = true
   m.RecordProgramTask.observeField("recordOperationDone", "onRecordOperationDone")
   m.RecordProgramTask.control = "RUN"
 end sub
 
 sub onRecordOperationDone()
-  if m.RecordProgramTask.recordSeries = true and m.LoadScheduleTask.state <> "run"
+  if m.RecordProgramTask.shouldRecordSeries = true and m.LoadScheduleTask.state <> "run"
     m.LoadScheduleTask.control = "RUN"
   else
     ' This reloads just the details for the currently selected program, so that we don't have to
@@ -323,9 +323,9 @@ sub destroy()
   m.log.verbose("destroy")
 
   ' Unobserve child node observers
-  m.detailsPane.unobserveField("watchSelectedChannel")
-  m.detailsPane.unobserveField("recordSelectedChannel")
-  m.detailsPane.unobserveField("recordSeriesSelectedChannel")
+  m.detailsPane.unobserveField("shouldWatchSelectedChannel")
+  m.detailsPane.unobserveField("shouldRecordSelectedChannel")
+  m.detailsPane.unobserveField("shouldRecordSeriesSelectedChannel")
   m.scheduleGrid.unobserveField("programFocused")
   m.scheduleGrid.unobserveField("programSelected")
   m.scheduleGrid.unobserveField("leftEdgeTargetTime")

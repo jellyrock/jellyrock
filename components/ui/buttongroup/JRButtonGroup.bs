@@ -24,14 +24,14 @@ end sub
 ' center the button group horizontally
 ' NOTE: this centers using the entire screen width, not the parent bounding rect
 sub center()
-  ' Check if any child buttons have a 'ready' field that's not yet true
+  ' Check if any child buttons have a 'isReady' field that's not yet true
   ' (This handles TextButtons that need to finish sizing before we can center)
   allReady = true
   for i = 0 to m.top.getChildCount() - 1
     child = m.top.getChild(i)
-    if child <> invalid and child.hasField("ready") and not child.ready
+    if child <> invalid and child.hasField("isReady") and not child.isReady
       allReady = false
-      ' Observe this child's ready field if not already observing
+      ' Observe this child's isReady field if not already observing
       if m.observingReadyFields = invalid
         m.observingReadyFields = []
       end if
@@ -44,7 +44,7 @@ sub center()
         end if
       end for
       if not alreadyObserving
-        child.observeField("ready", "onChildReady")
+        child.observeField("isReady", "onChildReady")
         m.observingReadyFields.push(child)
       end if
     end if
@@ -84,7 +84,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       button = m.top.getChild(i)
 
       ' Skip non-button nodes (Animation, etc)
-      if isValid(button) and button.hasField("enabled") and button.enabled
+      if isValid(button) and button.hasField("isEnabled") and button.isEnabled
         currentFocusButton.setFocus(false)
         m.top.buttonFocused = i
         button.setFocus(true)
@@ -96,7 +96,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       button = m.top.getChild(i)
 
       ' Skip non-button nodes (Animation, etc)
-      if isValid(button) and button.hasField("enabled") and button.enabled
+      if isValid(button) and button.hasField("isEnabled") and button.isEnabled
         currentFocusButton.setFocus(false)
         m.top.buttonFocused = i
         button.setFocus(true)
@@ -109,7 +109,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       button = m.top.getChild(i)
 
       ' Skip non-button nodes (Animation, etc)
-      if isValid(button) and button.hasField("enabled") and button.enabled
+      if isValid(button) and button.hasField("isEnabled") and button.isEnabled
         currentFocusButton.setFocus(false)
         m.top.buttonFocused = i
         button.setFocus(true)
@@ -121,7 +121,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       button = m.top.getChild(i)
 
       ' Skip non-button nodes (Animation, etc)
-      if isValid(button) and button.hasField("enabled") and button.enabled
+      if isValid(button) and button.hasField("isEnabled") and button.isEnabled
         currentFocusButton.setFocus(false)
         m.top.buttonFocused = i
         button.setFocus(true)
@@ -132,7 +132,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   if key = "OK"
     ' Ignore OK on buttons in loading state (e.g. async placeholders, in-flight API requests)
-    if isValid(currentFocusButton) and currentFocusButton.hasField("loading") and currentFocusButton.loading then return true
+    if isValid(currentFocusButton) and currentFocusButton.hasField("isLoading") and currentFocusButton.isLoading then return true
     print "OK pressed from JRButtonGroup, buttonFocused =", m.top.buttonFocused
     m.top.buttonSelected = m.top.buttonFocused
     return true

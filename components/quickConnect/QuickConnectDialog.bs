@@ -15,7 +15,7 @@ sub quickConnectStatus()
   m.quickConnectTimer.control = "stop"
   m.checkTask = CreateObject("roSGNode", "QuickConnect")
   m.checkTask.secret = m.top.quickConnectJson.secret
-  m.checkTask.saveCredentials = m.top.saveCredentials
+  m.checkTask.shouldSaveCredentials = m.top.shouldSaveCredentials
   m.checkTask.observeField("authenticated", "OnAuthenticated")
   m.checkTask.control = "run"
 end sub
@@ -33,7 +33,7 @@ sub OnAuthenticated()
   else if authenticated > 0
     ' We've been logged in via Quick Connect...
     m.top.close = true
-    m.top.authenticated = true
+    m.top.isAuthenticated = true
   end if
 end sub
 

@@ -3,7 +3,7 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.playReported = false
+  m.isPlayReported = false
   m.top.observeField("state", "audioStateChanged")
 end sub
 
@@ -15,12 +15,12 @@ sub audioStateChanged()
 
   m.top.disableScreenSaver = (currentState = "playing")
 
-  if currentState = "playing" and not m.playReported
+  if currentState = "playing" and not m.isPlayReported
     reportedPlaybackState = "start"
-    m.playReported = true
+    m.isPlayReported = true
   else if currentState = "stopped" or currentState = "finished"
     reportedPlaybackState = "stop"
-    m.playReported = false
+    m.isPlayReported = false
   end if
 
   ReportPlayback(reportedPlaybackState)

@@ -595,7 +595,7 @@ sub startLoadingSpinner(disableRemote = true as boolean, loadingText = "" as str
   end if
 
   ' disableRemote and loadingText must be set first
-  m.scene.disableRemote = disableRemote
+  m.scene.isRemoteDisabled = disableRemote
   m.scene.loadingText = loadingText
   m.scene.isLoading = true
 end sub
@@ -606,7 +606,7 @@ sub stopLoadingSpinner()
   end if
 
   m.scene.loadingText = ""
-  m.scene.disableRemote = false
+  m.scene.isRemoteDisabled = false
   m.scene.isLoading = false
 end sub
 

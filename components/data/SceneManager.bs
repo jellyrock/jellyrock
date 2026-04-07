@@ -75,7 +75,7 @@ sub popScene()
   ' If this is the last scene on the stack, show exit confirmation instead of immediately exiting
   if m.groups.count() <= 1
     showConfirmationDialog(translate(translationKeys.LabelExitJellyrock), [translate(translationKeys.MessageAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonExit)])
-    m.top.pendingExitConfirmation = true
+    m.top.isPendingExitConfirmation = true
     return
   end if
 
@@ -185,12 +185,12 @@ end sub
 ' Register observers for overhang data
 sub registerOverhangData(group)
   if group.isSubType("JRGroup")
-    if group.overhangVisible
+    if group.isOverhangVisible
       m.overhang.visible = true
     else
       m.overhang.visible = false
     end if
-    group.observeField("overhangVisible", "updateOverhangVisible")
+    group.observeField("isOverhangVisible", "updateOverhangVisible")
 
     ' Set tabs BEFORE the title so onTabsChanged can hide the title before it
     ' renders with text — prevents a visible title→tab transition flash
@@ -208,7 +208,7 @@ end sub
 sub unregisterOverhangData(group)
   group.unobserveField("overhangTitle")
   group.unobserveField("overhangTabs")
-  group.unobserveField("overhangVisible")
+  group.unobserveField("isOverhangVisible")
   m.overhang.unobserveField("selectedTabId")
 end sub
 
@@ -320,7 +320,7 @@ end sub
 ' Display dialog to user with an OK button
 sub showConfirmationDialog(title, message, buttons)
   constants = m.global.constants
-  m.top.dataReturned = false
+  m.top.isDataReturned = false
   m.top.returnData = invalid
   m.userselection = false
 
@@ -358,7 +358,7 @@ sub optionClosed()
     indexSelected: -1,
     buttonSelected: ""
   }
-  m.top.dataReturned = true
+  m.top.isDataReturned = true
 end sub
 
 ' Return button the user selected
@@ -368,7 +368,7 @@ sub optionSelected()
     indexSelected: m.scene.dialog.buttonSelected,
     buttonSelected: m.scene.dialog.buttons[m.scene.dialog.buttonSelected]
   }
-  m.top.dataReturned = true
+  m.top.isDataReturned = true
 
   dismissDialog()
 end sub

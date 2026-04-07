@@ -6,7 +6,7 @@
   </children>
   <interface>
     <field id="quickConnectJson" type="assocarray" />
-    <field id="authenticated" type="boolean" alwaysNotify="true" />
-    <field id="saveCredentials" type="boolean" />
+    <field id="isAuthenticated" type="boolean" alwaysNotify="true" />
+    <field id="shouldSaveCredentials" type="boolean" />
   </interface>
 </component>

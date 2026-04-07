@@ -297,7 +297,7 @@ sub loadInitialItems()
 
   ' Reset stateful fields to prevent leakage from previous operations
   ' recursive defaults to true (matches LoadItemsTask2.xml) - presenters can override
-  m.loadItemsTask.recursive = true
+  m.loadItemsTask.isRecursive = true
   m.loadItemsTask.itemType = ""
   m.loadItemsTask.view = ""
   m.loadItemsTask.studioIds = ""
@@ -469,7 +469,7 @@ sub ItemDataLoaded(msg)
   end if
 
   ' keep focus on alpha menu if it's active
-  if m.top.alphaActive
+  if m.top.isAlphaActive
     m.alphaMenu.setFocus(true)
   else
     m.itemGrid.opacity = "1"
@@ -824,9 +824,9 @@ sub alphaSelectedChanged()
 end sub
 
 sub alphaActiveChanged()
-  m.log.debug("start alphaActiveChanged()", m.top.alphaActive)
+  m.log.debug("start alphaActiveChanged()", m.top.isAlphaActive)
 
-  if m.top.alphaActive
+  if m.top.isAlphaActive
     ' Clear backdrop when alpha menu is active
     if isValid(m.presenter)
       backdropMode = m.presenter.getBackdropMode()
@@ -871,13 +871,13 @@ sub onVoiceFilter()
     m.loadItemsTask.view = ""
     m.loadItemsTask.studioIds = ""
     m.loadItemsTask.genreIds = ""
-    m.loadItemsTask.recursive = true
+    m.loadItemsTask.isRecursive = true
 
     ' Let presenter override if needed
     if isValid(m.presenter)
       m.presenter.configureLoadTask(m.loadItemsTask, m.top.parentItem, m.view)
       ' Force recursive and searchTerm for voice search even if presenter changes them
-      m.loadItemsTask.recursive = true
+      m.loadItemsTask.isRecursive = true
     end if
 
     ' Set searchTerm after presenter to ensure it's not cleared
@@ -989,18 +989,18 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
   else if key = "left"
     if m.itemGrid.isinFocusChain()
-      m.top.alphaActive = true
+      m.top.isAlphaActive = true
       m.itemGrid.setFocus(false)
       m.alphaMenu.setFocus(true)
       return true
     else if m.genreList.isinFocusChain()
-      m.top.alphaActive = true
+      m.top.isAlphaActive = true
       m.genreList.setFocus(false)
       m.alphaMenu.setFocus(true)
       return true
     end if
   else if key = "right" and m.alpha.isinFocusChain()
-    m.top.alphaActive = false
+    m.top.isAlphaActive = false
     m.alphaMenu.setFocus(false)
 
     m.itemGrid.setFocus(m.itemGrid.opacity = 1)
@@ -1033,7 +1033,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.filter = "All"
     m.filterOptions = {}
     ' Reset stateful fields to ensure clean state
-    m.loadItemsTask.recursive = false
+    m.loadItemsTask.isRecursive = false
     m.loadItemsTask.itemType = ""
     m.loadItemsTask.view = ""
     m.loadItemsTask.studioIds = ""

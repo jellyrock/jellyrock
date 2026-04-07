@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRLabel" extends="Label">
   <interface>
-    <field id="bold" type="boolean" value="false" onChange="onBoldChanged" />
+    <field id="isBold" type="boolean" value="false" onChange="onIsBoldChanged" />
   </interface>
 </component>

@@ -32,7 +32,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     for i = currentFocus + 1 to m.top.getChildCount() - 1
       button = m.top.getChild(i)
 
-      if button.enabled
+      if button.isEnabled
         currentFocusButton.setFocus(false)
         m.top.buttonFocused = i
         button.setFocus(true)
@@ -44,7 +44,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     for i = currentFocus - 1 to 0 step -1
       button = m.top.getChild(i)
 
-      if button.enabled
+      if button.isEnabled
         currentFocusButton.setFocus(false)
         m.top.buttonFocused = i
         button.setFocus(true)

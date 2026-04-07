@@ -104,7 +104,7 @@ sub setGlobalNodes()
   m.global.addFields({ sideEffectTask: CreateObject("roSGNode", "SideEffectTask") })
 
   sceneManager = CreateObject("roSGNode", "SceneManager")
-  sceneManager.observeField("dataReturned", m.port)
+  sceneManager.observeField("isDataReturned", m.port)
   sceneManager.observeField("reloadHomeRequested", m.port)
   m.global.addFields({ sceneManager: sceneManager })
 
@@ -118,9 +118,9 @@ sub setGlobalNodes()
     m.global.addFields({ debug: debugNode })
     print "[DEBUG] DebugFlags node initialized on m.global.debug"
     print "[DEBUG] Toggle flags from BrightScript console (port 8085):"
-    print "[DEBUG]   m.global.debug.forceFiltersFail = true"
-    print "[DEBUG]   m.global.debug.forceFavoriteFail = true"
-    print "[DEBUG]   m.global.debug.forceWatchedFail = true"
+    print "[DEBUG]   m.global.debug.shouldForceFiltersFail = true"
+    print "[DEBUG]   m.global.debug.shouldForceFavoriteFail = true"
+    print "[DEBUG]   m.global.debug.shouldForceWatchedFail = true"
   #end if
 end sub
 

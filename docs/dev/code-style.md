@@ -120,6 +120,14 @@ subtitles = false
 autoPlay = true
 ```
 
+### Boolean Naming Exceptions
+
+The following boolean fields are exempt from the prefix rule:
+
+- **Signal fields**: XML fields with `alwaysNotify="true"` used purely as observable event triggers (e.g., `backPressed`, `refreshItemDetailsData`). The value is irrelevant; the write event itself is the message. Examples: `backPressed`, `exit`, `submit`, `reset`, `closeSidePanel`, `optionSelected`, `reloadHomeRequested`, `requestFocusReturn`.
+- **API-mirrored fields**: Fields in `JellyfinUserConfiguration` and `JellyfinUserPolicy` that mirror Jellyfin server API property names exactly (e.g., `playDefaultAudioTrack`, `enableNextEpisodeAutoPlay`). These are external contracts.
+- **Settings/registry keys**: `JellyfinUserSettings` field IDs that are 1:1 with Roku registry keys (e.g., `playbackCinemaMode`, `uiFontFallback`). Renaming requires a registry migration to avoid user data loss.
+
 ### Private Class Members
 
 Use the `private` keyword only. Do **not** use an underscore prefix — in BrighterScript, `_` prefix means "unused parameter."

@@ -9,7 +9,7 @@
     <field id="sortField" type="string" value="SortName" />
     <field id="sortAscending" type="boolean" value="true" />
     <field id="nameStartsWith" type="string" value="" />
-    <field id="recursive" type="boolean" value="true" />
+    <field id="isRecursive" type="boolean" value="true" />
     <!-- Total records available from server-->
     <field id="channels" type="array" />
   </interface>

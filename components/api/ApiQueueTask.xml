@@ -27,6 +27,6 @@
       enqueue observer is registered. fetchRes() waits on this before
       appending children so that the full pipeline is operational.
     -->
-    <field id="ready" type="boolean" value="false" />
+    <field id="isReady" type="boolean" value="false" />
   </interface>
 </component>

@@ -17,6 +17,6 @@
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
     <field id="searchAlpha" type="string" alias="SearchBox.searchValues" alwaysNotify="true" onChange="searchMedias" />
-    <field id="skipInitialFocus" type="boolean" value="false" />
+    <field id="shouldSkipInitialFocus" type="boolean" value="false" />
   </interface>
 </component>

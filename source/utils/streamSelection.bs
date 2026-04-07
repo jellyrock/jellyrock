@@ -894,12 +894,12 @@ end function
 
 ' applyLiveDirectPlayFallback: Flags that a transcode retry is available for live streams
 ' attempting direct play. Live direct play may fail on Roku if the server overestimates
-' compatibility. VideoPlayerView observes transcodeAvailable to retry with transcoding on error.
+' compatibility. VideoPlayerView observes isTranscodeAvailable to retry with transcoding on error.
 '
 ' @param {object} video - Video object to update
 ' @param {object} meta - Video metadata containing the live stream flag
 sub applyLiveDirectPlayFallback(video as object, meta as object)
   if meta.live
-    video.transcodeAvailable = true
+    video.isTranscodeAvailable = true
   end if
 end sub

@@ -31,7 +31,7 @@ sub onTaglineChanged()
     if not isValid(m.taglineLabel)
       ' Create tagline label dynamically and insert before description label
       m.taglineLabel = CreateObject("roSGNode", "LabelSecondaryMedium")
-      m.taglineLabel.bold = true
+      m.taglineLabel.isBold = true
       m.taglineLabel.wrap = true
       m.taglineLabel.lineSpacing = 0
       m.taglineLabel.ellipsisText = "..."
@@ -64,15 +64,15 @@ sub onTaglineMaxLinesChanged()
 end sub
 
 ' Sizes the focus border based on background dimensions
-' When showBackground is true, border matches background exactly
+' When shouldShowBackground is true, border matches background exactly
 ' since content padding already provides breathing room.
-' When showBackground is false, border expands outward so it
+' When shouldShowBackground is false, border expands outward so it
 ' doesn't overlap flush text content.
 sub updateFocusBorderLayout()
   ' Only expand outward when focused and no background padding exists
   ' Invisible nodes still affect layout in SceneGraph, so the border must
   ' match the background when unfocused to avoid unwanted layout shifts
-  if not m.top.showBackground and m.top.hasFocus()
+  if not m.top.shouldShowBackground and m.top.hasFocus()
     p = FOCUS_BORDER_PADDING
     m.focusBorder.translation = [-p, -p]
     m.focusBorder.width = m.background.width + (p * 2)
@@ -93,7 +93,7 @@ sub onSizeChanged()
 
   ' Apply padding only when background is shown
   ' Without background, content is flush for alignment with sibling elements
-  if m.top.showBackground
+  if m.top.shouldShowBackground
     padding = LABEL_PADDING
   else
     padding = 0
@@ -131,7 +131,7 @@ sub onContentRendered()
   contentHeight = contentRect.height
   if contentHeight = 0 then return ' Not rendered yet
 
-  if m.top.showBackground
+  if m.top.shouldShowBackground
     padding = LABEL_PADDING
   else
     padding = 0
@@ -143,8 +143,8 @@ sub onContentRendered()
 end sub
 
 ' Toggles the background rectangle and recalculates layout padding
-sub onShowBackgroundChanged()
-  m.background.visible = m.top.showBackground
+sub onShouldShowBackgroundChanged()
+  m.background.visible = m.top.shouldShowBackground
   onSizeChanged()
 end sub
 

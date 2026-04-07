@@ -96,7 +96,7 @@ class PhotoPresenter extends GridPresenterBase
     task.itemType = "Photo"
     task.itemId = parentItem.Id
     ' Photos in albums are non-recursive
-    task.recursive = false
+    task.isRecursive = false
   end sub
 
   ' Returns current slideshow state based on view mode

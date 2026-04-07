@@ -14,11 +14,11 @@
     <field id="currentUser" type="string" onChange="currentUserChanged" />
     <field id="title" type="string" onChange="titleChanged" />
     <field id="isVisible" value="true" type="boolean" onChange="isVisibleChanged" />
-    <field id="disableMoveAnimation" value="false" type="boolean" />
+    <field id="isMoveAnimationDisabled" value="false" type="boolean" />
     <field id="isLogoVisible" value="true" type="boolean" onChange="isLogoVisibleChanged" />
     <field id="tabs" type="array" onChange="onTabsChanged" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
-    <field id="showIcons" type="boolean" value="false" onChange="showIconsChanged" />
+    <field id="shouldShowIcons" type="boolean" value="false" onChange="shouldShowIconsChanged" />
     <field id="iconAction" type="string" alwaysNotify="true" />
     <function name="getTabBar" />
     <function name="getUserDropdown" />

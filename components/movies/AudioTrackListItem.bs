@@ -12,7 +12,7 @@ sub itemContentChanged()
     m.title.translation = [50, 20]
   end if
 
-  if m.top.itemContent.selected
+  if m.top.itemContent.isSelected
     m.selectedIcon.uri = m.global.constants.iconCheckWhite
   else
     m.selectedIcon.uri = ""

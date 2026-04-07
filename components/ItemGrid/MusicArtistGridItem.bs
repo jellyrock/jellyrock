@@ -39,7 +39,7 @@ sub itemContentChanged()
   if not isValid(itemData) then return
 
   ' Check if we need to show a fallback icon (only when no poster image available)
-  showFallbackIcon = false
+  shouldShowFallbackIcon = false
   fallbackIconUri = ""
 
   posterUrl = getItemPosterUrl(itemData)
@@ -50,13 +50,13 @@ sub itemContentChanged()
 
     if itemType = "musicalbum"
       fallbackIconUri = "pkg:/images/icons/album.png"
-      showFallbackIcon = true
+      shouldShowFallbackIcon = true
     else if itemType = "musicartist"
       fallbackIconUri = "pkg:/images/icons/missingArtist.png"
-      showFallbackIcon = true
+      shouldShowFallbackIcon = true
     else if itemType = "musicgenre" or folderType = "musicgenre"
       fallbackIconUri = "pkg:/images/icons/musicFolder.png"
-      showFallbackIcon = true
+      shouldShowFallbackIcon = true
     end if
   end if
 
@@ -67,7 +67,7 @@ sub itemContentChanged()
   if m.itemPoster.loadStatus <> "ready"
     m.backdrop.visible = true
     ' If we need a fallback icon, prepare to show it on top of backdrop
-    if showFallbackIcon
+    if shouldShowFallbackIcon
       m.itemPoster.uri = fallbackIconUri
       m.itemPoster.blendColor = m.global.constants.colorTextSecondary
       m.itemPoster.loadWidth = 280

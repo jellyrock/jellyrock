@@ -327,7 +327,7 @@ function CreateServerGroup()
   ' Capture the URL before any updates to detect changes during discovery/redirects
   previousServerUrl = globalServer.serverUrl
   screen = CreateObject("roSGNode", "SetServerScreen")
-  screen.optionsAvailable = true
+  screen.isOptionsAvailable = true
   m.global.sceneManager.callFunc("pushScene", screen)
   port = CreateObject("roMessagePort")
 
@@ -582,17 +582,17 @@ function CreateSigninGroup(userName = "")
           else
             ' Server user is talking to is at least 10.8 and has quick connect enabled...
             m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
-            m.quickConnectDialog.saveCredentials = checkbox.checkedState[0]
+            m.quickConnectDialog.shouldSaveCredentials = checkbox.checkedState[0]
             m.quickConnectDialog.quickConnectJson = json
             m.quickConnectDialog.title = translate(translationKeys.ButtonQuickConnect)
             m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code]), translate(translationKeys.LabelDialogWillCloseAutomatically)]
             m.quickConnectDialog.buttons = [translate(translationKeys.ButtonCancel)]
-            m.quickConnectDialog.observeField("authenticated", port)
+            m.quickConnectDialog.observeField("isAuthenticated", port)
             m.scene.dialog = m.quickConnectDialog
           end if
         end if
 
-        if msg.getField() = "authenticated"
+        if msg.getField() = "isAuthenticated"
           authenticated = msg.getData()
           if authenticated = true
             ' Quick connect authentication was successful...
@@ -627,7 +627,7 @@ function CreateHomeGroup()
   ' Main screen after logging in. Shows the user's libraries
   group = CreateObject("roSGNode", "Home")
   group.overhangTitle = translate(translationKeys.LabelHome)
-  group.optionsAvailable = true
+  group.isOptionsAvailable = true
 
   group.observeField("selectedItem", m.port)
   group.observeField("quickPlayNode", m.port)
@@ -686,7 +686,7 @@ function CreateItemDetailsGroup(item as object) as dynamic
   group = CreateObject("roSGNode", "ItemDetails")
   group.observeField("quickPlayNode", m.port)
   group.overhangTitle = ""
-  group.optionsAvailable = false
+  group.isOptionsAvailable = false
 
   ' Push scene asap to prevent extra button presses while fetching data
   m.global.sceneManager.callFunc("pushScene", group)

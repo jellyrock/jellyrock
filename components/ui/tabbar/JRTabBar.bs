@@ -16,7 +16,7 @@ sub onTabsChanged()
   if not isValidAndNotEmpty(tabs)
     m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
     m.focusedTabIndex = 0
-    m.top.ready = false
+    m.top.isReady = false
     return
   end if
 
@@ -28,7 +28,7 @@ sub onTabsChanged()
   end if
 
   ' Configuration changed — full rebuild
-  m.top.ready = false
+  m.top.isReady = false
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
 
   matched = false
@@ -41,12 +41,12 @@ sub onTabsChanged()
 
     ' Mark the first tab as selected by default if no selection exists
     if m.top.selectedTabId = "" and tabData.id = tabs[0].id
-      tabNode.isSelected = true
+      tabNode.isButtonSelected = true
       m.top.selectedTabId = tabData.id
       selectedIndex = i
       matched = true
     else if tabData.id = m.top.selectedTabId
-      tabNode.isSelected = true
+      tabNode.isButtonSelected = true
       selectedIndex = i
       matched = true
     end if
@@ -58,7 +58,7 @@ sub onTabsChanged()
   if not matched
     firstTab = m.tabContainer.getChild(0)
     if isValid(firstTab)
-      firstTab.isSelected = true
+      firstTab.isButtonSelected = true
       m.top.selectedTabId = firstTab.tabId
     end if
     selectedIndex = 0
@@ -70,7 +70,7 @@ sub onTabsChanged()
   ' Observe first tab's ready field to propagate sizing completion
   firstTab = m.tabContainer.getChild(0)
   if isValid(firstTab)
-    firstTab.observeField("ready", "onFirstTabReady")
+    firstTab.observeField("isReady", "onFirstTabReady")
   end if
 
   updateFocusedTabVisuals()
@@ -80,9 +80,9 @@ end sub
 sub onFirstTabReady()
   firstTab = m.tabContainer.getChild(0)
   if isValid(firstTab)
-    firstTab.unobserveField("ready")
+    firstTab.unobserveField("isReady")
   end if
-  m.top.ready = true
+  m.top.isReady = true
 end sub
 
 ' Returns true if the existing tab children match the new tabs configuration
@@ -106,7 +106,7 @@ sub syncSelectedTab()
   for i = 0 to m.tabContainer.getChildCount() - 1
     tabNode = m.tabContainer.getChild(i)
     isSelected = (tabNode.tabId = m.top.selectedTabId)
-    tabNode.isSelected = isSelected
+    tabNode.isButtonSelected = isSelected
     if isSelected
       m.focusedTabIndex = i
     end if
@@ -148,7 +148,7 @@ end sub
 sub selectTab(index as integer)
   for i = 0 to m.tabContainer.getChildCount() - 1
     tabNode = m.tabContainer.getChild(i)
-    tabNode.isSelected = (i = index)
+    tabNode.isButtonSelected = (i = index)
   end for
 
   selectedTab = m.tabContainer.getChild(index)
