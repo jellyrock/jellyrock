@@ -1253,26 +1253,26 @@ end sub
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
 ' Returns true if the caller should goto appStart (session-ending actions).
 function handleMenuAction(actionId as string) as boolean
-  if actionId = "gotoSearch"
+  if actionId = HomeAction.OPEN_SEARCH
     group = CreateSearchPage()
     m.global.sceneManager.callFunc("pushScene", group)
     group.findNode("SearchBox").findNode("searchKey").setFocus(true)
     group.findNode("SearchBox").findNode("searchKey").active = true
-  else if actionId = "settings"
+  else if actionId = HomeAction.OPEN_SETTINGS
     m.global.sceneManager.callFunc("settings")
-  else if actionId = "changeServer"
+  else if actionId = HomeAction.CHANGE_SERVER
     startLoadingSpinner()
     unsetSetting("server")
     server.Delete()
     SignOut(false)
     m.global.sceneManager.callFunc("clearScenes")
     return true
-  else if actionId = "changeUser"
+  else if actionId = HomeAction.CHANGE_USER
     startLoadingSpinner()
     SignOut(false)
     m.global.sceneManager.callFunc("clearScenes")
     return true
-  else if actionId = "signOut"
+  else if actionId = HomeAction.SIGN_OUT
     startLoadingSpinner()
     SignOut()
     m.global.sceneManager.callFunc("clearScenes")

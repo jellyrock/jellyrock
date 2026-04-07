@@ -1,0 +1,3 @@
+enum ServerAction
+  DELETE_SAVED = "deleteSaved"
+end enum

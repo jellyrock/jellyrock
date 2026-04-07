@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/imageHelpers.bs"
+import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/translate.bs"
@@ -27,14 +28,14 @@ sub init()
   m.searchIcon = CreateObject("roSGNode", "JROverhangIcon")
   m.searchIcon.id = "searchIcon"
   m.searchIcon.icon = "pkg:/images/icons/search.png"
-  m.searchIcon.actionId = "gotoSearch"
+  m.searchIcon.actionId = HomeAction.OPEN_SEARCH
   m.searchIcon.visible = false
   m.top.appendChild(m.searchIcon)
 
   m.settingsIcon = CreateObject("roSGNode", "JROverhangIcon")
   m.settingsIcon.id = "settingsIcon"
   m.settingsIcon.icon = "pkg:/images/icons/settings.png"
-  m.settingsIcon.actionId = "settings"
+  m.settingsIcon.actionId = HomeAction.OPEN_SETTINGS
   m.settingsIcon.visible = false
   m.top.appendChild(m.settingsIcon)
 
@@ -134,9 +135,9 @@ sub currentUserChanged()
 
     ' Set menu items — user-related actions only
     m.userDropdown.items = [
-      { title: translate(translationKeys.LabelChangeUser), id: "changeUser" },
-      { title: translate(translationKeys.LabelChangeServer), id: "changeServer" },
-      { title: translate(translationKeys.ButtonSignOut), id: "signOut" }
+      { title: translate(translationKeys.LabelChangeUser), id: HomeAction.CHANGE_USER },
+      { title: translate(translationKeys.LabelChangeServer), id: HomeAction.CHANGE_SERVER },
+      { title: translate(translationKeys.ButtonSignOut), id: HomeAction.SIGN_OUT }
     ]
   end if
 

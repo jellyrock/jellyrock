@@ -342,7 +342,7 @@ function CreateServerGroup()
   sidepanel = screen.findNode("options")
   opt = CreateObject("roSGNode", "OptionsButton")
   opt.title = translate(translationKeys.LabelDeleteSaved)
-  opt.id = "deleteSaved"
+  opt.id = ServerAction.DELETE_SAVED
   opt.observeField("optionSelected", port)
   newOptions.push(opt)
   sidepanel.options = newOptions
@@ -411,7 +411,7 @@ function CreateServerGroup()
             end if
           end if
         end if
-      else if nodeName = "deleteSaved"
+      else if nodeName = ServerAction.DELETE_SAVED
         serverPicker = screen.findNode("serverPicker")
         itemToDelete = serverPicker.content.getChild(serverPicker.itemFocused)
         ' Prefer id for deletion — robust when the picker item's baseUrl differs from
@@ -640,7 +640,7 @@ function CreateHomeGroup()
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.ButtonSearch)
-  o.id = "gotoSearch"
+  o.id = HomeAction.OPEN_SEARCH
   o.observeField("optionSelected", m.port)
   newOptions.push(o)
   o = invalid
@@ -648,28 +648,28 @@ function CreateHomeGroup()
   ' Add settings option to menu
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.LabelSettings)
-  o.id = "settings"
+  o.id = HomeAction.OPEN_SETTINGS
   o.observeField("optionSelected", m.port)
   newOptions.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.LabelChangeUser)
-  o.id = "changeUser"
+  o.id = HomeAction.CHANGE_USER
   o.observeField("optionSelected", m.port)
   newOptions.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.LabelChangeServer)
-  o.id = "changeServer"
+  o.id = HomeAction.CHANGE_SERVER
   o.observeField("optionSelected", m.port)
   newOptions.push(o)
   o = invalid
 
   o = CreateObject("roSGNode", "OptionsButton")
   o.title = translate(translationKeys.ButtonSignOut)
-  o.id = "signOut"
+  o.id = HomeAction.SIGN_OUT
   o.observeField("optionSelected", m.port)
   newOptions.push(o)
 
