@@ -205,6 +205,72 @@ sub resetThemeColors()
   loadThemeColorDefaults()
 end sub
 
+' Walk a node tree and refresh theme colors on all known themed node types.
+' This is a generic function that handles any component tree — it identifies
+' nodes by their subtype and applies the correct color from m.global.constants.
+'
+' Handled automatically:
+'   - Labels: subtype containing "Primary"/"Secondary"/"Disabled" → matching text color
+'   - TextButton subtypes: focusBorder, focusBackground, textFocusColor
+'   - JRTab indicator: Rectangle child → colorSecondary
+'   - JROverhangIcon: buttonIcon poster → colorTextSecondary (unfocused default)
+'
+' Components that cache theme colors (JRTab, JRDropdown, JRDropdownItem,
+' JROverhangIcon) should read from m.global.constants directly in their event
+' handlers so that subsequent interactions (focus changes, state changes) always
+' use current values.
+sub refreshThemeOnTree(rootNode as object)
+  if not isValid(rootNode) then return
+
+  constants = m.global.constants
+  refreshThemeOnNode(rootNode, constants)
+end sub
+
+' Recursively refresh theme colors on a single node and all its children.
+sub refreshThemeOnNode(node as object, constants as object)
+  subtype = node.subtype()
+
+  ' Labels — color is determined by the subtype name pattern
+  if node.isSubType("Label")
+    if subtype.inStr("Primary") >= 0 and subtype.inStr("Error") < 0
+      node.color = constants.colorTextPrimary
+    else if subtype.inStr("Secondary") >= 0
+      node.color = constants.colorTextSecondary
+    else if subtype.inStr("Disabled") >= 0
+      node.color = constants.colorTextDisabled
+    end if
+
+  ' TextButton and subtypes (JRTab, etc.) — update focus-state colors
+  else if node.isSubType("TextButton")
+    node.focusBorder = constants.colorPrimary
+    node.focusBackground = constants.colorBackgroundSecondary
+    node.textFocusColor = constants.colorTextPrimary
+
+    ' JRTab: also update the underline indicator (Rectangle child)
+    if subtype = "JRTab"
+      children = node.getChildren(-1, 0)
+      for each child in children
+        if child.isSubType("Rectangle")
+          child.color = constants.colorSecondary
+        end if
+      end for
+    end if
+
+  ' JROverhangIcon — update the icon poster's unfocused blend color
+  else if subtype = "JROverhangIcon"
+    buttonIcon = node.findNode("buttonIcon")
+    if isValid(buttonIcon)
+      buttonIcon.blendColor = constants.colorTextSecondary
+    end if
+  end if
+
+  ' Recurse into all children
+  children = node.getChildren(-1, 0)
+  for each child in children
+    refreshThemeOnNode(child, constants)
+  end for
+end sub
+
 ' Validate hex color input (exactly 6 hex characters: 0-9, A-F)
 ' Returns false for empty, invalid, or wrong-length strings
 function isValidHexColor(input as dynamic) as boolean

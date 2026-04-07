@@ -348,6 +348,7 @@ sub settingFocused()
     end for
 
     m.radioSetting.content = radioContent
+    m.radioSetting.jumpToItem = m.radioSetting.checkedItem
 
     m.radioSetting.visible = true
   else if selectedSetting.type = "text"

@@ -722,245 +722,221 @@
             "descriptionKey": "LabelChooseHowRowsAreDisplayedThroughout"
           },
           {
-            "title": "Theme Colors",
-            "description": "Customize the app's color scheme. Choose a preset or create your own custom theme.",
-            "children": [
+            "title": "Theme",
+            "description": "Select a color theme. Choose 'Custom' to manually set individual colors.",
+            "settingName": "uiTheme",
+            "type": "radio",
+            "default": "jellyrock",
+            "options": [
               {
-                "title": "Theme",
-                "description": "Select a color theme. Choose 'Custom' to manually set individual colors.",
-                "settingName": "uiTheme",
-                "type": "radio",
-                "default": "jellyrock",
-                "options": [
-                  {
-                    "title": "JellyRock",
-                    "id": "jellyrock",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "8B5CF6",
-                      "uiThemeColorSecondary": "3B82F6",
-                      "uiThemeColorBackgroundPrimary": "0D1117",
-                      "uiThemeColorBackgroundSecondary": "161B22",
-                      "uiThemeColorTextPrimary": "F0F0F0",
-                      "uiThemeColorTextSecondary": "A8A8A8",
-                      "uiThemeColorTextDisabled": "4A4A4A"
-                    },
-                    "titleKey": "LabelJellyrock"
-                  },
-                  {
-                    "title": "JellyRock (Black)",
-                    "id": "jellyrock-black",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "8B5CF6",
-                      "uiThemeColorSecondary": "3B82F6",
-                      "uiThemeColorBackgroundPrimary": "000000",
-                      "uiThemeColorBackgroundSecondary": "0D0D0D",
-                      "uiThemeColorTextPrimary": "F0F0F0",
-                      "uiThemeColorTextSecondary": "A8A8A8",
-                      "uiThemeColorTextDisabled": "4A4A4A"
-                    },
-                    "titleKey": "LabelJellyrockBlack"
-                  },
-                  {
-                    "title": "Emerald",
-                    "id": "emerald",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "10B981",
-                      "uiThemeColorSecondary": "14B8A6",
-                      "uiThemeColorBackgroundPrimary": "0F1419",
-                      "uiThemeColorBackgroundSecondary": "1A2028",
-                      "uiThemeColorTextPrimary": "F0F0F0",
-                      "uiThemeColorTextSecondary": "A0AEC0",
-                      "uiThemeColorTextDisabled": "4A5568"
-                    },
-                    "titleKey": "LabelEmerald"
-                  },
-                  {
-                    "title": "Ember",
-                    "id": "ember",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "EF4444",
-                      "uiThemeColorSecondary": "F97316",
-                      "uiThemeColorBackgroundPrimary": "0D1117",
-                      "uiThemeColorBackgroundSecondary": "161B22",
-                      "uiThemeColorTextPrimary": "F0F0F0",
-                      "uiThemeColorTextSecondary": "A8A8A8",
-                      "uiThemeColorTextDisabled": "4A4A4A"
-                    },
-                    "titleKey": "LabelEmber"
-                  },
-                  {
-                    "title": "Rose",
-                    "id": "rose",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "F472B6",
-                      "uiThemeColorSecondary": "E879F9",
-                      "uiThemeColorBackgroundPrimary": "0D1117",
-                      "uiThemeColorBackgroundSecondary": "161B22",
-                      "uiThemeColorTextPrimary": "F0F0F0",
-                      "uiThemeColorTextSecondary": "A8A8A8",
-                      "uiThemeColorTextDisabled": "4A4A4A"
-                    },
-                    "titleKey": "LabelRose"
-                  },
-                  {
-                    "title": "Ocean",
-                    "id": "ocean",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "3B82F6",
-                      "uiThemeColorSecondary": "06B6D4",
-                      "uiThemeColorBackgroundPrimary": "0B1120",
-                      "uiThemeColorBackgroundSecondary": "131D2E",
-                      "uiThemeColorTextPrimary": "E8EDF5",
-                      "uiThemeColorTextSecondary": "94A3B8",
-                      "uiThemeColorTextDisabled": "475569"
-                    },
-                    "titleKey": "LabelOcean"
-                  },
-                  {
-                    "title": "Dusk",
-                    "id": "dusk",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "F59E0B",
-                      "uiThemeColorSecondary": "D97706",
-                      "uiThemeColorBackgroundPrimary": "151210",
-                      "uiThemeColorBackgroundSecondary": "1F1B18",
-                      "uiThemeColorTextPrimary": "F5F0EB",
-                      "uiThemeColorTextSecondary": "B0A898",
-                      "uiThemeColorTextDisabled": "5C5549"
-                    },
-                    "titleKey": "LabelDusk"
-                  },
-                  {
-                    "title": "Midnight",
-                    "id": "midnight",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "60A5FA",
-                      "uiThemeColorSecondary": "38BDF8",
-                      "uiThemeColorBackgroundPrimary": "000000",
-                      "uiThemeColorBackgroundSecondary": "0A0A0A",
-                      "uiThemeColorTextPrimary": "F0F0F0",
-                      "uiThemeColorTextSecondary": "A0A0A0",
-                      "uiThemeColorTextDisabled": "454545"
-                    },
-                    "titleKey": "LabelMidnight"
-                  },
-                  {
-                    "title": "High Contrast",
-                    "id": "high-contrast",
-                    "presetValues": {
-                      "uiThemeColorPrimary": "FBBF24",
-                      "uiThemeColorSecondary": "38BDF8",
-                      "uiThemeColorBackgroundPrimary": "000000",
-                      "uiThemeColorBackgroundSecondary": "1A1A1A",
-                      "uiThemeColorTextPrimary": "FFFFFF",
-                      "uiThemeColorTextSecondary": "D4D4D4",
-                      "uiThemeColorTextDisabled": "737373"
-                    },
-                    "titleKey": "LabelHighContrast"
-                  },
-                  {
-                    "title": "Custom",
-                    "id": "custom",
-                    "titleKey": "LabelCustom"
-                  }
-                ],
-                "titleKey": "LabelTheme",
-                "descriptionKey": "MessageSelectAColorThemeChooseCustom"
+                "title": "JellyRock",
+                "id": "jellyrock",
+                "presetValues": {
+                  "uiThemeColorPrimary": "8B5CF6",
+                  "uiThemeColorSecondary": "3B82F6",
+                  "uiThemeColorBackgroundPrimary": "0D1117",
+                  "uiThemeColorBackgroundSecondary": "161B22",
+                  "uiThemeColorTextPrimary": "F0F0F0",
+                  "uiThemeColorTextSecondary": "A8A8A8",
+                  "uiThemeColorTextDisabled": "4A4A4A"
+                },
+                "titleKey": "LabelJellyrock"
               },
               {
+                "title": "JellyRock (Black)",
+                "id": "jellyrock-black",
+                "presetValues": {
+                  "uiThemeColorPrimary": "8B5CF6",
+                  "uiThemeColorSecondary": "3B82F6",
+                  "uiThemeColorBackgroundPrimary": "000000",
+                  "uiThemeColorBackgroundSecondary": "0D0D0D",
+                  "uiThemeColorTextPrimary": "F0F0F0",
+                  "uiThemeColorTextSecondary": "A8A8A8",
+                  "uiThemeColorTextDisabled": "4A4A4A"
+                },
+                "titleKey": "LabelJellyrockBlack"
+              },
+              {
+                "title": "Emerald",
+                "id": "emerald",
+                "presetValues": {
+                  "uiThemeColorPrimary": "10B981",
+                  "uiThemeColorSecondary": "EAB308",
+                  "uiThemeColorBackgroundPrimary": "0F1419",
+                  "uiThemeColorBackgroundSecondary": "1A2028",
+                  "uiThemeColorTextPrimary": "F0F0F0",
+                  "uiThemeColorTextSecondary": "A0AEC0",
+                  "uiThemeColorTextDisabled": "4A5568"
+                },
+                "titleKey": "LabelEmerald"
+              },
+              {
+                "title": "Ember",
+                "id": "ember",
+                "presetValues": {
+                  "uiThemeColorPrimary": "EF4444",
+                  "uiThemeColorSecondary": "F97316",
+                  "uiThemeColorBackgroundPrimary": "0D1117",
+                  "uiThemeColorBackgroundSecondary": "161B22",
+                  "uiThemeColorTextPrimary": "F0F0F0",
+                  "uiThemeColorTextSecondary": "A8A8A8",
+                  "uiThemeColorTextDisabled": "4A4A4A"
+                },
+                "titleKey": "LabelEmber"
+              },
+              {
+                "title": "Rose",
+                "id": "rose",
+                "presetValues": {
+                  "uiThemeColorPrimary": "F472B6",
+                  "uiThemeColorSecondary": "C084FC",
+                  "uiThemeColorBackgroundPrimary": "0D1117",
+                  "uiThemeColorBackgroundSecondary": "161B22",
+                  "uiThemeColorTextPrimary": "F0F0F0",
+                  "uiThemeColorTextSecondary": "A8A8A8",
+                  "uiThemeColorTextDisabled": "4A4A4A"
+                },
+                "titleKey": "LabelRose"
+              },
+              {
+                "title": "Ocean",
+                "id": "ocean",
+                "presetValues": {
+                  "uiThemeColorPrimary": "3B82F6",
+                  "uiThemeColorSecondary": "06B6D4",
+                  "uiThemeColorBackgroundPrimary": "0B1120",
+                  "uiThemeColorBackgroundSecondary": "131D2E",
+                  "uiThemeColorTextPrimary": "E8EDF5",
+                  "uiThemeColorTextSecondary": "94A3B8",
+                  "uiThemeColorTextDisabled": "475569"
+                },
+                "titleKey": "LabelOcean"
+              },
+              {
+                "title": "Dusk",
+                "id": "dusk",
+                "presetValues": {
+                  "uiThemeColorPrimary": "F59E0B",
+                  "uiThemeColorSecondary": "FB7185",
+                  "uiThemeColorBackgroundPrimary": "151210",
+                  "uiThemeColorBackgroundSecondary": "1F1B18",
+                  "uiThemeColorTextPrimary": "F5F0EB",
+                  "uiThemeColorTextSecondary": "B0A898",
+                  "uiThemeColorTextDisabled": "5C5549"
+                },
+                "titleKey": "LabelDusk"
+              },
+              {
+                "title": "Midnight",
+                "id": "midnight",
+                "presetValues": {
+                  "uiThemeColorPrimary": "60A5FA",
+                  "uiThemeColorSecondary": "A78BFA",
+                  "uiThemeColorBackgroundPrimary": "000000",
+                  "uiThemeColorBackgroundSecondary": "0A0A0A",
+                  "uiThemeColorTextPrimary": "F0F0F0",
+                  "uiThemeColorTextSecondary": "A0A0A0",
+                  "uiThemeColorTextDisabled": "454545"
+                },
+                "titleKey": "LabelMidnight"
+              },
+              {
+                "title": "High Contrast",
+                "id": "high-contrast",
+                "presetValues": {
+                  "uiThemeColorPrimary": "FBBF24",
+                  "uiThemeColorSecondary": "38BDF8",
+                  "uiThemeColorBackgroundPrimary": "000000",
+                  "uiThemeColorBackgroundSecondary": "1A1A1A",
+                  "uiThemeColorTextPrimary": "FFFFFF",
+                  "uiThemeColorTextSecondary": "D4D4D4",
+                  "uiThemeColorTextDisabled": "737373"
+                },
+                "titleKey": "LabelHighContrast"
+              },
+              {
+                "title": "Custom",
+                "id": "custom",
+                "titleKey": "LabelCustom"
+              }
+            ],
+            "titleKey": "LabelTheme",
+            "descriptionKey": "MessageSelectAColorThemeChooseCustom"
+          },
+          {
+            "title": "Custom Theme Colors",
+            "description": "Manually set individual theme colors.",
+            "visibleWhen": {
+              "settingName": "uiTheme",
+              "value": "custom"
+            },
+            "children": [
+              {
                 "title": "Background - Primary",
-                "description": "Main background color. Default: 0D1117",
+                "description": "The app's main background behind all content.",
                 "settingName": "uiThemeColorBackgroundPrimary",
                 "type": "text",
                 "default": "0D1117",
-                "visibleWhen": {
-                  "settingName": "uiTheme",
-                  "value": "custom"
-                },
                 "titleKey": "LabelBackgroundPrimary",
-                "descriptionKey": "LabelMainBackgroundColorDefault0d1117"
+                "descriptionKey": "DescThemeColorBackgroundPrimary"
               },
               {
                 "title": "Background - Secondary",
-                "description": "Panel/card background color. Default: 161B22",
+                "description": "Background for cards, panels, buttons, and popups.",
                 "settingName": "uiThemeColorBackgroundSecondary",
                 "type": "text",
                 "default": "161B22",
-                "visibleWhen": {
-                  "settingName": "uiTheme",
-                  "value": "custom"
-                },
                 "titleKey": "LabelBackgroundSecondary",
-                "descriptionKey": "LabelPanelCardBackgroundColorDefault161b22"
+                "descriptionKey": "DescThemeColorBackgroundSecondary"
               },
               {
                 "title": "Primary",
-                "description": "Focus highlights and buttons. Default: 8B5CF6",
+                "description": "Focus borders and highlights that show where you are.",
                 "settingName": "uiThemeColorPrimary",
                 "type": "text",
                 "default": "8B5CF6",
-                "visibleWhen": {
-                  "settingName": "uiTheme",
-                  "value": "custom"
-                },
                 "titleKey": "LabelPrimary",
-                "descriptionKey": "LabelFocusHighlightsAndButtonsDefault8b5cf6"
+                "descriptionKey": "DescThemeColorPrimary"
               },
               {
                 "title": "Secondary",
-                "description": "Progress bars and accents. Default: 3B82F6",
+                "description": "Selected tabs, progress bars, and visual accents.",
                 "settingName": "uiThemeColorSecondary",
                 "type": "text",
                 "default": "3B82F6",
-                "visibleWhen": {
-                  "settingName": "uiTheme",
-                  "value": "custom"
-                },
                 "titleKey": "LabelSecondary",
-                "descriptionKey": "LabelProgressBarsAndAccentsDefault3b82f6"
+                "descriptionKey": "DescThemeColorSecondary"
               },
               {
                 "title": "Text - Disabled",
-                "description": "Muted/disabled/inactive text. Default: 4A4A4A",
+                "description": "Text color for disabled or inactive elements.",
                 "settingName": "uiThemeColorTextDisabled",
                 "type": "text",
                 "default": "4A4A4A",
-                "visibleWhen": {
-                  "settingName": "uiTheme",
-                  "value": "custom"
-                },
                 "titleKey": "LabelTextDisabled",
-                "descriptionKey": "LabelMutedDisabledInactiveTextDefault4a4a4a"
+                "descriptionKey": "DescThemeColorTextDisabled"
               },
               {
                 "title": "Text - Primary",
-                "description": "Main text color. Default: F0F0F0",
+                "description": "Primary text color used throughout the app.",
                 "settingName": "uiThemeColorTextPrimary",
                 "type": "text",
                 "default": "F0F0F0",
-                "visibleWhen": {
-                  "settingName": "uiTheme",
-                  "value": "custom"
-                },
                 "titleKey": "LabelTextPrimary",
-                "descriptionKey": "LabelMainTextColorDefaultF0f0f0"
+                "descriptionKey": "DescThemeColorTextPrimary"
               },
               {
                 "title": "Text - Secondary",
-                "description": "Secondary text. Default: A8A8A8",
+                "description": "Subtitles, hints, and less prominent text.",
                 "settingName": "uiThemeColorTextSecondary",
                 "type": "text",
                 "default": "A8A8A8",
-                "visibleWhen": {
-                  "settingName": "uiTheme",
-                  "value": "custom"
-                },
                 "titleKey": "LabelTextSecondary",
-                "descriptionKey": "LabelSecondaryTextDefaultA8a8a8"
+                "descriptionKey": "DescThemeColorTextSecondary"
               }
             ],
-            "titleKey": "LabelThemeColors",
-            "descriptionKey": "MessageCustomizeTheAppSColorScheme"
+            "titleKey": "LabelCustomThemeColors",
+            "descriptionKey": "MessageManuallySetIndividualThemeColors"
           },
           {
             "title": "Use Web Client's Home Section Arrangement",

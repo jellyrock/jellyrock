@@ -383,53 +383,15 @@ function isDialogOpen() as boolean
   return isValid(m.scene.dialog)
 end function
 
-' Refresh theme colors on JRScene and overhang
-' Called after theme color settings change to apply new colors without app restart
+' Refresh theme colors on JRScene and overhang.
+' Called after theme color settings change (settings exit, login, logout).
+' Uses refreshThemeOnTree() to walk the overhang's node tree and update all
+' themed elements (labels, buttons, icons) in place — no component recreation
+' or per-component refresh functions needed.
 sub refreshThemeColors()
-  constants = m.global.constants
+  m.scene.backgroundColor = m.global.constants.colorBackgroundPrimary
 
-  ' Update JRScene background color
-  m.scene.backgroundColor = constants.colorBackgroundPrimary
-
-  ' Update overhang themed elements (no recreation needed)
   if isValid(m.overhang)
-    ' Update title label color (ScrollingLabelPrimaryLarge uses colorTextPrimary)
-    titleLabel = m.overhang.findNode("title")
-    if isValid(titleLabel)
-      titleLabel.color = constants.colorTextPrimary
-    end if
-
-    ' Update user dropdown elements (username label and default user icon)
-    userDropdown = m.overhang.callFunc("getUserDropdown")
-    if isValid(userDropdown)
-      usernameLabel = userDropdown.findNode("triggerLabel")
-      if isValid(usernameLabel)
-        usernameLabel.color = constants.colorTextSecondary
-      end if
-
-      userImage = userDropdown.findNode("triggerIcon")
-      if isValid(userImage) and userImage.uri = "pkg:/images/icons/person_36px.png"
-        userImage.blendColor = constants.colorTextSecondary
-      end if
-    end if
-
-    ' Update clock label colors (LabelSecondaryLarger/Large use colorTextSecondary)
-    clock = m.overhang.findNode("clock")
-    if isValid(clock)
-      hoursLabel = clock.findNode("hours")
-      if isValid(hoursLabel)
-        hoursLabel.color = constants.colorTextSecondary
-      end if
-
-      minutesLabel = clock.findNode("minutes")
-      if isValid(minutesLabel)
-        minutesLabel.color = constants.colorTextSecondary
-      end if
-
-      timeSeparator = clock.findNode("timeSeperator")
-      if isValid(timeSeparator)
-        timeSeparator.color = constants.colorTextSecondary
-      end if
-    end if
+    refreshThemeOnTree(m.overhang)
   end if
 end sub

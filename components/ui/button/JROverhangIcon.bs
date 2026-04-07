@@ -12,13 +12,6 @@ sub init()
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.buttonIcon = m.top.findNode("buttonIcon")
 
-  ' Cache theme colors
-  constants = m.global.constants
-  m.colorPrimary = constants.colorPrimary
-  m.colorBackgroundSecondary = constants.colorBackgroundSecondary
-  m.colorTextPrimary = constants.colorTextPrimary
-  m.colorTextSecondary = constants.colorTextSecondary
-
   ' Size button background and border to 66x66
   m.buttonBackground.width = OVERHANG_ICON_SIZE
   m.buttonBackground.height = OVERHANG_ICON_SIZE
@@ -35,7 +28,7 @@ sub init()
   ' Unfocused state: transparent (matches JRDropdown trigger / JRTab pattern)
   m.buttonBackground.visible = false
   m.buttonBorder.visible = false
-  m.buttonIcon.blendColor = m.colorTextSecondary
+  m.buttonIcon.blendColor = m.global.constants.colorTextSecondary
 
   m.top.observeField("focusedChild", "onFocusChanged")
 end sub
@@ -46,16 +39,17 @@ end sub
 
 ' Toggle visual state between unfocused (transparent) and focused (backdrop + border)
 sub onFocusChanged()
+  constants = m.global.constants
   if m.top.hasFocus()
-    m.buttonBackground.blendColor = m.colorBackgroundSecondary
-    m.buttonBorder.blendColor = m.colorPrimary
+    m.buttonBackground.blendColor = constants.colorBackgroundSecondary
+    m.buttonBorder.blendColor = constants.colorPrimary
     m.buttonBackground.visible = true
     m.buttonBorder.visible = true
-    m.buttonIcon.blendColor = m.colorTextPrimary
+    m.buttonIcon.blendColor = constants.colorTextPrimary
   else
     m.buttonBackground.visible = false
     m.buttonBorder.visible = false
-    m.buttonIcon.blendColor = m.colorTextSecondary
+    m.buttonIcon.blendColor = constants.colorTextSecondary
   end if
 end sub
 
