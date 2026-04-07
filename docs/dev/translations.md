@@ -31,7 +31,7 @@ translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])
 translate(translationKeys.MyNewKey, ["value"])
 ```
 
-1. Run `npm run validate:translations` to verify the key exists and is wired up correctly.
+1. Run `npm run lint:translations` to verify the key exists and is wired up correctly.
 
 ## Key Naming Conventions
 
@@ -141,22 +141,21 @@ Language changes take effect after leaving Settings (the `reloadHome` mechanism 
 
 ## CI Validation
 
-Translation integrity is enforced by three scripts that run as part of `npm run lint`:
+Translation integrity is enforced by a single script (`scripts/update-translations.cjs`) that runs as part of `npm run lint`:
 
-| Script | What it checks |
+| Command | What it checks |
 | --- | --- |
-| `validate:translations` | All `translate()` / `translationKeys.*` references exist in en_US.json; no hardcoded string literals; placeholder parity; languages.json alignment |
-| `lint:translations` | All locale JSON files are valid; no orphaned keys; coverage report |
-| `lint:xml-translations` | No stale XML `translationKey` attributes from the old system |
+| `lint:translations` | en_US.json sort order and orphans; all code `translate()` / `translationKeys.*` references exist; no hardcoded string literals; locale JSON validity; placeholder parity; plural completeness; coverage; languages.json alignment |
 
 ## Bot Automation
 
 The JellyRock bot (`jellyrock-bot.yml`) runs on every push to main:
 
-1. Sorts `en_US.json` keys alphabetically
-2. Syncs new locale files into `languages.json` so they appear in the language picker
-3. Pushes `en_US.json` and `languages.json` to the `weblate` branch for community translators
+1. Removes orphan keys from `en_US.json`
+2. Sorts `en_US.json` keys alphabetically
+3. Syncs new locale files into `languages.json` so they appear in the language picker
+4. Pushes `en_US.json` and `languages.json` to the `weblate` branch for community translators
 
 Missing keys are caught at build time — the `BSC` plugin generates `translationKeys` constants from en_US.json, so referencing a key that doesn't exist is a compile error.
 
-Run locally with `npm run update-translations -- --fix`.
+Run locally with `npm run update-translations`.

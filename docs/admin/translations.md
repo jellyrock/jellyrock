@@ -51,25 +51,19 @@ CI validates that all referenced keys exist.
 
 | Command | Purpose |
 | --- | --- |
-| `npm run update-translations -- --fix` | Sort en_US.json, sync languages.json with locale files |
-| `npm run update-translations` | Report missing/orphan keys and unsynchronized locales (exits 1 if issues found) |
-| `npm run validate:translations` | Validate key usage, placeholder parity, hardcoded strings, languages.json alignment |
-| `npm run lint:translations` | Validate locale JSON files, check for orphaned keys, print coverage report |
-| `npm run lint:xml-translations` | Check for stale XML translation attributes from the old system |
+| `npm run update-translations` | Auto-fix: sort en_US.json, remove orphans, sync languages.json, then validate |
+| `npm run lint:translations` | Validate all translation files, code references, placeholders, and coverage (exits 1 on error) |
 
-All five run as part of `npm run lint`.
+Both run as part of `npm run lint` (lint mode only).
 
 ## Architecture at a Glance
 
 ```text
-locale/custom/en_US.json          ← Source of truth (451 keys)
-locale/custom/<locale>.json       ← 102 community-translated locale files
+locale/custom/en_US.json          ← Source of truth (455 keys)
+locale/custom/<locale>.json       ← Community-translated locale files
 locale/languages.json             ← Language registry (auto-managed)
 source/utils/translate.bs         ← Runtime: translate(), translatePlural(), loadTranslations()
 source/utils/translateLocale.bs   ← Locale resolution cascade
 scripts/bsc-plugin-translation-keys.cjs  ← BSC plugin: generates translationKeys namespace
-scripts/update-translations.cjs   ← Bot script: syncs en_US.json + languages.json
-scripts/validate-translations.cjs ← CI: validates key usage and file integrity
-scripts/lint-translations.cjs     ← CI: validates locale JSON files
-scripts/lint-xml-translations.cjs ← CI: catches stale XML attributes
+scripts/update-translations.cjs   ← All-in-one: lint (default) + fix (--fix)
 ```
