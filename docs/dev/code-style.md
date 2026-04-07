@@ -4,7 +4,7 @@
 
 This document defines the naming conventions, formatting rules, and code patterns for the JellyRock codebase. All contributors must follow these rules. Naming conventions are enforced by code review (bslint does not support naming rules).
 
-**Core principle**: PascalCase = type definitions. lowerCamelCase = everything else. UPPER_SNAKE_CASE = immutable predefined values.
+**Core principle**: PascalCase = type definitions. `lowerCamelCase` = everything else. UPPER_SNAKE_CASE = immutable predefined values.
 
 ---
 
@@ -12,7 +12,7 @@ This document defines the naming conventions, formatting rules, and code pattern
 
 ### Variables & Parameters
 
-**lowerCamelCase** for all variables, parameters, and local references.
+**`lowerCamelCase`** for all variables, parameters, and local references.
 
 ```brighterscript
 audioStreamIdx = 1
@@ -22,7 +22,7 @@ preferredLang = resolveSubtitleLanguagePreference(settings, config)
 
 ### Functions, Methods & Subs
 
-**lowerCamelCase** for all function and sub names.
+**`lowerCamelCase`** for all function and sub names.
 
 ```brighterscript
 function getSetting(key, defaultValue = invalid)
@@ -76,7 +76,7 @@ Enum **values** (the right side of `=`) must match external API contracts where 
 
 ### Namespaces
 
-**lowerCamelCase** for namespace names. Namespaces are containers, not types.
+**`lowerCamelCase`** for namespace names. Namespaces are containers, not types.
 
 ```brighterscript
 namespace imageSize
@@ -91,7 +91,7 @@ end namespace
 
 ### Constants
 
-**UPPER_SNAKE_CASE** for all `const` declarations and namespace-level constants.
+**UPPER_SNAKE_CASE** for all `const` declarations and namespace level constants.
 
 ```brighterscript
 const QUOTE = Chr(34)
@@ -169,9 +169,9 @@ components/ItemDetails.xml       ' component ItemDetails
 components/ItemDetails.bs        ' companion script
 ```
 
-### Utility & Function Files → lowerCamelCase
+### Utility & Function Files → `lowerCamelCase`
 
-Files containing only functions, subs, or namespace definitions use lowerCamelCase. Single-word names are naturally valid.
+Files containing only functions, subs, or namespace definitions use `lowerCamelCase`. Single-word names are naturally valid.
 
 ```
 source/utils/config.bs           ' utility functions
@@ -193,7 +193,7 @@ components/video/VideoPlayerView.bs
 
 ## XML Conventions
 
-### Interface Field IDs → lowerCamelCase
+### Interface Field IDs → `lowerCamelCase`
 
 ```xml
 <interface>
@@ -204,7 +204,7 @@ components/video/VideoPlayerView.bs
 </interface>
 ```
 
-### Child Element IDs → lowerCamelCase
+### Child Element IDs → `lowerCamelCase`
 
 ```xml
 <children>
@@ -213,7 +213,7 @@ components/video/VideoPlayerView.bs
 </children>
 ```
 
-### onChange Callbacks
+### `onChange` Callbacks
 
 `onChange` values are string references to function names. They must match the function definition exactly.
 
@@ -235,7 +235,7 @@ end sub
 ### Indentation & Whitespace
 
 - **2 spaces** — no tabs (enforced by `.editorconfig` and `bsfmt.json`)
-- **LF** line endings (Unix-style)
+- **`LF`** line endings (Unix-style)
 - Trim trailing whitespace
 - Insert final newline
 
@@ -276,7 +276,7 @@ import "pkg:/source/utils/misc.bs"
 
 ### JSDoc Style for Functions
 
-Every public function should have a JSDoc-style comment describing its purpose, parameters, and return value.
+Every public function should have a JSDoc style comment describing its purpose, parameters, and return value.
 
 ```brighterscript
 ' Filter registry keys to find those that should be deleted during a settings reset
@@ -308,13 +308,13 @@ Use decorated comment blocks for major logical sections within large files.
 
 ---
 
-## BrightScript-Specific Rules
+## BrightScript Specific Rules
 
 ### Associative Array Key Casing
 
 BrightScript stores AA keys in **lowercase** regardless of source code casing. `{ maxWidth: 1920 }` stores the key as `"maxwidth"`. This is a language limitation, not a convention violation.
 
-When writing AA literals, still use lowerCamelCase in source for readability:
+When writing AA literals, still use `lowerCamelCase` in source for readability:
 
 ```brighterscript
 params = {
@@ -341,11 +341,11 @@ ContentNode fields cannot be `invalid` — they get type defaults when declared 
 
 ### API Boundary
 
-The Jellyfin API uses PascalCase field names (`Id`, `Name`, `Type`). These are transformed to lowerCamelCase at the API boundary in `JellyfinDataTransformer`. Never use PascalCase for internal data — the transformer is the conversion point.
+The Jellyfin API uses PascalCase field names (`Id`, `Name`, `Type`). These are transformed to `lowerCamelCase` at the API boundary in `JellyfinDataTransformer`. Never use PascalCase for internal data — the transformer is the conversion point.
 
 ```brighterscript
 ' In JellyfinDataTransformer (the boundary)
-item.id = apiData.Id ?? ""          ' PascalCase → lowerCamelCase
+item.id = apiData.Id ?? ""          ' PascalCase → `lowerCamelCase`
 item.name = apiData.Name ?? ""
 item.type = apiData.Type ?? ""
 
@@ -371,9 +371,9 @@ sub setSetting(key, value)             ' side effect only
 end sub
 ```
 
-### Goto Labels
+### `Goto` Labels
 
-Use lowerCamelCase for goto labels. These are control flow markers, not constants or types.
+Use `lowerCamelCase` for `goto` labels. These are control flow markers, not constants or types.
 
 ```brighterscript
 startLogin:
@@ -390,7 +390,7 @@ startLogin:
 | ---- | ----------- | ---------------- |
 | bsfmt | `bsfmt.json` | Formatting (indentation, comment style, import sorting) |
 | bslint | `bslint.json` | Case sensitivity, unused variables, unreachable code |
-| .editorconfig | `.editorconfig` | Indent style, line endings, trailing whitespace |
+| `.editorconfig` | `.editorconfig` | Indent style, line endings, trailing whitespace |
 
 **Not currently enforced by tooling**: naming conventions (code review only), line length.
 

@@ -101,3 +101,13 @@ Weblate
 PRs
 unsynchronized
 autocomplete
+bsfmt
+bslint
+Enum
+Enums
+enums
+Namespaces
+Booleans
+Whitespace
+whitespace
+Config
