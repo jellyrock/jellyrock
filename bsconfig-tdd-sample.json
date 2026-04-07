@@ -35,13 +35,16 @@
     }
   ],
   "diagnosticFilters": [
-    { "files": "node_modules/**/*" },
-    { "files": "**/roku_modules/**/*" },
+    {
+      "files": "node_modules/**/*"
+    },
+    {
+      "files": "**/roku_modules/**/*"
+    }
   ],
   "autoImportComponentScript": true,
   "createPackage": false,
   "outDir": "build",
-
   "plugins": [
     "rooibos-roku",
     "@rokucommunity/bslint",
