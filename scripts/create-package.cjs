@@ -18,7 +18,8 @@ async function createPackage() {
   const options = {
     stagingDir: path.join(rootDir, 'build'),
     outDir: path.join(rootDir, 'out'),
-    outFile: 'jellyrock'
+    outFile: 'jellyrock',
+    retainStagingDir: true
   };
 
   console.log('📦 Creating package from build/ using roku-deploy...');

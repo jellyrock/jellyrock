@@ -26,8 +26,19 @@ if (!ROKU_IP || !ROKU_PASSWORD) {
 
 async function deployToRoku() {
   console.log(`📱 Deploying to Roku at ${ROKU_IP}...`);
-  const OUT_DIR = path.join(__dirname, '..', 'out');
+  const rootDir = path.join(__dirname, '..');
+  const BUILD_DIR = path.join(rootDir, 'build');
+  const OUT_DIR = path.join(rootDir, 'out');
   try {
+    // BSC v1 only compiles to build/ — zip it for roku-deploy
+    await rokuDeploy.zipPackage({
+      stagingDir: BUILD_DIR,
+      outDir: OUT_DIR,
+      outFile: 'jellyrock',
+      retainStagingDir: true
+    });
+    console.log('📦 Package created: out/jellyrock.zip');
+
     await rokuDeploy.publish({
       host: ROKU_IP,
       password: ROKU_PASSWORD,
