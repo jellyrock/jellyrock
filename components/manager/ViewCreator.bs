@@ -59,19 +59,19 @@ sub onSelectAudioPressed()
   for each item in m.view.fullAudioData
 
     audioStreamItem = {
-      "Index": item.Index,
-      "IsExternal": item.IsExternal,
-      "Track": {
+      "index": item.index,
+      "isExternal": item.isExternal,
+      "track": {
         "description": formatAudioDisplayTitle(item)
       },
-      "Type": "audioselection"
+      "type": "audioselection"
     }
 
-    isSelected = m.view.audioIndex = item.Index
+    isSelected = m.view.audioIndex = item.index
     if isSelected
       audioStreamItem.selected = true
     end if
-    m.log.debug("Audio track item", "jellyfinIndex", item.Index, "isSelected", isSelected, "title", formatAudioDisplayTitle(item))
+    m.log.debug("Audio track item", "jellyfinIndex", item.index, "isSelected", isSelected, "title", formatAudioDisplayTitle(item))
 
     audioData.data.push(audioStreamItem)
   end for

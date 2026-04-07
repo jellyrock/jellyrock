@@ -126,9 +126,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       ' This should never happen since ItemMetaData() just fetched metadata
       audioStreamIdx = 0
     end if
-    m.log.debug("Audio stream auto-selected", "audio_stream_idx", audio_stream_idx)
+    m.log.debug("Audio stream auto-selected", "audioStreamIdx", audioStreamIdx)
   else
-    m.log.debug("Audio stream manually selected", "audio_stream_idx", audio_stream_idx)
+    m.log.debug("Audio stream manually selected", "audioStreamIdx", audioStreamIdx)
   end if
 
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
@@ -338,9 +338,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   audioIndexList = []
   for each audioTrackEntry in video.fullAudioData
-    audioIndexList.push(audioTrackEntry.Index)
+    audioIndexList.push(audioTrackEntry.index)
   end for
-  m.log.debug("fullAudioData built", "count", video.fullAudioData.Count(), "jellyfinIndices", audioIndexList, "selectedAudioStreamIdx", audio_stream_idx)
+  m.log.debug("fullAudioData built", "count", video.fullAudioData.Count(), "jellyfinIndices", audioIndexList, "selectedAudioStreamIdx", audioStreamIdx)
 
   if isLive
     video.transcodeParams = {

@@ -133,8 +133,8 @@ namespace tests
     @it("returns Index + 1 for standard MKV layout (video=0, audio=1, audio=2)")
     function _()
       audioStreams = [
-        { index: 1, Language: "kor" },
-        { index: 2, Language: "eng" }
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
       ]
       ' Korean at Jellyfin index 1 → Roku Track 2
       m.assertEqual(getRokuAudioTrackPosition(1, audioStreams), "2")
@@ -145,8 +145,8 @@ namespace tests
     @it("returns Index + 1 for audio at index 0")
     function _()
       audioStreams = [
-        { index: 0, Language: "eng" },
-        { index: 2, Language: "spa" }
+        { index: 0, language: "eng" },
+        { index: 2, language: "spa" }
       ]
       m.assertEqual(getRokuAudioTrackPosition(0, audioStreams), "1")
     end function
@@ -154,8 +154,8 @@ namespace tests
     @it("returns Index + 1 for non-contiguous Jellyfin indexes")
     function _()
       audioStreams = [
-        { index: 100, Language: "eng" },
-        { index: 200, Language: "jpn" }
+        { index: 100, language: "eng" },
+        { index: 200, language: "jpn" }
       ]
       m.assertEqual(getRokuAudioTrackPosition(200, audioStreams), "201")
     end function
@@ -163,7 +163,7 @@ namespace tests
     @it("returns Index + 1 for single-element array")
     function _()
       audioStreams = [
-        { index: 7, Language: "tur" }
+        { index: 7, language: "tur" }
       ]
       m.assertEqual(getRokuAudioTrackPosition(7, audioStreams), "8")
     end function
@@ -177,26 +177,26 @@ namespace tests
     @it("matches Track by language from availableAudioTracks")
     function _()
       audioStreams = [
-        { index: 1, Language: "kor" },
-        { index: 2, Language: "eng" }
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
       ]
       rokuTracks = [
-        { Track: "2", Language: "kor", Name: "Korean" },
-        { Track: "3", Language: "eng", Name: "English" }
+        { track: "2", language: "kor", name: "Korean" },
+        { track: "3", language: "eng", name: "English" }
       ]
-      ' Korean at Jellyfin index 1 → matches Roku Track "2" by language
+      ' Korean at Jellyfin index 1 → matches Roku track "2" by language
       m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
-      ' English at Jellyfin index 2 → matches Roku Track "3" by language
+      ' English at Jellyfin index 2 → matches Roku track "3" by language
       m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
     end function
 
     @it("language matching is case-insensitive")
     function _()
       audioStreams = [
-        { index: 1, Language: "ENG" }
+        { index: 1, language: "ENG" }
       ]
       rokuTracks = [
-        { Track: "2", Language: "eng", Name: "English" }
+        { track: "2", language: "eng", name: "English" }
       ]
       m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
     end function
@@ -204,10 +204,10 @@ namespace tests
     @it("falls back to Index + 1 when language not found in availableAudioTracks")
     function _()
       audioStreams = [
-        { index: 1, Language: "fra" }
+        { index: 1, language: "fra" }
       ]
       rokuTracks = [
-        { Track: "2", Language: "eng", Name: "English" }
+        { track: "2", language: "eng", name: "English" }
       ]
       ' French not in Roku tracks → fallback to Index + 1
       m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
@@ -219,7 +219,7 @@ namespace tests
         { index: 5 }
       ]
       rokuTracks = [
-        { Track: "6", Language: "eng", Name: "English" }
+        { track: "6", language: "eng", name: "English" }
       ]
       m.assertEqual(getRokuAudioTrackPosition(5, audioStreams, rokuTracks), "6")
     end function
@@ -227,10 +227,10 @@ namespace tests
     @it("falls back to Index + 1 when availableAudioTracks entries lack Track or Language")
     function _()
       audioStreams = [
-        { index: 1, Language: "eng" }
+        { index: 1, language: "eng" }
       ]
       rokuTracks = [
-        { Name: "English" }
+        { name: "English" }
       ]
       m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
     end function
@@ -240,13 +240,13 @@ namespace tests
     ' Language matching handles this correctly.
     function _()
       audioStreams = [
-        { index: 1, Language: "kor" },
-        { index: 2, Language: "eng" }
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
       ]
       ' Roku reordered: English first, Korean second
       rokuTracks = [
-        { Track: "3", Language: "eng", Name: "English" },
-        { Track: "2", Language: "kor", Name: "Korean" }
+        { track: "3", language: "eng", name: "English" },
+        { track: "2", language: "kor", name: "Korean" }
       ]
       m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
       m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")

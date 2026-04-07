@@ -785,9 +785,9 @@ end function
 ' (e.g., before playback starts or for non-MKV containers).
 '
 ' @param {integer} jellyfinAudioIndex - The Jellyfin audio stream index
-' @param {dynamic} audioStreamsArray - Jellyfin fullAudioData array (must have .index and .Language fields)
-' @param {dynamic} [availableAudioTracks=invalid] - Roku's availableAudioTracks array (has .Track and .Language)
-' @returns {string} - Roku Track identifier string for audioTrack field
+' @param {dynamic} audioStreamsArray - Jellyfin fullAudioData array (must have .index and .language fields)
+' @param {dynamic} [availableAudioTracks=invalid] - Roku's availableAudioTracks array (has .track and .language)
+' @returns {string} - Roku track identifier string for audioTrack field
 function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsArray as dynamic, availableAudioTracks = invalid as dynamic) as string
   ' When Roku's availableAudioTracks is populated, match by language for accuracy
   if isValid(availableAudioTracks) and isValid(audioStreamsArray)
@@ -795,8 +795,8 @@ function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsAr
     selectedLanguage = ""
     for each stream in audioStreamsArray
       if isValid(stream.index) and stream.index = jellyfinAudioIndex
-        if isValid(stream.Language)
-          selectedLanguage = LCase(stream.Language)
+        if isValid(stream.language)
+          selectedLanguage = LCase(stream.language)
         end if
         exit for
       end if
@@ -804,9 +804,9 @@ function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsAr
 
     if selectedLanguage <> ""
       for each rokuTrack in availableAudioTracks
-        if isValid(rokuTrack.Track) and isValid(rokuTrack.Language)
-          if LCase(rokuTrack.Language) = selectedLanguage
-            return rokuTrack.Track
+        if isValid(rokuTrack.track) and isValid(rokuTrack.language)
+          if LCase(rokuTrack.language) = selectedLanguage
+            return rokuTrack.track
           end if
         end if
       end for
