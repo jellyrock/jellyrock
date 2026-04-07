@@ -90,8 +90,8 @@ sub onFocusChange()
 
   if isValid(defaultFocusElement)
     defaultFocusElement.setFocus(m.top.isInFocusChain())
-    if isValid(defaultFocusElement.focus)
-      defaultFocusElement.focus = m.top.isInFocusChain()
+    if isValid(defaultFocusElement.isFocused)
+      defaultFocusElement.isFocused = m.top.isInFocusChain()
     end if
   end if
 end sub

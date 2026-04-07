@@ -18,66 +18,66 @@ namespace tests
     @describe("Interface fields exist")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("has forceFiltersFail field")
+    @it("has shouldForceFiltersFail field")
     function _()
-      m.assertTrue(m.debugNode.doesExist("forceFiltersFail"))
+      m.assertTrue(m.debugNode.doesExist("shouldForceFiltersFail"))
     end function
 
-    @it("has forceFavoriteFail field")
+    @it("has shouldForceFavoriteFail field")
     function _()
-      m.assertTrue(m.debugNode.doesExist("forceFavoriteFail"))
+      m.assertTrue(m.debugNode.doesExist("shouldForceFavoriteFail"))
     end function
 
-    @it("has forceWatchedFail field")
+    @it("has shouldForceWatchedFail field")
     function _()
-      m.assertTrue(m.debugNode.doesExist("forceWatchedFail"))
+      m.assertTrue(m.debugNode.doesExist("shouldForceWatchedFail"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("All flags default to false")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("forceFiltersFail defaults to false")
+    @it("shouldForceFiltersFail defaults to false")
     function _()
-      m.assertFalse(m.debugNode.forceFiltersFail)
+      m.assertFalse(m.debugNode.shouldForceFiltersFail)
     end function
 
-    @it("forceFavoriteFail defaults to false")
+    @it("shouldForceFavoriteFail defaults to false")
     function _()
-      m.assertFalse(m.debugNode.forceFavoriteFail)
+      m.assertFalse(m.debugNode.shouldForceFavoriteFail)
     end function
 
-    @it("forceWatchedFail defaults to false")
+    @it("shouldForceWatchedFail defaults to false")
     function _()
-      m.assertFalse(m.debugNode.forceWatchedFail)
+      m.assertFalse(m.debugNode.shouldForceWatchedFail)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Flags can be toggled")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("forceFiltersFail can be set to true and back to false")
+    @it("shouldForceFiltersFail can be set to true and back to false")
     function _()
-      m.debugNode.forceFiltersFail = true
-      m.assertTrue(m.debugNode.forceFiltersFail)
-      m.debugNode.forceFiltersFail = false
-      m.assertFalse(m.debugNode.forceFiltersFail)
+      m.debugNode.shouldForceFiltersFail = true
+      m.assertTrue(m.debugNode.shouldForceFiltersFail)
+      m.debugNode.shouldForceFiltersFail = false
+      m.assertFalse(m.debugNode.shouldForceFiltersFail)
     end function
 
-    @it("forceFavoriteFail can be set to true and back to false")
+    @it("shouldForceFavoriteFail can be set to true and back to false")
     function _()
-      m.debugNode.forceFavoriteFail = true
-      m.assertTrue(m.debugNode.forceFavoriteFail)
-      m.debugNode.forceFavoriteFail = false
-      m.assertFalse(m.debugNode.forceFavoriteFail)
+      m.debugNode.shouldForceFavoriteFail = true
+      m.assertTrue(m.debugNode.shouldForceFavoriteFail)
+      m.debugNode.shouldForceFavoriteFail = false
+      m.assertFalse(m.debugNode.shouldForceFavoriteFail)
     end function
 
-    @it("forceWatchedFail can be set to true and back to false")
+    @it("shouldForceWatchedFail can be set to true and back to false")
     function _()
-      m.debugNode.forceWatchedFail = true
-      m.assertTrue(m.debugNode.forceWatchedFail)
-      m.debugNode.forceWatchedFail = false
-      m.assertFalse(m.debugNode.forceWatchedFail)
+      m.debugNode.shouldForceWatchedFail = true
+      m.assertTrue(m.debugNode.shouldForceWatchedFail)
+      m.debugNode.shouldForceWatchedFail = false
+      m.assertFalse(m.debugNode.shouldForceWatchedFail)
     end function
 
   end class

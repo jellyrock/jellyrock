@@ -303,7 +303,7 @@ namespace tests
       m.assertTrue(serverConnected, "Server must connect before authentication")
 
       ' Attempt login with demo credentials (username: "demo", password: "")
-      authData = get_token("demo", "")
+      authData = getToken("demo", "")
 
       m.assertNotInvalid(authData, "Should receive authentication response")
       m.assertNotInvalid(authData.json, "Should have json field")
@@ -322,7 +322,7 @@ namespace tests
       m.assertTrue(serverConnected, "Server connection required")
 
       ' 2. Login
-      authData = get_token("demo", "")
+      authData = getToken("demo", "")
       m.assertNotInvalid(authData, "Should receive auth data")
       m.assertNotInvalid(authData.json, "Should have json field")
       m.assertNotInvalid(authData.json.User, "Auth data should contain user info")
@@ -343,7 +343,7 @@ namespace tests
     function _()
       ' Clear server and registry to start fresh
       server.Delete()
-      unset_setting("server")
+      unsetSetting("server")
 
       ' Attempt connection with original URL
       originalUrl = "https://demo.jellyfin.org/stable"
@@ -352,7 +352,7 @@ namespace tests
       m.assertTrue(success, "Should successfully connect")
 
       ' Verify: Registry should contain original URL
-      persistedUrl = get_setting("server")
+      persistedUrl = getSetting("server")
       m.assertEqual(persistedUrl, originalUrl, "Registry should contain original URL, not canonical")
 
       ' Verify: Global state should contain URL (used for API calls)
@@ -364,7 +364,7 @@ namespace tests
     function _()
       ' Clear server and registry to start fresh
       server.Delete()
-      unset_setting("server")
+      unsetSetting("server")
 
       ' Connect with inferred URL but provide different original for persistence
       connectionUrl = "https://demo.jellyfin.org/stable"
@@ -374,7 +374,7 @@ namespace tests
       m.assertTrue(success, "Should successfully connect")
 
       ' Verify: Registry should contain user-entered URL, not connection URL
-      persistedUrl = get_setting("server")
+      persistedUrl = getSetting("server")
       m.assertEqual(persistedUrl, userEnteredUrl, "Registry should persist originalUrl parameter")
       m.assertNotEqual(persistedUrl, connectionUrl, "Registry should NOT contain connection URL")
     end function
@@ -388,8 +388,8 @@ namespace tests
       ' Set up initial server state with saved credentials
       localServer = m.getTestServer()
       localServer.serverUrl = "https://old-server.example.com"
-      set_setting("username", "olduser")
-      set_setting("password", "oldpass")
+      setSetting("username", "olduser")
+      setSetting("password", "oldpass")
 
       ' Capture pre-connection URL (simulating CreateServerGroup behavior)
       previousServerUrl = localServer.serverUrl
@@ -405,13 +405,13 @@ namespace tests
       ' The fix: Compare pre-connection URL to post-discovery canonical URL
       ' This should detect the server change and clear credentials
       if previousServerUrl <> canonicalUrl
-        set_setting("username", "")
-        set_setting("password", "")
+        setSetting("username", "")
+        setSetting("password", "")
       end if
 
       ' Verify credentials were cleared
-      m.assertEqual(get_setting("username"), "", "Username should be cleared when server URL changes")
-      m.assertEqual(get_setting("password"), "", "Password should be cleared when server URL changes")
+      m.assertEqual(getSetting("username"), "", "Username should be cleared when server URL changes")
+      m.assertEqual(getSetting("password"), "", "Password should be cleared when server URL changes")
     end function
 
     @it("preserves credentials when reconnecting to same server")
@@ -419,8 +419,8 @@ namespace tests
       ' Set up initial server state with saved credentials
       localServer = m.getTestServer()
       localServer.serverUrl = "https://demo.jellyfin.org/stable"
-      set_setting("username", "saveduser")
-      set_setting("password", "savedpass")
+      setSetting("username", "saveduser")
+      setSetting("password", "savedpass")
 
       ' Capture pre-connection URL
       previousServerUrl = localServer.serverUrl
@@ -435,13 +435,13 @@ namespace tests
 
       ' URL hasn't changed - credentials should be preserved
       if previousServerUrl <> canonicalUrl
-        set_setting("username", "")
-        set_setting("password", "")
+        setSetting("username", "")
+        setSetting("password", "")
       end if
 
       ' Verify credentials were NOT cleared
-      m.assertEqual(get_setting("username"), "saveduser", "Username should be preserved when reconnecting to same server")
-      m.assertEqual(get_setting("password"), "savedpass", "Password should be preserved when reconnecting to same server")
+      m.assertEqual(getSetting("username"), "saveduser", "Username should be preserved when reconnecting to same server")
+      m.assertEqual(getSetting("password"), "savedpass", "Password should be preserved when reconnecting to same server")
     end function
 
     @it("clears credentials when server redirects to different URL")
@@ -453,8 +453,8 @@ namespace tests
 
       localServer = m.getTestServer()
       localServer.serverUrl = "http://example.com" ' Initial URL
-      set_setting("username", "user123")
-      set_setting("password", "pass123")
+      setSetting("username", "user123")
+      setSetting("password", "pass123")
 
       ' Fixed implementation: Capture URL before any updates
       previousServerUrl = localServer.serverUrl
@@ -474,13 +474,13 @@ namespace tests
 
       ' Fixed scenario: Compare captured URL to canonical URL
       if previousServerUrl <> canonicalUrl
-        set_setting("username", "")
-        set_setting("password", "")
+        setSetting("username", "")
+        setSetting("password", "")
       end if
 
       ' URL changed from http://example.com to demo server, credentials should be cleared
-      m.assertEqual(get_setting("username"), "", "Username should be cleared on URL redirect")
-      m.assertEqual(get_setting("password"), "", "Password should be cleared on URL redirect")
+      m.assertEqual(getSetting("username"), "", "Username should be cleared on URL redirect")
+      m.assertEqual(getSetting("password"), "", "Password should be cleared on URL redirect")
     end function
 
   end class

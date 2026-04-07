@@ -69,8 +69,8 @@ sub setupLabels()
   ' Handle user recording permissions
   m.userCanRecord = m.global.user.policy.enableLiveTvManagement
   if m.userCanRecord = false
-    m.recordButton.enabled = false
-    m.recordSeriesButton.enabled = false
+    m.recordButton.isEnabled = false
+    m.recordSeriesButton.isEnabled = false
   end if
 end sub
 
@@ -95,9 +95,9 @@ end sub
 
 sub programUpdated()
 
-  m.top.watchSelectedChannel = false
-  m.top.recordSelectedChannel = false
-  m.top.recordSeriesSelectedChannel = false
+  m.top.shouldWatchSelectedChannel = false
+  m.top.shouldRecordSelectedChannel = false
+  m.top.shouldRecordSeriesSelectedChannel = false
   m.overview.maxLines = m.maxDetailLines
   prog = m.top.programDetails
 
@@ -192,11 +192,11 @@ sub programUpdated()
   ' If not a series, hide Record Series button (doesn't make sense for non-series content)
   if prog.isSeries <> true ' could be invalid or false
     m.recordSeriesButton.visible = false
-    m.recordSeriesButton.enabled = false
+    m.recordSeriesButton.isEnabled = false
   else
     m.recordSeriesButton.visible = true
     ' Restore enabled state based on user permissions (set in setupLabels)
-    m.recordSeriesButton.enabled = m.userCanRecord
+    m.recordSeriesButton.isEnabled = m.userCanRecord
   end if
 
   m.detailsView.visible = "true"
@@ -269,9 +269,9 @@ sub focusChanged()
     m.buttonsFocusAnimationOpacity.keyValue = [0, 1]
     m.buttons.setFocus(true)
   else
-    m.top.watchSelectedChannel = false
-    m.top.recordSelectedChannel = false
-    m.top.recordSeriesSelectedChannel = false
+    m.top.shouldWatchSelectedChannel = false
+    m.top.shouldRecordSelectedChannel = false
+    m.top.shouldRecordSeriesSelectedChannel = false
     m.buttonsFocusAnimationOpacity.keyValue = [1, 0]
   end if
 
@@ -295,11 +295,11 @@ sub onButtonSelected()
 
   ' Button indices: 0 = viewChannel, 1 = record, 2 = recordSeries
   if selectedIndex = 0
-    m.top.watchSelectedChannel = true
+    m.top.shouldWatchSelectedChannel = true
   else if selectedIndex = 1
-    m.top.recordSelectedChannel = true
+    m.top.shouldRecordSelectedChannel = true
   else if selectedIndex = 2
-    m.top.recordSeriesSelectedChannel = true
+    m.top.shouldRecordSeriesSelectedChannel = true
   end if
 end sub
 

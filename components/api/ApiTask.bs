@@ -1,4 +1,4 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/roku_modules/rr/Requests.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -16,7 +16,7 @@ sub runApiLoop()
   ' for all pool slots to be ready before dispatching — without this, the
   ' coordinator could write to our request field before we're listening,
   ' causing a permanently dead slot.
-  m.top.ready = true
+  m.top.isReady = true
 
   while true
     msg = wait(0, port)

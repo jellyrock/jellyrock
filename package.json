@@ -1,7 +1,7 @@
 {
   "name": "jellyrock",
   "type": "module",
-  "version": "2.9.0",
+  "version": "2.10.1",
   "description": "Roku client for Jellyfin media server",
   "dependencies": {
     "@rokucommunity/bslib": "0.1.1",
@@ -13,7 +13,7 @@
     "brighterscript": "1.0.0-alpha.50",
     "brighterscript-formatter": "1.7.22",
     "brighterscript-xml-plugin": "1.0.0-alpha.3",
-    "dotenv": "17.4.0",
+    "dotenv": "17.4.1",
     "fast-glob": "3.3.3",
     "jshint": "2.13.6",
     "markdownlint-cli2": "0.22.0",

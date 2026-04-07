@@ -1,42 +1,23 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
 
-' Roku translates the info provided in subtitleTracks into availableSubtitleTracks
-' Including ignoring tracks, if they are not understood, thus making indexing unpredictable.
-' This function translates between our internel selected subtitle index
-' and the corresponding index in availableSubtitleTracks.
-function availSubtitleTrackIdx(video, sub_idx) as integer
-  url = video.Subtitles[sub_idx].Track.TrackName
-  idx = 0
-  for each availTrack in video.availableSubtitleTracks
-    ' The TrackName must contain the URL we supplied originally, though
-    ' Roku mangles the name a bit, so we check if the URL is a substring, rather
-    ' than strict equality
-    if Instr(1, availTrack.TrackName, url)
-      return idx
-    end if
-    idx = idx + 1
-  end for
-  return SubtitleSelection.none
-end function
-
 ' defaultSubtitleTrackFromVid: Identifies the default subtitle track given metadata and audio index
 '
 ' @param {object} meta - metadata object containing MediaSources with MediaStreams
 ' @param {integer} selectedAudioIndex - index of selected audio stream (used for Smart mode language matching)
 ' @param {dynamic} [mediaSourceId=invalid] - optional MediaSource ID to use instead of mediaSources[0]
-' @return {integer} subtitle track index or SubtitleSelection.none if not found
+' @return {integer} subtitle track index or SubtitleSelection.NONE if not found
 function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integer, mediaSourceId = invalid as dynamic) as integer
   userSession = m.global.user
   if userSession.config.subtitleMode = "None"
-    return SubtitleSelection.none ' No subtitles desired: return none
+    return SubtitleSelection.NONE ' No subtitles desired: return none
   end if
 
-  if not isValid(meta) then return SubtitleSelection.none
+  if not isValid(meta) then return SubtitleSelection.NONE
   mediaSources = invalid
   if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
     mediaSources = meta.mediaSourcesData.mediaSources
   end if
-  if not isValid(mediaSources) then return SubtitleSelection.none
+  if not isValid(mediaSources) then return SubtitleSelection.NONE
 
   ' Use the selected source's MediaStreams when a specific mediaSourceId is provided,
   ' matching the pattern used for audio stream selection in LoadVideoContentTask.
@@ -51,7 +32,7 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   end if
   ' Fall back to first source if no match or no mediaSourceId provided
   if not isValid(allStreams)
-    if not isValidAndNotEmpty(mediaSources[0].MediaStreams) then return SubtitleSelection.none
+    if not isValidAndNotEmpty(mediaSources[0].MediaStreams) then return SubtitleSelection.NONE
     allStreams = mediaSources[0].MediaStreams
   end if
 
@@ -73,7 +54,7 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   end if
 
   defaultTextSubs = defaultSubtitleTrack(subtitles["text"], selectedAudioLanguage, true) ' Find correct subtitle track (forced text)
-  if defaultTextSubs <> SubtitleSelection.none
+  if defaultTextSubs <> SubtitleSelection.NONE
     return defaultTextSubs
   end if
 
@@ -81,7 +62,7 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
     return defaultSubtitleTrack(subtitles["all"], selectedAudioLanguage) ' if no appropriate text subs exist, allow non-text
   end if
 
-  return SubtitleSelection.none
+  return SubtitleSelection.NONE
 end function
 
 ' defaultSubtitleTrack:
@@ -89,7 +70,7 @@ end function
 ' @param {dynamic} sortedSubtitles - array of subtitles sorted by type and language
 ' @param {string} selectedAudioLanguage - language for selected audio track
 ' @param {boolean} [requireText=false] - indicates if only text subtitles should be considered
-' @return {integer} indicating the default track's server-side index. Defaults to {SubtitleSelection.none} if one is not found
+' @return {integer} indicating the default track's server-side index. Defaults to {SubtitleSelection.NONE} if one is not found
 function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, requireText = false as boolean) as integer
   ' ONE rendezvous to get user node
   localUser = m.global.user
@@ -162,49 +143,7 @@ function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, 
     end for
   end if
 
-  return SubtitleSelection.none ' Keep current default behavior of "None", if no correct subtitle is identified
-end function
-
-' Given a set of subtitles, and a subtitle index (the index on the server, not in the list provided)
-' this will set all relevant settings for roku (mainly closed captions) and return the index of the
-' subtitle track specified, but indexed based on the provided list of subtitles
-function setupSubtitle(video, subtitles, subtitle_idx = SubtitleSelection.none) as integer
-  if subtitle_idx = SubtitleSelection.none
-    ' If we are not using text-based subtitles, turn them off
-    return SubtitleSelection.none
-  end if
-
-  ' Translate the raw index to one relative to the provided list
-  subtitleSelIdx = getSubtitleSelIdxFromSubIdx(subtitles, subtitle_idx)
-
-  selectedSubtitle = subtitles[subtitleSelIdx]
-
-  if isValid(selectedSubtitle) and isValid(selectedSubtitle.IsEncoded)
-    if selectedSubtitle.IsEncoded
-      ' With encoded subtitles, turn off captions
-      video.globalCaptionMode = "Off"
-    else
-      ' If this is a text-based subtitle, set relevant settings for roku captions
-      video.globalCaptionMode = "On"
-      video.subtitleTrack = video.availableSubtitleTracks[availSubtitleTrackIdx(video, subtitleSelIdx)].TrackName
-    end if
-  end if
-
-  return subtitleSelIdx
-end function
-
-' The subtitle index on the server differs from the index we track locally
-' This function converts the former into the latter
-function getSubtitleSelIdxFromSubIdx(subtitles, sub_idx) as integer
-  selIdx = 0
-  if sub_idx = SubtitleSelection.none then return SubtitleSelection.none
-  for each item in subtitles
-    if item.Index = sub_idx
-      return selIdx
-    end if
-    selIdx = selIdx + 1
-  end for
-  return SubtitleSelection.none
+  return SubtitleSelection.NONE ' Keep current default behavior of "None", if no correct subtitle is identified
 end function
 
 'Checks available subtitle tracks and puts subtitles in forced, default, and non-default/forced but preferred language at the top
@@ -212,7 +151,7 @@ function sortSubtitles(MediaStreams)
   tracks = { "forced": [], "default": [], "normal": [], "textForced": [], "textDefault": [], "textNormal": [] }
   ' ONE rendezvous to get user node
   localUser = m.global.user
-  prefered_lang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
+  preferredLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
   for each stream in MediaStreams
     if stream.type = "Subtitle"
 
@@ -242,7 +181,7 @@ function sortSubtitles(MediaStreams)
         textType = "textNormal"
       end if
 
-      if prefered_lang <> "" and prefered_lang = stream.Track.Language
+      if preferredLang <> "" and preferredLang = stream.Track.Language
         tracks[trackType].unshift(stream)
 
         if stream.IsTextSubtitleStream

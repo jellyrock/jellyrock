@@ -575,9 +575,9 @@ namespace tests
 
       ' GIVEN: User has already been migrated (using NEW names)
       ' Save with NEW names (global goes to test-global in debug mode, user settings to user section)
-      set_setting("globalRememberMe", true) ' Global setting
-      set_user_setting("uiRowLayout", "landscape")
-      set_user_setting("uiDesignHideClock", false)
+      setSetting("globalRememberMe", true) ' Global setting
+      setUserSetting("uiRowLayout", "landscape")
+      setUserSetting("uiDesignHideClock", false)
 
       ' WHEN: Read from registry
       userReg = CreateObject("roRegistrySection", testUserId)

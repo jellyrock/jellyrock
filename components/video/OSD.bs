@@ -154,12 +154,12 @@ sub setButtonStates()
   ' Item Previous
   if queueCount = 1 or queueIndex = 0
     itemPrevious = m.buttonMenuLeft.findNode("itemBack")
-    itemPrevious.enabled = false
+    itemPrevious.isEnabled = false
   end if
   ' Item Next
   if queueIndex + 1 >= queueCount
     itemNext = m.buttonMenuLeft.findNode("itemNext")
-    itemNext.enabled = false
+    itemNext.isEnabled = false
   end if
 
   ' Remove these buttons as needed
@@ -243,7 +243,7 @@ sub setVideoSubTitle()
   ' start fresh by removing all subtitle nodes
   m.videoSubtitleGroup.removeChildrenIndex(m.videoSubtitleGroup.getChildCount(), 0)
 
-  airDateNodeCreated = false
+  isAirDateNodeCreated = false
   item = m.itemData
   itemType = item.type
 
@@ -295,7 +295,7 @@ sub setVideoSubTitle()
   else if itemType = "Movie"
     ' videoAirDate
     if item.productionYear > 0
-      airDateNodeCreated = true
+      isAirDateNodeCreated = true
 
       productionYearNode = createSubtitleLabelNode("productionYear")
       productionYearNode.text = item.productionYear.toStr().trim()
@@ -328,7 +328,7 @@ sub setVideoSubTitle()
           displaySubtitleNode(episodeInfoNode)
         end if
       else if currentProgram.isMovie and currentProgram.productionYear > 0
-        airDateNodeCreated = true
+        isAirDateNodeCreated = true
         productionYearNode = createSubtitleLabelNode("productionYear")
         productionYearNode.text = currentProgram.productionYear.toStr().trim()
         displaySubtitleNode(productionYearNode)
@@ -354,19 +354,19 @@ sub setVideoSubTitle()
   end if
 
   ' Determine if ratings should be shown based on content type and user settings
-  showRatings = false
+  shouldShowRatings = false
   if m.top.isMovie
     ' Movie content - respect uiMoviesShowRatings setting
-    showRatings = userSettings.uiMoviesShowRatings
+    shouldShowRatings = userSettings.uiMoviesShowRatings
   else if m.top.isSeries
     ' Series content - respect uiTvShowsDisableCommunityRating setting
-    showRatings = not userSettings.uiTvShowsDisableCommunityRating
+    shouldShowRatings = not userSettings.uiTvShowsDisableCommunityRating
   else
     ' Unknown/other content types - show if metadata exists
-    showRatings = true
+    shouldShowRatings = true
   end if
 
-  if showRatings
+  if shouldShowRatings
     ' communityRating (star + rating)
     if metaItem.communityRating <> 0
       communityRatingNode = CreateObject("roSGNode", "CommunityRating")
@@ -387,7 +387,7 @@ sub setVideoSubTitle()
   end if
 
   ' videoAirDate if needed
-  if not airDateNodeCreated and isValidAndNotEmpty(metaItem.premiereDate)
+  if not isAirDateNodeCreated and isValidAndNotEmpty(metaItem.premiereDate)
     premiereDateNode = createSubtitleLabelNode("videoAirDate")
     premiereDateNode.text = formatIsoDateVideo(metaItem.premiereDate)
     displaySubtitleNode(premiereDateNode)
@@ -502,7 +502,7 @@ sub onButtonSelected()
   end if
 
   if LCase(selectedButton.id) = "chapterlist"
-    m.top.showChapterList = not m.top.showChapterList
+    m.top.shouldShowChapterList = not m.top.shouldShowChapterList
   end if
 
   m.top.action = selectedButton.id
@@ -515,7 +515,7 @@ function createSubtitleLabelNode(labelId as string) as object
   labelNode.vertAlign = "center"
   labelNode.width = 0
   labelNode.height = 0
-  labelNode.bold = true
+  labelNode.isBold = true
 
   return labelNode
 end function
@@ -530,7 +530,7 @@ function createSubtitleDividerNode() as object
   labelNode.width = 0
   labelNode.height = 40
   labelNode.text = "•"
-  labelNode.bold = true
+  labelNode.isBold = true
 
   return labelNode
 end function

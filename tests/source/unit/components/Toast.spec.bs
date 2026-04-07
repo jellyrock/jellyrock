@@ -30,7 +30,7 @@ namespace tests
 
     @it("has show field")
     function _()
-      m.assertTrue(m.toast.doesExist("show"))
+      m.assertTrue(m.toast.doesExist("shouldShow"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -47,9 +47,9 @@ namespace tests
       m.assertEqual(m.toast.toastType, "error")
     end function
 
-    @it("show defaults to false")
+    @it("shouldShow defaults to false")
     function _()
-      m.assertFalse(m.toast.show)
+      m.assertFalse(m.toast.shouldShow)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

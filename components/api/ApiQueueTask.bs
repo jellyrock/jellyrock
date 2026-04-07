@@ -19,10 +19,10 @@ end sub
 '   ever lost regardless of timing.
 '
 ' Startup ordering guarantee:
-'   1. Each ApiTask pool slot sets ready=true after registering its request observer.
+'   1. Each ApiTask pool slot sets isReady=true after registering its request observer.
 '   2. This coordinator waits for ALL pool slots to be ready before registering its
-'      own observers and setting ready=true.
-'   3. fetchRes() waits for this coordinator's ready=true before appending children.
+'      own observers and setting isReady=true.
+'   3. fetchRes() waits for this coordinator's isReady=true before appending children.
 '   Result: pool observers → coordinator ready → fetchRes appends.  No startup race.
 '
 ' Thread safety:
@@ -49,15 +49,15 @@ sub runQueueLoop()
   ' observeField() and a subsequent field read).
   waitPort = CreateObject("roMessagePort")
   for each slot in pool
-    if not slot.ready
-      slot.observeField("ready", waitPort)
+    if not slot.isReady
+      slot.observeField("isReady", waitPort)
     end if
   end for
   ' Check actual state until all 3 are ready. Events just wake us up.
   for attempts = 0 to 50
     allReady = true
     for each slot in pool
-      if not slot.ready
+      if not slot.isReady
         allReady = false
         exit for
       end if
@@ -68,7 +68,7 @@ sub runQueueLoop()
     wait(5000, waitPort)
   end for
   for each slot in pool
-    slot.unobserveField("ready")
+    slot.unobserveField("isReady")
   end for
 
   ' ── Now safe to accept requests ──
@@ -77,7 +77,7 @@ sub runQueueLoop()
   ' Signal readiness AFTER pool slots are confirmed ready and our enqueue
   ' observer is registered. fetchRes() callers waiting on this flag can
   ' now safely append children — the full pipeline is operational.
-  m.top.ready = true
+  m.top.isReady = true
 
   ' Store node IDs so we can match response events back to slot indices.
   ' msg.getNode() returns the ID string of the node whose field changed.
@@ -121,7 +121,7 @@ sub runQueueLoop()
             ' Deliver response to the orchestrator's result node.
             ' Write result before done so it is readable when the observer fires.
             entry.resultNode.result = msg.getData()
-            entry.resultNode.done = true
+            entry.resultNode.isDone = true
             m.inFlight[slotIdx] = invalid
           end if
         end if

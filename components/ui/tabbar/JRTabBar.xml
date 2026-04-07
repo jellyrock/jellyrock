@@ -16,7 +16,7 @@
     <!-- Input/Output: externally settable focused tab index (e.g., when returning from user dropdown) -->
     <field id="focusedTabIndex" type="integer" value="0" onChange="onFocusedTabIndexChanged" alwaysNotify="true" />
     <!-- Output: signals when the first tab has finished rendering/sizing -->
-    <field id="ready" type="boolean" value="false" alwaysNotify="true" />
+    <field id="isReady" type="boolean" value="false" alwaysNotify="true" />
     <function name="destroy" />
   </interface>
 </component>

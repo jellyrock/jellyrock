@@ -6,8 +6,8 @@ import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = log.Logger("PhotoDetails")
-  m.top.optionsAvailable = true
-  m.top.overhangVisible = false
+  m.top.isOptionsAvailable = true
+  m.top.isOverhangVisible = false
   m.slideshowTimer = m.top.findNode("slideshowTimer")
   m.slideshowTimer.observeField("fire", "nextSlide")
   m.status = m.top.findNode("status")
@@ -59,7 +59,7 @@ sub onPhotoLoaded()
     end if
   else
     'Show user error here (for example if it's not a supported image type)
-    message_dialog(translate(translationKeys.ErrorImageTypeNotSupported))
+    messageDialog(translate(translationKeys.ErrorImageTypeNotSupported))
   end if
 end sub
 

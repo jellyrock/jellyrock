@@ -29,7 +29,11 @@ sub init()
   m.top.appendChild(m.indicator)
 
   ' Position indicator after TextButton finishes sizing
-  m.top.observeField("ready", "onReady")
+  m.top.observeField("isReady", "onReady")
+
+  ' isButtonSelected and isFocused are declared by TextButton (parent) without onChange — observe here
+  m.top.observeField("isButtonSelected", "onStateChanged")
+  m.top.observeField("isFocused", "onStateChanged")
 end sub
 
 ' Maps tabTitle to TextButton's text field, triggering TextButton's sizing flow
@@ -41,7 +45,7 @@ end sub
 ' The indicator sits below the text at text width, inside the background bounds.
 ' When focused, the TextButton border naturally wraps around it (ResumeButton pattern).
 sub onReady()
-  if not m.top.ready then return
+  if not m.top.isReady then return
 
   padding = m.top.padding
   bgWidth = m.buttonBackground.width
@@ -53,7 +57,7 @@ sub onReady()
 
   m.indicator.width = textWidth
   m.indicator.translation = [padding, textBottom + 12]
-  m.indicator.visible = m.top.isSelected
+  m.indicator.visible = m.top.isButtonSelected
 end sub
 
 ' Overrides TextButton.onFocusChanged to use the virtual isFocused field.
@@ -71,7 +75,7 @@ sub onFocusChanged()
   else
     m.buttonBorder.visible = false
     m.buttonBackground.visible = false
-    if m.top.isSelected
+    if m.top.isButtonSelected
       m.buttonText.color = m.colorTextPrimary
     else
       m.buttonText.color = m.colorTextSecondary
@@ -79,8 +83,8 @@ sub onFocusChanged()
   end if
 end sub
 
-' Called when isFocused or isSelected changes — updates all visual state
+' Called when isFocused or isButtonSelected changes — updates all visual state
 sub onStateChanged()
   onFocusChanged()
-  m.indicator.visible = m.top.isSelected
+  m.indicator.visible = m.top.isButtonSelected
 end sub

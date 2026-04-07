@@ -5,7 +5,7 @@
     <field id="thumbnailIndex" type="integer" value="-1" onChange="onThumbnailIndexChanged" />
     <field id="playbackPosition" type="float" value="0" onChange="onPlaybackPositionChanged" />
     <field id="videoDuration" type="float" />
-    <field id="visible" type="boolean" value="false" onChange="onVisibilityChanged" />
+    <field id="isVisible" type="boolean" value="false" onChange="onIsVisibleChanged" />
     <function name="destroy" />
     <function name="reset" />
   </interface>

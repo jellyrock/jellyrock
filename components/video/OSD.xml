@@ -18,23 +18,23 @@
     <!-- MAIN -->
     <!-- Video information - title, season/episode number etc. -->
     <LayoutGroup id="videoInfoGroup" itemSpacings="[9]" layoutDirection="vert" translation="[96,740]">
-      <LabelSecondaryLargest id="videoTitle" bold="true" width="1400" />
+      <LabelSecondaryLargest id="videoTitle" isBold="true" width="1400" />
       <LayoutGroup id="videoSubtitleGroup" itemSpacings="[9]" layoutDirection="horiz" />
     </LayoutGroup>
 
     <!-- Ends at time -->
     <LayoutGroup id="endsAtGroup" itemSpacings="[12]" layoutDirection="horiz" horizAlignment="right" translation="[1824,759]">
-      <LabelSecondaryMedium id="endsAtText" bold="true" text="" />
-      <LabelSecondaryMedium id="endsAtTime" bold="true" />
+      <LabelSecondaryMedium id="endsAtText" isBold="true" text="" />
+      <LabelSecondaryMedium id="endsAtTime" isBold="true" />
     </LayoutGroup>
 
 
     <!-- Progress bar -->
-    <LabelSecondaryMedium id="videoPositionTime" bold="true" translation="[96,868]" />
+    <LabelSecondaryMedium id="videoPositionTime" isBold="true" translation="[96,868]" />
     <RectangleBackgroundSecondary id="progressBarBackground" width="1425" height="9" translation="[240,880]">
       <RectangleSecondary id="progressBar" width="0" height="9" />
     </RectangleBackgroundSecondary>
-    <LabelSecondaryMedium id="videoRemainingTime" bold="true" horizAlign="right" width="200" translation="[1624,868]" />
+    <LabelSecondaryMedium id="videoRemainingTime" isBold="true" horizAlign="right" width="200" translation="[1624,868]" />
 
     <!-- FOOTER -->
     <OSDButtonGroup id="buttonMenuLeft" translation="[90,932]">
@@ -80,7 +80,7 @@
 
     <!-- Actions/UI state -->
     <field id="action" type="string" alwaysNotify="true" />
-    <field id="showChapterList" type="boolean" alwaysNotify="true" />
+    <field id="shouldShowChapterList" type="boolean" alwaysNotify="true" />
     <field id="hasFocus" type="boolean" alwaysNotify="true" />
   </interface>
 </component>

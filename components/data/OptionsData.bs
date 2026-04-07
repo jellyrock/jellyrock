@@ -2,40 +2,40 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.top.value_index = 0
+  m.top.valueIndex = 0
 end sub
 
-sub update_title()
+sub updateTitle()
   if m.top.choices.count() = 0
-    m.top.title = m.top.base_title + ": <none>"
+    m.top.title = m.top.baseTitle + ": <none>"
     return
   end if
 
   for i = 0 to m.top.choices.count() - 1
     if m.top.choices[i].value = m.top.value
-      m.top.value_index = i
+      m.top.valueIndex = i
       exit for
     end if
   end for
-  m.top.title = m.top.base_title + ": " + m.top.choices[m.top.value_index].display
+  m.top.title = m.top.baseTitle + ": " + m.top.choices[m.top.valueIndex].display
 end sub
 
 sub press()
-  max_opt = m.top.choices.count()
-  i = m.top.value_index + 1
-  while i >= max_opt
-    i = i - max_opt
+  maxOpt = m.top.choices.count()
+  i = m.top.valueIndex + 1
+  while i >= maxOpt
+    i = i - maxOpt
   end while
 
-  m.top.value_index = i
-  m.top.value = m.top.choices[m.top.value_index].value
+  m.top.valueIndex = i
+  m.top.value = m.top.choices[m.top.valueIndex].value
 
-  if m.top.config_key = "" or not isValid(m.top.config_key)
+  if m.top.configKey = "" or not isValid(m.top.configKey)
     return
   end if
-  if m.top.global_setting
-    set_setting(m.top.config_key, m.top.value)
+  if m.top.isGlobalSetting
+    setSetting(m.top.configKey, m.top.value)
   else
-    set_user_setting(m.top.config_key, m.top.value)
+    setUserSetting(m.top.configKey, m.top.value)
   end if
 end sub

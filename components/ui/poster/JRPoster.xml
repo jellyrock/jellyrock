@@ -2,8 +2,8 @@
 <component name="JRPoster" extends="Poster">
   <children>
     <RectangleSecondary id="watchBadgeBackground" width="90" height="48" visible="false">
-      <LabelPrimarySmall id="unplayedVideosCount" bold="true" height="48" horizAlign="center" vertAlign="center" translation="[0,3]" />
-      <LabelPrimaryMedium id="checkmark" bold="true" height="48" horizAlign="center" vertAlign="center" text="✓" translation="[0,3]" visible="false" />
+      <LabelPrimarySmall id="unplayedVideosCount" isBold="true" height="48" horizAlign="center" vertAlign="center" translation="[0,3]" />
+      <LabelPrimaryMedium id="checkmark" isBold="true" height="48" horizAlign="center" vertAlign="center" text="✓" translation="[0,3]" visible="false" />
     </RectangleSecondary>
   </children>
   <interface>

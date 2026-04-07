@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -29,7 +29,7 @@ sub RecordOrCancelProgram()
     end if
 
     if isValid(defaults)
-      if m.top.recordSeries = true
+      if m.top.shouldRecordSeries = true
         createRes = fetchRes(GetApi().BuildCreateSeriesTimerRequest(defaults), "createSeriesTimer")
       else
         createRes = fetchRes(GetApi().BuildCreateTimerRequest(defaults), "createTimer")
@@ -55,7 +55,7 @@ sub RecordOrCancelProgram()
     end if
   else
     ' Cancelling a recording
-    if m.top.recordSeries = true
+    if m.top.shouldRecordSeries = true
       cancelRes = fetchRes(GetApi().BuildCancelSeriesTimerRequest(m.top.programDetails.seriesTimerId), "cancelSeriesTimer")
     else
       cancelRes = fetchRes(GetApi().BuildCancelTimerRequest(timerId), "cancelTimer")

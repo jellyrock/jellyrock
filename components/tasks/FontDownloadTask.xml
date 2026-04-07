@@ -2,8 +2,8 @@
 
 <component name="FontDownloadTask" extends="Task">
   <interface>
-    <field id="fontDownloadCompleted" type="boolean" />
-    <field id="fontDownloadSuccess" type="boolean" />
+    <field id="isFontDownloadCompleted" type="boolean" />
+    <field id="isFontDownloadSuccess" type="boolean" />
     <field id="errorMessage" type="string" />
   </interface>
 </component>

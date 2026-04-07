@@ -1,8 +1,8 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/Image.bs"
-import "pkg:/source/api/Items.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/image.bs"
+import "pkg:/source/api/items.bs"
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
@@ -18,7 +18,7 @@ sub init()
   ' Clear backdrop immediately when search screen opens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
-  m.top.optionsAvailable = false
+  m.top.isOptionsAvailable = false
   m.searchSelect = m.top.findnode("searchSelect")
   m.searchTask = CreateObject("roSGNode", "SearchTask")
 
@@ -28,7 +28,7 @@ sub init()
   ' Cache search keyboard reference and observe focus changes
   ' to adjust alphabet layout when voice button popup appears
   searchBox = m.top.findNode("SearchBox")
-  m.searchAlphabox = searchBox.findNode("search_Key")
+  m.searchAlphabox = searchBox.findNode("searchKey")
   m.searchAlphabox.observeField("focusedChild", "onKeyboardFocusChange")
 
   ' Observe row item focus for backdrop updates
@@ -40,8 +40,8 @@ sub init()
 end sub
 
 sub OnScreenShown()
-  if m.top.skipInitialFocus
-    m.top.skipInitialFocus = false
+  if m.top.shouldSkipInitialFocus
+    m.top.shouldSkipInitialFocus = false
     ' Caller will set focus after pushScene — skip here to avoid a double-focus
     ' race on the DynamicMiniKeyboard that prevents the voice prompt overlay.
     return

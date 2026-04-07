@@ -1,4 +1,4 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/trickplay.bs"
@@ -22,7 +22,7 @@ sub loadTiles()
 
   if not isValid(m.top.tileIndexes) or m.top.tileIndexes.count() = 0
     m.log.warn("No tiles requested")
-    m.top.status = "no_tiles_requested"
+    m.top.status = "noTilesRequested"
     return
   end if
 

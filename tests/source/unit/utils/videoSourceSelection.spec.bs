@@ -18,7 +18,7 @@ namespace tests
         supportsHdr10: supportsHdr10,
         supportsDolbyVision: supportsDolbyVision,
         supportsHlg: supportsHlg,
-        _isMock: true
+        isMock: true
       }
     end function
 

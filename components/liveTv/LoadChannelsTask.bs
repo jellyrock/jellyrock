@@ -1,6 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
-import "pkg:/source/api/Image.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
@@ -13,16 +13,16 @@ end sub
 ' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
 sub loadChannels()
   if m.top.sortAscending = true
-    sort_order = "Ascending"
+    sortOrder = "Ascending"
   else
-    sort_order = "Descending"
+    sortOrder = "Descending"
   end if
 
   params = {
     includeItemTypes: "LiveTvChannel",
     SortBy: m.top.sortField,
-    SortOrder: sort_order,
-    recursive: m.top.recursive,
+    SortOrder: sortOrder,
+    recursive: m.top.isRecursive,
     UserId: m.global.user.id
   }
 

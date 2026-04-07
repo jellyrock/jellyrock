@@ -1,12 +1,12 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/Image.bs"
+import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 
-function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.none as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
+function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -57,7 +57,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
   end if
 
-  if subtitleTrackIndex <> SubtitleSelection.none and subtitleTrackIndex <> SubtitleSelection.notset
+  if subtitleTrackIndex <> SubtitleSelection.NONE and subtitleTrackIndex <> SubtitleSelection.NOT_SET
     postData.SubtitleStreamIndex = subtitleTrackIndex
   end if
 

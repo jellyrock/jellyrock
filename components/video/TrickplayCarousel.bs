@@ -83,14 +83,14 @@ sub onConfigChanged()
 
   if not isValidAndNotEmpty(m.config)
     m.log.warn("Invalid trickplay config provided")
-    m.top.visible = false
+    m.top.isVisible = false
     return
   end if
 
   ' Validate config using authoritative validation function
   if not trickplay.validateConfig(m.config)
     m.log.warn("Invalid config - should have been validated at creation")
-    m.top.visible = false
+    m.top.isVisible = false
     return
   end if
 
@@ -407,7 +407,7 @@ sub onPlaybackPositionChanged()
 
   ' Don't update cache while user is actively scrubbing (carousel visible)
   ' The scrubbing logic handles caching during active scrubbing
-  if m.top.visible then return
+  if m.top.isVisible then return
 
   ' Use playbackPosition, or initialPosition as fallback when video hasn't started
   position = m.top.playbackPosition
@@ -448,8 +448,8 @@ end sub
 
 ' Called when visible field changes
 ' Performs initial tile caching and displays posters when carousel first appears
-sub onVisibilityChanged()
-  if not m.top.visible
+sub onIsVisibleChanged()
+  if not m.top.isVisible
     ' Reset velocity tracking when carousel hides (scrubbing session ended)
     m.currentVelocity = 0
     m.lastIndexUpdateTime = 0
@@ -515,7 +515,7 @@ end sub
 ' Main entry point - called when parent component updates thumbnail index
 sub onThumbnailIndexChanged()
   if not isValidAndNotEmpty(m.config) then return
-  if not m.top.visible then return
+  if not m.top.isVisible then return
 
   newIndex = m.top.thumbnailIndex
 
@@ -576,7 +576,7 @@ end sub
 ' center poster (480x270) has different display properties than sides (320x180)
 ' @param {Integer} centerThumbnailIndex - New center thumbnail to display
 sub fullRecalculatePosters(centerThumbnailIndex as integer)
-  m.log.debug("Full recalculate posters", "centerIndex", centerThumbnailIndex, "currentThumbnailIndex", m.currentThumbnailIndex, "visible", m.top.visible)
+  m.log.debug("Full recalculate posters", "centerIndex", centerThumbnailIndex, "currentThumbnailIndex", m.currentThumbnailIndex, "visible", m.top.isVisible)
 
   ' Calculate thumbnail indexes for all 5 poster positions
   ' [center-2, center-1, center, center+1, center+2]
@@ -967,7 +967,7 @@ sub onTaskStateChanged()
   end if
 
   ' Preload tile into texture memory for instant display when needed
-  if m.top.visible
+  if m.top.isVisible
     ' During scrubbing - preload next tile in scrub direction
     nextTileToPreload = getNextTileToPreload()
     if nextTileToPreload >= 0

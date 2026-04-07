@@ -15,7 +15,7 @@
     <field id="sortField" type="string" value="SortName" />
     <field id="sortAscending" type="boolean" value="true" />
     <field id="nameStartsWith" type="string" value="" />
-    <field id="recursive" type="boolean" value="true" />
+    <field id="isRecursive" type="boolean" value="true" />
     <field id="filter" type="string" value="All" />
     <field id="searchTerm" type="string" value="" />
     <field id="studioIds" type="string" value="" />
@@ -26,11 +26,11 @@
     <field id="content" type="array" />
     <!-- When true, skips the DoVi container profile injection in ItemPostPlaybackInfo,
          allowing the server to re-evaluate direct play without DoVi preservation constraints. -->
-    <field id="bypassDoviPreservation" type="boolean" value="false" />
+    <field id="shouldBypassDoviPreservation" type="boolean" value="false" />
     <!-- When true, forces the transcode path and disables direct play for this load.
          Set by VideoPlayerView when retrying after a direct-play failure (VideoLevelNotSupported
          or live-stream direct-play error) so the server returns a transcoding URL instead. -->
-    <field id="forceTranscoding" type="boolean" value="false" />
+    <field id="shouldForceTranscoding" type="boolean" value="false" />
     <!-- User-facing error message set by the task on failure. Read by VideoPlayerView in
          onVideoContentLoaded() to show a specific error dialog instead of the generic fallback. -->
     <field id="errorMsg" type="string" value="" />

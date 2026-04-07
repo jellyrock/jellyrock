@@ -64,7 +64,7 @@ class LiveTVPresenter extends GridPresenterBase
     ' CRITICAL: itemType must be "LiveTV" to route to the LiveTv/Channels API endpoint
     ' (see LoadItemsTask2.bs line 113-115)
     task.itemType = "LiveTV"
-    task.recursive = false
+    task.isRecursive = false
   end sub
 
   ' Check if current view is TV Guide

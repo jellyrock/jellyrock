@@ -113,92 +113,143 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("getRokuAudioTrackPosition()")
+    @describe("getRokuAudioTrackPosition() - fallback (no availableAudioTracks)")
+    ' When availableAudioTracks is not provided, uses Jellyfin Index + 1
+    ' as the Roku Track identifier (MKV 1-based track numbering).
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns '1' when audioStreamsArray is invalid")
+    @it("returns Index + 1 fallback when audioStreamsArray is invalid")
     function _()
       result = getRokuAudioTrackPosition(5, invalid)
-      m.assertEqual(result, "1")
+      m.assertEqual(result, "6")
     end function
 
-    @it("returns '1' when audioStreamsArray is empty")
+    @it("returns Index + 1 fallback when audioStreamsArray is empty")
     function _()
       result = getRokuAudioTrackPosition(5, [])
-      m.assertEqual(result, "1")
+      m.assertEqual(result, "6")
     end function
 
-    @it("returns '1' when Jellyfin index not found in array")
+    @it("returns Index + 1 for standard MKV layout (video=0, audio=1, audio=2)")
     function _()
       audioStreams = [
-        { index: 1, Language: "eng" },
-        { index: 2, Language: "jpn" }
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
       ]
-      result = getRokuAudioTrackPosition(5, audioStreams)
-      m.assertEqual(result, "1")
+      ' Korean at Jellyfin index 1 → Roku Track 2
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams), "2")
+      ' English at Jellyfin index 2 → Roku Track 3
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams), "3")
     end function
 
-    @it("converts array position 0 to Roku track '1'")
+    @it("returns Index + 1 for audio at index 0")
     function _()
       audioStreams = [
-        { index: 5, Language: "eng" },
-        { index: 10, Language: "jpn" }
+        { index: 0, language: "eng" },
+        { index: 2, language: "spa" }
       ]
-      result = getRokuAudioTrackPosition(5, audioStreams)
-      m.assertEqual(result, "1")
+      m.assertEqual(getRokuAudioTrackPosition(0, audioStreams), "1")
     end function
 
-    @it("converts array position 1 to Roku track '2'")
+    @it("returns Index + 1 for non-contiguous Jellyfin indexes")
     function _()
       audioStreams = [
-        { index: 5, Language: "eng" },
-        { index: 10, Language: "jpn" }
+        { index: 100, language: "eng" },
+        { index: 200, language: "jpn" }
       ]
-      result = getRokuAudioTrackPosition(10, audioStreams)
-      m.assertEqual(result, "2")
+      m.assertEqual(getRokuAudioTrackPosition(200, audioStreams), "201")
     end function
 
-    @it("converts array position 2 to Roku track '3'")
+    @it("returns Index + 1 for single-element array")
     function _()
       audioStreams = [
-        { index: 5, Language: "eng" },
-        { index: 10, Language: "jpn" },
-        { index: 15, Language: "spa" }
+        { index: 7, language: "tur" }
       ]
-      result = getRokuAudioTrackPosition(15, audioStreams)
-      m.assertEqual(result, "3")
+      m.assertEqual(getRokuAudioTrackPosition(7, audioStreams), "8")
     end function
 
-    @it("handles non-contiguous Jellyfin indexes correctly")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRokuAudioTrackPosition() - with availableAudioTracks")
+    ' When Roku's availableAudioTracks is provided, matches by language
+    ' for accurate Track identification regardless of MKV numbering.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches Track by language from availableAudioTracks")
     function _()
       audioStreams = [
-        { index: 100, Language: "eng" },
-        { index: 200, Language: "jpn" },
-        { index: 300, Language: "spa" }
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
       ]
-      result = getRokuAudioTrackPosition(200, audioStreams)
-      m.assertEqual(result, "2")
+      rokuTracks = [
+        { track: "2", language: "kor", name: "Korean" },
+        { track: "3", language: "eng", name: "English" }
+      ]
+      ' Korean at Jellyfin index 1 → matches Roku track "2" by language
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+      ' English at Jellyfin index 2 → matches Roku track "3" by language
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
     end function
 
-    @it("skips streams with missing index field")
+    @it("language matching is case-insensitive")
     function _()
       audioStreams = [
-        { Language: "eng" },
-        { index: 5, Language: "jpn" },
-        { index: 10, Language: "spa" }
+        { index: 1, language: "ENG" }
       ]
-      result = getRokuAudioTrackPosition(10, audioStreams)
-      m.assertEqual(result, "3")
+      rokuTracks = [
+        { track: "2", language: "eng", name: "English" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
     end function
 
-    @it("returns '1' when all streams have missing index field")
+    @it("falls back to Index + 1 when language not found in availableAudioTracks")
     function _()
       audioStreams = [
-        { Language: "eng" },
-        { Language: "jpn" }
+        { index: 1, language: "fra" }
       ]
-      result = getRokuAudioTrackPosition(5, audioStreams)
-      m.assertEqual(result, "1")
+      rokuTracks = [
+        { track: "2", language: "eng", name: "English" }
+      ]
+      ' French not in Roku tracks → fallback to Index + 1
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+    end function
+
+    @it("falls back to Index + 1 when Jellyfin stream has no Language")
+    function _()
+      audioStreams = [
+        { index: 5 }
+      ]
+      rokuTracks = [
+        { track: "6", language: "eng", name: "English" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(5, audioStreams, rokuTracks), "6")
+    end function
+
+    @it("falls back to Index + 1 when availableAudioTracks entries lack Track or Language")
+    function _()
+      audioStreams = [
+        { index: 1, language: "eng" }
+      ]
+      rokuTracks = [
+        { name: "English" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+    end function
+
+    @it("handles Roku reordering tracks differently from Jellyfin")
+    ' Roku may reorder tracks (e.g., device language first).
+    ' Language matching handles this correctly.
+    function _()
+      audioStreams = [
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
+      ]
+      ' Roku reordered: English first, Korean second
+      rokuTracks = [
+        { track: "3", language: "eng", name: "English" },
+        { track: "2", language: "kor", name: "Korean" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
     end function
 
   end class

@@ -1,6 +1,6 @@
 import "pkg:/source/api/sdk.bs"
-import "pkg:/source/api/sdk.v1.bs"
-import "pkg:/source/api/sdk.v2.bs"
+import "pkg:/source/api/sdkV1.bs"
+import "pkg:/source/api/sdkV2.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Note: getApiVersionFromGlobal() is imported from misc.bs and serves as the

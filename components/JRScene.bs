@@ -66,18 +66,18 @@ sub backgroundImageUriChanged()
   if not isValid(m.imageFader) then return
 
   ' Resolve backdrop setting on first use (lazy initialization)
-  if m.top.showBackdrop = invalid
+  if m.top.shouldShowBackdrop = invalid
     localUser = m.global.user
     if isValid(localUser)
-      m.top.showBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
+      m.top.shouldShowBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
     else
-      m.top.showBackdrop = false ' Don't show backdrops if called before login
+      m.top.shouldShowBackdrop = false ' Don't show backdrops if called before login
     end if
-    m.imageFader.visible = m.top.showBackdrop
+    m.imageFader.visible = m.top.shouldShowBackdrop
   end if
 
   ' Only update URI if backdrops are enabled (performance optimization)
-  if m.top.showBackdrop
+  if m.top.shouldShowBackdrop
     m.imageFader.isAnimated = true
     m.imageFader.uri = m.top.backgroundImageUri
   end if
@@ -95,8 +95,8 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
     ' For empty URI in force mode, clear URI and reset state for next screen
     if uri = invalid or uri = ""
       m.imageFader.uri = ""
-      ' Reset showBackdrop to invalid so next screen can properly initialize
-      m.top.showBackdrop = invalid
+      ' Reset shouldShowBackdrop to invalid so next screen can properly initialize
+      m.top.shouldShowBackdrop = invalid
       ' Explicitly hide imageFader to ensure a clean state if next screen does not reinitialize backdrop visibility
       m.imageFader.visible = false
     else
@@ -108,18 +108,18 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
   end if
 
   ' Resolve backdrop setting on first use (lazy initialization)
-  if m.top.showBackdrop = invalid
+  if m.top.shouldShowBackdrop = invalid
     localUser = m.global.user
     if isValid(localUser)
-      m.top.showBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
+      m.top.shouldShowBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
     else
-      m.top.showBackdrop = false ' Don't show backdrops if called before login
+      m.top.shouldShowBackdrop = false ' Don't show backdrops if called before login
     end if
-    m.imageFader.visible = m.top.showBackdrop
+    m.imageFader.visible = m.top.shouldShowBackdrop
   end if
 
   ' Only update URI if backdrops are enabled (performance optimization)
-  if m.top.showBackdrop
+  if m.top.shouldShowBackdrop
     ' Skip if URI has not changed - BackdropFader would deduplicate anyway, but skipping here
     ' avoids the field assignment and unnecessary observer call entirely.
     if m.lastBackdropUri = uri then return
@@ -136,11 +136,11 @@ sub refreshBackdropSetting()
 
   localUser = m.global.user
   if isValid(localUser)
-    m.top.showBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
-    m.imageFader.visible = m.top.showBackdrop
+    m.top.shouldShowBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
+    m.imageFader.visible = m.top.shouldShowBackdrop
 
     ' Clear backdrop URI if hiding to free memory
-    if not m.top.showBackdrop
+    if not m.top.shouldShowBackdrop
       m.top.backgroundImageUri = ""
     end if
   end if
@@ -151,7 +151,7 @@ sub isLoadingChanged()
   ' toggle visibility of active view/group
   group = m.global.sceneManager.callFunc("getActiveScene")
   if isValid(group)
-    group.visible = not m.top.disableRemote
+    group.visible = not m.top.isRemoteDisabled
   end if
 
   ' toggle visibility of loading spinner
@@ -167,7 +167,7 @@ sub showToast(message as string, toastType = "error" as string)
   if not isValid(m.toast) then return
   m.toast.message = message
   m.toast.toastType = toastType
-  m.toast.show = true
+  m.toast.shouldShow = true
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
@@ -205,14 +205,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
   #end if
 
   if not press then return false
-  if m.top.disableRemote then return true
+  if m.top.isRemoteDisabled then return true
 
   if key = "back"
     m.global.sceneManager.callFunc("popScene")
     return true
   else if key = "options"
     group = m.global.sceneManager.callFunc("getActiveScene")
-    if isValid(group) and isValid(group.optionsAvailable) and group.optionsAvailable
+    if isValid(group) and isValid(group.isOptionsAvailable) and group.isOptionsAvailable
       group.lastFocus = group.focusedChild
       panel = group.findNode("options")
       panel.visible = true

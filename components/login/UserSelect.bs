@@ -1,4 +1,4 @@
-import "pkg:/source/api/baserequest.bs"
+import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
@@ -8,7 +8,7 @@ sub init()
   m.log = log.Logger("UserSelect")
   m.log.verbose("Initializing UserSelect component")
 
-  m.top.optionsAvailable = false
+  m.top.isOptionsAvailable = false
   m.top.findNode("selectUserLabel").text = translate(translationKeys.LabelSelectAUser)
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
   m.buttons = m.top.findNode("buttons")
@@ -73,16 +73,16 @@ sub loadSplashscreen()
 
   ' Check if value is already cached (from previous session)
   serverNode = m.global.server
-  if isValid(serverNode.splashscreenEnabled)
+  if isValid(serverNode.isSplashscreenEnabled)
     ' Already cached, apply immediately for instant display
     m.log.debug("Splashscreen setting already cached, applying immediately")
-    applySplashscreen(serverNode.splashscreenEnabled)
+    applySplashscreen(serverNode.isSplashscreenEnabled)
   else
     m.log.debug("Splashscreen setting not cached")
   end if
 
   ' Always observe and refresh in case cached value is stale
-  serverNode.observeFieldScoped("splashscreenEnabled", "onSplashscreenEnabledLoaded")
+  serverNode.observeFieldScoped("isSplashscreenEnabled", "onSplashscreenEnabledLoaded")
   m.brandingTask.observeFieldScoped("responseCode", "onBrandingConfigComplete")
   m.brandingTask.control = "RUN"
 end sub
@@ -93,7 +93,7 @@ sub onBrandingConfigComplete()
   m.log.debug("Branding config fetch completed", "responseCode:", responseCode)
 
   if responseCode = 200
-    m.log.info("Branding config cached successfully", "splashscreenEnabled:", m.global.server.splashscreenEnabled)
+    m.log.info("Branding config cached successfully", "splashscreenEnabled:", m.global.server.isSplashscreenEnabled)
   else
     failureReason = m.brandingTask.failureReason
     m.log.warn("Branding config fetch failed", "reason:", failureReason)
@@ -107,16 +107,16 @@ end sub
 ' Called when branding config finishes loading (if we had to wait)
 sub onSplashscreenEnabledLoaded()
   serverNode = m.global.server
-  splashEnabled = serverNode.splashscreenEnabled
+  isSplashEnabled = serverNode.isSplashscreenEnabled
 
-  m.log.debug("Branding config loaded (async)", "splashscreenEnabled:", splashEnabled)
+  m.log.debug("Branding config loaded (async)", "splashscreenEnabled:", isSplashEnabled)
 
   ' Unobserve (only fire once)
-  serverNode.unobserveFieldScoped("splashscreenEnabled")
+  serverNode.unobserveFieldScoped("isSplashscreenEnabled")
 
   ' Check validity again (defensive)
-  if isValid(splashEnabled)
-    applySplashscreen(splashEnabled)
+  if isValid(isSplashEnabled)
+    applySplashscreen(isSplashEnabled)
   else
     m.log.warn("Branding config still invalid after loading - using default")
     ' Clear backdrop using forceBackdrop to ensure it works before login
@@ -132,11 +132,11 @@ sub applySplashscreen(serverSplashEnabled as boolean)
   globalSetting = getGlobalSplashScreenSetting()
 
   ' Resolve splash screen setting (JellyRock global override or server setting)
-  splashEnabled = resolveSplashScreen(globalSetting, serverSplashEnabled)
+  isSplashEnabled = resolveSplashScreen(globalSetting, serverSplashEnabled)
 
-  m.log.debug("Applying splashscreen", "globalSetting:", globalSetting, "serverSetting:", serverSplashEnabled, "resolvedValue:", splashEnabled)
+  m.log.debug("Applying splashscreen", "globalSetting:", globalSetting, "serverSetting:", serverSplashEnabled, "resolvedValue:", isSplashEnabled)
 
-  if splashEnabled = true
+  if isSplashEnabled = true
     ' Build splash URL with correct parameters
     splashUrl = buildURL("/Branding/Splashscreen", { "format": "jpg", "tag": "splash" })
 
@@ -186,7 +186,7 @@ sub destroy()
   ' Stop branding task and unobserve all scoped fields
   ' (may already be self-cleaned by task callbacks, guards are safe no-ops)
   m.brandingTask.control = "STOP"
-  m.global.server.unobserveFieldScoped("splashscreenEnabled")
+  m.global.server.unobserveFieldScoped("isSplashscreenEnabled")
   m.brandingTask.unobserveFieldScoped("responseCode")
   m.brandingTask.callFunc("empty")
   m.brandingTask = invalid

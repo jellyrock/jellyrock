@@ -1,5 +1,5 @@
 ' Locale resolution functions for the custom translation system.
-' Separated from translate.bs because these depend on config.bs (get_user_setting)
+' Separated from translate.bs because these depend on config.bs (getUserSetting)
 ' which is not available in all component scopes. These functions are only called
 ' from source/ context (Main.bs, session.bs) where config.bs is auto-scoped.
 
@@ -12,7 +12,7 @@
 function resolveTranslationLocale(isPostLogin = false as boolean, serverLanguage = "" as string) as string
   ' Priority 1: Per-user language override (only available post-login)
   if isPostLogin
-    userLocale = get_user_setting("translationLocale")
+    userLocale = getUserSetting("translationLocale")
     if isValidAndNotEmpty(userLocale) then return userLocale
   end if
 

@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- code cleanup — naming conventions, enums, and style guide ([#467](https://github.com/jellyrock/jellyrock/pull/467))
+
+## [2.10.1](https://github.com/jellyrock/jellyrock/compare/v2.10.0...v2.10.1) - 2026-04-07
+
+### Fixed
+
+- audio/subtitle track selection and playback position ([#464](https://github.com/jellyrock/jellyrock/pull/464))
+- sort BoxSet/Collection movies by release date ([#463](https://github.com/jellyrock/jellyrock/pull/463))
+- report position at video duration when force-finishing playback ([98d8ac9](https://github.com/jellyrock/jellyrock/commit/98d8ac91))
+
+## [2.10.0](https://github.com/jellyrock/jellyrock/compare/v2.9.0...v2.10.0) - 2026-04-06
+
 ### Added
 
 - add .editorconfig file to ensure consistant styling ([2a07113](https://github.com/jellyrock/jellyrock/commit/2a071131))
@@ -18,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- explicitly mark episode as watched when skipping outro ([#458](https://github.com/jellyrock/jellyrock/pull/458))
 - set state to hidden in VideoNotification.destroy() to prevent crash ([4a91606](https://github.com/jellyrock/jellyrock/commit/4a916066))
 - resolve captionTask data race crash ([#453](https://github.com/jellyrock/jellyrock/pull/453))
 - (translation) rebuild translation key constants when en_US.json is edited ([a2ac7fb](https://github.com/jellyrock/jellyrock/commit/a2ac7fbb))
@@ -27,6 +42,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Removed
 
 - unused field alias ([c4c6948](https://github.com/jellyrock/jellyrock/commit/c4c6948f))
+
+### Dependencies
+
+- Update dotenv from v17.4.0 to v17.4.1 ([#456](https://github.com/jellyrock/jellyrock/pull/456))
 
 ## [2.9.0](https://github.com/jellyrock/jellyrock/compare/v2.8.0...v2.9.0) - 2026-04-02
 

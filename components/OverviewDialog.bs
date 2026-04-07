@@ -107,7 +107,7 @@ sub onTaglineChanged()
     if not isValid(m.taglineText)
       ' Create tagline label dynamically and insert before overview text
       m.taglineText = CreateObject("roSGNode", "LabelPrimaryMedium")
-      m.taglineText.bold = true
+      m.taglineText.isBold = true
       m.taglineText.wrap = true
       m.taglineText.width = m.textAreaWidth
       m.taglineText.maxLines = 500

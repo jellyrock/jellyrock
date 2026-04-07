@@ -26,16 +26,16 @@
       that a scrolling label would cause even when not animating.
       Both sit at the same vertical position; only one is visible at a time.
     -->
-    <ScrollingLabelPrimarySmaller id="title" bold="true" horizAlign="center"
+    <ScrollingLabelPrimarySmaller id="title" isBold="true" horizAlign="center"
       maxWidth="234" repeatCount="0" visible="false" />
-    <LabelPrimarySmaller id="staticTitle" bold="true" horizAlign="center"
+    <LabelPrimarySmaller id="staticTitle" isBold="true" horizAlign="center"
       width="234" wrap="false" />
 
     <!--
       subtitle: secondary text (e.g., "S1E2 - Title", "2024 • PG-13").
       Scrolls on focus via repeatCount toggle; always visible for standard items.
     -->
-    <ScrollingLabelSecondarySmall id="subtitle" bold="true" horizAlign="center"
+    <ScrollingLabelSecondarySmall id="subtitle" isBold="true" horizAlign="center"
       maxWidth="234" repeatCount="0" />
   </children>
   <interface>
@@ -58,11 +58,11 @@
     <field id="width" type="float" value="0" onChange="onSizeChanged" />
     <field id="height" type="float" value="0" onChange="onSizeChanged" />
     <!--
-      applyEpisodeImageSetting: when true (default), respects the uiGeneralEpisodeImages user
+      shouldApplyEpisodeImageSetting: when true (default), respects the uiGeneralEpisodeImages user
       setting when selecting the image for Episode items. Set to false for extras rows (season
       episode lists, person TV shows) to always show the episode's own screenshot regardless
       of the setting, which only makes sense for home rows (Continue Watching, Next Up).
     -->
-    <field id="applyEpisodeImageSetting" type="boolean" value="true" />
+    <field id="shouldApplyEpisodeImageSetting" type="boolean" value="true" />
   </interface>
 </component>

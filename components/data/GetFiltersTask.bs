@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -10,7 +10,7 @@ end sub
 sub getFiltersTask()
   ' Debug error injection — compiled out in production (bs_const=debug=false)
   #if debug
-    if isValid(m.global.debug) and m.global.debug.forceFiltersFail
+    if isValid(m.global.debug) and m.global.debug.shouldForceFiltersFail
       m.top.error = "[DEBUG] Forced filter failure"
       m.top.filters = {}
       return

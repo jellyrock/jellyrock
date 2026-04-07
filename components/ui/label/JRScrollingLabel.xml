@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRScrollingLabel" extends="ScrollingLabel">
   <interface>
-    <field id="bold" type="boolean" value="false" onChange="onBoldChanged" />
+    <field id="isBold" type="boolean" value="false" onChange="onIsBoldChanged" />
   </interface>
 </component>

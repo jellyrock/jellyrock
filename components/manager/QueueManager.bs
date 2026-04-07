@@ -1,14 +1,16 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
-import "pkg:/source/api/baserequest.bs"
-import "pkg:/source/api/Image.bs"
-import "pkg:/source/api/Items.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/image.bs"
+import "pkg:/source/api/items.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "ViewCreator.bs"
 
 sub init()
+  m.log = log.Logger("QueueManager")
   m.hold = []
   m.queue = []
   m.originalQueue = []
@@ -266,10 +268,12 @@ sub set(items)
   end for
 end sub
 
-' Set starting point for top item in the queue
-sub setTopStartingPoint(positionTicks)
+' Set starting point for the current item in the queue
+sub setCurrentStartingPoint(positionTicks)
   if getCount() = 0 then return
-  m.queue[0].startingPoint = positionTicks
+  if m.position < 0 or m.position >= getCount() then return
+  m.log.debug("setCurrentStartingPoint", "queuePosition", m.position, "ticks", positionTicks, "queueCount", getCount())
+  m.queue[m.position].startingPoint = positionTicks
 end sub
 
 ' getItemType: Returns the media type of the passed item

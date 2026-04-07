@@ -9,7 +9,7 @@ sub init()
   m.autoDismissTimer = m.top.findNode("autoDismissTimer")
 
   m.top.observeField("text", "onTextChanged")
-  m.actionButton.observeField("ready", "onActionButtonReady")
+  m.actionButton.observeField("isReady", "onActionButtonReady")
   m.autoDismissTimer.observeField("fire", "onAutoDismissTimerFired")
   m.fadeOutAnimation.observeField("state", "onFadeOutAnimationState")
 end sub
@@ -141,7 +141,7 @@ sub destroy()
   m.autoDismissTimer.control = "stop"
   m.autoDismissTimer.unobserveField("fire")
   m.fadeOutAnimation.unobserveField("state")
-  m.actionButton.unobserveField("ready")
+  m.actionButton.unobserveField("isReady")
   m.top.unobserveField("text")
 
   m.actionButton = invalid

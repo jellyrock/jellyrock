@@ -1,5 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/ApiPool.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
@@ -23,12 +23,12 @@ sub loadItems()
   globalUser = m.global.user
   results = []
 
-  sort_field = m.top.sortField
+  sortField = m.top.sortField
 
   if m.top.sortAscending = true
-    sort_order = "Ascending"
+    sortOrder = "Ascending"
   else
-    sort_order = "Descending"
+    sortOrder = "Descending"
   end if
 
   if m.top.ItemType = "LogoImage"
@@ -52,9 +52,9 @@ sub loadItems()
   params = {
     limit: m.top.limit,
     StartIndex: m.top.startIndex,
-    SortBy: sort_field,
-    SortOrder: sort_order,
-    recursive: m.top.recursive,
+    SortBy: sortField,
+    SortOrder: sortOrder,
+    recursive: m.top.isRecursive,
     Fields: fields,
     StudioIds: m.top.studioIds,
     genreIds: m.top.genreIds

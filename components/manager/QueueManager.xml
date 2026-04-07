@@ -25,7 +25,7 @@
     <function name="push" />
     <function name="resetShuffle" />
     <function name="set" />
-    <function name="setTopStartingPoint" />
+    <function name="setCurrentStartingPoint" />
     <function name="setPosition" />
     <function name="setPrerollStatus" />
     <function name="toggleShuffle" />

@@ -220,16 +220,24 @@ jobs:
         run: |
           git fetch origin weblate
 
-          # Pull all locale files from weblate
-          git checkout origin/weblate -- locale/custom/
+          # True merge to preserve individual translator commit history and authorship
+          # -X theirs: auto-resolve conflicts favoring Weblate's translations
+          if ! git merge origin/weblate --no-commit -X theirs; then
+            echo "⚠️ Merge conflicts detected, resolving with Weblate's translations"
+            git checkout --theirs -- locale/custom/
+            git add locale/custom/
+          fi
 
-          # Restore developer-owned files from the release branch
-          # (main owns en_US.json and languages.json, not weblate)
-          git checkout ${{ needs.validate-and-prepare.outputs.branch_name }} -- locale/custom/en_US.json
+          # Restore main-owned source file (main is authoritative for en_US.json)
+          git checkout HEAD -- locale/custom/en_US.json
+
+          # Safety: discard any unexpected changes outside locale/custom/
+          git diff --name-only --cached | grep -v '^locale/custom/' | xargs -r git checkout HEAD --
 
           # Check for changes
-          if git diff --quiet && git diff --cached --quiet; then
+          if git diff --cached --quiet; then
             echo "ℹ️ No translation changes to merge"
+            git merge --abort 2>/dev/null || true
             exit 0
           fi
 
@@ -242,7 +250,6 @@ jobs:
 
       - name: Commit translation updates
         run: |
-          git add locale/custom/
           if git diff --cached --quiet; then
             echo "ℹ️ No changes to commit"
           else
@@ -526,6 +533,9 @@ jobs:
             --draft \
             --prerelease=false \
             out/${{ steps.create_zip.outputs.zip_name }}
+
+          # Set discussion category so publishing the draft auto-creates an Announcements discussion
+          gh release edit "$TAG_NAME" --discussion-category "Announcements"
 
           echo "✅ Created draft release: $TAG_NAME"
           echo "📝 Remember to add your scheduled release date before publishing!"

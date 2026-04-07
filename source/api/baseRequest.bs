@@ -2,7 +2,7 @@
 function buildParams(params = {} as object) as string
   ' Take an object of parameters and construct the URL query
 
-  param_array = []
+  paramArray = []
   for each field in params.items()
     item = ""
     if type(field.value) = "String" or type(field.value) = "roString"
@@ -29,40 +29,40 @@ function buildParams(params = {} as object) as string
       item = field.key + "=" + field.value.EncodeUriComponent()
     end if
 
-    if item <> "" then param_array.push(item)
+    if item <> "" then paramArray.push(item)
   end for
 
-  return param_array.join("&")
+  return paramArray.join("&")
 end function
 
 function buildURL(path as string, params = {} as object) as dynamic
-  serverURL = get_url()
+  serverURL = getUrl()
   if not isValid(serverURL) then return invalid
 
   ' Add intial '/' if path does not start with one
   if path.Left(1) = "/"
-    full_url = serverURL + path
+    fullUrl = serverURL + path
   else
-    full_url = serverURL + "/" + path
+    fullUrl = serverURL + "/" + path
   end if
 
   if params.count() > 0
-    full_url = full_url + "?" + buildParams(params)
+    fullUrl = fullUrl + "?" + buildParams(params)
   end if
 
-  return full_url
+  return fullUrl
 end function
 
 function APIRequest(url as string, params = {} as object) as dynamic
-  full_url = buildURL(url, params)
-  if not isValid(full_url) then return invalid
+  fullUrl = buildURL(url, params)
+  if not isValid(fullUrl) then return invalid
 
   serverURL = m.global.server.serverUrl
   ' ContentNode fields return "" instead of invalid, so check both
   if not isValid(serverURL) or serverURL = "" then return invalid
 
   req = createObject("roUrlTransfer")
-  req.setUrl(full_url)
+  req.setUrl(fullUrl)
   req = authRequest(req)
   ' SSL cert
   if serverURL.left(8) = "https://"
@@ -106,7 +106,7 @@ function postJson(req, data = "" as string)
   return json
 end function
 
-function get_url()
+function getUrl()
   serverURL = m.global.server.serverUrl
 
   ' Check if URL is valid AND not empty

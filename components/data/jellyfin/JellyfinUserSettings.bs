@@ -101,7 +101,7 @@ sub onSettingChanged(event as object)
   if isGlobalSetting(fieldName)
     ' Global settings apply to all users - save to "JellyRock" or "test-global" section
     globalSection = getGlobalRegistrySection()
-    registry_write(fieldName, valueToString(newValue), globalSection)
+    registryWrite(fieldName, valueToString(newValue), globalSection)
   else
     ' User-specific settings - save to user's section
     ' Get local reference to minimize rendezvous
@@ -112,7 +112,7 @@ sub onSettingChanged(event as object)
     end if
 
     ' Always save to registry - track all user changes
-    registry_write(fieldName, valueToString(newValue), localUser.id)
+    registryWrite(fieldName, valueToString(newValue), localUser.id)
   end if
 end sub
 
@@ -182,14 +182,14 @@ sub syncLibrarySettings(libraryId as string, settings as object)
   m.log.info("Syncing all settings for new library", { libraryId: libraryId, settingsCount: settings.Count() })
 
   ' Display settings are nested structures stored in the displaySettings field
-  ' We write directly to registry using registry_write() instead of set_user_setting()
-  ' because set_user_setting() tries to create node fields with dots in the name, which is invalid
+  ' We write directly to registry using registryWrite() instead of setUserSetting()
+  ' because setUserSetting() tries to create node fields with dots in the name, which is invalid
   for each key in settings
     registryKey = "display." + libraryId + "." + key
     m.log.debug("Writing to registry", { key: registryKey, value: settings[key] })
 
     ' Write directly to registry - data is already in m.top.displaySettings (source of truth)
-    registry_write(registryKey, valueToString(settings[key]), localUser.id)
+    registryWrite(registryKey, valueToString(settings[key]), localUser.id)
   end for
 end sub
 
@@ -227,7 +227,7 @@ sub syncChangedLibrarySettings(libraryId as string, oldSettings as object, newSe
       m.log.debug("Writing changed setting to registry", { key: registryKey, oldValue: oldValueStr, newValue: newValueStr })
 
       ' Write directly to registry - data is already in m.top.displaySettings (source of truth)
-      registry_write(registryKey, valueToString(newValue), localUser.id)
+      registryWrite(registryKey, valueToString(newValue), localUser.id)
       changedCount++
     end if
   end for
@@ -239,7 +239,7 @@ sub syncChangedLibrarySettings(libraryId as string, oldSettings as object, newSe
       m.log.debug("Deleting setting from registry", { key: registryKey })
 
       ' Delete directly from registry - data was already removed from m.top.displaySettings
-      registry_delete(registryKey, localUser.id)
+      registryDelete(registryKey, localUser.id)
       changedCount++
     end if
   end for
@@ -264,7 +264,7 @@ sub deleteLibraryFromRegistry(libraryId as string)
   for each key in possibleKeys
     registryKey = "display." + libraryId + "." + key
     ' Delete directly from registry - data was already removed from m.top.displaySettings
-    registry_delete(registryKey, localUser.id)
+    registryDelete(registryKey, localUser.id)
   end for
 end sub
 

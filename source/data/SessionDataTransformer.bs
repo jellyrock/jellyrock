@@ -39,7 +39,7 @@ class SessionDataTransformer
       serverNode.isHTTPS = serverData.isHTTPS ?? false
       serverNode.isLocalHTTPS = serverData.isLocalHTTPS ?? false
 
-      serverNode.startupWizardCompleted = serverData.startupWizardCompleted ?? false
+      serverNode.isStartupWizardCompleted = serverData.startupWizardCompleted ?? false
 
       ' Set loading state
       serverNode.isLoaded = true
