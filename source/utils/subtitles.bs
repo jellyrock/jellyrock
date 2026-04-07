@@ -1,24 +1,5 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
 
-' Roku translates the info provided in subtitleTracks into availableSubtitleTracks
-' Including ignoring tracks, if they are not understood, thus making indexing unpredictable.
-' This function translates between our internel selected subtitle index
-' and the corresponding index in availableSubtitleTracks.
-function availSubtitleTrackIdx(video, subIdx) as integer
-  url = video.Subtitles[subIdx].Track.TrackName
-  idx = 0
-  for each availTrack in video.availableSubtitleTracks
-    ' The TrackName must contain the URL we supplied originally, though
-    ' Roku mangles the name a bit, so we check if the URL is a substring, rather
-    ' than strict equality
-    if Instr(1, availTrack.TrackName, url)
-      return idx
-    end if
-    idx = idx + 1
-  end for
-  return SubtitleSelection.NONE
-end function
-
 ' defaultSubtitleTrackFromVid: Identifies the default subtitle track given metadata and audio index
 '
 ' @param {object} meta - metadata object containing MediaSources with MediaStreams
@@ -163,48 +144,6 @@ function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, 
   end if
 
   return SubtitleSelection.NONE ' Keep current default behavior of "None", if no correct subtitle is identified
-end function
-
-' Given a set of subtitles, and a subtitle index (the index on the server, not in the list provided)
-' this will set all relevant settings for roku (mainly closed captions) and return the index of the
-' subtitle track specified, but indexed based on the provided list of subtitles
-function setupSubtitle(video, subtitles, subtitleIdx = SubtitleSelection.NONE) as integer
-  if subtitleIdx = SubtitleSelection.NONE
-    ' If we are not using text-based subtitles, turn them off
-    return SubtitleSelection.NONE
-  end if
-
-  ' Translate the raw index to one relative to the provided list
-  subtitleSelIdx = getSubtitleSelIdxFromSubIdx(subtitles, subtitleIdx)
-
-  selectedSubtitle = subtitles[subtitleSelIdx]
-
-  if isValid(selectedSubtitle) and isValid(selectedSubtitle.IsEncoded)
-    if selectedSubtitle.IsEncoded
-      ' With encoded subtitles, turn off captions
-      video.globalCaptionMode = "Off"
-    else
-      ' If this is a text-based subtitle, set relevant settings for roku captions
-      video.globalCaptionMode = "On"
-      video.subtitleTrack = video.availableSubtitleTracks[availSubtitleTrackIdx(video, subtitleSelIdx)].TrackName
-    end if
-  end if
-
-  return subtitleSelIdx
-end function
-
-' The subtitle index on the server differs from the index we track locally
-' This function converts the former into the latter
-function getSubtitleSelIdxFromSubIdx(subtitles, subIdx) as integer
-  selIdx = 0
-  if subIdx = SubtitleSelection.NONE then return SubtitleSelection.NONE
-  for each item in subtitles
-    if item.Index = subIdx
-      return selIdx
-    end if
-    selIdx = selIdx + 1
-  end for
-  return SubtitleSelection.NONE
 end function
 
 'Checks available subtitle tracks and puts subtitles in forced, default, and non-default/forced but preferred language at the top
