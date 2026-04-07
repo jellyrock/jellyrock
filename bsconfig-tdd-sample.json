@@ -37,17 +37,15 @@
   "diagnosticFilters": [
     { "files": "node_modules/**/*" },
     { "files": "**/roku_modules/**/*" },
-    "cannot-find-name",
-    "cannot-find-function",
-    "not-iterable",
-    "argument-type-mismatch"
   ],
   "autoImportComponentScript": true,
   "createPackage": false,
   "outDir": "build",
 
   "plugins": [
-    "rooibos-roku"
+    "rooibos-roku",
+    "@rokucommunity/bslint",
+    "./scripts/bsc-plugin-translation-keys.cjs"
   ],
   "rooibos": {
     "isRecordingCodeCoverage": false,

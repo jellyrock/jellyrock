@@ -32,10 +32,9 @@
     {
       "files": "tests/**/*",
       "codes": [
-        1026,
         "LINT3008"
       ]
-    },
+    }
   ],
   "autoImportComponentScript": true,
   "outDir": "build",

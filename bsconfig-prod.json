@@ -23,11 +23,7 @@
   },
   "diagnosticFilters": [
     { "files": "node_modules/**/*" },
-    { "files": "**/roku_modules/**/*" },
-    "cannot-find-name",
-    "cannot-find-function",
-    "not-iterable",
-    "argument-type-mismatch"
+    { "files": "**/roku_modules/**/*" }
   ],
   "sourceMap": false,
   "autoImportComponentScript": true,
