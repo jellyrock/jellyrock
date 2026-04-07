@@ -265,8 +265,14 @@ async function main() {
     console.log('');
   }
 
-  // Auto-fix en_US.json: ensure sort order
+  // Auto-fix en_US.json: remove orphans and ensure sort order
   if (FIX_MODE) {
+    // Remove orphan keys (in en_US.json but not used in code)
+    if (orphanKeys.length > 0) {
+      orphanKeys.forEach(k => { delete enUs[k]; });
+      console.log(`Removed ${orphanKeys.length} orphan key(s) from en_US.json`);
+    }
+
     // Sort keys and write to ensure consistent order
     const sorted = {};
     Object.keys(enUs).sort().forEach(k => { sorted[k] = enUs[k]; });
