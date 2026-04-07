@@ -51,7 +51,7 @@ namespace MockDataLoader
   function getFilesFromDirectory(dirPath as string) as object
     files = []
     dir = CreateObject("roFileSystem")
-    fileList = dir.findRecurseFiles(dirPath, "json")
+    fileList = dir.FindRecurse(dirPath, "json")
 
     if isValidAndNotEmpty(fileList)
       for each filePath in fileList

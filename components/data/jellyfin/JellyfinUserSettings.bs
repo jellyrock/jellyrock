@@ -134,7 +134,7 @@ sub onDisplaySettingsChanged()
 end sub
 
 ' Sync only the display settings that changed
-sub syncDisplaySettingsChanges(oldSettings as object, newSettings as object)
+sub syncDisplaySettingsChanges(oldSettings as roAssociativeArray, newSettings as roAssociativeArray)
   if not isValid(oldSettings)
     oldSettings = {}
   end if
@@ -194,7 +194,7 @@ sub syncLibrarySettings(libraryId as string, settings as object)
 end sub
 
 ' Sync only changed settings for a library
-sub syncChangedLibrarySettings(libraryId as string, oldSettings as object, newSettings as object)
+sub syncChangedLibrarySettings(libraryId as string, oldSettings as roAssociativeArray, newSettings as roAssociativeArray)
   if not isValid(newSettings)
     return
   end if

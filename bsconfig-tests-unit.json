@@ -36,9 +36,6 @@
         "LINT3008"
       ]
     },
-    "cannot-find-function",
-    "not-iterable",
-    "argument-type-mismatch"
   ],
   "autoImportComponentScript": true,
   "outDir": "build",
