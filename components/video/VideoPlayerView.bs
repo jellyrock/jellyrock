@@ -1238,7 +1238,7 @@ sub onState()
   ' On first play, verify audioTrack matches the intended Jellyfin selection using
   ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
   ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
-  if m.top.state = "playing" and not m.playReported
+  if m.top.state = "playing" and not m.isPlayReported
     if isValid(m.top.availableAudioTracks) and isValid(m.top.audioIndex) and not m.top.isTranscoded
       correctedTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
       if correctedTrack <> m.top.audioTrack
