@@ -3,7 +3,7 @@ import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.log = log.Logger("JRScene")
+  m.log = new log.Logger("JRScene")
   m.top.backgroundColor = m.global.constants.colorBackgroundPrimary
   m.top.backgroundURI = ""
   m.loadingText = m.top.findNode("loadingText")

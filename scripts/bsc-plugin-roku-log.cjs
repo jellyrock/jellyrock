@@ -99,9 +99,21 @@ class RokuLogPlugin {
         if (!range) return;
         if (visitedLines[range.start.line]) return;
 
+        // Detect: m.log = new log.Logger(...)
         if (isNewExpression(statement.value)) {
           const newExpr = statement.value;
           if (newExpr.className.getName(ParseMode.BrighterScript) === 'log.Logger') {
+            const guardExpr = createGuardSetStatement();
+            event.editor.addToArray(owner, key + 1, guardExpr);
+          }
+        }
+        // Detect: m.log = log.Logger(...) (factory function pattern)
+        else if (isCallExpression(statement.value)) {
+          const callExpr = statement.value;
+          if (brighterscript.isDottedGetExpression(callExpr.callee) &&
+              getNameText(callExpr.callee) === 'Logger' &&
+              brighterscript.isVariableExpression(callExpr.callee.obj) &&
+              getNameText(callExpr.callee.obj) === 'log') {
             const guardExpr = createGuardSetStatement();
             event.editor.addToArray(owner, key + 1, guardExpr);
           }

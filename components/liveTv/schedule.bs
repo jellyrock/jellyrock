@@ -4,7 +4,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
-  m.log = log.Logger("Schedule")
+  m.log = new log.Logger("Schedule")
   m.EPGLaunchCompleteSignaled = false
   m.scheduleGrid = m.top.findNode("scheduleGrid")
   m.detailsPane = m.top.findNode("detailsPane")

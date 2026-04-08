@@ -4,7 +4,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
-  m.log = log.Logger("SceneManager")
+  m.log = new log.Logger("SceneManager")
   m.groups = []
   m.scene = m.top.getScene()
   m.content = m.scene.findNode("content")

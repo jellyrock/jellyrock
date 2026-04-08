@@ -5,7 +5,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
-  m.log = log.Logger("OSD")
+  m.log = new log.Logger("OSD")
   m.inactivityTimer = m.top.findNode("inactivityTimer")
   m.endsAtTime = m.top.findNode("endsAtTime")
   m.videoLogo = m.top.findNode("videoLogo")

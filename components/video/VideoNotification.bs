@@ -2,7 +2,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.log = log.Logger("VideoNotification")
+  m.log = new log.Logger("VideoNotification")
   m.actionButton = m.top.findNode("actionButton")
   m.fadeInAnimation = m.top.findNode("fadeInAnimation")
   m.fadeOutAnimation = m.top.findNode("fadeOutAnimation")

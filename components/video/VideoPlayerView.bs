@@ -22,7 +22,7 @@ import "pkg:/source/utils/trickplay.bs"
 const TRICKPLAYBAR_POSITION_LABEL_INDEX = 8
 
 sub init()
-  m.log = log.Logger("VideoPlayerView")
+  m.log = new log.Logger("VideoPlayerView")
   ' Hide the overhang on init to prevent showing 2 clocks
   m.top.getScene().findNode("overhang").visible = false
   m.forceFinished = false

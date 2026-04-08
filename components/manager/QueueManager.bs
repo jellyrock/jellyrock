@@ -10,7 +10,7 @@ import "pkg:/source/utils/misc.bs"
 import "ViewCreator.bs"
 
 sub init()
-  m.log = log.Logger("QueueManager")
+  m.log = new log.Logger("QueueManager")
   m.hold = []
   m.queue = []
   m.originalQueue = []

@@ -8,7 +8,7 @@ class MusicPresenter extends GridPresenterBase
   ' Initialize music-specific state
   override sub onInit(view as object)
     super.onInit(view)
-    m.log = log.Logger("MusicPresenter")
+    m.log = new log.Logger("MusicPresenter")
 
     m.log.info("MusicPresenter initialized")
   end sub

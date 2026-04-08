@@ -7,7 +7,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.log = log.Logger("LoadItemsTask")
+  m.log = new log.Logger("LoadItemsTask")
   m.top.functionName = "loadItems"
 end sub
 

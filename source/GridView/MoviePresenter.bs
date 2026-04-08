@@ -18,7 +18,7 @@ class MoviePresenter extends GridPresenterBase
 
   sub new()
     super()
-    m.log = log.Logger("MoviePresenter")
+    m.log = new log.Logger("MoviePresenter")
     m.dividerCount = 0
   end sub
 

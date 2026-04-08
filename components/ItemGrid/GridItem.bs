@@ -5,7 +5,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/textureManager.bs"
 
 sub init()
-  m.log = log.Logger("GridItem")
+  m.log = new log.Logger("GridItem")
   m.itemPoster = m.top.findNode("itemPoster")
   m.itemIcon = m.top.findNode("itemIcon")
   m.posterText = m.top.findNode("posterText")

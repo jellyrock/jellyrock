@@ -15,7 +15,7 @@ class PhotoPresenter extends GridPresenterBase
 
   sub new()
     super()
-    m.log = log.Logger("PhotoPresenter")
+    m.log = new log.Logger("PhotoPresenter")
   end sub
 
   override sub onInit(view as object)

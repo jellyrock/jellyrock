@@ -4,7 +4,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.log = log.Logger("BrandingConfigTask")
+  m.log = new log.Logger("BrandingConfigTask")
   m.top.functionName = "fetchBrandingConfig"
 end sub
 

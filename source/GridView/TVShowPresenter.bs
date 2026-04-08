@@ -13,7 +13,7 @@ class TVShowPresenter extends GridPresenterBase
   ' Initialize TV show-specific nodes and state
   override sub onInit(view as object)
     super.onInit(view)
-    m.log = log.Logger("TVShowPresenter")
+    m.log = new log.Logger("TVShowPresenter")
 
     ' Create TV show-specific nodes (if needed in future)
     ' For now, TV shows use basic grid without special metadata display
