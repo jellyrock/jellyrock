@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- upgrade BrighterScript to v1 ([#457](https://github.com/jellyrock/jellyrock/pull/457))
+
 ### Changed
 
 - code cleanup — naming conventions, enums, and style guide ([#467](https://github.com/jellyrock/jellyrock/pull/467))
