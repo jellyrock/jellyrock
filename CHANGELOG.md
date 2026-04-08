@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - code cleanup — naming conventions, enums, and style guide ([#467](https://github.com/jellyrock/jellyrock/pull/467))
 
+### Dependencies
+
+- Update roku-deploy from v3.16.3 to v3.16.4 ([#471](https://github.com/jellyrock/jellyrock/pull/471))
+
 ## [2.10.1](https://github.com/jellyrock/jellyrock/compare/v2.10.0...v2.10.1) - 2026-04-07
 
 ### Fixed
