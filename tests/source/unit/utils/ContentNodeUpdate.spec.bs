@@ -24,7 +24,7 @@ namespace tests
 
     @it("update() can add new fields to ContentNode")
     function _()
-      node = CreateObject("roSGNode", "ContentNode")
+      node = CreateObject("roSGNode", "ContentNode") as dynamic
 
       ' Update with new fields
       testData = {

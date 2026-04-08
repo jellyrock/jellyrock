@@ -6,7 +6,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
-  m.log = log.Logger("ItemGridOptions")
+  m.log = new log.Logger("ItemGridOptions")
   m.top.findNode("dialogBackground").blendColor = m.global.constants.colorBackgroundSecondary
 
   m.buttons = m.top.findNode("buttons")
@@ -106,7 +106,7 @@ sub optionsSet()
       entry = viewContent.CreateChild("ContentNode")
       entry.title = view.Title
       m.viewNames.push(view.Name)
-      if (isValid(view.selected) and view.selected = true) or viewContent.Name = m.top.view
+      if (isValid(view.selected) and view.selected = true) or view.Name = m.top.view
         selectedViewIndex = index
       end if
       index = index + 1

@@ -4,7 +4,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.log = log.Logger("RecordProgramTask")
+  m.log = new log.Logger("RecordProgramTask")
   m.top.functionName = "RecordOrCancelProgram"
 end sub
 

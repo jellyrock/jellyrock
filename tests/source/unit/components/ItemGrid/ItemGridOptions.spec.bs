@@ -2,6 +2,8 @@ namespace tests
   @suite("ItemGridOptions - sortAscending Field Handling")
   class ItemGridOptionsTests extends tests.BaseTestSuite
 
+    protected testComponent as dynamic
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("optionsSet - sortAscending field handling")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

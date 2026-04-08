@@ -25,7 +25,7 @@ const LOGO_MAX_DISPLAY_WIDTH = 500
 const LOGO_MAX_DISPLAY_HEIGHT = 336
 
 sub init()
-  m.log = log.Logger("ItemDetails")
+  m.log = new log.Logger("ItemDetails")
   m.extrasGrp = m.top.findNode("extrasGrp")
   m.extrasGrid = m.top.findNode("extrasGrid")
   m.top.isOptionsAvailable = false

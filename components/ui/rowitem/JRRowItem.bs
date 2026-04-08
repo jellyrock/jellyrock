@@ -10,7 +10,7 @@ import "pkg:/source/utils/textureManager.bs"
 const FOCUS_PADDING = 18
 
 sub init()
-  m.log = log.Logger("JRRowItem")
+  m.log = new log.Logger("JRRowItem")
   m.backdrop = m.top.findNode("backdrop")
   m.poster = m.top.findNode("poster")
   m.itemIcon = m.top.findNode("itemIcon")

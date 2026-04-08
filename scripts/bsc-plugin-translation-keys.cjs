@@ -29,27 +29,30 @@ class TranslationKeysPlugin {
   }
 
   /** Read config and resolve the base translation file path. */
-  beforeProgramCreate(builder) {
+  beforeProvideProgram(event) {
+    const builder = event.builder;
     const config = builder.options.translationKeys || {};
     const baseFile = config.baseFile || DEFAULT_BASE_FILE;
     this.baseFilePath = path.resolve(builder.options.rootDir || process.cwd(), baseFile);
   }
 
   /** Generate translation key constants on initial program creation and start file watcher. */
-  afterProgramCreate(program) {
+  afterProvideProgram(event) {
+    const program = event.program;
     this.program = program;
     this.generateAndInject(program);
     this.startWatching();
   }
 
   /** Regenerate if en_US.json changed since last generation (secondary path). */
-  beforeProgramValidate(program) {
+  beforeValidateProgram(event) {
+    const program = event.program;
     this.program = program;
     this.generateAndInject(program);
   }
 
   /** Clean up file watcher when the program is disposed. */
-  beforeProgramDispose(_event) {
+  beforeRemoveProgram(_event) {
     this.stopWatching();
     this.program = null;
   }

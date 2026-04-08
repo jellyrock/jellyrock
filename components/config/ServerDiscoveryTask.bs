@@ -5,7 +5,7 @@ import "pkg:/source/utils/misc.bs"
 ' Task used to discover jellyfin servers on the local network
 '
 sub init()
-  m.log = log.Logger("ServerDiscoveryTask")
+  m.log = new log.Logger("ServerDiscoveryTask")
   m.top.functionName = "execute"
 end sub
 

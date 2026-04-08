@@ -3,6 +3,8 @@ namespace tests
   @suite("Home - Voice Search")
   class HomeVoiceSearchTests extends tests.BaseTestSuite
 
+    protected home as dynamic
+
     protected override sub setup()
       super.setup()
 

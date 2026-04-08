@@ -314,7 +314,7 @@ namespace tests
 
           ' Merge displaySettings
           if isValid(transformedSettings.displaySettings)
-            currentDisplaySettings = localSettings.displaySettings
+            currentDisplaySettings = localSettings.displaySettings as roAssociativeArray
             if not isValid(currentDisplaySettings)
               currentDisplaySettings = {}
             end if
@@ -354,7 +354,7 @@ namespace tests
       end if
 
       ' Get current displaySettings
-      displaySettings = localUser.settings.displaySettings
+      displaySettings = localUser.settings.displaySettings as roAssociativeArray
       if not isValid(displaySettings)
         displaySettings = {}
       end if

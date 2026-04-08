@@ -3,6 +3,8 @@ namespace tests
   @suite("HomeRows - updateBackdropForFocusedItem()")
   class HomeRowsUpdateBackdropTests extends tests.BaseTestSuite
 
+    protected homeRows as dynamic
+
     protected override sub setup()
       super.setup()
 

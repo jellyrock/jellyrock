@@ -320,7 +320,7 @@ namespace tests
 
     @it("creates independent item that doesn't affect source when modified")
     function _()
-      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode = CreateObject("roSGNode", "ContentNode") as dynamic
       sourceNode.id = "original-id"
       sourceNode.addFields({ type: "Movie", title: "Original Title" })
 
@@ -339,7 +339,7 @@ namespace tests
 
     @it("source modifications don't affect returned queue item")
     function _()
-      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode = CreateObject("roSGNode", "ContentNode") as dynamic
       sourceNode.id = "test-123"
       sourceNode.addFields({ type: "Movie", title: "Original" })
 
@@ -362,7 +362,7 @@ namespace tests
 
     @it("allows startingPoint and selectedAudioStreamIndex to be set after creation")
     function _()
-      sourceNode = CreateObject("roSGNode", "ContentNode")
+      sourceNode = CreateObject("roSGNode", "ContentNode") as dynamic
       sourceNode.id = "test-123"
       sourceNode.addFields({ type: "Movie" })
 

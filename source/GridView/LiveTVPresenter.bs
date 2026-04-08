@@ -12,11 +12,9 @@ import "pkg:/source/utils/misc.bs"
 
 class LiveTVPresenter extends GridPresenterBase
 
-  private log
-
   sub new()
     super()
-    m.log = log.Logger("LiveTVPresenter")
+    m.log = new log.Logger("LiveTVPresenter")
   end sub
 
   override sub onInit(view as object)

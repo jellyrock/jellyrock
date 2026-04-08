@@ -13,7 +13,7 @@
   ],
   "plugins": [
     "@rokucommunity/bslint",
-    "roku-log-bsc-plugin",
+    "./scripts/bsc-plugin-roku-log.cjs",
     "./scripts/bsc-plugin-translation-keys.cjs"
   ],
   "rokuLog": {
@@ -22,11 +22,11 @@
     "removeComments": true
   },
   "diagnosticFilters": [
-    "node_modules/**/*",
-    "**/roku_modules/**/*"
+    { "files": "node_modules/**/*" },
+    { "files": "**/roku_modules/**/*" }
   ],
   "sourceMap": false,
   "autoImportComponentScript": true,
-  "stagingDir": "build",
-  "retainStagingDir": true
+  "outDir": "build"
+
 }

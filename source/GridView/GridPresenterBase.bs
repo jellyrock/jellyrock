@@ -10,10 +10,10 @@
 
 class GridPresenterBase
   ' Reference to the BaseGridView component
-  private view
+  protected view
 
   ' Reference to the log instance
-  private log
+  protected log
 
   ' Cached filter options from API (invalid = not loaded, {} = load failed)
   protected apiFilters

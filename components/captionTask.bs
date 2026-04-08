@@ -3,7 +3,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.log = log.Logger("captionTask")
+  m.log = new log.Logger("captionTask")
   m.top.functionName = "fetchCaption"
   m.top.observeField("captionData", "onCaptionDataReceived")
   m.top.currentCaption = []

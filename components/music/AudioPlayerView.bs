@@ -7,7 +7,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
-  m.log = log.Logger("AudioPlayerView")
+  m.log = new log.Logger("AudioPlayerView")
 
   m.top.isOptionsAvailable = false
   m.isInScrubMode = false

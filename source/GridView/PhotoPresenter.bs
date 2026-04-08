@@ -13,11 +13,9 @@ import "pkg:/source/utils/misc.bs"
 
 class PhotoPresenter extends GridPresenterBase
 
-  private log
-
   sub new()
     super()
-    m.log = log.Logger("PhotoPresenter")
+    m.log = new log.Logger("PhotoPresenter")
   end sub
 
   override sub onInit(view as object)

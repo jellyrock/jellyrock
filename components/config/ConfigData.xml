@@ -2,6 +2,7 @@
 <component name="ConfigData" extends="ContentNode">
   <interface>
     <field id="label" type="string" />
+    <field id="field" type="string" />
     <field id="value" type="string" />
     <field id="type" type="string" />
   </interface>

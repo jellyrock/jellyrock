@@ -415,6 +415,7 @@ class ApiClient
       merged[item.key] = item.value
     end for
 
+    path = ""
     if state = "start"
       path = "/sessions/playing"
     else if state = "update"

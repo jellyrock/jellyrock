@@ -26,19 +26,18 @@
     "!tests/source/**/*.md"
   ],
   "diagnosticFilters": [
-    "node_modules/**/*",
-    "**/roku_modules/**/*",
+    { "files": "node_modules/**/*" },
+    { "files": "**/roku_modules/**/*" },
     {
-      "src": "tests/**/*",
+      "files": "tests/**/*",
       "codes": [
-        1026,
         "LINT3008"
       ]
     }
   ],
   "autoImportComponentScript": true,
-  "stagingDir": "build",
-  "retainStagingDir": true,
+  "outDir": "build",
+
   "plugins": [
     "rooibos-roku",
     "@rokucommunity/bslint",

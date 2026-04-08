@@ -504,7 +504,6 @@ function CreateSigninGroup(userName = "")
   ' Add checkbox for saving credentials
   checkbox = group.findNode("onOff")
   items = CreateObject("roSGNode", "ContentNode")
-  items.role = "content"
   saveCheckBox = CreateObject("roSGNode", "ContentNode")
   saveCheckBox.title = translate(translationKeys.MessageSaveCredentials)
   items.appendChild(saveCheckBox)

@@ -179,10 +179,11 @@ jobs:
           path: ${{ github.workspace }}/build
           if-no-files-found: error
 
-      - name: Rename and prepare ZIP for release
+      - name: Create and prepare ZIP for release
         if: ${{ inputs.upload_zip == 'true' || steps.context.outputs.build_context == 'version_branch' || (steps.context.outputs.build_context == 'main_branch' && inputs.create_github_release == true) }}
         run: |
-          echo "📦 Preparing ZIP file for release..."
+          echo "📦 Creating ZIP package using roku-deploy..."
+          npm run package
           if [[ -f "${{ github.workspace }}/out/jellyrock.zip" ]]; then
             cp "${{ github.workspace }}/out/jellyrock.zip" "${{ github.workspace }}/out/${{ steps.context.outputs.zip_name }}"
             echo "✅ ZIP renamed to: ${{ steps.context.outputs.zip_name }}"

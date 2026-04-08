@@ -3,6 +3,8 @@ namespace tests
   @suite("sdk.bs - API version dispatcher + shim URL structure")
   class SdkVersioningTests extends tests.BaseTestSuite
 
+    protected testUserId as string
+
     protected override function setup()
       super.setup()
       ' Ensure the server has a URL so buildURL can produce results

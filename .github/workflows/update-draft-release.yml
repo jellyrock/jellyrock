@@ -54,7 +54,8 @@ jobs:
       - name: Create updated release ZIP
         id: create_zip
         run: |
-          echo "📦 Preparing ZIP file for release..."
+          echo "📦 Creating ZIP package using roku-deploy..."
+          npm run package
           ZIP_NAME="JellyRock-${{ steps.extract_version.outputs.tag_name }}.zip"
           if [[ -f "${{ github.workspace }}/out/jellyrock.zip" ]]; then
             cp "${{ github.workspace }}/out/jellyrock.zip" "${{ github.workspace }}/out/$ZIP_NAME"

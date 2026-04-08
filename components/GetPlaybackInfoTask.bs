@@ -7,7 +7,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
-  m.log = log.Logger("GetPlaybackInfoTask")
+  m.log = new log.Logger("GetPlaybackInfoTask")
   m.top.functionName = "getPlaybackInfoTask"
 end sub
 
