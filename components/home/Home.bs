@@ -2,6 +2,7 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
@@ -375,9 +376,9 @@ sub onOverhangIconAction()
     ' Use the action ID rather than hasFocus() — the field observer callback
     ' may fire after focus has already moved, making hasFocus() unreliable.
     action = m.overhang.iconAction
-    if action = "goto_search" and isValid(m.searchIcon)
+    if action = HomeAction.OPEN_SEARCH and isValid(m.searchIcon)
       m.lastOverhangFocus = m.searchIcon
-    else if action = "settings" and isValid(m.settingsIcon)
+    else if action = HomeAction.OPEN_SETTINGS and isValid(m.settingsIcon)
       m.lastOverhangFocus = m.settingsIcon
     end if
 
