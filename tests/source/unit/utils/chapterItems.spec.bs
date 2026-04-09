@@ -17,6 +17,7 @@ namespace tests
     function _()
       data = CreateObject("roSGNode", "JellyfinBaseItem")
       data.id = "movie1"
+      data.type = "Movie"
       data.thumbImageTag = "parentthumb"
       data.backdropImageTags = ["parentbackdrop"]
       data.chapters = [
@@ -33,6 +34,7 @@ namespace tests
 
       ' First chapter
       m.assertEqual(items[0].type, "Chapter")
+      m.assertEqual(items[0].parentType, "Movie")
       m.assertEqual(items[0].id, "movie1")
       m.assertEqual(items[0].name, "Opening")
       m.assertEqual(items[0].indexNumber, 0)
@@ -135,13 +137,27 @@ namespace tests
     function _()
       data = CreateObject("roSGNode", "JellyfinBaseItem")
       data.id = "vid4"
+      data.type = "Movie"
       data.runTimeTicks = 12000000000& ' 20 min
 
       items = buildChapterItems(data)
 
       m.assertEqual(items[0].type, "Chapter")
+      m.assertEqual(items[0].parentType, "Movie")
       m.assertEqual(items[0].id, "vid4")
       m.assertEqual(items[0].primaryImageTag, "")
+    end function
+
+    @it("preserves Episode parent type for synthetic chapters")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "ep1"
+      data.type = "Episode"
+      data.runTimeTicks = 12000000000& ' 20 min
+
+      items = buildChapterItems(data)
+
+      m.assertEqual(items[0].parentType, "Episode")
     end function
 
     @it("returns empty array when runTimeTicks is 0")

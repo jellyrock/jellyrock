@@ -26,6 +26,7 @@ function buildChapterItems(data as object) as object
     chapter = chapters[i]
     item = CreateObject("roSGNode", "JellyfinBaseItem")
     item.type = "Chapter"
+    item.parentType = data.type
     item.id = data.id
     item.indexNumber = i
 

@@ -255,7 +255,7 @@ sub Main (args as dynamic) as void
           m.global.queueManager.callFunc("resetShuffle")
           queueItem = nodeHelpers.createQueueItem(selectedItem)
           if isValid(queueItem)
-            queueItem.type = "Video"
+            queueItem.type = selectedItem.parentType
             queueItem.startingPoint = selectedItem.playbackPositionTicks
             m.global.queueManager.callFunc("push", queueItem)
             m.global.queueManager.callFunc("playQueue")
