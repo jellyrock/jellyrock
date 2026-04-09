@@ -10,7 +10,7 @@ function getPlaceholderImagePath(itemType as string) as string
     return "pkg:/images/placeholders/movie.png"
   else if itemType = "Person"
     return "pkg:/images/placeholders/person.png"
-  else if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "Recording" or itemType = "Program" or itemType = "Series" or itemType = "Season"
+  else if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "Recording" or itemType = "Program" or itemType = "Series" or itemType = "Season" or itemType = "Chapter"
     return "pkg:/images/placeholders/playCircle.png"
   else if itemType = "MusicAlbum"
     return "pkg:/images/placeholders/album.png"

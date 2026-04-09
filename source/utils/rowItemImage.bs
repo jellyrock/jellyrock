@@ -25,6 +25,15 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
 
   size = { width: slotWidth, height: posterHeight }
 
+  ' Chapters: chapter-specific thumbnail when available, otherwise empty (triggers placeholder)
+  if item.type = "Chapter"
+    if isValidAndNotEmpty(item.primaryImageTag)
+      imgParams = { maxWidth: slotWidth, maxHeight: posterHeight, tag: item.primaryImageTag }
+      return ImageURL(item.id, "Chapter/" + stri(item.indexNumber).trim(), imgParams)
+    end if
+    return ""
+  end if
+
   ' Library tiles: Primary image only (Thumb/Backdrop not available for these types)
   if item.type = "CollectionFolder" or item.type = "UserView" or item.type = "Channel"
     return getItemImageUrl(item, "Primary", size)

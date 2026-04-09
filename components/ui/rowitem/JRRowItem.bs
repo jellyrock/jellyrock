@@ -197,7 +197,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     ' Audio album art is always square; scaleToFit prevents cropping when placed in a portrait slot
     ' (e.g. a mixed-content Playlist row). In a square slot the result is identical to scaleToZoom.
     ' All other types use scaleToZoom (fill) since their images match the slot shape.
-    m.poster.loadDisplayMode = (item.type = "TvChannel" or item.type = "Audio") ? "scaleToFit" : "scaleToZoom"
+    m.poster.loadDisplayMode = (item.type = "TvChannel" or item.type = "Audio" or item.type = "Chapter") ? "scaleToFit" : "scaleToZoom"
     m.cachedPosterUri = posterUri
     m.cachedLoadDisplayMode = m.poster.loadDisplayMode
     ' Only fetch the image if this cell is on screen or in the buffer zone.
