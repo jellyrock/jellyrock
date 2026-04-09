@@ -2,10 +2,11 @@
 [![JellyRock](resources/branding/release/channel-poster_sd.png "Download JellyRock ")](https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock)
 
 [![Current Release](https://img.shields.io/github/release/jellyrock/jellyrock.svg?logo=github "Current Release")](https://github.com/jellyrock/jellyrock/releases)
-[![Translation status](https://translate.jellyrock.app/widget/jellyrock/svg-badge.svg)](https://translate.jellyrock.app/engage/jellyrock/)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
+[![Chat on Matrix](https://img.shields.io/matrix/jellyrock:matrix.org.svg?logo=matrix "Chat on Matrix")](https://matrix.to/#/#jellyrock-app:matrix.org)
+[![Translation Status](https://translate.jellyrock.app/widget/jellyrock/svg-badge.svg "Translation Status")](https://translate.jellyrock.app/engage/jellyrock/)
 [![License](https://img.shields.io/github/license/jellyrock/jellyrock.svg "GPL 2.0 License")](LICENSE)
-[![API docs](https://img.shields.io/badge/API%20docs-purple)](https://jellyrock.github.io/api-docs/)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
+[![API docs](https://img.shields.io/badge/API%20docs-purple "API docs")](https://jellyrock.github.io/api-docs/)
 <!-- [![Translation Status](https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-roku/svg-badge.svg "Translation Status")](https://translate.jellyfin.org/projects/jellyfin/jellyfin-roku/?utm_source=widget) -->
 
 JellyRock is a Jellyfin client for Roku devices with a focus on stability and UX. Originally forked from jellyfin-roku [v2.2.5](https://github.com/jellyfin-archive/jellyfin-roku-legacy/releases/tag/v2.2.5).
