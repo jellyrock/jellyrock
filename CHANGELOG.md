@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add 7 premade themes and fix overhang bug when switching theme ([#472](https://github.com/jellyrock/jellyrock/pull/472))
 - upgrade BrighterScript to v1 ([#457](https://github.com/jellyrock/jellyrock/pull/457))
 
 ### Changed
