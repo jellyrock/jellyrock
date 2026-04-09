@@ -58,11 +58,11 @@ function generateSyntheticChapters(runTimeTicks as longinteger) as object
   TWO_HOURS_TICKS = 72000000000&
 
   if runTimeTicks < THIRTY_MINUTES_TICKS
-    intervalTicks = 3000000000&   ' 5 minutes
+    intervalTicks = 3000000000& ' 5 minutes
   else if runTimeTicks < TWO_HOURS_TICKS
-    intervalTicks = 6000000000&   ' 10 minutes
+    intervalTicks = 6000000000& ' 10 minutes
   else
-    intervalTicks = 9000000000&   ' 15 minutes
+    intervalTicks = 9000000000& ' 15 minutes
   end if
 
   chapters = []
