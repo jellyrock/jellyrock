@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- restore overhang icon focus when returning to Home screen ([55218b9](https://github.com/jellyrock/jellyrock/commit/55218b9a))
 - hide library tile backdrop when poster is already loaded ([42b9aff](https://github.com/jellyrock/jellyrock/commit/42b9aff8))
 
 ### Dependencies
