@@ -96,6 +96,8 @@
   "LabelCancelSeriesRecording": "Cancel Series Recording",
   "LabelCastCrew": "Cast & Crew",
   "LabelCh": "CH",
+  "LabelChapter": "Chapter {0}",
+  "LabelChapters": "Chapters",
   "LabelChangeServer": "Change server",
   "LabelChangeUser": "Change user",
   "LabelChannels": "Channels",
