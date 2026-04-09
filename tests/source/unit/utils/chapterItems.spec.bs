@@ -1,0 +1,208 @@
+import "pkg:/source/utils/chapterItems.bs"
+
+namespace tests
+
+  @suite("chapterItems - Chapter item builder and synthetic chapter generator")
+  class ChapterItemsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildChapterItems() - real chapters")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns correct count and mapped fields for real chapters")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "movie1"
+      data.type = "Movie"
+      data.thumbImageTag = "parentthumb"
+      data.backdropImageTags = ["parentbackdrop"]
+      data.chapters = [
+        { Name: "Opening", StartPositionTicks: 0&, ImageTag: "tag0" },
+        { Name: "The Chase", StartPositionTicks: 6000000000&, ImageTag: "tag1" },
+        { Name: "Finale", StartPositionTicks: 12000000000&, ImageTag: "" }
+      ]
+      data.chapterCount = 3
+      data.runTimeTicks = 18000000000&
+
+      items = buildChapterItems(data)
+
+      m.assertEqual(items.count(), 3)
+
+      ' First chapter
+      m.assertEqual(items[0].type, "Chapter")
+      m.assertEqual(items[0].parentType, "Movie")
+      m.assertEqual(items[0].id, "movie1")
+      m.assertEqual(items[0].name, "Opening")
+      m.assertEqual(items[0].indexNumber, 0)
+      m.assertEqual(items[0].subtitle, "0:00")
+      m.assertEqual(items[0].playbackPositionTicks, 0&)
+      m.assertEqual(items[0].primaryImageTag, "tag0")
+
+      ' Second chapter
+      m.assertEqual(items[1].name, "The Chase")
+      m.assertEqual(items[1].indexNumber, 1)
+      m.assertEqual(items[1].subtitle, "10:00")
+      m.assertEqual(items[1].playbackPositionTicks, 6000000000&)
+      m.assertEqual(items[1].primaryImageTag, "tag1")
+
+      ' Third chapter (no image tag)
+      m.assertEqual(items[2].name, "Finale")
+      m.assertEqual(items[2].indexNumber, 2)
+      m.assertEqual(items[2].primaryImageTag, "")
+    end function
+
+    @it("does not copy parent image tags (chapters without thumbnails use placeholder)")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "movie1"
+      data.thumbImageTag = "parentthumb"
+      data.backdropImageTags = ["bd1"]
+      data.chapters = [{ Name: "Ch1", StartPositionTicks: 0&, ImageTag: "" }]
+      data.chapterCount = 1
+      data.runTimeTicks = 6000000000&
+
+      items = buildChapterItems(data)
+
+      m.assertEqual(items[0].thumbImageTag, "")
+      m.assertEqual(items[0].primaryImageTag, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildChapterItems() - synthetic chapters")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty array for short video (<10 min) with no chapters")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "short1"
+      data.runTimeTicks = 4800000000& ' 8 minutes
+
+      items = buildChapterItems(data)
+
+      m.assertEqual(items.count(), 0)
+    end function
+
+    @it("generates synthetic chapters at 5-min intervals for 20-min video")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "vid1"
+      data.runTimeTicks = 12000000000& ' 20 minutes
+
+      items = buildChapterItems(data)
+
+      ' 20 min / 5 min = 4 chapters (at 0, 5, 10, 15)
+      m.assertEqual(items.count(), 4)
+      m.assertEqual(items[0].playbackPositionTicks, 0&)
+      m.assertEqual(items[1].playbackPositionTicks, 3000000000&)
+      m.assertEqual(items[2].playbackPositionTicks, 6000000000&)
+      m.assertEqual(items[3].playbackPositionTicks, 9000000000&)
+    end function
+
+    @it("generates synthetic chapters at 10-min intervals for 45-min video")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "vid2"
+      data.runTimeTicks = 27000000000& ' 45 minutes
+
+      items = buildChapterItems(data)
+
+      ' 45 min / 10 min = 5 chapters (at 0, 10, 20, 30, 40)
+      m.assertEqual(items.count(), 5)
+      m.assertEqual(items[0].playbackPositionTicks, 0&)
+      m.assertEqual(items[1].playbackPositionTicks, 6000000000&)
+      m.assertEqual(items[4].playbackPositionTicks, 24000000000&)
+    end function
+
+    @it("generates synthetic chapters at 15-min intervals for 3-hour video")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "vid3"
+      data.runTimeTicks = 108000000000& ' 3 hours = 180 min
+
+      items = buildChapterItems(data)
+
+      ' 180 min / 15 min = 12 chapters
+      m.assertEqual(items.count(), 12)
+      m.assertEqual(items[0].playbackPositionTicks, 0&)
+      ' Last chapter at 165 min = 99000000000 ticks
+      m.assertEqual(items[11].playbackPositionTicks, 99000000000&)
+    end function
+
+    @it("synthetic chapters have Chapter type and parent video ID")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "vid4"
+      data.type = "Movie"
+      data.runTimeTicks = 12000000000& ' 20 min
+
+      items = buildChapterItems(data)
+
+      m.assertEqual(items[0].type, "Chapter")
+      m.assertEqual(items[0].parentType, "Movie")
+      m.assertEqual(items[0].id, "vid4")
+      m.assertEqual(items[0].primaryImageTag, "")
+    end function
+
+    @it("preserves Episode parent type for synthetic chapters")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "ep1"
+      data.type = "Episode"
+      data.runTimeTicks = 12000000000& ' 20 min
+
+      items = buildChapterItems(data)
+
+      m.assertEqual(items[0].parentType, "Episode")
+    end function
+
+    @it("returns empty array when runTimeTicks is 0")
+    function _()
+      data = CreateObject("roSGNode", "JellyfinBaseItem")
+      data.id = "vid5"
+      ' runTimeTicks defaults to 0
+
+      items = buildChapterItems(data)
+
+      m.assertEqual(items.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("generateSyntheticChapters()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses 5-min intervals for videos under 30 minutes")
+    function _()
+      chapters = generateSyntheticChapters(12000000000&) ' 20 min
+      m.assertEqual(chapters.count(), 4)
+      m.assertEqual(chapters[1].StartPositionTicks, 3000000000&)
+    end function
+
+    @it("uses 10-min intervals for videos between 30 and 120 minutes")
+    function _()
+      chapters = generateSyntheticChapters(36000000000&) ' 60 min
+      m.assertEqual(chapters.count(), 6)
+      m.assertEqual(chapters[1].StartPositionTicks, 6000000000&)
+    end function
+
+    @it("uses 15-min intervals for videos 2+ hours")
+    function _()
+      chapters = generateSyntheticChapters(72000000000&) ' exactly 2 hours = 120 min
+      m.assertEqual(chapters.count(), 8) ' 120 / 15 = 8 chapters (0, 15, 30, 45, 60, 75, 90, 105)
+      m.assertEqual(chapters[1].StartPositionTicks, 9000000000&)
+    end function
+
+    @it("chapter AAs have required fields")
+    function _()
+      chapters = generateSyntheticChapters(12000000000&) ' 20 min
+      m.assertTrue(isValidAndNotEmpty(chapters[0].Name))
+      m.assertEqual(chapters[0].StartPositionTicks, 0&)
+      m.assertEqual(chapters[0].ImageTag, "")
+    end function
+
+  end class
+
+end namespace

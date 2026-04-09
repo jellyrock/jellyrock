@@ -1,0 +1,83 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Build JellyfinBaseItem nodes for the chapters row.
+' Uses real chapters from API when available, otherwise generates synthetic chapters
+' at adaptive intervals for videos >= 10 minutes.
+' @param data - JellyfinBaseItem node for the current video
+' @returns Array of JellyfinBaseItem nodes, or empty array if no chapters to show
+function buildChapterItems(data as object) as object
+  chapters = data.chapters
+  runTimeTicks = data.runTimeTicks
+
+  ' If no real chapters, generate synthetic ones for videos >= 10 minutes
+  if not isValidAndNotEmpty(chapters)
+    TEN_MINUTES_TICKS = 6000000000&
+    if not isValid(runTimeTicks) or runTimeTicks < TEN_MINUTES_TICKS then return []
+
+    chapters = generateSyntheticChapters(runTimeTicks)
+  end if
+
+  if not isValidAndNotEmpty(chapters) then return []
+
+  items = []
+  for i = 0 to chapters.count() - 1
+    chapter = chapters[i]
+    item = CreateObject("roSGNode", "JellyfinBaseItem")
+    item.type = "Chapter"
+    item.parentType = data.type
+    item.id = data.id
+    item.indexNumber = i
+
+    ' Use chapter name from API, fall back to "Chapter N" if null/empty
+    if isValidAndNotEmpty(chapter.Name)
+      item.name = chapter.Name
+    else
+      item.name = translate(translationKeys.LabelChapter, [stri(i + 1).trim()])
+    end if
+    item.subtitle = ticksToHuman(chapter.StartPositionTicks)
+    item.playbackPositionTicks = chapter.StartPositionTicks
+
+    ' Chapter thumbnail tag (may be empty for synthetic chapters)
+    if isValidAndNotEmpty(chapter.ImageTag)
+      item.primaryImageTag = chapter.ImageTag
+    end if
+
+    items.push(item)
+  end for
+
+  return items
+end function
+
+' Generate evenly-spaced synthetic chapters for videos without chapter metadata.
+' Adaptive interval: 5 min for <30 min, 10 min for 30-<120 min, 15 min for >=2 hours.
+' @param runTimeTicks - Video duration in ticks (100-nanosecond units)
+' @returns Array of chapter-like AAs with Name, StartPositionTicks, and ImageTag fields
+function generateSyntheticChapters(runTimeTicks as longinteger) as object
+  THIRTY_MINUTES_TICKS = 18000000000&
+  TWO_HOURS_TICKS = 72000000000&
+
+  if runTimeTicks < THIRTY_MINUTES_TICKS
+    intervalTicks = 3000000000& ' 5 minutes
+  else if runTimeTicks < TWO_HOURS_TICKS
+    intervalTicks = 6000000000& ' 10 minutes
+  else
+    intervalTicks = 9000000000& ' 15 minutes
+  end if
+
+  chapters = []
+  position = 0&
+  chapterNumber = 1
+  while position < runTimeTicks
+    chapters.push({
+      Name: translate(translationKeys.LabelChapter, [stri(chapterNumber).trim()]),
+      StartPositionTicks: position,
+      ImageTag: ""
+    })
+    position += intervalTicks
+    chapterNumber++
+  end while
+
+  return chapters
+end function

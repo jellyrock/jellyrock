@@ -12,6 +12,11 @@ import "pkg:/source/utils/misc.bs"
 function getRowItemTitle(item as object) as string
   if not isValid(item) then return ""
 
+  ' Chapter: display the chapter name
+  if item.type = "Chapter"
+    return item.name
+  end if
+
   ' Season: item.name is the season label; subtitle holds seriesName (shown as secondary text)
   if item.type = "Season"
     return item.name
@@ -43,6 +48,11 @@ end function
 ' @returns Display subtitle string, or "" if item is invalid
 function getRowItemSubtitle(item as object) as string
   if not isValid(item) then return ""
+
+  ' Chapter: display the timestamp (pre-computed in buildChapterItems)
+  if item.type = "Chapter"
+    return item.subtitle
+  end if
 
   ' Season: subtitle field holds the series name; name holds "Season N" (shown as title)
   if item.type = "Season"

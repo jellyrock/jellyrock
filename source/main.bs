@@ -113,7 +113,16 @@ sub Main (args as dynamic) as void
           m.global.queueManager.callFunc("resetShuffle")
 
           ' Synchronous types (no API calls) — handle inline
-          if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
+          if itemType = "chapter"
+            ' Chapter: start playback of parent video at chapter position
+            queueItem = nodeHelpers.createQueueItem(itemNode)
+            if isValid(queueItem)
+              queueItem.type = itemNode.parentType
+              queueItem.startingPoint = itemNode.playbackPositionTicks
+              m.global.queueManager.callFunc("push", queueItem)
+              m.global.queueManager.callFunc("playQueue")
+            end if
+          else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
             quickplay.video(itemNode)
             m.global.queueManager.callFunc("playQueue")
           else if itemType = "audio"
@@ -249,6 +258,17 @@ sub Main (args as dynamic) as void
           group = CreateItemDetailsGroup(selectedItem)
         else if selectedItemType = "Playlist"
           group = CreateItemDetailsGroup(selectedItem)
+        else if selectedItemType = "Chapter"
+          ' Chapter: start playback of parent video at chapter position
+          m.global.queueManager.callFunc("clear")
+          m.global.queueManager.callFunc("resetShuffle")
+          queueItem = nodeHelpers.createQueueItem(selectedItem)
+          if isValid(queueItem)
+            queueItem.type = selectedItem.parentType
+            queueItem.startingPoint = selectedItem.playbackPositionTicks
+            m.global.queueManager.callFunc("push", queueItem)
+            m.global.queueManager.callFunc("playQueue")
+          end if
         else
           ' TODO - switch on more node types
           stopLoadingSpinner()

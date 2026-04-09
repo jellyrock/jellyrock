@@ -29,6 +29,39 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - Chapter type")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses Chapter/{index} image URL when chapter has ImageTag")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mov1"
+      item.type = "Chapter"
+      item.indexNumber = 3
+      item.primaryImageTag = "chaptag"
+
+      url = getRowItemImageUrl(item, 468, 264, invalid)
+
+      m.assertTrue(isValidAndNotEmpty(url))
+      m.assertTrue(url.inStr("mov1") > -1, "should use parent video ID")
+      m.assertTrue(url.inStr("chaptag") > -1, "should use chapter image tag")
+      m.assertTrue(url.inStr("Chapter/3") > -1, "should use Chapter/{index} path")
+    end function
+
+    @it("returns empty string for chapter without ImageTag (triggers placeholder)")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mov1"
+      item.type = "Chapter"
+      item.indexNumber = 0
+      ' No primaryImageTag, no thumbImageTag, no backdropImageTags
+
+      url = getRowItemImageUrl(item, 468, 264, invalid)
+
+      m.assertEqual(url, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getRowItemImageUrl() - library tile types")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

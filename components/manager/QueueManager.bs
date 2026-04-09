@@ -159,6 +159,11 @@ sub playQueue()
     return
   end if
 
+  if nextItemMediaType = "chapter"
+    CreateVideoPlayerView()
+    return
+  end if
+
   if nextItemMediaType = "trailer"
     CreateVideoPlayerView()
     return

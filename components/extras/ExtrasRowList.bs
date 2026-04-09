@@ -2,6 +2,7 @@ import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/chapterItems.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -80,6 +81,7 @@ sub init()
 
   ' Named row refs — reused across refreshes so the RowList never loses focus position.
   ' Each ref is invalid until that row's data loads for the first time.
+  m.rowChapters = invalid
   m.rowAdditionalParts = invalid
   m.rowSeasons = invalid
   m.rowEpisodes = invalid
@@ -166,8 +168,9 @@ end sub
 ' loadParts: Start the extras loading chain appropriate for the item type.
 '
 ' Chain by type:
-'   Movie / Video / Recording → AdditionalParts → People → LikeThis → SpecialFeatures
-'   MusicVideo / Episode      → People → LikeThis
+'   Movie / Video / Recording → Chapters → AdditionalParts → People → LikeThis → SpecialFeatures
+'   Episode                   → Chapters → SeasonEpisodes → People → LikeThis
+'   MusicVideo                → People → LikeThis
 '   Series                    → Seasons → People → LikeThis
 '   Season                    → Episodes ("Season X") → People → LikeThis
 '   BoxSet                    → BoxSetItems ("Movies") → People → LikeThis
@@ -203,7 +206,20 @@ sub loadParts(data as object)
     m.currentEpisodeId = data.id
     m.currentEpisodeSeasonNumber = data.parentIndexNumber
     m.episodeSeriesId = data.seriesId
-    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
+
+    ' Chapters row (synchronous — chapter data already on the item node)
+    chapterItems = buildChapterItems(data)
+    if chapterItems.count() > 0
+      m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
+      m.rowChapters = populateRow(m.rowChapters, translate(translationKeys.LabelChapters), chapterItems, rowSlotSize.ROW_HEIGHT_WIDE)
+    else
+      if isValid(m.rowChapters)
+        removeRow(m.rowChapters)
+        m.rowChapters = invalid
+      end if
+      m.top.rowItemSize = [rowSlotSize.PORTRAIT]
+    end if
+
     m.LoadSeasonEpisodesTask.observeField("content", "onSeasonEpisodesLoaded")
     m.LoadSeasonEpisodesTask.itemId = data.seriesId
     m.LoadSeasonEpisodesTask.metadata = { seasonId: data.seasonId }
@@ -297,7 +313,16 @@ sub loadParts(data as object)
       m.LikeThisTask.control = "RUN"
     end if
   else
-    ' Movie, Video, Recording: full chain starting with AdditionalParts
+    ' Movie, Video, Recording: Chapters (sync) → AdditionalParts → People → LikeThis → SpecialFeatures
+    chapterItems = buildChapterItems(data)
+    if chapterItems.count() > 0
+      m.top.rowItemSize = [rowSlotSize.WIDE]
+      m.rowChapters = populateRow(m.rowChapters, translate(translationKeys.LabelChapters), chapterItems, rowSlotSize.ROW_HEIGHT_WIDE)
+    else if isValid(m.rowChapters)
+      removeRow(m.rowChapters)
+      m.rowChapters = invalid
+    end if
+
     m.LoadAdditionalPartsTask.observeField("content", "onAdditionalPartsLoaded")
     m.LoadAdditionalPartsTask.itemId = m.top.parentId
     m.LoadAdditionalPartsTask.control = "RUN"
@@ -372,7 +397,11 @@ sub onSeasonEpisodesLoaded()
       else
         rowTitle = translate(translationKeys.LabelMoreEpisodes)
       end if
-      m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
+      if isValid(m.rowChapters)
+        m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
+      else
+        m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
+      end if
       m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes, rowSlotSize.ROW_HEIGHT_WIDE)
     else if isValid(m.rowSeasonEpisodes)
       removeRow(m.rowSeasonEpisodes)
@@ -431,12 +460,15 @@ sub onAdditionalPartsLoaded()
 
   if isValid(parts) and parts.count() > 0
     m.rowAdditionalParts = populateRow(m.rowAdditionalParts, translate(translationKeys.LabelAdditionalParts), parts, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
+  else if isValid(m.rowAdditionalParts)
+    removeRow(m.rowAdditionalParts)
+    m.rowAdditionalParts = invalid
+  end if
+
+  ' Rebuild rowItemSize: WIDE for chapters row (if present), PORTRAIT for everything after
+  if isValid(m.rowChapters)
+    m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
   else
-    if isValid(m.rowAdditionalParts)
-      removeRow(m.rowAdditionalParts)
-      m.rowAdditionalParts = invalid
-    end if
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
   end if
 
@@ -540,7 +572,12 @@ sub onLikeThisLoaded()
       newSizes = []
       childCount = m.top.content.getChildCount()
       for i = 0 to childCount - 2
-        newSizes.push(rowSlotSize.PORTRAIT)
+        ' Chapters row (index 0 when present) uses WIDE; all other preceding rows use PORTRAIT
+        if i = 0 and isValid(m.rowChapters)
+          newSizes.push(rowSlotSize.WIDE)
+        else
+          newSizes.push(rowSlotSize.PORTRAIT)
+        end if
       end for
       newSizes.push(rowSlotSize.WIDE)
       m.top.rowItemSize = newSizes
