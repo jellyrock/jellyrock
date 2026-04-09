@@ -472,8 +472,8 @@ Settings relating to how the application looks.
   - [Max Days Next Up](#uiDetailsMaxDaysNextUp)
   - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
   - [Row Layout](#uiRowLayout)
-  - [Theme Colors](#user-interface-general-theme-colors)
-    - [Theme](#uiTheme)
+  - [Theme](#uiTheme)
+  - [Custom Theme Colors](#user-interface-general-custom-theme-colors)
     - [Background - Primary](#uiThemeColorBackgroundPrimary)
     - [Background - Secondary](#uiThemeColorBackgroundSecondary)
     - [Primary](#uiThemeColorPrimary)
@@ -602,6 +602,19 @@ Choose how rows are displayed throughout the app.
 | Default | `fullwidth` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Original</td><td><code>original</code></td></tr><tr><td>Full Width</td><td><code>fullwidth</code></td></tr></tbody></table> |
 
+<h4 id="uiTheme">Theme</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiTheme">Theme</a>
+
+Select a color theme. Choose 'Custom' to manually set individual colors.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiTheme` |
+| Type | `radio` |
+| Default | `jellyrock` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>JellyRock</td><td><code>jellyrock</code></td></tr><tr><td>JellyRock (Black)</td><td><code>jellyrock-black</code></td></tr><tr><td>Emerald</td><td><code>emerald</code></td></tr><tr><td>Ember</td><td><code>ember</code></td></tr><tr><td>Rose</td><td><code>rose</code></td></tr><tr><td>Ocean</td><td><code>ocean</code></td></tr><tr><td>Dusk</td><td><code>dusk</code></td></tr><tr><td>Midnight</td><td><code>midnight</code></td></tr><tr><td>High Contrast</td><td><code>high-contrast</code></td></tr><tr><td>Custom</td><td><code>custom</code></td></tr></tbody></table> |
+
 <h4 id="uiHomeUseWebArrangement">Use Web Client's Home Section Arrangement</h4>
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeUseWebArrangement">Use Web Client's Home Section Arrangement</a>
@@ -614,30 +627,17 @@ Make the arrangement of the Roku home view sections match the web client's home 
 | Type | `bool` |
 | Default | `true` |
 
-#### Theme Colors
+#### Custom Theme Colors
 
-<a id="user-interface-general-theme-colors"></a>
+<a id="user-interface-general-custom-theme-colors"></a>
 
-Customize the app's color scheme. Choose a preset or create your own custom theme.
-
-<h5 id="uiTheme">Theme</h5>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiTheme">Theme</a>
-
-Select a color theme. Choose 'Custom' to manually set individual colors.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiTheme` |
-| Type | `radio` |
-| Default | `jellyrock` |
-| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>JellyRock</td><td><code>jellyrock</code></td></tr><tr><td>JellyRock (Black)</td><td><code>jellyrock-black</code></td></tr><tr><td>Custom</td><td><code>custom</code></td></tr></tbody></table> |
+Manually set individual theme colors.
 
 <h5 id="uiThemeColorBackgroundPrimary">Background - Primary</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorBackgroundPrimary">Background - Primary</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-custom-theme-colors">Custom Theme Colors</a> › <a href="#uiThemeColorBackgroundPrimary">Background - Primary</a>
 
-Main background color. Default: 0D1117
+The app's main background behind all content.
 
 | Property | Value |
 | --- | --- |
@@ -647,9 +647,9 @@ Main background color. Default: 0D1117
 
 <h5 id="uiThemeColorBackgroundSecondary">Background - Secondary</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorBackgroundSecondary">Background - Secondary</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-custom-theme-colors">Custom Theme Colors</a> › <a href="#uiThemeColorBackgroundSecondary">Background - Secondary</a>
 
-Panel/card background color. Default: 161B22
+Background for cards, panels, buttons, and popups.
 
 | Property | Value |
 | --- | --- |
@@ -659,9 +659,9 @@ Panel/card background color. Default: 161B22
 
 <h5 id="uiThemeColorPrimary">Primary</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorPrimary">Primary</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-custom-theme-colors">Custom Theme Colors</a> › <a href="#uiThemeColorPrimary">Primary</a>
 
-Focus highlights and buttons. Default: 8B5CF6
+Focus borders and highlights that show where you are.
 
 | Property | Value |
 | --- | --- |
@@ -671,9 +671,9 @@ Focus highlights and buttons. Default: 8B5CF6
 
 <h5 id="uiThemeColorSecondary">Secondary</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorSecondary">Secondary</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-custom-theme-colors">Custom Theme Colors</a> › <a href="#uiThemeColorSecondary">Secondary</a>
 
-Progress bars and accents. Default: 3B82F6
+Selected tabs, progress bars, and visual accents.
 
 | Property | Value |
 | --- | --- |
@@ -683,9 +683,9 @@ Progress bars and accents. Default: 3B82F6
 
 <h5 id="uiThemeColorTextDisabled">Text - Disabled</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorTextDisabled">Text - Disabled</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-custom-theme-colors">Custom Theme Colors</a> › <a href="#uiThemeColorTextDisabled">Text - Disabled</a>
 
-Muted/disabled/inactive text. Default: 4A4A4A
+Text color for disabled or inactive elements.
 
 | Property | Value |
 | --- | --- |
@@ -695,9 +695,9 @@ Muted/disabled/inactive text. Default: 4A4A4A
 
 <h5 id="uiThemeColorTextPrimary">Text - Primary</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorTextPrimary">Text - Primary</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-custom-theme-colors">Custom Theme Colors</a> › <a href="#uiThemeColorTextPrimary">Text - Primary</a>
 
-Main text color. Default: F0F0F0
+Primary text color used throughout the app.
 
 | Property | Value |
 | --- | --- |
@@ -707,9 +707,9 @@ Main text color. Default: F0F0F0
 
 <h5 id="uiThemeColorTextSecondary">Text - Secondary</h5>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-theme-colors">Theme Colors</a> › <a href="#uiThemeColorTextSecondary">Text - Secondary</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#user-interface-general-custom-theme-colors">Custom Theme Colors</a> › <a href="#uiThemeColorTextSecondary">Text - Secondary</a>
 
-Secondary text. Default: A8A8A8
+Subtitles, hints, and less prominent text.
 
 | Property | Value |
 | --- | --- |
