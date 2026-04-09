@@ -137,6 +137,16 @@ sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
   else
     m.isTextureUnloaded = true
   end if
+
+  ' When the same URL is re-assigned (e.g. data refresh returns identical libraries),
+  ' Roku's Poster won't re-trigger loadStatus, so onPosterLoadStatusChanged() never
+  ' fires to hide the backdrop. Detect this and hide immediately.
+  if not m.isTextureUnloaded and m.poster.loadStatus = "ready" and posterUri <> "" and not isPlaceholderUri(posterUri)
+    m.backdrop.visible = false
+    if isValid(backdropText)
+      backdropText.visible = false
+    end if
+  end if
 end sub
 
 ' Renders a standard item: poster image with title/subtitle text below.
