@@ -104,7 +104,7 @@ namespace tests
       reg = CreateObject("roRegistrySection", testUserId)
       value = reg.read("testFloat")
       m.assertTrue(type(value) = "roString" or type(value) = "String")
-      m.assertTrue(value.Instr("3.14") = 0)
+      m.assertTrue(value.inStr("3.14") = 0)
 
     end function
 

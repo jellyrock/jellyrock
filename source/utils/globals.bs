@@ -281,7 +281,7 @@ function isValidHexColor(input as dynamic) as boolean
   validChars = "0123456789ABCDEF"
   for i = 0 to 5
     char = UCase(input.Mid(i, 1))
-    if Instr(1, validChars, char) = 0
+    if inStr(1, validChars, char) = 0
       return false
     end if
   end for
@@ -317,8 +317,8 @@ sub SaveDeviceToGlobal()
   ' determine max playback resolution
   ' https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifdeviceinfo.md#getvideomode-as-string
   videoMode = deviceInfo.GetVideoMode()
-  iPos = Instr(1, videoMode, "i")
-  pPos = Instr(1, videoMode, "p")
+  iPos = inStr(1, videoMode, "i")
+  pPos = inStr(1, videoMode, "p")
   videoHeight = invalid
   videoWidth = invalid
   refreshRate = "0"

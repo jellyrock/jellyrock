@@ -101,7 +101,7 @@ sub FetchServerIds()
     serverUrl = m.servers[i].baseUrl
     if not isValidAndNotEmpty(serverUrl) then continue for
 
-    schemeEnd = Instr(1, serverUrl, "://")
+    schemeEnd = inStr(1, serverUrl, "://")
     if schemeEnd > 0
       originalUrl = Mid(serverUrl, schemeEnd + 3)
     else

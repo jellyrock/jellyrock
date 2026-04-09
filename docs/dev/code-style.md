@@ -310,6 +310,20 @@ Use decorated comment blocks for major logical sections within large files.
 
 ## BrightScript Specific Rules
 
+### Roku Built-In Function & Method Casing
+
+BrightScript is **case-insensitive** for all identifiers, keywords, and function/method names. `inStr()`, `Instr()`, and `INSTR()` are identical at runtime. However, we use **`lowerCamelCase`** for Roku built-in functions and methods, consistent with our project-wide naming convention.
+
+```brighterscript
+' Correct — lowerCamelCase
+pos = myString.inStr("search")
+idx = inStr(1, locale, "_")
+
+' Incorrect — PascalCase / lowercase
+pos = myString.Instr("search")
+idx = Instr(1, locale, "_")
+```
+
 ### Associative Array Key Casing
 
 BrightScript stores AA keys in **lowercase** regardless of source code casing. `{ maxWidth: 1920 }` stores the key as `"maxwidth"`. This is a language limitation, not a convention violation.

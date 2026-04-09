@@ -72,7 +72,7 @@ namespace tests
       result = valueToString(3.14)
       m.assertTrue(m.isStringType(result))
       ' Float conversion may have precision differences
-      m.assertTrue(result.Instr("3.14") = 0)
+      m.assertTrue(result.inStr("3.14") = 0)
     end function
 
     @it("converts string to string (unchanged)")

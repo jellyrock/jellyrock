@@ -19,26 +19,26 @@ namespace tests
     @it("includes /users/{id}/images/ path segment")
     function _()
       result = sdkV1.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/users/" + m.testUserId + "/images/") >= 0, "V1 URL should contain /users/{id}/images/ path")
+      m.assertTrue(result.inStr("/users/" + m.testUserId + "/images/") >= 0, "V1 URL should contain /users/{id}/images/ path")
     end function
 
     @it("includes imagetype in path")
     function _()
       result = sdkV1.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/primary/") >= 0, "V1 URL should contain imagetype in path")
+      m.assertTrue(result.inStr("/primary/") >= 0, "V1 URL should contain imagetype in path")
     end function
 
     @it("includes imageindex in path")
     function _()
       result = sdkV1.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/0") >= 0, "V1 URL should contain imageindex in path")
+      m.assertTrue(result.inStr("/0") >= 0, "V1 URL should contain imageindex in path")
     end function
 
     @it("appends extra params as query string")
     function _()
       result = sdkV1.users.GetImageURL(m.testUserId, "primary", 0, { maxHeight: 300 })
       ' BrightScript AA keys are lowercased; check the value not the key
-      m.assertTrue(result.Instr("300") >= 0, "V1 URL should include extra params in query string")
+      m.assertTrue(result.inStr("300") >= 0, "V1 URL should include extra params in query string")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -48,27 +48,27 @@ namespace tests
     @it("uses /UserImage top-level path (not /users/)")
     function _()
       result = sdkV2.users.GetImageURL(m.testUserId, "primary", 0, {})
-      m.assertTrue(result.Instr("/UserImage") >= 0, "V2 URL should use /UserImage path")
-      m.assertFalse(result.Instr("/users/") >= 0, "V2 URL must not contain /users/ path prefix")
+      m.assertTrue(result.inStr("/UserImage") >= 0, "V2 URL should use /UserImage path")
+      m.assertFalse(result.inStr("/users/") >= 0, "V2 URL must not contain /users/ path prefix")
     end function
 
     @it("passes userId as query parameter")
     function _()
       result = sdkV2.users.GetImageURL(m.testUserId, "primary", 0, {})
       ' Key stored lowercase: "userid"
-      m.assertTrue(result.Instr(m.testUserId) >= 0, "V2 URL should contain userId value as query param")
+      m.assertTrue(result.inStr(m.testUserId) >= 0, "V2 URL should contain userId value as query param")
     end function
 
     @it("passes type as query parameter")
     function _()
       result = sdkV2.users.GetImageURL(m.testUserId, "backdrop", 0, {})
-      m.assertTrue(result.Instr("backdrop") >= 0, "V2 URL should contain imagetype as query param value")
+      m.assertTrue(result.inStr("backdrop") >= 0, "V2 URL should contain imagetype as query param value")
     end function
 
     @it("passes index as query parameter")
     function _()
       result = sdkV2.users.GetImageURL(m.testUserId, "primary", 2, {})
-      m.assertTrue(result.Instr("2") >= 0, "V2 URL should contain imageindex as query param value")
+      m.assertTrue(result.inStr("2") >= 0, "V2 URL should contain imageindex as query param value")
     end function
 
   end class

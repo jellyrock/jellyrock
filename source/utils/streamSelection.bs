@@ -156,7 +156,7 @@ function mapRokuLocaleToJellyfinLanguage(rokuLocale as dynamic) as string
   ' Extract base language (first 2 characters before underscore)
   ' "en_US" → "en", "fr_CA" → "fr"
   baseLanguage = ""
-  underscorePos = rokuLocale.Instr("_")
+  underscorePos = rokuLocale.inStr("_")
   if underscorePos > -1
     baseLanguage = LCase(Left(rokuLocale, underscorePos))
   else

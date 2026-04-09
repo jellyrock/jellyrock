@@ -36,13 +36,13 @@ function resolveUrl(baseUrl as string, reference as string) as string
   refQuery = ""
 
   ' Extract fragment first (it comes after query) - fragments are stripped
-  fragmentIndex = Instr(1, refPath, "#")
+  fragmentIndex = inStr(1, refPath, "#")
   if fragmentIndex > 0
     refPath = Left(refPath, fragmentIndex - 1)
   end if
 
   ' Extract query
-  queryIndex = Instr(1, refPath, "?")
+  queryIndex = inStr(1, refPath, "?")
   if queryIndex > 0
     refQuery = Mid(refPath, queryIndex)
     refPath = Left(refPath, queryIndex - 1)
@@ -93,7 +93,7 @@ function normalizeUrl(url as string) as string
   ' If no :// present, assume http:// scheme for backward compatibility with
   ' UI-suggested inputs like "192.168.1.100:8096" and persisted legacy values.
   ' Otherwise parse as-is for URLs that already have a scheme.
-  if Instr(1, url, "://") = 0
+  if inStr(1, url, "://") = 0
     parts = parseUrlComponents("http://" + url)
   else
     parts = parseUrlComponents(url)
@@ -160,7 +160,7 @@ function parseUrlComponents(url as string) as object
   port = ""
   if isValid(authority) and authority <> ""
     ' Check for userinfo (user:pass@host)
-    atIndex = Instr(1, authority, "@")
+    atIndex = inStr(1, authority, "@")
     if atIndex > 0
       authority = Mid(authority, atIndex + 1)
     end if
@@ -169,7 +169,7 @@ function parseUrlComponents(url as string) as object
     if Left(authority, 1) = "["
       ' IPv6 literal: [::1] or [::1]:8096
       ' Find closing bracket
-      bracketIndex = Instr(1, authority, "]")
+      bracketIndex = inStr(1, authority, "]")
       if bracketIndex > 0
         ' Extract IPv6 address inside brackets (without the brackets for lowercasing)
         ipv6Addr = Mid(authority, 2, bracketIndex - 2)
@@ -197,7 +197,7 @@ function parseUrlComponents(url as string) as object
       end if
     else
       ' Check for port (non-IPv6)
-      colonIndex = Instr(1, authority, ":")
+      colonIndex = inStr(1, authority, ":")
       if colonIndex > 0
         host = LCase(Left(authority, colonIndex - 1))
         port = Mid(authority, colonIndex + 1)

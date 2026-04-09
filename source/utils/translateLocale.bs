@@ -74,7 +74,7 @@ function normalizeLocaleCode(code as string) as string
   if normalizedLower = "zh_hk" or normalizedLower = "zh_hant_hk" then return "zh_Hant_HK"
 
   ' Find the first underscore to split lang from region
-  underscorePos = Instr(1, normalized, "_")
+  underscorePos = inStr(1, normalized, "_")
 
   if underscorePos > 0
     ' Regional locale: lowercase lang + uppercase region

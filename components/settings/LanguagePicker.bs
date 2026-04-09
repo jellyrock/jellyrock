@@ -101,9 +101,9 @@ end function
 
 ' Check if a language matches the filter text (searches both names and code)
 function matchesFilter(lang as object, filterText as string) as boolean
-  if LCase(lang.name).Instr(filterText) >= 0 then return true
-  if LCase(lang.nativeName).Instr(filterText) >= 0 then return true
-  if LCase(lang.code).Instr(filterText) >= 0 then return true
+  if LCase(lang.name).inStr(filterText) >= 0 then return true
+  if LCase(lang.nativeName).inStr(filterText) >= 0 then return true
+  if LCase(lang.code).inStr(filterText) >= 0 then return true
   return false
 end function
 

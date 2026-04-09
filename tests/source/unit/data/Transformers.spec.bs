@@ -784,9 +784,9 @@ namespace tests
 
       url = GetPosterURLFromItem(item, 440, 295)
 
-      m.assertTrue(url.Instr("movie123") > -1)
-      m.assertTrue(url.Instr("abc123") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("movie123") > -1)
+      m.assertTrue(url.inStr("abc123") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     @it("falls back to thumb when no primary")
@@ -797,8 +797,8 @@ namespace tests
 
       url = GetPosterURLFromItem(item, 440, 295)
 
-      m.assertTrue(url.Instr("Thumb") > -1)
-      m.assertTrue(url.Instr("def456") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
+      m.assertTrue(url.inStr("def456") > -1)
     end function
 
     @it("returns empty string when no images")
@@ -819,9 +819,9 @@ namespace tests
 
       url = GetBackdropURLFromItem(item, 720, 1280)
 
-      m.assertTrue(url.Instr("movie123") > -1)
-      m.assertTrue(url.Instr("backdrop123") > -1)
-      m.assertTrue(url.Instr("Backdrop") > -1)
+      m.assertTrue(url.inStr("movie123") > -1)
+      m.assertTrue(url.inStr("backdrop123") > -1)
+      m.assertTrue(url.inStr("Backdrop") > -1)
     end function
 
     @it("generates logo URL from logo tag")
@@ -832,9 +832,9 @@ namespace tests
 
       url = GetLogoURLFromItem(item, 100, 300)
 
-      m.assertTrue(url.Instr("movie123") > -1)
-      m.assertTrue(url.Instr("logo123") > -1)
-      m.assertTrue(url.Instr("Logo") > -1)
+      m.assertTrue(url.inStr("movie123") > -1)
+      m.assertTrue(url.inStr("logo123") > -1)
+      m.assertTrue(url.inStr("Logo") > -1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -935,20 +935,20 @@ namespace tests
       ' Test GetPosterURLFromItem
       posterURL = GetPosterURLFromItem(mockItem, 480, 720)
       m.assertTrue(posterURL <> "")
-      m.assertTrue(posterURL.Instr("testItem123") > -1)
-      m.assertTrue(posterURL.Instr("primaryTag456") > -1)
+      m.assertTrue(posterURL.inStr("testItem123") > -1)
+      m.assertTrue(posterURL.inStr("primaryTag456") > -1)
 
       ' Test GetBackdropURLFromItem
       backdropURL = GetBackdropURLFromItem(mockItem, 720, 1280)
       m.assertTrue(backdropURL <> "")
-      m.assertTrue(backdropURL.Instr("testItem123") > -1)
-      m.assertTrue(backdropURL.Instr("backdropTag111") > -1)
+      m.assertTrue(backdropURL.inStr("testItem123") > -1)
+      m.assertTrue(backdropURL.inStr("backdropTag111") > -1)
 
       ' Test GetLogoURLFromItem
       logoURL = GetLogoURLFromItem(mockItem, 200, 300)
       m.assertTrue(logoURL <> "")
-      m.assertTrue(logoURL.Instr("testItem123") > -1)
-      m.assertTrue(logoURL.Instr("logoTag101") > -1)
+      m.assertTrue(logoURL.inStr("testItem123") > -1)
+      m.assertTrue(logoURL.inStr("logoTag101") > -1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
