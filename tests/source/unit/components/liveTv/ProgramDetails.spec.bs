@@ -1,0 +1,59 @@
+namespace tests
+
+  @suite("ProgramDetails - Weekday fallback formula")
+  class ProgramDetailsWeekdayTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Weekday fallback formula")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Verify the manual weekday computation matches GetWeekday() for known dates.
+    ' Formula: (dateMidnight / 86400 + 4) mod 7, where epoch (Jan 1 1970) = Thursday = 4
+    ' Used as fallback when GetWeekday() returns invalid on certain Roku firmware.
+    @it("computes correct weekday from epoch seconds")
+    @params(0, 4)            ' Jan 1, 1970 = Thursday
+    @params(86400, 5)        ' Jan 2, 1970 = Friday
+    @params(172800, 6)       ' Jan 3, 1970 = Saturday
+    @params(259200, 0)       ' Jan 4, 1970 = Sunday
+    @params(345600, 1)       ' Jan 5, 1970 = Monday
+    @params(432000, 2)       ' Jan 6, 1970 = Tuesday
+    @params(518400, 3)       ' Jan 7, 1970 = Wednesday
+    function _(epochSeconds as integer, expectedWeekday as integer)
+      testDate = createObject("roDateTime")
+      testDate.FromSeconds(epochSeconds)
+
+      dateMidnight = testDate.AsSeconds() - (testDate.AsSeconds() mod 86400)
+      computed = (dateMidnight / 86400 + 4) mod 7
+
+      m.assertEqual(computed, expectedWeekday)
+    end function
+
+    @it("matches GetWeekday() for the crash log timestamp")
+    function _()
+      ' Timestamp from production crash: dateMidnight = 1775433600
+      testDate = createObject("roDateTime")
+      testDate.FromSeconds(1775433600)
+
+      dateMidnight = testDate.AsSeconds() - (testDate.AsSeconds() mod 86400)
+      computed = (dateMidnight / 86400 + 4) mod 7
+
+      m.assertEqual(computed, testDate.GetWeekday())
+    end function
+
+    @it("matches GetWeekday() for current date")
+    function _()
+      now = createObject("roDateTime")
+
+      dateMidnight = now.AsSeconds() - (now.AsSeconds() mod 86400)
+      computed = (dateMidnight / 86400 + 4) mod 7
+
+      m.assertEqual(computed, now.GetWeekday())
+    end function
+
+  end class
+
+end namespace
