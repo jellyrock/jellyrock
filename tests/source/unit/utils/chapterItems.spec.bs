@@ -110,8 +110,7 @@ namespace tests
 
       items = buildChapterItems(data)
 
-      ' 45 min / 10 min = 4 chapters (at 0, 10, 20, 30) — 40 exceeds 45 so only 4
-      ' Actually: 0, 10, 20, 30, 40 = 5 chapters (40 < 45)
+      ' 45 min / 10 min = 5 chapters (at 0, 10, 20, 30, 40)
       m.assertEqual(items.count(), 5)
       m.assertEqual(items[0].playbackPositionTicks, 0&)
       m.assertEqual(items[1].playbackPositionTicks, 6000000000&)
