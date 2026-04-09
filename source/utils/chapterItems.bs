@@ -51,7 +51,7 @@ function buildChapterItems(data as object) as object
 end function
 
 ' Generate evenly-spaced synthetic chapters for videos without chapter metadata.
-' Adaptive interval: 5 min for <30min, 10 min for 30-120min, 15 min for 2+ hours.
+' Adaptive interval: 5 min for <30 min, 10 min for 30-<120 min, 15 min for >=2 hours.
 ' @param runTimeTicks - Video duration in ticks (100-nanosecond units)
 ' @returns Array of chapter-like AAs with Name, StartPositionTicks, and ImageTag fields
 function generateSyntheticChapters(runTimeTicks as longinteger) as object
