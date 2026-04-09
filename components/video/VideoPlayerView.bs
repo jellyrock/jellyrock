@@ -1437,7 +1437,7 @@ function availSubtitleTrackIdx(tracknameToFind as string) as integer
     ' The TrackName must contain the URL we supplied originally, though
     ' Roku mangles the name a bit, so we check if the URL is a substring, rather
     ' than strict equality
-    if Instr(1, availTrack.TrackName, tracknameToFind)
+    if inStr(1, availTrack.TrackName, tracknameToFind)
       return idx
     end if
     idx = idx + 1

@@ -2,8 +2,6 @@ sub init()
   ' TextButton.init() has already run: m.buttonBackground, m.buttonBorder, m.buttonText are set
 
   constants = m.global.constants
-  m.colorTextPrimary = constants.colorTextPrimary
-  m.colorTextSecondary = constants.colorTextSecondary
 
   ' Upgrade font to Large to match overhang title size
   m.buttonText.font.size = constants.fontSizeLarge
@@ -14,12 +12,12 @@ sub init()
   ' Unfocused state: transparent background/border so only text is visible
   m.top.background = "0x00000000"
   m.top.border = "0x00000000"
-  m.top.textColor = m.colorTextSecondary
+  m.top.textColor = constants.colorTextSecondary
 
   ' Focused state: standard TextButton appearance
   m.top.focusBorder = constants.colorPrimary
   m.top.focusBackground = constants.colorBackgroundSecondary
-  m.top.textFocusColor = m.colorTextPrimary
+  m.top.textFocusColor = constants.colorTextPrimary
 
   ' Create underline indicator programmatically (positioned after sizing in onReady)
   m.indicator = createObject("roSGNode", "Rectangle")
@@ -76,9 +74,9 @@ sub onFocusChanged()
     m.buttonBorder.visible = false
     m.buttonBackground.visible = false
     if m.top.isButtonSelected
-      m.buttonText.color = m.colorTextPrimary
+      m.buttonText.color = m.global.constants.colorTextPrimary
     else
-      m.buttonText.color = m.colorTextSecondary
+      m.buttonText.color = m.global.constants.colorTextSecondary
     end if
   end if
 end sub

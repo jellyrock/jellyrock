@@ -7,9 +7,7 @@ on:
       - "components/**/*.bs"
       - "components/**/*.xml"
       - "settings/settings.json"
-      - "scripts/lint-translations.cjs"
-      - "scripts/validate-translations.cjs"
-      - "scripts/lint-xml-translations.cjs"
+      - "scripts/update-translations.cjs"
 
 jobs:
   run:

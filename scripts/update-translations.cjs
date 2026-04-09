@@ -1,12 +1,22 @@
-// Scans the codebase for translate() and translatePlural() calls,
-// compares against locale/custom/en_US.json, and reports:
-// - Keys used in code but missing from en_US.json
-// - Keys in en_US.json not used in code (orphans)
-// With --fix: sorts en_US.json alphabetically and syncs languages.json.
+// Consolidated translation maintenance script.
+//
+// Default mode (no flags): validates all translation files, code references,
+// placeholders, sort order, plurals, and coverage. Exits 1 on errors.
+//
+// --fix mode: auto-fixes en_US.json (remove orphans, sort) and languages.json
+// (add missing locales), then runs all checks. Exits 1 on remaining errors.
+//
+// npm scripts:
+//   lint:translations    → check mode (all validation)
+//   update-translations  → fix mode (--fix baked in)
 
 const fs = require('fs');
 const path = require('path');
 const fg = require('fast-glob');
+
+// ============================================================
+// Config
+// ============================================================
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const FIX_MODE = process.argv.includes('--fix');
@@ -14,6 +24,16 @@ const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en_US.json');
 const LOCALE_DIR = path.join(ROOT_DIR, 'locale/custom');
 const LANGUAGES_JSON_PATH = path.join(ROOT_DIR, 'locale/languages.json');
 const SETTINGS_JSON_PATH = path.join(ROOT_DIR, 'settings/settings.json');
+
+const SOURCE_PATTERNS = [
+  'source/**/*.bs',
+  'components/**/*.bs',
+  '!node_modules/**',
+  '!tests/**',
+  '!**/roku_modules/**',
+  '!build/**',
+  '!out/**'
+];
 
 // Language metadata for auto-generating languages.json entries.
 // Maps locale code → { name (English), nativeName (native script) }.
@@ -119,37 +139,63 @@ const LANGUAGE_METADATA = {
   'zu': { name: 'Zulu', nativeName: 'isiZulu' },
 };
 
-const SOURCE_PATTERNS = [
-  'source/**/*.bs',
-  'components/**/*.bs',
-  '!node_modules/**',
-  '!tests/**',
-  '!**/roku_modules/**',
-  '!build/**',
-  '!out/**'
-];
+// ============================================================
+// Colors
+// ============================================================
 
-// Extract translation keys from code — supports both patterns:
-// - translate(translationKeys.Key) — compile-time safe constant references
-// - translate("Key") — dynamic string calls (settings.bs, etc.)
+const colors = {
+  reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  bold: '\x1b[1m'
+};
+
+function c(text, color) {
+  if (process.platform === 'win32' && !process.env.FORCE_COLOR && !process.stdout.isTTY) return text;
+  return `${colors[color]}${text}${colors.reset}`;
+}
+
+// ============================================================
+// Utility Functions
+// ============================================================
+
+/** Extract {0}, {1}, etc. placeholders from a string. */
+function extractPlaceholders(str) {
+  const matches = str.match(/\{(\d+)\}/g);
+  return matches ? matches.sort() : [];
+}
+
+/**
+ * Extract translation keys from code. Returns { keys, pluralBaseKeys, hardcodedErrors }.
+ * hardcodedErrors tracks translate("Key") violations (should use translationKeys.*).
+ */
 function extractTranslateKeys(code) {
   const keys = new Set();
   const pluralBaseKeys = new Set();
+  const hardcodedErrors = [];
   let match;
 
-  // Match translate(translationKeys.Key) and translate(translationKeys.Key, ...)
+  // Match translate(translationKeys.Key) — compile-time safe constant references
   const constRegex = /\btranslate\(\s*translationKeys\.(\w+)/g;
   while ((match = constRegex.exec(code)) !== null) {
     keys.add(match[1]);
   }
 
-  // Match translate("Key") and translate("Key", ...) — dynamic string calls
+  // Match translate("Key") — flag as hardcoded error (should use translationKeys.*)
   const translateRegex = /\btranslate\(\s*"([^"]+)"/g;
   while ((match = translateRegex.exec(code)) !== null) {
     keys.add(match[1]);
+    hardcodedErrors.push({
+      pattern: `translate("${match[1]}")`,
+      suggestion: `translate(translationKeys.${match[1]})`,
+      index: match.index
+    });
   }
 
-  // Match translatePlural("BaseKey", ...) — generates BaseKeyZero, BaseKeyOne, BaseKeyMany
+  // Match translatePlural("BaseKey", ...) — flag as hardcoded error
   const pluralRegex = /\btranslatePlural\(\s*"([^"]+)"/g;
   while ((match = pluralRegex.exec(code)) !== null) {
     const baseKey = match[1];
@@ -157,6 +203,11 @@ function extractTranslateKeys(code) {
     keys.add(baseKey + 'Zero');
     keys.add(baseKey + 'One');
     keys.add(baseKey + 'Many');
+    hardcodedErrors.push({
+      pattern: `translatePlural("${baseKey}", ...)`,
+      suggestion: `translatePlural(translationKeys.${baseKey}, ...)`,
+      index: match.index
+    });
   }
 
   // Match translatePlural(translationKeys.BaseKey, ...) — compile-time safe plural calls
@@ -185,103 +236,297 @@ function extractTranslateKeys(code) {
     keys.add(match[1]);
   }
 
-  // Match titleKey: "Key" and descriptionKey: "Key" (dynamic string objects)
+  // Match titleKey: "Key" and descriptionKey: "Key" — flag as hardcoded error
   const keyPropRegex = /\b(?:titleKey|descriptionKey):\s*"([^"]+)"/g;
   while ((match = keyPropRegex.exec(code)) !== null) {
     keys.add(match[1]);
+    const prop = match[0].match(/^(titleKey|descriptionKey)/)[1];
+    hardcodedErrors.push({
+      pattern: `${prop}: "${match[1]}"`,
+      suggestion: `${prop}: translationKeys.${match[1]}`,
+      index: match.index
+    });
   }
 
-  return keys;
+  return { keys, pluralBaseKeys, hardcodedErrors };
 }
 
-// Extract titleKey and descriptionKey from settings.json
+/** Extract titleKey and descriptionKey from settings.json. */
 function extractSettingsKeys(jsonData) {
   const keys = new Set();
-
   function traverse(obj) {
     if (typeof obj !== 'object' || obj === null) return;
-
     if (typeof obj.titleKey === 'string') keys.add(obj.titleKey);
     if (typeof obj.descriptionKey === 'string') keys.add(obj.descriptionKey);
-
-    for (const key in obj) {
-      traverse(obj[key]);
-    }
+    for (const key in obj) traverse(obj[key]);
   }
-
   traverse(jsonData);
   return keys;
 }
 
-async function main() {
-  console.log('Scanning codebase for translation keys...\n');
+/** Check plural completeness: if FooOne exists, FooZero and FooMany must too. */
+function checkPluralCompleteness(keys) {
+  const errors = [];
+  const pluralSuffixes = ['Zero', 'One', 'Many'];
+  const baseKeys = new Set();
 
+  for (const key of keys) {
+    for (const suffix of pluralSuffixes) {
+      if (key.endsWith(suffix)) {
+        baseKeys.add(key.slice(0, -suffix.length));
+        break;
+      }
+    }
+  }
+
+  for (const base of baseKeys) {
+    const missing = pluralSuffixes.filter(s => !keys.includes(base + s));
+    if (missing.length > 0) {
+      errors.push(`Incomplete plural set "${base}": missing ${missing.map(s => base + s).join(', ')}`);
+    }
+  }
+
+  return errors;
+}
+
+// ============================================================
+// Main
+// ============================================================
+
+async function main() {
+  const errors = [];
+  const warnings = [];
+
+  console.log(c('\nTranslation Check', 'bold'));
+  console.log(c('=================', 'blue'));
+
+  // ----------------------------------------------------------
   // Load en_US.json
+  // ----------------------------------------------------------
   if (!fs.existsSync(EN_US_PATH)) {
-    console.error(`ERROR: ${EN_US_PATH} not found`);
+    console.error(c(`\nERROR: ${EN_US_PATH} not found`, 'red'));
     process.exit(1);
   }
-  const enUs = JSON.parse(fs.readFileSync(EN_US_PATH, 'utf8'));
-  const definedKeys = new Set(Object.keys(enUs));
 
-  // Scan source files
+  let enUs;
+  try {
+    enUs = JSON.parse(fs.readFileSync(EN_US_PATH, 'utf8'));
+  } catch (err) {
+    console.error(c(`\nERROR: en_US.json has invalid JSON: ${err.message}`, 'red'));
+    process.exit(1);
+  }
+
+  // ----------------------------------------------------------
+  // Scan code + settings for used keys
+  // ----------------------------------------------------------
   const usedKeys = new Set();
+  const hardcodedViolations = [];
   const files = await fg(SOURCE_PATTERNS, { cwd: ROOT_DIR, absolute: true });
 
   for (const filePath of files) {
     const code = fs.readFileSync(filePath, 'utf8');
-    const fileKeys = extractTranslateKeys(code);
-    fileKeys.forEach(k => usedKeys.add(k));
-  }
-  console.log(`Found ${usedKeys.size} keys in ${files.length} source files`);
+    const result = extractTranslateKeys(code);
+    result.keys.forEach(k => usedKeys.add(k));
 
-  // Scan settings.json
+    if (result.hardcodedErrors.length > 0) {
+      const relativePath = path.relative(ROOT_DIR, filePath);
+      for (const violation of result.hardcodedErrors) {
+        const lineNum = code.substring(0, violation.index).split('\n').length;
+        hardcodedViolations.push(
+          `${relativePath}:${lineNum} \u2014 ${violation.pattern} \u2192 ${violation.suggestion}`
+        );
+      }
+    }
+  }
+
   if (fs.existsSync(SETTINGS_JSON_PATH)) {
     const settingsData = JSON.parse(fs.readFileSync(SETTINGS_JSON_PATH, 'utf8'));
-    const settingsKeys = extractSettingsKeys(settingsData);
-    settingsKeys.forEach(k => usedKeys.add(k));
-    console.log(`Found ${settingsKeys.size} keys in settings.json`);
+    extractSettingsKeys(settingsData).forEach(k => usedKeys.add(k));
   }
 
-  console.log(`Total unique keys used in code: ${usedKeys.size}`);
-  console.log(`Total keys defined in en_US.json: ${definedKeys.size}\n`);
+  console.log(`\nScanning... ${usedKeys.size} unique keys in ${files.length} source files`);
+  console.log(`en_US.json: ${Object.keys(enUs).length} keys`);
 
-  // Find missing keys (used in code but not in en_US.json)
-  const missingKeys = [...usedKeys].filter(k => !definedKeys.has(k)).sort();
+  // ----------------------------------------------------------
+  // Fix mode: apply auto-fixes before validation
+  // ----------------------------------------------------------
+  const enUsKeys = Object.keys(enUs);
+  const orphanKeys = [...enUsKeys].filter(k => !usedKeys.has(k)).sort();
+  const missingKeys = [...usedKeys].filter(k => !(k in enUs)).sort();
 
-  // Find orphan keys (in en_US.json but not used in code)
-  const orphanKeys = [...definedKeys].filter(k => !usedKeys.has(k)).sort();
-
-  // Report
-  if (missingKeys.length > 0) {
-    console.log(`\x1b[31mMissing keys (${missingKeys.length}):\x1b[0m`);
-    missingKeys.forEach(k => console.log(`  - ${k}`));
-    console.log('');
-  }
-
-  if (orphanKeys.length > 0) {
-    console.log(`\x1b[33mOrphan keys (${orphanKeys.length}):\x1b[0m`);
-    orphanKeys.forEach(k => console.log(`  - ${k}`));
-    console.log('');
-  }
-
-  // Auto-fix en_US.json: ensure sort order
   if (FIX_MODE) {
-    // Sort keys and write to ensure consistent order
+    let enUsChanged = false;
+
+    // Remove orphan keys from en_US.json
+    if (orphanKeys.length > 0) {
+      orphanKeys.forEach(k => { delete enUs[k]; });
+      console.log(c(`\nFixed: removed ${orphanKeys.length} orphan key(s) from en_US.json`, 'green'));
+      enUsChanged = true;
+    }
+
+    // Sort en_US.json keys alphabetically
     const sorted = {};
     Object.keys(enUs).sort().forEach(k => { sorted[k] = enUs[k]; });
     const output = JSON.stringify(sorted, null, 2) + '\n';
     const current = fs.readFileSync(EN_US_PATH, 'utf8');
     if (output !== current) {
       fs.writeFileSync(EN_US_PATH, output);
-      console.log('Sorted en_US.json keys alphabetically');
+      console.log(c('Fixed: sorted en_US.json keys alphabetically', 'green'));
+      enUsChanged = true;
+    }
+
+    // Reload en_US.json after fixes for accurate validation
+    if (enUsChanged) {
+      enUs = JSON.parse(fs.readFileSync(EN_US_PATH, 'utf8'));
     }
   }
 
-  // ============================================================
-  // Sync languages.json with locale files
-  // ============================================================
-  const localeFiles = fs.readdirSync(LOCALE_DIR)
+  // ----------------------------------------------------------
+  // [en_US.json] checks
+  // ----------------------------------------------------------
+  console.log(c('\n[en_US.json]', 'cyan'));
+
+  // Sort order check (skip in fix mode — already fixed above)
+  if (!FIX_MODE) {
+    const currentKeys = Object.keys(enUs);
+    const sortedKeys = [...currentKeys].sort();
+    if (JSON.stringify(currentKeys) !== JSON.stringify(sortedKeys)) {
+      const firstUnsorted = currentKeys.find((k, i) => k !== sortedKeys[i]);
+      errors.push(`en_US.json keys are not sorted alphabetically (first: "${firstUnsorted}")`);
+      console.log(c(`  ERROR: keys not sorted (first unsorted: "${firstUnsorted}")`, 'red'));
+    } else {
+      console.log(c('  OK', 'green') + ' \u2014 keys sorted alphabetically');
+    }
+
+    // Orphan keys check (skip in fix mode — already removed above)
+    if (orphanKeys.length > 0) {
+      errors.push(`${orphanKeys.length} orphan key(s) in en_US.json`);
+      console.log(c(`  ERROR: ${orphanKeys.length} orphan key(s)`, 'red'));
+      orphanKeys.forEach(k => console.log(`    - ${k}`));
+    }
+  } else {
+    console.log(c('  OK', 'green') + ' \u2014 keys sorted alphabetically');
+  }
+
+  // Plural completeness
+  const pluralErrors = checkPluralCompleteness(Object.keys(enUs));
+  if (pluralErrors.length > 0) {
+    pluralErrors.forEach(e => {
+      errors.push(e);
+      console.log(c(`  ERROR: ${e}`, 'red'));
+    });
+  } else {
+    console.log(c('  OK', 'green') + ' \u2014 plural sets complete');
+  }
+
+  // ----------------------------------------------------------
+  // [Code References] checks
+  // ----------------------------------------------------------
+  console.log(c('\n[Code References]', 'cyan'));
+
+  // Missing keys (used in code but not in en_US.json)
+  // Recompute against potentially fixed en_US.json
+  const currentMissing = [...usedKeys].filter(k => !(k in enUs)).sort();
+  if (currentMissing.length > 0) {
+    errors.push(`${currentMissing.length} key(s) used in code but missing from en_US.json`);
+    console.log(c(`  ERROR: ${currentMissing.length} missing key(s)`, 'red'));
+    currentMissing.forEach(k => console.log(`    - ${k}`));
+  } else {
+    console.log(c('  OK', 'green') + ` \u2014 all ${usedKeys.size} keys exist in en_US.json`);
+  }
+
+  // Hardcoded string violations
+  if (hardcodedViolations.length > 0) {
+    errors.push(`${hardcodedViolations.length} hardcoded translation key(s) (use translationKeys.* constants)`);
+    console.log(c(`  ERROR: ${hardcodedViolations.length} hardcoded translation key(s)`, 'red'));
+    hardcodedViolations.forEach(v => console.log(`    ${v}`));
+  } else {
+    console.log(c('  OK', 'green') + ' \u2014 no hardcoded translation strings');
+  }
+
+  // ----------------------------------------------------------
+  // [Locale Files] checks
+  // ----------------------------------------------------------
+  const localeFiles = await fg(['*.json'], { cwd: LOCALE_DIR, absolute: true, onlyFiles: true });
+  const nonEnLocales = localeFiles.filter(f => path.basename(f) !== 'en_US.json');
+
+  console.log(c(`\n[Locale Files]`, 'cyan') + ` (${nonEnLocales.length} files)`);
+
+  let totalCovered = 0;
+  let totalLocaleKeys = 0;
+  const enUsKeyList = Object.keys(enUs);
+  const enUsKeyCount = enUsKeyList.length;
+
+  for (const filePath of nonEnLocales) {
+    const fileName = path.basename(filePath);
+
+    // Valid JSON check
+    let locale;
+    try {
+      locale = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (err) {
+      errors.push(`${fileName}: invalid JSON \u2014 ${err.message}`);
+      console.log(c(`  ERROR: ${fileName}: invalid JSON \u2014 ${err.message}`, 'red'));
+      continue;
+    }
+
+    const localeKeys = Object.keys(locale);
+    const localeKeySet = new Set(localeKeys);
+
+    // Placeholder parity
+    for (const key of localeKeys) {
+      if (!(key in enUs)) continue;
+      const enP = extractPlaceholders(enUs[key]);
+      const locP = extractPlaceholders(locale[key]);
+      if (JSON.stringify(enP) !== JSON.stringify(locP)) {
+        errors.push(`${fileName}: placeholder mismatch for "${key}" (en_US: ${enP.join(',') || 'none'} vs ${locP.join(',') || 'none'})`);
+      }
+    }
+
+    // Orphaned keys (in locale but not in en_US) — warning only (Weblate's concern)
+    const orphans = localeKeys.filter(k => !(k in enUs));
+    if (orphans.length > 0) {
+      warnings.push(`${fileName}: ${orphans.length} orphaned key(s)`);
+    }
+
+    // Plural completeness — warning only
+    const localePluralErrors = checkPluralCompleteness(localeKeys);
+    localePluralErrors.forEach(e => warnings.push(`${fileName}: ${e}`));
+
+    // File size warning (>500KB)
+    const stat = fs.statSync(filePath);
+    if (stat.size > 500 * 1024) {
+      warnings.push(`${fileName}: file size ${(stat.size / 1024).toFixed(0)}KB exceeds 500KB`);
+    }
+
+    // Coverage tracking
+    const covered = enUsKeyList.filter(k => localeKeySet.has(k)).length;
+    totalCovered += covered;
+    totalLocaleKeys++;
+  }
+
+  // Placeholder errors summary
+  const placeholderErrors = errors.filter(e => e.includes('placeholder mismatch'));
+  if (placeholderErrors.length > 0) {
+    console.log(c(`  ERROR: ${placeholderErrors.length} placeholder mismatch(es)`, 'red'));
+    placeholderErrors.slice(0, 5).forEach(e => console.log(`    ${e}`));
+    if (placeholderErrors.length > 5) console.log(`    ... and ${placeholderErrors.length - 5} more`);
+  } else {
+    console.log(c('  OK', 'green') + ' \u2014 all JSON valid, placeholders match');
+  }
+
+  // Coverage summary
+  if (totalLocaleKeys > 0) {
+    const avgCoverage = ((totalCovered / (totalLocaleKeys * enUsKeyCount)) * 100).toFixed(1);
+    console.log(`  Coverage: ${avgCoverage}% average across ${totalLocaleKeys} locale files`);
+  }
+
+  // ----------------------------------------------------------
+  // [languages.json] checks + fix
+  // ----------------------------------------------------------
+  console.log(c('\n[languages.json]', 'cyan'));
+
+  const localeCodes = fs.readdirSync(LOCALE_DIR)
     .filter(f => f.endsWith('.json') && f !== 'en_US.json')
     .map(f => f.replace('.json', ''));
 
@@ -290,25 +535,18 @@ async function main() {
     languages = JSON.parse(fs.readFileSync(LANGUAGES_JSON_PATH, 'utf8'));
   }
   const langCodes = new Set(languages.filter(l => l.code !== '').map(l => l.code));
-  const missingLangs = localeFiles.filter(code => !langCodes.has(code)).sort();
-
-  if (missingLangs.length > 0) {
-    console.log(`\n\x1b[31mLocale files missing from languages.json (${missingLangs.length}):\x1b[0m`);
-    missingLangs.forEach(code => console.log(`  - ${code}`));
-  }
+  const missingLangs = localeCodes.filter(code => !langCodes.has(code)).sort();
 
   if (FIX_MODE && missingLangs.length > 0) {
-    console.log('\nAdding missing locales to languages.json...');
     for (const code of missingLangs) {
       const meta = LANGUAGE_METADATA[code];
       if (meta) {
         languages.push({ code, name: meta.name, nativeName: meta.nativeName });
       } else {
-        console.log(`  \x1b[33mWarning: No metadata for "${code}" — using code as placeholder name\x1b[0m`);
+        console.log(c(`  Warning: no metadata for "${code}" \u2014 using code as placeholder name`, 'yellow'));
         languages.push({ code, name: code, nativeName: code });
       }
     }
-    console.log(`Added ${missingLangs.length} locale(s) to languages.json`);
 
     // Sort alphabetically by code, keeping "" (Automatic) pinned first
     languages.sort((a, b) => {
@@ -317,22 +555,30 @@ async function main() {
       return a.code.localeCompare(b.code);
     });
 
-    const langOutput = JSON.stringify(languages, null, 2) + '\n';
-    fs.writeFileSync(LANGUAGES_JSON_PATH, langOutput);
-    console.log('Sorted languages.json alphabetically');
+    fs.writeFileSync(LANGUAGES_JSON_PATH, JSON.stringify(languages, null, 2) + '\n');
+    console.log(c(`  Fixed: added ${missingLangs.length} locale(s) to languages.json`, 'green'));
+  } else if (missingLangs.length > 0) {
+    errors.push(`${missingLangs.length} locale file(s) missing from languages.json: ${missingLangs.join(', ')}`);
+    console.log(c(`  ERROR: ${missingLangs.length} locale file(s) not registered`, 'red'));
+    missingLangs.forEach(code => console.log(`    - ${code}`));
+  } else {
+    console.log(c('  OK', 'green') + ' \u2014 all locale files registered');
   }
 
+  // ----------------------------------------------------------
   // Summary
-  console.log('\n=== Summary ===');
-  console.log(`Keys in code: ${usedKeys.size}`);
-  console.log(`Keys in en_US.json: ${definedKeys.size}`);
-  console.log(`Missing keys: ${missingKeys.length}`);
-  console.log(`Orphan keys: ${orphanKeys.length}`);
-  console.log(`Missing locales in languages.json: ${missingLangs.length}`);
+  // ----------------------------------------------------------
+  console.log(c('\nSummary:', 'bold'));
 
-  if ((missingKeys.length > 0 || missingLangs.length > 0) && !FIX_MODE) {
-    console.log('\nRun with --fix to auto-add missing keys and locales');
+  if (warnings.length > 0) {
+    console.log(c(`  ${warnings.length} warning(s)`, 'yellow'));
+  }
+
+  if (errors.length > 0) {
+    console.log(c(`  ${errors.length} error(s)`, 'red'));
     process.exit(1);
+  } else {
+    console.log(c('  0 errors', 'green'));
   }
 }
 

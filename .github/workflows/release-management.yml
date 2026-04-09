@@ -244,9 +244,7 @@ jobs:
           echo "✅ Translation files updated from weblate branch"
 
       - name: Validate translations
-        run: |
-          npm run lint:translations
-          npm run validate:translations
+        run: npm run lint:translations
 
       - name: Commit translation updates
         run: |

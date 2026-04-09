@@ -18,9 +18,9 @@ namespace tests
       url = getItemImageUrl(item, "Primary", imageSize.POSTER_LG)
 
       m.assertTrue(isValidAndNotEmpty(url))
-      m.assertTrue(url.Instr("item1") > -1)
-      m.assertTrue(url.Instr("ptag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("item1") > -1)
+      m.assertTrue(url.inStr("ptag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     @it("returns Thumb URL when tag present")
@@ -32,8 +32,8 @@ namespace tests
       url = getItemImageUrl(item, "Thumb", imageSize.WIDE_MD)
 
       m.assertTrue(isValidAndNotEmpty(url))
-      m.assertTrue(url.Instr("ttag") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.inStr("ttag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
     @it("returns Logo URL when tag present")
@@ -45,8 +45,8 @@ namespace tests
       url = getItemImageUrl(item, "Logo", imageSize.LOGO)
 
       m.assertTrue(isValidAndNotEmpty(url))
-      m.assertTrue(url.Instr("ltag") > -1)
-      m.assertTrue(url.Instr("Logo") > -1)
+      m.assertTrue(url.inStr("ltag") > -1)
+      m.assertTrue(url.inStr("Logo") > -1)
     end function
 
     @it("returns Backdrop URL when tag present")
@@ -58,8 +58,8 @@ namespace tests
       url = getItemImageUrl(item, "Backdrop", { width: 1280, height: 720 })
 
       m.assertTrue(isValidAndNotEmpty(url))
-      m.assertTrue(url.Instr("btag1") > -1)
-      m.assertTrue(url.Instr("Backdrop") > -1)
+      m.assertTrue(url.inStr("btag1") > -1)
+      m.assertTrue(url.inStr("Backdrop") > -1)
     end function
 
     @it("returns empty string for unknown image type")
@@ -111,8 +111,8 @@ namespace tests
 
       url = getItemPosterUrl(item)
 
-      m.assertTrue(url.Instr("primary123") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("primary123") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     @it("falls back to parent primary when no primary")
@@ -124,8 +124,8 @@ namespace tests
 
       url = getItemPosterUrl(item)
 
-      m.assertTrue(url.Instr("season1") > -1)
-      m.assertTrue(url.Instr("parentTag") > -1)
+      m.assertTrue(url.inStr("season1") > -1)
+      m.assertTrue(url.inStr("parentTag") > -1)
     end function
 
     @it("falls back to series primary when no primary or parent primary")
@@ -137,8 +137,8 @@ namespace tests
 
       url = getItemPosterUrl(item)
 
-      m.assertTrue(url.Instr("series1") > -1)
-      m.assertTrue(url.Instr("seriesTag") > -1)
+      m.assertTrue(url.inStr("series1") > -1)
+      m.assertTrue(url.inStr("seriesTag") > -1)
     end function
 
     @it("returns empty string when no poster images available")
@@ -160,7 +160,7 @@ namespace tests
       url = getItemPosterUrl(item, imageSize.POSTER_SM)
 
       m.assertTrue(isValidAndNotEmpty(url))
-      m.assertTrue(url.Instr("180") > -1) ' POSTER_SM width
+      m.assertTrue(url.inStr("180") > -1) ' POSTER_SM width
     end function
     @it("returns empty string for unloaded sentinel node (id is empty)")
     function _()
@@ -184,8 +184,8 @@ namespace tests
 
       url = getItemWidePosterUrl(item)
 
-      m.assertTrue(url.Instr("thumb123") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.inStr("thumb123") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
     @it("falls back to backdrop when no thumb")
@@ -196,8 +196,8 @@ namespace tests
 
       url = getItemWidePosterUrl(item)
 
-      m.assertTrue(url.Instr("backdrop1") > -1)
-      m.assertTrue(url.Instr("Backdrop") > -1)
+      m.assertTrue(url.inStr("backdrop1") > -1)
+      m.assertTrue(url.inStr("Backdrop") > -1)
     end function
 
     @it("falls back to parent thumb")
@@ -209,8 +209,8 @@ namespace tests
 
       url = getItemWidePosterUrl(item)
 
-      m.assertTrue(url.Instr("pthumb") > -1)
-      m.assertTrue(url.Instr("series1") > -1)
+      m.assertTrue(url.inStr("pthumb") > -1)
+      m.assertTrue(url.inStr("series1") > -1)
     end function
 
     @it("falls back to parent backdrop")
@@ -222,8 +222,8 @@ namespace tests
 
       url = getItemWidePosterUrl(item)
 
-      m.assertTrue(url.Instr("pback") > -1)
-      m.assertTrue(url.Instr("series1") > -1)
+      m.assertTrue(url.inStr("pback") > -1)
+      m.assertTrue(url.inStr("series1") > -1)
     end function
 
     @it("returns empty string when no wide images available")
@@ -273,8 +273,8 @@ namespace tests
 
       url = getItemBackdropUrl(item, { width: 1920, height: 1080 })
 
-      m.assertTrue(url.Instr("back1") > -1)
-      m.assertTrue(url.Instr("Backdrop") > -1)
+      m.assertTrue(url.inStr("back1") > -1)
+      m.assertTrue(url.inStr("Backdrop") > -1)
     end function
 
     @it("falls back to parent backdrop")
@@ -286,8 +286,8 @@ namespace tests
 
       url = getItemBackdropUrl(item, { width: 1920, height: 1080 })
 
-      m.assertTrue(url.Instr("parentBack") > -1)
-      m.assertTrue(url.Instr("series1") > -1)
+      m.assertTrue(url.inStr("parentBack") > -1)
+      m.assertTrue(url.inStr("series1") > -1)
     end function
 
     @it("returns empty string when no backdrop available")
@@ -325,8 +325,8 @@ namespace tests
 
       url = getProgramImageUrl(program, channel)
 
-      m.assertTrue(url.Instr("progtag") > -1)
-      m.assertTrue(url.Instr("prog1") > -1)
+      m.assertTrue(url.inStr("progtag") > -1)
+      m.assertTrue(url.inStr("prog1") > -1)
     end function
 
     @it("falls back to channel image when program has none")
@@ -341,8 +341,8 @@ namespace tests
 
       url = getProgramImageUrl(program, channel)
 
-      m.assertTrue(url.Instr("chantag") > -1)
-      m.assertTrue(url.Instr("chan1") > -1)
+      m.assertTrue(url.inStr("chantag") > -1)
+      m.assertTrue(url.inStr("chan1") > -1)
     end function
 
     @it("returns empty string when both program and channel have no image")
@@ -366,7 +366,7 @@ namespace tests
 
       url = getProgramImageUrl(program, invalid)
 
-      m.assertTrue(url.Instr("progtag") > -1)
+      m.assertTrue(url.inStr("progtag") > -1)
     end function
 
     @it("handles both invalid items gracefully")
@@ -386,9 +386,9 @@ namespace tests
 
       url = getProgramImageUrl(program, channel)
 
-      m.assertTrue(url.Instr("chantag") > -1)
-      m.assertTrue(url.Instr("chan1") > -1)
-      m.assertFalse(url.Instr("progtag") > -1)
+      m.assertTrue(url.inStr("chantag") > -1)
+      m.assertTrue(url.inStr("chan1") > -1)
+      m.assertFalse(url.inStr("progtag") > -1)
     end function
 
     @it("returns empty string when channel is unloaded sentinel node (id is empty)")
@@ -421,9 +421,9 @@ namespace tests
 
       url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
 
-      m.assertTrue(url.Instr("seriesBack") > -1, "should use parent tag")
-      m.assertTrue(url.Instr("series1") > -1, "should use parent item ID")
-      m.assertFalse(url.Instr("seasonBack") > -1, "should NOT use season tag")
+      m.assertTrue(url.inStr("seriesBack") > -1, "should use parent tag")
+      m.assertTrue(url.inStr("series1") > -1, "should use parent item ID")
+      m.assertFalse(url.inStr("seasonBack") > -1, "should NOT use season tag")
     end function
 
     @it("falls back to item's own backdrop when no parent backdrop exists")
@@ -435,8 +435,8 @@ namespace tests
 
       url = getItemParentBackdropUrl(item, { width: 1920, height: 1080 })
 
-      m.assertTrue(url.Instr("seasonBack") > -1, "should fall back to item tag")
-      m.assertTrue(url.Instr("season1") > -1, "should use item ID")
+      m.assertTrue(url.inStr("seasonBack") > -1, "should fall back to item tag")
+      m.assertTrue(url.inStr("season1") > -1, "should use item ID")
     end function
 
     @it("returns empty string when neither parent nor own backdrop available")
@@ -481,10 +481,10 @@ namespace tests
 
       url = getItemParentWidePosterUrl(item, { width: 468, height: 258 })
 
-      m.assertTrue(url.Instr("series1") > -1, "should use parent item ID")
-      m.assertTrue(url.Instr("seriesthumb") > -1, "should use parent tag")
-      m.assertTrue(url.Instr("Thumb") > -1)
-      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode-level thumb")
+      m.assertTrue(url.inStr("series1") > -1, "should use parent item ID")
+      m.assertTrue(url.inStr("seriesthumb") > -1, "should use parent tag")
+      m.assertTrue(url.inStr("Thumb") > -1)
+      m.assertFalse(url.inStr("episodethumb") > -1, "must NOT use episode-level thumb")
     end function
 
     @it("falls back to parent backdrop when no parent thumb")
@@ -497,10 +497,10 @@ namespace tests
 
       url = getItemParentWidePosterUrl(item, { width: 468, height: 258 })
 
-      m.assertTrue(url.Instr("series1") > -1, "should use parent item ID")
-      m.assertTrue(url.Instr("seriesback") > -1, "should use parent backdrop tag")
-      m.assertTrue(url.Instr("Backdrop") > -1)
-      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode-level thumb")
+      m.assertTrue(url.inStr("series1") > -1, "should use parent item ID")
+      m.assertTrue(url.inStr("seriesback") > -1, "should use parent backdrop tag")
+      m.assertTrue(url.inStr("Backdrop") > -1)
+      m.assertFalse(url.inStr("episodethumb") > -1, "must NOT use episode-level thumb")
     end function
 
     @it("returns empty string when no parent wide images available")

@@ -68,7 +68,7 @@ namespace tests
 
       result = injectApiParams({}, 2, imageDefaults)
 
-      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0, "Should contain PrimaryImageAspectRatio field")
+      m.assertTrue(result.fields.inStr("PrimaryImageAspectRatio") >= 0, "Should contain PrimaryImageAspectRatio field")
     end function
 
     @it("injects Chapters field by default")
@@ -77,7 +77,7 @@ namespace tests
 
       result = injectApiParams({}, 2, imageDefaults)
 
-      m.assertTrue(result.fields.Instr("Chapters") >= 0, "Should contain Chapters field")
+      m.assertTrue(result.fields.inStr("Chapters") >= 0, "Should contain Chapters field")
     end function
 
     @it("adds PrimaryImageAspectRatio to existing fields")
@@ -87,9 +87,9 @@ namespace tests
 
       result = injectApiParams(params, 2, imageDefaults)
 
-      m.assertTrue(result.fields.Instr("Overview") >= 0, "Should preserve Overview field")
-      m.assertTrue(result.fields.Instr("Genres") >= 0, "Should preserve Genres field")
-      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0, "Should add PrimaryImageAspectRatio field")
+      m.assertTrue(result.fields.inStr("Overview") >= 0, "Should preserve Overview field")
+      m.assertTrue(result.fields.inStr("Genres") >= 0, "Should preserve Genres field")
+      m.assertTrue(result.fields.inStr("PrimaryImageAspectRatio") >= 0, "Should add PrimaryImageAspectRatio field")
     end function
 
     @it("does not duplicate PrimaryImageAspectRatio if already present")
@@ -100,7 +100,7 @@ namespace tests
       result = injectApiParams(params, 2, imageDefaults)
 
       ' First verify the field exists
-      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0, "PrimaryImageAspectRatio should be present")
+      m.assertTrue(result.fields.inStr("PrimaryImageAspectRatio") >= 0, "PrimaryImageAspectRatio should be present")
 
       ' Count occurrences by splitting - should only have 1 element
       parts = result.fields.Split(",")
@@ -121,7 +121,7 @@ namespace tests
 
       result = injectApiParams({}, 2, imageDefaults)
 
-      m.assertTrue(result.fields.Instr("Trickplay") >= 0, "Should contain Trickplay field for API v2")
+      m.assertTrue(result.fields.inStr("Trickplay") >= 0, "Should contain Trickplay field for API v2")
     end function
 
     @it("injects Trickplay field for API v3")
@@ -130,7 +130,7 @@ namespace tests
 
       result = injectApiParams({}, 3, imageDefaults)
 
-      m.assertTrue(result.fields.Instr("Trickplay") >= 0, "Should contain Trickplay field for API v3")
+      m.assertTrue(result.fields.inStr("Trickplay") >= 0, "Should contain Trickplay field for API v3")
     end function
 
     @it("does NOT inject Trickplay field for API v1")
@@ -139,7 +139,7 @@ namespace tests
 
       result = injectApiParams({}, 1, imageDefaults)
 
-      m.assertEqual(result.fields.Instr("Trickplay"), -1, "Should NOT contain Trickplay field for API v1")
+      m.assertEqual(result.fields.inStr("Trickplay"), -1, "Should NOT contain Trickplay field for API v1")
     end function
 
     @it("does not duplicate Trickplay if already present")
@@ -150,7 +150,7 @@ namespace tests
       result = injectApiParams(params, 2, imageDefaults)
 
       ' First verify the field exists
-      m.assertTrue(result.fields.Instr("Trickplay") >= 0, "Trickplay should be present")
+      m.assertTrue(result.fields.inStr("Trickplay") >= 0, "Trickplay should be present")
 
       ' Count occurrences by splitting - should only have 1 element
       parts = result.fields.Split(",")
@@ -169,7 +169,7 @@ namespace tests
       result = injectApiParams(params, 2, imageDefaults)
 
       ' First verify the field exists
-      m.assertTrue(result.fields.Instr("Chapters") >= 0, "Chapters should be present")
+      m.assertTrue(result.fields.inStr("Chapters") >= 0, "Chapters should be present")
 
       ' Count occurrences by splitting - should only have 1 element
       parts = result.fields.Split(",")
@@ -192,11 +192,11 @@ namespace tests
       result = injectApiParams(params, 2, imageDefaults)
 
       ' Should contain all expected fields
-      m.assertTrue(result.fields.Instr("Overview") >= 0)
-      m.assertTrue(result.fields.Instr("Genres") >= 0)
-      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
-      m.assertTrue(result.fields.Instr("Chapters") >= 0)
-      m.assertTrue(result.fields.Instr("Trickplay") >= 0)
+      m.assertTrue(result.fields.inStr("Overview") >= 0)
+      m.assertTrue(result.fields.inStr("Genres") >= 0)
+      m.assertTrue(result.fields.inStr("PrimaryImageAspectRatio") >= 0)
+      m.assertTrue(result.fields.inStr("Chapters") >= 0)
+      m.assertTrue(result.fields.inStr("Trickplay") >= 0)
     end function
 
     @it("handles empty image defaults gracefully")
@@ -207,9 +207,9 @@ namespace tests
       result = injectApiParams(params, 2, imageDefaults)
 
       m.assertEqual(result.Limit, 50)
-      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
-      m.assertTrue(result.fields.Instr("Chapters") >= 0)
-      m.assertTrue(result.fields.Instr("Trickplay") >= 0)
+      m.assertTrue(result.fields.inStr("PrimaryImageAspectRatio") >= 0)
+      m.assertTrue(result.fields.inStr("Chapters") >= 0)
+      m.assertTrue(result.fields.inStr("Trickplay") >= 0)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -225,7 +225,7 @@ namespace tests
 
       m.assertEqual(result.Limit, 50)
       m.assertEqual(result.SortBy, "Name")
-      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
+      m.assertTrue(result.fields.inStr("PrimaryImageAspectRatio") >= 0)
     end function
 
     @it("handles empty fields string")
@@ -235,8 +235,8 @@ namespace tests
 
       result = injectApiParams(params, 2, imageDefaults)
 
-      m.assertTrue(result.fields.Instr("PrimaryImageAspectRatio") >= 0)
-      m.assertTrue(result.fields.Instr("Chapters") >= 0)
+      m.assertTrue(result.fields.inStr("PrimaryImageAspectRatio") >= 0)
+      m.assertTrue(result.fields.inStr("Chapters") >= 0)
     end function
 
   end class

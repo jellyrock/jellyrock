@@ -64,8 +64,8 @@ namespace tests
 
       ' THEN: Returns valid URL containing the user ID
       m.assertNotEqual(result, "", "Should return non-empty URL for valid tag")
-      m.assertTrue(result.Instr(userId) >= 0, "URL should contain user ID")
-      m.assertTrue(result.Instr("tag=abc123validtag") >= 0, "URL should contain tag parameter")
+      m.assertTrue(result.inStr(userId) >= 0, "URL should contain user ID")
+      m.assertTrue(result.inStr("tag=abc123validtag") >= 0, "URL should contain tag parameter")
     end function
 
     @it("returns valid URL when no tag parameter is provided")
@@ -79,7 +79,7 @@ namespace tests
 
       ' THEN: Returns valid URL (tag is optional)
       m.assertNotEqual(result, "", "Should return non-empty URL when tag not provided")
-      m.assertTrue(result.Instr(userId) >= 0, "URL should contain user ID")
+      m.assertTrue(result.inStr(userId) >= 0, "URL should contain user ID")
     end function
 
     @it("returns empty string when tag is whitespace-only string")
@@ -139,8 +139,8 @@ namespace tests
 
       ' THEN: Returns valid URL containing the item ID
       m.assertNotEqual(result, "", "Should return non-empty URL for valid tag")
-      m.assertTrue(result.Instr(itemId) >= 0, "URL should contain item ID")
-      m.assertTrue(result.Instr("tag=xyz789validtag") >= 0, "URL should contain tag parameter")
+      m.assertTrue(result.inStr(itemId) >= 0, "URL should contain item ID")
+      m.assertTrue(result.inStr("tag=xyz789validtag") >= 0, "URL should contain tag parameter")
     end function
 
   end class

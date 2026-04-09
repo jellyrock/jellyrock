@@ -893,7 +893,7 @@ function injectApiParams(params as object, apiVersion as integer, imageDefaults 
   end if
 
   ' Add PrimaryImageAspectRatio if not present - this causes ImageTags to be returned
-  if fields.Instr("PrimaryImageAspectRatio") = -1
+  if fields.inStr("PrimaryImageAspectRatio") = -1
     if fields = ""
       fields = "PrimaryImageAspectRatio"
     else
@@ -902,7 +902,7 @@ function injectApiParams(params as object, apiVersion as integer, imageDefaults 
   end if
 
   ' Always add Chapters field
-  if fields.Instr("Chapters") = -1
+  if fields.inStr("Chapters") = -1
     if fields = ""
       fields = "Chapters"
     else
@@ -911,7 +911,7 @@ function injectApiParams(params as object, apiVersion as integer, imageDefaults 
   end if
 
   ' Add Trickplay for 10.9+ servers (API v2+)
-  if apiVersion >= 2 and fields.Instr("Trickplay") = -1
+  if apiVersion >= 2 and fields.inStr("Trickplay") = -1
     fields = fields + ",Trickplay"
   end if
 

@@ -45,9 +45,9 @@ namespace tests
       url = getRowItemImageUrl(item, 468, 192, invalid)
 
       m.assertTrue(isValidAndNotEmpty(url))
-      m.assertTrue(url.Instr("lib1") > -1)
-      m.assertTrue(url.Instr("ptag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("lib1") > -1)
+      m.assertTrue(url.inStr("ptag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     @it("returns empty string for library tile with no primary image")
@@ -81,11 +81,11 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, userSettings)
 
-      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
-      m.assertTrue(url.Instr("seriesthumb") > -1, "should use series thumb tag")
-      m.assertTrue(url.Instr("Thumb") > -1)
-      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
-      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode thumb")
+      m.assertTrue(url.inStr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.inStr("seriesthumb") > -1, "should use series thumb tag")
+      m.assertTrue(url.inStr("Thumb") > -1)
+      m.assertFalse(url.inStr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+      m.assertFalse(url.inStr("episodethumb") > -1, "must NOT use episode thumb")
     end function
 
     @it("falls back to parent backdrop for 'show' when no parent thumb")
@@ -103,10 +103,10 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, userSettings)
 
-      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
-      m.assertTrue(url.Instr("seriesback") > -1, "should use series backdrop tag")
-      m.assertTrue(url.Instr("Backdrop") > -1)
-      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+      m.assertTrue(url.inStr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.inStr("seriesback") > -1, "should use series backdrop tag")
+      m.assertTrue(url.inStr("Backdrop") > -1)
+      m.assertFalse(url.inStr("episodeprimary") > -1, "must NOT use episode primary (regression)")
     end function
 
     @it("returns empty string for 'show' when episode has images but series has no wide art")
@@ -138,8 +138,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, userSettings)
 
-      m.assertTrue(url.Instr("thumbtag") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.inStr("thumbtag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
     @it("uses series wide art for 'webclient' when useEpisodeImages is false")
@@ -157,11 +157,11 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, userSettings, false)
 
-      m.assertTrue(url.Instr("series1") > -1, "should use series item ID")
-      m.assertTrue(url.Instr("seriesthumb") > -1, "should use series thumb tag")
-      m.assertTrue(url.Instr("Thumb") > -1)
-      m.assertFalse(url.Instr("episodeprimary") > -1, "must NOT use episode primary (regression)")
-      m.assertFalse(url.Instr("episodethumb") > -1, "must NOT use episode thumb")
+      m.assertTrue(url.inStr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.inStr("seriesthumb") > -1, "should use series thumb tag")
+      m.assertTrue(url.inStr("Thumb") > -1)
+      m.assertFalse(url.inStr("episodeprimary") > -1, "must NOT use episode primary (regression)")
+      m.assertFalse(url.inStr("episodethumb") > -1, "must NOT use episode thumb")
     end function
 
     @it("uses episode thumbnail for 'webclient' when useEpisodeImages is true")
@@ -176,8 +176,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, userSettings, true)
 
-      m.assertTrue(url.Instr("thumbtag") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.inStr("thumbtag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
     @it("falls back to wide poster when no settings provided for episode")
@@ -189,8 +189,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, invalid)
 
-      m.assertTrue(url.Instr("thumbtag") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.inStr("thumbtag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
     @it("falls back to wide poster for episode with empty setting string")
@@ -205,8 +205,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, userSettings)
 
-      m.assertTrue(url.Instr("thumbtag") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.inStr("thumbtag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -225,8 +225,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 234, 234, invalid)
 
-      m.assertTrue(url.Instr("mustag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("mustag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -243,8 +243,8 @@ namespace tests
       ' Portrait slot: slotWidth (234) < posterHeight (324)
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
-      m.assertTrue(url.Instr("movtag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("movtag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     @it("uses portrait poster for Series in portrait slot")
@@ -256,8 +256,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
-      m.assertTrue(url.Instr("sertag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("sertag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     @it("uses portrait poster for Season")
@@ -269,8 +269,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
-      m.assertTrue(url.Instr("seatag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("seatag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     @it("uses portrait poster for BoxSet")
@@ -282,8 +282,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
-      m.assertTrue(url.Instr("bstag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("bstag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -300,8 +300,8 @@ namespace tests
       ' Wide slot: slotWidth (468) > posterHeight (258)
       url = getRowItemImageUrl(item, 468, 258, invalid)
 
-      m.assertTrue(url.Instr("thumbtag") > -1)
-      m.assertTrue(url.Instr("Thumb") > -1)
+      m.assertTrue(url.inStr("thumbtag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
     @it("falls back to portrait poster when no wide image available in wide slot")
@@ -314,8 +314,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 468, 258, invalid)
 
-      m.assertTrue(url.Instr("movtag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("movtag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -331,8 +331,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
-      m.assertTrue(url.Instr("progtag") > -1)
-      m.assertTrue(url.Instr("prog1") > -1)
+      m.assertTrue(url.inStr("progtag") > -1)
+      m.assertTrue(url.inStr("prog1") > -1)
     end function
 
     @it("falls back to channel image when program has no primary image")
@@ -346,8 +346,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
-      m.assertTrue(url.Instr("chan1") > -1)
-      m.assertTrue(url.Instr("chantag") > -1)
+      m.assertTrue(url.inStr("chan1") > -1)
+      m.assertTrue(url.inStr("chantag") > -1)
     end function
 
     @it("returns empty string when program and channel have no images")
@@ -375,8 +375,8 @@ namespace tests
 
       url = getRowItemImageUrl(item, 234, 324, invalid)
 
-      m.assertTrue(url.Instr("tvtag") > -1)
-      m.assertTrue(url.Instr("Primary") > -1)
+      m.assertTrue(url.inStr("tvtag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
     end function
 
   end class

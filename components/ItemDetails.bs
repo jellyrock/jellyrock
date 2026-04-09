@@ -1315,7 +1315,7 @@ sub populateInfoGroupPhoto(item as object)
   ' Avoids duplication when model already contains the make (e.g. "Canon Canon EOS R5").
   cameraText = ""
   if isValidAndNotEmpty(item.cameraMake) and isValidAndNotEmpty(item.cameraModel)
-    if item.cameraModel.instr(item.cameraMake) = 0
+    if item.cameraModel.inStr(item.cameraMake) = 0
       cameraText = item.cameraModel
     else
       cameraText = item.cameraMake + " " + item.cameraModel

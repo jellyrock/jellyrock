@@ -73,7 +73,7 @@ jobs:
         run: npm ci
 
       - name: Sort en_US.json and sync languages.json
-        run: npm run update-translations -- --fix
+        run: npm run update-translations
 
       - name: Check for en_US.json changes
         id: check_changes

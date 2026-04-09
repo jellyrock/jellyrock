@@ -16,13 +16,6 @@ sub init()
   m.isOpen = false
   m.focusedItemIndex = 0
 
-  ' Cache theme colors
-  constants = m.global.constants
-  m.colorPrimary = constants.colorPrimary
-  m.colorBackgroundSecondary = constants.colorBackgroundSecondary
-  m.colorTextPrimary = constants.colorTextPrimary
-  m.colorTextSecondary = constants.colorTextSecondary
-
   ' Trigger button: unfocused state (transparent, only text visible — JRTab pattern)
   m.buttonBackground.visible = false
   m.buttonBorder.visible = false
@@ -181,19 +174,19 @@ sub onFocusChanged()
     if not m.isOpen
       showTriggerFocus()
     end if
-    m.triggerLabel.color = m.colorTextPrimary
+    m.triggerLabel.color = m.global.constants.colorTextPrimary
   else
     ' Hide all focus visuals and close menu
     hideTriggerFocus()
-    m.triggerLabel.color = m.colorTextSecondary
+    m.triggerLabel.color = m.global.constants.colorTextSecondary
     closeMenu()
   end if
 end sub
 
 ' Shows focus border/background on the trigger button
 sub showTriggerFocus()
-  m.buttonBorder.blendColor = m.colorPrimary
-  m.buttonBackground.blendColor = m.colorBackgroundSecondary
+  m.buttonBorder.blendColor = m.global.constants.colorPrimary
+  m.buttonBackground.blendColor = m.global.constants.colorBackgroundSecondary
   m.buttonBorder.visible = true
   m.buttonBackground.visible = true
 end sub
@@ -214,7 +207,7 @@ sub openMenu()
 
   ' Hide trigger border — the focused menu item's own border indicates focus
   hideTriggerFocus()
-  m.menuBackground.blendColor = m.colorBackgroundSecondary
+  m.menuBackground.blendColor = m.global.constants.colorBackgroundSecondary
 
   updateFocusedItemVisuals()
 end sub

@@ -21,7 +21,7 @@ namespace tests
 
       for each doviValue in doviValues
         ' When: Check for DOVI substring
-        hasDovi = Instr(LCase(doviValue), "dovi") > 0
+        hasDovi = inStr(LCase(doviValue), "dovi") > 0
 
         ' Then: All should be detected as DOVI
         m.assertTrue(hasDovi, "Should detect DOVI in: " + doviValue)
@@ -34,7 +34,7 @@ namespace tests
       sdrValue = "SDR"
 
       ' When: Check for DOVI substring
-      hasDovi = Instr(LCase(sdrValue), "dovi") > 0
+      hasDovi = inStr(LCase(sdrValue), "dovi") > 0
 
       ' Then: Should not be detected as DOVI
       m.assertFalse(hasDovi, "Should not detect DOVI in SDR")
@@ -46,7 +46,7 @@ namespace tests
       hdr10Value = "HDR10"
 
       ' When: Check for DOVI substring
-      hasDovi = Instr(LCase(hdr10Value), "dovi") > 0
+      hasDovi = inStr(LCase(hdr10Value), "dovi") > 0
 
       ' Then: Should not be detected as DOVI
       m.assertFalse(hasDovi, "Should not detect DOVI in HDR10")
@@ -58,7 +58,7 @@ namespace tests
       emptyValue = ""
 
       ' When: Check for DOVI substring
-      hasDovi = Instr(LCase(emptyValue), "dovi") > 0
+      hasDovi = inStr(LCase(emptyValue), "dovi") > 0
 
       ' Then: Should not be detected as DOVI
       m.assertFalse(hasDovi, "Should not detect DOVI in empty string")
@@ -354,7 +354,7 @@ namespace tests
         for each stream in mediaStreams
           if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
             if isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
-              if Instr(LCase(stream.VideoRangeType), "dovi") > 0
+              if inStr(LCase(stream.VideoRangeType), "dovi") > 0
                 containerProfiles.push({
                   "Type": "Video",
                   "Container": "mkv",

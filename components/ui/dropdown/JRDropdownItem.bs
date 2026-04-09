@@ -3,15 +3,8 @@ sub init()
   m.itemBorder = m.top.findNode("itemBorder")
   m.itemLabel = m.top.findNode("itemLabel")
 
-  constants = m.global.constants
-  m.colorPrimary = constants.colorPrimary
-  m.colorBackgroundSecondary = constants.colorBackgroundSecondary
-  m.colorTextPrimary = constants.colorTextPrimary
-  m.colorTextSecondary = constants.colorTextSecondary
-  m.colorSecondary = constants.colorSecondary
-
   ' Default visual state: unfocused
-  m.itemLabel.color = m.colorTextPrimary
+  m.itemLabel.color = m.global.constants.colorTextPrimary
 
   ' Apply initial sizing
   onSizeChanged()
@@ -41,21 +34,22 @@ end sub
 ' Focused state uses button-like styling: 9-patch border + background (same as TextButton).
 ' JRDropdown manages focus externally — this item never receives real Roku focus.
 sub onFocusStateChanged()
+  constants = m.global.constants
   if m.top.isFocused
     ' Button-like focus: show border in primary color, background in secondary
-    m.itemBorder.blendColor = m.colorPrimary
-    m.itemBackground.blendColor = m.colorBackgroundSecondary
+    m.itemBorder.blendColor = constants.colorPrimary
+    m.itemBackground.blendColor = constants.colorBackgroundSecondary
     m.itemBorder.visible = true
     m.itemBackground.visible = true
-    m.itemLabel.color = m.colorTextPrimary
+    m.itemLabel.color = constants.colorTextPrimary
   else
     ' Hide button visuals when unfocused
     m.itemBorder.visible = false
     m.itemBackground.visible = false
     if m.top.isSelected
-      m.itemLabel.color = m.colorSecondary
+      m.itemLabel.color = constants.colorSecondary
     else
-      m.itemLabel.color = m.colorTextPrimary
+      m.itemLabel.color = constants.colorTextPrimary
     end if
   end if
 end sub

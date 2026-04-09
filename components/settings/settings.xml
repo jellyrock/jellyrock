@@ -19,7 +19,8 @@
         horizAlign="center"
         translation="[750,270]" />
 
-      <RadioButtonList id="radioSetting" vertFocusAnimationStyle="floatingFocus" />
+      <RadioButtonList id="radioSetting" vertFocusAnimationStyle="fixedFocusWrap"
+        numRows="8" itemSize="[500,48]" />
     </LayoutGroup>
 
     <RadioButtonList id="boolSetting" vertFocusAnimationStyle="floatingFocus" translation="[1034, 510]">

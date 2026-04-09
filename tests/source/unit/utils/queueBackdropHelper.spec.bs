@@ -126,8 +126,8 @@ namespace tests
       backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       m.assertNotEqual(backdropUrl, "", "Should generate valid backdrop URL")
-      m.assertTrue(backdropUrl.Instr("test-item-Movie") >= 0, "URL should contain item ID")
-      m.assertTrue(backdropUrl.Instr("test-backdrop-tag-123") >= 0, "URL should contain backdrop tag")
+      m.assertTrue(backdropUrl.inStr("test-item-Movie") >= 0, "URL should contain item ID")
+      m.assertTrue(backdropUrl.inStr("test-backdrop-tag-123") >= 0, "URL should contain backdrop tag")
     end function
 
     @it("uses device resolution in backdrop URL")
@@ -141,8 +141,8 @@ namespace tests
       ' Note: BrightScript AAs store keys in lowercase by default, so URL params
       ' will be "maxwidth=1920" not "maxWidth=1920". Check for the value only.
       m.assertNotEqual(backdropUrl, "")
-      m.assertTrue(backdropUrl.Instr("1920") >= 0, "URL should contain 1080p width")
-      m.assertTrue(backdropUrl.Instr("1080") >= 0, "URL should contain 1080p height")
+      m.assertTrue(backdropUrl.inStr("1920") >= 0, "URL should contain 1080p width")
+      m.assertTrue(backdropUrl.inStr("1080") >= 0, "URL should contain 1080p height")
     end function
 
     @it("generates backdrop URL for different media types")
@@ -160,7 +160,7 @@ namespace tests
 
       if shouldHaveBackdrop
         m.assertNotEqual(backdropUrl, "", "Should generate backdrop URL for " + itemType)
-        m.assertTrue(backdropUrl.Instr("test-item-" + itemType) >= 0, "URL should contain item ID")
+        m.assertTrue(backdropUrl.inStr("test-item-" + itemType) >= 0, "URL should contain item ID")
       else
         m.assertEqual(backdropUrl, "", "Should return empty string when no backdrop")
       end if
@@ -175,8 +175,8 @@ namespace tests
       item = m.createMockQueueItem("Movie", true)
       backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
-      m.assertTrue(backdropUrl.Instr("1920") >= 0)
-      m.assertTrue(backdropUrl.Instr("1080") >= 0)
+      m.assertTrue(backdropUrl.inStr("1920") >= 0)
+      m.assertTrue(backdropUrl.inStr("1080") >= 0)
     end function
 
     @it("uses 4K resolution correctly")
@@ -184,8 +184,8 @@ namespace tests
       item = m.createMockQueueItem("Movie", true)
       backdropUrl = getItemBackdropUrl(item, m.size4K)
 
-      m.assertTrue(backdropUrl.Instr("3840") >= 0)
-      m.assertTrue(backdropUrl.Instr("2160") >= 0)
+      m.assertTrue(backdropUrl.inStr("3840") >= 0)
+      m.assertTrue(backdropUrl.inStr("2160") >= 0)
     end function
 
     @it("uses 720p resolution correctly")
@@ -193,8 +193,8 @@ namespace tests
       item = m.createMockQueueItem("Movie", true)
       backdropUrl = getItemBackdropUrl(item, m.size720p)
 
-      m.assertTrue(backdropUrl.Instr("1280") >= 0)
-      m.assertTrue(backdropUrl.Instr("720") >= 0)
+      m.assertTrue(backdropUrl.inStr("1280") >= 0)
+      m.assertTrue(backdropUrl.inStr("720") >= 0)
     end function
 
     @it("handles different resolutions for same item")
@@ -206,8 +206,8 @@ namespace tests
       backdropUrl = getItemBackdropUrl(item, size)
 
       m.assertNotEqual(backdropUrl, "")
-      m.assertTrue(backdropUrl.Instr(expectedWidth) >= 0, "Should contain correct width")
-      m.assertTrue(backdropUrl.Instr(expectedHeight) >= 0, "Should contain correct height")
+      m.assertTrue(backdropUrl.inStr(expectedWidth) >= 0, "Should contain correct width")
+      m.assertTrue(backdropUrl.inStr(expectedHeight) >= 0, "Should contain correct height")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -261,8 +261,8 @@ namespace tests
       backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       m.assertNotEqual(backdropUrl, "")
-      m.assertTrue(backdropUrl.Instr("series-456") >= 0, "Should use parent series ID")
-      m.assertTrue(backdropUrl.Instr("parent-backdrop-tag") >= 0, "Should use parent backdrop tag")
+      m.assertTrue(backdropUrl.inStr("series-456") >= 0, "Should use parent series ID")
+      m.assertTrue(backdropUrl.inStr("parent-backdrop-tag") >= 0, "Should use parent backdrop tag")
     end function
 
     @it("uses episode own backdrop when no parent backdrop exists")
@@ -275,8 +275,8 @@ namespace tests
       backdropUrl = getItemBackdropUrl(item, m.size1080p)
 
       m.assertNotEqual(backdropUrl, "")
-      m.assertTrue(backdropUrl.Instr("episode-123") >= 0, "Should use episode ID")
-      m.assertTrue(backdropUrl.Instr("episode-backdrop-tag") >= 0, "Should use episode backdrop tag")
+      m.assertTrue(backdropUrl.inStr("episode-123") >= 0, "Should use episode ID")
+      m.assertTrue(backdropUrl.inStr("episode-backdrop-tag") >= 0, "Should use episode backdrop tag")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

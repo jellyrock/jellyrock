@@ -336,6 +336,8 @@ sub settingFocused()
 
     radioContent = CreateObject("roSGNode", "ContentNode")
 
+    m.radioSetting.checkedItem = 0
+
     itemIndex = 0
     for each item in m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused].options
       listItem = radioContent.CreateChild("ContentNode")
@@ -348,6 +350,7 @@ sub settingFocused()
     end for
 
     m.radioSetting.content = radioContent
+    m.radioSetting.jumpToItem = m.radioSetting.checkedItem
 
     m.radioSetting.visible = true
   else if selectedSetting.type = "text"

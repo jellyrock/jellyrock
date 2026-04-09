@@ -100,7 +100,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
 
           if apiVersion >= 2 and isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
             ' is DOVI in the string?
-            if Instr(LCase(stream.VideoRangeType), "dovi") > 0
+            if inStr(LCase(stream.VideoRangeType), "dovi") > 0
               ' add a condition to the mkv container profile to force remux (container swap)
               postData.DeviceProfile.ContainerProfiles.push({
                 "Type": "Video",
@@ -148,7 +148,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
             ' Codec field is a comma-separated list of aliases set by getCodecProfiles().
             ' Known values: "h264,avc", "h265,hevc", "vp9", "vp8", "av1", "mpeg2video", "mpeg4".
             ' Substring match is safe: no other codec contains "h264" as a substring.
-            if isValid(codecProfile.Codec) and Instr(1, LCase(codecProfile.Codec), "h264") > 0
+            if isValid(codecProfile.Codec) and inStr(1, LCase(codecProfile.Codec), "h264") > 0
               applyResolutionCapToProfile(codecProfile, h264CapHeight, h264CapWidth, true)
             end if
           end for

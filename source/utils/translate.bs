@@ -109,7 +109,7 @@ function loadLocaleFile(locale as string) as object
   end if
 
   ' Check if this is a regional locale (contains an underscore)
-  underscorePos = Instr(1, locale, "_")
+  underscorePos = inStr(1, locale, "_")
 
   if underscorePos > 0
     ' Regional locale — layer base under regional

@@ -33,7 +33,7 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile, "ts profile should exist")
-      m.assertFalse(tsProfile.AudioCodec.Instr("aac") >= 0, "AAC should be removed from codec list")
+      m.assertFalse(tsProfile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from codec list")
     end function
 
     @it("removes AAC from mp4 container codec list for 8ch audio")
@@ -52,7 +52,7 @@ namespace tests
       end for
 
       m.assertNotInvalid(mp4Profile, "mp4 profile should exist")
-      m.assertFalse(mp4Profile.AudioCodec.Instr("aac") >= 0, "AAC should be removed from codec list")
+      m.assertFalse(mp4Profile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from codec list")
     end function
 
     @it("preserves surround codecs (eac3, ac3, dts) for multichannel audio")
@@ -71,9 +71,9 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertTrue(tsProfile.AudioCodec.Instr("eac3") >= 0, "eac3 should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("ac3") >= 0, "ac3 should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("dts") >= 0, "dts should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("eac3") >= 0, "eac3 should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("ac3") >= 0, "ac3 should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("dts") >= 0, "dts should be preserved")
     end function
 
     @it("preserves other codecs (mp3, flac, alac, pcm) for multichannel audio")
@@ -92,10 +92,10 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertTrue(tsProfile.AudioCodec.Instr("mp3") >= 0, "mp3 should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("flac") >= 0, "flac should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("alac") >= 0, "alac should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("pcm") >= 0, "pcm should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("mp3") >= 0, "mp3 should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("flac") >= 0, "flac should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("alac") >= 0, "alac should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("pcm") >= 0, "pcm should be preserved")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -118,7 +118,7 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertFalse(tsProfile.AudioCodec.Instr("aac") >= 0, "AAC should be removed for stereo")
+      m.assertFalse(tsProfile.AudioCodec.inStr("aac") >= 0, "AAC should be removed for stereo")
     end function
 
     @it("removes surround codecs (eac3, ac3, dts) for stereo audio")
@@ -137,9 +137,9 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertFalse(tsProfile.AudioCodec.Instr("eac3") >= 0, "eac3 should be removed for stereo")
-      m.assertFalse(tsProfile.AudioCodec.Instr("ac3") >= 0, "ac3 should be removed for stereo")
-      m.assertFalse(tsProfile.AudioCodec.Instr("dts") >= 0, "dts should be removed for stereo")
+      m.assertFalse(tsProfile.AudioCodec.inStr("eac3") >= 0, "eac3 should be removed for stereo")
+      m.assertFalse(tsProfile.AudioCodec.inStr("ac3") >= 0, "ac3 should be removed for stereo")
+      m.assertFalse(tsProfile.AudioCodec.inStr("dts") >= 0, "dts should be removed for stereo")
     end function
 
     @it("preserves stereo codecs (mp3, flac, alac, pcm) for stereo audio")
@@ -158,10 +158,10 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertTrue(tsProfile.AudioCodec.Instr("mp3") >= 0, "mp3 should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("flac") >= 0, "flac should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("alac") >= 0, "alac should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.Instr("pcm") >= 0, "pcm should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("mp3") >= 0, "mp3 should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("flac") >= 0, "flac should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("alac") >= 0, "alac should be preserved")
+      m.assertTrue(tsProfile.AudioCodec.inStr("pcm") >= 0, "pcm should be preserved")
     end function
 
     @it("results in MP3 fallback for stereo audio (surround codecs removed)")
@@ -324,8 +324,8 @@ namespace tests
 
       m.assertNotInvalid(tsProfile, "ts profile should exist")
       m.assertNotInvalid(mp4Profile, "mp4 profile should exist")
-      m.assertFalse(tsProfile.AudioCodec.Instr("aac") >= 0, "AAC should be removed from ts")
-      m.assertFalse(mp4Profile.AudioCodec.Instr("aac") >= 0, "AAC should be removed from mp4")
+      m.assertFalse(tsProfile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from ts")
+      m.assertFalse(mp4Profile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from mp4")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -349,7 +349,7 @@ namespace tests
 
       m.assertNotInvalid(tsProfile)
       ' Should be comma-separated with no double commas or trailing commas
-      m.assertFalse(tsProfile.AudioCodec.Instr(",,") >= 0, "Should not have double commas")
+      m.assertFalse(tsProfile.AudioCodec.inStr(",,") >= 0, "Should not have double commas")
       m.assertFalse(tsProfile.AudioCodec.Left(1) = ",", "Should not start with comma")
       m.assertFalse(tsProfile.AudioCodec.Right(1) = ",", "Should not end with comma")
     end function
