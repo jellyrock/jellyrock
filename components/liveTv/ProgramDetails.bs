@@ -227,7 +227,7 @@ function getRelativeDayName(date) as string
     return translationKeys.DayTomorrow
   end if
 
-  ' GetWeekday() returns 0 (Sunday) through 6 (Saturday)
+  ' GetDayOfWeek() returns 0 (Sunday) through 6 (Saturday)
   weekdays = [
     translationKeys.DaySunday,
     translationKeys.DayMonday,
@@ -237,10 +237,10 @@ function getRelativeDayName(date) as string
     translationKeys.DayFriday,
     translationKeys.DaySaturday
   ]
-  weekday = date.GetWeekday()
-  if not isValid(weekday)
+  weekday = date.GetDayOfWeek()
+  if not isValid(weekday) or type(weekday) <> "roInt" or weekday < 0 or weekday > 6
     ' Fallback: compute weekday from seconds (epoch Jan 1 1970 = Thursday = day 4)
-    weekday = (dateMidnight / 86400 + 4) mod 7
+    weekday = (dateMidnight \ 86400 + 4) mod 7
   end if
   return weekdays[weekday]
 

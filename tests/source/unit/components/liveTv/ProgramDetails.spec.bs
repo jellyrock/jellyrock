@@ -27,31 +27,31 @@ namespace tests
       testDate.FromSeconds(epochSeconds)
 
       dateMidnight = testDate.AsSeconds() - (testDate.AsSeconds() mod 86400)
-      computed = (dateMidnight / 86400 + 4) mod 7
+      computed = (dateMidnight \ 86400 + 4) mod 7
 
       m.assertEqual(computed, expectedWeekday)
     end function
 
-    @it("matches GetWeekday() for the crash log timestamp")
+    @it("matches GetDayOfWeek() for the crash log timestamp")
     function _()
       ' Timestamp from production crash: dateMidnight = 1775433600
       testDate = createObject("roDateTime")
       testDate.FromSeconds(1775433600)
 
       dateMidnight = testDate.AsSeconds() - (testDate.AsSeconds() mod 86400)
-      computed = (dateMidnight / 86400 + 4) mod 7
+      computed = (dateMidnight \ 86400 + 4) mod 7
 
-      m.assertEqual(computed, testDate.GetWeekday())
+      m.assertEqual(computed, testDate.GetDayOfWeek())
     end function
 
-    @it("matches GetWeekday() for current date")
+    @it("matches GetDayOfWeek() for current date")
     function _()
       now = createObject("roDateTime")
 
       dateMidnight = now.AsSeconds() - (now.AsSeconds() mod 86400)
-      computed = (dateMidnight / 86400 + 4) mod 7
+      computed = (dateMidnight \ 86400 + 4) mod 7
 
-      m.assertEqual(computed, now.GetWeekday())
+      m.assertEqual(computed, now.GetDayOfWeek())
     end function
 
   end class
