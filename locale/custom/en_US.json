@@ -99,6 +99,8 @@
   "LabelChangeServer": "Change server",
   "LabelChangeUser": "Change user",
   "LabelChannels": "Channels",
+  "LabelChapter": "Chapter {0}",
+  "LabelChapters": "Chapters",
   "LabelChooseHowRowsAreDisplayedThroughout": "Choose how rows are displayed throughout the app.",
   "LabelCinemaMode": "Cinema Mode",
   "LabelCodec": "Codec",
