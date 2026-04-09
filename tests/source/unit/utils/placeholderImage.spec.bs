@@ -28,6 +28,7 @@ namespace tests
     @params("Program", "pkg:/images/placeholders/playCircle.png")
     @params("Series", "pkg:/images/placeholders/playCircle.png")
     @params("Season", "pkg:/images/placeholders/playCircle.png")
+    @params("Chapter", "pkg:/images/placeholders/playCircle.png")
     function _(itemType, expected)
       m.assertEqual(getPlaceholderImagePath(itemType), expected)
     end function

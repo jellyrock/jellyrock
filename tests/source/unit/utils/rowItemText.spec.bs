@@ -13,6 +13,16 @@ namespace tests
     @describe("getRowItemTitle()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    @it("returns chapter name for Chapter")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mov1"
+      item.type = "Chapter"
+      item.name = "Opening Credits"
+      item.subtitle = "0:00"
+      m.assertEqual(getRowItemTitle(item), "Opening Credits")
+    end function
+
     @it("returns episode code and title (subtitle field) for Episode")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")
@@ -134,6 +144,16 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getRowItemSubtitle()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns timestamp subtitle for Chapter")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "mov1"
+      item.type = "Chapter"
+      item.name = "The Battle"
+      item.subtitle = "1:23:45"
+      m.assertEqual(getRowItemSubtitle(item), "1:23:45")
+    end function
 
     @it("returns series name (subtitle field) for Season")
     function _()
