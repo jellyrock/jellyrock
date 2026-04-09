@@ -15,13 +15,13 @@ namespace tests
     ' Formula: (dateMidnight / 86400 + 4) mod 7, where epoch (Jan 1 1970) = Thursday = 4
     ' Used as fallback when GetWeekday() returns invalid on certain Roku firmware.
     @it("computes correct weekday from epoch seconds")
-    @params(0, 4)            ' Jan 1, 1970 = Thursday
-    @params(86400, 5)        ' Jan 2, 1970 = Friday
-    @params(172800, 6)       ' Jan 3, 1970 = Saturday
-    @params(259200, 0)       ' Jan 4, 1970 = Sunday
-    @params(345600, 1)       ' Jan 5, 1970 = Monday
-    @params(432000, 2)       ' Jan 6, 1970 = Tuesday
-    @params(518400, 3)       ' Jan 7, 1970 = Wednesday
+    @params(0, 4) ' Jan 1, 1970 = Thursday
+    @params(86400, 5) ' Jan 2, 1970 = Friday
+    @params(172800, 6) ' Jan 3, 1970 = Saturday
+    @params(259200, 0) ' Jan 4, 1970 = Sunday
+    @params(345600, 1) ' Jan 5, 1970 = Monday
+    @params(432000, 2) ' Jan 6, 1970 = Tuesday
+    @params(518400, 3) ' Jan 7, 1970 = Wednesday
     function _(epochSeconds as integer, expectedWeekday as integer)
       testDate = createObject("roDateTime")
       testDate.FromSeconds(epochSeconds)
