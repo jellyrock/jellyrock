@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - code cleanup — naming conventions, enums, and style guide ([#467](https://github.com/jellyrock/jellyrock/pull/467))
 
+### Fixed
+
+- hide library tile backdrop when poster is already loaded ([42b9aff](https://github.com/jellyrock/jellyrock/commit/42b9aff8))
+
 ### Dependencies
 
 - Update roku-deploy from v3.16.3 to v3.16.4 ([#471](https://github.com/jellyrock/jellyrock/pull/471))
