@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (docs) matrix chat link to readme ([9d8fb7f](https://github.com/jellyrock/jellyrock/commit/9d8fb7f6))
+
 ### Fixed
 
 - use GetDayOfWeek() instead of GetWeekday() for weekday index ([b07d5a7](https://github.com/jellyrock/jellyrock/commit/b07d5a7b))
