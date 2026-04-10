@@ -34,6 +34,9 @@ sub init()
   ' Track which program IDs have been fully loaded to avoid redundant API requests.
   ' Used instead of a .fullyLoaded field on the (immutable) JellyfinBaseItem node.
   m.fullyLoadedProgramIds = {}
+
+  ' Guard: onChange handlers must not start tasks before startLoading() configures paging
+  m.loadingInitialized = false
 end sub
 
 ' Called by BaseGridView after setting filter/searchTerm to avoid double-fire.
@@ -47,6 +50,7 @@ sub startLoading()
   m.LoadChannelsTask.searchTerm = m.top.searchTerm
   m.LoadChannelsTask.limit = m.channelPageSize
   m.LoadChannelsTask.startIndex = 0
+  m.loadingInitialized = true
   startLoadingSpinner()
   m.LoadChannelsTask.control = "RUN"
 end sub
@@ -61,44 +65,60 @@ sub OnScreenShown()
 end sub
 
 sub channelFilterSet()
+  ' Don't start tasks before startLoading() has configured paging fields
+  if not m.loadingInitialized then return
+
   m.scheduleGrid.jumpToChannel = 0
   if isValid(m.top.filter) and m.LoadChannelsTask.filter <> m.top.filter
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
-    ' Reset pagination and schedule queue for fresh filter
+    ' Reset all state for fresh filter
     m.LoadChannelsTask.startIndex = 0
     m.channelIndex = {}
+    m.fullyLoadedProgramIds = {}
     m.pendingScheduleIds = []
+    m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
 
     m.LoadChannelsTask.filter = m.top.filter
+    startLoadingSpinner()
     m.LoadChannelsTask.control = "RUN"
   end if
-
 end sub
 
 'Voice Search set
 sub channelsearchTermSet()
+  ' Don't start tasks before startLoading() has configured paging fields
+  if not m.loadingInitialized then return
+
   m.scheduleGrid.jumpToChannel = 0
   'Reset filter if user says all
   if LCase(m.top.searchTerm) = LCase(translate(translationKeys.LabelAll)) or m.LoadChannelsTask.searchTerm = LCase(translate(translationKeys.LabelAll))
     m.top.searchTerm = " "
     m.LoadChannelsTask.searchTerm = " "
+
+    ' Reset all state for fresh search
+    m.channelIndex = {}
+    m.fullyLoadedProgramIds = {}
+    m.pendingScheduleIds = []
+    m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
+
     startLoadingSpinner()
     m.LoadChannelsTask.control = "RUN"
     'filter if the searterm is not invalid
   else if isValid(m.top.searchTerm) and LCase(m.LoadChannelsTask.searchTerm) <> LCase(m.top.searchTerm)
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
-    ' Reset pagination and schedule queue for fresh search
+    ' Reset all state for fresh search
     m.LoadChannelsTask.startIndex = 0
     m.channelIndex = {}
+    m.fullyLoadedProgramIds = {}
     m.pendingScheduleIds = []
+    m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
 
     m.LoadChannelsTask.searchTerm = m.top.searchTerm
     startLoadingSpinner()
     m.LoadChannelsTask.control = "RUN"
   end if
-
 end sub
 
 ' Channels loaded callback — handles both first and subsequent pages.
@@ -109,7 +129,12 @@ sub onChannelsLoaded()
   channels = m.LoadChannelsTask.channels
   m.log.info("onChannelsLoaded", "channelCount", channels.count(), "startIndex", m.LoadChannelsTask.startIndex, "totalRecordCount", m.LoadChannelsTask.totalRecordCount)
 
-  if channels.count() = 0 then return
+  if channels.count() = 0
+    ' No channels returned — stop spinner and show empty grid (e.g. Favorites with none set)
+    stopLoadingSpinner()
+    m.scheduleGrid.showLoadingDataFeedback = false
+    return
+  end if
 
   isFirstPage = not isValid(m.scheduleGrid.content) or m.scheduleGrid.content.getChildCount() = 0
   channelIdList = ""
@@ -434,4 +459,5 @@ sub destroy()
   m.channelIndex = invalid
   m.fullyLoadedProgramIds = invalid
   m.pendingScheduleIds = invalid
+  m.loadingInitialized = false
 end sub
