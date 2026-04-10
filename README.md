@@ -2,7 +2,7 @@
 [![JellyRock](resources/branding/release/channel-poster_sd.png "Download JellyRock ")](https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock)
 
 [![Current Release](https://img.shields.io/github/release/jellyrock/jellyrock.svg?logo=github "Current Release")](https://github.com/jellyrock/jellyrock/releases)
-[![Chat on Matrix](https://img.shields.io/matrix/jellyrock:matrix.org.svg?logo=matrix "Chat on Matrix")](https://matrix.to/#/#jellyrock-app:matrix.org)
+[![Chat on Matrix](https://img.shields.io/matrix/jellyrock-app:matrix.org.svg?logo=matrix "Chat on Matrix")](https://matrix.to/#/#jellyrock-app:matrix.org)
 [![Translation Status](https://translate.jellyrock.app/widget/jellyrock/svg-badge.svg "Translation Status")](https://translate.jellyrock.app/engage/jellyrock/)
 [![License](https://img.shields.io/github/license/jellyrock/jellyrock.svg "GPL 2.0 License")](LICENSE)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
