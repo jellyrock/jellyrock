@@ -72,6 +72,10 @@ sub channelFilterSet()
   if isValid(m.top.filter) and m.LoadChannelsTask.filter <> m.top.filter
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
+    ' Stop in-flight schedule/program tasks — their data belongs to the old filter
+    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
+    if isValid(m.LoadProgramDetailsTask) and m.LoadProgramDetailsTask.state = "run" then m.LoadProgramDetailsTask.control = "stop"
+
     ' Reset all state for fresh filter
     m.LoadChannelsTask.startIndex = 0
     m.channelIndex = {}
@@ -96,7 +100,12 @@ sub channelsearchTermSet()
     m.top.searchTerm = " "
     m.LoadChannelsTask.searchTerm = " "
 
+    ' Stop in-flight schedule/program tasks — their data belongs to the old search
+    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
+    if isValid(m.LoadProgramDetailsTask) and m.LoadProgramDetailsTask.state = "run" then m.LoadProgramDetailsTask.control = "stop"
+
     ' Reset all state for fresh search
+    m.LoadChannelsTask.startIndex = 0
     m.channelIndex = {}
     m.fullyLoadedProgramIds = {}
     m.pendingScheduleIds = []
@@ -107,6 +116,10 @@ sub channelsearchTermSet()
     'filter if the searterm is not invalid
   else if isValid(m.top.searchTerm) and LCase(m.LoadChannelsTask.searchTerm) <> LCase(m.top.searchTerm)
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
+
+    ' Stop in-flight schedule/program tasks — their data belongs to the old search
+    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
+    if isValid(m.LoadProgramDetailsTask) and m.LoadProgramDetailsTask.state = "run" then m.LoadProgramDetailsTask.control = "stop"
 
     ' Reset all state for fresh search
     m.LoadChannelsTask.startIndex = 0
@@ -153,11 +166,13 @@ sub onChannelsLoaded()
     m.scheduleGrid.showLoadingDataFeedback = false
     stopLoadingSpinner()
 
-    ' Create task instances (only once)
-    m.LoadScheduleTask = createObject("roSGNode", "LoadScheduleTask")
-    m.LoadScheduleTask.observeField("schedule", "onScheduleLoaded")
-    m.LoadProgramDetailsTask = createObject("roSGNode", "LoadProgramDetailsTask")
-    m.LoadProgramDetailsTask.observeField("programDetails", "onProgramDetailsLoaded")
+    ' Create task instances only once — filter/search resets reuse them
+    if not isValid(m.LoadScheduleTask)
+      m.LoadScheduleTask = createObject("roSGNode", "LoadScheduleTask")
+      m.LoadScheduleTask.observeField("schedule", "onScheduleLoaded")
+      m.LoadProgramDetailsTask = createObject("roSGNode", "LoadProgramDetailsTask")
+      m.LoadProgramDetailsTask.observeField("programDetails", "onProgramDetailsLoaded")
+    end if
 
     m.scheduleGrid.setFocus(true)
     if m.EPGLaunchCompleteSignaled = false
