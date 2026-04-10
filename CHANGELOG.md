@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- API timeouts + TV Guide performance + quickplay ([#480](https://github.com/jellyrock/jellyrock/pull/480))
 - use GetDayOfWeek() instead of GetWeekday() for weekday index ([b07d5a7](https://github.com/jellyrock/jellyrock/commit/b07d5a7b))
 
 ## [2.11.0](https://github.com/jellyrock/jellyrock/compare/v2.10.1...v2.11.0) - 2026-04-09
