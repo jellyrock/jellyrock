@@ -27,7 +27,6 @@ sub init()
 
   m.LoadChannelsTask = createObject("roSGNode", "LoadChannelsTask")
   m.LoadChannelsTask.observeField("channels", "onChannelsLoaded")
-  m.LoadChannelsTask.control = "RUN"
 
   m.top.lastFocus = m.scheduleGrid
 
@@ -35,6 +34,21 @@ sub init()
   ' Track which program IDs have been fully loaded to avoid redundant API requests.
   ' Used instead of a .fullyLoaded field on the (immutable) JellyfinBaseItem node.
   m.fullyLoadedProgramIds = {}
+end sub
+
+' Called by BaseGridView after setting filter/searchTerm to avoid double-fire.
+' Applies current filter and search state to the task before starting it.
+' Loads channels in pages of m.channelPageSize for fast initial display.
+sub startLoading()
+  m.channelPageSize = 25
+  m.pendingScheduleIds = []
+
+  m.LoadChannelsTask.filter = m.top.filter
+  m.LoadChannelsTask.searchTerm = m.top.searchTerm
+  m.LoadChannelsTask.limit = m.channelPageSize
+  m.LoadChannelsTask.startIndex = 0
+  startLoadingSpinner()
+  m.LoadChannelsTask.control = "RUN"
 end sub
 
 sub OnScreenShown()
@@ -50,6 +64,11 @@ sub channelFilterSet()
   m.scheduleGrid.jumpToChannel = 0
   if isValid(m.top.filter) and m.LoadChannelsTask.filter <> m.top.filter
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
+
+    ' Reset pagination and schedule queue for fresh filter
+    m.LoadChannelsTask.startIndex = 0
+    m.channelIndex = {}
+    m.pendingScheduleIds = []
 
     m.LoadChannelsTask.filter = m.top.filter
     m.LoadChannelsTask.control = "RUN"
@@ -70,6 +89,11 @@ sub channelsearchTermSet()
   else if isValid(m.top.searchTerm) and LCase(m.LoadChannelsTask.searchTerm) <> LCase(m.top.searchTerm)
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
+    ' Reset pagination and schedule queue for fresh search
+    m.LoadChannelsTask.startIndex = 0
+    m.channelIndex = {}
+    m.pendingScheduleIds = []
+
     m.LoadChannelsTask.searchTerm = m.top.searchTerm
     startLoadingSpinner()
     m.LoadChannelsTask.control = "RUN"
@@ -77,47 +101,85 @@ sub channelsearchTermSet()
 
 end sub
 
-' Initial list of channels loaded
+' Channels loaded callback — handles both first and subsequent pages.
+' First page: creates grid content, shows channels immediately.
+' Subsequent pages: appends channels to existing grid.
+' Each page queues its channel IDs for schedule loading.
 sub onChannelsLoaded()
-  gridData = createObject("roSGNode", "ContentNode")
+  channels = m.LoadChannelsTask.channels
+  m.log.info("onChannelsLoaded", "channelCount", channels.count(), "startIndex", m.LoadChannelsTask.startIndex, "totalRecordCount", m.LoadChannelsTask.totalRecordCount)
 
-  counter = 0
+  if channels.count() = 0 then return
+
+  isFirstPage = not isValid(m.scheduleGrid.content) or m.scheduleGrid.content.getChildCount() = 0
   channelIdList = ""
 
-  'if search returns channels
-  if m.LoadChannelsTask.channels.count() > 0
-    for each item in m.LoadChannelsTask.channels
+  if isFirstPage
+    ' First page: create fresh grid content
+    gridData = createObject("roSGNode", "ContentNode")
+    for each item in channels
       gridData.appendChild(item)
-      m.channelIndex[item.id] = counter
-      counter = counter + 1
-      channelIdList = channelIdList + item.id + ","
+      m.channelIndex[item.id] = m.channelIndex.count()
+      channelIdList += item.id + ","
     end for
     m.scheduleGrid.content = gridData
 
+    ' Show channels immediately — programs populate as schedule batches arrive
+    m.scheduleGrid.showLoadingDataFeedback = false
+    stopLoadingSpinner()
+
+    ' Create task instances (only once)
     m.LoadScheduleTask = createObject("roSGNode", "LoadScheduleTask")
     m.LoadScheduleTask.observeField("schedule", "onScheduleLoaded")
-
-    m.LoadScheduleTask.startTime = m.gridStartDate.ToISOString()
-    m.LoadScheduleTask.endTime = m.gridEndDate.ToISOString()
-    m.LoadScheduleTask.channelIds = channelIdList
-    m.LoadScheduleTask.control = "RUN"
-
     m.LoadProgramDetailsTask = createObject("roSGNode", "LoadProgramDetailsTask")
     m.LoadProgramDetailsTask.observeField("programDetails", "onProgramDetailsLoaded")
 
     m.scheduleGrid.setFocus(true)
     if m.EPGLaunchCompleteSignaled = false
-      m.top.signalBeacon("EPGLaunchComplete") ' Required Roku Performance monitoring
+      m.top.signalBeacon("EPGLaunchComplete")
       m.EPGLaunchCompleteSignaled = true
     end if
-    m.LoadChannelsTask.channels = []
-
+  else
+    ' Subsequent page: append to existing grid content
+    for each item in channels
+      m.scheduleGrid.content.appendChild(item)
+      m.channelIndex[item.id] = m.channelIndex.count()
+      channelIdList += item.id + ","
+    end for
   end if
 
+  m.LoadChannelsTask.channels = []
+
+  ' Queue schedule load for this batch of channels
+  m.pendingScheduleIds.push(channelIdList)
+  tryLoadNextScheduleBatch()
+
+  ' Load next page of channels if more exist
+  loadedSoFar = m.LoadChannelsTask.startIndex + channels.count()
+  if loadedSoFar < m.LoadChannelsTask.totalRecordCount
+    m.LoadChannelsTask.startIndex = loadedSoFar
+    m.LoadChannelsTask.control = "RUN"
+  end if
+end sub
+
+' Starts the next queued schedule batch if LoadScheduleTask is free.
+sub tryLoadNextScheduleBatch()
+  if not isValid(m.LoadScheduleTask) then return
+  if m.LoadScheduleTask.state = "run" then return
+  if m.pendingScheduleIds.count() = 0 then return
+
+  channelIds = m.pendingScheduleIds[0]
+  m.pendingScheduleIds.delete(0)
+
+  m.LoadScheduleTask.startTime = m.gridStartDate.ToISOString()
+  m.LoadScheduleTask.endTime = m.gridEndDate.ToISOString()
+  m.LoadScheduleTask.channelIds = channelIds
+  m.LoadScheduleTask.control = "RUN"
 end sub
 
 ' When LoadScheduleTask completes (initial or more data) and we have a schedule to display
 sub onScheduleLoaded()
+  m.log.info("onScheduleLoaded", "programCount", m.LoadScheduleTask.schedule.Count())
 
   ' make sure we actually have a schedule (i.e. filter by favorites, but no channels have been favorited)
   if m.scheduleGrid.content.GetChildCount() <= 0
@@ -125,16 +187,18 @@ sub onScheduleLoaded()
   end if
 
   for each item in m.LoadScheduleTask.schedule
-
-    channel = m.scheduleGrid.content.GetChild(m.channelIndex[item.channelId])
-
-    channel.appendChild(item)
+    if isValid(m.channelIndex[item.channelId])
+      channel = m.scheduleGrid.content.GetChild(m.channelIndex[item.channelId])
+      channel.appendChild(item)
+    end if
   end for
 
   m.scheduleGrid.showLoadingDataFeedback = false
   m.scheduleGrid.setFocus(true)
   m.LoadScheduleTask.schedule = []
-  stopLoadingSpinner()
+
+  ' Process next queued schedule batch
+  tryLoadNextScheduleBatch()
 end sub
 
 sub onProgramFocused()
@@ -242,10 +306,16 @@ sub onGridScrolled()
   if m.scheduleGrid.leftEdgeTargetTime + (12 * 60 * 60) > m.gridEndDate.AsSeconds()
 
     ' Ensure the task is not already (still) running,
-    if m.LoadScheduleTask.state <> "run"
+    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state <> "run"
+      ' Build channel ID list from ALL loaded channels (not just last batch)
+      allChannelIds = ""
+      for each key in m.channelIndex
+        allChannelIds += key + ","
+      end for
       m.LoadScheduleTask.startTime = m.gridEndDate.ToISOString()
       m.gridEndDate.FromSeconds(m.gridEndDate.AsSeconds() + (24 * 60 * 60))
       m.LoadScheduleTask.endTime = m.gridEndDate.ToISOString()
+      m.LoadScheduleTask.channelIds = allChannelIds
       m.LoadScheduleTask.control = "RUN"
     end if
   end if
@@ -363,4 +433,5 @@ sub destroy()
   ' Clear data structures
   m.channelIndex = invalid
   m.fullyLoadedProgramIds = invalid
+  m.pendingScheduleIds = invalid
 end sub

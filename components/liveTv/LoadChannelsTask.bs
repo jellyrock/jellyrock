@@ -2,11 +2,13 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
+  m.log = new log.Logger("LoadChannelsTask")
   m.top.functionName = "loadChannels"
 end sub
 
@@ -18,40 +20,82 @@ sub loadChannels()
     sortOrder = "Descending"
   end if
 
-  params = {
-    includeItemTypes: "LiveTvChannel",
-    SortBy: m.top.sortField,
-    SortOrder: sortOrder,
-    recursive: m.top.isRecursive,
-    UserId: m.global.user.id
-  }
+  ' /LiveTv/Channels doesn't support searchTerm — fall back to generic /Items when search is active
+  hasSearch = (m.top.NameStartsWith <> "" or m.top.searchTerm <> "")
 
-  ' Handle special case when getting names starting with numeral
-  if m.top.NameStartsWith <> ""
-    if m.top.NameStartsWith = "#"
-      params.searchterm = "A"
-    else
-      params.searchterm = m.top.nameStartsWith
+  if hasSearch
+    params = {
+      includeItemTypes: "LiveTvChannel",
+      SortBy: m.top.sortField,
+      SortOrder: sortOrder,
+      recursive: m.top.isRecursive,
+      UserId: m.global.user.id,
+      EnableImageTypes: "Primary",
+      ImageTypeLimit: 1,
+      startIndex: m.top.startIndex
+    }
+    if m.top.limit > 0 then params.limit = m.top.limit
+
+    ' Handle special case when getting names starting with numeral
+    if m.top.NameStartsWith <> ""
+      if m.top.NameStartsWith = "#"
+        params.searchterm = "A"
+      else
+        params.searchterm = m.top.nameStartsWith
+      end if
     end if
+
+    ' Append voice search when there is text
+    if m.top.searchTerm <> ""
+      params.searchTerm = m.top.searchTerm
+    end if
+
+    if m.top.filter = "Favorites"
+      params.append({ isFavorite: true })
+    end if
+
+    m.log.info("loadChannels: fetching via /Items (search active)")
+    timer = CreateObject("roTimespan")
+    res = fetchRes(GetApi().BuildGetItemsByQueryRequest(params), "liveTvChannels")
+  else
+    ' Dedicated endpoint — much faster, no unnecessary metadata (Chapters, Trickplay, Backdrop, etc.)
+    ' OSD loads its own metadata via LoadVideoContentTask when a channel is selected.
+    params = {
+      SortBy: m.top.sortField,
+      SortOrder: sortOrder,
+      UserId: m.global.user.id,
+      addCurrentProgram: false,
+      enableImages: true,
+      enableImageTypes: "Primary",
+      imageTypeLimit: 1,
+      enableUserData: true,
+      startIndex: m.top.startIndex
+    }
+    if m.top.limit > 0 then params.limit = m.top.limit
+
+    if m.top.filter = "Favorites"
+      params.append({ isFavorite: true })
+    end if
+
+    m.log.info("loadChannels: fetching via /LiveTv/Channels")
+    timer = CreateObject("roTimespan")
+    res = fetchRes(GetApi().BuildGetLiveTVChannelsRequest(params), "liveTvChannels")
   end if
 
-  ' Append voice search when there is text
-  if m.top.searchTerm <> ""
-    params.searchTerm = m.top.searchTerm
-  end if
+  elapsed = timer.TotalMilliseconds()
+  m.log.info("loadChannels: fetch completed", "elapsed_ms", elapsed, "ok", isValid(res) and res.ok)
 
-  if m.top.filter = "Favorites"
-    params.append({ isFavorite: true })
-  end if
-
-  res = fetchRes(GetApi().BuildGetItemsByQueryRequest(params), "liveTvChannels")
   results = []
 
   if isValid(res) and res.ok and isValid(res.json)
     if not isValid(res.json.TotalRecordCount)
+      m.log.info("loadChannels: no TotalRecordCount in response")
+      m.top.totalRecordCount = 0
       m.top.channels = results
       return
     end if
+
+    m.top.totalRecordCount = res.json.TotalRecordCount
 
     transformer = JellyfinDataTransformer()
     for each item in res.json.Items
@@ -76,5 +120,6 @@ sub loadChannels()
     end for
   end if
 
+  m.log.info("loadChannels: result", "channelCount", results.Count())
   m.top.channels = results
 end sub

@@ -12,5 +12,6 @@
     <field id="isRecursive" type="boolean" value="true" />
     <!-- Total records available from server-->
     <field id="channels" type="array" />
+    <field id="totalRecordCount" type="integer" value="0" />
   </interface>
 </component>
