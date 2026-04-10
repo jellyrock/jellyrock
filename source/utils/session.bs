@@ -165,7 +165,7 @@ namespace server
     if type(resp) <> "roUrlEvent"
       ' Check for timeout (wait() returns invalid after timeout expires)
       if resp = invalid
-        return { "Error": true, "ErrorMessage": "Connection timed out - server did not respond within " + stri(timeouts.CONNECTION_CHECK_MS / 1000).trim() + " seconds" }
+        return { "Error": true, "ErrorMessage": "Connection timed out - server did not respond within " + stri(timeouts.CONNECTION_CHECK_MS \ 1000).trim() + " seconds" }
       end if
 
       ' Handle unexpected message types
