@@ -20,10 +20,12 @@ sub loadChannels()
     sortOrder = "Descending"
   end if
 
-  ' /LiveTv/Channels doesn't support searchTerm — fall back to generic /Items when search is active
-  hasSearch = (m.top.NameStartsWith <> "" or m.top.searchTerm <> "")
+  searchTerm = m.top.searchTerm.trim()
+  hasSearch = searchTerm <> ""
+  hasAlphaFilter = m.top.NameStartsWith <> ""
 
-  if hasSearch
+  if hasAlphaFilter
+    ' /LiveTv/Channels doesn't support NameStartsWith — fall back to /Items for alpha filtering
     params = {
       includeItemTypes: "LiveTvChannel",
       SortBy: m.top.sortField,
@@ -37,24 +39,17 @@ sub loadChannels()
     if m.top.limit > 0 then params.limit = m.top.limit
 
     ' Handle special case when getting names starting with numeral
-    if m.top.NameStartsWith <> ""
-      if m.top.NameStartsWith = "#"
-        params.searchterm = "A"
-      else
-        params.searchterm = m.top.nameStartsWith
-      end if
-    end if
-
-    ' Append voice search when there is text
-    if m.top.searchTerm <> ""
-      params.searchTerm = m.top.searchTerm
+    if m.top.NameStartsWith = "#"
+      params.searchterm = "A"
+    else
+      params.searchterm = m.top.nameStartsWith
     end if
 
     if m.top.filter = "Favorites"
       params.append({ isFavorite: true })
     end if
 
-    m.log.info("loadChannels: fetching via /Items (search active)")
+    m.log.info("loadChannels: fetching via /Items (alpha filter)")
     timer = CreateObject("roTimespan")
     res = fetchRes(GetApi().BuildGetItemsByQueryRequest(params), "liveTvChannels")
   else
@@ -68,16 +63,23 @@ sub loadChannels()
       enableImages: true,
       enableImageTypes: "Primary",
       imageTypeLimit: 1,
-      enableUserData: true,
-      startIndex: m.top.startIndex
+      enableUserData: true
     }
-    if m.top.limit > 0 then params.limit = m.top.limit
+
+    if hasSearch
+      ' Fetch all channels for client-side name filtering (no pagination)
+      m.log.info("loadChannels: fetching all via /LiveTv/Channels (voice search)", "searchTerm", searchTerm)
+    else
+      ' Normal paginated load
+      params.startIndex = m.top.startIndex
+      if m.top.limit > 0 then params.limit = m.top.limit
+      m.log.info("loadChannels: fetching via /LiveTv/Channels")
+    end if
 
     if m.top.filter = "Favorites"
       params.append({ isFavorite: true })
     end if
 
-    m.log.info("loadChannels: fetching via /LiveTv/Channels")
     timer = CreateObject("roTimespan")
     res = fetchRes(GetApi().BuildGetLiveTVChannelsRequest(params), "liveTvChannels")
   end if
@@ -120,6 +122,67 @@ sub loadChannels()
     end for
   end if
 
+  ' Voice search: client-side filter by channel name/number + program name search
+  if hasSearch and results.count() > 0
+    results = filterByVoiceSearch(results, searchTerm, timer)
+  end if
+
   m.log.info("loadChannels: result", "channelCount", results.Count())
   m.top.channels = results
 end sub
+
+' Filters channels by voice search term using two strategies:
+' 1) Client-side match on channel name and channel number
+' 2) Server-side /LiveTv/Programs search to find channels airing matching content
+' Results are merged and deduplicated.
+' @param channels - Array of transformed channel nodes
+' @param searchTerm - Trimmed, non-empty voice search text
+' @param timer - Running roTimespan for elapsed logging
+' @returns Filtered array of channel nodes
+function filterByVoiceSearch(channels as object, searchTerm as string, timer as object) as object
+  lowerSearch = LCase(searchTerm)
+
+  ' Build a lookup of all channels by ID for merging program results
+  channelById = {}
+  for each node in channels
+    channelById[node.id] = node
+  end for
+
+  ' 1) Filter channels by name/number substring match
+  filtered = []
+  matchedIds = {}
+  for each node in channels
+    nameMatch = LCase(node.name).Instr(lowerSearch) >= 0
+    numberMatch = isValidAndNotEmpty(node.channelNumber) and node.channelNumber.Instr(searchTerm) >= 0
+    if nameMatch or numberMatch
+      filtered.push(node)
+      matchedIds[node.id] = true
+    end if
+  end for
+  m.log.info("filterByVoiceSearch: channel name/number matches", "count", filtered.count())
+
+  ' 2) Search programs to find channels airing matching content
+  programParams = {
+    SearchTerm: searchTerm,
+    Limit: 100,
+    UserId: m.global.user.id
+  }
+  programRes = fetchRes(GetApi().BuildGetLiveTVProgramsRequest(programParams), "liveTvPrograms")
+
+  programElapsed = timer.TotalMilliseconds()
+  m.log.info("filterByVoiceSearch: program search completed", "elapsed_ms", programElapsed, "ok", isValid(programRes) and programRes.ok)
+
+  if isValid(programRes) and programRes.ok and isValid(programRes.json) and isValid(programRes.json.Items)
+    for each program in programRes.json.Items
+      channelId = program.ChannelId ?? ""
+      if channelId <> "" and not matchedIds.DoesExist(channelId) and channelById.DoesExist(channelId)
+        filtered.push(channelById[channelId])
+        matchedIds[channelId] = true
+      end if
+    end for
+    m.log.info("filterByVoiceSearch: total after program merge", "count", filtered.count())
+  end if
+
+  m.top.totalRecordCount = filtered.count()
+  return filtered
+end function

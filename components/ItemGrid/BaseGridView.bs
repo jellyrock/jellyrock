@@ -858,6 +858,14 @@ end sub
 
 sub onVoiceFilter()
   if m.voiceBox.text <> ""
+    ' Route voice search to TV Guide when it's active
+    if isValid(m.tvGuide)
+      m.tvGuide.searchTerm = m.voiceBox.text
+      updateTitle()
+      m.tvGuide.lastFocus.setFocus(true)
+      return
+    end if
+
     m.loadedRows = 0
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
