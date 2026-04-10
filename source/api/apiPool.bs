@@ -1,3 +1,4 @@
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Submits a request to the API queue coordinator and blocks the calling Task thread
@@ -15,7 +16,7 @@ import "pkg:/source/utils/misc.bs"
 '
 ' @param req      - request AA from a Build*Request() method; returns invalid if invalid
 ' @param requestId - unique string identifying this request (echoed in the response AA)
-' @return response AA { requestId, ok, statusCode, json, text } or invalid on timeout
+' @return response AA { requestId, ok, statusCode, json, text } or invalid on timeout (timeouts.API_WAIT_MS)
 function fetchRes(req as dynamic, requestId as string) as dynamic
   if not isValid(req) then return invalid
 
@@ -64,7 +65,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   ' Wake-up signal — coordinator ignores the value and reads children instead.
   apiQueue.enqueue = requestId
 
-  msg = wait(30000, port)
+  msg = wait(timeouts.API_WAIT_MS, port)
   if type(msg) = "roSGNodeEvent"
     resultNode.unobserveField("isDone")
     return resultNode.result

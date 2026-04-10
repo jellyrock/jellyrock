@@ -181,6 +181,7 @@ sub showTVGuide()
   ' Hide the grid and show the guide
   m.itemGrid.visible = false
   m.top.appendChild(m.tvGuide)
+  m.tvGuide.callFunc("startLoading")
   m.tvGuide.lastFocus.setFocus(true)
   m.top.lastFocus = m.tvGuide.lastFocus
 end sub
@@ -741,6 +742,11 @@ sub optionsClosed()
     reload = true
     libraryId = m.top.parentItem.Id
     setLibraryDisplaySetting(libraryId, "filter", m.options.filter)
+
+    ' Propagate filter change to TV Guide if it's active
+    if isValid(m.tvGuide)
+      m.tvGuide.filter = m.filter
+    end if
   end if
 
   if not isValid(m.options.filterOptions)
@@ -796,8 +802,15 @@ sub optionsClosed()
     loadInitialItems()
   end if
 
-  m.itemGrid.setFocus(m.itemGrid.opacity = 1)
-  m.genreList.setFocus(m.genreList.opacity = 1)
+  ' Restore focus to the correct view after options close
+  if isValid(m.tvGuide)
+    if isValid(m.tvGuide.lastFocus)
+      m.tvGuide.lastFocus.setFocus(true)
+    end if
+  else
+    m.itemGrid.setFocus(m.itemGrid.opacity = 1)
+    m.genreList.setFocus(m.genreList.opacity = 1)
+  end if
 end sub
 
 ' ============================================================================
@@ -845,6 +858,14 @@ end sub
 
 sub onVoiceFilter()
   if m.voiceBox.text <> ""
+    ' Route voice search to TV Guide when it's active
+    if isValid(m.tvGuide)
+      m.tvGuide.searchTerm = m.voiceBox.text
+      updateTitle()
+      m.tvGuide.lastFocus.setFocus(true)
+      return
+    end if
+
     m.loadedRows = 0
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
@@ -961,7 +982,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' Rebuild options before showing dialog (to include any dynamically loaded filters)
       SetUpOptions()
 
-      itemSelected = m.selectedFavoriteItem
+      ' Use TV Guide's focused channel when active, otherwise use the grid's focused item
+      if isValid(m.tvGuide) and isValid(m.channelFocused)
+        itemSelected = m.channelFocused
+      else
+        itemSelected = m.selectedFavoriteItem
+      end if
       if isValid(itemSelected)
         m.options.selectedFavoriteItem = itemSelected
       end if
@@ -981,6 +1007,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
   else if key = "play"
+    ' TV Guide: quickplay the focused channel
+    if isValid(m.tvGuide)
+      m.log.debug("play pressed on TV Guide", "channelFocused", isValid(m.channelFocused))
+      if isValid(m.channelFocused)
+        m.log.debug("quickplay channel", "id", m.channelFocused.id, "type", m.channelFocused.type)
+        m.top.quickPlayNode = m.channelFocused
+        return true
+      end if
+    end if
+
     itemToPlay = getItemFocused()
 
     if isValid(itemToPlay)

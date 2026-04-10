@@ -1,10 +1,12 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = new log.Logger("LoadScheduleTask")
   m.top.functionName = "loadSchedule"
 end sub
 
@@ -21,7 +23,12 @@ sub loadSchedule()
     MinEndDate: m.top.startTime
   }
 
+  m.log.info("loadSchedule: starting fetch", "startTime", m.top.startTime, "endTime", m.top.endTime)
+  timer = CreateObject("roTimespan")
   res = fetchRes(GetApi().BuildGetLiveTvScheduleRequest(params), "liveTvSchedule")
+  elapsed = timer.TotalMilliseconds()
+  m.log.info("loadSchedule: fetch completed", "elapsed_ms", elapsed, "ok", isValid(res) and res.ok)
+
   results = []
 
   if isValid(res) and res.ok and isValid(res.json)
@@ -38,5 +45,6 @@ sub loadSchedule()
     end for
   end if
 
+  m.log.info("loadSchedule: result", "programCount", results.Count())
   m.top.schedule = results
 end sub

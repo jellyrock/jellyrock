@@ -1,4 +1,5 @@
 import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/roku_modules/rr/Requests.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -46,7 +47,7 @@ function executeRequest(req as object) as object
   end if
 
   ' timeout in request AA is seconds; rr_Requests expects milliseconds
-  timeout = 30000
+  timeout = timeouts.HTTP_MS
   if isValid(req.timeout) then timeout = req.timeout * 1000
 
   args = {

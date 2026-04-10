@@ -1,0 +1,20 @@
+' @fileoverview Centralized timeout constants for API requests and task coordination.
+' All values in milliseconds.
+
+namespace timeouts
+
+  ' Default HTTP request timeout passed to roku-requests.
+  ' Used by ApiTask and SideEffectTask for all API pool requests.
+  const HTTP_MS = 10000
+
+  ' API pool caller wait (fetchRes).
+  ' 2s buffer above HTTP_MS so the HTTP layer times out first,
+  ' preventing orphaned pool slots when the wait expires before the HTTP call.
+  const API_WAIT_MS = 12000
+
+  ' Session connection check timeout.
+  ' Intentionally higher to accommodate slow/remote servers
+  ' and redirect chains during initial connection.
+  const CONNECTION_CHECK_MS = 35000
+
+end namespace

@@ -5,6 +5,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/userAuth.bs"
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
@@ -157,14 +158,14 @@ namespace server
     req.setMessagePort(CreateObject("roMessagePort"))
     req.AsyncGetToString()
 
-    ' Wait for response (35 second timeout)
-    resp = wait(35000, req.GetMessagePort())
+    ' Wait for response (timeouts.CONNECTION_CHECK_MS)
+    resp = wait(timeouts.CONNECTION_CHECK_MS, req.GetMessagePort())
 
     ' Handle non-roUrlEvent responses (timeouts, system errors, etc.)
     if type(resp) <> "roUrlEvent"
       ' Check for timeout (wait() returns invalid after timeout expires)
       if resp = invalid
-        return { "Error": true, "ErrorMessage": "Connection timed out - server did not respond within 35 seconds" }
+        return { "Error": true, "ErrorMessage": "Connection timed out - server did not respond within " + stri(timeouts.CONNECTION_CHECK_MS \ 1000).trim() + " seconds" }
       end if
 
       ' Handle unexpected message types

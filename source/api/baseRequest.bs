@@ -1,3 +1,5 @@
+import "pkg:/source/constants/timeouts.bs"
+
 ' Functions for making requests to the API
 function buildParams(params = {} as object) as string
   ' Take an object of parameters and construct the URL query
@@ -76,11 +78,19 @@ function getJson(req)
   ' Handle case where server URL is not set or invalid
   if not isValid(req) then return invalid
 
-  'req.retainBodyOnError(True)
-  data = req.GetToString()
-  if not isValid(data) or data = ""
+  req.setMessagePort(CreateObject("roMessagePort"))
+  req.AsyncGetToString()
+  resp = wait(timeouts.HTTP_MS, req.GetMessagePort())
+  if type(resp) <> "roUrlEvent"
+    req.AsyncCancel()
     return invalid
   end if
+
+  data = resp.GetString()
+  if data = ""
+    return invalid
+  end if
+
   json = ParseJson(data)
   return json
 end function
@@ -92,8 +102,9 @@ function postJson(req, data = "" as string)
   req.setMessagePort(CreateObject("roMessagePort"))
   req.AddHeader("Content-Type", "application/json")
   req.AsyncPostFromString(data)
-  resp = wait(30000, req.GetMessagePort())
+  resp = wait(timeouts.HTTP_MS, req.GetMessagePort())
   if type(resp) <> "roUrlEvent"
+    req.AsyncCancel()
     return invalid
   end if
 
