@@ -143,9 +143,10 @@ sub onChannelsLoaded()
   m.log.info("onChannelsLoaded", "channelCount", channels.count(), "startIndex", m.LoadChannelsTask.startIndex, "totalRecordCount", m.LoadChannelsTask.totalRecordCount)
 
   if channels.count() = 0
-    ' No channels returned — stop spinner and show empty grid (e.g. Favorites with none set)
+    ' No channels returned — stop spinner and restore focus so user can navigate back
     stopLoadingSpinner()
     m.scheduleGrid.showLoadingDataFeedback = false
+    m.scheduleGrid.setFocus(true)
     return
   end if
 
@@ -187,8 +188,6 @@ sub onChannelsLoaded()
       channelIdList += item.id + ","
     end for
   end if
-
-  m.LoadChannelsTask.channels = []
 
   ' Queue schedule load for this batch of channels
   m.pendingScheduleIds.push(channelIdList)
