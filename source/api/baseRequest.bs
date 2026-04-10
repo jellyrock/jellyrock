@@ -1,3 +1,5 @@
+import "pkg:/source/constants/timeouts.bs"
+
 ' Functions for making requests to the API
 function buildParams(params = {} as object) as string
   ' Take an object of parameters and construct the URL query
@@ -92,7 +94,7 @@ function postJson(req, data = "" as string)
   req.setMessagePort(CreateObject("roMessagePort"))
   req.AddHeader("Content-Type", "application/json")
   req.AsyncPostFromString(data)
-  resp = wait(30000, req.GetMessagePort())
+  resp = wait(timeouts.HTTP_MS, req.GetMessagePort())
   if type(resp) <> "roUrlEvent"
     return invalid
   end if

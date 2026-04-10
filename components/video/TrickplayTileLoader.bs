@@ -1,4 +1,5 @@
 import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/trickplay.bs"
@@ -96,7 +97,7 @@ function downloadTile(tileIndex as integer, cachePath as string) as boolean
   end if
 
   ' Wait for response
-  resp = wait(30000, port)
+  resp = wait(timeouts.HTTP_MS, port)
 
   ' Check for timeout (resp = invalid)
   if resp = invalid
