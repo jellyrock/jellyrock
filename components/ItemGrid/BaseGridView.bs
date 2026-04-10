@@ -181,6 +181,7 @@ sub showTVGuide()
   ' Hide the grid and show the guide
   m.itemGrid.visible = false
   m.top.appendChild(m.tvGuide)
+  m.tvGuide.callFunc("startLoading")
   m.tvGuide.lastFocus.setFocus(true)
   m.top.lastFocus = m.tvGuide.lastFocus
 end sub
@@ -981,6 +982,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
   else if key = "play"
+    ' TV Guide: quickplay the focused channel
+    if isValid(m.tvGuide)
+      m.log.debug("play pressed on TV Guide", "channelFocused", isValid(m.channelFocused))
+      if isValid(m.channelFocused)
+        m.log.debug("quickplay channel", "id", m.channelFocused.id, "type", m.channelFocused.type)
+        m.top.quickPlayNode = m.channelFocused
+        return true
+      end if
+    end if
+
     itemToPlay = getItemFocused()
 
     if isValid(itemToPlay)
