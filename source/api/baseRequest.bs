@@ -78,11 +78,19 @@ function getJson(req)
   ' Handle case where server URL is not set or invalid
   if not isValid(req) then return invalid
 
-  'req.retainBodyOnError(True)
-  data = req.GetToString()
-  if not isValid(data) or data = ""
+  req.setMessagePort(CreateObject("roMessagePort"))
+  req.AsyncGetToString()
+  resp = wait(timeouts.HTTP_MS, req.GetMessagePort())
+  if type(resp) <> "roUrlEvent"
+    req.AsyncCancel()
     return invalid
   end if
+
+  data = resp.GetString()
+  if data = ""
+    return invalid
+  end if
+
   json = ParseJson(data)
   return json
 end function
@@ -96,6 +104,7 @@ function postJson(req, data = "" as string)
   req.AsyncPostFromString(data)
   resp = wait(timeouts.HTTP_MS, req.GetMessagePort())
   if type(resp) <> "roUrlEvent"
+    req.AsyncCancel()
     return invalid
   end if
 
