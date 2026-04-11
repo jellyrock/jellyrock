@@ -208,6 +208,35 @@ namespace tests
     end sub
 
     ' ===================================================================
+    ' TYPE CHECK HELPERS
+    ' Each BrightScript scalar has two equivalent runtime type names
+    ' (boxed "ro*" vs unboxed). Numeric types also span Float/Double for
+    ' the same semantic value. These helpers treat the whole equivalence
+    ' class as a single logical type so assertions don't flake on
+    ' legitimate numeric promotion or auto-boxing.
+    ' ===================================================================
+
+    protected function isStringType(value as dynamic) as boolean
+      typeStr = type(value)
+      return typeStr = "String" or typeStr = "roString"
+    end function
+
+    protected function isBooleanType(value as dynamic) as boolean
+      typeStr = type(value)
+      return typeStr = "Boolean" or typeStr = "roBoolean"
+    end function
+
+    protected function isIntegerType(value as dynamic) as boolean
+      typeStr = type(value)
+      return typeStr = "Integer" or typeStr = "roInteger" or typeStr = "roInt"
+    end function
+
+    protected function isFloatType(value as dynamic) as boolean
+      typeStr = type(value)
+      return typeStr = "Float" or typeStr = "roFloat" or typeStr = "Double" or typeStr = "roDouble"
+    end function
+
+    ' ===================================================================
     ' TEST HELPER METHODS
     ' Use these in individual tests to reset or access m.global safely
     ' ===================================================================

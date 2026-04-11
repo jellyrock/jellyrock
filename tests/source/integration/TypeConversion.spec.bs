@@ -4,29 +4,8 @@ namespace tests
   @suite("Type Conversion - Registry ↔ Settings Node")
   class TypeConversionTests extends tests.BaseTestSuite
 
-    ' Helper to check if type is string (handles both "String" and "roString")
-    private function isStringType(value as dynamic) as boolean
-      typeStr = type(value)
-      return typeStr = "String" or typeStr = "roString"
-    end function
-
-    ' Helper to check if type is boolean
-    private function isBooleanType(value as dynamic) as boolean
-      typeStr = type(value)
-      return typeStr = "Boolean" or typeStr = "roBoolean"
-    end function
-
-    ' Helper to check if type is integer
-    private function isIntegerType(value as dynamic) as boolean
-      typeStr = type(value)
-      return typeStr = "Integer" or typeStr = "roInteger" or typeStr = "roInt"
-    end function
-
-    ' Helper to check if type is float
-    private function isFloatType(value as dynamic) as boolean
-      typeStr = type(value)
-      return typeStr = "Float" or typeStr = "roFloat" or typeStr = "Double" or typeStr = "roDouble"
-    end function
+    ' Type-check helpers (isStringType/isBooleanType/isIntegerType/isFloatType)
+    ' live on BaseTestSuite so any spec can reuse them via m.*.
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("valueToString() - Conversion to Registry Format")

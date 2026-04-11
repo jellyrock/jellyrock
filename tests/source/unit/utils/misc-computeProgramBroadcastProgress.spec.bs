@@ -76,7 +76,7 @@ namespace tests
     @it("returns a Float type (not Integer) so bar width math works correctly")
     function _()
       result = computeProgramBroadcastProgress(1000, 100, 1050)
-      m.assertTrue(Type(result) = "roFloat" or Type(result) = "Float", `expected Float but got ${Type(result)}`)
+      m.assertTrue(m.isFloatType(result), `expected Float/Double but got ${Type(result)}`)
     end function
 
   end class

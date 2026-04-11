@@ -10,11 +10,7 @@ namespace tests
       super.setup()
     end sub
 
-    ' Helper to check if type is string (handles both "String" and "roString")
-    private function isStringType(value as dynamic) as boolean
-      typeStr = type(value)
-      return typeStr = "String" or typeStr = "roString"
-    end function
+    ' isStringType lives on BaseTestSuite; use m.isStringType.
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Round-Trip Tests - Save → Registry → Load → Verify")
