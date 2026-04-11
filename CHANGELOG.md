@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- live progress bar on Program cells ([#486](https://github.com/jellyrock/jellyrock/pull/486))
+
 ## [2.11.1](https://github.com/jellyrock/jellyrock/compare/v2.11.0...v2.11.1) - 2026-04-10
 
 ### Added
