@@ -108,6 +108,13 @@ sub init()
   ' Track the last focused row index so horizontal item scrolling within a row
   ' does not trigger an unnecessary panel position recalculation.
   m.lastFocusedRowIndex = -1
+
+  ' Refetch the Channel Programs row (TvChannel "Up Next" / Program "More on
+  ' this Channel") when the base class's progress tick detects an expired
+  ' broadcast. m.isRefetchingChannelPrograms debounces repeated expiry signals
+  ' while a refetch is already in flight.
+  m.isRefetchingChannelPrograms = false
+  m.top.observeField("programsExpired", "onProgramsExpired")
 end sub
 
 sub updateSize()
@@ -917,6 +924,72 @@ sub onProgramChannelProgramsLoaded()
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
   m.LikeThisTask.control = "RUN"
+end sub
+
+' Fires when JRRowList's progress tick detects at least one expired Program
+' among this list's rows. Triggers a targeted refetch of the Channel Programs
+' row (TvChannel "Up Next" or Program "More on this Channel") so finished
+' broadcasts roll off and new ones take their place.
+'
+' Deliberately does NOT re-chain to LikeThisTask — related content is stable
+' over a viewing session and should not be refetched just because a program
+' expired. m.isRefetchingChannelPrograms debounces repeated expiry signals.
+sub onProgramsExpired()
+  if m.isRefetchingChannelPrograms then return
+  if not isValid(m.rowChannelPrograms) then return
+
+  itemType = m.top.type
+  handlerName = ""
+  channelId = invalid
+
+  if itemType = "TvChannel"
+    handlerName = "onChannelProgramsRefetched"
+    channelId = m.top.parentId
+  else if itemType = "Program"
+    handlerName = "onProgramChannelProgramsRefetched"
+    channelId = m.programChannelId
+  end if
+
+  if handlerName = "" or not isValidAndNotEmpty(channelId) then return
+
+  m.isRefetchingChannelPrograms = true
+  m.LoadChannelProgramsTask.control = "STOP"
+  m.LoadChannelProgramsTask.unobserveField("content")
+  m.LoadChannelProgramsTask.itemId = channelId
+  m.LoadChannelProgramsTask.observeField("content", handlerName)
+  m.LoadChannelProgramsTask.control = "RUN"
+end sub
+
+' Refetch handler for TvChannel "Up Next". Replaces the row content in place
+' without re-chaining to LikeThisTask (unlike the initial-load handler).
+sub onChannelProgramsRefetched()
+  items = m.LoadChannelProgramsTask.content
+  m.LoadChannelProgramsTask.unobserveField("content")
+  m.LoadChannelProgramsTask.content = []
+  m.isRefetchingChannelPrograms = false
+
+  if isValid(items) and items.count() > 0
+    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate(translationKeys.LabelUpNext), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+  else if isValid(m.rowChannelPrograms)
+    removeRow(m.rowChannelPrograms)
+    m.rowChannelPrograms = invalid
+  end if
+end sub
+
+' Refetch handler for Program "More on this Channel". Same in-place-update
+' pattern as onChannelProgramsRefetched — no chain to LikeThisTask.
+sub onProgramChannelProgramsRefetched()
+  items = m.LoadChannelProgramsTask.content
+  m.LoadChannelProgramsTask.unobserveField("content")
+  m.LoadChannelProgramsTask.content = []
+  m.isRefetchingChannelPrograms = false
+
+  if isValid(items) and items.count() > 0
+    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate(translationKeys.LabelMoreOnThisChannel), items, rowSlotSize.ROW_HEIGHT_SQUARE)
+  else if isValid(m.rowChannelPrograms)
+    removeRow(m.rowChannelPrograms)
+    m.rowChannelPrograms = invalid
+  end if
 end sub
 
 ' populateRow: Reuse an existing row ContentNode (clearing its children) or create a new one.

@@ -1,0 +1,84 @@
+
+namespace tests
+
+  @suite("misc.bs - computeProgramBroadcastProgress() Live Program Elapsed Percentage")
+  class ComputeProgramBroadcastProgressTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("computeProgramBroadcastProgress(playStart, playDuration, nowSeconds)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns 50.0 when the program is airing halfway through")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 1050)
+      m.assertEqual(result, 50.0)
+    end function
+
+    @it("returns 1.0 one second after broadcast start")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 1001)
+      m.assertEqual(result, 1.0)
+    end function
+
+    @it("returns 99.0 one second before broadcast end")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 1099)
+      m.assertEqual(result, 99.0)
+    end function
+
+    @it("returns 0.0 exactly at broadcast start (elapsed == 0)")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 1000)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("returns 0.0 exactly at broadcast end (elapsed == duration)")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 1100)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("returns 0.0 when the current time is before broadcast start")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 500)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("returns 0.0 when the current time is after broadcast end")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 2000)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("returns 0.0 when playStart is invalid")
+    @params(0)
+    @params(-1)
+    function _(playStart)
+      result = computeProgramBroadcastProgress(playStart, 100, 50)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("returns 0.0 when playDuration is invalid")
+    @params(0)
+    @params(-1)
+    function _(playDuration)
+      result = computeProgramBroadcastProgress(1000, playDuration, 1050)
+      m.assertEqual(result, 0.0)
+    end function
+
+    @it("computes 50.0 at epoch-scale realistic inputs")
+    function _()
+      ' 30-minute program, halfway through
+      result = computeProgramBroadcastProgress(1700000000, 1800, 1700000900)
+      m.assertEqual(result, 50.0)
+    end function
+
+    @it("returns a Float type (not Integer) so bar width math works correctly")
+    function _()
+      result = computeProgramBroadcastProgress(1000, 100, 1050)
+      m.assertTrue(m.isFloatType(result), `expected Float/Double but got ${Type(result)}`)
+    end function
+
+  end class
+
+end namespace

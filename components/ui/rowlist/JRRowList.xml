@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRRowList" extends="RowList">
-
+  <interface>
+    <!--
+      Set to true by the Program progress tick when it detects at least one
+      Program child whose broadcast window has ended (now >= PlayStart + PlayDuration).
+      Subclasses that display live Programs (HomeRows, ExtrasRowList) observe this
+      field to lazily refetch stale data. alwaysNotify fires the observer on every
+      set so subclasses can use their own in-flight guards for debouncing.
+    -->
+    <field id="programsExpired" type="boolean" alwaysNotify="true" value="false" />
+  </interface>
 </component>

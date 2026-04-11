@@ -80,6 +80,23 @@ function secondsToTimestamp(totalSeconds as integer, addLeadingMinuteZero as boo
   return humanTime
 end function
 
+' Computes a broadcast program's elapsed-time percentage.
+' Programs are live broadcasts, not streamed media — so "progress" is
+' wall-clock elapsed, not UserData.PlayedPercentage.
+' Returns 0 (not 100) for finished programs because JRPoster only cleanly
+' removes the VideoProgressBar child when playedPercentage = 0.
+' @param playStart - epoch seconds when the program started (0 = unknown)
+' @param playDuration - program length in seconds (0 = unknown)
+' @param nowSeconds - current epoch seconds (injected for testability)
+' @return float in (0, 100) while airing, or 0 when not airing / invalid
+function computeProgramBroadcastProgress(playStart as integer, playDuration as integer, nowSeconds as integer) as float
+  if playStart <= 0 or playDuration <= 0 then return 0.0
+  elapsed = nowSeconds - playStart
+  if elapsed <= 0 then return 0.0
+  if elapsed >= playDuration then return 0.0
+  return (elapsed / playDuration) * 100.0
+end function
+
 ' Format time as 12 or 24 hour format based on system clock setting
 ' NOTE: This is NOT used by app's clock, only for displaying time in dialogs
 function formatTime(time) as string
