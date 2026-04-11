@@ -60,15 +60,23 @@ sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset 
       loadedRowRange: [-1, -1, -1, -1],
       focusedColumns: [],
       textureVisibleWidth: visibleWidth,
-      textureItemSpacing: itemSpacing,
-      textureManagerState: "init"
+      textureItemSpacing: itemSpacing
     })
   else
     ' Fields may already exist from a previous init — update layout values
     contentRoot.textureVisibleWidth = visibleWidth
     contentRoot.textureItemSpacing = itemSpacing
-    contentRoot.textureManagerState = "init"
   end if
+
+  ' textureManagerState is managed separately from the batch addFields because
+  ' JRRowList pre-adds it on the content root (via its content observer) so
+  ' the Program progress tick can subscribe to visibility transitions before
+  ' initTextureManager runs. addFields() fails on duplicate field names, so
+  ' keeping this out of the batch lets both call sites coexist safely.
+  if not contentRoot.hasField("textureManagerState")
+    contentRoot.addField("textureManagerState", "string", false)
+  end if
+  contentRoot.textureManagerState = "init"
 end sub
 
 ' Calculates the usable row width for determining how many items fit on screen.
