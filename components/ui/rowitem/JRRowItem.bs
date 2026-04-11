@@ -37,6 +37,13 @@ sub init()
   ' this to colorBackgroundPrimary so the white silhouette icon picks up the theme color.
   m.defaultPosterBlendColor = m.poster.blendColor
 
+  ' Reactive bridge for live Program progress bars. When this cell is bound to
+  ' a Program content node, an observer is installed on that node's
+  ' playedPercentage field so JRRowList's 60s tick can refresh the visible
+  ' progress bar without reassigning itemContent (which would re-render the cell).
+  ' See applyPlayedPercentage().
+  m.observedProgramNode = invalid
+
   m.poster.observeField("loadStatus", "onPosterLoadStatusChanged")
   m.itemIcon.observeField("loadStatus", "onIconLoadStatusChanged")
   m.top.observeField("renderTracking", "onRenderTrackingChanged")
@@ -218,7 +225,48 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     m.poster.unplayedCount = item.unplayedItemCount
   end if
 
-  m.poster.playedPercentage = item.playedPercentage
+  applyPlayedPercentage(item)
+end sub
+
+' Sets the poster's progress bar percentage based on item type.
+' Programs use live broadcast elapsed time (wall-clock derived); everything
+' else uses UserData.PlayedPercentage as flattened by the data transformer.
+'
+' For Programs, also installs a reactive bridge observer on the content node's
+' playedPercentage field. JRRowList's 60s tick rewrites that field, and this
+' observer forwards the change to m.poster.playedPercentage — updating any
+' currently-mounted VideoProgressBar without a cell re-render.
+sub applyPlayedPercentage(item as object)
+  ' Must run unconditionally before any early return. A recycled cell may be
+  ' switching from Program A to Program B, or from a Program to an Episode —
+  ' leaving the old observer attached would land stale tick writes on the
+  ' wrong poster the next time JRRowList fires.
+  unobserveProgramProgress()
+
+  if item.type = "Program"
+    nowSeconds = CreateObject("roDateTime").AsSeconds()
+    m.poster.playedPercentage = computeProgramBroadcastProgress(item.PlayStart, item.PlayDuration, nowSeconds)
+    item.observeField("playedPercentage", "onProgramProgressChanged")
+    m.observedProgramNode = item
+  else
+    m.poster.playedPercentage = item.playedPercentage
+  end if
+end sub
+
+' Tears down the bridge observer on the previously-bound Program content node.
+' Called unconditionally at the top of applyPlayedPercentage so recycled cells
+' never leak observers onto stale content nodes.
+sub unobserveProgramProgress()
+  if isValid(m.observedProgramNode)
+    m.observedProgramNode.unobserveField("playedPercentage")
+    m.observedProgramNode = invalid
+  end if
+end sub
+
+' Forwarded write from the bound Program content node to the live poster.
+' Fires when JRRowList's tick rewrites the node's playedPercentage.
+sub onProgramProgressChanged(msg as object)
+  m.poster.playedPercentage = msg.getData()
 end sub
 
 ' Updates positions and sizes of all child nodes to match the current slot dimensions.

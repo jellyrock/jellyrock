@@ -24,6 +24,143 @@ sub init()
     applyFallbackFontScale()
   end if
 
+  ' ── Program progress bar tick ───────────────────────────────────────────
+  ' JRRowItem (and its BrowseRowItem subclass) draws a progress bar on
+  ' Program cells by reading item.playedPercentage. Live broadcasts advance
+  ' in real time so the percentage must be refreshed periodically. This
+  ' base-class tick propagates the feature to every JRRowList descendant
+  ' (HomeRows, FavoritesRows, SearchRow, ExtrasRowList) with no per-screen
+  ' plumbing — it gates itself on textureManagerState, which every row-list
+  ' screen already sets via activateTextureManager/hideTextureManager.
+  m.programProgressTimer = invalid
+  m.observedContentRoot = invalid
+  m.isProgramProgressTicking = false
+
+  m.top.observeField("content", "onProgramProgressContentChanged")
+end sub
+
+' ============================================
+' PROGRAM PROGRESS BAR TICK
+' ============================================
+
+' Fires when m.top.content is assigned or reassigned by a subclass.
+' Rebinds the textureManagerState observer to the new content root so the
+' tick timer tracks visibility transitions for the current data set.
+sub onProgramProgressContentChanged()
+  if isValid(m.observedContentRoot)
+    m.observedContentRoot.unobserveField("textureManagerState")
+    m.observedContentRoot = invalid
+  end if
+
+  content = m.top.content
+  if not isValid(content) then return
+
+  ' Pre-add textureManagerState so observeField has a real field to attach to.
+  ' Subclasses assign m.top.content BEFORE calling initTextureManager, which
+  ' means the field would not yet exist at the time this handler runs and the
+  ' observer would silently fail to attach. textureManager.bs handles the
+  ' pre-added-field case via a hasField check, so both call sites coexist.
+  if not content.hasField("textureManagerState")
+    content.addField("textureManagerState", "string", false)
+  end if
+
+  m.observedContentRoot = content
+  content.observeField("textureManagerState", "onProgramProgressVisibilityChanged")
+  ' Honour the current state immediately — content may already be "active"
+  ' by the time we subscribe (e.g. reassignment after a refresh).
+  syncProgramProgressTicking(content.textureManagerState)
+end sub
+
+sub onProgramProgressVisibilityChanged(msg as object)
+  syncProgramProgressTicking(msg.getData())
+end sub
+
+' Starts or stops the 60s Program progress tick based on the visibility state
+' broadcast by the texture manager. Idempotent; safe on every state change.
+' State arrives as dynamic because textureManagerState is unset (invalid) on
+' freshly-created content roots — setupTextureManager only assigns "init"
+' after the subclass first populates the content tree.
+sub syncProgramProgressTicking(state as dynamic)
+  isString = isValid(state) and (type(state) = "roString" or type(state) = "String")
+
+  if isString and state = "active"
+    startProgramProgressTicking()
+  else
+    ' Any non-"active" value (invalid, "init", "hidden", "destroyed") stops
+    ' ticking. On "destroyed" we also release the Timer node so the screen
+    ' tears down cleanly.
+    stopProgramProgressTicking(isString and state = "destroyed")
+  end if
+end sub
+
+sub startProgramProgressTicking()
+  if m.isProgramProgressTicking then return
+
+  if not isValid(m.programProgressTimer)
+    m.programProgressTimer = CreateObject("roSGNode", "Timer")
+    m.programProgressTimer.duration = 60
+    m.programProgressTimer.repeat = true
+    m.top.appendChild(m.programProgressTimer)
+  end if
+
+  m.programProgressTimer.observeField("fire", "onProgramProgressTick")
+  m.programProgressTimer.control = "start"
+  m.isProgramProgressTicking = true
+
+  ' Immediate refresh so returning from Settings/another screen does not
+  ' leave stale percentages on screen for up to 60 seconds.
+  onProgramProgressTick()
+end sub
+
+sub stopProgramProgressTicking(releaseTimer = false as boolean)
+  if isValid(m.programProgressTimer)
+    m.programProgressTimer.control = "stop"
+    m.programProgressTimer.unobserveField("fire")
+    if releaseTimer
+      m.top.removeChild(m.programProgressTimer)
+      m.programProgressTimer = invalid
+    end if
+  end if
+  m.isProgramProgressTicking = false
+end sub
+
+' Walks every row and rewrites playedPercentage on every Program child to its
+' current broadcast-elapsed percentage. JRRowItem's bridge observer forwards
+' these writes to any currently-mounted poster cells, refreshing visible bars
+' without triggering a cell re-render. Non-Program items are skipped.
+'
+' Also detects expired broadcasts (now >= PlayStart + PlayDuration) and raises
+' the programsExpired field. Subclasses that can refetch (HomeRows, ExtrasRowList)
+' observe that field and trigger a fresh load, so sitting on a screen for long
+' enough doesn't leave an empty row of finished programs.
+sub onProgramProgressTick()
+  content = m.top.content
+  if not isValid(content) then return
+
+  nowSeconds = CreateObject("roDateTime").AsSeconds()
+  hasExpiredProgram = false
+
+  for i = 0 to content.getChildCount() - 1
+    row = content.getChild(i)
+    if isValid(row)
+      for j = 0 to row.getChildCount() - 1
+        item = row.getChild(j)
+        if isValid(item) and item.type = "Program"
+          item.playedPercentage = computeProgramBroadcastProgress(item.PlayStart, item.PlayDuration, nowSeconds)
+          ' Expiry check uses the same window math as the progress computation.
+          ' PlayStart/PlayDuration default to 0 for items missing broadcast data —
+          ' the > 0 guards prevent those from being flagged as expired.
+          if item.PlayStart > 0 and item.PlayDuration > 0 and nowSeconds >= (item.PlayStart + item.PlayDuration)
+            hasExpiredProgram = true
+          end if
+        end if
+      end for
+    end if
+  end for
+
+  if hasExpiredProgram
+    m.top.programsExpired = true
+  end if
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
