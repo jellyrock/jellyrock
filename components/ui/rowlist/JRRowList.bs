@@ -124,23 +124,54 @@ sub stopProgramProgressTicking(releaseTimer = false as boolean)
   m.isProgramProgressTicking = false
 end sub
 
-' Walks every row and rewrites playedPercentage on every Program child to its
-' current broadcast-elapsed percentage. JRRowItem's bridge observer forwards
-' these writes to any currently-mounted poster cells, refreshing visible bars
-' without triggering a cell re-render. Non-Program items are skipped.
+' Walks the texture manager's loaded row range and rewrites playedPercentage on
+' every Program child to its current broadcast-elapsed percentage. JRRowItem's
+' bridge observer forwards these writes to any currently-mounted poster cells,
+' refreshing visible bars without triggering a cell re-render. Non-Program
+' items are skipped.
 '
-' Also detects expired broadcasts (now >= PlayStart + PlayDuration) and raises
-' the programsExpired field. Subclasses that can refetch (HomeRows, ExtrasRowList)
-' observe that field and trigger a fresh load, so sitting on a screen for long
-' enough doesn't leave an empty row of finished programs.
+' Iteration is scoped to loadedRowRange [bufferStart..bufferEnd] — the vertical
+' range maintained by textureManager.bs — so large datasets (SearchRow,
+' FavoritesRows) don't pay the cost of walking hundreds of offscreen items
+' every minute on the render thread. Offscreen rows whose percentage goes
+' stale during scroll-away will update at the next tick after re-entering the
+' buffer range (up to ~60s stale window, accepted trade-off).
+'
+' Also detects expired broadcasts (now >= PlayStart + PlayDuration) within the
+' same buffer range and raises the programsExpired field. Subclasses that can
+' refetch (HomeRows, ExtrasRowList) observe that field and trigger a fresh
+' load. Expiry detection is scoped to the buffer range rather than the full
+' content tree because Live TV rows in HomeRows/ExtrasRowList are always in
+' the vertical buffer in practice — full-scan expiry on every tick would be
+' unnecessary work for zero real-world benefit.
+'
+' Hard-guards rather than full-scan fallback when loadedRowRange is missing or
+' invalid: the tick only runs while textureManagerState = "active", which the
+' state machine guarantees implies loadedRowRange is populated. A missing
+' field surfaces an ordering regression loudly rather than masking it.
 sub onProgramProgressTick()
   content = m.top.content
   if not isValid(content) then return
+  if not content.hasField("loadedRowRange") then return
+
+  range = content.loadedRowRange
+  if not isValid(range) or range.count() < 4 then return
+
+  bufferStart = range[0]
+  bufferEnd = range[3]
+
+  ' Sentinel [-1,-1,-1,-1] means no rows are currently managed (empty content
+  ' or no focus). Nothing is mounted, so nothing to update.
+  if bufferStart < 0 or bufferEnd < 0 then return
+
+  totalRows = content.getChildCount()
+  if bufferEnd >= totalRows then bufferEnd = totalRows - 1
+  if bufferStart > bufferEnd then return
 
   nowSeconds = CreateObject("roDateTime").AsSeconds()
   hasExpiredProgram = false
 
-  for i = 0 to content.getChildCount() - 1
+  for i = bufferStart to bufferEnd
     row = content.getChild(i)
     if isValid(row)
       for j = 0 to row.getChildCount() - 1
