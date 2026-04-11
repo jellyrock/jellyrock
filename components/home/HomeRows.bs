@@ -45,6 +45,11 @@ sub init()
   m.isLoadingResume = false
   m.isLoadingNextUp = false
   m.isLoadingOnNow = false
+
+  ' Refetch the On Now row when the base class's progress tick detects that at
+  ' least one Program has ended. Without this, sitting on Home long enough would
+  ' leave a row of finished broadcasts until the user refreshes manually.
+  m.top.observeField("programsExpired", "onProgramsExpired")
 end sub
 
 ' loadLibraries: Entry point called by Home.bs via callFunc.
@@ -526,6 +531,30 @@ sub updateOnNowItems()
   m.isLoadingOnNow = false
 
   populateRowFromData("livetv", itemData)
+end sub
+
+' Fires when JRRowList's progress tick detects at least one expired Program.
+' Re-runs LoadOnNowTask to pull fresh currently-airing data. The m.isLoadingOnNow
+' guard debounces repeated expiry signals while a load is already in flight, and
+' the "livetv" section plan check avoids wasted requests when the user has
+' disabled the On Now section.
+sub onProgramsExpired()
+  if m.isLoadingOnNow then return
+  if not isValidAndNotEmpty(m.sectionPlan) then return
+
+  hasLiveTv = false
+  for each section in m.sectionPlan
+    if section.type = "livetv"
+      hasLiveTv = true
+      exit for
+    end if
+  end for
+  if not hasLiveTv then return
+
+  m.isLoadingOnNow = true
+  m.LoadOnNowTask.unobserveField("content")
+  m.LoadOnNowTask.observeField("content", "updateOnNowItems")
+  m.LoadOnNowTask.control = "RUN"
 end sub
 
 ' updateLatestItems: Processes LoadItemsTask content for a latest-in-library row.
