@@ -1,0 +1,426 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+' TrackDropdown: Inline track selector used in ItemDetails for Video/Audio/Subtitles.
+'
+' Menu focus model (matches JRDropdown / overhang user menu):
+'   TrackDropdown (the Group) holds Roku focus in BOTH closed and open states. The inner
+'   JRDropdownItem children never receive real focus — this component drives their
+'   isFocused virtual field manually and scrolls the menu LayoutGroup inside a clipping
+'   viewport. This gives us exact control over UP-past-first and DOWN-past-last
+'   semantics without fighting LabelList/MarkupList's built-in wrap behavior.
+
+sub init()
+  m.log = new log.Logger("TrackDropdown")
+
+  m.buttonBackground = m.top.findNode("buttonBackground")
+  m.buttonBorder = m.top.findNode("buttonBorder")
+  m.triggerLabel = m.top.findNode("triggerLabel")
+  m.menuContainer = m.top.findNode("menuContainer")
+  m.menuBackground = m.top.findNode("menuBackground")
+  m.menuViewport = m.top.findNode("menuViewport")
+  m.menuItems = m.top.findNode("menuItems")
+
+  m.isOpen = false
+  m.focusedItemIndex = 0
+  m.visibleRows = 5
+  m.rowHeight = 0 ' computed in onItemsChanged
+
+  m.top.observeField("focusedChild", "onFocusChanged")
+
+  applyTheme()
+  layoutTrigger()
+  ' Seed background visibility from the default field values (isInteractive=true,
+  ' isOpen=false). onIsInteractiveChanged may not fire for the default value so we
+  ' apply it explicitly once at init.
+  applyBackgroundVisibility()
+end sub
+
+sub applyTheme()
+  constants = m.global.constants
+  ' Trigger background is always visible (unfocused state has a filled rounded bg so
+  ' the user can see the dropdown is interactive). Border toggles on focus only.
+  m.buttonBackground.blendColor = constants.colorBackgroundSecondary
+  m.buttonBorder.blendColor = constants.colorPrimary
+  m.triggerLabel.color = constants.colorTextSecondary
+  m.menuBackground.blendColor = constants.colorBackgroundSecondary
+end sub
+
+' ============================================
+' TRIGGER LAYOUT
+' ============================================
+
+' Lays out the trigger surface: scrolling trigger label on a 9-patch bg/border that
+' spans the full slot width. Horizontal padding inside the slot gives the text
+' breathing room inside the focus border; vertical padding is tight to fit within the
+' trackCluster row budget.
+'
+' Height budget: total cluster = titles 22 + gap 2 + trigger 30 = 54px, fitting between
+' description bottom y=738 and 8px above buttons at y=800. Trigger font
+' ScrollingLabelPrimarySmaller (25) with vertical padding 2 + line height 26 + 2 = 30.
+const TRACK_DROPDOWN_TRIGGER_H_PADDING = 10
+const TRACK_DROPDOWN_TRIGGER_V_PADDING = 2
+sub layoutTrigger()
+  constants = m.global.constants
+  slotWidth = m.top.slotWidth
+
+  hPadding = TRACK_DROPDOWN_TRIGGER_H_PADDING
+  vPadding = TRACK_DROPDOWN_TRIGGER_V_PADDING
+  triggerLineHeight = int(constants.fontSizeSmaller * 1.05) + 1
+  totalHeight = vPadding + triggerLineHeight + vPadding
+
+  m.buttonBackground.width = slotWidth
+  m.buttonBackground.height = totalHeight
+  m.buttonBorder.width = slotWidth
+  m.buttonBorder.height = totalHeight
+
+  ' ScrollingLabel uses maxWidth as its viewport; text narrower stays static, text
+  ' wider marquees when repeatCount=-1. Horizontal padding = hPadding on each side.
+  m.triggerLabel.maxWidth = slotWidth - (hPadding * 2)
+  m.triggerLabel.height = triggerLineHeight
+  m.triggerLabel.translation = [hPadding, vPadding]
+
+  ' Menu drops down just below the trigger
+  m.menuContainer.translation = [0, totalHeight + 4]
+
+  m.top.triggerHeight = totalHeight
+end sub
+
+sub onSlotWidthChanged()
+  layoutTrigger()
+  onItemsChanged()
+end sub
+
+' ============================================
+' FIELD OBSERVERS
+' ============================================
+
+sub onTriggerTextChanged()
+  m.triggerLabel.text = m.top.triggerText
+end sub
+
+' Rebuilds the menu as TrackDropdownRow children inside a clipping viewport.
+' TrackDropdownRow mirrors JRDropdownItem's visuals but with a smaller label font
+' (LabelPrimarySmall 27 vs LabelPrimaryMedium 32) so menu rows match the trigger size.
+sub onItemsChanged()
+  ' Clear existing items
+  m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
+  m.menuItems.translation = [0, 0]
+  m.focusedItemIndex = 0
+
+  items = m.top.items
+  if not isValid(items) or items.count() = 0
+    m.menuBackground.width = 0
+    m.menuBackground.height = 0
+    return
+  end if
+
+  constants = m.global.constants
+  slotWidth = m.top.slotWidth
+
+  ' Row height matches trigger font (fontSizeSmaller 25) with breathing padding so
+  ' focus border doesn't crowd the text. Mirrors JRDropdown's formula structure
+  ' (line height + padding) scaled for the smaller font.
+  m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20
+
+  for each item in items
+    menuItem = CreateObject("roSGNode", "TrackDropdownRow")
+    menuItem.text = item.title
+    menuItem.itemId = item.id
+    menuItem.itemWidth = slotWidth
+    menuItem.itemHeight = m.rowHeight
+    m.menuItems.appendChild(menuItem)
+  end for
+
+  visibleRows = m.visibleRows
+  if items.count() < visibleRows then visibleRows = items.count()
+
+  viewportHeight = m.rowHeight * visibleRows
+  ' clippingRect is in the viewport's local coords: [x, y, width, height]. Anything the
+  ' menuItems LayoutGroup draws outside this rect is invisible, enabling the scroll UX.
+  m.menuViewport.clippingRect = [0, 0, slotWidth, viewportHeight]
+
+  m.menuBackground.width = slotWidth
+  m.menuBackground.height = viewportHeight
+
+  if isValidAndNotEmpty(m.top.selectedItemId)
+    onSelectedItemChanged()
+  end if
+end sub
+
+sub onSelectedItemChanged()
+  selectedId = m.top.selectedItemId
+  for i = 0 to m.menuItems.getChildCount() - 1
+    item = m.menuItems.getChild(i)
+    item.isSelected = (item.itemId = selectedId)
+  end for
+end sub
+
+' Interactive dropdowns get a persistent filled background (visual affordance that
+' the slot is focusable and has a menu). Static single-option slots render as plain
+' text with NO background. While the menu is open, the trigger's background ALSO
+' hides so the trigger text visually merges into the opened menu instead of reading
+' as a separate capsule sitting on top of the menu.
+sub onIsInteractiveChanged()
+  constants = m.global.constants
+  applyBackgroundVisibility()
+  if not m.top.isInteractive
+    m.buttonBorder.visible = false
+    m.triggerLabel.color = constants.colorTextSecondary
+    m.triggerLabel.repeatCount = 0
+    closeMenu()
+  end if
+end sub
+
+' Single source of truth for the trigger background's visibility:
+'   interactive AND closed -> visible (affordance at rest and when focused/closed)
+'   interactive AND open   -> hidden  (merges trigger into the open menu)
+'   not interactive        -> hidden  (static single-option slot)
+sub applyBackgroundVisibility()
+  m.buttonBackground.visible = m.top.isInteractive and not m.isOpen
+end sub
+
+' ============================================
+' FOCUS
+' ============================================
+
+sub onFocusChanged()
+  if not m.top.isInteractive then return
+
+  if m.top.isInFocusChain()
+    ' Only paint trigger focus visuals when the menu is closed — while open, the
+    ' JRDropdownItem row highlight owns the focus chrome.
+    if not m.isOpen then showTriggerFocus()
+  else
+    hideTriggerFocus()
+    closeMenu()
+  end if
+end sub
+
+' Background stays visible in both focused and unfocused states (so the dropdown always
+' affords interactivity). Only the border + label color + marquee flip on focus.
+sub showTriggerFocus()
+  constants = m.global.constants
+  m.buttonBorder.visible = true
+  m.triggerLabel.color = constants.colorTextPrimary
+  m.triggerLabel.repeatCount = -1
+end sub
+
+sub hideTriggerFocus()
+  constants = m.global.constants
+  m.buttonBorder.visible = false
+  m.triggerLabel.color = constants.colorTextSecondary
+  m.triggerLabel.repeatCount = 0
+end sub
+
+' ============================================
+' MENU OPEN / CLOSE
+' ============================================
+
+sub openMenu()
+  if m.isOpen then return
+  if m.menuItems.getChildCount() = 0 then return
+
+  m.isOpen = true
+  m.menuContainer.visible = true
+
+  ' Hide the trigger's chrome while open: border goes away (the focused row's own
+  ' border indicates position now) and the filled background also hides so the
+  ' trigger text reads as part of the open menu, not as a separate capsule above it.
+  ' Trigger label also reverts to the static-text styling (secondary color, no
+  ' marquee) so it looks like just static info above the open menu, matching the
+  ' unopened sibling dropdowns.
+  constants = m.global.constants
+  m.buttonBorder.visible = false
+  applyBackgroundVisibility()
+  m.triggerLabel.color = constants.colorTextSecondary
+  m.triggerLabel.repeatCount = 0
+
+  ' Start with the current selection highlighted
+  idx = findSelectedIndex()
+  if idx < 0 then idx = 0
+  m.focusedItemIndex = idx
+
+  scrollToFocused()
+  updateFocusedItemVisuals()
+end sub
+
+sub closeMenu()
+  if not m.isOpen then return
+  m.isOpen = false
+  m.menuContainer.visible = false
+
+  ' Clear focus highlight on all items
+  for i = 0 to m.menuItems.getChildCount() - 1
+    m.menuItems.getChild(i).isFocused = false
+  end for
+
+  ' Reset scroll so next open starts fresh
+  m.menuItems.translation = [0, 0]
+
+  ' Restore the filled trigger background (no longer in open state)
+  applyBackgroundVisibility()
+
+  ' Restore trigger focus chrome if we're still in the focus chain
+  if m.top.isInFocusChain()
+    showTriggerFocus()
+  end if
+end sub
+
+function findSelectedIndex() as integer
+  items = m.top.items
+  if not isValid(items) then return -1
+  selectedId = m.top.selectedItemId
+  for i = 0 to items.count() - 1
+    if isValid(items[i].id) and items[i].id = selectedId
+      return i
+    end if
+  end for
+  return -1
+end function
+
+' scrollToFocused: Shift the menuItems LayoutGroup vertically inside the clipping
+' viewport so the focused row is always visible. Keeps focus near the top of the
+' viewport once the user scrolls past the first page.
+sub scrollToFocused()
+  totalRows = m.menuItems.getChildCount()
+  if totalRows <= m.visibleRows
+    m.menuItems.translation = [0, 0]
+    return
+  end if
+
+  ' If focused row fits in the first page, no scroll
+  if m.focusedItemIndex < m.visibleRows
+    m.menuItems.translation = [0, 0]
+    return
+  end if
+
+  ' Otherwise, scroll so the focused row sits at the LAST visible position; this mirrors
+  ' how Roku's built-in fixedFocusWrap keeps the focus anchored while rows slide in.
+  scrollY = -1 * (m.focusedItemIndex - (m.visibleRows - 1)) * m.rowHeight
+  m.menuItems.translation = [0, scrollY]
+end sub
+
+sub updateFocusedItemVisuals()
+  for i = 0 to m.menuItems.getChildCount() - 1
+    m.menuItems.getChild(i).isFocused = (i = m.focusedItemIndex)
+  end for
+end sub
+
+' ============================================
+' KEY HANDLING
+' ============================================
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+  if not m.top.isInteractive then return false
+
+  if m.isOpen
+    return handleMenuKeyEvent(key)
+  else
+    return handleClosedKeyEvent(key)
+  end if
+end function
+
+' Keys while the menu is open:
+'   UP past first    -> closeMenu() (stays on trigger). The ONLY way to exit the menu
+'                       without committing a selection.
+'   DOWN past last   -> WRAPS to the first item. The menu never exits on DOWN; the
+'                       user must either pick an option (OK) or press UP from item 0.
+'   UP / DOWN middle -> move focus + scroll
+'   OK               -> commit selection, fire selectedAction, closeMenu()
+'   LEFT/RIGHT       -> closeMenu() + requestFocusExit (horizontal siblings)
+'   BACK             -> closeMenu()
+function handleMenuKeyEvent(key as string) as boolean
+  itemCount = m.menuItems.getChildCount()
+
+  if key = "down"
+    if m.focusedItemIndex < itemCount - 1
+      m.focusedItemIndex++
+    else
+      ' Wrap to the top — never exits the open menu on DOWN
+      m.focusedItemIndex = 0
+    end if
+    updateFocusedItemVisuals()
+    scrollToFocused()
+    return true
+
+  else if key = "up"
+    if m.focusedItemIndex > 0
+      m.focusedItemIndex--
+      updateFocusedItemVisuals()
+      scrollToFocused()
+    else
+      ' UP at the top row is the user's "exit without selecting" gesture
+      closeMenu()
+    end if
+    return true
+
+  else if key = "OK"
+    selectedItem = m.menuItems.getChild(m.focusedItemIndex)
+    if isValid(selectedItem)
+      selectedId = selectedItem.itemId
+      if not isValid(selectedId) then selectedId = ""
+      m.top.selectedItemId = selectedId
+      m.top.triggerText = selectedItem.text
+      m.top.selectedAction = selectedId
+    end if
+    closeMenu()
+    return true
+
+  else if key = "left"
+    closeMenu()
+    m.top.requestFocusExit = "left"
+    return true
+
+  else if key = "right"
+    closeMenu()
+    m.top.requestFocusExit = "right"
+    return true
+
+  else if key = "back"
+    closeMenu()
+    return true
+  end if
+
+  return false
+end function
+
+function handleClosedKeyEvent(key as string) as boolean
+  if key = "OK"
+    openMenu()
+    return true
+  else if key = "up"
+    m.top.requestFocusReturn = true
+    return true
+  else if key = "down"
+    m.top.requestFocusDown = true
+    return true
+  else if key = "left"
+    m.top.requestFocusExit = "left"
+    return true
+  else if key = "right"
+    m.top.requestFocusExit = "right"
+    return true
+  end if
+  return false
+end function
+
+' ============================================
+' TEARDOWN
+' ============================================
+
+sub destroy()
+  m.log.verbose("destroy")
+  m.top.unobserveField("focusedChild")
+
+  m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
+
+  m.buttonBackground = invalid
+  m.buttonBorder = invalid
+  m.triggerLabel = invalid
+  m.menuContainer = invalid
+  m.menuBackground = invalid
+  m.menuViewport = invalid
+  m.menuItems = invalid
+end sub

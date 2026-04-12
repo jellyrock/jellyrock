@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TrackDropdown: Inline track selector used in ItemDetails for Video/Audio/Subtitles.
+
+  Structure: this component renders the TRIGGER (scrolling text + focus chrome) and
+  the dropdown MENU only. Category labels ("Video"/"Audio"/"Subtitles") are rendered
+  by the parent ItemDetails as a separate static row above the dropdowns — they are
+  explicitly NOT part of this component.
+
+  Menu styling follows JRDropdown / overhang user menu: a LayoutGroup of JRDropdownItem
+  children with manual focus management (m.focusedItemIndex drives isFocused). A
+  clipping viewport caps the visible row count; longer lists scroll by translating the
+  inner LayoutGroup.
+
+  Open-menu key semantics (match JRDropdown):
+    - UP on first item    -> close menu, focus returns to trigger
+    - DOWN on last item   -> close menu, fires requestFocusDown (parent routes to buttons)
+    - OK on any item      -> fires selectedAction, close menu
+    - LEFT/RIGHT          -> close menu, fires requestFocusExit
+    - BACK                -> close menu
+-->
+<component name="TrackDropdown" extends="Group" focusable="true">
+  <children>
+    <!-- Trigger background: always visible (unfocused filled with colorBackgroundSecondary
+         so the dropdown affords interactivity). Border toggles on focus. -->
+    <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+
+    <!-- Current selection. ScrollingLabel so repeatCount can flip between 0 (static) and
+         -1 (continuous marquee) when focused and the text exceeds maxWidth. horizAlign
+         pinned to "left" so the text's left edge lands at x=hPadding of the slot. -->
+    <ScrollingLabelPrimarySmaller id="triggerLabel" horizAlign="left" repeatCount="0" />
+
+    <!-- Dropdown menu: background + clipped viewport containing a LayoutGroup of
+         JRDropdownItem children. The viewport's clippingRect caps visible rows; the
+         inner LayoutGroup translation scrolls longer lists in and out of view. -->
+    <Group id="menuContainer" visible="false">
+      <Poster id="menuBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+      <Group id="menuViewport">
+        <LayoutGroup id="menuItems" layoutDirection="vert" itemSpacings="[0]" />
+      </Group>
+    </Group>
+  </children>
+  <interface>
+    <!-- Input -->
+    <field id="triggerText" type="string" onChange="onTriggerTextChanged" />
+    <field id="items" type="array" onChange="onItemsChanged" />
+    <field id="selectedItemId" type="string" onChange="onSelectedItemChanged" />
+    <!-- 2 * IconButton icon frame (124 each) + the 30px visible gap between adjacent
+         icons = 278. Slot spans from button[N]'s visible left edge to button[N+1]'s
+         visible right edge in the button group below. -->
+    <field id="slotWidth" type="integer" value="278" onChange="onSlotWidthChanged" />
+    <field id="isInteractive" type="boolean" value="true" onChange="onIsInteractiveChanged" />
+
+    <!-- Output -->
+    <field id="selectedAction" type="string" alwaysNotify="true" />
+    <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
+    <field id="requestFocusDown" type="boolean" value="false" alwaysNotify="true" />
+    <field id="requestFocusExit" type="string" alwaysNotify="true" />
+    <!-- Published so parent can read layout height without measuring Group boundingRect -->
+    <field id="triggerHeight" type="integer" value="0" />
+
+    <!-- Functions -->
+    <function name="destroy" />
+  </interface>
+</component>

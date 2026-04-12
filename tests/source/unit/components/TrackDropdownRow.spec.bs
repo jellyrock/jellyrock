@@ -1,0 +1,113 @@
+namespace tests
+
+  @suite("TrackDropdownRow - Node interface, defaults, and focus visuals")
+  class TrackDropdownRowTests extends tests.BaseTestSuite
+
+    private row as object
+
+    protected override function setup()
+      super.setup()
+      m.row = CreateObject("roSGNode", "TrackDropdownRow")
+    end function
+
+    protected override function teardown()
+      m.row = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has text field")
+    function _()
+      m.assertTrue(m.row.doesExist("text"))
+    end function
+
+    @it("has itemId field")
+    function _()
+      m.assertTrue(m.row.doesExist("itemId"))
+    end function
+
+    @it("has isFocused field")
+    function _()
+      m.assertTrue(m.row.doesExist("isFocused"))
+    end function
+
+    @it("has isSelected field")
+    function _()
+      m.assertTrue(m.row.doesExist("isSelected"))
+    end function
+
+    @it("has itemWidth field")
+    function _()
+      m.assertTrue(m.row.doesExist("itemWidth"))
+    end function
+
+    @it("has itemHeight field")
+    function _()
+      m.assertTrue(m.row.doesExist("itemHeight"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Defaults")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("itemWidth defaults to 278 (matches TrackDropdown slot width)")
+    function _()
+      m.assertEqual(m.row.itemWidth, 278)
+    end function
+
+    @it("itemHeight defaults to 45 (compact row)")
+    function _()
+      m.assertEqual(m.row.itemHeight, 45)
+    end function
+
+    @it("isFocused defaults to false")
+    function _()
+      m.assertFalse(m.row.isFocused)
+    end function
+
+    @it("isSelected defaults to false")
+    function _()
+      m.assertFalse(m.row.isSelected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Label subtype (smaller font than JRDropdownItem)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("itemLabel is a ScrollingLabelPrimarySmaller (font 25, marquees when focused)")
+    function _()
+      itemLabel = m.row.findNode("itemLabel")
+      m.assertTrue(isValid(itemLabel))
+      m.assertEqual(itemLabel.subtype(), "ScrollingLabelPrimarySmaller")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Focus visuals")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("isFocused=true shows border and background")
+    function _()
+      m.row.isFocused = true
+      m.assertTrue(m.row.findNode("itemBorder").visible)
+      m.assertTrue(m.row.findNode("itemBackground").visible)
+    end function
+
+    @it("isFocused=false hides border and background")
+    function _()
+      m.row.isFocused = true
+      m.row.isFocused = false
+      m.assertFalse(m.row.findNode("itemBorder").visible)
+      m.assertFalse(m.row.findNode("itemBackground").visible)
+    end function
+
+    @it("propagates text to the label")
+    function _()
+      m.row.text = "English AAC 2.0"
+      m.assertEqual(m.row.findNode("itemLabel").text, "English AAC 2.0")
+    end function
+
+  end class
+
+end namespace

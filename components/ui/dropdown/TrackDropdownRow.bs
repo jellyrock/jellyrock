@@ -1,0 +1,71 @@
+' TrackDropdownRow: Menu row used inside TrackDropdown's open-menu viewport.
+'
+' Mirrors JRDropdownItem structurally (Group + 9-patch bg/border + label) but swaps
+' the label for a ScrollingLabelPrimarySmaller so long track names can marquee when
+' the row is focused. Height-centers the label manually since ScrollingLabel lacks
+' a vertAlign field.
+import "pkg:/source/utils/misc.bs"
+
+const ROW_H_PADDING = 12
+
+sub init()
+  m.itemBackground = m.top.findNode("itemBackground")
+  m.itemBorder = m.top.findNode("itemBorder")
+  m.itemLabel = m.top.findNode("itemLabel")
+
+  ' Default visual state: unfocused, not selected
+  m.itemLabel.color = m.global.constants.colorTextPrimary
+  m.itemLabel.repeatCount = 0
+
+  onSizeChanged()
+end sub
+
+sub onTextChanged()
+  m.itemLabel.text = m.top.text
+end sub
+
+sub onSizeChanged()
+  itemWidth = m.top.itemWidth
+  itemHeight = m.top.itemHeight
+
+  m.itemBackground.width = itemWidth
+  m.itemBackground.height = itemHeight
+  m.itemBorder.width = itemWidth
+  m.itemBorder.height = itemHeight
+
+  ' ScrollingLabel uses maxWidth as its viewport (not width). It renders a single
+  ' line of text at its origin, so we offset translation.y to vertically center
+  ' the text within the row (fontSizeSmaller is the label's font em-height).
+  constants = m.global.constants
+  fontHeight = constants.fontSizeSmaller
+  labelY = int((itemHeight - fontHeight) / 2)
+  m.itemLabel.maxWidth = itemWidth - (ROW_H_PADDING * 2)
+  m.itemLabel.translation = [ROW_H_PADDING, labelY]
+end sub
+
+' Updates visual state based on virtual isFocused / isSelected fields. Focus chrome
+' (border + background) mirrors JRDropdownItem's button pattern. Label color is
+' driven by isSelected FIRST and only falls back to isFocused's primary color when
+' the row isn't the current selection — that way the "selected" indication (secondary
+' color) persists while the user hovers the selected row, instead of flipping to
+' primary and losing the visual cue that this is the committed choice. repeatCount
+' flips to -1 when focused so long labels marquee; 0 otherwise keeps them static.
+sub onFocusStateChanged()
+  constants = m.global.constants
+
+  m.itemBorder.visible = m.top.isFocused
+  m.itemBackground.visible = m.top.isFocused
+  if m.top.isFocused
+    m.itemBorder.blendColor = constants.colorPrimary
+    m.itemBackground.blendColor = constants.colorBackgroundSecondary
+    m.itemLabel.repeatCount = -1
+  else
+    m.itemLabel.repeatCount = 0
+  end if
+
+  if m.top.isSelected
+    m.itemLabel.color = constants.colorSecondary
+  else
+    m.itemLabel.color = constants.colorTextPrimary
+  end if
+end sub

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TrackDropdownRow: Menu row used inside TrackDropdown's open-menu viewport.
+
+  Mirrors JRDropdownItem structure/behavior exactly but uses LabelPrimarySmaller
+  (font 25) instead of LabelPrimaryMedium (font 32) so the open-menu rows match the
+  inline trigger text size used in ItemDetails. Kept as a separate subtype so JRDropdown
+  / JROverhang's user menu continues to use the larger font unchanged.
+-->
+<component name="TrackDropdownRow" extends="Group">
+  <children>
+    <!-- Button-style focus visuals (same 9-patch images as TextButton / JRDropdownItem) -->
+    <Poster id="itemBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+    <Poster id="itemBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+    <!-- ScrollingLabel so long track names can marquee when the row is focused
+         (repeatCount flipped between 0 and -1 in onFocusStateChanged). -->
+    <ScrollingLabelPrimarySmaller id="itemLabel" repeatCount="0" />
+  </children>
+  <interface>
+    <field id="text" type="string" onChange="onTextChanged" />
+    <field id="itemId" type="string" />
+    <field id="isFocused" type="boolean" value="false" onChange="onFocusStateChanged" />
+    <field id="isSelected" type="boolean" value="false" onChange="onFocusStateChanged" />
+    <field id="itemWidth" type="integer" value="278" onChange="onSizeChanged" />
+    <field id="itemHeight" type="integer" value="45" onChange="onSizeChanged" />
+  </interface>
+</component>
