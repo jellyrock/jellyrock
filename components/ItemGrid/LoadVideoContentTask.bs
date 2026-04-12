@@ -402,7 +402,14 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
     ' Get transcoding reason
     video.transcodeReasons = getTranscodeReasons(m.playbackInfo.MediaSources[0].TranscodingUrl)
-    video.content.url = buildURL(m.playbackInfo.MediaSources[0].TranscodingUrl)
+    transcodingUrl = buildURL(m.playbackInfo.MediaSources[0].TranscodingUrl)
+    if not isValid(transcodingUrl)
+      m.log.error("Failed to build transcoding URL — server URL not set", "itemId", video.id)
+      m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+      video.content = invalid
+      return
+    end if
+    video.content.url = transcodingUrl
     video.isTranscoded = true
 
     ' If DoVi preservation caused this transcode, flag that direct play is a viable buffer-overflow fallback.
@@ -448,7 +455,10 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
       ' create a new URI by appending the received path to the server URL
       ' later we will substitute the users provided URL for this case
       if isValid(uri[4])
-        video.content.url = buildURL(uri[4])
+        localUrl = buildURL(uri[4])
+        if isValid(localUrl)
+          video.content.url = localUrl
+        end if
       end if
     else
       ' External stream - use raw URL without modification
@@ -468,7 +478,14 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
       params.MediaSourceId = mediaSourceId
     end if
 
-    video.content.url = buildURL(Substitute("Videos/{0}/stream", video.id), params)
+    streamUrl = buildURL(Substitute("Videos/{0}/stream", video.id), params)
+    if not isValid(streamUrl)
+      m.log.error("Failed to build stream URL — server URL not set", "itemId", video.id)
+      m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+      video.content = invalid
+      return
+    end if
+    video.content.url = streamUrl
   end if
 
   ' Apply Jellyfin authentication only for internal streams

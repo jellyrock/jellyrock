@@ -157,7 +157,10 @@ function sortSubtitles(MediaStreams)
 
       url = ""
       if isValid(stream.DeliveryUrl)
-        url = buildURL(stream.DeliveryUrl)
+        builtUrl = buildURL(stream.DeliveryUrl)
+        if isValid(builtUrl)
+          url = builtUrl as string
+        end if
       end if
 
       stream = {

@@ -13,7 +13,15 @@ sub downloadFallbackFont()
   authArgs = { headers: { Authorization: buildAuthHeader() }, timeout: 10000, useCache: false }
 
   ' Check if server supports fallback fonts
-  r = rr_Requests().get(buildURL("/system/configuration/encoding"), authArgs)
+  encodingUrl = buildURL("/system/configuration/encoding")
+  if not isValid(encodingUrl)
+    print "FontDownloadTask: Cannot build URL — server URL not set"
+    m.top.errorMessage = "Server URL not configured"
+    m.top.isFontDownloadSuccess = false
+    m.top.isFontDownloadCompleted = true
+    return
+  end if
+  r = rr_Requests().get(encodingUrl, authArgs)
   if not r.ok or not isValid(r.json) or not r.json.EnableFallbackFont
     print "FontDownloadTask: Server does not support fallback fonts"
     m.top.errorMessage = "Server does not support fallback fonts"
@@ -24,7 +32,15 @@ sub downloadFallbackFont()
 
   ' Get list of available fonts
   re = CreateObject("roRegex", "Name.:.(.*?).,.Size", "s")
-  r = rr_Requests().get(buildURL("FallbackFont/Fonts"), authArgs)
+  fontsUrl = buildURL("FallbackFont/Fonts")
+  if not isValid(fontsUrl)
+    print "FontDownloadTask: Cannot build URL — server URL not set"
+    m.top.errorMessage = "Server URL not configured"
+    m.top.isFontDownloadSuccess = false
+    m.top.isFontDownloadCompleted = true
+    return
+  end if
+  r = rr_Requests().get(fontsUrl, authArgs)
   if not r.ok or r.text = ""
     print "FontDownloadTask: Failed to get font list from server"
     m.top.errorMessage = "Failed to get font list from server"

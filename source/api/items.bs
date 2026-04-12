@@ -438,7 +438,9 @@ function AudioStream(id as string)
 
       if useTranscodeAudioStream(playbackInfo)
         ' Transcode the audio
-        content.url = buildURL(playbackInfo.mediaSources[0].TranscodingURL)
+        audioUrl = buildURL(playbackInfo.mediaSources[0].TranscodingURL)
+        if not isValid(audioUrl) then return invalid
+        content.url = audioUrl
       else
         ' Direct Stream the audio
         params = {
@@ -447,7 +449,9 @@ function AudioStream(id as string)
           "MediaSourceId": songData.mediaSources[0].id
         }
         content.streamformat = songData.mediaSources[0].container
-        content.url = buildURL(Substitute("Audio/{0}/stream", songData.id), params)
+        audioUrl = buildURL(Substitute("Audio/{0}/stream", songData.id), params)
+        if not isValid(audioUrl) then return invalid
+        content.url = audioUrl
       end if
     else
       return invalid
