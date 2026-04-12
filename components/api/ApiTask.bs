@@ -65,6 +65,17 @@ function executeRequest(req as object) as object
     end if
   end if
 
+  if not isValid(req.url) or req.url = ""
+    print "[ApiTask] request rejected: url is invalid or empty"
+    return {
+      requestId: req.requestId,
+      ok: false,
+      statusCode: 0,
+      json: invalid,
+      text: ""
+    }
+  end if
+
   r = rr_Requests().request(method, req.url, args)
 
   return {
