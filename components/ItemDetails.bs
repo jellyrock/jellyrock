@@ -1917,10 +1917,13 @@ sub populateTrackDropdowns(mediaSources as object, allStreams as object, itemTyp
     m.top.selectedSubtitleStreamIndex = defaultSubIdx
   end if
 
-  ' Audio-only items get no video and no subtitle slot
+  ' Audio-only items get no video and no subtitle slot. Video items always show
+  ' the subtitle slot for layout consistency — buildSubtitleDropdownItems returns
+  ' a single "None" entry when no tracks exist, which applyDropdown renders as
+  ' static non-interactive text.
   videoApplicable = itemType <> "Audio" and videoItems.count() > 0
   audioApplicable = audioItems.count() > 0
-  subtitleApplicable = itemType <> "Audio" and subtitleItems.count() > 1 ' >1 because Off is always present
+  subtitleApplicable = itemType <> "Audio" and subtitleItems.count() > 0
 
   ' Title row: static labels above each dropdown. Always shown for applicable slots so
   ' users see the category name even when the slot is single-option static text.
@@ -1999,17 +2002,33 @@ function buildAudioDropdownItems(streams as object) as object
 end function
 
 ' buildSubtitleDropdownItems: Convert the MediaStreams array into dropdown items for
-' subtitles. Always prepends an "Off" entry (id = "-1") so the user can disable subtitles
-' regardless of how many tracks are present.
+' subtitles.
+'
+' Two shapes are returned depending on whether the item actually has subtitle streams:
+'   * No subtitle streams at all → [{ id:"-1", title:"None" }]. Rendered as a static
+'     non-interactive slot so the "Subtitles" title row still shows and the layout
+'     stays consistent across items. "None" (not "Off") because the user has no
+'     choice to make — subtitles simply don't exist on this item.
+'   * One or more subtitle streams → [{ id:"-1", title:"Off" }, ...tracks]. The
+'     "Off" entry lets the user disable subtitles when tracks ARE present. id "-1"
+'     is the SubtitleSelection.NONE sentinel used by m.top.selectedSubtitleStreamIndex.
 function buildSubtitleDropdownItems(streams as object) as object
-  items = []
-  items.push({ id: "-1", title: translate(translationKeys.LabelOff) })
-  if not isValid(streams) then return items
+  tracks = []
+  if isValid(streams)
+    for each stream in streams
+      if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle" and isValid(stream.index)
+        tracks.push({ id: str(stream.index).trim(), title: formatSubtitleDisplayTitle(stream) })
+      end if
+    end for
+  end if
 
-  for each stream in streams
-    if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle" and isValid(stream.index)
-      items.push({ id: str(stream.index).trim(), title: formatSubtitleDisplayTitle(stream) })
-    end if
+  if tracks.count() = 0
+    return [{ id: "-1", title: translate(translationKeys.LabelNone) }]
+  end if
+
+  items = [{ id: "-1", title: translate(translationKeys.LabelOff) }]
+  for each track in tracks
+    items.push(track)
   end for
   return items
 end function
