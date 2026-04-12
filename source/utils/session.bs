@@ -385,7 +385,10 @@ namespace user
       print "Loading user setting:", setting, "=", userSettings[setting]
       ' Skip global settings (loaded from global section separately)
       ' Skip display settings (handled separately below via TransformDisplaySettings)
-      if not isGlobalSetting(setting) and not setting.StartsWith("display.")
+      ' Skip homeSection fields — these are server-authoritative (fetched fresh from
+      ' DisplayPreferences in LoadUserPreferences) and must not be loaded from the
+      ' registry. Stale registry values would override the server's current arrangement.
+      if not isGlobalSetting(setting) and not setting.StartsWith("display.") and not setting.StartsWith("homeSection")
         ' Check where this setting belongs based on field existence
         if userNodeFieldTypes.DoesExist(setting)
           ' Skip node-type fields - these are server-authoritative and never loaded from registry
@@ -533,13 +536,18 @@ namespace user
           userNode.config.useEpisodeImagesInNextUpAndResume = toBoolean(tmpSetting)
         end if
 
-        ' Check if CustomPrefs has any homesection data
-        if user.hasHomeSectionData(jsonResponse.CustomPrefs)
-          print "LoadUserPreferences: Using server CustomPrefs for home sections"
-          user.SaveUserHomeSections(jsonResponse.CustomPrefs)
+        ' Home sections: server-authoritative when uiHomeUseWebArrangement is true (default).
+        ' When false, skip server values and use hardcoded defaults.
+        if userNode.settings.uiHomeUseWebArrangement
+          if user.hasHomeSectionData(jsonResponse.CustomPrefs)
+            print "LoadUserPreferences: Using server CustomPrefs for home sections"
+            user.SaveUserHomeSections(jsonResponse.CustomPrefs)
+          else
+            print "LoadUserPreferences: CustomPrefs has no homesection data, using defaults"
+            user.SaveUserHomeSections(user.getDefaultHomeSections())
+          end if
         else
-          ' CustomPrefs is empty or has no homesection keys - use defaults
-          print "LoadUserPreferences: CustomPrefs has no homesection data, using defaults"
+          print "LoadUserPreferences: uiHomeUseWebArrangement is false, using defaults"
           user.SaveUserHomeSections(user.getDefaultHomeSections())
         end if
 
@@ -603,7 +611,10 @@ namespace user
     return false
   end function
 
-  ' Save user home sections configuration
+  ' Apply server home sections to the settings node (in-memory only, no registry).
+  ' Home sections are server-authoritative — the Jellyfin server's DisplayPreferences
+  ' is the single source of truth. Writing to registry would create a stale cache that
+  ' masks server-side changes (e.g., user rearranges sections in the web client).
   sub SaveUserHomeSections(userPreferences as object)
     rowTypes = []
 
@@ -623,9 +634,9 @@ namespace user
       if not isValid(rowType) then rowType = "none"
 
       if inArray(rowTypes, rowType)
-        setUserSetting(newHomeSectionKey, "none")
+        user.settings.Save(newHomeSectionKey, "none")
       else
-        setUserSetting(newHomeSectionKey, rowType)
+        user.settings.Save(newHomeSectionKey, rowType)
         if rowType <> "none"
           rowTypes.push(rowType)
         end if
