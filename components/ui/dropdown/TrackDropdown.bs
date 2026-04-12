@@ -51,23 +51,36 @@ end sub
 ' ============================================
 
 ' Lays out the trigger surface: scrolling trigger label on a 9-patch bg/border that
-' spans the full slot width. Horizontal padding inside the slot gives the text
-' breathing room inside the focus border; vertical padding is tight to fit within the
-' trackCluster row budget.
+' spans the full slot width.
 '
-' Height budget: total cluster = titles 22 + gap 2 + trigger 30 = 54px, fitting between
-' description bottom y=738 and 8px above buttons at y=800. Trigger font
-' ScrollingLabelPrimarySmaller (25) with vertical padding 2 + line height 26 + 2 = 30.
-const TRACK_DROPDOWN_TRIGGER_H_PADDING = 10
-const TRACK_DROPDOWN_TRIGGER_V_PADDING = 2
+' Trigger geometry is intentionally IDENTICAL to TrackDropdownRow's row geometry so
+' a closed/unfocused trigger reads pixel-for-pixel like the selected-unfocused row
+' that appears directly below it when the menu opens: same horizontal padding
+' (12px), same font (fontSizeSmaller), same height formula, same label vertical
+' centering. If you change either file's padding/height formula, update both —
+' they are duplicated intentionally for locality. See TrackDropdownRow.onSizeChanged.
+'
+' The cluster (titles 24 + trigger 45 = 69px) lives inside a 99px vertical budget:
+' description bottom at y=701, buttons top at y=800, with 12px breathing pad above
+' and 18px below the cluster. The 701 description bottom is produced by the
+' itemTracks spacer (62px) inside itemDetails — see ItemDetails.xml. Do NOT shrink
+' the trigger below the row height without re-verifying the trigger↔row visual match.
+const TRACK_DROPDOWN_TRIGGER_H_PADDING = 12
+' 45 = fontSizeSmaller (25) + 20, matching TrackDropdownRow.onSizeChanged line:
+' `m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20`
+const TRACK_DROPDOWN_TRIGGER_HEIGHT = 45
 sub layoutTrigger()
   constants = m.global.constants
   slotWidth = m.top.slotWidth
 
   hPadding = TRACK_DROPDOWN_TRIGGER_H_PADDING
-  vPadding = TRACK_DROPDOWN_TRIGGER_V_PADDING
+  totalHeight = TRACK_DROPDOWN_TRIGGER_HEIGHT
+  fontHeight = constants.fontSizeSmaller
+  ' Vertically center the label inside the container, mirroring TrackDropdownRow.
+  labelY = int((totalHeight - fontHeight) / 2)
+  ' ScrollingLabel needs an explicit render height; 1.05 * fontSize + 1 avoids
+  ' descender clipping on glyphs like g/y/p.
   triggerLineHeight = int(constants.fontSizeSmaller * 1.05) + 1
-  totalHeight = vPadding + triggerLineHeight + vPadding
 
   m.buttonBackground.width = slotWidth
   m.buttonBackground.height = totalHeight
@@ -78,7 +91,7 @@ sub layoutTrigger()
   ' wider marquees when repeatCount=-1. Horizontal padding = hPadding on each side.
   m.triggerLabel.maxWidth = slotWidth - (hPadding * 2)
   m.triggerLabel.height = triggerLineHeight
-  m.triggerLabel.translation = [hPadding, vPadding]
+  m.triggerLabel.translation = [hPadding, labelY]
 
   ' Menu drops down just below the trigger
   m.menuContainer.translation = [0, totalHeight + 4]

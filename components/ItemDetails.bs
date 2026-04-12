@@ -40,9 +40,10 @@ sub init()
   m.infoGroup = m.top.findNode("infoGroup")
 
   ' Inline track dropdowns (Video / Audio / Subtitles). trackCluster is a top-level
-  ' sibling of itemDetails statically positioned at [96, 738] — see ItemDetails.xml for
-  ' the geometry rationale. itemTracks inside itemDetails is now a 25px invisible
-  ' spacer preserving the original description y=738 bottom position.
+  ' sibling of itemDetails statically positioned at [96, 713] — see ItemDetails.xml for
+  ' the geometry rationale. itemTracks inside itemDetails is a 62px invisible spacer
+  ' that pushes description bottom up to y=701 so the cluster sits in a 99px band
+  ' between description and buttons, with 12px pad above and 18px pad below.
   m.trackCluster = m.top.findNode("trackCluster")
   m.trackTitles = m.top.findNode("trackTitles")
   m.videoTrackTitle = m.top.findNode("videoTrackTitle")
@@ -106,10 +107,13 @@ sub init()
   ' Observe renderTracking to update gradient after layout is calculated
   m.itemDetails.observeField("renderTracking", "onItemDetailsRendered")
 
-  ' 25px invisible spacer inside itemDetails. Preserves the original description y=738
-  ' bottom position so the extras slide animation math in updateItemDetailsAnimationTarget()
-  ' is identical to main. Re-parented out of the layout for NO_MEDIA_TRACKS item types
-  ' (Series/Season/Person/etc.) so those items match main's behavior.
+  ' 62px invisible spacer inside itemDetails. Pushes description bottom up to y=701
+  ' so the trackCluster sibling has 12px breathing pad above and 18px below between
+  ' description and buttons. Removed from the layout for NO_MEDIA_TRACKS item types
+  ' (Series/Season/Person/etc.) so those items' description bottom drops back to
+  ' y=775 (matching main's behavior). The extras slide animation in
+  ' updateItemDetailsAnimationTarget() reads itemInfoRows.boundingRect() at runtime
+  ' and adapts to the taller spacer automatically — no target math change needed.
   m.itemTracks = m.top.findNode("itemTracks")
   m.itemTracksInLayout = true
 
@@ -1932,7 +1936,7 @@ sub populateTrackDropdowns(mediaSources as object, allStreams as object, itemTyp
   applyDropdown(m.subtitleDropdown, subtitleItems, str(m.top.selectedSubtitleStreamIndex).trim(), subtitleApplicable)
 
   ' Cluster visibility: shown if any slot applies. trackCluster is a top-level sibling
-  ' statically positioned in XML at [96, 738] — no runtime layout math needed here.
+  ' statically positioned in XML at [96, 713] — no runtime layout math needed here.
   m.trackCluster.visible = videoApplicable or audioApplicable or subtitleApplicable
 end sub
 
@@ -2493,12 +2497,13 @@ sub setDescriptionInLayout(shouldShow as boolean)
   m.itemDescriptionInLayout = shouldShow
 end sub
 
-' setTracksInLayout: Add or remove the 25px itemTracks spacer from the itemDetails
-' LayoutGroup. When a track cluster is applicable to the current item, the spacer stays
-' in the layout to preserve description's y=738 bottom position (matching main) so the
-' trackCluster sibling can sit directly below description with no overlap. For item
-' types without any media tracks (Series/Person/etc.), the spacer is removed and the
-' itemDetails group shrinks back to match main's behavior for those types.
+' setTracksInLayout: Add or remove the 62px itemTracks spacer from the itemDetails
+' LayoutGroup. When a track cluster is applicable to the current item, the spacer
+' stays in the layout and pushes description bottom up to y=701 so the trackCluster
+' sibling can sit at y=713 with 12px breathing pad above and 18px below between the
+' description and the button group. For item types without any media tracks
+' (Series/Person/etc.), the spacer is removed and description bottom drops back to
+' y=775 (matching main's behavior — no cluster, no padding, no regression).
 sub setTracksInLayout(shouldShow as boolean)
   if shouldShow = m.itemTracksInLayout then return
   if shouldShow

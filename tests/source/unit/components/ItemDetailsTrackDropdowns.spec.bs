@@ -46,13 +46,15 @@ namespace tests
     @describe("Track cluster wiring (top-level sibling of itemDetails)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("has trackCluster LayoutGroup positioned at y=738")
+    @it("has trackCluster Group positioned at y=713")
     function _()
       cluster = m.itemDetails.findNode("trackCluster")
       m.assertTrue(isValid(cluster))
-      ' Translation is [96, 738] so the cluster top lands on description bottom.
+      ' Translation is [96, 713]: 12px breathing pad below description bottom
+      ' (y=701, produced by the 62px itemTracks spacer) and 18px above buttons
+      ' top (y=800). Cluster height = 24 (titles row) + 45 (trigger) = 69px.
       m.assertEqual(cluster.translation[0], 96)
-      m.assertEqual(cluster.translation[1], 738)
+      m.assertEqual(cluster.translation[1], 713)
     end function
 
     @it("trackCluster starts hidden until content is loaded")
@@ -95,10 +97,12 @@ namespace tests
       m.assertEqual(details.translation[1], 775)
     end function
 
-    @it("itemTracks is present as a child of itemDetails (25px invisible spacer)")
+    @it("itemTracks is present as a child of itemDetails (62px invisible spacer)")
     function _()
-      ' Preserves description's y=738 bottom so the extras slide animation math is
-      ' byte-identical to main.
+      ' Produces description bottom at y=701 so the trackCluster sibling has 12px
+      ' of breathing pad above and 18px below between description and buttons.
+      ' itemDetails.translation stays at [96, 775] — the animation reads
+      ' itemInfoRows.boundingRect() at runtime, which adapts to the taller spacer.
       m.assertTrue(isValid(m.itemDetails.findNode("itemTracks")))
     end function
 

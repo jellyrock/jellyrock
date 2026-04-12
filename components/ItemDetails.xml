@@ -17,13 +17,30 @@
 
       <FocusableOverview id="itemDescription" width="1200" visible="false" />
 
-      <!-- Invisible 25px layout spacer. Occupies the exact vertical space the old
-           codec-row "itemTracks" used to occupy so description bottom stays at y=738
-           and the extras slide animation's resting state math (in
-           updateItemDetailsAnimationTarget) is preserved byte-for-byte.
-           The visible inline track dropdowns live in the trackCluster sibling below. -->
+      <!-- Invisible 62px layout spacer. Pushes description bottom up to y=701
+           (itemDetails bottom 775 - spacer 62 - itemSpacings 12 = 701) so the
+           trackCluster sibling below has room for 12px of breathing padding ABOVE
+           (between description and the track titles) AND 18px BELOW (between the
+           trigger row and the button group at y=800). The asymmetric pad (12 top,
+           18 bottom) gives the static trigger backdrops a bit more visual separation
+           from the IconButton backdrops directly below. Cluster layout:
+             y=701  description bottom
+               +12  pad
+             y=713  trackCluster top (titles + dropdowns, 69px total)
+             y=782  trackCluster bottom (trigger row bottom)
+               +18  pad
+             y=800  buttons top
+           For item types WITHOUT media tracks (Series, MusicArtist, MusicAlbum,
+           Person — see itemTypeOrder.NO_MEDIA_TRACKS), setTracksInLayout() removes
+           this spacer from the layout at runtime, so description bottom drops back
+           to y=775 and matches main's behavior for those types.
+           The animation's resting state (itemDetails.translation = [96, 775]) is
+           UNCHANGED — the slide target math in updateItemDetailsAnimationTarget()
+           reads itemInfoRows.boundingRect() at runtime and adapts to the taller
+           spacer automatically, landing infoRows bottom at the same screen y=282
+           when extras open. -->
       <LayoutGroup id="itemTracks" layoutDirection="horiz">
-        <Rectangle width="1" height="25" color="0x00000000" />
+        <Rectangle width="1" height="62" color="0x00000000" />
       </LayoutGroup>
     </LayoutGroup>
 
@@ -48,12 +65,18 @@
     <!-- "Cast and Crew" row -->
     <extrasSlider id="itemExtras" />
 
-    <!-- trackCluster: positioned at y=738 so its top edge lands on the description's
-         bottom edge (itemDetails bottom 775 - spacer 25 - itemSpacings 12 = 738). Two
-         stacked rows give a total cluster height of 54px, bottom at 792, which is 8px
-         above the button group at y=800. x=96 pins the first slot's left edge to the
+    <!-- trackCluster: positioned at y=713 so there is a 12px breathing pad ABOVE the
+         cluster (description bottom y=701 → titles top y=713) and an 18px breathing
+         pad BELOW (trigger row bottom y=782 → button group top y=800). Cluster
+         height = 24 (titles row + gap) + 45 (trigger, see TrackDropdown.bs
+         TRACK_DROPDOWN_TRIGGER_HEIGHT) = 69px. The description's y=701 bottom is
+         produced by the 62px itemTracks spacer inside itemDetails — see the
+         comment on itemTracks above. x=96 pins the first slot's left edge to the
          Play button's visible left edge (buttons[90,800] + IconButton's 6px text-
-         extension offset).
+         extension offset). The buttons group cannot move down without its 2-line
+         labels (e.g. "Play Trailer") crashing into the closed extras panel's
+         chapters header peek at PANEL_CLOSED_Y=972, so the breathing room is
+         created by shifting description + cluster UP via the spacer instead.
          IMPORTANT: Rendered as the LAST child of ItemDetails so open dropdown menus
          render ON TOP of everything — buttons AND the extras pane's semi-transparent
          backdrop. Later siblings = higher z-order in Roku SG.
@@ -66,7 +89,7 @@
          Slot stride = 308 (= 278px slot width + 30px visible gap between slots), so
          slot 1 at x=0 spans button[0]'s visible left to button[1]'s visible right,
          slot 2 at x=308 spans button[2]-[3], slot 3 at x=616 spans button[4]-[5]. -->
-    <Group id="trackCluster" translation="[96, 738]" visible="false">
+    <Group id="trackCluster" translation="[96, 713]" visible="false">
       <!-- Static title row ("Video"/"Audio"/"Subtitles"). NOT part of TrackDropdown —
            rendered here so the titles render identically whether the slot below is an
            interactive dropdown or a static single-option row. -->
