@@ -449,6 +449,9 @@ end sub
 ' Called when visible field changes
 ' Performs initial tile caching and displays posters when carousel first appears
 sub onIsVisibleChanged()
+  ' Sync built-in Group visible — isVisible is a custom field that doesn't control rendering
+  m.top.visible = m.top.isVisible
+
   if not m.top.isVisible
     ' Reset velocity tracking when carousel hides (scrubbing session ended)
     m.currentVelocity = 0
