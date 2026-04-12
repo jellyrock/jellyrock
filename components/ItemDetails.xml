@@ -3,6 +3,11 @@
   <children>
     <Gradient id="itemTextGradient" width="1920" height="0" rotateDegrees="180" translation="[0, 0]" />
 
+    <!-- itemDetails geometry MUST match main byte-for-byte: translation=[96,775],
+         itemSpacings=[12], vertAlignment="bottom". The extras slide animation uses
+         itemDetails.translation as its resting state and itemInfoRows.boundingRect() as
+         the slide target reference. Any deviation here breaks the animation and causes
+         metadata to render in the wrong y-position. -->
     <LayoutGroup id="itemDetails" layoutDirection="vert" vertAlignment="bottom" itemSpacings="[12]" translation="[96, 775]" enableRenderTracking="true">
       <LayoutGroup id="itemInfoRows" layoutDirection="vert">
         <LabelPrimaryLargest id="videoTitle" isBold="true" />
@@ -12,19 +17,13 @@
 
       <FocusableOverview id="itemDescription" width="1200" visible="false" />
 
-      <LayoutGroup id="itemTracks" layoutDirection="horiz" itemSpacings="[24]">
-        <LayoutGroup id="videoTrack" layoutDirection="horiz" itemSpacings="[6]">
-          <LabelSecondarySmaller id="videoCodec" vertAlign="bottom" />
-          <LabelSecondarySmallest id="videoCodecCount" vertAlign="top" />
-        </LayoutGroup>
-        <LayoutGroup id="audioTrack" layoutDirection="horiz" itemSpacings="[6]">
-          <LabelSecondarySmaller id="audioCodec" vertAlign="bottom" />
-          <LabelSecondarySmallest id="audioCodecCount" vertAlign="top" />
-        </LayoutGroup>
-        <LayoutGroup id="subtitleTrack" layoutDirection="horiz" itemSpacings="[6]">
-          <LabelSecondarySmaller id="subtitleCodec" vertAlign="bottom" />
-          <LabelSecondarySmallest id="subtitleCodecCount" vertAlign="top" />
-        </LayoutGroup>
+      <!-- Invisible 25px layout spacer. Occupies the exact vertical space the old
+           codec-row "itemTracks" used to occupy so description bottom stays at y=738
+           and the extras slide animation's resting state math (in
+           updateItemDetailsAnimationTarget) is preserved byte-for-byte.
+           The visible inline track dropdowns live in the trackCluster sibling below. -->
+      <LayoutGroup id="itemTracks" layoutDirection="horiz">
+        <Rectangle width="1" height="25" color="0x00000000" />
       </LayoutGroup>
     </LayoutGroup>
 
@@ -46,11 +45,46 @@
         fieldToInterp="itemDetails.translation" />
     </Animation>
 
-    <!-- Components above this ^ will be rendered under the ItemOptions popup -->
-    <ItemOptions id="itemOptions" visible="false" />
-
     <!-- "Cast and Crew" row -->
     <extrasSlider id="itemExtras" />
+
+    <!-- trackCluster: positioned at y=738 so its top edge lands on the description's
+         bottom edge (itemDetails bottom 775 - spacer 25 - itemSpacings 12 = 738). Two
+         stacked rows give a total cluster height of 54px, bottom at 792, which is 8px
+         above the button group at y=800. x=96 pins the first slot's left edge to the
+         Play button's visible left edge (buttons[90,800] + IconButton's 6px text-
+         extension offset).
+         IMPORTANT: Rendered as the LAST child of ItemDetails so open dropdown menus
+         render ON TOP of everything — buttons AND the extras pane's semi-transparent
+         backdrop. Later siblings = higher z-order in Roku SG.
+         This cluster uses PLAIN Groups (not LayoutGroups) with hard-coded child
+         translations. A horizontal LayoutGroup would auto-align children by their
+         boundingRect.y — when a TrackDropdown's menu scrolls (translating menuItems
+         negatively), its boundingRect.y becomes negative and the LG would shift the
+         whole child DOWN to compensate, causing visible "drift". Plain Groups skip
+         that compensation, so each TrackDropdown stays at its declared translation.
+         Slot stride = 308 (= 278px slot width + 30px visible gap between slots), so
+         slot 1 at x=0 spans button[0]'s visible left to button[1]'s visible right,
+         slot 2 at x=308 spans button[2]-[3], slot 3 at x=616 spans button[4]-[5]. -->
+    <Group id="trackCluster" translation="[96, 738]" visible="false">
+      <!-- Static title row ("Video"/"Audio"/"Subtitles"). NOT part of TrackDropdown —
+           rendered here so the titles render identically whether the slot below is an
+           interactive dropdown or a static single-option row. -->
+      <Group id="trackTitles" translation="[0, 0]">
+        <LabelSecondarySmallest id="videoTrackTitle" width="278" horizAlign="center" translation="[0, 0]" />
+        <LabelSecondarySmallest id="audioTrackTitle" width="278" horizAlign="center" translation="[308, 0]" />
+        <LabelSecondarySmallest id="subtitleTrackTitle" width="278" horizAlign="center" translation="[616, 0]" />
+      </Group>
+
+      <!-- Three TrackDropdown slots at fixed x positions. y=24 places this row just
+           below trackTitles (22px label + 2px gap). See TrackDropdown.bs for per-slot
+           layout. -->
+      <Group id="trackDropdowns" translation="[0, 24]">
+        <TrackDropdown id="videoDropdown" translation="[0, 0]" />
+        <TrackDropdown id="audioDropdown" translation="[308, 0]" />
+        <TrackDropdown id="subtitleDropdown" translation="[616, 0]" />
+      </Group>
+    </Group>
   </children>
   <interface>
     <field id="itemId" type="string" onChange="onItemIdChanged" />
@@ -59,6 +93,11 @@
     <field id="trailerAvailable" type="bool" onChange="trailerAvailableChanged" value="false" />
     <field id="selectedAudioStreamIndex" type="integer" />
     <field id="selectedVideoStreamId" type="string" />
+    <!-- User-overridable subtitle index. Default -1 = SubtitleSelection.NONE (no subtitles).
+         Seeded by itemContentChanged() from findDefaultSubtitleStreamIndex() on first load,
+         then overwritten when the user picks a track from the subtitle dropdown. Passed
+         through to VideoPlayerView via the queue item at playback start. -->
+    <field id="selectedSubtitleStreamIndex" type="integer" value="-1" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="refreshItemDetailsData" type="bool" alwaysNotify="true" onChange="onRefreshItemDetailsData" />
     <field id="refreshExtrasData" type="bool" alwaysNotify="true" onChange="onRefreshExtrasData" />

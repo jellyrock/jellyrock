@@ -33,10 +33,51 @@ sub init()
   m.log = new log.Logger("ItemDetails")
   m.extrasGrp = m.top.findNode("extrasGrp")
   m.extrasGrid = m.top.findNode("extrasGrid")
+  ' Hide the overhang's Options hint — track selection happens inline via the TrackDropdown
+  ' cluster above the button group, not through the overhang options popup pattern.
   m.top.isOptionsAvailable = false
 
-  m.options = m.top.findNode("itemOptions")
   m.infoGroup = m.top.findNode("infoGroup")
+
+  ' Inline track dropdowns (Video / Audio / Subtitles). trackCluster is a top-level
+  ' sibling of itemDetails statically positioned at [96, 738] — see ItemDetails.xml for
+  ' the geometry rationale. itemTracks inside itemDetails is now a 25px invisible
+  ' spacer preserving the original description y=738 bottom position.
+  m.trackCluster = m.top.findNode("trackCluster")
+  m.trackTitles = m.top.findNode("trackTitles")
+  m.videoTrackTitle = m.top.findNode("videoTrackTitle")
+  m.audioTrackTitle = m.top.findNode("audioTrackTitle")
+  m.subtitleTrackTitle = m.top.findNode("subtitleTrackTitle")
+
+  m.trackDropdowns = m.top.findNode("trackDropdowns")
+  m.videoDropdown = m.top.findNode("videoDropdown")
+  m.audioDropdown = m.top.findNode("audioDropdown")
+  m.subtitleDropdown = m.top.findNode("subtitleDropdown")
+  m.subtitleUserOverridden = false
+
+  ' Remembers the last TrackDropdown that held focus so returning to the track row via
+  ' UP-from-buttons restores the previous slot. Reset per-content in itemContentChanged
+  ' and when the remembered slot becomes non-interactive during repopulation.
+  m.lastFocusedDropdown = invalid
+  m.videoDropdown.observeField("focusedChild", "onTrackDropdownFocusChanged")
+  m.audioDropdown.observeField("focusedChild", "onTrackDropdownFocusChanged")
+  m.subtitleDropdown.observeField("focusedChild", "onTrackDropdownFocusChanged")
+
+  m.videoDropdown.observeField("selectedAction", "onVideoDropdownSelection")
+  m.audioDropdown.observeField("selectedAction", "onAudioDropdownSelection")
+  m.subtitleDropdown.observeField("selectedAction", "onSubtitleDropdownSelection")
+
+  m.videoDropdown.observeField("requestFocusReturn", "onDropdownRequestUp")
+  m.audioDropdown.observeField("requestFocusReturn", "onDropdownRequestUp")
+  m.subtitleDropdown.observeField("requestFocusReturn", "onDropdownRequestUp")
+
+  m.videoDropdown.observeField("requestFocusDown", "onDropdownRequestDown")
+  m.audioDropdown.observeField("requestFocusDown", "onDropdownRequestDown")
+  m.subtitleDropdown.observeField("requestFocusDown", "onDropdownRequestDown")
+
+  m.videoDropdown.observeField("requestFocusExit", "onVideoDropdownFocusExit")
+  m.audioDropdown.observeField("requestFocusExit", "onAudioDropdownFocusExit")
+  m.subtitleDropdown.observeField("requestFocusExit", "onSubtitleDropdownFocusExit")
 
   m.itemDescription = m.top.findNode("itemDescription")
   m.itemDescriptionInLayout = true ' itemDescription is a static XML child, so it starts in layout
@@ -65,9 +106,14 @@ sub init()
   ' Observe renderTracking to update gradient after layout is calculated
   m.itemDetails.observeField("renderTracking", "onItemDetailsRendered")
 
-  ' itemDetails slide animation - synced with extras slider
+  ' 25px invisible spacer inside itemDetails. Preserves the original description y=738
+  ' bottom position so the extras slide animation math in updateItemDetailsAnimationTarget()
+  ' is identical to main. Re-parented out of the layout for NO_MEDIA_TRACKS item types
+  ' (Series/Season/Person/etc.) so those items match main's behavior.
   m.itemTracks = m.top.findNode("itemTracks")
-  m.itemTracksInLayout = true ' itemTracks is a static XML child, so it starts in layout
+  m.itemTracksInLayout = true
+
+  ' itemDetails slide animation - synced with extras slider
   m.itemDetailsSlider = m.top.findNode("itemDetailsSlider")
   m.itemDetailsSliderInterp = m.top.findNode("itemDetailsSliderInterp")
   m.extrasActive = false
@@ -78,7 +124,6 @@ sub init()
   m.itemInfoRows = m.top.findNode("itemInfoRows")
 
   ' Dynamic button refs — reset by setupButtons() on each content load
-  m.optionsButton = invalid
   m.shuffleButton = invalid
   m.shuffleLoadingButton = invalid
   m.resumeLoadingButton = invalid
@@ -1717,13 +1762,23 @@ sub itemContentChanged()
 
     ' Media tracks and stream options are only relevant for playable types.
     ' MusicArtist/MusicAlbum have no track info. Audio shows audio codec only.
-    ' Use reparenting instead of visible=false — invisible nodes still take up LayoutGroup space.
-    setTracksInLayout(not inArray(itemTypeOrder.NO_MEDIA_TRACKS, item.type))
+    hasMediaTracks = not inArray(itemTypeOrder.NO_MEDIA_TRACKS, item.type)
+
+    ' Keep/remove the itemTracks spacer + trackCluster visibility in one step so
+    ' NO_MEDIA_TRACKS item types render identically to main.
+    setTracksInLayout(hasMediaTracks)
+    m.trackCluster.visible = hasMediaTracks
+
+    ' Fresh content = fresh auto-selected subtitle (reset the user-override flag so the
+    ' subtitle dropdown re-seeds from findDefaultSubtitleStreamIndex).
+    m.subtitleUserOverridden = false
+
+    ' Fresh content = forget the previously-focused dropdown so the next UP-from-buttons
+    ' press picks the slot based on the current button column, not the prior item.
+    m.lastFocusedDropdown = invalid
 
     if item.type = "Audio"
-      ' Audio: show audio codec only — no video source selection or subtitle display
-      setFieldText("videoCodec", "")
-      setFieldText("subtitleCodec", "")
+      ' Audio: no video source selection, no subtitle display. Audio dropdown still applies.
       allStreams = []
       if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
         mediaSources = item.mediaSourcesData.mediaSources
@@ -1732,9 +1787,8 @@ sub itemContentChanged()
         end if
       end if
       SetDefaultAudioTrack(allStreams)
-      SetUpAudioOptions(allStreams)
-      updateOptionsButtonVisibility()
-    else if not inArray(itemTypeOrder.NO_MEDIA_TRACKS, item.type)
+      populateTrackDropdowns([], allStreams, item.type)
+    else if hasMediaTracks
       mediaSources = invalid
       if isValid(item.mediaSourcesData) and isValidAndNotEmpty(item.mediaSourcesData.mediaSources)
         mediaSources = item.mediaSourcesData.mediaSources
@@ -1748,35 +1802,14 @@ sub itemContentChanged()
         m.top.selectedVideoStreamId = item.mediaSourceId
       end if
 
-      ' Use the selected source's MediaStreams (not always mediaSources[0])
-      allStreams = []
-      if isValid(mediaSources)
-        for each source in mediaSources
-          if source.Id = m.top.selectedVideoStreamId
-            if isValid(source.MediaStreams)
-              allStreams = source.MediaStreams
-            end if
-            exit for
-          end if
-        end for
-        ' Fallback to first source if selected source not found
-        if allStreams.Count() = 0 and isValid(mediaSources[0]) and isValid(mediaSources[0].MediaStreams)
-          allStreams = mediaSources[0].MediaStreams
-        end if
-      end if
+      allStreams = getStreamsForSelectedSource(mediaSources)
 
       SetDefaultAudioTrack(allStreams)
-      SetUpVideoOptions(mediaSources ?? [])
-      SetUpAudioOptions(allStreams)
-      SetUpSubtitleDisplay(allStreams, m.top.selectedAudioStreamIndex)
-      updateOptionsButtonVisibility()
-    else
-      ' Series/Season/Person/BoxSet/MusicArtist/MusicAlbum: remove options button if left from previous load
-      if isValid(m.optionsButton)
-        m.buttonGrp.removeChild(m.optionsButton)
-        m.optionsButton = invalid
-      end if
+      populateTrackDropdowns(mediaSources ?? [], allStreams, item.type)
     end if
+    ' Series/Season/Person/BoxSet/MusicArtist/MusicAlbum: the NO_MEDIA_TRACKS branch
+    ' above already removed itemTracks from layout and hid m.trackCluster, so nothing
+    ' more to do here.
 
     populateInfoGroup()
     populateDescriptionGroup()
@@ -1849,108 +1882,155 @@ sub itemContentChanged()
   end if
 end sub
 
-sub SetUpVideoOptions(streams)
-  videos = []
-  codecDetailsSet = false
-  hasMultipleSources = streams.Count() > 1
+' ============================================
+' TRACK DROPDOWNS
+' ============================================
 
-  for i = 0 to streams.Count() - 1
-    if streams[i].VideoType = "VideoFile"
-      codec = formatVideoSourceTitle(streams[i], hasMultipleSources)
+' The track dropdown cluster is now a child of itemDetails LayoutGroup, so vertical
+' stacking and horizontal anchoring are handled by RSG's layout engine. Slot width and
+' stride are configured declaratively in ItemDetails.xml's trackDropdowns LayoutGroup
+' (slot width via TrackDropdown default, stride via itemSpacings).
 
-      if not codecDetailsSet
-        setFieldText("videoCodec", translate(translationKeys.LabelVideo) + ": " + codec)
-        codecDetailsSet = true
-      end if
-
-      videos.push({
-        "Title": codec,
-        "Description": translate(translationKeys.LabelVideo),
-        "Selected": m.top.selectedVideoStreamId = streams[i].id,
-        "StreamID": streams[i].id,
-        "videoCodec": codec
-      })
-    end if
-  end for
-
-  if streams.count() > 1
-    m.top.findnode("videoCodecCount").text = "+" + stri(streams.Count() - 1).trim()
-  end if
-
-  options = {}
-  options.videos = videos
-  m.options.options = options
-end sub
-
-sub SetUpAudioOptions(streams)
-  tracks = []
-
-  for i = 0 to streams.Count() - 1
-    if streams[i].Type = "Audio"
-      ' Use server-side stream.index for both the pre-selection check and the StreamIndex value
-      ' carried to ItemOptions. Jellyfin indices span all stream types and must match what
-      ' ItemPostPlaybackInfo expects.
-      if isValid(streams[i].index)
-        tracks.push({ "Title": formatAudioDisplayTitle(streams[i]), "Description": streams[i].Title, "Selected": m.top.selectedAudioStreamIndex = streams[i].index, "StreamIndex": streams[i].index })
-      end if
-    end if
-  end for
-
-  if tracks.count() > 1
-    m.top.findnode("audioCodecCount").text = "+" + stri(tracks.Count() - 1).trim()
-  end if
-
-  options = {}
-  if isValid(m.options.options) and isValid(m.options.options.videos)
-    options.videos = m.options.options.videos
-  end if
-  options.audios = tracks
-  m.options.options = options
-end sub
-
-' SetUpSubtitleDisplay: Display the subtitle stream that will be auto-selected during playback.
-' Uses findDefaultSubtitleStreamIndex() to match the same selection logic as playback
-' (subtitle mode, language preference, text-only preference, smart mode audio matching).
-' Shows "+N" count if multiple subtitle tracks exist.
+' populateTrackDropdowns: Build the Video/Audio/Subtitle dropdown items from the current
+' media source list and stream list for the given item type, then toggle the cluster +
+' title row visibility. Seeds m.top.selectedSubtitleStreamIndex from
+' findDefaultSubtitleStreamIndex() on first load so the initial trigger label reflects
+' what playback will actually use.
 '
-' @param {object} streams - Array of MediaStream objects (all types: video, audio, subtitle)
-' @param {integer} selectedAudioStreamIndex - Server-side index of the selected audio stream
-sub SetUpSubtitleDisplay(streams, selectedAudioStreamIndex as integer)
-  subtitleCountNode = m.top.findNode("subtitleCodecCount")
-  if isValid(subtitleCountNode) then subtitleCountNode.text = ""
+' @param {object} mediaSources - Array of MediaSource objects (may be empty)
+' @param {object} allStreams - MediaStreams from the selected source (video/audio/subs mixed)
+' @param {string} itemType - The item type string (drives which slots apply)
+sub populateTrackDropdowns(mediaSources as object, allStreams as object, itemType as string)
+  videoItems = buildVideoDropdownItems(mediaSources)
+  audioItems = buildAudioDropdownItems(allStreams)
+  subtitleItems = buildSubtitleDropdownItems(allStreams)
 
-  if not isValid(streams) then return
+  ' Seed default subtitle selection on first load / fresh content so the dropdown trigger
+  ' text reflects the subtitle stream playback would auto-pick. A subsequent user pick on
+  ' the dropdown flips m.subtitleUserOverridden so we don't re-seed on audio changes.
+  if not m.subtitleUserOverridden
+    defaultSubIdx = findDefaultSubtitleStreamIndex(allStreams, m.top.selectedAudioStreamIndex)
+    m.top.selectedSubtitleStreamIndex = defaultSubIdx
+  end if
 
-  subtitleCount = 0
-  for i = 0 to streams.count() - 1
-    if isValid(streams[i].Type) and LCase(streams[i].Type) = "subtitle"
-      subtitleCount++
-    end if
-  end for
+  ' Audio-only items get no video and no subtitle slot
+  videoApplicable = itemType <> "Audio" and videoItems.count() > 0
+  audioApplicable = audioItems.count() > 0
+  subtitleApplicable = itemType <> "Audio" and subtitleItems.count() > 1 ' >1 because Off is always present
 
-  if subtitleCount = 0
-    setFieldText("subtitleCodec", translate(translationKeys.LabelSubtitles) + ": " + translate(translationKeys.LabelNone))
+  ' Title row: static labels above each dropdown. Always shown for applicable slots so
+  ' users see the category name even when the slot is single-option static text.
+  m.videoTrackTitle.text = translate(translationKeys.LabelVideo)
+  m.audioTrackTitle.text = translate(translationKeys.LabelAudio)
+  m.subtitleTrackTitle.text = translate(translationKeys.LabelSubtitles)
+  m.videoTrackTitle.visible = videoApplicable
+  m.audioTrackTitle.visible = audioApplicable
+  m.subtitleTrackTitle.visible = subtitleApplicable
+
+  applyDropdown(m.videoDropdown, videoItems, m.top.selectedVideoStreamId, videoApplicable)
+  applyDropdown(m.audioDropdown, audioItems, str(m.top.selectedAudioStreamIndex).trim(), audioApplicable)
+  applyDropdown(m.subtitleDropdown, subtitleItems, str(m.top.selectedSubtitleStreamIndex).trim(), subtitleApplicable)
+
+  ' Cluster visibility: shown if any slot applies. trackCluster is a top-level sibling
+  ' statically positioned in XML at [96, 738] — no runtime layout math needed here.
+  m.trackCluster.visible = videoApplicable or audioApplicable or subtitleApplicable
+end sub
+
+' applyDropdown: Push items + selection into a single TrackDropdown. Hides the slot when
+' the track type isn't applicable (keeps layout order stable for the other two slots).
+sub applyDropdown(dropdown as object, items as object, selectedId as string, applicable as boolean)
+  if not applicable
+    dropdown.visible = false
     return
   end if
 
-  selectedIndex = findDefaultSubtitleStreamIndex(streams, selectedAudioStreamIndex)
-
-  if selectedIndex >= 0
-    for i = 0 to streams.count() - 1
-      if isValid(streams[i].index) and streams[i].index = selectedIndex
-        setFieldText("subtitleCodec", translate(translationKeys.LabelSubtitles) + ": " + formatSubtitleDisplayTitle(streams[i]))
-        exit for
-      end if
-    end for
-  else
-    setFieldText("subtitleCodec", translate(translationKeys.LabelSubtitles) + ": " + translate(translationKeys.LabelOff))
-  end if
-
-  if subtitleCount > 1
-    m.top.findNode("subtitleCodecCount").text = "+" + stri(subtitleCount - 1).trim()
-  end if
+  dropdown.visible = true
+  dropdown.items = items
+  dropdown.selectedItemId = selectedId
+  dropdown.triggerText = triggerTextForSelection(items, selectedId)
+  ' Single-option slots render as static (non-focusable) text with the same geometry
+  dropdown.isInteractive = items.count() > 1
 end sub
 
+' triggerTextForSelection: Look up the currently-selected item's display title.
+function triggerTextForSelection(items as object, selectedId as string) as string
+  if not isValid(items) or items.count() = 0 then return ""
+  for each item in items
+    if isValid(item.id) and item.id = selectedId
+      return item.title
+    end if
+  end for
+  return items[0].title
+end function
+
+' buildVideoDropdownItems: Convert MediaSources into dropdown items. "Video" here is the
+' MediaSource, not a stream — it's the user-facing alternate-version selector (e.g. "1080p
+' H264" vs "4K HEVC HDR10").
+function buildVideoDropdownItems(mediaSources as object) as object
+  items = []
+  if not isValid(mediaSources) then return items
+
+  hasMultipleSources = mediaSources.count() > 1
+  for each source in mediaSources
+    if isValid(source) and source.VideoType = "VideoFile" and isValidAndNotEmpty(source.id)
+      items.push({ id: source.id, title: formatVideoSourceTitle(source, hasMultipleSources) })
+    end if
+  end for
+  return items
+end function
+
+' buildAudioDropdownItems: Convert the MediaStreams array into dropdown items for audio.
+' Item id is the stringified server-side stream index, matching the ItemDetails contract
+' that selectedAudioStreamIndex is an integer spanning all stream types.
+function buildAudioDropdownItems(streams as object) as object
+  items = []
+  if not isValid(streams) then return items
+
+  for each stream in streams
+    if isValid(stream) and stream.Type = "Audio" and isValid(stream.index)
+      items.push({ id: str(stream.index).trim(), title: formatAudioDisplayTitle(stream) })
+    end if
+  end for
+  return items
+end function
+
+' buildSubtitleDropdownItems: Convert the MediaStreams array into dropdown items for
+' subtitles. Always prepends an "Off" entry (id = "-1") so the user can disable subtitles
+' regardless of how many tracks are present.
+function buildSubtitleDropdownItems(streams as object) as object
+  items = []
+  items.push({ id: "-1", title: translate(translationKeys.LabelOff) })
+  if not isValid(streams) then return items
+
+  for each stream in streams
+    if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle" and isValid(stream.index)
+      items.push({ id: str(stream.index).trim(), title: formatSubtitleDisplayTitle(stream) })
+    end if
+  end for
+  return items
+end function
+
+' getStreamsForSelectedSource: Pull the MediaStreams array from whichever media source
+' matches m.top.selectedVideoStreamId. Falls back to mediaSources[0] when the selected
+' id isn't found (e.g. first load before selection).
+function getStreamsForSelectedSource(mediaSources as object) as object
+  if not isValid(mediaSources) then return []
+
+  for each source in mediaSources
+    if source.Id = m.top.selectedVideoStreamId and isValid(source.MediaStreams)
+      return source.MediaStreams
+    end if
+  end for
+
+  if isValid(mediaSources[0]) and isValid(mediaSources[0].MediaStreams)
+    return mediaSources[0].MediaStreams
+  end if
+  return []
+end function
+
+' SetDefaultAudioTrack: Auto-select the best audio stream based on user language prefs,
+' storing the result on m.top.selectedAudioStreamIndex. The dropdown trigger label is
+' refreshed separately by applyDropdown() using the same index.
 sub SetDefaultAudioTrack(mediaStreams as object)
   if not isValid(mediaStreams) then return
 
@@ -1958,19 +2038,7 @@ sub SetDefaultAudioTrack(mediaStreams as object)
   playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
   selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
 
-  defaultAudioStream = invalid
-  for each stream in mediaStreams
-    if LCase(stream.Type) = "audio" and isValid(stream.index) and stream.index = selectedIndex
-      defaultAudioStream = stream
-      exit for
-    end if
-  end for
-
   m.top.selectedAudioStreamIndex = selectedIndex
-
-  if isValid(defaultAudioStream)
-    setFieldText("audioCodec", translate(translationKeys.LabelAudio) + ": " + formatAudioDisplayTitle(defaultAudioStream))
-  end if
 end sub
 
 sub setFieldText(field, value)
@@ -2252,8 +2320,9 @@ function anchorDateLabel() as integer
 end function
 
 ' onButtonGrpRendered: Fires after the render thread settles the button group layout.
-' Re-anchors the date label and repositions the logo (if already loaded) so both
-' elements reflect the true button group height.
+' Re-anchors the date label and repositions the logo. The track dropdown cluster lives
+' inside itemDetails LayoutGroup and is positioned automatically by the layout engine,
+' so it doesn't need to be re-placed here.
 sub onButtonGrpRendered()
   if m.buttonGrp.renderTracking = "none" then return
 
@@ -2367,60 +2436,6 @@ sub updateTextGradient()
   end if
 end sub
 
-' updateOptionsButtonVisibility: Create/remove options button based on available tracks.
-' Creates button if there are multiple video or audio tracks to choose from.
-' Removes button if there is 1 or fewer video tracks AND 1 or fewer audio tracks.
-sub updateOptionsButtonVisibility()
-  videoCount = 0
-  audioCount = 0
-
-  if isValid(m.options.options) and isValid(m.options.options.videos)
-    videoCount = m.options.options.videos.count()
-  end if
-
-  if isValid(m.options.options) and isValid(m.options.options.audios)
-    audioCount = m.options.options.audios.count()
-  end if
-
-  shouldShowOptions = videoCount > 1 or audioCount > 1
-  buttonExists = isValid(m.optionsButton)
-
-  if shouldShowOptions and not buttonExists
-    currentFocusIndex = m.buttonGrp.buttonFocused
-
-    m.optionsButton = CreateObject("roSGNode", "IconButton")
-    m.optionsButton.id = "optionsButton"
-    m.optionsButton.icon = "pkg:/images/icons/settings.png"
-    m.optionsButton.text = translate(translationKeys.LabelOptions)
-
-    playButtonIndex = getButtonIndex("playButton")
-    if playButtonIndex >= 0
-      insertIndex = playButtonIndex + 1
-      m.buttonGrp.insertChild(m.optionsButton, insertIndex)
-
-      if isValid(currentFocusIndex) and currentFocusIndex >= insertIndex
-        m.buttonGrp.buttonFocused = currentFocusIndex + 1
-      end if
-    else
-      m.log.warn("playButton not found in button group; appending optionsButton to end")
-      m.buttonGrp.appendChild(m.optionsButton)
-    end if
-  else if not shouldShowOptions and buttonExists
-    currentFocusIndex = m.buttonGrp.buttonFocused
-    optionsButtonIndex = getButtonIndex("optionsButton")
-
-    m.buttonGrp.removeChild(m.optionsButton)
-    m.optionsButton = invalid
-
-    if isValid(currentFocusIndex) and isValid(optionsButtonIndex) and currentFocusIndex > optionsButtonIndex
-      focusIndex = currentFocusIndex - 1
-      if focusIndex < 0 then focusIndex = 0
-      m.buttonGrp.buttonFocused = focusIndex
-    end if
-    focusButtonGroupChild()
-  end if
-end sub
-
 ' getButtonIndex: Find the index of a button by ID in the button group
 ' @param {string} buttonId - The id of the button to find
 ' @return {integer} The index of the button, or -1 if not found
@@ -2478,9 +2493,12 @@ sub setDescriptionInLayout(shouldShow as boolean)
   m.itemDescriptionInLayout = shouldShow
 end sub
 
-' setTracksInLayout: Add or remove itemTracks from the itemDetails LayoutGroup.
-' Invisible nodes still take up space in RSG LayoutGroups, so reparenting is required
-' to truly eliminate spacing when tracks are not applicable (e.g. Series type).
+' setTracksInLayout: Add or remove the 25px itemTracks spacer from the itemDetails
+' LayoutGroup. When a track cluster is applicable to the current item, the spacer stays
+' in the layout to preserve description's y=738 bottom position (matching main) so the
+' trackCluster sibling can sit directly below description with no overlap. For item
+' types without any media tracks (Series/Person/etc.), the spacer is removed and the
+' itemDetails group shrinks back to match main's behavior for those types.
 sub setTracksInLayout(shouldShow as boolean)
   if shouldShow = m.itemTracksInLayout then return
   if shouldShow
@@ -2527,7 +2545,6 @@ sub setupButtons(item as object)
   end while
 
   ' Reset dynamic refs that were pointing into the now-cleared button group
-  m.optionsButton = invalid
   m.shuffleButton = invalid
 
   itemType = item.type
@@ -2987,41 +3004,219 @@ function round(f as float) as integer
   end if
 end function
 
-' audioOptionsClosed: Sync audio stream selection back from ItemOptions popup
-sub audioOptionsClosed()
-  if m.options.audioStreamIndex <> m.top.selectedAudioStreamIndex
-    m.top.selectedAudioStreamIndex = m.options.audioStreamIndex
-    for each stream in m.top.itemContent.audioStreams
-      if stream.index = m.top.selectedAudioStreamIndex
-        setFieldText("audioCodec", translate(translationKeys.LabelAudio) + ": " + formatAudioDisplayTitle(stream))
-        exit for
-      end if
-    end for
+' ============================================
+' TRACK DROPDOWN EVENT HANDLERS
+' ============================================
+
+' Video dropdown selection fires when the user picks a different MediaSource (alternate
+' version). We swap in the new source's streams, re-run audio auto-select, and rebuild
+' the audio/subtitle dropdowns against the new source. Focus stays on the video dropdown.
+sub onVideoDropdownSelection()
+  newStreamId = m.videoDropdown.selectedAction
+  if not isValidAndNotEmpty(newStreamId) then return
+  if newStreamId = m.top.selectedVideoStreamId then return
+
+  m.top.selectedVideoStreamId = newStreamId
+
+  item = m.top.itemContent
+  if not isValid(item) or not isValid(item.mediaSourcesData) then return
+
+  mediaSources = item.mediaSourcesData.mediaSources
+  allStreams = getStreamsForSelectedSource(mediaSources)
+
+  SetDefaultAudioTrack(allStreams)
+  m.subtitleUserOverridden = false
+  populateTrackDropdowns(mediaSources ?? [], allStreams, item.type)
+end sub
+
+' Audio dropdown selection: updates selectedAudioStreamIndex and re-seeds the subtitle
+' auto-selection (Smart mode depends on which audio is playing). If the user has already
+' manually overridden the subtitle, we leave it alone.
+sub onAudioDropdownSelection()
+  action = m.audioDropdown.selectedAction
+  if not isValidAndNotEmpty(action) then return
+
+  newIndex = action.toInt()
+  if newIndex = m.top.selectedAudioStreamIndex then return
+  m.top.selectedAudioStreamIndex = newIndex
+
+  if m.subtitleUserOverridden then return
+
+  item = m.top.itemContent
+  if not isValid(item) or not isValid(item.mediaSourcesData) then return
+  allStreams = getStreamsForSelectedSource(item.mediaSourcesData.mediaSources)
+
+  defaultSubIdx = findDefaultSubtitleStreamIndex(allStreams, newIndex)
+  m.top.selectedSubtitleStreamIndex = defaultSubIdx
+
+  ' Refresh the subtitle dropdown's selection highlight + trigger text
+  items = m.subtitleDropdown.items
+  if isValid(items)
+    newId = str(defaultSubIdx).trim()
+    m.subtitleDropdown.selectedItemId = newId
+    m.subtitleDropdown.triggerText = triggerTextForSelection(items, newId)
   end if
+end sub
+
+' Subtitle dropdown selection: marks user override so subsequent audio changes don't
+' clobber the pick, then stores the new index. Action "-1" = Off.
+sub onSubtitleDropdownSelection()
+  action = m.subtitleDropdown.selectedAction
+  if not isValidAndNotEmpty(action) then return
+
+  m.top.selectedSubtitleStreamIndex = action.toInt()
+  m.subtitleUserOverridden = true
+end sub
+
+' Dropdown navigation: UP from any dropdown goes to description when in layout, else
+' is consumed (no-op). parent-level UP handling reused so we don't have three identical
+' handlers.
+sub onDropdownRequestUp()
+  if m.itemDescriptionInLayout
+    m.top.lastFocus = m.itemDescription
+    m.itemDescription.setFocus(true)
+  end if
+end sub
+
+' DOWN from any dropdown returns focus to the button group.
+sub onDropdownRequestDown()
+  m.top.lastFocus = m.buttonGrp
   m.buttonGrp.setFocus(true)
 end sub
 
-' videoOptionsClosed: Sync video stream selection back from ItemOptions popup;
-' reload audio/subtitle options for the newly selected source
-sub videoOptionsClosed()
-  if m.options.videoStreamId <> m.top.selectedVideoStreamId
-    m.top.selectedVideoStreamId = m.options.videoStreamId
-    setFieldText("videoCodec", translate(translationKeys.LabelVideo) + ": " + m.options.videoCodec)
-    m.top.unobserveField("itemContent")
-    mediaSources = m.top.itemContent.mediaSourcesData.mediaSources
-    for each mediaSource in mediaSources
-      if mediaSource.id = m.top.selectedVideoStreamId
-        streams = mediaSource.MediaStreams ?? []
-        SetDefaultAudioTrack(streams)
-        SetUpAudioOptions(streams)
-        SetUpSubtitleDisplay(streams, m.top.selectedAudioStreamIndex)
-        exit for
-      end if
-    end for
-    m.top.observeField("itemContent", "itemContentChanged")
+' LEFT/RIGHT between dropdowns — each dropdown has its own exit handler so we know which
+' slot we came from and can target the correct neighbor, skipping non-interactive slots.
+sub onVideoDropdownFocusExit()
+  dir = m.videoDropdown.requestFocusExit
+  if dir = "left"
+    focusInteractiveDropdown([m.subtitleDropdown, m.audioDropdown, m.videoDropdown])
+  else if dir = "right"
+    focusInteractiveDropdown([m.audioDropdown, m.subtitleDropdown, m.videoDropdown])
   end if
-  m.buttonGrp.setFocus(true)
 end sub
+
+sub onAudioDropdownFocusExit()
+  dir = m.audioDropdown.requestFocusExit
+  if dir = "left"
+    focusInteractiveDropdown([m.videoDropdown, m.subtitleDropdown, m.audioDropdown])
+  else if dir = "right"
+    focusInteractiveDropdown([m.subtitleDropdown, m.videoDropdown, m.audioDropdown])
+  end if
+end sub
+
+sub onSubtitleDropdownFocusExit()
+  dir = m.subtitleDropdown.requestFocusExit
+  if dir = "left"
+    focusInteractiveDropdown([m.audioDropdown, m.videoDropdown, m.subtitleDropdown])
+  else if dir = "right"
+    focusInteractiveDropdown([m.videoDropdown, m.audioDropdown, m.subtitleDropdown])
+  end if
+end sub
+
+' focusInteractiveDropdown: Walks the given candidate list and focuses the first dropdown
+' that is interactive AND visible. The candidate order encodes both direction and wrap
+' behavior; the currently-focused dropdown is always last so the nav falls back to it if
+' nothing else is interactive (effectively: stay put).
+sub focusInteractiveDropdown(candidates as object)
+  for each candidate in candidates
+    if isValid(candidate) and candidate.visible and candidate.isInteractive
+      m.top.lastFocus = candidate
+      candidate.setFocus(true)
+      return
+    end if
+  end for
+end sub
+
+' firstInteractiveDropdown: Returns the first visible, interactive TrackDropdown in
+' left-to-right order, or invalid if none exist.
+function firstInteractiveDropdown() as object
+  candidates = [m.videoDropdown, m.audioDropdown, m.subtitleDropdown]
+  for each candidate in candidates
+    if isValid(candidate) and candidate.visible and candidate.isInteractive
+      return candidate
+    end if
+  end for
+  return invalid
+end function
+
+' onTrackDropdownFocusChanged: Observer wired to each TrackDropdown's focusedChild.
+' Remembers the last dropdown that held focus so the UP-from-buttons handler can
+' restore the previous slot on re-entry instead of always defaulting to video.
+sub onTrackDropdownFocusChanged()
+  if isValid(m.videoDropdown) and m.videoDropdown.isInFocusChain()
+    m.lastFocusedDropdown = m.videoDropdown
+  else if isValid(m.audioDropdown) and m.audioDropdown.isInFocusChain()
+    m.lastFocusedDropdown = m.audioDropdown
+  else if isValid(m.subtitleDropdown) and m.subtitleDropdown.isInFocusChain()
+    m.lastFocusedDropdown = m.subtitleDropdown
+  end if
+end sub
+
+' pickTrackDropdownFromButtons: Chooses which TrackDropdown to focus when UP is pressed
+' from the button group. Ignores m.lastFocusedDropdown by design — UP-from-buttons
+' should ALWAYS land on the dropdown visually above the currently focused button, not
+' on wherever the user was last time. Each slot spans 2 buttons: slot 1 sits above
+' buttons [0,1], slot 2 above [2,3], slot 3 above [4,5,...]. Widens outward to the
+' nearest interactive slot if the preferred one is static/hidden.
+'
+' CRITICAL: guards on m.trackCluster.visible — when the item type has no media tracks
+' (Series/Person/BoxSet/etc.), the cluster is hidden but the individual dropdown nodes
+' may still carry stale visible=true / isInteractive=true from a previously-loaded
+' item. Without this guard, focus would move to an invisible stale dropdown when the
+' user presses UP on those item types.
+function pickTrackDropdownFromButtons() as object
+  if not isValid(m.trackCluster) or not m.trackCluster.visible then return invalid
+
+  slots = [m.videoDropdown, m.audioDropdown, m.subtitleDropdown]
+
+  buttonIdx = m.buttonGrp.buttonFocused
+  if not isValid(buttonIdx) or buttonIdx < 0 then buttonIdx = 0
+  preferredSlot = 0
+  if buttonIdx >= 4
+    preferredSlot = 2
+  else if buttonIdx >= 2
+    preferredSlot = 1
+  end if
+
+  order = buildSearchOrder(preferredSlot)
+  for each idx in order
+    candidate = slots[idx]
+    if isValid(candidate) and candidate.visible and candidate.isInteractive
+      return candidate
+    end if
+  end for
+  return invalid
+end function
+
+' pickTrackDropdownFromDescription: Chooses which TrackDropdown to focus when DOWN is
+' pressed from the description. Restores m.lastFocusedDropdown if still usable so the
+' user returns to wherever they were before moving up. Falls back to the leftmost
+' interactive dropdown (video → audio → subtitles) for the first-ever entry.
+' Also guards on m.trackCluster.visible to match pickTrackDropdownFromButtons above.
+function pickTrackDropdownFromDescription() as object
+  if not isValid(m.trackCluster) or not m.trackCluster.visible then return invalid
+
+  if isValid(m.lastFocusedDropdown) and m.lastFocusedDropdown.visible and m.lastFocusedDropdown.isInteractive
+    return m.lastFocusedDropdown
+  end if
+
+  slots = [m.videoDropdown, m.audioDropdown, m.subtitleDropdown]
+  for each candidate in slots
+    if isValid(candidate) and candidate.visible and candidate.isInteractive
+      return candidate
+    end if
+  end for
+  return invalid
+end function
+
+' buildSearchOrder: Returns an array of slot indices starting with `preferred` and
+' spiraling outward. Used by pickTrackDropdownFromButtons to find the nearest interactive
+' slot when the preferred one isn't usable.
+function buildSearchOrder(preferred as integer) as object
+  if preferred = 0 then return [0, 1, 2]
+  if preferred = 1 then return [1, 0, 2]
+  return [2, 1, 0]
+end function
 
 ' onSeasonSeriesDataLoaded: Update Season info rows and logo with parent series metadata
 sub onSeasonSeriesDataLoaded()
@@ -3120,13 +3315,6 @@ sub onFirstEpisodeLoaded()
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
-  ' Options popup: intercept OK release on optionsButton
-  if key = "OK" and isValid(m.optionsButton) and m.optionsButton.isInFocusChain()
-    m.options.visible = true
-    m.options.setFocus(true)
-    return true
-  end if
-
   if not press then return false
 
   item = m.top.itemContent
@@ -3153,10 +3341,19 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
   end if
 
-  ' DOWN: itemDescription -> buttonGrp
+  ' DOWN: itemDescription -> track row dropdown (if any interactive), else buttonGrp.
+  ' Uses the "remember last focused" picker so returning to the row after coming back
+  ' from buttons/extras lands the user on the same slot. Falls through to the button
+  ' group only when no interactive dropdown exists. The track row is NEVER skipped.
   if key = "down" and m.itemDescription.isInFocusChain()
-    m.top.lastFocus = m.buttonGrp
-    m.buttonGrp.setFocus(true)
+    target = pickTrackDropdownFromDescription()
+    if isValid(target)
+      m.top.lastFocus = target
+      target.setFocus(true)
+    else
+      m.top.lastFocus = m.buttonGrp
+      m.buttonGrp.setFocus(true)
+    end if
     return true
   end if
 
@@ -3173,9 +3370,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
     updateItemDetailsAnimationTarget()
     activateExtras()
 
-    ' Hide description and tracks before sliding up so they don't show during the transition
+    ' Hide description and the entire track cluster before sliding up so they don't
+    ' show during the transition. trackCluster wraps both rows so a single opacity
+    ' toggle is sufficient.
     m.itemDescription.opacity = 0
-    m.itemTracks.opacity = 0
+    m.trackCluster.opacity = 0
 
     ' Animate itemDetails to top (synced with extras slider)
     m.itemDetailsSliderInterp.reverse = false
@@ -3198,9 +3397,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
       deactivateExtras()
 
-      ' Restore description and tracks before sliding back down
+      ' Restore description and track cluster before sliding back down
       m.itemDescription.opacity = 1
-      m.itemTracks.opacity = 1
+      m.trackCluster.opacity = 1
 
       ' Animate itemDetails back to rest position (synced with extras slider)
       m.itemDetailsSliderInterp.reverse = true
@@ -3217,23 +3416,24 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
   end if
 
-  ' UP: buttonGrp -> itemDescription (if in layout, i.e. has content)
+  ' UP: buttonGrp -> track dropdown picked from the button column (ignoring any
+  ' remembered slot — by design, UP-from-buttons ALWAYS targets the slot visually
+  ' above the currently focused button). If no dropdowns are interactive, fall through
+  ' to itemDescription. Navigation ladder: buttons <-> track row <-> description.
   if key = "up" and m.buttonGrp.isInFocusChain()
-    if m.itemDescriptionInLayout
+    target = pickTrackDropdownFromButtons()
+    if isValid(target)
+      m.top.lastFocus = target
+      target.setFocus(true)
+      return true
+    else if m.itemDescriptionInLayout
       m.top.lastFocus = m.itemDescription
       m.itemDescription.setFocus(true)
       return true
     end if
   end if
 
-  if key = "back"
-    if m.options.visible = true
-      m.options.visible = false
-      videoOptionsClosed()
-      audioOptionsClosed()
-      return true
-    end if
-  else if key = "play" and m.extrasGrid.hasFocus()
+  if key = "play" and m.extrasGrid.hasFocus()
     if isValid(m.extrasGrid.focusedItem)
       m.top.quickPlayNode = m.extrasGrid.focusedItem
       m.top.quickPlayNode = invalid
@@ -3276,6 +3476,34 @@ sub destroy()
   m.extrasGrid.unobserveField("personHasMedia")
   m.extrasGrid.unobserveField("playlistContentKind")
   m.extrasGrid.unobserveField("targetTranslationY")
+
+  ' Unobserve TrackDropdown output fields + focusedChild memory observers
+  if isValid(m.videoDropdown)
+    m.videoDropdown.unobserveField("selectedAction")
+    m.videoDropdown.unobserveField("requestFocusReturn")
+    m.videoDropdown.unobserveField("requestFocusDown")
+    m.videoDropdown.unobserveField("requestFocusExit")
+    m.videoDropdown.unobserveField("focusedChild")
+    m.videoDropdown.callFunc("destroy")
+  end if
+  if isValid(m.audioDropdown)
+    m.audioDropdown.unobserveField("selectedAction")
+    m.audioDropdown.unobserveField("requestFocusReturn")
+    m.audioDropdown.unobserveField("requestFocusDown")
+    m.audioDropdown.unobserveField("requestFocusExit")
+    m.audioDropdown.unobserveField("focusedChild")
+    m.audioDropdown.callFunc("destroy")
+  end if
+  if isValid(m.subtitleDropdown)
+    m.subtitleDropdown.unobserveField("selectedAction")
+    m.subtitleDropdown.unobserveField("requestFocusReturn")
+    m.subtitleDropdown.unobserveField("requestFocusDown")
+    m.subtitleDropdown.unobserveField("requestFocusExit")
+    m.subtitleDropdown.unobserveField("focusedChild")
+    m.subtitleDropdown.callFunc("destroy")
+  end if
+  m.lastFocusedDropdown = invalid
+
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
     m.clock = invalid
@@ -3312,7 +3540,6 @@ sub destroy()
   m.extrasGrid = invalid
   m.gridAnime = invalid
   m.gridTranslationInterp = invalid
-  m.options = invalid
   m.infoGroup = invalid
   m.itemDescription = invalid
   m.buttonGrp = invalid
@@ -3320,12 +3547,20 @@ sub destroy()
   m.dateCreatedLabel = invalid
   m.itemTextGradient = invalid
   m.itemDetails = invalid
-  m.itemTracks = invalid
   m.itemDetailsSlider = invalid
   m.itemDetailsSliderInterp = invalid
   m.itemInfoRows = invalid
   m.directorGenreGroup = invalid
-  m.optionsButton = invalid
+  m.itemTracks = invalid
+  m.trackCluster = invalid
+  m.trackTitles = invalid
+  m.videoTrackTitle = invalid
+  m.audioTrackTitle = invalid
+  m.subtitleTrackTitle = invalid
+  m.trackDropdowns = invalid
+  m.videoDropdown = invalid
+  m.audioDropdown = invalid
+  m.subtitleDropdown = invalid
   m.shuffleButton = invalid
   m.shuffleLoadingButton = invalid
   m.resumeLoadingButton = invalid
