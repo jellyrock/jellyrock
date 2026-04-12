@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - trickplay carousel not rendering after boolean prefix refactor ([#489](https://github.com/jellyrock/jellyrock/pull/489))
 
+### Dependencies
+
+- Update dotenv from v17.4.1 to v17.4.2 ([#490](https://github.com/jellyrock/jellyrock/pull/490))
+
 ## [2.11.1](https://github.com/jellyrock/jellyrock/compare/v2.11.0...v2.11.1) - 2026-04-10
 
 ### Added
