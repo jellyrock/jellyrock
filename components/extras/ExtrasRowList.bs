@@ -1050,6 +1050,9 @@ end sub
 
 sub onRowItemSelected()
   m.top.selectedItem = m.top.content.getChild(m.top.rowItemSelected[0]).getChild(m.top.rowItemSelected[1])
+  ' Clear immediately — prevents stale value from re-firing the m.port
+  ' observer when the parent ItemDetails screen is restored after popScene.
+  m.top.selectedItem = invalid
 end sub
 
 sub onRowItemFocused()

@@ -167,6 +167,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
         selectedItem = selectedContent.getChild(m.searchSelect.rowItemFocused[1])
         if isValid(selectedItem)
           m.top.quickPlayNode = selectedItem
+          m.top.quickPlayNode = invalid
           return true
         end if
       end if
