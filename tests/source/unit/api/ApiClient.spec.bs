@@ -285,6 +285,350 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Edge Cases - Missing Server URL (no-userId methods)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' These methods have NO userId guard — validatedReq() is their
+    ' only protection against a missing server URL.
+
+    @it("returns invalid from BuildGetArtistByNameRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetArtistByNameRequest("test-artist")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetArtistSimilarRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetArtistSimilarRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetMediaSegmentsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetMediaSegmentsRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetItemLyricsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetItemLyricsRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildDeleteItemRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildDeleteItemRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetSessionsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetSessionsRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetBrandingConfigurationRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetBrandingConfigurationRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetAdditionalPartsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetAdditionalPartsRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetSimilarItemsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetSimilarItemsRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetFiltersRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetFiltersRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildHeadItemImageRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildHeadItemImageRequest(m.testItemId, "primary")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetLiveTVChannelsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetLiveTVChannelsRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetLiveTVProgramsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetLiveTVProgramsRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetLiveTvRecommendedProgramsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetLiveTvRecommendedProgramsRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetStudiosRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetStudiosRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetGenresRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetGenresRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetLiveTvProgramRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetLiveTvProgramRequest("test-program-id")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetLiveTvTimerDefaultsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetLiveTvTimerDefaultsRequest("test-program-id")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildCancelTimerRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildCancelTimerRequest("test-timer-id")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildCancelSeriesTimerRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildCancelSeriesTimerRequest("test-timer-id")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetLocalTrailersRequest V2 when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetLocalTrailersRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetSpecialFeaturesRequest V2 when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetSpecialFeaturesRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Edge Cases - Missing Server URL (userId methods)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' These methods check userId first, but validatedReq() is still
+    ' needed as a second guard. Tests confirm it isn't accidentally
+    ' removed during refactors (the userId check would mask the gap).
+
+    @it("returns invalid from BuildGetItemRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetItemRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetViewsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetViewsRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetNextUpRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetNextUpRequest({})
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildMarkFavoriteRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildMarkFavoriteRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Edge Cases - Missing Server URL (POST methods)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' POST methods that do manual buildURL() + isValid() checks
+    ' instead of using validatedReq() directly.
+
+    @it("returns invalid from BuildPostPlaybackInfoRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildPostPlaybackInfoRequest(m.testItemId, {})
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildPlaystateRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildPlaystateRequest("start", { ItemId: m.testItemId })
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildPostSessionCapabilitiesRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildPostSessionCapabilitiesRequest({})
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildGetLiveTvScheduleRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetLiveTvScheduleRequest({})
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildCreateTimerRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildCreateTimerRequest({})
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    @it("returns invalid from BuildCreateSeriesTimerRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildCreateSeriesTimerRequest({})
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("V1/V2 Routing - URL Path Verification")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
