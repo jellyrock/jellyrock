@@ -454,12 +454,21 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
       ' if the domain of the URI is local to the server,
       ' create a new URI by appending the received path to the server URL
       ' later we will substitute the users provided URL for this case
-      if isValid(uri[4])
-        localUrl = buildURL(uri[4])
-        if isValid(localUrl)
-          video.content.url = localUrl
-        end if
+      if not isValid(uri[4])
+        m.log.error("Localhost stream has no path component", "sourceUrl", m.playbackInfo.MediaSources[0].Path)
+        m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+        video.content = invalid
+        return
       end if
+
+      localUrl = buildURL(uri[4])
+      if not isValid(localUrl)
+        m.log.error("Failed to build localhost stream URL — server URL not set", "path", uri[4])
+        m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+        video.content = invalid
+        return
+      end if
+      video.content.url = localUrl
     else
       ' External stream - use raw URL without modification
       fullyExternal = true
