@@ -1385,7 +1385,7 @@ sub ReportPlayback(state = "update" as string)
 
   ' Report playstate via side-effect task
   req = GetApi().BuildPlaystateRequest(state, params)
-  if isValid(req) then SubmitSideEffect(req)
+  SubmitSideEffect(req)
 
   m.log.debug("end ReportPlayback", state, int(m.top.position))
 end sub

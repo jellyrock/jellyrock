@@ -40,5 +40,10 @@ sub executeSideEffect()
     end if
   end if
 
+  if not isValid(req.url) or req.url = ""
+    print "[SideEffectTask] request rejected: url is invalid or empty"
+    return
+  end if
+
   rr_Requests().request(method, req.url, args)
 end sub

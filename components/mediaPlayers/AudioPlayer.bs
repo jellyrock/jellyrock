@@ -40,5 +40,5 @@ sub ReportPlayback(state as string)
 
   ' Report playstate via side-effect task
   req = GetApi().BuildPlaystateRequest(state, params)
-  if isValid(req) then SubmitSideEffect(req)
+  SubmitSideEffect(req)
 end sub
