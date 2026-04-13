@@ -115,6 +115,7 @@ sub startProgramProgressTicking()
   ' trigger unnecessary refetches before the screen's own refresh has landed.
   m.suppressNextExpiry = true
   onProgramProgressTick()
+  m.suppressNextExpiry = false
 end sub
 
 sub stopProgramProgressTicking(releaseTimer = false as boolean)
