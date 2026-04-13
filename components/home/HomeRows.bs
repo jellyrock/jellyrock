@@ -191,16 +191,19 @@ sub startParallelLoads()
     if section.type = "resume"
       if m.isLoadingResume then continue for
       m.isLoadingResume = true
+      m.LoadContinueWatchingTask.unobserveField("content")
       m.LoadContinueWatchingTask.observeField("content", "updateContinueWatchingItems")
       m.LoadContinueWatchingTask.control = "RUN"
     else if section.type = "nextup"
       if m.isLoadingNextUp then continue for
       m.isLoadingNextUp = true
+      m.LoadNextUpTask.unobserveField("content")
       m.LoadNextUpTask.observeField("content", "updateNextUpItems")
       m.LoadNextUpTask.control = "RUN"
     else if section.type = "livetv"
       if m.isLoadingOnNow then continue for
       m.isLoadingOnNow = true
+      m.LoadOnNowTask.unobserveField("content")
       m.LoadOnNowTask.observeField("content", "updateOnNowItems")
       m.LoadOnNowTask.control = "RUN"
     end if
@@ -806,6 +809,7 @@ sub destroy()
   ' Unobserve m.top fields
   m.top.unobserveField("rowItemSelected")
   m.top.unobserveField("rowItemFocused")
+  m.top.unobserveField("programsExpired")
 
   ' Stop and release all persistent task nodes
   m.LoadLibrariesTask.unobserveField("content")
