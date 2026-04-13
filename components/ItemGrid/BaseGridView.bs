@@ -1013,6 +1013,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       if isValid(m.channelFocused)
         m.log.debug("quickplay channel", "id", m.channelFocused.id, "type", m.channelFocused.type)
         m.top.quickPlayNode = m.channelFocused
+        m.top.quickPlayNode = invalid
         return true
       end if
     end if
@@ -1021,6 +1022,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
     if isValid(itemToPlay)
       m.top.quickPlayNode = itemToPlay
+      m.top.quickPlayNode = invalid
       return true
     end if
   else if key = "left"

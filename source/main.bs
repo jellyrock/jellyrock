@@ -96,11 +96,10 @@ sub Main (args as dynamic) as void
         handleFontDownloadCompletion(fontDownloadTask)
       end if
     else if isNodeEvent(msg, "quickPlayNode")
-      reportingNode = msg.getRoSGNode()
-      itemNode = invalid
-      if isValid(reportingNode) and isValid(reportingNode.quickPlayNode)
-        itemNode = reportingNode.quickPlayNode
-      end if
+      ' Read from msg.getData() — the value at event-queue time — not from
+      ' the current field value which may already be cleared to invalid by
+      ' the set-then-clear pattern that prevents stale re-fires.
+      itemNode = msg.getData()
       if isValid(itemNode) and isValid(itemNode.id) and itemNode.id <> ""
         itemType = invalid
         if isValid(itemNode.type) and itemNode.type <> ""

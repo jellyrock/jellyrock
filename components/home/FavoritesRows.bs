@@ -336,6 +336,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
       itemToPlay = getItemAtIndices(m.top.rowItemFocused)
       if isValid(itemToPlay) and itemToPlay.type <> "Loading"
         m.top.quickPlayNode = itemToPlay
+        ' Clear immediately — same pattern as selectedItem. Prevents stale
+        ' value from re-firing when the screen is restored after playback.
+        m.top.quickPlayNode = invalid
       end if
       return true
     else if key = "replay"

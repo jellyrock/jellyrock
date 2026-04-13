@@ -1050,6 +1050,9 @@ end sub
 
 sub onRowItemSelected()
   m.top.selectedItem = m.top.content.getChild(m.top.rowItemSelected[0]).getChild(m.top.rowItemSelected[1])
+  ' Clear immediately — prevents stale value from re-firing the m.port
+  ' observer when the parent ItemDetails screen is restored after popScene.
+  m.top.selectedItem = invalid
 end sub
 
 sub onRowItemFocused()
@@ -1121,6 +1124,67 @@ sub updatePanelPosition(rowIndex as integer)
     end if
     m.top.targetTranslationY = translationY
   end if
+end sub
+
+' destroy: Full teardown releasing all resources before component removal.
+' Called by ItemDetails.destroy() before nulling the extrasGrid reference.
+sub destroy()
+  ' Stop all in-flight tasks and unobserve their content fields
+  cancelInFlightChain()
+
+  ' Stop and release the program progress timer (inherited from JRRowList)
+  stopProgramProgressTicking(true)
+
+  ' Unobserve m.top fields set in init()
+  m.top.unobserveField("rowItemSelected")
+  m.top.unobserveField("rowItemFocused")
+  m.top.unobserveField("programsExpired")
+
+  ' Release task references
+  m.LoadSeasonsTask = invalid
+  m.LoadSeasonAllEpisodesTask = invalid
+  m.LoadSeasonEpisodesTask = invalid
+  m.LoadAdditionalPartsTask = invalid
+  m.LoadPeopleTask = invalid
+  m.LikeThisTask = invalid
+  m.SpecialFeaturesTask = invalid
+  m.LoadMoviesTask = invalid
+  m.LoadShowsTask = invalid
+  m.LoadSeriesTask = invalid
+  m.LoadBoxSetItemsTask = invalid
+  m.LoadArtistAlbumsTask = invalid
+  m.LoadArtistAppearsOnTask = invalid
+  m.LoadArtistSongsTask = invalid
+  m.LoadArtistSimilarTask = invalid
+  m.LoadAlbumSongsTask = invalid
+  m.LoadPlaylistItemsTask = invalid
+  m.LoadPhotoAlbumItemsTask = invalid
+  m.LoadChannelProgramsTask = invalid
+
+  ' Clear row references
+  m.rowChapters = invalid
+  m.rowAdditionalParts = invalid
+  m.rowSeasons = invalid
+  m.rowEpisodes = invalid
+  m.rowSeasonEpisodes = invalid
+  m.rowCast = invalid
+  m.rowLikeThis = invalid
+  m.rowSpecialFeatures = invalid
+  m.rowBoxSetItems = invalid
+  m.rowMovies = invalid
+  m.rowTvShows = invalid
+  m.rowSeries = invalid
+  m.rowArtistAlbums = invalid
+  m.rowArtistAppearsOn = invalid
+  m.rowArtistSongs = invalid
+  m.rowAlbumSongs = invalid
+  m.rowAlbumArtistAlbums = invalid
+  m.rowPlaylistItems = invalid
+  m.rowPhotoAlbumItems = invalid
+  m.rowChannelPrograms = invalid
+
+  ' Reset flags
+  m.isRefetchingChannelPrograms = false
 end sub
 
 ' onKeyEvent: Anticipate the next row on UP/DOWN so the panel translation animation starts

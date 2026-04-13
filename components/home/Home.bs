@@ -295,7 +295,9 @@ sub onRowItemSelected(msg)
   m.top.selectedItem = msg.getData()
 end sub
 
-' Proxy quickPlayNode from whichever row list fires it
+' Proxy quickPlayNode from whichever row list fires it.
+' Must pass through invalid clears so Home.quickPlayNode doesn't retain
+' a stale value that re-fires the m.port observer on screen restoration.
 sub onQuickPlayNode(msg)
   m.top.quickPlayNode = msg.getData()
 end sub

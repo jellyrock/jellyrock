@@ -8,6 +8,7 @@
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <function name="loadParts" />
     <function name="loadPersonVideos" />
+    <function name="destroy" />
     <field id="personHasMedia" type="bool" value="false" alwaysNotify="true" />
     <field id="playlistContentKind" type="string" value="unknown" alwaysNotify="true" />
     <!-- Target Y for animating the RowList's translation within extrasGrp.

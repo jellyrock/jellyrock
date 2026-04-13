@@ -35,6 +35,7 @@ sub init()
   m.programProgressTimer = invalid
   m.observedContentRoot = invalid
   m.isProgramProgressTicking = false
+  m.suppressNextExpiry = false
 
   m.top.observeField("content", "onProgramProgressContentChanged")
 end sub
@@ -108,8 +109,13 @@ sub startProgramProgressTicking()
   m.isProgramProgressTicking = true
 
   ' Immediate refresh so returning from Settings/another screen does not
-  ' leave stale percentages on screen for up to 60 seconds.
+  ' leave stale percentages on screen for up to 60 seconds. Suppress expiry
+  ' detection on this first tick — the data is stale (from before the user
+  ' navigated away) and almost always contains expired programs, which would
+  ' trigger unnecessary refetches before the screen's own refresh has landed.
+  m.suppressNextExpiry = true
   onProgramProgressTick()
+  m.suppressNextExpiry = false
 end sub
 
 sub stopProgramProgressTicking(releaseTimer = false as boolean)
@@ -190,7 +196,11 @@ sub onProgramProgressTick()
   end for
 
   if hasExpiredProgram
-    m.top.programsExpired = true
+    if m.suppressNextExpiry
+      m.suppressNextExpiry = false
+    else
+      m.top.programsExpired = true
+    end if
   end if
 end sub
 
