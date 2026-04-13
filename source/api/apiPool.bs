@@ -131,7 +131,8 @@ end function
 ' No response is observed. Calls are serialised — do not use for cancellable UI requests.
 '
 ' @param req - request AA: { method, url, headers?, body?, timeout? }
-sub SubmitSideEffect(req as object)
+sub SubmitSideEffect(req as dynamic)
+  if not isValid(req) then return
   sideEffectTask = m.global.sideEffectTask
   if not isValid(sideEffectTask) then return
   sideEffectTask.request = req

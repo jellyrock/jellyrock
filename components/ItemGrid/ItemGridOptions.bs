@@ -212,12 +212,12 @@ sub toggleFavorite()
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_selected.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite_selected.png"
     req = GetApi().BuildMarkFavoriteRequest(m.selectedFavoriteItem.id)
-    if isValid(req) then SubmitSideEffect(req)
+    SubmitSideEffect(req)
   else
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite.png"
     req = GetApi().BuildUnmarkFavoriteRequest(m.selectedFavoriteItem.id)
-    if isValid(req) then SubmitSideEffect(req)
+    SubmitSideEffect(req)
   end if
   ' Make sure we set the Favorite Heart color for the appropriate child
   setHeartColor("#cc3333")
