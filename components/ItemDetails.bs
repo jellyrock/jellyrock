@@ -3229,6 +3229,19 @@ end function
 ' Called automatically by SceneManager.popScene() / clearScenes()
 sub destroy()
   m.log.verbose("destroy")
+
+  ' Tear down ExtrasRowList FIRST — stops in-flight tasks (including any
+  ' LoadChannelProgramsTask started by onProgramsExpired) and unobserves all
+  ' fields before we destroy the texture manager or null out references.
+  m.extrasGrid.callFunc("destroy")
+
+  ' Unobserve m.port observers set by showScenes.bs CreateItemDetailsGroup().
+  ' These persist until the node is garbage collected, so explicit cleanup
+  ' prevents stale events from reaching main.bs's event loop after popScene.
+  m.top.unobserveField("quickPlayNode")
+  m.extrasGrid.unobserveField("selectedItem")
+  m.buttonGrp.unobserveField("buttonSelected")
+
   destroyTextureManager(m.extrasGrid.content)
 
   ' Safety net: stop the loading spinner in case the component is destroyed
