@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- prevent stale field re-fires on scene restore (quickPlayNode/selectedItem) ([#494](https://github.com/jellyrock/jellyrock/pull/494))
 - validate URLs before HTTP requests to prevent Invalid-to-String crash ([#491](https://github.com/jellyrock/jellyrock/pull/491))
 - trickplay carousel not rendering after boolean prefix refactor ([#489](https://github.com/jellyrock/jellyrock/pull/489))
 
