@@ -56,6 +56,17 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
         end if
       end if
     end if
+
+    ' Live TV: request ≥8 segments per Roku's recommendation (gives ~48s seekable DVR window)
+    if videoDurationSeconds = 0
+      if isValid(postData.DeviceProfile.TranscodingProfiles)
+        for each profile in postData.DeviceProfile.TranscodingProfiles
+          if isValid(profile.Type) and profile.Type = "Video"
+            profile.MinSegments = 8
+          end if
+        end for
+      end if
+    end if
   end if
 
   if subtitleTrackIndex <> SubtitleSelection.NONE and subtitleTrackIndex <> SubtitleSelection.NOT_SET

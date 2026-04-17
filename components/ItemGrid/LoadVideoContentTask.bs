@@ -153,10 +153,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   subtitleIdx = m.top.selectedSubtitleIndex
   videotype = LCase(meta.type)
 
-  ' Check for any Live TV streams or Recordings coming from other places other than the TV Guide.
-  ' TvChannel is always live — include it here so mediaSourceId is cleared and live-stream
-  ' flags (content.live, StreamFormat, transcodeParams.LiveStreamId) are set correctly below.
-  isLive = false
+  ' Title override for recordings, TvChannels, and Programs (TV guide entries)
   titleOverride = ""
   if videotype = "recording" or videotype = "tvchannel" or isValidAndNotEmpty(meta.channelId)
     if isValidAndNotEmpty(meta.episodeTitle)
@@ -167,12 +164,19 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     else
       titleOverride = meta.name
     end if
-    isLive = true
     if LCase(meta.type) = "program"
       video.id = meta.channelId
     else
       video.id = meta.id
     end if
+  end if
+
+  ' Recordings are file-based — seekable with chapters, so they must NOT be flagged as live.
+  isLive = false
+  if videotype = "tvchannel"
+    isLive = true
+  else if videotype <> "recording" and isValidAndNotEmpty(meta.channelId)
+    isLive = true
   end if
 
   video.chapters = meta.chapters
@@ -185,7 +189,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     video.episodeNumber = meta.indexNumber
     video.episodeNumberEnd = meta.indexNumberEnd
   else if videotype = "recording"
-    ' Recordings belong to a series — look up the series logo, same as episodes
+    video.content.contenttype = "episode"
   end if
 
   ' Set logo image using metadata (same logic as ItemDetails)
@@ -246,9 +250,13 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     subtitleIdx = defaultSubtitleTrackFromVid(meta, audioStreamIdx, mediaSourceId)
   end if
 
-  ' PlayStart requires the time to be in seconds
-  video.content.PlayStart = int(playbackPosition / 10000000)
-  m.log.debug("Playback position resolved", "startingPoint", playbackPosition, "PlayStart", video.content.PlayStart)
+  ' PlayStart=999999 jumps to the live edge; Roku clips to the HLS manifest's availability window
+  if isLive
+    video.content.PlayStart = 999999
+  else
+    video.content.PlayStart = int(playbackPosition / 10000000)
+    m.log.debug("Playback position resolved", "startingPoint", playbackPosition, "PlayStart", video.content.PlayStart)
+  end if
 
   ' Build complete trickplay config using utility function for fail-fast validation
   ' meta.trickplayData is the pre-extracted Trickplay AA from the transformer
@@ -309,7 +317,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.PlaySessionId = m.playbackInfo.PlaySessionId
 
   if isLive
-    video.content.live = true
+    ' content.live is intentionally unset — setting it shows Roku's "Rewind live TV" bar
+    ' and restricts seeking. Without it, Roku allows scrubbing within the HLS DVR window.
     video.content.StreamFormat = "hls"
   end if
 
