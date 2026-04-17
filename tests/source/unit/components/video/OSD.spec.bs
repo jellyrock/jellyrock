@@ -249,6 +249,75 @@ namespace tests
       m.assertEqual(m.osd.runTimeMinutes, 0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Recording metadata handling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets hasChapters=true for Recording with chapters")
+    function _()
+      item = m.createItem({ id: "rec-1", type: "Recording", chapterCount: 3 })
+      m.osd.itemData = item
+
+      m.assertTrue(m.osd.hasChapters)
+    end function
+
+    @it("computes runTimeMinutes from Recording runTimeTicks")
+    function _()
+      ' 45 minutes = 45 * 60 * 10000000 = 27000000000
+      item = m.createItem({ id: "rec-2", type: "Recording", runTimeTicks: 27000000000& })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.runTimeMinutes, 45)
+    end function
+
+    @it("sets numAudioStreams for Recording")
+    function _()
+      item = m.createItem({ id: "rec-3", type: "Recording", audioStreamCount: 2 })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.numAudioStreams, 2)
+    end function
+
+    @it("falls back to isSeries=true for Recording without explicit flags")
+    function _()
+      ' Recording type triggers the isSeries heuristic fallback (line 101-102 in OSD.bs)
+      item = m.createItem({ id: "rec-4", type: "Recording" })
+      m.osd.itemData = item
+
+      m.assertFalse(m.osd.isMovie)
+      m.assertTrue(m.osd.isSeries)
+    end function
+
+    @it("uses Recording's own runTimeTicks (not from currentProgram)")
+    function _()
+      ' Recordings use their own metadata, not a nested currentProgram.
+      ' 120 minutes = 120 * 60 * 10000000 = 72000000000
+      item = m.createItem({ id: "rec-5", type: "Recording", runTimeTicks: 72000000000& })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.runTimeMinutes, 120)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Video source count handling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets numVideoSources=2 when hasMultipleVideoSources is true")
+    function _()
+      item = m.createItem({ id: "vs-1", type: "Movie", hasMultipleVideoSources: true })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.numVideoSources, 2)
+    end function
+
+    @it("sets numVideoSources=1 when hasMultipleVideoSources is false")
+    function _()
+      item = m.createItem({ id: "vs-2", type: "Movie", hasMultipleVideoSources: false })
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.numVideoSources, 1)
+    end function
+
   end class
 
 end namespace

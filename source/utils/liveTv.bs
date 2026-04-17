@@ -1,0 +1,23 @@
+import "pkg:/source/utils/misc.bs"
+
+function parseProgramEndTimeEpoch(meta as object) as integer
+  if not isValid(meta) or not isValid(meta.currentProgram) then return 0
+
+  endDateStr = meta.currentProgram.endDate
+  if not isValidAndNotEmpty(endDateStr) then return 0
+
+  dt = CreateObject("roDateTime")
+  dt.FromISO8601String(endDateStr)
+  return dt.AsSeconds()
+end function
+
+function parseProgramStartTimeEpoch(meta as object) as integer
+  if not isValid(meta) or not isValid(meta.currentProgram) then return 0
+
+  startDateStr = meta.currentProgram.startDate
+  if not isValidAndNotEmpty(startDateStr) then return 0
+
+  dt = CreateObject("roDateTime")
+  dt.FromISO8601String(startDateStr)
+  return dt.AsSeconds()
+end function

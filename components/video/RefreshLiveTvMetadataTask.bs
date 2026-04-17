@@ -1,0 +1,23 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/items.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.log = new log.Logger("RefreshLiveTvMetadataTask")
+  m.top.functionName = "refreshLiveTvMetadata"
+end sub
+
+' forceRefresh=true bypasses the cache so we pick up program transitions
+sub refreshLiveTvMetadata()
+  channelId = m.top.channelId
+  if not isValidAndNotEmpty(channelId) then return
+
+  meta = ItemMetaData(channelId, "Chapters,Trickplay", true)
+  if isValid(meta)
+    m.top.refreshedItem = meta
+  else
+    m.log.warn("Failed to refresh live TV metadata", channelId)
+  end if
+end sub

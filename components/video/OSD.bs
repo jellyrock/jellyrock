@@ -1,6 +1,7 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -40,6 +41,12 @@ sub init()
   m.focusedButtonIndex = 1
   m.subtitleDividerCount = 0
 
+  ' State-based behind-live tracking. Roku's HLS player buffers 10-20s naturally,
+  ' so threshold detection (duration-position) oscillates between LIVE and behind.
+  m.liveTvIsAtLiveEdge = true
+  m.liveTvPausedAtEpoch = 0
+  m.liveTvAccumulatedBehind = 0
+
   m.buttonMenuRight = m.top.findNode("buttonMenuRight")
   m.buttonMenuLeft = m.top.findNode("buttonMenuLeft")
   m.buttonMenuLeft.buttonFocused = m.defaultButtonIndex
@@ -66,6 +73,14 @@ end sub
 sub onItemDataChanged()
   item = m.top.itemData
   if not isValid(item) or not isValidAndNotEmpty(item.id) then return
+
+  ' Reset behind-live state only on channel change; program refreshes keep the offset
+  previousItemId = isValid(m.itemData) ? m.itemData.id : ""
+  if item.id <> previousItemId
+    m.liveTvIsAtLiveEdge = true
+    m.liveTvAccumulatedBehind = 0
+    m.liveTvPausedAtEpoch = 0
+  end if
 
   ' Cache item reference for use in display methods
   m.itemData = item
@@ -148,16 +163,16 @@ end sub
 sub setButtonStates()
   queueCount = m.global.queueManager.callFunc("getCount")
   queueIndex = m.global.queueManager.callFunc("getPosition")
+  isTvChannel = m.itemData.type = "TvChannel"
 
   ' Disable these buttons as needed
 
-  ' Item Previous
-  if queueCount = 1 or queueIndex = 0
+  ' Keep prev/next enabled for TvChannel — channel list loads async after init
+  if not isTvChannel and (queueCount = 1 or queueIndex = 0)
     itemPrevious = m.buttonMenuLeft.findNode("itemBack")
     itemPrevious.isEnabled = false
   end if
-  ' Item Next
-  if queueIndex + 1 >= queueCount
+  if not isTvChannel and (queueIndex + 1 >= queueCount)
     itemNext = m.buttonMenuLeft.findNode("itemNext")
     itemNext.isEnabled = false
   end if
@@ -165,7 +180,7 @@ sub setButtonStates()
   ' Remove these buttons as needed
 
   ' Video Sources - hide for single source or live TV
-  if m.top.numVideoSources < 2 or m.itemData.type = "TvChannel"
+  if m.top.numVideoSources < 2 or isTvChannel
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showVideoSourceMenu"))
   end if
   ' Audio Track
@@ -176,9 +191,19 @@ sub setButtonStates()
   if not m.itemData.hasSubtitles
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showSubtitleMenu"))
   end if
-  ' Chapters
-  if not m.top.hasChapters
+  ' Chapters — TvChannel has none
+  if not m.top.hasChapters or isTvChannel
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("chapterList"))
+  end if
+  ' Go to Live — isEnabled also tracks visibility to prevent focus-stealing
+  ' (OSDButtonGroup navigation only checks isEnabled, not visible)
+  goToLiveButton = m.buttonMenuLeft.findNode("goToLive")
+  if not isTvChannel
+    m.buttonMenuLeft.removeChild(goToLiveButton)
+  else if isValid(goToLiveButton)
+    goToLiveButton.text = UCase(translate(translationKeys.LabelLive))
+    goToLiveButton.visible = false
+    goToLiveButton.isEnabled = false
   end if
 end sub
 
@@ -410,16 +435,8 @@ sub setVideoSubTitle()
 end sub
 
 sub onProgressPercentageChanged()
-  ' change progress bar for live tv
-  itemType = ""
-  if isValid(m.itemData)
-    itemType = m.itemData.type
-  end if
-
-  if itemType = "TvChannel"
-    m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
-    m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
-    m.progressBar.width = m.progressBarBackground.width ' set to full width
+  if isLiveTvItem()
+    updateLiveTvDisplay()
   else
     m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
     m.videoRemainingTime.text = "-" + secondsToTimestamp(m.top.remainingPositionTime, true)
@@ -429,13 +446,79 @@ sub onProgressPercentageChanged()
   setEndsAtText()
 end sub
 
+' Called from onProgressPercentageChanged() (position updates) and inactiveCheck()
+' (1s timer). The timer ensures the behind-live countdown ticks while paused.
+sub updateLiveTvDisplay()
+  programStart = parseProgramStartTimeEpoch(m.itemData)
+  programEnd = parseProgramEndTimeEpoch(m.itemData)
+  now = CreateObject("roDateTime").AsSeconds()
+  behindLive = getLiveTvBehindLiveSeconds()
+
+  ' isEnabled tracks visibility to prevent focus-stealing — OSDButtonGroup only checks isEnabled
+  goToLiveButton = m.buttonMenuLeft.findNode("goToLive")
+  if isValid(goToLiveButton)
+    shouldShow = not m.liveTvIsAtLiveEdge
+    goToLiveButton.visible = shouldShow
+    goToLiveButton.isEnabled = shouldShow
+  end if
+
+  if programStart > 0 and programEnd > programStart
+    programDuration = programEnd - programStart
+
+    if m.liveTvIsAtLiveEdge
+      elapsed = now - programStart
+      if elapsed < 0 then elapsed = 0
+      if elapsed > programDuration then elapsed = programDuration
+      programProgress = elapsed / programDuration
+
+      m.videoPositionTime.text = secondsToTimestamp(elapsed, true)
+      m.progressBar.width = m.progressBarBackground.width * programProgress
+      m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
+    else
+      ' While paused, now and behindLive grow in sync so userElapsed stays frozen
+      userElapsed = (now - behindLive) - programStart
+      if userElapsed < 0 then userElapsed = 0
+      if userElapsed > programDuration then userElapsed = programDuration
+      userProgress = userElapsed / programDuration
+
+      m.videoPositionTime.text = secondsToTimestamp(userElapsed, true)
+      m.progressBar.width = m.progressBarBackground.width * userProgress
+      m.videoRemainingTime.text = "-" + secondsToTimestamp(behindLive, true)
+    end if
+  else
+    ' Fallback when program timing data is missing
+    m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
+    if m.liveTvIsAtLiveEdge
+      m.progressBar.width = m.progressBarBackground.width
+      m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
+    else
+      m.progressBar.width = m.progressBarBackground.width * m.top.progressPercentage
+      m.videoRemainingTime.text = "-" + secondsToTimestamp(behindLive, true)
+    end if
+  end if
+end sub
+
 sub onPlaybackStateChanged()
-  if LCase(m.top.playbackState) = "playing"
+  state = LCase(m.top.playbackState)
+
+  if state = "playing"
     m.videoPlayPause.icon = "pkg:/images/icons/pause.png"
+
+    ' On resume, accumulate the pause duration into the behind-live offset
+    if isLiveTvItem() and m.liveTvPausedAtEpoch > 0
+      pauseDuration = CreateObject("roDateTime").AsSeconds() - m.liveTvPausedAtEpoch
+      m.liveTvAccumulatedBehind += pauseDuration
+      m.liveTvPausedAtEpoch = 0
+    end if
     return
   end if
 
   m.videoPlayPause.icon = "pkg:/images/icons/play.png"
+
+  if state = "paused" and isLiveTvItem()
+    m.liveTvIsAtLiveEdge = false
+    m.liveTvPausedAtEpoch = CreateObject("roDateTime").AsSeconds()
+  end if
 end sub
 
 sub resetFocusToDefaultButton()
@@ -463,10 +546,9 @@ sub onVisibleChanged()
   if m.top.visible
     resetFocusToDefaultButton()
 
-    if m.top.playbackState <> "paused"
-      m.inactivityTimer.observeField("fire", "inactiveCheck")
-      m.inactivityTimer.control = "start"
-    end if
+    ' Timer runs even while paused so the live TV behind-live counter keeps ticking
+    m.inactivityTimer.observeField("fire", "inactiveCheck")
+    m.inactivityTimer.control = "start"
   else
     m.inactivityTimer.control = "stop"
     m.inactivityTimer.unobserveField("fire")
@@ -479,15 +561,23 @@ sub onFocusChanged()
   end if
 end sub
 
-' inactiveCheck: Checks if the time since last keypress is greater than or equal to the allowed inactive time of the menu.
+' 1s timer: auto-hide on inactivity AND drive the behind-live countdown while paused
 sub inactiveCheck()
-  ' If user is currently seeing a dialog box, ignore inactive check
   if m.global.sceneManager.callFunc("isDialogOpen")
     return
   end if
 
+  ' onProgressPercentageChanged doesn't fire while paused, so update from the timer instead
+  if isLiveTvItem()
+    updateLiveTvDisplay()
+    setEndsAtText()
+  end if
+
   deviceInfo = CreateObject("roDeviceInfo")
   if deviceInfo.timeSinceLastKeypress() >= m.top.inactiveTimeout
+    if LCase(m.top.playbackState) = "paused"
+      return
+    end if
     m.top.action = "hide"
   end if
 end sub
@@ -503,6 +593,12 @@ sub onButtonSelected()
 
   if LCase(selectedButton.id) = "chapterlist"
     m.top.shouldShowChapterList = not m.top.shouldShowChapterList
+  end if
+
+  if LCase(selectedButton.id) = "gotolive"
+    m.liveTvIsAtLiveEdge = true
+    m.liveTvAccumulatedBehind = 0
+    m.liveTvPausedAtEpoch = 0
   end if
 
   m.top.action = selectedButton.id
@@ -582,6 +678,18 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   return false
+end function
+
+function isLiveTvItem() as boolean
+  return isValid(m.itemData) and m.itemData.type = "TvChannel"
+end function
+
+function getLiveTvBehindLiveSeconds() as integer
+  behind = m.liveTvAccumulatedBehind
+  if m.liveTvPausedAtEpoch > 0
+    behind += CreateObject("roDateTime").AsSeconds() - m.liveTvPausedAtEpoch
+  end if
+  return behind
 end function
 
 ' destroy: Full teardown releasing all resources before component removal

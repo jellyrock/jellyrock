@@ -41,6 +41,8 @@
       <IconButton id="itemBack" icon="pkg:/images/icons/itemPrevious.png" />
       <IconButton id="videoPlayPause" icon="pkg:/images/icons/play.png" />
       <IconButton id="itemNext" icon="pkg:/images/icons/itemNext.png" />
+      <!-- Go to Live: hidden by default, shown by OSD.bs when behind the live edge -->
+      <IconButton id="goToLive" icon="pkg:/images/icons/liveTV.png" visible="false" />
       <IconButton id="showVideoSourceMenu" icon="pkg:/images/icons/videoFile.png" />
       <IconButton id="showAudioMenu" icon="pkg:/images/icons/musicNote.png" />
       <IconButton id="showSubtitleMenu" icon="pkg:/images/icons/closedCaptions.png" />

@@ -1,11 +1,14 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/image.bs"
+import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
@@ -107,6 +110,16 @@ sub init()
     "Unknown": translate(translationKeys.LabelUnknown)
   }
 
+  ' Live TV metadata refresh: triggered when currentProgram.endDate passes,
+  ' or on fallback interval when endDate is missing
+  m.liveTvRefreshTask = invalid
+  m.liveTvProgramEndTime = 0
+  m.liveTvFallbackCounter = 0
+
+  ' Live TV channel navigation: queue is populated with all channels in background
+  m.loadChannelListTask = invalid
+  m.channelListLoaded = false
+
   m.checkedForNextEpisode = false
   m.getNextEpisodeTask = createObject("roSGNode", "GetNextEpisodeTask")
   m.getNextEpisodeTask.observeField("nextEpisodeData", "onNextEpisodeDataLoaded")
@@ -198,35 +211,79 @@ end sub
 '
 ' @param {string} action - skip action to take
 sub handleItemSkipAction(action as string)
-  if action = "itemnext"
-    queueManager = m.global.queueManager
+  queueManager = m.global.queueManager
+  queueCount = queueManager.callFunc("getCount")
+  queuePosition = queueManager.callFunc("getPosition")
 
-    ' If there is something next in the queue, play it
-    if queueManager.callFunc("getPosition") < queueManager.callFunc("getCount") - 1
-      m.top.control = "stop"
-      m.global.sceneManager.callFunc("clearPreviousScene")
-      queueManager.callFunc("moveForward")
-      updateQueueBackdrop()
-      queueManager.callFunc("playQueue")
+  ' Live TV wraps around at both ends; regular content stops at boundaries
+  isTvChannel = isLiveTvPlayback() and m.channelListLoaded and queueCount > 1
+
+  if action = "itemnext"
+    targetPosition = -1
+    if queuePosition < queueCount - 1
+      targetPosition = queuePosition + 1
+    else if isTvChannel
+      targetPosition = 0
+    end if
+
+    if targetPosition >= 0
+      switchToQueueItem(queueManager, targetPosition)
     end if
 
     return
   end if
 
   if action = "itemback"
-    queueManager = m.global.queueManager
+    targetPosition = -1
+    if queuePosition > 0
+      targetPosition = queuePosition - 1
+    else if isTvChannel
+      targetPosition = queueCount - 1
+    end if
 
-    ' If there is something previous in the queue, play it
-    if queueManager.callFunc("getPosition") > 0
-      m.top.control = "stop"
-      m.global.sceneManager.callFunc("clearPreviousScene")
-      queueManager.callFunc("moveBack")
-      updateQueueBackdrop()
-      queueManager.callFunc("playQueue")
+    if targetPosition >= 0
+      switchToQueueItem(queueManager, targetPosition)
     end if
 
     return
   end if
+end sub
+
+' m.isSwitchingChannel prevents the old view's onState("stopped") from hiding the spinner
+' before the new VideoPlayerView finishes loading.
+sub switchToQueueItem(queueManager as object, targetPosition as integer)
+  nextItem = queueManager.callFunc("getItemByIndex", targetPosition)
+  showChannelSwitchSpinner(nextItem)
+
+  m.isSwitchingChannel = true
+  m.top.control = "stop"
+  m.global.sceneManager.callFunc("clearPreviousScene")
+  queueManager.callFunc("setPosition", targetPosition)
+  updateQueueBackdrop()
+  queueManager.callFunc("playQueue")
+end sub
+
+sub showChannelSwitchSpinner(nextItem as object)
+  if not isValid(nextItem) or LCase(nextItem.type) <> "tvchannel" then return
+
+  channelLabel as string = ""
+  if isValidAndNotEmpty(nextItem.channelNumber)
+    channelLabel = `${translate(translationKeys.LabelCh)} ${nextItem.channelNumber}`
+  end if
+  channelTitle as string = ""
+  if isValidAndNotEmpty(nextItem.title)
+    channelTitle = `${nextItem.title}`
+  end if
+  loadingText as string = ""
+  if channelLabel <> "" and channelTitle <> ""
+    loadingText = `${channelLabel} · ${channelTitle}`
+  else if channelLabel <> ""
+    loadingText = channelLabel
+  else
+    loadingText = channelTitle
+  end if
+
+  startLoadingSpinner(false, loadingText)
 end sub
 
 ' handleHideAction: Handles action to hide OSD menu
@@ -322,6 +379,15 @@ sub handleShowVideoInfoPopupAction()
   m.top.selectPlaybackInfoPressed = true
 end sub
 
+' seek=999999 is clipped by Roku to the current live edge of the HLS manifest
+sub handleGoToLiveAction()
+  m.top.seek = 999999
+  if m.top.state = "paused"
+    m.top.control = "resume"
+  end if
+  handleHideAction(false)
+end sub
+
 ' onOSDAction: Process action events from OSD to their respective handlers
 '
 sub onOSDAction()
@@ -369,6 +435,11 @@ sub onOSDAction()
 
   if action = "showvideoinfopopup"
     handleShowVideoInfoPopupAction()
+    return
+  end if
+
+  if action = "gotolive"
+    handleGoToLiveAction()
     return
   end if
 
@@ -705,6 +776,13 @@ sub onVideoContentLoaded()
     m.skippedSegments = {}
     m.dismissedSegmentId = ""
     m.activeSegmentId = ""
+
+    if videoContent[0].meta.type = "TvChannel"
+      m.liveTvProgramEndTime = parseProgramEndTimeEpoch(videoContent[0].meta)
+      m.liveTvFallbackCounter = 0
+    else
+      m.liveTvProgramEndTime = 0
+    end if
   end if
 
   ' Attempt to add logo to OSD
@@ -1312,6 +1390,11 @@ sub onState()
     if m.isPlayReported = false
       ReportPlayback("start")
       m.isPlayReported = true
+
+      ' Load channel list in background for channel up/down navigation
+      if isLiveTvPlayback() and not m.channelListLoaded
+        loadChannelListForQueue()
+      end if
     else
       ReportPlayback()
     end if
@@ -1321,7 +1404,10 @@ sub onState()
     m.playbackTimer.control = "stop"
     ReportPlayback()
   else if m.top.state = "stopped"
-    stopLoadingSpinner()
+    ' Skip during channel switch; the incoming VideoPlayerView will hide the spinner
+    if not (m.isSwitchingChannel = true)
+      stopLoadingSpinner()
+    end if
     m.playbackTimer.control = "stop"
     m.playbackTimer.unobserveField("fire")
     m.bufferCheckTimer.control = "stop"
@@ -1369,7 +1455,8 @@ sub ReportPlayback(state = "update" as string)
     "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
     "IsPaused": (m.top.state = "paused")
   }
-  if isValid(m.top.content) and isValid(m.top.content.live) and m.top.content.live
+  ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
+  if isLiveTvPlayback() and isValid(m.top.transcodeParams)
     params.append({
       "MediaSourceId": m.top.transcodeParams.MediaSourceId,
       "LiveStreamId": m.top.transcodeParams.LiveStreamId
@@ -1386,6 +1473,20 @@ sub ReportPlayback(state = "update" as string)
   ' Report playstate via side-effect task
   req = GetApi().BuildPlaystateRequest(state, params)
   SubmitSideEffect(req)
+
+  ' Refresh live TV metadata at the program boundary, or on 60s fallback poll
+  if state = "update" and isLiveTvPlayback()
+    now = CreateObject("roDateTime").AsSeconds()
+    if m.liveTvProgramEndTime > 0 and now >= m.liveTvProgramEndTime
+      triggerLiveTvMetadataRefresh()
+    else if m.liveTvProgramEndTime = 0
+      m.liveTvFallbackCounter++
+      if m.liveTvFallbackCounter >= 6
+        m.liveTvFallbackCounter = 0
+        triggerLiveTvMetadataRefresh()
+      end if
+    end if
+  end if
 
   m.log.debug("end ReportPlayback", state, int(m.top.position))
 end sub
@@ -1405,7 +1506,7 @@ sub bufferCheck()
     ' Check that the buffering percentage is increasing
     if m.top.bufferingStatus["percentage"] > m.bufferPercentage
       m.bufferPercentage = m.top.bufferingStatus["percentage"]
-    else if m.top.content.live = true
+    else if isLiveTvPlayback()
       m.top.callFunc("refresh")
     else
       ' If buffering has stopped Display dialog
@@ -1416,6 +1517,77 @@ sub bufferCheck()
     end if
   end if
 
+end sub
+
+function isLiveTvPlayback() as boolean
+  return isValid(m.currentItem) and LCase(m.currentItem.type) = "tvchannel"
+end function
+
+sub triggerLiveTvMetadataRefresh()
+  ' Zero the end time first to prevent duplicate refresh triggers
+  m.liveTvProgramEndTime = 0
+
+  if not isValid(m.liveTvRefreshTask)
+    m.liveTvRefreshTask = CreateObject("roSGNode", "RefreshLiveTvMetadataTask")
+    m.liveTvRefreshTask.observeField("refreshedItem", "onLiveTvMetadataRefreshed")
+  end if
+
+  m.liveTvRefreshTask.channelId = m.top.id
+  m.liveTvRefreshTask.control = "RUN"
+end sub
+
+sub onLiveTvMetadataRefreshed()
+  m.liveTvRefreshTask.control = "STOP"
+  meta = m.liveTvRefreshTask.refreshedItem
+  if not isValid(meta) then return
+
+  m.osd.itemData = meta
+
+  ' Logo priority: program logo → program primary → channel icon
+  osdLogoSize = imageSize.LOGO_OSD
+  if meta.type = "TvChannel" and isValid(meta.currentProgram)
+    currentProgram = meta.currentProgram
+    if isValidAndNotEmpty(currentProgram.logoImageTag)
+      m.osd.videoLogo = ImageURL(currentProgram.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.logoImageTag })
+    else if isValidAndNotEmpty(currentProgram.primaryImageTag)
+      m.osd.videoLogo = ImageURL(currentProgram.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.primaryImageTag })
+    else if isValidAndNotEmpty(meta.primaryImageTag)
+      m.osd.videoLogo = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
+    end if
+  end if
+
+  m.liveTvProgramEndTime = parseProgramEndTimeEpoch(meta)
+  m.liveTvFallbackCounter = 0
+end sub
+
+sub loadChannelListForQueue()
+  if not isValid(m.loadChannelListTask)
+    m.loadChannelListTask = CreateObject("roSGNode", "LoadChannelListForQueueTask")
+    m.loadChannelListTask.observeField("channelList", "onChannelListLoaded")
+  end if
+
+  m.loadChannelListTask.currentChannelId = m.top.id
+  m.loadChannelListTask.control = "RUN"
+  m.log.info("Loading channel list for navigation", m.top.id)
+end sub
+
+sub onChannelListLoaded()
+  m.loadChannelListTask.control = "STOP"
+
+  channelList = m.loadChannelListTask.channelList
+  currentIndex = m.loadChannelListTask.currentChannelIndex
+
+  if not isValidAndNotEmpty(channelList) or currentIndex < 0
+    m.log.warn("Channel list empty or current channel not found, skipping queue update")
+    return
+  end if
+
+  queueManager = m.global.queueManager
+  queueManager.callFunc("set", channelList)
+  queueManager.callFunc("setPosition", currentIndex)
+  m.channelListLoaded = true
+
+  m.log.info("Channel list loaded into queue", "count", channelList.count(), "position", currentIndex)
 end sub
 
 ' stateAllowsOSD: Check if current video state allows showing the OSD
@@ -1622,6 +1794,19 @@ sub destroy()
     m.getNextEpisodeTask.control = "STOP"
     m.getNextEpisodeTask.unobserveField("nextEpisodeData")
     m.getNextEpisodeTask = invalid
+  end if
+
+  if isValid(m.liveTvRefreshTask)
+    m.liveTvRefreshTask.control = "STOP"
+    m.liveTvRefreshTask.unobserveField("refreshedItem")
+    m.liveTvRefreshTask = invalid
+  end if
+  m.liveTvProgramEndTime = 0
+
+  if isValid(m.loadChannelListTask)
+    m.loadChannelListTask.control = "STOP"
+    m.loadChannelListTask.unobserveField("channelList")
+    m.loadChannelListTask = invalid
   end if
 
   if isValid(m.captionTask)

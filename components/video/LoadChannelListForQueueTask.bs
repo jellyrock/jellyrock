@@ -1,0 +1,61 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.log = new log.Logger("LoadChannelListForQueueTask")
+  m.top.functionName = "loadChannelList"
+end sub
+
+sub loadChannelList()
+  currentChannelId = m.top.currentChannelId
+  if not isValidAndNotEmpty(currentChannelId) then return
+
+  res = fetchRes(GetApi().BuildGetLiveTVChannelsRequest({
+    SortBy: "Number",
+    SortOrder: "Ascending",
+    UserId: m.global.user.id,
+    enableImages: false,
+    addCurrentProgram: false,
+    enableUserData: false
+  }), "channelList")
+
+  if not isValid(res) or not res.ok or not isValid(res.json) or not isValid(res.json.Items)
+    m.log.warn("Failed to load channel list")
+    return
+  end if
+
+  channels = res.json.Items
+  channelList = []
+  currentIndex = -1
+
+  for i = 0 to channels.count() - 1
+    channel = channels[i]
+    if not isValid(channel) or not isValidAndNotEmpty(channel.Id) then continue for
+
+    queueItem = {
+      id: channel.Id,
+      type: "TvChannel"
+    }
+    if isValidAndNotEmpty(channel.Name)
+      queueItem.title = channel.Name
+    end if
+    if isValidAndNotEmpty(channel.Number)
+      queueItem.channelNumber = channel.Number
+    end if
+    if isValidAndNotEmpty(channel.PrimaryImageTag)
+      queueItem.primaryImageTag = channel.PrimaryImageTag
+    end if
+
+    channelList.push(queueItem)
+
+    if channel.Id = currentChannelId
+      currentIndex = channelList.count() - 1
+    end if
+  end for
+
+  ' Set currentChannelIndex first to avoid a race with the channelList observer
+  m.top.currentChannelIndex = currentIndex
+  m.top.channelList = channelList
+end sub
