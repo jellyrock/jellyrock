@@ -292,31 +292,31 @@ sub setVideoSubTitle()
       m.videoTitle.text = item.seriesName
     end if
 
-    ' episodeInfo
+    ' episodeInfo: "S1E2 - Name". Omit S/E segments entirely when the numbers aren't
+    ' known — common for live TV recordings classified as series episodes with no EPG
+    ' numbering — so we don't display placeholder strings like "S?E?? - X".
     episodeInfoText = ""
-    '
-    ' Season number
     if item.parentIndexNumber > 0
       episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}${item.parentIndexNumber}`
-    else
-      episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}?`
     end if
-    ' Episode number
     if item.indexNumber > 0
       episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${item.indexNumber}`
-    else
-      episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}??`
     end if
-    ' Episode number end
+    ' Episode number end — additional E entries for multi-episode specials (e.g. S6:E1E2)
     if item.indexNumberEnd > 0 and item.indexNumberEnd > item.indexNumber
-      ' add entry for every episode eg. S6:E1E2
       for i = item.indexNumber + 1 to item.indexNumberEnd
         episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${i}`
       end for
     end if
-    ' Episode name
+    ' Append episode name when we have S/E context. When we don't, fall back to the bare
+    ' name only if it differs from what's already on the title line — otherwise we'd
+    ' duplicate the title.
     if isValidAndNotEmpty(item.name)
-      episodeInfoText = episodeInfoText + ` - ${item.name}`
+      if isValidAndNotEmpty(episodeInfoText)
+        episodeInfoText = episodeInfoText + ` - ${item.name}`
+      else if m.videoTitle.text <> item.name
+        episodeInfoText = item.name
+      end if
     end if
 
     if episodeInfoText <> ""
@@ -339,7 +339,9 @@ sub setVideoSubTitle()
     currentProgram = item.currentProgram
     if isValid(currentProgram)
       if currentProgram.isSeries
-        ' Episode info: S1E2 - Episode Name
+        ' Episode info: S1E2 - Episode Name. Skip entirely when we have no season/episode
+        ' numbers — the program name is already shown as the video title and we don't want
+        ' to duplicate it (e.g. news bulletins named "INFO" with no S/E numbering).
         episodeInfoText = ""
         if currentProgram.parentIndexNumber > 0
           episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}${currentProgram.parentIndexNumber}`
@@ -347,12 +349,8 @@ sub setVideoSubTitle()
         if currentProgram.indexNumber > 0
           episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${currentProgram.indexNumber}`
         end if
-        if isValidAndNotEmpty(currentProgram.name)
-          if isValidAndNotEmpty(episodeInfoText)
-            episodeInfoText = episodeInfoText + ` - ${currentProgram.name}`
-          else
-            episodeInfoText = currentProgram.name
-          end if
+        if isValidAndNotEmpty(episodeInfoText) and isValidAndNotEmpty(currentProgram.name)
+          episodeInfoText = episodeInfoText + ` - ${currentProgram.name}`
         end if
         if isValidAndNotEmpty(episodeInfoText)
           episodeInfoNode = createSubtitleLabelNode("episodeInfo")
@@ -366,10 +364,18 @@ sub setVideoSubTitle()
         displaySubtitleNode(productionYearNode)
       end if
     end if
-    ' Channel number (e.g. "CH 4") — always shown when available
+    ' Channel identity (e.g. "CH 4 - NHK World") — mirrors the ItemDetails program info row.
+    ' For TvChannel items, item.name is the channel name.
+    channelParts = []
     if isValidAndNotEmpty(item.channelNumber)
+      channelParts.push(`${translate(translationKeys.LabelCh)} ${item.channelNumber}`)
+    end if
+    if isValidAndNotEmpty(item.name)
+      channelParts.push(item.name)
+    end if
+    if channelParts.count() > 0
       channelNumberNode = createSubtitleLabelNode("channelNumber")
-      channelNumberNode.text = `${translate(translationKeys.LabelCh)} ${item.channelNumber}`
+      channelNumberNode.text = channelParts.join(" - ")
       displaySubtitleNode(channelNumberNode)
     end if
   end if
