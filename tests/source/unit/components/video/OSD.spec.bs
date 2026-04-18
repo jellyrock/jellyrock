@@ -312,6 +312,9 @@ namespace tests
 
     @it("sets numVideoSources=1 when hasMultipleVideoSources is false")
     function _()
+      ' OSD is shared across tests; reset to 0 so the production "only update if higher"
+      ' guard in onItemDataChanged doesn't preserve a value from a prior test.
+      m.osd.numVideoSources = 0
       item = m.createItem({ id: "vs-2", type: "Movie", hasMultipleVideoSources: false })
       m.osd.itemData = item
 
