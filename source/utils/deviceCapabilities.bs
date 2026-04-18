@@ -248,7 +248,10 @@ function GetDirectPlayProfiles() as object
 
   directPlayProfiles = []
   di = CreateObject("roDeviceInfo")
-  ' all possible containers
+  ' MPEG-TS is intentionally excluded. Broadcast TS files carry wall-clock PTS timestamps
+  ' rather than zero-based ones, so Roku's progressive reader computes a nonsensical
+  ' duration (often 20+ hours for a short clip) and seek / progress / trickplay all break.
+  ' Letting Jellyfin remux TS to HLS gives Roku a manifest with accurate EXTINF durations.
   supportedContainers = {
     mp4: {
       audio: [],
@@ -267,10 +270,6 @@ function GetDirectPlayProfiles() as object
       video: []
     },
     dash: {
-      audio: [],
-      video: []
-    },
-    ts: {
       audio: [],
       video: []
     }
@@ -568,6 +567,31 @@ function getTranscodingProfiles() as object
 
   return transcodingProfiles
 end function
+
+' Mutate an existing TranscodingProfiles array so its Video entries serve a progressive
+' MKV stream over HTTP instead of HLS. Used per-request when the source is MPEG-TS:
+' Roku's HLS VOD buffer reservation scales with duration and overflows for long recordings.
+'
+' Why MKV, not MP4: MP4 requires the moov index atom at the start of the file for
+' streaming playback (faststart), which is incompatible with a single-pass transcode —
+' ffmpeg emits moov at the end, Roku hits EOF before finding it, and playback errors
+' with "demux get sample error:end of file". MKV interleaves metadata with data in
+' self-describing Clusters, so each chunk is parseable as it arrives. Roku plays MKV
+' progressive natively.
+sub swapVideoTranscodingProfilesToProgressiveMkv(transcodingProfiles as object)
+  if not isValid(transcodingProfiles) then return
+  for i = 0 to transcodingProfiles.Count() - 1
+    profile = transcodingProfiles[i]
+    if isValid(profile.Type) and profile.Type = "Video"
+      profile.Container = "mkv"
+      profile.Protocol = "http"
+      ' HLS-only fields — remove so the server doesn't mistake this for HLS output.
+      profile.Delete("MinSegments")
+      profile.Delete("BreakOnNonKeyFrames")
+      profile.Delete("SegmentLength")
+    end if
+  end for
+end sub
 
 function getContainerProfiles() as object
   containerProfiles = []

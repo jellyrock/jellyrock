@@ -522,9 +522,18 @@ sub onThumbnailIndexChanged()
 
   newIndex = m.top.thumbnailIndex
 
-  ' Bounds check
+  ' Out of bounds — hide every poster so we don't leave a stale thumbnail on screen from
+  ' the user's last in-range scrub position. Reset currentThumbnailIndex so that scrubbing
+  ' back into range re-enters the first-time-init branch and does a full recalc.
+  ' Happens when the video's declared duration exceeds what the server generated trickplay
+  ' for (e.g. fresh recordings with partial trickplay data).
   if newIndex < 0 or newIndex >= m.config.thumbnailCount
-    m.log.debug("Thumbnail index out of bounds", newIndex)
+    m.log.debug("Thumbnail index out of bounds - hiding all posters", newIndex)
+    for i = 0 to 4
+      m.posterArray[i].visible = false
+      m.posterThumbnailIndexes[i] = -1
+    end for
+    m.currentThumbnailIndex = -1
     return
   end if
 

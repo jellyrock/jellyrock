@@ -216,8 +216,7 @@ sub setEndsAtText()
     return
   end if
 
-  ' For live TV channels, use the currently-airing program's EndDate for end time.
-  ' remainingPositionTime ≈ 0 for live streams so the default calculation would show current time.
+  ' Live TV uses the currently-airing program's EndDate, not stream remaining time
   if isValid(m.itemData) and m.itemData.type = "TvChannel"
     currentProgram = m.itemData.currentProgram
     if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.endDate)
@@ -233,13 +232,21 @@ sub setEndsAtText()
     return
   end if
 
-  ' Calculate endsAtTime based on remainingPositionTime
-  date = CreateObject("roDateTime")
+  ' Hide when remainingPositionTime isn't meaningful yet (pre-load or zero duration),
+  ' otherwise "Ends at" would show the current clock time
   endTime = int(m.top.remainingPositionTime)
+  if endTime <= 0
+    endsAtText.visible = false
+    m.endsAtTime.text = ""
+    return
+  end if
+
+  date = CreateObject("roDateTime")
   date.fromSeconds(date.asSeconds() + endTime)
   date.toLocalTime()
 
   m.endsAtTime.text = formatTime(date)
+  endsAtText.visible = true
 end sub
 
 sub setVideoLogoGroup()

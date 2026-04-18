@@ -133,13 +133,31 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
   if isValid(mediaSources) and isValidAndNotEmpty(mediaSources)
-    if isValid(mediaSources[0].RunTimeTicks)
-      if mediaSources[0].RunTimeTicks = 0
-        video.length = 0
-      else
-        video.length = mediaSources[0].RunTimeTicks / 10000000
-      end if
+    ' Duration source priority for setting video.content.length (needed for seeking):
+    '   1. mediaSource.RunTimeTicks  — file's probed duration (authoritative when available)
+    '   2. Size × 8 / Bitrate        — actual file duration estimate (good for recordings
+    '                                   where the file differs from the scheduled runtime)
+    '   3. meta.runTimeTicks         — movie/episode metadata (full runtime; may not match
+    '                                   a partial recording)
+    ' MPEG-TS files have no duration header so #1 is often missing; #2 is ideal because
+    ' it reflects the actual recorded bytes, not the program's scheduled length.
+    effectiveLengthSeconds = 0
+    durationSource = "none"
+    if isValid(mediaSources[0].RunTimeTicks) and mediaSources[0].RunTimeTicks > 0
+      effectiveLengthSeconds = int(mediaSources[0].RunTimeTicks / 10000000)
+      durationSource = "mediaSource.RunTimeTicks"
+    else if isValid(mediaSources[0].Size) and mediaSources[0].Size > 0 and isValid(mediaSources[0].Bitrate) and mediaSources[0].Bitrate > 0
+      effectiveLengthSeconds = int((mediaSources[0].Size * 8) / mediaSources[0].Bitrate)
+      durationSource = "size/bitrate"
+    else if isValid(meta.runTimeTicks) and meta.runTimeTicks > 0
+      effectiveLengthSeconds = int(meta.runTimeTicks / 10000000)
+      durationSource = "meta.runTimeTicks"
     end if
+    if effectiveLengthSeconds > 0
+      video.length = effectiveLengthSeconds
+      video.content.length = effectiveLengthSeconds
+    end if
+    m.log.info("Duration resolved", "seconds", effectiveLengthSeconds, "source", durationSource)
 
     ' Find first video stream - MediaStreams[0] might be subtitle/audio
     if isValid(mediaSources[0].MediaStreams)
@@ -171,13 +189,13 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
   end if
 
-  ' Recordings are file-based — seekable with chapters, so they must NOT be flagged as live.
+  ' Only TvChannel and Program items are actual live streams. Movies and episodes
+  ' recorded from live TV have meta.channelId set but are seekable files, not live.
   isLive = false
-  if videotype = "tvchannel"
-    isLive = true
-  else if videotype <> "recording" and isValidAndNotEmpty(meta.channelId)
+  if videotype = "tvchannel" or videotype = "program"
     isLive = true
   end if
+  m.log.info("Live detection", "videotype", videotype, "isLive", isLive, "hasChannelId", isValidAndNotEmpty(meta.channelId))
 
   video.chapters = meta.chapters
   video.title = isValidAndNotEmpty(titleOverride) ? titleOverride : meta.title
@@ -400,6 +418,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     video.isTranscoded = false
     setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
     applyLiveDirectPlayFallback(video, meta)
+    m.log.info("Playback path: DIRECT PLAY", "finalUrl", video.content.url, "streamFormat", video.content.StreamFormat)
   else
     if not isValid(m.playbackInfo.MediaSources[0].TranscodingUrl)
       ' Server did not provide a transcode URL — surface a message to the user via the task field
@@ -418,8 +437,20 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       video.content = invalid
       return
     end if
+
     video.content.url = transcodingUrl
+    ' Jellyfin reports the transcode protocol via TranscodingSubProtocol ("hls" or "http").
+    ' Only set StreamFormat="hls" for HLS — Roku auto-detects progressive MP4 from the URL
+    ' and the moov atom, and explicitly setting StreamFormat="mp4" breaks that detection.
+    subProtocol = ""
+    if isValid(m.playbackInfo.MediaSources[0].TranscodingSubProtocol)
+      subProtocol = LCase(m.playbackInfo.MediaSources[0].TranscodingSubProtocol)
+    end if
+    if subProtocol = "hls"
+      video.content.StreamFormat = "hls"
+    end if
     video.isTranscoded = true
+    m.log.info("Playback path: TRANSCODED", "finalUrl", transcodingUrl, "streamFormat", video.content.StreamFormat, "subProtocol", subProtocol, "transcodeReasons", video.transcodeReasons)
 
     ' If DoVi preservation caused this transcode, flag that direct play is a viable buffer-overflow fallback.
     ' VideoRangeTypeNotSupported is the reason Jellyfin returns when our DoVi container profile blocks the MKV.

@@ -20,7 +20,8 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   ' Dynamically adjust transcoding segment length and bitrate based on the video's
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
   ' and playlist-too-large errors during HLS playback.
-  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources)
+  hasMediaSource = isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources)
+  if hasMediaSource
     mediaSource = videoMetadata.mediaSourcesData.mediaSources[0]
     sourceBitrate& = 0
     videoDurationSeconds = 0
@@ -47,8 +48,8 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
       end if
 
       ' Reduce max streaming bitrate only when segment length alone isn't enough.
-      ' Never set MaxStreamingBitrate below the source bitrate + 10% headroom - doing
-      ' so would cause Jellyfin to reject a remux/direct-stream as exceeding the limit.
+      ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom —
+      ' Jellyfin would reject a remux/direct-stream as exceeding the limit.
       if transcodingParams.maxBitrate > 0
         minAllowedBitrate& = sourceBitrate& * 11& \ 10&
         if transcodingParams.maxBitrate >= minAllowedBitrate&
@@ -66,6 +67,40 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
           end if
         end for
       end if
+    end if
+
+    ' MPEG-TS source: can't direct-play on Roku (wall-clock PTS breaks duration), and HLS
+    ' VOD transcoding hits a duration-proportional buffer reservation that overflows for
+    ' content longer than ~1 hour. Swap the HLS video transcoding profiles for HTTP/MKV
+    ' progressive variants. Jellyfin returns a /Videos/{id}/stream.mkv?... URL; Roku plays
+    ' it progressively (MKV clusters are self-describing — unlike MP4 which needs a moov
+    ' atom that ffmpeg can't write at the front during a single-pass transcode). Live
+    ' channels keep HLS — they have their own per-segment DVR semantics.
+    '
+    ' Also cap the transcode bitrate. Our profile's MaxStreamingBitrate=140 Mbps is a
+    ' hardware ceiling for direct-stream/remux; if we leave it unset for the progressive
+    ' transcode, Jellyfin passes it to ffmpeg as `-b:v 140M`, which produces enormous
+    ' output, overwhelms the server's response buffer, and the stream dies partway.
+    ' Derive the cap from the probed video-stream bitrate + 20% headroom, so the target
+    ' matches the source. A 2 Mbps floor covers poorly-probed or low-bitrate TS.
+    sourceContainerLower = ""
+    if isValid(mediaSource.Container) then sourceContainerLower = LCase(mediaSource.Container)
+    isTvChannel = isValid(videoMetadata) and isValid(videoMetadata.type) and LCase(videoMetadata.type) = "tvchannel"
+    if sourceContainerLower = "ts" and not isTvChannel and isValid(postData.DeviceProfile.TranscodingProfiles)
+      swapVideoTranscodingProfilesToProgressiveMkv(postData.DeviceProfile.TranscodingProfiles)
+
+      sourceVideoBitrate& = 0
+      if isValid(mediaSource.MediaStreams)
+        for each stream in mediaSource.MediaStreams
+          if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.BitRate) and stream.BitRate > 0
+            sourceVideoBitrate& = stream.BitRate
+            exit for
+          end if
+        end for
+      end if
+      tsMkvMaxBitrate& = sourceVideoBitrate& * 12& \ 10&
+      if tsMkvMaxBitrate& < 2000000& then tsMkvMaxBitrate& = 2000000&
+      postData.MaxStreamingBitrate = tsMkvMaxBitrate&
     end if
   end if
 

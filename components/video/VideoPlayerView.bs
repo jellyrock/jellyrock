@@ -705,8 +705,6 @@ sub onVideoContentLoaded()
 
   m.top.observeField("state", "onState")
 
-  m.log.info("onVideoContentLoaded", "audioIndex", videoContent[0].audioIndex, "isTranscoded", videoContent[0].isTranscoded, "PlayStart", videoContent[0].content.PlayStart, "audioTrackCount", videoContent[0].fullAudioData.Count())
-
   m.top.content = videoContent[0].content
   m.top.PlaySessionId = videoContent[0].PlaySessionId
   m.top.videoId = videoContent[0].id
@@ -1311,8 +1309,6 @@ end sub
 '
 ' When Video Player state changes
 sub onState()
-  m.log.debug("start onState", m.top.state)
-
   ' On first play, verify audioTrack matches the intended Jellyfin selection using
   ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
   ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
