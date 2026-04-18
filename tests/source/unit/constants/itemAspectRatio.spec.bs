@@ -1,0 +1,62 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
+
+namespace tests
+
+  @suite("rowSlotSize constants - FHD-to-SD scaling invariants")
+  class RowSlotSizeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("All slot dimensions are divisible by 3")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("PORTRAIT width and height are divisible by 3")
+    function _()
+      m.assertEqual(rowSlotSize.PORTRAIT[0] mod 3, 0, "PORTRAIT width must be divisible by 3")
+      m.assertEqual(rowSlotSize.PORTRAIT[1] mod 3, 0, "PORTRAIT height must be divisible by 3")
+    end function
+
+    @it("SQUARE width and height are divisible by 3")
+    function _()
+      m.assertEqual(rowSlotSize.SQUARE[0] mod 3, 0, "SQUARE width must be divisible by 3")
+      m.assertEqual(rowSlotSize.SQUARE[1] mod 3, 0, "SQUARE height must be divisible by 3")
+    end function
+
+    @it("WIDE width and height are divisible by 3")
+    function _()
+      m.assertEqual(rowSlotSize.WIDE[0] mod 3, 0, "WIDE width must be divisible by 3")
+      m.assertEqual(rowSlotSize.WIDE[1] mod 3, 0, "WIDE height must be divisible by 3")
+    end function
+
+    @it("LIBRARY width and height are divisible by 3")
+    function _()
+      m.assertEqual(rowSlotSize.LIBRARY[0] mod 3, 0, "LIBRARY width must be divisible by 3")
+      m.assertEqual(rowSlotSize.LIBRARY[1] mod 3, 0, "LIBRARY height must be divisible by 3")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Row height constants match slot + text area")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ROW_HEIGHT_PORTRAIT equals PORTRAIT height + 90")
+    function _()
+      m.assertEqual(rowSlotSize.ROW_HEIGHT_PORTRAIT, rowSlotSize.PORTRAIT[1] + 90)
+    end function
+
+    @it("ROW_HEIGHT_SQUARE equals SQUARE height + 90")
+    function _()
+      m.assertEqual(rowSlotSize.ROW_HEIGHT_SQUARE, rowSlotSize.SQUARE[1] + 90)
+    end function
+
+    @it("ROW_HEIGHT_WIDE equals WIDE height + 90")
+    function _()
+      m.assertEqual(rowSlotSize.ROW_HEIGHT_WIDE, rowSlotSize.WIDE[1] + 90)
+    end function
+
+    @it("ROW_HEIGHT_LIBRARY equals LIBRARY height (no text area)")
+    function _()
+      m.assertEqual(rowSlotSize.ROW_HEIGHT_LIBRARY, rowSlotSize.LIBRARY[1])
+    end function
+
+  end class
+
+end namespace
