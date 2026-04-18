@@ -27,6 +27,9 @@ const TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION = "2.0.0"
 ' client version when theme presets were added (detect existing custom colors and set uiTheme=custom)
 const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
 
+' client version when homeSection settings were removed from registry (now server-authoritative via DisplayPreferences)
+const HOMESECTION_CLEANUP_VERSION = "2.13.0"
+
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()
   appLastRunVersion = m.global.app.lastRunVersion
@@ -407,6 +410,28 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
         end if
       else
         print `No theme preset migration needed for userid: ${section} (uiTheme already set)`
+      end if
+    end if
+
+    ' HOMESECTION_CLEANUP_VERSION - Delete homeSection0-6 (now server-authoritative via DisplayPreferences)
+    if isValid(lastRunVersion) and not versionChecker(lastRunVersion, HOMESECTION_CLEANUP_VERSION)
+      m.wasMigrated = true
+
+      homeSectionKeys = ["homeSection0", "homeSection1", "homeSection2", "homeSection3", "homeSection4", "homeSection5", "homeSection6"]
+      deletedAny = false
+      for each key in homeSectionKeys
+        if reg.exists(key)
+          print `Removing stale ${key} for userid: ${section}`
+          reg.delete(key)
+          deletedAny = true
+        end if
+      end for
+
+      if deletedAny
+        reg.flush()
+        print `Deleted stale homeSection keys for userid: ${section}`
+      else
+        print `No homeSection cleanup needed for userid: ${section} (keys not found)`
       end if
     end if
   end for

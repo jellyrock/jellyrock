@@ -191,6 +191,11 @@ class SessionDataTransformer
     settingsNode.itemGridMovieDefaultView = settingsData["itemGridMovieDefaultView"] ?? ""
 
     ' Home sections
+    ' Server-authoritative in production (Login() skips these during registry load and
+    ' LoadUserPreferences() writes server values directly to the node), but kept here for
+    ' faithful transformation: tests and the transformUserInfo() path may still pass
+    ' homeSection data, and the HOMESECTION_CLEANUP_VERSION migration ensures the registry
+    ' has no stale values in practice.
     settingsNode.homeSection0 = settingsData["homeSection0"] ?? ""
     settingsNode.homeSection1 = settingsData["homeSection1"] ?? ""
     settingsNode.homeSection2 = settingsData["homeSection2"] ?? ""
