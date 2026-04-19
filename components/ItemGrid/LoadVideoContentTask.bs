@@ -154,7 +154,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       durationSource = "meta.runTimeTicks"
     end if
     if effectiveLengthSeconds > 0
-      video.length = effectiveLengthSeconds
       video.content.length = effectiveLengthSeconds
     end if
     m.log.info("Duration resolved", "seconds", effectiveLengthSeconds, "source", durationSource)
