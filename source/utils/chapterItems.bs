@@ -11,10 +11,14 @@ function buildChapterItems(data as object) as object
   chapters = data.chapters
   runTimeTicks = data.runTimeTicks
 
-  ' If no real chapters, generate synthetic ones for videos >= 10 minutes
+  ' If no real chapters, generate synthetic ones for videos that display as ≥ 10 minutes.
+  ' ItemDetails.getRuntime() uses round() to the nearest minute, so a 9:30 video shows as
+  ' "10 mins" on screen. Match that rounding here so the Chapters row presence is consistent
+  ' with the displayed runtime — otherwise the user sees "10 mins" but no row, which feels
+  ' broken. Threshold: 9:30 = 5.7B ticks (equivalent to round(minutes) >= 10).
   if not isValidAndNotEmpty(chapters)
-    TEN_MINUTES_TICKS = 6000000000&
-    if not isValid(runTimeTicks) or runTimeTicks < TEN_MINUTES_TICKS then return []
+    MIN_CHAPTER_RUNTIME_TICKS = 5700000000&
+    if not isValid(runTimeTicks) or runTimeTicks < MIN_CHAPTER_RUNTIME_TICKS then return []
 
     chapters = generateSyntheticChapters(runTimeTicks)
   end if
