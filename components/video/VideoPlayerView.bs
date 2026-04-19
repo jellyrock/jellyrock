@@ -116,9 +116,13 @@ sub init()
   m.liveTvProgramEndTime = 0
   m.liveTvFallbackCounter = 0
 
-  ' Live TV channel navigation: queue is populated with all channels in background
+  ' Live TV channel navigation: queue is populated with all channels in background.
+  ' Every Live TV entry point (main.bs, quickplay) clears the queue and pushes a single
+  ' TvChannel, so count=1 means this is the first playback and we need to fetch the list.
+  ' count>1 means a prior VideoPlayerView already populated the queue — skip the refetch
+  ' and reuse it. Staleness is bounded by the app lifecycle (Roku cold-boots each session).
   m.loadChannelListTask = invalid
-  m.channelListLoaded = false
+  m.channelListLoaded = isLiveTvPlayback() and m.global.queueManager.callFunc("getCount") > 1
 
   m.checkedForNextEpisode = false
   m.getNextEpisodeTask = createObject("roSGNode", "GetNextEpisodeTask")
