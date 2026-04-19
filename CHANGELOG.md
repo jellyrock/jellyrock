@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (itemdetails) stable date-added label position on first render ([#503](https://github.com/jellyrock/jellyrock/pull/503))
 - (chapters) align synthetic-chapter threshold with displayed runtime ([#502](https://github.com/jellyrock/jellyrock/pull/502))
 
 ### Dependencies
