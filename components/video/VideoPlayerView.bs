@@ -114,7 +114,7 @@ sub init()
   ' or on fallback interval when endDate is missing
   m.liveTvRefreshTask = invalid
   m.liveTvProgramEndTime = 0
-  m.liveTvFallbackCounter = 0
+  m.liveTvNextFallbackRefreshAt = 0
 
   ' Live TV channel navigation: queue is populated with all channels in background.
   ' Every Live TV entry point (main.bs, quickplay) clears the queue and pushes a single
@@ -781,7 +781,7 @@ sub onVideoContentLoaded()
 
     if videoContent[0].meta.type = "TvChannel"
       m.liveTvProgramEndTime = parseProgramEndTimeEpoch(videoContent[0].meta)
-      m.liveTvFallbackCounter = 0
+      m.liveTvNextFallbackRefreshAt = 0
     else
       m.liveTvProgramEndTime = 0
     end if
@@ -1484,15 +1484,18 @@ sub ReportPlayback(state = "update" as string)
   req = GetApi().BuildPlaystateRequest(state, params)
   SubmitSideEffect(req)
 
-  ' Refresh live TV metadata at the program boundary, or on 60s fallback poll
+  ' Refresh live TV metadata at the program boundary, or on 60 s wall-clock fallback
+  ' when endDate is missing. Wall-clock rather than a tick counter so the interval
+  ' stays at 60 s regardless of playbackTimer duration.
   if state = "update" and isLiveTvPlayback()
     now = CreateObject("roDateTime").AsSeconds()
     if m.liveTvProgramEndTime > 0 and now >= m.liveTvProgramEndTime
       triggerLiveTvMetadataRefresh()
     else if m.liveTvProgramEndTime = 0
-      m.liveTvFallbackCounter++
-      if m.liveTvFallbackCounter >= 6
-        m.liveTvFallbackCounter = 0
+      if m.liveTvNextFallbackRefreshAt = 0
+        m.liveTvNextFallbackRefreshAt = now + 60
+      else if now >= m.liveTvNextFallbackRefreshAt
+        m.liveTvNextFallbackRefreshAt = now + 60
         triggerLiveTvMetadataRefresh()
       end if
     end if
@@ -1553,21 +1556,25 @@ sub onLiveTvMetadataRefreshed()
 
   m.osd.itemData = meta
 
-  ' Logo priority: program logo → program primary → channel icon
-  osdLogoSize = imageSize.LOGO_OSD
-  if meta.type = "TvChannel" and isValid(meta.currentProgram)
+  ' Logo priority: program logo → program primary → channel icon. Always write the result
+  ' (empty string included) so the prior program's logo doesn't linger when the new one
+  ' has no artwork. Mirrors the initial-load chain in LoadVideoContentTask.
+  newLogoUrl as string = ""
+  if meta.type = "TvChannel"
+    osdLogoSize = imageSize.LOGO_OSD
     currentProgram = meta.currentProgram
-    if isValidAndNotEmpty(currentProgram.logoImageTag)
-      m.osd.videoLogo = ImageURL(currentProgram.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.logoImageTag })
-    else if isValidAndNotEmpty(currentProgram.primaryImageTag)
-      m.osd.videoLogo = ImageURL(currentProgram.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.primaryImageTag })
+    if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.logoImageTag)
+      newLogoUrl = ImageURL(currentProgram.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.logoImageTag })
+    else if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.primaryImageTag)
+      newLogoUrl = ImageURL(currentProgram.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.primaryImageTag })
     else if isValidAndNotEmpty(meta.primaryImageTag)
-      m.osd.videoLogo = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
+      newLogoUrl = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
     end if
   end if
+  m.osd.videoLogo = newLogoUrl
 
   m.liveTvProgramEndTime = parseProgramEndTimeEpoch(meta)
-  m.liveTvFallbackCounter = 0
+  m.liveTvNextFallbackRefreshAt = 0
 end sub
 
 sub loadChannelListForQueue()
