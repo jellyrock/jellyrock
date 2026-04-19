@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (chapters) align synthetic-chapter threshold with displayed runtime ([#502](https://github.com/jellyrock/jellyrock/pull/502))
+
 ### Dependencies
 
 - Update brighterscript-formatter from v1.7.22 to v1.7.23 ([#498](https://github.com/jellyrock/jellyrock/pull/498))
