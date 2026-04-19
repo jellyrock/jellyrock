@@ -23,6 +23,11 @@ const LOGO_MAX_DISPLAY_WIDTH = 500
 ' extending above the metadata rows. Person photos are exempt because their info rows
 ' are short and don't reach the right edge where the photo sits.
 const LOGO_MAX_DISPLAY_HEIGHT = 336
+' First-frame estimate for the button row's total rendered height. Used by anchorDateLabel()
+' before boundingRect() has settled (it reports height=0 during initial render). Observed to
+' land around 130 px for the typical 2-line-label icon button. A later renderTracking callback
+' replaces this with the real measured height once layout completes.
+const ESTIMATED_BUTTON_ROW_HEIGHT_PX = 130
 
 sub init()
   m.log = new log.Logger("ItemDetails")
@@ -2221,19 +2226,13 @@ end sub
 ' anchorDateLabel: Derive the date label's Y position from the button group's position.
 ' Returns dateLabelY so callers (e.g. logo positioning) can use it without duplicating the math.
 ' Safe to call multiple times — idempotent, and safe to call BEFORE the button group has
-' finished laying out: falls back to the group's fixed translation + a safe button-height
-' estimate so the label never lands off-screen. A later renderTracking callback will refine
-' the position once the real rendered height is known.
-' @return {float} dateLabelY — the Y coordinate used for the date label
-function anchorDateLabel() as float
-  ' Default: use the button group's XML-declared translation plus a conservative estimate
-  ' of the button row's height (~130 px for icon + label). This places the label correctly
-  ' even on first call, before boundingRect has settled.
-  buttonY = 800
-  buttonHeight = 130
-  if isValid(m.buttonGrp) and m.buttonGrp.translation.count() > 1
-    buttonY = m.buttonGrp.translation[1]
-  end if
+' finished laying out: falls back to the group's fixed translation + ESTIMATED_BUTTON_ROW_HEIGHT_PX
+' so the label never lands off-screen. A later renderTracking callback refines the position
+' once the real rendered height is known.
+' @return {integer} dateLabelY — the Y coordinate used for the date label
+function anchorDateLabel() as integer
+  buttonY = m.buttonGrp.translation[1]
+  buttonHeight = ESTIMATED_BUTTON_ROW_HEIGHT_PX
 
   ' Refine with the measured height once layout has settled. Ignore the degenerate 0-size
   ' bounding rect reported during the initial render — that's what was pushing the label
