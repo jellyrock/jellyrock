@@ -47,6 +47,11 @@ sub init()
   m.liveTvPausedAtEpoch = 0
   m.liveTvAccumulatedBehind = 0
 
+  ' Go to Live button — cached and attached/detached dynamically by setButtonStates()
+  ' and attach/detachGoToLiveButton() so it doesn't reserve a layout slot when hidden.
+  m.goToLiveButton = invalid
+  m.goToLiveAttached = false
+
   m.buttonMenuRight = m.top.findNode("buttonMenuRight")
   m.buttonMenuLeft = m.top.findNode("buttonMenuLeft")
   m.buttonMenuLeft.buttonFocused = m.defaultButtonIndex
@@ -195,16 +200,45 @@ sub setButtonStates()
   if not m.top.hasChapters or isTvChannel
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("chapterList"))
   end if
-  ' Go to Live — isEnabled also tracks visibility to prevent focus-stealing
-  ' (OSDButtonGroup navigation only checks isEnabled, not visible)
-  goToLiveButton = m.buttonMenuLeft.findNode("goToLive")
+  ' Go to Live — detach from layout until the user falls behind the live edge, then
+  ' re-insert via attachGoToLiveButton(). Toggling visible/isEnabled isn't enough:
+  ' LayoutGroup reserves a slot for invisible children, so a hidden button would
+  ' leave a gap in the button row.
   if not isTvChannel
-    m.buttonMenuLeft.removeChild(goToLiveButton)
-  else if isValid(goToLiveButton)
-    goToLiveButton.text = UCase(translate(translationKeys.LabelLive))
-    goToLiveButton.visible = false
-    goToLiveButton.isEnabled = false
+    existing = m.buttonMenuLeft.findNode("goToLive")
+    if isValid(existing)
+      m.buttonMenuLeft.removeChild(existing)
+    end if
+    m.goToLiveButton = invalid
+    m.goToLiveAttached = false
+  else
+    if not isValid(m.goToLiveButton)
+      m.goToLiveButton = m.buttonMenuLeft.findNode("goToLive")
+      if isValid(m.goToLiveButton)
+        ' XML attaches the button at load time
+        m.goToLiveAttached = true
+      end if
+    end if
+    if isValid(m.goToLiveButton)
+      m.goToLiveButton.text = UCase(translate(translationKeys.LabelLive))
+      detachGoToLiveButton()
+    end if
   end if
+end sub
+
+' Insert after itemNext (index 3 in the XML-declared button order) so prev/next stay
+' contiguous and the live-edge button appears where channel up/down users look first.
+sub attachGoToLiveButton()
+  if not isValid(m.goToLiveButton) or m.goToLiveAttached then return
+  m.goToLiveButton.visible = true
+  m.buttonMenuLeft.insertChild(m.goToLiveButton, 3)
+  m.goToLiveAttached = true
+end sub
+
+sub detachGoToLiveButton()
+  if not isValid(m.goToLiveButton) or not m.goToLiveAttached then return
+  m.buttonMenuLeft.removeChild(m.goToLiveButton)
+  m.goToLiveAttached = false
 end sub
 
 sub setEndsAtText()
@@ -467,12 +501,10 @@ sub updateLiveTvDisplay()
   now = CreateObject("roDateTime").AsSeconds()
   behindLive = getLiveTvBehindLiveSeconds()
 
-  ' isEnabled tracks visibility to prevent focus-stealing — OSDButtonGroup only checks isEnabled
-  goToLiveButton = m.buttonMenuLeft.findNode("goToLive")
-  if isValid(goToLiveButton)
-    shouldShow = not m.liveTvIsAtLiveEdge
-    goToLiveButton.visible = shouldShow
-    goToLiveButton.isEnabled = shouldShow
+  if m.liveTvIsAtLiveEdge
+    detachGoToLiveButton()
+  else
+    attachGoToLiveButton()
   end if
 
   if programStart > 0 and programEnd > programStart
