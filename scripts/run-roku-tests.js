@@ -17,7 +17,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const ROKU_IP = process.env.ROKU_IP;
 const ROKU_PASSWORD = process.env.ROKU_PASSWORD;
-const TIMEOUT_MS = 5 * 60 * 1000;
+// Idle timeout: fails the run if the Roku console stops emitting output for this long.
+// Resets on every data event, so slow-but-progressing runs are never killed. The CI
+// workflow's job-level timeout remains the ultimate backstop for total run length.
+const IDLE_TIMEOUT_MS = Number(process.env.ROKU_TEST_IDLE_TIMEOUT_MS) || 60 * 1000;
 
 if (!ROKU_IP || !ROKU_PASSWORD) {
   console.error('❌ Missing required environment variables: ROKU_IP and ROKU_PASSWORD');
@@ -58,12 +61,28 @@ async function captureConsole() {
     const logFile = 'roku-test-output.log';
     const writeStream = fs.createWriteStream(logFile);
     const socket = new net.Socket();
-    let timeoutId;
+    let idleTimeoutId;
     let lineBuffer = '';
     const results = [];
 
+    function resetIdleTimer() {
+      clearTimeout(idleTimeoutId);
+      idleTimeoutId = setTimeout(() => {
+        socket.destroy();
+        writeStream.end();
+
+        const lastResult = results.length > 0 ? results[results.length - 1] : null;
+        if (lastResult) {
+          resolve({ passed: lastResult === 'PASS', logFile });
+        } else {
+          reject(new Error(`No console output for ${IDLE_TIMEOUT_MS / 1000} seconds — Roku appears hung`));
+        }
+      }, IDLE_TIMEOUT_MS);
+    }
+
     socket.connect(8085, ROKU_IP, () => {
       console.log('✅ Connected to Roku console');
+      resetIdleTimer();
     });
 
     // Helper to process a single line for results and shutdown
@@ -79,7 +98,7 @@ async function captureConsole() {
 
       // Check for shutdown signal
       if (cleanLine.includes('[Rooibos Shutdown]')) {
-        clearTimeout(timeoutId);
+        clearTimeout(idleTimeoutId);
         socket.destroy();
         writeStream.end();
         
@@ -95,6 +114,7 @@ async function captureConsole() {
     }
 
     socket.on('data', (data) => {
+      resetIdleTimer();
       const chunk = data.toString();
       writeStream.write(data);
       process.stdout.write(data);
@@ -112,7 +132,7 @@ async function captureConsole() {
     });
 
     socket.on('error', (err) => {
-      clearTimeout(timeoutId);
+      clearTimeout(idleTimeoutId);
       socket.destroy();
       writeStream.end();
       
@@ -126,7 +146,7 @@ async function captureConsole() {
     });
 
     socket.on('close', () => {
-      clearTimeout(timeoutId);
+      clearTimeout(idleTimeoutId);
       writeStream.end();
       
       // Process any remaining content in lineBuffer (handles shutdown without trailing newline)
@@ -141,18 +161,6 @@ async function captureConsole() {
         reject(new Error('Console connection closed without test result'));
       }
     });
-
-    timeoutId = setTimeout(() => {
-      socket.destroy();
-      writeStream.end();
-      
-      const lastResult = results.length > 0 ? results[results.length - 1] : null;
-      if (lastResult) {
-        resolve({ passed: lastResult === 'PASS', logFile });
-      } else {
-        reject(new Error(`Test timeout after ${TIMEOUT_MS / 1000} seconds`));
-      }
-    }, TIMEOUT_MS);
   });
 }
 
