@@ -7,6 +7,7 @@
 
     <JRButtonGroup id="buttons" translation="[0,850]">
       <TextButton id="manualLoginButton" minWidth="300" text="" />
+      <TextButton id="quickConnect" minWidth="300" text="" />
     </JRButtonGroup>
   </children>
   <interface>

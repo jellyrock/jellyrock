@@ -13,7 +13,9 @@ sub monitorQuickConnect()
     loggedIn = AuthenticateViaQuickConnect(m.top.secret)
     if loggedIn
       currentUser = AboutMe()
-      user.Login(currentUser, m.top.shouldSaveCredentials)
+      ' Hydrate in-memory user state only. The post-auth save-credentials prompt
+      ' in QuickConnectDialog decides whether to persist the token to registry.
+      user.Login(currentUser, false)
       user.LoadUserPreferences()
       m.top.authenticated = 1
       return

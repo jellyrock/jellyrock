@@ -105,7 +105,13 @@ function LoginFlow()
       ' push all users to the user select view
       userSelected = CreateUserSelectGroup(publicUsersNodes)
       SendPerformanceBeacon("AppDialogComplete") ' Roku Performance monitoring - Dialog Closed
-      if userSelected = "backPressed"
+      if userSelected = "quickConnect"
+        ' Quick Connect completed the sign-in in-flow. user state (id, authToken,
+        ' and optionally registry creds based on the post-auth prompt) is already
+        ' populated on m.global.user, so skip the token/password ladder entirely.
+        m.global.sceneManager.callFunc("clearScenes")
+        return true
+      else if userSelected = "backPressed"
         ' User wants to change server - clear all scenes and restart
         server.Delete()
         unsetSetting("server")
@@ -449,11 +455,6 @@ function CreateUserSelectGroup(users = [])
   group.observeField("backPressed", port)
   while true
     msg = wait(0, port)
-    ' print "roSGNodeEvent: msg.getNode() =", msg.getNode()
-    ' print "roSGNodeEvent: msg.getData() =", msg.getData()
-    ' print "roSGNodeEvent: msg.getField() =", msg.getField()
-    ' print "roSGNodeEvent: msg.getRoSGNode() =", msg.getRoSGNode()
-    ' print "roSGNodeEvent: msg.getInfo() =", msg.getInfo()
     if type(msg) = "roSGScreenEvent" and msg.isScreenClosed()
       group.visible = false
       return -1
@@ -463,9 +464,33 @@ function CreateUserSelectGroup(users = [])
     else if type(msg) = "roSGNodeEvent" and msg.getField() = "userSelected"
       return msg.GetData()
     else if type(msg) = "roSGNodeEvent" and msg.getField() = "buttonSelected"
-      ' Manual Login button pressed
-      if msg.getData() = 0 ' button index
+      buttonGroup = msg.getRoSGNode()
+      buttonSelected = buttonGroup.getChild(msg.getData())
+      if buttonSelected.id = "manualLoginButton"
         return ""
+      else if buttonSelected.id = "quickConnect"
+        json = initQuickConnect()
+        if not isValid(json)
+          m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ButtonQuickConnect), translate(translationKeys.LabelQuickConnectNotAvailable))
+        else
+          ' Server supports Quick Connect - show the code, then the dialog transforms
+          ' into a "Save credentials?" prompt on auth success.
+          m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
+          m.quickConnectDialog.quickConnectJson = json
+          m.quickConnectDialog.title = translate(translationKeys.ButtonQuickConnect)
+          m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code]), translate(translationKeys.LabelDialogWillCloseAutomatically)]
+          m.quickConnectDialog.buttons = [translate(translationKeys.ButtonCancel)]
+          m.quickConnectDialog.observeField("isAuthenticated", port)
+          m.scene.dialog = m.quickConnectDialog
+        end if
+      end if
+    else if type(msg) = "roSGNodeEvent" and msg.getField() = "isAuthenticated"
+      if msg.getData() = true
+        return "quickConnect"
+      else
+        ' Defensive: current dialog never sets isAuthenticated=false, but if a
+        ' future failure path does, surface a generic QC error.
+        m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ButtonQuickConnect), translate(translationKeys.ErrorThereWasAnErrorAuthenticatingVia))
       end if
     end if
   end while
@@ -508,15 +533,6 @@ function CreateSigninGroup(userName = "")
   saveCheckBox.title = translate(translationKeys.MessageSaveCredentials)
   items.appendChild(saveCheckBox)
   checkbox.content = items
-  quickConnect = group.findNode("quickConnect")
-  ' Quick Connect only supported for server version 10.8+ right now...
-  if versionChecker(m.global.server.version, "10.8.0")
-    ' Add option for Quick Connect
-    quickConnect.text = translate(translationKeys.ButtonQuickConnect)
-    quickConnect.observeField("buttonSelected", port)
-  else
-    quickConnect.visible = false
-  end if
 
   items = [usernameField, passwordField]
   config.configItems = items
@@ -574,44 +590,6 @@ function CreateSigninGroup(userName = "")
           stopLoadingSpinner()
           print "Login attempt failed..."
           group.findNode("alert").text = translate(translationKeys.ErrorLoginAttemptFailed)
-        else if buttonSelected.id = "quickConnect"
-          json = initQuickConnect()
-          if not isValid(json)
-            group.findNode("alert").text = translate(translationKeys.LabelQuickConnectNotAvailable)
-          else
-            ' Server user is talking to is at least 10.8 and has quick connect enabled...
-            m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
-            m.quickConnectDialog.shouldSaveCredentials = checkbox.checkedState[0]
-            m.quickConnectDialog.quickConnectJson = json
-            m.quickConnectDialog.title = translate(translationKeys.ButtonQuickConnect)
-            m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code]), translate(translationKeys.LabelDialogWillCloseAutomatically)]
-            m.quickConnectDialog.buttons = [translate(translationKeys.ButtonCancel)]
-            m.quickConnectDialog.observeField("isAuthenticated", port)
-            m.scene.dialog = m.quickConnectDialog
-          end if
-        end if
-
-        if msg.getField() = "isAuthenticated"
-          authenticated = msg.getData()
-          if authenticated = true
-            ' Quick connect authentication was successful...
-            return "true"
-          else
-            dialog = createObject("roSGNode", "Dialog")
-            dialog.id = "QuickConnectError"
-            dialog.title = translate(translationKeys.ButtonQuickConnect)
-            dialog.buttons = [translate(translationKeys.ButtonOk)]
-            dialog.message = translate(translationKeys.ErrorThereWasAnErrorAuthenticatingVia)
-            m.scene.dialog = dialog
-            m.scene.dialog.observeField("buttonSelected", port)
-          end if
-        else
-          ' If there are no other button matches, check if this is a simple "OK" Dialog & Close if so
-          dialog = msg.getRoSGNode()
-          if dialog.id = "QuickConnectError"
-            dialog.unobserveField("buttonSelected")
-            dialog.close = true
-          end if
         end if
       end if
     end if

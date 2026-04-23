@@ -6,10 +6,7 @@
     <CheckList id="onOff" translation="[200, 450]" />
     <JRButtonGroup id="buttons" itemSpacings="[72]" translation="[150,550]">
       <TextButton id="submit" minWidth="330" text="" />
-      <TextButton id="quickConnect" minWidth="330" text="" />
     </JRButtonGroup>
     <LabelErrorMedium text="" id="alert" wrap="true" width="1620" translation="[150, 680]" />
-
-    <Timer id="quickConnectTimer" duration="3" repeat="true" />
   </children>
 </component>
