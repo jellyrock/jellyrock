@@ -1,0 +1,118 @@
+namespace tests
+
+  @suite("SearchScreen - Voice entry")
+  class SearchScreenVoiceEntryTests extends tests.BaseTestSuite
+
+    protected screen as dynamic
+
+    protected override sub setup()
+      super.setup()
+
+      ' Ensure sceneManager stub exists — SearchScreen calls through it to clear
+      ' the backdrop during init and expansion transitions.
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.screen = CreateObject("roSGNode", "SearchScreen")
+    end sub
+
+    protected override sub teardown()
+      m.screen = invalid
+      super.teardown()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("VoiceTextEditBox setup")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates the hidden screen-level voice box")
+    function _()
+      voiceBox = m.screen.findNode("searchVoiceBox")
+      m.assertNotInvalid(voiceBox)
+    end function
+
+    @it("configures voiceBox as active so voice capture is live")
+    function _()
+      voiceBox = m.screen.findNode("searchVoiceBox")
+      m.assertTrue(voiceBox.active)
+    end function
+
+    @it("configures voiceBox as nearly invisible")
+    function _()
+      voiceBox = m.screen.findNode("searchVoiceBox")
+      m.assertTrue(voiceBox.opacity < 0.01)
+    end function
+
+    @it("enables voice capture (voiceEnabled=true)")
+    function _()
+      voiceBox = m.screen.findNode("searchVoiceBox")
+      m.assertTrue(voiceBox.voiceEnabled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Keyboard voice popup conflict avoidance")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("disables the keyboard's internal textEditBox voice capture")
+    function _()
+      ' Only ONE voiceEnabled node may be active at a time; the screen-level
+      ' box owns the slot, so the keyboard's internal voice popup must be off.
+      kbd = m.screen.findNode("overlay").findNode("kbd")
+      m.assertNotInvalid(kbd)
+      m.assertNotInvalid(kbd.textEditBox)
+      m.assertFalse(kbd.textEditBox.voiceEnabled)
+      m.assertFalse(kbd.textEditBox.active)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("External voice entry via voiceQueryIn field")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("populates query when voiceQueryIn is set from Main.bs")
+    function _()
+      m.screen.voiceQueryIn = "star wars"
+      m.assertEqual(m.screen.query, "star wars")
+    end function
+
+    @it("collapses the overlay after a voice submit")
+    function _()
+      m.screen.isExpanded = true
+      m.screen.voiceQueryIn = "inception"
+      m.assertFalse(m.screen.isExpanded)
+    end function
+
+    @it("ignores empty voiceQueryIn writes")
+    function _()
+      m.screen.query = "existing"
+      m.screen.voiceQueryIn = ""
+      m.assertEqual(m.screen.query, "existing")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Expansion state machine")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("defaults to collapsed on mount")
+    function _()
+      m.assertFalse(m.screen.isExpanded)
+    end function
+
+    @it("mirrors isExpanded to the peek chip")
+    function _()
+      m.screen.isExpanded = true
+      peekChip = m.screen.findNode("peekChip")
+      m.assertTrue(peekChip.isExpanded)
+    end function
+
+    @it("mirrors isExpanded to the overlay")
+    function _()
+      m.screen.isExpanded = true
+      overlay = m.screen.findNode("overlay")
+      m.assertTrue(overlay.isExpanded)
+    end function
+
+  end class
+
+end namespace
