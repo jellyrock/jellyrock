@@ -215,6 +215,21 @@ class ApiClient
     return m.validatedReq("GET", buildURL("/persons", mergedParams))
   end function
 
+  ' Build a request AA for GetSearchHints, for use with fetchJson().
+  ' Returns lightweight SearchHint[] (Id/Name/Type/ProductionYear/PrimaryImageTag) for typeahead.
+  ' Static endpoint — not user-scoped — identical across all supported server versions (10.7.0+).
+  ' userId is an optional query param in every version; passed when available to scope to the user's libraries.
+  ' @param params - Query parameters: searchTerm (required), limit, includeItemTypes,
+  '                includePeople, includeMedia, includeGenres, includeStudios, includeArtists
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetSearchHintsRequest(params = {} as object) as dynamic
+    mergedParams = {}
+    mergedParams.append(params)
+    userId = m.getUserId()
+    if userId <> "" then mergedParams.userId = userId
+    return m.validatedReq("GET", buildURL("/Search/Hints", mergedParams))
+  end function
+
   ' Build a request AA to fetch all album artists, for use with fetchRes() or fetchJson().
   ' Mirrors GetAlbumArtists(): applies injectDefaults and injects UserId.
   ' @param params - Query parameters

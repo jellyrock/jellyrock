@@ -1,0 +1,146 @@
+namespace tests
+
+  @suite("searchHints.bs - /Search/Hints transform")
+  class SearchHintsTransformTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transform(raw) - invalid or empty input")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty array for invalid input")
+    function _()
+      rows = searchHints.transform(invalid)
+      m.assertEqual(rows.count(), 0)
+    end function
+
+    @it("returns empty array when SearchHints missing")
+    function _()
+      rows = searchHints.transform({ TotalRecordCount: 0 })
+      m.assertEqual(rows.count(), 0)
+    end function
+
+    @it("returns empty array for empty hint list")
+    function _()
+      rows = searchHints.transform({ SearchHints: [], TotalRecordCount: 0 })
+      m.assertEqual(rows.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transform(raw) - movie rows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("formats a Movie hint with production year")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [
+          { Id: "abc", Name: "The Matrix", Type: "Movie", ProductionYear: 1999 }
+        ]
+      })
+
+      m.assertEqual(rows.count(), 1)
+      m.assertEqual(rows[0].text, "The Matrix · Movies (1999)")
+      m.assertEqual(rows[0].name, "The Matrix")
+      m.assertEqual(rows[0].id, "abc")
+      m.assertEqual(rows[0].type, "Movie")
+    end function
+
+    @it("omits production year when missing")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "abc", Name: "The Matrix", Type: "Movie" }]
+      })
+      m.assertEqual(rows[0].text, "The Matrix · Movies")
+    end function
+
+    @it("omits production year when zero")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "abc", Name: "Bad Meta", Type: "Movie", ProductionYear: 0 }]
+      })
+      m.assertEqual(rows[0].text, "Bad Meta · Movies")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transform(raw) - type labels")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps known Jellyfin item types to friendly category labels")
+    @params("Movie", "Movies")
+    @params("Series", "Shows")
+    @params("Episode", "Episodes")
+    @params("Person", "People")
+    @params("MusicArtist", "Artists")
+    @params("MusicAlbum", "Albums")
+    @params("Audio", "Songs")
+    @params("Playlist", "Playlists")
+    @params("BoxSet", "Collections")
+    function _(itemType as string, expectedLabel as string)
+      result = searchHints.typeLabel(itemType)
+      m.assertEqual(result, expectedLabel)
+    end function
+
+    @it("passes through unknown types verbatim")
+    function _()
+      m.assertEqual(searchHints.typeLabel("PhotoAlbum"), "PhotoAlbum")
+    end function
+
+    @it("returns 'Item' for invalid or empty input")
+    function _()
+      m.assertEqual(searchHints.typeLabel(invalid), "Item")
+      m.assertEqual(searchHints.typeLabel(""), "Item")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transform(raw) - non-movie rows never show year")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("omits ProductionYear for Person even when present")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "p1", Name: "Keanu Reeves", Type: "Person", ProductionYear: 1964 }]
+      })
+      m.assertEqual(rows[0].text, "Keanu Reeves · People")
+    end function
+
+    @it("omits ProductionYear for Episode even when present")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "e1", Name: "Pilot", Type: "Episode", ProductionYear: 2008 }]
+      })
+      m.assertEqual(rows[0].text, "Pilot · Episodes")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transform(raw) - hygiene")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("skips hints missing Name")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [
+          { Id: "a", Type: "Movie" },
+          { Id: "b", Name: "", Type: "Movie" },
+          { Id: "c", Name: "Valid", Type: "Movie" }
+        ]
+      })
+      m.assertEqual(rows.count(), 1)
+      m.assertEqual(rows[0].name, "Valid")
+    end function
+
+    @it("preserves order of hints from the server")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [
+          { Id: "1", Name: "First", Type: "Movie" },
+          { Id: "2", Name: "Second", Type: "Movie" },
+          { Id: "3", Name: "Third", Type: "Movie" }
+        ]
+      })
+      m.assertEqual(rows[0].name, "First")
+      m.assertEqual(rows[1].name, "Second")
+      m.assertEqual(rows[2].name, "Third")
+    end function
+
+  end class
+
+end namespace

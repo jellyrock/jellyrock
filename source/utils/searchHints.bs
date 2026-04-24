@@ -1,0 +1,70 @@
+' @fileoverview Pure transform for /Search/Hints API responses.
+' Kept in source/ (rather than inside SearchHintsTask.bs) so unit tests can
+' exercise the formatting logic without spinning up the Task node graph.
+
+import "pkg:/source/utils/misc.bs"
+
+namespace searchHints
+
+  ' Transform a raw SearchHintResult payload into lightweight display rows.
+  ' Pure function — no node graph, no m.global — so it's unit-testable.
+  '
+  ' @param raw - Parsed /Search/Hints JSON body, or invalid. Expected shape:
+  '              { SearchHints: [ { Id, Name, Type, ProductionYear, ... } ] }
+  ' @returns Array of { text, name, id, type } — up to HINTS_LIMIT items.
+  '
+  ' The `text` field is the user-visible string. Format:
+  '   "{Name} · {TypeLabel}"            (default)
+  '   "{Name} · {TypeLabel} ({Year})"   (Movie or Series with ProductionYear)
+  function transform(raw as dynamic) as object
+    rows = []
+    if not isValid(raw) then return rows
+
+    hints = raw.SearchHints
+    if not isValid(hints) or type(hints) <> "roArray" then return rows
+
+    for each hint in hints
+      if not isValid(hint) then continue for
+      name = hint.Name
+      if not isValid(name) or name = "" then continue for
+
+      label = typeLabel(hint.Type)
+
+      text = name + " · " + label
+      year = hint.ProductionYear
+      if isValid(year) and year > 0 and (hint.Type = "Movie" or hint.Type = "Series")
+        text = text + " (" + year.toStr() + ")"
+      end if
+
+      rows.push({
+        text: text,
+        name: name,
+        id: hint.Id,
+        type: hint.Type
+      })
+    end for
+
+    return rows
+  end function
+
+  ' Map Jellyfin item-type strings to short, user-facing category labels.
+  ' Mirrors the row labels used by SearchRow.bs for consistency. Unknown
+  ' types pass through verbatim rather than being hidden, so the user still
+  ' sees a hint rather than an orphaned name.
+  function typeLabel(itemType as dynamic) as string
+    if not isValid(itemType) or itemType = "" then return "Item"
+
+    if itemType = "Movie" then return "Movies"
+    if itemType = "Series" then return "Shows"
+    if itemType = "Episode" then return "Episodes"
+    if itemType = "Person" then return "People"
+    if itemType = "MusicArtist" then return "Artists"
+    if itemType = "MusicAlbum" then return "Albums"
+    if itemType = "Audio" then return "Songs"
+    if itemType = "Playlist" then return "Playlists"
+    if itemType = "BoxSet" then return "Collections"
+
+    return itemType
+  end function
+
+end namespace
