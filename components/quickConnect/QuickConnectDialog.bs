@@ -51,6 +51,11 @@ sub showSaveCredentialsPrompt()
   m.phase = "prompt"
   m.top.message = [translate(translationKeys.MessageQuickConnectAuthenticatedSaveCredentials)]
   m.top.buttons = [translate(translationKeys.ButtonYes), translate(translationKeys.ButtonNo)]
+  ' Replacing the buttons array destroys and recreates the dialog's internal
+  ' button group; focus does not automatically follow, so re-acquire it here.
+  ' Without this, remote input routes back to the underlying scene and the
+  ' dialog becomes visually present but non-interactive.
+  m.top.setFocus(true)
 end sub
 
 sub onButtonSelected()
