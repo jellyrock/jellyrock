@@ -1,0 +1,67 @@
+' @fileoverview Recent-searches storage for the SearchScreen.
+' Persists the user's most recent search queries to the per-user registry so
+' they survive app restarts. Stored as a JSON array of strings in MRU order,
+' case-insensitively de-duplicated, and capped at RECENT_MAX entries.
+'
+' Stored per-user because different users have different libraries and their
+' search histories should not bleed between accounts on the same device.
+
+import "pkg:/source/constants/searchLayout.bs"
+import "pkg:/source/utils/config.bs"
+
+namespace searchHistory
+
+  ' Registry key used for per-user recent-search storage.
+  const KEY = "search_recent"
+
+  ' Load the user's recent search list.
+  ' Returns an empty array if nothing is stored or the payload is corrupt.
+  function load() as object
+    raw = getUserSetting(KEY)
+    if not isValid(raw) or raw = "" then return []
+
+    parsed = ParseJson(raw)
+    if type(parsed) = "roArray" then return parsed
+    return []
+  end function
+
+  ' Push a term onto the MRU list.
+  ' Trims whitespace, case-insensitively de-duplicates, caps at RECENT_MAX.
+  ' No-op for empty input.
+  sub push(term as string)
+    trimmed = Trim(term)
+    if trimmed = "" then return
+
+    list = load()
+    lower = LCase(trimmed)
+
+    cleaned = []
+    for each existing in list
+      if type(existing) = "roString" or type(existing) = "String"
+        if LCase(existing) <> lower then cleaned.push(existing)
+      end if
+    end for
+
+    cleaned.Unshift(trimmed)
+    while cleaned.count() > searchLayout.RECENT_MAX
+      cleaned.pop()
+    end while
+
+    setUserSetting(KEY, FormatJson(cleaned))
+  end sub
+
+  ' Wipe the user's recent-search list.
+  sub clear()
+    setUserSetting(KEY, "[]")
+  end sub
+
+  ' Trim leading and trailing whitespace from a string.
+  ' Roku's BrightScript doesn't ship a native Trim on strings in all firmware
+  ' versions, so use a local regex-backed implementation for portability.
+  function Trim(s as string) as string
+    if s = "" then return ""
+    rx = CreateObject("roRegex", "^\s+|\s+$", "")
+    return rx.ReplaceAll(s, "")
+  end function
+
+end namespace

@@ -1,0 +1,122 @@
+namespace tests
+
+  @suite("searchHistory.bs - Recent-search MRU storage")
+  class SearchHistoryTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+      ' Each test starts from a clean slate. searchHistory.clear() writes the
+      ' empty array to the user's registry section.
+      searchHistory.clear()
+    end function
+
+    protected override function teardown()
+      searchHistory.clear()
+      super.teardown()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("load()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty array when nothing stored")
+    function _()
+      list = searchHistory.load()
+      m.assertNotInvalid(list)
+      m.assertEqual(list.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("push(term) - basic MRU semantics")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds a single term at index 0")
+    function _()
+      searchHistory.push("batman")
+      list = searchHistory.load()
+      m.assertEqual(list.count(), 1)
+      m.assertEqual(list[0], "batman")
+    end function
+
+    @it("places the most recent term at index 0")
+    function _()
+      searchHistory.push("first")
+      searchHistory.push("second")
+      searchHistory.push("third")
+      list = searchHistory.load()
+
+      m.assertEqual(list.count(), 3)
+      m.assertEqual(list[0], "third")
+      m.assertEqual(list[1], "second")
+      m.assertEqual(list[2], "first")
+    end function
+
+    @it("ignores empty and whitespace-only input")
+    function _()
+      searchHistory.push("")
+      searchHistory.push("   ")
+      list = searchHistory.load()
+      m.assertEqual(list.count(), 0)
+    end function
+
+    @it("trims leading and trailing whitespace before storing")
+    function _()
+      searchHistory.push("  batman  ")
+      list = searchHistory.load()
+      m.assertEqual(list[0], "batman")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("push(term) - case-insensitive dedup")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("de-duplicates case-insensitively, promoting to MRU")
+    function _()
+      searchHistory.push("Batman")
+      searchHistory.push("inception")
+      searchHistory.push("BATMAN")  ' should promote, not add a second copy
+      list = searchHistory.load()
+
+      m.assertEqual(list.count(), 2)
+      m.assertEqual(list[0], "BATMAN")
+      m.assertEqual(list[1], "inception")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("push(term) - cap at RECENT_MAX")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("caps the list at RECENT_MAX entries")
+    function _()
+      ' Push 2 more than the cap; the two oldest should fall off the tail.
+      for i = 1 to searchLayout.RECENT_MAX + 2
+        searchHistory.push("term " + i.toStr())
+      end for
+      list = searchHistory.load()
+
+      m.assertEqual(list.count(), searchLayout.RECENT_MAX)
+      ' Most recent push sits at index 0.
+      m.assertEqual(list[0], "term " + (searchLayout.RECENT_MAX + 2).toStr())
+      ' Oldest two are gone ("term 1" and "term 2").
+      for each entry in list
+        m.assertNotEqual(entry, "term 1")
+        m.assertNotEqual(entry, "term 2")
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("clear()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes all stored terms")
+    function _()
+      searchHistory.push("a")
+      searchHistory.push("b")
+      searchHistory.clear()
+      list = searchHistory.load()
+      m.assertEqual(list.count(), 0)
+    end function
+
+  end class
+
+end namespace
