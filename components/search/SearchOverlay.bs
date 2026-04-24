@@ -1,0 +1,58 @@
+import "pkg:/source/constants/searchLayout.bs"
+import "pkg:/source/utils/misc.bs"
+
+' SearchOverlay — sliding pull-down panel hosting the query display, keyboard,
+' and suggestion list. Animated via Vector2DFieldInterpolator on a child
+' Group's translation (slideGroup), following the same pattern as
+' ExtrasSlider (components/extras/ExtrasSlider.xml) and OptionsSlider
+' (components/options/OptionsSlider.bs).
+'
+' IMPORTANT: Vector2DFieldInterpolator's fieldToInterp must reference a real
+' child node id (e.g. "slideGroup.translation"), not the runtime "m.top"
+' expression. A prior revision of this file used fieldToInterp="m.top.translation"
+' — that syntax is invalid and silently failed to animate, leaving the overlay
+' parked off-screen so the keyboard was focused but invisible.
+'
+' Parent drives visibility via the isExpanded field. The overlay owns the
+' animation purely; it has no business knowing about query state, debouncing,
+' or task lifecycles — those live in SearchScreen.bs.
+
+sub init()
+  m.slideGroup = m.top.findNode("slideGroup")
+  m.bg = m.top.findNode("overlayBg")
+  m.slideAnim = m.top.findNode("slideAnim")
+  m.slideInterp = m.top.findNode("slideInterp")
+
+  constants = m.global.constants
+  m.bg.width = searchLayout.OVERLAY_WIDTH
+  m.bg.height = searchLayout.OVERLAY_HEIGHT
+  ' Solid opaque. Alpha blending let the content behind bleed through and
+  ' made keyboard / suggestion text hard to read. Since the overlay is now
+  ' compact (580px tall), results below the overlay are still visible; we
+  ' don't need the alpha trick to "show through" anymore.
+  m.bg.color = constants.colorBackgroundPrimary
+
+  ' Initial position: slideGroup parked above the viewport.
+  m.slideGroup.translation = [0, searchLayout.OVERLAY_CLOSED_Y]
+
+  ' Seed the interpolator with the closed -> open translation pair. The bs-side
+  ' observer flips `reverse` to play it backwards for the collapse direction,
+  ' so we never need to rewrite keyValue at runtime.
+  m.slideInterp.keyValue = [
+    [0, searchLayout.OVERLAY_CLOSED_Y],
+    [0, searchLayout.OVERLAY_OPEN_Y]
+  ]
+end sub
+
+' Called on isExpanded changes from the parent. Starts the slide animation in
+' the appropriate direction. The parent is responsible for focus hand-off —
+' this component only animates.
+' control="stop" before "start" is required: if the animation is already
+' running (rapid open/close cycles) the second "start" on a running animation
+' is a no-op on some Roku firmwares, leaving the overlay stuck mid-travel.
+sub onExpansionChanged()
+  if not isValid(m.slideAnim) then return
+  m.slideAnim.control = "stop"
+  m.slideInterp.reverse = not m.top.isExpanded
+  m.slideAnim.control = "start"
+end sub

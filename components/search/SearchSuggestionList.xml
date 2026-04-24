@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchSuggestionList" extends="Group">
+  <children>
+    <!-- Section header ("Recent Searches" or "Suggestions"). Uses
+         LabelSecondarySmall for its pre-configured font + dim color default;
+         text is set in bs by the mode-change handler. -->
+    <LabelSecondarySmall id="sectionLabel" width="480" height="36" translation="[0, 0]" />
+
+    <!-- Roku LabelList — rows configured in bs. drawFocusFeedback supplies the
+         focus bitmap highlight. Content is assigned at runtime in renderItems()
+         by creating a fresh ContentNode every call — mutating a shared
+         ContentNode's children (via clear() + CreateChild) doesn't reliably
+         trigger LabelList to re-render. A name collision with the "items"
+         interface field also made findNode resolution ambiguous, so we now
+         keep the handle on the LabelList itself and reassign its content. -->
+    <LabelList id="list"
+      translation="[0, 56]"
+      itemSize="[480, 56]"
+      numRows="9"
+      drawFocusFeedback="true" />
+  </children>
+  <interface>
+    <!-- "recent" | "hints" | "empty" — governs section label + what items mean.
+         Changing mode re-renders the list header.
+         alwaysNotify so repeated writes of the same mode (e.g. still "hints"
+         but with new items) reliably fire even when the string is unchanged. -->
+    <field id="mode" type="string" onChange="renderSectionLabel" alwaysNotify="true" />
+
+    <!-- Array of { text, value } AAs. For recent mode, value == the term string;
+         for hints mode, value == the name string (we drive full search from the
+         name). Writing this field fully replaces the list contents.
+         alwaysNotify is critical: once the list is "full" (e.g. 8 entries) and
+         the next hint set is also 8 entries, the Scenegraph can elide the
+         change-notification — leaving the old items on screen. alwaysNotify
+         forces the re-render every time. -->
+    <field id="items" type="array" onChange="renderItems" alwaysNotify="true" />
+
+    <!-- Emitted when the user activates a row. value of the activated row.
+         Observers pick this up to trigger a full search. -->
+    <field id="selectedSuggestion" type="string" alwaysNotify="true" />
+
+    <!-- Emitted when the user activates the special "Clear history" row
+         (only present when mode == "recent" and at least one item exists). -->
+    <field id="clearHistoryRequested" type="boolean" alwaysNotify="true" />
+
+    <!-- Set to "left" when LEFT is pressed on any row — parent redirects
+         focus back to the keyboard. The LabelList itself has no content to
+         the left, so this key would otherwise be a dead-end. -->
+    <field id="escape" type="string" alwaysNotify="true" />
+  </interface>
+</component>

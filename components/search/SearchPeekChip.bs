@@ -1,0 +1,61 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' SearchPeekChip — collapsed-state indicator that pins to the top of the
+' SearchScreen. Shows the current query (or a "Search" placeholder) with a
+' chevron that flips to signal the keyboard-overlay direction.
+'
+' Not independently focusable — activation goes through the screen-level
+' onKeyEvent (UP on the first row of results expands the overlay). The chip's
+' job is purely informational: "this is what you searched for; press up to
+' change it."
+
+sub init()
+  constants = m.global.constants
+  m.bg = m.top.findNode("chipBg")
+  m.queryLabel = m.top.findNode("queryLabel")
+  m.chevron = m.top.findNode("chevron")
+
+  ' Background: secondary panel tint so the chip stands out against the
+  ' screen's primary background, but with enough alpha to feel integrated.
+  m.bg.color = constants.colorBackgroundSecondary + constants.alpha80
+
+  ' Placeholder default — overridden by parent via setField("placeholder", …)
+  ' when translated strings are available.
+  m.top.placeholder = translate(translationKeys.ButtonSearch)
+
+  renderLabel()
+  renderChevron()
+end sub
+
+' Update label text and dim color for placeholder state.
+sub renderLabel()
+  if not isValid(m.queryLabel) then return
+  constants = m.global.constants
+
+  queryText = m.top.queryText
+  if isValid(queryText) and queryText <> ""
+    m.queryLabel.text = queryText
+    m.queryLabel.color = constants.colorTextPrimary
+  else
+    m.queryLabel.text = m.top.placeholder
+    m.queryLabel.color = constants.colorTextSecondary
+  end if
+end sub
+
+' Swap the chevron image based on overlay state. Down arrow when collapsed
+' ("pull me down"); up arrow when expanded ("push me back up"). A discrete
+' swap rather than an Animation, because the Animation itself lives on the
+' overlay that's already sliding — animating two things in sync is a wash
+' visually and adds complexity. URI swap avoids the rendering artifacts a
+' rotation would produce on a non-square glyph.
+sub renderChevron()
+  if not isValid(m.chevron) then return
+  constants = m.global.constants
+  if m.top.isExpanded
+    m.chevron.uri = constants.iconArrowUpWhite
+  else
+    m.chevron.uri = constants.iconArrowDownWhite
+  end if
+end sub

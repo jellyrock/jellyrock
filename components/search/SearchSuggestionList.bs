@@ -1,0 +1,117 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' SearchSuggestionList — vertical list of selectable suggestions rendered to
+' the right of the QWERTY keyboard inside the SearchOverlay.
+'
+' Two modes:
+'   "recent" — the user's stored recent-search history, plus a trailing
+'              "Clear History" action row when the list is non-empty.
+'   "hints"  — live /Search/Hints typeahead results for the current query.
+'
+' The `items` field carries an array of { text, value } AAs. `text` is shown;
+' `value` is emitted on activation so the screen can populate the query and
+' run a full search.
+
+' Sentinel value emitted by the special "Clear History" row. Chosen to be
+' extremely unlikely to collide with a real search term.
+const CLEAR_HISTORY_SENTINEL = "__jr_clear_history__"
+
+sub init()
+  m.list = m.top.findNode("list")
+  m.sectionLabel = m.top.findNode("sectionLabel")
+
+  constants = m.global.constants
+  m.list.color = constants.colorTextPrimary
+  m.list.focusedColor = constants.colorTextPrimary
+  m.list.focusBitmapBlendColor = constants.colorPrimary
+
+  ' LabelList needs a font assigned explicitly — it does not inherit from any
+  ' base. Assigning the URI string auto-creates a Font node on the field.
+  m.list.font = "font:MediumSystemFont"
+  m.list.font.size = constants.fontSizeMedium
+  m.list.focusedFont = "font:MediumBoldSystemFont"
+  m.list.focusedFont.size = constants.fontSizeMedium
+
+  m.list.observeField("itemSelected", "onItemSelected")
+
+  renderSectionLabel()
+  renderItems()
+end sub
+
+' Section header reflects the current mode. Called when mode changes.
+sub renderSectionLabel()
+  if not isValid(m.sectionLabel) then return
+
+  mode = m.top.mode
+  if mode = "recent"
+    m.sectionLabel.text = translate(translationKeys.LabelRecentSearches)
+  else if mode = "hints"
+    m.sectionLabel.text = translate(translationKeys.LabelSuggestions)
+  else
+    m.sectionLabel.text = ""
+  end if
+end sub
+
+' Rebuild the list content node from the items array.
+' Creates a FRESH ContentNode each call and reassigns m.list.content — mutating
+' a shared ContentNode's children (clear() + CreateChild) didn't reliably
+' trigger LabelList to re-render, so repeated typeahead pushes stacked old
+' items on top of new ones in the UI.
+' Appends a synthetic "Clear History" row when mode == "recent" and the list
+' is non-empty; activating it emits clearHistoryRequested instead of a query.
+sub renderItems()
+  if not isValid(m.list) then return
+
+  newContent = CreateObject("roSGNode", "ContentNode")
+
+  items = m.top.items
+  if not isValid(items) then items = []
+
+  for each item in items
+    if isValid(item) and isValid(item.text)
+      row = newContent.CreateChild("ContentNode")
+      row.title = item.text
+      ' LabelList doesn't expose custom fields per-row; store the activation
+      ' value in `description` so onItemSelected can retrieve it by index.
+      row.description = item.value
+    end if
+  end for
+
+  if m.top.mode = "recent" and items.count() > 0
+    row = newContent.CreateChild("ContentNode")
+    row.title = translate(translationKeys.ButtonClearHistory)
+    row.description = CLEAR_HISTORY_SENTINEL
+  end if
+
+  m.list.content = newContent
+end sub
+
+' Fired by the LabelList when the user presses OK on a row. Read back the
+' stashed activation value and emit the appropriate field.
+sub onItemSelected()
+  if not isValid(m.list.content) then return
+  row = m.list.content.getChild(m.list.itemSelected)
+  if not isValid(row) then return
+
+  value = row.description
+  if value = CLEAR_HISTORY_SENTINEL
+    m.top.clearHistoryRequested = true
+  else
+    m.top.selectedSuggestion = value
+  end if
+end sub
+
+' RIGHT on any row escapes to the keyboard (which sits to the right of the
+' suggestion list in the current layout). Parent handles the focus hand-off.
+' Without this, RIGHT is swallowed by the LabelList and the user has no way
+' out of the suggestion column short of picking a row or pressing BACK.
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+  if key = "right"
+    m.top.escape = "right"
+    return true
+  end if
+  return false
+end function
