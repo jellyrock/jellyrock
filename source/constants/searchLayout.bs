@@ -1,0 +1,57 @@
+' @fileoverview Layout constants for the SearchScreen (peek chip + pull-down overlay).
+' Values define screen-space geometry and must stay in sync with the corresponding
+' XML attributes / animation keyValues in SearchOverlay.xml, SearchPeekChip.xml, and
+' SearchScreen.xml.
+
+namespace searchLayout
+
+  ' Peek chip — pinned at top, always visible. Shows current query or placeholder
+  ' with a chevron indicating the keyboard can be pulled down.
+  const PEEK_CHIP_Y = 24
+  const PEEK_CHIP_HEIGHT = 60
+  const PEEK_CHIP_WIDTH = 720
+
+  ' Results row list (SearchRow) translation when collapsed.
+  ' y starts below the peek chip so both are visible together.
+  const RESULTS_Y = 120
+
+  ' Results row list translation when the overlay is expanded. Positioned
+  ' just below the overlay's bottom edge (OVERLAY_HEIGHT + 20px margin) so
+  ' row 0 remains partially visible as live-typing results populate. Also
+  ' prevents the texture-reload flash that happens when content is fully
+  ' occluded by an opaque rectangle and then revealed — keeping at least
+  ' part of row 0 on-screen means its textures never unload.
+  const RESULTS_Y_EXPANDED = 600
+
+  ' Overlay (keyboard + suggestion panel) — slides down from above the viewport.
+  ' OPEN_Y: fully visible, top aligned to screen top.
+  ' CLOSED_Y: placed above the viewport so it's invisible until animated in.
+  ' Height budget: header at y=16 (~50px), keyboard at y=80 in slideGroup
+  ' with keyGrid effective offset of ~110px for DynamicCustomKeyboard's
+  ' textEditBox layout reservation (even with visible=false), keyGrid
+  ' height 360 → keyGrid bottom at y=550, plus 30px padding = 580.
+  const OVERLAY_OPEN_Y = 0
+  const OVERLAY_CLOSED_Y = -580
+  const OVERLAY_HEIGHT = 580
+  const OVERLAY_WIDTH = 1920
+
+  ' Slide-in animation timing — matches ExtrasSlider / OptionsSlider feel.
+  const SLIDE_DURATION_S = 0.3
+
+  ' Typeahead debounce — gap after the last keystroke before firing /Search/Hints.
+  ' 275ms balances "snappy" against avoiding a request per key on fast typers.
+  const DEBOUNCE_S = 0.275
+
+  ' Full-search debounce — longer than the hints debounce so the heavier
+  ' multi-endpoint search only fires when the user pauses to look at results.
+  ' Keeps results populating live while typing (old behaviour users expect)
+  ' without thrashing the server on every keystroke.
+  const FULL_SEARCH_DEBOUNCE_S = 0.5
+
+  ' /Search/Hints limit — keeps suggestion list short enough to scan in one glance.
+  const HINTS_LIMIT = 8
+
+  ' Recent-searches cap — MRU window. More than this and the list feels unwieldy.
+  const RECENT_MAX = 10
+
+end namespace
