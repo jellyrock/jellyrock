@@ -5,6 +5,7 @@ import "pkg:/source/api/image.bs"
 import "pkg:/source/api/items.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
+import "pkg:/source/constants/searchLayout.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
@@ -15,15 +16,21 @@ import "pkg:/source/utils/translate.bs"
 sub init()
   m.top.itemComponentName = "BrowseRowItem"
 
-  ' Set layout before initTextureManager so it calculates correct visible width
-  m.top.rowLabelOffset = [0, 21]
+  ' Override ONLY the vertical animation style — horizontal (rowFocusAnimationStyle)
+  ' stays as JRRowList's "fixedFocusWrap" default so LEFT/RIGHT wrap within a row.
+  ' Vertical wrap must be disabled: UP at row 0 needs to bubble past the RowList's
+  ' native handler to SearchScreen.onKeyEvent, which expands the keyboard overlay.
+  ' With "fixedFocusWrap" vertically, the native handler would consume UP and wrap
+  ' to the last row instead.
   m.top.vertFocusAnimationStyle = "fixedFocus"
-  m.top.rowFocusAnimationStyle = "fixedFocus"
-  m.top.focusXOffset = [0]
-  m.top.translation = [491, 165]
-  ' itemSize width sets the row container width; height is the tallest possible row.
+
+  ' Set layout before initTextureManager so it calculates correct visible width.
+  m.top.rowLabelOffset = [96, 21]
+  m.top.translation = [0, searchLayout.RESULTS_Y]
+  ' itemSize width: full 1920. JRRowList's focusXOffset=[96] provides the
+  ' left safe-zone inset so posters don't hug the screen edge.
   ' rowHeights (set in applyRowSizes) overrides height per-row.
-  m.top.itemSize = [1325, rowSlotSize.ROW_HEIGHT_PORTRAIT]
+  m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
   m.top.itemSpacing = [0, 0]
   m.top.numRows = 3
 

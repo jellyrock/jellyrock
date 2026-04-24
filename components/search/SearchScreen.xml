@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchScreen" extends="JRScreen">
+  <children>
+    <!-- Hidden VoiceTextEditBox — screen-level voice capture. Same pattern as
+         Home (components/home/Home.xml:4). voiceEnabled + active are set once
+         in init() and released in destroy() to yield the firmware's single
+         voice slot on teardown. The keyboard's internal voice box is disabled
+         so we're the only claimant. -->
+    <VoiceTextEditBox id="searchVoiceBox" visible="true" width="40" translation="[0, 0]" />
+
+    <!-- Pinned collapsed-state indicator. Always visible; overlay slides on top. -->
+    <SearchPeekChip id="peekChip" translation="[600, 24]" />
+
+    <!-- Results list — full-width RowList. Repositioned from the old side-by-side
+         layout now that the keyboard is a pull-down. -->
+    <SearchRow id="searchSelect" focusable="true" />
+
+    <!-- Empty-state help label (shown when no query has been submitted yet).
+         Translation set in bs because the overlay covers the top third of the
+         screen when expanded. -->
+    <LabelPrimaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="" translation="[263, 540]" />
+
+    <!-- Sliding overlay: keyboard + suggestion list. Animated by its own bs. -->
+    <SearchOverlay id="overlay" />
+
+    <!-- Results slide animation — runs in sync with the overlay. When
+         expanded, SearchRow slides down to RESULTS_Y_EXPANDED so row 0
+         remains visible below the overlay's bottom edge. When collapsed,
+         slides back up to RESULTS_Y (below the peek chip).
+         keyValue overridden from bs so searchLayout constants are the
+         single source of truth. -->
+    <Animation id="resultsSlideAnim" duration="0.3" repeat="false" easeFunction="outCubic">
+      <Vector2DFieldInterpolator id="resultsSlideInterp" key="[0.0, 1.0]"
+        keyValue="[[0, 120],[0, 600]]"
+        fieldToInterp="searchSelect.translation" />
+    </Animation>
+
+    <!-- Existing options side panel — unchanged behaviour. -->
+    <OptionsSlider id="options" />
+  </children>
+  <interface>
+    <!-- Canonical current query. Writing triggers the state machine (hints /
+         recent / full-search collapse) via onChange. -->
+    <field id="query" type="string" alwaysNotify="true" onChange="onQueryChanged" />
+
+    <!-- Expansion state. Writing flips overlay animation, focus, and backdrop.
+         alwaysNotify so repeated writes (e.g. a prior handler already set
+         false, then another submit path re-sets false) still fire — without
+         it the Scenegraph silently elides same-value writes and the overlay
+         can end up stranded in the wrong visual state. -->
+    <field id="isExpanded" type="boolean" onChange="onExpansionChanged" alwaysNotify="true" />
+
+    <!-- Emitted when a row is selected in the results (existing consumer:
+         showScenes.bs observer on CreateSearchPage result). -->
+    <field id="selectedItem" type="node" alwaysNotify="true" />
+
+    <!-- Quick-play flow — existing semantics preserved. -->
+    <field id="quickPlayNode" type="node" alwaysNotify="true" />
+
+    <!-- Image display mode hint — kept for backward compat with any subtype-
+         based callers (e.g. backdrop refresh logic). -->
+    <field id="imageDisplayMode" type="string" value="scaleToZoom" />
+
+    <!-- External voice-entry hook. Main.bs sets this when the user invokes
+         voice search from Home — SearchScreen then populates the query and
+         triggers a full search without waiting for the user to expand. -->
+    <field id="voiceQueryIn" type="string" alwaysNotify="true" onChange="onVoiceQueryIn" />
+  </interface>
+</component>

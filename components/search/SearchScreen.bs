@@ -1,0 +1,684 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/api/image.bs"
+import "pkg:/source/api/items.bs"
+import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/constants/searchLayout.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/searchHistory.bs"
+import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
+
+' SearchScreen — redesigned top-level search scene.
+'
+' Flow:
+'   - Collapsed state: peek chip + full-width SearchRow results. UP from row 0
+'     expands the overlay.
+'   - Expanded state: SearchOverlay slides down from above the viewport; custom
+'     QWERTY keyboard gains focus. Typing routes through keyGrid.text →
+'     m.top.query → hints debounce pipeline.
+'   - Submit (Go key / suggestion tap / voice): full SearchTask runs against
+'     /Items + /Persons + /Artists + /LiveTv/Programs; overlay slides up; results
+'     populate; focus lands on SearchRow row 0.
+'
+' Voice: a screen-level hidden VoiceTextEditBox owns Roku's single voice slot
+' exclusively (the QWERTY keyboard's inner voice popup is disabled). This
+' matches the pattern used by Home.
+
+sub init()
+  m.log = new log.Logger("SearchScreen")
+  m.log.verbose("init")
+
+  m.top.isOptionsAvailable = false
+
+  ' Hide the stock overhang — this screen has its own top chrome (peek chip
+  ' when collapsed, SearchHeader when expanded). The overhang's logo/user/
+  ' title bar would just stack duplicate UI on top.
+  m.top.isOverhangVisible = false
+
+  m.global.sceneManager.callFunc("setBackgroundImage", "")
+
+  m.searchSelect = m.top.findNode("searchSelect")
+  m.peekChip = m.top.findNode("peekChip")
+  m.overlay = m.top.findNode("overlay")
+  m.searchHelpText = m.top.findNode("SearchHelpText")
+  m.voiceBox = m.top.findNode("searchVoiceBox")
+  m.resultsSlideAnim = m.top.findNode("resultsSlideAnim")
+  m.resultsSlideInterp = m.top.findNode("resultsSlideInterp")
+
+  ' Bind the results-slide interpolator to searchLayout constants so a single
+  ' source of truth drives the collapsed/expanded Y positions.
+  if isValid(m.resultsSlideInterp)
+    m.resultsSlideInterp.keyValue = [
+      [0, searchLayout.RESULTS_Y],
+      [0, searchLayout.RESULTS_Y_EXPANDED]
+    ]
+  end if
+
+  m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
+
+  ' Full-search task — single instance, reused across submits.
+  m.searchTask = CreateObject("roSGNode", "SearchTask")
+
+  ' Hints task is created FRESH on every debounce fire. Re-using a single
+  ' SearchHintsTask instance with "stop"→"RUN" transitions is unreliable:
+  ' when the prior fetch is still in flight, "stop" is only honored when the
+  ' task next yields, and "RUN" on an already-running task is a silent no-op.
+  ' Net effect: typing "S" then "T" leaves the task running the "S" query,
+  ' and the "T" restart never fires — the UI stays frozen on stale hints.
+  ' Creating a new node each fire guarantees a clean starting state; the old
+  ' task's stale write is harmless (observer is detached so the callback
+  ' never runs) and the Task node is GC'd once its fetch returns.
+  m.hintsTask = invalid
+
+  ' Two debounce timers, one per task, different durations:
+  '  - hintsDebounce (275ms): snappy typeahead for suggestion rows.
+  '  - fullSearchDebounce (500ms): heavier multi-endpoint search that
+  '    populates results under the overlay LIVE as the user types, without
+  '    collapsing. Collapse happens only on explicit submit (Go key /
+  '    suggestion tap / voice / DOWN from keyboard bottom row).
+  m.debounceTimer = CreateObject("roSGNode", "Timer")
+  m.debounceTimer.duration = searchLayout.DEBOUNCE_S
+  m.debounceTimer.repeat = false
+  m.top.appendChild(m.debounceTimer)
+  m.debounceTimer.observeField("fire", "onDebounceFire")
+
+  m.fullSearchTimer = CreateObject("roSGNode", "Timer")
+  m.fullSearchTimer.duration = searchLayout.FULL_SEARCH_DEBOUNCE_S
+  m.fullSearchTimer.repeat = false
+  m.top.appendChild(m.fullSearchTimer)
+  m.fullSearchTimer.observeField("fire", "onFullSearchDebounceFire")
+
+  ' Resolve overlay children we need to observe / control.
+  m.kbd = m.overlay.findNode("kbd")
+  m.header = m.overlay.findNode("header")
+  m.suggestions = m.overlay.findNode("suggestions")
+
+  ' Keyboard → query pipeline. DynamicCustomKeyboard emits typed characters
+  ' into its own text field; mirror every change into m.top.query so the rest
+  ' of the state machine keys off a single source of truth.
+  m.kbd.observeField("text", "onKeyboardTextChanged")
+  m.kbd.observeField("submit", "onSubmit")
+  m.kbd.observeField("clearRequested", "onClearRequested")
+  m.kbd.observeField("escape", "onKeyboardEscape")
+
+  ' Suggestion list emits selection back to us.
+  m.suggestions.observeField("selectedSuggestion", "onSuggestionSelected")
+  m.suggestions.observeField("clearHistoryRequested", "onClearHistoryRequested")
+  m.suggestions.observeField("escape", "onSuggestionEscape")
+
+  ' Row list focus observer — drives backdrop updates as user scrolls results.
+  m.searchSelect.observeField("rowItemFocused", "onSearchItemFocused")
+
+  ' Voice — screen owns the voiceEnabled slot. initialise once, release in destroy.
+  initVoiceBox()
+
+  ' Peek chip starts collapsed and empty.
+  m.peekChip.placeholder = translate(translationKeys.ButtonSearch)
+  m.peekChip.isExpanded = false
+  m.peekChip.queryText = ""
+
+  ' Seed the suggestion panel with the recent list so opening the overlay
+  ' feels instantaneous (nothing to fetch).
+  renderRecentSuggestions()
+
+  ' Default lastFocus — results list when populated, peek chip otherwise.
+  m.top.lastFocus = m.searchSelect
+end sub
+
+' ============================================================================
+' LIFECYCLE HOOKS (JRScreen)
+' ============================================================================
+
+sub OnScreenShown()
+  m.log.verbose("OnScreenShown")
+
+  if isValid(m.searchSelect) and isValid(m.searchSelect.content)
+    updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
+    activateTextureManager(m.searchSelect.content)
+  end if
+
+  if isValid(m.top.lastFocus)
+    m.top.lastFocus.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
+end sub
+
+sub OnScreenHidden()
+  m.log.info("OnScreenHidden")
+  if isValid(m.searchSelect) and isValid(m.searchSelect.content)
+    hideTextureManager(m.searchSelect.content)
+  end if
+end sub
+
+' destroy: Full teardown releasing all resources before component removal.
+' Called automatically by SceneManager.popScene() / clearScenes().
+sub destroy()
+  m.log.verbose("destroy — released voice slot")
+
+  if isValid(m.searchSelect) and isValid(m.searchSelect.content)
+    destroyTextureManager(m.searchSelect.content)
+  end if
+
+  ' Release the firmware's voice route so the returning screen's voice box can
+  ' reclaim it. Mirrors the teardown from the old SearchResults.bs.
+  if isValid(m.voiceBox)
+    m.voiceBox.unobserveField("text")
+    m.voiceBox.voiceEnabled = false
+    m.voiceBox.active = false
+  end if
+
+  if isValid(m.kbd)
+    m.kbd.unobserveField("text")
+    m.kbd.unobserveField("submit")
+    m.kbd.unobserveField("clearRequested")
+    m.kbd.unobserveField("escape")
+  end if
+
+  if isValid(m.suggestions)
+    m.suggestions.unobserveField("selectedSuggestion")
+    m.suggestions.unobserveField("clearHistoryRequested")
+    m.suggestions.unobserveField("escape")
+  end if
+
+  if isValid(m.searchSelect) then m.searchSelect.unobserveField("rowItemFocused")
+
+  if isValid(m.debounceTimer)
+    m.debounceTimer.unobserveField("fire")
+    m.debounceTimer.control = "stop"
+  end if
+
+  if isValid(m.fullSearchTimer)
+    m.fullSearchTimer.unobserveField("fire")
+    m.fullSearchTimer.control = "stop"
+  end if
+
+  if isValid(m.hintsTask)
+    m.hintsTask.unobserveField("results")
+    m.hintsTask.control = "stop"
+    m.hintsTask = invalid
+  end if
+
+  if isValid(m.searchTask)
+    m.searchTask.unobserveField("results")
+    m.searchTask.control = "STOP"
+    m.searchTask = invalid
+  end if
+
+  m.searchSelect = invalid
+  m.peekChip = invalid
+  m.overlay = invalid
+  m.kbd = invalid
+  m.header = invalid
+  m.suggestions = invalid
+  m.searchHelpText = invalid
+  m.voiceBox = invalid
+end sub
+
+' ============================================================================
+' VOICE
+' ============================================================================
+
+' initVoiceBox — screen-level voice capture. Matches Home.bs initVoiceBox().
+' voiceEnabled stays true across the screen's lifetime; active is toggled
+' implicitly by screen show/hide via JRScreen's lifecycle.
+sub initVoiceBox()
+  if not isValid(m.voiceBox) then return
+
+  m.voiceBox.opacity = 0.0001
+  m.voiceBox.hintText = translate(translationKeys.LabelUseVoiceRemoteToSearch)
+  m.voiceBox.voiceEnabled = true
+  m.voiceBox.active = true
+  m.voiceBox.observeField("text", "onVoiceText")
+end sub
+
+' onVoiceText — voice input captured. Populate query and immediately submit.
+sub onVoiceText()
+  voiceText = m.voiceBox.text
+  if voiceText = "" then return
+  m.voiceBox.text = ""  ' reset for next voice search
+
+  m.log.info("voice input: " + voiceText)
+  applyQueryAndSubmit(voiceText)
+end sub
+
+' onVoiceQueryIn — external entry from Main.bs when voice fires on Home. Same
+' semantics as a local voice capture, just arrives via a field write instead
+' of the VoiceTextEditBox.
+sub onVoiceQueryIn()
+  voiceText = m.top.voiceQueryIn
+  if not isValid(voiceText) or voiceText = "" then return
+
+  m.log.info("external voiceQueryIn: " + voiceText)
+  applyQueryAndSubmit(voiceText)
+end sub
+
+' Shared helper — write the query, sync the keyboard's text field so the
+' header stays in sync, run full search + collapse.
+sub applyQueryAndSubmit(queryText as string)
+  m.kbd.text = queryText
+  m.top.query = queryText
+  submitSearch(queryText)
+end sub
+
+' ============================================================================
+' EXPANSION STATE MACHINE
+' ============================================================================
+
+' Parent writes isExpanded; this slides the overlay and manages focus + backdrop.
+sub onExpansionChanged()
+  expanded = m.top.isExpanded
+  m.log.verbose("expansion→" + (expanded ? "true" : "false"))
+
+  m.peekChip.isExpanded = expanded
+  m.overlay.isExpanded = expanded
+
+  ' Slide SearchRow down/up in sync with the overlay so row 0 remains
+  ' visible below the overlay's bottom edge while typing. Keeping row 0
+  ' partially on-screen in both states also prevents the texture-reload
+  ' flash that happens when content is fully occluded and then revealed.
+  if isValid(m.resultsSlideAnim)
+    m.resultsSlideAnim.control = "stop"
+    m.resultsSlideInterp.reverse = not expanded
+    m.resultsSlideAnim.control = "start"
+  end if
+
+  ' Hide the peek chip while the overlay is up — the overlay has its own
+  ' SearchHeader that shows the query text, and the semi-transparent backdrop
+  ' leaves the chip faintly visible behind it otherwise (double-search-bar
+  ' visual bug reported on first pass).
+  m.peekChip.visible = not expanded
+
+  ' Same deal with the empty-state help label — the overlay's alpha lets it
+  ' bleed through as ghost text. Hide while expanded; restore when we collapse
+  ' back to the empty state with no results.
+  haveResults = hasResults()
+  if expanded
+    m.searchHelpText.visible = false
+  else if not haveResults
+    m.searchHelpText.visible = true
+  end if
+
+  if expanded
+    ' Overlay covers the top of the screen — clear any item backdrop so it
+    ' doesn't bleed through the alpha layer.
+    m.global.sceneManager.callFunc("setBackgroundImage", "")
+    m.kbd.setFocus(true)
+  else
+    ' Collapse: always focus the results list — even when empty — so the
+    ' screen has a single, consistent focus target. onKeyEvent treats "in
+    ' focus chain with no row currently focused" as the empty-state signal
+    ' for UP-to-reopen; focusing m.top instead (the previous approach)
+    ' caused Roku to route focus to a descendant we couldn't reliably
+    ' identify, and UP events were dropped.
+    if isValid(m.searchSelect)
+      m.searchSelect.setFocus(true)
+      m.top.lastFocus = m.searchSelect
+    end if
+  end if
+end sub
+
+' True iff the results list is currently populated. Used in a few places to
+' decide whether the empty-state help label should show and whether OK
+' should trigger expansion.
+function hasResults() as boolean
+  if not isValid(m.searchSelect) then return false
+  if not isValid(m.searchSelect.content) then return false
+  return m.searchSelect.content.getChildCount() > 0
+end function
+
+' ============================================================================
+' QUERY / TYPEAHEAD PIPELINE
+' ============================================================================
+
+' Keyboard's native text field changed — mirror into the canonical query.
+sub onKeyboardTextChanged()
+  text = m.kbd.text
+  if not isValid(text) then text = ""
+  m.top.query = text
+end sub
+
+' m.top.query changed — drive the suggestion panel + debounce both the
+' hints typeahead and the full-results search.
+sub onQueryChanged()
+  query = m.top.query
+  if not isValid(query) then query = ""
+
+  ' Update the peek chip and overlay header so they stay in lockstep.
+  m.peekChip.queryText = query
+  m.overlay.queryText = query
+
+  ' Reset both debounce timers for every keystroke.
+  m.debounceTimer.control = "stop"
+  m.fullSearchTimer.control = "stop"
+
+  trimmed = searchHistory.Trim(query)
+  if trimmed = ""
+    ' No input — cancel any in-flight hints and show the recent-searches list.
+    if isValid(m.hintsTask)
+      m.hintsTask.unobserveField("results")
+      m.hintsTask.control = "stop"
+    end if
+    renderRecentSuggestions()
+    return
+  end if
+
+  ' Non-empty: show the Suggestions header immediately and arm both debounces.
+  m.overlay.suggestionMode = "hints"
+  m.debounceTimer.control = "start"
+  m.fullSearchTimer.control = "start"
+end sub
+
+' Debounce timer fired — kick off /Search/Hints for the current query.
+' Always starts a fresh SearchHintsTask instance (see the comment in init()
+' explaining why reusing one task with stop/RUN is unreliable).
+sub onDebounceFire()
+  query = m.top.query
+  if not isValid(query) or query = "" then return
+
+  m.log.verbose("hints query=" + query)
+
+  ' Detach the old task's observer so its in-flight fetch, when it finally
+  ' returns, lands in silence. The task node itself GCs after it finishes.
+  if isValid(m.hintsTask)
+    m.hintsTask.unobserveField("results")
+    m.hintsTask.control = "stop"
+  end if
+
+  m.hintsTask = CreateObject("roSGNode", "SearchHintsTask")
+  m.hintsTask.observeField("results", "onHintsResults")
+  m.hintsTask.query = query
+  m.hintsTask.control = "RUN"
+end sub
+
+' Hints task completed — guard against stale responses, then render.
+sub onHintsResults(msg as object)
+  ' The observer is bound to a specific task instance, but because we create
+  ' a new task each fire, this handler can legitimately be invoked by an
+  ' older task that happens to finish after a newer one was spawned. Resolve
+  ' the actual firing node from the message rather than m.hintsTask so we
+  ' read its results (and only its results).
+  task = msg.getRoSGNode()
+  if not isValid(task) then return
+
+  results = task.results
+  if not isValid(results) then return
+
+  if not isValid(results.query) or results.query <> m.top.query
+    ' User has typed more since this request was issued — drop.
+    return
+  end if
+
+  hints = results.hints
+  if not isValid(hints) then hints = []
+
+  m.log.verbose("hints received n=" + hints.count().toStr())
+
+  items = []
+  for each hint in hints
+    if isValid(hint) and isValid(hint.name)
+      items.push({ text: hint.text, value: hint.name })
+    end if
+  end for
+
+  m.overlay.suggestionMode = "hints"
+  m.overlay.suggestionItems = items
+end sub
+
+' Populate the suggestion panel with the user's recent search list.
+sub renderRecentSuggestions()
+  recent = searchHistory.load()
+  items = []
+  for each term in recent
+    if type(term) = "roString" or type(term) = "String"
+      items.push({ text: term, value: term })
+    end if
+  end for
+
+  m.overlay.suggestionMode = "recent"
+  m.overlay.suggestionItems = items
+end sub
+
+' ============================================================================
+' SUBMIT / SELECTION HANDLERS
+' ============================================================================
+
+sub onSubmit()
+  if not m.kbd.submit then return
+  query = m.top.query
+  if not isValid(query) or query = "" then return
+  submitSearch(query)
+end sub
+
+sub onClearRequested()
+  if not m.kbd.clearRequested then return
+  m.kbd.text = ""  ' cascades into onKeyboardTextChanged → query = ""
+end sub
+
+sub onSuggestionSelected()
+  term = m.suggestions.selectedSuggestion
+  if not isValid(term) or term = "" then return
+
+  ' Mirror the choice into the keyboard's text field so the header + query
+  ' stay consistent (user may re-open the overlay to edit).
+  m.kbd.text = term
+  m.top.query = term
+  submitSearch(term)
+end sub
+
+sub onClearHistoryRequested()
+  if not m.suggestions.clearHistoryRequested then return
+  searchHistory.clear()
+  renderRecentSuggestions()
+end sub
+
+' RIGHT from the suggestion list — return focus to the keyboard (to the
+' right of the list in the current layout) so the user can resume typing.
+sub onSuggestionEscape()
+  if m.suggestions.escape <> "right" then return
+  if isValid(m.kbd) then m.kbd.setFocus(true)
+end sub
+
+' Fire the full multi-endpoint search without collapsing the overlay. Used
+' by the live-while-typing debounce path so results populate under the
+' still-open overlay as the user keeps typing.
+sub runFullSearch(query as string)
+  m.log.verbose("runFullSearch query=" + query)
+
+  ' Stop any in-flight task cleanly before restarting.
+  m.searchTask.unobserveField("results")
+  m.searchTask.control = "stop"
+
+  m.searchHelpText.visible = false
+  m.searchTask.observeField("results", "onFullSearchResults")
+  m.searchTask.query = query
+  m.searchTask.control = "RUN"
+end sub
+
+' User-initiated submit — Go key, suggestion tap, voice, or DOWN from the
+' keyboard bottom row. Pushes the term to recent history, kicks off the task
+' (only if we don't already have results for this exact query), and collapses
+' the overlay so the user can browse results.
+sub submitSearch(query as string)
+  m.log.info("submit query=" + query)
+
+  ' Cancel any pending debounces — submit supersedes them.
+  m.debounceTimer.control = "stop"
+  m.fullSearchTimer.control = "stop"
+
+  searchHistory.push(query)
+
+  ' If the results currently in the SearchRow already match this query,
+  ' skip the re-run. Setting searchTask.query + control=RUN on an identical
+  ' query still causes onFullSearchResults to reassign m.searchSelect.itemdata,
+  ' which triggers a full ContentNode rebuild in SearchRow.getData() — and
+  ' that rebuild is what the user perceives as a "reload flash" (new Poster
+  ' nodes have to re-associate with their textures even when URLs match).
+  ' Common case: live-typing debounce already fetched these exact results,
+  ' user presses Go / picks a matching suggestion to confirm.
+  if isValid(m.searchSelect.query) and m.searchSelect.query = query and hasResults()
+    m.log.verbose("submit: skipping re-run — results already match query")
+    m.top.isExpanded = false
+    return
+  end if
+
+  startLoadingSpinner(false)
+  runFullSearch(query)
+  m.top.isExpanded = false
+end sub
+
+' Full-search debounce fired — kick off the task WITHOUT collapsing the
+' overlay. Results stream in under the open keyboard so the user sees
+' matches live as they type.
+sub onFullSearchDebounceFire()
+  query = m.top.query
+  if not isValid(query) or searchHistory.Trim(query) = "" then return
+  runFullSearch(query)
+end sub
+
+sub onFullSearchResults()
+  m.searchTask.unobserveField("results")
+  stopLoadingSpinner()
+
+  results = m.searchTask.results
+  if not isValid(results)
+    m.log.warn("full search returned invalid results")
+    return
+  end if
+
+  m.searchSelect.itemdata = results
+  m.searchSelect.query = m.top.query
+
+  total = (results.TotalRecordCount ?? 0)
+  m.log.info("full results total=" + total.toStr())
+
+  if total = 0
+    ' No hits — show the no-results label only when the overlay is already
+    ' collapsed. While typing (overlay expanded) the label would sit behind
+    ' the keyboard uselessly, and "no results for STA" is unhelpful mid-typo.
+    if not m.top.isExpanded
+      m.searchHelpText.text = translate(translationKeys.MessageNoResultsFor1, [m.top.query])
+      m.searchHelpText.visible = true
+    end if
+    return
+  end if
+
+  m.searchHelpText.visible = false
+  ' Only steal focus when the overlay is collapsed (user submitted). During
+  ' live-while-typing the user is still on the keyboard — snapping focus to
+  ' the results list would yank them out of the middle of a word.
+  if not m.top.isExpanded
+    m.searchSelect.setFocus(true)
+    m.top.lastFocus = m.searchSelect
+  end if
+end sub
+
+' ============================================================================
+' KEYBOARD EDGE ESCAPES
+' ============================================================================
+
+sub onKeyboardEscape()
+  direction = m.kbd.escape
+  if not isValid(direction) then return
+
+  if direction = "down"
+    ' DOWN from bottom row: collapse back to results (an implicit submit).
+    query = m.top.query
+    if isValid(query) and query <> ""
+      submitSearch(query)
+    else
+      m.top.isExpanded = false
+    end if
+  else if direction = "left"
+    ' LEFT from left-edge keys (Q/A/Z/3): hand focus to the suggestion list
+    ' sitting in the left column. If the list is empty (no recent, no hints),
+    ' stay on the keyboard rather than focusing an empty list.
+    list = m.suggestions.findNode("list")
+    if isValid(list) and isValid(list.content) and list.content.getChildCount() > 0
+      list.setFocus(true)
+    end if
+  else if direction = "up"
+    ' No content above the keyboard within the overlay currently — stay put
+    ' rather than looping focus.
+  end if
+  ' "right" is an edge-stop — nothing to the right of the keyboard.
+end sub
+
+' ============================================================================
+' RESULT FOCUS → BACKDROP
+' ============================================================================
+
+sub onSearchItemFocused()
+  if not isValid(m.searchSelect.rowItemFocused) or m.searchSelect.rowItemFocused[0] = -1 or m.searchSelect.rowItemFocused[1] = -1
+    return
+  end if
+
+  updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
+
+  rowContent = m.searchSelect.content.getChild(m.searchSelect.rowItemFocused[0])
+  if not isValid(rowContent) then return
+
+  focusedItem = rowContent.getChild(m.searchSelect.rowItemFocused[1])
+  if isValid(focusedItem) and isValidAndNotEmpty(focusedItem.id)
+    deviceRes = m.global.device.uiResolution
+    backdropUrl = getItemBackdropUrl(focusedItem, { width: deviceRes[0], height: deviceRes[1] })
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
+  else
+    m.global.sceneManager.callFunc("setBackgroundImage", "")
+  end if
+end sub
+
+' ============================================================================
+' KEY EVENT — expansion + back handling
+' ============================================================================
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  if key = "back"
+    if m.top.isExpanded
+      m.top.isExpanded = false
+      return true
+    end if
+    return false
+  end if
+
+  ' UP (or OK in the empty state) expands the overlay. Gated on the
+  ' searchSelect being in focus chain — onExpansionChanged always focuses
+  ' searchSelect after a collapse, so this branch is the canonical path for
+  ' both the post-search state and the empty state.
+  ' Empty list: rowItemFocused is invalid or [-1, -1] — we treat that the
+  ' same as "at row 0" for expansion. Past row 0 (focused[0] > 0), UP is
+  ' intra-list navigation and we leave it alone.
+  if not m.top.isExpanded and isValid(m.searchSelect) and m.searchSelect.isInFocusChain()
+    if key = "up" or (key = "OK" and not hasResults())
+      focused = m.searchSelect.rowItemFocused
+      atTopOrEmpty = (not isValid(focused)) or focused.count() < 2 or focused[0] <= 0
+      if atTopOrEmpty
+        m.top.isExpanded = true
+        return true
+      end if
+    end if
+  end if
+
+  if key = "play" and isValid(m.searchSelect) and m.searchSelect.isInFocusChain() and m.searchSelect.rowItemFocused.count() > 0
+    selectedContent = m.searchSelect.content.getChild(m.searchSelect.rowItemFocused[0])
+    if isValid(selectedContent)
+      selectedItem = selectedContent.getChild(m.searchSelect.rowItemFocused[1])
+      if isValid(selectedItem)
+        m.top.quickPlayNode = selectedItem
+        m.top.quickPlayNode = invalid
+        return true
+      end if
+    end if
+  end if
+
+  return false
+end function
