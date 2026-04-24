@@ -1,0 +1,101 @@
+import "pkg:/source/utils/misc.bs"
+
+' SearchQwertyKeyboard — custom DynamicCustomKeyboard subclass used inside the
+' SearchOverlay pull-down. Extends the stock keyboard with:
+'
+' 1. Special-key handling: Submit/Clear strOut tokens bubble up as boolean
+'    fields (submit, clearRequested) the parent observes.
+' 2. Edge-escape signalling: arrow presses at grid edges set m.top.escape so
+'    the parent can hand focus to adjacent UI (suggestion list to the right,
+'    results list downward) instead of wrapping inside the grid.
+' 3. Voice conflict avoidance: disables the keyboard's internal voiceEnabled
+'    textEditBox so the screen-level VoiceTextEditBox owns Roku's single
+'    voice slot exclusively.
+
+sub init()
+  m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/SearchQwertyKDF.json"
+  m.top.keyGrid.mode = "alphanumeric"
+
+  ' Match the SearchSuggestionList's focus styling so the two panels feel
+  ' like one UI. Default DynamicCustomKeyboard focus is white-on-black; we
+  ' want purple (theme primary) with white text, same as the focus bitmap
+  ' on the LabelList. These fields live on the inner keyGrid (DynamicKeyGrid),
+  ' not on DynamicCustomKeyboard itself — setting them on m.top was a no-op.
+  constants = m.global.constants
+  if isValid(m.top.keyGrid)
+    m.top.keyGrid.focusedKeyColor = constants.colorPrimary
+    m.top.keyGrid.focusedTextColor = constants.colorTextPrimary
+  end if
+
+  ' Hide + disable the built-in textEditBox. DynamicCustomKeyboard always
+  ' renders it above the grid as a hint/voice-prompt bar; we have a dedicated
+  ' SearchHeader that mirrors the query text, so the built-in one just looks
+  ' like a weird white line above the keyboard if left visible.
+  ' voiceEnabled must also be false so Roku's single global voice slot stays
+  ' claimed by the screen-level VoiceTextEditBox (see SearchScreen.bs).
+  ' visible=false is the important bit — opacity=0 alone leaves the box
+  ' occupying its ~110px of vertical layout space, which pushes the keyGrid
+  ' down and caused the bottom row to render below the overlay's clip region.
+  if isValid(m.top.textEditBox)
+    m.top.textEditBox.voiceEnabled = false
+    m.top.textEditBox.active = false
+    m.top.textEditBox.visible = false
+    m.top.textEditBox.opacity = 0
+  end if
+end sub
+
+' keySelected: called by DynamicCustomKeyboard for every key press.
+' Returns true if the key was handled internally (preventing its strOut from
+' being appended to the text field), false to let the default behaviour run.
+function keySelected(key as string) as boolean
+  if key = "submit"
+    m.top.submit = true
+    return true
+  else if key = "clear"
+    m.top.clearRequested = true
+    return true
+  end if
+
+  return false
+end function
+
+' onKeyEvent — set m.top.escape at grid edges so the parent can redirect focus.
+' Roku's DynamicCustomKeyboard wraps horizontally within the grid by default; we
+' override that at the outer edges because there's content outside the grid
+' (suggestion list to the LEFT now, results grid below).
+'
+' 10×4 grid layout (see SearchQwertyKDF.json):
+'   Row 1:   Q  W  E  R  T  Y  U  I  O  P
+'   Row 2:   A  S  D  F  G  H  J  K  L  [backspace]
+'   Row 3:   Z  X  C  V  B  N  M  0  1  2
+'   Row 4:   3  4  5  6  7  8  9  Space  Clear  [submit]
+'
+' LEFT at the left edge (Q, A, Z, 3) escapes to the suggestion list.
+' RIGHT at the right edge (P, backspace, 2, submit) is a dead-end — nothing
+' to the right of the keyboard in this layout — so it stays consumed by the
+' keyboard's internal wrap behaviour.
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  focusedChild = m.top.focusedChild
+  if not isValid(focusedChild) then return false
+  focused = focusedChild.keyFocused
+  if not isValid(focused) then return false
+
+  topRowKeys = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+  bottomRowKeys = ["3", "4", "5", "6", "7", "8", "9", " ", "clear", "submit"]
+  leftEdgeKeys = ["Q", "A", "Z", "3"]
+
+  if key = "up" and inArray(topRowKeys, focused)
+    m.top.escape = key
+    return true
+  else if key = "down" and inArray(bottomRowKeys, focused)
+    m.top.escape = key
+    return true
+  else if key = "left" and inArray(leftEdgeKeys, focused)
+    m.top.escape = key
+    return true
+  end if
+
+  return false
+end function

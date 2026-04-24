@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchQwertyKeyboard" extends="DynamicCustomKeyboard">
+  <interface>
+    <!-- Caller invokes this from its own onKeyEvent to handle special keys that
+         emit strOut tokens (submit, clear) — DynamicCustomKeyboard calls it for
+         every key press, and the keyboard returns true to consume tokens it
+         handled internally. -->
+    <function name="keySelected" />
+
+    <!-- Raised true when the user activates the Submit/Go key. Observer should
+         clear it or wait for next alwaysNotify fire. -->
+    <field id="submit" type="bool" alwaysNotify="true" />
+
+    <!-- Raised true when the user activates the Clear key. Observer should
+         wipe the current query text in response. -->
+    <field id="clearRequested" type="bool" alwaysNotify="true" />
+
+    <!-- Set to "up" | "down" | "left" | "right" when focus reaches a grid edge
+         and the parent should take over (e.g. collapse overlay on "down",
+         focus suggestion list on "right"). -->
+    <field id="escape" type="string" alwaysNotify="true" />
+  </interface>
+</component>

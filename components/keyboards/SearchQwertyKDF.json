@@ -1,0 +1,81 @@
+{
+  "keyboardWidthFHD": 1000,
+  "keyboardHeightFHD": 360,
+  "keyboardWidthHD": 655,
+  "keyboardHeightHD": 236,
+  "sections": [
+    {
+      "grids": [
+        {
+          "rows": [
+            {
+              "keys": [
+                { "label": "Q" },
+                { "label": "W" },
+                { "label": "E" },
+                { "label": "R" },
+                { "label": "T" },
+                { "label": "Y" },
+                { "label": "U" },
+                { "label": "I" },
+                { "label": "O" },
+                { "label": "P" }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "A" },
+                { "label": "S" },
+                { "label": "D" },
+                { "label": "F" },
+                { "label": "G" },
+                { "label": "H" },
+                { "label": "J" },
+                { "label": "K" },
+                { "label": "L" },
+                {
+                  "icon": "theme:DKB_DeleteKeyBitmap",
+                  "focusIcon": "theme:DKB_DeleteKeyFocusBitmap",
+                  "autoRepeat": 1,
+                  "strOut": "backspace"
+                }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "Z" },
+                { "label": "X" },
+                { "label": "C" },
+                { "label": "V" },
+                { "label": "B" },
+                { "label": "N" },
+                { "label": "M" },
+                { "label": "0" },
+                { "label": "1" },
+                { "label": "2" }
+              ]
+            },
+            {
+              "keys": [
+                { "label": "3" },
+                { "label": "4" },
+                { "label": "5" },
+                { "label": "6" },
+                { "label": "7" },
+                { "label": "8" },
+                { "label": "9" },
+                { "label": "Space", "strOut": " " },
+                { "label": "Clear", "strOut": "clear" },
+                {
+                  "icon": "pkg:/images/icons/check-white.png",
+                  "focusIcon": "pkg:/images/icons/check-black.png",
+                  "strOut": "submit"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
