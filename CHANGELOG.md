@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Update brighterscript-formatter from v1.7.22 to v1.7.23 ([#498](https://github.com/jellyrock/jellyrock/pull/498))
 - Update roku-deploy from v3.16.4 to v3.16.5 ([#497](https://github.com/jellyrock/jellyrock/pull/497))
 - Update softprops/action-gh-release action to v3 ([#493](https://github.com/jellyrock/jellyrock/pull/493))
-- Github actions ([#492](https://github.com/jellyrock/jellyrock/pull/492))
+- Github actions ([#504](https://github.com/jellyrock/jellyrock/pull/504), [#492](https://github.com/jellyrock/jellyrock/pull/492))
 
 ## [2.12.0](https://github.com/jellyrock/jellyrock/compare/v2.11.1...v2.12.0) - 2026-04-13
 
