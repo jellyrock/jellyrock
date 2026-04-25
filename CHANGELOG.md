@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update markdownlint-cli2 from v0.22.0 to v0.22.1 ([#505](https://github.com/jellyrock/jellyrock/pull/505))
 - Update brighterscript-formatter from v1.7.22 to v1.7.23 ([#498](https://github.com/jellyrock/jellyrock/pull/498))
 - Update roku-deploy from v3.16.4 to v3.16.5 ([#497](https://github.com/jellyrock/jellyrock/pull/497))
 - Update softprops/action-gh-release action to v3 ([#493](https://github.com/jellyrock/jellyrock/pull/493))
