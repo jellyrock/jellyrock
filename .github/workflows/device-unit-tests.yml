@@ -47,6 +47,14 @@ on:
           - all
           - complete
 
+# Restrict the default GITHUB_TOKEN to read-only contents access. This workflow
+# only checks out code, installs deps, and runs tests on the Roku — it never
+# pushes, comments, or otherwise mutates the repo. Without this, a malicious
+# pull_request_target PR could harvest the broadly-scoped default token from
+# .git/config (left there by actions/checkout) and use it to push to main.
+permissions:
+  contents: read
+
 jobs:
   check-skip:
     runs-on: ubuntu-latest
@@ -79,10 +87,15 @@ jobs:
     # rules gate at the job level regardless of who opened the PR.
     environment: roku-device
     steps:
-      # Explicitly checkout PR code - pull_request_target defaults to base branch
+      # Explicitly checkout PR code - pull_request_target defaults to base branch.
+      # persist-credentials: false prevents actions/checkout from writing the
+      # GITHUB_TOKEN into .git/config; combined with the workflow-level
+      # `permissions: contents: read` above, this means PR code can't harvest
+      # a write-capable token from the workspace.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
