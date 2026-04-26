@@ -89,8 +89,16 @@ jobs:
           node-version: "lts/*"
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      # Security: --ignore-scripts blocks transitive deps' install/postinstall hooks,
+      # which is the highest-bandwidth pull_request_target exfiltration path
+      # (a malicious PR adds a dep whose postinstall reads runner env vars).
+      # We then run our OWN postinstall by name — `ropm` is in this repo, vetted.
+      # If a future trusted dep needs install scripts, add it to an explicit
+      # `npm rebuild <pkg>` line below — never re-enable scripts globally.
+      - name: Install dependencies (security-hardened)
+        run: |
+          npm ci --ignore-scripts
+          npm run ropm
 
       - name: Run unit tests on Roku
         if: github.event.inputs.test_type == 'unit'
