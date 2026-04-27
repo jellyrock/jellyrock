@@ -117,7 +117,7 @@ Use custom subtitle rendering for external VTT subtitle files. Enables fallback 
 
 <a href="#playback">Playback</a> › <a href="#playbackDecodeMultichannelAudio">Decode Multichannel Audio</a>
 
-Allow the Roku to decode multichannel audio formats (AAC, FLAC, etc.) to stereo. When disabled, forces the server to transcode to 2-channel audio instead of relying on Roku's downmix, which may improve audio quality on some systems.
+When enabled (default), Roku decodes multichannel audio sources directly. Disable to force the server to transcode instead. Useful if Roku audio sounds incorrect, or to guarantee surround passthrough (EAC3/AC3/DTS) to a capable receiver.
 
 | Property | Value |
 | --- | --- |
