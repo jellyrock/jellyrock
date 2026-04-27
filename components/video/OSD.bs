@@ -52,10 +52,10 @@ sub init()
   ' On pause→play the epoch reference is re-anchored so play-math picks up where
   ' wall-clock math left off. See source/utils/liveTv.bs::computeLiveTvBehindLive.
   m.liveTvCalibrated = false
-  m.liveTvEpochAtPosition0 = 0     ' play-math reference (epoch for video position=0)
-  m.liveTvPausedAtEpoch = 0        ' >0 while paused, snapshotted at pause start
-  m.liveTvAccumulatedBehind = 0    ' snapshot of behind-live at pause start (+ scrub adjustments)
-  m.liveTvLastPosition = 0         ' baseline for scrub-during-pause delta detection
+  m.liveTvEpochAtPosition0 = 0 ' play-math reference (epoch for video position=0)
+  m.liveTvPausedAtEpoch = 0 ' >0 while paused, snapshotted at pause start
+  m.liveTvAccumulatedBehind = 0 ' snapshot of behind-live at pause start (+ scrub adjustments)
+  m.liveTvLastPosition = 0 ' baseline for scrub-during-pause delta detection
   m.liveTvIsAtLiveEdge = true
 
   ' Go to Live button — cached and attached/detached dynamically by setButtonStates()
