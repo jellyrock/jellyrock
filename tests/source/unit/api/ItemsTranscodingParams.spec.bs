@@ -311,6 +311,59 @@ namespace tests
       m.assertEqual(postData.MaxStreamingBitrate, 2000000&)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldApplyMpegTsProgressiveMkvOverrides()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns false for non-TS containers")
+    function _()
+      m.assertFalse(shouldApplyMpegTsProgressiveMkvOverrides("mkv", false, 7200))
+      m.assertFalse(shouldApplyMpegTsProgressiveMkvOverrides("mp4", false, 7200))
+      m.assertFalse(shouldApplyMpegTsProgressiveMkvOverrides("", false, 7200))
+    end function
+
+    @it("returns false for live TV channels even when source is TS")
+    function _()
+      ' Live channels keep HLS — they have their own per-segment DVR semantics
+      ' and aren't subject to the duration-proportional VOD buffer reservation.
+      m.assertFalse(shouldApplyMpegTsProgressiveMkvOverrides("ts", true, 0))
+      m.assertFalse(shouldApplyMpegTsProgressiveMkvOverrides("ts", true, 7200))
+    end function
+
+    @it("returns false for short TS recordings (preserves trickPlayBar scrub)")
+    function _()
+      ' Common case: 30-min episode recording from an OTA broadcaster.
+      m.assertFalse(shouldApplyMpegTsProgressiveMkvOverrides("ts", false, 1678))
+    end function
+
+    @it("returns false for a TS recording 1 second under the threshold")
+    function _()
+      m.assertFalse(shouldApplyMpegTsProgressiveMkvOverrides("ts", false, 3599))
+    end function
+
+    @it("returns true for a TS recording exactly at the threshold")
+    function _()
+      m.assertTrue(shouldApplyMpegTsProgressiveMkvOverrides("ts", false, 3600))
+    end function
+
+    @it("returns true for long TS recordings (HLS would overflow the buffer)")
+    function _()
+      m.assertTrue(shouldApplyMpegTsProgressiveMkvOverrides("ts", false, 7200))
+    end function
+
+    @it("returns true when duration is unknown (conservative — assume long)")
+    function _()
+      ' Better to lose scrub than to risk a buffer-overflow death mid-playback
+      ' on what might be a long recording with no probed duration.
+      m.assertTrue(shouldApplyMpegTsProgressiveMkvOverrides("ts", false, 0))
+    end function
+
+    @it("normalizes container case (caller may not lowercase)")
+    function _()
+      m.assertTrue(shouldApplyMpegTsProgressiveMkvOverrides("TS", false, 7200))
+      m.assertTrue(shouldApplyMpegTsProgressiveMkvOverrides("Ts", false, 7200))
+    end function
+
   end class
 
 end namespace
