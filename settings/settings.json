@@ -87,7 +87,7 @@
       },
       {
         "title": "Decode Multichannel Audio",
-        "description": "Allow the Roku to decode multichannel audio formats (AAC, FLAC, etc.) to stereo. When disabled, forces the server to transcode to 2-channel audio instead of relying on Roku's downmix, which may improve audio quality on some systems.",
+        "description": "When enabled (default), the Roku decodes multichannel audio sources directly. Disable this to force the server to transcode multichannel audio instead — useful if Roku's audio output sounds incorrect on your system, or if you want guaranteed surround codec output (EAC3/AC3/DTS) to a passthrough-capable receiver.",
         "settingName": "playbackDecodeMultichannelAudio",
         "type": "bool",
         "default": "true",
