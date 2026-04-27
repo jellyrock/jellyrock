@@ -520,7 +520,8 @@ end sub
 ' Multichannel source (>2ch):
 '   Strips ALL stereo-output codecs (aac, mp3, flac, alac, pcm, lpcm, wav, vorbis). Without this,
 '   Jellyfin's HLS muxer offers BOTH the surround codec AND a stereo fallback as separate variants
-'   in the master playlist, and Roku's HLS player has been observed to pick the stereo variant —
+'   in the master playlist, and Roku's HLS player has been observed (via in-house testing on
+'   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant —
 '   defeating the entire point of having surround passthrough hardware. Caller must already have
 '   verified the device has surround passthrough before invoking with channelCount > 2.
 '
@@ -532,11 +533,13 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
   if not isValid(deviceProfile) then return
   if not isValid(deviceProfile.TranscodingProfiles) then return
 
-  ' Codecs that decode multichannel sources to stereo PCM only — strip these for multichannel
-  ' sources so the server is forced to pick a surround codec from the remaining list.
+  ' Codecs that, as a server transcode target, can't carry surround channels — strip these for
+  ' multichannel sources so the server is forced to pick a surround codec from the remaining list.
+  ' Note: this list is intentionally distinct from `stereoOutputCodecs` in deviceCapabilities.bs;
+  ' that list represents Roku decode-path behavior (different concept), so the contents differ.
   stereoOnlyCodecs = ["aac", "mp3", "flac", "alac", "pcm", "lpcm", "wav", "vorbis"]
   ' Surround passthrough codecs — pointless for stereo sources, strip them.
-  surroundCodecs = ["eac3", "ac3", "dts", "truehd", "dtshd"]
+  surroundCodecs = ["eac3", "ac3", "dts"]
 
   for each rule in deviceProfile.TranscodingProfiles
     if isValid(rule.Type) and rule.Type = "Video"
@@ -551,14 +554,7 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
             skipCodec = true
           end if
 
-          if channelCount <= 2 and arrayHasValue(surroundCodecs, codec)
-            skipCodec = true
-          end if
-
-          ' Stereo sources also drop AAC (covered by stereoOnlyCodecs check above only fires for
-          ' multichannel; explicitly drop AAC for stereo to keep prior behavior of falling
-          ' through to mp3 for max compatibility).
-          if channelCount <= 2 and codec = "aac"
+          if channelCount <= 2 and (codec = "aac" or arrayHasValue(surroundCodecs, codec))
             skipCodec = true
           end if
 
@@ -566,6 +562,10 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
             newCodecList.push(codec)
           end if
         end for
+
+        if newCodecList.count() = 0 and codecList.count() > 0
+          print "[optimizeAudioCodecListForSource] WARN: AudioCodec list for container '" + rule.Container + "' became empty after optimization (source ch=" + channelCount.toStr() + ", original=" + rule.AudioCodec + "); server may reject the transcoding rule"
+        end if
 
         rule.AudioCodec = newCodecList.join(",")
       end if

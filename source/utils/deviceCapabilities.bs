@@ -500,7 +500,9 @@ function getTranscodingProfiles() as object
   for each container in transcodingContainers
     audioCodecList = []
 
-    ' 1. AAC always first (efficient for stereo, removed at playback time for multichannel sources with passthrough)
+    ' 1. AAC always first (efficient for stereo). On multichannel + passthru playback, all
+    '    stereo-output codecs (including AAC) are stripped at playback time by
+    '    optimizeAudioCodecListForSource (see items.bs).
     audioCodecList.push("aac")
 
     ' 2. Add surround passthrough codecs if supported (in preference order)
@@ -610,6 +612,9 @@ function getCodecProfiles() as object
   ' We do NOT cap these at 2ch by default: most modern HDMI sinks accept multichannel PCM and
   ' the official Roku decode behavior produces correct multichannel output for capable users.
   ' The cap is applied only when userWantsDecodeLimit is true (see setting above).
+  '
+  ' Note: this list is intentionally distinct from `stereoOnlyCodecs` in items.bs; that list
+  ' represents server transcode-target capability (different concept), so the contents differ.
   stereoOutputCodecs = ["aac", "flac", "alac", "pcm", "lpcm", "wav", "opus", "vorbis"]
 
   ' ========================================
