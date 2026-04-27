@@ -3,7 +3,7 @@ import "pkg:/source/utils/misc.bs"
 
 namespace tests
 
-  @suite("Items.bs - removeUnsupportedAacFromProfile()")
+  @suite("Items.bs - optimizeAudioCodecListForSource()")
   class ItemsAudioHandlingTests extends tests.BaseTestSuite
 
     protected override function setup()
@@ -11,19 +11,16 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Multichannel Audio (>2ch) - AAC Removal")
+    @describe("Multichannel Audio (>2ch) - Stereo Codec Removal")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("removes AAC from ts container codec list for 6ch audio")
     function _()
-      ' GIVEN: Device profile with passthrough support and multichannel source
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
       channelCount = 6
 
-      ' WHEN: removeUnsupportedAacFromProfile is called
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
-      ' THEN: AAC is removed from ts container
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
         if profile.Container = "ts"
@@ -41,7 +38,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-8ch-passthrough")
       channelCount = 8
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       mp4Profile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -60,7 +57,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
       channelCount = 6
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -76,12 +73,16 @@ namespace tests
       m.assertTrue(tsProfile.AudioCodec.inStr("dts") >= 0, "dts should be preserved")
     end function
 
-    @it("preserves other codecs (mp3, flac, alac, pcm) for multichannel audio")
+    @it("removes stereo-output codecs (mp3, flac, alac, pcm) for multichannel audio")
     function _()
+      ' GIVEN: a multichannel source with passthrough support, the server has been observed to
+      ' offer BOTH surround AND stereo variants in its HLS master playlist when stereo codecs
+      ' remain in the AudioCodec list, with Roku then picking the stereo variant. Stripping
+      ' stereo codecs forces the server to only emit surround variants.
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
       channelCount = 6
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -92,10 +93,30 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertTrue(tsProfile.AudioCodec.inStr("mp3") >= 0, "mp3 should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.inStr("flac") >= 0, "flac should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.inStr("alac") >= 0, "alac should be preserved")
-      m.assertTrue(tsProfile.AudioCodec.inStr("pcm") >= 0, "pcm should be preserved")
+      m.assertFalse(tsProfile.AudioCodec.inStr("mp3") >= 0, "mp3 should be removed for multichannel")
+      m.assertFalse(tsProfile.AudioCodec.inStr("flac") >= 0, "flac should be removed for multichannel")
+      m.assertFalse(tsProfile.AudioCodec.inStr("alac") >= 0, "alac should be removed for multichannel")
+      m.assertFalse(tsProfile.AudioCodec.inStr("pcm") >= 0, "pcm should be removed for multichannel")
+    end function
+
+    @it("strips all stereo-output codecs leaving only surround codecs for multichannel audio")
+    function _()
+      deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
+      channelCount = 6
+
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
+
+      tsProfile = invalid
+      for each profile in deviceProfile.TranscodingProfiles
+        if profile.Container = "ts"
+          tsProfile = profile
+          exit for
+        end if
+      end for
+
+      m.assertNotInvalid(tsProfile)
+      ' Source list: aac,eac3,ac3,dts,mp3,flac,alac,pcm — after optimization should be eac3,ac3,dts
+      m.assertEqual(tsProfile.AudioCodec, "eac3,ac3,dts", "only surround codecs should remain for multichannel")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -107,7 +128,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-stereo-only")
       channelCount = 2
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -126,7 +147,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-stereo-only")
       channelCount = 2
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -147,7 +168,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-stereo-only")
       channelCount = 2
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -169,7 +190,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-stereo-only")
       channelCount = 2
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -196,7 +217,7 @@ namespace tests
       channelCount = 6
 
       ' Should not crash
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -215,7 +236,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-aac-only")
       channelCount = 6
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -245,7 +266,7 @@ namespace tests
       channelCount = 6
 
       ' Should not crash when AudioCodec field is missing
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       ' Profile should remain unchanged
       m.assertFalse(deviceProfile.TranscodingProfiles[0].DoesExist("AudioCodec"), "AudioCodec field should remain non-existent")
@@ -267,10 +288,10 @@ namespace tests
       }
       channelCount = 6
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
-      ' mkv container should have AAC removed like all other video containers
-      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "eac3,ac3,mp3", "mkv container should have AAC removed")
+      ' Multichannel: aac and mp3 stripped, surround codecs preserved
+      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "eac3,ac3", "mkv container should have stereo codecs stripped for multichannel")
     end function
 
     @it("ignores non-Video type profiles (only processes Type=Video)")
@@ -296,12 +317,12 @@ namespace tests
       channelCount = 6
       originalAudioProfileCodecs = deviceProfile.TranscodingProfiles[0].AudioCodec
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       ' Audio profile should remain unchanged
       m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, originalAudioProfileCodecs, "Audio type profile should not be modified")
-      ' Video profile should have AAC removed
-      m.assertEqual(deviceProfile.TranscodingProfiles[1].AudioCodec, "eac3,ac3,mp3", "Video type profile should have AAC removed")
+      ' Video profile: multichannel optimization strips aac and mp3, keeps surround codecs
+      m.assertEqual(deviceProfile.TranscodingProfiles[1].AudioCodec, "eac3,ac3", "Video type profile should have stereo codecs stripped for multichannel")
     end function
 
     @it("processes both ts and mp4 containers in same profile")
@@ -309,7 +330,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
       channelCount = 6
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       ' Both containers should have AAC removed
       tsProfile = invalid
@@ -326,6 +347,8 @@ namespace tests
       m.assertNotInvalid(mp4Profile, "mp4 profile should exist")
       m.assertFalse(tsProfile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from ts")
       m.assertFalse(mp4Profile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from mp4")
+      m.assertFalse(tsProfile.AudioCodec.inStr("mp3") >= 0, "MP3 should be removed from ts for multichannel")
+      m.assertFalse(mp4Profile.AudioCodec.inStr("mp3") >= 0, "MP3 should be removed from mp4 for multichannel")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -337,7 +360,7 @@ namespace tests
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
       channelCount = 6
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -354,12 +377,12 @@ namespace tests
       m.assertFalse(tsProfile.AudioCodec.Right(1) = ",", "Should not end with comma")
     end function
 
-    @it("maintains codec order after AAC removal")
+    @it("maintains codec order after stripping stereo codecs")
     function _()
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
       channelCount = 6
 
-      removeUnsupportedAacFromProfile(deviceProfile, channelCount)
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
       tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
@@ -372,9 +395,10 @@ namespace tests
       m.assertNotInvalid(tsProfile)
       codecList = tsProfile.AudioCodec.Split(",")
 
-      ' Expected order after AAC removal: eac3, ac3, dts, mp3, flac, alac, pcm
-      ' (based on original order: aac,eac3,ac3,dts,mp3,flac,alac,pcm)
-      m.assertEqual(codecList[0], "eac3", "eac3 should be first after AAC removal")
+      ' Source order: aac,eac3,ac3,dts,mp3,flac,alac,pcm
+      ' Multichannel optimization strips aac,mp3,flac,alac,pcm → eac3,ac3,dts (relative order preserved)
+      m.assertEqual(codecList.Count(), 3, "only 3 surround codecs should remain")
+      m.assertEqual(codecList[0], "eac3", "eac3 should be first")
       m.assertEqual(codecList[1], "ac3", "ac3 should be second")
       m.assertEqual(codecList[2], "dts", "dts should be third")
     end function

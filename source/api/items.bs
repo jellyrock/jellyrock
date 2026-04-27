@@ -202,26 +202,26 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
           end for
         end if
 
-        ' Remove AAC from codec list in two scenarios:
-        ' 1. ANY multichannel source (>2ch) when user has passthrough support - prevents transcoding to AAC which would downmix to stereo
-        ' 2. Unsupported AAC profiles (Main, HE-AAC) - TODO: Remove after server supports transcoding between AAC profiles
-        shouldRemoveAac = false
+        ' Tailor the device profile's transcoding AudioCodec list to the source in two scenarios:
+        ' 1. Multichannel source (>2ch) with passthrough support - drops stereo-output codecs so
+        '    the server only offers surround variants (eac3/ac3/dts) in the HLS master playlist.
+        '    Without this, Roku's HLS player has been observed to pick the stereo variant.
+        ' 2. AAC source with unsupported profile (Main, HE-AAC) - drops AAC so transcoding
+        '    falls through to MP3.  TODO: remove once server transcodes between AAC profiles.
+        shouldOptimize = false
 
-        ' Scenario 1: ANY multichannel source with passthrough support
-        ' Removes AAC to force server to use surround passthrough codecs (eac3, ac3, dts) instead of transcoding to stereo AAC
         if channelCount > 2 and hasPassthruSupport
-          shouldRemoveAac = true
+          shouldOptimize = true
         end if
 
-        ' Scenario 2: AAC with unsupported profile
         if isValid(selectedAudioStream.Codec) and LCase(selectedAudioStream.Codec) = "aac"
           if isValid(selectedAudioStream.Profile) and (LCase(selectedAudioStream.Profile) = "main" or LCase(selectedAudioStream.Profile) = "he-aac")
-            shouldRemoveAac = true
+            shouldOptimize = true
           end if
         end if
 
-        if shouldRemoveAac
-          removeUnsupportedAacFromProfile(postData.DeviceProfile, channelCount)
+        if shouldOptimize
+          optimizeAudioCodecListForSource(postData.DeviceProfile, channelCount)
         end if
       end if
     end if
@@ -514,37 +514,47 @@ sub applyMediaSourceToPostData(postData as object, mediaSourceId as string, forc
   end if
 end sub
 
-' Removes AAC from the device profile codec list to prevent stereo downmix of multichannel audio.
-' Also handles unsupported AAC profiles (Main, HE-AAC).
-' For stereo sources (≤2ch), also removes surround passthrough codecs (eac3, ac3, dts)
-' so transcoding falls through to MP3 (better compatibility + smaller files).
-sub removeUnsupportedAacFromProfile(deviceProfile as object, channelCount as integer)
+' Tailors a video transcoding profile's AudioCodec list to the current source's channel count
+' so the server (and downstream HLS variant selection) can't fall back to a less-desirable codec.
+'
+' Multichannel source (>2ch):
+'   Strips ALL stereo-output codecs (aac, mp3, flac, alac, pcm, lpcm, wav, vorbis). Without this,
+'   Jellyfin's HLS muxer offers BOTH the surround codec AND a stereo fallback as separate variants
+'   in the master playlist, and Roku's HLS player has been observed (via in-house testing on
+'   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant —
+'   defeating the entire point of having surround passthrough hardware. Caller must already have
+'   verified the device has surround passthrough before invoking with channelCount > 2.
+'
+' Stereo source (≤2ch):
+'   Strips surround passthrough codecs (eac3, ac3, dts) plus aac so transcoding falls through to
+'   mp3. Avoids handing the server a surround target codec for content that's only 2ch anyway.
+sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as integer)
   ' Validate inputs
   if not isValid(deviceProfile) then return
   if not isValid(deviceProfile.TranscodingProfiles) then return
 
-  ' Surround passthrough codecs that should be removed for stereo sources
+  ' Codecs that, as a server transcode target, can't carry surround channels — strip these for
+  ' multichannel sources so the server is forced to pick a surround codec from the remaining list.
+  ' Note: this list is intentionally distinct from `stereoOutputCodecs` in deviceCapabilities.bs;
+  ' that list represents Roku decode-path behavior (different concept), so the contents differ.
+  stereoOnlyCodecs = ["aac", "mp3", "flac", "alac", "pcm", "lpcm", "wav", "vorbis"]
+  ' Surround passthrough codecs — pointless for stereo sources, strip them.
   surroundCodecs = ["eac3", "ac3", "dts"]
 
   for each rule in deviceProfile.TranscodingProfiles
     if isValid(rule.Type) and rule.Type = "Video"
       if isValid(rule.AudioCodec)
-        ' Split codec list into array
         codecList = rule.AudioCodec.split(",")
         newCodecList = []
 
-        ' Remove AAC always, and surround codecs for stereo sources
         for each codec in codecList
           skipCodec = false
 
-          ' Always skip AAC to prevent downmix
-          if codec = "aac"
+          if channelCount > 2 and arrayHasValue(stereoOnlyCodecs, codec)
             skipCodec = true
           end if
 
-          ' For stereo sources (≤2ch), also skip surround codecs
-          ' This ensures transcoding goes to MP3 instead of trying AC3/EAC3
-          if channelCount <= 2 and arrayHasValue(surroundCodecs, codec)
+          if channelCount <= 2 and (codec = "aac" or arrayHasValue(surroundCodecs, codec))
             skipCodec = true
           end if
 
@@ -553,7 +563,10 @@ sub removeUnsupportedAacFromProfile(deviceProfile as object, channelCount as int
           end if
         end for
 
-        ' Rebuild codec string
+        if newCodecList.count() = 0 and codecList.count() > 0
+          print "[optimizeAudioCodecListForSource] WARN: AudioCodec list for container '" + rule.Container + "' became empty after optimization (source ch=" + channelCount.toStr() + ", original=" + rule.AudioCodec + "); server may reject the transcoding rule"
+        end if
+
         rule.AudioCodec = newCodecList.join(",")
       end if
     end if

@@ -500,7 +500,9 @@ function getTranscodingProfiles() as object
   for each container in transcodingContainers
     audioCodecList = []
 
-    ' 1. AAC always first (efficient for stereo, removed at playback time for multichannel sources with passthrough)
+    ' 1. AAC always first (efficient for stereo). On multichannel + passthru playback, all
+    '    stereo-output codecs (including AAC) are stripped at playback time by
+    '    optimizeAudioCodecListForSource (see items.bs).
     audioCodecList.push("aac")
 
     ' 2. Add surround passthrough codecs if supported (in preference order)
@@ -589,24 +591,30 @@ function getCodecProfiles() as object
   resolutionConditions = getResolutionConditions()
 
   ' ========================================
-  ' DETECT SURROUND PASSTHROUGH SUPPORT
+  ' USER SETTING — FORCE SERVER-SIDE MULTICHANNEL HANDLING
   ' ========================================
-
-  sixChannelPassthruCodecs = getSupportedPassthruCodecs(di, 6)
-  eightChannelPassthruCodecs = getSupportedPassthruCodecs(di, 8)
-  hasSurroundPassthru = sixChannelPassthruCodecs.count() > 0 or eightChannelPassthruCodecs.count() > 0
-
-  ' Check user setting for multichannel decode preference
-  ' When disabled, force stereo-output codecs to 2ch max (same as passthrough behavior)
+  '
+  ' playbackDecodeMultichannelAudio = false means the user has explicitly asked us to keep
+  ' multichannel sources off the Roku's decoder — usually because Roku's downmix sounded worse
+  ' than the server's on their system, or because they want bitstream surround output preserved
+  ' via server transcoding instead of relying on Roku PCM output.
+  '
+  ' Effect: cap stereo-output codecs at 2ch in the codec profile so the server is forced to
+  ' transcode multichannel sources rather than offering them for direct play.
   userWantsDecodeLimit = not globalUserSettings.playbackDecodeMultichannelAudio
 
   ' ========================================
   ' CODEC CATEGORIES
   ' ========================================
 
-  ' Codecs that Roku decodes multichannel but only OUTPUTS as stereo PCM
-  ' When user has a receiver, we force these to 2ch max to trigger transcoding
-  ' to surround output codecs (eac3/ac3/dts) instead of direct playing and downmixing
+  ' Codecs whose decode-then-output path on Roku does not always pass through multichannel —
+  ' depending on the user's Audio Output Mode and HDMI/eARC sink, these may downmix to 2ch PCM.
+  ' We do NOT cap these at 2ch by default: most modern HDMI sinks accept multichannel PCM and
+  ' the official Roku decode behavior produces correct multichannel output for capable users.
+  ' The cap is applied only when userWantsDecodeLimit is true (see setting above).
+  '
+  ' Note: this list is intentionally distinct from `stereoOnlyCodecs` in items.bs; that list
+  ' represents server transcode-target capability (different concept), so the contents differ.
   stereoOutputCodecs = ["aac", "flac", "alac", "pcm", "lpcm", "wav", "opus", "vorbis"]
 
   ' ========================================
@@ -617,11 +625,12 @@ function getCodecProfiles() as object
   audioChannels = [8, 6, 2] ' highest first
 
   for each audioCodec in audioCodecs
-    ' Special handling for stereo-output codecs when user has surround passthrough OR user disabled multichannel decode
-    ' These codecs decode multichannel but Roku only outputs as stereo PCM
-    if arrayHasValue(stereoOutputCodecs, audioCodec) and (hasSurroundPassthru or userWantsDecodeLimit)
-      ' Force to 2 channels maximum to prevent Roku from downmixing multichannel to stereo
-      ' This triggers server to transcode to surroundOutputCodecs (eac3/ac3/dts) or stereo instead
+    ' When the user has explicitly disabled on-device multichannel decoding, cap stereo-output
+    ' codecs at 2ch to force server-side transcoding for multichannel sources.
+    if arrayHasValue(stereoOutputCodecs, audioCodec) and userWantsDecodeLimit
+      ' Force to 2 channels maximum to prevent Roku from decoding the multichannel source.
+      ' Server transcodes to a surround codec (eac3/ac3/dts) if surround passthrough is
+      ' available, otherwise transcodes to stereo.
       for each codecType in ["VideoAudio", "Audio"]
         ' Special AAC profile restrictions (Main and HE-AAC not supported)
         if audioCodec = "aac"
