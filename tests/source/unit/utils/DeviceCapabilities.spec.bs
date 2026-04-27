@@ -940,6 +940,75 @@ namespace tests
       m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("swapVideoTranscodingProfilesToProgressiveMkv()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts Video profiles to MKV/HTTP and strips HLS-only fields")
+    function _()
+      profiles = [
+        { Type: "Video", Container: "ts", Protocol: "hls", MinSegments: 8, BreakOnNonKeyFrames: true, SegmentLength: 6, AudioCodec: "aac" }
+      ]
+      swapVideoTranscodingProfilesToProgressiveMkv(profiles)
+
+      m.assertEqual(profiles[0].Container, "mkv")
+      m.assertEqual(profiles[0].Protocol, "http")
+      m.assertFalse(profiles[0].DoesExist("MinSegments"), "MinSegments should be deleted")
+      m.assertFalse(profiles[0].DoesExist("BreakOnNonKeyFrames"), "BreakOnNonKeyFrames should be deleted")
+      m.assertFalse(profiles[0].DoesExist("SegmentLength"), "SegmentLength should be deleted")
+      m.assertEqual(profiles[0].AudioCodec, "aac", "Unrelated fields should be preserved")
+    end function
+
+    @it("does not modify non-Video profiles (e.g. Audio)")
+    function _()
+      profiles = [
+        { Type: "Audio", Container: "mp3", Protocol: "http", AudioCodec: "mp3" }
+      ]
+      swapVideoTranscodingProfilesToProgressiveMkv(profiles)
+
+      m.assertEqual(profiles[0].Type, "Audio")
+      m.assertEqual(profiles[0].Container, "mp3", "Audio profile container must be untouched")
+      m.assertEqual(profiles[0].Protocol, "http")
+    end function
+
+    @it("mutates only Video profiles in a mixed array")
+    function _()
+      profiles = [
+        { Type: "Audio", Container: "mp3", Protocol: "http" },
+        { Type: "Video", Container: "ts", Protocol: "hls", MinSegments: 8 },
+        { Type: "Photo", Container: "jpg" }
+      ]
+      swapVideoTranscodingProfilesToProgressiveMkv(profiles)
+
+      m.assertEqual(profiles[0].Container, "mp3", "Audio untouched")
+      m.assertEqual(profiles[1].Container, "mkv", "Video swapped")
+      m.assertEqual(profiles[1].Protocol, "http")
+      m.assertFalse(profiles[1].DoesExist("MinSegments"))
+      m.assertEqual(profiles[2].Container, "jpg", "Photo untouched")
+    end function
+
+    @it("is a no-op on invalid input")
+    function _()
+      ' Should not crash
+      swapVideoTranscodingProfilesToProgressiveMkv(invalid)
+      m.assertTrue(true, "no-op on invalid")
+    end function
+
+    @it("handles an empty profiles array without error")
+    function _()
+      profiles = []
+      swapVideoTranscodingProfilesToProgressiveMkv(profiles)
+      m.assertArrayCount(profiles, 0)
+    end function
+
+    @it("handles a profile missing Type field without crashing")
+    function _()
+      profiles = [{ Container: "ts", Protocol: "hls" }]
+      swapVideoTranscodingProfilesToProgressiveMkv(profiles)
+      ' Profile has no Type — should be skipped (not mutated)
+      m.assertEqual(profiles[0].Container, "ts", "Profile without Type is not mutated")
+    end function
+
   end class
 
 end namespace

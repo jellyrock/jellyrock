@@ -383,9 +383,8 @@ sub handleShowVideoInfoPopupAction()
   m.top.selectPlaybackInfoPressed = true
 end sub
 
-' seek=999999 is clipped by Roku to the current live edge of the HLS manifest
 sub handleGoToLiveAction()
-  m.top.seek = 999999
+  m.top.seek = LIVE_EDGE_SEEK
   if m.top.state = "paused"
     m.top.control = "resume"
   end if

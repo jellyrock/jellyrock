@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -26,36 +27,9 @@ sub loadChannelList()
     return
   end if
 
-  channels = res.json.Items
-  channelList = []
-  currentIndex = -1
-
-  for i = 0 to channels.count() - 1
-    channel = channels[i]
-    if not isValid(channel) or not isValidAndNotEmpty(channel.Id) then continue for
-
-    queueItem = {
-      id: channel.Id,
-      type: "TvChannel"
-    }
-    if isValidAndNotEmpty(channel.Name)
-      queueItem.title = channel.Name
-    end if
-    if isValidAndNotEmpty(channel.Number)
-      queueItem.channelNumber = channel.Number
-    end if
-    if isValidAndNotEmpty(channel.PrimaryImageTag)
-      queueItem.primaryImageTag = channel.PrimaryImageTag
-    end if
-
-    channelList.push(queueItem)
-
-    if channel.Id = currentChannelId
-      currentIndex = channelList.count() - 1
-    end if
-  end for
+  built = buildChannelQueueList(res.json.Items, currentChannelId)
 
   ' Set currentChannelIndex first to avoid a race with the channelList observer
-  m.top.currentChannelIndex = currentIndex
-  m.top.channelList = channelList
+  m.top.currentChannelIndex = built.currentIndex
+  m.top.channelList = built.items
 end sub

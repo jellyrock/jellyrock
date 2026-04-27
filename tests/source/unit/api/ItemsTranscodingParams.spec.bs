@@ -143,6 +143,174 @@ namespace tests
       m.assertFalse(guardPasses, "maxBitrate equal to source bitrate must not pass the guard (insufficient headroom)")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyLiveTvMinSegments()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets MinSegments=8 on every Video profile")
+    function _()
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Video", Container: "ts" },
+            { Type: "Video", Container: "mp4" }
+          ]
+        }
+      }
+      applyLiveTvMinSegments(postData)
+      m.assertEqual(postData.DeviceProfile.TranscodingProfiles[0].MinSegments, 8)
+      m.assertEqual(postData.DeviceProfile.TranscodingProfiles[1].MinSegments, 8)
+    end function
+
+    @it("does not set MinSegments on non-Video profiles")
+    function _()
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Audio" },
+            { Type: "Photo" }
+          ]
+        }
+      }
+      applyLiveTvMinSegments(postData)
+      m.assertFalse(postData.DeviceProfile.TranscodingProfiles[0].DoesExist("MinSegments"))
+      m.assertFalse(postData.DeviceProfile.TranscodingProfiles[1].DoesExist("MinSegments"))
+    end function
+
+    @it("is a no-op on invalid postData")
+    function _()
+      applyLiveTvMinSegments(invalid)
+      m.assertTrue(true)
+    end function
+
+    @it("is a no-op when DeviceProfile is missing")
+    function _()
+      postData = {}
+      applyLiveTvMinSegments(postData)
+      m.assertFalse(postData.DoesExist("DeviceProfile"))
+    end function
+
+    @it("is a no-op when TranscodingProfiles is missing")
+    function _()
+      postData = { DeviceProfile: {} }
+      applyLiveTvMinSegments(postData)
+      m.assertFalse(postData.DeviceProfile.DoesExist("TranscodingProfiles"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyMpegTsProgressiveMkvOverrides()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("swaps Video profiles to MKV/HTTP and caps bitrate from probed source bitrate")
+    function _()
+      ' GIVEN: 5 Mbps source video stream
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Video", Container: "ts", Protocol: "hls", MinSegments: 8 }
+          ]
+        }
+      }
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Audio", BitRate: 192000 },
+          { Type: "Video", BitRate: 5000000 }
+        ]
+      }
+      applyMpegTsProgressiveMkvOverrides(postData, mediaSource)
+
+      m.assertEqual(postData.DeviceProfile.TranscodingProfiles[0].Container, "mkv")
+      m.assertEqual(postData.DeviceProfile.TranscodingProfiles[0].Protocol, "http")
+      m.assertFalse(postData.DeviceProfile.TranscodingProfiles[0].DoesExist("MinSegments"))
+      ' 5 Mbps × 1.2 = 6,000,000
+      m.assertEqual(postData.MaxStreamingBitrate, 6000000&)
+    end function
+
+    @it("uses 2 Mbps floor when source bitrate is below 1.67 Mbps")
+    function _()
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Video", Container: "ts", Protocol: "hls" }
+          ]
+        }
+      }
+      ' Source bitrate * 1.2 = 1.2 Mbps, below the 2 Mbps floor
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Video", BitRate: 1000000 }
+        ]
+      }
+      applyMpegTsProgressiveMkvOverrides(postData, mediaSource)
+      m.assertEqual(postData.MaxStreamingBitrate, 2000000&, "Should clamp to 2 Mbps floor")
+    end function
+
+    @it("uses 2 Mbps floor when no video stream bitrate is probed")
+    function _()
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Video", Container: "ts", Protocol: "hls" }
+          ]
+        }
+      }
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Audio", BitRate: 192000 } ' no Video stream with BitRate
+        ]
+      }
+      applyMpegTsProgressiveMkvOverrides(postData, mediaSource)
+      m.assertEqual(postData.MaxStreamingBitrate, 2000000&)
+    end function
+
+    @it("ignores audio stream bitrates when computing the cap")
+    function _()
+      ' Regression guard: bitrate must come from the Video stream, not the first stream.
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Video", Container: "ts", Protocol: "hls" }
+          ]
+        }
+      }
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Audio", BitRate: 192000 },
+          { Type: "Video", BitRate: 4000000 }
+        ]
+      }
+      applyMpegTsProgressiveMkvOverrides(postData, mediaSource)
+      ' 4 Mbps × 1.2 = 4,800,000 — must not be derived from the audio stream.
+      m.assertEqual(postData.MaxStreamingBitrate, 4800000&)
+    end function
+
+    @it("is a no-op on invalid postData")
+    function _()
+      applyMpegTsProgressiveMkvOverrides(invalid, { MediaStreams: [] })
+      m.assertTrue(true)
+    end function
+
+    @it("is a no-op when DeviceProfile.TranscodingProfiles is missing")
+    function _()
+      postData = { DeviceProfile: {} }
+      applyMpegTsProgressiveMkvOverrides(postData, { MediaStreams: [] })
+      m.assertFalse(postData.DoesExist("MaxStreamingBitrate"))
+    end function
+
+    @it("still applies bitrate cap when mediaSource is invalid (uses 2 Mbps floor)")
+    function _()
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Video", Container: "ts", Protocol: "hls" }
+          ]
+        }
+      }
+      applyMpegTsProgressiveMkvOverrides(postData, invalid)
+      m.assertEqual(postData.DeviceProfile.TranscodingProfiles[0].Container, "mkv")
+      m.assertEqual(postData.MaxStreamingBitrate, 2000000&)
+    end function
+
   end class
 
 end namespace

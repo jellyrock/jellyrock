@@ -35,17 +35,28 @@ sub init()
   m.top.observeField("hasFocus", "onFocusChanged")
   m.top.observeField("progressPercentage", "onProgressPercentageChanged")
   m.top.observeField("playbackState", "onPlaybackStateChanged")
+  ' positionTime drives live-TV calibration so the epoch anchor is captured the first time
+  ' VideoPlayerView pushes a position during playback — even if the user pauses immediately
+  ' afterward (e.g. by pressing play to open the OSD).
+  m.top.observeField("positionTime", "onPositionTimeChanged")
 
   m.isFirstRun = true
   m.defaultButtonIndex = 1
   m.focusedButtonIndex = 1
   m.subtitleDividerCount = 0
 
-  ' State-based behind-live tracking. Roku's HLS player buffers 10-20s naturally,
-  ' so threshold detection (duration-position) oscillates between LIVE and behind.
+  ' Hybrid behind-live tracking. Roku's m.top.position for live HLS DVR streams advances
+  ' even during pause (it tracks the live edge, not the user's playhead), so we use:
+  '   - position-math during play (handles scrubs while playing)
+  '   - wall-clock math during pause (Roku's auto-advance is invisible to us)
+  ' On pause→play the epoch reference is re-anchored so play-math picks up where
+  ' wall-clock math left off. See source/utils/liveTv.bs::computeLiveTvBehindLive.
+  m.liveTvCalibrated = false
+  m.liveTvEpochAtPosition0 = 0     ' play-math reference (epoch for video position=0)
+  m.liveTvPausedAtEpoch = 0        ' >0 while paused, snapshotted at pause start
+  m.liveTvAccumulatedBehind = 0    ' snapshot of behind-live at pause start (+ scrub adjustments)
+  m.liveTvLastPosition = 0         ' baseline for scrub-during-pause delta detection
   m.liveTvIsAtLiveEdge = true
-  m.liveTvPausedAtEpoch = 0
-  m.liveTvAccumulatedBehind = 0
 
   ' Go to Live button — cached and attached/detached dynamically by setButtonStates()
   ' and attach/detachGoToLiveButton() so it doesn't reserve a layout slot when hidden.
@@ -79,25 +90,30 @@ sub onItemDataChanged()
   item = m.top.itemData
   if not isValid(item) or not isValidAndNotEmpty(item.id) then return
 
-  ' Reset behind-live state only on channel change; program refreshes keep the offset
+  ' Reset behind-live state only on channel change; program refreshes keep it.
+  ' New stream → new position=0 origin → must recalibrate and clear any pause snapshot.
   previousItemId = isValid(m.itemData) ? m.itemData.id : ""
   if item.id <> previousItemId
-    m.liveTvIsAtLiveEdge = true
-    m.liveTvAccumulatedBehind = 0
+    m.liveTvCalibrated = false
+    m.liveTvEpochAtPosition0 = 0
     m.liveTvPausedAtEpoch = 0
+    m.liveTvAccumulatedBehind = 0
+    m.liveTvLastPosition = 0
+    m.liveTvIsAtLiveEdge = true
   end if
 
   ' Cache item reference for use in display methods
   m.itemData = item
 
+  itemType = item.type
+
   ' Preserve the original item name from the first load.
   ' Source-switch reloads fetch metadata for an alternate version whose name
   ' may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
-  if not isValidAndNotEmpty(m.originalItemName)
+  ' TvChannel titles always come from currentProgram.name, so caching is unnecessary.
+  if itemType <> "TvChannel" and not isValidAndNotEmpty(m.originalItemName)
     m.originalItemName = item.name
   end if
-
-  itemType = item.type
 
   ' Determine isMovie/isSeries flags for ratings display settings.
   ' For TvChannel, use the currently-airing program's flags if available.
@@ -250,12 +266,19 @@ sub setEndsAtText()
     return
   end if
 
-  ' Live TV uses the currently-airing program's EndDate, not stream remaining time
+  ' Live TV: anchor on currentProgram.endDate (broadcast-schedule wall-clock end), then
+  ' shift forward by the user's behind-live offset so the displayed "Ends at" reflects
+  ' when the user will actually finish watching the program. At live edge behindLive=0
+  ' so this collapses to the broadcast end time.
   if isValid(m.itemData) and m.itemData.type = "TvChannel"
     currentProgram = m.itemData.currentProgram
     if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.endDate)
       endDt = CreateObject("roDateTime")
       endDt.FromISO8601String(currentProgram.endDate)
+      behindLive = getLiveTvBehindLiveSeconds()
+      if behindLive > 0
+        endDt.fromSeconds(endDt.asSeconds() + behindLive)
+      end if
       endDt.toLocalTime()
       m.endsAtTime.text = formatTime(endDt)
       endsAtText.visible = true
@@ -308,6 +331,8 @@ end sub
 sub setVideoSubTitle()
   ' start fresh by removing all subtitle nodes
   m.videoSubtitleGroup.removeChildrenIndex(m.videoSubtitleGroup.getChildCount(), 0)
+  ' Reset divider id counter so ids stay bounded across program transitions on live TV.
+  m.subtitleDividerCount = 0
 
   isAirDateNodeCreated = false
   item = m.itemData
@@ -494,12 +519,21 @@ sub onProgressPercentageChanged()
 end sub
 
 ' Called from onProgressPercentageChanged() (position updates) and inactiveCheck()
-' (1s timer). The timer ensures the behind-live countdown ticks while paused.
+' (1s timer). The timer ensures behind-live derived state ticks while paused.
 sub updateLiveTvDisplay()
   programStart = parseProgramStartTimeEpoch(m.itemData)
   programEnd = parseProgramEndTimeEpoch(m.itemData)
   now = CreateObject("roDateTime").AsSeconds()
-  behindLive = getLiveTvBehindLiveSeconds()
+  position = int(m.top.positionTime)
+
+  ' Backstop: positionTime/playbackState observers normally calibrate this earlier,
+  ' but cover the path where neither has fired yet (e.g. fallback inactivity tick).
+  calibrateLiveTvIfNeeded()
+  behindLive = computeLiveTvBehindLive(m.liveTvEpochAtPosition0, m.liveTvCalibrated, position, now, m.liveTvPausedAtEpoch, m.liveTvAccumulatedBehind)
+  ' Pause is an explicit user action — flip to "behind live" UI immediately rather than
+  ' waiting for behindLive math to grow past the threshold. The threshold itself only
+  ' suppresses sub-second rounding flicker during normal play.
+  m.liveTvIsAtLiveEdge = LCase(m.top.playbackState) = "playing" and behindLive < LIVE_EDGE_THRESHOLD_SECONDS
 
   if m.liveTvIsAtLiveEdge
     detachGoToLiveButton()
@@ -520,7 +554,6 @@ sub updateLiveTvDisplay()
       m.progressBar.width = m.progressBarBackground.width * programProgress
       m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
     else
-      ' While paused, now and behindLive grow in sync so userElapsed stays frozen
       userElapsed = (now - behindLive) - programStart
       if userElapsed < 0 then userElapsed = 0
       if userElapsed > programDuration then userElapsed = programDuration
@@ -545,24 +578,78 @@ end sub
 
 sub onPlaybackStateChanged()
   state = LCase(m.top.playbackState)
-
   if state = "playing"
     m.videoPlayPause.icon = "pkg:/images/icons/pause.png"
-
-    ' On resume, accumulate the pause duration into the behind-live offset
-    if isLiveTvItem() and m.liveTvPausedAtEpoch > 0
-      pauseDuration = CreateObject("roDateTime").AsSeconds() - m.liveTvPausedAtEpoch
-      m.liveTvAccumulatedBehind += pauseDuration
-      m.liveTvPausedAtEpoch = 0
-    end if
-    return
+    calibrateLiveTvIfNeeded()
+    onLiveTvResumeIfNeeded()
+  else
+    m.videoPlayPause.icon = "pkg:/images/icons/play.png"
+    if state = "paused" then onLiveTvPauseIfNeeded()
   end if
+end sub
 
-  m.videoPlayPause.icon = "pkg:/images/icons/play.png"
+' Anchor m.liveTvEpochAtPosition0 on first play tick. Idempotent.
+sub calibrateLiveTvIfNeeded()
+  if not isLiveTvItem() then return
+  if m.liveTvCalibrated then return
+  if LCase(m.top.playbackState) <> "playing" then return
+  position = int(m.top.positionTime)
+  m.liveTvEpochAtPosition0 = CreateObject("roDateTime").AsSeconds() - position
+  m.liveTvLastPosition = position
+  m.liveTvCalibrated = true
+end sub
 
-  if state = "paused" and isLiveTvItem()
-    m.liveTvIsAtLiveEdge = false
-    m.liveTvPausedAtEpoch = CreateObject("roDateTime").AsSeconds()
+' Snapshot the current behindLive into accumulated and start the wall-clock pause counter.
+' Wall-clock math takes over from here because Roku's m.top.position keeps advancing
+' during pause for live HLS DVR streams (it tracks the live edge, not the user's playhead),
+' which would silently zero out position-math.
+sub onLiveTvPauseIfNeeded()
+  if not isLiveTvItem() then return
+  if not m.liveTvCalibrated then return
+  if m.liveTvPausedAtEpoch > 0 then return
+  now = CreateObject("roDateTime").AsSeconds()
+  position = int(m.top.positionTime)
+  currentBehind = (now - m.liveTvEpochAtPosition0) - position
+  if currentBehind < 0 then currentBehind = 0
+  m.liveTvAccumulatedBehind = currentBehind
+  m.liveTvPausedAtEpoch = now
+  m.liveTvLastPosition = position
+end sub
+
+' Re-anchor epochAtPosition0 so play-math continues from the same offset where
+' wall-clock math left off, then clear pause state.
+sub onLiveTvResumeIfNeeded()
+  if not isLiveTvItem() then return
+  if m.liveTvPausedAtEpoch = 0 then return
+  now = CreateObject("roDateTime").AsSeconds()
+  position = int(m.top.positionTime)
+  pauseDuration = now - m.liveTvPausedAtEpoch
+  totalBehind = m.liveTvAccumulatedBehind + pauseDuration
+  m.liveTvEpochAtPosition0 = now - position - totalBehind
+  m.liveTvPausedAtEpoch = 0
+  m.liveTvAccumulatedBehind = 0
+  m.liveTvLastPosition = position
+end sub
+
+sub onPositionTimeChanged()
+  if not isLiveTvItem() then return
+  calibrateLiveTvIfNeeded()
+  ' Detect user scrubs during pause via large positionTime deltas. Roku's auto-advance
+  ' during pause arrives in small per-fire increments (<1s) and is filtered out by the
+  ' threshold; user-initiated seeks land as a single large delta.
+  if m.liveTvPausedAtEpoch > 0
+    newPos = int(m.top.positionTime)
+    delta = newPos - m.liveTvLastPosition
+    m.liveTvLastPosition = newPos
+    if delta < -2 or delta > 2
+      ' Repartition the pause-state. Without folding the wall-clock pause counter into
+      ' accumulated before applying the scrub, a forward scrub to live edge would zero
+      ' accumulated but the pause counter would keep growing — total behindLive wouldn't
+      ' actually reach 0.
+      now = CreateObject("roDateTime").AsSeconds()
+      m.liveTvAccumulatedBehind = repartitionPauseStateOnScrub(m.liveTvAccumulatedBehind, now - m.liveTvPausedAtEpoch, delta)
+      m.liveTvPausedAtEpoch = now
+    end if
   end if
 end sub
 
@@ -641,9 +728,14 @@ sub onButtonSelected()
   end if
 
   if LCase(selectedButton.id) = "gotolive"
-    m.liveTvIsAtLiveEdge = true
-    m.liveTvAccumulatedBehind = 0
+    ' VideoPlayerView seeks to LIVE_EDGE_SEEK; clear all behind-live state so the next
+    ' position tick re-anchors epochAtPosition0 to the new live-edge position.
+    m.liveTvCalibrated = false
+    m.liveTvEpochAtPosition0 = 0
     m.liveTvPausedAtEpoch = 0
+    m.liveTvAccumulatedBehind = 0
+    m.liveTvLastPosition = 0
+    m.liveTvIsAtLiveEdge = true
   end if
 
   m.top.action = selectedButton.id
@@ -730,11 +822,7 @@ function isLiveTvItem() as boolean
 end function
 
 function getLiveTvBehindLiveSeconds() as integer
-  behind = m.liveTvAccumulatedBehind
-  if m.liveTvPausedAtEpoch > 0
-    behind += CreateObject("roDateTime").AsSeconds() - m.liveTvPausedAtEpoch
-  end if
-  return behind
+  return computeLiveTvBehindLive(m.liveTvEpochAtPosition0, m.liveTvCalibrated, int(m.top.positionTime), CreateObject("roDateTime").AsSeconds(), m.liveTvPausedAtEpoch, m.liveTvAccumulatedBehind)
 end function
 
 ' destroy: Full teardown releasing all resources before component removal
@@ -748,6 +836,7 @@ sub destroy()
   m.top.unobserveField("hasFocus")
   m.top.unobserveField("progressPercentage")
   m.top.unobserveField("playbackState")
+  m.top.unobserveField("positionTime")
 
   ' Unobserve clock (guarded — may be invalid if clock node not found in init)
   if isValid(m.clock)

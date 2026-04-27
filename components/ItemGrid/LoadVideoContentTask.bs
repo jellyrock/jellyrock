@@ -10,6 +10,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/session.bs"
@@ -200,13 +201,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.title = isValidAndNotEmpty(titleOverride) ? titleOverride : meta.title
   video.showID = meta.seriesId
 
-  if videotype = "episode" or videotype = "series"
+  if shouldTreatAsEpisode(videotype, meta)
     video.content.contenttype = "episode"
     video.seasonNumber = meta.parentIndexNumber
     video.episodeNumber = meta.indexNumber
     video.episodeNumberEnd = meta.indexNumberEnd
-  else if videotype = "recording"
-    video.content.contenttype = "episode"
   end if
 
   ' Set logo image using metadata (same logic as ItemDetails)
@@ -267,9 +266,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     subtitleIdx = defaultSubtitleTrackFromVid(meta, audioStreamIdx, mediaSourceId)
   end if
 
-  ' PlayStart=999999 jumps to the live edge; Roku clips to the HLS manifest's availability window
   if isLive
-    video.content.PlayStart = 999999
+    video.content.PlayStart = LIVE_EDGE_SEEK
   else
     video.content.PlayStart = int(playbackPosition / 10000000)
     m.log.debug("Playback position resolved", "startingPoint", playbackPosition, "PlayStart", video.content.PlayStart)
@@ -334,8 +332,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.PlaySessionId = m.playbackInfo.PlaySessionId
 
   if isLive
-    ' content.live is intentionally unset — setting it shows Roku's "Rewind live TV" bar
-    ' and restricts seeking. Without it, Roku allows scrubbing within the HLS DVR window.
     video.content.StreamFormat = "hls"
   end if
 
