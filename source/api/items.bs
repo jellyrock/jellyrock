@@ -7,13 +7,6 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 
-' MPEG-TS sources at or above this duration are routed through the progressive MKV
-' transcode path to avoid Roku's HLS-VOD duration-proportional buffer overflow.
-' Shorter TS recordings stay on HLS so the Roku trickPlayBar can scrub them —
-' progressive MKV from a single-pass ffmpeg transcode lacks SegmentInfo.Duration in
-' the header, which leaves m.top.duration at 0 and the trickPlayBar inert.
-const TS_TO_MKV_DURATION_THRESHOLD_SECONDS = 3600
-
 function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
   globalUser = m.global.user
   postData = {
@@ -67,13 +60,6 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
 
     if videoDurationSeconds = 0
       applyLiveTvMinSegments(postData)
-    end if
-
-    sourceContainerLower = ""
-    if isValid(mediaSource.Container) then sourceContainerLower = LCase(mediaSource.Container)
-    isTvChannel = isValid(videoMetadata) and isValid(videoMetadata.type) and LCase(videoMetadata.type) = "tvchannel"
-    if shouldApplyMpegTsProgressiveMkvOverrides(sourceContainerLower, isTvChannel, videoDurationSeconds)
-      applyMpegTsProgressiveMkvOverrides(postData, mediaSource)
     end if
   end if
 
@@ -526,61 +512,6 @@ sub applyLiveTvMinSegments(postData as object)
       profile.MinSegments = 8
     end if
   end for
-end sub
-
-' shouldApplyMpegTsProgressiveMkvOverrides: Gate for the TS→progressive-MKV swap.
-'
-' Returns true only when the source is MPEG-TS, the item isn't a live channel, and
-' the recording is long enough that HLS-VOD's duration-proportional buffer reservation
-' would overflow Roku's video buffer. Shorter TS recordings stay on HLS so the
-' Roku trickPlayBar can scrub them — progressive MKV from a single-pass transcode
-' lacks SegmentInfo.Duration, leaving m.top.duration at 0 and the trickPlayBar inert.
-'
-' Unknown duration (videoDurationSeconds = 0) defaults to MKV — safer to lose scrub
-' than to risk a buffer-overflow death mid-playback on what might be a long recording.
-function shouldApplyMpegTsProgressiveMkvOverrides(sourceContainer as string, isTvChannel as boolean, videoDurationSeconds as integer) as boolean
-  if LCase(sourceContainer) <> "ts" then return false
-  if isTvChannel then return false
-  if videoDurationSeconds > 0 and videoDurationSeconds < TS_TO_MKV_DURATION_THRESHOLD_SECONDS then return false
-  return true
-end function
-
-' applyMpegTsProgressiveMkvOverrides: Mutates postData so an MPEG-TS source transcodes
-' to progressive MKV over HTTP instead of HLS VOD.
-'
-' MPEG-TS can't direct-play on Roku (wall-clock PTS breaks duration), and HLS VOD
-' transcoding hits a duration-proportional buffer reservation that overflows for
-' content longer than ~1 hour. Jellyfin returns a /Videos/{id}/stream.mkv?... URL;
-' Roku plays it progressively (MKV clusters are self-describing — unlike MP4 which
-' needs a moov atom that ffmpeg can't write at the front during a single-pass
-' transcode). Live channels keep HLS — they have their own per-segment DVR semantics
-' so callers should gate on `not isTvChannel` before invoking this.
-'
-' Also caps the transcode bitrate. Our profile's MaxStreamingBitrate=140 Mbps is a
-' hardware ceiling for direct-stream/remux; if we leave it unset for the progressive
-' transcode, Jellyfin passes it to ffmpeg as `-b:v 140M`, producing enormous output
-' that overwhelms the server's response buffer and dies partway. We derive the cap
-' from the probed video-stream bitrate + 20% headroom so the target matches the
-' source. A 2 Mbps floor covers poorly-probed or low-bitrate TS.
-sub applyMpegTsProgressiveMkvOverrides(postData as object, mediaSource as object)
-  if not isValid(postData) then return
-  if not isValid(postData.DeviceProfile) then return
-  if not isValid(postData.DeviceProfile.TranscodingProfiles) then return
-
-  swapVideoTranscodingProfilesToProgressiveMkv(postData.DeviceProfile.TranscodingProfiles)
-
-  sourceVideoBitrate& = 0
-  if isValid(mediaSource) and isValid(mediaSource.MediaStreams)
-    for each stream in mediaSource.MediaStreams
-      if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.BitRate) and stream.BitRate > 0
-        sourceVideoBitrate& = stream.BitRate
-        exit for
-      end if
-    end for
-  end if
-  tsMkvMaxBitrate& = sourceVideoBitrate& * 12& \ 10&
-  if tsMkvMaxBitrate& < 2000000& then tsMkvMaxBitrate& = 2000000&
-  postData.MaxStreamingBitrate = tsMkvMaxBitrate&
 end sub
 
 ' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
