@@ -543,9 +543,11 @@ class ApiClient
 
   ' Build a request AA for GetQuickConnectEnabled, for use with fetchRes() or fetchJson().
   ' Server responds with a plain boolean body (true = enabled, false = disabled).
+  ' Lowercase path matches the existing /quickconnect/initiate convention - Jellyfin's
+  ' routing is case-insensitive but reverse proxies in the wild sometimes are not.
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildGetQuickConnectEnabledRequest() as dynamic
-    return m.validatedReq("GET", buildURL("/QuickConnect/Enabled"))
+    return m.validatedReq("GET", buildURL("/quickconnect/enabled"))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════

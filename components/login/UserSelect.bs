@@ -27,11 +27,9 @@ sub init()
     if m.global.server.isQuickConnectEnabled = false
       removeQuickConnectButton("server reports Quick Connect disabled (cached)")
     else
-      ' Probe the server now; observer below removes the button if it returns false.
-      m.global.server.observeFieldScoped("isQuickConnectEnabled", "onQuickConnectEnabledChanged")
+      ' Probe is started in OnScreenShown (matches BrandingConfigTask timing).
       m.quickConnectEnabledTask = createObject("roSGNode", "QuickConnectEnabledTask")
-      m.quickConnectEnabledTask.control = "RUN"
-      m.log.debug("Started QuickConnectEnabledTask")
+      m.log.debug("Created QuickConnectEnabledTask")
     end if
   end if
 
@@ -42,9 +40,28 @@ sub init()
   m.log.debug("Created BrandingConfigTask")
 end sub
 
-' Probe completion handler. Fail-open: only act on a definitive false.
-sub onQuickConnectEnabledChanged()
-  if m.global.server.isQuickConnectEnabled = false
+' Probe the server's /QuickConnect/Enabled endpoint and remove the QC button if
+' the server reports it disabled. Mirrors loadSplashscreen()'s wiring of
+' BrandingConfigTask: observe the task's responseCode, read the global field
+' on completion. Fail-open: only act on a definitive false.
+sub probeQuickConnectAvailability()
+  if not isValid(m.quickConnectEnabledTask) then return
+  m.log.info("Probing /QuickConnect/Enabled to gate the Quick Connect button")
+  m.quickConnectEnabledTask.observeFieldScoped("responseCode", "onQuickConnectEnabledProbeComplete")
+  m.quickConnectEnabledTask.control = "RUN"
+end sub
+
+' Called when QuickConnectEnabledTask finishes. Reads the global field the task
+' wrote and removes the button if the server reports Quick Connect disabled.
+sub onQuickConnectEnabledProbeComplete()
+  responseCode = m.quickConnectEnabledTask.responseCode
+  enabled = m.global.server.isQuickConnectEnabled
+  m.log.info("Quick Connect probe complete", "responseCode:", responseCode, "enabled:", enabled)
+
+  m.quickConnectEnabledTask.unobserveFieldScoped("responseCode")
+  m.quickConnectEnabledTask.callFunc("empty")
+
+  if enabled = false
     removeQuickConnectButton("server reports Quick Connect disabled")
   end if
 end sub
@@ -95,6 +112,9 @@ sub OnScreenShown()
 
   ' Load splashscreen (handles race condition)
   loadSplashscreen()
+
+  ' Probe Quick Connect availability so the button can hide on disabled servers.
+  probeQuickConnectAvailability()
 end sub
 
 ' JRScreen hook called when the screen is hidden by the screen manager
@@ -233,9 +253,9 @@ sub destroy()
   m.brandingTask = invalid
 
   ' Stop Quick Connect availability probe (only present when version gate passed)
-  m.global.server.unobserveFieldScoped("isQuickConnectEnabled")
   if isValid(m.quickConnectEnabledTask)
     m.quickConnectEnabledTask.control = "STOP"
+    m.quickConnectEnabledTask.unobserveFieldScoped("responseCode")
     m.quickConnectEnabledTask.callFunc("empty")
     m.quickConnectEnabledTask = invalid
   end if

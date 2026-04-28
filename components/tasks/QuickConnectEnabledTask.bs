@@ -13,26 +13,44 @@ end sub
 ' never hides a working feature.
 ' Sets responseCode to 200 on success, -1 on failure.
 sub fetchQuickConnectEnabled()
-  m.log.info("Probing Quick Connect availability")
-
-  res = fetchRes(GetApi().BuildGetQuickConnectEnabledRequest(), "quickConnectEnabled")
-  if isValid(res) and res.ok
-    ' Endpoint returns a plain boolean body. Coerce defensively in case a
-    ' future server returns an object envelope.
-    enabled = res.json
-    if type(enabled) <> "Boolean" then enabled = (enabled = true)
-
-    m.global.server.isQuickConnectEnabled = enabled
-    m.log.info("Quick Connect availability probed", "enabled:", enabled)
-    m.top.responseCode = 200
+  req = GetApi().BuildGetQuickConnectEnabledRequest()
+  if isValid(req)
+    m.log.info("Probing Quick Connect availability", "url:", req.url)
   else
-    ' Fail-open: do not touch isQuickConnectEnabled. Default (true) keeps
-    ' the button visible; the existing /QuickConnect/Initiate fallback
-    ' surfaces a clear error if QC actually turns out to be disabled.
-    m.log.warn("Quick Connect probe failed - keeping default availability")
+    m.log.warn("Quick Connect probe skipped - server URL not configured")
     m.top.responseCode = -1
-    m.top.failureReason = "API call failed or returned invalid"
+    m.top.failureReason = "server URL not configured"
+    return
   end if
+
+  res = fetchRes(req, "quickConnectEnabled")
+  if not isValid(res)
+    m.log.warn("Quick Connect probe returned no response (timeout or queue unavailable)")
+    m.top.responseCode = -1
+    m.top.failureReason = "fetchRes returned invalid"
+    return
+  end if
+
+  if not res.ok
+    ' Server reachable but returned a non-2xx status. Log and fail-open.
+    m.log.warn("Quick Connect probe got non-OK response", "statusCode:", res.statusCode, "text:", res.text)
+    m.top.responseCode = -1
+    m.top.failureReason = "non-ok statusCode: " + res.statusCode.toStr()
+    return
+  end if
+
+  ' Endpoint returns a plain boolean body. Coerce defensively in case a
+  ' future server returns an object envelope or wraps the value as a string.
+  enabled = res.json
+  enabledType = type(enabled)
+  if enabledType <> "Boolean" and enabledType <> "roBoolean"
+    m.log.warn("Quick Connect probe got unexpected body type", "type:", enabledType, "raw:", res.text)
+    enabled = (LCase(res.text.Trim()) = "true")
+  end if
+
+  m.global.server.isQuickConnectEnabled = enabled
+  m.log.info("Quick Connect availability probed", "enabled:", enabled, "statusCode:", res.statusCode)
+  m.top.responseCode = 200
 end sub
 
 ' Reset task to default state
