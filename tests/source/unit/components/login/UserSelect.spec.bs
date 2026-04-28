@@ -1,6 +1,6 @@
 namespace tests
 
-  @suite("UserSelect - Quick Connect button gating by server version")
+  @suite("UserSelect - Quick Connect button gating")
   class UserSelectQuickConnectTests extends tests.BaseTestSuite
 
     private userSelect as object
@@ -13,13 +13,19 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Server supports Quick Connect (version >= 10.8.0)")
+    @describe("Quick Connect button is shown on every supported server version")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("renders the Quick Connect button inside the button group")
+    ' Quick Connect is supported on every Jellyfin version JellyRock targets
+    ' (>= 10.7.0). Version differences in request shape are handled inside
+    ' sdk.quickConnect.* via per-call dispatch, not by hiding the button.
+    @params("10.7.0")
+    @params("10.7.9")
     @params("10.8.0")
     @params("10.9.5")
     @params("10.10.0")
+    @params("10.11.8")
     function _(version as string)
       m.global.server.version = version
       m.userSelect = CreateObject("roSGNode", "UserSelect")
@@ -31,6 +37,7 @@ namespace tests
     end function
 
     @it("places Quick Connect at index 0 (default focus position)")
+    @params("10.7.0")
     @params("10.8.0")
     @params("10.10.0")
     function _(version as string)
@@ -39,36 +46,6 @@ namespace tests
       buttons = m.userSelect.findNode("buttons")
 
       m.assertEqual(buttons.getChild(0).id, "quickConnect")
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Server does not support Quick Connect (version < 10.8.0)")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("removes the Quick Connect button from the button group")
-    ' Regression guard: a hidden-but-present button at index 0 would silently
-    ' steal default focus, since JRButtonGroup honors isEnabled but not visible.
-    @params("10.7.9")
-    @params("10.6.0")
-    @params("10.0.0")
-    function _(version as string)
-      m.global.server.version = version
-      m.userSelect = CreateObject("roSGNode", "UserSelect")
-      buttons = m.userSelect.findNode("buttons")
-
-      m.assertEqual(buttons.getChildCount(), 1)
-      m.assertInvalid(buttons.findNode("quickConnect"))
-    end function
-
-    @it("leaves Manual Login as the index-0 (default focus) child")
-    @params("10.7.9")
-    @params("10.0.0")
-    function _(version as string)
-      m.global.server.version = version
-      m.userSelect = CreateObject("roSGNode", "UserSelect")
-      buttons = m.userSelect.findNode("buttons")
-
-      m.assertEqual(buttons.getChild(0).id, "manualLoginButton")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

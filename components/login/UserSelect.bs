@@ -13,24 +13,23 @@ sub init()
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
   m.buttons = m.top.findNode("buttons")
 
-  ' Quick Connect requires server >= 10.8.0 AND must be enabled in server config.
-  ' Remove the button entirely (rather than hiding it) when unsupported -
-  ' JRButtonGroup focus/navigation honors isEnabled but not visible, so an
-  ' invisible button at index 0 would silently steal default focus.
+  ' Quick Connect is supported on every Jellyfin version JellyRock targets
+  ' (>= 10.7.0). Endpoint and request-shape differences are handled inside
+  ' sdk.quickConnect.* via versionChecker / apiVersion dispatch. The button is
+  ' removed only when the server explicitly reports the feature disabled.
   m.quickConnectButton = m.top.findNode("quickConnect")
-  if not versionChecker(m.global.server.version, "10.8.0")
-    removeQuickConnectButton("server version below 10.8.0, version:" + m.global.server.version)
+  m.quickConnectButton.text = translate(translationKeys.ButtonQuickConnect)
+  ' Apply prior probe result immediately if already known disabled this session.
+  ' Default of true (fail-open) means the button stays unless we have evidence.
+  if m.global.server.isQuickConnectEnabled = false
+    removeQuickConnectButton("server reports Quick Connect disabled (cached)")
   else
-    m.quickConnectButton.text = translate(translationKeys.ButtonQuickConnect)
-    ' Apply prior probe result immediately if already known disabled this session.
-    ' Default of true (fail-open) means the button stays unless we have evidence.
-    if m.global.server.isQuickConnectEnabled = false
-      removeQuickConnectButton("server reports Quick Connect disabled (cached)")
-    else
-      ' Probe is started in OnScreenShown (matches BrandingConfigTask timing).
-      m.quickConnectEnabledTask = createObject("roSGNode", "QuickConnectEnabledTask")
-      m.log.debug("Created QuickConnectEnabledTask")
-    end if
+    ' Probe is started in OnScreenShown (matches BrandingConfigTask timing).
+    ' On 10.7 the /QuickConnect/Enabled endpoint is missing, so the probe
+    ' fails open (button stays visible) - the dialog fallback handles the
+    ' rare admin-disabled case there.
+    m.quickConnectEnabledTask = createObject("roSGNode", "QuickConnectEnabledTask")
+    m.log.debug("Created QuickConnectEnabledTask")
   end if
 
   m.buttons.callFunc("center")

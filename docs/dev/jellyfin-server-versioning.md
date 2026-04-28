@@ -102,13 +102,26 @@ The `MediaSegments` API provides segment timing data (intro, outro, recap, previ
 
 ### 5. Authentication Compatibility
 
-Most authentication flows work across all versions, with one exception:
+Most authentication flows work across all versions, with one quirk for
+Quick Connect.
 
-**Quick Connect Field Name:**
+**Quick Connect:**
 
-- 10.7.x: Uses `Token` field
-- 10.8.x+: Uses `Secret` field
-- Current implementation uses `Secret` (10.8.x+ compatible)
+The two QC dispatches operate on different version boundaries — the SDK
+handles them separately:
+
+| Concern | 10.7.x | 10.8.x | 10.9.0+ | Boundary |
+| ------- | ------ | ------ | ------- | -------- |
+| `AuthenticateWithQuickConnect` body | `{ "Token": secret }` | `{ "Secret": secret }` | `{ "Secret": secret }` | `versionChecker(version, "10.8.0")` |
+| `/QuickConnect/Initiate` HTTP method | `GET` | `GET` | `POST` | `getApiVersionFromGlobal() >= 2` |
+| `/QuickConnect/Connect` | `GET ?secret=` | same | same | n/a |
+| `/QuickConnect/Enabled` (gating probe) | missing | present | present | fail-open in `QuickConnectEnabledTask` |
+
+`source/api/sdk.bs` dispatches both at call time, so callers
+(`source/api/userAuth.bs`, `components/quickConnect/*`) are version-agnostic.
+The Token→Secret split happens at 10.8.0 (a *finer* boundary than the
+`apiVersion` 1→2 split at 10.9.0), so it uses raw `versionChecker` rather than
+the `apiVersion` integer.
 
 Username/password authentication works identically across all versions.
 

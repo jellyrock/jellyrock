@@ -14,7 +14,7 @@ This document shows which JellyRock features require specific Jellyfin server ve
 | Feature                   | 10.7.x | 10.8.x | 10.9.x | 10.10.x+ | Notes                           |
 | ------------------------- | ------ | ------ | ------ | -------- | ------------------------------- |
 | **Trickplay Thumbnails**  | ❌     | ❌     | ✅     | ✅       | Video preview scrubbing         |
-| **Quick Connect**         | ❌     | ✅     | ✅     | ✅       | 10.7 uses "Token" not "Secret"  |
+| **Quick Connect**         | ✅     | ✅     | ✅     | ✅       | Auto-dispatches per server API  |
 | **Media Segments**        | ❌     | ❌     | ❌     | ✅       | Skip intro/outro/recap/etc.     |
 
 ## Legend
@@ -28,12 +28,16 @@ This document shows which JellyRock features require specific Jellyfin server ve
 
 ### Quick Connect
 
-Quick Connect authentication requires Jellyfin 10.8 or newer.
+Quick Connect works on every supported Jellyfin version. JellyRock auto-detects
+the server version and uses the right request shape.
 
-- **10.7**: ❌ Does not work (API uses "Token" field, app sends "Secret")
-- **10.8+**: ✅ Works correctly
+- **10.7.x**: ✅ Works — uses `Token` body field on `AuthenticateWithQuickConnect`
+- **10.8.x**: ✅ Works — uses `Secret` body field; `Initiate` is `GET`
+- **10.9.0+**: ✅ Works — uses `Secret` body field; `Initiate` is `POST`
 
-Use username/password login for 10.7 servers.
+The Quick Connect button is hidden when the server explicitly reports the
+feature disabled (10.8+ via `/QuickConnect/Enabled`); on 10.7 the button is
+always shown and a clear dialog appears if Quick Connect is unavailable.
 
 ### Media Segments
 
