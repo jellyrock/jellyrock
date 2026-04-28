@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- (tests) use canonical 'en_US' locale in BaseTestSuite ([ad50e1c](https://github.com/jellyrock/jellyrock/commit/ad50e1c2))
+
 ## [2.13.0](https://github.com/jellyrock/jellyrock/compare/v2.12.0...v2.13.0) - 2026-04-28
 
 ### Added
