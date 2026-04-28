@@ -77,7 +77,7 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - `return false` = event bubbles up to parent
 ## Development Workflow
 ### IDE Integration
-- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the brighterscript extension.
+- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension.
 - Agents may still invoke `npm run validate` / `npm run build:*` / lint scripts directly when verifying outside the IDE loop.
 ### Agent Restrictions
 - **Cannot modify CHANGELOG.md** (CI-controlled only).

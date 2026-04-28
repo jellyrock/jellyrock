@@ -111,3 +111,6 @@ Booleans
 Whitespace
 whitespace
 Config
+CLI
+ECP
+sideloads

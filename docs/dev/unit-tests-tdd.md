@@ -270,7 +270,7 @@ grep -E '"brightscript\.debug\.(host|password)"' ~/.config/Code/User/settings.js
 
 ### Debugger Contention
 
-If a VSCode brightscript debugger session is already attached to the test device, the deploy will fail (ECP refuses the second sideload) and may also kill the active debugger. Surface this to the user — do not retry blindly.
+If a VSCode BrightScript debugger session is already attached to the test device, the deploy will fail (ECP refuses the second sideload) and may also kill the active debugger. Surface this to the user — do not retry blindly.
 
 ### When Hardware Isn't Available
 
