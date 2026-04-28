@@ -95,22 +95,17 @@ sub layoutTrigger()
   m.buttonBorder.width = slotWidth
   m.buttonBorder.height = totalHeight
 
-  ' Reserve room for the chevron on the right side of the trigger, regardless of
-  ' whether the slot is interactive — keeps text truncation behavior identical
-  ' across slot types so values land at the same character count.
-  chevronSize = TRACK_DROPDOWN_CHEVRON_SIZE
-  chevronGutter = TRACK_DROPDOWN_CHEVRON_GUTTER
-
   ' ScrollingLabel uses maxWidth as its viewport; text narrower stays static, text
-  ' wider marquees when repeatCount=-1. Horizontal padding = hPadding on each side,
-  ' minus the chevron+gutter on the right.
-  m.triggerLabel.maxWidth = slotWidth - (hPadding * 2) - chevronSize - chevronGutter
+  ' wider marquees when repeatCount=-1. The actual maxWidth is set in
+  ' applyChevronVisibility() since it depends on whether the chevron is occupying
+  ' the right side — non-interactive slots and open-menu triggers reclaim that
+  ' space so labels truncate later.
   m.triggerLabel.height = triggerLineHeight
   m.triggerLabel.translation = [hPadding, labelY]
 
   ' Chevron pinned to the trigger's right edge with hPadding gutter, vertically
   ' centered against the trigger's full height.
-  m.triggerChevron.translation = [slotWidth - hPadding - chevronSize, int((totalHeight - chevronSize) / 2)]
+  m.triggerChevron.translation = [slotWidth - hPadding - TRACK_DROPDOWN_CHEVRON_SIZE, int((totalHeight - TRACK_DROPDOWN_CHEVRON_SIZE) / 2)]
 
   ' Menu drops down just below the trigger
   m.menuContainer.translation = [0, totalHeight + 4]
@@ -120,6 +115,9 @@ end sub
 
 sub onSlotWidthChanged()
   layoutTrigger()
+  ' Label maxWidth depends on slotWidth (and chevron state); refresh it so the
+  ' label resizes alongside layoutTrigger's other geometry updates.
+  applyChevronVisibility()
   onItemsChanged()
 end sub
 
@@ -220,8 +218,21 @@ end sub
 ' Chevron tracks the background: only shown for interactive, closed slots. Hidden
 ' while the menu is open since the menu being visible already communicates "this is
 ' expanded" — leaving the chevron visible would compete with that signal.
+'
+' Also owns the trigger label's maxWidth: when the chevron is visible the label has
+' to leave room on the right for the icon + gutter; when the chevron is hidden the
+' label reclaims that space so longer values truncate later. This makes the open-
+' menu trigger label match the menu rows' maxWidth (both at slotWidth - 2*hPadding),
+' and gives single-option non-interactive slots their full inner width to display.
 sub applyChevronVisibility()
-  m.triggerChevron.visible = m.top.isInteractive and not m.isOpen
+  showChevron = m.top.isInteractive and not m.isOpen
+  m.triggerChevron.visible = showChevron
+  baseWidth = m.top.slotWidth - (TRACK_DROPDOWN_TRIGGER_H_PADDING * 2)
+  if showChevron
+    m.triggerLabel.maxWidth = baseWidth - TRACK_DROPDOWN_CHEVRON_SIZE - TRACK_DROPDOWN_CHEVRON_GUTTER
+  else
+    m.triggerLabel.maxWidth = baseWidth
+  end if
 end sub
 
 ' ============================================
