@@ -20,7 +20,8 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   ' Dynamically adjust transcoding segment length and bitrate based on the video's
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
   ' and playlist-too-large errors during HLS playback.
-  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources)
+  hasMediaSource = isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources)
+  if hasMediaSource
     mediaSource = videoMetadata.mediaSourcesData.mediaSources[0]
     sourceBitrate& = 0
     videoDurationSeconds = 0
@@ -47,14 +48,18 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
       end if
 
       ' Reduce max streaming bitrate only when segment length alone isn't enough.
-      ' Never set MaxStreamingBitrate below the source bitrate + 10% headroom - doing
-      ' so would cause Jellyfin to reject a remux/direct-stream as exceeding the limit.
+      ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom —
+      ' Jellyfin would reject a remux/direct-stream as exceeding the limit.
       if transcodingParams.maxBitrate > 0
         minAllowedBitrate& = sourceBitrate& * 11& \ 10&
         if transcodingParams.maxBitrate >= minAllowedBitrate&
           postData.DeviceProfile.MaxStreamingBitrate = transcodingParams.maxBitrate
         end if
       end if
+    end if
+
+    if videoDurationSeconds = 0
+      applyLiveTvMinSegments(postData)
     end if
   end if
 
@@ -495,6 +500,19 @@ function TVSeasons(id as string) as dynamic
   data.Items = results
   return data
 end function
+
+' applyLiveTvMinSegments: For HLS transcodes that report no source duration (live channels),
+' request ≥8 segments per Roku's recommendation. Gives ~48 s seekable DVR window.
+sub applyLiveTvMinSegments(postData as object)
+  if not isValid(postData) then return
+  if not isValid(postData.DeviceProfile) then return
+  if not isValid(postData.DeviceProfile.TranscodingProfiles) then return
+  for each profile in postData.DeviceProfile.TranscodingProfiles
+    if isValid(profile.Type) and profile.Type = "Video"
+      profile.MinSegments = 8
+    end if
+  end for
+end sub
 
 ' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
 ' Live TV is detected by an empty mediaSourceId. On the first attempt, direct play is not disabled

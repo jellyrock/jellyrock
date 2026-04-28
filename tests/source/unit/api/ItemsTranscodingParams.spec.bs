@@ -143,6 +143,60 @@ namespace tests
       m.assertFalse(guardPasses, "maxBitrate equal to source bitrate must not pass the guard (insufficient headroom)")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyLiveTvMinSegments()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets MinSegments=8 on every Video profile")
+    function _()
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Video", Container: "ts" },
+            { Type: "Video", Container: "mp4" }
+          ]
+        }
+      }
+      applyLiveTvMinSegments(postData)
+      m.assertEqual(postData.DeviceProfile.TranscodingProfiles[0].MinSegments, 8)
+      m.assertEqual(postData.DeviceProfile.TranscodingProfiles[1].MinSegments, 8)
+    end function
+
+    @it("does not set MinSegments on non-Video profiles")
+    function _()
+      postData = {
+        DeviceProfile: {
+          TranscodingProfiles: [
+            { Type: "Audio" },
+            { Type: "Photo" }
+          ]
+        }
+      }
+      applyLiveTvMinSegments(postData)
+      m.assertFalse(postData.DeviceProfile.TranscodingProfiles[0].DoesExist("MinSegments"))
+      m.assertFalse(postData.DeviceProfile.TranscodingProfiles[1].DoesExist("MinSegments"))
+    end function
+
+    @it("is a no-op on invalid postData")
+    function _()
+      applyLiveTvMinSegments(invalid)
+      m.assertTrue(true)
+    end function
+
+    @it("is a no-op when DeviceProfile is missing")
+    function _()
+      postData = {}
+      applyLiveTvMinSegments(postData)
+      m.assertFalse(postData.DoesExist("DeviceProfile"))
+    end function
+
+    @it("is a no-op when TranscodingProfiles is missing")
+    function _()
+      postData = { DeviceProfile: {} }
+      applyLiveTvMinSegments(postData)
+      m.assertFalse(postData.DeviceProfile.DoesExist("TranscodingProfiles"))
+    end function
+
   end class
 
 end namespace

@@ -41,6 +41,10 @@
       <IconButton id="itemBack" icon="pkg:/images/icons/itemPrevious.png" />
       <IconButton id="videoPlayPause" icon="pkg:/images/icons/play.png" />
       <IconButton id="itemNext" icon="pkg:/images/icons/itemNext.png" />
+      <!-- Go to Live: detached from the layout by setButtonStates() and reattached by
+           attachGoToLiveButton() only when the user is behind the live edge. visible="false"
+           is defense-in-depth for the frame between XML load and setButtonStates running. -->
+      <IconButton id="goToLive" icon="pkg:/images/icons/liveTV.png" visible="false" />
       <IconButton id="showVideoSourceMenu" icon="pkg:/images/icons/videoFile.png" />
       <IconButton id="showAudioMenu" icon="pkg:/images/icons/musicNote.png" />
       <IconButton id="showSubtitleMenu" icon="pkg:/images/icons/closedCaptions.png" />

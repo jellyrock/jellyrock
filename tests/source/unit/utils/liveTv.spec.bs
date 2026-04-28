@@ -1,0 +1,375 @@
+import "pkg:/source/utils/liveTv.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("liveTv.bs")
+  class LiveTvTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' Build a JellyfinBaseItem-shaped meta with an inner currentProgram node carrying the supplied date fields.
+    private function metaWithProgram(fields as object) as object
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.setFields(fields)
+      meta = CreateObject("roSGNode", "JellyfinBaseItem")
+      meta.setFields({ id: "ch-1", type: "TvChannel" })
+      meta.currentProgram = program
+      return meta
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseProgramEndTimeEpoch()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a valid ISO8601 endDate to a positive epoch")
+    function _()
+      meta = m.metaWithProgram({ id: "p-1", type: "Program", endDate: "2026-04-27T22:30:00.0000000Z" })
+      result = parseProgramEndTimeEpoch(meta)
+      m.assertTrue(result > 0, "Should return a positive epoch for a valid endDate")
+    end function
+
+    @it("returns 0 when meta is invalid")
+    function _()
+      m.assertEqual(parseProgramEndTimeEpoch(invalid), 0)
+    end function
+
+    @it("returns 0 when meta has no currentProgram")
+    function _()
+      meta = CreateObject("roSGNode", "JellyfinBaseItem")
+      meta.setFields({ id: "ch-2", type: "TvChannel" })
+      m.assertEqual(parseProgramEndTimeEpoch(meta), 0)
+    end function
+
+    @it("returns 0 when currentProgram has empty endDate")
+    function _()
+      meta = m.metaWithProgram({ id: "p-2", type: "Program", endDate: "" })
+      m.assertEqual(parseProgramEndTimeEpoch(meta), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseProgramStartTimeEpoch()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a valid ISO8601 startDate to a positive epoch")
+    function _()
+      meta = m.metaWithProgram({ id: "p-3", type: "Program", startDate: "2026-04-27T22:00:00.0000000Z" })
+      result = parseProgramStartTimeEpoch(meta)
+      m.assertTrue(result > 0, "Should return a positive epoch for a valid startDate")
+    end function
+
+    @it("returns 0 when meta is invalid (start)")
+    function _()
+      m.assertEqual(parseProgramStartTimeEpoch(invalid), 0)
+    end function
+
+    @it("returns 0 when currentProgram has empty startDate")
+    function _()
+      meta = m.metaWithProgram({ id: "p-4", type: "Program", startDate: "" })
+      m.assertEqual(parseProgramStartTimeEpoch(meta), 0)
+    end function
+
+    @it("returns endDate later than startDate for the same program")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.setFields({
+        id: "p-5",
+        type: "Program",
+        startDate: "2026-04-27T22:00:00.0000000Z",
+        endDate: "2026-04-27T22:30:00.0000000Z"
+      })
+      meta = CreateObject("roSGNode", "JellyfinBaseItem")
+      meta.setFields({ id: "ch-3", type: "TvChannel" })
+      meta.currentProgram = program
+
+      startEpoch = parseProgramStartTimeEpoch(meta)
+      endEpoch = parseProgramEndTimeEpoch(meta)
+      m.assertEqual(endEpoch - startEpoch, 1800, "30-minute window should be exactly 1800 seconds")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("computeLiveTvBehindLive() - play-math (not paused)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns 0 when not calibrated and not paused")
+    function _()
+      m.assertEqual(computeLiveTvBehindLive(0, false, 100, 1700000100, 0, 0), 0)
+    end function
+
+    @it("returns 0 at live edge (position keeps pace with wall-clock)")
+    function _()
+      ' epochAtPosition0=1700000000, position=100, now=1700000100 → behind = 0
+      m.assertEqual(computeLiveTvBehindLive(1700000000, true, 100, 1700000100, 0, 0), 0)
+    end function
+
+    @it("decreases when user scrubs forward during play")
+    function _()
+      ' At live edge baseline (behind=0). Forward scrub by 25s reverses to position=125.
+      ' Negative result clamps to 0.
+      m.assertEqual(computeLiveTvBehindLive(1700000000, true, 125, 1700000100, 0, 0), 0)
+    end function
+
+    @it("increases when user scrubs backward during play")
+    function _()
+      ' At live edge baseline, scrub backward 60s → position=40 → behind=60.
+      m.assertEqual(computeLiveTvBehindLive(1700000000, true, 40, 1700000100, 0, 0), 60)
+    end function
+
+    @it("clamps to 0 when position overshoots the live edge")
+    function _()
+      ' Roku may briefly land past live edge after a Go-to-Live seek; -behind is meaningless.
+      m.assertEqual(computeLiveTvBehindLive(1700000000, true, 105, 1700000100, 0, 0), 0)
+    end function
+
+    @it("returns 0 immediately after calibration with non-zero position")
+    function _()
+      epochAtPosition0 = 1700000100 - 30
+      m.assertEqual(computeLiveTvBehindLive(epochAtPosition0, true, 30, 1700000100, 0, 0), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("computeLiveTvBehindLive() - pause-math (wall-clock)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns elapsed pause when paused with no prior accumulation")
+    function _()
+      ' Just paused at 1700000100; 30s later behind=30.
+      m.assertEqual(computeLiveTvBehindLive(0, true, 100, 1700000130, 1700000100, 0), 30)
+    end function
+
+    @it("adds accumulated to elapsed pause duration")
+    function _()
+      ' Already 60s behind from a prior pause/resume cycle, paused 10s ago.
+      m.assertEqual(computeLiveTvBehindLive(0, true, 100, 1700000110, 1700000100, 60), 70)
+    end function
+
+    @it("ignores position entirely during pause (Roku live-HLS auto-advance is invisible)")
+    function _()
+      ' Roku may keep advancing m.top.position during pause for live HLS DVR. The pause-math
+      ' branch must not let position influence the result — only accumulated + wall-clock.
+      withFrozenPosition = computeLiveTvBehindLive(1700000000, true, 100, 1700000130, 1700000100, 0)
+      withAdvancedPosition = computeLiveTvBehindLive(1700000000, true, 130, 1700000130, 1700000100, 0)
+      m.assertEqual(withFrozenPosition, 30)
+      m.assertEqual(withAdvancedPosition, 30, "position must not affect behindLive while paused")
+    end function
+
+    @it("returns just elapsed pause when uncalibrated (still works for edge-case pause-before-play)")
+    function _()
+      m.assertEqual(computeLiveTvBehindLive(0, false, 0, 1700000130, 1700000100, 0), 30)
+    end function
+
+    @it("returns accumulated unchanged when now equals pausedAtEpoch")
+    function _()
+      ' Pause just started this exact second.
+      m.assertEqual(computeLiveTvBehindLive(0, true, 100, 1700000100, 1700000100, 60), 60)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyScrubToAccumulatedBehind()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("subtracts a forward-scrub delta from accumulated")
+    function _()
+      ' 60s behind, scrub forward 20s → 40s behind.
+      m.assertEqual(applyScrubToAccumulatedBehind(60, 20), 40)
+    end function
+
+    @it("adds the magnitude of a backward-scrub delta to accumulated")
+    function _()
+      ' 30s behind, scrub backward 15s (delta = -15) → 45s behind.
+      m.assertEqual(applyScrubToAccumulatedBehind(30, -15), 45)
+    end function
+
+    @it("clamps to 0 when forward scrub exceeds accumulated (snapped to live edge)")
+    function _()
+      m.assertEqual(applyScrubToAccumulatedBehind(10, 30), 0)
+    end function
+
+    @it("clamps to 0 when accumulated already 0 and forward delta")
+    function _()
+      m.assertEqual(applyScrubToAccumulatedBehind(0, 5), 0)
+    end function
+
+    @it("returns accumulated unchanged when delta is 0")
+    function _()
+      m.assertEqual(applyScrubToAccumulatedBehind(45, 0), 45)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("repartitionPauseStateOnScrub()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("folds elapsed pause duration into accumulated before applying forward scrub")
+    function _()
+      ' GIVEN: paused 30s ago at live edge (accumulated=0, pauseDurationSoFar=30 → total behind=30)
+      ' WHEN:  user scrubs forward 30s
+      ' THEN:  new accumulated = 0 (snapped to live edge); caller resets pausedAtEpoch
+      m.assertEqual(repartitionPauseStateOnScrub(0, 30, 30), 0)
+    end function
+
+    @it("regression: forward scrub to live edge actually lands at 0 total behind")
+    function _()
+      ' This is the bug: without folding pauseDurationSoFar in, accumulated would stay at 0
+      ' but the wall-clock pause counter would keep ticking, leaving total behind at 30.
+      ' With the fix: the displayed behind right after the scrub is 0 (and stays at 0
+      ' until the wall-clock counter starts growing again from the new pausedAtEpoch).
+      newAccumulated = repartitionPauseStateOnScrub(0, 30, 30)
+      ' Right after caller resets pausedAtEpoch=now, displayed behind = newAccumulated + 0.
+      m.assertEqual(newAccumulated, 0, "forward scrub equal to elapsed pause must land at live edge")
+    end function
+
+    @it("backward scrub during pause grows total behind by the scrub magnitude")
+    function _()
+      ' GIVEN: 10s of pause already elapsed (accumulated=0, total=10)
+      ' WHEN:  user scrubs backward 20s (delta=-20)
+      ' THEN:  total grows to 30; accumulated baseline becomes 30 (caller resets pausedAtEpoch)
+      m.assertEqual(repartitionPauseStateOnScrub(0, 10, -20), 30)
+    end function
+
+    @it("preserves prior accumulated when no pause has elapsed since last reset")
+    function _()
+      ' GIVEN: 60s of behind banked from earlier scrubs (accumulated=60, no time elapsed since)
+      ' WHEN:  forward scrub by 25s
+      ' THEN:  60 - 25 = 35
+      m.assertEqual(repartitionPauseStateOnScrub(60, 0, 25), 35)
+    end function
+
+    @it("clamps to 0 when forward scrub exceeds combined accumulated + pauseDuration")
+    function _()
+      ' total=15+5=20, scrub forward 30 → would be -10 → clamped to 0
+      m.assertEqual(repartitionPauseStateOnScrub(15, 5, 30), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildChannelQueueList()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty result with currentIndex=-1 when channels is invalid")
+    function _()
+      result = buildChannelQueueList(invalid, "any-id")
+      m.assertArrayCount(result.items, 0)
+      m.assertEqual(result.currentIndex, -1)
+    end function
+
+    @it("returns empty result with currentIndex=-1 when channels is empty")
+    function _()
+      result = buildChannelQueueList([], "any-id")
+      m.assertArrayCount(result.items, 0)
+      m.assertEqual(result.currentIndex, -1)
+    end function
+
+    @it("maps a single channel and locates it as currentIndex=0")
+    function _()
+      channels = [{ Id: "ch-a", Name: "Channel A", Number: "5", PrimaryImageTag: "tag-a" }]
+      result = buildChannelQueueList(channels, "ch-a")
+
+      m.assertArrayCount(result.items, 1)
+      m.assertEqual(result.currentIndex, 0)
+      m.assertEqual(result.items[0].id, "ch-a")
+      m.assertEqual(result.items[0].type, "TvChannel")
+      m.assertEqual(result.items[0].title, "Channel A")
+      m.assertEqual(result.items[0].channelNumber, "5")
+      m.assertEqual(result.items[0].primaryImageTag, "tag-a")
+    end function
+
+    @it("preserves order and finds currentIndex in a multi-channel list")
+    function _()
+      channels = [
+        { Id: "ch-1", Name: "First", Number: "1" },
+        { Id: "ch-2", Name: "Second", Number: "2" },
+        { Id: "ch-3", Name: "Third", Number: "3" }
+      ]
+      result = buildChannelQueueList(channels, "ch-2")
+
+      m.assertArrayCount(result.items, 3)
+      m.assertEqual(result.currentIndex, 1)
+      m.assertEqual(result.items[0].id, "ch-1")
+      m.assertEqual(result.items[1].id, "ch-2")
+      m.assertEqual(result.items[2].id, "ch-3")
+    end function
+
+    @it("returns currentIndex=-1 when currentChannelId is not in the list")
+    function _()
+      channels = [{ Id: "ch-x", Name: "X", Number: "9" }]
+      result = buildChannelQueueList(channels, "ch-missing")
+      m.assertArrayCount(result.items, 1)
+      m.assertEqual(result.currentIndex, -1)
+    end function
+
+    @it("skips channels with missing or empty Id and adjusts currentIndex accordingly")
+    function _()
+      channels = [
+        { Id: "", Name: "Skipped", Number: "0" },
+        invalid,
+        { Id: "ch-real", Name: "Real", Number: "1" }
+      ]
+      result = buildChannelQueueList(channels, "ch-real")
+      m.assertArrayCount(result.items, 1)
+      m.assertEqual(result.currentIndex, 0)
+      m.assertEqual(result.items[0].id, "ch-real")
+    end function
+
+    @it("omits optional fields that are missing or empty")
+    function _()
+      channels = [{ Id: "ch-bare" }] ' no Name, Number, or PrimaryImageTag
+      result = buildChannelQueueList(channels, "ch-bare")
+
+      m.assertArrayCount(result.items, 1)
+      m.assertEqual(result.items[0].id, "ch-bare")
+      m.assertEqual(result.items[0].type, "TvChannel")
+      m.assertFalse(result.items[0].DoesExist("title"))
+      m.assertFalse(result.items[0].DoesExist("channelNumber"))
+      m.assertFalse(result.items[0].DoesExist("primaryImageTag"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldTreatAsEpisode()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns true for type 'episode'")
+    function _()
+      m.assertTrue(shouldTreatAsEpisode("episode", { seriesId: "" }))
+    end function
+
+    @it("returns true for type 'series'")
+    function _()
+      m.assertTrue(shouldTreatAsEpisode("series", { seriesId: "" }))
+    end function
+
+    @it("returns true for a recording WITH a seriesId")
+    function _()
+      ' Covers the user's case: news bulletin recording tagged as a series
+      ' but with no S/E numbering — still treated as an episode.
+      m.assertTrue(shouldTreatAsEpisode("recording", { seriesId: "show-123" }))
+    end function
+
+    @it("returns false for a recording WITHOUT a seriesId (e.g. movie or sports)")
+    function _()
+      m.assertFalse(shouldTreatAsEpisode("recording", { seriesId: "" }))
+    end function
+
+    @it("returns false for a recording with invalid meta")
+    function _()
+      m.assertFalse(shouldTreatAsEpisode("recording", invalid))
+    end function
+
+    @it("returns false for type 'movie'")
+    function _()
+      m.assertFalse(shouldTreatAsEpisode("movie", { seriesId: "anything" }))
+    end function
+
+    @it("returns false for empty type")
+    function _()
+      m.assertFalse(shouldTreatAsEpisode("", { seriesId: "anything" }))
+    end function
+
+    @it("returns false for unknown type")
+    function _()
+      m.assertFalse(shouldTreatAsEpisode("video", { seriesId: "anything" }))
+    end function
+
+  end class
+
+end namespace

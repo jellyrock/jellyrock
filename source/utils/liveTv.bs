@@ -1,0 +1,142 @@
+import "pkg:/source/utils/misc.bs"
+
+' Sentinel seek position used to jump to the live edge of an HLS stream.
+' Roku clips this to the manifest's available range, landing at the live edge.
+const LIVE_EDGE_SEEK = 999999
+
+' Maximum behind-live offset (seconds) at which we still consider the user to be at
+' the live edge. Absorbs 1-tick rounding flicker between the integer wall-clock
+' (roDateTime.AsSeconds) and int(m.top.position) — both tick discretely but can be
+' out of phase by up to 1 second depending on calibration alignment, which would
+' otherwise flicker the UI between LIVE and -0:01 every second during normal play.
+const LIVE_EDGE_THRESHOLD_SECONDS = 2
+
+function parseProgramEndTimeEpoch(meta as object) as integer
+  if not isValid(meta) or not isValid(meta.currentProgram) then return 0
+
+  endDateStr = meta.currentProgram.endDate
+  if not isValidAndNotEmpty(endDateStr) then return 0
+
+  dt = CreateObject("roDateTime")
+  dt.FromISO8601String(endDateStr)
+  return dt.AsSeconds()
+end function
+
+function parseProgramStartTimeEpoch(meta as object) as integer
+  if not isValid(meta) or not isValid(meta.currentProgram) then return 0
+
+  startDateStr = meta.currentProgram.startDate
+  if not isValidAndNotEmpty(startDateStr) then return 0
+
+  dt = CreateObject("roDateTime")
+  dt.FromISO8601String(startDateStr)
+  return dt.AsSeconds()
+end function
+
+' Compute seconds the user is behind the live edge using a hybrid play/pause model.
+'
+' Roku's m.top.position for live HLS DVR streams keeps advancing during pause —
+' it tracks the live edge, not the user's playhead. So position-vs-wallclock math
+' cancels out to zero during pause and we have to switch strategies based on state:
+'
+'   During pause: behindLive = accumulated + (now - pausedAtEpoch)
+'                  Wall-clock-only — independent of position so Roku's auto-advance
+'                  during pause is invisible to us.
+'
+'   During play:  behindLive = (now - epochAtPosition0) - position
+'                  Position-math — self-correcting on scrubs while playing, where
+'                  position genuinely tracks the user's playhead.
+'
+' On the pause→play transition the caller re-anchors epochAtPosition0 so play-math
+' continues from the same offset where wall-clock math left off.
+'
+' @param epochAtPosition0 epoch corresponding to video position=0 in the current stream
+' @param calibrated       false until first play tick anchors the reference
+' @param position         current video position (seconds), used only during play
+' @param now              current wall-clock epoch
+' @param pausedAtEpoch    epoch when the current pause started, or 0 if not paused
+' @param accumulated      seconds-behind-live snapshotted at pause start (plus any
+'                          scrub adjustments made during the current pause)
+function computeLiveTvBehindLive(epochAtPosition0 as integer, calibrated as boolean, position as integer, now as integer, pausedAtEpoch as integer, accumulated as integer) as integer
+  if pausedAtEpoch > 0 then return accumulated + (now - pausedAtEpoch)
+  if not calibrated then return 0
+  behind = (now - epochAtPosition0) - position
+  if behind < 0 then return 0
+  return behind
+end function
+
+' Apply a scrub-during-pause delta to the accumulated behind-live counter.
+' Forward scrub (positive delta) reduces behind; backward scrub (negative) grows it.
+' Clamped to >= 0 so a forward scrub past the live edge resolves to 0 (live edge).
+function applyScrubToAccumulatedBehind(accumulated as integer, delta as integer) as integer
+  result = accumulated - delta
+  if result < 0 then return 0
+  return result
+end function
+
+' Compute the new accumulated baseline after a scrub during pause. Folds the elapsed
+' pause duration into accumulated first so the wall-clock pause counter can be reset
+' from the scrub moment — otherwise a forward scrub to live edge would still leave
+' the wall-clock counter adding to total behindLive.
+'
+' Caller is expected to also reset pausedAtEpoch = now after this returns.
+function repartitionPauseStateOnScrub(accumulated as integer, pauseDurationSoFar as integer, scrubDelta as integer) as integer
+  return applyScrubToAccumulatedBehind(accumulated + pauseDurationSoFar, scrubDelta)
+end function
+
+' Build a queue array from a Jellyfin /livetv/channels response and locate the
+' currently-playing channel within it.
+'
+' @param channels         array of channel AAs as returned by /livetv/channels
+' @param currentChannelId id of the currently-playing channel
+' @return AA with shape: items=[queueItem...], currentIndex=integer (-1 if currentChannelId not found)
+function buildChannelQueueList(channels as object, currentChannelId as string) as object
+  result = { items: [], currentIndex: -1 }
+  if not isValid(channels) then return result
+
+  for i = 0 to channels.count() - 1
+    channel = channels[i]
+    if not isValid(channel) or not isValidAndNotEmpty(channel.Id) then continue for
+
+    queueItem = {
+      id: channel.Id,
+      type: "TvChannel"
+    }
+    if isValidAndNotEmpty(channel.Name)
+      queueItem.title = channel.Name
+    end if
+    if isValidAndNotEmpty(channel.Number)
+      queueItem.channelNumber = channel.Number
+    end if
+    if isValidAndNotEmpty(channel.PrimaryImageTag)
+      queueItem.primaryImageTag = channel.PrimaryImageTag
+    end if
+
+    result.items.push(queueItem)
+
+    if channel.Id = currentChannelId
+      result.currentIndex = result.items.count() - 1
+    end if
+  end for
+
+  return result
+end function
+
+' Decide whether a video should be tagged as ContentNode contenttype="episode".
+' Tagging "episode" enables the Next-Episode flow in VideoPlayerView.
+'
+' Episodes and series items are always episodes. Recordings are episodes only
+' when their metadata identifies them as part of a series (seriesId set) — a
+' standalone recording of a movie or sports event should NOT trigger the
+' Next-Episode prompt.
+'
+' Recordings without a season/episode number but WITH a seriesId still count
+' as series content (e.g. news bulletins or shows whose EPG omits S/E numbering).
+'
+' @param videotype lowercased meta.type
+' @param meta      JellyfinBaseItem or AA with seriesId field
+function shouldTreatAsEpisode(videotype as string, meta as object) as boolean
+  if videotype = "episode" or videotype = "series" then return true
+  if videotype = "recording" and isValid(meta) and isValidAndNotEmpty(meta.seriesId) then return true
+  return false
+end function

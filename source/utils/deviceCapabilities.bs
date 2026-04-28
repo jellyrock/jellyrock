@@ -248,7 +248,10 @@ function GetDirectPlayProfiles() as object
 
   directPlayProfiles = []
   di = CreateObject("roDeviceInfo")
-  ' all possible containers
+  ' MPEG-TS is intentionally excluded. Broadcast TS files carry wall-clock PTS timestamps
+  ' rather than zero-based ones, so Roku's progressive reader computes a nonsensical
+  ' duration (often 20+ hours for a short clip) and seek / progress / trickplay all break.
+  ' Letting Jellyfin remux TS to HLS gives Roku a manifest with accurate EXTINF durations.
   supportedContainers = {
     mp4: {
       audio: [],
@@ -267,10 +270,6 @@ function GetDirectPlayProfiles() as object
       video: []
     },
     dash: {
-      audio: [],
-      video: []
-    },
-    ts: {
       audio: [],
       video: []
     }

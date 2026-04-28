@@ -1,6 +1,7 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -34,11 +35,33 @@ sub init()
   m.top.observeField("hasFocus", "onFocusChanged")
   m.top.observeField("progressPercentage", "onProgressPercentageChanged")
   m.top.observeField("playbackState", "onPlaybackStateChanged")
+  ' positionTime drives live-TV calibration so the epoch anchor is captured the first time
+  ' VideoPlayerView pushes a position during playback — even if the user pauses immediately
+  ' afterward (e.g. by pressing play to open the OSD).
+  m.top.observeField("positionTime", "onPositionTimeChanged")
 
   m.isFirstRun = true
   m.defaultButtonIndex = 1
   m.focusedButtonIndex = 1
   m.subtitleDividerCount = 0
+
+  ' Hybrid behind-live tracking. Roku's m.top.position for live HLS DVR streams advances
+  ' even during pause (it tracks the live edge, not the user's playhead), so we use:
+  '   - position-math during play (handles scrubs while playing)
+  '   - wall-clock math during pause (Roku's auto-advance is invisible to us)
+  ' On pause→play the epoch reference is re-anchored so play-math picks up where
+  ' wall-clock math left off. See source/utils/liveTv.bs::computeLiveTvBehindLive.
+  m.liveTvCalibrated = false
+  m.liveTvEpochAtPosition0 = 0 ' play-math reference (epoch for video position=0)
+  m.liveTvPausedAtEpoch = 0 ' >0 while paused, snapshotted at pause start
+  m.liveTvAccumulatedBehind = 0 ' snapshot of behind-live at pause start (+ scrub adjustments)
+  m.liveTvLastPosition = 0 ' baseline for scrub-during-pause delta detection
+  m.liveTvIsAtLiveEdge = true
+
+  ' Go to Live button — cached and attached/detached dynamically by setButtonStates()
+  ' and attach/detachGoToLiveButton() so it doesn't reserve a layout slot when hidden.
+  m.goToLiveButton = invalid
+  m.goToLiveAttached = false
 
   m.buttonMenuRight = m.top.findNode("buttonMenuRight")
   m.buttonMenuLeft = m.top.findNode("buttonMenuLeft")
@@ -67,17 +90,30 @@ sub onItemDataChanged()
   item = m.top.itemData
   if not isValid(item) or not isValidAndNotEmpty(item.id) then return
 
+  ' Reset behind-live state only on channel change; program refreshes keep it.
+  ' New stream → new position=0 origin → must recalibrate and clear any pause snapshot.
+  previousItemId = isValid(m.itemData) ? m.itemData.id : ""
+  if item.id <> previousItemId
+    m.liveTvCalibrated = false
+    m.liveTvEpochAtPosition0 = 0
+    m.liveTvPausedAtEpoch = 0
+    m.liveTvAccumulatedBehind = 0
+    m.liveTvLastPosition = 0
+    m.liveTvIsAtLiveEdge = true
+  end if
+
   ' Cache item reference for use in display methods
   m.itemData = item
+
+  itemType = item.type
 
   ' Preserve the original item name from the first load.
   ' Source-switch reloads fetch metadata for an alternate version whose name
   ' may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
-  if not isValidAndNotEmpty(m.originalItemName)
+  ' TvChannel titles always come from currentProgram.name, so caching is unnecessary.
+  if itemType <> "TvChannel" and not isValidAndNotEmpty(m.originalItemName)
     m.originalItemName = item.name
   end if
-
-  itemType = item.type
 
   ' Determine isMovie/isSeries flags for ratings display settings.
   ' For TvChannel, use the currently-airing program's flags if available.
@@ -148,16 +184,16 @@ end sub
 sub setButtonStates()
   queueCount = m.global.queueManager.callFunc("getCount")
   queueIndex = m.global.queueManager.callFunc("getPosition")
+  isTvChannel = m.itemData.type = "TvChannel"
 
   ' Disable these buttons as needed
 
-  ' Item Previous
-  if queueCount = 1 or queueIndex = 0
+  ' Keep prev/next enabled for TvChannel — channel list loads async after init
+  if not isTvChannel and (queueCount = 1 or queueIndex = 0)
     itemPrevious = m.buttonMenuLeft.findNode("itemBack")
     itemPrevious.isEnabled = false
   end if
-  ' Item Next
-  if queueIndex + 1 >= queueCount
+  if not isTvChannel and (queueIndex + 1 >= queueCount)
     itemNext = m.buttonMenuLeft.findNode("itemNext")
     itemNext.isEnabled = false
   end if
@@ -165,7 +201,7 @@ sub setButtonStates()
   ' Remove these buttons as needed
 
   ' Video Sources - hide for single source or live TV
-  if m.top.numVideoSources < 2 or m.itemData.type = "TvChannel"
+  if m.top.numVideoSources < 2 or isTvChannel
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showVideoSourceMenu"))
   end if
   ' Audio Track
@@ -176,10 +212,49 @@ sub setButtonStates()
   if not m.itemData.hasSubtitles
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("showSubtitleMenu"))
   end if
-  ' Chapters
-  if not m.top.hasChapters
+  ' Chapters — TvChannel has none
+  if not m.top.hasChapters or isTvChannel
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("chapterList"))
   end if
+  ' Go to Live — detach from layout until the user falls behind the live edge, then
+  ' re-insert via attachGoToLiveButton(). Toggling visible/isEnabled isn't enough:
+  ' LayoutGroup reserves a slot for invisible children, so a hidden button would
+  ' leave a gap in the button row.
+  if not isTvChannel
+    existing = m.buttonMenuLeft.findNode("goToLive")
+    if isValid(existing)
+      m.buttonMenuLeft.removeChild(existing)
+    end if
+    m.goToLiveButton = invalid
+    m.goToLiveAttached = false
+  else
+    if not isValid(m.goToLiveButton)
+      m.goToLiveButton = m.buttonMenuLeft.findNode("goToLive")
+      if isValid(m.goToLiveButton)
+        ' XML attaches the button at load time
+        m.goToLiveAttached = true
+      end if
+    end if
+    if isValid(m.goToLiveButton)
+      m.goToLiveButton.text = UCase(translate(translationKeys.LabelLive))
+      detachGoToLiveButton()
+    end if
+  end if
+end sub
+
+' Insert after itemNext (index 3 in the XML-declared button order) so prev/next stay
+' contiguous and the live-edge button appears where channel up/down users look first.
+sub attachGoToLiveButton()
+  if not isValid(m.goToLiveButton) or m.goToLiveAttached then return
+  m.goToLiveButton.visible = true
+  m.buttonMenuLeft.insertChild(m.goToLiveButton, 3)
+  m.goToLiveAttached = true
+end sub
+
+sub detachGoToLiveButton()
+  if not isValid(m.goToLiveButton) or not m.goToLiveAttached then return
+  m.buttonMenuLeft.removeChild(m.goToLiveButton)
+  m.goToLiveAttached = false
 end sub
 
 sub setEndsAtText()
@@ -191,13 +266,19 @@ sub setEndsAtText()
     return
   end if
 
-  ' For live TV channels, use the currently-airing program's EndDate for end time.
-  ' remainingPositionTime ≈ 0 for live streams so the default calculation would show current time.
+  ' Live TV: anchor on currentProgram.endDate (broadcast-schedule wall-clock end), then
+  ' shift forward by the user's behind-live offset so the displayed "Ends at" reflects
+  ' when the user will actually finish watching the program. At live edge behindLive=0
+  ' so this collapses to the broadcast end time.
   if isValid(m.itemData) and m.itemData.type = "TvChannel"
     currentProgram = m.itemData.currentProgram
     if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.endDate)
       endDt = CreateObject("roDateTime")
       endDt.FromISO8601String(currentProgram.endDate)
+      behindLive = getLiveTvBehindLiveSeconds()
+      if behindLive > 0
+        endDt.fromSeconds(endDt.asSeconds() + behindLive)
+      end if
       endDt.toLocalTime()
       m.endsAtTime.text = formatTime(endDt)
       endsAtText.visible = true
@@ -208,13 +289,21 @@ sub setEndsAtText()
     return
   end if
 
-  ' Calculate endsAtTime based on remainingPositionTime
-  date = CreateObject("roDateTime")
+  ' Hide when remainingPositionTime isn't meaningful yet (pre-load or zero duration),
+  ' otherwise "Ends at" would show the current clock time
   endTime = int(m.top.remainingPositionTime)
+  if endTime <= 0
+    endsAtText.visible = false
+    m.endsAtTime.text = ""
+    return
+  end if
+
+  date = CreateObject("roDateTime")
   date.fromSeconds(date.asSeconds() + endTime)
   date.toLocalTime()
 
   m.endsAtTime.text = formatTime(date)
+  endsAtText.visible = true
 end sub
 
 sub setVideoLogoGroup()
@@ -242,6 +331,8 @@ end sub
 sub setVideoSubTitle()
   ' start fresh by removing all subtitle nodes
   m.videoSubtitleGroup.removeChildrenIndex(m.videoSubtitleGroup.getChildCount(), 0)
+  ' Reset divider id counter so ids stay bounded across program transitions on live TV.
+  m.subtitleDividerCount = 0
 
   isAirDateNodeCreated = false
   item = m.itemData
@@ -260,31 +351,31 @@ sub setVideoSubTitle()
       m.videoTitle.text = item.seriesName
     end if
 
-    ' episodeInfo
+    ' episodeInfo: "S1E2 - Name". Omit S/E segments entirely when the numbers aren't
+    ' known — common for live TV recordings classified as series episodes with no EPG
+    ' numbering — so we don't display placeholder strings like "S?E?? - X".
     episodeInfoText = ""
-    '
-    ' Season number
     if item.parentIndexNumber > 0
       episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}${item.parentIndexNumber}`
-    else
-      episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}?`
     end if
-    ' Episode number
     if item.indexNumber > 0
       episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${item.indexNumber}`
-    else
-      episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}??`
     end if
-    ' Episode number end
+    ' Episode number end — additional E entries for multi-episode specials (e.g. S6:E1E2)
     if item.indexNumberEnd > 0 and item.indexNumberEnd > item.indexNumber
-      ' add entry for every episode eg. S6:E1E2
       for i = item.indexNumber + 1 to item.indexNumberEnd
         episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${i}`
       end for
     end if
-    ' Episode name
+    ' Append episode name when we have S/E context. When we don't, fall back to the bare
+    ' name only if it differs from what's already on the title line — otherwise we'd
+    ' duplicate the title.
     if isValidAndNotEmpty(item.name)
-      episodeInfoText = episodeInfoText + ` - ${item.name}`
+      if isValidAndNotEmpty(episodeInfoText)
+        episodeInfoText = episodeInfoText + ` - ${item.name}`
+      else if m.videoTitle.text <> item.name
+        episodeInfoText = item.name
+      end if
     end if
 
     if episodeInfoText <> ""
@@ -307,7 +398,9 @@ sub setVideoSubTitle()
     currentProgram = item.currentProgram
     if isValid(currentProgram)
       if currentProgram.isSeries
-        ' Episode info: S1E2 - Episode Name
+        ' Episode info: S1E2 - Episode Name. Skip entirely when we have no season/episode
+        ' numbers — the program name is already shown as the video title and we don't want
+        ' to duplicate it (e.g. news bulletins named "INFO" with no S/E numbering).
         episodeInfoText = ""
         if currentProgram.parentIndexNumber > 0
           episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelS)}${currentProgram.parentIndexNumber}`
@@ -315,12 +408,8 @@ sub setVideoSubTitle()
         if currentProgram.indexNumber > 0
           episodeInfoText = episodeInfoText + `${translate(translationKeys.LabelE)}${currentProgram.indexNumber}`
         end if
-        if isValidAndNotEmpty(currentProgram.name)
-          if isValidAndNotEmpty(episodeInfoText)
-            episodeInfoText = episodeInfoText + ` - ${currentProgram.name}`
-          else
-            episodeInfoText = currentProgram.name
-          end if
+        if isValidAndNotEmpty(episodeInfoText) and isValidAndNotEmpty(currentProgram.name)
+          episodeInfoText = episodeInfoText + ` - ${currentProgram.name}`
         end if
         if isValidAndNotEmpty(episodeInfoText)
           episodeInfoNode = createSubtitleLabelNode("episodeInfo")
@@ -334,10 +423,18 @@ sub setVideoSubTitle()
         displaySubtitleNode(productionYearNode)
       end if
     end if
-    ' Channel number (e.g. "CH 4") — always shown when available
+    ' Channel identity (e.g. "CH 4 - NHK World") — mirrors the ItemDetails program info row.
+    ' For TvChannel items, item.name is the channel name.
+    channelParts = []
     if isValidAndNotEmpty(item.channelNumber)
+      channelParts.push(`${translate(translationKeys.LabelCh)} ${item.channelNumber}`)
+    end if
+    if isValidAndNotEmpty(item.name)
+      channelParts.push(item.name)
+    end if
+    if channelParts.count() > 0
       channelNumberNode = createSubtitleLabelNode("channelNumber")
-      channelNumberNode.text = `${translate(translationKeys.LabelCh)} ${item.channelNumber}`
+      channelNumberNode.text = channelParts.join(" - ")
       displaySubtitleNode(channelNumberNode)
     end if
   end if
@@ -410,16 +507,8 @@ sub setVideoSubTitle()
 end sub
 
 sub onProgressPercentageChanged()
-  ' change progress bar for live tv
-  itemType = ""
-  if isValid(m.itemData)
-    itemType = m.itemData.type
-  end if
-
-  if itemType = "TvChannel"
-    m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
-    m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
-    m.progressBar.width = m.progressBarBackground.width ' set to full width
+  if isLiveTvItem()
+    updateLiveTvDisplay()
   else
     m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
     m.videoRemainingTime.text = "-" + secondsToTimestamp(m.top.remainingPositionTime, true)
@@ -429,13 +518,139 @@ sub onProgressPercentageChanged()
   setEndsAtText()
 end sub
 
-sub onPlaybackStateChanged()
-  if LCase(m.top.playbackState) = "playing"
-    m.videoPlayPause.icon = "pkg:/images/icons/pause.png"
-    return
+' Called from onProgressPercentageChanged() (position updates) and inactiveCheck()
+' (1s timer). The timer ensures behind-live derived state ticks while paused.
+sub updateLiveTvDisplay()
+  programStart = parseProgramStartTimeEpoch(m.itemData)
+  programEnd = parseProgramEndTimeEpoch(m.itemData)
+  now = CreateObject("roDateTime").AsSeconds()
+  position = int(m.top.positionTime)
+
+  ' Backstop: positionTime/playbackState observers normally calibrate this earlier,
+  ' but cover the path where neither has fired yet (e.g. fallback inactivity tick).
+  calibrateLiveTvIfNeeded()
+  behindLive = computeLiveTvBehindLive(m.liveTvEpochAtPosition0, m.liveTvCalibrated, position, now, m.liveTvPausedAtEpoch, m.liveTvAccumulatedBehind)
+  ' Pause is an explicit user action — flip to "behind live" UI immediately rather than
+  ' waiting for behindLive math to grow past the threshold. The threshold itself only
+  ' suppresses sub-second rounding flicker during normal play.
+  m.liveTvIsAtLiveEdge = LCase(m.top.playbackState) = "playing" and behindLive < LIVE_EDGE_THRESHOLD_SECONDS
+
+  if m.liveTvIsAtLiveEdge
+    detachGoToLiveButton()
+  else
+    attachGoToLiveButton()
   end if
 
-  m.videoPlayPause.icon = "pkg:/images/icons/play.png"
+  if programStart > 0 and programEnd > programStart
+    programDuration = programEnd - programStart
+
+    if m.liveTvIsAtLiveEdge
+      elapsed = now - programStart
+      if elapsed < 0 then elapsed = 0
+      if elapsed > programDuration then elapsed = programDuration
+      programProgress = elapsed / programDuration
+
+      m.videoPositionTime.text = secondsToTimestamp(elapsed, true)
+      m.progressBar.width = m.progressBarBackground.width * programProgress
+      m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
+    else
+      userElapsed = (now - behindLive) - programStart
+      if userElapsed < 0 then userElapsed = 0
+      if userElapsed > programDuration then userElapsed = programDuration
+      userProgress = userElapsed / programDuration
+
+      m.videoPositionTime.text = secondsToTimestamp(userElapsed, true)
+      m.progressBar.width = m.progressBarBackground.width * userProgress
+      m.videoRemainingTime.text = "-" + secondsToTimestamp(behindLive, true)
+    end if
+  else
+    ' Fallback when program timing data is missing
+    m.videoPositionTime.text = secondsToTimestamp(m.top.positionTime, true)
+    if m.liveTvIsAtLiveEdge
+      m.progressBar.width = m.progressBarBackground.width
+      m.videoRemainingTime.text = UCase(translate(translationKeys.LabelLive))
+    else
+      m.progressBar.width = m.progressBarBackground.width * m.top.progressPercentage
+      m.videoRemainingTime.text = "-" + secondsToTimestamp(behindLive, true)
+    end if
+  end if
+end sub
+
+sub onPlaybackStateChanged()
+  state = LCase(m.top.playbackState)
+  if state = "playing"
+    m.videoPlayPause.icon = "pkg:/images/icons/pause.png"
+    calibrateLiveTvIfNeeded()
+    onLiveTvResumeIfNeeded()
+  else
+    m.videoPlayPause.icon = "pkg:/images/icons/play.png"
+    if state = "paused" then onLiveTvPauseIfNeeded()
+  end if
+end sub
+
+' Anchor m.liveTvEpochAtPosition0 on first play tick. Idempotent.
+sub calibrateLiveTvIfNeeded()
+  if not isLiveTvItem() then return
+  if m.liveTvCalibrated then return
+  if LCase(m.top.playbackState) <> "playing" then return
+  position = int(m.top.positionTime)
+  m.liveTvEpochAtPosition0 = CreateObject("roDateTime").AsSeconds() - position
+  m.liveTvLastPosition = position
+  m.liveTvCalibrated = true
+end sub
+
+' Snapshot the current behindLive into accumulated and start the wall-clock pause counter.
+' Wall-clock math takes over from here because Roku's m.top.position keeps advancing
+' during pause for live HLS DVR streams (it tracks the live edge, not the user's playhead),
+' which would silently zero out position-math.
+sub onLiveTvPauseIfNeeded()
+  if not isLiveTvItem() then return
+  if not m.liveTvCalibrated then return
+  if m.liveTvPausedAtEpoch > 0 then return
+  now = CreateObject("roDateTime").AsSeconds()
+  position = int(m.top.positionTime)
+  currentBehind = (now - m.liveTvEpochAtPosition0) - position
+  if currentBehind < 0 then currentBehind = 0
+  m.liveTvAccumulatedBehind = currentBehind
+  m.liveTvPausedAtEpoch = now
+  m.liveTvLastPosition = position
+end sub
+
+' Re-anchor epochAtPosition0 so play-math continues from the same offset where
+' wall-clock math left off, then clear pause state.
+sub onLiveTvResumeIfNeeded()
+  if not isLiveTvItem() then return
+  if m.liveTvPausedAtEpoch = 0 then return
+  now = CreateObject("roDateTime").AsSeconds()
+  position = int(m.top.positionTime)
+  pauseDuration = now - m.liveTvPausedAtEpoch
+  totalBehind = m.liveTvAccumulatedBehind + pauseDuration
+  m.liveTvEpochAtPosition0 = now - position - totalBehind
+  m.liveTvPausedAtEpoch = 0
+  m.liveTvAccumulatedBehind = 0
+  m.liveTvLastPosition = position
+end sub
+
+sub onPositionTimeChanged()
+  if not isLiveTvItem() then return
+  calibrateLiveTvIfNeeded()
+  ' Detect user scrubs during pause via large positionTime deltas. Roku's auto-advance
+  ' during pause arrives in small per-fire increments (<1s) and is filtered out by the
+  ' threshold; user-initiated seeks land as a single large delta.
+  if m.liveTvPausedAtEpoch > 0
+    newPos = int(m.top.positionTime)
+    delta = newPos - m.liveTvLastPosition
+    m.liveTvLastPosition = newPos
+    if delta < -2 or delta > 2
+      ' Repartition the pause-state. Without folding the wall-clock pause counter into
+      ' accumulated before applying the scrub, a forward scrub to live edge would zero
+      ' accumulated but the pause counter would keep growing — total behindLive wouldn't
+      ' actually reach 0.
+      now = CreateObject("roDateTime").AsSeconds()
+      m.liveTvAccumulatedBehind = repartitionPauseStateOnScrub(m.liveTvAccumulatedBehind, now - m.liveTvPausedAtEpoch, delta)
+      m.liveTvPausedAtEpoch = now
+    end if
+  end if
 end sub
 
 sub resetFocusToDefaultButton()
@@ -463,10 +678,9 @@ sub onVisibleChanged()
   if m.top.visible
     resetFocusToDefaultButton()
 
-    if m.top.playbackState <> "paused"
-      m.inactivityTimer.observeField("fire", "inactiveCheck")
-      m.inactivityTimer.control = "start"
-    end if
+    ' Timer runs even while paused so the live TV behind-live counter keeps ticking
+    m.inactivityTimer.observeField("fire", "inactiveCheck")
+    m.inactivityTimer.control = "start"
   else
     m.inactivityTimer.control = "stop"
     m.inactivityTimer.unobserveField("fire")
@@ -479,15 +693,23 @@ sub onFocusChanged()
   end if
 end sub
 
-' inactiveCheck: Checks if the time since last keypress is greater than or equal to the allowed inactive time of the menu.
+' 1s timer: auto-hide on inactivity AND drive the behind-live countdown while paused
 sub inactiveCheck()
-  ' If user is currently seeing a dialog box, ignore inactive check
   if m.global.sceneManager.callFunc("isDialogOpen")
     return
   end if
 
+  ' onProgressPercentageChanged doesn't fire while paused, so update from the timer instead
+  if isLiveTvItem()
+    updateLiveTvDisplay()
+    setEndsAtText()
+  end if
+
   deviceInfo = CreateObject("roDeviceInfo")
   if deviceInfo.timeSinceLastKeypress() >= m.top.inactiveTimeout
+    if LCase(m.top.playbackState) = "paused"
+      return
+    end if
     m.top.action = "hide"
   end if
 end sub
@@ -503,6 +725,17 @@ sub onButtonSelected()
 
   if LCase(selectedButton.id) = "chapterlist"
     m.top.shouldShowChapterList = not m.top.shouldShowChapterList
+  end if
+
+  if LCase(selectedButton.id) = "gotolive"
+    ' VideoPlayerView seeks to LIVE_EDGE_SEEK; clear all behind-live state so the next
+    ' position tick re-anchors epochAtPosition0 to the new live-edge position.
+    m.liveTvCalibrated = false
+    m.liveTvEpochAtPosition0 = 0
+    m.liveTvPausedAtEpoch = 0
+    m.liveTvAccumulatedBehind = 0
+    m.liveTvLastPosition = 0
+    m.liveTvIsAtLiveEdge = true
   end if
 
   m.top.action = selectedButton.id
@@ -584,6 +817,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
+function isLiveTvItem() as boolean
+  return isValid(m.itemData) and m.itemData.type = "TvChannel"
+end function
+
+function getLiveTvBehindLiveSeconds() as integer
+  return computeLiveTvBehindLive(m.liveTvEpochAtPosition0, m.liveTvCalibrated, int(m.top.positionTime), CreateObject("roDateTime").AsSeconds(), m.liveTvPausedAtEpoch, m.liveTvAccumulatedBehind)
+end function
+
 ' destroy: Full teardown releasing all resources before component removal
 ' Called by VideoPlayerView.destroy() since OSD is a child component, not a SceneManager scene
 sub destroy()
@@ -595,6 +836,7 @@ sub destroy()
   m.top.unobserveField("hasFocus")
   m.top.unobserveField("progressPercentage")
   m.top.unobserveField("playbackState")
+  m.top.unobserveField("positionTime")
 
   ' Unobserve clock (guarded — may be invalid if clock node not found in init)
   if isValid(m.clock)
