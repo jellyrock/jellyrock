@@ -13,7 +13,6 @@ sub init()
   m.checkbox = m.top.findNode("onOff")
   m.buttons = m.top.findNode("buttons")
   m.top.findNode("submit").text = translate(translationKeys.ButtonSubmit)
-  m.top.findNode("quickConnect").text = translate(translationKeys.ButtonQuickConnect)
 end sub
 
 ' JRScreen hook.
