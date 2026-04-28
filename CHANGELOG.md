@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- support Quick Connect on Jellyfin 10.7.x ([#523](https://github.com/jellyrock/jellyrock/pull/523))
+
 ### Fixed
 
 - Quick Connect on Jellyfin 10.9+ servers ([#522](https://github.com/jellyrock/jellyrock/pull/522))
