@@ -122,10 +122,24 @@ namespace tests
       m.assertEqual(triggerLabel.text, "1080p H264")
     end function
 
-    @it("trigger label maxWidth tracks slotWidth after layout")
+    @it("trigger label maxWidth reserves space for chevron + padding when interactive")
     function _()
+      ' Default state: isInteractive=true, isOpen=false → chevron is visible, so the
+      ' label leaves room for it on the right. Formula: slotWidth - 2*hPadding(12)
+      ' - chevronSize(24) - chevronGutter(8) = slotWidth - 56.
       triggerLabel = m.dropdown.findNode("triggerLabel")
-      m.assertEqual(triggerLabel.maxWidth, m.dropdown.slotWidth)
+      m.assertEqual(int(triggerLabel.maxWidth), m.dropdown.slotWidth - 56)
+    end function
+
+    @it("trigger label reclaims chevron space when slot is non-interactive")
+    function _()
+      ' Single-option (non-interactive) slots hide the chevron, so the label uses the
+      ' full inner width: slotWidth - 2*hPadding(12) = slotWidth - 24. Locks in the
+      ' chevron-reclaim behavior so a regression can't silently shrink the label
+      ' rendering area for static slots.
+      m.dropdown.isInteractive = false
+      triggerLabel = m.dropdown.findNode("triggerLabel")
+      m.assertEqual(int(triggerLabel.maxWidth), m.dropdown.slotWidth - 24)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -155,9 +169,11 @@ namespace tests
       m.dropdown.items = bigList
       viewport = m.dropdown.findNode("menuViewport")
       m.assertTrue(isValid(viewport))
-      ' clippingRect = [x, y, width, height] on a Group node
+      ' clippingRect is type rect2D; Roku exposes it as an AA with x/y/width/height
+      ' string keys (not as an indexable [x,y,w,h] array). Cap height = 5 visible
+      ' rows × 45px row height = 225, regardless of how many items are in the list.
       clipRect = viewport.clippingRect
-      m.assertTrue(clipRect[3] > 0)
+      m.assertEqual(int(clipRect.height), 225)
     end function
 
     @it("sets isInteractive=false without errors")

@@ -53,8 +53,10 @@ namespace tests
       ' Translation is [96, 713]: 12px breathing pad below description bottom
       ' (y=701, produced by the 62px itemTracks spacer) and 18px above buttons
       ' top (y=800). Cluster height = 24 (titles row) + 45 (trigger) = 69px.
-      m.assertEqual(cluster.translation[0], 96)
-      m.assertEqual(cluster.translation[1], 713)
+      ' translation[*] returns Float at runtime; assertEqual is strict on type so
+      ' coerce to int to compare against integer literals.
+      m.assertEqual(int(cluster.translation[0]), 96)
+      m.assertEqual(int(cluster.translation[1]), 713)
     end function
 
     @it("trackCluster starts hidden until content is loaded")
@@ -93,8 +95,9 @@ namespace tests
     function _()
       details = m.itemDetails.findNode("itemDetails")
       m.assertTrue(isValid(details))
-      m.assertEqual(details.translation[0], 96)
-      m.assertEqual(details.translation[1], 775)
+      ' translation[*] returns Float at runtime; coerce to int for strict assertEqual.
+      m.assertEqual(int(details.translation[0]), 96)
+      m.assertEqual(int(details.translation[1]), 775)
     end function
 
     @it("itemTracks is present as a child of itemDetails (62px invisible spacer)")
