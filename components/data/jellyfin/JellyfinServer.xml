@@ -34,6 +34,10 @@
     <!-- Branding Cache (invalid = not loaded yet, true/false = loaded) -->
     <field id="isSplashscreenEnabled" type="boolean" />
 
+    <!-- Quick Connect capability. Fail-open: defaults true; QuickConnectEnabledTask
+         only writes false when the server explicitly reports it disabled. -->
+    <field id="isQuickConnectEnabled" type="boolean" value="true" />
+
     <!-- DEBUG ONLY: Raw server info for debugging - only populated when bs_const=debug=true -->
     <field id="rawServerInfo" type="assocarray" />
   </interface>

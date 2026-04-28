@@ -7,6 +7,9 @@ namespace tests
 
     protected override function teardown()
       m.userSelect = invalid
+      ' Reset the global Quick Connect availability to its XML default so state
+      ' from one test cannot leak into the next.
+      m.global.server.isQuickConnectEnabled = true
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -66,6 +69,37 @@ namespace tests
       buttons = m.userSelect.findNode("buttons")
 
       m.assertEqual(buttons.getChild(0).id, "manualLoginButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Server reports Quick Connect disabled (cached probe result)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes the Quick Connect button when isQuickConnectEnabled is false at init")
+    ' Covers the synchronous "cached" path: a prior probe in this session wrote
+    ' false on the global server node, so init removes the button immediately
+    ' without waiting for another probe.
+    function _()
+      m.global.server.version = "10.10.0"
+      m.global.server.isQuickConnectEnabled = false
+      m.userSelect = CreateObject("roSGNode", "UserSelect")
+      buttons = m.userSelect.findNode("buttons")
+
+      m.assertEqual(buttons.getChildCount(), 1)
+      m.assertInvalid(buttons.findNode("quickConnect"))
+      m.assertEqual(buttons.getChild(0).id, "manualLoginButton")
+    end function
+
+    @it("keeps the Quick Connect button when isQuickConnectEnabled is true (default)")
+    ' Fail-open default: probe hasn't completed yet, button stays visible.
+    function _()
+      m.global.server.version = "10.10.0"
+      m.global.server.isQuickConnectEnabled = true
+      m.userSelect = CreateObject("roSGNode", "UserSelect")
+      buttons = m.userSelect.findNode("buttons")
+
+      m.assertEqual(buttons.getChildCount(), 2)
+      m.assertNotInvalid(buttons.findNode("quickConnect"))
     end function
 
   end class
