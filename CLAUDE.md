@@ -43,7 +43,7 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 ### Commit Messages
 - Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer.
 ### Code Standards
-- **Follow [docs/dev/code-style.md](docs/dev/code-style.md)** for naming, formatting, and BrightScript-specific patterns.
+- **Follow [docs/dev/code-style.md](docs/dev/code-style.md)** for naming, formatting, and BrightScript patterns.
 
 ## Architecture Overview
 ### `SceneManager` System
