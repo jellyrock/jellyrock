@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (Home) add Active Recordings section type ([#499](https://github.com/jellyrock/jellyrock/pull/499))
+
 ### Changed
 
 - Live TV OSD + DVR recording playback improvements ([#501](https://github.com/jellyrock/jellyrock/pull/501))
