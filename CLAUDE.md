@@ -19,6 +19,26 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - **Registry migrations?** → `docs/dev/registry-migrations.md`
 - **Debug flags / toast testing?** → `docs/dev/debug-flags.md`
 **All dev docs:** `docs/dev/`
+## Development Workflow
+### IDE Integration
+- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension during dev.
+- **Don't run `npm run validate` / `npm run build:*` / `npm run lint*` manually** — the IDE already runs them, and the pre-push hook runs validate as a backstop. Manual runs waste tokens and time.
+### Agent Restrictions
+- **Cannot modify CHANGELOG.md** (CI-controlled only).
+### Running Tests
+- Run tests to verify fixes — do not commit test changes based on reasoning alone.
+- TDD (single spec): `npm run test:tdd` (after editing `bsconfig-tdd.json`). Broader: `npm run test:unit | test:integration | test:all`.
+- Setup, credentials, debugger contention → [docs/dev/unit-tests-tdd.md](docs/dev/unit-tests-tdd.md).
+### Pre-push Hook (husky)
+- `.husky/pre-push` runs on `git push`:
+  1. Auto-formats `*.bs`/`*.brs` in the push range with `bsfmt --write`. If any files change, it adds a separate `chore: auto-format via pre-push hook` commit (never amends).
+  2. Conditionally runs `npm run validate` if any `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
+- Requires a clean working tree before push so auto-format never sweeps in WIP. If dirty, the hook skips auto-format with a warning; validate still runs.
+### Commit Messages
+- Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer.
+### Code Standards
+- **Follow [docs/dev/code-style.md](docs/dev/code-style.md)** for naming, formatting, and BrightScript-specific patterns.
+
 ## Architecture Overview
 ### `SceneManager` System
 - Stack navigation: `pushScene()`, `popScene()`, `clearScenes()`
@@ -75,23 +95,3 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - `onKeyEvent(key, press) as boolean`
 - `return true` = event consumed, no bubble
 - `return false` = event bubbles up to parent
-## Development Workflow
-### IDE Integration
-- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension.
-- Agents may still invoke `npm run validate` / `npm run build:*` / lint scripts directly when verifying outside the IDE loop.
-### Agent Restrictions
-- **Cannot modify CHANGELOG.md** (CI-controlled only).
-### Running Tests
-- Run tests to verify fixes — do not commit test changes based on reasoning alone.
-- TDD (single spec): `npm run test:tdd` (after editing `bsconfig-tdd.json`). Broader: `npm run test:unit | test:integration | test:all`.
-- Setup, credentials, debugger contention → [docs/dev/unit-tests-tdd.md](docs/dev/unit-tests-tdd.md).
-### Commit Messages
-- Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer.
-### Code Standards
-- **Follow the [Code Style Guide](docs/dev/code-style.md)** for all naming conventions, formatting rules, and BrightScript specific patterns
-- Use `roku-log` for component and class logging
-- Use print statements sparingly and only when absolutely necessary (roku-log only works in components/classes)
-- Fix issues at source, not usage points
-- Use comments for JSDoc style function definitions, complex code, any Roku specific oddities, and best practices
-- Update/create unit tests for all changes
-- 2 spaces indentation, `PascalCase` class/enum/component names, `lowerCamelCase` everything else, `UPPER_SNAKE_CASE` constants and enum members

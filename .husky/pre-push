@@ -1,0 +1,61 @@
+#!/usr/bin/env sh
+# Pre-push hook: auto-format BS/BRS in the push range, then conditionally validate.
+#
+# - Auto-format step: runs `bsfmt --write` on *.bs / *.brs files in the push range.
+#   If anything changes, creates a separate `chore: auto-format via pre-push hook`
+#   commit on top (never amends — preserves authored history).
+# - Validate step: runs `npm run validate` only if the push range touches
+#   *.bs / *.brs / *.xml / bsconfig*.json. Skipped for docs-only / changelog pushes.
+# - Refuses to auto-format if the working tree is dirty (would risk pulling WIP
+#   into the auto-format commit). Validate still runs.
+#
+# Bypass with `git push --no-verify` if you need to skip.
+
+set -e
+
+# Determine the push range. Fall back to origin/main when there's no upstream
+# (first push of a new branch).
+if git rev-parse --abbrev-ref --symbolic-full-name @{upstream} >/dev/null 2>&1; then
+  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream})
+  RANGE="${UPSTREAM}..HEAD"
+else
+  RANGE="origin/main..HEAD"
+fi
+
+CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || true)
+
+# Nothing to push or empty diff (e.g. branch already in sync) — let git handle it.
+if [ -z "$CHANGED" ]; then
+  exit 0
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# Auto-format step
+# ──────────────────────────────────────────────────────────────────────────
+FORMAT_FILES=$(echo "$CHANGED" | grep -E '\.(bs|brs)$' || true)
+
+if [ -n "$FORMAT_FILES" ]; then
+  if ! git diff-index --quiet HEAD --; then
+    echo "⚠️  Working tree has uncommitted changes; skipping auto-format."
+    echo "   Commit or stash them, then re-push to enable auto-format."
+  else
+    FILE_COUNT=$(echo "$FORMAT_FILES" | wc -l)
+    echo "🎨 Formatting $FILE_COUNT BS/BRS file(s) in push range..."
+    echo "$FORMAT_FILES" | xargs npx bsfmt --write
+
+    if ! git diff --quiet; then
+      echo "📝 bsfmt modified files — creating auto-format commit..."
+      echo "$FORMAT_FILES" | xargs git add
+      git commit -m "chore: auto-format via pre-push hook"
+      echo "✅ Auto-format commit added; push will include it."
+    fi
+  fi
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# Conditional validate step
+# ──────────────────────────────────────────────────────────────────────────
+if echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$'; then
+  echo "🔍 Validating project..."
+  npm run validate
+fi
