@@ -47,13 +47,12 @@ end sub
 ' (border + background) mirrors JRDropdownItem's button pattern. repeatCount flips
 ' to -1 when focused so long labels marquee; 0 otherwise keeps them static.
 '
-' Label color resolution:
-'   focused              -> colorTextPrimary (white) — focus reads as the strong cue,
-'                           regardless of whether this row is also the selection
-'   unfocused + selected -> colorTextSecondary (dim) — visually echoes the dim
-'                           trigger label above the menu, so the duplicated value
-'                           reads as "your current pick" rather than a glitch
-'   unfocused + unselected -> colorTextPrimary (white) — actionable alternative
+' Label color is driven by isSelected ALONE — selected rows render dim (colorText
+' Secondary) regardless of focus state. The focus border + filled background
+' communicate "you're hovering this row"; the dim text communicates "this is your
+' current pick". Both signals coexist so the user can distinguish "focused on my
+' current choice" (dim text + border = OK is a no-op) from "focused on an
+' alternative" (white text + border = OK switches to this).
 sub onFocusStateChanged()
   constants = m.global.constants
 
@@ -63,13 +62,13 @@ sub onFocusStateChanged()
     m.itemBorder.blendColor = constants.colorPrimary
     m.itemBackground.blendColor = constants.colorBackgroundSecondary
     m.itemLabel.repeatCount = -1
-    m.itemLabel.color = constants.colorTextPrimary
   else
     m.itemLabel.repeatCount = 0
-    if m.top.isSelected
-      m.itemLabel.color = constants.colorTextSecondary
-    else
-      m.itemLabel.color = constants.colorTextPrimary
-    end if
+  end if
+
+  if m.top.isSelected
+    m.itemLabel.color = constants.colorTextSecondary
+  else
+    m.itemLabel.color = constants.colorTextPrimary
   end if
 end sub

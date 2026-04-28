@@ -27,6 +27,13 @@ sub init()
   m.visibleRows = 5
   m.rowHeight = 0 ' computed in onItemsChanged
 
+  ' TextSizeTask is required because roFontRegistry / Font.GetOneLineWidth are
+  ' MAIN|TASK-only — they cannot be created on the render thread where component
+  ' field observers run. The task receives titles + font size, returns a width
+  ' array we observe on the "width" field. See JRButtons.bs for the same pattern.
+  m.textSizeTask = CreateObject("roSGNode", "TextSizeTask")
+  m.textSizeTask.observeField("width", "onTextSizeTaskComplete")
+
   m.top.observeField("focusedChild", "onFocusChanged")
 
   applyTheme()
@@ -77,6 +84,25 @@ const TRACK_DROPDOWN_TRIGGER_HEIGHT = 45
 ' never collides with the icon.
 const TRACK_DROPDOWN_CHEVRON_SIZE = 24
 const TRACK_DROPDOWN_CHEVRON_GUTTER = 8
+' Mirrors TrackDropdownRow's ROW_H_PADDING; kept in sync intentionally so the
+' auto-sized menu width math matches what the row's label actually consumes.
+const TRACK_DROPDOWN_ROW_H_PADDING = 12
+' Inter-slot gutter from ItemDetails.xml's trackDropdowns layout: slot stride
+' (308) - slot width (278) = 30. Used to cap the auto-sized menu at two slot
+' widths plus this gutter so an open menu never spans more than two columns of
+' horizontal real estate.
+const TRACK_DROPDOWN_INTER_SLOT_GUTTER = 30
+' Multiplier applied to the TextSizeTask measurement when computing menu width.
+' GetOneLineWidth returns the font-metric width which can come up a few pixels
+' short of how the actual ScrollingLabel renders. The gap varies per string —
+' caps-heavy strings with numbers ("ENGLISH TRUEHD 7.1") drift only ~2-3px while
+' mixed-case strings with punctuation ("Spanish; Castilian SUBRIP") can drift
+' more — so a flat fudge constant is the wrong shape: it either over-pads short
+' strings or under-pads long ones. Scaling proportionally to the measured width
+' tracks the actual risk: short strings get a small buffer (no wasted space),
+' long strings get a larger buffer (no clipping). 3% is the lowest stable value
+' on tested hardware; bump to 1.04 / 1.05 if any title ever clips again.
+const TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER = 1.03
 sub layoutTrigger()
   constants = m.global.constants
   slotWidth = m.top.slotWidth
@@ -157,11 +183,19 @@ sub onItemsChanged()
   ' (line height + padding) scaled for the smaller font.
   m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20
 
+  ' Initial menu width = slotWidth. The async TextSizeTask measures each title and
+  ' may widen the menu up to 2 slot widths + the inter-slot gutter if titles are
+  ' long. In normal usage the task completes well before the user opens the menu,
+  ' so the user sees the auto-sized width — not the slotWidth fallback. If the
+  ' task hasn't completed (or doesn't run, e.g. in unit-test environment), the
+  ' menu still renders correctly at slotWidth, just without the long-title fit.
+  initialWidth = slotWidth
+
   for each item in items
     menuItem = CreateObject("roSGNode", "TrackDropdownRow")
     menuItem.text = item.title
     menuItem.itemId = item.id
-    menuItem.itemWidth = slotWidth
+    menuItem.itemWidth = initialWidth
     menuItem.itemHeight = m.rowHeight
     m.menuItems.appendChild(menuItem)
   end for
@@ -172,14 +206,90 @@ sub onItemsChanged()
   viewportHeight = m.rowHeight * visibleRows
   ' clippingRect is in the viewport's local coords: [x, y, width, height]. Anything the
   ' menuItems LayoutGroup draws outside this rect is invisible, enabling the scroll UX.
-  m.menuViewport.clippingRect = [0, 0, slotWidth, viewportHeight]
+  m.menuViewport.clippingRect = [0, 0, initialWidth, viewportHeight]
 
-  m.menuBackground.width = slotWidth
+  m.menuBackground.width = initialWidth
   m.menuBackground.height = viewportHeight
 
   if isValidAndNotEmpty(m.top.selectedItemId)
     onSelectedItemChanged()
   end if
+
+  ' Kick off async measurement to refine width once the task returns.
+  measureMenuWidthAsync(items)
+end sub
+
+' measureMenuWidthAsync: Pushes the item titles through TextSizeTask so the task
+' can call roFontRegistry / GetOneLineWidth on a non-render thread (the registry
+' is MAIN|TASK-only). Result is delivered via the "width" observer below.
+sub measureMenuWidthAsync(items as object)
+  if not isValid(m.textSizeTask) then return
+  ' Cancel any in-flight measurement so an older items[] response can't overwrite
+  ' a newer one.
+  m.textSizeTask.control = "STOP"
+
+  titles = []
+  for each item in items
+    if isValid(item.title) then titles.push(item.title)
+  end for
+  if titles.count() = 0 then return
+
+  m.textSizeTask.fontsize = m.global.constants.fontSizeSmaller
+  ' Leave maxWidth at its XML default (1920 = full screen width). 1920 is wider
+  ' than any realistic track title at fontSizeSmaller so GetOneLineWidth returns
+  ' natural unwrapped widths, and we avoid passing an unusually large value that
+  ' could perturb the font-metric calculation.
+  m.textSizeTask.text = titles
+  m.textSizeTask.control = "RUN"
+end sub
+
+' onTextSizeTaskComplete: Reads the per-title widths produced by TextSizeTask,
+' picks the maximum, adds row padding, and clamps to [slotWidth, slotWidth*2 +
+' interSlotGutter]. The lower clamp keeps the menu anchored under its trigger
+' column; the upper clamp prevents an open menu from spanning more than two
+' columns of horizontal real estate. Then resizes menuBackground, the clipping
+' viewport, and every row in lockstep.
+sub onTextSizeTaskComplete()
+  widths = m.textSizeTask.width
+  if not isValid(widths) or widths.count() = 0 then return
+
+  maxTextWidth = 0
+  for each w in widths
+    iw = int(w)
+    if iw > maxTextWidth then maxTextWidth = iw
+  end for
+
+  ' Scale the measured width by the multiplier to compensate for the per-string
+  ' render-vs-metric gap (see TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER comment for
+  ' rationale), then add row padding for the menu's inner edges.
+  desired = int(maxTextWidth * TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER) + (TRACK_DROPDOWN_ROW_H_PADDING * 2)
+  ' m.top.slotWidth is dynamic (node field); coerce to int so 'desired' stays
+  ' integer-typed across the clamp comparisons.
+  slotWidth = int(m.top.slotWidth)
+  if desired < slotWidth then desired = slotWidth
+  upperBound = (slotWidth * 2) + TRACK_DROPDOWN_INTER_SLOT_GUTTER
+  if desired > upperBound then desired = upperBound
+
+  applyMenuWidth(desired)
+end sub
+
+' applyMenuWidth: Resizes the menu in lockstep — background + clipping viewport +
+' every row's itemWidth. Called from onTextSizeTaskComplete; no-op if the menu
+' has been torn down between task launch and task completion.
+sub applyMenuWidth(width as integer)
+  if not isValid(m.menuItems) then return
+  rowCount = m.menuItems.getChildCount()
+  if rowCount = 0 then return
+
+  visibleRows = m.visibleRows
+  if rowCount < visibleRows then visibleRows = rowCount
+  viewportHeight = m.rowHeight * visibleRows
+
+  m.menuViewport.clippingRect = [0, 0, width, viewportHeight]
+  m.menuBackground.width = width
+  for i = 0 to rowCount - 1
+    m.menuItems.getChild(i).itemWidth = width
+  end for
 end sub
 
 sub onSelectedItemChanged()
@@ -480,6 +590,12 @@ sub destroy()
   m.top.unobserveField("focusedChild")
 
   m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
+
+  if isValid(m.textSizeTask)
+    m.textSizeTask.unobserveField("width")
+    m.textSizeTask.control = "STOP"
+    m.textSizeTask = invalid
+  end if
 
   m.buttonBackground = invalid
   m.buttonBorder = invalid

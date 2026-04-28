@@ -176,6 +176,24 @@ namespace tests
       m.assertEqual(int(clipRect.height), 225)
     end function
 
+    @it("menu starts at slotWidth on items[] change (TextSizeTask refines async)")
+    function _()
+      ' Initial menu width is slotWidth in sync state — the auto-expand happens
+      ' async via TextSizeTask once it returns measured widths. This test locks in
+      ' the synchronous fallback so a future change can't accidentally leave the
+      ' menu at zero width if the task fails to run.
+      ' NOTE: the auto-expand-to-fit-long-titles behavior (upper clamp at 2 slots
+      ' + inter-slot gutter = 586) is NOT covered by unit tests because TextSizeTask
+      ' creates roFontRegistry on its own thread and unit tests don't drive the
+      ' task scheduler synchronously. Verified via manual / integration testing.
+      m.dropdown.items = [
+        { id: "1", title: "Off" },
+        { id: "2", title: "On" }
+      ]
+      bg = m.dropdown.findNode("menuBackground")
+      m.assertEqual(int(bg.width), m.dropdown.slotWidth)
+    end function
+
     @it("sets isInteractive=false without errors")
     function _()
       m.dropdown.isInteractive = false
