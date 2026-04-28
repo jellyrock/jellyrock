@@ -431,6 +431,16 @@ namespace tests
       m.assertInvalid(result)
     end function
 
+    @it("returns invalid from BuildGetLiveTvRecordingsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetLiveTvRecordingsRequest()
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
     @it("returns invalid from BuildGetStudiosRequest when serverUrl is empty")
     function _()
       m.global.server.serverUrl = ""

@@ -50,9 +50,10 @@ sub init()
   m.isLoadingOnNow = false
   m.isLoadingActiveRecordings = false
 
-  ' Refetch the On Now row and Active Recordings row when the base class's progress tick detects that at
-  ' least one Program has ended. Without this, sitting on Home long enough would
-  ' leave a row of finished broadcasts until the user refreshes manually.
+  ' Refetch the On Now and Active Recordings rows when the base class's progress
+  ' tick detects that at least one Program or Recording has ended. Without this,
+  ' sitting on Home long enough would leave a row of finished broadcasts/recordings
+  ' until the user refreshes manually.
   m.top.observeField("programsExpired", "onProgramsExpired")
 end sub
 

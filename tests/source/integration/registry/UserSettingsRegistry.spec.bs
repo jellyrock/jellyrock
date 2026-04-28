@@ -239,8 +239,8 @@ namespace tests
       stringSettings = {
         uiRowLayout: "landscape",
         uiGeneralEpisodeImages: "always",
-        homeSection0: "librarybuttons",
-        homeSection1: "resume",
+        itemGridTitles: "showalways",
+        itemGridMovieDefaultView: "moviesgrid",
         displayLiveTvLanding: "guide"
       }
 
@@ -271,7 +271,7 @@ namespace tests
       setUserSetting("uiDesignHideClock", true) ' Boolean
       setUserSetting("uiRowLayout", "landscape") ' String
       setUserSetting("uiFontFallback", false) ' Boolean
-      setUserSetting("homeSection0", "librarybuttons") ' String
+      setUserSetting("itemGridTitles", "showalways") ' String
       setSetting("globalRememberMe", true) ' Boolean - global setting (goes to test-global when user ID starts with "test-")
 
       ' Load and transform
@@ -289,8 +289,8 @@ namespace tests
       m.assertEqual(type(settings.uiFontFallback), "roBoolean")
       m.assertEqual(settings.uiFontFallback, false)
 
-      m.assertEqual(type(settings.homeSection0), "roString")
-      m.assertEqual(settings.homeSection0, "librarybuttons")
+      m.assertEqual(type(settings.itemGridTitles), "roString")
+      m.assertEqual(settings.itemGridTitles, "showalways")
 
       ' Global settings have XML default values when not loaded from registry
       ' The transformer doesn't load global settings - they come from LoadGlobals()
@@ -375,8 +375,8 @@ namespace tests
       setSetting("globalRememberMe", true) ' Global setting (goes to test-global in debug mode)
       setUserSetting("uiDesignHideClock", false)
       setUserSetting("uiRowLayout", "landscape")
-      setUserSetting("homeSection0", "librarybuttons")
-      setUserSetting("homeSection1", "resume")
+      setUserSetting("itemGridTitles", "showalways")
+      setUserSetting("itemGridMovieDefaultView", "moviesgrid")
       setUserSetting("uiFontFallback", true)
       setUserSetting("displayLiveTvLanding", "guide")
       setUserSetting("uiHomeUseWebArrangement", false)
@@ -386,8 +386,8 @@ namespace tests
       m.assertFalse(reg.exists("globalRememberMe")) ' Global setting should NOT be in user section
       m.assertTrue(reg.exists("uiDesignHideClock"))
       m.assertTrue(reg.exists("uiRowLayout"))
-      m.assertTrue(reg.exists("homeSection0"))
-      m.assertTrue(reg.exists("homeSection1"))
+      m.assertTrue(reg.exists("itemGridTitles"))
+      m.assertTrue(reg.exists("itemGridMovieDefaultView"))
       m.assertTrue(reg.exists("uiFontFallback"))
       m.assertTrue(reg.exists("displayLiveTvLanding"))
       m.assertTrue(reg.exists("uiHomeUseWebArrangement"))

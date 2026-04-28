@@ -590,10 +590,9 @@ namespace user
       homesection0: "smalllibrarytiles",
       homesection1: "resume",
       homesection2: "nextup",
-      homesection3: "resumeaudio",
-      homesection4: "activerecordings",
-      homesection5: "livetv",
-      homesection6: "latestmedia"
+      homesection3: "activerecordings",
+      homesection4: "livetv",
+      homesection5: "latestmedia"
     }
   end function
 
