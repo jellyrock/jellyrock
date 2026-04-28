@@ -1,0 +1,4 @@
+# Force LF line endings on shell hooks so they keep working when checked out
+# on Windows with `core.autocrlf=true` (which would otherwise rewrite to CRLF
+# and break `#!/usr/bin/env sh`).
+.husky/* text eol=lf

@@ -15,6 +15,7 @@
     "brighterscript-xml-plugin": "1.0.0-alpha.3",
     "dotenv": "17.4.2",
     "fast-glob": "3.3.3",
+    "husky": "9.1.7",
     "jshint": "2.13.6",
     "markdownlint-cli2": "0.22.1",
     "rimraf": "6.1.3",
@@ -56,10 +57,12 @@
     "update-translations": "node scripts/update-translations.cjs --fix",
     "package": "node scripts/create-package.cjs",
     "validate": "npx bsc --noEmit",
+    "test:tdd": "npm run build:tdd && node scripts/run-roku-tests.js",
     "test:unit": "npm run build:tests-unit && node scripts/run-roku-tests.js",
     "test:integration": "npm run build:tests-integration && node scripts/run-roku-tests.js",
     "test:all": "npm run build:tests && node scripts/run-roku-tests.js",
-    "test:complete": "npm run build:tests-complete && node scripts/run-roku-tests.js"
+    "test:complete": "npm run build:tests-complete && node scripts/run-roku-tests.js",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",

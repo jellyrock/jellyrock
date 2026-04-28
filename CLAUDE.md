@@ -10,14 +10,41 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 3. Focus on best practices, industry standards, and easy long term maintenance
 4. ALWAYS look for the best possible solution to a problem then provide the user with their best options
 5. Iterate on a plan with the user until they approve it, and only then begin coding
-6. When finished coding a user approve plan, provide a list of app behavior for the user to manually test and any expected debug logging output
+6. After finishing a user-approved plan: run automated tests to verify; provide a manual test plan only for UI/runtime behavior tests don't cover, plus any expected debug-log output
 ## Development Context
 **Check relevant docs for specific areas:**
 - **Adding user settings?** → `docs/dev/adding-user-settings.md`
 - **Writing tests?** → `docs/dev/unit-tests.md`
+- **Running tests?** → `docs/dev/unit-tests-tdd.md`
 - **Registry migrations?** → `docs/dev/registry-migrations.md`
 - **Debug flags / toast testing?** → `docs/dev/debug-flags.md`
 **All dev docs:** `docs/dev/`
+## Development Workflow
+### IDE Integration
+- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension during dev.
+- **Don't run `npm run validate` / `npm run build:*` / `npm run lint*` manually** — the IDE already runs them, and the pre-push hook runs validate as a backstop. Manual runs waste tokens and time.
+### Agent Restrictions
+- **Cannot modify CHANGELOG.md** (CI-controlled only).
+### Running Tests
+- Run tests to verify fixes — do not commit test changes based on reasoning alone.
+- TDD (single spec): `npm run test:tdd` (after editing `bsconfig-tdd.json`). Broader: `npm run test:unit | test:integration | test:all`.
+- Setup, credentials, debugger contention → [docs/dev/unit-tests-tdd.md](docs/dev/unit-tests-tdd.md).
+### Pre-push Hook (husky)
+- `.husky/pre-push` runs on `git push`. Mirrors the CI lint suite, scoped to files in the push range:
+  - **Auto-fix** (mutating; combined into a single `chore: auto-fix via pre-push hook` commit; never amends):
+    1. `bsfmt --write` on `*.bs`/`*.brs`
+    2. `npm run update-translations` if BS source / `locale/**` / `settings/settings.json` changed
+  - **Check** (read-only; non-zero exit aborts the push):
+    3. `npm run validate` — `*.bs`/`*.brs`/`*.xml`/`bsconfig*.json` changes
+    4. `npm run lint:markdown` + `npm run lint:spelling` — `*.md` changes
+    5. `npm run lint:json` — `*.json` changes
+- Requires a clean working tree for auto-fix so WIP can't be swept into the auto-fix commit. If dirty, auto-fix is skipped (with warning); checks still run.
+- Bypass with `git push --no-verify` if you must.
+### Commit Messages
+- Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer.
+### Code Standards
+- **Follow [docs/dev/code-style.md](docs/dev/code-style.md)** for naming, formatting, and BrightScript patterns.
+
 ## Architecture Overview
 ### `SceneManager` System
 - Stack navigation: `pushScene()`, `popScene()`, `clearScenes()`
@@ -30,7 +57,7 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - `m.global.device` - Device state
 - `m.global.server` - The active Jellyfin server state
 - `m.global.user` - Authenticated user state
-- `m.global.user.settings` - User setting configuration. Contains child nodes `user` and `policy`, which hold the Jellyfin server authoritative config data. 
+- `m.global.user.settings` - User setting configuration. Contains child nodes `user` and `policy`, which hold the Jellyfin server authoritative config data.
   Example: `m.global.user.settings.user`, `m.global.user.settings.policy`
 ## Folder Structure & Scoping Rules
 ### Component Folder (`components/`)
@@ -68,26 +95,9 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - `onKeyEvent()`: return true = handled, false = bubble up
 ### Task Node Field Types
 - **assocarray**: Pass multiple input parameters
-- **node/nodearray**: Handle large data transfers  
+- **node/nodearray**: Handle large data transfers
 - **string**: Simple single parameters
 ### Input Event Handling
 - `onKeyEvent(key, press) as boolean`
 - `return true` = event consumed, no bubble
 - `return false` = event bubbles up to parent
-## Development Workflow
-### IDE Integration
-- `BSConfig` validation runs automatically
-- Real-time linting (no manual NPM run lint)
-- Build errors caught by IDE (no manual build commands)
-### Agent Restrictions
-- **Cannot run tests** (manual execution required)
-- **Cannot modify CHANGELOG.md** (CI-controlled only)
-- **Cannot execute build/deploy** (IDE handles compilation)
-### Code Standards
-- **Follow the [Code Style Guide](docs/dev/code-style.md)** for all naming conventions, formatting rules, and BrightScript specific patterns
-- Use `roku-log` for component and class logging
-- Use print statements sparingly and only when absolutely necessary (roku-log only works in components/classes)
-- Fix issues at source, not usage points
-- Use comments for JSDoc style function definitions, complex code, any Roku specific oddities, and best practices
-- Update/create unit tests for all changes
-- 2 spaces indentation, `PascalCase` class/enum/component names, `lowerCamelCase` everything else, `UPPER_SNAKE_CASE` constants and enum members
