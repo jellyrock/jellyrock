@@ -118,9 +118,9 @@
            rendered here so the titles render identically whether the slot below is an
            interactive dropdown or a static single-option row. -->
       <Group id="trackTitles" translation="[0, 0]">
-        <LabelSecondarySmallest id="videoTrackTitle" width="278" horizAlign="center" translation="[0, 0]" />
-        <LabelSecondarySmallest id="audioTrackTitle" width="278" horizAlign="center" translation="[308, 0]" />
-        <LabelSecondarySmallest id="subtitleTrackTitle" width="278" horizAlign="center" translation="[616, 0]" />
+        <LabelSecondarySmallest id="videoTrackTitle" width="278" horizAlign="left" translation="[12, 0]" />
+        <LabelSecondarySmallest id="audioTrackTitle" width="278" horizAlign="left" translation="[320, 0]" />
+        <LabelSecondarySmallest id="subtitleTrackTitle" width="278" horizAlign="left" translation="[628, 0]" />
       </Group>
 
       <!-- Three TrackDropdown slots at fixed x positions. y=24 places this row just
