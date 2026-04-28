@@ -275,7 +275,7 @@
   "LabelPreviewAction": "Preview Action",
   "LabelPrimary": "Primary",
   "LabelPrograms": "Programs",
-  "LabelQuickConnectNotAvailable": "Quick Connect not available.",
+  "LabelQuickConnectNotAvailable": "Quick Connect is disabled on this server.",
   "LabelRandom": "Random",
   "LabelRandomOff": "Random Off",
   "LabelRandomOn": "Random On",

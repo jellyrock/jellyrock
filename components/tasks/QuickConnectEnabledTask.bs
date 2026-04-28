@@ -1,0 +1,42 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+
+sub init()
+  m.log = new log.Logger("QuickConnectEnabledTask")
+  m.top.functionName = "fetchQuickConnectEnabled"
+end sub
+
+' Orchestrator Task: probes /QuickConnect/Enabled off the render thread.
+' Updates m.global.server.isQuickConnectEnabled. Fail-open: leaves the field
+' at its existing value (defaults true) on any error so a transient failure
+' never hides a working feature.
+' Sets responseCode to 200 on success, -1 on failure.
+sub fetchQuickConnectEnabled()
+  m.log.info("Probing Quick Connect availability")
+
+  res = fetchRes(GetApi().BuildGetQuickConnectEnabledRequest(), "quickConnectEnabled")
+  if isValid(res) and res.ok
+    ' Endpoint returns a plain boolean body. Coerce defensively in case a
+    ' future server returns an object envelope.
+    enabled = res.json
+    if type(enabled) <> "Boolean" then enabled = (enabled = true)
+
+    m.global.server.isQuickConnectEnabled = enabled
+    m.log.info("Quick Connect availability probed", "enabled:", enabled)
+    m.top.responseCode = 200
+  else
+    ' Fail-open: do not touch isQuickConnectEnabled. Default (true) keeps
+    ' the button visible; the existing /QuickConnect/Initiate fallback
+    ' surfaces a clear error if QC actually turns out to be disabled.
+    m.log.warn("Quick Connect probe failed - keeping default availability")
+    m.top.responseCode = -1
+    m.top.failureReason = "API call failed or returned invalid"
+  end if
+end sub
+
+' Reset task to default state
+sub empty()
+  m.top.responseCode = invalid
+  m.top.failureReason = ""
+end sub

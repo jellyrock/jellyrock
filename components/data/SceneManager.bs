@@ -265,7 +265,9 @@ end sub
 sub userMessage(title as string, message as string)
   dialog = createObject("roSGNode", "StandardMessageDialog")
   dialog.title = title
-  dialog.message = message
+  ' StandardMessageDialog.message is an array-of-strings field; assigning a
+  ' bare string fails silently and renders an empty body.
+  dialog.message = [message]
   dialog.buttons = [translate(translationKeys.ButtonOk)]
   dialog.observeField("buttonSelected", "dismissDialog")
   m.scene.dialog = dialog

@@ -13,16 +13,26 @@ sub init()
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
   m.buttons = m.top.findNode("buttons")
 
-  ' Quick Connect requires server >= 10.8.0. Remove the button entirely (rather
-  ' than hiding it) when unsupported - JRButtonGroup focus/navigation honors
-  ' isEnabled but not visible, so an invisible button at index 0 would silently
-  ' steal default focus.
-  quickConnectButton = m.top.findNode("quickConnect")
-  if versionChecker(m.global.server.version, "10.8.0")
-    quickConnectButton.text = translate(translationKeys.ButtonQuickConnect)
+  ' Quick Connect requires server >= 10.8.0 AND must be enabled in server config.
+  ' Remove the button entirely (rather than hiding it) when unsupported -
+  ' JRButtonGroup focus/navigation honors isEnabled but not visible, so an
+  ' invisible button at index 0 would silently steal default focus.
+  m.quickConnectButton = m.top.findNode("quickConnect")
+  if not versionChecker(m.global.server.version, "10.8.0")
+    removeQuickConnectButton("server version below 10.8.0, version:" + m.global.server.version)
   else
-    m.buttons.removeChild(quickConnectButton)
-    m.log.debug("Quick Connect removed - server version below 10.8.0", "version:", m.global.server.version)
+    m.quickConnectButton.text = translate(translationKeys.ButtonQuickConnect)
+    ' Apply prior probe result immediately if already known disabled this session.
+    ' Default of true (fail-open) means the button stays unless we have evidence.
+    if m.global.server.isQuickConnectEnabled = false
+      removeQuickConnectButton("server reports Quick Connect disabled (cached)")
+    else
+      ' Probe the server now; observer below removes the button if it returns false.
+      m.global.server.observeFieldScoped("isQuickConnectEnabled", "onQuickConnectEnabledChanged")
+      m.quickConnectEnabledTask = createObject("roSGNode", "QuickConnectEnabledTask")
+      m.quickConnectEnabledTask.control = "RUN"
+      m.log.debug("Started QuickConnectEnabledTask")
+    end if
   end if
 
   m.buttons.callFunc("center")
@@ -30,6 +40,25 @@ sub init()
   ' Create branding config task (reusable instance)
   m.brandingTask = createObject("roSGNode", "BrandingConfigTask")
   m.log.debug("Created BrandingConfigTask")
+end sub
+
+' Probe completion handler. Fail-open: only act on a definitive false.
+sub onQuickConnectEnabledChanged()
+  if m.global.server.isQuickConnectEnabled = false
+    removeQuickConnectButton("server reports Quick Connect disabled")
+  end if
+end sub
+
+' Remove the Quick Connect button and re-center the remaining buttons.
+' Safe to call repeatedly - removeChild is a no-op once the node is detached.
+sub removeQuickConnectButton(reason as string)
+  if not isValid(m.quickConnectButton) then return
+  if isValid(m.quickConnectButton.getParent())
+    m.buttons.removeChild(m.quickConnectButton)
+    m.buttons.callFunc("center")
+  end if
+  m.quickConnectButton = invalid
+  m.log.info("Quick Connect button removed", reason)
 end sub
 
 sub itemContentChanged()
@@ -203,6 +232,15 @@ sub destroy()
   m.brandingTask.callFunc("empty")
   m.brandingTask = invalid
 
+  ' Stop Quick Connect availability probe (only present when version gate passed)
+  m.global.server.unobserveFieldScoped("isQuickConnectEnabled")
+  if isValid(m.quickConnectEnabledTask)
+    m.quickConnectEnabledTask.control = "STOP"
+    m.quickConnectEnabledTask.callFunc("empty")
+    m.quickConnectEnabledTask = invalid
+  end if
+
   ' Clear node references
+  m.quickConnectButton = invalid
   m.buttons = invalid
 end sub

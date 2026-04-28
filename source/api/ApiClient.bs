@@ -541,6 +541,13 @@ class ApiClient
     return sdk.quickConnect.Connect(secret)
   end function
 
+  ' Build a request AA for GetQuickConnectEnabled, for use with fetchRes() or fetchJson().
+  ' Server responds with a plain boolean body (true = enabled, false = disabled).
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetQuickConnectEnabledRequest() as dynamic
+    return m.validatedReq("GET", buildURL("/QuickConnect/Enabled"))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' VIEWS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
