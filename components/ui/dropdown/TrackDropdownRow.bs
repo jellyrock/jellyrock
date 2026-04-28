@@ -44,12 +44,16 @@ sub onSizeChanged()
 end sub
 
 ' Updates visual state based on virtual isFocused / isSelected fields. Focus chrome
-' (border + background) mirrors JRDropdownItem's button pattern. Label color is
-' driven by isSelected FIRST and only falls back to isFocused's primary color when
-' the row isn't the current selection — that way the "selected" indication (secondary
-' color) persists while the user hovers the selected row, instead of flipping to
-' primary and losing the visual cue that this is the committed choice. repeatCount
-' flips to -1 when focused so long labels marquee; 0 otherwise keeps them static.
+' (border + background) mirrors JRDropdownItem's button pattern. repeatCount flips
+' to -1 when focused so long labels marquee; 0 otherwise keeps them static.
+'
+' Label color resolution:
+'   focused              -> colorTextPrimary (white) — focus reads as the strong cue,
+'                           regardless of whether this row is also the selection
+'   unfocused + selected -> colorTextSecondary (dim) — visually echoes the dim
+'                           trigger label above the menu, so the duplicated value
+'                           reads as "your current pick" rather than a glitch
+'   unfocused + unselected -> colorTextPrimary (white) — actionable alternative
 sub onFocusStateChanged()
   constants = m.global.constants
 
@@ -59,13 +63,13 @@ sub onFocusStateChanged()
     m.itemBorder.blendColor = constants.colorPrimary
     m.itemBackground.blendColor = constants.colorBackgroundSecondary
     m.itemLabel.repeatCount = -1
+    m.itemLabel.color = constants.colorTextPrimary
   else
     m.itemLabel.repeatCount = 0
-  end if
-
-  if m.top.isSelected
-    m.itemLabel.color = constants.colorSecondary
-  else
-    m.itemLabel.color = constants.colorTextPrimary
+    if m.top.isSelected
+      m.itemLabel.color = constants.colorTextSecondary
+    else
+      m.itemLabel.color = constants.colorTextPrimary
+    end if
   end if
 end sub

@@ -16,6 +16,7 @@ sub init()
   m.buttonBackground = m.top.findNode("buttonBackground")
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.triggerLabel = m.top.findNode("triggerLabel")
+  m.triggerChevron = m.top.findNode("triggerChevron")
   m.menuContainer = m.top.findNode("menuContainer")
   m.menuBackground = m.top.findNode("menuBackground")
   m.menuViewport = m.top.findNode("menuViewport")
@@ -30,10 +31,10 @@ sub init()
 
   applyTheme()
   layoutTrigger()
-  ' Seed background visibility from the default field values (isInteractive=true,
-  ' isOpen=false). onIsInteractiveChanged may not fire for the default value so we
-  ' apply it explicitly once at init.
+  ' Seed visibility from the default field values (isInteractive=true, isOpen=false).
+  ' onIsInteractiveChanged may not fire for the default value so we apply it once.
   applyBackgroundVisibility()
+  applyChevronVisibility()
 end sub
 
 sub applyTheme()
@@ -43,6 +44,7 @@ sub applyTheme()
   m.buttonBackground.blendColor = constants.colorBackgroundSecondary
   m.buttonBorder.blendColor = constants.colorPrimary
   m.triggerLabel.color = constants.colorTextSecondary
+  m.triggerChevron.blendColor = constants.colorTextSecondary
   m.menuBackground.blendColor = constants.colorBackgroundSecondary
 end sub
 
@@ -69,6 +71,12 @@ const TRACK_DROPDOWN_TRIGGER_H_PADDING = 12
 ' 45 = fontSizeSmaller (25) + 20, matching TrackDropdownRow.onSizeChanged line:
 ' `m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20`
 const TRACK_DROPDOWN_TRIGGER_HEIGHT = 45
+' Chevron is rendered for interactive slots only as the dropdown affordance. Sized
+' 1:1 with the source bitmap (24x24 white-on-transparent). Gutter sits between the
+' label's max right edge and the chevron's left edge so a marquee-truncated label
+' never collides with the icon.
+const TRACK_DROPDOWN_CHEVRON_SIZE = 24
+const TRACK_DROPDOWN_CHEVRON_GUTTER = 8
 sub layoutTrigger()
   constants = m.global.constants
   slotWidth = m.top.slotWidth
@@ -87,11 +95,22 @@ sub layoutTrigger()
   m.buttonBorder.width = slotWidth
   m.buttonBorder.height = totalHeight
 
+  ' Reserve room for the chevron on the right side of the trigger, regardless of
+  ' whether the slot is interactive — keeps text truncation behavior identical
+  ' across slot types so values land at the same character count.
+  chevronSize = TRACK_DROPDOWN_CHEVRON_SIZE
+  chevronGutter = TRACK_DROPDOWN_CHEVRON_GUTTER
+
   ' ScrollingLabel uses maxWidth as its viewport; text narrower stays static, text
-  ' wider marquees when repeatCount=-1. Horizontal padding = hPadding on each side.
-  m.triggerLabel.maxWidth = slotWidth - (hPadding * 2)
+  ' wider marquees when repeatCount=-1. Horizontal padding = hPadding on each side,
+  ' minus the chevron+gutter on the right.
+  m.triggerLabel.maxWidth = slotWidth - (hPadding * 2) - chevronSize - chevronGutter
   m.triggerLabel.height = triggerLineHeight
   m.triggerLabel.translation = [hPadding, labelY]
+
+  ' Chevron pinned to the trigger's right edge with hPadding gutter, vertically
+  ' centered against the trigger's full height.
+  m.triggerChevron.translation = [slotWidth - hPadding - chevronSize, int((totalHeight - chevronSize) / 2)]
 
   ' Menu drops down just below the trigger
   m.menuContainer.translation = [0, totalHeight + 4]
@@ -112,9 +131,13 @@ sub onTriggerTextChanged()
   m.triggerLabel.text = m.top.triggerText
 end sub
 
-' Rebuilds the menu as TrackDropdownRow children inside a clipping viewport.
-' TrackDropdownRow mirrors JRDropdownItem's visuals but with a smaller label font
-' (LabelPrimarySmall 27 vs LabelPrimaryMedium 32) so menu rows match the trigger size.
+' Rebuilds the menu as TrackDropdownRow children inside a clipping viewport. ALL
+' items are rendered — including the currently-selected one — so the menu always
+' has at least 2 rows when interactive (single-option slots are non-interactive
+' and never open a menu). The selected row is rendered with a dim label color
+' that visually echoes the dim trigger label above the menu, making the on-screen
+' duplication read as "your current value, persistent above and inside the menu"
+' rather than competing with the alternatives. See TrackDropdownRow.onFocusStateChanged.
 sub onItemsChanged()
   ' Clear existing items
   m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
@@ -169,14 +192,15 @@ sub onSelectedItemChanged()
   end for
 end sub
 
-' Interactive dropdowns get a persistent filled background (visual affordance that
-' the slot is focusable and has a menu). Static single-option slots render as plain
-' text with NO background. While the menu is open, the trigger's background ALSO
-' hides so the trigger text visually merges into the opened menu instead of reading
-' as a separate capsule sitting on top of the menu.
+' Interactive dropdowns get a persistent filled background + a chevron affordance.
+' Static single-option slots render as plain text with NO background and NO chevron
+' (preserves the app-wide invariant that "backdrop = focusable"). The trigger label
+' itself stays visible across all states, including when the menu is open — it acts
+' as a dim "current value" indicator above the menu while the menu shows alternatives.
 sub onIsInteractiveChanged()
   constants = m.global.constants
   applyBackgroundVisibility()
+  applyChevronVisibility()
   if not m.top.isInteractive
     m.buttonBorder.visible = false
     m.triggerLabel.color = constants.colorTextSecondary
@@ -187,10 +211,17 @@ end sub
 
 ' Single source of truth for the trigger background's visibility:
 '   interactive AND closed -> visible (affordance at rest and when focused/closed)
-'   interactive AND open   -> hidden  (merges trigger into the open menu)
+'   interactive AND open   -> hidden  (trigger reads as static label above the menu)
 '   not interactive        -> hidden  (static single-option slot)
 sub applyBackgroundVisibility()
   m.buttonBackground.visible = m.top.isInteractive and not m.isOpen
+end sub
+
+' Chevron tracks the background: only shown for interactive, closed slots. Hidden
+' while the menu is open since the menu being visible already communicates "this is
+' expanded" — leaving the chevron visible would compete with that signal.
+sub applyChevronVisibility()
+  m.triggerChevron.visible = m.top.isInteractive and not m.isOpen
 end sub
 
 ' ============================================
@@ -211,12 +242,14 @@ sub onFocusChanged()
 end sub
 
 ' Background stays visible in both focused and unfocused states (so the dropdown always
-' affords interactivity). Only the border + label color + marquee flip on focus.
+' affords interactivity). Only the border + label color + chevron tint + marquee flip
+' on focus.
 sub showTriggerFocus()
   constants = m.global.constants
   m.buttonBorder.visible = true
   m.triggerLabel.color = constants.colorTextPrimary
   m.triggerLabel.repeatCount = -1
+  m.triggerChevron.blendColor = constants.colorTextPrimary
 end sub
 
 sub hideTriggerFocus()
@@ -224,6 +257,7 @@ sub hideTriggerFocus()
   m.buttonBorder.visible = false
   m.triggerLabel.color = constants.colorTextSecondary
   m.triggerLabel.repeatCount = 0
+  m.triggerChevron.blendColor = constants.colorTextSecondary
 end sub
 
 ' ============================================
@@ -236,20 +270,23 @@ sub openMenu()
 
   m.isOpen = true
   m.menuContainer.visible = true
+  m.top.menuOpen = true
 
-  ' Hide the trigger's chrome while open: border goes away (the focused row's own
-  ' border indicates position now) and the filled background also hides so the
-  ' trigger text reads as part of the open menu, not as a separate capsule above it.
-  ' Trigger label also reverts to the static-text styling (secondary color, no
-  ' marquee) so it looks like just static info above the open menu, matching the
-  ' unopened sibling dropdowns.
+  ' Hide the trigger's background, border, and chevron while open so the trigger
+  ' reads as a dim static label above the menu (matching the non-interactive slot
+  ' style). Trigger LABEL stays visible — it's the only on-screen indicator of the
+  ' user's current selection while the menu shows alternatives.
   constants = m.global.constants
   m.buttonBorder.visible = false
-  applyBackgroundVisibility()
   m.triggerLabel.color = constants.colorTextSecondary
   m.triggerLabel.repeatCount = 0
+  applyBackgroundVisibility()
+  applyChevronVisibility()
 
-  ' Start with the current selection highlighted
+  ' Open with focus on the currently-selected row (industry-standard dropdown
+  ' behavior: user sees their current pick highlighted, navigates AWAY from it to
+  ' switch). If the selection isn't in the items list (shouldn't happen, but guard
+  ' anyway) we fall back to the first row.
   idx = findSelectedIndex()
   if idx < 0 then idx = 0
   m.focusedItemIndex = idx
@@ -258,10 +295,24 @@ sub openMenu()
   updateFocusedItemVisuals()
 end sub
 
+' Returns the index in m.menuItems whose itemId matches m.top.selectedItemId, or -1
+' if no row matches. Iterates the rendered rows (not m.top.items) so callers can use
+' the returned value directly as a focusedItemIndex.
+function findSelectedIndex() as integer
+  selectedId = m.top.selectedItemId
+  for i = 0 to m.menuItems.getChildCount() - 1
+    if m.menuItems.getChild(i).itemId = selectedId
+      return i
+    end if
+  end for
+  return -1
+end function
+
 sub closeMenu()
   if not m.isOpen then return
   m.isOpen = false
   m.menuContainer.visible = false
+  m.top.menuOpen = false
 
   ' Clear focus highlight on all items
   for i = 0 to m.menuItems.getChildCount() - 1
@@ -271,26 +322,16 @@ sub closeMenu()
   ' Reset scroll so next open starts fresh
   m.menuItems.translation = [0, 0]
 
-  ' Restore the filled trigger background (no longer in open state)
+  ' Restore trigger chrome (filled background, chevron) now that we're back to the
+  ' closed state. Trigger label was never hidden, so nothing to restore there.
   applyBackgroundVisibility()
+  applyChevronVisibility()
 
   ' Restore trigger focus chrome if we're still in the focus chain
   if m.top.isInFocusChain()
     showTriggerFocus()
   end if
 end sub
-
-function findSelectedIndex() as integer
-  items = m.top.items
-  if not isValid(items) then return -1
-  selectedId = m.top.selectedItemId
-  for i = 0 to items.count() - 1
-    if isValid(items[i].id) and items[i].id = selectedId
-      return i
-    end if
-  end for
-  return -1
-end function
 
 ' scrollToFocused: Shift the menuItems LayoutGroup vertically inside the clipping
 ' viewport so the focused row is always visible. Keeps focus near the top of the
@@ -432,6 +473,7 @@ sub destroy()
   m.buttonBackground = invalid
   m.buttonBorder = invalid
   m.triggerLabel = invalid
+  m.triggerChevron = invalid
   m.menuContainer = invalid
   m.menuBackground = invalid
   m.menuViewport = invalid

@@ -65,6 +65,30 @@
     <!-- "Cast and Crew" row -->
     <extrasSlider id="itemExtras" />
 
+    <!-- dropdownDimmer: vertical gradient dim shown only while one of the track
+         dropdowns has its menu open. Fades from fully clear at y=707 (just below the
+         description bottom y=701, just above the trackCluster titles top y=713) to
+         fully opaque black at the screen bottom y=1080. Solves the original merge
+         problem (menu fill = IconButton fill = colorBackgroundSecondary, so the
+         menu's bottom rows blend into the buttons under it) without the artifacts
+         of the prior approaches:
+           - A flat 75% rectangle made title/year/description hard to read.
+           - A partial-height rectangle drew a visible horizontal seam at its top
+             edge, looking like a render glitch and cutting the logo in half.
+         The gradient transitions smoothly so there's no edge to spot. With endColor
+         at alpha100 the bottom of the screen is fully blacked out, but the linear
+         ramp keeps the trackCluster region (~y=737-782) at <20% dim — track titles
+         and trigger labels remain clearly readable. Above y=707 nothing changes.
+         Geometry: translation [0, 707], width 1920, height 373 = 1080 - 707. Full
+         width so the dim is consistent regardless of which slot's menu is open.
+         Direction: default (top-to-bottom). startColor/endColor are set in
+         ItemDetails.bs init() so they stay in sync with the constants table.
+         Z-order: rendered just BEFORE trackCluster so the cluster (titles + triggers
+         + open menu) draws ON TOP of the dimmer at full brightness.
+         Toggled from ItemDetails.bs via observers on each TrackDropdown's menuOpen
+         field; visible iff any of the three is open. -->
+    <Gradient id="dropdownDimmer" translation="[0, 707]" width="1920" height="373" visible="false" />
+
     <!-- trackCluster: positioned at y=713 so there is a 12px breathing pad ABOVE the
          cluster (description bottom y=701 → titles top y=713) and an 18px breathing
          pad BELOW (trigger row bottom y=782 → button group top y=800). Cluster

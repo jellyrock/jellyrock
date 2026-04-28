@@ -31,6 +31,11 @@
          pinned to "left" so the text's left edge lands at x=hPadding of the slot. -->
     <ScrollingLabelPrimarySmaller id="triggerLabel" horizAlign="left" repeatCount="0" />
 
+    <!-- Dropdown affordance: only rendered for interactive (multi-option) slots.
+         Tinted via blendColor to track the trigger label's color across focus states.
+         Sized 1:1 with the source bitmap so it renders crisp at native resolution. -->
+    <Poster id="triggerChevron" uri="pkg:/images/icons/expand.png" width="24" height="24" />
+
     <!-- Dropdown menu: background + clipped viewport containing a LayoutGroup of
          JRDropdownItem children. The viewport's clippingRect caps visible rows; the
          inner LayoutGroup translation scrolls longer lists in and out of view. -->
@@ -57,6 +62,11 @@
     <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
     <field id="requestFocusDown" type="boolean" value="false" alwaysNotify="true" />
     <field id="requestFocusExit" type="string" alwaysNotify="true" />
+    <!-- Mirrors internal m.isOpen so the parent can react to menu open/close without
+         poking at private state — used by ItemDetails to toggle the full-screen
+         dimmer when ANY dropdown opens. alwaysNotify so consecutive same-value
+         writes still fire (defensive; current code only writes on transitions). -->
+    <field id="menuOpen" type="boolean" value="false" alwaysNotify="true" />
     <!-- Published so parent can read layout height without measuring Group boundingRect -->
     <field id="triggerHeight" type="integer" value="0" />
 

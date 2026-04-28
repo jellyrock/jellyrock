@@ -80,6 +80,24 @@ sub init()
   m.audioDropdown.observeField("requestFocusExit", "onAudioDropdownFocusExit")
   m.subtitleDropdown.observeField("requestFocusExit", "onSubtitleDropdownFocusExit")
 
+  ' Vertical gradient dimmer shown while any track dropdown has its menu open. Fades
+  ' clear → fully opaque black from y=707 to y=1080 so the menu pops against
+  ' IconButtons / chapters peek without dimming the metadata above the trackCluster.
+  ' See the dropdownDimmer comment in ItemDetails.xml for the full geometry rationale.
+  ' Colors are set here (not in XML) so theme changes can swap colorBlack if it
+  ' ever varies (today it's a fixed 0x000000 across themes).
+  m.dropdownDimmer = m.top.findNode("dropdownDimmer")
+  globalConstants = m.global.constants
+  m.dropdownDimmer.startColor = globalConstants.colorBlack + globalConstants.alpha0
+  m.dropdownDimmer.endColor = globalConstants.colorBlack + globalConstants.alpha100
+
+  ' The handler ORs the three menuOpen fields; only one menu can be open at a time
+  ' today, but the OR keeps the logic correct regardless of how openMenu/closeMenu
+  ' evolve.
+  m.videoDropdown.observeField("menuOpen", "onTrackDropdownMenuOpenChanged")
+  m.audioDropdown.observeField("menuOpen", "onTrackDropdownMenuOpenChanged")
+  m.subtitleDropdown.observeField("menuOpen", "onTrackDropdownMenuOpenChanged")
+
   m.itemDescription = m.top.findNode("itemDescription")
   m.itemDescriptionInLayout = true ' itemDescription is a static XML child, so it starts in layout
 
@@ -3176,6 +3194,22 @@ sub onTrackDropdownFocusChanged()
   end if
 end sub
 
+' onTrackDropdownMenuOpenChanged: Observer wired to each TrackDropdown's menuOpen.
+' Toggles the full-screen dimmer iff ANY dropdown's menu is currently open. The
+' trackCluster (titles + triggers + the open menu itself) renders ABOVE the dimmer
+' in XML sibling order, so only the screen content BEHIND the cluster dims —
+' category titles and trigger labels stay full-brightness as the user's "you are
+' here" cue while picking a track.
+sub onTrackDropdownMenuOpenChanged()
+  anyOpen = false
+  if isValid(m.videoDropdown) and m.videoDropdown.menuOpen then anyOpen = true
+  if isValid(m.audioDropdown) and m.audioDropdown.menuOpen then anyOpen = true
+  if isValid(m.subtitleDropdown) and m.subtitleDropdown.menuOpen then anyOpen = true
+  if isValid(m.dropdownDimmer)
+    m.dropdownDimmer.visible = anyOpen
+  end if
+end sub
+
 ' pickTrackDropdownFromButtons: Chooses which TrackDropdown to focus when UP is pressed
 ' from the button group. Ignores m.lastFocusedDropdown by design — UP-from-buttons
 ' should ALWAYS land on the dropdown visually above the currently focused button, not
@@ -3508,6 +3542,7 @@ sub destroy()
     m.videoDropdown.unobserveField("requestFocusDown")
     m.videoDropdown.unobserveField("requestFocusExit")
     m.videoDropdown.unobserveField("focusedChild")
+    m.videoDropdown.unobserveField("menuOpen")
     m.videoDropdown.callFunc("destroy")
   end if
   if isValid(m.audioDropdown)
@@ -3516,6 +3551,7 @@ sub destroy()
     m.audioDropdown.unobserveField("requestFocusDown")
     m.audioDropdown.unobserveField("requestFocusExit")
     m.audioDropdown.unobserveField("focusedChild")
+    m.audioDropdown.unobserveField("menuOpen")
     m.audioDropdown.callFunc("destroy")
   end if
   if isValid(m.subtitleDropdown)
@@ -3524,9 +3560,11 @@ sub destroy()
     m.subtitleDropdown.unobserveField("requestFocusDown")
     m.subtitleDropdown.unobserveField("requestFocusExit")
     m.subtitleDropdown.unobserveField("focusedChild")
+    m.subtitleDropdown.unobserveField("menuOpen")
     m.subtitleDropdown.callFunc("destroy")
   end if
   m.lastFocusedDropdown = invalid
+  m.dropdownDimmer = invalid
 
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
