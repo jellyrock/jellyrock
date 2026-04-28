@@ -68,7 +68,7 @@ namespace tests
     @it("quickConnectTimer fires every 3 seconds")
     function _()
       timer = m.dialog.findNode("quickConnectTimer")
-      m.assertEqual(timer.duration, 3.0)
+      m.assertEqual(timer.duration, 3!)
     end function
 
     @it("quickConnectTimer does not auto-repeat")
