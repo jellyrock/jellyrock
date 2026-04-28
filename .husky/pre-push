@@ -1,15 +1,22 @@
 #!/usr/bin/env sh
-# Pre-push hook: auto-format BS/BRS in the push range, then conditionally validate.
+# Pre-push hook: auto-fix and conditionally lint per file type changed in the
+# push range. Mirrors the CI lint suite so issues are caught before they fail
+# the build.
 #
-# - Auto-format step: runs `bsfmt --write` on *.bs / *.brs files in the push range.
-#   If anything changes, creates a separate `chore: auto-format via pre-push hook`
-#   commit on top (never amends — preserves authored history).
-# - Validate step: runs `npm run validate` only if the push range touches
-#   *.bs / *.brs / *.xml / bsconfig*.json. Skipped for docs-only / changelog pushes.
-# - Refuses to auto-format if the working tree is dirty (would risk pulling WIP
-#   into the auto-format commit). Validate still runs.
+# Auto-fix steps (mutate files; combined into one commit):
+#   1. bsfmt --write on *.bs / *.brs in range
+#   2. npm run update-translations  if BS source / locale / settings/settings.json changed
 #
-# Bypass with `git push --no-verify` if you need to skip.
+# Check steps (read-only; non-zero exit aborts the push):
+#   3. npm run validate           — *.bs / *.brs / *.xml / bsconfig*.json
+#   4. npm run lint:markdown      — *.md
+#   5. npm run lint:spelling      — *.md
+#   6. npm run lint:json          — *.json (jshint applies its own excludes)
+#
+# Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
+# can't be swept into the auto-fix commit. Check steps still run.
+#
+# Bypass with `git push --no-verify` if you absolutely need to skip.
 
 set -e
 
@@ -24,38 +31,64 @@ fi
 
 CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || true)
 
-# Nothing to push or empty diff (e.g. branch already in sync) — let git handle it.
+# Nothing to push or empty diff — let git handle it.
 if [ -z "$CHANGED" ]; then
   exit 0
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
-# Auto-format step
+# File-type detection
 # ──────────────────────────────────────────────────────────────────────────
-FORMAT_FILES=$(echo "$CHANGED" | grep -E '\.(bs|brs)$' || true)
+BS_FILES=$(echo "$CHANGED" | grep -E '\.(bs|brs)$' || true)
+TRANSLATION_TRIGGERS=$(echo "$CHANGED" | grep -E '^(source|components)/.*\.bs$|^locale/|^settings/settings\.json$' || true)
+HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$' && echo 1 || true)
+HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
+HAS_JSON=$(echo "$CHANGED" | grep -qE '\.json$' && echo 1 || true)
 
-if [ -n "$FORMAT_FILES" ]; then
+# ──────────────────────────────────────────────────────────────────────────
+# Auto-fix steps (mutate files; combined into one commit at the end)
+# ──────────────────────────────────────────────────────────────────────────
+if [ -n "$BS_FILES" ] || [ -n "$TRANSLATION_TRIGGERS" ]; then
   if ! git diff-index --quiet HEAD --; then
-    echo "⚠️  Working tree has uncommitted changes; skipping auto-format."
-    echo "   Commit or stash them, then re-push to enable auto-format."
+    echo "⚠️  Working tree has uncommitted changes; skipping auto-fix steps."
+    echo "   Commit or stash them, then re-push to enable auto-fix."
   else
-    FILE_COUNT=$(echo "$FORMAT_FILES" | wc -l)
-    echo "🎨 Formatting $FILE_COUNT BS/BRS file(s) in push range..."
-    echo "$FORMAT_FILES" | xargs npx bsfmt --write
+    if [ -n "$BS_FILES" ]; then
+      FILE_COUNT=$(echo "$BS_FILES" | wc -l)
+      echo "🎨 Formatting $FILE_COUNT BS/BRS file(s) in push range..."
+      echo "$BS_FILES" | xargs npx bsfmt --write
+    fi
+
+    if [ -n "$TRANSLATION_TRIGGERS" ]; then
+      echo "🌐 Updating translations..."
+      npm run update-translations
+    fi
 
     if ! git diff --quiet; then
-      echo "📝 bsfmt modified files — creating auto-format commit..."
-      echo "$FORMAT_FILES" | xargs git add
-      git commit -m "chore: auto-format via pre-push hook"
-      echo "✅ Auto-format commit added; push will include it."
+      echo "📝 Auto-fix made changes — creating combined commit..."
+      git add -A
+      git commit -m "chore: auto-fix via pre-push hook"
+      echo "✅ Auto-fix commit added; push will include it."
     fi
   fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
-# Conditional validate step
+# Check steps (read-only; abort push on failure)
 # ──────────────────────────────────────────────────────────────────────────
-if echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$'; then
-  echo "🔍 Validating project..."
+if [ -n "$HAS_VALIDATE_TRIGGERS" ]; then
+  echo "🔍 Validating BrighterScript project..."
   npm run validate
+fi
+
+if [ -n "$HAS_MD" ]; then
+  echo "📖 Linting markdown..."
+  npm run lint:markdown
+  echo "🔤 Spell-checking markdown..."
+  npm run lint:spelling
+fi
+
+if [ -n "$HAS_JSON" ]; then
+  echo "📋 Linting JSON..."
+  npm run lint:json
 fi

@@ -30,10 +30,16 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 - TDD (single spec): `npm run test:tdd` (after editing `bsconfig-tdd.json`). Broader: `npm run test:unit | test:integration | test:all`.
 - Setup, credentials, debugger contention → [docs/dev/unit-tests-tdd.md](docs/dev/unit-tests-tdd.md).
 ### Pre-push Hook (husky)
-- `.husky/pre-push` runs on `git push`:
-  1. Auto-formats `*.bs`/`*.brs` in the push range with `bsfmt --write`. If any files change, it adds a separate `chore: auto-format via pre-push hook` commit (never amends).
-  2. Conditionally runs `npm run validate` if any `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
-- Requires a clean working tree before push so auto-format never sweeps in WIP. If dirty, the hook skips auto-format with a warning; validate still runs.
+- `.husky/pre-push` runs on `git push`. Mirrors the CI lint suite, scoped to files in the push range:
+  - **Auto-fix** (mutating; combined into a single `chore: auto-fix via pre-push hook` commit; never amends):
+    1. `bsfmt --write` on `*.bs`/`*.brs`
+    2. `npm run update-translations` if BS source / `locale/**` / `settings/settings.json` changed
+  - **Check** (read-only; non-zero exit aborts the push):
+    3. `npm run validate` — `*.bs`/`*.brs`/`*.xml`/`bsconfig*.json` changes
+    4. `npm run lint:markdown` + `npm run lint:spelling` — `*.md` changes
+    5. `npm run lint:json` — `*.json` changes
+- Requires a clean working tree for auto-fix so WIP can't be swept into the auto-fix commit. If dirty, auto-fix is skipped (with warning); checks still run.
+- Bypass with `git push --no-verify` if you must.
 ### Commit Messages
 - Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer.
 ### Code Standards
