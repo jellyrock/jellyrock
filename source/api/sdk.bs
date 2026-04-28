@@ -80,9 +80,15 @@ namespace sdk
     end function
 
     ' Authenticates a user with quick connect.
+    ' Body field renamed in 10.8.0 (a finer boundary than the apiVersion split):
+    '   10.7.x:   { "Token": secret }
+    '   10.8.0+:  { "Secret": secret }
     function AuthenticateWithQuickConnect(secret as string)
       req = APIRequest("/users/authenticatewithquickconnect")
-      return postJson(req, FormatJson({ "secret": secret }))
+      if versionChecker(m.global.server.version, "10.8.0")
+        return postJson(req, FormatJson({ "Secret": secret }))
+      end if
+      return postJson(req, FormatJson({ "Token": secret }))
     end function
   end namespace
 
