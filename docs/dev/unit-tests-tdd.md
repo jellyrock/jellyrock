@@ -248,6 +248,36 @@ npm run build:tests              # Build all tests
 
 ---
 
+## Agent Workflow Notes
+
+These notes apply when an automated agent (Claude Code, etc.) needs to run tests from a CLI session rather than the VSCode "Run TDD tests" launch.
+
+### Running
+
+- **Single spec (TDD)**: `npm run test:tdd` — builds with `bsconfig-tdd.json` and deploys to the Roku at `ROKU_IP`.
+- **Broader runs**: `npm run test:unit`, `npm run test:integration`, `npm run test:all`.
+- The runner ([`scripts/run-roku-tests.js`](../../scripts/run-roku-tests.js)) zips the build, sideloads to the Roku, and tails the debug console for `[Rooibos Result]: PASS|FAIL`.
+
+### Roku Credentials (`.env`)
+
+The runner reads `ROKU_IP` and `ROKU_PASSWORD` from a gitignored `.env` at the repo root. If `.env` is missing, source the values from the user's VSCode settings:
+
+```bash
+grep -E '"brightscript\.debug\.(host|password)"' ~/.config/Code/User/settings.json
+```
+
+…and write them to `.env` as `ROKU_IP=...` / `ROKU_PASSWORD=...`.
+
+### Debugger Contention
+
+If a VSCode brightscript debugger session is already attached to the test device, the deploy will fail (ECP refuses the second sideload) and may also kill the active debugger. Surface this to the user — do not retry blindly.
+
+### When Hardware Isn't Available
+
+If no Roku is reachable (no `.env`, no device on network, debugger holding the port), say so explicitly. Do not claim a fix was tested when only the build (`npm run build:tdd`) was verified.
+
+---
+
 ## Related Documentation
 
 - [Unit Testing Guide](unit-tests.md) - Core testing concepts and Rooibos framework

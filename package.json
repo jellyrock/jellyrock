@@ -56,6 +56,7 @@
     "update-translations": "node scripts/update-translations.cjs --fix",
     "package": "node scripts/create-package.cjs",
     "validate": "npx bsc --noEmit",
+    "test:tdd": "npm run build:tdd && node scripts/run-roku-tests.js",
     "test:unit": "npm run build:tests-unit && node scripts/run-roku-tests.js",
     "test:integration": "npm run build:tests-integration && node scripts/run-roku-tests.js",
     "test:all": "npm run build:tests && node scripts/run-roku-tests.js",
