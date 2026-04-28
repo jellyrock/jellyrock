@@ -64,11 +64,13 @@ namespace tests
       m.assertNotInvalid(m.dialog.findNode("quickConnectTimer"))
     end function
 
-    ' Roku XML numeric attributes are parsed as Floats.
     @it("quickConnectTimer fires every 3 seconds")
     function _()
       timer = m.dialog.findNode("quickConnectTimer")
-      m.assertEqual(timer.duration, 3!)
+      ' Cast to Integer — Roku returns the duration field as Double here
+      ' (not Float as the SceneGraph docs imply), and Rooibos's assertEqual
+      ' is type-strict between Float/Double.
+      m.assertEqual(int(timer.duration), 3)
     end function
 
     @it("quickConnectTimer does not auto-repeat")
