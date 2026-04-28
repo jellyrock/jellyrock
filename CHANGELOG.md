@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Move Quick Connect to User Select screen ([#506](https://github.com/jellyrock/jellyrock/pull/506))
 - Live TV OSD + DVR recording playback improvements ([#501](https://github.com/jellyrock/jellyrock/pull/501))
 
 ### Fixed
