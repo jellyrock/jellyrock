@@ -317,9 +317,6 @@ namespace tests
       m.assertEqual(result.uiTvShowsDisableUnwatchedCount, false)
       m.assertEqual(result.uiHomeUseWebArrangement, true)
       m.assertEqual(result.uiFontFallback, false)
-      m.assertEqual(result.homeSection0, "library-movies")
-      m.assertEqual(result.homeSection1, "library-tvshows")
-      m.assertEqual(result.homeSection2, "resume")
       m.assertEqual(result.displayLiveTvLanding, "guide")
     end function
 
@@ -679,14 +676,7 @@ namespace tests
       m.assertEqual(result.itemGridReset, false)
       m.assertEqual(result.itemGridMovieDefaultView, "moviesgrid")
 
-      ' Home Sections
-      m.assertEqual(result.homeSection0, "librarybuttons")
-      m.assertEqual(result.homeSection1, "resume")
-      m.assertEqual(result.homeSection2, "nextup")
-      m.assertEqual(result.homeSection3, "latestmedia")
-      m.assertEqual(result.homeSection4, "livetv")
-      m.assertEqual(result.homeSection5, "none")
-      m.assertEqual(result.homeSection6, "none")
+      ' Home sections are server-authoritative — not transformed from registry data.
 
       ' Display
       m.assertEqual(result.displayLiveTvLanding, "guide")
@@ -716,11 +706,6 @@ namespace tests
       m.assertEqual(result.uiHomeUseWebArrangement, false)
       m.assertEqual(result.uiFontFallback, false)
 
-      ' Home Sections should be defaults (empty strings)
-      m.assertEqual(result.homeSection0, "")
-      m.assertEqual(result.homeSection1, "")
-      m.assertEqual(result.homeSection2, "")
-
       ' Display should be default (empty string)
       m.assertEqual(result.displayLiveTvLanding, "")
 
@@ -737,9 +722,7 @@ namespace tests
       settingsData = {
         "uiRowLayout": "",
         "uiGeneralEpisodeImages": "",
-        "displayLiveTvLanding": "",
-        "homeSection0": "",
-        "homeSection1": ""
+        "displayLiveTvLanding": ""
       }
 
       result = transformer.transformUserSettings(settingsData)
@@ -748,8 +731,6 @@ namespace tests
       m.assertEqual(result.uiRowLayout, "")
       m.assertEqual(result.uiGeneralEpisodeImages, "")
       m.assertEqual(result.displayLiveTvLanding, "")
-      m.assertEqual(result.homeSection0, "")
-      m.assertEqual(result.homeSection1, "")
     end function
 
     @it("handles missing settings with defaults")

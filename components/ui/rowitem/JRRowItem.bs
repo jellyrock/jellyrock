@@ -263,7 +263,7 @@ end sub
 '     which never reach renderItem() and would otherwise leak the observer.
 ' This function therefore only needs to install — not clear.
 sub applyPlayedPercentage(item as object)
-  if item.type = "Program"
+  if item.type = "Program" or item.type = "Recording"
     nowSeconds = CreateObject("roDateTime").AsSeconds()
     m.poster.playedPercentage = computeProgramBroadcastProgress(item.PlayStart, item.PlayDuration, nowSeconds)
     item.observeField("playedPercentage", "onProgramProgressChanged")

@@ -667,6 +667,13 @@ class ApiClient
     return m.validatedReq("GET", buildURL("/LiveTv/Programs/Recommended", params))
   end function
 
+  ' Build a request AA to get Live TV recordings, for use with fetchRes() or fetchJson().
+  ' @param params - Query parameters (isInProgress, limit, status, etc.)
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetLiveTvRecordingsRequest(params = {} as object) as dynamic
+    return m.validatedReq("GET", buildURL("/LiveTv/Recordings", params))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' STUDIOS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════

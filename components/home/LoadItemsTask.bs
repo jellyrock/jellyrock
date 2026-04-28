@@ -167,6 +167,23 @@ sub loadItems()
       end for
     end if
 
+  else if m.top.itemsToLoad = "activeRecordings"
+    params = {}
+    params["userId"] = globalUser.id
+    params["isInProgress"] = true
+    params["limit"] = 16 ' parity with onNow
+    params["imageTypeLimit"] = 1
+    params["enableImageTypes"] = "Primary,Thumb,Backdrop"
+    params["enableTotalRecordCount"] = false
+    params["fields"] = "ChannelInfo,PrimaryImageAspectRatio"
+
+    data = fetchJson(GetApi().BuildGetLiveTvRecordingsRequest(params), "activeRecordings")
+    if isValid(data) and isValid(data.Items)
+      for each item in data.Items
+        results.push(m.transformer.transformBaseItem(item))
+      end for
+    end if
+
     ' Extract array of persons from Views and download full metadata for each
   else if m.top.itemsToLoad = "people"
     if not isValid(m.top.peopleList)

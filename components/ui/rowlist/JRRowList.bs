@@ -182,7 +182,7 @@ sub onProgramProgressTick()
     if isValid(row)
       for j = 0 to row.getChildCount() - 1
         item = row.getChild(j)
-        if isValid(item) and item.type = "Program"
+        if isValid(item) and (item.type = "Program" or item.type = "Recording")
           item.playedPercentage = computeProgramBroadcastProgress(item.PlayStart, item.PlayDuration, nowSeconds)
           ' Expiry check uses the same window math as the progress computation.
           ' PlayStart/PlayDuration default to 0 for items missing broadcast data —

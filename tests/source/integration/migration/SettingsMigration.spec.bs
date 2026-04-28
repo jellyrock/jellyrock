@@ -167,21 +167,15 @@ namespace tests
       m.assertTrue(reg.exists("itemGridMovieDefaultView"))
       m.assertEqual(reg.read("itemGridMovieDefaultView"), "moviesgrid")
 
-      ' Verify home section settings migrated correctly
-      m.assertTrue(reg.exists("homeSection0"))
-      m.assertEqual(reg.read("homeSection0"), "librarybuttons")
-      m.assertTrue(reg.exists("homeSection1"))
-      m.assertEqual(reg.read("homeSection1"), "resume")
-      m.assertTrue(reg.exists("homeSection2"))
-      m.assertEqual(reg.read("homeSection2"), "nextup")
-      m.assertTrue(reg.exists("homeSection3"))
-      m.assertEqual(reg.read("homeSection3"), "latestmedia")
-      m.assertTrue(reg.exists("homeSection4"))
-      m.assertEqual(reg.read("homeSection4"), "livetv")
-      m.assertTrue(reg.exists("homeSection5"))
-      m.assertEqual(reg.read("homeSection5"), "none")
-      m.assertTrue(reg.exists("homeSection6"))
-      m.assertEqual(reg.read("homeSection6"), "none")
+      ' Verify home section settings are deleted (server-authoritative since v2.13.0)
+      ' v1.1.0 renames homesection0-6 → homeSection0-6, then v2.13.0 deletes them
+      m.assertFalse(reg.exists("homeSection0"), "homeSection0 should be deleted in v2.13.0")
+      m.assertFalse(reg.exists("homeSection1"), "homeSection1 should be deleted in v2.13.0")
+      m.assertFalse(reg.exists("homeSection2"), "homeSection2 should be deleted in v2.13.0")
+      m.assertFalse(reg.exists("homeSection3"), "homeSection3 should be deleted in v2.13.0")
+      m.assertFalse(reg.exists("homeSection4"), "homeSection4 should be deleted in v2.13.0")
+      m.assertFalse(reg.exists("homeSection5"), "homeSection5 should be deleted in v2.13.0")
+      m.assertFalse(reg.exists("homeSection6"), "homeSection6 should be deleted in v2.13.0")
 
       ' Verify display settings migrated correctly
       m.assertTrue(reg.exists("displayLiveTvLanding"))
@@ -596,6 +590,107 @@ namespace tests
       m.assertEqual(userReg.read("uiRowLayout"), "landscape")
       m.assertEqual(userReg.read("uiDesignHideClock"), "false")
 
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Home Section Cleanup Migration (v2.13.0)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("deletes all homeSection0-6 keys from registry")
+    function _()
+      testUserId = "test-homesection-cleanup-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.5.0") ' Pre-cleanup version
+
+      reg.write("homeSection0", "smalllibrarytiles")
+      reg.write("homeSection1", "resume")
+      reg.write("homeSection2", "nextup")
+      reg.write("homeSection3", "latestmedia")
+      reg.write("homeSection4", "activerecordings")
+      reg.write("homeSection5", "livetv")
+      reg.write("homeSection6", "none")
+      reg.write("uiRowLayout", "landscape") ' Unrelated setting should survive
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("homeSection0"), "homeSection0 should be deleted")
+      m.assertFalse(reg.exists("homeSection1"), "homeSection1 should be deleted")
+      m.assertFalse(reg.exists("homeSection2"), "homeSection2 should be deleted")
+      m.assertFalse(reg.exists("homeSection3"), "homeSection3 should be deleted")
+      m.assertFalse(reg.exists("homeSection4"), "homeSection4 should be deleted")
+      m.assertFalse(reg.exists("homeSection5"), "homeSection5 should be deleted")
+      m.assertFalse(reg.exists("homeSection6"), "homeSection6 should be deleted")
+
+      ' Unrelated settings should survive
+      m.assertTrue(reg.exists("uiRowLayout"))
+      m.assertEqual(reg.read("uiRowLayout"), "landscape")
+    end function
+
+    @it("handles missing homeSection keys gracefully")
+    function _()
+      testUserId = "test-homesection-missing-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.5.0")
+      ' No homeSection keys written
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertTrue(reg.exists("LastRunVersion"))
+      m.assertTrue(reg.exists("serverId"))
+    end function
+
+    @it("skips homeSection cleanup when version >= 2.13.0")
+    function _()
+      testUserId = "test-homesection-skip-001"
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", "2.13.0") ' Already at cleanup version
+      reg.write("homeSection0", "librarybuttons")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertTrue(reg.exists("homeSection0"), "Should not be deleted when version >= 2.13.0")
+    end function
+
+    @it("cleans up homeSection keys independently per user")
+    function _()
+      user1 = "test-homesection-multi-001"
+      user2 = "test-homesection-multi-002"
+
+      reg1 = CreateObject("roRegistrySection", user1)
+      reg1.write("serverId", m.global.server.id)
+      reg1.write("LastRunVersion", "2.5.0")
+      reg1.write("homeSection0", "librarybuttons")
+      reg1.write("homeSection3", "latestmedia")
+      reg1.flush()
+
+      reg2 = CreateObject("roRegistrySection", user2)
+      reg2.write("serverId", m.global.server.id)
+      reg2.write("LastRunVersion", "2.5.0")
+      reg2.write("homeSection0", "smalllibrarytiles")
+      reg2.write("homeSection1", "resume")
+      reg2.flush()
+
+      runRegistryUserMigrations([user1, user2])
+
+      reg1 = CreateObject("roRegistrySection", user1)
+      m.assertFalse(reg1.exists("homeSection0"))
+      m.assertFalse(reg1.exists("homeSection3"))
+
+      reg2 = CreateObject("roRegistrySection", user2)
+      m.assertFalse(reg2.exists("homeSection0"))
+      m.assertFalse(reg2.exists("homeSection1"))
     end function
 
   end class

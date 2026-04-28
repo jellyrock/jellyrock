@@ -33,6 +33,9 @@ sub init()
   m.LoadOnNowTask = createObject("roSGNode", "LoadItemsTask")
   m.LoadOnNowTask.itemsToLoad = "onNow"
 
+  m.LoadActiveRecordingsTask = createObject("roSGNode", "LoadItemsTask")
+  m.LoadActiveRecordingsTask.itemsToLoad = "activeRecordings"
+
   ' Track populated section count for AppLaunchComplete beacon
   m.populatedSectionCount = 0
   m.initialLoadComplete = false
@@ -45,10 +48,12 @@ sub init()
   m.isLoadingResume = false
   m.isLoadingNextUp = false
   m.isLoadingOnNow = false
+  m.isLoadingActiveRecordings = false
 
-  ' Refetch the On Now row when the base class's progress tick detects that at
-  ' least one Program has ended. Without this, sitting on Home long enough would
-  ' leave a row of finished broadcasts until the user refreshes manually.
+  ' Refetch the On Now and Active Recordings rows when the base class's progress
+  ' tick detects that at least one Program or Recording has ended. Without this,
+  ' sitting on Home long enough would leave a row of finished broadcasts/recordings
+  ' until the user refreshes manually.
   m.top.observeField("programsExpired", "onProgramsExpired")
 end sub
 
@@ -167,6 +172,10 @@ function createSkeletonRow(sectionType as string) as object
     row.title = translate(translationKeys.LabelMyMedia)
     row.sectionId = "library"
     row.cursorSize = rowSlotSize.LIBRARY
+  else if sectionType = "activerecordings"
+    row.title = translate(translationKeys.LabelActiveRecordings)
+    row.sectionId = "activeRecordings"
+    row.cursorSize = rowSlotSize.SQUARE
   else
     return invalid
   end if
@@ -206,6 +215,12 @@ sub startParallelLoads()
       m.LoadOnNowTask.unobserveField("content")
       m.LoadOnNowTask.observeField("content", "updateOnNowItems")
       m.LoadOnNowTask.control = "RUN"
+    else if section.type = "activerecordings"
+      if m.isLoadingActiveRecordings then continue for
+      m.isLoadingActiveRecordings = true
+      m.LoadActiveRecordingsTask.unobserveField("content")
+      m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
+      m.LoadActiveRecordingsTask.control = "RUN"
     end if
   end for
 end sub
@@ -407,6 +422,7 @@ function getSectionIdForType(sectionType as string) as dynamic
   if sectionType = "nextup" then return "nextup"
   if sectionType = "livetv" then return "livetv"
   if sectionType = "librarybuttons" or sectionType = "smalllibrarytiles" then return "library"
+  if sectionType = "activerecordings" then return "activeRecordings"
   return invalid
 end function
 
@@ -428,6 +444,7 @@ function getRowConfigForSection(sectionId as string) as object
   if sectionId = "nextup" then return { title: translate(translationKeys.LabelNextUp), slotSize: rowSlotSize.WIDE }
   if sectionId = "livetv" then return { title: translate(translationKeys.LabelOnNow), slotSize: rowSlotSize.SQUARE }
   if sectionId = "library" then return { title: translate(translationKeys.LabelMyMedia), slotSize: rowSlotSize.LIBRARY }
+  if sectionId = "activeRecordings" then return { title: translate(translationKeys.LabelActiveRecordings), slotSize: rowSlotSize.SQUARE }
 
   ' latestmedia rows: derive title and slotSize from the library data
   if sectionId.startsWith("latest_") and isValidAndNotEmpty(m.filteredLatest)
@@ -536,28 +553,36 @@ sub updateOnNowItems()
   populateRowFromData("livetv", itemData)
 end sub
 
-' Fires when JRRowList's progress tick detects at least one expired Program.
-' Re-runs LoadOnNowTask to pull fresh currently-airing data. The m.isLoadingOnNow
-' guard debounces repeated expiry signals while a load is already in flight, and
-' the "livetv" section plan check avoids wasted requests when the user has
-' disabled the On Now section.
+sub updateActiveRecordingsItems()
+  itemData = m.LoadActiveRecordingsTask.content
+  m.LoadActiveRecordingsTask.unobserveField("content")
+  m.LoadActiveRecordingsTask.content = []
+  m.isLoadingActiveRecordings = false
+
+  populateRowFromData("activeRecordings", itemData)
+end sub
+
+' Fires when JRRowList's progress tick detects at least one expired Program
+' or Recording. Re-runs LoadOnNowTask and/or LoadActiveRecordingsTask to pull
+' fresh data. Loading guards debounce repeated expiry signals while a load is
+' already in flight, and section plan checks avoid wasted requests when the
+' user has disabled the relevant sections.
 sub onProgramsExpired()
-  if m.isLoadingOnNow then return
   if not isValidAndNotEmpty(m.sectionPlan) then return
 
-  hasLiveTv = false
   for each section in m.sectionPlan
-    if section.type = "livetv"
-      hasLiveTv = true
-      exit for
+    if section.type = "livetv" and not m.isLoadingOnNow
+      m.isLoadingOnNow = true
+      m.LoadOnNowTask.unobserveField("content")
+      m.LoadOnNowTask.observeField("content", "updateOnNowItems")
+      m.LoadOnNowTask.control = "RUN"
+    else if section.type = "activerecordings" and not m.isLoadingActiveRecordings
+      m.isLoadingActiveRecordings = true
+      m.LoadActiveRecordingsTask.unobserveField("content")
+      m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
+      m.LoadActiveRecordingsTask.control = "RUN"
     end if
   end for
-  if not hasLiveTv then return
-
-  m.isLoadingOnNow = true
-  m.LoadOnNowTask.unobserveField("content")
-  m.LoadOnNowTask.observeField("content", "updateOnNowItems")
-  m.LoadOnNowTask.control = "RUN"
 end sub
 
 ' updateLatestItems: Processes LoadItemsTask content for a latest-in-library row.
@@ -828,6 +853,10 @@ sub destroy()
   m.LoadOnNowTask.control = "STOP"
   m.LoadOnNowTask = invalid
 
+  m.LoadActiveRecordingsTask.unobserveField("content")
+  m.LoadActiveRecordingsTask.control = "STOP"
+  m.LoadActiveRecordingsTask = invalid
+
   ' Stop and release any per-library latest media tasks
   cleanupLatestMediaTasks()
 
@@ -841,4 +870,5 @@ sub destroy()
   m.isLoadingResume = false
   m.isLoadingNextUp = false
   m.isLoadingOnNow = false
+  m.isLoadingActiveRecordings = false
 end sub

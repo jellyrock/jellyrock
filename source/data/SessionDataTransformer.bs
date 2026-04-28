@@ -190,14 +190,9 @@ class SessionDataTransformer
     settingsNode.itemGridReset = toBoolean(settingsData["itemGridReset"])
     settingsNode.itemGridMovieDefaultView = settingsData["itemGridMovieDefaultView"] ?? ""
 
-    ' Home sections
-    settingsNode.homeSection0 = settingsData["homeSection0"] ?? ""
-    settingsNode.homeSection1 = settingsData["homeSection1"] ?? ""
-    settingsNode.homeSection2 = settingsData["homeSection2"] ?? ""
-    settingsNode.homeSection3 = settingsData["homeSection3"] ?? ""
-    settingsNode.homeSection4 = settingsData["homeSection4"] ?? ""
-    settingsNode.homeSection5 = settingsData["homeSection5"] ?? ""
-    settingsNode.homeSection6 = settingsData["homeSection6"] ?? ""
+    ' Home sections are server-authoritative — populated by LoadUserPreferences() from
+    ' DisplayPreferences, never sourced from registry. The HOMESECTION_CLEANUP_VERSION
+    ' migration removes any stale registry values left from prior versions.
 
     ' Display settings
     settingsNode.displayLiveTvLanding = settingsData["displayLiveTvLanding"] ?? ""
