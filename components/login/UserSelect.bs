@@ -13,13 +13,16 @@ sub init()
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
   m.buttons = m.top.findNode("buttons")
 
-  ' Quick Connect requires server >= 10.8.0
+  ' Quick Connect requires server >= 10.8.0. Remove the button entirely (rather
+  ' than hiding it) when unsupported - JRButtonGroup focus/navigation honors
+  ' isEnabled but not visible, so an invisible button at index 0 would silently
+  ' steal default focus.
   quickConnectButton = m.top.findNode("quickConnect")
   if versionChecker(m.global.server.version, "10.8.0")
     quickConnectButton.text = translate(translationKeys.ButtonQuickConnect)
   else
-    quickConnectButton.visible = false
-    m.log.debug("Quick Connect hidden - server version below 10.8.0", "version:", m.global.server.version)
+    m.buttons.removeChild(quickConnectButton)
+    m.log.debug("Quick Connect removed - server version below 10.8.0", "version:", m.global.server.version)
   end if
 
   m.buttons.callFunc("center")

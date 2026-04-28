@@ -478,20 +478,16 @@ function CreateUserSelectGroup(users = [])
           m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
           m.quickConnectDialog.quickConnectJson = json
           m.quickConnectDialog.title = translate(translationKeys.ButtonQuickConnect)
-          m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code]), translate(translationKeys.LabelDialogWillCloseAutomatically)]
+          m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code])]
           m.quickConnectDialog.buttons = [translate(translationKeys.ButtonCancel)]
           m.quickConnectDialog.observeField("isAuthenticated", port)
           m.scene.dialog = m.quickConnectDialog
         end if
       end if
     else if type(msg) = "roSGNodeEvent" and msg.getField() = "isAuthenticated"
-      if msg.getData() = true
-        return "quickConnect"
-      else
-        ' Defensive: current dialog never sets isAuthenticated=false, but if a
-        ' future failure path does, surface a generic QC error.
-        m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ButtonQuickConnect), translate(translationKeys.ErrorThereWasAnErrorAuthenticatingVia))
-      end if
+      ' QuickConnectDialog only ever fires this with value=true (after the
+      ' user has answered the post-auth save-credentials prompt).
+      return "quickConnect"
     end if
   end while
 

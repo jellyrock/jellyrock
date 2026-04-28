@@ -389,6 +389,16 @@ namespace user
       ' DisplayPreferences in LoadUserPreferences) and must not be loaded from the
       ' registry. Stale registry values would override the server's current arrangement.
       if not isGlobalSetting(setting) and not setting.StartsWith("display.") and not setting.StartsWith("homeSection")
+        ' Skip auth-flow-authoritative credentials. Every caller sets these on
+        ' userNode before invoking Login() (or they are extracted from the
+        ' response payload above); reapplying them from the registry here would
+        ' clobber a freshly-issued token with a stale one left over from a
+        ' previous session - e.g. the Quick Connect re-auth case where a new
+        ' AccessToken is issued but the user's registry still holds the old one.
+        if setting = "authToken" or setting = "primaryImageTag"
+          print "Skipping auth-flow field from registry:", setting
+          continue for
+        end if
         ' Check where this setting belongs based on field existence
         if userNodeFieldTypes.DoesExist(setting)
           ' Skip node-type fields - these are server-authoritative and never loaded from registry
