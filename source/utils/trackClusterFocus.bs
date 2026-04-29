@@ -1,0 +1,26 @@
+' Track cluster focus helpers.
+'
+' Pure functions used by ItemDetails to drive UP/DOWN navigation between the
+' track dropdown row and surrounding focus targets. Lives here (not inside
+' ItemDetails.bs) so it's directly unit-testable.
+
+namespace trackClusterFocus
+
+  ' buildSearchOrder: Returns an array of slot indices starting with `preferred`
+  ' and spiraling outward. Used to find the nearest interactive slot when the
+  ' preferred one is static or hidden.
+  '
+  '   preferred=0 -> [0, 1, 2]   (try left, then center, then right)
+  '   preferred=1 -> [1, 0, 2]   (try center, then left, then right)
+  '   preferred=2 -> [2, 1, 0]   (try right, then center, then left)
+  '
+  ' The returned array always covers all three slots, so callers can iterate it
+  ' and stop at the first interactive candidate without having to fall through
+  ' to a separate "fallback" branch.
+  function buildSearchOrder(preferred as integer) as object
+    if preferred = 0 then return [0, 1, 2]
+    if preferred = 1 then return [1, 0, 2]
+    return [2, 1, 0]
+  end function
+
+end namespace

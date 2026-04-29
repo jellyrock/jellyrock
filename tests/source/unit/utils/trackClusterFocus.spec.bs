@@ -1,0 +1,71 @@
+namespace tests
+
+  @suite("trackClusterFocus.bs - buildSearchOrder")
+  class TrackClusterFocusTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildSearchOrder(preferred) - spiral outward from preferred slot")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("preferred=0 returns [0, 1, 2] (left first, then walk right)")
+    function _()
+      order = trackClusterFocus.buildSearchOrder(0)
+      m.assertEqual(order.count(), 3)
+      m.assertEqual(order[0], 0)
+      m.assertEqual(order[1], 1)
+      m.assertEqual(order[2], 2)
+    end function
+
+    @it("preferred=1 returns [1, 0, 2] (center first, then left, then right)")
+    function _()
+      order = trackClusterFocus.buildSearchOrder(1)
+      m.assertEqual(order.count(), 3)
+      m.assertEqual(order[0], 1)
+      m.assertEqual(order[1], 0)
+      m.assertEqual(order[2], 2)
+    end function
+
+    @it("preferred=2 returns [2, 1, 0] (right first, then walk left)")
+    function _()
+      order = trackClusterFocus.buildSearchOrder(2)
+      m.assertEqual(order.count(), 3)
+      m.assertEqual(order[0], 2)
+      m.assertEqual(order[1], 1)
+      m.assertEqual(order[2], 0)
+    end function
+
+    @it("out-of-range preferred falls back to right-anchored order")
+    function _()
+      ' Defensive: any preferred value outside 0/1 falls into the else branch
+      ' and returns the right-anchored spiral. Locks the contract so a future
+      ' refactor can't silently change behavior for unexpected inputs.
+      order = trackClusterFocus.buildSearchOrder(99)
+      m.assertEqual(order.count(), 3)
+      m.assertEqual(order[0], 2)
+      m.assertEqual(order[1], 1)
+      m.assertEqual(order[2], 0)
+    end function
+
+    @it("returned array always covers all three slots")
+    function _()
+      ' The returned order must visit every slot exactly once for callers to
+      ' iterate-and-stop without a separate fallback branch.
+      for preferred = 0 to 2
+        order = trackClusterFocus.buildSearchOrder(preferred)
+        seen = { "0": false, "1": false, "2": false }
+        for each idx in order
+          seen[str(idx).trim()] = true
+        end for
+        m.assertTrue(seen["0"])
+        m.assertTrue(seen["1"])
+        m.assertTrue(seen["2"])
+      end for
+    end function
+
+  end class
+
+end namespace

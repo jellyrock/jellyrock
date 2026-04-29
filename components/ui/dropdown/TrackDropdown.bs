@@ -10,6 +10,48 @@ import "pkg:/source/utils/misc.bs"
 '   viewport. This gives us exact control over UP-past-first and DOWN-past-last
 '   semantics without fighting LabelList/MarkupList's built-in wrap behavior.
 
+' Trigger geometry is intentionally IDENTICAL to TrackDropdownRow's row geometry so
+' a closed/unfocused trigger reads pixel-for-pixel like the selected-unfocused row
+' that appears directly below it when the menu opens: same horizontal padding
+' (12px), same font (fontSizeSmaller), same height formula, same label vertical
+' centering. If you change either file's padding/height formula, update both —
+' they are duplicated intentionally for locality. See TrackDropdownRow.onSizeChanged.
+'
+' The cluster (titles 24 + trigger 45 = 69px) lives inside a 99px vertical budget:
+' description bottom at y=701, buttons top at y=800, with 12px breathing pad above
+' and 18px below the cluster. The 701 description bottom is produced by the
+' itemTracks spacer (62px) inside itemDetails — see ItemDetails.xml. Do NOT shrink
+' the trigger below the row height without re-verifying the trigger↔row visual match.
+const TRACK_DROPDOWN_TRIGGER_H_PADDING = 12
+' 45 = fontSizeSmaller (25) + 20, matching TrackDropdownRow.onSizeChanged line:
+' `m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20`
+const TRACK_DROPDOWN_TRIGGER_HEIGHT = 45
+' Chevron is rendered for interactive slots only as the dropdown affordance. Sized
+' 1:1 with the source bitmap (24x24 white-on-transparent). Gutter sits between the
+' label's max right edge and the chevron's left edge so a marquee-truncated label
+' never collides with the icon.
+const TRACK_DROPDOWN_CHEVRON_SIZE = 24
+const TRACK_DROPDOWN_CHEVRON_GUTTER = 8
+' Mirrors TrackDropdownRow's ROW_H_PADDING; kept in sync intentionally so the
+' auto-sized menu width math matches what the row's label actually consumes.
+const TRACK_DROPDOWN_ROW_H_PADDING = 12
+' Inter-slot gutter from ItemDetails.xml's trackDropdowns layout: slot stride
+' (308) - slot width (278) = 30. Used to cap the auto-sized menu at two slot
+' widths plus this gutter so an open menu never spans more than two columns of
+' horizontal real estate.
+const TRACK_DROPDOWN_INTER_SLOT_GUTTER = 30
+' Multiplier applied to the TextSizeTask measurement when computing menu width.
+' GetOneLineWidth returns the font-metric width which can come up a few pixels
+' short of how the actual ScrollingLabel renders. The gap varies per string —
+' caps-heavy strings with numbers ("ENGLISH TRUEHD 7.1") drift only ~2-3px while
+' mixed-case strings with punctuation ("Spanish; Castilian SUBRIP") can drift
+' more — so a flat fudge constant is the wrong shape: it either over-pads short
+' strings or under-pads long ones. Scaling proportionally to the measured width
+' tracks the actual risk: short strings get a small buffer (no wasted space),
+' long strings get a larger buffer (no clipping). 3% is the lowest stable value
+' on tested hardware; bump to 1.04 / 1.05 if any title ever clips again.
+const TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER = 1.03
+
 sub init()
   m.log = new log.Logger("TrackDropdown")
 
@@ -61,48 +103,6 @@ end sub
 
 ' Lays out the trigger surface: scrolling trigger label on a 9-patch bg/border that
 ' spans the full slot width.
-'
-' Trigger geometry is intentionally IDENTICAL to TrackDropdownRow's row geometry so
-' a closed/unfocused trigger reads pixel-for-pixel like the selected-unfocused row
-' that appears directly below it when the menu opens: same horizontal padding
-' (12px), same font (fontSizeSmaller), same height formula, same label vertical
-' centering. If you change either file's padding/height formula, update both —
-' they are duplicated intentionally for locality. See TrackDropdownRow.onSizeChanged.
-'
-' The cluster (titles 24 + trigger 45 = 69px) lives inside a 99px vertical budget:
-' description bottom at y=701, buttons top at y=800, with 12px breathing pad above
-' and 18px below the cluster. The 701 description bottom is produced by the
-' itemTracks spacer (62px) inside itemDetails — see ItemDetails.xml. Do NOT shrink
-' the trigger below the row height without re-verifying the trigger↔row visual match.
-const TRACK_DROPDOWN_TRIGGER_H_PADDING = 12
-' 45 = fontSizeSmaller (25) + 20, matching TrackDropdownRow.onSizeChanged line:
-' `m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20`
-const TRACK_DROPDOWN_TRIGGER_HEIGHT = 45
-' Chevron is rendered for interactive slots only as the dropdown affordance. Sized
-' 1:1 with the source bitmap (24x24 white-on-transparent). Gutter sits between the
-' label's max right edge and the chevron's left edge so a marquee-truncated label
-' never collides with the icon.
-const TRACK_DROPDOWN_CHEVRON_SIZE = 24
-const TRACK_DROPDOWN_CHEVRON_GUTTER = 8
-' Mirrors TrackDropdownRow's ROW_H_PADDING; kept in sync intentionally so the
-' auto-sized menu width math matches what the row's label actually consumes.
-const TRACK_DROPDOWN_ROW_H_PADDING = 12
-' Inter-slot gutter from ItemDetails.xml's trackDropdowns layout: slot stride
-' (308) - slot width (278) = 30. Used to cap the auto-sized menu at two slot
-' widths plus this gutter so an open menu never spans more than two columns of
-' horizontal real estate.
-const TRACK_DROPDOWN_INTER_SLOT_GUTTER = 30
-' Multiplier applied to the TextSizeTask measurement when computing menu width.
-' GetOneLineWidth returns the font-metric width which can come up a few pixels
-' short of how the actual ScrollingLabel renders. The gap varies per string —
-' caps-heavy strings with numbers ("ENGLISH TRUEHD 7.1") drift only ~2-3px while
-' mixed-case strings with punctuation ("Spanish; Castilian SUBRIP") can drift
-' more — so a flat fudge constant is the wrong shape: it either over-pads short
-' strings or under-pads long ones. Scaling proportionally to the measured width
-' tracks the actual risk: short strings get a small buffer (no wasted space),
-' long strings get a larger buffer (no clipping). 3% is the lowest stable value
-' on tested hardware; bump to 1.04 / 1.05 if any title ever clips again.
-const TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER = 1.03
 sub layoutTrigger()
   constants = m.global.constants
   slotWidth = m.top.slotWidth
@@ -252,6 +252,14 @@ end sub
 sub onTextSizeTaskComplete()
   widths = m.textSizeTask.width
   if not isValid(widths) or widths.count() = 0 then return
+
+  ' Reject stale results: when the user changes the video source we STOP+RUN the
+  ' task with new titles, but a result from the previous run can still land
+  ' (control=STOP doesn't interrupt a synchronous getTextSize() in progress). If
+  ' the menu's current row count no longer matches the measured count, the items
+  ' array changed mid-flight — drop this result and let the in-flight task's
+  ' completion apply the up-to-date measurements.
+  if widths.count() <> m.menuItems.getChildCount() then return
 
   maxTextWidth = 0
   for each w in widths
@@ -498,10 +506,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 ' Keys while the menu is open:
-'   UP past first    -> closeMenu() (stays on trigger). The ONLY way to exit the menu
-'                       without committing a selection.
+'   UP past first    -> closeMenu() (stays on trigger). The primary exit gesture
+'                       for dismissing without committing; BACK also works.
 '   DOWN past last   -> WRAPS to the first item. The menu never exits on DOWN; the
-'                       user must either pick an option (OK) or press UP from item 0.
+'                       user must either pick an option (OK), press UP from item 0,
+'                       or press BACK to dismiss.
 '   UP / DOWN middle -> move focus + scroll
 '   OK               -> commit selection, fire selectedAction, closeMenu()
 '   LEFT/RIGHT       -> closeMenu() + requestFocusExit (horizontal siblings)
@@ -526,7 +535,7 @@ function handleMenuKeyEvent(key as string) as boolean
       updateFocusedItemVisuals()
       scrollToFocused()
     else
-      ' UP at the top row is the user's "exit without selecting" gesture
+      ' UP at the top row dismisses without committing. BACK does the same.
       closeMenu()
     end if
     return true
@@ -587,6 +596,10 @@ end function
 
 sub destroy()
   m.log.verbose("destroy")
+  ' Clear menuOpen before tearing down so any parent-side observer that wasn't
+  ' already unobserved sees a clean closed state. Safe even when the menu was
+  ' never opened (closeMenu early-returns).
+  closeMenu()
   m.top.unobserveField("focusedChild")
 
   m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
