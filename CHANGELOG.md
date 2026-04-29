@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (ItemDetails) Replace settings button with inline TrackDropdown cluster ([#487](https://github.com/jellyrock/jellyrock/pull/487))
+
 ## [2.14.0](https://github.com/jellyrock/jellyrock/compare/v2.13.0...v2.14.0) - 2026-04-29
 
 ### Added
