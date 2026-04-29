@@ -45,6 +45,13 @@ sub init()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.itemType = m.currentItem.type
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.currentItem.selectedAudioStreamIndex
+  ' Subtitle override set pre-playback by ItemDetails' TrackDropdown. When unset we leave
+  ' LoadVideoContentTask's default (-2 = auto-detect) so the server's language/Smart-mode
+  ' rules still apply for callers that don't pick a track upfront.
+  if isValid(m.currentItem.selectedSubtitleStreamIndex)
+    m.LoadMetaDataTask.selectedSubtitleIndex = m.currentItem.selectedSubtitleStreamIndex
+    m.top.SelectedSubtitle = m.currentItem.selectedSubtitleStreamIndex
+  end if
   if isValidAndNotEmpty(m.currentItem.mediaSourceId)
     m.LoadMetaDataTask.mediaSourceId = m.currentItem.mediaSourceId
   end if

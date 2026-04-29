@@ -1,0 +1,621 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+' TrackDropdown: Inline track selector used in ItemDetails for Video/Audio/Subtitles.
+'
+' Menu focus model (matches JRDropdown / overhang user menu):
+'   TrackDropdown (the Group) holds Roku focus in BOTH closed and open states. The inner
+'   JRDropdownItem children never receive real focus — this component drives their
+'   isFocused virtual field manually and scrolls the menu LayoutGroup inside a clipping
+'   viewport. This gives us exact control over UP-past-first and DOWN-past-last
+'   semantics without fighting LabelList/MarkupList's built-in wrap behavior.
+
+' Trigger geometry is intentionally IDENTICAL to TrackDropdownRow's row geometry so
+' a closed/unfocused trigger reads pixel-for-pixel like the selected-unfocused row
+' that appears directly below it when the menu opens: same horizontal padding
+' (12px), same font (fontSizeSmaller), same height formula, same label vertical
+' centering. If you change either file's padding/height formula, update both —
+' they are duplicated intentionally for locality. See TrackDropdownRow.onSizeChanged.
+'
+' The cluster (titles 24 + trigger 45 = 69px) lives inside a 99px vertical budget:
+' description bottom at y=701, buttons top at y=800, with 12px breathing pad above
+' and 18px below the cluster. The 701 description bottom is produced by the
+' itemTracks spacer (62px) inside itemDetails — see ItemDetails.xml. Do NOT shrink
+' the trigger below the row height without re-verifying the trigger↔row visual match.
+const TRACK_DROPDOWN_TRIGGER_H_PADDING = 12
+' 45 = fontSizeSmaller (25) + 20, matching TrackDropdownRow.onSizeChanged line:
+' `m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20`
+const TRACK_DROPDOWN_TRIGGER_HEIGHT = 45
+' Chevron is rendered for interactive slots only as the dropdown affordance. Sized
+' 1:1 with the source bitmap (24x24 white-on-transparent). Gutter sits between the
+' label's max right edge and the chevron's left edge so a marquee-truncated label
+' never collides with the icon.
+const TRACK_DROPDOWN_CHEVRON_SIZE = 24
+const TRACK_DROPDOWN_CHEVRON_GUTTER = 8
+' Mirrors TrackDropdownRow's ROW_H_PADDING; kept in sync intentionally so the
+' auto-sized menu width math matches what the row's label actually consumes.
+const TRACK_DROPDOWN_ROW_H_PADDING = 12
+' Inter-slot gutter from ItemDetails.xml's trackDropdowns layout: slot stride
+' (308) - slot width (278) = 30. Used to cap the auto-sized menu at two slot
+' widths plus this gutter so an open menu never spans more than two columns of
+' horizontal real estate.
+const TRACK_DROPDOWN_INTER_SLOT_GUTTER = 30
+' Multiplier applied to the TextSizeTask measurement when computing menu width.
+' GetOneLineWidth returns the font-metric width which can come up a few pixels
+' short of how the actual ScrollingLabel renders. The gap varies per string —
+' caps-heavy strings with numbers ("ENGLISH TRUEHD 7.1") drift only ~2-3px while
+' mixed-case strings with punctuation ("Spanish; Castilian SUBRIP") can drift
+' more — so a flat fudge constant is the wrong shape: it either over-pads short
+' strings or under-pads long ones. Scaling proportionally to the measured width
+' tracks the actual risk: short strings get a small buffer (no wasted space),
+' long strings get a larger buffer (no clipping). 3% is the lowest stable value
+' on tested hardware; bump to 1.04 / 1.05 if any title ever clips again.
+const TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER = 1.03
+
+sub init()
+  m.log = new log.Logger("TrackDropdown")
+
+  m.buttonBackground = m.top.findNode("buttonBackground")
+  m.buttonBorder = m.top.findNode("buttonBorder")
+  m.triggerLabel = m.top.findNode("triggerLabel")
+  m.triggerChevron = m.top.findNode("triggerChevron")
+  m.menuContainer = m.top.findNode("menuContainer")
+  m.menuBackground = m.top.findNode("menuBackground")
+  m.menuViewport = m.top.findNode("menuViewport")
+  m.menuItems = m.top.findNode("menuItems")
+
+  m.isOpen = false
+  m.focusedItemIndex = 0
+  m.visibleRows = 5
+  m.rowHeight = 0 ' computed in onItemsChanged
+
+  ' TextSizeTask is required because roFontRegistry / Font.GetOneLineWidth are
+  ' MAIN|TASK-only — they cannot be created on the render thread where component
+  ' field observers run. The task receives titles + font size, returns a width
+  ' array we observe on the "width" field. See JRButtons.bs for the same pattern.
+  m.textSizeTask = CreateObject("roSGNode", "TextSizeTask")
+  m.textSizeTask.observeField("width", "onTextSizeTaskComplete")
+
+  m.top.observeField("focusedChild", "onFocusChanged")
+
+  applyTheme()
+  layoutTrigger()
+  ' Seed visibility from the default field values (isInteractive=true, isOpen=false).
+  ' onIsInteractiveChanged may not fire for the default value so we apply it once.
+  applyBackgroundVisibility()
+  applyChevronVisibility()
+end sub
+
+sub applyTheme()
+  constants = m.global.constants
+  ' Trigger background is always visible (unfocused state has a filled rounded bg so
+  ' the user can see the dropdown is interactive). Border toggles on focus only.
+  m.buttonBackground.blendColor = constants.colorBackgroundSecondary
+  m.buttonBorder.blendColor = constants.colorPrimary
+  m.triggerLabel.color = constants.colorTextSecondary
+  m.triggerChevron.blendColor = constants.colorTextSecondary
+  m.menuBackground.blendColor = constants.colorBackgroundSecondary
+end sub
+
+' ============================================
+' TRIGGER LAYOUT
+' ============================================
+
+' Lays out the trigger surface: scrolling trigger label on a 9-patch bg/border that
+' spans the full slot width.
+sub layoutTrigger()
+  constants = m.global.constants
+  slotWidth = m.top.slotWidth
+
+  hPadding = TRACK_DROPDOWN_TRIGGER_H_PADDING
+  totalHeight = TRACK_DROPDOWN_TRIGGER_HEIGHT
+  fontHeight = constants.fontSizeSmaller
+  ' Vertically center the label inside the container, mirroring TrackDropdownRow.
+  labelY = int((totalHeight - fontHeight) / 2)
+  ' ScrollingLabel needs an explicit render height; 1.05 * fontSize + 1 avoids
+  ' descender clipping on glyphs like g/y/p.
+  triggerLineHeight = int(constants.fontSizeSmaller * 1.05) + 1
+
+  m.buttonBackground.width = slotWidth
+  m.buttonBackground.height = totalHeight
+  m.buttonBorder.width = slotWidth
+  m.buttonBorder.height = totalHeight
+
+  ' ScrollingLabel uses maxWidth as its viewport; text narrower stays static, text
+  ' wider marquees when repeatCount=-1. The actual maxWidth is set in
+  ' applyChevronVisibility() since it depends on whether the chevron is occupying
+  ' the right side — non-interactive slots and open-menu triggers reclaim that
+  ' space so labels truncate later.
+  m.triggerLabel.height = triggerLineHeight
+  m.triggerLabel.translation = [hPadding, labelY]
+
+  ' Chevron pinned to the trigger's right edge with hPadding gutter, vertically
+  ' centered against the trigger's full height.
+  m.triggerChevron.translation = [slotWidth - hPadding - TRACK_DROPDOWN_CHEVRON_SIZE, int((totalHeight - TRACK_DROPDOWN_CHEVRON_SIZE) / 2)]
+
+  ' Menu drops down just below the trigger
+  m.menuContainer.translation = [0, totalHeight + 4]
+
+  m.top.triggerHeight = totalHeight
+end sub
+
+sub onSlotWidthChanged()
+  layoutTrigger()
+  ' Label maxWidth depends on slotWidth (and chevron state); refresh it so the
+  ' label resizes alongside layoutTrigger's other geometry updates.
+  applyChevronVisibility()
+  onItemsChanged()
+end sub
+
+' ============================================
+' FIELD OBSERVERS
+' ============================================
+
+sub onTriggerTextChanged()
+  m.triggerLabel.text = m.top.triggerText
+end sub
+
+' Rebuilds the menu as TrackDropdownRow children inside a clipping viewport. ALL
+' items are rendered — including the currently-selected one — so the menu always
+' has at least 2 rows when interactive (single-option slots are non-interactive
+' and never open a menu). The selected row is rendered with a dim label color
+' that visually echoes the dim trigger label above the menu, making the on-screen
+' duplication read as "your current value, persistent above and inside the menu"
+' rather than competing with the alternatives. See TrackDropdownRow.onFocusStateChanged.
+sub onItemsChanged()
+  ' Clear existing items
+  m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
+  m.menuItems.translation = [0, 0]
+  m.focusedItemIndex = 0
+
+  items = m.top.items
+  if not isValid(items) or items.count() = 0
+    m.menuBackground.width = 0
+    m.menuBackground.height = 0
+    return
+  end if
+
+  constants = m.global.constants
+  slotWidth = m.top.slotWidth
+
+  ' Row height matches trigger font (fontSizeSmaller 25) with breathing padding so
+  ' focus border doesn't crowd the text. Mirrors JRDropdown's formula structure
+  ' (line height + padding) scaled for the smaller font.
+  m.rowHeight = int(constants.fontSizeSmaller * 1.0) + 20
+
+  ' Initial menu width = slotWidth. The async TextSizeTask measures each title and
+  ' may widen the menu up to 2 slot widths + the inter-slot gutter if titles are
+  ' long. In normal usage the task completes well before the user opens the menu,
+  ' so the user sees the auto-sized width — not the slotWidth fallback. If the
+  ' task hasn't completed (or doesn't run, e.g. in unit-test environment), the
+  ' menu still renders correctly at slotWidth, just without the long-title fit.
+  initialWidth = slotWidth
+
+  for each item in items
+    menuItem = CreateObject("roSGNode", "TrackDropdownRow")
+    menuItem.text = item.title
+    menuItem.itemId = item.id
+    menuItem.itemWidth = initialWidth
+    menuItem.itemHeight = m.rowHeight
+    m.menuItems.appendChild(menuItem)
+  end for
+
+  visibleRows = m.visibleRows
+  if items.count() < visibleRows then visibleRows = items.count()
+
+  viewportHeight = m.rowHeight * visibleRows
+  ' clippingRect is in the viewport's local coords: [x, y, width, height]. Anything the
+  ' menuItems LayoutGroup draws outside this rect is invisible, enabling the scroll UX.
+  m.menuViewport.clippingRect = [0, 0, initialWidth, viewportHeight]
+
+  m.menuBackground.width = initialWidth
+  m.menuBackground.height = viewportHeight
+
+  if isValidAndNotEmpty(m.top.selectedItemId)
+    onSelectedItemChanged()
+  end if
+
+  ' Kick off async measurement to refine width once the task returns.
+  measureMenuWidthAsync(items)
+end sub
+
+' measureMenuWidthAsync: Pushes the item titles through TextSizeTask so the task
+' can call roFontRegistry / GetOneLineWidth on a non-render thread (the registry
+' is MAIN|TASK-only). Result is delivered via the "width" observer below.
+sub measureMenuWidthAsync(items as object)
+  if not isValid(m.textSizeTask) then return
+  ' Cancel any in-flight measurement so an older items[] response can't overwrite
+  ' a newer one.
+  m.textSizeTask.control = "STOP"
+
+  titles = []
+  for each item in items
+    if isValid(item.title) then titles.push(item.title)
+  end for
+  if titles.count() = 0 then return
+
+  m.textSizeTask.fontsize = m.global.constants.fontSizeSmaller
+  ' Leave maxWidth at its XML default (1920 = full screen width). 1920 is wider
+  ' than any realistic track title at fontSizeSmaller so GetOneLineWidth returns
+  ' natural unwrapped widths, and we avoid passing an unusually large value that
+  ' could perturb the font-metric calculation.
+  m.textSizeTask.text = titles
+  m.textSizeTask.control = "RUN"
+end sub
+
+' onTextSizeTaskComplete: Reads the per-title widths produced by TextSizeTask,
+' picks the maximum, adds row padding, and clamps to [slotWidth, slotWidth*2 +
+' interSlotGutter]. The lower clamp keeps the menu anchored under its trigger
+' column; the upper clamp prevents an open menu from spanning more than two
+' columns of horizontal real estate. Then resizes menuBackground, the clipping
+' viewport, and every row in lockstep.
+sub onTextSizeTaskComplete()
+  widths = m.textSizeTask.width
+  if not isValid(widths) or widths.count() = 0 then return
+
+  ' Reject stale results: when the user changes the video source we STOP+RUN the
+  ' task with new titles, but a result from the previous run can still land
+  ' (control=STOP doesn't interrupt a synchronous getTextSize() in progress). If
+  ' the menu's current row count no longer matches the measured count, the items
+  ' array changed mid-flight — drop this result and let the in-flight task's
+  ' completion apply the up-to-date measurements.
+  if widths.count() <> m.menuItems.getChildCount() then return
+
+  maxTextWidth = 0
+  for each w in widths
+    iw = int(w)
+    if iw > maxTextWidth then maxTextWidth = iw
+  end for
+
+  ' Scale the measured width by the multiplier to compensate for the per-string
+  ' render-vs-metric gap (see TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER comment for
+  ' rationale), then add row padding for the menu's inner edges.
+  desired = int(maxTextWidth * TRACK_DROPDOWN_TEXT_WIDTH_MULTIPLIER) + (TRACK_DROPDOWN_ROW_H_PADDING * 2)
+  ' m.top.slotWidth is dynamic (node field); coerce to int so 'desired' stays
+  ' integer-typed across the clamp comparisons.
+  slotWidth = int(m.top.slotWidth)
+  if desired < slotWidth then desired = slotWidth
+  upperBound = (slotWidth * 2) + TRACK_DROPDOWN_INTER_SLOT_GUTTER
+  if desired > upperBound then desired = upperBound
+
+  applyMenuWidth(desired)
+end sub
+
+' applyMenuWidth: Resizes the menu in lockstep — background + clipping viewport +
+' every row's itemWidth. Called from onTextSizeTaskComplete; no-op if the menu
+' has been torn down between task launch and task completion.
+sub applyMenuWidth(width as integer)
+  if not isValid(m.menuItems) then return
+  rowCount = m.menuItems.getChildCount()
+  if rowCount = 0 then return
+
+  visibleRows = m.visibleRows
+  if rowCount < visibleRows then visibleRows = rowCount
+  viewportHeight = m.rowHeight * visibleRows
+
+  m.menuViewport.clippingRect = [0, 0, width, viewportHeight]
+  m.menuBackground.width = width
+  for i = 0 to rowCount - 1
+    m.menuItems.getChild(i).itemWidth = width
+  end for
+end sub
+
+sub onSelectedItemChanged()
+  selectedId = m.top.selectedItemId
+  for i = 0 to m.menuItems.getChildCount() - 1
+    item = m.menuItems.getChild(i)
+    item.isSelected = (item.itemId = selectedId)
+  end for
+end sub
+
+' Interactive dropdowns get a persistent filled background + a chevron affordance.
+' Static single-option slots render as plain text with NO background and NO chevron
+' (preserves the app-wide invariant that "backdrop = focusable"). The trigger label
+' itself stays visible across all states, including when the menu is open — it acts
+' as a dim "current value" indicator above the menu while the menu shows alternatives.
+sub onIsInteractiveChanged()
+  constants = m.global.constants
+  applyBackgroundVisibility()
+  applyChevronVisibility()
+  if not m.top.isInteractive
+    m.buttonBorder.visible = false
+    m.triggerLabel.color = constants.colorTextSecondary
+    m.triggerLabel.repeatCount = 0
+    closeMenu()
+  end if
+end sub
+
+' Single source of truth for the trigger background's visibility:
+'   interactive AND closed -> visible (affordance at rest and when focused/closed)
+'   interactive AND open   -> hidden  (trigger reads as static label above the menu)
+'   not interactive        -> hidden  (static single-option slot)
+sub applyBackgroundVisibility()
+  m.buttonBackground.visible = m.top.isInteractive and not m.isOpen
+end sub
+
+' Chevron tracks the background: only shown for interactive, closed slots. Hidden
+' while the menu is open since the menu being visible already communicates "this is
+' expanded" — leaving the chevron visible would compete with that signal.
+'
+' Also owns the trigger label's maxWidth: when the chevron is visible the label has
+' to leave room on the right for the icon + gutter; when the chevron is hidden the
+' label reclaims that space so longer values truncate later. This makes the open-
+' menu trigger label match the menu rows' maxWidth (both at slotWidth - 2*hPadding),
+' and gives single-option non-interactive slots their full inner width to display.
+sub applyChevronVisibility()
+  showChevron = m.top.isInteractive and not m.isOpen
+  m.triggerChevron.visible = showChevron
+  baseWidth = m.top.slotWidth - (TRACK_DROPDOWN_TRIGGER_H_PADDING * 2)
+  if showChevron
+    m.triggerLabel.maxWidth = baseWidth - TRACK_DROPDOWN_CHEVRON_SIZE - TRACK_DROPDOWN_CHEVRON_GUTTER
+  else
+    m.triggerLabel.maxWidth = baseWidth
+  end if
+end sub
+
+' ============================================
+' FOCUS
+' ============================================
+
+sub onFocusChanged()
+  if not m.top.isInteractive then return
+
+  if m.top.isInFocusChain()
+    ' Only paint trigger focus visuals when the menu is closed — while open, the
+    ' JRDropdownItem row highlight owns the focus chrome.
+    if not m.isOpen then showTriggerFocus()
+  else
+    hideTriggerFocus()
+    closeMenu()
+  end if
+end sub
+
+' Background stays visible in both focused and unfocused states (so the dropdown always
+' affords interactivity). Only the border + label color + chevron tint + marquee flip
+' on focus.
+sub showTriggerFocus()
+  constants = m.global.constants
+  m.buttonBorder.visible = true
+  m.triggerLabel.color = constants.colorTextPrimary
+  m.triggerLabel.repeatCount = -1
+  m.triggerChevron.blendColor = constants.colorTextPrimary
+end sub
+
+sub hideTriggerFocus()
+  constants = m.global.constants
+  m.buttonBorder.visible = false
+  m.triggerLabel.color = constants.colorTextSecondary
+  m.triggerLabel.repeatCount = 0
+  m.triggerChevron.blendColor = constants.colorTextSecondary
+end sub
+
+' ============================================
+' MENU OPEN / CLOSE
+' ============================================
+
+sub openMenu()
+  if m.isOpen then return
+  if m.menuItems.getChildCount() = 0 then return
+
+  m.isOpen = true
+  m.menuContainer.visible = true
+  m.top.menuOpen = true
+
+  ' Hide the trigger's background, border, and chevron while open so the trigger
+  ' reads as a dim static label above the menu (matching the non-interactive slot
+  ' style). Trigger LABEL stays visible — it's the only on-screen indicator of the
+  ' user's current selection while the menu shows alternatives.
+  constants = m.global.constants
+  m.buttonBorder.visible = false
+  m.triggerLabel.color = constants.colorTextSecondary
+  m.triggerLabel.repeatCount = 0
+  applyBackgroundVisibility()
+  applyChevronVisibility()
+
+  ' Open with focus on the currently-selected row (industry-standard dropdown
+  ' behavior: user sees their current pick highlighted, navigates AWAY from it to
+  ' switch). If the selection isn't in the items list (shouldn't happen, but guard
+  ' anyway) we fall back to the first row.
+  idx = findSelectedIndex()
+  if idx < 0 then idx = 0
+  m.focusedItemIndex = idx
+
+  scrollToFocused()
+  updateFocusedItemVisuals()
+end sub
+
+' Returns the index in m.menuItems whose itemId matches m.top.selectedItemId, or -1
+' if no row matches. Iterates the rendered rows (not m.top.items) so callers can use
+' the returned value directly as a focusedItemIndex.
+function findSelectedIndex() as integer
+  selectedId = m.top.selectedItemId
+  for i = 0 to m.menuItems.getChildCount() - 1
+    if m.menuItems.getChild(i).itemId = selectedId
+      return i
+    end if
+  end for
+  return -1
+end function
+
+sub closeMenu()
+  if not m.isOpen then return
+  m.isOpen = false
+  m.menuContainer.visible = false
+  m.top.menuOpen = false
+
+  ' Clear focus highlight on all items
+  for i = 0 to m.menuItems.getChildCount() - 1
+    m.menuItems.getChild(i).isFocused = false
+  end for
+
+  ' Reset scroll so next open starts fresh
+  m.menuItems.translation = [0, 0]
+
+  ' Restore trigger chrome (filled background, chevron) now that we're back to the
+  ' closed state. Trigger label was never hidden, so nothing to restore there.
+  applyBackgroundVisibility()
+  applyChevronVisibility()
+
+  ' Restore trigger focus chrome if we're still in the focus chain
+  if m.top.isInFocusChain()
+    showTriggerFocus()
+  end if
+end sub
+
+' scrollToFocused: Shift the menuItems LayoutGroup vertically inside the clipping
+' viewport so the focused row is always visible. Keeps focus near the top of the
+' viewport once the user scrolls past the first page.
+sub scrollToFocused()
+  totalRows = m.menuItems.getChildCount()
+  if totalRows <= m.visibleRows
+    m.menuItems.translation = [0, 0]
+    return
+  end if
+
+  ' If focused row fits in the first page, no scroll
+  if m.focusedItemIndex < m.visibleRows
+    m.menuItems.translation = [0, 0]
+    return
+  end if
+
+  ' Otherwise, scroll so the focused row sits at the LAST visible position; this mirrors
+  ' how Roku's built-in fixedFocusWrap keeps the focus anchored while rows slide in.
+  scrollY = -1 * (m.focusedItemIndex - (m.visibleRows - 1)) * m.rowHeight
+  m.menuItems.translation = [0, scrollY]
+end sub
+
+sub updateFocusedItemVisuals()
+  for i = 0 to m.menuItems.getChildCount() - 1
+    m.menuItems.getChild(i).isFocused = (i = m.focusedItemIndex)
+  end for
+end sub
+
+' ============================================
+' KEY HANDLING
+' ============================================
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+  if not m.top.isInteractive then return false
+
+  if m.isOpen
+    return handleMenuKeyEvent(key)
+  else
+    return handleClosedKeyEvent(key)
+  end if
+end function
+
+' Keys while the menu is open:
+'   UP past first    -> closeMenu() (stays on trigger). The primary exit gesture
+'                       for dismissing without committing; BACK also works.
+'   DOWN past last   -> WRAPS to the first item. The menu never exits on DOWN; the
+'                       user must either pick an option (OK), press UP from item 0,
+'                       or press BACK to dismiss.
+'   UP / DOWN middle -> move focus + scroll
+'   OK               -> commit selection, fire selectedAction, closeMenu()
+'   LEFT/RIGHT       -> closeMenu() + requestFocusExit (horizontal siblings)
+'   BACK             -> closeMenu()
+function handleMenuKeyEvent(key as string) as boolean
+  itemCount = m.menuItems.getChildCount()
+
+  if key = "down"
+    if m.focusedItemIndex < itemCount - 1
+      m.focusedItemIndex++
+    else
+      ' Wrap to the top — never exits the open menu on DOWN
+      m.focusedItemIndex = 0
+    end if
+    updateFocusedItemVisuals()
+    scrollToFocused()
+    return true
+
+  else if key = "up"
+    if m.focusedItemIndex > 0
+      m.focusedItemIndex--
+      updateFocusedItemVisuals()
+      scrollToFocused()
+    else
+      ' UP at the top row dismisses without committing. BACK does the same.
+      closeMenu()
+    end if
+    return true
+
+  else if key = "OK"
+    selectedItem = m.menuItems.getChild(m.focusedItemIndex)
+    if isValid(selectedItem)
+      selectedId = selectedItem.itemId
+      if not isValid(selectedId) then selectedId = ""
+      m.top.selectedItemId = selectedId
+      m.top.triggerText = selectedItem.text
+      m.top.selectedAction = selectedId
+    end if
+    closeMenu()
+    return true
+
+  else if key = "left"
+    closeMenu()
+    m.top.requestFocusExit = "left"
+    return true
+
+  else if key = "right"
+    closeMenu()
+    m.top.requestFocusExit = "right"
+    return true
+
+  else if key = "back"
+    closeMenu()
+    return true
+  end if
+
+  return false
+end function
+
+function handleClosedKeyEvent(key as string) as boolean
+  if key = "OK"
+    openMenu()
+    return true
+  else if key = "up"
+    m.top.requestFocusReturn = true
+    return true
+  else if key = "down"
+    m.top.requestFocusDown = true
+    return true
+  else if key = "left"
+    m.top.requestFocusExit = "left"
+    return true
+  else if key = "right"
+    m.top.requestFocusExit = "right"
+    return true
+  end if
+  return false
+end function
+
+' ============================================
+' TEARDOWN
+' ============================================
+
+sub destroy()
+  m.log.verbose("destroy")
+  ' Clear menuOpen before tearing down so any parent-side observer that wasn't
+  ' already unobserved sees a clean closed state. Safe even when the menu was
+  ' never opened (closeMenu early-returns).
+  closeMenu()
+  m.top.unobserveField("focusedChild")
+
+  m.menuItems.removeChildren(m.menuItems.getChildren(-1, 0))
+
+  if isValid(m.textSizeTask)
+    m.textSizeTask.unobserveField("width")
+    m.textSizeTask.control = "STOP"
+    m.textSizeTask = invalid
+  end if
+
+  m.buttonBackground = invalid
+  m.buttonBorder = invalid
+  m.triggerLabel = invalid
+  m.triggerChevron = invalid
+  m.menuContainer = invalid
+  m.menuBackground = invalid
+  m.menuViewport = invalid
+  m.menuItems = invalid
+end sub

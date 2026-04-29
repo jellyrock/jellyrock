@@ -1,0 +1,205 @@
+namespace tests
+
+  @suite("TrackDropdown - Node interface and defaults")
+  class TrackDropdownTests extends tests.BaseTestSuite
+
+    private dropdown as object
+
+    protected override function setup()
+      super.setup()
+      m.dropdown = CreateObject("roSGNode", "TrackDropdown")
+    end function
+
+    protected override function teardown()
+      if isValid(m.dropdown) then m.dropdown.callFunc("destroy")
+      m.dropdown = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has triggerText field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("triggerText"))
+    end function
+
+    @it("has items field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("items"))
+    end function
+
+    @it("has selectedItemId field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("selectedItemId"))
+    end function
+
+    @it("has slotWidth field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("slotWidth"))
+    end function
+
+    @it("has isInteractive field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("isInteractive"))
+    end function
+
+    @it("has selectedAction output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("selectedAction"))
+    end function
+
+    @it("has requestFocusReturn output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("requestFocusReturn"))
+    end function
+
+    @it("has requestFocusDown output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("requestFocusDown"))
+    end function
+
+    @it("has requestFocusExit output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("requestFocusExit"))
+    end function
+
+    @it("has triggerHeight published output field")
+    function _()
+      m.assertTrue(m.dropdown.doesExist("triggerHeight"))
+    end function
+
+    @it("does not expose a categoryText field \u2014 titles live in ItemDetails, not the dropdown")
+    function _()
+      m.assertFalse(m.dropdown.doesExist("categoryText"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("slotWidth defaults to 278 (2 \u00d7 IconButton icon-frame 124 + 30px inter-icon gap)")
+    function _()
+      m.assertEqual(m.dropdown.slotWidth, 278)
+    end function
+
+    @it("isInteractive defaults to true")
+    function _()
+      m.assertTrue(m.dropdown.isInteractive)
+    end function
+
+    @it("triggerText defaults to empty string")
+    function _()
+      m.assertEqual(m.dropdown.triggerText, "")
+    end function
+
+    @it("requestFocusReturn defaults to false")
+    function _()
+      m.assertFalse(m.dropdown.requestFocusReturn)
+    end function
+
+    @it("requestFocusDown defaults to false")
+    function _()
+      m.assertFalse(m.dropdown.requestFocusDown)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Trigger label")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("trigger label is a ScrollingLabel with horizAlign=left so its left edge lands at slot x=0")
+    function _()
+      triggerLabel = m.dropdown.findNode("triggerLabel")
+      m.assertTrue(isValid(triggerLabel))
+      m.assertEqual(triggerLabel.horizAlign, "left")
+    end function
+
+    @it("accepts triggerText assignment and propagates to triggerLabel")
+    function _()
+      m.dropdown.triggerText = "1080p H264"
+      m.assertEqual(m.dropdown.triggerText, "1080p H264")
+      triggerLabel = m.dropdown.findNode("triggerLabel")
+      m.assertEqual(triggerLabel.text, "1080p H264")
+    end function
+
+    @it("trigger label maxWidth reserves space for chevron + padding when interactive")
+    function _()
+      ' Default state: isInteractive=true, isOpen=false → chevron is visible, so the
+      ' label leaves room for it on the right. Formula: slotWidth - 2*hPadding(12)
+      ' - chevronSize(24) - chevronGutter(8) = slotWidth - 56.
+      triggerLabel = m.dropdown.findNode("triggerLabel")
+      m.assertEqual(int(triggerLabel.maxWidth), m.dropdown.slotWidth - 56)
+    end function
+
+    @it("trigger label reclaims chevron space when slot is non-interactive")
+    function _()
+      ' Single-option (non-interactive) slots hide the chevron, so the label uses the
+      ' full inner width: slotWidth - 2*hPadding(12) = slotWidth - 24. Locks in the
+      ' chevron-reclaim behavior so a regression can't silently shrink the label
+      ' rendering area for static slots.
+      m.dropdown.isInteractive = false
+      triggerLabel = m.dropdown.findNode("triggerLabel")
+      m.assertEqual(int(triggerLabel.maxWidth), m.dropdown.slotWidth - 24)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Menu items")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds TrackDropdownRow children from the items array (smaller font than JRDropdownItem)")
+    function _()
+      m.dropdown.items = [
+        { id: "1", title: "English AAC 2.0" },
+        { id: "2", title: "Spanish DTS 5.1" }
+      ]
+      menuItems = m.dropdown.findNode("menuItems")
+      m.assertTrue(isValid(menuItems))
+      m.assertEqual(menuItems.getChildCount(), 2)
+      m.assertEqual(menuItems.getChild(0).subtype(), "TrackDropdownRow")
+      m.assertEqual(menuItems.getChild(0).text, "English AAC 2.0")
+      m.assertEqual(menuItems.getChild(0).itemId, "1")
+    end function
+
+    @it("clipping viewport caps visible rows for long lists so >5 items scroll")
+    function _()
+      bigList = []
+      for i = 0 to 9
+        bigList.push({ id: str(i).trim(), title: "Track " + str(i).trim() })
+      end for
+      m.dropdown.items = bigList
+      viewport = m.dropdown.findNode("menuViewport")
+      m.assertTrue(isValid(viewport))
+      ' clippingRect is type rect2D; Roku exposes it as an AA with x/y/width/height
+      ' string keys (not as an indexable [x,y,w,h] array). Cap height = 5 visible
+      ' rows × 45px row height = 225, regardless of how many items are in the list.
+      clipRect = viewport.clippingRect
+      m.assertEqual(int(clipRect.height), 225)
+    end function
+
+    @it("menu starts at slotWidth on items[] change (TextSizeTask refines async)")
+    function _()
+      ' Initial menu width is slotWidth in sync state — the auto-expand happens
+      ' async via TextSizeTask once it returns measured widths. This test locks in
+      ' the synchronous fallback so a future change can't accidentally leave the
+      ' menu at zero width if the task fails to run.
+      ' NOTE: the auto-expand-to-fit-long-titles behavior (upper clamp at 2 slots
+      ' + inter-slot gutter = 586) is NOT covered by unit tests because TextSizeTask
+      ' creates roFontRegistry on its own thread and unit tests don't drive the
+      ' task scheduler synchronously. Verified via manual / integration testing.
+      m.dropdown.items = [
+        { id: "1", title: "Off" },
+        { id: "2", title: "On" }
+      ]
+      bg = m.dropdown.findNode("menuBackground")
+      m.assertEqual(int(bg.width), m.dropdown.slotWidth)
+    end function
+
+    @it("sets isInteractive=false without errors")
+    function _()
+      m.dropdown.isInteractive = false
+      m.assertFalse(m.dropdown.isInteractive)
+    end function
+
+  end class
+
+end namespace

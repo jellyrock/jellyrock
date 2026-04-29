@@ -394,6 +394,13 @@ sub Main (args as dynamic) as void
           if isValid(group.selectedAudioStreamIndex)
             audioStreamIdx = group.selectedAudioStreamIndex
           end if
+          ' Subtitle dropdown override (-1 = SubtitleSelection.NONE). Only forwarded for
+          ' ItemDetails screens since that's the only place selectedSubtitleStreamIndex
+          ' is surfaced pre-playback.
+          subtitleStreamIdx = invalid
+          if isValid(group.selectedSubtitleStreamIndex)
+            subtitleStreamIdx = group.selectedSubtitleStreamIndex
+          end if
 
           if isValid(group.itemContent)
             ' Types requiring API calls — delegate to QuickPlayTask
@@ -413,9 +420,16 @@ sub Main (args as dynamic) as void
               queueItem = nodeHelpers.createQueueItem(group.itemContent)
               if not isValid(queueItem) then return
               queueItem.selectedAudioStreamIndex = audioStreamIdx
-              ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
+              if isValid(subtitleStreamIdx)
+                queueItem.selectedSubtitleStreamIndex = subtitleStreamIdx
+              end if
+              ' selectedVideoStreamId is the user-chosen MediaSource (alternate version).
+              ' This is a separate identifier from the Jellyfin item id — it must land in
+              ' queueItem.mediaSourceId, which VideoPlayerView.init passes to
+              ' LoadMetaDataTask.mediaSourceId. Overwriting queueItem.id here would
+              ' replace the Jellyfin item id and break metadata lookup entirely.
               if isValidAndNotEmpty(group.selectedVideoStreamId)
-                queueItem.id = group.selectedVideoStreamId
+                queueItem.mediaSourceId = group.selectedVideoStreamId
               end if
 
               ' ItemDetails: Play button always starts from beginning (Resume button handles resume)
@@ -449,6 +463,11 @@ sub Main (args as dynamic) as void
           if isValid(group.selectedAudioStreamIndex)
             audioStreamIdx = group.selectedAudioStreamIndex
           end if
+          ' Subtitle dropdown override (see playButton path above)
+          subtitleStreamIdx = invalid
+          if isValid(group.selectedSubtitleStreamIndex)
+            subtitleStreamIdx = group.selectedSubtitleStreamIndex
+          end if
 
           if isValid(group.itemContent)
             ' Series on ItemDetails: resume the next-up episode stored on the component
@@ -471,9 +490,14 @@ sub Main (args as dynamic) as void
               queueItem = nodeHelpers.createQueueItem(group.itemContent)
               if not isValid(queueItem) then return
               queueItem.selectedAudioStreamIndex = audioStreamIdx
-              ' selectedVideoStreamId is the user-chosen media source (e.g. alternate version)
+              if isValid(subtitleStreamIdx)
+                queueItem.selectedSubtitleStreamIndex = subtitleStreamIdx
+              end if
+              ' selectedVideoStreamId is the user-chosen MediaSource (alternate version).
+              ' Land it in mediaSourceId (not id) — see playButton handler comment above
+              ' for the rationale.
               if isValidAndNotEmpty(group.selectedVideoStreamId)
-                queueItem.id = group.selectedVideoStreamId
+                queueItem.mediaSourceId = group.selectedVideoStreamId
               end if
 
               ' Set starting point to saved position
