@@ -216,43 +216,70 @@ jobs:
             exit 1
           fi
 
-      - name: Merge translations from weblate branch
+      - name: Cherry-pick translator commits from weblate
+        id: cherry-pick
         run: |
           git fetch origin weblate
 
-          # True merge to preserve individual translator commit history and authorship
-          # -X theirs: auto-resolve conflicts favoring Weblate's translations
-          if ! git merge origin/weblate --no-commit -X theirs; then
-            echo "⚠️ Merge conflicts detected, resolving with Weblate's translations"
-            git checkout --theirs -- locale/custom/
-            git add locale/custom/
-          fi
+          # Weblate uses a stable subject "Translated using Weblate (<lang>)" for real
+          # translator activity. Pull only those onto the release branch so each
+          # session lands as a first-parent commit with the translator credited via
+          # the Co-authored-by trailer. Bot/cleanup commits are filtered out and
+          # absorbed by the refresh step below.
+          mapfile -t TRANSLATOR_COMMITS < <(
+            git log --reverse --format='%H' origin/weblate ^HEAD --grep='^Translated using Weblate'
+          )
 
-          # Restore main-owned source file (main is authoritative for en_US.json)
-          git checkout HEAD -- locale/custom/en_US.json
-
-          # Safety: discard any unexpected changes outside locale/custom/
-          git diff --name-only --cached | grep -v '^locale/custom/' | xargs -r git checkout HEAD --
-
-          # Check for changes
-          if git diff --cached --quiet; then
-            echo "ℹ️ No translation changes to merge"
-            git merge --abort 2>/dev/null || true
+          if [ ${#TRANSLATOR_COMMITS[@]} -eq 0 ]; then
+            echo "ℹ️ No translator commits to pick"
+            echo "count=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "✅ Translation files updated from weblate branch"
+          echo "📝 Cherry-picking ${#TRANSLATOR_COMMITS[@]} translator commit(s)"
+          for c in "${TRANSLATOR_COMMITS[@]}"; do
+            if ! git cherry-pick -X theirs "$c"; then
+              git checkout --theirs -- locale/custom/ 2>/dev/null || true
+              git checkout HEAD -- locale/custom/en_US.json 2>/dev/null || true
+              git diff --name-only HEAD | grep -v '^locale/custom/' \
+                | xargs -r git checkout HEAD -- 2>/dev/null || true
+              git add locale/custom/
+              GIT_EDITOR=true git cherry-pick --continue
+            fi
+          done
+
+          echo "count=${#TRANSLATOR_COMMITS[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Stage residual translation changes (cleanup add-on, etc)
+        id: refresh
+        run: |
+          # After cherry-picks, the remaining delta vs origin/weblate is whatever
+          # the Cleanup add-on and main→weblate sync produced. Bundle into one commit.
+          git checkout origin/weblate -- locale/custom/
+          git checkout HEAD -- locale/custom/en_US.json
+          git diff --name-only --cached | grep -v '^locale/custom/' \
+            | xargs -r git checkout HEAD -- 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "had_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "had_changes=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Validate translations
         run: npm run lint:translations
 
-      - name: Commit translation updates
+      - name: Commit residual changes and push
         run: |
-          if git diff --cached --quiet; then
-            echo "ℹ️ No changes to commit"
-          else
-            git commit -m "chore: merge translations from weblate branch"
+          if [ "${{ steps.refresh.outputs.had_changes }}" = "true" ]; then
+            git commit -m "chore: refresh translation files from weblate"
+          fi
+
+          if [ "${{ steps.cherry-pick.outputs.count }}" -gt 0 ] \
+             || [ "${{ steps.refresh.outputs.had_changes }}" = "true" ]; then
             git push origin ${{ needs.validate-and-prepare.outputs.branch_name }}
+          else
+            echo "ℹ️ Nothing to push"
           fi
 
   update-version-files:
