@@ -77,6 +77,19 @@ function c(text, color) {
 
 // ============================================================
 // Parser: extract an AssocArray literal from a function body in languages.bs
+//
+// Regex-based on purpose — the function bodies are write-once tables of
+// `"key": "value"` / `"key": translationKeys.X` pairs with no other string
+// literals. Two assumptions this parser makes; violate either and entries
+// will be silently misread:
+//
+//   1. The body contains NO string literals outside the AA (no comments
+//      with `"x": "y"` patterns, no helper string vars). Today the only
+//      non-AA code is the cache-guard `if isValid(...) then return ...`.
+//   2. Each function declares the AA on a `m.<cache> = { ... }` block
+//      bounded by `function <name>()` and the next `\nend function`.
+//
+// If languages.bs gains real logic, replace this with a tokenizer.
 // ============================================================
 function parseAA(source, fnName) {
   const fnRe = new RegExp(`function\\s+${fnName}\\s*\\(\\)[^\\n]*\\n([\\s\\S]*?)\\nend function`, 'm');

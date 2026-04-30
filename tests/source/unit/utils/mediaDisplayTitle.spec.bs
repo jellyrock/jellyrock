@@ -462,12 +462,21 @@ namespace tests
       m.assertEqual(resolveLanguageName(code), expected)
     end function
 
-    @it("returns empty string for und (Undefined)")
+    @it("returns empty string for und (Undefined) and zxx (No linguistic content)")
     @params("und")
     @params("UND")
     @params("Und")
+    @params("zxx")
+    @params("ZXX")
     function _(code)
       m.assertEqual(resolveLanguageName(code), "")
+    end function
+
+    @it("displays mul (Multiple) and mis (Uncoded) — informative when present")
+    @params("mul", "Multiple languages")
+    @params("mis", "Uncoded languages")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

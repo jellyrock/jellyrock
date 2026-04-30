@@ -50,14 +50,20 @@ end function
 '
 ' Three-tier resolution chain:
 '   1. Lowercase + strip after first "-" or "_" (drop region/script suffix)
-'   2. "und" (Undefined) → "" — caller omits the language label
+'   2. "und" / "zxx" → "" — caller omits the language label
 '   3. Alias map → normalize 3-letter / deprecated codes to a base form
 '   4. Tier 1: translationKey lookup → translate() — localized to user's UI
 '   5. Tier 2: English-name fallback → covers every other ISO 639-2 code
 '   6. Tier 3: raw code passthrough — last-resort, preserves info
 '
+' "und" (Undefined) and "zxx" (No linguistic content — instrumental music,
+' ambient sound, foley) are both omitted: rendering "No linguistic content
+' EAC3 5.1" as a track label is noisier than just "EAC3 5.1". The other
+' ISO 639-2 special codes ("mul" Multiple, "mis" Uncoded) ARE displayed
+' because they convey real information when they appear.
+'
 ' @param {string} langCode - Media stream language code from any common format
-' @returns {string} - Localized name, English fallback, "" for und, or raw code
+' @returns {string} - Localized name, English fallback, "" for und/zxx, or raw code
 function resolveLanguageName(langCode as string) as string
   if langCode = "" then return ""
 
@@ -68,7 +74,7 @@ function resolveLanguageName(langCode as string) as string
   underscorePos = inStr(1, base, "_")
   if underscorePos > 0 then base = Left(base, underscorePos - 1)
 
-  if base = "und" then return ""
+  if base = "und" or base = "zxx" then return ""
 
   aliases = mediaLanguageAliases()
   if aliases.doesExist(base) then base = aliases[base]

@@ -635,7 +635,6 @@ function languageEnglishFallbacks() as object
     "zha": "Zhuang",
     "znd": "Zande languages",
     "zun": "Zuni",
-    "zxx": "No linguistic content",
     "zza": "Zaza"
   }
 
