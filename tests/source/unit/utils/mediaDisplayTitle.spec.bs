@@ -231,7 +231,7 @@ namespace tests
     @it("falls back to Channels when ChannelLayout is missing")
     function _()
       stream = { Language: "spa", Codec: "eac3", Channels: 2, IsDefault: false }
-      m.assertEqual(formatAudioDisplayTitle(stream), "Spanish; Castilian EAC3 2.0")
+      m.assertEqual(formatAudioDisplayTitle(stream), "Spanish EAC3 2.0")
     end function
 
     @it("falls back to Channels when ChannelLayout is empty")
@@ -294,7 +294,7 @@ namespace tests
     @it("formats subtitle without default flag")
     function _()
       stream = { Language: "spa", Codec: "PGSSUB", IsDefault: false }
-      m.assertEqual(formatSubtitleDisplayTitle(stream), "Spanish; Castilian PGSSUB")
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "Spanish PGSSUB")
     end function
 
     @it("formats ASS subtitle")
@@ -354,19 +354,98 @@ namespace tests
     @describe("resolveLanguageName()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("resolves known language codes to full names")
+    @it("resolves ISO 639-2/T (terminological) codes to localized names")
     @params("eng", "English")
-    @params("spa", "Spanish; Castilian")
+    @params("spa", "Spanish")
     @params("jpn", "Japanese")
+    @params("fra", "French")
+    @params("deu", "German")
+    @params("nld", "Dutch")
+    @params("ell", "Greek")
+    @params("zho", "Chinese")
+    @params("pol", "Polish")
+    @params("nor", "Norwegian")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("resolves ISO 639-2/B (bibliographic) codes to localized names")
     @params("fre", "French")
     @params("ger", "German")
+    @params("dut", "Dutch")
+    @params("gre", "Greek")
+    @params("chi", "Chinese")
+    @params("cze", "Czech")
+    @params("rum", "Romanian")
+    @params("slo", "Slovak")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("resolves ISO 639-2 codes via English fallback when no UI translation exists")
+    @params("lat", "Latin")
+    @params("swa", "Swahili")
+    @params("yid", "Yiddish")
+    @params("tib", "Tibetan")
+    @params("bod", "Tibetan")
+    @params("ast", "Asturian")
+    @params("glv", "Manx")
+    @params("tlh", "Klingon")
+    @params("epo", "Esperanto")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("aliases Jellyfin-flavored regional codes to their base language")
+    @params("frc", "French")
+    @params("pob", "Portuguese")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("resolves ISO 639-1 (2-letter) codes directly")
+    @params("en", "English")
+    @params("fr", "French")
+    @params("de", "German")
+    @params("ja", "Japanese")
+    @params("zh", "Chinese")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("resolves 3-letter codes that have no 639-1 equivalent")
+    @params("fil", "Filipino")
+    @params("gsw", "Swiss German")
+    @params("ckb", "Central Kurdish")
+    @params("kab", "Kabyle")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("strips region/script suffix from BCP-47 and locale tags")
+    @params("en-US", "English")
+    @params("pt_BR", "Portuguese")
+    @params("zh-Hant", "Chinese")
+    @params("fr-CA", "French")
+    @params("es_419", "Spanish")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
+    end function
+
+    @it("recognizes deprecated ISO 639-1 aliases")
+    @params("iw", "Hebrew")
+    @params("in", "Indonesian")
+    @params("ji", "Yiddish")
     function _(code, expected)
       m.assertEqual(resolveLanguageName(code), expected)
     end function
 
     @it("returns raw code for unknown languages")
-    function _()
-      m.assertEqual(resolveLanguageName("xyz"), "xyz")
+    @params("xyz", "xyz")
+    @params("klingon", "klingon")
+    @params("123", "123")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
     end function
 
     @it("returns empty string for empty input")
@@ -374,9 +453,13 @@ namespace tests
       m.assertEqual(resolveLanguageName(""), "")
     end function
 
-    @it("handles uppercase input codes")
-    function _()
-      m.assertEqual(resolveLanguageName("ENG"), "English")
+    @it("handles uppercase and mixed case input codes")
+    @params("ENG", "English")
+    @params("Fra", "French")
+    @params("FRE", "French")
+    @params("EN-us", "English")
+    function _(code, expected)
+      m.assertEqual(resolveLanguageName(code), expected)
     end function
 
     @it("returns empty string for und (Undefined)")

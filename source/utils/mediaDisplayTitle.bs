@@ -42,25 +42,42 @@ function getVideoResolutionLabel(width as integer, height as integer, isInterlac
   return ""
 end function
 
-' resolveLanguageName: Convert a 3-letter ISO 639-2 language code to its full display name
-' Uses getSubtitleLanguages() from languages.bs as the lookup table.
-' Falls back to the raw code if not found in the lookup table.
+' resolveLanguageName: Convert a media stream language code to a localized display name.
 '
-' @param {string} langCode - 3-letter ISO 639-2 language code (e.g., "eng", "spa")
-' @returns {string} - Full language name (e.g., "English", "Spanish") or raw code if unknown
+' MediaStream.Language passes through whatever the container metadata holds —
+' ffmpeg/Jellyfin do not normalize, so real-world inputs include ISO 639-2/T
+' ("fra"), 639-2/B ("fre"), 639-1 ("fr"), and BCP-47 tags ("fr-FR", "pt_BR").
+'
+' Three-tier resolution chain:
+'   1. Lowercase + strip after first "-" or "_" (drop region/script suffix)
+'   2. "und" (Undefined) → "" — caller omits the language label
+'   3. Alias map → normalize 3-letter / deprecated codes to a base form
+'   4. Tier 1: translationKey lookup → translate() — localized to user's UI
+'   5. Tier 2: English-name fallback → covers every other ISO 639-2 code
+'   6. Tier 3: raw code passthrough — last-resort, preserves info
+'
+' @param {string} langCode - Media stream language code from any common format
+' @returns {string} - Localized name, English fallback, "" for und, or raw code
 function resolveLanguageName(langCode as string) as string
   if langCode = "" then return ""
 
-  lowerCode = LCase(langCode)
+  base = LCase(langCode)
 
-  ' "und" (Undefined) is not useful to display — omit it entirely
-  if lowerCode = "und" then return ""
+  hyphenPos = inStr(1, base, "-")
+  if hyphenPos > 0 then base = Left(base, hyphenPos - 1)
+  underscorePos = inStr(1, base, "_")
+  if underscorePos > 0 then base = Left(base, underscorePos - 1)
 
-  languages = getSubtitleLanguages()
+  if base = "und" then return ""
 
-  if languages.doesExist(lowerCode)
-    return languages[lowerCode]
-  end if
+  aliases = mediaLanguageAliases()
+  if aliases.doesExist(base) then base = aliases[base]
+
+  keyMap = languageTranslationKeys()
+  if keyMap.doesExist(base) then return translate(keyMap[base])
+
+  fallbacks = languageEnglishFallbacks()
+  if fallbacks.doesExist(base) then return fallbacks[base]
 
   return langCode
 end function
