@@ -11,10 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - (ItemDetails) Replace settings button with inline TrackDropdown cluster ([#487](https://github.com/jellyrock/jellyrock/pull/487))
 
-### Changed
-
--  chore: update movieDetails screenshot ([58f4352](https://github.com/jellyrock/jellyrock/commit/58f43525))
-
 ### Fixed
 
 - (trackDropdown) measure dropdown width with themed Label ([#526](https://github.com/jellyrock/jellyrock/pull/526))
