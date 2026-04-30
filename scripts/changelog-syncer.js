@@ -266,7 +266,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   }
 
   categorizeCommit(message) {
-    const msg = message.toLowerCase();
+    const msg = message.toLowerCase().trim();
 
     // Security first (highest priority)
     if (msg.includes('security') || msg.includes('vulnerability') || msg.includes('cve-')) {
@@ -375,7 +375,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     // - Required message: everything after the colon or the whole message if no prefix
     const pattern = /^(?:(?:feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert|add|remove|update|change|improve|enhance|implement|create|delete)(\([^)]+\))?:\s*)?(.+)$/i;
 
-    const match = message.match(pattern);
+    const match = message.trim().match(pattern);
 
     if (!match) {
       // Fallback: return original message if pattern doesn't match (edge case)
