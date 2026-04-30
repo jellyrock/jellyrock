@@ -1,0 +1,12 @@
+name: lint-language-coverage
+on:
+  pull_request:
+    paths:
+      - "source/utils/languages.bs"
+      - "source/utils/mediaDisplayTitle.bs"
+      - "locale/custom/en_US.json"
+      - "scripts/lint-language-coverage.cjs"
+
+jobs:
+  run:
+    uses: ./.github/workflows/_lint-language-coverage.yml
