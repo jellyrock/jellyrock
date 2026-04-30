@@ -11,7 +11,7 @@
   "devDependencies": {
     "@rokucommunity/bslint": "1.0.0-alpha.50",
     "brighterscript": "1.0.0-alpha.50",
-    "brighterscript-formatter": "1.7.23",
+    "brighterscript-formatter": "1.7.24",
     "brighterscript-xml-plugin": "1.0.0-alpha.3",
     "dotenv": "17.4.2",
     "fast-glob": "3.3.3",
