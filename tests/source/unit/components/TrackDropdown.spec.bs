@@ -176,16 +176,17 @@ namespace tests
       m.assertEqual(int(clipRect.height), 225)
     end function
 
-    @it("menu starts at slotWidth on items[] change (TextSizeTask refines async)")
+    @it("menu width clamps up to slotWidth when titles are narrower than the slot")
     function _()
-      ' Initial menu width is slotWidth in sync state — the auto-expand happens
-      ' async via TextSizeTask once it returns measured widths. This test locks in
-      ' the synchronous fallback so a future change can't accidentally leave the
-      ' menu at zero width if the task fails to run.
-      ' NOTE: the auto-expand-to-fit-long-titles behavior (upper clamp at 2 slots
-      ' + inter-slot gutter = 586) is NOT covered by unit tests because TextSizeTask
-      ' creates roFontRegistry on its own thread and unit tests don't drive the
-      ' task scheduler synchronously. Verified via manual / integration testing.
+      ' computeMenuWidth measures each title via the hidden LabelPrimarySmaller and
+      ' clamps the result to [slotWidth, slotWidth*2 + interSlotGutter]. "Off" / "On"
+      ' both measure well below slotWidth, so the lower clamp wins and the menu
+      ' renders at slotWidth — locking the menu to its trigger column when nothing
+      ' is long enough to warrant expansion.
+      ' NOTE: the upper-clamp / auto-expand-for-long-titles behavior is NOT covered
+      ' here because boundingRect() on a Label returns 0 outside a real scene tree;
+      ' the unit-test dropdown isn't attached to a scene. Verified via manual /
+      ' integration testing on device.
       m.dropdown.items = [
         { id: "1", title: "Off" },
         { id: "2", title: "On" }

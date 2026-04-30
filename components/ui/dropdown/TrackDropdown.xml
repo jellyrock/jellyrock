@@ -36,6 +36,15 @@
          Sized 1:1 with the source bitmap so it renders crisp at native resolution. -->
     <Poster id="triggerChevron" uri="pkg:/images/icons/expand.png" width="24" height="24" />
 
+    <!-- Hidden Label used to measure each item title's natural pixel width before
+         the menu is sized. LabelPrimarySmaller mirrors the rendered row's font/scale
+         (LabelSmaller.init sets fontSizeSmaller; JRLabel.init applies tmp:/font +
+         fontScaleFactor when uiFontFallback is on), so boundingRect().width returns
+         the same width the ScrollingLabel inside TrackDropdownRow will render at.
+         Same render-thread technique FontScalingTask uses against the scene's
+         defaultFont / fallbackFont labels. -->
+    <LabelPrimarySmaller id="measureLabel" visible="false" />
+
     <!-- Dropdown menu: background + clipped viewport containing a LayoutGroup of
          JRDropdownItem children. The viewport's clippingRect caps visible rows; the
          inner LayoutGroup translation scrolls longer lists in and out of view. -->
