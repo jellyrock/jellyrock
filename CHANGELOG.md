@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 -  chore: update movieDetails screenshot ([58f4352](https://github.com/jellyrock/jellyrock/commit/58f43525))
 
+### Fixed
+
+- (trackDropdown) measure dropdown width with themed Label ([#526](https://github.com/jellyrock/jellyrock/pull/526))
+
 ## [2.14.0](https://github.com/jellyrock/jellyrock/compare/v2.13.0...v2.14.0) - 2026-04-29
 
 ### Added
