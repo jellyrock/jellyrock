@@ -130,6 +130,7 @@ Lint and format:
 | `npm run lint:spelling` | spellchecker on Markdown files |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
+| `npm run lint:docs` | Validates `related-files:` paths and relative markdown links in `docs/architecture/*.md` and `docs/decisions.md` resolve to existing files |
 | `npm run check-formatting` | `bsfmt --check` (read-only check) |
 | `npm run format` | `bsfmt --write` (apply formatting fixes) |
 | `npm run validate` | `bsc --noEmit` (type-check) |
@@ -237,6 +238,7 @@ Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). M
 1. `npm run validate` — when `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
 2. `npm run lint:markdown` + `npm run lint:spelling` — when `*.md` changed.
 3. `npm run lint:json` — when `*.json` changed.
+4. `npm run lint:docs` — when `docs/architecture/*.md` or `docs/decisions.md` changed (validates `related-files:` paths and markdown link targets resolve).
 
 **Safety:** auto-fix is skipped (with a warning) when the working tree is dirty so WIP can't be swept into the auto-fix commit. Check steps still run.
 

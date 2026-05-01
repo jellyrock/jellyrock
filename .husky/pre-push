@@ -12,6 +12,8 @@
 #   4. npm run lint:markdown      — *.md
 #   5. npm run lint:spelling      — *.md
 #   6. npm run lint:json          — *.json (jshint applies its own excludes)
+#   7. npm run lint:docs          — docs/architecture/*.md, docs/decisions.md
+#                                   (validates related-files: paths and links)
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
 # can't be swept into the auto-fix commit. Check steps still run.
@@ -44,6 +46,7 @@ TRANSLATION_TRIGGERS=$(echo "$CHANGED" | grep -E '^(source|components)/.*\.bs$|^
 HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$' && echo 1 || true)
 HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
 HAS_JSON=$(echo "$CHANGED" | grep -qE '\.json$' && echo 1 || true)
+HAS_ARCH_DOCS=$(echo "$CHANGED" | grep -qE '^docs/(architecture/.*\.md$|decisions\.md$)' && echo 1 || true)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Auto-fix steps (mutate files; combined into one commit at the end)
@@ -91,4 +94,9 @@ fi
 if [ -n "$HAS_JSON" ]; then
   echo "📋 Linting JSON..."
   npm run lint:json
+fi
+
+if [ -n "$HAS_ARCH_DOCS" ]; then
+  echo "📚 Validating architecture doc references..."
+  npm run lint:docs
 fi
