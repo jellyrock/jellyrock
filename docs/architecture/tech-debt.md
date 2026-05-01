@@ -88,7 +88,7 @@ Each refactor item has a stable slug for cross-referencing in commits, PRs, and 
 #### `quickplaynode-set-then-clear`
 
 - **area**: `components/ItemDetails.bs`, `source/main.bs`
-- **issue**: Single-shot event idiom: `field = value` then immediately `field = invalid` to force the next set to fire even if the value is identical. Works (and is documented), but unusual.
+- **issue**: Single-shot event idiom — unfamiliar to first-time readers. See `user-journey.md` for the canonical explanation.
 
 #### `loginflow-goto-retry`
 
@@ -210,12 +210,7 @@ These are areas where the design is genuinely good and shouldn't be casually ref
 
 ## A note on the audio "duplication"
 
-There are two audio-related components that look like duplicates but aren't:
-
-- **`components/mediaPlayers/AudioPlayer.xml/.bs`** — the audio playback **engine**. Extends `Video` (Roku's native node, used for both video and audio). Lives at `m.global.audioPlayer` for the entire app lifetime. Plays the actual bytes.
-- **`components/music/AudioPlayerView.xml/.bs`** — the audio playback **screen**. Extends `JRScreen`. Shows album art, track title, controls. Is push/popped on the scene stack like any other screen.
-
-This split is intentional and correct: the engine plays whether the screen is shown or not, so audio keeps going when the user navigates away from "now playing." Don't merge them.
+`components/mediaPlayers/AudioPlayer.xml/.bs` (engine) and `components/music/AudioPlayerView.xml/.bs` (screen) look like duplicates but aren't — they're an intentional engine/screen split. Don't merge them. Canonical explanation: see `playback.md` (the AudioPlayer engine and AudioPlayerView screen sections).
 
 ## Recently removed — don't go searching for these
 

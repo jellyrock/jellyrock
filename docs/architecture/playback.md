@@ -346,7 +346,7 @@ The audio side has *two* components (`mediaPlayers/AudioPlayer` and `music/Audio
 ## Cruft callouts
 
 - **`VideoPlayerView.bs` is the most complex single component in the app.** It mixes: native `Video` event handling, OSD orchestration, trickplay coordination, transcoding logic, DoVi fallback, subtitle management, audio track switching, chapter navigation, and Jellyfin reporting. Some extraction (e.g., a separate `SubtitleController` module) would help. But it works, it's well-tested, and the DoVi handling is genuinely clever.
-- **The set-then-clear event pattern** appears here too on `select*Pressed` fields — `m.view.selectAudioPressed = true` from the OSD, observed by ViewCreator. Same trick as `quickPlayNode`.
+- **The set-then-clear event pattern** appears on `select*Pressed` fields — `m.view.selectAudioPressed = true` from the OSD, observed by ViewCreator. Same trick as `quickPlayNode`; canonical explanation in `user-journey.md`.
 - **`bufferCheckTimer`** — listed in the XML but its duration is set in code dynamically. Its job is to detect the DoVi `buffer:loop:` source overflow. It exists because Roku's native `state` doesn't always transition to `error` cleanly on this specific failure.
 - **No abstraction over "which player is active"**. Code that wants to control current playback has to know whether `m.global.audioPlayer` is the active player or whether a `VideoPlayerView` is on the scene stack. A common `IPlayer` interface or `m.global.activePlayer` reference would help.
 - **Trickplay tile pre-fetch range is hardcoded** in `TrickplayCarousel.bs` — should probably be a constant, possibly user-configurable for power users.
