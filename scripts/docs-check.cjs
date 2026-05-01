@@ -162,6 +162,42 @@ if (fs.existsSync(DECISIONS_PATH)) {
   }
 }
 
+// CLAUDE.md files — root + every subdir-scoped one. These are the agent-context
+// rules; their cross-references to docs/architecture/ go stale the same way
+// and are equally important to validate.
+function findClaudeMds(rootDir) {
+  const found = [];
+  // Skip directories that don't host project source / docs
+  const skipDirs = new Set(['node_modules', 'build', 'out', 'tasks', '.git', '.husky']);
+  function walk(dir) {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (skipDirs.has(e.name) || e.name.startsWith('.')) continue;
+        walk(path.join(dir, e.name));
+      } else if (e.name === 'CLAUDE.md') {
+        found.push(path.join(dir, e.name));
+      }
+    }
+  }
+  walk(rootDir);
+  return found.sort();
+}
+
+for (const file of findClaudeMds(ROOT_DIR)) {
+  const content = fs.readFileSync(file, 'utf8');
+  const linkCount = checkBodyLinks(file, content);
+  filesChecked++;
+  if (VERBOSE) {
+    console.log(`  ${path.relative(ROOT_DIR, file)} — ${linkCount} links`);
+  }
+}
+
 if (errors.length > 0) {
   console.error(`docs:check found ${errors.length} broken reference(s):\n`);
   for (const err of errors) console.error(`  ${err}`);
