@@ -130,9 +130,10 @@ Username/password authentication works identically across all versions.
 The `GetApi()` client provides a unified interface that hides version complexity:
 
 ```brightscript
-' Same code works on all server versions
-api = GetApi()
-data = api.GetItem(itemId, { fields: "Overview" })
+' Same code works on all server versions; ApiClient routes V1/V2 internally.
+req = GetApi().BuildGetItemRequest(itemId, { fields: "Overview" })
+res = fetchRes(req, "myReq")
+if isValid(res) and res.ok then item = res.json
 ```
 
 **Automatic handling:**
@@ -145,16 +146,16 @@ data = api.GetItem(itemId, { fields: "Overview" })
 ## How Versioning Works Together
 
 ```text
-User Action → GetApi().GetItem()
+User Action → GetApi().BuildGetItemRequest(...)
                     ↓
             ApiClient (dispatcher)
                     ↓
             Check m.global.server.apiVersion
                     ↓
-            ├── apiVersion = 1 → sdkV1.users.GetItem()
-            └── apiVersion = 2 → sdkV2.users.GetItem()
+            ├── apiVersion = 1 → /users/{userId}/items/{itemId}  (V1 path)
+            └── apiVersion = 2 → /Items/{itemId}?userId=...      (V2 path)
                     ↓
-            Static endpoints (shows, items, etc.) → sdk.*
+            Static endpoints (shows, items, etc.) → sdk.* (single shape across versions)
                     ↓
             Device Profile (getDeviceProfile())
                     ↓
