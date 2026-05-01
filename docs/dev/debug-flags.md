@@ -1,3 +1,13 @@
+---
+topic: debug-flags
+related-files:
+  - components/data/DebugFlags.xml
+  - source/utils/globals.bs
+  - components/JRScene.bs
+  - components/JRScene.xml
+last-reviewed: 2026-05-01
+---
+
 # Debug Flags & Toast Testing
 
 ## Overview

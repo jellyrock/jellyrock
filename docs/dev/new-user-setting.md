@@ -1,3 +1,15 @@
+---
+topic: new-user-setting
+related-files:
+  - settings/settings.json
+  - components/data/jellyfin/JellyfinUserSettings.xml
+  - components/data/jellyfin/JellyfinUserSettings.bs
+  - source/data/SessionDataTransformer.bs
+  - source/utils/config.bs
+  - source/utils/session.bs
+last-reviewed: 2026-05-01
+---
+
 # Adding User Settings Guide
 
 This guide documents the complete process for adding new user settings to JellyRock. Follow these steps carefully to ensure consistency, proper data flow, and avoid common pitfalls.

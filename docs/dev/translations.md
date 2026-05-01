@@ -1,3 +1,17 @@
+---
+topic: translations-howto
+related-files:
+  - locale/custom/en_US.json
+  - locale/languages.json
+  - source/utils/translate.bs
+  - source/utils/translateLocale.bs
+  - source/utils/languages.bs
+  - scripts/bsc-plugin-translation-keys.cjs
+  - scripts/update-translations.cjs
+  - scripts/lint-language-coverage.cjs
+last-reviewed: 2026-05-01
+---
+
 # Translations
 
 JellyRock uses a custom JSON based translation system that replaces Roku's built-in `tr()` / XML locale mechanism. Translation data is stored as flat JSON files in `locale/custom/`, loaded into `m.global` as `roAssociativeArray`s for O(1) key lookups.

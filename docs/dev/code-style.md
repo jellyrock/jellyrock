@@ -1,3 +1,11 @@
+---
+topic: code-style
+related-files:
+  - bslint.json
+  - .editorconfig
+last-reviewed: 2026-05-01
+---
+
 # Code Style Guide
 
 ## Overview

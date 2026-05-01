@@ -37,6 +37,7 @@ const path = require('path');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
+const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const VERBOSE = process.argv.includes('--verbose');
 
@@ -134,14 +135,14 @@ function checkBodyLinks(docPath, content) {
   return links.length;
 }
 
-// Architecture docs
-if (fs.existsSync(ARCH_DIR)) {
-  const archFiles = fs.readdirSync(ARCH_DIR)
+function checkDirOfMds(dir) {
+  if (!fs.existsSync(dir)) return;
+  const files = fs.readdirSync(dir)
     .filter(f => f.endsWith('.md'))
-    .map(f => path.join(ARCH_DIR, f))
+    .map(f => path.join(dir, f))
     .sort();
 
-  for (const file of archFiles) {
+  for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
     const relatedCount = checkRelatedFiles(file, content);
     const linkCount = checkBodyLinks(file, content);
@@ -151,6 +152,12 @@ if (fs.existsSync(ARCH_DIR)) {
     }
   }
 }
+
+// Architecture docs
+checkDirOfMds(ARCH_DIR);
+
+// Dev how-to guides
+checkDirOfMds(DEV_DIR);
 
 // Decisions log (no frontmatter; just check body links)
 if (fs.existsSync(DECISIONS_PATH)) {

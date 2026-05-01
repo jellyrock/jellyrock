@@ -1,3 +1,11 @@
+---
+topic: logging
+related-files:
+  - components/JRScreen.bs
+  - scripts/bsc-plugin-roku-log.cjs
+last-reviewed: 2026-05-01
+---
+
 # Logging Guide (roku-log)
 
 JellyRock uses roku-log for structured, flexible logging. Follow these steps to set up and use logging effectively.
