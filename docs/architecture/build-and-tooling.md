@@ -130,7 +130,8 @@ Lint and format:
 | `npm run lint:spelling` | spellchecker on Markdown files |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
-| `npm run lint:docs` | Validates `related-files:` paths and relative markdown links in `docs/architecture/*.md` and `docs/decisions.md` resolve to existing files |
+| `npm run lint:docs` | Validates `related-files:` paths and relative markdown links in `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, and every `CLAUDE.md` resolve to existing files |
+| `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
 | `npm run check-formatting` | `bsfmt --check` (read-only check) |
 | `npm run format` | `bsfmt --write` (apply formatting fixes) |
 | `npm run validate` | `bsc --noEmit` (type-check) |
