@@ -13,7 +13,7 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 6. After finishing a user-approved plan: run automated tests to verify; provide a manual test plan only for UI/runtime behavior tests don't cover, plus any expected debug-log output
 ## Development Context
 **Check relevant docs for specific areas:**
-- **Adding user settings?** → `docs/dev/adding-user-settings.md`
+- **Adding user settings?** → `docs/dev/new-user-setting.md`
 - **Writing tests?** → `docs/dev/unit-tests.md`
 - **Running tests?** → `docs/dev/unit-tests-tdd.md`
 - **Registry migrations?** → `docs/dev/registry-migrations.md`
