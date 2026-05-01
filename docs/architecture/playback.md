@@ -1,0 +1,318 @@
+# 05 — Video & Audio Playback
+
+The playback subsystem: queue management, the canonical video player, the audio engine vs. audio screen, transcoding decisions, and reporting back to Jellyfin.
+
+## Component map
+
+```brightscript
+m.global.queueManager                         ← QueueManager.bs (294 lines, exemplar of clean code)
+m.global.audioPlayer                          ← AudioPlayer.bs (44 lines, extends Video, the audio engine)
+                                                always present, plays whether the AudioPlayerView is shown or not
+components/manager/ViewCreator.bs             ← factory + dialog handlers (no .xml — pure module)
+  ├── CreateVideoPlayerView()                 ← instantiates VideoPlayerView, pushes scene
+  ├── CreateAudioPlayerView()                 ← instantiates AudioPlayerView, pushes scene
+  └── onSelectSubtitle/Audio/VideoSourcePressed  ← shows radio dialogs, handles selection
+
+components/video/                             ← VIDEO playback UI
+  ├── VideoPlayerView.bs/.xml (1,674 lines)   ← the canonical video player; extends Video
+  ├── OSD.bs/.xml                              ← title, time, progress; auto-hides after 5s
+  ├── TrickplayCarousel.bs/.xml                ← scrub-thumbnail carousel
+  ├── TrickplayTileLoader.bs/.xml              ← async tile fetch
+  └── VideoNotification.bs/.xml                ← next-episode + media-segment overlays
+
+components/music/                              ← AUDIO playback UI
+  ├── AudioPlayerView.bs/.xml (899 lines)     ← the audio "now playing" screen; extends JRScreen
+  ├── AlbumTrackList.bs/.xml                   ← track list for the current album
+  ├── SongItem.bs/.xml                         ← row item for a song
+  └── LoadScreenSaverTimeoutTask.bs/.xml       ← screensaver suppression while music plays
+
+components/mediaPlayers/                       ← AUDIO playback ENGINE
+  └── AudioPlayer.bs/.xml (44 lines)           ← extends Video, reports playstate to Jellyfin
+                                                 lives at m.global.audioPlayer
+
+components/ItemGrid/
+  └── LoadVideoContentTask.bs                  ← computes transcode params, builds video URL
+                                                 (called by VideoPlayerView before playback starts)
+components/GetPlaybackInfoTask.bs/.xml         ← fetches PlaybackInfo from Jellyfin
+components/GetNextEpisodeTask.bs/.xml          ← for next-episode overlay
+components/GetShuffleItemsTask.bs/.xml         ← fetches items when shuffle is enabled
+```
+
+## QueueManager — `components/manager/QueueManager.bs`
+
+A clean, well-bounded class. Lives at `m.global.queueManager`, instantiated in phase 2. Methods are accessed via `callFunc` from any thread:
+
+```brightscript
+m.global.queueManager.callFunc("push", queueItem)
+m.global.queueManager.callFunc("playQueue")
+```
+
+### State (instance variables)
+
+| Variable | Purpose |
+|---|---|
+| `m.queue` | Array of queue items (in current play order — could be shuffled) |
+| `m.originalQueue` | Snapshot of unshuffled order (for un-shuffle) |
+| `m.queueTypes` | Parallel array of item types (`"movie"`, `"audio"`, etc.) — avoids re-deriving |
+| `m.position` | Index of currently-playing item in `m.queue` |
+| `m.isPlaying` | Whether a player is currently active |
+| `m.shuffleEnabled` | Bool |
+| `m.hold` | Items "held" for later (separate from the active queue) |
+| `m.isPrerollActive` | Cached from `m.global.user.settings.playbackCinemaMode`; controls whether cinema-mode prerolls play before the next item |
+
+### Public methods
+
+Queue mutation:
+
+- `push(item)`, `pop()`, `peek()`, `top()` — array-style access
+- `set(items)` — replace the whole queue
+- `clear()`, `clearHold()`, `deleteAtIndex(i)`
+- `hold(item)` / `getHold()` — separate "held items" list
+
+Queue inspection:
+
+- `getCount()`, `getCurrentItem()`, `getItemByIndex(i)`, `getQueue()`
+- `getQueueTypes()`, `getQueueUniqueTypes()`, `getItemType(item)` — type derivation
+
+Position:
+
+- `setPosition(i)`, `getPosition()`, `moveBack()`, `moveForward()`
+
+Shuffle:
+
+- `toggleShuffle()` → switches shuffle on/off, snapshots original order or restores it
+- `resetShuffle()`, `getIsShuffled()`, `getUnshuffledQueue()`
+- `shuffleQueueItems()` keeps the currently-playing item at position 0 when enabling shuffle
+
+Resume:
+
+- `setCurrentStartingPoint(positionTicks)` — sets the resume point on the current queue item before playback starts
+
+Preroll:
+
+- `isPrerollActive()`, `setPrerollStatus(status)` — cinema mode
+
+The big one:
+
+- **`playQueue()`** — looks at the current item's type and dispatches to either `CreateAudioPlayerView()` or `CreateVideoPlayerView()`. The dispatch is a long if/else chain — perfectly readable, no need for a fancier dispatch.
+
+The whole file is 294 lines, well-commented, and reads cleanly. It's frequently held up internally as the gold standard for "what good BrighterScript looks like." See `99-tech-debt-and-cruft.md`.
+
+## ViewCreator — `components/manager/ViewCreator.bs`
+
+A `.bs` module (no `.xml` — it's not a component, just a function library). Its job is two-fold:
+
+1. **Player factory**: `CreateVideoPlayerView()` / `CreateAudioPlayerView()` instantiate the player node, wire observers, kick off metadata loading, and push the player into the scene stack.
+2. **Dialog coordination**: when the user opens the OSD's track selection menus, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `ViewCreator` catches via observers and shows a `radioDialog`.
+
+The dialog flow:
+
+```brightscript
+User presses "audio tracks" on OSD
+  → VideoPlayerView sets selectAudioPressed = true
+  → ViewCreator.onSelectAudioPressed() builds an array of {index, isExternal, track, type, selected?}
+  → m.global.sceneManager.callFunc("radioDialog", "Select Audio", audioData)
+  → SceneManager presents the dialog
+  → user picks → SceneManager.returnData = chosen item
+  → ViewCreator.onSelectionMade() reads returnData, dispatches by .type
+    ├── "subtitleselection" → processSubtitleSelection()
+    ├── "audioselection" → processAudioSelection()  → m.view.audioIndex = chosen.index
+    └── "videosourceselection" → processVideoSourceSelection()
+```
+
+The processing functions write back into `VideoPlayerView`'s fields (`audioIndex`, `selectedSubtitle`, `mediaSourceId`), which the player observes and reacts to (e.g., changing `audioIndex` triggers an audio stream switch on the underlying `Video` node).
+
+`onStateChange` handles end-of-playback:
+
+- **`finished` state** but `isRetrying = true` → don't pop (mid-DoVi-fallback retry)
+- **Live TV channel that finished** → restart the same channel
+- **More items in queue** → pop player, advance position, push player for next item
+- **Queue exhausted** → pop scene back to whatever launched playback
+
+## VideoPlayerView — `components/video/VideoPlayerView.bs/.xml`
+
+The canonical video player. **1,674 lines.** Extends Roku's native `Video` node, so it inherits the full media-playback state machine and adds JellyRock-specific overlays, OSD, trickplay, captions, transcoding logic, and Jellyfin reporting.
+
+### Component structure
+
+```xml
+<component name="VideoPlayerView" extends="Video">
+  <interface>
+    <field id="backPressed" />
+    <field id="selectSubtitlePressed" />
+    <field id="selectAudioPressed" />
+    <field id="selectVideoSourcePressed" />
+    <field id="selectPlaybackInfoPressed" />
+    <field id="PlaySessionId" />            <!-- Jellyfin session ID for reporting -->
+    <field id="Subtitles" />                 <!-- subtitle track array -->
+    <field id="SelectedSubtitle" />          <!-- -1 = none, otherwise track index -->
+    <field id="container" />                 <!-- e.g. "mp4", "mkv" -->
+    <field id="isDirectPlaySupported" />
+    <field id="transcodeParams" />
+    <field id="isTranscodeAvailable" />
+    <field id="isTranscoded" />
+    <field id="transcodeReasons" />
+    <field id="isDoviDirectPlayFallbackAvailable" />
+    <field id="isRetrying" />                <!-- prevents premature scene pop during DoVi retry -->
+    <field id="videoId" />
+    <field id="mediaSourceId" />
+    <field id="fullSubtitleData" />
+    <field id="fullAudioData" />
+    <field id="fullVideoSourceData" />
+    <field id="audioIndex" />
+    <function name="destroy" />
+  </interface>
+  <children>
+    <Group id="captionGroup" />                                    <!-- Custom subtitle rendering -->
+    <TrickplayCarousel id="trickplayCarousel" visible="false" />
+    <timer id="playbackTimer" repeat="true" duration="10" />        <!-- 10s reporting cadence -->
+    <timer id="bufferCheckTimer" repeat="true" />
+    <OSD id="osd" visible="false" inactiveTimeout="5" />            <!-- 5s OSD auto-hide -->
+    <Rectangle id="chapterList" visible="false" ...>
+      <LabelList id="chaptermenu" .../>
+    </Rectangle>
+    <!-- next-episode and media-segment notifications attached at runtime -->
+  </children>
+</component>
+```
+
+Note: the OSD's `inactiveTimeout` is **5 seconds**, not 10 as some sources may claim.
+
+### Playback lifecycle
+
+1. **Push** — `ViewCreator.CreateVideoPlayerView()` instantiates the player, observes state + UI press fields, kicks off `GetPlaybackInfoTask`, pushes the scene (player is `visible=false` during loading to avoid a black flash over the backdrop).
+2. **Metadata loaded** — `onPlaybackInfoLoaded()` populates `playbackData`. The player begins resolving the actual video URL (direct play vs. transcode — see "Transcoding decisions" below).
+3. **Underlying `Video` node starts** — the inherited `state` field transitions to `buffering` → `playing`. The player observes its own state and:
+   - Shows the OSD briefly
+   - Starts the `playbackTimer` (10-second repeat) → `ReportPlayback("update")` to Jellyfin
+   - Becomes `visible = true`
+4. **Steady state** — `playbackTimer.fire` → `ReportPlayback("update")` every 10 seconds with current position. User interactions (pause, seek, OSD open) are all handled by `onKeyEvent` and the inherited `Video` machinery.
+5. **End / transition** — `state = "finished"` (or user backs out) → ViewCreator.onStateChange handles next-item / pop logic. Final `ReportPlayback("stop")` is sent.
+
+### `ReportPlayback` — server-side reporting
+
+Position is reported in **Jellyfin ticks** (1 tick = 100 ns; `int(positionSeconds) * 10000000`). The request is built by `GetApi().BuildPlaystateRequest(state, params)` and dispatched via `SubmitSideEffect()` so it doesn't block playback.
+
+States reported:
+
+- `"start"` — once, when playback first transitions to `playing`
+- `"update"` — every 10 seconds via the playback timer, while playing or paused
+- `"stop"` — once on `finished` or `stopped`
+
+This is what makes "Continue Watching" rows on the home screen accurate.
+
+## OSD — `components/video/OSD.bs/.xml`
+
+The on-screen display: title, current time, position bar, end-time prediction, play/pause icon. Activates on key press, auto-hides after 5 seconds of inactivity (`inactiveTimeout="5"` in the XML).
+
+The OSD is the entry point for advanced controls — it has menu icons for audio tracks, subtitles, video source, and playback info that fire the corresponding `select*Pressed` events on the player when activated.
+
+## TrickplayCarousel — `components/video/TrickplayCarousel.bs/.xml`
+
+The seek-thumbnail UI. When the user holds left/right to scrub, this component:
+
+- Receives the seek position from `Video.trickPlayBar`
+- Shows a horizontal carousel of preview thumbnails near the current scrub position
+- Uses `TrickplayTileLoader` (an async Task) to fetch the actual thumbnail tiles from Jellyfin
+- Pre-fetches ahead of the scrub direction so the carousel doesn't stutter
+- On low-memory devices (`m.global.device.isLowMemoryDevice`), reduces pre-fetch range to conserve texture memory
+
+## VideoNotification — `components/video/VideoNotification.bs/.xml`
+
+Two kinds of notifications overlay during playback:
+
+1. **Next Episode** — appears near the end of an episode if `QueueManager` has another item queued. User can press OK to skip immediately to the next episode.
+2. **Media Segments** — Jellyfin can mark sections like Intro, Outro, Recap, Preview, Commercial. The player shows skip buttons at the appropriate timestamps.
+
+Both notifications dismiss themselves on a timer or when the user navigates away.
+
+## AudioPlayer engine — `components/mediaPlayers/AudioPlayer.bs/.xml`
+
+A small (44 lines) component that **extends Video** but is used exclusively for audio. Lives at `m.global.audioPlayer` for the entire app lifetime, so audio can keep playing while the user navigates other screens.
+
+```brightscript
+sub init()
+  m.isPlayReported = false
+  m.top.observeField("state", "audioStateChanged")
+end sub
+
+sub audioStateChanged()
+  currentState = LCase(m.top.state)
+  reportedPlaybackState = "update"
+
+  m.top.disableScreenSaver = (currentState = "playing")    ' suppress screensaver while playing
+
+  if currentState = "playing" and not m.isPlayReported
+    reportedPlaybackState = "start"
+    m.isPlayReported = true
+  else if currentState = "stopped" or currentState = "finished"
+    reportedPlaybackState = "stop"
+    m.isPlayReported = false
+  end if
+
+  ReportPlayback(reportedPlaybackState)
+end sub
+
+sub ReportPlayback(state as string)
+  params = {
+    "ItemId": m.global.queueManager.callFunc("getCurrentItem").id,
+    "PlaySessionId": m.top.content.id,
+    "PositionTicks": int(m.top.position) * 10000000&,
+    "IsPaused": (LCase(m.top.state) = "paused")
+  }
+  req = GetApi().BuildPlaystateRequest(state, params)
+  SubmitSideEffect(req)
+end sub
+```
+
+Same reporting pattern as the video player. The screen-saver suppression is important — without it, Roku would dim the screen and eventually exit the app while music was playing.
+
+## AudioPlayerView — `components/music/AudioPlayerView.bs/.xml`
+
+The visible "now playing" screen for music — extends `JRScreen`, **not** `Video`. It's the UI that shows album art, track title, artist, progress bar, track list, and playback controls. The actual audio comes from `m.global.audioPlayer` (the engine above), which the screen interacts with via `callFunc` and observers.
+
+This split is **intentional and clean** — the audio keeps playing even when the screen is popped (e.g., user backs out of "now playing" to go look for another album). The screen is just a view onto the engine's state.
+
+## Transcoding decisions — `components/ItemGrid/LoadVideoContentTask.bs`
+
+Before `VideoPlayerView` starts the `Video` node, it needs a URL. The decision tree:
+
+1. **Direct Play** — try first. Check device codec capabilities (`m.global.device.videoBitDepth`, etc.) against the item's media streams.
+2. **Direct Stream** — if the container needs remuxing but codecs are OK.
+3. **Transcode** — if codecs/profiles unsupported.
+
+Special case: **Dolby Vision (DoVi)**. JellyRock has dedicated DoVi handling because Jellyfin's transcoder can sometimes produce HLS segments that overflow Roku's video buffer:
+
+- If `playbackPreserveDovi` is enabled and item is DoVi, attempt a DoVi-preserving transcode first.
+- If that produces a `buffer:loop:` source error mid-playback, the player retries with `shouldBypassDoviPreservation = true` (the `isRetrying` flag prevents `ViewCreator.onStateChange` from popping the scene during this in-flight retry).
+- The retry typically succeeds with direct play (since the device supports DoVi natively, just not the way Jellyfin transcoded it).
+
+Live TV channels always use the HLS transcode wrapper.
+
+`transcodeReasons` is surfaced to the user via the playback-info dialog, so they can see *why* their movie is transcoding (e.g., "Codec H.265 not supported" / "Audio channel layout 5.1 not supported").
+
+## Subtitles
+
+Three "kinds" of subtitles:
+
+- **None** — `SelectedSubtitle = -1` (`SubtitleSelection.NONE` enum)
+- **Native (Roku-rendered)** — text-format tracks (SRT, VTT) that Roku can display directly. `globalCaptionMode = "On"`, `subtitleTrack = <Roku-mangled track name>`.
+- **Encoded (Jellyfin-burned)** — tracks burned into the video stream by the transcoder (e.g., bitmap subtitles like PGS). `globalCaptionMode = "Off"` (Roku captions hidden because they're already in the picture).
+
+Annoyance addressed in code: Roku **reorders** subtitle tracks unpredictably between what JellyRock provides and what `availableSubtitleTracks` returns. The function `availSubtitleTrackIdx(trackName)` in `ViewCreator.bs` handles this by matching on substring of the track URL rather than expecting index parity.
+
+The current selection persists in user settings (`globalCaptionMode`) so it's remembered across sessions.
+
+## A historical note: the legacy video player
+
+There used to be a second video player (`components/JRVideo.bs` + `source/VideoPlayer.bs`). It was deleted in commit **`17cc374f` "chore: remove legacy video player code"**. There is now only one video player — `VideoPlayerView`. If you find references in old comments, blog posts, or AI training data to a `JRVideo` component or `VideoPlayer.bs`, those are stale.
+
+The audio side has *two* components (`mediaPlayers/AudioPlayer` and `music/AudioPlayerView`), but they are not duplicates — they are the engine and the screen, intentionally split (see above).
+
+## Cruft callouts
+
+- **`VideoPlayerView.bs` is 1,674 lines** — the most complex single component in the app. It mixes: native `Video` event handling, OSD orchestration, trickplay coordination, transcoding logic, DoVi fallback, subtitle management, audio track switching, chapter navigation, and Jellyfin reporting. Some extraction (e.g., a separate `SubtitleController` module) would help. But it works, it's well-tested, and the DoVi handling is genuinely clever.
+- **The set-then-clear event pattern** appears here too on `select*Pressed` fields — `m.view.selectAudioPressed = true` from the OSD, observed by ViewCreator. Same trick as `quickPlayNode`.
+- **`bufferCheckTimer`** — listed in the XML but its duration is set in code dynamically. Its job is to detect the DoVi `buffer:loop:` source overflow. It exists because Roku's native `state` doesn't always transition to `error` cleanly on this specific failure.
+- **No abstraction over "which player is active"**. Code that wants to control current playback has to know whether `m.global.audioPlayer` is the active player or whether a `VideoPlayerView` is on the scene stack. A common `IPlayer` interface or `m.global.activePlayer` reference would help.
+- **Trickplay tile pre-fetch range is hardcoded** in `TrickplayCarousel.bs` — should probably be a constant, possibly user-configurable for power users.

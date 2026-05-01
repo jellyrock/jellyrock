@@ -1,0 +1,216 @@
+# 07 — Translations (i18n)
+
+JellyRock's custom JSON translation system, the locale fallback cascade, and the BSC plugin that gives compile-time key safety.
+
+## Why a custom system
+
+Roku ships a built-in `tr()` function that reads from a fixed XML format. JellyRock replaces it with a custom JSON-based system because:
+
+- **Speed** — translations are loaded once into a flat `roAssociativeArray` for O(1) lookups. `tr()` parses the XML on every call.
+- **Fallback control** — JellyRock layers regional locales over base languages (e.g. `fr_CA` over `fr`) and falls back to en_US for any missing key, so users always see something.
+- **Build-time validation** — a custom BSC plugin generates `translationKeys` constants from `en_US.json` at compile time. Typos become build errors.
+- **Community workflow** — translations live in plain JSON files compatible with Weblate, the open-source translation platform.
+
+98 locale files exist today (`locale/custom/*.json`) covering 100+ languages.
+
+## File layout
+
+```text
+locale/
+├── custom/                    ← one JSON file per locale
+│   ├── en_US.json             ← always loaded as fallback (~150KB with overhead)
+│   ├── fr.json
+│   ├── fr_CA.json             ← regional overlay on fr.json
+│   ├── zh.json
+│   ├── zh_Hans.json           ← Simplified Chinese (script code, not region)
+│   ├── zh_Hant.json           ← Traditional Chinese
+│   ├── zh_Hant_HK.json        ← Hong Kong Traditional (3-layer over zh + zh_Hant)
+│   └── ...
+└── languages.json             ← list of supported languages for the in-app picker
+
+source/utils/
+├── translate.bs               ← translate(), translatePlural(), loadTranslations(), loadLocaleFile()
+└── translateLocale.bs         ← resolveTranslationLocale() — the fallback cascade
+                                  separated because it imports config.bs (only available in source/ scope)
+
+scripts/
+└── bsc-plugin-translation-keys.cjs   ← BSC plugin: generates pkg:/source/translationKeys.bs
+                                        from en_US.json at build time
+```
+
+`languages.json` is a hand-maintained list with `{code, name, nativeName}` per entry. The first entry has `code: ""` and `name: "Automatic"`, meaning "use the device locale".
+
+## Lookup chain
+
+Two `roAssociativeArray` objects live on `m.global` for the lifetime of the app:
+
+- **`m.global.translations`** — the active locale (or en_US if no locale was selected)
+- **`m.global.translationsFallback`** — always en_US
+
+If the active locale is en_US, both reference the same AA (no double memory).
+
+`translate(key, params)` tries each in order:
+
+```brightscript
+function translate(key as string, params = invalid as object) as string
+  if key = invalid or key = "" then return ""
+
+  value = m.global.translations[key]                ' 1. active locale
+  if value = invalid
+    value = m.global.translationsFallback[key]      ' 2. en_US fallback
+  end if
+  if value = invalid
+    return key                                       ' 3. key itself (visible during dev)
+  end if
+
+  ' Substitute indexed placeholders {0}, {1}, etc.
+  if params <> invalid and type(params) = "roArray" and params.Count() > 0
+    for i = 0 to params.Count() - 1
+      value = value.Replace("{" + i.toStr() + "}", params[i])
+    end for
+  end if
+
+  return value
+end function
+```
+
+Returning the key itself when nothing is found is intentional — during development, an untranslated string shows up as `LabelEpisodeCount` in the UI, immediately visible.
+
+## Plurals — `translatePlural`
+
+Uses a Zero/One/Many suffix convention:
+
+```brightscript
+function translatePlural(baseKey, count, params) as string
+  if count = 0
+    suffix = "Zero"
+  else if count = 1
+    suffix = "One"
+  else
+    suffix = "Many"
+  end if
+  return translate(baseKey + suffix, params)
+end function
+```
+
+So a `LabelEpisodeCount` translation needs three keys in en_US.json: `LabelEpisodeCountZero`, `LabelEpisodeCountOne`, `LabelEpisodeCountMany`. The convention is intentionally simpler than full Unicode CLDR plural rules — sufficient for English-speaking developers, may need refinement for languages with more plural forms (Russian, Polish, Arabic).
+
+Usage:
+
+```brightscript
+translate(translationKeys.ButtonPlay)
+translate(translationKeys.ErrorTypeNotYetSupported, [itemType])
+translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])
+```
+
+## Key naming convention
+
+Keys are PascalCase with a category prefix:
+
+| Prefix | For |
+|---|---|
+| `Button*` | Button labels (`ButtonPlay`, `ButtonResume`) |
+| `Label*` | UI labels and headings (`LabelEpisodeCount`, `LabelSelectAudio`) |
+| `Message*` | Longer descriptive text (`MessageVideoStartsIn`, `MessageAreYouSureYouWantTo`) |
+| `Error*` | Error messages (`ErrorTypeNotYetSupported`) |
+| `Setting*` | Setting titles and descriptions |
+| `Tab*` | Tab labels |
+| `Header*` | Section headers |
+| `Tooltip*` | Tooltip text |
+
+The convention is enforced by `npm run lint:translations` (see CI section below).
+
+## Locale loading
+
+`loadTranslations(locale)` is called from `Main()` (with the device-resolved locale) and again after login (with the user-resolved locale). It:
+
+1. Loads `en_US.json` into the fallback AA.
+2. If `locale = "en_US"`, makes the active AA the same reference (no copy).
+3. Otherwise, calls `loadLocaleFile(locale)` — which handles regional and Chinese layering.
+4. Sets `m.global.translations`, `m.global.translationsFallback`, `m.global.translationLocale` atomically via `setFields`.
+
+### Regional layering — `loadLocaleFile`
+
+For a locale like `fr_CA`:
+
+1. Load `fr.json` into a base AA.
+2. Load `fr_CA.json` into a regional AA.
+3. `baseAA.Append(regionalAA)` — regional values overwrite base values where they conflict.
+4. Return the merged AA.
+
+This means `fr_CA` users see Canadian French where translators provided it, falling back to base French elsewhere, and falling back to English in the active-translate function if neither has a key.
+
+### Chinese script layering — `loadChineseLocaleFile`
+
+Chinese is special-cased because it uses script codes (Hans = Simplified, Hant = Traditional) rather than region codes:
+
+```text
+zh_Hans:    zh.json → zh_Hans.json    (2 layers)
+zh_Hant:    zh.json → zh_Hant.json    (2 layers)
+zh_Hant_HK: zh.json → zh_Hant.json → zh_Hant_HK.json  (3 layers)
+```
+
+The layering means a Hong Kong user gets HK-specific translations where available, falls back to Traditional Chinese, then to base Chinese, then to English.
+
+## Locale resolution cascade — `translateLocale.bs`
+
+`resolveTranslationLocale(isPostLogin, serverLanguage)` resolves which locale to use:
+
+1. **User setting** (post-login only) — `getUserSetting("translationLocale")`. If the user picked a language explicitly, use it.
+2. **Server language** (post-login only) — Jellyfin server `CustomPrefs.language`. Normalized via `normalizeLocaleCode()` because Jellyfin may send `zh-CN`, `pt-BR` (dashes), etc.
+3. **Roku device locale** — `m.global.device.locale`. Mapped by `mapRokuLocaleToTranslationLocale()` which special-cases Chinese (Roku sends `zh_CN` → we use `zh_Hans`).
+4. **Hardcoded fallback** — `"en_US"`.
+
+Pre-login, only steps 3 and 4 run. Post-login, the user setting takes priority.
+
+## Compile-time key safety — the BSC plugin
+
+`scripts/bsc-plugin-translation-keys.cjs` is a custom BrighterScript compiler plugin that generates a virtual `pkg:/source/translationKeys.bs` file at build time from `locale/custom/en_US.json`. The generated file looks like:
+
+```brightscript
+namespace translationKeys
+  const ButtonPlay = "ButtonPlay"
+  const ButtonResume = "ButtonResume"
+  const LabelEpisodeCountZero = "LabelEpisodeCountZero"
+  ' ...one constant per key in en_US.json
+end namespace
+```
+
+Application code calls `translate(translationKeys.ButtonPlay)` instead of `translate("ButtonPlay")`. Benefits:
+
+- **Typo detection** — `translate(translationKeys.BtuonPlay)` is a compile error, not a silent runtime failure.
+- **IDE autocomplete** — typing `translationKeys.` shows the full list.
+- **Refactoring safety** — renaming a key in `en_US.json` regenerates the constants; missed call sites become build errors.
+
+The plugin uses `fs.watch` to detect `en_US.json` edits in the language server, because BrighterScript's `Program.setFile` doesn't trigger revalidation on JSON edits by default.
+
+The generated file is virtual (`program.setFile`) — never written to disk. The build artifact is what gets shipped.
+
+## CI lint — `npm run lint:translations`
+
+`scripts/update-translations.cjs` runs in lint and CI modes. It enforces:
+
+- **Sort order** — keys in `en_US.json` must be alphabetically sorted (canonical).
+- **Completeness** — every other locale file must have the same keys as en_US (or empty values for missing translations — but the keys must exist).
+- **Placeholder parity** — if `en_US` says `"Hello {0}, you have {1} items"`, every locale must have the same `{0}` and `{1}` placeholders.
+- **Coverage** — count untranslated strings per locale (reported, not enforced).
+
+`npm run update-translations` (with `--fix`) auto-fixes sortable issues and removes orphaned keys.
+
+## Weblate sync
+
+Translations are crowdsourced via Weblate (an open-source translation platform). The CI workflow `jellyrock-bot.yml` runs on every push to `main` and:
+
+- Removes orphaned keys (keys that exist in non-English files but not in `en_US.json`)
+- Sorts all locale files
+- Pushes changes back to Weblate (and pulls translator updates back into the repo)
+
+So the developer-side workflow is just: edit `en_US.json`, the bot keeps everything else in sync, and translators do their work in Weblate.
+
+## Cruft callouts
+
+- **Plural form is Zero/One/Many only.** No support for languages with more than three plural forms (Polish, Russian, Arabic). For now this is mitigated by translators choosing the most generic form for "Many" — but some languages will read awkwardly.
+- **Manual key naming convention.** No enforcement that new keys follow the `Button*`/`Label*`/`Message*` prefix scheme — relies on PR review.
+- **Locale file size scales linearly.** As keys grow, every locale file grows. ~150KB for en_US today. With 98 files this is ~15MB of JSON in the source tree (most of which is checked in, since translations don't compress in source). Not a runtime concern, just a repo-size one.
+- **The `translationLocale` user setting is post-login only.** A new install of the app will use the device locale until the user logs in once and explicitly picks a language. There's no "guest" language picker on the login screen itself (though the language picker setting is in `components/settings/LanguagePicker.xml`, accessible after login).
+- **No RTL (right-to-left) layout flipping.** Arabic and Hebrew translations exist but the UI doesn't mirror its layout for RTL languages. Probably acceptable for a TV media player but worth knowing.
