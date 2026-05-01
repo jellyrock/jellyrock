@@ -6,7 +6,8 @@
  *
  * Rationale: the base `destroy()` in `components/JRScreen.bs` is a no-op
  * virtual; forgetting to override it leaks observers and Tasks across
- * navigation. See `docs/architecture/tech-debt.md` (`manual-destroy-discipline`).
+ * navigation. The companion `observe-without-destroy` plugin checks the
+ * body of each subclass's destroy() for matching unobserve calls.
  *
  * Skips `components/JRScreen.xml` itself (the no-op base lives there by design).
  *
@@ -55,7 +56,7 @@ class JRScreenDestroyPlugin {
         code: 'jrscreen-destroy-required',
         severity: 2, // Warning
         source: this.name,
-        message: `Component '${componentName}' extends JRScreen (transitively) but its codebehind does not declare a 'destroy' function. JRScreen subclasses must override destroy() to release observers and Tasks (see tech-debt.md#manual-destroy-discipline).`,
+        message: `Component '${componentName}' extends JRScreen (transitively) but its codebehind does not declare a 'destroy' function. JRScreen subclasses must override destroy() to release observers and Tasks (otherwise they leak across navigation).`,
         location: location
       });
     } catch (_e) {

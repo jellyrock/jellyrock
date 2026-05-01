@@ -42,4 +42,4 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 
 - Don't put XML in `source/`.
 - Don't add a new sync HTTP call pattern; use the task pool.
-- Don't bypass `GetApi()` and call `sdk.<namespace>.<function>` directly — that's legacy. The migration to pool-only is incomplete (see `tech-debt.md`'s `legacy-sdk-namespace`); don't add new bypass calls.
+- Don't bypass `GetApi()` and call `sdk.<namespace>.<function>` directly — that's legacy. Enforced by the `no-direct-sdk` BSC plugin; only `ApiClient.bs` and `sdk.bs` itself may invoke it.

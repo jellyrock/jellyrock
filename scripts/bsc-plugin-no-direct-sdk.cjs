@@ -7,8 +7,7 @@
  * calls from anywhere else bypass the pool, run on the render thread, and
  * skip the v1/v2 API-version dispatch.
  *
- * See `docs/architecture/api.md` and `docs/architecture/tech-debt.md`
- * (`legacy-sdk-namespace`).
+ * See `docs/architecture/api.md` and `source/api/CLAUDE.md`.
  *
  * Allowed call sites:
  *  - `source/api/ApiClient.bs`  (the wrapper itself)
