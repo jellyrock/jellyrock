@@ -3510,6 +3510,7 @@ sub destroy()
   m.top.unobserveField("quickPlayNode")
   m.extrasGrid.unobserveField("selectedItem")
   m.buttonGrp.unobserveField("buttonSelected")
+  m.buttonGrp.unobserveField("renderTracking")
 
   destroyTextureManager(m.extrasGrid.content)
 
