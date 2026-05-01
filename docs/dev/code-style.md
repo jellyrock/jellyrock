@@ -416,4 +416,4 @@ startLogin:
 
 **Not currently enforced by tooling**: naming conventions (code review only), line length.
 
-Run `npm run lint` to check formatting, linting, and compilation. Run `npm run format` to auto-fix formatting.
+The IDE runs validate + bslint live; the `.husky/pre-push` hook runs the full lint suite on the files in your push range, with bsfmt auto-applied. You don't need to run `npm run lint` manually except to debug a specific failure.
