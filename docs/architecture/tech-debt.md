@@ -1,7 +1,7 @@
 ---
 topic: tech-debt
 related-files: []  # touches everything; per-item area fields point to specific files
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Tech Debt & Cruft

@@ -8,7 +8,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # The User Journey
@@ -96,21 +96,26 @@ if not isValid(activeUser)
 end if
 ```
 
-`CreateUserSelectGroup()` builds the `UserSelect` component — a grid of avatars with names. The component is in `components/login/`:
+`CreateUserSelectGroup()` builds the `UserSelect` component — a grid of avatars with names plus a **Quick Connect** button. The components are in `components/login/`:
 
-- `UserSelect.xml/.bs` — the screen
+- `UserSelect.xml/.bs` — the screen, with the Quick Connect button gated on `m.global.server.isQuickConnectEnabled`
 - `UserRow.xml/.bs` — wrapper row
 - `UserItem.xml/.bs` — individual avatar tile
+
+The Quick Connect button is removed at runtime if the server reports the feature disabled (`QuickConnectEnabledTask` probes `/QuickConnect/Enabled`; on Jellyfin 10.7 the endpoint is missing, so the probe fails open). When the user picks it, the app shows a 6-character code and polls `/QuickConnect/Connect` until the user approves the device from another Jellyfin client.
 
 If the user backs out, the function returns `"backPressed"`, which causes `LoginFlow` to delete the saved server (`unsetSetting("server")`) and `goto startLogin` for a full restart.
 
 ### 2c. Authentication
 
-Once a user is selected, three auth paths are tried in order:
+Once a user is selected (or Quick Connect completes), four auth paths exist:
 
 1. **Token path** — `getUserSetting("authToken")` returns a saved token; call `AboutMe()` to validate. If valid, call `user.Login(currentUser, true)` and return `true`.
 2. **No-password path** — for public users, try `getToken(userSelected, "")` (empty password). Some Jellyfin users have no password.
 3. **Password path** — show `CreateSigninGroup(userName)` which presents the password keyboard. Submitted password goes through `getToken()`.
+4. **Quick Connect path** — Quick Connect bypasses the user-pick + password steps entirely. The Jellyfin server returns an `AccessToken` keyed to whichever user approved the code, and the app proceeds as if that user was selected directly.
+
+The Quick Connect endpoint is version-dispatched: `GET /QuickConnect/Initiate` on Jellyfin 10.7–10.8, `POST /QuickConnect/Initiate` on 10.9+. The Build*Request method in `ApiClient` handles the routing.
 
 Successful login writes:
 
@@ -210,9 +215,8 @@ The component contains:
   - **Shuffle** — for collections and playlists
   - **Trailer** — if a remote trailer URL is available
   - **Mark Watched / Unwatched**, **Mark Favorite / Unfavorite**
-  - **Options** — opens the options popup for advanced choices
+- An inline **TrackDropdown cluster** (`trackCluster`) — three side-by-side dropdowns for Video / Audio / Subtitle source selection, replacing the older modal `ItemOptions` popup. Track titles localize via the `languages.bs` 3-tier resolver (alias → translationKey → English fallback). Slots auto-hide when no choices exist (e.g., the Video slot is hidden when only one source is available).
 - An "extras" panel (revealed by pressing DOWN) — `extrasGrid` shows related items: cast, episodes (for series), parts (for split media), recommendations, similar items
-- An item-options popup (`itemOptions`) for video source, audio track, subtitle track selection
 
 When a Play button is pressed (handled by `onKeyEvent`):
 

@@ -3,7 +3,7 @@ topic: migrations
 related-files:
   - source/migrations.bs
   - source/utils/config.bs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Registry Migrations
@@ -49,7 +49,10 @@ const GLOBAL_SETTINGS_CLEANUP_VERSION = "1.5.2"
 const MUSIC_VIEW_MIGRATION_VERSION = "1.10.0"
 const TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION = "2.0.0"
 const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
+const HOMESECTION_CLEANUP_VERSION = "2.13.0"   ' homeSection0-6 became server-authoritative
 ```
+
+The constants list grows monotonically — the canonical list always lives in `source/migrations.bs`; the snippet above is illustrative of the shape, not exhaustive of current entries.
 
 Each migration runs only if the user is *upgrading past* that version:
 

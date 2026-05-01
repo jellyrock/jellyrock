@@ -8,7 +8,7 @@ related-files:
   - scripts/lint-language-coverage.cjs
   - locale/custom/en_US.json
   - locale/languages.json
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Translations (i18n)
@@ -175,6 +175,28 @@ The layering means a Hong Kong user gets HK-specific translations where availabl
 4. **Hardcoded fallback** — `"en_US"`.
 
 Pre-login, only steps 3 and 4 run. Post-login, the user setting takes priority.
+
+## Track language name resolution — `source/utils/languages.bs`
+
+A separate (and structurally distinct) localization concern: media stream language codes — what Jellyfin sends as `MediaStream.Language` for an audio or subtitle track — need to be displayed as the user's localized language name in the TrackDropdown cluster, OSD menus, and ItemDetails.
+
+The codes are messy: ffmpeg/Jellyfin pass through whatever the container says, so the same language can arrive as ISO 639-2/T (`fra`), 639-2/B (`fre`), or 639-1 (`fr`). `languages.bs` resolves these via a **3-tier cascade**:
+
+1. **Alias** — `mediaLanguageAliases()` maps 3-letter codes (`fra`, `fre`) to a canonical 2-letter base (`fr`).
+2. **Translation key** — `languageTranslationKeys()` maps the base code to a `LanguageX` translation key (`fr` → `LanguageFr`), which goes through `translate()` and renders in the user's UI locale.
+3. **English fallback** — `languageEnglishFallbacks()` covers ISO 639-2 codes the app doesn't have a UI translation for (e.g., `lat` Latin, `swa` Swahili). These display in English in any UI locale — translating thousands of less-common language names into every UI locale wasn't worth the maintenance cost.
+
+Track names tagged `und` ("undetermined") and `zxx` ("no linguistic content") are intentionally omitted from labels — there's nothing meaningful to localize.
+
+### CI lint — `npm run lint:language-coverage`
+
+`scripts/lint-language-coverage.cjs` catches three classes of silent regression in the resolver:
+
+1. An alias maps `tib` → `bo` but `bo` is missing from tiers 1 and 2 — user sees raw `bo`.
+2. A new `LanguageX` key is added to tier 1 but `xxx` → `x` alias coverage is forgotten — ffmpeg-tagged audio in that language falls through to the English fallback in every UI locale, **including the user's own**.
+3. An English fallback exists for a code that's already covered by a translation key — wasted maintenance, inconsistent output.
+
+These all pass type-check and unit tests but produce silent gaps for non-English users — the lint is the only catch.
 
 ## Compile-time key safety — the BSC plugin
 

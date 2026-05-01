@@ -10,7 +10,7 @@ related-files:
   - components/api/ApiQueueTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # API Layer & Task Pool

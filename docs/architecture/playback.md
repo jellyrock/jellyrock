@@ -11,7 +11,7 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Video & Audio Playback
@@ -119,7 +119,7 @@ The whole file is well-commented and reads cleanly. It's frequently held up inte
 A `.bs` module (no `.xml` — it's not a component, just a function library). Its job is two-fold:
 
 1. **Player factory**: `CreateVideoPlayerView()` / `CreateAudioPlayerView()` instantiate the player node, wire observers, kick off metadata loading, and push the player into the scene stack.
-2. **Dialog coordination**: when the user opens the OSD's track selection menus, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `ViewCreator` catches via observers and shows a `radioDialog`.
+2. **Playback-time track selection**: when the user opens the OSD's track selection menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `ViewCreator` catches via observers and shows a `radioDialog`. (Note: *pre-playback* track selection happens inline via `ItemDetails`'s TrackDropdown cluster — see `user-journey.md`. The two flows write to the same VideoPlayerView fields; they're parallel entry points, not duplicates.)
 
 The dialog flow:
 
@@ -223,6 +223,17 @@ The on-screen display: title, current time, position bar, end-time prediction, p
 
 The OSD is the entry point for advanced controls — it has menu icons for audio tracks, subtitles, video source, and playback info that fire the corresponding `select*Pressed` events on the player when activated.
 
+### Live TV / DVR-recording mode
+
+The OSD adapts when the current item is a live TV channel or a DVR recording (vs. on-demand video). The hybrid behind-live math lives in `source/utils/liveTv.bs` (extracted as testable helpers). Notable adaptations:
+
+- **`goToLive` button** — appears in the OSD's left button menu when the user has scrubbed back from the live edge of a live TV stream. Pressing it seeks to live. The button auto-hides when the user is already at the live edge (detached from the layout entirely so it doesn't reserve dead space).
+- **Wall-clock fallback** — when stream metadata is missing (some recordings, mid-stream channel switches), OSD timestamps fall back to wall-clock time + program EPG data rather than reporting zeros.
+- **Logo/metadata refresh** — channel switches reset stale logo and metadata before the new channel's data arrives, so the OSD doesn't briefly show the previous channel's branding.
+- **Recording playback** — short MPEG-TS recordings stay on HLS so the trickplay scrub bar can scrub them; longer recordings remain progressive (the MPEG-TS → progressive MKV transcode path was tried and reverted as not worth the complexity).
+
+`components/video/RefreshLiveTvMetadataTask.bs` and `LoadChannelListForQueueTask.bs` support these flows. The channel list is reused across channel switches in the queue to avoid refetching.
+
 ## TrickplayCarousel — `components/video/TrickplayCarousel.bs/.xml`
 
 The seek-thumbnail UI. When the user holds left/right to scrub, this component:
@@ -297,6 +308,11 @@ Before `VideoPlayerView` starts the `Video` node, it needs a URL. The decision t
 2. **Direct Stream** — if the container needs remuxing but codecs are OK.
 3. **Transcode** — if codecs/profiles unsupported.
 
+Multichannel audio handling lives in `source/api/items.bs` and `source/utils/deviceCapabilities.bs`:
+
+- **Direct-play multichannel by default** on surround-capable hardware — the device's `MaxAudioChannels` (from its TranscodingProfiles) gates whether 5.1+ tracks are direct-played.
+- **Surround codec preservation on transcode** — when a multichannel source can't direct-play, the transcoder is steered toward surround-capable codecs (`eac3`/`ac3`/`dts`) over downmixing to AAC stereo. The `surroundCodecs` list in `items.bs` is intentionally distinct from `stereoOutputCodecs` in `deviceCapabilities.bs`; the former is a pick-from-this-list hint to the server, the latter is an output capability.
+
 Special case: **Dolby Vision (DoVi)**. JellyRock has dedicated DoVi handling because Jellyfin's transcoder can sometimes produce HLS segments that overflow Roku's video buffer:
 
 - If `playbackPreserveDovi` is enabled and item is DoVi, attempt a DoVi-preserving transcode first.
@@ -318,6 +334,8 @@ Three "kinds" of subtitles:
 Annoyance addressed in code: Roku **reorders** subtitle tracks unpredictably between what JellyRock provides and what `availableSubtitleTracks` returns. The function `availSubtitleTrackIdx(trackName)` in `ViewCreator.bs` handles this by matching on substring of the track URL rather than expecting index parity.
 
 The current selection persists in user settings (`globalCaptionMode`) so it's remembered across sessions.
+
+Track *language names* (the labels shown in the TrackDropdown and OSD menus) are localized via `source/utils/languages.bs` — see `translations.md` for the 3-tier resolver (alias → translationKey → English fallback) and the `lint:language-coverage` CI script that catches silent localization gaps.
 
 ## A historical note: the legacy video player
 

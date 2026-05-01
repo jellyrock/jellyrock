@@ -5,7 +5,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Bootstrap & Lifecycle

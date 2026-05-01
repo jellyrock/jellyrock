@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.xml
   - components/JRScene.bs
   - components/JRScene.xml
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Scene Stack & Navigation

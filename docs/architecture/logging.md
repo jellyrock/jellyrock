@@ -3,7 +3,7 @@ topic: logging
 related-files:
   - components/JRScreen.bs
   - scripts/bsc-plugin-roku-log.cjs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Logging

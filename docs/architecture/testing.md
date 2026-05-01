@@ -6,7 +6,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Testing
@@ -73,8 +73,11 @@ npm run test:integration
 npm run test:all
 npm run test:complete
 
-npm run build:tdd                 # watch mode for rapid iteration
+npm run test:tdd                  # build + run TDD config (single-suite iteration; uses bsconfig-tdd.json)
+npm run build:tdd                 # watch mode build only (no run)
 ```
+
+The TDD workflow expects you to copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` (gitignored) and edit it to scope which suites/tests get built.
 
 The actual test execution is via `scripts/run-roku-tests.js` which deploys the test channel, captures rooibos output over telnet, and exits with the result.
 

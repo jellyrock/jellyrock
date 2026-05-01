@@ -5,7 +5,7 @@ related-files:
   - components/JRScene.bs
   - components/JRScene.xml
   - source/utils/globals.bs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Debug Tools

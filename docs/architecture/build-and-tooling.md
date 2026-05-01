@@ -7,7 +7,7 @@ related-files:
   - Makefile
   - scripts/bsc-plugin-roku-log.cjs
   - scripts/bsc-plugin-translation-keys.cjs
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Build & Tooling
@@ -117,6 +117,7 @@ Run tests:
 | `npm run test:integration` | Build + run integration tests |
 | `npm run test:all` | Build + run all tests |
 | `npm run test:complete` | Build + run complete suite |
+| `npm run test:tdd` | Build + run TDD config (uses `bsconfig-tdd.json`; copy from `bsconfig-tdd-sample.json` and edit) |
 
 Lint and format:
 
@@ -128,6 +129,7 @@ Lint and format:
 | `npm run lint:markdown` | markdownlint on all `.md` (with exclusions for AI agent docs) |
 | `npm run lint:spelling` | spellchecker on Markdown files |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
+| `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
 | `npm run check-formatting` | `bsfmt --check` (read-only check) |
 | `npm run format` | `bsfmt --write` (apply formatting fixes) |
 | `npm run validate` | `bsc --noEmit` (type-check) |
@@ -181,6 +183,7 @@ Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` blo
 | `jshint` | JSON validation |
 | `dotenv` | `.env` file loading for device target/password |
 | `fast-glob` | File matching in scripts |
+| `husky` | Manages git hooks; installs `.husky/pre-push` on `npm install` (via `prepare` script) |
 
 Versions are pinned in `package.json` (currently on alpha versions of brighterscript ecosystem packages).
 
@@ -219,6 +222,27 @@ export ROKU_DEV_PASSWORD=mydevpassword
 make deploy        # lints, removes old, installs new
 make launch        # launches the channel
 ```
+
+## Pre-push hook — `.husky/pre-push`
+
+Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). Mirrors the CI lint suite, scoped to files in the push range, so issues are caught before they fail the build.
+
+**Auto-fix steps** (mutate files; combined into a single `chore: auto-fix via pre-push hook` commit; never amends):
+
+1. `bsfmt --write` on `*.bs` / `*.brs` files in the push range.
+2. `npm run update-translations` if BS source / `locale/**` / `settings/settings.json` changed.
+
+**Check steps** (read-only; non-zero exit aborts the push) — run after auto-fix:
+
+1. `npm run validate` — when `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
+2. `npm run lint:markdown` + `npm run lint:spelling` — when `*.md` changed.
+3. `npm run lint:json` — when `*.json` changed.
+
+**Safety:** auto-fix is skipped (with a warning) when the working tree is dirty so WIP can't be swept into the auto-fix commit. Check steps still run.
+
+**Bypass:** `git push --no-verify` if you must (prefer fixing the underlying issue).
+
+This is the reason agents and humans should NOT manually run `npm run lint*` or `npm run validate`: the IDE catches issues live, the pre-push hook catches them at push time, and CI catches them on PR. Manual runs duplicate work.
 
 ## IDE integration
 

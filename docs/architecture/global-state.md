@@ -9,7 +9,7 @@ related-files:
   - components/data/jellyfin/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-04-26
+last-reviewed: 2026-05-01
 ---
 
 # Global State
@@ -45,6 +45,7 @@ m.global  (the global roSGNode)
 │
 ├── server            JellyfinServer node                   ← phase 1
 │   ├── serverUrl, name, version, id, apiVersion, isConnected
+│   ├── isQuickConnectEnabled bool                          ← fail-open default true; QuickConnectEnabledTask sets false
 │   └── ...
 │
 ├── user              JellyfinUser node                     ← phase 1
@@ -117,7 +118,7 @@ The full set is small enough to enumerate:
 | `JellyfinServer.xml` | Server identity and connection state |
 | `JellyfinUser.xml` | User identity + child-node references |
 | `JellyfinUserSettings.xml` | Per-user UI/playback settings — see below |
-| `JellyfinUserConfiguration.xml` | Server-side profile (avatar tag, display preferences) |
+| `JellyfinUserConfiguration.xml` | Server-side profile (avatar tag, display preferences, home section ordering) |
 | `JellyfinUserPolicy.xml` | Server-side permissions (can record, can sync, etc.) |
 
 `JellyfinBaseItem.xml` is the largest because Jellyfin's `BaseItemDto` is itself a polymorphic mega-shape — JellyRock represents that as one wide ContentNode with optional fields, populated by `source/data/JellyfinDataTransformer.bs`.
