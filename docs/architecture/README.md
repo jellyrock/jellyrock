@@ -27,20 +27,20 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 
 | When you need to understand… | Read |
 |---|---|
-| **The spine** — how login → home → playback flows end-to-end | [user-journey.md](./user-journey.md) |
-| **App startup**, two-phase global setup, the persistent JRScene root, app suspend/resume/exit | [bootstrap.md](./bootstrap.md) |
-| **The scene stack** — `JRScene`/`JRScreen`/`JRGroup` triad, `pushScene`/`popScene`, focus, the overhang | [navigation.md](./navigation.md) |
-| **Global state** — every node hanging off `m.global`, when each is initialized, who mutates it | [global-state.md](./global-state.md) |
-| **Playback** — `VideoPlayerView`, OSD, trickplay, `QueueManager`, `ViewCreator`, the `AudioPlayer` engine vs. the `AudioPlayerView` screen, transcoding decisions | [playback.md](./playback.md) |
-| **The API layer** — 3-layer model, the persistent task pool, V1/V2 dispatch, the four call patterns | [api.md](./api.md) |
-| **Translations (i18n)** — custom JSON system, lookup chain, regional layering, BSC-plugin-generated key constants, Weblate sync | [translations.md](./translations.md) |
-| **Settings** — `settings/settings.json` as source of truth, registry persistence, auto-sync, `SessionDataTransformer` | [settings.md](./settings.md) |
-| **Registry migrations** — when one is needed, version-gated structure, test-mode safety | [migrations.md](./migrations.md) |
-| **Logging** — `roku-log` per-component pattern, levels, prod-build stripping | [logging.md](./logging.md) |
-| **Debug tools** — `m.global.debug` flags, `testToast` field, up-up-down-down cheat code | [debug-tools.md](./debug-tools.md) |
-| **Tests** — rooibos, `BaseTestSuite`, test folder layout, run scripts | [testing.md](./testing.md) |
-| **Build & tooling** — `bsc` configs, custom BSC plugins, npm scripts, Makefile, ropm | [build-and-tooling.md](./build-and-tooling.md) |
-| **Tech debt and "things to preserve"** — known cruft, recent removals, design intentions worth defending | [tech-debt.md](./tech-debt.md) |
+| how login → home → playback flows end-to-end (the spine) | [user-journey.md](./user-journey.md) |
+| app startup and lifecycle | [bootstrap.md](./bootstrap.md) |
+| the scene stack and navigation | [navigation.md](./navigation.md) |
+| global state — what hangs off `m.global` | [global-state.md](./global-state.md) |
+| video and audio playback | [playback.md](./playback.md) |
+| the API layer and task pool | [api.md](./api.md) |
+| translations and i18n | [translations.md](./translations.md) |
+| settings — sources, persistence, defaults | [settings.md](./settings.md) |
+| registry migrations | [migrations.md](./migrations.md) |
+| logging | [logging.md](./logging.md) |
+| debug tools | [debug-tools.md](./debug-tools.md) |
+| testing | [testing.md](./testing.md) |
+| build, tooling, and pre-push hooks | [build-and-tooling.md](./build-and-tooling.md) |
+| known tech debt and design intentions to preserve | [tech-debt.md](./tech-debt.md) |
 
 ## Glossary
 
@@ -71,18 +71,4 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 
 ### Existing dev guides
 
-| File | Topic |
-|---|---|
-| `docs/dev/DEVGUIDE.md` | New-developer quick start |
-| `docs/dev/code-style.md` | Naming, formatting, BS-specific patterns |
-| `docs/dev/api-layering-guide.md` | Which API layer to use when |
-| `docs/dev/api-patterns.md` | Task-pool call patterns |
-| `docs/dev/translations.md` | i18n workflow, locale files |
-| `docs/dev/new-user-setting.md` | Adding a setting end-to-end |
-| `docs/dev/registry-migrations.md` | Writing a migration |
-| `docs/dev/logging.md` | roku-log conventions |
-| `docs/dev/debug-flags.md` | Debug flag system, toast cheat code |
-| `docs/dev/unit-tests.md` | Rooibos basics |
-| `docs/dev/unit-tests-tdd.md` | TDD workflow |
-| `docs/dev/jellyfin-server-versioning.md` | Server version dispatch |
-| `docs/dev/developer-mode.md` | Developer-mode toggles |
+See [`docs/dev/`](../dev/) for task-oriented how-to guides — `DEVGUIDE.md` for new-developer quick start, plus per-topic guides (filenames are descriptive: `new-user-setting.md`, `registry-migrations.md`, `unit-tests.md`, etc.). An auto-generated index is planned (Phase 3 of the agent-context-system work) so this list can never drift; for now, browse the folder.
