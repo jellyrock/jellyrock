@@ -75,6 +75,8 @@ function BuildGetItemRequest(itemId as string, params = {} as object) as dynamic
   userId = m.getUserId()
   if userId = "" then return invalid
 
+  mergedParams = m.injectDefaults(params)
+
   if m.getApiVersion() >= 2
     mergedParams.userId = userId
     return m.validatedReq("GET", buildURL(Substitute("/Items/{0}", itemId), mergedParams))

@@ -137,7 +137,7 @@ Lifecycle:
 4. **Login** — `SessionDataTransformer` (`source/data/SessionDataTransformer.bs`) reads the per-user registry section and overlays any saved values on top of the defaults.
 5. **Steady state** — Reads happen from `m.global.user.settings.<field>` directly. Writes go through the same field assignment, and the auto-sync observer persists them to the registry.
 
-`JellyfinUserSettings.bs` (the BS backing file) implements `SaveDefaults`, `enableAutoSync`, and the per-field observer logic. Settings are categorized by prefix:
+`JellyfinUserSettings.bs` (the BS backing file) implements the auto-sync observer + the display/library-settings sync logic (`enableAutoSync`, `disableAutoSync`, `observeAllSettings`, `onSettingChanged`, `onDisplaySettingsChanged`, plus library-settings sync helpers). The settings-loading orchestration — `SaveDefaults`, `LoadGlobals`, etc. — lives separately in the `user.settings` namespace in `source/utils/session.bs`; calls like `user.settings.SaveDefaults()` from `main.bs` invoke those namespaced subs, not methods on the node. Settings are categorized by prefix:
 
 | Prefix | Purpose |
 |---|---|
