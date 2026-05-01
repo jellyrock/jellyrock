@@ -266,7 +266,7 @@ Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). M
 1. `npm run validate` — when `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
 2. `npm run lint:markdown` + `npm run lint:spelling` — when `*.md` changed.
 3. `npm run lint:json` — when `*.json` changed.
-4. `npm run lint:docs` — when `docs/architecture/*.md` or `docs/decisions.md` changed (validates `related-files:` paths and markdown link targets resolve).
+4. `npm run lint:docs` — **always**. Validates `related-files:` paths and markdown link targets across every `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, and every `CLAUDE.md`. Runs unconditionally because broken refs most often come from code renames (no `*.md` in the push range), and limiting the check to doc-only pushes lets those slip through to CI. Cost is ~1s.
 
 **Safety:** auto-fix is skipped (with a warning) when the working tree is dirty so WIP can't be swept into the auto-fix commit. Check steps still run.
 
