@@ -11,7 +11,11 @@
     "@rokucommunity/bslint",
     "brighterscript-xml-plugin",
     "./scripts/bsc-plugin-roku-log.cjs",
-    "./scripts/bsc-plugin-translation-keys.cjs"
+    "./scripts/bsc-plugin-translation-keys.cjs",
+    "./scripts/bsc-plugin-jrscreen-destroy.cjs",
+    "./scripts/bsc-plugin-print-locations.cjs",
+    "./scripts/bsc-plugin-observe-without-destroy.cjs",
+    "./scripts/bsc-plugin-no-direct-sdk.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {

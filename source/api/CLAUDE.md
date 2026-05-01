@@ -39,8 +39,7 @@ Decision flow:
 
 ## Don't bypass `ApiClient`
 
-- `source/api/sdk.bs`, `sdkV1.bs`, `sdkV2.bs` are the underlying endpoint wrappers. **Don't call them directly** from app code — go through `GetApi()`.
-- Migration of legacy callers is in progress (see `tech-debt.md`'s `legacy-sdk-namespace`). Don't add new direct callers.
+- `source/api/sdk.bs`, `sdkV1.bs`, `sdkV2.bs` are the underlying endpoint wrappers. **Don't call them directly** from app code — go through `GetApi()`. The `no-direct-sdk` BSC plugin enforces this at build time; only `ApiClient.bs` and `sdk.bs` itself are allowed to invoke `sdk.<ns>.<fn>(...)`. See [docs/architecture/build-and-tooling.md](../../docs/architecture/build-and-tooling.md) ("Convention plugins") for the opt-out syntax (rare).
 
 ## Auth header is automatic
 

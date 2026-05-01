@@ -20,7 +20,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 - Override `OnScreenShown()` — restore focus, refresh data on revisit.
 - Override `OnScreenHidden()` — pause Tasks, hide UI, but keep state.
-- Override `destroy()` — release Task nodes, unobserve fields, drop large data structures. **`destroy()` is a no-op by default; forgetting to override it leaks observers and tasks across navigation.** This is a known cruft point (see `docs/architecture/tech-debt.md`'s `manual-destroy-discipline`).
+- Override `destroy()` — release Task nodes, unobserve fields, drop large data structures. **`destroy()` is a no-op by default; forgetting to override it leaks observers and tasks across navigation.** Two BSC plugins enforce this at build time: `jrscreen-destroy` (you must declare `destroy`) and `observe-without-destroy` (every `observeField` needs a matching `unobserveField` somewhere — alias-aware, so `m.foo = bar` is handled). False-positive escape hatches are documented in [docs/architecture/build-and-tooling.md](../docs/architecture/build-and-tooling.md) ("Convention plugins"). Don't reach for them without reading why.
 
 ## Render thread protection
 

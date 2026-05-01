@@ -21,8 +21,8 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 
 ## Logging
 
-- Every `.bs` file that logs gets `m.log = new log.Logger("ComponentName")` in `init()` (or at function scope for non-component modules). See [docs/architecture/logging.md](../docs/architecture/logging.md).
-- **`print` is allowed only in `source/main.bs`** (early bootstrap before the log manager is up) and in `globals.bs` debug-block init for developer console hints.
+- Every `.bs` file that logs gets `m.log = new log.Logger("ComponentName")` in `init()`. **Class methods can use `m.log` too.** Top-level functions in `source/*.bs` can't carry an `m.log` — there's no `m` to attach it to.
+- **`print` is allowed only in `source/main.bs`** (early bootstrap before the log manager is up) and in `globals.bs` debug-block init for developer console hints. The `print-locations` BSC plugin enforces this at build time, with smart skipping for top-level functions in `source/*.bs` (no `m.log` available there). See [docs/architecture/logging.md](../docs/architecture/logging.md) and [docs/architecture/build-and-tooling.md](../docs/architecture/build-and-tooling.md) ("Convention plugins") for the opt-out comment syntax.
 
 ## What lives in subfolders
 

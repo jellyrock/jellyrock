@@ -7,6 +7,10 @@ related-files:
   - Makefile
   - scripts/bsc-plugin-roku-log.cjs
   - scripts/bsc-plugin-translation-keys.cjs
+  - scripts/bsc-plugin-jrscreen-destroy.cjs
+  - scripts/bsc-plugin-print-locations.cjs
+  - scripts/bsc-plugin-observe-without-destroy.cjs
+  - scripts/bsc-plugin-no-direct-sdk.cjs
 last-reviewed: 2026-05-01
 ---
 
@@ -87,6 +91,27 @@ This is the reason `m.log.debug("intermediate value", x, y, z)` is fine to leave
 Generates a virtual `pkg:/source/translationKeys.bs` file containing a `translationKeys` namespace with one constant per key in `locale/custom/en_US.json`. Documented in detail in `translations.md`.
 
 The plugin uses `fs.watch` to detect en_US.json changes in language-server mode (so the IDE always sees up-to-date constants without re-running the build).
+
+### Convention plugins
+
+Four lint-only plugins encode unwritten conventions documented in `components/CLAUDE.md` / `source/CLAUDE.md` so violations surface as IDE warnings + CI failures instead of bugs at runtime. All emit warnings (severity 2), never errors, and never crash the build on edge cases.
+
+| Plugin | Flags | Smart filtering |
+|---|---|---|
+| `bsc-plugin-jrscreen-destroy.cjs` | XML components that transitively extend `JRScreen` whose codebehind doesn't declare a top-level `destroy` function | Skips `JRScreen.xml` itself; walks `parentComponent` chain up to depth 32 |
+| `bsc-plugin-print-locations.cjs` | Raw `print` calls outside the allowed sites | Allows `source/main.bs` (whole file) and `#if debug` blocks in `source/utils/globals.bs`; auto-skips top-level functions in any `source/*.bs` file (no `m` context, so no `m.log` available) |
+| `bsc-plugin-observe-without-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on JRScreen subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
+| `bsc-plugin-no-direct-sdk.cjs` | `sdk.<ns>.<fn>(...)` calls outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | None — the only allowed callers are explicitly listed |
+
+**Suppressing a false positive.** Each plugin honours these comment markers (case-insensitive, regex match against the source text):
+
+```brightscript
+' bsc-disable-line <plugin-id>           ← on the same line as the call
+' bsc-disable-next-line <plugin-id>      ← on the line above
+' bsc-disable-file <plugin-id>           ← anywhere in the file (whole-file opt-out)
+```
+
+Valid `<plugin-id>` values: `jrscreen-destroy`, `print-locations`, `observe-without-destroy`, `no-direct-sdk`. (Note: `jrscreen-destroy` only honours `bsc-disable-file` since the diagnostic is reported on the XML component declaration, not a specific source line.) Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
 
 ### Other plugins
 

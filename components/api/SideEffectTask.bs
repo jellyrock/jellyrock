@@ -1,3 +1,4 @@
+' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt 'legacy-print-statements'
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/roku_modules/rr/Requests.brs"

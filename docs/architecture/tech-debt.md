@@ -53,18 +53,6 @@ Each refactor item has a stable slug for cross-referencing in commits, PRs, and 
 - **issue**: `LoginFlow()` plus a dozen `Create*Group()` scene factories live in one file.
 - **direction**: Split into `source/auth/LoginFlow.bs` and `source/screens/<Name>Page.bs`.
 
-#### `legacy-sdk-namespace`
-
-- **area**: `source/api/sdk.bs`
-- **issue**: Header comment warns "Only used by ApiClient — do NOT call directly", but some legacy code paths still bypass `ApiClient` and call into `sdk.*` directly. Migration is partial.
-- **direction**: Finish the migration; remove the namespace once nothing imports it directly.
-
-#### `manual-destroy-discipline`
-
-- **area**: All `JRScreen` subclasses
-- **issue**: The base `destroy()` is a no-op virtual. Forgetting to override leaks observers and tasks. No safety net.
-- **direction**: Add a base implementation that auto-unobserves any field this screen called `observeField` on, and stops/destroys any Task nodes stored in `m.*` fields with a known naming convention. (Could be enforced at lint level via a BSC plugin.)
-
 #### `per-method-v1-v2-routing`
 
 - **area**: `source/api/ApiClient.bs`
@@ -179,6 +167,13 @@ Each refactor item has a stable slug for cross-referencing in commits, PRs, and 
 
 - **area**: `source/api/apiPool.bs`
 - **issue**: A `submitApiRequest` that's no longer needed completes anyway and fires its callback. Most callers handle this defensively in the callback.
+
+#### `legacy-print-statements`
+
+- **area**: 16 component `.bs` files (`components/api/*Task.bs`, `components/tasks/*Task.bs`, `components/ui/**`, `components/Buttons/JRButtons.bs`, `components/home/HomeRows.bs`, `components/search/SearchResults.bs`, `components/video/VideoPlayerView.bs`) plus `source/data/JellyfinDataTransformer.bs`.
+- **issue**: ~36 raw `print` statements in places that *could* use `m.log.*` (component methods + class methods). Production builds can't strip them, so they reach the device log unconditionally.
+- **direction**: For each file, add `import "pkg:/source/roku_modules/log/LogMixin.brs"` + `m.log = new log.Logger("…")` in `init()` (or the class constructor) and convert each `print` to the appropriate `m.log.{warn,error,info,debug}` level. Files are currently flagged with a `' bsc-disable-file print-locations` header that points back here.
+- **enforced**: `scripts/bsc-plugin-print-locations.cjs` flags every new `print` outside `source/main.bs` / `globals.bs` debug-block, with smart skipping for free functions in `source/` (no `m` context available there). Existing legacy sites are opted out; the plugin still catches new violations in clean files.
 
 #### `e2e-folder-empty`
 
