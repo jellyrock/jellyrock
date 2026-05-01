@@ -68,7 +68,7 @@ Internally, `Build*Request` methods:
 - Route between V1 and V2 endpoints based on `getApiVersionFromGlobal()` (which reads `m.global.server.apiVersion`)
 - Return `invalid` if there's no user (so callers don't have to null-check globals)
 
-Examples of V1/V2 routing:
+Example of V1/V2 routing (one method shown — the same pattern repeats per endpoint; canonical source: `source/api/ApiClient.bs`):
 
 ```brightscript
 function BuildGetItemRequest(itemId as string, params = {} as object) as dynamic

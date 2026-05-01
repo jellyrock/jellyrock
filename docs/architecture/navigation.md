@@ -91,6 +91,8 @@ Only the **top** of the stack is mounted in the rendered scene graph (as the sin
 
 ### Public API
 
+The full public surface (snippet illustrative, not exhaustive — canonical source: `components/data/SceneManager.bs`):
+
 | Function | Purpose |
 |---|---|
 | `pushScene(newGroup)` | Push a group onto the stack and make it visible. Hides the previous top, calls `OnScreenHidden` on it, calls `OnScreenShown` on the new one. |

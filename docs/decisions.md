@@ -46,6 +46,11 @@ Then the body: why, what we considered, what we chose, what we ruled out, and an
 
 ---
 
+<!-- DELETE THIS BLOCK (everything from "## Example entries" through the
+end of the example below) when adding the first real decision. The
+example exists only to show the format; once real entries replace it,
+the example becomes confusing. -->
+
 ## Example entries (template — replace or remove these)
 
 ### `decision-id: example-format`

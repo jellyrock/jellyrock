@@ -44,7 +44,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 
 ## Glossary
 
-- **JRScene** — the *single* root scene of the app, persistent for the entire lifetime. Defined in `components/JRScene.xml`.
+- **JRScene** — the persistent root scene; see [bootstrap.md](./bootstrap.md). Defined in `components/JRScene.xml`.
 - **JRScreen** — base class for full-screen scenes (`extends="JRScreen"` in XML). Provides `OnScreenShown`, `OnScreenHidden`, `destroy` virtuals + `lastFocus` field. Defined in `components/JRScreen.bs/.xml`.
 - **JRGroup** — base class for sub-panels and dialogs (`extends="JRGroup"`). Pure interface declaration in `components/JRGroup.xml` (no `.bs`). Adds common interface fields used for navigation, focus preservation, and overhang wiring — see [navigation.md](./navigation.md) for the full field table. JRScreen extends JRGroup.
 - **SceneManager** — global stack-based navigator at `m.global.sceneManager`. The only thing that swaps groups in/out of `JRScene`'s `content` slot.

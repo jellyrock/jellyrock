@@ -31,7 +31,7 @@ Many locale files live under `locale/custom/*.json` covering a wide range of lan
 ```text
 locale/
 ├── custom/                    ← one JSON file per locale
-│   ├── en_US.json             ← always loaded as fallback (~150KB with overhead)
+│   ├── en_US.json             ← always loaded as fallback
 │   ├── fr.json
 │   ├── fr_CA.json             ← regional overlay on fr.json
 │   ├── zh.json

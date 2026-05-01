@@ -135,11 +135,6 @@ Each refactor item has a stable slug for cross-referencing in commits, PRs, and 
 - **area**: `source/utils/translate.bs`
 - **issue**: No support for languages with more than three plural forms (Polish, Russian, Arabic).
 
-#### `locale-files-checked-in-bulk`
-
-- **area**: `locale/custom/*.json`
-- **issue**: Every locale file is committed and grows linearly with key count. Repo-size only, not runtime.
-
 #### `settings-auto-sync-coupling`
 
 - **area**: `JellyfinUserSettings.bs`
@@ -207,6 +202,7 @@ These are areas where the design is genuinely good and shouldn't be casually ref
 - **Per-component logging pattern** — `m.log = new log.Logger("Name")` in every `init()`, with prod-build log stripping. Zero overhead in production.
 - **The `back` key always means popScene** — SceneManager handles it uniformly. Confirmation dialog appears automatically when popping the last scene.
 - **`isLowMemoryDevice` detection** — hardcoded prefix list of known 512MB models in `LOW_MEMORY_DEVICE_PREFIXES`. Yes, it's hardcoded; yes, it's the right call (Roku doesn't expose RAM info via API).
+- **All locale files committed to the repo** — looks like bloat but is required by the Weblate workflow. Translators need source-of-truth files to PR against; the bot keeps non-English locales in sync with `en_US.json`. Don't move locales out of the repo.
 
 ## A note on the audio "duplication"
 

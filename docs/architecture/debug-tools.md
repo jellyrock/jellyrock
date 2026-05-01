@@ -144,4 +144,4 @@ Why key UP events specifically: BrightScript convention is for child components 
 
 ## Cruft callouts
 
-- **`testToast` is in production builds too.** It's not gated by `#if debug`. The field exists on the JRScene interface always; only the cheat code is debug-gated. So in theory a malicious app could drive toasts on the prod app via some external means — but there's no such attack vector on Roku.
+- **`testToast` is in production builds too.** It's not gated by `#if debug`. The field exists on the JRScene interface always; only the cheat code is debug-gated. Documented for completeness; not a security concern on Roku's sandboxed platform.
