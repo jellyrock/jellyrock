@@ -97,7 +97,7 @@ m.log.resetIndent()
 - **Create a logger per component/class** for clear log sources.
 - **Use appropriate log levels** for filtering.
 - **Group related actions** with indentation for easier tracing.
-- **Never use print statements outside of `source/main.bs`**; always use roku-log.
+- **Never use print statements outside of `source/main.bs`**; always use `m.log.*`. (Enforced by the `print-locations` BSC plugin — see [build-and-tooling.md](../architecture/build-and-tooling.md).)
 
 ---
 

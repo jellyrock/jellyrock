@@ -20,7 +20,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 - Override `OnScreenShown()` — restore focus, refresh data on revisit.
 - Override `OnScreenHidden()` — pause Tasks, hide UI, but keep state.
-- Override `destroy()` — release Task nodes, unobserve fields, drop large data structures. **`destroy()` is a no-op by default; forgetting to override it leaks observers and tasks across navigation.** Two BSC plugins enforce this at build time: `jrscreen-destroy` (you must declare `destroy`) and `observe-without-destroy` (every `observeField` needs a matching `unobserveField` somewhere — alias-aware, so `m.foo = bar` is handled). False-positive escape hatches are documented in [docs/architecture/build-and-tooling.md](../docs/architecture/build-and-tooling.md) ("Convention plugins"). Don't reach for them without reading why.
+- Override `destroy()` — release Task nodes, unobserve fields, drop large data structures. The base `destroy()` is a no-op; missing it leaks observers and tasks across navigation. Two BSC plugins enforce this; opt-out comments are documented in [build-and-tooling.md](../docs/architecture/build-and-tooling.md).
 
 ## Render thread protection
 
@@ -45,7 +45,5 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 ## What does NOT belong here
 
-- No XML files outside `components/` (lint-enforceable).
-- No raw `print` statements — use `m.log.*` from `roku-log`. See [docs/architecture/logging.md](../docs/architecture/logging.md).
 - No synchronous network calls from a component — always go through the task pool.
 - No direct registry access — use the helpers in `source/utils/config.bs`.

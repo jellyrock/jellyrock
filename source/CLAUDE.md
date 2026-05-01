@@ -6,12 +6,7 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 
 - **`source/` is BS only.** No XML files here.
 - Files in `source/` auto-scope together — code in any `source/*.bs` can call any other `source/*.bs` function without `import`.
-- To use `source/` code from a component, add `import "pkg:/source/<path>.bs"` at the top of the component's `.bs` file.
-
-## Imports
-
-- Use `import "pkg:/source/..."`, not relative paths.
-- Match the actual file path; BSC validates this at compile time.
+- To use `source/` code from a component, add `import "pkg:/source/<path>.bs"` (always pkg-rooted; no relative paths).
 
 ## Render thread protection
 
@@ -21,8 +16,8 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 
 ## Logging
 
-- Every `.bs` file that logs gets `m.log = new log.Logger("ComponentName")` in `init()`. **Class methods can use `m.log` too.** Top-level functions in `source/*.bs` can't carry an `m.log` — there's no `m` to attach it to.
-- **`print` is allowed only in `source/main.bs`** (early bootstrap before the log manager is up) and in `globals.bs` debug-block init for developer console hints. The `print-locations` BSC plugin enforces this at build time, with smart skipping for top-level functions in `source/*.bs` (no `m.log` available there). See [docs/architecture/logging.md](../docs/architecture/logging.md) and [docs/architecture/build-and-tooling.md](../docs/architecture/build-and-tooling.md) ("Convention plugins") for the opt-out comment syntax.
+- Component / class init: `m.log = new log.Logger("Name")`. Top-level functions in `source/*.bs` have no `m`, so no `m.log` — `print` is the only option there, and the `print-locations` plugin auto-skips them.
+- See [docs/architecture/logging.md](../docs/architecture/logging.md) for the levels and [build-and-tooling.md](../docs/architecture/build-and-tooling.md) for plugin opt-outs.
 
 ## What lives in subfolders
 
@@ -38,8 +33,3 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 | `source/main.bs` | Entry point; bootstrap; main event loop. See [docs/architecture/bootstrap.md](../docs/architecture/bootstrap.md). |
 | `source/showScenes.bs` | LoginFlow + scene factories. |
 
-## What NOT to do
-
-- Don't put XML in `source/`.
-- Don't add a new sync HTTP call pattern; use the task pool.
-- Don't bypass `GetApi()` and call `sdk.<namespace>.<function>` directly — that's legacy. Enforced by the `no-direct-sdk` BSC plugin; only `ApiClient.bs` and `sdk.bs` itself may invoke it.

@@ -34,7 +34,5 @@ Cross-cutting utilities. See related architecture docs for the *why* of each:
 
 ## What NOT to do
 
-- Don't pass raw string literals to `translate()` — always use `translationKeys.X`.
 - Don't write directly to registry for settings that have a `JellyfinUserSettings` field; write to the field and let auto-sync persist.
-- Don't add an alias to `languages.bs` without also adding the matching translation key to `en_US.json` (the `lint:language-coverage` script fails the build otherwise).
 - Don't change the test-mode prefix from `"test-"` — migration safety depends on it.
