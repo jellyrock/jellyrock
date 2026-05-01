@@ -1,4 +1,12 @@
-# 09a — Logging
+---
+topic: logging
+related-files:
+  - components/JRScreen.bs
+  - scripts/bsc-plugin-roku-log.cjs
+last-reviewed: 2026-04-26
+---
+
+# Logging
 
 How JellyRock logs (`roku-log`), the initialization story, and the per-component pattern. Debug-time tooling lives in `debug-tools.md`. Test infrastructure lives in `testing.md`.
 

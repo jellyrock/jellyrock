@@ -1,4 +1,17 @@
-# 07 — Translations (i18n)
+---
+topic: translations
+related-files:
+  - source/utils/translate.bs
+  - source/utils/translateLocale.bs
+  - scripts/bsc-plugin-translation-keys.cjs
+  - scripts/update-translations.cjs
+  - scripts/lint-language-coverage.cjs
+  - locale/custom/en_US.json
+  - locale/languages.json
+last-reviewed: 2026-04-26
+---
+
+# Translations (i18n)
 
 JellyRock's custom JSON translation system, the locale fallback cascade, and the BSC plugin that gives compile-time key safety.
 

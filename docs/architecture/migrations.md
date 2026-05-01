@@ -1,4 +1,12 @@
-# 08b — Registry Migrations
+---
+topic: migrations
+related-files:
+  - source/migrations.bs
+  - source/utils/config.bs
+last-reviewed: 2026-04-26
+---
+
+# Registry Migrations
 
 How JellyRock evolves its registry schema across versions: when a migration is needed, how version-gated migrations work, and the test-mode safeguards. The settings-loading mechanics that migrations slot into live in `settings.md`.
 

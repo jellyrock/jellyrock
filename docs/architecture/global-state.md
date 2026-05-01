@@ -1,4 +1,18 @@
-# 03 — Global State
+---
+topic: global-state
+related-files:
+  - source/utils/globals.bs
+  - components/data/jellyfin/JellyfinUser.xml
+  - components/data/jellyfin/JellyfinUserSettings.xml
+  - components/data/jellyfin/JellyfinUserSettings.bs
+  - components/data/jellyfin/JellyfinServer.xml
+  - components/data/jellyfin/Constants.xml
+  - components/data/jellyfin/AppInfo.xml
+  - components/data/jellyfin/DeviceInfo.xml
+last-reviewed: 2026-04-26
+---
+
+# Global State
 
 What hangs off `m.global`, when each piece is initialized, who mutates it.
 

@@ -1,4 +1,14 @@
-# 01 — Bootstrap & Lifecycle
+---
+topic: bootstrap
+related-files:
+  - source/main.bs
+  - source/utils/globals.bs
+  - components/JRScene.xml
+  - components/JRScene.bs
+last-reviewed: 2026-04-26
+---
+
+# Bootstrap & Lifecycle
 
 How JellyRock starts, where the main event loop lives, and what runs on app suspend / resume / exit.
 

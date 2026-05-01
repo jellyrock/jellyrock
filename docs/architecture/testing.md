@@ -1,4 +1,15 @@
-# 09c — Testing
+---
+topic: testing
+related-files:
+  - tests/source/BaseTestSuite.spec.bs
+  - scripts/run-roku-tests.js
+  - bsconfig-tests.json
+  - bsconfig-tests-unit.json
+  - bsconfig-tests-integration.json
+last-reviewed: 2026-04-26
+---
+
+# Testing
 
 The rooibos test framework, the `BaseTestSuite` base class, the test folder layout, and how tests run on real devices. Logging primitives live in `logging.md`. Debug-time tooling lives in `debug-tools.md`.
 

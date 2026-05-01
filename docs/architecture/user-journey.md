@@ -1,4 +1,17 @@
-# 04 — The User Journey
+---
+topic: user-journey
+related-files:
+  - source/main.bs
+  - source/showScenes.bs
+  - components/ItemDetails.bs
+  - components/manager/ViewCreator.bs
+  - components/manager/QueueManager.bs
+  - components/home/Home.bs
+  - components/ItemGrid/BaseGridView.bs
+last-reviewed: 2026-04-26
+---
+
+# The User Journey
 
 The spine of the app: app launch → server pick → user pick → auth → home → library browse → item detail → press Play → video player. This is the path users take 95% of the time and the path most code lives along.
 

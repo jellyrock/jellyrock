@@ -1,4 +1,16 @@
-# 10 — Build & Tooling
+---
+topic: build-and-tooling
+related-files:
+  - bsconfig.json
+  - bsconfig-prod.json
+  - package.json
+  - Makefile
+  - scripts/bsc-plugin-roku-log.cjs
+  - scripts/bsc-plugin-translation-keys.cjs
+last-reviewed: 2026-04-26
+---
+
+# Build & Tooling
 
 The BrighterScript compiler configuration, custom plugins, npm scripts, Makefile, ropm modules, and IDE integration expectations.
 

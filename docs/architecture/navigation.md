@@ -1,4 +1,16 @@
-# 02 — Scene Stack & Navigation
+---
+topic: navigation
+related-files:
+  - components/data/SceneManager.bs
+  - components/JRScreen.bs
+  - components/JRScreen.xml
+  - components/JRGroup.xml
+  - components/JRScene.bs
+  - components/JRScene.xml
+last-reviewed: 2026-04-26
+---
+
+# Scene Stack & Navigation
 
 How JellyRock manages screens, where focus lives during transitions, and how the persistent overhang stays in sync.
 

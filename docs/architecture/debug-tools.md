@@ -1,4 +1,14 @@
-# 09b — Debug Tools
+---
+topic: debug-tools
+related-files:
+  - components/data/DebugFlags.xml
+  - components/JRScene.bs
+  - components/JRScene.xml
+  - source/utils/globals.bs
+last-reviewed: 2026-04-26
+---
+
+# Debug Tools
 
 The debug-only error injection system, the toast cheat code, and the testToast field. Logging primitives live in `logging.md`. Test infrastructure lives in `testing.md`.
 

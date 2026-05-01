@@ -1,4 +1,19 @@
-# 06 — API Layer & Task Pool
+---
+topic: api
+related-files:
+  - source/api/ApiClient.bs
+  - source/api/apiPool.bs
+  - source/api/baseRequest.bs
+  - source/api/image.bs
+  - source/api/imageHelpers.bs
+  - components/api/ApiTask.bs
+  - components/api/ApiQueueTask.bs
+  - components/api/ApiResultNode.xml
+  - components/api/SideEffectTask.bs
+last-reviewed: 2026-04-26
+---
+
+# API Layer & Task Pool
 
 How JellyRock talks to Jellyfin: the layered API model, the persistent task pool, and the four call patterns.
 

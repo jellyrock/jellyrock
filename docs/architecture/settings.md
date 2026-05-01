@@ -1,4 +1,16 @@
-# 08a — Settings
+---
+topic: settings
+related-files:
+  - settings/settings.json
+  - source/utils/config.bs
+  - source/utils/globals.bs
+  - source/data/SessionDataTransformer.bs
+  - components/data/jellyfin/JellyfinUserSettings.xml
+  - components/data/jellyfin/JellyfinUserSettings.bs
+last-reviewed: 2026-04-26
+---
+
+# Settings
 
 How `settings/settings.json` is the source of truth, how settings flow into `m.global.user.settings`, and how the registry persists changes. Migration-evolution mechanics live in `migrations.md`.
 

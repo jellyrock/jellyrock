@@ -1,4 +1,20 @@
-# 05 — Video & Audio Playback
+---
+topic: playback
+related-files:
+  - components/manager/QueueManager.bs
+  - components/manager/ViewCreator.bs
+  - components/video/VideoPlayerView.bs
+  - components/video/VideoPlayerView.xml
+  - components/video/OSD.bs
+  - components/video/TrickplayCarousel.bs
+  - components/video/VideoNotification.bs
+  - components/mediaPlayers/AudioPlayer.bs
+  - components/music/AudioPlayerView.bs
+  - components/ItemGrid/LoadVideoContentTask.bs
+last-reviewed: 2026-04-26
+---
+
+# Video & Audio Playback
 
 The playback subsystem: queue management, the canonical video player, the audio engine vs. audio screen, transcoding decisions, and reporting back to Jellyfin.
 

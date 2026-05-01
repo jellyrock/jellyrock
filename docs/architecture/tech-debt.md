@@ -1,4 +1,10 @@
-# 99 — Tech Debt & Cruft
+---
+topic: tech-debt
+related-files: []  # touches everything; per-item area fields point to specific files
+last-reviewed: 2026-04-26
+---
+
+# Tech Debt & Cruft
 
 A consolidated honest inventory: where the codebase is messy, where it's cleaner than average, and what's been recently removed (so future-you doesn't go searching for ghosts).
 
