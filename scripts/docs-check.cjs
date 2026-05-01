@@ -18,6 +18,17 @@
 //     resolves to an existing file (or directory) in the repo.
 //   - Every relative markdown link in docs/architecture/*.md and
 //     docs/decisions.md resolves (skipping http(s):, mailto:, anchor-only).
+//   - Every tech-debt slug reference (in markdown narrative or in plugin
+//     .cjs file headers / diagnostic strings) points to a slug that
+//     actually exists in docs/architecture/tech-debt.md. Two reference
+//     forms are recognized:
+//        1. Anchor link:    tech-debt.md#slug-name
+//        2. Narrative form: `tech-debt[.md]` followed within 20 chars
+//                           by a backtick-wrapped kebab-case slug.
+//     Catches the failure mode where a slug gets removed from tech-debt.md
+//     (because its work is done) but narrative references in other files
+//     are left dangling. Surfaced when 4 such refs slipped through the
+//     v2.15.0 doc audit.
 //
 // What it doesn't check (yet):
 //   - Inline backtick-quoted paths in prose (noise-prone; many false
@@ -39,6 +50,8 @@ const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
+const TECH_DEBT_PATH = path.join(ARCH_DIR, 'tech-debt.md');
+const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
 const VERBOSE = process.argv.includes('--verbose');
 
 // ────────────────────────────────────────────────────────────────────
@@ -108,9 +121,72 @@ function findMarkdownLinks(content) {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Tech-debt slug references — extract the canonical slug set from
+// tech-debt.md, then check that every reference elsewhere points to one
+// of those slugs. Two reference forms supported:
+//   1. Anchor:     tech-debt.md#slug-name           (any file)
+//   2. Narrative:  `tech-debt[.md]` ... `slug-name` (within 20 chars)
+// The narrative form's tight window keeps false positives down — a
+// hyphenated identifier in a separate sentence won't match.
+// ────────────────────────────────────────────────────────────────────
+
+// Slug shape: starts with a letter, has at least one hyphen, kebab-case.
+// Matches both narrative slugs and anchor slugs uniformly.
+const SLUG_PATTERN = '[a-z][a-z0-9]*(?:-[a-z0-9]+)+';
+const ANCHOR_REF_RE = new RegExp(`\\btech-debt\\.md#(${SLUG_PATTERN})\\b`, 'gi');
+const NARRATIVE_REF_RE = new RegExp(
+  `\\btech-debt(?:\\.md)?[^\\n]{0,20}?\`(${SLUG_PATTERN})\``,
+  'gi'
+);
+
+function extractTechDebtSlugs(techDebtPath) {
+  if (!fs.existsSync(techDebtPath)) return null;
+  const content = fs.readFileSync(techDebtPath, 'utf8');
+  const slugs = new Set();
+  const headingRe = /^####\s+`([a-z][a-z0-9-]+)`/gm;
+  let m;
+  while ((m = headingRe.exec(content)) !== null) {
+    slugs.add(m[1]);
+  }
+  return slugs;
+}
+
+function findSlugRefs(content) {
+  const refs = [];
+  let m;
+  ANCHOR_REF_RE.lastIndex = 0;
+  while ((m = ANCHOR_REF_RE.exec(content)) !== null) {
+    refs.push({ slug: m[1].toLowerCase(), form: 'anchor' });
+  }
+  NARRATIVE_REF_RE.lastIndex = 0;
+  while ((m = NARRATIVE_REF_RE.exec(content)) !== null) {
+    refs.push({ slug: m[1].toLowerCase(), form: 'narrative' });
+  }
+  return refs;
+}
+
+function checkSlugRefs(filePath, content) {
+  if (!knownSlugs) return 0;
+  const refs = findSlugRefs(content);
+  let okCount = 0;
+  for (const ref of refs) {
+    if (knownSlugs.has(ref.slug)) {
+      okCount++;
+    } else {
+      errors.push(
+        `${filePath}: stale tech-debt slug reference "${ref.slug}" (${ref.form} form). ` +
+        `Either restore the slug in docs/architecture/tech-debt.md or rewrite the reference.`
+      );
+    }
+  }
+  return okCount;
+}
+
+// ────────────────────────────────────────────────────────────────────
 
 const errors = [];
 let filesChecked = 0;
+const knownSlugs = extractTechDebtSlugs(TECH_DEBT_PATH);
 
 function checkRelatedFiles(docPath, content) {
   const fm = readFrontmatter(content);
@@ -146,9 +222,10 @@ function checkDirOfMds(dir) {
     const content = fs.readFileSync(file, 'utf8');
     const relatedCount = checkRelatedFiles(file, content);
     const linkCount = checkBodyLinks(file, content);
+    const slugCount = checkSlugRefs(file, content);
     filesChecked++;
     if (VERBOSE) {
-      console.log(`  ${path.relative(ROOT_DIR, file)} — ${relatedCount} related, ${linkCount} links`);
+      console.log(`  ${path.relative(ROOT_DIR, file)} — ${relatedCount} related, ${linkCount} links, ${slugCount} slugs`);
     }
   }
 }
@@ -159,13 +236,14 @@ checkDirOfMds(ARCH_DIR);
 // Dev how-to guides
 checkDirOfMds(DEV_DIR);
 
-// Decisions log (no frontmatter; just check body links)
+// Decisions log (no frontmatter; just check body links + slug refs)
 if (fs.existsSync(DECISIONS_PATH)) {
   const content = fs.readFileSync(DECISIONS_PATH, 'utf8');
   const linkCount = checkBodyLinks(DECISIONS_PATH, content);
+  const slugCount = checkSlugRefs(DECISIONS_PATH, content);
   filesChecked++;
   if (VERBOSE) {
-    console.log(`  ${path.relative(ROOT_DIR, DECISIONS_PATH)} — ${linkCount} links`);
+    console.log(`  ${path.relative(ROOT_DIR, DECISIONS_PATH)} — ${linkCount} links, ${slugCount} slugs`);
   }
 }
 
@@ -199,9 +277,30 @@ function findClaudeMds(rootDir) {
 for (const file of findClaudeMds(ROOT_DIR)) {
   const content = fs.readFileSync(file, 'utf8');
   const linkCount = checkBodyLinks(file, content);
+  const slugCount = checkSlugRefs(file, content);
   filesChecked++;
   if (VERBOSE) {
-    console.log(`  ${path.relative(ROOT_DIR, file)} — ${linkCount} links`);
+    console.log(`  ${path.relative(ROOT_DIR, file)} — ${linkCount} links, ${slugCount} slugs`);
+  }
+}
+
+// BSC convention plugin sources — their JSDoc headers + diagnostic strings
+// frequently cite tech-debt slugs (the plugins enforce conventions documented
+// there). These are .cjs, not .md, but the slug-ref regex doesn't care.
+function findPluginScripts() {
+  if (!fs.existsSync(SCRIPTS_DIR)) return [];
+  return fs.readdirSync(SCRIPTS_DIR)
+    .filter(f => f.startsWith('bsc-plugin-') && f.endsWith('.cjs'))
+    .map(f => path.join(SCRIPTS_DIR, f))
+    .sort();
+}
+
+for (const file of findPluginScripts()) {
+  const content = fs.readFileSync(file, 'utf8');
+  const slugCount = checkSlugRefs(file, content);
+  filesChecked++;
+  if (VERBOSE) {
+    console.log(`  ${path.relative(ROOT_DIR, file)} — ${slugCount} slugs`);
   }
 }
 

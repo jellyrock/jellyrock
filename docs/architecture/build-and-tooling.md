@@ -155,7 +155,7 @@ Lint and format:
 | `npm run lint:spelling` | spellchecker on Markdown files |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
-| `npm run lint:docs` | Validates `related-files:` paths and relative markdown links in `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, and every `CLAUDE.md` resolve to existing files |
+| `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt slug references — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugin-*.cjs`). Slug refs are matched as either `tech-debt.md#slug` (anchor) or backtick-wrapped slug within 20 chars of a `tech-debt[.md]` mention (narrative) |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
 | `npm run agent-telemetry` | Aggregates `.claude/logs/tool-use.jsonl` (populated by the PostToolUse hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes |
@@ -266,7 +266,7 @@ Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). M
 1. `npm run validate` — when `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
 2. `npm run lint:markdown` + `npm run lint:spelling` — when `*.md` changed.
 3. `npm run lint:json` — when `*.json` changed.
-4. `npm run lint:docs` — **always**. Validates `related-files:` paths and markdown link targets across every `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, and every `CLAUDE.md`. Runs unconditionally because broken refs most often come from code renames (no `*.md` in the push range), and limiting the check to doc-only pushes lets those slip through to CI. Cost is ~1s.
+4. `npm run lint:docs` — **always**. Validates `related-files:` paths, markdown link targets, and tech-debt slug references across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and `scripts/bsc-plugin-*.cjs`. Runs unconditionally because broken refs most often come from code renames or tech-debt slug deletions (no `*.md` in the push range), and limiting the check to doc-only pushes lets those slip through to CI. Cost is ~1s.
 
 **Safety:** auto-fix is skipped (with a warning) when the working tree is dirty so WIP can't be swept into the auto-fix commit. Check steps still run.
 
