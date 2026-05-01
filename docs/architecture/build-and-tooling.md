@@ -132,6 +132,8 @@ Lint and format:
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
 | `npm run lint:docs` | Validates `related-files:` paths and relative markdown links in `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, and every `CLAUDE.md` resolve to existing files |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
+| `npm run agent-telemetry` | Aggregates `.claude/logs/tool-use.jsonl` (populated by the PostToolUse hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
+| `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes |
 | `npm run check-formatting` | `bsfmt --check` (read-only check) |
 | `npm run format` | `bsfmt --write` (apply formatting fixes) |
 | `npm run validate` | `bsc --noEmit` (type-check) |
@@ -246,6 +248,16 @@ Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). M
 **Bypass:** `git push --no-verify` if you must (prefer fixing the underlying issue).
 
 This is the reason agents and humans should NOT manually run `npm run lint*` or `npm run validate`: the IDE catches issues live, the pre-push hook catches them at push time, and CI catches them on PR. Manual runs duplicate work.
+
+## Agent telemetry
+
+`.claude/settings.json` registers a PostToolUse hook that fires after every Read / Grep / Glob / Edit / Write / MultiEdit. The hook script (`.claude/hooks/log-tool-use.sh`) appends a JSONL line to `.claude/logs/tool-use.jsonl` (gitignored).
+
+The hook is non-blocking: it runs after the tool, never delays the agent, and silences every error path so a missing `jq` (the only dep) just no-ops rather than failing the tool call.
+
+`npm run agent-telemetry` reads the log and prints a report — top files read, top files edited, top grep / glob patterns, and a few "what to act on" hints. The intent is to drive evidence-based decisions about where to expand subdir CLAUDE.md coverage rather than guessing.
+
+The log file is per-developer (gitignored). Aggregating across developers would require explicit opt-in plumbing; not currently in scope.
 
 ## IDE integration
 

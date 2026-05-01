@@ -48,6 +48,7 @@
     "docs:dev-index:check": "node scripts/generate-dev-index.cjs --check",
     "docs:settings": "node scripts/generate-settings-docs.cjs",
     "docs:stale": "node scripts/docs-stale.cjs",
+    "agent-telemetry": "node scripts/agent-telemetry-report.cjs",
     "format": "npx bsfmt --write",
     "lint": "npm run check-formatting && npm run lint:bs && npm run validate && npm run lint:json && npm run lint:markdown && npm run lint:spelling && npm run lint:translations && npm run lint:language-coverage && npm run lint:docs",
     "lint:bs": "bslint",
