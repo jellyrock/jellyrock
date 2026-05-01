@@ -6,7 +6,7 @@ related-files:
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
   - components/data/jellyfin/JellyfinServer.xml
-  - components/data/jellyfin/Constants.xml
+  - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
 last-reviewed: 2026-05-01

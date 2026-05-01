@@ -235,7 +235,7 @@ sub runOrchestrator()
 end sub
 ```
 
-This blocks the *Task* thread (not the render thread!) for up to `timeouts.API_WAIT_MS` (30 seconds). Concurrent calls from multiple Task threads are safe — each gets its own `ApiResultNode`.
+This blocks the *Task* thread (not the render thread!) for up to `timeouts.API_WAIT_MS` (currently 12 seconds; the canonical value lives in `source/constants/timeouts.bs`). Concurrent calls from multiple Task threads are safe — each gets its own `ApiResultNode`.
 
 `fetchJson(req, id)` is a convenience wrapper that returns just `res.json` (or `invalid` on timeout/HTTP error).
 
@@ -328,4 +328,4 @@ end if
 - **No request cancellation.** A `submitApiRequest` that's no longer needed (e.g., user navigated away) can't be cancelled — it'll complete and fire its callback regardless. Most callers handle this by checking "am I still the active screen?" in the callback, but that's defensive at the call site.
 - **Per-method V1/V2 branching.** Adding a third API version means editing every Build method. A central routing table (path templates per version) would scale better, but the current shape is explicit and grep-able, which has its own merits.
 - **`buildParams` doesn't handle `roArray` values.** Has a `' TODO handle array params` comment. Workaround: callers join arrays into comma-separated strings before passing.
-- **30s timeout is hardcoded.** `timeouts.API_WAIT_MS` is one number for all API calls. A long search vs. a quick favorite toggle have the same patience.
+- **API timeout is a single value.** `timeouts.API_WAIT_MS` is one number for all API calls. A long search vs. a quick favorite toggle have the same patience.

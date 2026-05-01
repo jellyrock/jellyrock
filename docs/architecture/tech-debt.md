@@ -97,8 +97,8 @@ Each refactor item has a stable slug for cross-referencing in commits, PRs, and 
 
 #### `osd-inactivity-timeout-hardcoded`
 
-- **area**: `components/video/OSD.xml`
-- **issue**: Hardcoded 5-second timeout via `inactiveTimeout="5"`. Should be a constant.
+- **area**: `components/video/VideoPlayerView.xml`
+- **issue**: The OSD instance is declared with `inactiveTimeout="5"` (a literal). `OSD.xml` itself only declares the field — the value is set by the parent. Should be a named constant.
 
 #### `no-now-playing-queue-ui`
 
