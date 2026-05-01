@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Dependencies
+
+- Update brighterscript-formatter from v1.7.23 to v1.7.24 ([#532](https://github.com/jellyrock/jellyrock/pull/532))
+
 ## [2.15.0](https://github.com/jellyrock/jellyrock/compare/v2.14.0...v2.15.0) - 2026-04-30
 
 ### Added
