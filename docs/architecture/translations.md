@@ -24,7 +24,7 @@ Roku ships a built-in `tr()` function that reads from a fixed XML format. JellyR
 - **Build-time validation** — a custom BSC plugin generates `translationKeys` constants from `en_US.json` at compile time. Typos become build errors.
 - **Community workflow** — translations live in plain JSON files compatible with Weblate, the open-source translation platform.
 
-98 locale files exist today (`locale/custom/*.json`) covering 100+ languages.
+Many locale files live under `locale/custom/*.json` covering a wide range of languages.
 
 ## File layout
 
@@ -224,6 +224,6 @@ So the developer-side workflow is just: edit `en_US.json`, the bot keeps everyth
 
 - **Plural form is Zero/One/Many only.** No support for languages with more than three plural forms (Polish, Russian, Arabic). For now this is mitigated by translators choosing the most generic form for "Many" — but some languages will read awkwardly.
 - **Manual key naming convention.** No enforcement that new keys follow the `Button*`/`Label*`/`Message*` prefix scheme — relies on PR review.
-- **Locale file size scales linearly.** As keys grow, every locale file grows. ~150KB for en_US today. With 98 files this is ~15MB of JSON in the source tree (most of which is checked in, since translations don't compress in source). Not a runtime concern, just a repo-size one.
+- **Locale file size scales linearly.** As keys grow, every locale file grows. With many locales, the JSON in the source tree adds up — most of which is checked in, since translations don't compress in source. Not a runtime concern, just a repo-size one.
 - **The `translationLocale` user setting is post-login only.** A new install of the app will use the device locale until the user logs in once and explicitly picks a language. There's no "guest" language picker on the login screen itself (though the language picker setting is in `components/settings/LanguagePicker.xml`, accessible after login).
 - **No RTL (right-to-left) layout flipping.** Arabic and Hebrew translations exist but the UI doesn't mirror its layout for RTL languages. Probably acceptable for a TV media player but worth knowing.

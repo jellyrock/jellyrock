@@ -41,7 +41,7 @@ m.global  (the global roSGNode)
 │   ├── uiResolution  array                                 ← [width, height]
 │   ├── videoMode     string                                ← raw from roDeviceInfo
 │   ├── videoHeight, videoWidth, videoRefresh, videoBitDepth integer
-│   └── isLowMemoryDevice bool                              ← computed from a 22-entry model-prefix list in globals.bs
+│   └── isLowMemoryDevice bool                              ← computed from LOW_MEMORY_DEVICE_PREFIXES in globals.bs
 │
 ├── server            JellyfinServer node                   ← phase 1
 │   ├── serverUrl, name, version, id, apiVersion, isConnected
@@ -80,7 +80,7 @@ m.global  (the global roSGNode)
     └── shouldForceWatchedFail   bool
 ```
 
-"Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `01-bootstrap-and-lifecycle.md`.
+"Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `bootstrap.md`.
 
 ## Why typed `ContentNode` subclasses
 
@@ -111,16 +111,16 @@ The full set is small enough to enumerate:
 
 | File | Purpose |
 |---|---|
-| `AppInfo.xml` (15 lines) | App metadata from `roAppInfo` |
-| `DeviceInfo.xml` (52 lines) | Device facts from `roDeviceInfo` |
-| `JellyfinBaseItem.xml` (307 lines) | The big one — fields for every Jellyfin item type (Movie, Episode, Audio, etc.) |
-| `JellyfinServer.xml` (39 lines) | Server identity and connection state |
-| `JellyfinUser.xml` (39 lines) | User identity + child-node references |
-| `JellyfinUserSettings.xml` (115 lines) | Per-user UI/playback settings — see below |
-| `JellyfinUserConfiguration.xml` (59 lines) | Server-side profile (avatar tag, display preferences) |
-| `JellyfinUserPolicy.xml` (91 lines) | Server-side permissions (can record, can sync, etc.) |
+| `AppInfo.xml` | App metadata from `roAppInfo` |
+| `DeviceInfo.xml` | Device facts from `roDeviceInfo` |
+| `JellyfinBaseItem.xml` | The big one — fields for every Jellyfin item type (Movie, Episode, Audio, etc.) |
+| `JellyfinServer.xml` | Server identity and connection state |
+| `JellyfinUser.xml` | User identity + child-node references |
+| `JellyfinUserSettings.xml` | Per-user UI/playback settings — see below |
+| `JellyfinUserConfiguration.xml` | Server-side profile (avatar tag, display preferences) |
+| `JellyfinUserPolicy.xml` | Server-side permissions (can record, can sync, etc.) |
 
-`JellyfinBaseItem.xml` is the biggest because Jellyfin's `BaseItemDto` is itself a polymorphic mega-shape — JellyRock represents that as one wide ContentNode with optional fields, populated by `source/data/JellyfinDataTransformer.bs`.
+`JellyfinBaseItem.xml` is the largest because Jellyfin's `BaseItemDto` is itself a polymorphic mega-shape — JellyRock represents that as one wide ContentNode with optional fields, populated by `source/data/JellyfinDataTransformer.bs`.
 
 ## User settings — `m.global.user.settings`
 
@@ -168,9 +168,9 @@ When the user changes a theme color:
 1. They write to a setting (e.g. `m.global.user.settings.uiThemeColorPrimary = "8b5cf6"`).
 2. The auto-sync observer persists it to registry.
 3. Nothing else happens automatically — the change isn't visible until something rebuilds the affected nodes.
-4. The Settings screen, on exit, calls `applyThemeColorOverrides(userSettings)` (`globals.bs:175`) which reads valid hex values from settings and writes them onto `m.global.constants`. Then it calls `sceneManager.refreshThemeColors()` to walk the overhang tree and re-apply colors, and `sceneManager.reloadHome()` to trigger a home-screen rebuild.
+4. The Settings screen, on exit, calls `applyThemeColorOverrides(userSettings)` (in `globals.bs`) which reads valid hex values from settings and writes them onto `m.global.constants`. Then it calls `sceneManager.refreshThemeColors()` to walk the overhang tree and re-apply colors, and `sceneManager.reloadHome()` to trigger a home-screen rebuild.
 
-This is a known wart — the cascade is manual, not declarative. Components that cache theme colors at construction time (rather than reading from `m.global.constants` in event handlers) won't pick up changes without a rebuild. See `99-tech-debt-and-cruft.md`.
+This is a known wart — the cascade is manual, not declarative. Components that cache theme colors at construction time (rather than reading from `m.global.constants` in event handlers) won't pick up changes without a rebuild. See `tech-debt.md`.
 
 ## App + device info
 
@@ -178,7 +178,7 @@ This is a known wart — the cascade is manual, not declarative. Components that
 
 `m.global.device` is read from `roDeviceInfo` (`SaveDeviceToGlobal`). The most-consulted fields are:
 
-- `model` — used by `checkIsLowMemoryDevice()` to set `isLowMemoryDevice` based on a hardcoded prefix list of 22 known 512MB models (Streaming Stick, Express, certain TVs).
+- `model` — used by `checkIsLowMemoryDevice()` to set `isLowMemoryDevice` based on the hardcoded `LOW_MEMORY_DEVICE_PREFIXES` list of 512MB models (Streaming Stick, Express, certain TVs).
 - `videoHeight` / `videoWidth` / `videoBitDepth` — used by `LoadVideoContentTask.bs` when computing transcode parameters.
 - `locale` — initial translation locale before login.
 
@@ -195,7 +195,7 @@ m.global.queueManager.callFunc("playQueue")
 m.global.audioPlayer.control = "play"          ' direct field, since audioPlayer extends Video
 ```
 
-`sceneManager` and `queueManager` are documented elsewhere (`02`, `05`). `audioPlayer` is interesting: it's a globally-mounted `AudioPlayer` node (extends Roku's native `Video` for audio playback) that exists for the entire app lifetime. The visible "now playing" screen — `components/music/AudioPlayerView.xml` — references it indirectly. Having the player itself global allows audio to keep playing while the user navigates other screens.
+`sceneManager` and `queueManager` are documented elsewhere (`navigation.md`, `playback.md`). `audioPlayer` is interesting: it's a globally-mounted `AudioPlayer` node (extends Roku's native `Video` for audio playback) that exists for the entire app lifetime. The visible "now playing" screen — `components/music/AudioPlayerView.xml` — references it indirectly. Having the player itself global allows audio to keep playing while the user navigates other screens.
 
 ## Debug flags — `m.global.debug`
 
@@ -209,7 +209,7 @@ Compiled out in production builds via `bs_const=debug=false`. In debug builds, `
 [DEBUG]   m.global.debug.shouldForceWatchedFail = true
 ```
 
-Code paths that check these flags are wrapped in `#if debug` so they have zero runtime cost in production. See `09-logging-debug-tests.md`.
+Code paths that check these flags are wrapped in `#if debug` so they have zero runtime cost in production. See `debug-tools.md`.
 
 ## Cruft callouts
 

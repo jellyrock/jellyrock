@@ -14,7 +14,7 @@ How JellyRock starts, where the main event loop lives, and what runs on app susp
 
 ## Entry point
 
-`source/main.bs` defines the `Main(args)` function that Roku invokes when the channel launches. It is intentionally linear and procedural — no abstractions, just a script. The whole file is **1,291 lines** today; the early bootstrap section (lines 1–80) is the focus here.
+`source/main.bs` defines the `Main(args)` function that Roku invokes when the channel launches. It is intentionally linear and procedural — no abstractions, just a script. The file is large; the focus here is the bootstrap prologue (everything up to the main event loop).
 
 ```brightscript
 sub Main (args as dynamic) as void
@@ -62,7 +62,7 @@ JellyRock initializes `m.global` in **two phases**, separated by `m.screen.show(
 
 ### Phase 1 — `setGlobals()` *(before screen.show)*
 
-Defined in `source/utils/globals.bs:47`. Creates the data nodes that don't depend on the rendered scene:
+Defined in `source/utils/globals.bs` (`setGlobals` function). Creates the data nodes that don't depend on the rendered scene:
 
 - `m.global.appLoaded` (bool)
 - `m.global.server` — `JellyfinServer` content node (URL, name, version, id)
@@ -79,7 +79,7 @@ Defined in `source/utils/globals.bs:47`. Creates the data nodes that don't depen
 
 ### Phase 2 — `setGlobalNodes()` *(after screen.show)*
 
-Defined in `source/utils/globals.bs:79`. Creates and starts the long-running nodes:
+Defined in `source/utils/globals.bs` (`setGlobalNodes` function). Creates and starts the long-running nodes:
 
 - `m.global.apiPool0`, `apiPool1`, `apiPool2` — three `ApiTask` Task nodes, each `control = "RUN"` to enter their infinite work loop
 - `m.global.apiQueue` — `ApiQueueTask`, the FIFO coordinator that dispatches into the pool
@@ -118,7 +118,7 @@ Interface fields exposed for global control:
 | `backgroundImageUri` | string | Backdrop image URL — `BackdropFader` does the crossfade |
 | `shouldShowBackdrop` | bool | Lazily resolved from user settings on first backdrop request |
 | `exit` | bool | Setting this true exits the channel |
-| `testToast` | string | Debug-only test trigger (see `09-logging-debug-tests.md`) |
+| `testToast` | string | Debug-only test trigger (see `debug-tools.md`) |
 
 `components/JRScene.bs` adds the controller logic:
 
@@ -162,7 +162,7 @@ This funnel means there's exactly one "this got pressed → start playback" code
 
 ## App lifecycle events
 
-`main.bs:57–64` enables several `roDeviceInfo` events on the same message port:
+Early in `Main()`, several `roDeviceInfo` events are enabled on the same message port:
 
 ```brightscript
 device.EnableScreensaverExitedEvent(true)
@@ -176,7 +176,7 @@ device.EnableAudioGuideChangedEvent(true)
 The event loop branches on each of these. Notable handling:
 
 - **`AppFocusEvent`** — fired on app suspend (user pressed Home) and resume. JellyRock uses this to know when it's coming back from background.
-- **`LowGeneralMemoryEvent`** — Roku has signalled memory pressure. JellyRock uses `m.global.device.isLowMemoryDevice` (computed at startup from a hard-coded prefix list of 512MB models in `globals.bs:4`) to *preemptively* disable memory-heavy features like trickplay tile preloading on small devices.
+- **`LowGeneralMemoryEvent`** — Roku has signalled memory pressure. JellyRock uses `m.global.device.isLowMemoryDevice` (computed at startup from a hard-coded prefix list of 512MB models — see `LOW_MEMORY_DEVICE_PREFIXES` in `globals.bs`) to *preemptively* disable memory-heavy features like trickplay tile preloading on small devices.
 - **`LinkStatusEvent`** — network up/down. App can show offline state.
 - **`CodecCapChangedEvent`** — the device's codec capabilities changed (e.g., user toggled HDR mode in Roku settings).
 - **`ScreensaverExitedEvent`** — fires when the screensaver dismisses; lets the app refresh state.
@@ -187,7 +187,7 @@ There is no explicit "shutdown" function. The app exits when:
 
 1. The event loop sees `roSGScreenEvent` with `isScreenClosed()` returning true, **or**
 2. Any code sets `m.scene.exit = true` (the `JRScene` interface field), **or**
-3. `popScene()` is called when the stack has exactly one entry (this triggers an exit-confirmation dialog instead of immediate exit; see `02-scene-and-navigation.md`)
+3. `popScene()` is called when the stack has exactly one entry (this triggers an exit-confirmation dialog instead of immediate exit; see `navigation.md`)
 
 The Roku OS handles the actual process teardown after `Main` returns.
 
@@ -206,7 +206,7 @@ This runs **after** the home screen is loaded (so the user lands on home if they
 
 ## Cruft callouts
 
-- **`main.bs` is 1,291 lines** with a lot of distinct responsibilities crammed into the event loop: playback, favorites toggle, watched toggle, voice search, quickplay dispatch, font download completion, screen lifecycle. Could be decomposed into per-concern handler modules. (See `99-tech-debt-and-cruft.md`.)
+- **`main.bs` is large** with many distinct responsibilities crammed into the event loop: playback, favorites toggle, watched toggle, voice search, quickplay dispatch, font download completion, screen lifecycle. Could be decomposed into per-concern handler modules. (See `tech-debt.md`.)
 - **The `appStart:` label and `goto`-based restart** for "log out and start over" is BrightScript-old-school. Works fine, but unusual today; a `loop { ... break }` would read more naturally.
 - **`printRegistry()` runs unconditionally** at startup. Useful in dev, noisy in prod logs unless filtered by log level.
 - **The `quickPlayNode` set-then-clear pattern** (caller sets the field then immediately sets it to `invalid` to force the event to fire even if the value is the same) appears here and in `ItemDetails.bs`. It works because `msg.getData()` reads the value at event-queue time, but it's an unusual idiom worth knowing about.

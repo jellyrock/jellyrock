@@ -26,7 +26,7 @@ images, locales   ─┘     in build/                                    in out
 
 ## bsconfig variants
 
-There are seven `bsconfig*.json` files, one per build target:
+Several `bsconfig*.json` files exist, one per build target:
 
 | File | Purpose |
 |---|---|
@@ -84,7 +84,7 @@ This is the reason `m.log.debug("intermediate value", x, y, z)` is fine to leave
 
 ### `scripts/bsc-plugin-translation-keys.cjs`
 
-Generates a virtual `pkg:/source/translationKeys.bs` file containing a `translationKeys` namespace with one constant per key in `locale/custom/en_US.json`. Documented in detail in `07-translations.md`.
+Generates a virtual `pkg:/source/translationKeys.bs` file containing a `translationKeys` namespace with one constant per key in `locale/custom/en_US.json`. Documented in detail in `translations.md`.
 
 The plugin uses `fs.watch` to detect en_US.json changes in language-server mode (so the IDE always sees up-to-date constants without re-running the build).
 
@@ -157,23 +157,13 @@ ropm:
 
 ## ropm modules — Roku Package Manager
 
-`ropm` is the Roku-specific package manager that vendors libraries into your project (no runtime resolution — everything is copied into the build). Three packages are installed:
+`ropm` is the Roku-specific package manager that vendors libraries into your project (no runtime resolution — everything is copied into the build). Three packages are installed (see `package.json` for current versions):
 
-- **`log`** — the `roku-log` library (npm package: `roku-log@0.11.1`). Vendored into `source/roku_modules/log/` and `components/roku_modules/log/`.
-- **`rr`** — `roku-requests@1.2.0`. HTTP client used by `ApiTask` (vendored into `source/roku_modules/rr/`).
-- **`rokucommunity_bslib`** — `@rokucommunity/bslib@0.1.1`. Standard library extensions (commonly-needed BrightScript utilities).
+- **`log`** — the `roku-log` library. Vendored into `source/roku_modules/log/` and `components/roku_modules/log/`.
+- **`rr`** — `roku-requests`. HTTP client used by `ApiTask` (vendored into `source/roku_modules/rr/`).
+- **`rokucommunity_bslib`** — `@rokucommunity/bslib`. Standard library extensions (commonly-needed BrightScript utilities).
 
-Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` block as npm package aliases:
-
-```json
-"dependencies": {
-  "log": "npm:roku-log@0.11.1",
-  "rr": "npm:roku-requests@1.2.0",
-  "@rokucommunity/bslib": "0.1.1"
-}
-```
-
-The aliasing keeps imports short — `import "pkg:/source/roku_modules/log/LogMixin.brs"` rather than the full upstream package path.
+Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` block as npm package aliases. The aliasing keeps imports short — `import "pkg:/source/roku_modules/log/LogMixin.brs"` rather than the full upstream package path.
 
 ## Dev dependencies (key ones)
 
@@ -250,9 +240,9 @@ This means: **agents and humans should NOT run `npm run lint` or `npm run build`
 
 ## Cruft callouts
 
-- **Seven bsconfig files.** Each is mostly a copy with a few overrides. A common base + overlays would be cleaner, but BSC's config schema doesn't currently support inheritance.
+- **Multiple bsconfig files.** Each is mostly a copy with a few overrides. A common base + overlays would be cleaner, but BSC's config schema doesn't currently support inheritance.
 - **`bsconfig-tdd.json` is gitignored** — devs maintain their own copy of `bsconfig-tdd-sample.json`. This is fine but means new contributors have to figure out to copy the sample first.
-- **No CI-enforced version bumping.** `package.json` version (`2.12.0`) and the manifest version are maintained by hand. A pre-release script that asserts they match would be helpful.
+- **No CI-enforced version bumping.** `package.json` version and the manifest version are maintained by hand. A pre-release script that asserts they match would be helpful.
 - **`make` targets and npm scripts overlap.** Some devs prefer `make`, others `npm`. Both routes are maintained in parallel; documenting one as canonical would simplify onboarding.
 - **The branding image generation (`make make_images`)** depends on ImageMagick being installed locally. Not all CI environments have it; the targets exist but aren't part of the regular build.
 - **`scripts/changelog-syncer.js` does both validation and mutation.** A failing validate run could be fixed by a sync run, which then changes things. A clearer separation between read-only validate and write-only sync would reduce confusion.

@@ -72,7 +72,7 @@ The base implementations are minimal:
 
 ### `JRScene` — `components/JRScene.xml/.bs`
 
-Covered in `01-bootstrap-and-lifecycle.md`. Relevant here: it has a `Group id="content"` child that the `SceneManager` swaps the active screen in and out of, and a `JROverhang id="overhang"` that the `SceneManager` reads field updates onto.
+Covered in `bootstrap.md`. Relevant here: it has a `Group id="content"` child that the `SceneManager` swaps the active screen in and out of, and a `JROverhang id="overhang"` that the `SceneManager` reads field updates onto.
 
 ## SceneManager — `components/data/SceneManager.bs`
 

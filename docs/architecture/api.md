@@ -49,7 +49,7 @@ Underlying ────────────────── source/api/sdk
                               source/api/baseRequest.bs ← buildURL(), buildAuthHeader(), buildParams()
 ```
 
-### Layer 1 — `ApiClient` (`source/api/ApiClient.bs`, 812 lines)
+### Layer 1 — `ApiClient` (`source/api/ApiClient.bs`)
 
 A singleton class. Get it via `GetApi()`. Methods come in two flavors:
 
@@ -138,7 +138,7 @@ m.global.sideEffectTask                   1 × SideEffectTask Task node (fire-an
                                           per-request: ApiResultNode (data vehicle)
 ```
 
-All four Task nodes are created in `setGlobalNodes()` (`globals.bs:79`) and live for the entire app lifetime. Each is a continuously-running infinite loop (`while true / wait(0, port)`) that processes work as it arrives.
+All four Task nodes are created in `setGlobalNodes()` (in `globals.bs`) and live for the entire app lifetime. Each is a continuously-running infinite loop (`while true / wait(0, port)`) that processes work as it arrives.
 
 ### How a request flows
 
@@ -205,7 +205,7 @@ This eliminates the startup race. After the first request, the `isReady` check i
 
 ### `ApiResultNode` — `components/api/ApiResultNode.xml`
 
-A trivial 3-field component:
+A trivial component with three fields:
 
 ```xml
 <component name="ApiResultNode" extends="Node">

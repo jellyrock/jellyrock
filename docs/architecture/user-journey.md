@@ -37,7 +37,7 @@ Each step below traces what code runs and what state changes.
 
 ## 1. App launch
 
-`Main(args)` in `source/main.bs` runs the bootstrap sequence (see `01-bootstrap-and-lifecycle.md`):
+`Main(args)` in `source/main.bs` runs the bootstrap sequence (see `bootstrap.md`):
 
 - `setGlobals()` → typed nodes, translations, migrations, constants
 - `m.screen.show()` → root scene visible
@@ -45,7 +45,7 @@ Each step below traces what code runs and what state changes.
 
 At this point the user sees the `JRScene` backdrop (initially blank) and the `loadingText` "Loading…" centered. The overhang is hidden because no `JRGroup` has been pushed yet.
 
-## 2. LoginFlow — `source/showScenes.bs:3`
+## 2. LoginFlow — `source/showScenes.bs`
 
 `LoginFlow()` is the gating function. It returns `false` to abort the whole app (user backed out of server selection from a fresh install), or `true` once an authenticated session exists.
 
@@ -74,7 +74,7 @@ if startOver or invalidServer
 end if
 ```
 
-`CreateServerGroup()` (line 325) builds and pushes the `SetServerScreen` UI. This screen offers:
+`CreateServerGroup()` builds and pushes the `SetServerScreen` UI. This screen offers:
 
 - **SSDP discovery** — broadcasts a Jellyfin server lookup on the LAN, populates a list of found servers
 - **Manual URL entry** — text box for entering `http://yourserver:8096`
@@ -96,7 +96,7 @@ if not isValid(activeUser)
 end if
 ```
 
-`CreateUserSelectGroup()` (line 438) builds the `UserSelect` component — a grid of avatars with names. The component is in `components/login/`:
+`CreateUserSelectGroup()` builds the `UserSelect` component — a grid of avatars with names. The component is in `components/login/`:
 
 - `UserSelect.xml/.bs` — the screen
 - `UserRow.xml/.bs` — wrapper row
@@ -198,7 +198,7 @@ Item selection in the grid bubbles `selectedItem` up to main.bs, which pushes `I
 
 ## 6. Item Detail — `components/ItemDetails.bs`
 
-The biggest single file in the codebase: **3,337 lines**. It handles the detail view for *every* item type — movies, episodes, series, seasons, audio, music videos, photos, live TV programs, recordings, mixed folders.
+The largest single file in the codebase. It handles the detail view for *every* item type — movies, episodes, series, seasons, audio, music videos, photos, live TV programs, recordings, mixed folders.
 
 The component contains:
 
@@ -214,7 +214,7 @@ The component contains:
 - An "extras" panel (revealed by pressing DOWN) — `extrasGrid` shows related items: cast, episodes (for series), parts (for split media), recommendations, similar items
 - An item-options popup (`itemOptions`) for video source, audio track, subtitle track selection
 
-When a Play button is pressed (`onKeyEvent` line 3139):
+When a Play button is pressed (handled by `onKeyEvent`):
 
 ```brightscript
 m.top.quickPlayNode = content[0]
@@ -225,7 +225,7 @@ This bubbles `quickPlayNode` up the parent chain. `main.bs` catches it.
 
 ### The set-then-clear pattern
 
-This appears on lines 3114, 3149, 3238 of `ItemDetails.bs`. The trick: SceneGraph's `observeField` only fires when a field's *value* changes. If the user plays the same item twice in a row, setting `quickPlayNode = content[0]` the second time wouldn't fire — the value didn't change. Setting to `invalid` immediately afterward guarantees the next set fires.
+This appears in several places in `ItemDetails.bs`. The trick: SceneGraph's `observeField` only fires when a field's *value* changes. If the user plays the same item twice in a row, setting `quickPlayNode = content[0]` the second time wouldn't fire — the value didn't change. Setting to `invalid` immediately afterward guarantees the next set fires.
 
 The receiver in `main.bs` reads `msg.getData()` (the value at event-queue time) rather than the current field value (which is `invalid` by the time the handler runs):
 
@@ -289,7 +289,7 @@ The split is "synchronous types" vs "async types":
 - **Synchronous**: a single item has all the info needed to play. Wrap in queue format, push, play.
 - **Async**: requires API expansion (e.g., "play this whole series" → fetch all episodes in order). Spawn a `QuickPlayTask` (in `components/tasks/QuickPlayTask.xml/.bs`) which writes results to its `output` field; the main loop catches the `output` event and finishes the queue setup.
 
-## 8. QueueManager.playQueue() — `components/manager/QueueManager.bs:119`
+## 8. QueueManager.playQueue() — `components/manager/QueueManager.bs`
 
 The QueueManager looks at `getCurrentItem()`, classifies its type, and invokes the right player factory:
 
@@ -339,7 +339,7 @@ sub CreateVideoPlayerView()
 end sub
 ```
 
-The `VideoPlayerView` itself handles fetching media metadata, building the URL, and starting the underlying Roku `Video` node. See `05-video-and-audio-playback.md` for the full picture.
+The `VideoPlayerView` itself handles fetching media metadata, building the URL, and starting the underlying Roku `Video` node. See `playback.md` for the full picture.
 
 ## 10. Playback running
 
@@ -360,8 +360,8 @@ If the user backs out mid-playback, `SceneManager.popScene` detects the `Video` 
 
 ## Cruft callouts
 
-- **`ItemDetails.bs` is 3,337 lines.** Single file handling every item type. Splitting per type (or extracting the extras pane and metadata renderer) would make it more navigable. See `99-tech-debt-and-cruft.md`.
-- **`showScenes.bs` mixes login flow with scene factories.** `LoginFlow()` and a dozen `Create*Group()` functions live in the same 728-line file. Splitting `auth/LoginFlow.bs` and `screens/SearchPage.bs` etc. would clarify responsibilities.
+- **`ItemDetails.bs` is huge.** Single file handling every item type. Splitting per type (or extracting the extras pane and metadata renderer) would make it more navigable. See `tech-debt.md`.
+- **`showScenes.bs` mixes login flow with scene factories.** `LoginFlow()` and a dozen `Create*Group()` functions live in the same file. Splitting `auth/LoginFlow.bs` and `screens/SearchPage.bs` etc. would clarify responsibilities.
 - **`goto`-based retry in LoginFlow.** Works, but unusual; a `do { ... } until success` loop would read more naturally to most modern eyes. Not worth changing for change's sake, but worth knowing about.
 - **No persistent series playlist UI.** "Play next" routing always goes back through `ItemDetails → quickPlayNode → QueueManager`. There's no "now playing" sidebar to see the upcoming queue without going to the player.
 - **`selectedItem` bubbling has implicit contracts.** Every level in the chain just declares `<field id="selectedItem" alwaysNotify="true" />` and trusts that the level above will handle it. Tracing from a click to the handler requires walking the tree manually; there's no central registry of "who handles selectedItem from where."

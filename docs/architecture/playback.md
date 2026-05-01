@@ -21,8 +21,8 @@ The playback subsystem: queue management, the canonical video player, the audio 
 ## Component map
 
 ```brightscript
-m.global.queueManager                         ← QueueManager.bs (294 lines, exemplar of clean code)
-m.global.audioPlayer                          ← AudioPlayer.bs (44 lines, extends Video, the audio engine)
+m.global.queueManager                         ← QueueManager.bs (clean, well-bounded; the exemplar)
+m.global.audioPlayer                          ← AudioPlayer.bs (small; extends Video, the audio engine)
                                                 always present, plays whether the AudioPlayerView is shown or not
 components/manager/ViewCreator.bs             ← factory + dialog handlers (no .xml — pure module)
   ├── CreateVideoPlayerView()                 ← instantiates VideoPlayerView, pushes scene
@@ -30,20 +30,20 @@ components/manager/ViewCreator.bs             ← factory + dialog handlers (no 
   └── onSelectSubtitle/Audio/VideoSourcePressed  ← shows radio dialogs, handles selection
 
 components/video/                             ← VIDEO playback UI
-  ├── VideoPlayerView.bs/.xml (1,674 lines)   ← the canonical video player; extends Video
+  ├── VideoPlayerView.bs/.xml                 ← the canonical video player; extends Video
   ├── OSD.bs/.xml                              ← title, time, progress; auto-hides after 5s
   ├── TrickplayCarousel.bs/.xml                ← scrub-thumbnail carousel
   ├── TrickplayTileLoader.bs/.xml              ← async tile fetch
   └── VideoNotification.bs/.xml                ← next-episode + media-segment overlays
 
 components/music/                              ← AUDIO playback UI
-  ├── AudioPlayerView.bs/.xml (899 lines)     ← the audio "now playing" screen; extends JRScreen
+  ├── AudioPlayerView.bs/.xml                 ← the audio "now playing" screen; extends JRScreen
   ├── AlbumTrackList.bs/.xml                   ← track list for the current album
   ├── SongItem.bs/.xml                         ← row item for a song
   └── LoadScreenSaverTimeoutTask.bs/.xml       ← screensaver suppression while music plays
 
 components/mediaPlayers/                       ← AUDIO playback ENGINE
-  └── AudioPlayer.bs/.xml (44 lines)           ← extends Video, reports playstate to Jellyfin
+  └── AudioPlayer.bs/.xml                      ← extends Video, reports playstate to Jellyfin
                                                  lives at m.global.audioPlayer
 
 components/ItemGrid/
@@ -112,7 +112,7 @@ The big one:
 
 - **`playQueue()`** — looks at the current item's type and dispatches to either `CreateAudioPlayerView()` or `CreateVideoPlayerView()`. The dispatch is a long if/else chain — perfectly readable, no need for a fancier dispatch.
 
-The whole file is 294 lines, well-commented, and reads cleanly. It's frequently held up internally as the gold standard for "what good BrighterScript looks like." See `99-tech-debt-and-cruft.md`.
+The whole file is well-commented and reads cleanly. It's frequently held up internally as the gold standard for "what good BrighterScript looks like." See `tech-debt.md`.
 
 ## ViewCreator — `components/manager/ViewCreator.bs`
 
@@ -147,7 +147,7 @@ The processing functions write back into `VideoPlayerView`'s fields (`audioIndex
 
 ## VideoPlayerView — `components/video/VideoPlayerView.bs/.xml`
 
-The canonical video player. **1,674 lines.** Extends Roku's native `Video` node, so it inherits the full media-playback state machine and adds JellyRock-specific overlays, OSD, trickplay, captions, transcoding logic, and Jellyfin reporting.
+The canonical video player and the largest single component in the playback subsystem. Extends Roku's native `Video` node, so it inherits the full media-playback state machine and adds JellyRock-specific overlays, OSD, trickplay, captions, transcoding logic, and Jellyfin reporting.
 
 ### Component structure
 
@@ -244,7 +244,7 @@ Both notifications dismiss themselves on a timer or when the user navigates away
 
 ## AudioPlayer engine — `components/mediaPlayers/AudioPlayer.bs/.xml`
 
-A small (44 lines) component that **extends Video** but is used exclusively for audio. Lives at `m.global.audioPlayer` for the entire app lifetime, so audio can keep playing while the user navigates other screens.
+A small component that **extends Video** but is used exclusively for audio. Lives at `m.global.audioPlayer` for the entire app lifetime, so audio can keep playing while the user navigates other screens.
 
 ```brightscript
 sub init()
@@ -327,7 +327,7 @@ The audio side has *two* components (`mediaPlayers/AudioPlayer` and `music/Audio
 
 ## Cruft callouts
 
-- **`VideoPlayerView.bs` is 1,674 lines** — the most complex single component in the app. It mixes: native `Video` event handling, OSD orchestration, trickplay coordination, transcoding logic, DoVi fallback, subtitle management, audio track switching, chapter navigation, and Jellyfin reporting. Some extraction (e.g., a separate `SubtitleController` module) would help. But it works, it's well-tested, and the DoVi handling is genuinely clever.
+- **`VideoPlayerView.bs` is the most complex single component in the app.** It mixes: native `Video` event handling, OSD orchestration, trickplay coordination, transcoding logic, DoVi fallback, subtitle management, audio track switching, chapter navigation, and Jellyfin reporting. Some extraction (e.g., a separate `SubtitleController` module) would help. But it works, it's well-tested, and the DoVi handling is genuinely clever.
 - **The set-then-clear event pattern** appears here too on `select*Pressed` fields — `m.view.selectAudioPressed = true` from the OSD, observed by ViewCreator. Same trick as `quickPlayNode`.
 - **`bufferCheckTimer`** — listed in the XML but its duration is set in code dynamically. Its job is to detect the DoVi `buffer:loop:` source overflow. It exists because Roku's native `state` doesn't always transition to `error` cleanly on this specific failure.
 - **No abstraction over "which player is active"**. Code that wants to control current playback has to know whether `m.global.audioPlayer` is the active player or whether a `VideoPlayerView` is on the scene stack. A common `IPlayer` interface or `m.global.activePlayer` reference would help.
