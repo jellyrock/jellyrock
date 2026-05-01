@@ -23,7 +23,7 @@ Cross-cutting utilities. See related architecture docs for the *why* of each:
 ## Globals
 
 - `setGlobals()` runs in **Phase 1** (before `m.screen.show()`) — non-node globals. `setGlobalNodes()` runs in **Phase 2** (after) — Task-backed nodes that need a live scene. Both are in `globals.bs`. Don't move work between phases without understanding why; Roku has firmware-specific issues with observers wired before `screen.show()`.
-- Theme color override: `applyThemeColorOverrides(userSettings)` writes to `m.global.constants`. Then call `sceneManager.refreshThemeColors()` and `sceneManager.reloadHome()` to re-render. The cascade is manual (see `tech-debt.md`'s `manual-theme-cascade`).
+- Theme color override: `applyThemeColorOverrides(userSettings)` writes to `m.global.constants`. Then call `sceneManager.refreshThemeColors()` and `sceneManager.reloadHome()` to re-render. The cascade is manual (see [`manual-theme-cascade`](../../docs/architecture/tech-debt.md#manual-theme-cascade)).
 
 ## Common patterns
 

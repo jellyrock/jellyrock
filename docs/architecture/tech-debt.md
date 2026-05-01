@@ -17,6 +17,18 @@ Each refactor item has a stable slug for cross-referencing in commits, PRs, and 
 - **Filing a GitHub issue?** Reference the slug in the title and link from the issue back to this entry. Add the issue number to the entry's `github` field here.
 - **Fixing an entry?** Remove the entry from this file in the same PR. The git history of this file becomes the audit trail of what got fixed when.
 
+### Citing a slug from another doc / comment
+
+Use the **anchor-link form**, not narrative prose:
+
+```markdown
+[`manual-theme-cascade`](../../docs/architecture/tech-debt.md#manual-theme-cascade)
+```
+
+In code comments / diagnostic strings (where markdown won't render), use the bare anchor: `tech-debt.md#manual-theme-cascade`.
+
+The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` reference against the actual headings in this file, so deleting a slug catches stale references at push time. Naked narrative mentions like `` `manual-theme-cascade` `` (no anchor) are not checked — there's no syntactic signal to distinguish them from any other backtick-wrapped kebab-case identifier — so the convention exists to keep the check bulletproof. If you find yourself mentioning a slug, link it.
+
 ## Severity rubric
 
 - **High** — meaningful complexity costs; fixing genuinely improves agent + human DX. Worth scheduling.

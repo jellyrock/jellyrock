@@ -18,17 +18,19 @@
 //     resolves to an existing file (or directory) in the repo.
 //   - Every relative markdown link in docs/architecture/*.md and
 //     docs/decisions.md resolves (skipping http(s):, mailto:, anchor-only).
-//   - Every tech-debt slug reference (in markdown narrative or in plugin
-//     .cjs file headers / diagnostic strings) points to a slug that
-//     actually exists in docs/architecture/tech-debt.md. Two reference
-//     forms are recognized:
-//        1. Anchor link:    tech-debt.md#slug-name
-//        2. Narrative form: `tech-debt[.md]` followed within 20 chars
-//                           by a backtick-wrapped kebab-case slug.
-//     Catches the failure mode where a slug gets removed from tech-debt.md
-//     (because its work is done) but narrative references in other files
-//     are left dangling. Surfaced when 4 such refs slipped through the
-//     v2.15.0 doc audit.
+//   - Every tech-debt anchor reference (anywhere in scanned files) of
+//     the form `tech-debt.md#<anchor>` resolves to a real heading
+//     anchor in docs/architecture/tech-debt.md. This is the canonical
+//     form for citing a slug or section from outside; narrative-form
+//     mentions (a backtick-wrapped kebab string in prose) are
+//     intentionally NOT checked, because there's no syntactic signal to
+//     distinguish them from any other backtick-wrapped kebab string in
+//     the codebase (plugin names, npm scripts, etc.) without a fragile
+//     proximity heuristic or a registry of false positives. The
+//     anchor-link convention is documented in tech-debt.md's preamble.
+//     Catches the failure mode where a slug gets removed from
+//     tech-debt.md but anchor refs elsewhere go stale. Surfaced when 4
+//     such refs slipped through the v2.15.0 doc audit.
 //
 // What it doesn't check (yet):
 //   - Inline backtick-quoted paths in prose (noise-prone; many false
@@ -121,61 +123,70 @@ function findMarkdownLinks(content) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Tech-debt slug references — extract the canonical slug set from
-// tech-debt.md, then check that every reference elsewhere points to one
-// of those slugs. Two reference forms supported:
-//   1. Anchor:     tech-debt.md#slug-name           (any file)
-//   2. Narrative:  `tech-debt[.md]` ... `slug-name` (within 20 chars)
-// The narrative form's tight window keeps false positives down — a
-// hyphenated identifier in a separate sentence won't match.
+// Tech-debt anchor references — bulletproof check against a single
+// canonical form: `tech-debt.md#<anchor>`. Validates that the anchor
+// resolves to an actual heading in tech-debt.md.
+//
+// We deliberately don't try to detect narrative-style slug citations
+// (e.g. "see `slug-name`") because there's no syntactic signal that
+// disambiguates them from any other backtick-wrapped kebab-case
+// identifier in the codebase (plugin names, npm scripts, module IDs).
+// Any heuristic for that — proximity windows, registries of "known
+// non-slug strings", etc. — is fragile and accumulates maintenance
+// debt. The chosen design: declare anchor form canonical, document it
+// in tech-debt.md, and validate it strictly.
 // ────────────────────────────────────────────────────────────────────
 
-// Slug shape: starts with a letter, has at least one hyphen, kebab-case.
-// Matches both narrative slugs and anchor slugs uniformly.
-const SLUG_PATTERN = '[a-z][a-z0-9]*(?:-[a-z0-9]+)+';
-const ANCHOR_REF_RE = new RegExp(`\\btech-debt\\.md#(${SLUG_PATTERN})\\b`, 'gi');
-const NARRATIVE_REF_RE = new RegExp(
-  `\\btech-debt(?:\\.md)?[^\\n]{0,20}?\`(${SLUG_PATTERN})\``,
-  'gi'
-);
+// Reference form: any URL or path ending in `tech-debt.md#<anchor>`.
+// The anchor capture is permissive (anything after the # up to a word
+// boundary or markdown delimiter) so we catch both slug-style anchors
+// (kebab-case) and section-heading anchors (which may have multiple
+// consecutive hyphens from punctuation in the heading text).
+const ANCHOR_REF_RE = /\btech-debt\.md#([a-z0-9][a-z0-9-]*)(?=[)\s.,;'"`]|$)/gim;
 
-function extractTechDebtSlugs(techDebtPath) {
+/**
+ * Extract the set of valid anchors from tech-debt.md by hashing each
+ * heading text via an approximation of GitHub's heading-to-anchor rule:
+ * lowercase, strip backticks/emphasis/most punctuation, replace spaces
+ * with hyphens. Conservative — handles the heading shapes used in
+ * tech-debt.md today (plain prose + backtick-wrapped slugs).
+ */
+function extractTechDebtAnchors(techDebtPath) {
   if (!fs.existsSync(techDebtPath)) return null;
   const content = fs.readFileSync(techDebtPath, 'utf8');
-  const slugs = new Set();
-  const headingRe = /^####\s+`([a-z][a-z0-9-]+)`/gm;
+  const anchors = new Set();
+  const headingRe = /^#+\s+(.+?)\s*$/gm;
   let m;
   while ((m = headingRe.exec(content)) !== null) {
-    slugs.add(m[1]);
+    const anchor = headingToAnchor(m[1]);
+    if (anchor) anchors.add(anchor);
   }
-  return slugs;
+  return anchors;
 }
 
-function findSlugRefs(content) {
-  const refs = [];
+function headingToAnchor(text) {
+  return text
+    .toLowerCase()
+    .replace(/[`*_~]/g, '')          // strip backticks + emphasis chars
+    .replace(/[^a-z0-9\s-]/g, '')    // keep only alnum, whitespace, hyphens
+    .trim()
+    .replace(/\s+/g, '-');           // whitespace runs → single hyphen
+}
+
+function checkAnchorRefs(filePath, content) {
+  if (!techDebtAnchors) return 0;
+  let okCount = 0;
   let m;
   ANCHOR_REF_RE.lastIndex = 0;
   while ((m = ANCHOR_REF_RE.exec(content)) !== null) {
-    refs.push({ slug: m[1].toLowerCase(), form: 'anchor' });
-  }
-  NARRATIVE_REF_RE.lastIndex = 0;
-  while ((m = NARRATIVE_REF_RE.exec(content)) !== null) {
-    refs.push({ slug: m[1].toLowerCase(), form: 'narrative' });
-  }
-  return refs;
-}
-
-function checkSlugRefs(filePath, content) {
-  if (!knownSlugs) return 0;
-  const refs = findSlugRefs(content);
-  let okCount = 0;
-  for (const ref of refs) {
-    if (knownSlugs.has(ref.slug)) {
+    const anchor = m[1].toLowerCase();
+    if (techDebtAnchors.has(anchor)) {
       okCount++;
     } else {
       errors.push(
-        `${filePath}: stale tech-debt slug reference "${ref.slug}" (${ref.form} form). ` +
-        `Either restore the slug in docs/architecture/tech-debt.md or rewrite the reference.`
+        `${filePath}: stale tech-debt anchor reference "tech-debt.md#${anchor}" — ` +
+        `no heading with that anchor exists in docs/architecture/tech-debt.md. ` +
+        `Either restore/rename the heading, or rewrite the reference.`
       );
     }
   }
@@ -186,7 +197,7 @@ function checkSlugRefs(filePath, content) {
 
 const errors = [];
 let filesChecked = 0;
-const knownSlugs = extractTechDebtSlugs(TECH_DEBT_PATH);
+const techDebtAnchors = extractTechDebtAnchors(TECH_DEBT_PATH);
 
 function checkRelatedFiles(docPath, content) {
   const fm = readFrontmatter(content);
@@ -222,10 +233,10 @@ function checkDirOfMds(dir) {
     const content = fs.readFileSync(file, 'utf8');
     const relatedCount = checkRelatedFiles(file, content);
     const linkCount = checkBodyLinks(file, content);
-    const slugCount = checkSlugRefs(file, content);
+    const anchorCount = checkAnchorRefs(file, content);
     filesChecked++;
     if (VERBOSE) {
-      console.log(`  ${path.relative(ROOT_DIR, file)} — ${relatedCount} related, ${linkCount} links, ${slugCount} slugs`);
+      console.log(`  ${path.relative(ROOT_DIR, file)} — ${relatedCount} related, ${linkCount} links, ${anchorCount} anchors`);
     }
   }
 }
@@ -240,10 +251,10 @@ checkDirOfMds(DEV_DIR);
 if (fs.existsSync(DECISIONS_PATH)) {
   const content = fs.readFileSync(DECISIONS_PATH, 'utf8');
   const linkCount = checkBodyLinks(DECISIONS_PATH, content);
-  const slugCount = checkSlugRefs(DECISIONS_PATH, content);
+  const anchorCount = checkAnchorRefs(DECISIONS_PATH, content);
   filesChecked++;
   if (VERBOSE) {
-    console.log(`  ${path.relative(ROOT_DIR, DECISIONS_PATH)} — ${linkCount} links, ${slugCount} slugs`);
+    console.log(`  ${path.relative(ROOT_DIR, DECISIONS_PATH)} — ${linkCount} links, ${anchorCount} anchors`);
   }
 }
 
@@ -277,10 +288,10 @@ function findClaudeMds(rootDir) {
 for (const file of findClaudeMds(ROOT_DIR)) {
   const content = fs.readFileSync(file, 'utf8');
   const linkCount = checkBodyLinks(file, content);
-  const slugCount = checkSlugRefs(file, content);
+  const anchorCount = checkAnchorRefs(file, content);
   filesChecked++;
   if (VERBOSE) {
-    console.log(`  ${path.relative(ROOT_DIR, file)} — ${linkCount} links, ${slugCount} slugs`);
+    console.log(`  ${path.relative(ROOT_DIR, file)} — ${linkCount} links, ${anchorCount} anchors`);
   }
 }
 
@@ -297,10 +308,10 @@ function findPluginScripts() {
 
 for (const file of findPluginScripts()) {
   const content = fs.readFileSync(file, 'utf8');
-  const slugCount = checkSlugRefs(file, content);
+  const anchorCount = checkAnchorRefs(file, content);
   filesChecked++;
   if (VERBOSE) {
-    console.log(`  ${path.relative(ROOT_DIR, file)} — ${slugCount} slugs`);
+    console.log(`  ${path.relative(ROOT_DIR, file)} — ${anchorCount} anchors`);
   }
 }
 
