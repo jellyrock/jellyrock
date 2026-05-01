@@ -44,6 +44,8 @@
     "changelog:validate": "node scripts/changelog-syncer.js validate",
     "changelog:status": "node scripts/changelog-syncer.js status",
     "check-formatting": "npx bsfmt --check",
+    "docs:dev-index": "node scripts/generate-dev-index.cjs",
+    "docs:dev-index:check": "node scripts/generate-dev-index.cjs --check",
     "docs:settings": "node scripts/generate-settings-docs.cjs",
     "format": "npx bsfmt --write",
     "lint": "npm run check-formatting && npm run lint:bs && npm run validate && npm run lint:json && npm run lint:markdown && npm run lint:spelling && npm run lint:translations && npm run lint:language-coverage && npm run lint:docs",

@@ -6,6 +6,8 @@
 # Auto-fix steps (mutate files; combined into one commit):
 #   1. bsfmt --write on *.bs / *.brs in range
 #   2. npm run update-translations  if BS source / locale / settings/settings.json changed
+#   3. npm run docs:dev-index       if docs/dev/*.md changed (regen index in
+#                                   docs/architecture/README.md)
 #
 # Check steps (read-only; non-zero exit aborts the push):
 #   3. npm run validate           — *.bs / *.brs / *.xml / bsconfig*.json
@@ -48,11 +50,12 @@ HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\
 HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
 HAS_JSON=$(echo "$CHANGED" | grep -qE '\.json$' && echo 1 || true)
 HAS_ARCH_DOCS=$(echo "$CHANGED" | grep -qE '^docs/(architecture/.*\.md$|dev/.*\.md$|decisions\.md$)' && echo 1 || true)
+HAS_DEV_DOCS=$(echo "$CHANGED" | grep -qE '^docs/dev/.*\.md$' && echo 1 || true)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Auto-fix steps (mutate files; combined into one commit at the end)
 # ──────────────────────────────────────────────────────────────────────────
-if [ -n "$BS_FILES" ] || [ -n "$TRANSLATION_TRIGGERS" ]; then
+if [ -n "$BS_FILES" ] || [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ]; then
   if ! git diff-index --quiet HEAD --; then
     echo "⚠️  Working tree has uncommitted changes; skipping auto-fix steps."
     echo "   Commit or stash them, then re-push to enable auto-fix."
@@ -66,6 +69,11 @@ if [ -n "$BS_FILES" ] || [ -n "$TRANSLATION_TRIGGERS" ]; then
     if [ -n "$TRANSLATION_TRIGGERS" ]; then
       echo "🌐 Updating translations..."
       npm run update-translations
+    fi
+
+    if [ -n "$HAS_DEV_DOCS" ]; then
+      echo "📑 Regenerating docs/dev/ index in architecture README..."
+      npm run docs:dev-index
     fi
 
     if ! git diff --quiet; then

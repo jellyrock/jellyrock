@@ -71,4 +71,24 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 
 ### Existing dev guides
 
-See [`docs/dev/`](../dev/) for task-oriented how-to guides — `DEVGUIDE.md` for new-developer quick start, plus per-topic guides (filenames are descriptive: `new-user-setting.md`, `registry-migrations.md`, `unit-tests.md`, etc.). An auto-generated index is planned (Phase 3 of the agent-context-system work) so this list can never drift; for now, browse the folder.
+Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is auto-generated from the H1 heading of each file by `scripts/generate-dev-index.cjs` — never edit this list by hand.
+
+<!-- BEGIN auto-generated dev-index (run `npm run docs:dev-index` to regenerate) -->
+
+| File | Topic |
+|---|---|
+| [`docs/dev/DEVGUIDE.md`](../dev/DEVGUIDE.md) | Dev Guide |
+| [`docs/dev/api-layering-guide.md`](../dev/api-layering-guide.md) | API Architecture Layering Guide |
+| [`docs/dev/api-patterns.md`](../dev/api-patterns.md) | API Request Patterns |
+| [`docs/dev/code-style.md`](../dev/code-style.md) | Code Style Guide |
+| [`docs/dev/debug-flags.md`](../dev/debug-flags.md) | Debug Flags & Toast Testing |
+| [`docs/dev/developer-mode.md`](../dev/developer-mode.md) | Developer Mode for Roku Devices |
+| [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | JellyRock Versioning Systems Overview |
+| [`docs/dev/logging.md`](../dev/logging.md) | Logging Guide (roku-log) |
+| [`docs/dev/new-user-setting.md`](../dev/new-user-setting.md) | Adding User Settings Guide |
+| [`docs/dev/registry-migrations.md`](../dev/registry-migrations.md) | Registry Migrations Guide |
+| [`docs/dev/translations.md`](../dev/translations.md) | Translations |
+| [`docs/dev/unit-tests-tdd.md`](../dev/unit-tests-tdd.md) | Test-Driven Development (TDD) Workflow |
+| [`docs/dev/unit-tests.md`](../dev/unit-tests.md) | Unit Testing Guide (Rooibos Framework) |
+
+<!-- END auto-generated dev-index -->
