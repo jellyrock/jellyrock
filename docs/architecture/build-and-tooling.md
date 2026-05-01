@@ -251,13 +251,13 @@ This is the reason agents and humans should NOT manually run `npm run lint*` or 
 
 ## Agent telemetry
 
-`.claude/settings.json` registers a PostToolUse hook that fires after every Read / Grep / Glob / Edit / Write / MultiEdit. The hook script (`.claude/hooks/log-tool-use.sh`) appends a JSONL line to `.claude/logs/tool-use.jsonl` (gitignored).
+`.claude/settings.json` registers a PostToolUse hook that fires after every Read / Grep / Glob / Edit / Write / MultiEdit. The hook script (`.claude/hooks/log-tool-use.sh`) appends a JSONL line to `~/.claude/jellyrock-telemetry/tool-use.jsonl` (per-USER, not per-worktree — so contributors with multiple jellyrock copies see a single combined picture without manual log consolidation). Override the location with `$JELLYROCK_TELEMETRY_DIR` if needed.
 
 The hook is non-blocking: it runs after the tool, never delays the agent, and silences every error path so a missing `jq` (the only dep) just no-ops rather than failing the tool call.
 
 `npm run agent-telemetry` reads the log and prints a report — top files read, top files edited, top grep / glob patterns, and a few "what to act on" hints. The intent is to drive evidence-based decisions about where to expand subdir CLAUDE.md coverage rather than guessing.
 
-The log file is per-developer (gitignored). Aggregating across developers would require explicit opt-in plumbing; not currently in scope.
+The log file is per-developer (lives in `$HOME`; never committed). Aggregating across developers would require explicit opt-in plumbing; not currently in scope.
 
 ## IDE integration
 

@@ -1,7 +1,10 @@
 // Aggregates the agent tool-use log into a human-readable report.
 //
-// Reads .claude/logs/tool-use.jsonl (populated by the PostToolUse hook
-// at .claude/hooks/log-tool-use.sh) and summarises:
+// Reads $HOME/.claude/jellyrock-telemetry/tool-use.jsonl by default
+// (override with $JELLYROCK_TELEMETRY_DIR). The log is populated by the
+// PostToolUse hook at .claude/hooks/log-tool-use.sh, which writes per-USER
+// (not per-worktree) so contributors with multiple jellyrock copies see a
+// single combined picture without manual log consolidation. Summarises:
 //
 //   - Top files agents read (signal: where the agent's mental model is built)
 //   - Top files agents edit (signal: where work concentrates)
@@ -26,6 +29,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const args = process.argv.slice(2);
@@ -45,15 +49,17 @@ for (let i = 0; i < args.length; i++) {
   positional.push(args[i]);
 }
 
-const ROOT_DIR = positional[0] || '.';
 const DAYS = Number(flagValue('--days')) || 7;
 const TOP = Number(flagValue('--top')) || 20;
-const LOG_PATH = path.join(ROOT_DIR, '.claude/logs/tool-use.jsonl');
+const TELEMETRY_DIR = process.env.JELLYROCK_TELEMETRY_DIR
+  || path.join(os.homedir(), '.claude', 'jellyrock-telemetry');
+const LOG_PATH = path.join(TELEMETRY_DIR, 'tool-use.jsonl');
 
 if (!fs.existsSync(LOG_PATH)) {
   console.log(`No telemetry log at ${LOG_PATH}.`);
   console.log(`Hook setup: see .claude/settings.json + .claude/hooks/log-tool-use.sh`);
   console.log(`Once an agent runs Read/Grep/Glob/Edit, the log will appear.`);
+  console.log(`Override the location with $JELLYROCK_TELEMETRY_DIR if needed.`);
   process.exit(0);
 }
 
