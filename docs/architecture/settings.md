@@ -1,6 +1,6 @@
-# 08 — Settings & Migrations
+# 08a — Settings
 
-How `settings/settings.json` is the source of truth, how settings flow into `m.global.user.settings`, how the registry persists changes, and how migrations evolve the schema across versions.
+How `settings/settings.json` is the source of truth, how settings flow into `m.global.user.settings`, and how the registry persists changes. Migration-evolution mechanics live in `migrations.md`.
 
 ## The three setting tiers
 
@@ -178,111 +178,7 @@ It also handles type coercion: registry values are always strings, but `Jellyfin
 
 The same transformer is used by tests — `tests/source/integration/registry/` exercises the full read-overlay-validate cycle.
 
-## Migrations — `source/migrations.bs`
-
-Sometimes settings have to evolve: keys get renamed, values get transformed, options become deprecated. JellyRock handles this with **version-gated registry migrations**.
-
-### When to add a migration
-
-Yes:
-
-- You renamed a setting (e.g. `playback.preferredAudioCodec` → `playbackPreferredMultichannelCodec`)
-- You changed the value format (e.g. an enum value got renamed)
-- You removed a setting that previously stored real user data
-- You restructured how data is persisted
-
-No:
-
-- You added a new setting (defaults handle this automatically)
-- You changed a default value (changes only affect new installs that don't have a saved value)
-- You added a server-authoritative field
-
-### Structure
-
-Two top-level functions:
-
-- `runGlobalMigrations()` — runs migrations on the `"JellyRock"` global section
-- `runRegistryUserMigrations(targetSections)` — runs migrations on every per-user section
-
-Both run early in `Main()`, **before** `SessionDataTransformer`, so that by the time settings are loaded, only the new key names and new value shapes exist.
-
-A migration is gated by version constants:
-
-```brightscript
-const SETTINGS_MIGRATION_VERSION = "1.1.0"
-const AUDIO_CODEC_MIGRATION_VERSION = "1.1.5"
-const EMPTY_IMAGE_TAG_CLEANUP_VERSION = "1.4.0"
-const SPLASH_SETTING_REMOVAL_VERSION = "1.5.0"
-const GLOBAL_SETTINGS_CLEANUP_VERSION = "1.5.2"
-const MUSIC_VIEW_MIGRATION_VERSION = "1.10.0"
-const TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION = "2.0.0"
-const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
-```
-
-Each migration runs only if the user is *upgrading past* that version:
-
-```brightscript
-appLastRunVersion = m.global.app.lastRunVersion       ' from registry, set on previous launch
-
-if isValid(appLastRunVersion) and not versionChecker(appLastRunVersion, SETTINGS_MIGRATION_VERSION)
-  ' last run version < 1.1.0 — apply this migration
-  m.wasMigrated = true
-  ' ...read old key, write new key, delete old key, reg.flush()
-end if
-```
-
-After all migrations finish, `Main()` writes the current version back to `LastRunVersion`:
-
-```brightscript
-if m.global.app.version <> m.global.app.lastRunVersion
-  setSetting("LastRunVersion", m.global.app.version)
-end if
-```
-
-So next launch knows what's already been migrated.
-
-### Test mode safety
-
-`runRegistryUserMigrations` includes a guard:
-
-```brightscript
-' Detect test mode: if ANY section starts with "test-", we're in test mode
-hasTestSections = false
-for each checkSection in regSections
-  if LCase(checkSection).left(5) = "test-"
-    hasTestSections = true
-    exit for
-  end if
-end for
-
-' In test mode, skip non-test user sections (don't touch real user data!)
-for each section in regSections
-  isTestSection = LCase(section).left(5) = "test-"
-  if hasTestSections and not isTestSection
-    continue for
-  end if
-  ' ...
-end for
-```
-
-This means integration tests can write `test-<id>` sections without ever touching real user data, even in a dev build deployed to a personal device.
-
-### Migration testing
-
-`tests/source/integration/migration/` has a test suite per migration. The pattern is:
-
-1. Set up registry state representing "old version" data
-2. Run the migration
-3. Assert the new state matches the expected schema
-4. Assert old keys are gone, new keys exist with correct values
-
-`docs/dev/registry-migrations.md` is the canonical guide for writing one. Read it before adding a migration.
-
 ## Cruft callouts
 
-- **Migration list grows monotonically.** As of today there are 8 version constants. Old migrations stay in the file forever (otherwise users skipping versions would miss them). The file is 413 lines and counting.
 - **Registry values are all strings.** Type coercion happens on every read via `valueToString`. Boolean settings use `"true"`/`"false"` strings, etc. A typo in the registry (e.g. `"True"` instead of `"true"`) doesn't fail-fast — it parses as something unexpected. Mostly defensive code handles this.
-- **No transactional migration.** If a migration crashes halfway through (e.g., write succeeds but delete fails), the next launch may try to re-run it. Most migrations are idempotent by check-existence-first, but it's not enforced.
 - **Settings UI walks `settings.json` at runtime.** Any change to the schema (adding a setting type, restructuring the tree) requires both the JSON and the Settings UI renderer to handle the new shape. The renderer is generic but does have a finite set of supported `type:` values.
-- **`m.wasMigrated` flag on global scope.** Global state passed via the implicit `m` AA. Works because `Main()` controls the flow, but reads as a global mutable variable.
-- **No explicit setting deprecation lifecycle.** A setting can be removed, but there's no warning system or deprecation period — the migration just drops the old key. Users with old custom values lose them silently.
