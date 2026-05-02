@@ -67,6 +67,18 @@ If a future plugin grows fixtures that don't fit comfortably inline, the next
 step is `.bs` fixture files alongside the tests — but that hasn't been needed
 yet, so the layout isn't standardized. Don't pre-build it speculatively.
 
+## Shebangs on top-level CLI scripts
+
+ESLint's `n/hashbang` rule enforces the shebang policy automatically:
+
+- Scripts listed in `package.json` `"bin"` MUST have `#!/usr/bin/env node`.
+- Scripts NOT in `"bin"` MUST NOT have a shebang.
+
+Today nothing in `scripts/` is in `"bin"`; everything is invoked via
+`node scripts/...` from npm scripts. So no shebangs. If a script genuinely
+needs direct invocation later (`./scripts/foo.js`), the fix is to add it to
+`"bin"` — not to hand-restore the shebang and disable the lint.
+
 ## Don't manually run
 
 - `npm run lint:js` / `check-formatting:js` — pre-push runs them
