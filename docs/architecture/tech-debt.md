@@ -6,14 +6,16 @@ last-reviewed: 2026-05-01
 
 # Tech Debt & Cruft
 
-A living inventory of known issues, accompanied by a "things to preserve" list (so refactors don't accidentally regress good work) and a "recently removed" list (so future-you doesn't waste time searching for ghosts).
+A living inventory of known issues, plus a "recently removed" list (so future-you doesn't waste time searching for ghosts that have been deleted).
+
+For *what's good and shouldn't be casually reformed* — see the relevant topic doc in [`docs/architecture/`](./README.md#topic-map--load-by-purpose). Each topic doc explains its subsystem's design intent inline, where the context is fresh.
 
 Each refactor item has a stable slug for cross-referencing in commits, PRs, and GitHub issues. When a slug is filed as a GitHub issue, add the issue number as the `github` field. When the work is complete, remove the entry entirely (the closed GitHub issue becomes the historical record).
 
 ## How to use this document
 
 - **Considering a refactor?** Check this list first. If the area is here, the change is at least documented; pick severity carefully — `low` items are usually quirks with reasons.
-- **Considering a major change?** Check the [things to preserve](#things-to-preserve) list. The clean systems are clean for reasons that aren't always obvious from the code alone.
+- **Considering a major change to a "clean" subsystem?** Read the relevant topic doc in [`docs/architecture/`](./README.md) first. The clean systems are clean for reasons that aren't always obvious from the code alone, and those reasons live in the topic docs (e.g., the persistent task pool's children-as-vehicle dodge for SceneGraph event coalescing is in [`api.md`](./api.md), the DoVi `buffer:loop:` retry is in [`playback.md`](./playback.md)).
 - **Filing a GitHub issue?** Reference the slug in the title and link from the issue back to this entry. Add the issue number to the entry's `github` field here.
 - **Fixing an entry?** Remove the entry from this file in the same PR. The git history of this file becomes the audit trail of what got fixed when.
 
@@ -191,29 +193,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `tests/source/e2e/`
 - **issue**: RTA-based UI automation was planned, hasn't materialized. Real coverage today is unit + integration only.
-
-## Things to preserve
-
-These are areas where the design is genuinely good and shouldn't be casually reformed. The clean systems are clean for reasons that aren't always obvious from the code — they were debugged into their current shape.
-
-- **`QueueManager.bs`** — clean, well-bounded, thoroughly commented. Often held up as the "this is what good BrighterScript looks like" exemplar.
-- **The 3-layer API model** — `ApiClient` → `image.bs` validation → `imageHelpers.bs` domain helpers. Each layer adds value. Don't collapse.
-- **The persistent task pool** — small set of `ApiTask` workers + `ApiQueueTask` coordinator + per-request `ApiResultNode`. Avoiding SceneGraph event coalescing via children-as-vehicle is genuinely clever and battle-tested. Don't replace with naive per-request task creation.
-- **Custom translation system** — the lookup chain (active → fallback → key), regional layering, Chinese script-code handling, BSC-plugin-generated key constants, Weblate sync. Every piece earns its keep. Don't switch to Roku's `tr()`.
-- **`SceneManager` + `JRScreen`/`JRGroup` triad** — three well-bounded base classes, lifecycle hooks, focus preservation via `lastFocus`. The system reliably preserves cursor position across navigation.
-- **Settings as `settings.json`** — single source of truth. Defaults live there, the Settings UI walks the JSON to render itself, the `docs:settings` script generates user docs from it. Don't add a parallel source.
-- **Registry migrations framework** — version-gated, idempotent-ish, test-mode-safe. Old migrations stay forever (can't be removed without breaking users who skip versions).
-- **Typed `ContentNode` data layer** — `JellyfinUserSettings`, `JellyfinUser`, `DeviceInfo`, etc. The XML *is* the schema. BSC validates field accesses at compile time.
-- **The auto-sync settings observer** — write to the field, persistence is automatic. Developer experience here is excellent.
-- **The DoVi transcode-fallback flow** — sophisticated, well-commented, handles a real Roku/Jellyfin interaction problem (`buffer:loop:` source overflow on DoVi HLS). Don't simplify.
-- **Per-component logging pattern** — `m.log = new log.Logger("Name")` in every `init()`, with prod-build log stripping. Zero overhead in production.
-- **The `back` key always means `popScene`** — `SceneManager` handles it uniformly. Confirmation dialog appears automatically when popping the last scene.
-- **`isLowMemoryDevice` detection** — hardcoded prefix list of known `512MB` models in `LOW_MEMORY_DEVICE_PREFIXES`. Yes, it's hardcoded; yes, it's the right call (Roku doesn't expose RAM info via API).
-- **All locale files committed to the repo** — looks like bloat but is required by the Weblate workflow. Translators need source-of-truth files to PR against; the bot keeps non-English locales in sync with `en_US.json`. Don't move locales out of the repo.
-
-## A note on the audio "duplication"
-
-`components/mediaPlayers/AudioPlayer.xml/.bs` (engine) and `components/music/AudioPlayerView.xml/.bs` (screen) look like duplicates but aren't — they're an intentional engine/screen split. Don't merge them. Canonical explanation: see `playback.md` (the `AudioPlayer` engine and `AudioPlayerView` screen sections).
 
 ## Recently removed — don't go searching for these
 

@@ -112,7 +112,7 @@ The big one:
 
 - **`playQueue()`** — looks at the current item's type and dispatches to either `CreateAudioPlayerView()` or `CreateVideoPlayerView()`. The dispatch is a long if/else chain — perfectly readable, no need for a fancier dispatch.
 
-The whole file is well-commented and reads cleanly. It's frequently held up internally as the gold standard for "what good BrighterScript looks like." See `tech-debt.md`.
+The whole file is well-commented and reads cleanly. It's frequently held up internally as the gold standard for "what good BrighterScript looks like" — worth reading end-to-end before doing any refactor that touches queue mechanics.
 
 ## ViewCreator — `components/manager/ViewCreator.bs`
 
