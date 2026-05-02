@@ -24,10 +24,10 @@
 // gate kicks in. Adjustable via --days.
 //
 // Usage:
-//   node scripts/docs-stale-blocking.cjs              → CI mode (default base origin/main)
-//   node scripts/docs-stale-blocking.cjs --days 90   → custom threshold
-//   node scripts/docs-stale-blocking.cjs --base main → custom base ref
-//   node scripts/docs-stale-blocking.cjs --verbose   → print pass-through reasoning
+//   node scripts/lint/docs-stale-blocking.cjs              → CI mode (default base origin/main)
+//   node scripts/lint/docs-stale-blocking.cjs --days 90   → custom threshold
+//   node scripts/lint/docs-stale-blocking.cjs --base main → custom base ref
+//   node scripts/lint/docs-stale-blocking.cjs --verbose   → print pass-through reasoning
 //
 // Env:
 //   BASE_REF  — used as default base (set by the CI workflow to the PR's base ref)
@@ -48,7 +48,7 @@ const {
   getLastReviewed,
   parseRelatedFiles,
   pathMatches,
-} = require('./lib/frontmatter.cjs');
+} = require('../lib/frontmatter.cjs');
 
 const args = process.argv.slice(2);
 
@@ -95,12 +95,7 @@ function todayIso() {
 // ────────────────────────────────────────────────────────────────────
 
 function resolveDiff(baseRef) {
-  const candidates = [
-    `origin/${baseRef}`,
-    baseRef,
-    'origin/main',
-    'main'
-  ];
+  const candidates = [`origin/${baseRef}`, baseRef, 'origin/main', 'main'];
 
   let diffOutput = null;
   let usedBase = null;
@@ -108,7 +103,7 @@ function resolveDiff(baseRef) {
     try {
       const out = execSync(`git diff ${base}...HEAD --name-only`, {
         encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
       diffOutput = out;
       usedBase = base;
@@ -127,7 +122,7 @@ function resolveDiff(baseRef) {
 
   return {
     base: usedBase,
-    files: diffOutput.split(/\r?\n/).filter(Boolean)
+    files: diffOutput.split(/\r?\n/).filter(Boolean),
   };
 }
 
@@ -144,9 +139,10 @@ function anyMatch(touchedFiles, relatedEntries) {
 
 function collect(dir) {
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter(f => f.endsWith('.md') && f !== 'README.md')
-    .map(f => path.join(dir, f))
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.md') && f !== 'README.md')
+    .map((f) => path.join(dir, f))
     .sort();
 }
 
@@ -161,13 +157,13 @@ for (const docPath of allDocs) {
   const content = fs.readFileSync(docPath, 'utf8');
   const fm = readFrontmatter(content);
   const date = getLastReviewed(fm);
-  if (!date) continue;  // no-date docs are surfaced by docs:stale; not blocking here
+  if (!date) continue; // no-date docs are surfaced by docs:stale; not blocking here
 
   const days = daysBetween(date, today);
   if (days <= STALE_DAYS) continue;
 
   const related = parseRelatedFiles(fm);
-  if (related.length === 0) continue;  // doc claims no specific territory
+  if (related.length === 0) continue; // doc claims no specific territory
 
   const docRel = path.relative(ROOT_DIR, docPath);
   const docTouched = touchedFiles.includes(docRel);
@@ -178,12 +174,12 @@ for (const docPath of allDocs) {
       doc: docRel,
       days,
       touched: territoryHit.touched,
-      related: territoryHit.related
+      related: territoryHit.related,
     });
   } else if (territoryHit && docTouched && VERBOSE) {
     passes.push({ doc: docRel, days, reason: 'doc updated alongside' });
   } else if (VERBOSE) {
-    passes.push({ doc: docRel, days, reason: 'PR doesn\'t touch related-files' });
+    passes.push({ doc: docRel, days, reason: "PR doesn't touch related-files" });
   }
 }
 

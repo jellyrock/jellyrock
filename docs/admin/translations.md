@@ -34,7 +34,7 @@ Weblate needs to be configured to:
 
 ### Locale Files
 
-- **Adding a new language** — Drop a `<code>.json` file in `locale/custom/`. The bot will auto-add it to `languages.json` on the next push to main. The language metadata map in `scripts/update-translations.cjs` covers 100+ locale codes; unknown codes will use the code as the display name (a warning is printed).
+- **Adding a new language** — Drop a `<code>.json` file in `locale/custom/`. The bot will auto-add it to `languages.json` on the next push to main. The language metadata map in `scripts/lint/update-translations.cjs` covers 100+ locale codes; unknown codes will use the code as the display name (a warning is printed).
 - **Removing a language** — Delete the `.json` file from `locale/custom/` and remove its entry from `languages.json`. Also remove it from the Weblate project.
 - **Regional locales** — Regional files (e.g. `fr_CA.json`) automatically layer over their base language (`fr.json`). No configuration needed — this is handled by the runtime. Chinese locales use script codes (`zh_Hans.json`, `zh_Hant.json`, `zh_Hant_HK.json`) with 3-layer loading for maximum coverage.
 
@@ -64,6 +64,6 @@ locale/custom/<locale>.json       ← Community-translated locale files
 locale/languages.json             ← Language registry (auto-managed)
 source/utils/translate.bs         ← Runtime: translate(), translatePlural(), loadTranslations()
 source/utils/translateLocale.bs   ← Locale resolution cascade
-scripts/bsc-plugin-translation-keys.cjs  ← BSC plugin: generates translationKeys namespace
-scripts/update-translations.cjs   ← All-in-one: lint (default) + fix (--fix)
+scripts/bsc-plugins/translation-keys.cjs  ← BSC plugin: generates translationKeys namespace
+scripts/lint/update-translations.cjs   ← All-in-one: lint (default) + fix (--fix)
 ```

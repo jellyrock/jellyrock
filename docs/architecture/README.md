@@ -71,7 +71,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 
 ### Existing dev guides
 
-Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is auto-generated from the `H1` heading of each file by `scripts/generate-dev-index.cjs` — never edit this list by hand.
+Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is auto-generated from the `H1` heading of each file by `scripts/generate/dev-index.cjs` — never edit this list by hand.
 
 <!-- BEGIN auto-generated dev-index (run `npm run docs:dev-index` to regenerate) -->
 
@@ -87,6 +87,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/logging.md`](../dev/logging.md) | Logging Guide (roku-log) |
 | [`docs/dev/new-user-setting.md`](../dev/new-user-setting.md) | Adding User Settings Guide |
 | [`docs/dev/registry-migrations.md`](../dev/registry-migrations.md) | Registry Migrations Guide |
+| [`docs/dev/scripts-development.md`](../dev/scripts-development.md) | Working in `scripts/` |
 | [`docs/dev/translations.md`](../dev/translations.md) | Translations |
 | [`docs/dev/unit-tests-tdd.md`](../dev/unit-tests-tdd.md) | Test-Driven Development (TDD) Workflow |
 | [`docs/dev/unit-tests.md`](../dev/unit-tests.md) | Unit Testing Guide (Rooibos Framework) |

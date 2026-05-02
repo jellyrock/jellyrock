@@ -81,7 +81,7 @@ function parseRelatedFiles(frontmatter) {
   if (/^related-files:\s*\[\s*\]/m.test(frontmatter)) return [];
 
   const lines = frontmatter.split(/\r?\n/);
-  const startIdx = lines.findIndex(l => /^related-files:\s*$/.test(l));
+  const startIdx = lines.findIndex((l) => /^related-files:\s*$/.test(l));
   if (startIdx === -1) return [];
 
   const items = [];
@@ -167,10 +167,10 @@ function extractTechDebtAnchors(techDebtPath) {
 function headingToAnchor(text) {
   return text
     .toLowerCase()
-    .replace(/[`*_~]/g, '')          // strip backticks + emphasis chars
-    .replace(/[^a-z0-9\s-]/g, '')    // keep only alnum, whitespace, hyphens
+    .replace(/[`*_~]/g, '') // strip backticks + emphasis chars
+    .replace(/[^a-z0-9\s-]/g, '') // keep only alnum, whitespace, hyphens
     .trim()
-    .replace(/\s+/g, '-');           // whitespace runs → single hyphen
+    .replace(/\s+/g, '-'); // whitespace runs → single hyphen
 }
 
 function checkAnchorRefs(filePath, content) {
@@ -185,8 +185,8 @@ function checkAnchorRefs(filePath, content) {
     } else {
       errors.push(
         `${filePath}: stale tech-debt anchor reference "tech-debt.md#${anchor}" — ` +
-        `no heading with that anchor exists in docs/architecture/tech-debt.md. ` +
-        `Either restore/rename the heading, or rewrite the reference.`
+          `no heading with that anchor exists in docs/architecture/tech-debt.md. ` +
+          `Either restore/rename the heading, or rewrite the reference.`,
       );
     }
   }
@@ -224,9 +224,10 @@ function checkBodyLinks(docPath, content) {
 
 function checkDirOfMds(dir) {
   if (!fs.existsSync(dir)) return;
-  const files = fs.readdirSync(dir)
-    .filter(f => f.endsWith('.md'))
-    .map(f => path.join(dir, f))
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => path.join(dir, f))
     .sort();
 
   for (const file of files) {
@@ -236,7 +237,9 @@ function checkDirOfMds(dir) {
     const anchorCount = checkAnchorRefs(file, content);
     filesChecked++;
     if (VERBOSE) {
-      console.log(`  ${path.relative(ROOT_DIR, file)} — ${relatedCount} related, ${linkCount} links, ${anchorCount} anchors`);
+      console.log(
+        `  ${path.relative(ROOT_DIR, file)} — ${relatedCount} related, ${linkCount} links, ${anchorCount} anchors`,
+      );
     }
   }
 }
@@ -254,7 +257,9 @@ if (fs.existsSync(DECISIONS_PATH)) {
   const anchorCount = checkAnchorRefs(DECISIONS_PATH, content);
   filesChecked++;
   if (VERBOSE) {
-    console.log(`  ${path.relative(ROOT_DIR, DECISIONS_PATH)} — ${linkCount} links, ${anchorCount} anchors`);
+    console.log(
+      `  ${path.relative(ROOT_DIR, DECISIONS_PATH)} — ${linkCount} links, ${anchorCount} anchors`,
+    );
   }
 }
 
@@ -300,9 +305,10 @@ for (const file of findClaudeMds(ROOT_DIR)) {
 // there). These are .cjs, not .md, but the slug-ref regex doesn't care.
 function findPluginScripts() {
   if (!fs.existsSync(SCRIPTS_DIR)) return [];
-  return fs.readdirSync(SCRIPTS_DIR)
-    .filter(f => f.startsWith('bsc-plugin-') && f.endsWith('.cjs'))
-    .map(f => path.join(SCRIPTS_DIR, f))
+  return fs
+    .readdirSync(SCRIPTS_DIR)
+    .filter((f) => f.startsWith('bsc-plugin-') && f.endsWith('.cjs'))
+    .map((f) => path.join(SCRIPTS_DIR, f))
     .sort();
 }
 

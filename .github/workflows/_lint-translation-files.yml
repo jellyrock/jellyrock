@@ -19,7 +19,7 @@ jobs:
         uses: ./.github/actions/changed-paths
         with:
           # Mirrors the previous event-time paths filter.
-          pattern: '^(locale/custom/.+\.json|source/.+\.bs|components/.+\.(bs|xml)|settings/settings\.json|scripts/update-translations\.cjs)$'
+          pattern: '^(locale/custom/.+\.json|source/.+\.bs|components/.+\.(bs|xml)|settings/settings\.json|scripts/lint/update-translations\.cjs)$'
           force: ${{ inputs.force }}
       - name: Setup Node.js
         if: steps.detect.outputs.relevant == 'true'

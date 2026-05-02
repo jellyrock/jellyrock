@@ -1,8 +1,7 @@
-#!/usr/bin/env node
 /*
   Auto-generates the app settings documentation from settings/settings.json.
   Usage:
-    node scripts/generate-settings-docs.cjs [--out docs/user/app-settings.md]
+    node scripts/generate/settings-docs.cjs [--out docs/user/app-settings.md]
 */
 
 const fs = require('fs');
@@ -14,7 +13,7 @@ async function main() {
 
   // parse args
   const args = process.argv.slice(2);
-  let outIdx = args.indexOf('--out');
+  const outIdx = args.indexOf('--out');
   let outFile = path.join(repoRoot, 'docs', 'user', 'app-settings.md');
   if (outIdx !== -1) {
     const custom = args[outIdx + 1];
@@ -141,7 +140,7 @@ function emitGroup(parts, node, pathTitles, depth, isTopLevel = false) {
 
   // Emit settings first, then nested groups
   const settingChildren = children.filter(isSetting);
-  const groupChildren = children.filter(c => !isSetting(c));
+  const groupChildren = children.filter((c) => !isSetting(c));
 
   for (const setting of settingChildren) {
     emitSetting(parts, setting, newPath, depth + 1);
@@ -200,7 +199,9 @@ function emitSetting(parts, node, pathTitles, depth) {
       const id = makeGroupId(pathTitles.slice(0, i + 1));
       crumbs.push(`<a href="#${id}">${escapeHtml(seg)}</a>`);
     }
-    const settingLink = name ? `<a href="#${escapeHtmlId(name)}">${escapeHtml(title)}</a>` : escapeHtml(title);
+    const settingLink = name
+      ? `<a href="#${escapeHtmlId(name)}">${escapeHtml(title)}</a>`
+      : escapeHtml(title);
     parts.push(`${crumbs.join(' › ')} › ${settingLink}`);
     parts.push('');
   }
@@ -220,11 +221,13 @@ function emitSetting(parts, node, pathTitles, depth) {
 
   // Options nested under details table for radio types (HTML table for alignment within the row)
   if (type.toLowerCase() === 'radio' && options.length) {
-    const rows = options.map(opt => {
-      const oTitle = escapeHtml(opt.title ?? '');
-      const oId = escapeHtml(opt.id ?? '');
-      return `<tr><td>${oTitle}</td><td><code>${oId}</code></td></tr>`;
-    }).join('');
+    const rows = options
+      .map((opt) => {
+        const oTitle = escapeHtml(opt.title ?? '');
+        const oId = escapeHtml(opt.id ?? '');
+        return `<tr><td>${oTitle}</td><td><code>${oId}</code></td></tr>`;
+      })
+      .join('');
     const innerTable = `<table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody>${rows}</tbody></table>`;
     parts.push(`| Options | ${innerTable} |`);
   }
@@ -232,18 +235,12 @@ function emitSetting(parts, node, pathTitles, depth) {
 }
 
 function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeHtmlId(s) {
   // Allow dots and dashes as-is, strip spaces, remove quotes
-  return String(s)
-    .replace(/\s+/g, '')
-    .replace(/\"/g, '')
-    .replace(/'/g, '');
+  return String(s).replace(/\s+/g, '').replace(/"/g, '').replace(/'/g, '');
 }
 
 main().catch((e) => {

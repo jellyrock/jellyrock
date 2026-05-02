@@ -430,7 +430,7 @@ Anything that is *code* — variable / function / class / type / event names, fi
 
 Concretely, the following are code and must be wrapped: `Stop`, `sessionEnd`, `PostToolUse`, `stdout`, `stderr`, `JELLYROCK_TELEMETRY_DIR`, `.claude/settings.json`, `check-touched-lint.cjs`, `force: true`, `workflow_call`, `lint:docs`.
 
-**Why this matters:** the spell-checker (`spellchecker-cli` with `retext-spell`) treats text inside backticks as code and skips it, but flags the same identifier appearing in prose as a misspelling. Forgetting to wrap an identifier is the most common reason a previously-clean doc fails spell-check after an edit. The end-of-turn lint hook ([`scripts/check-touched-lint.cjs`](../../scripts/check-touched-lint.cjs)) surfaces the failure the moment it happens, with a hint pointing back here.
+**Why this matters:** the spell-checker (`spellchecker-cli` with `retext-spell`) treats text inside backticks as code and skips it, but flags the same identifier appearing in prose as a misspelling. Forgetting to wrap an identifier is the most common reason a previously-clean doc fails spell-check after an edit. The end-of-turn lint hook ([`scripts/lint/check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs)) surfaces the failure the moment it happens, with a hint pointing back here.
 
 ### When to add to `dictionary.txt` instead
 

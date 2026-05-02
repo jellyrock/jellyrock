@@ -10,12 +10,12 @@
   "plugins": [
     "@rokucommunity/bslint",
     "brighterscript-xml-plugin",
-    "./scripts/bsc-plugin-roku-log.cjs",
-    "./scripts/bsc-plugin-translation-keys.cjs",
-    "./scripts/bsc-plugin-jrscreen-destroy.cjs",
-    "./scripts/bsc-plugin-print-locations.cjs",
-    "./scripts/bsc-plugin-observe-without-destroy.cjs",
-    "./scripts/bsc-plugin-no-direct-sdk.cjs"
+    "./scripts/bsc-plugins/roku-log.cjs",
+    "./scripts/bsc-plugins/translation-keys.cjs",
+    "./scripts/bsc-plugins/jrscreen-destroy.cjs",
+    "./scripts/bsc-plugins/print-locations.cjs",
+    "./scripts/bsc-plugins/observe-without-destroy.cjs",
+    "./scripts/bsc-plugins/no-direct-sdk.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {
@@ -23,12 +23,8 @@
     "insertPkgPath": true,
     "removeComments": false
   },
-  "diagnosticFilters": [
-    { "files": "node_modules/**/*" },
-    { "files": "**/roku_modules/**/*" }
-  ],
+  "diagnosticFilters": [{ "files": "node_modules/**/*" }, { "files": "**/roku_modules/**/*" }],
   "sourceMap": true,
   "autoImportComponentScript": true,
   "outDir": "build"
-
 }

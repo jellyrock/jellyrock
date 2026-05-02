@@ -57,7 +57,7 @@ class JRScreenDestroyPlugin {
         severity: 2, // Warning
         source: this.name,
         message: `Component '${componentName}' extends JRScreen (transitively) but its codebehind does not declare a 'destroy' function. JRScreen subclasses must override destroy() to release observers and Tasks (otherwise they leak across navigation).`,
-        location: location
+        location: location,
       });
     } catch (_e) {
       // Never crash the build — plugin is build-time advisory.

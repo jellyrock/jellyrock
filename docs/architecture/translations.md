@@ -3,9 +3,9 @@ topic: translations
 related-files:
   - source/utils/translate.bs
   - source/utils/translateLocale.bs
-  - scripts/bsc-plugin-translation-keys.cjs
-  - scripts/update-translations.cjs
-  - scripts/lint-language-coverage.cjs
+  - scripts/bsc-plugins/translation-keys.cjs
+  - scripts/lint/update-translations.cjs
+  - scripts/lint/language-coverage.cjs
   - locale/custom/en_US.json
   - locale/languages.json
 last-reviewed: 2026-05-01
@@ -190,7 +190,7 @@ Track names tagged `und` ("undetermined") and `zxx` ("no linguistic content") ar
 
 ### CI lint — `npm run lint:language-coverage`
 
-`scripts/lint-language-coverage.cjs` catches three classes of silent regression in the resolver:
+`scripts/lint/language-coverage.cjs` catches three classes of silent regression in the resolver:
 
 1. An alias maps `tib` → `bo` but `bo` is missing from tiers 1 and 2 — user sees raw `bo`.
 2. A new `LanguageX` key is added to tier 1 but `xxx` → `x` alias coverage is forgotten — ffmpeg-tagged audio in that language falls through to the English fallback in every UI locale, **including the user's own**.
@@ -200,7 +200,7 @@ These all pass type-check and unit tests but produce silent gaps for non-English
 
 ## Compile-time key safety — the BSC plugin
 
-`scripts/bsc-plugin-translation-keys.cjs` is a custom BrighterScript compiler plugin that generates a virtual `pkg:/source/translationKeys.bs` file at build time from `locale/custom/en_US.json`. The generated file looks like:
+`scripts/bsc-plugins/translation-keys.cjs` is a custom BrighterScript compiler plugin that generates a virtual `pkg:/source/translationKeys.bs` file at build time from `locale/custom/en_US.json`. The generated file looks like:
 
 ```brightscript
 namespace translationKeys
@@ -223,7 +223,7 @@ The generated file is virtual (`program.setFile`) — never written to disk. The
 
 ## CI lint — `npm run lint:translations`
 
-`scripts/update-translations.cjs` runs in lint and CI modes. It enforces:
+`scripts/lint/update-translations.cjs` runs in lint and CI modes. It enforces:
 
 - **Sort order** — keys in `en_US.json` must be alphabetically sorted (canonical).
 - **Completeness** — every other locale file must have the same keys as en_US (or empty values for missing translations — but the keys must exist).

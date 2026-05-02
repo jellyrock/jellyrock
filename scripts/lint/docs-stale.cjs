@@ -13,10 +13,10 @@
 // doc older than a quarter is a candidate for re-audit.
 //
 // Usage:
-//   node scripts/docs-stale.cjs              → list stale docs (exit 0; informational)
-//   node scripts/docs-stale.cjs --days 60    → custom threshold
-//   node scripts/docs-stale.cjs --strict     → exit 1 if any are stale (CI mode)
-//   node scripts/docs-stale.cjs --json       → JSON output (for tooling)
+//   node scripts/lint/docs-stale.cjs              → list stale docs (exit 0; informational)
+//   node scripts/lint/docs-stale.cjs --days 60    → custom threshold
+//   node scripts/lint/docs-stale.cjs --strict     → exit 1 if any are stale (CI mode)
+//   node scripts/lint/docs-stale.cjs --json       → JSON output (for tooling)
 //
 // npm scripts:
 //   docs:stale       → human-readable report (informational)
@@ -84,9 +84,10 @@ function todayIso() {
 
 function collect(dir) {
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter(f => f.endsWith('.md') && f !== 'README.md')
-    .map(f => path.join(dir, f))
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.md') && f !== 'README.md')
+    .map((f) => path.join(dir, f))
     .sort();
 }
 
@@ -99,7 +100,12 @@ for (const file of allDocs) {
   const fm = readFrontmatter(content);
   const date = getLastReviewed(fm);
   if (!date) {
-    findings.push({ file: path.relative(ROOT_DIR, file), date: null, days: null, status: 'no-date' });
+    findings.push({
+      file: path.relative(ROOT_DIR, file),
+      date: null,
+      days: null,
+      status: 'no-date',
+    });
     continue;
   }
   const days = daysBetween(date, today);
@@ -107,7 +113,7 @@ for (const file of allDocs) {
   findings.push({ file: path.relative(ROOT_DIR, file), date, days, status });
 }
 
-const stale = findings.filter(f => f.status === 'stale' || f.status === 'no-date');
+const stale = findings.filter((f) => f.status === 'stale' || f.status === 'no-date');
 
 if (JSON_OUT) {
   console.log(JSON.stringify({ today, threshold: STALE_DAYS, findings }, null, 2));
@@ -126,7 +132,9 @@ if (JSON_OUT) {
   console.log('');
   if (stale.length > 0 && !STRICT) {
     console.log('  Run with --strict to fail CI on stale docs.');
-    console.log('  To address: re-read each stale doc against current code, fix any drift, bump last-reviewed.');
+    console.log(
+      '  To address: re-read each stale doc against current code, fix any drift, bump last-reviewed.',
+    );
   }
 }
 

@@ -56,7 +56,7 @@ jobs:
         id: stale
         run: |
           set -euo pipefail
-          OUTPUT=$(node scripts/docs-stale.cjs --json)
+          OUTPUT=$(node scripts/lint/docs-stale.cjs --json)
           echo "$OUTPUT" > /tmp/stale.json
 
           # findings[] has {file, date, days, status} where status is fresh|stale|no-date
@@ -74,7 +74,7 @@ jobs:
             echo ""
             echo "**How to address an entry:** re-read the doc against current code, fix any drift, and bump \`last-reviewed\` in the frontmatter. Then check off the line below in your PR — this issue is regenerated weekly and will close automatically once empty."
             echo ""
-            echo "**Threshold:** 90 days for the soft signal here. Architecture docs are additionally PR-gated at 120 days via \`scripts/docs-stale-blocking.cjs\` — at 120+ days, any PR that touches a file in the doc's \`related-files\` will block until the doc is updated alongside."
+            echo "**Threshold:** 90 days for the soft signal here. Architecture docs are additionally PR-gated at 120 days via \`scripts/lint/docs-stale-blocking.cjs\` — at 120+ days, any PR that touches a file in the doc's \`related-files\` will block until the doc is updated alongside."
             echo ""
             echo "## Architecture (PR-gated at 120 days)"
             echo ""

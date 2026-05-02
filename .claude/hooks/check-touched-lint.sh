@@ -30,6 +30,6 @@ mkdir -p "$LOG_DIR" 2>/dev/null
 
 # Stdout flows to Claude Code (surfaced in next-turn context); stderr is
 # captured to disk for postmortem on silent breakage.
-node scripts/check-touched-lint.cjs --quiet 2>>"$LOG_FILE"
+node scripts/lint/check-touched-lint.cjs --quiet 2>>"$LOG_FILE"
 
 exit 0

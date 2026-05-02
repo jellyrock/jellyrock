@@ -122,7 +122,10 @@ class TranslationKeysPlugin {
       const parsed = JSON.parse(json);
       keys = Object.keys(parsed);
     } catch (err) {
-      program.setFile(VIRTUAL_FILE_PKG_PATH, this.generateEmptyNamespace(`Invalid JSON: ${err.message}`));
+      program.setFile(
+        VIRTUAL_FILE_PKG_PATH,
+        this.generateEmptyNamespace(`Invalid JSON: ${err.message}`),
+      );
       return;
     }
 
@@ -134,7 +137,7 @@ class TranslationKeysPlugin {
   generateNamespace(keys) {
     const lines = [
       `' Auto-generated from ${path.basename(this.baseFilePath)} — DO NOT EDIT`,
-      'namespace translationKeys'
+      'namespace translationKeys',
     ];
 
     for (const key of keys) {
@@ -154,7 +157,7 @@ class TranslationKeysPlugin {
         if (key.endsWith(suffix)) {
           const base = key.slice(0, -suffix.length);
           if (!keySet.has(base) && !pluralBases.has(base)) {
-            if (suffixes.every(s => keySet.has(base + s))) {
+            if (suffixes.every((s) => keySet.has(base + s))) {
               pluralBases.add(base);
             }
           }
@@ -185,7 +188,7 @@ class TranslationKeysPlugin {
       `' WARNING: Could not read base translation file: ${reason}`,
       'namespace translationKeys',
       'end namespace',
-      ''
+      '',
     ].join('\n');
   }
 }

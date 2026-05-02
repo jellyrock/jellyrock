@@ -8,8 +8,8 @@ This is **not** consumed by in-IDE Copilot Chat. The IDE variant has no end-of-s
 
 [`hooks.json`](hooks.json) wires two `sessionEnd` entries — both informational, both surface output to the agent's next-turn context, both call tool-agnostic Node scripts that the Claude Code wrappers in [`.claude/hooks/`](../../.claude/hooks/) also use:
 
-1. [`scripts/check-touched-related-files.cjs`](../../scripts/check-touched-related-files.cjs) — prints a reminder for any architecture doc whose `related-files:` list intersects the files touched this session, when the doc itself wasn't also updated. Mirrored at [`.claude/hooks/check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh).
-2. [`scripts/check-touched-lint.cjs`](../../scripts/check-touched-lint.cjs) — runs spelling / markdown / JSON lint on changed files so failures surface *during* the agent session instead of at `git push` time. Mirrored at [`.claude/hooks/check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh).
+1. [`scripts/lint/check-touched-related-files.cjs`](../../scripts/lint/check-touched-related-files.cjs) — prints a reminder for any architecture doc whose `related-files:` list intersects the files touched this session, when the doc itself wasn't also updated. Mirrored at [`.claude/hooks/check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh).
+2. [`scripts/lint/check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) — runs spelling / markdown / JSON lint on changed files so failures surface *during* the agent session instead of at `git push` time. Mirrored at [`.claude/hooks/check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh).
 
 ## Why these exist
 

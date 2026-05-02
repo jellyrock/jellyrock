@@ -44,34 +44,104 @@ const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en_US.json');
 // Source: https://www.loc.gov/standards/iso639-2/php/code_list.php
 // ============================================================
 const ISO_639_1_TO_639_2 = {
-  af: ['afr'], ar: ['ara'], as: ['asm'], be: ['bel'], bg: ['bul'],
-  bn: ['ben'], br: ['bre'], ca: ['cat'], cs: ['ces', 'cze'], cy: ['cym', 'wel'],
-  da: ['dan'], de: ['deu', 'ger'], dv: ['div'], el: ['ell', 'gre'], en: ['eng'],
-  eo: ['epo'], es: ['spa'], et: ['est'], eu: ['eus', 'baq'], fa: ['fas', 'per'],
-  fi: ['fin'], fo: ['fao'], fr: ['fra', 'fre'], ga: ['gle'], gl: ['glg'],
-  gu: ['guj'], he: ['heb'], hi: ['hin'], hr: ['hrv'], ht: ['hat'],
-  hu: ['hun'], hy: ['hye', 'arm'], id: ['ind'], is: ['isl', 'ice'], it: ['ita'],
-  ja: ['jpn'], ka: ['kat', 'geo'], kk: ['kaz'], kn: ['kan'], ko: ['kor'],
-  kw: ['cor'], lb: ['ltz'], lt: ['lit'], lv: ['lav'], mg: ['mlg'],
-  mi: ['mri', 'mao'], mk: ['mkd', 'mac'], ml: ['mal'], mn: ['mon'], mr: ['mar'],
-  ms: ['msa', 'may'], mt: ['mlt'], my: ['mya', 'bur'], nb: ['nob'], ne: ['nep'],
-  nl: ['nld', 'dut'], nn: ['nno'], no: ['nor'], pa: ['pan'], pl: ['pol'],
-  pt: ['por'], ro: ['ron', 'rum'], ru: ['rus'], si: ['sin'], sk: ['slk', 'slo'],
-  sl: ['slv'], so: ['som'], sq: ['sqi', 'alb'], sr: ['srp'], sv: ['swe'],
-  ta: ['tam'], te: ['tel'], th: ['tha'], tr: ['tur'], ug: ['uig'],
-  uk: ['ukr'], ur: ['urd'], uz: ['uzb'], vi: ['vie'], zh: ['zho', 'chi'],
-  zu: ['zul']
+  af: ['afr'],
+  ar: ['ara'],
+  as: ['asm'],
+  be: ['bel'],
+  bg: ['bul'],
+  bn: ['ben'],
+  br: ['bre'],
+  ca: ['cat'],
+  cs: ['ces', 'cze'],
+  cy: ['cym', 'wel'],
+  da: ['dan'],
+  de: ['deu', 'ger'],
+  dv: ['div'],
+  el: ['ell', 'gre'],
+  en: ['eng'],
+  eo: ['epo'],
+  es: ['spa'],
+  et: ['est'],
+  eu: ['eus', 'baq'],
+  fa: ['fas', 'per'],
+  fi: ['fin'],
+  fo: ['fao'],
+  fr: ['fra', 'fre'],
+  ga: ['gle'],
+  gl: ['glg'],
+  gu: ['guj'],
+  he: ['heb'],
+  hi: ['hin'],
+  hr: ['hrv'],
+  ht: ['hat'],
+  hu: ['hun'],
+  hy: ['hye', 'arm'],
+  id: ['ind'],
+  is: ['isl', 'ice'],
+  it: ['ita'],
+  ja: ['jpn'],
+  ka: ['kat', 'geo'],
+  kk: ['kaz'],
+  kn: ['kan'],
+  ko: ['kor'],
+  kw: ['cor'],
+  lb: ['ltz'],
+  lt: ['lit'],
+  lv: ['lav'],
+  mg: ['mlg'],
+  mi: ['mri', 'mao'],
+  mk: ['mkd', 'mac'],
+  ml: ['mal'],
+  mn: ['mon'],
+  mr: ['mar'],
+  ms: ['msa', 'may'],
+  mt: ['mlt'],
+  my: ['mya', 'bur'],
+  nb: ['nob'],
+  ne: ['nep'],
+  nl: ['nld', 'dut'],
+  nn: ['nno'],
+  no: ['nor'],
+  pa: ['pan'],
+  pl: ['pol'],
+  pt: ['por'],
+  ro: ['ron', 'rum'],
+  ru: ['rus'],
+  si: ['sin'],
+  sk: ['slk', 'slo'],
+  sl: ['slv'],
+  so: ['som'],
+  sq: ['sqi', 'alb'],
+  sr: ['srp'],
+  sv: ['swe'],
+  ta: ['tam'],
+  te: ['tel'],
+  th: ['tha'],
+  tr: ['tur'],
+  ug: ['uig'],
+  uk: ['ukr'],
+  ur: ['urd'],
+  uz: ['uzb'],
+  vi: ['vie'],
+  zh: ['zho', 'chi'],
+  zu: ['zul'],
 };
 
 // ============================================================
-// Output formatting (matches scripts/update-translations.cjs style)
+// Output formatting (matches scripts/lint/update-translations.cjs style)
 // ============================================================
 const colors = {
-  reset: '\x1b[0m', red: '\x1b[31m', green: '\x1b[32m',
-  yellow: '\x1b[33m', blue: '\x1b[34m', cyan: '\x1b[36m', bold: '\x1b[1m'
+  reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  bold: '\x1b[1m',
 };
 function c(text, color) {
-  if (process.platform === 'win32' && !process.env.FORCE_COLOR && !process.stdout.isTTY) return text;
+  if (process.platform === 'win32' && !process.env.FORCE_COLOR && !process.stdout.isTTY)
+    return text;
   return `${colors[color]}${text}${colors.reset}`;
 }
 
@@ -92,7 +162,10 @@ function c(text, color) {
 // If languages.bs gains real logic, replace this with a tokenizer.
 // ============================================================
 function parseAA(source, fnName) {
-  const fnRe = new RegExp(`function\\s+${fnName}\\s*\\(\\)[^\\n]*\\n([\\s\\S]*?)\\nend function`, 'm');
+  const fnRe = new RegExp(
+    `function\\s+${fnName}\\s*\\(\\)[^\\n]*\\n([\\s\\S]*?)\\nend function`,
+    'm',
+  );
   const fnMatch = source.match(fnRe);
   if (!fnMatch) throw new Error(`function ${fnName}() not found in languages.bs`);
   const body = fnMatch[1];
@@ -103,7 +176,10 @@ function parseAA(source, fnName) {
   let m;
   while ((m = entryRe.exec(body)) !== null) {
     const [, key, strVal, tkVal] = m;
-    result[key] = strVal !== undefined ? { kind: 'string', value: strVal } : { kind: 'translationKey', value: tkVal };
+    result[key] =
+      strVal !== undefined
+        ? { kind: 'string', value: strVal }
+        : { kind: 'translationKey', value: tkVal };
   }
   return result;
 }
@@ -120,7 +196,9 @@ const tier1 = parseAA(langsSource, 'languageTranslationKeys');
 const tier2 = parseAA(langsSource, 'languageEnglishFallbacks');
 const enUS = JSON.parse(fs.readFileSync(EN_US_PATH, 'utf8'));
 
-console.log(`\nLoaded: ${Object.keys(aliases).length} aliases, ${Object.keys(tier1).length} tier-1 keys, ${Object.keys(tier2).length} tier-2 fallbacks`);
+console.log(
+  `\nLoaded: ${Object.keys(aliases).length} aliases, ${Object.keys(tier1).length} tier-1 keys, ${Object.keys(tier2).length} tier-2 fallbacks`,
+);
 
 const errors = [];
 
@@ -138,10 +216,15 @@ for (const [src, dst] of Object.entries(aliases)) {
   }
 }
 if (orphanAliases.length === 0) {
-  console.log(c('  OK', 'green') + ` — all ${Object.keys(aliases).length} alias targets resolve in tier 1 or tier 2`);
+  console.log(
+    c('  OK', 'green') +
+      ` — all ${Object.keys(aliases).length} alias targets resolve in tier 1 or tier 2`,
+  );
 } else {
   for (const { src, target } of orphanAliases) {
-    errors.push(`alias "${src}" → "${target}" — target is not in tier 1 nor tier 2 (would render as raw "${target}")`);
+    errors.push(
+      `alias "${src}" → "${target}" — target is not in tier 1 nor tier 2 (would render as raw "${target}")`,
+    );
   }
 }
 
@@ -163,13 +246,19 @@ for (const base of Object.keys(tier1)) {
   }
 }
 if (missingAliases.length === 0) {
-  console.log(c('  OK', 'green') + ` — every tier-1 base has its 639-2/T and /B aliases registered`);
+  console.log(
+    c('  OK', 'green') + ` — every tier-1 base has its 639-2/T and /B aliases registered`,
+  );
 } else {
   for (const { base, variant, actualTarget } of missingAliases) {
     if (actualTarget) {
-      errors.push(`tier 1 has "${base}" but alias "${variant}" → "${actualTarget}" (expected → "${base}")`);
+      errors.push(
+        `tier 1 has "${base}" but alias "${variant}" → "${actualTarget}" (expected → "${base}")`,
+      );
     } else {
-      errors.push(`tier 1 has "${base}" but missing alias "${variant}" → "${base}" — ffmpeg-tagged audio with code "${variant}" would skip translate() and use tier 2's English string in all UI locales`);
+      errors.push(
+        `tier 1 has "${base}" but missing alias "${variant}" → "${base}" — ffmpeg-tagged audio with code "${variant}" would skip translate() and use tier 2's English string in all UI locales`,
+      );
     }
   }
 }
@@ -192,7 +281,9 @@ if (missingKeys.length === 0) {
   console.log(c('  OK', 'green') + ` — every tier-1 translation key exists in en_US.json`);
 } else {
   for (const { base, key } of missingKeys) {
-    errors.push(`tier 1 entry "${base}" → translationKeys.${key} — key "${key}" is not defined in locale/custom/en_US.json`);
+    errors.push(
+      `tier 1 entry "${base}" → translationKeys.${key} — key "${key}" is not defined in locale/custom/en_US.json`,
+    );
   }
 }
 
