@@ -1,0 +1,35 @@
+# Build output / vendor / generated.
+node_modules/
+build/
+out/
+**/roku_modules/
+
+# npm-owned (npm install rewrites these; let it).
+package-lock.json
+
+# Translation tooling owns these (scripts/lint/update-translations.cjs).
+locale/
+
+# Vendor JSON snapshots — generated upstream, mirrored here.
+tasks/jellyfin-server-openapi/
+
+# Gitignored / per-machine.
+.claude/settings.local.json
+
+# CHANGELOG is CI-controlled (see CLAUDE.md "cannot modify").
+CHANGELOG.md
+
+# BrighterScript / BrightScript / XML — bsfmt and the XML formatter own these.
+*.bs
+*.brs
+*.xml
+manifest
+
+# Markdown — markdownlint owns these.
+*.md
+
+# YAML — out of scope for this initiative; let GitHub Actions / yamllint own
+# any future YAML formatting. Re-evaluating to fold YAML into Prettier scope
+# would be its own follow-up because of the cross-cutting workflow churn.
+*.yml
+*.yaml

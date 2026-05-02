@@ -190,6 +190,13 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: repo root
 - **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance.
 
+#### `mixed-esm-cjs-scripts`
+
+- **area**: `scripts/` (top-level, excluding `bsc-plugins/` and `lib/`)
+- **issue**: Of the 13 top-level scripts in `scripts/`, only 2 are ESM `.js` (`changelog-syncer.js`, `run-roku-tests.js`); the other 11 are `.cjs`. `package.json` has `"type": "module"`, so ESM is the modern default for new code. Forward rule for net-new scripts is documented (ESM `.js` unless `require()`'d), but existing `.cjs` are kept for now.
+- **direction**: Audit the require-graph first. Anything `require()`'d by a BSC plugin or another locked CJS file (incl. `scripts/lib/*` callers) is forced `.cjs`. Top-level CLI scripts that aren't required by anything are migrate-able to ESM `.js`. Mechanical conversion (`require` → `import`, `module.exports` → `export`, `__dirname` → `fileURLToPath(import.meta.url)`), but needs the audit first because some scripts that look standalone are actually required by lint-staged or other CJS callers.
+- **enforced**: [`scripts/CLAUDE.md`](../../scripts/CLAUDE.md) documents the forward rule; [`docs/dev/scripts-development.md`](../dev/scripts-development.md) covers the gotchas. ESLint's `eslint-plugin-n` `flat/mixed-esm-and-cjs` preset handles both extensions transparently.
+
 #### `make-npm-overlap`
 
 - **area**: `Makefile`, `package.json`
@@ -212,7 +219,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: 16 component `.bs` files (`components/api/*Task.bs`, `components/tasks/*Task.bs`, `components/ui/**`, `components/Buttons/JRButtons.bs`, `components/home/HomeRows.bs`, `components/search/SearchResults.bs`, `components/video/VideoPlayerView.bs`) plus `source/data/JellyfinDataTransformer.bs`.
 - **issue**: ~36 raw `print` statements in places that *could* use `m.log.*` (component methods + class methods). Production builds can't strip them, so they reach the device log unconditionally.
 - **direction**: For each file, add `import "pkg:/source/roku_modules/log/LogMixin.brs"` + `m.log = new log.Logger("…")` in `init()` (or the class constructor) and convert each `print` to the appropriate `m.log.{warn,error,info,debug}` level. Files are currently flagged with a `' bsc-disable-file print-locations` header that points back here.
-- **enforced**: `scripts/bsc-plugin-print-locations.cjs` flags every new `print` outside `source/main.bs` / `globals.bs` debug-block, with smart skipping for free functions in `source/` (no `m` context available there). Existing legacy sites are opted out; the plugin still catches new violations in clean files.
+- **enforced**: `scripts/bsc-plugins/print-locations.cjs` flags every new `print` outside `source/main.bs` / `globals.bs` debug-block, with smart skipping for free functions in `source/` (no `m` context available there). Existing legacy sites are opted out; the plugin still catches new violations in clean files.
 
 #### `e2e-folder-empty`
 

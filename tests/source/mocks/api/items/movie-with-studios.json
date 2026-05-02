@@ -2,10 +2,5 @@
   "Id": "movie123",
   "Type": "Movie",
   "Name": "Test",
-  "Studios": [
-    { "Name": "Warner Bros" },
-    "Universal",
-    { "Name": "Paramount" },
-    "Disney"
-  ]
+  "Studios": [{ "Name": "Warner Bros" }, "Universal", { "Name": "Paramount" }, "Disney"]
 }

@@ -1,6 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "github>jellyrock/.github//renovate/default"
-  ]
+  "extends": ["github>jellyrock/.github//renovate/default"]
 }

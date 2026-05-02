@@ -1,0 +1,45 @@
+name: lint-js
+
+# Lints repo-wide JS / CJS / ESM via ESLint and verifies Prettier formatting
+# on the curated JS + JSON set. Mirrors the pre-push hook check steps.
+#
+# What this catches that the pre-push hook would too:
+#   - Missing renderable JS errors (no-unused-vars, prefer-const, eqeqeq, etc.)
+#   - Drift between local Prettier output and committed code
+#   - Missing `node:` protocol on built-in imports in ESM
+#
+# Pre-push enforces the same; CI is the safety net for `--no-verify` and
+# the per-PR mandatory gate for fork PRs (where pre-push hooks don't fire).
+
+on:
+  workflow_call:
+    inputs:
+      force:
+        description: 'When true, skip path detection and run unconditionally (used by the dependencies validator).'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - id: detect
+        uses: ./.github/actions/changed-paths
+        with:
+          # Triggers when any JS/CJS/MJS or JSON changes, plus the lint configs
+          # themselves (so a config tweak gets validated).
+          pattern: '\.(js|cjs|mjs|json)$|^eslint\.config\.js$|^\.prettierrc(\.json)?$|^\.prettierignore$'
+          force: ${{ inputs.force }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        if: steps.detect.outputs.relevant == 'true'
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm ci
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:js
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm run check-formatting:js

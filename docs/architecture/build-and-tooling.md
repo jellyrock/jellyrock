@@ -5,18 +5,18 @@ related-files:
   - bsconfig-prod.json
   - package.json
   - Makefile
-  - scripts/bsc-plugin-roku-log.cjs
-  - scripts/bsc-plugin-translation-keys.cjs
-  - scripts/bsc-plugin-jrscreen-destroy.cjs
-  - scripts/bsc-plugin-print-locations.cjs
-  - scripts/bsc-plugin-observe-without-destroy.cjs
-  - scripts/bsc-plugin-no-direct-sdk.cjs
-  - scripts/docs-check.cjs
-  - scripts/docs-stale.cjs
-  - scripts/docs-stale-blocking.cjs
-  - scripts/check-touched-related-files.cjs
-  - scripts/check-touched-lint.cjs
-  - scripts/generate-dev-index.cjs
+  - scripts/bsc-plugins/roku-log.cjs
+  - scripts/bsc-plugins/translation-keys.cjs
+  - scripts/bsc-plugins/jrscreen-destroy.cjs
+  - scripts/bsc-plugins/print-locations.cjs
+  - scripts/bsc-plugins/observe-without-destroy.cjs
+  - scripts/bsc-plugins/no-direct-sdk.cjs
+  - scripts/lint/docs-check.cjs
+  - scripts/lint/docs-stale.cjs
+  - scripts/lint/docs-stale-blocking.cjs
+  - scripts/lint/check-touched-related-files.cjs
+  - scripts/lint/check-touched-lint.cjs
+  - scripts/generate/dev-index.cjs
   - scripts/lib/frontmatter.cjs
   - scripts/lib/changed-files.cjs
   - scripts/lib/lint-excludes.cjs
@@ -32,8 +32,14 @@ related-files:
   - .github/actions/changed-paths/action.yml
   - .github/workflows/lint-docs.yml
   - .github/workflows/_lint-docs.yml
+  - .github/workflows/_lint-js.yml
+  - .github/workflows/lint-js.yml
   - .github/workflows/_validate-dependencies.yml
   - .github/workflows/docs-stale-tracker.yml
+  - eslint.config.js
+  - .prettierrc.json
+  - .prettierignore
+  - vitest.config.js
 last-reviewed: 2026-05-02
 ---
 
@@ -80,8 +86,8 @@ The `bsconfig.json` (dev) entry shape:
   "plugins": [
     "@rokucommunity/bslint",
     "brighterscript-xml-plugin",
-    "./scripts/bsc-plugin-roku-log.cjs",
-    "./scripts/bsc-plugin-translation-keys.cjs"
+    "./scripts/bsc-plugins/roku-log.cjs",
+    "./scripts/bsc-plugins/translation-keys.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {
@@ -97,9 +103,9 @@ The `bsconfig.json` (dev) entry shape:
 
 ## Custom BSC plugins
 
-Two custom plugins live in `scripts/`:
+Two custom plugins live in `scripts/bsc-plugins/`:
 
-### `scripts/bsc-plugin-roku-log.cjs`
+### `scripts/bsc-plugins/roku-log.cjs`
 
 Optimizes `roku-log` usage at compile time:
 
@@ -109,7 +115,7 @@ Optimizes `roku-log` usage at compile time:
 
 This is the reason `m.log.debug("intermediate value", x, y, z)` is fine to leave in code — in production, the entire call site disappears.
 
-### `scripts/bsc-plugin-translation-keys.cjs`
+### `scripts/bsc-plugins/translation-keys.cjs`
 
 Generates a virtual `pkg:/source/translationKeys.bs` file containing a `translationKeys` namespace with one constant per key in `locale/custom/en_US.json`. Documented in detail in `translations.md`.
 
@@ -173,26 +179,31 @@ Lint and format:
 |---|---|
 | `npm run lint` | Runs everything below in sequence |
 | `npm run lint:bs` | bslint on BrighterScript code |
-| `npm run lint:json` | jshint on JSON files (excluding node_modules, scripts, tasks, build, out, locale) |
+| `npm run lint:js` | ESLint over `.js`/`.cjs`/`.mjs` repo-wide (flat config, `eslint.config.js`) |
+| `npm run lint:json` | jshint on JSON files (excluding node_modules, scripts, tasks, build, out, locale, eslint.config.js, vitest.config.js). Catches duplicate keys; complementary to Prettier (which handles whitespace) |
 | `npm run lint:markdown` | markdownlint on all `.md` (with exclusions for AI agent docs) |
 | `npm run lint:spelling` | spellchecker on Markdown files |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
-| `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugin-*.cjs`). The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
+| `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugins/*.cjs`). The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
 | `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
 | `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
-| `npm run check-formatting` | `bsfmt --check` (read-only check) |
-| `npm run format` | `bsfmt --write` (apply formatting fixes) |
+| `npm run check-formatting` | bs + js (project-wide). Aggregates `check-formatting:bs` (`bsfmt --check`) and `check-formatting:js` (`prettier --check .`) |
+| `npm run check-formatting:bs` / `:js` | Type-scoped formatter checks. CI per-type workflows call the scoped variant (lint-brightscript runs `:bs` only, lint-js runs `:js` only) |
+| `npm run format` | bs + js (project-wide). Aggregates `format:bs` (`bsfmt --write`) and `format:js` (`prettier --write .`) |
+| `npm run format:bs` / `:js` | Type-scoped formatter writes |
 | `npm run validate` | `bsc --noEmit` (type-check) |
 | `npm run update-translations` | Auto-fix translation issues |
+| `npm run test:scripts` | Vitest unit tests for `scripts/` (BSC plugins + tooling). Uses `vitest.config.js` |
+| `npm run test:scripts:tdd` | Vitest watch mode (parity with `test:tdd` for BS) |
 
 Documentation:
 
 | Script | What it does |
 |---|---|
-| `npm run docs:settings` | Generate `docs/user/app-settings.md` from `settings/settings.json` via `scripts/generate-settings-docs.cjs` |
+| `npm run docs:settings` | Generate `docs/user/app-settings.md` from `settings/settings.json` via `scripts/generate/settings-docs.cjs` |
 
 CHANGELOG management (CI-controlled, agents do NOT touch):
 
@@ -233,12 +244,51 @@ Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` blo
 | `ropm` | Roku package manager |
 | `markdownlint-cli2` | Markdown lint |
 | `spellchecker-cli` | Spell check |
-| `jshint` | JSON validation |
+| `jshint` | JSON validation (incl. duplicate-key detection) — complementary to Prettier |
+| `eslint` + `eslint-plugin-n` + `@eslint/js` | JS / CJS / ESM linting (flat config) |
+| `eslint-config-prettier` | Disables ESLint formatting rules that would fight Prettier |
+| `prettier` | JS / curated-JSON formatting |
+| `vitest` | Unit tests for `scripts/` (BSC plugins + tooling) |
 | `dotenv` | `.env` file loading for device target/password |
 | `fast-glob` | File matching in scripts |
 | `husky` | Manages git hooks; installs `.husky/pre-push` on `npm install` (via `prepare` script) |
 
 Versions are pinned in `package.json` (currently on alpha versions of brighterscript ecosystem packages).
+
+## JS hygiene (ESLint + Prettier + Vitest)
+
+JellyRock's `scripts/` directory holds Node-side tooling — BSC plugins, doc validators, generators, the changelog syncer, etc. — that runs outside the BSC project. This section covers how that JS is linted, formatted, and tested.
+
+### Module system
+
+`package.json` has `"type": "module"`, so `.js` = ESM and `.cjs` = CJS. **BSC plugins MUST be `.cjs`** — BrighterScript's `loadPlugins` uses `require()` ([`brighterscript/dist/util.js`](../../node_modules/brighterscript/dist/util.js)). Anything `require()`'d by a `.cjs` file is also locked to `.cjs` (CJS can't `require()` ESM, though ESM can `import` CJS). That extends the constraint to `scripts/lib/*` and any other shared helper.
+
+Rule for new scripts: net-new top-level CLI scripts go ESM `.js`; plugins and shared helpers stay `.cjs`. The 13 existing top-level `.cjs` scripts predate this rule and remain CJS — migrating them needs a require-graph audit first (tracked as `mixed-esm-cjs-scripts` in [tech-debt.md](tech-debt.md)).
+
+### Tooling
+
+- **[`eslint.config.js`](../../eslint.config.js)** — flat config, `@eslint/js` recommended + `eslint-plugin-n` mixed-esm-and-cjs preset. Disables `n/no-unpublished-*` (false positive — JellyRock isn't an npm package). Enforces `n/hashbang` for CLI shebangs, `n/prefer-node-protocol` for ESM imports of built-ins, plus standard `no-unused-vars` / `no-var` / `prefer-const`. `eslint-config-prettier` runs LAST to disable formatting rules that would fight Prettier.
+- **[`.prettierrc.json`](../../.prettierrc.json)** — anchored to bsfmt style: 2-space indent, single quotes, semis, trailing commas (all), 100-col print width. JSONC parser for `.vscode/*.json` (they have comments).
+- **[`.prettierignore`](../../.prettierignore)** — excludes `package-lock.json` (npm-owned), `locale/` (translation tooling owns), `tasks/jellyfin-server-openapi/` (vendor), `CHANGELOG.md` (CI-controlled), and the formats other tools own (`.bs`/`.brs`/`.xml`/`.md`).
+- **[`vitest.config.js`](../../vitest.config.js)** — picks up `tests/scripts/**/*.test.js`. Test files are ESM regardless of source module system (Vitest handles cross-module-system imports).
+
+### Surface ownership for JS/JSON
+
+| Surface | What runs | Auto-fix? |
+|---|---|---|
+| **Pre-commit (lint-staged)** | `eslint --fix` + `prettier --write` on staged JS; `jshint` (check) + `prettier --write` on staged JSON | Yes |
+| **Pre-push (`.husky/pre-push`)** | `lint:js` + `check-formatting:js` (gated on `.js`/`.cjs`/`.mjs`/`.json` changes) | No |
+| **CI (`lint-js.yml`)** | Same as pre-push (catches `--no-verify` and fork PRs) | No |
+
+Notes:
+
+- **`lint:json` (jshint) and Prettier are complementary, not redundant.** jshint catches semantic issues Prettier doesn't (notably duplicate keys in JSON). Prettier catches formatting drift jshint doesn't.
+- **Pre-push runs the project-wide checks**; pre-commit handles file-scoped auto-fix. CI mirrors pre-push.
+- **The Prettier ignore list is canonical** — pre-commit and pre-push both invoke `prettier --write` / `--check` and trust `.prettierignore` to filter.
+
+### Test surface
+
+`tests/scripts/unit/<name>.test.js` mirrors `tests/source/unit/`. Vitest is jest-compatible API (`describe`, `it`, `expect`) but ESM-native. BSC plugin tests use a hybrid fixture pattern — short cases inline, larger scenarios as `.bs` fixture files in `tests/scripts/fixtures/<plugin>/{passing,failing}/`. Coverage targets live in [`docs/dev/scripts-development.md`](../dev/scripts-development.md).
 
 ## Makefile
 
@@ -347,7 +397,7 @@ The agent-context system (architecture docs, scoped CLAUDE.md, BSC convention pl
 
 Fires when an agent finishes its turn. Prints which architecture doc(s) claim files the session touched, prompting the agent to re-read and update the doc if the change altered shape/why.
 
-- Logic: [`scripts/check-touched-related-files.cjs`](../../scripts/check-touched-related-files.cjs)
+- Logic: [`scripts/lint/check-touched-related-files.cjs`](../../scripts/lint/check-touched-related-files.cjs)
 - Claude Code wrapper: `Stop` hook in `.claude/settings.json` → [`.claude/hooks/check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh)
 - Copilot Coding Agent wrapper: `sessionEnd` in [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json). **Only fires for the GitHub-hosted Coding Agent variant** — in-IDE Copilot Chat doesn't consume that file.
 - opencode wrapper: not yet implemented (the `@opencode-ai/plugin` API surface needs verification before plugging in).
@@ -358,7 +408,7 @@ Informational only — never blocks the agent. The point is to prompt the right 
 
 The conditional hard gate. `lint-docs.yml` runs `npm run docs:stale:blocking` on every PR; the script exits non-zero only when the PR modifies a stale architecture doc's `related-files` without updating the doc itself. Surgical pressure: PRs that touch unrelated areas pass freely.
 
-Designed to avoid the blanket-gate trap (every PR blocked once any doc is stale) — see the docstring on [`scripts/docs-stale-blocking.cjs`](../../scripts/docs-stale-blocking.cjs) for the design rationale.
+Designed to avoid the blanket-gate trap (every PR blocked once any doc is stale) — see the docstring on [`scripts/lint/docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) for the design rationale.
 
 ### 3. Weekly stale tracker (visibility)
 
@@ -375,7 +425,7 @@ The combination: agent sees a soft prompt during work (#1), CI blocks at PR time
 
 The IDE catches `.bs` issues live. The pre-push hook is the catch-all backstop. **Between** them, an agent working autonomously had no live feedback on lint categories the IDE doesn't cover (markdown, spelling, JSON, etc.) — so a typo in a doc edit would surface only at `git push` time, after the agent had already reported "done." The user, not the agent, ends up debugging.
 
-[`scripts/check-touched-lint.cjs`](../../scripts/check-touched-lint.cjs) closes this gap. It runs on the same `Stop` / `sessionEnd` hook as the architecture-doc reminder (sibling wrappers in [`.claude/hooks/check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) and [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json)) and:
+[`scripts/lint/check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) closes this gap. It runs on the same `Stop` / `sessionEnd` hook as the architecture-doc reminder (sibling wrappers in [`.claude/hooks/check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) and [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json)) and:
 
 - Computes the set of files the agent touched this session (committed + uncommitted + untracked, via the shared [`scripts/lib/changed-files.cjs`](../../scripts/lib/changed-files.cjs) helper)
 - Runs `spellchecker-cli` and `markdownlint-cli2` on changed `.md` files, and `jshint --extra-ext .json` on changed `.json` files
