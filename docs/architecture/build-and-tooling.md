@@ -24,6 +24,7 @@ related-files:
   - .github/actions/changed-paths/action.yml
   - .github/workflows/lint-docs.yml
   - .github/workflows/_lint-docs.yml
+  - .github/workflows/_validate-dependencies.yml
   - .github/workflows/docs-stale-tracker.yml
 last-reviewed: 2026-05-02
 ---
@@ -302,7 +303,7 @@ The pair pattern exists so the same lint logic can be invoked from other workflo
 
 This avoids the standard GitHub gotcha with event-time `paths:` filters: a workflow filtered by `paths:` simply doesn't run when paths don't match, which means *no status is reported*. If such a workflow is wired as a required check in branch protection, PRs that don't touch matching paths get stuck with `Expected — Waiting for status to be reported` and can't merge. Always-queue + internal-skip dodges this — the workflow always reports a status (success when the gate skipped, success or failure when it actually ran), so it's safe to wire as a required check.
 
-When adding a new lint workflow, copy an existing `_lint-X.yml` and update the `pattern:` regex passed to `changed-paths`. The regex must mirror what would have gone into the old `paths:` block.
+When adding a new lint workflow, copy an existing `_lint-X.yml` and update the `pattern:` regex passed to `changed-paths`. The regex must mirror what would have gone into the old `paths:` block. Always also expose a `force: boolean` `workflow_call` input and forward it to the action — orchestrator workflows like [`_validate-dependencies.yml`](../../.github/workflows/_validate-dependencies.yml) need to bypass the path check (a dep bump can regress a linter even when no matching source file changed in the PR).
 
 ## Doc-maintenance enforcement
 

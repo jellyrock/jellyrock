@@ -2,6 +2,12 @@ name: lint-brightscript
 
 on:
   workflow_call:
+    inputs:
+      force:
+        description: 'When true, skip path detection and run unconditionally (used by the dependencies validator).'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   run:
@@ -13,6 +19,7 @@ jobs:
         with:
           # Mirrors the previous event-time paths filter (**/*.brs, **/*.bs).
           pattern: '\.(brs|bs)$'
+          force: ${{ inputs.force }}
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         if: steps.detect.outputs.relevant == 'true'
         with:

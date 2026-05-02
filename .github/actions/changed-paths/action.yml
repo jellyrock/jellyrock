@@ -23,6 +23,15 @@ inputs:
   pattern:
     description: 'Extended-regex pattern matched against each changed file path.'
     required: true
+  force:
+    description: |
+      When "true", skip path detection and unconditionally set relevant=true.
+      Used by orchestrator workflows (e.g., the dependencies validator) that
+      need every linter to run regardless of which source files changed —
+      a dep bump can break a linter even when no matching source file was
+      touched in the PR.
+    required: false
+    default: 'false'
 
 outputs:
   relevant:
@@ -38,9 +47,15 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         PATTERN: ${{ inputs.pattern }}
+        FORCE: ${{ inputs.force }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -euo pipefail
+        if [ "$FORCE" = "true" ]; then
+          echo "::notice::force=true — skipping path detection, running unconditionally."
+          echo "relevant=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         if [ -z "${PR_NUMBER:-}" ]; then
           echo "::notice::Not a pull_request context — running unconditionally."
           echo "relevant=true" >> "$GITHUB_OUTPUT"
