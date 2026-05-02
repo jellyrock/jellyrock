@@ -152,6 +152,18 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: 14 of 49 `Build*Request()` methods have inline `if m.getApiVersion() >= 2` branches; the conditional shape repeats per affected method. Adding a third API version means editing each of those 14 methods (the other 35 endpoints share a single code path because their path didn't change between server versions, so they're unaffected).
 - **direction**: Centralize via a routing table — `{ "GetItem": { v1: "/users/{userId}/items/{id}", v2: "/Items/{id}" }, ... }`. The 14 version-aware methods read from the table instead of branching inline; the other 35 stay as-is. Low-priority until `V3` is on the roadmap — adjacent work.
 
+#### `apiclient-sync-pool-coexistence`
+
+- **area**: `source/api/ApiClient.bs`, `source/api/sdk.bs`
+- **issue**: A handful of sync methods (`AuthenticateByName`, `AuthenticateWithQuickConnect`, `InitiateQuickConnect`, `ConnectQuickConnect`, `GetUser`, `GetPublicUsers`, `GetConfigurationByName`, `GetDisplayPreferences`) still route through the legacy `sdk.*` namespace because the persistent task pool isn't available pre-login. Everything else uses the async `Build*Request()` pattern. New endpoints should be pool-only; the bootstrap path is the surviving exception. (`GetImageURL` / `GetUserImageURL` are URL builders rather than HTTP calls and don't share this concern.)
+- **direction**: Make the persistent task pool available pre-login — only the auth header injection needs to be deferred until a token exists. Then migrate the bootstrap sync methods to the pool and remove direct `sdk.*` usage from `ApiClient`.
+
+#### `buildparams-no-array-support`
+
+- **area**: `source/api/baseRequest.bs` (`buildParams`)
+- **issue**: `buildParams` skips `roArray` values silently — there's a `' TODO handle array params` placeholder branch with no implementation. Callers that need to pass arrays as query parameters (e.g., comma-separated `Fields=` lists) join the array into a string before calling.
+- **direction**: Implement array handling per the actual server-side conventions used by Jellyfin (most array params are comma-separated; some use repeated keys). Then audit callers to remove the workarounds where each call site joins arrays into strings before invoking.
+
 #### `jrscreen-init-initializes-log-manager`
 
 - **area**: `components/JRScreen.bs`

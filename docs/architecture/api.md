@@ -323,11 +323,6 @@ end if
 
 `docs/dev/jellyfin-server-versioning.md` has the canonical version-policy guide.
 
-## Cruft callouts
+## Known cruft
 
-- **Two ways to call the same thing.** `ApiClient` has both `Get*()` (sync) and `Build*Request()` (async pool) methods for many endpoints. The migration to pool-only is ongoing. Sync methods are flagged in code with comments but not removed because the bootstrap path (login, server info) still needs them. Eventually the pool should be available pre-login and these can be unified.
-- **`source/api/sdk.bs` namespace is mostly legacy.** Per its own header comment: "Only used by `ApiClient` (via `GetApi`()). Do NOT call these functions directly." Some callers still bypass `ApiClient` and call `sdk.<namespace>.<function>` directly. These should be migrated.
-- **No request cancellation.** A `submitApiRequest` that's no longer needed (e.g., user navigated away) can't be canceled — it'll complete and fire its callback regardless. Most callers handle this by checking "am I still the active screen?" in the callback, but that's defensive at the call site.
-- **Per-method `V1/V2` branching.** Adding a third API version means editing every Build method. A central routing table (path templates per version) would scale better, but the current shape is explicit and grep-able, which has its own merits.
-- **`buildParams` doesn't handle `roArray` values.** Has a `' TODO handle array params` comment. Workaround: callers join arrays into comma-separated strings before passing.
-- **API timeout is a single value.** `timeouts.API_WAIT_MS` is one number for all API calls. A long search vs. a quick favorite toggle have the same patience.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for API / `ApiClient` entries.
