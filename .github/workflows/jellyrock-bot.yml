@@ -332,6 +332,8 @@ jobs:
           npm run changelog:sync-unreleased
 
       - name: Validate changelog
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           echo "🔍 Validating changelog consistency..."
           npm run changelog:validate
