@@ -5,5 +5,5 @@ on:
   pull_request:
 
 jobs:
-  run:
+  spellcheck:
     uses: ./.github/workflows/_lint-spelling.yml

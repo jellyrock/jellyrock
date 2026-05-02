@@ -37,7 +37,7 @@ const {
   IfStatement,
   SourceLiteralExpression,
   ParseMode,
-  TokenKind
+  TokenKind,
 } = brighterscript;
 
 /**
@@ -68,7 +68,7 @@ function makeDottedGet(obj, name) {
   return new DottedGetExpression({
     obj,
     name: createIdentifier(name),
-    dot: createToken(TokenKind.Dot, '.')
+    dot: createToken(TokenKind.Dot, '.'),
   });
 }
 
@@ -79,7 +79,7 @@ class RokuLogPlugin {
       strip: true,
       guard: false,
       insertPkgPath: true,
-      removeComments: true
+      removeComments: true,
     };
   }
 
@@ -110,10 +110,12 @@ class RokuLogPlugin {
         // Detect: m.log = log.Logger(...) (factory function pattern)
         else if (isCallExpression(statement.value)) {
           const callExpr = statement.value;
-          if (brighterscript.isDottedGetExpression(callExpr.callee) &&
-              getNameText(callExpr.callee) === 'Logger' &&
-              brighterscript.isVariableExpression(callExpr.callee.obj) &&
-              getNameText(callExpr.callee.obj) === 'log') {
+          if (
+            brighterscript.isDottedGetExpression(callExpr.callee) &&
+            getNameText(callExpr.callee) === 'Logger' &&
+            brighterscript.isVariableExpression(callExpr.callee.obj) &&
+            getNameText(callExpr.callee.obj) === 'log'
+          ) {
             const guardExpr = createGuardSetStatement();
             event.editor.addToArray(owner, key + 1, guardExpr);
           }
@@ -145,7 +147,7 @@ class RokuLogPlugin {
               const funcName = getNameText(callee);
               if (['info', 'verbose', 'error', 'warn', 'debug', 'method'].includes(funcName)) {
                 const sourceExpr = new SourceLiteralExpression({
-                  value: createToken(TokenKind.SourceLocationLiteral, '')
+                  value: createToken(TokenKind.SourceLocationLiteral, ''),
                 });
                 event.editor.addToArray(callExpr.args, 0, sourceExpr);
               }
@@ -159,11 +161,11 @@ class RokuLogPlugin {
         } catch (e) {
           console.log(`roku-log-plugin: Error processing ${event.file.pkgPath}: ${e.message}`);
         }
-      }
+      },
     });
 
     event.file.parser.ast.walk(logVisitor, {
-      walkMode: brighterscript.WalkMode.visitAllRecursive
+      walkMode: brighterscript.WalkMode.visitAllRecursive,
     });
   }
 
@@ -198,7 +200,7 @@ function createGuardSetStatement() {
     name: createIdentifier('__le'),
     dot: createToken(TokenKind.Dot, '.'),
     equals: createToken(TokenKind.Equal, '='),
-    value: enabledGet
+    value: enabledGet,
   });
 }
 
@@ -212,14 +214,14 @@ function createGuardStatement(callExpression) {
 
   // true
   const trueExpr = new LiteralExpression({
-    value: createToken(TokenKind.True, 'true')
+    value: createToken(TokenKind.True, 'true'),
   });
 
   // m.__le = true
   const condition = new BinaryExpression({
     left: leGet,
     operator: createToken(TokenKind.Equal, '='),
-    right: trueExpr
+    right: trueExpr,
   });
 
   // if m.__le = true then <statement>
@@ -229,7 +231,7 @@ function createGuardStatement(callExpression) {
     if: createToken(TokenKind.If, 'if'),
     then: createToken(TokenKind.Then, 'then'),
     condition,
-    thenBranch: body
+    thenBranch: body,
   });
 }
 

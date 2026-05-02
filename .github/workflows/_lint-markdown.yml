@@ -10,7 +10,7 @@ on:
         default: false
 
 jobs:
-  run:
+  markdownlint:
     runs-on: ubuntu-latest
     steps:
       - name: Clone github repo

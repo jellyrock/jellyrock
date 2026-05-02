@@ -26,14 +26,8 @@
 
 const brighterscript = require('brighterscript');
 
-const ALLOWED_FILE_DESTPATHS = new Set([
-  'source/main.bs',
-  'source/main.brs'
-]);
-const DEBUG_BLOCK_FILE_DESTPATHS = new Set([
-  'source/utils/globals.bs',
-  'source/utils/globals.brs'
-]);
+const ALLOWED_FILE_DESTPATHS = new Set(['source/main.bs', 'source/main.brs']);
+const DEBUG_BLOCK_FILE_DESTPATHS = new Set(['source/utils/globals.bs', 'source/utils/globals.brs']);
 const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+print-locations\b/i;
 const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+print-locations\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+print-locations\b/i;
@@ -81,13 +75,13 @@ class PrintLocationsPlugin {
             severity: 2, // Warning
             source: this.name,
             message: `'print' should be an m.log.* call (so prod builds can strip it — see docs/architecture/logging.md). Add ' bsc-disable-next-line print-locations to suppress.`,
-            location: stmt.location
+            location: stmt.location,
           });
-        }
+        },
       });
 
       file.parser.ast.walk(visitor, {
-        walkMode: brighterscript.WalkMode.visitAllRecursive
+        walkMode: brighterscript.WalkMode.visitAllRecursive,
       });
     } catch (_e) {
       // Never crash the build.

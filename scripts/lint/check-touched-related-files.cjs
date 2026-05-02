@@ -32,9 +32,9 @@
 // harness, wrap with a shell script.
 //
 // Usage:
-//   node scripts/check-touched-related-files.cjs
-//   node scripts/check-touched-related-files.cjs --base main
-//   node scripts/check-touched-related-files.cjs --quiet  (no output if no matches)
+//   node scripts/lint/check-touched-related-files.cjs
+//   node scripts/lint/check-touched-related-files.cjs --base main
+//   node scripts/lint/check-touched-related-files.cjs --quiet  (no output if no matches)
 //
 // Env:
 //   BASE_REF — default base ref (set by harness wrappers if available)
@@ -43,12 +43,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const {
-  readFrontmatter,
-  parseRelatedFiles,
-  pathMatches,
-} = require('./lib/frontmatter.cjs');
-const { changedFiles } = require('./lib/changed-files.cjs');
+const { readFrontmatter, parseRelatedFiles, pathMatches } = require('../lib/frontmatter.cjs');
+const { changedFiles } = require('../lib/changed-files.cjs');
 
 const args = process.argv.slice(2);
 
@@ -65,9 +61,10 @@ const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 
 function collectArchDocs() {
   if (!fs.existsSync(ARCH_DIR)) return [];
-  return fs.readdirSync(ARCH_DIR)
-    .filter(f => f.endsWith('.md') && f !== 'README.md')
-    .map(f => path.join(ARCH_DIR, f))
+  return fs
+    .readdirSync(ARCH_DIR)
+    .filter((f) => f.endsWith('.md') && f !== 'README.md')
+    .map((f) => path.join(ARCH_DIR, f))
     .sort();
 }
 
@@ -82,7 +79,7 @@ for (const docPath of docs) {
   if (related.length === 0) continue;
 
   const docRel = path.relative(ROOT_DIR, docPath);
-  if (touched.includes(docRel)) continue;  // doc was updated — no reminder needed
+  if (touched.includes(docRel)) continue; // doc was updated — no reminder needed
 
   const hits = [];
   for (const t of touched) {
@@ -107,9 +104,13 @@ if (reminders.length === 0) {
 console.log('');
 console.log('📚 Architecture-doc reminder');
 console.log('');
-console.log(`This session touched files in ${reminders.length} architecture doc(s)' related-files.`);
+console.log(
+  `This session touched files in ${reminders.length} architecture doc(s)' related-files.`,
+);
 console.log(`Before you finish, re-read each doc and decide:`);
-console.log(`  - If the change altered the subsystem's shape or why → update the doc + bump last-reviewed.`);
+console.log(
+  `  - If the change altered the subsystem's shape or why → update the doc + bump last-reviewed.`,
+);
 console.log(`  - If shape/why is unchanged → no action needed (the doc is still accurate).`);
 console.log('');
 

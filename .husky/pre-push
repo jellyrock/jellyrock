@@ -13,12 +13,16 @@
 #   3. npm run validate           — *.bs / *.brs / *.xml / bsconfig*.json
 #                                    (full BSC project compile — can't be file-scoped)
 #   4. npm run lint:bs            — *.bs / *.brs (bslint; needs full project context)
-#   5. npm run lint:docs          — ALWAYS. Validates related-files: paths and
+#   5. npm run lint:language-coverage — when language-coverage triggers changed
+#   6. npm run lint:js            — *.js / *.cjs / *.mjs (eslint, project-wide)
+#   7. npm run check-formatting:js — *.js / *.cjs / *.mjs / *.json
+#                                     (Prettier check; auto-fix already ran in pre-commit)
+#   8. npm run test:scripts       — *.js / *.cjs / *.mjs (vitest unit tests)
+#   9. npm run lint:docs          — ALWAYS. Validates related-files: paths and
 #                                    markdown links across every doc + CLAUDE.md.
 #                                    Cross-doc check; not file-scopable.
-#   6. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
+#  10. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
 #                                     dev-guides table.
-#   7. npm run lint:language-coverage — when language-coverage triggers changed
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
 # can't be swept into the auto-fix commit. Check steps still run.
@@ -28,6 +32,8 @@
 #   - markdownlint --fix on .md (file-scoped)
 #   - spellchecker on .md (file-scoped)
 #   - jshint on .json (file-scoped)
+#   - eslint --fix on *.js / *.cjs / *.mjs (file-scoped, auto-fix)
+#   - prettier --write on *.js / *.cjs / *.mjs / *.json (file-scoped, auto-fix)
 #
 # Bypass with `git push --no-verify` if you absolutely need to skip — CI
 # still runs everything.
@@ -57,7 +63,9 @@ HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\
 HAS_BS=$(echo "$CHANGED" | grep -qE '\.(bs|brs)$' && echo 1 || true)
 HAS_DEV_DOCS=$(echo "$CHANGED" | grep -qE '^docs/dev/.*\.md$' && echo 1 || true)
 TRANSLATION_TRIGGERS=$(echo "$CHANGED" | grep -E '^(source|components)/.*\.bs$|^locale/|^settings/settings\.json$' || true)
-HAS_LANGUAGE_TRIGGERS=$(echo "$CHANGED" | grep -qE '^source/utils/(languages|mediaDisplayTitle)\.bs$|^locale/custom/en_US\.json$|^scripts/lint-language-coverage\.cjs$' && echo 1 || true)
+HAS_LANGUAGE_TRIGGERS=$(echo "$CHANGED" | grep -qE '^source/utils/(languages|mediaDisplayTitle)\.bs$|^locale/custom/en_US\.json$|^scripts/lint/language-coverage\.cjs$' && echo 1 || true)
+HAS_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs)$' && echo 1 || true)
+HAS_JSON_OR_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs|json)$' && echo 1 || true)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Auto-fix steps (project-wide regens; combined into one commit at the end)
@@ -102,6 +110,21 @@ fi
 if [ -n "$HAS_LANGUAGE_TRIGGERS" ]; then
   echo "🌍 Checking language coverage..."
   npm run lint:language-coverage
+fi
+
+if [ -n "$HAS_JS" ]; then
+  echo "🧹 Linting JS (eslint, project-wide)..."
+  npm run lint:js
+fi
+
+if [ -n "$HAS_JSON_OR_JS" ]; then
+  echo "💅 Checking Prettier formatting (JS + JSON)..."
+  npm run check-formatting:js
+fi
+
+if [ -n "$HAS_JS" ]; then
+  echo "🧪 Running JS unit tests (vitest)..."
+  npm run test:scripts
 fi
 
 echo "📚 Validating doc references..."

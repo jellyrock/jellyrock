@@ -1,18 +1,16 @@
-#!/usr/bin/env node
-
 /**
  * Simplified Changelog Sync Manager
- * 
+ *
  * Keeps CHANGELOG.md automatically in sync with git state:
  * - Unreleased section tracks commits since latest tag
  * - Release sections are created when tags are pushed
  * - No manual intervention required
  */
 
-import { execSync } from 'child_process';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { resolve } from 'path';
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 class ChangelogSyncer {
   constructor() {
@@ -90,7 +88,7 @@ class ChangelogSyncer {
       latestTag,
       unreleasedCommits: commits.length,
       hasUnreleased,
-      versionEntries
+      versionEntries,
     };
   }
 
@@ -133,7 +131,7 @@ class ChangelogSyncer {
       return true;
     } else {
       console.log('❌ Changelog validation failed:');
-      issues.forEach(issue => console.log(`  - ${issue}`));
+      issues.forEach((issue) => console.log(`  - ${issue}`));
       return false;
     }
   }
@@ -161,12 +159,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
     // More robust removal of unreleased section
     const lines = changelog.split('\n');
-    const unreleasedStart = lines.findIndex(line => line.trim() === '## [Unreleased]');
+    const unreleasedStart = lines.findIndex((line) => line.trim() === '## [Unreleased]');
 
     if (unreleasedStart === -1) {
       // No existing unreleased section, find insertion point after header
-      const headerEndIndex = lines.findIndex((line, index) =>
-        index > 5 && line.startsWith('## [') && line.match(/## \[\d+\.\d+\.\d+\]/));
+      const headerEndIndex = lines.findIndex(
+        (line, index) => index > 5 && line.startsWith('## [') && line.match(/## \[\d+\.\d+\.\d+\]/),
+      );
 
       if (headerEndIndex === -1) {
         // No version sections, append to end
@@ -188,7 +187,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     }
 
     // Replace the unreleased section
-    lines.splice(unreleasedStart, unreleasedEnd - unreleasedStart, ...unreleasedContent.trim().split('\n'), '');
+    lines.splice(
+      unreleasedStart,
+      unreleasedEnd - unreleasedStart,
+      ...unreleasedContent.trim().split('\n'),
+      '',
+    );
     return lines.join('\n');
   }
 
@@ -209,28 +213,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
     // If we have unreleased section, convert it to release
     if (changelog.includes('## [Unreleased]')) {
-      return changelog.replace(
-        /## \[Unreleased\]/,
-        `## [${version}](${compareUrl}) - ${date}`
-      );
+      return changelog.replace(/## \[Unreleased\]/, `## [${version}](${compareUrl}) - ${date}`);
     } else {
       // No unreleased section, create new release entry
       const sections = this.categorizeCommits(commits);
-      const releaseContent = this.buildReleaseContent(version, compareUrl, date, sections, previousTag);
+      const releaseContent = this.buildReleaseContent(
+        version,
+        compareUrl,
+        date,
+        sections,
+        previousTag,
+      );
 
       // Insert after header
-      const headerMatch = changelog.match(/((?:<!-- markdownlint-disable -->\s*\n)?# Changelog\s*\n\nAll notable changes.*?\n\nThe format is based on.*?\n\n)/s);
+      const headerMatch = changelog.match(
+        /((?:<!-- markdownlint-disable -->\s*\n)?# Changelog\s*\n\nAll notable changes.*?\n\nThe format is based on.*?\n\n)/s,
+      );
       if (headerMatch) {
         const insertPoint = headerMatch.index + headerMatch[0].length;
-        return changelog.slice(0, insertPoint) +
+        return (
+          changelog.slice(0, insertPoint) +
           releaseContent.substring(1) + // Remove leading newline
-          changelog.slice(insertPoint);
+          changelog.slice(insertPoint)
+        );
       } else {
         // Fallback: insert after header
         const insertPoint = changelog.indexOf('\n\n') + 2;
-        return changelog.slice(0, insertPoint) +
-          releaseContent +
-          changelog.slice(insertPoint);
+        return changelog.slice(0, insertPoint) + releaseContent + changelog.slice(insertPoint);
       }
     }
   }
@@ -243,12 +252,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       Removed: [],
       Security: [],
       Deprecated: [],
-      Dependencies: []
+      Dependencies: [],
     };
 
     for (const commit of commits) {
       // Check if this is a dependency-related PR
-      let category = commit.isDependency ? 'Dependencies' : this.categorizeCommit(commit.message);
+      const category = commit.isDependency ? 'Dependencies' : this.categorizeCommit(commit.message);
 
       if (category && category !== 'Chore') {
         if (category === 'Dependencies') {
@@ -275,14 +284,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
     // Check prefixes first (most specific)
     // Changes
-    if (msg.startsWith('update') || msg.startsWith('change') || msg.startsWith('improve') ||
-      msg.startsWith('refactor') || msg.startsWith('enhance')) {
+    if (
+      msg.startsWith('update') ||
+      msg.startsWith('change') ||
+      msg.startsWith('improve') ||
+      msg.startsWith('refactor') ||
+      msg.startsWith('enhance')
+    ) {
       return 'Changed';
     }
 
     // Additions
-    if (msg.startsWith('add') || msg.startsWith('feat') || msg.startsWith('implement') ||
-      msg.startsWith('create')) {
+    if (
+      msg.startsWith('add') ||
+      msg.startsWith('feat') ||
+      msg.startsWith('implement') ||
+      msg.startsWith('create')
+    ) {
       return 'Added';
     }
 
@@ -297,8 +315,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     }
 
     // Skip chores
-    if (msg.startsWith('chore') || msg.startsWith('ci') || msg.startsWith('build') ||
-      msg.startsWith('docs') || msg.startsWith('style') || msg.startsWith('test')) {
+    if (
+      msg.startsWith('chore') ||
+      msg.startsWith('ci') ||
+      msg.startsWith('build') ||
+      msg.startsWith('docs') ||
+      msg.startsWith('style') ||
+      msg.startsWith('test')
+    ) {
       return 'Chore';
     }
 
@@ -311,8 +335,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       return 'Removed';
     }
 
-    if (msg.includes('fixes') || msg.includes('fixed') ||
-      msg.includes('resolve') || msg.includes('correct')) {
+    if (
+      msg.includes('fixes') ||
+      msg.includes('fixed') ||
+      msg.includes('resolve') ||
+      msg.includes('correct')
+    ) {
       return 'Fixed';
     }
 
@@ -373,7 +401,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     // - Action words: add, remove, update, change, improve, enhance, implement, create, delete
     // - Optional scope: (scope)
     // - Required message: everything after the colon or the whole message if no prefix
-    const pattern = /^(?:(?:feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert|add|remove|update|change|improve|enhance|implement|create|delete)(\([^)]+\))?:\s*)?(.+)$/i;
+    const pattern =
+      /^(?:(?:feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert|add|remove|update|change|improve|enhance|implement|create|delete)(\([^)]+\))?:\s*)?(.+)$/i;
 
     const match = message.trim().match(pattern);
 
@@ -422,15 +451,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     let withoutScope = cleanMsg.replace(/^\([^)]+\)\s*/, '');
 
     // Extract action word (add, remove, update, etc.) before removing it
-    const actionMatch = withoutScope.match(/^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)\b/i);
-    const action = actionMatch ? actionMatch[1].charAt(0).toUpperCase() + actionMatch[1].slice(1).toLowerCase() : null;
+    const actionMatch = withoutScope.match(
+      /^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)\b/i,
+    );
+    const action = actionMatch
+      ? actionMatch[1].charAt(0).toUpperCase() + actionMatch[1].slice(1).toLowerCase()
+      : null;
 
     // Remove "dependency" keyword and action word for cleaner parsing
     // First remove "action dependency package-name" -> "package-name"
-    withoutScope = withoutScope.replace(/^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)?\s*dependency\s+/i, '');
+    withoutScope = withoutScope.replace(
+      /^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)?\s*dependency\s+/i,
+      '',
+    );
     // Then remove just the action word if it's still at the start (handles cases without "dependency" keyword)
     // "implement new-logger" -> "new-logger"
-    withoutScope = withoutScope.replace(/^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)\s+/i, '');
+    withoutScope = withoutScope.replace(
+      /^(add|remove|update|upgrade|bump|change|improve|enhance|implement|create|delete)\s+/i,
+      '',
+    );
 
     // Try to match versioned dependency patterns:
     // Pattern: "package-name to v1.2.3" or "package-name from v1.0.0 to v1.2.3"
@@ -442,7 +481,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
         packageName: versionMatch[1].trim(),
         version: versionMatch[2],
         message: withoutScope,
-        isVersioned: true
+        isVersioned: true,
       };
     }
 
@@ -452,7 +491,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       packageName: null,
       version: null,
       message: withoutScope,
-      isVersioned: false
+      isVersioned: false,
     };
   }
 
@@ -518,14 +557,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     }
 
     // Parse all dependencies
-    const parsedDeps = dependencyCommits.map(commit => ({
+    const parsedDeps = dependencyCommits.map((commit) => ({
       commit,
-      parsed: this.parseDependencyInfo(commit.message)
+      parsed: this.parseDependencyInfo(commit.message),
     }));
 
     // Separate versioned and non-versioned dependencies
-    const versionedDeps = parsedDeps.filter(d => d.parsed.isVersioned);
-    const nonVersionedDeps = parsedDeps.filter(d => !d.parsed.isVersioned);
+    const versionedDeps = parsedDeps.filter((d) => d.parsed.isVersioned);
+    const nonVersionedDeps = parsedDeps.filter((d) => !d.parsed.isVersioned);
 
     const consolidatedEntries = [];
 
@@ -544,8 +583,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       // Sort by version
       deps.sort((a, b) => this.compareVersions(a.parsed.version, b.parsed.version));
 
-      const versions = deps.map(d => d.parsed.version);
-      const commits = deps.map(d => d.commit);
+      const versions = deps.map((d) => d.parsed.version);
+      const commits = deps.map((d) => d.commit);
 
       // Try to get the starting version from the previous tag
       let fromVersion = versions[0];
@@ -557,7 +596,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       }
 
       // Generate PR/commit links
-      const links = commits.map(commit => {
+      const links = commits.map((commit) => {
         if (commit.prNumber) {
           return `[#${commit.prNumber}](${this.repositoryUrl}/pull/${commit.prNumber})`;
         } else {
@@ -572,10 +611,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
       if (fromVersion === toVersion) {
         // Single version update
-        consolidatedEntries.push(`- ${action} ${packageName} to v${toVersion} (${links.join(', ')})`);
+        consolidatedEntries.push(
+          `- ${action} ${packageName} to v${toVersion} (${links.join(', ')})`,
+        );
       } else {
         // Version range
-        consolidatedEntries.push(`- ${action} ${packageName} from v${fromVersion} to v${toVersion} (${links.join(', ')})`);
+        consolidatedEntries.push(
+          `- ${action} ${packageName} from v${fromVersion} to v${toVersion} (${links.join(', ')})`,
+        );
       }
     }
 
@@ -591,10 +634,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
     // Create consolidated entries for non-versioned dependencies
     for (const [message, deps] of Object.entries(nonVersionedGroups)) {
-      const commits = deps.map(d => d.commit);
+      const commits = deps.map((d) => d.commit);
 
       // Generate PR/commit links
-      const links = commits.map(commit => {
+      const links = commits.map((commit) => {
         if (commit.prNumber) {
           return `[#${commit.prNumber}](${this.repositoryUrl}/pull/${commit.prNumber})`;
         } else {
@@ -614,7 +657,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     let content = '\n## [Unreleased]\n';
 
     // Define the order of sections to maintain consistency
-    const sectionOrder = ['Added', 'Changed', 'Fixed', 'Removed', 'Security', 'Deprecated', 'Dependencies'];
+    const sectionOrder = [
+      'Added',
+      'Changed',
+      'Fixed',
+      'Removed',
+      'Security',
+      'Deprecated',
+      'Dependencies',
+    ];
 
     for (const sectionName of sectionOrder) {
       let items = sections[sectionName];
@@ -637,7 +688,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     let content = `\n## [${version}](${compareUrl}) - ${date}\n`;
 
     // Define the order of sections to maintain consistency
-    const sectionOrder = ['Added', 'Changed', 'Fixed', 'Removed', 'Security', 'Deprecated', 'Dependencies'];
+    const sectionOrder = [
+      'Added',
+      'Changed',
+      'Fixed',
+      'Removed',
+      'Security',
+      'Deprecated',
+      'Dependencies',
+    ];
 
     for (const sectionName of sectionOrder) {
       let items = sections[sectionName];
@@ -669,7 +728,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       const allTags = execSync('git tag --sort=-v:refname', { encoding: 'utf8' })
         .trim()
         .split('\n')
-        .filter(tag => tag.match(/^v\d+\.\d+\.\d+$/));
+        .filter((tag) => tag.match(/^v\d+\.\d+\.\d+$/));
 
       const currentIndex = allTags.indexOf(currentTag);
       if (currentIndex === -1 || currentIndex === allTags.length - 1) {
@@ -689,115 +748,127 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       // %h = abbreviated hash, %B = full commit message
       const gitLog = execSync(
         `git log ${range} --pretty=format:"COMMIT_START%h%nCOMMIT_MSG_START%n%B%nCOMMIT_END" --first-parent`,
-        { encoding: 'utf8' }
+        { encoding: 'utf8' },
       ).trim();
 
       if (!gitLog) return [];
 
       // Split by commit delimiter and process each commit
-      const commits = gitLog.split('COMMIT_START').filter(c => c.trim());
+      const commits = gitLog.split('COMMIT_START').filter((c) => c.trim());
 
-      return commits.map(commitBlock => {
-        // Extract hash and message
-        const lines = commitBlock.split('\n');
-        const commitHash = lines[0].trim();
-        const msgStartIndex = lines.findIndex(l => l === 'COMMIT_MSG_START');
-        const msgEndIndex = lines.findIndex(l => l === 'COMMIT_END');
+      return commits
+        .map((commitBlock) => {
+          // Extract hash and message
+          const lines = commitBlock.split('\n');
+          const commitHash = lines[0].trim();
+          const msgStartIndex = lines.findIndex((l) => l === 'COMMIT_MSG_START');
+          const msgEndIndex = lines.findIndex((l) => l === 'COMMIT_END');
 
-        if (msgStartIndex === -1 || msgEndIndex === -1) return null;
+          if (msgStartIndex === -1 || msgEndIndex === -1) return null;
 
-        // Get all message lines between markers, filter empty lines, take first non-empty line
-        const messageLines = lines.slice(msgStartIndex + 1, msgEndIndex).filter(l => l.trim());
-        const firstLine = messageLines[0] || '';
+          // Get all message lines between markers, filter empty lines, take first non-empty line
+          const messageLines = lines.slice(msgStartIndex + 1, msgEndIndex).filter((l) => l.trim());
+          const firstLine = messageLines[0] || '';
 
-        // Now process this first line as before
-        const line = `${commitHash} ${firstLine}`;
+          // Now process this first line as before
+          const line = `${commitHash} ${firstLine}`;
 
-        // Parse PR merges
-        const mergeMatch = line.match(/^([a-f0-9]+)\s+Merge pull request #(\d+) from .+$/);
-        if (mergeMatch) {
-          try {
-            const prInfo = execSync(
-              `gh pr view ${mergeMatch[2]} --json title,labels --jq '{title, labels: [.labels[].name]}'`,
-              { encoding: 'utf8', stdio: 'pipe' }
-            ).trim();
-            const parsed = JSON.parse(prInfo);
-            const isDependency = parsed.labels && parsed.labels.some(label =>
-              label.toLowerCase().includes('depend') || label.toLowerCase().includes('deps')
-            );
-            const isReleasePrep = parsed.labels && parsed.labels.some(label =>
-              label.toLowerCase().includes('release-prep')
-            );
+          // Parse PR merges
+          const mergeMatch = line.match(/^([a-f0-9]+)\s+Merge pull request #(\d+) from .+$/);
+          if (mergeMatch) {
+            try {
+              const prInfo = execSync(
+                `gh pr view ${mergeMatch[2]} --json title,labels --jq '{title, labels: [.labels[].name]}'`,
+                { encoding: 'utf8', stdio: 'pipe' },
+              ).trim();
+              const parsed = JSON.parse(prInfo);
+              const isDependency =
+                parsed.labels &&
+                parsed.labels.some(
+                  (label) =>
+                    label.toLowerCase().includes('depend') || label.toLowerCase().includes('deps'),
+                );
+              const isReleasePrep =
+                parsed.labels &&
+                parsed.labels.some((label) => label.toLowerCase().includes('release-prep'));
 
-            return {
-              hash: mergeMatch[1],
-              message: parsed.title || `Merged PR #${mergeMatch[2]}`,
-              prNumber: mergeMatch[2],
-              isDependency: isDependency,
-              isReleasePrep: isReleasePrep
-            };
-          } catch (error) {
-            console.log(`⚠️ Failed to get PR info for #${mergeMatch[2]}: ${error.message}`);
-            return {
-              hash: mergeMatch[1],
-              message: `Merged PR #${mergeMatch[2]}`,
-              prNumber: mergeMatch[2],
-              isDependency: false,
-              isReleasePrep: false
-            };
+              return {
+                hash: mergeMatch[1],
+                message: parsed.title || `Merged PR #${mergeMatch[2]}`,
+                prNumber: mergeMatch[2],
+                isDependency: isDependency,
+                isReleasePrep: isReleasePrep,
+              };
+            } catch (error) {
+              console.log(`⚠️ Failed to get PR info for #${mergeMatch[2]}: ${error.message}`);
+              return {
+                hash: mergeMatch[1],
+                message: `Merged PR #${mergeMatch[2]}`,
+                prNumber: mergeMatch[2],
+                isDependency: false,
+                isReleasePrep: false,
+              };
+            }
           }
-        }
 
-        // Parse regular commits
-        const prMatch = firstLine.match(/\(#(\d+)\)$/);
-        const prNumber = prMatch ? prMatch[1] : null;
-        const commitMessage = prMatch ? firstLine.replace(/\s*\(#\d+\)$/, '') : firstLine;
+          // Parse regular commits
+          const prMatch = firstLine.match(/\(#(\d+)\)$/);
+          const prNumber = prMatch ? prMatch[1] : null;
+          const commitMessage = prMatch ? firstLine.replace(/\s*\(#\d+\)$/, '') : firstLine;
 
-        let isDependency = false;
-        let isReleasePrep = false;
-        if (prNumber) {
-          try {
-            const prInfo = execSync(
-              `gh pr view ${prNumber} --json labels --jq '{labels: [.labels[].name]}'`,
-              { encoding: 'utf8', stdio: 'pipe' }
-            ).trim();
-            const parsed = JSON.parse(prInfo);
-            isDependency = parsed.labels && parsed.labels.some(label =>
-              label.toLowerCase().includes('depend') || label.toLowerCase().includes('deps')
-            );
-            isReleasePrep = parsed.labels && parsed.labels.some(label =>
-              label.toLowerCase().includes('release-prep')
-            );
-          } catch (error) {
-            // If we can't get PR info, assume not a dependency or release-prep
-            console.log(`⚠️ Failed to get PR info for #${prNumber}: ${error.message}`);
-            isDependency = false;
-            isReleasePrep = false;
+          let isDependency = false;
+          let isReleasePrep = false;
+          if (prNumber) {
+            try {
+              const prInfo = execSync(
+                `gh pr view ${prNumber} --json labels --jq '{labels: [.labels[].name]}'`,
+                { encoding: 'utf8', stdio: 'pipe' },
+              ).trim();
+              const parsed = JSON.parse(prInfo);
+              isDependency =
+                parsed.labels &&
+                parsed.labels.some(
+                  (label) =>
+                    label.toLowerCase().includes('depend') || label.toLowerCase().includes('deps'),
+                );
+              isReleasePrep =
+                parsed.labels &&
+                parsed.labels.some((label) => label.toLowerCase().includes('release-prep'));
+            } catch (error) {
+              // If we can't get PR info, assume not a dependency or release-prep
+              console.log(`⚠️ Failed to get PR info for #${prNumber}: ${error.message}`);
+              isDependency = false;
+              isReleasePrep = false;
+            }
           }
-        }
 
-        return {
-          hash: commitHash,
-          message: commitMessage,
-          prNumber: prNumber,
-          isDependency: isDependency,
-          isReleasePrep: isReleasePrep
-        };
-      }).filter(commit => {
-        // Filter out null commits (malformed)
-        if (!commit) return false;
+          return {
+            hash: commitHash,
+            message: commitMessage,
+            prNumber: prNumber,
+            isDependency: isDependency,
+            isReleasePrep: isReleasePrep,
+          };
+        })
+        .filter((commit) => {
+          // Filter out null commits (malformed)
+          if (!commit) return false;
 
-        // Filter out automated commits and merge commits
-        const msg = commit.message.toLowerCase();
-        return !msg.match(/^(bump version|release v|version bump|docs: sync changelog|docs: update changelog)/) &&
-          !msg.includes('update en_us translation file') &&
-          !msg.includes('en_us translation file') &&
-          !msg.includes('update api docs') &&
-          !msg.match(/^merge branch ['"]?main['"]? of https:\/\/github\.com\//) &&
-          !msg.match(/^merge branch ['"]?master['"]? of https:\/\/github\.com\//) &&
-          !commit.isReleasePrep &&
-          commit.message.length > 0;
-      });
+          // Filter out automated commits and merge commits
+          const msg = commit.message.toLowerCase();
+          return (
+            !msg.match(
+              /^(bump version|release v|version bump|docs: sync changelog|docs: update changelog)/,
+            ) &&
+            !msg.includes('update en_us translation file') &&
+            !msg.includes('en_us translation file') &&
+            !msg.includes('update api docs') &&
+            !msg.match(/^merge branch ['"]?main['"]? of https:\/\/github\.com\//) &&
+            !msg.match(/^merge branch ['"]?master['"]? of https:\/\/github\.com\//) &&
+            !commit.isReleasePrep &&
+            commit.message.length > 0
+          );
+        });
     } catch (error) {
       console.error('❌ Error getting commits:', error.message);
       return [];
@@ -820,7 +891,7 @@ if (scriptPath === currentPath) {
         syncer.syncUnreleased();
         break;
 
-      case 'sync-release':
+      case 'sync-release': {
         const version = process.argv[3];
         if (!version) {
           console.error('❌ Version required for sync-release');
@@ -828,15 +899,17 @@ if (scriptPath === currentPath) {
         }
         syncer.syncRelease(version);
         break;
+      }
 
       case 'status':
         syncer.getStatus();
         break;
 
-      case 'validate':
+      case 'validate': {
         const isValid = syncer.validate();
         process.exit(isValid ? 0 : 1);
         break;
+      }
 
       default:
         console.log(`

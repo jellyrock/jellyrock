@@ -1,16 +1,20 @@
 name: validate-dependencies
 
-# Re-runs every linter unconditionally on dependency-update PRs (label
-# `dependencies` triggers the calling workflow). Each `_lint-X.yml` is
-# called with `force: true`, which makes the `changed-paths` composite
-# action skip its PR-diff check and run the lint regardless of what
-# files the PR touched.
+# Re-runs every lint and test reusable unconditionally on dependency-update
+# PRs (label `dependencies` triggers the calling workflow). Each reusable
+# is called with `force: true`, which makes the `changed-paths` composite
+# action skip its PR-diff check and run regardless of what files the PR
+# touched.
 #
-# Why force: a dep bump (BSC, markdownlint, jshint, spellchecker-cli,
-# rooibos, etc.) can break a linter even when the PR only changes
-# package.json / package-lock.json — i.e., no source file matches any
-# linter's path pattern. Without `force`, every linter would short-circuit
+# Why force: a dep bump (BSC, ESLint, Prettier, Vitest, markdownlint,
+# jshint, spellchecker-cli, rooibos, etc.) can break a check even when the
+# PR only changes package.json / package-lock.json — i.e., no source file
+# matches any path pattern. Without `force`, every check would short-circuit
 # to "skipped" and the dep update would land unverified.
+#
+# This list MUST stay in sync with the set of `_*.yml` reusables in
+# .github/workflows/. When you add a new reusable lint/test workflow,
+# add it here too — otherwise a dep that breaks it will land green.
 
 on:
   workflow_call:
@@ -20,8 +24,20 @@ jobs:
     uses: ./.github/workflows/_lint-brightscript.yml
     with:
       force: true
+  lint-docs:
+    uses: ./.github/workflows/_lint-docs.yml
+    with:
+      force: true
+  lint-js:
+    uses: ./.github/workflows/_lint-js.yml
+    with:
+      force: true
   lint-json:
     uses: ./.github/workflows/_lint-json.yml
+    with:
+      force: true
+  lint-language-coverage:
+    uses: ./.github/workflows/_lint-language-coverage.yml
     with:
       force: true
   lint-markdown:
@@ -34,5 +50,9 @@ jobs:
       force: true
   lint-translation-files:
     uses: ./.github/workflows/_lint-translation-files.yml
+    with:
+      force: true
+  test-scripts:
+    uses: ./.github/workflows/_test-scripts.yml
     with:
       force: true

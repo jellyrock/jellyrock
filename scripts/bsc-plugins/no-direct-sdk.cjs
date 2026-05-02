@@ -24,7 +24,7 @@ const ALLOWED_DEST_PATHS = new Set([
   'source/api/ApiClient.bs',
   'source/api/ApiClient.brs',
   'source/api/sdk.bs',
-  'source/api/sdk.brs'
+  'source/api/sdk.brs',
 ]);
 const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+no-direct-sdk\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-direct-sdk\b/i;
@@ -71,13 +71,13 @@ class NoDirectSdkPlugin {
             severity: 2, // Warning
             source: this.name,
             message: `Direct call to 'sdk.${ns}.${fn}(...)' bypasses ApiClient + the persistent task pool. Route this through GetApi().Build*Request() / fetchRes() instead. See docs/architecture/api.md. Add ' bsc-disable-line no-direct-sdk to suppress.`,
-            location: call.location
+            location: call.location,
           });
-        }
+        },
       });
 
       file.parser.ast.walk(visitor, {
-        walkMode: brighterscript.WalkMode.visitAllRecursive
+        walkMode: brighterscript.WalkMode.visitAllRecursive,
       });
     } catch (_e) {
       // Never crash the build.

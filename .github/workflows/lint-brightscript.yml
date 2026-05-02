@@ -8,5 +8,5 @@ on:
   pull_request:
 
 jobs:
-  run:
+  bslint:
     uses: ./.github/workflows/_lint-brightscript.yml

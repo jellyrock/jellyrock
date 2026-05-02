@@ -85,8 +85,8 @@ class ObserveWithoutDestroyPlugin {
     // accidentally satisfy each other — Roku stores them on different
     // observer lists, so an unobserveField won't release an
     // observeFieldScoped (and vice versa).
-    const unobserveByField = new Map();        // fieldName → Set<canonicalTarget>
-    const unobserveByFieldScoped = new Map();  // fieldName → Set<canonicalTarget>
+    const unobserveByField = new Map(); // fieldName → Set<canonicalTarget>
+    const unobserveByFieldScoped = new Map(); // fieldName → Set<canonicalTarget>
 
     const visitor = brighterscript.createVisitor({
       AssignmentStatement: (stmt) => {
@@ -130,7 +130,7 @@ class ObserveWithoutDestroyPlugin {
             fieldText,
             scoped: isObserveScoped,
             location: call.location,
-            line: call.location?.range?.start?.line
+            line: call.location?.range?.start?.line,
           });
         } else {
           const map = isUnobserveScoped ? unobserveByFieldScoped : unobserveByField;
@@ -139,11 +139,11 @@ class ObserveWithoutDestroyPlugin {
           }
           map.get(fieldText).add(targetRef);
         }
-      }
+      },
     });
 
     brsFile.parser.ast.walk(visitor, {
-      walkMode: brighterscript.WalkMode.visitAllRecursive
+      walkMode: brighterscript.WalkMode.visitAllRecursive,
     });
 
     for (const obs of observes) {
@@ -160,7 +160,7 @@ class ObserveWithoutDestroyPlugin {
         severity: 2, // Warning
         source: this.name,
         message: `${observeMethod}("${obs.fieldText}") on '${obs.targetRef}' has no matching ${unobserveMethod}("${obs.fieldText}") on this target (or a known alias) anywhere in this file. JRScreen subclasses must release every observer (typically in destroy()); scoped/unscoped pairs are tracked separately by Roku, so an ${obs.scoped ? 'unobserveField' : 'unobserveFieldScoped'} won't satisfy this. Add ' bsc-disable-next-line observe-without-destroy to suppress.`,
-        location: obs.location
+        location: obs.location,
       });
     }
   }

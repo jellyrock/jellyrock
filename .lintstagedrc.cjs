@@ -17,13 +17,16 @@
 //   - markdownlint --fix (file-scoped, auto-fix) → here
 //   - spellchecker (file-scoped) → here
 //   - jshint .json (file-scoped) → here
+//   - eslint --fix (file-scoped, auto-fix) → here
+//   - prettier --write (file-scoped, auto-fix; .prettierignore handles excludes) → here
 //   - bsc --noEmit (project-wide compile) → pre-push
 //   - lint:docs / docs:dev-index:check (cross-doc references) → pre-push
 //   - update-translations / docs:dev-index regen (project-wide regen) → pre-push
+//   - test:scripts (vitest, file-scoping is awkward) → pre-push + CI
 //
 // Excludes mirror package.json's `lint:*` scripts via shared helpers in
 // `scripts/lib/lint-excludes.cjs` so all three surfaces (this file,
-// `scripts/check-touched-lint.cjs`, package.json) stay in sync.
+// `scripts/lint/check-touched-lint.cjs`, package.json) stay in sync.
 
 'use strict';
 
@@ -87,12 +90,26 @@ module.exports = {
     return [mdLint, spell].filter(Boolean);
   },
 
-  // JSON syntax — check-only (jshint has no auto-fix).
+  // JSON — jshint syntax + duplicate-key check (broad set), then Prettier
+  // formatting (curated set via .prettierignore). The two tools have
+  // complementary scopes: jshint catches semantics Prettier doesn't (duplicate
+  // keys), Prettier catches whitespace drift jshint doesn't.
   '*.json': (files) => {
-    const cmd = cmdWithFiles(
+    const jshint = cmdWithFiles(
       'npx jshint --extra-ext .json --verbose',
       keep(isJsonExcluded)(files),
     );
-    return cmd ? [cmd] : [];
+    const prettier = cmdWithFiles('npx prettier --write --log-level warn', files);
+    return [jshint, prettier].filter(Boolean);
+  },
+
+  // JS / CJS / ESM — ESLint --fix then Prettier --write.
+  // ESLint owns code rules (unused vars, no-var, hashbang, etc.).
+  // Prettier owns formatting and runs after to win any whitespace ties
+  // (eslint-config-prettier disables ESLint rules that would conflict).
+  '*.{js,cjs,mjs}': (files) => {
+    const eslint = cmdWithFiles('npx eslint --fix --no-warn-ignored', files);
+    const prettier = cmdWithFiles('npx prettier --write --log-level warn', files);
+    return [eslint, prettier].filter(Boolean);
   },
 };

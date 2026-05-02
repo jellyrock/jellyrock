@@ -39,21 +39,17 @@
 // If there are no failures, no output (assuming --quiet).
 //
 // Usage:
-//   node scripts/check-touched-lint.cjs
-//   node scripts/check-touched-lint.cjs --base main
-//   node scripts/check-touched-lint.cjs --quiet  (no output if all pass)
+//   node scripts/lint/check-touched-lint.cjs
+//   node scripts/lint/check-touched-lint.cjs --base main
+//   node scripts/lint/check-touched-lint.cjs --quiet  (no output if all pass)
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { workingTreeFiles } = require('./lib/changed-files.cjs');
-const {
-  isSpellExcluded,
-  isMarkdownExcluded,
-  isJsonExcluded,
-} = require('./lib/lint-excludes.cjs');
+const { workingTreeFiles } = require('../lib/changed-files.cjs');
+const { isSpellExcluded, isMarkdownExcluded, isJsonExcluded } = require('../lib/lint-excludes.cjs');
 
 const args = process.argv.slice(2);
 const QUIET = args.includes('--quiet');
@@ -81,13 +77,9 @@ function runBin(name, runArgs) {
 // + untracked files). Avoids redundant work.
 const touched = workingTreeFiles();
 
-const mdFiles = touched
-  .filter(f => f.endsWith('.md'))
-  .filter(f => fs.existsSync(f));
+const mdFiles = touched.filter((f) => f.endsWith('.md')).filter((f) => fs.existsSync(f));
 
-const jsonFiles = touched
-  .filter(f => f.endsWith('.json'))
-  .filter(f => fs.existsSync(f));
+const jsonFiles = touched.filter((f) => f.endsWith('.json')).filter((f) => fs.existsSync(f));
 
 const findings = [];
 
@@ -95,14 +87,21 @@ const findings = [];
 // Spell check (spellchecker-cli)
 // ────────────────────────────────────────────────────────────────────
 
-const spellTargets = mdFiles.filter(f => !isSpellExcluded(f));
+const spellTargets = mdFiles.filter((f) => !isSpellExcluded(f));
 
 if (spellTargets.length > 0 && binExists('spellchecker')) {
   const { code, stdout, stderr } = runBin('spellchecker', [
-    '-d', 'dictionary.txt',
-    '-p', 'spell', 'indefinite-article', 'repeated-words',
-    'syntax-mentions', 'syntax-urls', 'frontmatter',
-    '--files', ...spellTargets,
+    '-d',
+    'dictionary.txt',
+    '-p',
+    'spell',
+    'indefinite-article',
+    'repeated-words',
+    'syntax-mentions',
+    'syntax-urls',
+    'frontmatter',
+    '--files',
+    ...spellTargets,
   ]);
   if (code !== 0) {
     findings.push({
@@ -118,7 +117,7 @@ if (spellTargets.length > 0 && binExists('spellchecker')) {
 // Markdown lint (markdownlint-cli2)
 // ────────────────────────────────────────────────────────────────────
 
-const mdLintTargets = mdFiles.filter(f => !isMarkdownExcluded(f));
+const mdLintTargets = mdFiles.filter((f) => !isMarkdownExcluded(f));
 
 if (mdLintTargets.length > 0 && binExists('markdownlint-cli2')) {
   const { code, stdout, stderr } = runBin('markdownlint-cli2', mdLintTargets);
@@ -140,11 +139,14 @@ if (mdLintTargets.length > 0 && binExists('markdownlint-cli2')) {
 // Per-file invocation is fine — fast and avoids the package.json script's
 // project-wide excludes scan.
 
-const jsonTargets = jsonFiles.filter(f => !isJsonExcluded(f));
+const jsonTargets = jsonFiles.filter((f) => !isJsonExcluded(f));
 
 if (jsonTargets.length > 0 && binExists('jshint')) {
   const { code, stdout, stderr } = runBin('jshint', [
-    '--extra-ext', '.json', '--verbose', ...jsonTargets,
+    '--extra-ext',
+    '.json',
+    '--verbose',
+    ...jsonTargets,
   ]);
   if (code !== 0) {
     findings.push({

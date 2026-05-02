@@ -30,9 +30,7 @@
     { "files": "**/roku_modules/**/*" },
     {
       "files": "tests/**/*",
-      "codes": [
-        "LINT3008"
-      ]
+      "codes": ["LINT3008"]
     }
   ],
   "autoImportComponentScript": true,
@@ -41,7 +39,7 @@
   "plugins": [
     "rooibos-roku",
     "@rokucommunity/bslint",
-    "./scripts/bsc-plugin-translation-keys.cjs"
+    "./scripts/bsc-plugins/translation-keys.cjs"
   ],
   "rooibos": {
     "isRecordingCodeCoverage": true,

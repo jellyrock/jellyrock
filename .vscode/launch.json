@@ -55,18 +55,16 @@
         "*.*",
         "**/*.*",
         "!*.zip",
-        "!**/*.zip"
+        "!**/*.zip",
       ],
       "rootDir": "${workspaceFolder}/build",
-      "sourceDirs": [
-        "${workspaceFolder}/tests"
-      ],
+      "sourceDirs": ["${workspaceFolder}/tests"],
       "enableDebuggerAutoRecovery": true,
       "stopDebuggerOnAppExit": true,
       "deferScopeLoading": true,
       "injectRaleTrackerTask": false,
       "enableDebugProtocol": false,
-      "rendezvousTracking": false
+      "rendezvousTracking": false,
     },
     {
       "name": "Run TDD tests",
@@ -87,18 +85,16 @@
         "*.*",
         "**/*.*",
         "!*.zip",
-        "!**/*.zip"
+        "!**/*.zip",
       ],
       "rootDir": "${workspaceFolder}/build",
-      "sourceDirs": [
-        "${workspaceFolder}/tests"
-      ],
+      "sourceDirs": ["${workspaceFolder}/tests"],
       "enableDebuggerAutoRecovery": true,
       "stopDebuggerOnAppExit": true,
       "deferScopeLoading": true,
       "injectRaleTrackerTask": false,
       "enableDebugProtocol": false,
-      "rendezvousTracking": false
+      "rendezvousTracking": false,
     },
     {
       "name": "Run integration tests",
@@ -119,18 +115,16 @@
         "*.*",
         "**/*.*",
         "!*.zip",
-        "!**/*.zip"
+        "!**/*.zip",
       ],
       "rootDir": "${workspaceFolder}/build",
-      "sourceDirs": [
-        "${workspaceFolder}/tests"
-      ],
+      "sourceDirs": ["${workspaceFolder}/tests"],
       "enableDebuggerAutoRecovery": true,
       "stopDebuggerOnAppExit": true,
       "deferScopeLoading": true,
       "injectRaleTrackerTask": false,
       "enableDebugProtocol": false,
-      "rendezvousTracking": false
+      "rendezvousTracking": false,
     },
     {
       "name": "Run all tests",
@@ -151,18 +145,16 @@
         "*.*",
         "**/*.*",
         "!*.zip",
-        "!**/*.zip"
+        "!**/*.zip",
       ],
       "rootDir": "${workspaceFolder}/build",
-      "sourceDirs": [
-        "${workspaceFolder}/tests"
-      ],
+      "sourceDirs": ["${workspaceFolder}/tests"],
       "enableDebuggerAutoRecovery": true,
       "stopDebuggerOnAppExit": true,
       "deferScopeLoading": true,
       "injectRaleTrackerTask": false,
       "enableDebugProtocol": false,
-      "rendezvousTracking": false
-    }
-  ]
+      "rendezvousTracking": false,
+    },
+  ],
 }

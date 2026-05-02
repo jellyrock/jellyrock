@@ -5,5 +5,5 @@ on:
   pull_request:
 
 jobs:
-  run:
+  docs:
     uses: ./.github/workflows/_lint-docs.yml

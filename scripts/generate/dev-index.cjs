@@ -16,8 +16,8 @@
 //     <!-- BEGIN/END auto-generated dev-index --> sentinel comments
 //
 // Run modes:
-//   node scripts/generate-dev-index.cjs           → write (default)
-//   node scripts/generate-dev-index.cjs --check   → fail if drift exists
+//   node scripts/generate/dev-index.cjs           → write (default)
+//   node scripts/generate/dev-index.cjs --check   → fail if drift exists
 //                                                   (no write; for CI)
 //
 // npm scripts:
@@ -35,14 +35,15 @@ const path = require('path');
 // Argv parsing: any non-flag positional is treated as the root dir. Mirrors
 // the pattern used by docs-stale.cjs so the two scripts behave the same way.
 const args = process.argv.slice(2);
-const positional = args.filter(a => !a.startsWith('--'));
+const positional = args.filter((a) => !a.startsWith('--'));
 
 const ROOT_DIR = positional[0] || '.';
 const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 const README_PATH = path.join(ROOT_DIR, 'docs/architecture/README.md');
 const CHECK_MODE = args.includes('--check');
 
-const BEGIN_MARKER = '<!-- BEGIN auto-generated dev-index (run `npm run docs:dev-index` to regenerate) -->';
+const BEGIN_MARKER =
+  '<!-- BEGIN auto-generated dev-index (run `npm run docs:dev-index` to regenerate) -->';
 const END_MARKER = '<!-- END auto-generated dev-index -->';
 
 // ────────────────────────────────────────────────────────────────────
@@ -59,8 +60,9 @@ function buildIndex() {
   if (!fs.existsSync(DEV_DIR)) {
     throw new Error(`docs/dev/ not found at ${DEV_DIR}`);
   }
-  const files = fs.readdirSync(DEV_DIR)
-    .filter(f => f.endsWith('.md'))
+  const files = fs
+    .readdirSync(DEV_DIR)
+    .filter((f) => f.endsWith('.md'))
     .sort();
 
   const rows = [];
@@ -78,7 +80,7 @@ function buildIndex() {
     '',
     '| File | Topic |',
     '|---|---|',
-    ...rows.map(r => `| [\`docs/dev/${r.file}\`](../dev/${r.file}) | ${r.title} |`),
+    ...rows.map((r) => `| [\`docs/dev/${r.file}\`](../dev/${r.file}) | ${r.title} |`),
     '',
     END_MARKER,
   ];
@@ -90,7 +92,9 @@ function applyIndex(readmeContent, generatedBlock) {
   const endIdx = readmeContent.indexOf(END_MARKER);
 
   if (beginIdx === -1 || endIdx === -1) {
-    throw new Error(`README is missing the auto-gen sentinel comments; expected:\n${BEGIN_MARKER}\n…\n${END_MARKER}`);
+    throw new Error(
+      `README is missing the auto-gen sentinel comments; expected:\n${BEGIN_MARKER}\n…\n${END_MARKER}`,
+    );
   }
   if (beginIdx > endIdx) {
     throw new Error('README sentinel comments appear in wrong order (BEGIN after END)');
@@ -115,12 +119,25 @@ if (readme === updated) {
 if (CHECK_MODE) {
   console.error(`docs:dev-index drift detected. Run 'npm run docs:dev-index' to regenerate.\n`);
   // Print a small diff hint
-  const oldBlock = readme.slice(readme.indexOf(BEGIN_MARKER), readme.indexOf(END_MARKER) + END_MARKER.length);
+  const oldBlock = readme.slice(
+    readme.indexOf(BEGIN_MARKER),
+    readme.indexOf(END_MARKER) + END_MARKER.length,
+  );
   const newBlock = generated;
   console.error('--- README (current)\n+++ generated (expected)\n');
-  console.error(oldBlock.split('\n').map(l => `- ${l}`).join('\n'));
+  console.error(
+    oldBlock
+      .split('\n')
+      .map((l) => `- ${l}`)
+      .join('\n'),
+  );
   console.error('');
-  console.error(newBlock.split('\n').map(l => `+ ${l}`).join('\n'));
+  console.error(
+    newBlock
+      .split('\n')
+      .map((l) => `+ ${l}`)
+      .join('\n'),
+  );
   process.exit(1);
 }
 

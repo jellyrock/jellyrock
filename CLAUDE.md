@@ -16,7 +16,7 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 - **Run tests to verify fixes — don't commit based on reasoning alone.** TDD (single spec, fastest): `npm run test:tdd`. Broader: `npm run test:unit | test:integration | test:all`. Setup, credentials, debugger contention: [`docs/dev/unit-tests-tdd.md`](docs/dev/unit-tests-tdd.md).
 - **When hardware isn't reachable, say so explicitly** — don't claim a fix was tested when only the build was verified.
 - **Cannot modify `CHANGELOG.md`** — CI-controlled.
-- **Don't run `npm run validate`, `npm run lint:*`, or `npm run build:*` manually** — the pre-push hook runs them at push time and the IDE handles `.bs` live. Exception: debugging a specific lint failure.
+- **Don't run `npm run validate`, `npm run lint:*`, `npm run build:*`, `npm run check-formatting`, `npm run format`, or `npm run test:scripts` manually** — pre-commit / pre-push / CI runs them at the right moment and the IDE handles `.bs` live. Exception: debugging a specific lint failure.
 
 ## Doc maintenance discipline
 
@@ -27,8 +27,8 @@ When you modify a file listed in any architecture doc's `related-files:` frontma
 
 Two enforcement layers back this up:
 
-- An **end-of-turn hook** (Claude Code `Stop`, Copilot Coding Agent `sessionEnd`) prints which docs claim the files you touched. Informational; doesn't block. Logic in [`scripts/check-touched-related-files.cjs`](scripts/check-touched-related-files.cjs).
-- A **CI gate** ([`scripts/docs-stale-blocking.cjs`](scripts/docs-stale-blocking.cjs), wired to [`.github/workflows/lint-docs.yml`](.github/workflows/lint-docs.yml)) fails the PR if a stale (over 120 days) architecture doc's territory was modified without the doc itself being updated. Hard pressure at PR time.
+- An **end-of-turn hook** (Claude Code `Stop`, Copilot Coding Agent `sessionEnd`) prints which docs claim the files you touched. Informational; doesn't block. Logic in [`scripts/lint/check-touched-related-files.cjs`](scripts/lint/check-touched-related-files.cjs).
+- A **CI gate** ([`scripts/lint/docs-stale-blocking.cjs`](scripts/lint/docs-stale-blocking.cjs), wired to [`.github/workflows/lint-docs.yml`](.github/workflows/lint-docs.yml)) fails the PR if a stale (over 120 days) architecture doc's territory was modified without the doc itself being updated. Hard pressure at PR time.
 
 Soft prompt during work, hard gate before merge. The CI gate is architecture-only (dev guides under `docs/dev/` are informational — the soft signal in `npm run docs:stale` covers them).
 
@@ -46,6 +46,7 @@ This file holds only cross-cutting / repo-wide rules. Per-area rules live in sco
 | `source/utils/` | [`source/utils/CLAUDE.md`](source/utils/CLAUDE.md) |
 | `tests/` | [`tests/CLAUDE.md`](tests/CLAUDE.md) |
 | `locale/` | [`locale/CLAUDE.md`](locale/CLAUDE.md) |
+| `scripts/` (any subfolder) | [`scripts/CLAUDE.md`](scripts/CLAUDE.md) |
 
 For the *why* and *shape* of each subsystem, load the relevant doc from [`docs/architecture/`](docs/architecture/) (start with [`docs/architecture/README.md`](docs/architecture/README.md)'s topic map). For *how to do X* (writing tests, adding settings, migrations), see [`docs/dev/`](docs/dev/).
 
@@ -55,6 +56,7 @@ Quick task pointers:
 - **Writing tests?** → [`docs/dev/unit-tests.md`](docs/dev/unit-tests.md)
 - **Running tests?** → [`docs/dev/unit-tests-tdd.md`](docs/dev/unit-tests-tdd.md)
 - **Registry migrations?** → [`docs/dev/registry-migrations.md`](docs/dev/registry-migrations.md)
+- **Working in `scripts/` (BSC plugins, doc validators, codegen)?** → [`docs/dev/scripts-development.md`](docs/dev/scripts-development.md)
 - **Debug flags / toast testing?** → [`docs/dev/debug-flags.md`](docs/dev/debug-flags.md)
 - **Code style?** → [`docs/dev/code-style.md`](docs/dev/code-style.md)
 

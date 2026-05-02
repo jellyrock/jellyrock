@@ -5,5 +5,5 @@ on:
   pull_request:
 
 jobs:
-  run:
+  translations:
     uses: ./.github/workflows/_lint-translation-files.yml

@@ -1,13 +1,12 @@
-#!/usr/bin/env node
 /**
  * Roku Test Runner for CI/CD
  * Deploys test build to Roku and captures console output
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import net from 'net';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import net from 'node:net';
 import dotenv from 'dotenv';
 import * as rokuDeploy from 'roku-deploy';
 
@@ -38,7 +37,7 @@ async function deployToRoku() {
       stagingDir: BUILD_DIR,
       outDir: OUT_DIR,
       outFile: 'jellyrock',
-      retainStagingDir: true
+      retainStagingDir: true,
     });
     console.log('📦 Package created: out/jellyrock.zip');
 
@@ -46,7 +45,7 @@ async function deployToRoku() {
       host: ROKU_IP,
       password: ROKU_PASSWORD,
       outDir: OUT_DIR,
-      outFile: 'jellyrock.zip'
+      outFile: 'jellyrock.zip',
     });
     console.log('✅ Deployment successful');
   } catch (error) {
@@ -75,7 +74,11 @@ async function captureConsole() {
         if (lastResult) {
           resolve({ passed: lastResult === 'PASS', logFile });
         } else {
-          reject(new Error(`No console output for ${IDLE_TIMEOUT_MS / 1000} seconds — Roku appears hung`));
+          reject(
+            new Error(
+              `No console output for ${IDLE_TIMEOUT_MS / 1000} seconds — Roku appears hung`,
+            ),
+          );
         }
       }, IDLE_TIMEOUT_MS);
     }
@@ -89,7 +92,7 @@ async function captureConsole() {
     function processLine(line) {
       // Normalize line endings (handle CRLF from Roku console)
       const cleanLine = line.replace(/\r+$/, '');
-      
+
       // Capture test results in-memory to avoid file read race condition
       const resultMatch = cleanLine.match(/^\[Rooibos Result\]: (PASS|FAIL)$/);
       if (resultMatch) {
@@ -101,7 +104,7 @@ async function captureConsole() {
         clearTimeout(idleTimeoutId);
         socket.destroy();
         writeStream.end();
-        
+
         const lastResult = results.length > 0 ? results[results.length - 1] : null;
         if (lastResult) {
           resolve({ passed: lastResult === 'PASS', logFile });
@@ -135,7 +138,7 @@ async function captureConsole() {
       clearTimeout(idleTimeoutId);
       socket.destroy();
       writeStream.end();
-      
+
       const lastResult = results.length > 0 ? results[results.length - 1] : null;
       if (lastResult) {
         console.warn('Connection error, but result found:', err.message);
@@ -148,12 +151,12 @@ async function captureConsole() {
     socket.on('close', () => {
       clearTimeout(idleTimeoutId);
       writeStream.end();
-      
+
       // Process any remaining content in lineBuffer (handles shutdown without trailing newline)
       if (lineBuffer.length > 0 && processLine(lineBuffer)) {
         return; // Shutdown was detected and handled
       }
-      
+
       const lastResult = results.length > 0 ? results[results.length - 1] : null;
       if (lastResult) {
         resolve({ passed: lastResult === 'PASS', logFile });
@@ -168,7 +171,7 @@ async function main() {
   try {
     await deployToRoku();
     console.log('⏳ Waiting for app to start...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     const result = await captureConsole();
     console.log(`📝 Full log saved to ${result.logFile}`);

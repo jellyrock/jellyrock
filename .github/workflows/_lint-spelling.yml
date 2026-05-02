@@ -10,7 +10,7 @@ on:
         default: false
 
 jobs:
-  run:
+  spellcheck:
     runs-on: ubuntu-latest
     steps:
       - name: Clone github repo

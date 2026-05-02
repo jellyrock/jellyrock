@@ -51,8 +51,8 @@ for (let i = 0; i < args.length; i++) {
 
 const DAYS = Number(flagValue('--days')) || 7;
 const TOP = Number(flagValue('--top')) || 20;
-const TELEMETRY_DIR = process.env.JELLYROCK_TELEMETRY_DIR
-  || path.join(os.homedir(), '.claude', 'jellyrock-telemetry');
+const TELEMETRY_DIR =
+  process.env.JELLYROCK_TELEMETRY_DIR || path.join(os.homedir(), '.claude', 'jellyrock-telemetry');
 const LOG_PATH = path.join(TELEMETRY_DIR, 'tool-use.jsonl');
 
 if (!fs.existsSync(LOG_PATH)) {
@@ -147,5 +147,9 @@ console.log('');
 
 console.log(`Hints to act on:`);
 console.log(`  - Heavy reads in a subdir without a CLAUDE.md? Consider adding one.`);
-console.log(`  - Many greps for the same pattern? The pattern's home isn't surfaced enough; cross-reference it from a CLAUDE.md.`);
-console.log(`  - A file's read-count is huge but it's never edited? It's pure reference; consider a brief at-the-top summary comment.`);
+console.log(
+  `  - Many greps for the same pattern? The pattern's home isn't surfaced enough; cross-reference it from a CLAUDE.md.`,
+);
+console.log(
+  `  - A file's read-count is huge but it's never edited? It's pure reference; consider a brief at-the-top summary comment.`,
+);

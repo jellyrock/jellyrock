@@ -1,0 +1,50 @@
+name: test-scripts
+
+# Runs Vitest unit tests for the build/lint/codegen scripts under
+# scripts/. Tests cover BSC plugins (4 diagnostic-emitting + 2 smoke),
+# helper libs, doc validators, output generators, telemetry aggregator,
+# and a handful of external-system wrappers.
+#
+# Mirrors the pre-push hook's test step. CI is the safety net for
+# `--no-verify` and the per-PR mandatory gate for fork PRs (where
+# pre-push hooks don't fire).
+#
+# Tier 2 plugins (roku-log, translation-keys) get smoke coverage here;
+# their full transpile-output / virtual-file harnesses are deferred to
+# a follow-up — see tasks/todo/bsc-plugin-tier2-harness.md.
+# The two heaviest scripts (update-translations.cjs, changelog-syncer.js)
+# are also deferred — see tasks/todo/heavy-script-tests.md.
+
+on:
+  workflow_call:
+    inputs:
+      force:
+        description: 'When true, skip path detection and run unconditionally (used by the dependencies validator).'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - id: detect
+        uses: ./.github/actions/changed-paths
+        with:
+          # Triggers when any JS source under scripts/ changes, when the
+          # tests themselves change, or when the test config changes.
+          # We deliberately don't trigger on every JS/JSON change — the
+          # tests focus on scripts/ and tests/scripts/, so other JS edits
+          # (e.g. in .lintstagedrc.cjs) don't need re-running.
+          pattern: '^scripts/|^tests/scripts/|^vitest\.config\.js$|^package(-lock)?\.json$'
+          force: ${{ inputs.force }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        if: steps.detect.outputs.relevant == 'true'
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm ci
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm run test:scripts

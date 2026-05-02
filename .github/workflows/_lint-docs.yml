@@ -6,7 +6,7 @@ name: lint-docs
 #                              docs/architecture/README.md
 #   - docs:stale:blocking    — conditional hard gate (only fails if this PR
 #                              touches a stale doc's related-files without
-#                              also updating the doc; see docs-stale-blocking.cjs)
+#                              also updating the doc; see lint/docs-stale-blocking.cjs)
 #
 # These checks run only in .husky/pre-push otherwise — fork PRs and pushes
 # with --no-verify bypass that hook entirely. Running them in CI closes
@@ -25,19 +25,19 @@ on:
         default: false
 
 jobs:
-  run:
+  docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          fetch-depth: 0  # docs-stale-blocking.cjs needs origin/main for the diff
+          fetch-depth: 0  # lint/docs-stale-blocking.cjs needs origin/main for the diff
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
           # Mirrors the previous event-time paths filter (**/*.md, docs/**,
           # the four docs-related scripts, **/CLAUDE.md, AGENTS.md). The
           # \.md$ alternative covers **/CLAUDE.md and AGENTS.md by extension.
-          pattern: '\.md$|^docs/|^scripts/(docs-check|docs-stale|docs-stale-blocking|generate-dev-index)\.cjs$'
+          pattern: '\.md$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking)\.cjs$|^scripts/generate/dev-index\.cjs$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         if: steps.detect.outputs.relevant == 'true'
@@ -45,12 +45,12 @@ jobs:
           node-version: "lts/*"
       - name: Validate doc references
         if: steps.detect.outputs.relevant == 'true'
-        run: node scripts/docs-check.cjs
+        run: node scripts/lint/docs-check.cjs
       - name: Check dev-index drift
         if: steps.detect.outputs.relevant == 'true'
-        run: node scripts/generate-dev-index.cjs --check
+        run: node scripts/generate/dev-index.cjs --check
       - name: Conditional stale-doc gate
         if: steps.detect.outputs.relevant == 'true'
-        run: node scripts/docs-stale-blocking.cjs
+        run: node scripts/lint/docs-stale-blocking.cjs
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}

@@ -6,9 +6,9 @@ related-files:
   - source/utils/translate.bs
   - source/utils/translateLocale.bs
   - source/utils/languages.bs
-  - scripts/bsc-plugin-translation-keys.cjs
-  - scripts/update-translations.cjs
-  - scripts/lint-language-coverage.cjs
+  - scripts/bsc-plugins/translation-keys.cjs
+  - scripts/lint/update-translations.cjs
+  - scripts/lint/language-coverage.cjs
 last-reviewed: 2026-05-01
 ---
 
@@ -155,7 +155,7 @@ Language changes take effect after leaving Settings (the `reloadHome` mechanism 
 
 ## CI Validation
 
-Translation integrity is enforced by a single script (`scripts/update-translations.cjs`) that runs as part of `npm run lint`:
+Translation integrity is enforced by a single script (`scripts/lint/update-translations.cjs`) that runs as part of `npm run lint`:
 
 | Command | What it checks |
 | --- | --- |

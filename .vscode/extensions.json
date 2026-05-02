@@ -11,5 +11,5 @@
     "redhat.vscode-yaml", // yaml linter and formatter
   ],
   // List of extensions recommended by VS Code that should not be recommended for users of this workspace.
-  "unwantedRecommendations": []
+  "unwantedRecommendations": [],
 }

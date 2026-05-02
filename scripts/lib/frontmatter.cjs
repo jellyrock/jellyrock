@@ -47,7 +47,7 @@ function parseRelatedFiles(frontmatter) {
   if (/^related-files:\s*\[\s*\]/m.test(frontmatter)) return [];
 
   const lines = frontmatter.split(/\r?\n/);
-  const startIdx = lines.findIndex(l => /^related-files:\s*$/.test(l));
+  const startIdx = lines.findIndex((l) => /^related-files:\s*$/.test(l));
   if (startIdx === -1) return [];
 
   const items = [];
@@ -58,7 +58,7 @@ function parseRelatedFiles(frontmatter) {
       items.push(m[1]);
       continue;
     }
-    if (/^\S/.test(line)) break;  // hit the next top-level frontmatter key
+    if (/^\S/.test(line)) break; // hit the next top-level frontmatter key
   }
   return items;
 }

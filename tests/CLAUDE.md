@@ -9,6 +9,7 @@ rooibos test framework with `@suite` / `@describe` / `@it` decorators. See [docs
 - `tests/source/e2e/` — UI automation (RTA-based; sparsely populated today).
 - `tests/source/mocks/` — mock data and stubs.
 - `tests/source/shared/` — shared test helpers.
+- `tests/scripts/unit/` — **Vitest** unit tests for the Node-side build/lint tooling under [`scripts/`](../scripts/). Different framework (Vitest, not Rooibos) and runtime (Node, not Roku). Rules below DO NOT apply — see [`docs/dev/scripts-development.md`](../docs/dev/scripts-development.md) for that layout.
 
 ## Test pattern
 

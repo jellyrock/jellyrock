@@ -1,0 +1,12 @@
+name: test-scripts
+
+# No event-time `paths:` filter — see .github/actions/changed-paths.
+# The reusable workflow short-circuits internally when no scripts/ or
+# tests/scripts/ files changed, so this can be wired as a required check
+# without stalling unrelated PRs.
+on:
+  pull_request:
+
+jobs:
+  vitest:
+    uses: ./.github/workflows/_test-scripts.yml

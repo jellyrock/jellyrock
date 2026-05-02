@@ -10,7 +10,7 @@ on:
         default: false
 
 jobs:
-  run:
+  language-coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Clone github repo
@@ -20,7 +20,7 @@ jobs:
         with:
           # Mirrors the previous event-time paths filter (the four exact files
           # the language-coverage script depends on).
-          pattern: '^(source/utils/(languages|mediaDisplayTitle)\.bs|locale/custom/en_US\.json|scripts/lint-language-coverage\.cjs)$'
+          pattern: '^(source/utils/(languages|mediaDisplayTitle)\.bs|locale/custom/en_US\.json|scripts/lint/language-coverage\.cjs)$'
           force: ${{ inputs.force }}
       - name: Setup Node.js
         if: steps.detect.outputs.relevant == 'true'

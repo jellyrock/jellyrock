@@ -20,25 +20,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable github/array-foreach */
-/* eslint-disable @typescript-eslint/no-var-requires */
-/* eslint-disable @typescript-eslint/no-require-imports */
-const fs = require('fs-extra');
+const fs = require('fs');
 const path = require('path');
 
-let componentsDir = path.join(__dirname, '..', 'components', 'roku_modules');
+const componentsDir = path.join(__dirname, '..', 'components', 'roku_modules');
 
 parseFolder(componentsDir);
 
-let sourceDir = path.join(__dirname, '..', 'source', 'roku_modules');
+const sourceDir = path.join(__dirname, '..', 'source', 'roku_modules');
 parseFolder(sourceDir);
 
 function parseFolder(sourceDir) {
   try {
-    fs.readdirSync(sourceDir).forEach(file => {
-      let filePath = path.join(sourceDir, file);
-      let fileStats = fs.statSync(filePath);
+    fs.readdirSync(sourceDir).forEach((file) => {
+      const filePath = path.join(sourceDir, file);
+      const fileStats = fs.statSync(filePath);
       if (fileStats.isDirectory()) {
         parseFolder(filePath);
       } else if (filePath.endsWith('.xml')) {

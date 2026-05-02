@@ -16,12 +16,12 @@
         "clear": true,
         "close": true,
         "reveal": "silent",
-        "revealProblems": "onProblem"
+        "revealProblems": "onProblem",
       },
       "group": {
         "kind": "build",
-        "isDefault": true
-      }
+        "isDefault": true,
+      },
     },
     {
       "label": "build-prod",
@@ -36,12 +36,12 @@
         "clear": true,
         "close": true,
         "reveal": "silent",
-        "revealProblems": "onProblem"
+        "revealProblems": "onProblem",
       },
       "group": {
         "kind": "build",
-        "isDefault": true
-      }
+        "isDefault": true,
+      },
     },
     {
       "label": "build-tdd",
@@ -54,12 +54,12 @@
         "focus": false,
         "panel": "shared",
         "showReuseMessage": false,
-        "clear": true
+        "clear": true,
       },
       "group": {
         "kind": "build",
-        "isDefault": true
-      }
+        "isDefault": true,
+      },
     },
     {
       "label": "build-tests-unit",
@@ -72,12 +72,12 @@
         "focus": false,
         "panel": "shared",
         "showReuseMessage": false,
-        "clear": true
+        "clear": true,
       },
       "group": {
         "kind": "build",
-        "isDefault": true
-      }
+        "isDefault": true,
+      },
     },
     {
       "label": "build-tests-integration",
@@ -90,12 +90,12 @@
         "focus": false,
         "panel": "shared",
         "showReuseMessage": false,
-        "clear": true
+        "clear": true,
       },
       "group": {
         "kind": "build",
-        "isDefault": true
-      }
+        "isDefault": true,
+      },
     },
     {
       "label": "build-tests-all",
@@ -108,12 +108,12 @@
         "focus": false,
         "panel": "shared",
         "showReuseMessage": false,
-        "clear": true
+        "clear": true,
       },
       "group": {
         "kind": "build",
-        "isDefault": true
-      }
-    }
-  ]
+        "isDefault": true,
+      },
+    },
+  ],
 }
