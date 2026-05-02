@@ -9,31 +9,18 @@ name: Device Unit Tests
 # setting does NOT apply to pull_request_target events.
 #
 # See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk
+#
+# No event-time `paths:` filter — see .github/actions/changed-paths/action.yml.
+# `check-skip` short-circuits internally when no test-relevant files changed,
+# so both `check-skip` and `all-tests` always report a status and can be wired
+# as required checks without stalling PRs that don't touch source / tests.
 
 on:
   push:
     branches:
       - main
-    paths:
-      - "tests/**"
-      - "source/**"
-      - "components/**"
-      - "settings/settings.json"
-      - "bsconfig.json"
-      - "bsconfig-tests*.json"
-      - "package.json"
-      - "package-lock.json"
   pull_request_target:
     types: [opened, synchronize]
-    paths:
-      - "tests/**"
-      - "source/**"
-      - "components/**"
-      - "settings/settings.json"
-      - "bsconfig.json"
-      - "bsconfig-tests*.json"
-      - "package.json"
-      - "package-lock.json"
   workflow_dispatch:
     inputs:
       test_type:
@@ -59,10 +46,17 @@ jobs:
   check-skip:
     runs-on: ubuntu-latest
     outputs:
-      should_skip: ${{ steps.check.outputs.skip }}
+      should_skip: ${{ steps.combined.outputs.skip }}
     steps:
+      # Checkout is needed so the `./.github/actions/changed-paths` composite
+      # action can be loaded. Under pull_request_target this is the BASE
+      # branch's copy of the action — PR-controlled action code never runs
+      # with the elevated token, which is the same security posture as the
+      # rest of this workflow.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
       - name: Check if push is from PR merge
-        id: check
+        id: merge_check
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             if echo "${{ github.event.head_commit.message }}" | grep -q "Merge pull request"; then
@@ -73,7 +67,30 @@ jobs:
               echo "skip=false" >> $GITHUB_OUTPUT
             fi
           else
-            echo "This is a PR or manual trigger - always run tests"
+            echo "This is a PR or manual trigger"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect test-relevant changes
+        id: path_check
+        uses: ./.github/actions/changed-paths
+        with:
+          # Mirrors the previous event-time paths filter:
+          #   tests/**, source/**, components/**, settings/settings.json,
+          #   bsconfig.json, bsconfig-tests*.json, package.json, package-lock.json
+          pattern: '^(tests/|source/|components/|settings/settings\.json$|bsconfig\.json$|bsconfig-tests[^/]*\.json$|package(-lock)?\.json$)'
+
+      - name: Combine skip reasons
+        id: combined
+        run: |
+          if [[ "${{ steps.merge_check.outputs.skip }}" == "true" ]]; then
+            echo "Skipping: push is a PR merge to main (tests already ran on PR)"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ steps.path_check.outputs.relevant }}" == "false" ]]; then
+            echo "Skipping: PR did not touch test-relevant files"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Running: tests will execute"
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 

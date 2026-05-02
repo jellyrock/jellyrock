@@ -259,9 +259,6 @@ end sub
 
 The `selectedTabId` observation is bidirectional: when the user changes tabs in the overhang, `onOverhangTabSelected` writes back into the active group's `selectedTabId` field, which the group observes to swap content. The `home/Home` screen uses this for the home/favorites tab swap.
 
-## Cruft callouts
+## Known cruft
 
-- **Manual `destroy()` discipline.** Every `JRScreen` subclass that holds task nodes, observers, or large data structures must override `destroy()` to release them. There's no enforcement — forgetting it leaks memory across navigation. A long-running session that visits many screens can accumulate. The base implementation should probably do *something* defensive (e.g., automatically `unobserveField` for any fields the screen observed on `m.global` children), but today it's a pure virtual.
-- **`m.groups` is unbounded.** Every push grows the array; pop shrinks it. There is no cap or LRU eviction. In normal navigation flows this is fine, but a malicious or buggy code path that pushes without popping leaks indefinitely.
-- **`reloadHome()` is a manual signal.** Theme color changes, language changes, and some settings changes require an explicit `reloadHome()` call. The framework can't know automatically that a setting change should rebuild the home screen — there's no general "this setting affects rendering" metadata. Easy to forget when adding a new setting.
-- **Dialog `returnData` is shared global state.** Every dialog writes to the same `sceneManager.returnData` field. If two dialogs were ever queued (they shouldn't be, but defensively), the second would clobber the first. Code that reads `returnData` must `unobserveField` immediately on read or risk firing for an unrelated dialog later.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for navigation / `SceneManager` entries.

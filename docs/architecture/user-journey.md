@@ -362,10 +362,6 @@ When the video finishes (`state = "finished"`), `ViewCreator.onStateChange` deci
 
 If the user backs out mid-playback, `SceneManager.popScene` detects the `Video` subtype on the popped group and issues `group.control = "stop"` to make sure Jellyfin records the stop event before the node is destroyed.
 
-## Cruft callouts
+## Known cruft
 
-- **`ItemDetails.bs` is huge.** Single file handling every item type. Splitting per type (or extracting the extras pane and metadata renderer) would make it more navigable. See `tech-debt.md`.
-- **`showScenes.bs` mixes login flow with scene factories.** `LoginFlow()` and a dozen `Create*Group()` functions live in the same file. Splitting `auth/LoginFlow.bs` and `screens/SearchPage.bs` etc. would clarify responsibilities.
-- **`goto`-based retry in `LoginFlow`.** Works, but unusual; a `do { ... } until success` loop would read more naturally to most modern eyes. Not worth changing for change's sake, but worth knowing about.
-- **No persistent series playlist UI.** "Play next" routing always goes back through `ItemDetails → quickPlayNode → QueueManager`. There's no "now playing" sidebar to see the upcoming queue without going to the player.
-- **`selectedItem` bubbling has implicit contracts.** Every level in the chain just declares `<field id="selectedItem" alwaysNotify="true" />` and trusts that the level above will handle it. Tracing from a click to the handler requires walking the tree manually; there's no central registry of "who handles `selectedItem` from where."
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for `ItemDetails`, `showScenes`, or login-flow entries.

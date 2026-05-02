@@ -90,7 +90,6 @@ Tests deploy to a real Roku device, but the npm scripts are CLI-driven so an aut
 - `docs/dev/unit-tests.md` — comprehensive guide
 - `docs/dev/unit-tests-tdd.md` — TDD workflow with watch mode
 
-## Cruft callouts
+## Known cruft
 
-- **e2e folder is mostly empty.** The plan was for RTA-based UI automation but it hasn't materialized yet. Real coverage today is unit + integration.
-- **`needsRegistrySetup` opt-in is per-suite.** Forgetting it in a suite that does touch the registry produces flaky tests where one suite's writes leak into another. There's no automatic detection.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for testing entries.

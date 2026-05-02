@@ -113,9 +113,6 @@ This means integration tests can write `test-<id>` sections without ever touchin
 
 `docs/dev/registry-migrations.md` is the canonical guide for writing one. Read it before adding a migration.
 
-## Cruft callouts
+## Known cruft
 
-- **Migration list grows monotonically.** Old migrations stay in the file forever (otherwise users skipping versions would miss them).
-- **No transactional migration.** If a migration crashes halfway through (e.g., write succeeds but delete fails), the next launch may try to re-run it. Most migrations are idempotent by check-existence-first, but it's not enforced.
-- **`m.wasMigrated` flag on global scope.** Global state passed via the implicit `m` AA. Works because `Main()` controls the flow, but reads as a global mutable variable.
-- **No explicit setting deprecation lifecycle.** A setting can be removed, but there's no warning system or deprecation period — the migration just drops the old key. Users with old custom values lose them silently.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for migration entries.

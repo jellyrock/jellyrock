@@ -142,6 +142,6 @@ end function
 
 Why key UP events specifically: BrightScript convention is for child components to return `false` for `press=false`, so all key UP events bubble up to `JRScene`. This guarantees the sequence is tracked regardless of which screen has focus.
 
-## Cruft callouts
+## Known cruft
 
-- **`testToast` is in production builds too.** It's not gated by `#if debug`. The field exists on the JRScene interface always; only the cheat code is debug-gated. Documented for completeness; not a security concern on Roku's sandboxed platform.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for debug-tools / `JRScene` entries.

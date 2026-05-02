@@ -242,10 +242,6 @@ Translations are crowdsourced via Weblate (an open-source translation platform).
 
 So the developer-side workflow is just: edit `en_US.json`, the bot keeps everything else in sync, and translators do their work in Weblate.
 
-## Cruft callouts
+## Known cruft
 
-- **Plural form is Zero/One/Many only.** No support for languages with more than three plural forms (Polish, Russian, Arabic). For now this is mitigated by translators choosing the most generic form for "Many" — but some languages will read awkwardly.
-- **Manual key naming convention.** No enforcement that new keys follow the `Button*`/`Label*`/`Message*` prefix scheme — relies on PR review.
-- **Locale file size scales linearly.** As keys grow, every locale file grows. With many locales, the JSON in the source tree adds up — most of which is checked in, since translations don't compress in source. Not a runtime concern, just a repo-size one.
-- **The `translationLocale` user setting is post-login only.** A new install of the app will use the device locale until the user logs in once and explicitly picks a language. There's no "guest" language picker on the login screen itself (though the language picker setting is in `components/settings/LanguagePicker.xml`, accessible after login).
-- **No RTL (right-to-left) layout flipping.** Arabic and Hebrew translations exist but the UI doesn't mirror its layout for RTL languages. Probably acceptable for a TV media player but worth knowing.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for translation entries.
