@@ -217,6 +217,7 @@ repo
 Repo
 repo-size
 repo-wide
+retry-with-backoff
 revalidation
 roku-log
 roku-log-expert

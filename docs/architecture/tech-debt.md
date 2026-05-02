@@ -64,26 +64,26 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `showscenes-mixes-concerns`
 
 - **area**: `source/showScenes.bs`
-- **issue**: `LoginFlow()` plus a dozen `Create*Group()` scene factories live in one file.
-- **direction**: Split into `source/auth/LoginFlow.bs` and `source/screens/<Name>Page.bs`.
+- **issue**: 702-line file with three concerns: a 230-line `LoginFlow()` state machine, 7 scene factories (`CreateServerGroup`, `CreateUserSelectGroup`, `CreateSigninGroup`, `CreateHomeGroup`, `CreateItemDetailsGroup`, `CreateSearchPage`, plus `playbackOptionDialog`), and three server-list registry utilities (`SaveServerList`, `DeleteFromServerList`, `SendPerformanceBeacon`).
+- **direction**: Split into `source/auth/LoginFlow.bs` (the login state machine), `source/screens/<Name>Page.bs` (one factory per scene), and `source/utils/serverList.bs` (registry helpers).
 
 #### `per-method-v1-v2-routing`
 
 - **area**: `source/api/ApiClient.bs`
-- **issue**: Adding a third API version means editing every `Build*Request()` method. The conditional shape repeats per method.
-- **direction**: Centralize via a routing table — `{ "GetItem": { v1: "/users/{userId}/items/{id}", v2: "/Items/{id}" }, ... }`. Build methods read from the table instead of branching inline.
+- **issue**: 14 of 49 `Build*Request()` methods have inline `if m.getApiVersion() >= 2` branches; the conditional shape repeats per affected method. Adding a third API version means editing each of those 14 methods (the other 35 endpoints share a single code path because their path didn't change between server versions, so they're unaffected).
+- **direction**: Centralize via a routing table — `{ "GetItem": { v1: "/users/{userId}/items/{id}", v2: "/Items/{id}" }, ... }`. The 14 version-aware methods read from the table instead of branching inline; the other 35 stay as-is.
 
 #### `loginflow-error-boundaries`
 
-- **area**: `source/showScenes.bs` (LoginFlow) and elsewhere
-- **issue**: Network failures in `LoginFlow` may leave app in inconsistent state; minimal retry/recovery semantics.
-- **direction**: Define a small set of error categories (network unreachable, auth failed, server error) and a corresponding recovery flow per category.
+- **area**: `source/showScenes.bs` (`LoginFlow`) and elsewhere
+- **issue**: ~230-line `LoginFlow()` collapses every failure mode (server unreachable, server returned error, invalid/expired token, auth failed, password required) into `goto startLogin` / `goto userSelect`. No category-specific recovery — a transient network blip and a permanent auth failure both bounce the user back to server selection, losing their position in the flow.
+- **direction**: Define a small set of error categories (network unreachable, server returned error, auth failed, token invalid) and a corresponding recovery flow per category. Network blips should retry-with-backoff; auth failures should drop into the user picker, not the server picker; token invalid should re-prompt for password without losing the server context.
 
 #### `manual-theme-cascade`
 
-- **area**: `source/utils/globals.bs`, settings flow
-- **issue**: Settings change → `applyThemeColorOverrides` → `refreshThemeColors` → `reloadHome` is a manual chain. Components that cache theme colors at construction time miss updates without a rebuild.
-- **direction**: Either (a) all components read from `m.global.constants` in event handlers (not init), or (b) define a "theme observable" that nodes can opt into.
+- **area**: `source/utils/globals.bs` (`applyThemeColorOverrides`), `components/data/SceneManager.bs` (`refreshThemeColors`, `reloadHome`), call sites in `components/settings/settings.bs:763-766` and `source/utils/session.bs:463-464,488`.
+- **issue**: Settings change → `applyThemeColorOverrides` (writes to `m.global.constants`) → `sceneManager.callFunc("refreshThemeColors")` (re-applies styles) → `sceneManager.callFunc("reloadHome")` (rebuilds home rows) is a 3-step manual chain that every theme-changing call site must invoke in order. Components that cache theme colors at construction time miss updates entirely unless the home is rebuilt.
+- **direction**: Either (a) all components read from `m.global.constants` in event handlers (not `init`), or (b) define a "theme observable" — a node on `m.global` whose updates fire observers — that components opt into instead of relying on `reloadHome` as a blunt rebuild.
 
 ### Low
 
