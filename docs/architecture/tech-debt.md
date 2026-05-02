@@ -1,7 +1,7 @@
 ---
 topic: tech-debt
 related-files: []  # touches everything; per-item area fields point to specific files
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-02
 ---
 
 # Tech Debt & Cruft
@@ -171,6 +171,18 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: repo root
 - **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance.
+
+#### `make-npm-overlap`
+
+- **area**: `Makefile`, `package.json`
+- **issue**: Makefile has 11 targets that mostly duplicate npm scripts (build, lint, test, format). Both routes are maintained in parallel; new contributors don't know which is canonical.
+- **direction**: Pick one as canonical (npm scripts are the more cross-platform choice; Makefile is occasionally useful for orchestrating multi-step shell flows). Either delete the duplicates from the other or document one as primary and the other as a thin wrapper.
+
+#### `changelog-syncer-mixes-validate-mutate`
+
+- **area**: `scripts/changelog-syncer.js`
+- **issue**: Same script provides both `validate()` (read-only) and `syncUnreleased()` / `syncRelease()` (writes the file). A failing `validate` run could be fixed by a `sync` run that then changes things — confusing for callers who expected idempotence.
+- **direction**: Split into separate read-only and write entry points (e.g., `scripts/changelog-validate.cjs` + `scripts/changelog-sync.cjs`), or keep one entry point but make the validate vs sync subcommands clearly distinct in CLI surface.
 
 #### `no-request-cancellation`
 

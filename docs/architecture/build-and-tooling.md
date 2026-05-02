@@ -370,11 +370,6 @@ So the rule is: **don't run `npm run validate` or `npm run lint:bs` manually** (
 - **Cannot modify `CHANGELOG.md`** — CI-controlled only.
 - **`.bs` validation is live in the IDE** (BSC + bslint via the BrighterScript extension); `npm run validate` and `npm run lint:bs` shouldn't be run manually. **Other lint scripts have no universal IDE coverage** (markdown / spelling rely on per-dev extensions; JSON / translations / language-coverage / docs have none) — the pre-push hook is the backstop. Don't run `npm run build:*` manually either; the IDE handles dev builds.
 
-## Cruft callouts
+## Known cruft
 
-- **Multiple bsconfig files.** Each is mostly a copy with a few overrides. A common base + overlays would be cleaner, but `BSC`'s config schema doesn't currently support inheritance.
-- **`bsconfig-tdd.json` is gitignored** — devs maintain their own copy of `bsconfig-tdd-sample.json`. This is fine but means new contributors have to figure out to copy the sample first.
-- **No CI-enforced version bumping.** `package.json` version and the manifest version are maintained by hand. A pre-release script that asserts they match would be helpful.
-- **`make` targets and npm scripts overlap.** Some devs prefer `make`, others `npm`. Both routes are maintained in parallel; documenting one as canonical would simplify onboarding.
-- **The branding image generation (`make make_images`)** depends on ImageMagick being installed locally. Not all CI environments have it; the targets exist but aren't part of the regular build.
-- **`scripts/changelog-syncer.js` does both validation and mutation.** A failing validate run could be fixed by a sync run, which then changes things. A clearer separation between read-only validate and write-only sync would reduce confusion.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for build / tooling entries.
