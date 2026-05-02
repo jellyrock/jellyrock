@@ -22,6 +22,11 @@
 #                                   most often come from code renames (no
 #                                   *.md changes) — limiting it to doc-only
 #                                   pushes lets those slip through to CI.
+#   8. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
+#                                   dev-guides table in docs/architecture/README.md.
+#                                   The auto-fix step above regenerates only when
+#                                   docs/dev/*.md is in the push range; this catches
+#                                   manual README edits or out-of-band drift.
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
 # can't be swept into the auto-fix commit. Check steps still run.
@@ -111,3 +116,6 @@ fi
 
 echo "📚 Validating doc references..."
 npm run lint:docs
+
+echo "📑 Checking dev-index drift..."
+npm run docs:dev-index:check

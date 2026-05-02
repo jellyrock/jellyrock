@@ -157,8 +157,8 @@ Lint and format:
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
 | `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugin-*.cjs`). The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
-| `npm run agent-telemetry` | Aggregates `.claude/logs/tool-use.jsonl` (populated by the PostToolUse hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
-| `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes |
+| `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the PostToolUse hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
+| `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
 | `npm run check-formatting` | `bsfmt --check` (read-only check) |
 | `npm run format` | `bsfmt --write` (apply formatting fixes) |
 | `npm run validate` | `bsc --noEmit` (type-check) |

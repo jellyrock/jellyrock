@@ -21,6 +21,12 @@
  * tab switch. The intent is to catch the common bug of "I set up an observer
  * and never tore it down anywhere".
  *
+ * Scoped/unscoped strictness: `observeField` pairs only with `unobserveField`,
+ * and `observeFieldScoped` pairs only with `unobserveFieldScoped`. Roku tracks
+ * the two on separate observer lists, so a mismatched pair leaves the
+ * registration alive even though the code looks correct. The plugin keeps the
+ * two scopes in separate maps and won't cross-match.
+ *
  * Escape hatch:
  *  - `' bsc-disable-line observe-without-destroy` on the observeField line
  *  - `' bsc-disable-next-line observe-without-destroy` on the line above
@@ -75,7 +81,12 @@ class ObserveWithoutDestroyPlugin {
 
     const aliases = new UnionFind();
     const observes = [];
-    const unobserveByField = new Map(); // fieldName → Set<canonicalTarget>
+    // Two separate maps so observeField and observeFieldScoped can't
+    // accidentally satisfy each other — Roku stores them on different
+    // observer lists, so an unobserveField won't release an
+    // observeFieldScoped (and vice versa).
+    const unobserveByField = new Map();        // fieldName → Set<canonicalTarget>
+    const unobserveByFieldScoped = new Map();  // fieldName → Set<canonicalTarget>
 
     const visitor = brighterscript.createVisitor({
       AssignmentStatement: (stmt) => {
@@ -99,8 +110,10 @@ class ObserveWithoutDestroyPlugin {
         const callee = call?.callee;
         if (!brighterscript.isDottedGetExpression(callee)) return;
         const methodName = callee.tokens?.name?.text;
-        const isObserve = methodName === 'observeField' || methodName === 'observeFieldScoped';
-        const isUnobserve = methodName === 'unobserveField' || methodName === 'unobserveFieldScoped';
+        const isObserveScoped = methodName === 'observeFieldScoped';
+        const isObserve = methodName === 'observeField' || isObserveScoped;
+        const isUnobserveScoped = methodName === 'unobserveFieldScoped';
+        const isUnobserve = methodName === 'unobserveField' || isUnobserveScoped;
         if (!isObserve && !isUnobserve) return;
 
         const fieldArg = call.args?.[0];
@@ -115,14 +128,16 @@ class ObserveWithoutDestroyPlugin {
           observes.push({
             targetRef,
             fieldText,
+            scoped: isObserveScoped,
             location: call.location,
             line: call.location?.range?.start?.line
           });
         } else {
-          if (!unobserveByField.has(fieldText)) {
-            unobserveByField.set(fieldText, new Set());
+          const map = isUnobserveScoped ? unobserveByFieldScoped : unobserveByField;
+          if (!map.has(fieldText)) {
+            map.set(fieldText, new Set());
           }
-          unobserveByField.get(fieldText).add(targetRef);
+          map.get(fieldText).add(targetRef);
         }
       }
     });
@@ -132,24 +147,27 @@ class ObserveWithoutDestroyPlugin {
     });
 
     for (const obs of observes) {
-      if (this.isCovered(obs, unobserveByField, aliases)) continue;
+      if (this.isCovered(obs, unobserveByField, unobserveByFieldScoped, aliases)) continue;
       const sourceLine = sourceLines[obs.line] ?? '';
       if (DISABLE_LINE_MARKER.test(sourceLine)) continue;
       const prevLine = obs.line > 0 ? (sourceLines[obs.line - 1] ?? '') : '';
       if (DISABLE_NEXT_LINE_MARKER.test(prevLine)) continue;
       if (!obs.location) continue;
+      const observeMethod = obs.scoped ? 'observeFieldScoped' : 'observeField';
+      const unobserveMethod = obs.scoped ? 'unobserveFieldScoped' : 'unobserveField';
       program.diagnostics.register({
         code: 'observe-without-destroy',
         severity: 2, // Warning
         source: this.name,
-        message: `observeField("${obs.fieldText}") on '${obs.targetRef}' has no matching unobserveField("${obs.fieldText}") on this target (or a known alias) anywhere in this file. JRScreen subclasses must release every observer (typically in destroy()). Add ' bsc-disable-next-line observe-without-destroy to suppress.`,
+        message: `${observeMethod}("${obs.fieldText}") on '${obs.targetRef}' has no matching ${unobserveMethod}("${obs.fieldText}") on this target (or a known alias) anywhere in this file. JRScreen subclasses must release every observer (typically in destroy()); scoped/unscoped pairs are tracked separately by Roku, so an ${obs.scoped ? 'unobserveField' : 'unobserveFieldScoped'} won't satisfy this. Add ' bsc-disable-next-line observe-without-destroy to suppress.`,
         location: obs.location
       });
     }
   }
 
-  isCovered(observation, unobserveByField, aliases) {
-    const candidates = unobserveByField.get(observation.fieldText);
+  isCovered(observation, unobserveByField, unobserveByFieldScoped, aliases) {
+    const map = observation.scoped ? unobserveByFieldScoped : unobserveByField;
+    const candidates = map.get(observation.fieldText);
     if (!candidates || candidates.size === 0) return false;
     const observedRoot = aliases.find(observation.targetRef);
     for (const target of candidates) {

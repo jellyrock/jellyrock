@@ -32,10 +32,15 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT_DIR = process.argv.find(a => !a.startsWith('--') && !a.endsWith('.cjs') && a !== process.argv[0] && a !== process.argv[1]) || '.';
+// Argv parsing: any non-flag positional is treated as the root dir. Mirrors
+// the pattern used by docs-stale.cjs so the two scripts behave the same way.
+const args = process.argv.slice(2);
+const positional = args.filter(a => !a.startsWith('--'));
+
+const ROOT_DIR = positional[0] || '.';
 const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 const README_PATH = path.join(ROOT_DIR, 'docs/architecture/README.md');
-const CHECK_MODE = process.argv.includes('--check');
+const CHECK_MODE = args.includes('--check');
 
 const BEGIN_MARKER = '<!-- BEGIN auto-generated dev-index (run `npm run docs:dev-index` to regenerate) -->';
 const END_MARKER = '<!-- END auto-generated dev-index -->';

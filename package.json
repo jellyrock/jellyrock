@@ -50,7 +50,7 @@
     "docs:stale": "node scripts/docs-stale.cjs",
     "agent-telemetry": "node scripts/agent-telemetry-report.cjs",
     "format": "npx bsfmt --write",
-    "lint": "npm run check-formatting && npm run lint:bs && npm run validate && npm run lint:json && npm run lint:markdown && npm run lint:spelling && npm run lint:translations && npm run lint:language-coverage && npm run lint:docs",
+    "lint": "npm run check-formatting && npm run lint:bs && npm run validate && npm run lint:json && npm run lint:markdown && npm run lint:spelling && npm run lint:translations && npm run lint:language-coverage && npm run lint:docs && npm run docs:dev-index:check",
     "lint:bs": "bslint",
     "lint:docs": "node scripts/docs-check.cjs",
     "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,out,locale ./",

@@ -1,4 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt 'legacy-print-statements'
+' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 
 import "pkg:/source/utils/misc.bs"
 
