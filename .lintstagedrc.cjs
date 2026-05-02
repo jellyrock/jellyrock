@@ -1,0 +1,80 @@
+// Pre-commit lint configuration (lint-staged).
+//
+// Runs file-scoped lint + auto-format on staged files at `git commit` time.
+// lint-staged automatically re-stages mutations from auto-fix steps, so
+// reformatted code lands in the same commit.
+//
+// Surface ownership (see docs/architecture/build-and-tooling.md):
+//   - PostToolUse hook  — bsfmt --write on every agent Write/Edit (Claude Code only)
+//   - End-of-turn hook  — spell/markdown/json on uncommitted-only files (agents)
+//   - Pre-commit (here) — file-scoped lint+format for everyone (humans + agents)
+//   - Pre-push hook     — project-wide checks (validate, bslint, lint:docs, regens)
+//   - CI                — same as pre-push, can't bypass
+//
+// What lives here vs pre-push:
+//   - bsfmt --write (file-scoped, fast, auto-fix) → here
+//   - bslint (cross-scope; needs full project context, not file-scopable) → pre-push
+//   - markdownlint --fix (file-scoped, auto-fix) → here
+//   - spellchecker (file-scoped) → here
+//   - jshint .json (file-scoped) → here
+//   - bsc --noEmit (project-wide compile) → pre-push
+//   - lint:docs / docs:dev-index:check (cross-doc references) → pre-push
+//   - update-translations / docs:dev-index regen (project-wide regen) → pre-push
+//
+// Excludes mirror package.json's `lint:*` scripts via shared helpers in
+// `scripts/lib/lint-excludes.cjs` so all three surfaces (this file,
+// `scripts/check-touched-lint.cjs`, package.json) stay in sync.
+
+'use strict';
+
+const {
+  isSpellExcluded,
+  isMarkdownExcluded,
+  isJsonExcluded,
+} = require('./scripts/lib/lint-excludes.cjs');
+
+// Shell-quote a single file path. Defensive: file paths can contain spaces,
+// quotes, etc. Single-quoting + escaping any single quotes is the safe form.
+const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+// Build a `cmd args... files...` invocation, quoting file paths. Returns
+// null when there are no files left after filtering — lint-staged treats
+// `null` / `[]` / `undefined` as "no work to do" for that glob.
+const cmdWithFiles = (cmd, files) => {
+  if (files.length === 0) return null;
+  return `${cmd} ${files.map(q).join(' ')}`;
+};
+
+const SPELLCHECKER_PLUGINS =
+  'spell indefinite-article repeated-words syntax-mentions syntax-urls frontmatter';
+
+module.exports = {
+  // BrighterScript format — auto-fix; lint-staged re-stages the result.
+  // bslint stays in pre-push (full project context required).
+  '*.{bs,brs}': (files) => {
+    const cmd = cmdWithFiles('npx bsfmt --write', files);
+    return cmd ? [cmd] : [];
+  },
+
+  // Markdown — auto-fix style + spell-check (no spell auto-fix; check only).
+  '*.md': (files) => {
+    const mdLint = cmdWithFiles(
+      'npx markdownlint-cli2 --fix',
+      files.filter((f) => !isMarkdownExcluded(f)),
+    );
+    const spell = cmdWithFiles(
+      `npx spellchecker -d dictionary.txt -p ${SPELLCHECKER_PLUGINS} --files`,
+      files.filter((f) => !isSpellExcluded(f)),
+    );
+    return [mdLint, spell].filter(Boolean);
+  },
+
+  // JSON syntax — check-only (jshint has no auto-fix).
+  '*.json': (files) => {
+    const cmd = cmdWithFiles(
+      'npx jshint --extra-ext .json --verbose',
+      files.filter((f) => !isJsonExcluded(f)),
+    );
+    return cmd ? [cmd] : [];
+  },
+};

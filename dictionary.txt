@@ -1,5 +1,7 @@
 .bs
+.claude
 .editorconfig
+.github
 .vscode
 AAC
 AAs
@@ -17,7 +19,10 @@ Async
 auth
 Auth
 autocomplete
+backtick
 backtick-wrapped
+backticking
+backticks
 bitrate
 Bitrate
 bool
@@ -71,6 +76,7 @@ devs
 dialogs
 Diátaxis
 DLNA
+docstring
 DoVi
 downmixing
 downscaled
@@ -114,6 +120,7 @@ HLS
 how-tos
 HTTPS
 i18n
+idempotence
 ImageMagick
 in-repo
 ing
@@ -171,6 +178,7 @@ npm
 NPM
 ns
 onboarding
+opencode
 orchestrator
 Orchestrator
 OSD
@@ -183,6 +191,9 @@ per-worktree
 PGS
 playstate
 PNGs
+pre-commit
+Pre-commit
+pre-commit's
 pre-existing
 pre-fetch
 Pre-fetches
@@ -246,6 +257,8 @@ stateful
 Stateful
 subclasses
 Subclasses
+subcommand
+subcommands
 subdir
 Subdir
 subdirs
@@ -282,6 +295,7 @@ unit-tests-tdd
 unobserve
 unshuffled
 unsynchronized
+untracked
 untyped
 Untyped
 Unwatched

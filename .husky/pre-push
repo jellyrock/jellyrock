@@ -1,37 +1,36 @@
 #!/usr/bin/env sh
-# Pre-push hook: auto-fix and conditionally lint per file type changed in the
-# push range. Mirrors the CI lint suite so issues are caught before they fail
-# the build.
+# Pre-push hook: project-wide / cross-cutting checks that don't fit at
+# pre-commit time. File-scoped lint + format runs in pre-commit (lint-staged,
+# see .lintstagedrc.cjs).
 #
-# Auto-fix steps (mutate files; combined into one commit):
-#   1. bsfmt --write on *.bs / *.brs in range
-#   2. npm run update-translations  if BS source / locale / settings/settings.json changed
-#   3. npm run docs:dev-index       if docs/dev/*.md changed (regen index in
-#                                   docs/architecture/README.md)
+# Auto-fix steps (mutate files; combined into one auto-fix commit at the end):
+#   1. npm run update-translations  if BS source / locale / settings/settings.json changed
+#                                    (regens translation key constants from en_US.json)
+#   2. npm run docs:dev-index       if docs/dev/*.md changed
+#                                    (regens dev-guides index in docs/architecture/README.md)
 #
 # Check steps (read-only; non-zero exit aborts the push):
 #   3. npm run validate           — *.bs / *.brs / *.xml / bsconfig*.json
-#   4. npm run lint:markdown      — *.md
-#   5. npm run lint:spelling      — *.md
-#   6. npm run lint:json          — *.json (jshint applies its own excludes)
-#   7. npm run lint:docs          — ALWAYS. Validates related-files: paths
-#                                   and markdown links across every
-#                                   docs/architecture/*.md, docs/dev/*.md,
-#                                   docs/decisions.md, and every CLAUDE.md.
-#                                   Runs unconditionally because broken refs
-#                                   most often come from code renames (no
-#                                   *.md changes) — limiting it to doc-only
-#                                   pushes lets those slip through to CI.
-#   8. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
-#                                   dev-guides table in docs/architecture/README.md.
-#                                   The auto-fix step above regenerates only when
-#                                   docs/dev/*.md is in the push range; this catches
-#                                   manual README edits or out-of-band drift.
+#                                    (full BSC project compile — can't be file-scoped)
+#   4. npm run lint:bs            — *.bs / *.brs (bslint; needs full project context)
+#   5. npm run lint:docs          — ALWAYS. Validates related-files: paths and
+#                                    markdown links across every doc + CLAUDE.md.
+#                                    Cross-doc check; not file-scopable.
+#   6. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
+#                                     dev-guides table.
+#   7. npm run lint:language-coverage — when language-coverage triggers changed
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
 # can't be swept into the auto-fix commit. Check steps still run.
 #
-# Bypass with `git push --no-verify` if you absolutely need to skip.
+# What's NOT here (handled in pre-commit / lint-staged):
+#   - bsfmt --write / --check on .bs/.brs (file-scoped)
+#   - markdownlint --fix on .md (file-scoped)
+#   - spellchecker on .md (file-scoped)
+#   - jshint on .json (file-scoped)
+#
+# Bypass with `git push --no-verify` if you absolutely need to skip — CI
+# still runs everything.
 
 set -e
 
@@ -54,27 +53,20 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # File-type detection
 # ──────────────────────────────────────────────────────────────────────────
-BS_FILES=$(echo "$CHANGED" | grep -E '\.(bs|brs)$' || true)
-TRANSLATION_TRIGGERS=$(echo "$CHANGED" | grep -E '^(source|components)/.*\.bs$|^locale/|^settings/settings\.json$' || true)
 HAS_VALIDATE_TRIGGERS=$(echo "$CHANGED" | grep -qE '\.(bs|brs|xml)$|^bsconfig.*\.json$' && echo 1 || true)
-HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
-HAS_JSON=$(echo "$CHANGED" | grep -qE '\.json$' && echo 1 || true)
+HAS_BS=$(echo "$CHANGED" | grep -qE '\.(bs|brs)$' && echo 1 || true)
 HAS_DEV_DOCS=$(echo "$CHANGED" | grep -qE '^docs/dev/.*\.md$' && echo 1 || true)
+TRANSLATION_TRIGGERS=$(echo "$CHANGED" | grep -E '^(source|components)/.*\.bs$|^locale/|^settings/settings\.json$' || true)
+HAS_LANGUAGE_TRIGGERS=$(echo "$CHANGED" | grep -qE '^source/utils/(languages|mediaDisplayTitle)\.bs$|^locale/custom/en_US\.json$|^scripts/lint-language-coverage\.cjs$' && echo 1 || true)
 
 # ──────────────────────────────────────────────────────────────────────────
-# Auto-fix steps (mutate files; combined into one commit at the end)
+# Auto-fix steps (project-wide regens; combined into one commit at the end)
 # ──────────────────────────────────────────────────────────────────────────
-if [ -n "$BS_FILES" ] || [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ]; then
+if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ]; then
   if ! git diff-index --quiet HEAD --; then
     echo "⚠️  Working tree has uncommitted changes; skipping auto-fix steps."
     echo "   Commit or stash them, then re-push to enable auto-fix."
   else
-    if [ -n "$BS_FILES" ]; then
-      FILE_COUNT=$(echo "$BS_FILES" | wc -l)
-      echo "🎨 Formatting $FILE_COUNT BS/BRS file(s) in push range..."
-      echo "$BS_FILES" | xargs npx bsfmt --write
-    fi
-
     if [ -n "$TRANSLATION_TRIGGERS" ]; then
       echo "🌐 Updating translations..."
       npm run update-translations
@@ -102,16 +94,14 @@ if [ -n "$HAS_VALIDATE_TRIGGERS" ]; then
   npm run validate
 fi
 
-if [ -n "$HAS_MD" ]; then
-  echo "📖 Linting markdown..."
-  npm run lint:markdown
-  echo "🔤 Spell-checking markdown..."
-  npm run lint:spelling
+if [ -n "$HAS_BS" ]; then
+  echo "🧹 Linting BrightScript (project-wide)..."
+  npm run lint:bs
 fi
 
-if [ -n "$HAS_JSON" ]; then
-  echo "📋 Linting JSON..."
-  npm run lint:json
+if [ -n "$HAS_LANGUAGE_TRIGGERS" ]; then
+  echo "🌍 Checking language coverage..."
+  npm run lint:language-coverage
 fi
 
 echo "📚 Validating doc references..."

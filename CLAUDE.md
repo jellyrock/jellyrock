@@ -18,6 +18,20 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 - **Cannot modify `CHANGELOG.md`** — CI-controlled.
 - **Don't run `npm run validate`, `npm run lint:*`, or `npm run build:*` manually** — the pre-push hook runs them at push time and the IDE handles `.bs` live. Exception: debugging a specific lint failure.
 
+## Doc maintenance discipline
+
+When you modify a file listed in any architecture doc's `related-files:` frontmatter, you must also re-read that doc and either:
+
+- **Update it** if the change altered the subsystem's *shape* or *why*. Bump `last-reviewed` in the frontmatter to today's date.
+- **Explicitly confirm no shape/why change occurred** in your response, leaving the doc untouched. Don't bump `last-reviewed` — that signal must reflect actual review against current code.
+
+Two enforcement layers back this up:
+
+- An **end-of-turn hook** (Claude Code `Stop`, Copilot Coding Agent `sessionEnd`) prints which docs claim the files you touched. Informational; doesn't block. Logic in [`scripts/check-touched-related-files.cjs`](scripts/check-touched-related-files.cjs).
+- A **CI gate** ([`scripts/docs-stale-blocking.cjs`](scripts/docs-stale-blocking.cjs), wired to [`.github/workflows/lint-docs.yml`](.github/workflows/lint-docs.yml)) fails the PR if a stale (over 120 days) architecture doc's territory was modified without the doc itself being updated. Hard pressure at PR time.
+
+Soft prompt during work, hard gate before merge. The CI gate is architecture-only (dev guides under `docs/dev/` are informational — the soft signal in `npm run docs:stale` covers them).
+
 ## Where the rules actually live
 
 This file holds only cross-cutting / repo-wide rules. Per-area rules live in scoped `CLAUDE.md` files that auto-load when an agent reads files in that directory:

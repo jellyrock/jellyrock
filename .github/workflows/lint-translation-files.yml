@@ -1,13 +1,8 @@
 name: lint-translation-files
+
+# No event-time `paths:` filter — see .github/actions/changed-paths for why.
 on:
   pull_request:
-    paths:
-      - "locale/custom/*.json"
-      - "source/**/*.bs"
-      - "components/**/*.bs"
-      - "components/**/*.xml"
-      - "settings/settings.json"
-      - "scripts/update-translations.cjs"
 
 jobs:
   run:

@@ -1,4 +1,4 @@
-name: lint-spelling
+name: lint-docs
 
 # No event-time `paths:` filter — see .github/actions/changed-paths for why.
 on:
@@ -6,4 +6,4 @@ on:
 
 jobs:
   run:
-    uses: ./.github/workflows/_lint-spelling.yml
+    uses: ./.github/workflows/_lint-docs.yml

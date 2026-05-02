@@ -2,6 +2,12 @@ name: lint-spelling
 
 on:
   workflow_call:
+    inputs:
+      force:
+        description: 'When true, skip path detection and run unconditionally (used by the dependencies validator).'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   run:
@@ -9,11 +15,19 @@ jobs:
     steps:
       - name: Clone github repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - id: detect
+        uses: ./.github/actions/changed-paths
+        with:
+          # Mirrors the previous event-time paths filter (**/*.md).
+          pattern: '\.md$'
+          force: ${{ inputs.force }}
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        if: steps.detect.outputs.relevant == 'true'
         with:
           node-version: "lts/*"
           cache: "npm"
       - name: Cache ropm dependencies
+        if: steps.detect.outputs.relevant == 'true'
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
@@ -22,6 +36,8 @@ jobs:
           key: ropm-${{ hashFiles('package.json', 'package-lock.json') }}
           restore-keys: ropm-
       - name: Install npm dependencies
+        if: steps.detect.outputs.relevant == 'true'
         run: npm ci
       - name: Check markdown files for spelling errors
+        if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:spelling
