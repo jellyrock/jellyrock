@@ -1,0 +1,16 @@
+name: lint-docs
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "docs/**"
+      - "scripts/docs-check.cjs"
+      - "scripts/docs-stale.cjs"
+      - "scripts/docs-stale-blocking.cjs"
+      - "scripts/generate-dev-index.cjs"
+      - "**/CLAUDE.md"
+      - "AGENTS.md"
+
+jobs:
+  run:
+    uses: ./.github/workflows/_lint-docs.yml

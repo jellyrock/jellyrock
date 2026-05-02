@@ -1,0 +1,38 @@
+name: lint-docs
+
+# Validates doc references and generated indexes:
+#   - lint:docs              — related-files paths, markdown links, tech-debt anchors
+#   - docs:dev-index:check   — drift on the auto-generated dev-guides index in
+#                              docs/architecture/README.md
+#   - docs:stale:blocking    — conditional hard gate (only fails if this PR
+#                              touches a stale doc's related-files without
+#                              also updating the doc; see docs-stale-blocking.cjs)
+#
+# These checks run only in .husky/pre-push otherwise — fork PRs and pushes
+# with --no-verify bypass that hook entirely. Running them in CI closes
+# the gap.
+#
+# Note: the underlying scripts use only Node stdlib (fs, path), so no
+# `npm ci` step is needed.
+
+on:
+  workflow_call:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0  # docs-stale-blocking.cjs needs origin/main for the diff
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "lts/*"
+      - name: Validate doc references
+        run: node scripts/docs-check.cjs
+      - name: Check dev-index drift
+        run: node scripts/generate-dev-index.cjs --check
+      - name: Conditional stale-doc gate
+        run: node scripts/docs-stale-blocking.cjs
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}

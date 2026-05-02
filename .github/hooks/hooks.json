@@ -1,0 +1,19 @@
+{
+  "$comment": [
+    "Hook config for the GitHub Copilot Coding Agent (the GitHub-hosted variant).",
+    "In-IDE Copilot Chat does not consume this file — that variant has no",
+    "end-of-session hook surface; for IDE Copilot, the only enforcement is at",
+    "PR time via .github/workflows/lint-docs.yml.",
+    "",
+    "The sessionEnd hook mirrors Claude Code's Stop hook: it invokes the same",
+    "tool-agnostic reminder script that points the agent at any architecture",
+    "doc whose related-files were touched without the doc itself being updated."
+  ],
+  "hooks": {
+    "sessionEnd": [
+      {
+        "command": "node scripts/check-touched-related-files.cjs --quiet"
+      }
+    ]
+  }
+}
