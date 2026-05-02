@@ -32,8 +32,20 @@ const MARKDOWN_PREFIXES = ['node_modules/', 'out/', 'build/', 'tasks/', '.claude
 const MARKDOWN_SUFFIXES = ['/copilot-instructions.md', '/CLAUDE.md', '/AGENTS.md'];
 
 // JSON lint excludes.
-// Mirrors package.json `lint:json` (jshint --exclude).
-const JSON_PREFIXES = ['node_modules/', 'scripts/', 'tasks/', 'build/', 'out/', 'locale/'];
+// Mirrors the prefix-shaped excludes in package.json `lint:json` (jshint --exclude).
+// Two single-file excludes (`eslint.config.js`, `vitest.config.js`) live only in
+// package.json — they exist so jshint doesn't try to parse ESM as ES5 when run
+// repo-wide via `./`. They never reach this helper because lint-staged scopes
+// jshint to `*.json` files only, so a `.js` config can't be passed in.
+const JSON_PREFIXES = [
+  'node_modules/',
+  'scripts/',
+  'tests/scripts/',
+  'tasks/',
+  'build/',
+  'out/',
+  'locale/',
+];
 
 function _matches(file, exact, prefixes, suffixes = []) {
   if (exact && exact.has(file)) return true;

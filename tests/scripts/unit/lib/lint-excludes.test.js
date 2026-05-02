@@ -60,6 +60,13 @@ describe('lint-excludes / isJsonExcluded', () => {
     expect(isJsonExcluded('scripts/foo.json')).toBe(true);
   });
 
+  it('matches tests/scripts/foo.json (prefix)', () => {
+    // Locks the parity with package.json `lint:json` exclude. Without this
+    // prefix, lint-staged would run jshint on JSON under tests/scripts/ even
+    // though the package.json script skips it — silent surface drift.
+    expect(isJsonExcluded('tests/scripts/foo.json')).toBe(true);
+  });
+
   it('matches locale/custom/en_US.json (prefix)', () => {
     expect(isJsonExcluded('locale/custom/en_US.json')).toBe(true);
   });
