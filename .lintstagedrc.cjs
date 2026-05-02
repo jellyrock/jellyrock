@@ -27,11 +27,31 @@
 
 'use strict';
 
+const path = require('path');
 const {
   isSpellExcluded,
   isMarkdownExcluded,
   isJsonExcluded,
 } = require('./scripts/lib/lint-excludes.cjs');
+
+// lint-staged passes ABSOLUTE paths to function configs, but the exclude
+// helpers in `lint-excludes.cjs` (and the `lint:*` scripts in package.json
+// they mirror) match against repo-relative POSIX-style paths. Normalize
+// at this boundary so the exclude check actually fires.
+//
+// Without this, every prefix/exact exclude (CHANGELOG.md, .claude/**,
+// node_modules/**, docs/user/app-settings.md, …) silently failed to
+// match. The bug surfaced post-merge when the changelog-sync bot
+// committed CHANGELOG.md and lint-staged ran spellchecker on it instead
+// of skipping.
+const REPO_ROOT = process.cwd();
+const toRel = (file) => {
+  const rel = path.relative(REPO_ROOT, file);
+  // Force POSIX separators so the comparison matches the exclude lists,
+  // which use `/` regardless of host OS.
+  return rel.split(path.sep).join('/');
+};
+const keep = (predicate) => (files) => files.filter((f) => !predicate(toRel(f)));
 
 // Shell-quote a single file path. Defensive: file paths can contain spaces,
 // quotes, etc. Single-quoting + escaping any single quotes is the safe form.
@@ -51,6 +71,7 @@ const SPELLCHECKER_PLUGINS =
 module.exports = {
   // BrighterScript format — auto-fix; lint-staged re-stages the result.
   // bslint stays in pre-push (full project context required).
+  // No path-based excludes for .bs/.brs today.
   '*.{bs,brs}': (files) => {
     const cmd = cmdWithFiles('npx bsfmt --write', files);
     return cmd ? [cmd] : [];
@@ -58,13 +79,10 @@ module.exports = {
 
   // Markdown — auto-fix style + spell-check (no spell auto-fix; check only).
   '*.md': (files) => {
-    const mdLint = cmdWithFiles(
-      'npx markdownlint-cli2 --fix',
-      files.filter((f) => !isMarkdownExcluded(f)),
-    );
+    const mdLint = cmdWithFiles('npx markdownlint-cli2 --fix', keep(isMarkdownExcluded)(files));
     const spell = cmdWithFiles(
       `npx spellchecker -d dictionary.txt -p ${SPELLCHECKER_PLUGINS} --files`,
-      files.filter((f) => !isSpellExcluded(f)),
+      keep(isSpellExcluded)(files),
     );
     return [mdLint, spell].filter(Boolean);
   },
@@ -73,7 +91,7 @@ module.exports = {
   '*.json': (files) => {
     const cmd = cmdWithFiles(
       'npx jshint --extra-ext .json --verbose',
-      files.filter((f) => !isJsonExcluded(f)),
+      keep(isJsonExcluded)(files),
     );
     return cmd ? [cmd] : [];
   },
