@@ -12,6 +12,7 @@ api
 api-layering-guide
 api-patterns
 APIs
+arg
 args
 assignees
 async
@@ -272,6 +273,7 @@ superset
 SVG
 SVGs
 teardown
+tmpdir
 Tooltip
 transcode
 Transcode
@@ -282,6 +284,10 @@ transcoder
 transcoding
 Transcoding
 translations-howto
+transpile
+Transpile
+transpile-mutating
+Transpile-mutating
 transpiled
 Transpiled
 trickplay

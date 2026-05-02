@@ -60,8 +60,14 @@ needs to come first.
 `npm run test:scripts` (CI) or `npm run test:scripts:tdd` (watch mode).
 
 BSC plugin tests use **inline scenarios** — template literals carrying short
-synthetic `.bs`/`.xml` snippets passed to the shared `_helpers/run-plugin.js`
-harness. Bodies stay under ~50 lines per scenario.
+synthetic `.bs`/`.xml` snippets passed to one of three harnesses under
+`tests/scripts/unit/_helpers/`:
+
+- `run-plugin.js` — diagnostic-emitting plugins (Tier 1).
+- `transpile-with-plugin.js` — transpile-mutating plugins (`roku-log`).
+- `run-plugin-with-temp-locale.js` — virtual-file injectors (`translation-keys`).
+
+Bodies stay under ~50 lines per scenario.
 
 If a future plugin grows fixtures that don't fit comfortably inline, the next
 step is `.bs` fixture files alongside the tests — but that hasn't been needed
