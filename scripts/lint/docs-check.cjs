@@ -304,11 +304,12 @@ for (const file of findClaudeMds(ROOT_DIR)) {
 // frequently cite tech-debt slugs (the plugins enforce conventions documented
 // there). These are .cjs, not .md, but the slug-ref regex doesn't care.
 function findPluginScripts() {
-  if (!fs.existsSync(SCRIPTS_DIR)) return [];
+  const pluginsDir = path.join(SCRIPTS_DIR, 'bsc-plugins');
+  if (!fs.existsSync(pluginsDir)) return [];
   return fs
-    .readdirSync(SCRIPTS_DIR)
-    .filter((f) => f.startsWith('bsc-plugin-') && f.endsWith('.cjs'))
-    .map((f) => path.join(SCRIPTS_DIR, f))
+    .readdirSync(pluginsDir)
+    .filter((f) => f.endsWith('.cjs'))
+    .map((f) => path.join(pluginsDir, f))
     .sort();
 }
 
