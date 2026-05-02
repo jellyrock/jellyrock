@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- agent-context system (docs + governance tooling) ([#533](https://github.com/jellyrock/jellyrock/pull/533))
+
 ### Dependencies
 
 - Update brighterscript-formatter from v1.7.23 to v1.7.24 ([#532](https://github.com/jellyrock/jellyrock/pull/532))
