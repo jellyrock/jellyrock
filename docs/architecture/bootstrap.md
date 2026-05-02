@@ -204,9 +204,6 @@ end if
 
 This runs **after** the home screen is loaded (so the user lands on home if they back out of playback). All other deep-link types (audio, photo, etc.) fall through to the regular event loop.
 
-## Cruft callouts
+## Known cruft
 
-- **`main.bs` is large** with many distinct responsibilities crammed into the event loop: playback, favorites toggle, watched toggle, voice search, quickplay dispatch, font download completion, screen lifecycle. Could be decomposed into per-concern handler modules. (See `tech-debt.md`.)
-- **The `appStart:` label and `goto`-based restart** for "log out and start over" is `BrightScript-old-school`. Works fine, but unusual today; a `loop { ... break }` would read more naturally.
-- **`printRegistry()` runs unconditionally** at startup. Useful in dev, noisy in prod logs unless filtered by log level.
-- **The `quickPlayNode` set-then-clear pattern** is the unusual receiver side of the event idiom. Canonical explanation in `user-journey.md` ("The set-then-clear pattern" section).
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for bootstrap / `main.bs` entries.
