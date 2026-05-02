@@ -212,9 +212,6 @@ Compiled out in production builds via `bs_const=debug=false`. In debug builds, `
 
 Code paths that check these flags are wrapped in `#if debug` so they have zero runtime cost in production. See `debug-tools.md`.
 
-## Cruft callouts
+## Known cruft
 
-- **Manual theme color cascade.** As above — settings change → `applyThemeColorOverrides` → `refreshThemeColors` → `reloadHome` is a chain that any new themed component must opt into. There's no general "this constant changed, refresh the tree" mechanism.
-- **No type guard for `m.global.user.settings.<x>` typos.** BSC validates the field name at compile time *for the typed ContentNode*, but only if the access is properly typed. Untyped accesses (the common case in older code) fall through silently and return `invalid`, which can mask bugs.
-- **`fontScaleFactor` is conditional.** Only computed if `uiFontFallback` is enabled (which downloads a fallback font for non-Latin scripts and computes a scale factor so layouts don't break). This adds a multi-step startup path with several observer points; a small but real source of complexity.
-- **`m.global.app.lastRunVersion` straddles two concerns.** It's both a read-from-registry value (used by migrations) AND a write-on-startup value (set to `m.global.app.version` once migrations finish). The window between read and write is brief, but you have to know that "lastRunVersion" means different things at different times in startup.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for global-state / theme entries.
