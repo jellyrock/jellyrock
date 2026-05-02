@@ -12,7 +12,9 @@ api
 api-layering-guide
 api-patterns
 APIs
+arg
 args
+AST
 assignees
 async
 Async
@@ -36,6 +38,7 @@ BrighterScript
 BrighterScript's
 BrightScript
 BSC
+BSC's
 BSC-plugin-generated
 bsconfig
 bsconfig-tests.json
@@ -65,6 +68,7 @@ Config
 ContentNode
 crossfade
 crowdsourced
+dedup
 deduplicated
 dep
 dev
@@ -219,6 +223,7 @@ RALE
 Re-init
 README
 Reddit
+recurse
 refetching
 regen
 remuxing
@@ -272,6 +277,7 @@ superset
 SVG
 SVGs
 teardown
+tmpdir
 Tooltip
 transcode
 Transcode
@@ -282,6 +288,10 @@ transcoder
 transcoding
 Transcoding
 translations-howto
+transpile
+Transpile
+transpile-mutating
+Transpile-mutating
 transpiled
 Transpiled
 trickplay

@@ -102,17 +102,25 @@ All test files are ESM `.test.js` regardless of whether the script-under-test
 is `.cjs` or `.js` — Vitest handles cross-module-system imports transparently.
 
 For BSC plugins, tests use **inline scenarios** today — template literals
-(sometimes via `undent`) carrying short synthetic `.bs` snippets passed to
-the shared harness. Every plugin test in `tests/scripts/unit/bsc-plugins/`
-follows this shape; bodies stay under ~50 lines and each scenario is
-self-contained.
+carrying short synthetic `.bs`/`.xml` snippets passed to one of the harnesses
+in [`tests/scripts/unit/_helpers/`](../../tests/scripts/unit/_helpers/).
+Every plugin test in `tests/scripts/unit/bsc-plugins/` follows this shape;
+bodies stay under ~50 lines and each scenario is self-contained.
 
 If a future plugin grows scenarios that don't fit comfortably inline (very
 long fixtures, or fixtures shared across multiple test cases), the next step
 is `.bs` fixture files alongside the tests — but the pattern hasn't been
 needed yet, so we haven't standardized a layout.
 
-Pattern (sketch):
+Three harnesses cover three plugin shapes:
+
+| Harness | Used for | Returns |
+|---|---|---|
+| `_helpers/run-plugin.js` | Diagnostic-emitting plugins (Tier 1) | flat diagnostic array from `program.validate()` |
+| `_helpers/transpile-with-plugin.js` | Transpile-mutating plugins (Tier 2 — `roku-log`) | `{pkgPath: transpiledCode}` from `program.getTranspiledFileContents()` |
+| `_helpers/run-plugin-with-temp-locale.js` | Virtual-file-injecting plugins (Tier 2 — `translation-keys`) | builder-style helper exposing `setup`/`regenerate`/`writeLocale`/`teardown` |
+
+Tier 1 pattern (sketch):
 
 ```js
 import { describe, it, expect } from 'vitest';
@@ -129,10 +137,27 @@ describe('no-direct-sdk', () => {
 });
 ```
 
-The shared `_helpers/run-plugin.js` harness instantiates a `brighterscript`
-`Program` with the plugin loaded, applies the source, and returns a flat
-diagnostic list (synchronously — `program.validate()` is synchronous, so no
-`await` needed at the call site). Keeps individual tests terse.
+Tier 2 transpile pattern (sketch):
+
+```js
+import { transpileWithPlugin } from './_helpers/transpile-with-plugin.js';
+import rokuLogPlugin from '../../../scripts/bsc-plugins/roku-log.cjs';
+
+it('strips m.log.* calls by default', async () => {
+  const out = await transpileWithPlugin(rokuLogPlugin, {
+    'source/foo.bs': `sub init()\n  m.log.info("hi")\nend sub`,
+  });
+  expect(out['source/foo.bs']).not.toMatch(/m\.log\.info/);
+});
+```
+
+Plugin config flows through `Program` options — pass `{ rokuLog: { strip: false } }`
+as the third arg to override defaults.
+
+The Tier 1 harness is synchronous (`program.validate()` is sync). The Tier 2
+transpile harness is `async` because `getTranspiledFileContents` is. The
+Tier 2 virtual-file harness is sync but uses `beforeEach`/`afterEach` for
+tmpdir setup/cleanup.
 
 ## Common gotchas
 
