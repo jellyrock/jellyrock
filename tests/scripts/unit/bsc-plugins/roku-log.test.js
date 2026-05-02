@@ -79,10 +79,8 @@ describe('roku-log plugin (Tier 2)', () => {
   describe('guard', () => {
     it('wraps m.log.* calls in if m.__le = true then ... end if', async () => {
       // Combine with insertPkgPath so the plugin's visitedLines dedup fires
-      // (it's only set inside the insertPkgPath branch). Without the dedup,
-      // wrapping the call in a new IfStatement causes the AST walker to
-      // re-visit the inner ExpressionStatement and recurse infinitely.
-      // Asserting on both behaviors here doubles as a combined-mode check.
+      // — see tech-debt.md#roku-log-guard-without-pkgpath-recurses. Asserting
+      // on both behaviors here doubles as a combined-mode check.
       const out = await transpileWithPlugin(
         rokuLogPlugin,
         {

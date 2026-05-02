@@ -197,6 +197,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **direction**: Audit the require-graph first. Anything `require()`'d by a BSC plugin or another locked CJS file (incl. `scripts/lib/*` callers) is forced `.cjs`. Top-level CLI scripts that aren't required by anything are migrate-able to ESM `.js`. Mechanical conversion (`require` → `import`, `module.exports` → `export`, `__dirname` → `fileURLToPath(import.meta.url)`), but needs the audit first because some scripts that look standalone are actually required by lint-staged or other CJS callers.
 - **enforced**: [`scripts/CLAUDE.md`](../../scripts/CLAUDE.md) documents the forward rule; [`docs/dev/scripts-development.md`](../dev/scripts-development.md) covers the gotchas. ESLint's `eslint-plugin-n` `flat/mixed-esm-and-cjs` preset handles both extensions transparently.
 
+#### `roku-log-guard-without-pkgpath-recurses`
+
+- **area**: `scripts/bsc-plugins/roku-log.cjs`
+- **issue**: The plugin's `visitedLines` dedup is set inside the `insertPkgPath` branch, so it never fires when `guard: true, insertPkgPath: false`. With that combination, wrapping the call in a fresh `IfStatement` causes the BSC AST walker to re-enter the inner `ExpressionStatement`, hit the same visitor, wrap again, and recurse until BSC's plugin error handler catches the `RangeError`. The first edit completes so output looks correct, but it's masked corruption. Production never hits this — defaults are `guard: false`; prod uses `strip: true` (which short-circuits before the guard branch).
+- **direction**: Move `visitedLines[range.start.line] = true` out of the `insertPkgPath` block so it's always set when an `m.log.*` call is visited, regardless of which transform fires. The `tests/scripts/unit/bsc-plugins/roku-log.test.js` guard scenario currently combines `guard + insertPkgPath` to dodge the bug; removing that workaround will catch any future regression of the fix.
+
 #### `make-npm-overlap`
 
 - **area**: `Makefile`, `package.json`
