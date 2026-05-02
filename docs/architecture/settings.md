@@ -190,7 +190,6 @@ It also handles type coercion: registry values are always strings, but `Jellyfin
 
 The same transformer is used by tests — `tests/source/integration/registry/` exercises the full read-overlay-validate cycle.
 
-## Cruft callouts
+## Known cruft
 
-- **Registry values are all strings.** Type coercion happens on every read via `valueToString`. Boolean settings use `"true"`/`"false"` strings, etc. A typo in the registry (e.g. `"True"` instead of `"true"`) doesn't fail-fast — it parses as something unexpected. Mostly defensive code handles this.
-- **Settings UI walks `settings.json` at runtime.** Any change to the schema (adding a setting type, restructuring the tree) requires both the JSON and the Settings UI renderer to handle the new shape. The renderer is generic but does have a finite set of supported `type:` values.
+Tracked in [`tech-debt.md`](tech-debt.md) — search by `area` for settings / registry entries.
