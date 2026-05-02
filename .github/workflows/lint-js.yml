@@ -8,5 +8,5 @@ on:
   pull_request:
 
 jobs:
-  run:
+  eslint:
     uses: ./.github/workflows/_lint-js.yml

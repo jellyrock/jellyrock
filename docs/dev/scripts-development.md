@@ -60,8 +60,8 @@ JellyRock has four lint surfaces for JS/JSON:
 
 | Surface | Trigger | Coverage |
 |---|---|---|
-| **PostToolUse hook** (Claude Code only) | After Write/Edit | `bsfmt --write` on `.bs`/`.brs` |
-| **End-of-turn hook** | Agent finishes turn | spell/markdown/json on uncommitted files |
+| **`PostToolUse` hook** (Claude Code only) | After Write/Edit | `bsfmt --write` on `.bs`/`.brs` |
+| **End-of-turn hook** | Agent finishes turn | spell / markdown / `json` on uncommitted files |
 | **Pre-commit** (`lint-staged`) | `git commit` | File-scoped: `eslint --fix`, `prettier --write`, `jshint` |
 | **Pre-push** | `git push` | Project-wide: `lint:js`, `check-formatting:js`, `lint:bs`, `validate`, etc. |
 | **CI** | Per PR | Same as pre-push (can't bypass) |
@@ -88,7 +88,7 @@ Prettier config matches bsfmt as closely as possible:
 - 2-space indent, no tabs
 - Single quotes
 - Semicolons
-- Trailing commas on multiline (matches bsfmt's pattern for arrays, AAs, params)
+- Trailing commas on multiline (matches `bsfmt`'s pattern for arrays, AAs, params)
 - Print width: 100
 - `arrowParens: 'always'`
 
@@ -131,8 +131,8 @@ diagnostic list. Keeps individual tests terse.
 
 ## Common gotchas
 
-- **`fs-extra` is not a dep.** Use `node:fs` (ropm-hook used to require it from
-  the ropm package's transitive deps; now uses native `fs`).
+- **`fs-extra` is not a dep.** Use `node:fs` (`ropm-hook.cjs` used to require
+  it from the `ropm` package's transitive deps; now uses native `fs`).
 - **`n/no-unpublished-import` and `n/no-unpublished-require`** are off because
   this is a Roku app, not an npm package — nothing in `scripts/` is published.
 - **The `lint:json` jshint exclude list** at `package.json:lint:json` must

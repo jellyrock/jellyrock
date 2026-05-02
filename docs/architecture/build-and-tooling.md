@@ -192,10 +192,10 @@ Lint and format:
 | `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
 | `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
-| `npm run check-formatting` | bs + js (project-wide). Aggregates `check-formatting:bs` (`bsfmt --check`) and `check-formatting:js` (`prettier --check .`) |
-| `npm run check-formatting:bs` / `:js` | Type-scoped formatter checks. CI per-type workflows call the scoped variant (lint-brightscript runs `:bs` only, lint-js runs `:js` only) |
-| `npm run format` | bs + js (project-wide). Aggregates `format:bs` (`bsfmt --write`) and `format:js` (`prettier --write .`) |
-| `npm run format:bs` / `:js` | Type-scoped formatter writes |
+| `npm run check-formatting` | `bs` + `js` (project-wide). Aggregates `check-formatting:bs` (`bsfmt --check`) and `check-formatting:js` (`prettier --check .`) |
+| `npm run check-formatting:bs` / `:js` | Type-scoped formatting checks. CI per-type workflows call the scoped variant (`lint-brightscript` runs `:bs` only, `lint-js` runs `:js` only) |
+| `npm run format` | `bs` + `js` (project-wide). Aggregates `format:bs` (`bsfmt --write`) and `format:js` (`prettier --write .`) |
+| `npm run format:bs` / `:js` | Type-scoped formatting writes |
 | `npm run validate` | `bsc --noEmit` (type-check) |
 | `npm run update-translations` | Auto-fix translation issues |
 | `npm run test:scripts` | Vitest unit tests for `scripts/` (BSC plugins + tooling). Uses `vitest.config.js` |
@@ -249,7 +249,7 @@ Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` blo
 | `jshint` | JSON validation (incl. duplicate-key detection) — complementary to Prettier |
 | `eslint` + `eslint-plugin-n` + `@eslint/js` | JS / CJS / ESM linting (flat config) |
 | `eslint-config-prettier` | Disables ESLint formatting rules that would fight Prettier |
-| `prettier` | JS / curated-JSON formatting |
+| `prettier` | JS / curated JSON formatting |
 | `vitest` | Unit tests for `scripts/` (BSC plugins + tooling) |
 | `dotenv` | `.env` file loading for device target/password |
 | `fast-glob` | File matching in scripts |
@@ -259,17 +259,17 @@ Versions are pinned in `package.json` (currently on alpha versions of brightersc
 
 ## JS hygiene (ESLint + Prettier + Vitest)
 
-JellyRock's `scripts/` directory holds Node-side tooling — BSC plugins, doc validators, generators, the changelog syncer, etc. — that runs outside the BSC project. This section covers how that JS is linted, formatted, and tested.
+JellyRock's `scripts/` directory holds Node-side tooling — BSC plugins, doc-validation scripts, generators, the `changelog-syncer.js` script, etc. — that runs outside the BSC project. This section covers how that JS is linted, formatted, and tested.
 
 ### Module system
 
-`package.json` has `"type": "module"`, so `.js` = ESM and `.cjs` = CJS. **BSC plugins MUST be `.cjs`** — BrighterScript's `loadPlugins` uses `require()` ([`brighterscript/dist/util.js`](../../node_modules/brighterscript/dist/util.js)). Anything `require()`'d by a `.cjs` file is also locked to `.cjs` (CJS can't `require()` ESM, though ESM can `import` CJS). That extends the constraint to `scripts/lib/*` and any other shared helper.
+`package.json` has `"type": "module"`, so `.js` = ESM and `.cjs` = CJS. **BSC plugins MUST be `.cjs`** — BrighterScript's `loadPlugins` (in `brighterscript/dist/util.js`, the vendored package) uses `require()`. Anything `require()`'d by a `.cjs` file is also locked to `.cjs` (CJS can't `require()` ESM, though ESM can `import` CJS). That extends the constraint to `scripts/lib/*` and any other shared helper.
 
 Rule for new scripts: net-new top-level CLI scripts go ESM `.js`; plugins and shared helpers stay `.cjs`. The 13 existing top-level `.cjs` scripts predate this rule and remain CJS — migrating them needs a require-graph audit first (tracked as `mixed-esm-cjs-scripts` in [tech-debt.md](tech-debt.md)).
 
 ### Tooling
 
-- **[`eslint.config.js`](../../eslint.config.js)** — flat config, `@eslint/js` recommended + `eslint-plugin-n` mixed-esm-and-cjs preset. Disables `n/no-unpublished-*` (false positive — JellyRock isn't an npm package). Enforces `n/hashbang` for CLI shebangs, `n/prefer-node-protocol` for ESM imports of built-ins, plus standard `no-unused-vars` / `no-var` / `prefer-const`. `eslint-config-prettier` runs LAST to disable formatting rules that would fight Prettier.
+- **[`eslint.config.js`](../../eslint.config.js)** — flat config, `@eslint/js` recommended + `eslint-plugin-n` `mixed-esm-and-cjs` preset. Disables `n/no-unpublished-*` (false positive — JellyRock isn't an npm package). Enforces `n/hashbang` for CLI shebangs, `n/prefer-node-protocol` for ESM imports of built-ins, plus standard `no-unused-vars` / `no-var` / `prefer-const`. `eslint-config-prettier` runs LAST to disable formatting rules that would fight Prettier.
 - **[`.prettierrc.json`](../../.prettierrc.json)** — anchored to bsfmt style: 2-space indent, single quotes, semis, trailing commas (all), 100-col print width. JSONC parser for `.vscode/*.json` (they have comments).
 - **[`.prettierignore`](../../.prettierignore)** — excludes `package-lock.json` (npm-owned), `locale/` (translation tooling owns), `tasks/jellyfin-server-openapi/` (vendor), `CHANGELOG.md` (CI-controlled), and the formats other tools own (`.bs`/`.brs`/`.xml`/`.md`).
 - **[`vitest.config.js`](../../vitest.config.js)** — picks up `tests/scripts/**/*.test.js`. Test files are ESM regardless of source module system (Vitest handles cross-module-system imports).

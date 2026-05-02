@@ -5,5 +5,5 @@ on:
   pull_request:
 
 jobs:
-  run:
+  markdownlint:
     uses: ./.github/workflows/_lint-markdown.yml

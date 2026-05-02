@@ -11,14 +11,25 @@
 
 // Markdown spell-check excludes.
 // Mirrors package.json `lint:spelling`.
-const SPELL_EXACT = new Set(['docs/user/app-settings.md', 'CHANGELOG.md']);
+// Agent-facing files (CLAUDE.md, AGENTS.md, anywhere in the tree) are exempt
+// — those tolerate technical jargon / code identifiers freely; spell-checking
+// them creates noise without protecting against any failure mode that matters.
+const SPELL_EXACT = new Set([
+  'docs/user/app-settings.md',
+  'CHANGELOG.md',
+  'CLAUDE.md',
+  'AGENTS.md',
+]);
 const SPELL_PREFIXES = ['node_modules/', '.claude/', '.opencode/'];
+const SPELL_SUFFIXES = ['/CLAUDE.md', '/AGENTS.md'];
 
 // Markdown lint excludes.
 // Mirrors package.json `lint:markdown`.
-const MARKDOWN_EXACT = new Set(['CLAUDE.md']);
+// Same agent-file carveout as above — relaxed structural rules for files that
+// agents read but humans rarely format-review.
+const MARKDOWN_EXACT = new Set(['CLAUDE.md', 'AGENTS.md']);
 const MARKDOWN_PREFIXES = ['node_modules/', 'out/', 'build/', 'tasks/', '.claude/', '.opencode/'];
-const MARKDOWN_SUFFIXES = ['/copilot-instructions.md'];
+const MARKDOWN_SUFFIXES = ['/copilot-instructions.md', '/CLAUDE.md', '/AGENTS.md'];
 
 // JSON lint excludes.
 // Mirrors package.json `lint:json` (jshint --exclude).
@@ -32,7 +43,7 @@ function _matches(file, exact, prefixes, suffixes = []) {
 }
 
 function isSpellExcluded(file) {
-  return _matches(file, SPELL_EXACT, SPELL_PREFIXES);
+  return _matches(file, SPELL_EXACT, SPELL_PREFIXES, SPELL_SUFFIXES);
 }
 
 function isMarkdownExcluded(file) {

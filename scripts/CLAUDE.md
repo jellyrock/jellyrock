@@ -4,7 +4,7 @@ Build, lint, and codegen tooling that runs outside the BSC project (Node.js, not
 
 ## Directory layout
 
-```
+```text
 scripts/
 ├── bsc-plugins/   BSC compiler plugins (loaded via bsconfig*.json)
 ├── lint/          Validators that fail CI on bad input
@@ -19,8 +19,8 @@ both lint and generator (e.g. `update-translations.cjs`: default = lint, `--fix`
 
 ## Module system rule (load-bearing)
 
-**BSC plugins MUST be `.cjs`.** BrighterScript's plugin loader uses `require()`
-([`brighterscript/dist/util.js loadPlugins`](../node_modules/brighterscript/dist/util.js)).
+**BSC plugins MUST be `.cjs`.** BrighterScript's plugin loader (`loadPlugins`
+in the vendored `brighterscript/dist/util.js`) uses `require()`.
 ESM plugins won't load.
 
 **Anything `require()`'d by a `.cjs` file is also forced `.cjs`** — including
@@ -47,7 +47,8 @@ needs to come first.
   repo-wide. Run via `npm run lint:js`.
 - **Prettier** (`.prettierrc.json`, `.prettierignore`) formats JS + a curated
   JSON set. Run via `npm run format:js` (write) or `npm run check-formatting:js`
-  (check). The unprefixed `format` / `check-formatting` aggregate BS + JS.
+  (check). The unprefixed `format` / `check-formatting` aggregate both
+  BrightScript and JS.
 - **jshint** (kept) catches duplicate-key bugs and validates JSON syntax on the
   broader set.
 - Pre-commit (`lint-staged`) auto-fixes file-scoped issues; pre-push runs the

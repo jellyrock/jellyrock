@@ -8,5 +8,5 @@ on:
   pull_request:
 
 jobs:
-  run:
+  vitest:
     uses: ./.github/workflows/_test-scripts.yml
