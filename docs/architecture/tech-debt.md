@@ -141,6 +141,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `components/video/TrickplayCarousel.bs`
 - **issue**: Tile pre-fetch range is hardcoded. Should be a constant, possibly user-configurable.
 
+#### `no-active-player-abstraction`
+
+- **area**: `components/video/VideoPlayerView.bs`, `components/music/AudioPlayerView.bs`, `components/mediaPlayers/AudioPlayer.bs`
+- **issue**: Audio (`m.global.audioPlayer`, a persistent global) and video (`VideoPlayerView`, a scene-stack screen) have no shared "active player" interface. Cross-cutting code that wants to control whatever is currently playing has to branch on player type — query `m.global.audioPlayer.state` for audio, or walk the scene stack to find a `VideoPlayerView` for video. Adds friction to features like a universal pause or a "now playing" indicator.
+- **direction**: Add a thin `m.global.activePlayer` reference (or an `IPlayer` interface) that points to whichever player is active. Both components publish to it on play/destroy; cross-cutting code reads from there instead of branching on type.
+
 #### `api-timeout-single-value`
 
 - **area**: `source/constants/timeouts.bs`
