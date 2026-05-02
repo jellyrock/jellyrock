@@ -44,20 +44,20 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `itemdetails-size`
 
 - **area**: `components/ItemDetails.bs`
-- **issue**: Single file handles every item type (movies, episodes, series, seasons, audio, photos, live TV programs, recordings). Long `onKeyEvent` with many key handlers. Extras pane animation logic mixed with data loading.
-- **direction**: Split per item-type renderer (`PopulateInfoGroupMovie`, `Series`, `Episode`, `Music` etc. as separate modules). Extract the extras pane and metadata renderer into their own components.
+- **issue**: Single file handles **16 distinct item types** via per-type `populateInfoGroup<Type>` renderers (Movie, MusicVideo, Episode, Series, BoxSet, Season, Person, MusicArtist, MusicAlbum, Playlist, Audio, Photo, PhotoAlbum, TvChannel, Program, Recording). 3,600+ lines, ~90 top-level functions, 100+ line `onKeyEvent`. Extras pane animation logic (grid + gradient overlay + slide interpolators) interleaved with Task-result handlers; the inline `TrackDropdown` cluster (~20 functions for pre-playback audio/subtitle/source selection) is also embedded here.
+- **direction**: Split per item-type renderer (`populateInfoGroupMovie`, `populateInfoGroupSeries`, etc.) into separate modules under `source/details/` or `components/details/`. Extract: (a) the extras pane (animation + grid + gradient overlay) into its own component, (b) the `TrackDropdown` cluster into its own component (already self-contained — wire via fields), (c) the resume button + logo/date-label clusters as smaller helpers. `onKeyEvent` shrinks naturally as each subsystem owns its own focus / key handling.
 
 #### `videoplayerview-size`
 
 - **area**: `components/video/VideoPlayerView.bs`
-- **issue**: Mixes native `Video` event handling, OSD orchestration, trickplay, transcoding, DoVi fallback, subtitle management, audio track switching, chapter navigation, and Jellyfin reporting in one component.
-- **direction**: Extract subsystems: `SubtitleController`, `ChapterController`, `TranscodeRecoveryHandler`. Keep the player class focused on lifecycle + observers.
+- **issue**: 1,883 lines, 57 top-level functions, 133-line `onKeyEvent`. Mixes native `Video` event handling, the playback state machine (`onState`), OSD action dispatch, trickplay, transcoding decisions, the DoVi `buffer:loop:` retry flow, subtitle management (~8 fns), chapter navigation (~4 fns), audio/source track switching (~4 fns), next-episode + media-segment notifications (~10 fns — the largest embedded subsystem), Live TV / DVR-recording mode (~8 fns: channel switching, EPG refresh, live-edge math), and Jellyfin reporting.
+- **direction**: Extract subsystem controllers, each owning its own observers + key handling: `SubtitleController` (~8 fns), `ChapterController` (~4 fns), `TranscodeRecoveryHandler` (DoVi retry + error dialog + force-finish, ~6 fns), `NotificationController` (next-episode + media segments, ~10 fns), `LiveTvController` (~8 fns — trickiest because it couples tightly with the underlying `Video` state machine; extract last). The player class is left with lifecycle, state-machine observation, OSD dispatch, audio/source switching, trickplay UI sync, and reporting.
 
 #### `mainbs-event-loop-fan-out`
 
 - **area**: `source/main.bs`
-- **issue**: Bootstrap + main event loop in one file. Event loop handles many distinct event types: playback, favorites toggle, watched toggle, voice search, quickplay dispatch, font download completion, screen lifecycle.
-- **direction**: Extract per-concern handler modules; main loop dispatches to them by event name.
+- **issue**: 1,315-line file. `Main()` is ~970 lines containing both bootstrap (~80 lines: Phase 1 globals → migrations → theme → login → Phase 2 globals) and the main event loop (20+ `isNodeEvent` dispatch branches: playback, favorites/watched toggles, voice search, quickplay, font download completion, screen lifecycle / exit / `goto appStart`, search, item selection, button + option events, dialog return data, recording, shuffle, theme reload cascade). Some heavy work is already extracted into `handle*` helpers (font, quickplay, favorite, watched, record); the dispatch and most branch logic still live inline.
+- **direction**: Continue the handler-extraction pattern — each `isNodeEvent` branch routes to a per-concern module (`source/handlers/playback.bs`, `search.bs`, `selection.bs`, `dialogs.bs`, etc.). The main loop becomes a thin dispatcher. Bootstrap extracts to `source/bootstrap.bs` so `Main()` is just `bootstrap()` + the dispatch loop.
 
 ### Medium
 

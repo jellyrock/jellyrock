@@ -93,6 +93,7 @@ fallbacks
 Fallbacks
 ffmpeg
 ffmpeg-tagged
+fns
 Formatter
 frontmatter
 fullscreen
@@ -119,6 +120,7 @@ ing
 init
 injectable
 instantiation
+interpolators
 invariants
 ItemGrid
 JavaScript
@@ -210,6 +212,7 @@ refetching
 regen
 remuxing
 renderer
+renderers
 repo
 Repo
 repo-size
