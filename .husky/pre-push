@@ -17,10 +17,11 @@
 #   6. npm run lint:js            — *.js / *.cjs / *.mjs (eslint, project-wide)
 #   7. npm run check-formatting:js — *.js / *.cjs / *.mjs / *.json
 #                                     (Prettier check; auto-fix already ran in pre-commit)
-#   8. npm run lint:docs          — ALWAYS. Validates related-files: paths and
+#   8. npm run test:scripts       — *.js / *.cjs / *.mjs (vitest unit tests)
+#   9. npm run lint:docs          — ALWAYS. Validates related-files: paths and
 #                                    markdown links across every doc + CLAUDE.md.
 #                                    Cross-doc check; not file-scopable.
-#   9. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
+#  10. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
 #                                     dev-guides table.
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
@@ -119,6 +120,11 @@ fi
 if [ -n "$HAS_JSON_OR_JS" ]; then
   echo "💅 Checking Prettier formatting (JS + JSON)..."
   npm run check-formatting:js
+fi
+
+if [ -n "$HAS_JS" ]; then
+  echo "🧪 Running JS unit tests (vitest)..."
+  npm run test:scripts
 fi
 
 echo "📚 Validating doc references..."

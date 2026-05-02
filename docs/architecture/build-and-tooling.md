@@ -34,6 +34,8 @@ related-files:
   - .github/workflows/_lint-docs.yml
   - .github/workflows/_lint-js.yml
   - .github/workflows/lint-js.yml
+  - .github/workflows/_test-scripts.yml
+  - .github/workflows/test-scripts.yml
   - .github/workflows/_validate-dependencies.yml
   - .github/workflows/docs-stale-tracker.yml
   - eslint.config.js
@@ -277,8 +279,9 @@ Rule for new scripts: net-new top-level CLI scripts go ESM `.js`; plugins and sh
 | Surface | What runs | Auto-fix? |
 |---|---|---|
 | **Pre-commit (lint-staged)** | `eslint --fix` + `prettier --write` on staged JS; `jshint` (check) + `prettier --write` on staged JSON | Yes |
-| **Pre-push (`.husky/pre-push`)** | `lint:js` + `check-formatting:js` (gated on `.js`/`.cjs`/`.mjs`/`.json` changes) | No |
-| **CI (`lint-js.yml`)** | Same as pre-push (catches `--no-verify` and fork PRs) | No |
+| **Pre-push (`.husky/pre-push`)** | `lint:js` + `check-formatting:js` + `test:scripts` (gated on JS/JSON changes) | No |
+| **CI (`lint-js.yml`)** | `lint:js` + `check-formatting:js` (catches `--no-verify` and fork PRs) | No |
+| **CI (`test-scripts.yml`)** | `test:scripts` — Vitest unit tests for `scripts/` (path-filtered to scripts/ and tests/scripts/) | No |
 
 Notes:
 
