@@ -1,8 +1,8 @@
 name: lint-markdown
+
+# No event-time `paths:` filter — see .github/actions/changed-paths for why.
 on:
   pull_request:
-    paths:
-      - "**/*.md"
 
 jobs:
   run:

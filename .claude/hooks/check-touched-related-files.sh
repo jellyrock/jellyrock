@@ -14,7 +14,10 @@
 # certain session types). Same pattern as log-tool-use.sh.
 #
 # Failure mode: this hook MUST NOT block or fail an agent's turn.
-# Every error path is silenced and the script exits 0.
+# Every error path exits 0. Stderr is appended to a log file (rather
+# than discarded) so a quietly-broken hook is diagnosable — without that
+# log, a regression in the underlying script would silently stop firing
+# reminders and you'd only notice when CI started rejecting PRs.
 
 set +e
 
@@ -24,8 +27,14 @@ cat >/dev/null
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
 
-# Run the reminder. The script writes to stdout; Claude Code surfaces
-# the output in the next-turn context so the agent can act on it.
-node scripts/check-touched-related-files.cjs --quiet 2>/dev/null
+# Match the per-USER telemetry dir convention from log-tool-use.sh so
+# all hook diagnostics live in one place.
+LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${HOME}/.claude/jellyrock-telemetry}"
+LOG_FILE="$LOG_DIR/check-touched-errors.log"
+mkdir -p "$LOG_DIR" 2>/dev/null
+
+# Run the reminder. Stdout flows to Claude Code (surfaced in next-turn
+# context); stderr is captured to disk for postmortem on silent breakage.
+node scripts/check-touched-related-files.cjs --quiet 2>>"$LOG_FILE"
 
 exit 0

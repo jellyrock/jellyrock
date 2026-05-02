@@ -44,9 +44,13 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const {
+  readFrontmatter,
+  parseRelatedFiles,
+  pathMatches,
+} = require('./lib/frontmatter.cjs');
 
 const args = process.argv.slice(2);
-const FLAG_TAKES_VALUE = new Set(['--base']);
 
 const flagValue = (name) => {
   const i = args.indexOf(name);
@@ -58,44 +62,6 @@ const QUIET = args.includes('--quiet');
 
 const ROOT_DIR = '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
-
-function readFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  return match ? match[1] : null;
-}
-
-function parseRelatedFiles(frontmatter) {
-  if (!frontmatter) return [];
-  if (/^related-files:\s*\[\s*\]/m.test(frontmatter)) return [];
-  const lines = frontmatter.split(/\r?\n/);
-  const startIdx = lines.findIndex(l => /^related-files:\s*$/.test(l));
-  if (startIdx === -1) return [];
-  const items = [];
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    const m = line.match(/^\s+-\s+(.+?)\s*$/);
-    if (m) {
-      items.push(m[1]);
-      continue;
-    }
-    if (/^\S/.test(line)) break;
-  }
-  return items;
-}
-
-function pathMatches(touched, related) {
-  if (touched === related) return true;
-  try {
-    const stat = fs.statSync(related);
-    if (stat.isDirectory()) {
-      const prefix = related.endsWith('/') ? related : related + '/';
-      return touched.startsWith(prefix);
-    }
-  } catch {
-    // skip — entry doesn't exist; lint:docs catches that elsewhere
-  }
-  return false;
-}
 
 // ────────────────────────────────────────────────────────────────────
 // Build the set of files touched in the current session. Combines:

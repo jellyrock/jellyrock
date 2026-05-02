@@ -43,9 +43,14 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const {
+  readFrontmatter,
+  getLastReviewed,
+  parseRelatedFiles,
+  pathMatches,
+} = require('./lib/frontmatter.cjs');
 
 const args = process.argv.slice(2);
-const FLAG_TAKES_VALUE = new Set(['--days', '--base']);
 
 const flagValue = (name) => {
   const i = args.indexOf(name);
@@ -72,43 +77,6 @@ const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 // dev-guide variant would force a `last-reviewed` bump on an unrelated
 // how-to. The soft signal in `docs:stale` continues to surface dev-guide
 // staleness — that's where the pressure for those lives.
-
-// ────────────────────────────────────────────────────────────────────
-// Frontmatter parsing — kept locally to avoid a shared-helper refactor
-// in this PR. If a third script needs this, extract to scripts/lib/.
-// ────────────────────────────────────────────────────────────────────
-
-function readFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  return match ? match[1] : null;
-}
-
-function getLastReviewed(frontmatter) {
-  if (!frontmatter) return null;
-  const m = frontmatter.match(/^last-reviewed:\s*(\d{4}-\d{2}-\d{2})/m);
-  return m ? m[1] : null;
-}
-
-function parseRelatedFiles(frontmatter) {
-  if (!frontmatter) return [];
-  if (/^related-files:\s*\[\s*\]/m.test(frontmatter)) return [];
-
-  const lines = frontmatter.split(/\r?\n/);
-  const startIdx = lines.findIndex(l => /^related-files:\s*$/.test(l));
-  if (startIdx === -1) return [];
-
-  const items = [];
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    const m = line.match(/^\s+-\s+(.+?)\s*$/);
-    if (m) {
-      items.push(m[1]);
-      continue;
-    }
-    if (/^\S/.test(line)) break;
-  }
-  return items;
-}
 
 function daysBetween(isoDate, today) {
   const d = new Date(isoDate + 'T00:00:00Z');
@@ -161,28 +129,6 @@ function resolveDiff(baseRef) {
     base: usedBase,
     files: diffOutput.split(/\r?\n/).filter(Boolean)
   };
-}
-
-// ────────────────────────────────────────────────────────────────────
-// Path matching. A `related-files:` entry can be a file or a directory;
-// directory entries match any touched path under them.
-// ────────────────────────────────────────────────────────────────────
-
-function pathMatches(touched, related) {
-  if (touched === related) return true;
-  // Directory match: related-files entry is a real directory; touched
-  // path lives under it.
-  try {
-    const stat = fs.statSync(related);
-    if (stat.isDirectory()) {
-      const prefix = related.endsWith('/') ? related : related + '/';
-      return touched.startsWith(prefix);
-    }
-  } catch {
-    // entry doesn't exist on disk — `lint:docs` will catch that separately.
-    // For matching purposes, treat as exact-only.
-  }
-  return false;
 }
 
 function anyMatch(touchedFiles, relatedEntries) {

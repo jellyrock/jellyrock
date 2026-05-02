@@ -1,0 +1,58 @@
+name: 'Detect changed paths'
+description: |
+  Inspects the current PR's diff and sets `relevant=true` if any changed
+  file path matches the supplied extended-regex pattern; otherwise
+  `relevant=false`.
+
+  Use inside reusable lint workflows that want to short-circuit when no
+  relevant files changed, *without* relying on event-time `paths:` filters.
+  Event-time `paths:` filters break required-status-check enforcement —
+  if a workflow is wired as a required check but the path filter excludes
+  the PR, GitHub never reports a status and the PR sits unmergeable.
+  Moving the path-relevance check inside the job lets the workflow always
+  queue (and always report a status) while still skipping work when nothing
+  relevant changed.
+
+  Falls back to `relevant=true` outside PR contexts (workflow_dispatch,
+  push, etc.) so manual / scheduled runs always execute the work.
+
+  The pattern is passed to `grep -E` (extended regex) and matched against
+  one path per line as returned by `gh pr diff --name-only`.
+
+inputs:
+  pattern:
+    description: 'Extended-regex pattern matched against each changed file path.'
+    required: true
+
+outputs:
+  relevant:
+    description: '"true" if any changed file matches the pattern, "false" otherwise.'
+    value: ${{ steps.detect.outputs.relevant }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect relevant changes
+      id: detect
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PATTERN: ${{ inputs.pattern }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        if [ -z "${PR_NUMBER:-}" ]; then
+          echo "::notice::Not a pull_request context — running unconditionally."
+          echo "relevant=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # gh pr diff --name-only lists files changed by the PR (one per line).
+        # No git history needed; works with the default shallow checkout.
+        CHANGED=$(gh pr diff "$PR_NUMBER" --name-only)
+        if printf '%s\n' "$CHANGED" | grep -qE -- "$PATTERN"; then
+          echo "relevant=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Pattern matched — proceeding."
+        else
+          echo "relevant=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::No PR files matched pattern '$PATTERN'; subsequent steps will be skipped (reports success)."
+        fi

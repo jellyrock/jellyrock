@@ -16,10 +16,12 @@ related-files:
   - scripts/docs-stale-blocking.cjs
   - scripts/check-touched-related-files.cjs
   - scripts/generate-dev-index.cjs
+  - scripts/lib/frontmatter.cjs
   - .claude/settings.json
   - .claude/hooks/log-tool-use.sh
   - .claude/hooks/check-touched-related-files.sh
   - .github/hooks/hooks.json
+  - .github/actions/changed-paths/action.yml
   - .github/workflows/lint-docs.yml
   - .github/workflows/_lint-docs.yml
   - .github/workflows/docs-stale-tracker.yml
@@ -286,6 +288,21 @@ Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). M
 **Bypass:** `git push --no-verify` if you must (prefer fixing the underlying issue).
 
 This is the reason agents and humans should NOT manually run `npm run lint*` or `npm run validate`: the IDE catches issues live, the pre-push hook catches them at push time, and CI catches them on PR. Manual runs duplicate work.
+
+## CI lint workflows
+
+Each lint scope has a workflow pair under [`.github/workflows/`](../../.github/workflows/):
+
+- `lint-X.yml` — the public, PR-triggered caller. Just calls `_lint-X.yml`.
+- `_lint-X.yml` — the reusable workflow that does the actual work.
+
+The pair pattern exists so the same lint logic can be invoked from other workflows in the future without duplication.
+
+**Path relevance is computed *inside* the job, not at event time.** Each `_lint-X.yml` starts with [`./.github/actions/changed-paths`](../../.github/actions/changed-paths/action.yml) — a composite action that uses `gh pr diff --name-only` to check whether the PR modified any file matching the workflow's regex. All subsequent steps are gated on the action's `relevant` output.
+
+This avoids the standard GitHub gotcha with event-time `paths:` filters: a workflow filtered by `paths:` simply doesn't run when paths don't match, which means *no status is reported*. If such a workflow is wired as a required check in branch protection, PRs that don't touch matching paths get stuck with `Expected — Waiting for status to be reported` and can't merge. Always-queue + internal-skip dodges this — the workflow always reports a status (success when the gate skipped, success or failure when it actually ran), so it's safe to wire as a required check.
+
+When adding a new lint workflow, copy an existing `_lint-X.yml` and update the `pattern:` regex passed to `changed-paths`. The regex must mirror what would have gone into the old `paths:` block.
 
 ## Doc-maintenance enforcement
 
