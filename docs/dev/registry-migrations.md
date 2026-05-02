@@ -1,3 +1,11 @@
+---
+topic: registry-migrations
+related-files:
+  - source/migrations.bs
+  - source/utils/config.bs
+last-reviewed: 2026-05-01
+---
+
 # Registry Migrations Guide
 
 This guide documents the complete process for creating and testing registry migrations in JellyRock. Follow these steps carefully to ensure data integrity and avoid overlooking critical updates.

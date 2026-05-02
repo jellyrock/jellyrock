@@ -1,3 +1,14 @@
+---
+topic: api-layering-guide
+related-files:
+  - source/api/ApiClient.bs
+  - source/api/image.bs
+  - source/api/imageHelpers.bs
+  - source/api/items.bs
+  - source/api/userAuth.bs
+last-reviewed: 2026-05-01
+---
+
 # API Architecture Layering Guide
 
 This document defines the standardized approach for making API calls in JellyRock, ensuring consistent patterns across the codebase.

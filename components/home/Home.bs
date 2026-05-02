@@ -21,7 +21,9 @@ sub init()
   m.activeContent = m.homeRows
   m.activeTabId = "home"
 
-  ' Proxy item selection from the active content
+  ' Proxy item selection from the active content. Cleanup happens via
+  ' destroyActiveContent() against m.activeContent (which aliases m.homeRows
+  ' or m.favoritesRows depending on the active tab).
   m.homeRows.observeField("selectedItem", "onRowItemSelected")
   m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
 

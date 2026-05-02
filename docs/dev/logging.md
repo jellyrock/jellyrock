@@ -1,3 +1,11 @@
+---
+topic: logging
+related-files:
+  - components/JRScreen.bs
+  - scripts/bsc-plugin-roku-log.cjs
+last-reviewed: 2026-05-01
+---
+
 # Logging Guide (roku-log)
 
 JellyRock uses roku-log for structured, flexible logging. Follow these steps to set up and use logging effectively.
@@ -89,7 +97,7 @@ m.log.resetIndent()
 - **Create a logger per component/class** for clear log sources.
 - **Use appropriate log levels** for filtering.
 - **Group related actions** with indentation for easier tracing.
-- **Never use print statements outside of `source/main.bs`**; always use roku-log.
+- **Never use print statements outside of `source/main.bs`**; always use `m.log.*`. (Enforced by the `print-locations` BSC plugin — see [build-and-tooling.md](../architecture/build-and-tooling.md).)
 
 ---
 

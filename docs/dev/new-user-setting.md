@@ -1,3 +1,15 @@
+---
+topic: new-user-setting
+related-files:
+  - settings/settings.json
+  - components/data/jellyfin/JellyfinUserSettings.xml
+  - components/data/jellyfin/JellyfinUserSettings.bs
+  - source/data/SessionDataTransformer.bs
+  - source/utils/config.bs
+  - source/utils/session.bs
+last-reviewed: 2026-05-01
+---
+
 # Adding User Settings Guide
 
 This guide documents the complete process for adding new user settings to JellyRock. Follow these steps carefully to ensure consistency, proper data flow, and avoid common pitfalls.
@@ -36,9 +48,11 @@ This guide covers **User Settings** and **Global Settings**.
 
 ```text
 App Startup
-  → SessionDataTransformer reads registry
-  → Loads defaults from settings.json for missing values
-  → Populates JellyfinUserSettings node
+  → user.settings.SaveDefaults()  (loads ALL defaults from settings.json)
+  → enableAutoSync                 (turns on per-field registry-write observers)
+  → migrations run
+  → User logs in → SessionDataTransformer reads user's registry section
+                   and overlays saved values on top of defaults
   → Application code reads from m.global.user.settings
 ```
 
@@ -172,8 +186,8 @@ Settings are automatically routed to different registry sections based on their 
 The routing is automatic based on the `settingName` prefix. When a setting field changes:
 
 1. `JellyfinUserSettings.bs` checks if the field name starts with `"global"`
-2. If yes → saves to global registry section using `set_setting()`
-3. If no → saves to user registry section using `set_user_setting()`
+2. If yes → saves to global registry section (using `registryWrite()` directly with the global section name)
+3. If no → saves to user registry section (using `setUserSetting()` from `source/utils/config.bs`)
 
 **Naming Convention:**
 
@@ -434,12 +448,12 @@ grep -r "oldRelatedCode" source/ components/
 3. Task nodes that process the setting
 4. Any hardcoded behavior that should now be configurable
 
-**Example Locations:**
+**Example locations to check:**
 
-- `components/movies/MovieDetails.bs` - Movie playback logic
-- `components/tvshows/TVListDetails.bs` - TV episode logic
-- `source/utils/quickplay.bs` - Quick play functionality
-- `components/ItemGrid/LoadVideoContentTask.bs` - Background tasks
+- `components/ItemDetails.bs` — the universal item-details component (handles every item type: movies, episodes, series, audio, photos, live TV, …)
+- `source/utils/quickplay.bs` — quick-play dispatch
+- `components/ItemGrid/LoadVideoContentTask.bs` — background metadata + transcode-decision task
+- `components/manager/QueueManager.bs` / `ViewCreator.bs` — playback queue + player factory
 
 **Pattern:**
 

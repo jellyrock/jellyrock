@@ -1,3 +1,17 @@
+---
+topic: translations-howto
+related-files:
+  - locale/custom/en_US.json
+  - locale/languages.json
+  - source/utils/translate.bs
+  - source/utils/translateLocale.bs
+  - source/utils/languages.bs
+  - scripts/bsc-plugin-translation-keys.cjs
+  - scripts/update-translations.cjs
+  - scripts/lint-language-coverage.cjs
+last-reviewed: 2026-05-01
+---
+
 # Translations
 
 JellyRock uses a custom JSON based translation system that replaces Roku's built-in `tr()` / XML locale mechanism. Translation data is stored as flat JSON files in `locale/custom/`, loaded into `m.global` as `roAssociativeArray`s for O(1) key lookups.
@@ -19,19 +33,19 @@ translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])
 
 1. Add the key to `locale/custom/en_US.json` in alphabetical order:
 
-```json
-"MyNewKey": "My new string with {0} placeholder"
-```
+   ```json
+   "MyNewKey": "My new string with {0} placeholder"
+   ```
 
-1. The `BSC` compiler plugin auto-generates `translationKeys.MyNewKey` at build time. No manual step needed — just rebuild and the constant is available with IDE autocomplete.
+2. The `BSC` compiler plugin auto-generates `translationKeys.MyNewKey` at build time. No manual step needed — just rebuild and the constant is available with IDE autocomplete.
 
-2. Use it in code:
+3. Use it in code:
 
-```brightscript
-translate(translationKeys.MyNewKey, ["value"])
-```
+   ```brightscript
+   translate(translationKeys.MyNewKey, ["value"])
+   ```
 
-1. Run `npm run lint:translations` to verify the key exists and is wired up correctly.
+4. Run `npm run lint:translations` to verify the key exists and is wired up correctly.
 
 ## Key Naming Conventions
 

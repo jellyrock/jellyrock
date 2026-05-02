@@ -1,3 +1,9 @@
+---
+topic: developer-mode
+related-files: []  # external Roku setup; no in-repo dependencies
+last-reviewed: 2026-05-01
+---
+
 # Developer Mode for Roku Devices
 
 Developer mode allows you to install (sideload) and test custom apps (called "channels") on your Roku device.

@@ -1,3 +1,16 @@
+---
+topic: jellyfin-server-versioning
+related-files:
+  - source/api/ApiClient.bs
+  - source/api/sdk.bs
+  - source/api/sdkV1.bs
+  - source/api/sdkV2.bs
+  - source/utils/deviceCapabilities.bs
+  - source/utils/misc.bs
+  - source/utils/mediaSegments.bs
+last-reviewed: 2026-05-01
+---
+
 # JellyRock Versioning Systems Overview
 
 This document provides a high-level overview of how JellyRock handles multiple versioning systems to maintain compatibility across different Jellyfin server versions and Roku device capabilities.
@@ -44,9 +57,7 @@ Device profiles describe what media formats the Roku device can play. Different 
 
 **Key Files:**
 
-- `source/utils/deviceCapabilities.bs` - Generates appropriate profile
-- `source/utils/deviceCapabilities.v1.bs` - `V1` profile generation
-- `source/utils/deviceCapabilities.v2.bs` - `V2` profile generation
+- `source/utils/deviceCapabilities.bs` - Generates the appropriate profile (`V1` vs `V2` selected internally based on `m.global.server.apiVersion`)
 
 ### 3. Field Availability Versioning (BaseItemDto)
 
@@ -130,9 +141,10 @@ Username/password authentication works identically across all versions.
 The `GetApi()` client provides a unified interface that hides version complexity:
 
 ```brightscript
-' Same code works on all server versions
-api = GetApi()
-data = api.GetItem(itemId, { fields: "Overview" })
+' Same code works on all server versions; ApiClient routes V1/V2 internally.
+req = GetApi().BuildGetItemRequest(itemId, { fields: "Overview" })
+res = fetchRes(req, "myReq")
+if isValid(res) and res.ok then item = res.json
 ```
 
 **Automatic handling:**
@@ -145,16 +157,16 @@ data = api.GetItem(itemId, { fields: "Overview" })
 ## How Versioning Works Together
 
 ```text
-User Action → GetApi().GetItem()
+User Action → GetApi().BuildGetItemRequest(...)
                     ↓
             ApiClient (dispatcher)
                     ↓
             Check m.global.server.apiVersion
                     ↓
-            ├── apiVersion = 1 → sdkV1.users.GetItem()
-            └── apiVersion = 2 → sdkV2.users.GetItem()
+            ├── apiVersion = 1 → /users/{userId}/items/{itemId}  (V1 path)
+            └── apiVersion = 2 → /Items/{itemId}?userId=...      (V2 path)
                     ↓
-            Static endpoints (shows, items, etc.) → sdk.*
+            Static endpoints (shows, items, etc.) → sdk.* (single shape across versions)
                     ↓
             Device Profile (getDeviceProfile())
                     ↓
@@ -180,7 +192,7 @@ All code references this value to determine behavior.
 | System | Key Files |
 | ------ | --------- |
 | API Endpoints | `source/api/ApiClient.bs` (dispatcher), `source/api/sdk.bs` (static), `source/api/sdkV1.bs` (`V1` user), `source/api/sdkV2.bs` (`V2` user) |
-| Device Profile | `source/utils/deviceCapabilities.bs`, `source/utils/deviceCapabilities.v1.bs`, `source/utils/deviceCapabilities.v2.bs` |
+| Device Profile | `source/utils/deviceCapabilities.bs` (`V1/V2` selection internal) |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
 | Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
 | Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments) |
@@ -190,7 +202,7 @@ All code references this value to determine behavior.
 If Jellyfin 11.0 introduces breaking changes:
 
 1. **API Changes:** Create `source/api/sdk.v3.bs` with new endpoint paths
-2. **Profile Changes:** Create `source/utils/deviceCapabilities.v3.bs` with new profile structure
+2. **Profile Changes:** Add a `V3` branch in `source/utils/deviceCapabilities.bs` (`V1/V2` are already internal selectors; `V3` follows the same pattern)
 3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for 11.0+
 4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `ApiClient.bs`
 5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden

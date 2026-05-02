@@ -13,3 +13,5 @@ MD026:
     punctuation: ".,;:!"
 # MD028/no-blanks-blockquote
 MD028: false
+# MD060/table-column-style
+MD060: false

@@ -1,3 +1,12 @@
+---
+topic: devguide
+related-files:
+  - package.json
+  - Makefile
+  - .vscode/settings.json
+last-reviewed: 2026-05-01
+---
+
 # Dev Guide
 
 Follow the steps below to install the app on your personal Roku device. This will enable you to write code for the app, install the latest beta release, as well as provide app logs to the developers if you encounter a bug.
@@ -118,10 +127,12 @@ make screenshot
 
 ## Committing
 
-Before committing your code, please run:
+The `.husky/pre-push` hook runs the full lint suite (validate, markdown,
+spelling, JSON, doc-references) on the files in your push range and
+auto-fixes formatting + translations. You don't need to run `npm run lint`
+manually — the IDE catches BS issues live, and the hook is the backstop
+at push time.
 
-```bash
-npm run lint
-```
-
-And fix any encountered issue.
+If you do want to debug a specific failure locally before pushing, run
+the targeted script (e.g. `npm run lint:translations`) rather than the
+whole suite.

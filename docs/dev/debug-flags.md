@@ -1,3 +1,13 @@
+---
+topic: debug-flags
+related-files:
+  - components/data/DebugFlags.xml
+  - source/utils/globals.bs
+  - components/JRScene.bs
+  - components/JRScene.xml
+last-reviewed: 2026-05-01
+---
+
 # Debug Flags & Toast Testing
 
 ## Overview
@@ -15,7 +25,7 @@ JellyRock includes a compile-time debug system for testing error paths, toast no
 
 ### Test a Toast Visually (Cheat Code)
 
-Enter **up, up, down, down** on the d-pad within 2 seconds. Each activation cycles through error, success, and info toast types. This requires a debug build (`bs_const=debug=true`).
+Enter **up, up, down, down** on the d-pad within 2 seconds. Each activation cycles through error → success → warning → info toast types. This requires a debug build (`bs_const=debug=true`).
 
 ### Test a Toast Visually (Console)
 

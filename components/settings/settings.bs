@@ -821,6 +821,10 @@ sub destroy()
   m.hexSetting.unobserveField("submit")
   m.hexSetting.unobserveField("escape")
   m.hexSetting.unobserveField("reset")
+  m.alphaSetting.unobserveField("submit")
+  m.alphaSetting.unobserveField("escape")
+  m.alphaSetting.unobserveField("reset")
+  m.languagePicker.unobserveField("selectedCode")
   m.settingsMenu.unobserveField("itemFocused")
   m.settingsMenu.unobserveField("itemSelected")
   m.boolSetting.unobserveField("checkedItem")
@@ -838,6 +842,8 @@ sub destroy()
   m.integerSetting = invalid
   m.radioSetting = invalid
   m.hexSetting = invalid
+  m.alphaSetting = invalid
+  m.languagePicker = invalid
 
   ' Clear data structures
   m.userLocation = invalid

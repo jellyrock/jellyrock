@@ -1,3 +1,15 @@
+---
+topic: api-patterns
+related-files:
+  - source/api/apiPool.bs
+  - source/api/ApiClient.bs
+  - components/api/ApiQueueTask.bs
+  - components/api/ApiTask.bs
+  - components/api/ApiResultNode.xml
+  - components/api/SideEffectTask.bs
+last-reviewed: 2026-05-01
+---
+
 # API Request Patterns
 
 All API calls must run on Task threads. The render thread and main thread (Main.bs event loop) must **never** block on an HTTP request.

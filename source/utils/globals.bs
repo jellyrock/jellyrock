@@ -357,6 +357,7 @@ sub SaveDeviceToGlobal()
     end if
   else
     'i and p not present in videoMode
+    ' bsc-disable-next-line print-locations
     print "ERROR parsing deviceInfo.GetVideoMode()"
   end if
   videoWidth = heightToWidth[videoHeight]

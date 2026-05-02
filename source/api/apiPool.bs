@@ -2,7 +2,7 @@ import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Submits a request to the API queue coordinator and blocks the calling Task thread
-' until the response arrives (or a 30-second timeout elapses).
+' until the response arrives (or the timeouts.API_WAIT_MS deadline elapses).
 '
 ' Safe to call concurrently from multiple Task threads — each request gets its own
 ' ApiResultNode, so responses are never mixed up between callers. The coordinator
