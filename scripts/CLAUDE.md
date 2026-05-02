@@ -59,8 +59,13 @@ needs to come first.
 `tests/scripts/unit/<name>.test.js` mirrors `tests/source/unit/`. Run via
 `npm run test:scripts` (CI) or `npm run test:scripts:tdd` (watch mode).
 
-BSC plugin tests use a hybrid pattern: short cases inline in `.test.js`,
-longer cases as `.bs` files in `tests/scripts/fixtures/<plugin>/{passing,failing}/`.
+BSC plugin tests use **inline scenarios** — template literals carrying short
+synthetic `.bs`/`.xml` snippets passed to the shared `_helpers/run-plugin.js`
+harness. Bodies stay under ~50 lines per scenario.
+
+If a future plugin grows fixtures that don't fit comfortably inline, the next
+step is `.bs` fixture files alongside the tests — but that hasn't been needed
+yet, so the layout isn't standardized. Don't pre-build it speculatively.
 
 ## Don't manually run
 

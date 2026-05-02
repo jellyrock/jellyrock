@@ -101,12 +101,16 @@ Tests live in `tests/scripts/unit/` and mirror the structure of `scripts/`.
 All test files are ESM `.test.js` regardless of whether the script-under-test
 is `.cjs` or `.js` — Vitest handles cross-module-system imports transparently.
 
-For BSC plugins, tests use a hybrid fixture pattern:
+For BSC plugins, tests use **inline scenarios** today — template literals
+(sometimes via `undent`) carrying short synthetic `.bs` snippets passed to
+the shared harness. Every plugin test in `tests/scripts/unit/bsc-plugins/`
+follows this shape; bodies stay under ~50 lines and each scenario is
+self-contained.
 
-- **Inline strings** (template literals, sometimes via `undent`) for short cases
-  (1-15 lines of synthetic `.bs`)
-- **Fixture files** in `tests/scripts/fixtures/<plugin>/{passing,failing}/*.bs`
-  for realistic, larger scenarios
+If a future plugin grows scenarios that don't fit comfortably inline (very
+long fixtures, or fixtures shared across multiple test cases), the next step
+is `.bs` fixture files alongside the tests — but the pattern hasn't been
+needed yet, so we haven't standardized a layout.
 
 Pattern (sketch):
 
@@ -116,8 +120,8 @@ import { runPluginOnSource } from './_helpers/run-plugin.js';
 import plugin from '../../../scripts/bsc-plugins/no-direct-sdk.cjs';
 
 describe('no-direct-sdk', () => {
-  it('allows sdk.* calls inside ApiClient.bs', async () => {
-    const diagnostics = await runPluginOnSource(plugin, {
+  it('allows sdk.* calls inside ApiClient.bs', () => {
+    const diagnostics = runPluginOnSource(plugin, {
       'source/api/ApiClient.bs': `function go()\n  sdk.users.getMe()\nend function`,
     });
     expect(diagnostics).toHaveLength(0);
@@ -127,7 +131,8 @@ describe('no-direct-sdk', () => {
 
 The shared `_helpers/run-plugin.js` harness instantiates a `brighterscript`
 `Program` with the plugin loaded, applies the source, and returns a flat
-diagnostic list. Keeps individual tests terse.
+diagnostic list (synchronously — `program.validate()` is synchronous, so no
+`await` needed at the call site). Keeps individual tests terse.
 
 ## Common gotchas
 

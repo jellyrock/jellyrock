@@ -291,7 +291,7 @@ Notes:
 
 ### Test surface
 
-`tests/scripts/unit/<name>.test.js` mirrors `tests/source/unit/`. Vitest is jest-compatible API (`describe`, `it`, `expect`) but ESM-native. BSC plugin tests use a hybrid fixture pattern — short cases inline, larger scenarios as `.bs` fixture files in `tests/scripts/fixtures/<plugin>/{passing,failing}/`. Coverage targets live in [`docs/dev/scripts-development.md`](../dev/scripts-development.md).
+`tests/scripts/unit/<name>.test.js` mirrors `tests/source/unit/`. Vitest is jest-compatible API (`describe`, `it`, `expect`) but ESM-native. BSC plugin tests use inline scenarios today — short synthetic `.bs`/`.xml` strings passed to the shared `_helpers/run-plugin.js` harness. Fixture-file layouts (`tests/scripts/fixtures/<plugin>/...`) are a *future* option if scenarios grow large enough to warrant the indirection; not standardized yet. Coverage targets live in [`docs/dev/scripts-development.md`](../dev/scripts-development.md).
 
 ## Makefile
 
