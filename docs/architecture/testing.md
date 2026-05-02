@@ -83,7 +83,7 @@ The actual test execution is via `scripts/run-roku-tests.js` which deploys the t
 
 ### How agents run tests
 
-Tests deploy to a real Roku device, but the npm scripts are CLI-driven so an automated agent can run them just like a human. The runner reads `ROKU_IP` / `ROKU_PASSWORD` from a gitignored `.env` (with a fallback to VSCode's `brightscript.debug.*` settings). If hardware isn't reachable, the runner exits with an error — agents are expected to surface this honestly rather than claim a fix was tested when only the build was verified. Debugger contention (a VSCode BrightScript debugger holding the port) is a real failure mode and shouldn't be retried blindly. See [`tests/CLAUDE.md`](../../tests/CLAUDE.md) for the rules and `docs/dev/unit-tests-tdd.md` for the full procedure.
+Tests deploy to a real Roku device, but the npm scripts are CLI-driven so an automated agent can run them just like a human. The runner reads `ROKU_IP` / `ROKU_PASSWORD` from a gitignored `.env` (with a fallback to `VSCode`'s `brightscript.debug.*` settings). If hardware isn't reachable, the runner exits with an error — agents are expected to surface this honestly rather than claim a fix was tested when only the build was verified. Debugger contention (a VSCode BrightScript debugger holding the port) is a real failure mode and shouldn't be retried blindly. See [`tests/CLAUDE.md`](../../tests/CLAUDE.md) for the rules and `docs/dev/unit-tests-tdd.md` for the full procedure.
 
 ### Documentation
 

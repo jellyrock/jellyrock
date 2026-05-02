@@ -74,7 +74,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `loginflow-error-boundaries`
 
 - **area**: `source/showScenes.bs` (LoginFlow) and elsewhere
-- **issue**: Network failures in LoginFlow may leave app in inconsistent state; minimal retry/recovery semantics.
+- **issue**: Network failures in `LoginFlow` may leave app in inconsistent state; minimal retry/recovery semantics.
 - **direction**: Define a small set of error categories (network unreachable, auth failed, server error) and a corresponding recovery flow per category.
 
 #### `manual-theme-cascade`
@@ -158,7 +158,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `jrscreen-init-initializes-log-manager`
 
 - **area**: `components/JRScreen.bs`
-- **issue**: Unusual coupling — global resource initialized in a screen lifecycle hook. Re-init is no-op so it works, but design assumes JRScreen.init runs before any other component's init.
+- **issue**: Unusual coupling — global resource initialized in a screen lifecycle hook. Re-init is no-op so it works, but design assumes `JRScreen.init` runs before any other component's `init`.
 
 #### `testtoast-in-production-builds`
 
@@ -173,7 +173,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `bsconfig-files-duplicated`
 
 - **area**: repo root
-- **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but BSC's config schema doesn't support inheritance.
+- **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance.
 
 #### `no-request-cancellation`
 
@@ -207,17 +207,17 @@ These are areas where the design is genuinely good and shouldn't be casually ref
 - **The auto-sync settings observer** — write to the field, persistence is automatic. Developer experience here is excellent.
 - **The DoVi transcode-fallback flow** — sophisticated, well-commented, handles a real Roku/Jellyfin interaction problem (`buffer:loop:` source overflow on DoVi HLS). Don't simplify.
 - **Per-component logging pattern** — `m.log = new log.Logger("Name")` in every `init()`, with prod-build log stripping. Zero overhead in production.
-- **The `back` key always means popScene** — SceneManager handles it uniformly. Confirmation dialog appears automatically when popping the last scene.
-- **`isLowMemoryDevice` detection** — hardcoded prefix list of known 512MB models in `LOW_MEMORY_DEVICE_PREFIXES`. Yes, it's hardcoded; yes, it's the right call (Roku doesn't expose RAM info via API).
+- **The `back` key always means `popScene`** — `SceneManager` handles it uniformly. Confirmation dialog appears automatically when popping the last scene.
+- **`isLowMemoryDevice` detection** — hardcoded prefix list of known `512MB` models in `LOW_MEMORY_DEVICE_PREFIXES`. Yes, it's hardcoded; yes, it's the right call (Roku doesn't expose RAM info via API).
 - **All locale files committed to the repo** — looks like bloat but is required by the Weblate workflow. Translators need source-of-truth files to PR against; the bot keeps non-English locales in sync with `en_US.json`. Don't move locales out of the repo.
 
 ## A note on the audio "duplication"
 
-`components/mediaPlayers/AudioPlayer.xml/.bs` (engine) and `components/music/AudioPlayerView.xml/.bs` (screen) look like duplicates but aren't — they're an intentional engine/screen split. Don't merge them. Canonical explanation: see `playback.md` (the AudioPlayer engine and AudioPlayerView screen sections).
+`components/mediaPlayers/AudioPlayer.xml/.bs` (engine) and `components/music/AudioPlayerView.xml/.bs` (screen) look like duplicates but aren't — they're an intentional engine/screen split. Don't merge them. Canonical explanation: see `playback.md` (the `AudioPlayer` engine and `AudioPlayerView` screen sections).
 
 ## Recently removed — don't go searching for these
 
 - **`components/JRVideo.xml/.bs`** and **`source/VideoPlayer.bs`** — the legacy video player. Removed in commit `17cc374f` ("chore: remove legacy video player code"). Replaced by `components/video/VideoPlayerView.xml/.bs`. There is exactly one video player today.
 - **`CreateVideoPlayerGroup()`** function from `source/showScenes.bs` — removed alongside the legacy player. The modern equivalent is `ViewCreator.CreateVideoPlayerView()`.
 - **Various legacy subtitle helper functions** (`setupSubtitle`, `getSubtitleSelIdxFromSubIdx`) — removed in followup cleanup commits (e.g. `58500a99`).
-- **`components/ItemOptions.xml/.bs`** and **`components/movies/{Audio,Video}TrackList{Data,Item}`** — the modal Video/Audio tab popup the inline `TrackDropdown` cluster has now replaced. Removed in commit `f4ac1069` ("chore: remove obsolete ItemOptions popup and movies track-list components"). The empty `components/movies/` folder was removed along with them.
+- **`components/ItemOptions.xml/.bs`** and **`components/movies/{Audio,Video}TrackList{Data,Item}`** — the modal Video/Audio tab popup the inline `TrackDropdown` cluster has now replaced. Removed in commit `f4ac1069` ("chore: remove obsolete `ItemOptions` popup and movies track-list components"). The empty `components/movies/` folder was removed along with them.

@@ -8,7 +8,7 @@ Add an entry when you make a decision that:
 
 - **Has a non-obvious rationale** that wouldn't be apparent from the code alone (e.g. "we use task pool children-as-vehicles instead of fields because SceneGraph coalesces field events").
 - **Closes off alternatives** that someone else might reasonably re-propose (e.g. "we use a custom translation system, not Roku's `tr()`, because…").
-- **Has a constraint or trade-off behind it** that might be worth re-evaluating later (e.g. "we hardcode 30s API timeout; per-call timeouts are nice-to-have but the cost vs. complexity didn't justify").
+- **Has a constraint or trade-off behind it** that might be worth re-evaluating later (e.g. "we hardcode `30s` API timeout; per-call timeouts are nice-to-have but the cost vs. complexity didn't justify").
 
 Don't add an entry for:
 
@@ -31,7 +31,7 @@ Don't add an entry for:
 
 ## Format
 
-Each entry is its own H2 section. Required fields:
+Each entry is its own `H2` section. Required fields:
 
 - **id**: a stable kebab-case slug (used to cross-reference from commits / PRs / other entries)
 - **date**: when the decision was made (YYYY-MM-DD)

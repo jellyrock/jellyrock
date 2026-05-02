@@ -20,13 +20,13 @@ JellyRock distinguishes three categories of "settings":
 
 1. **Global settings** — device-wide, shared across all users on this Roku. Stored in the registry section `"JellyRock"`. Examples: `globalRememberMe`, `globalSplashScreen`.
 2. **User settings** — per-user, stored in a registry section keyed by the Jellyfin user ID. Examples: theme colors, playback bitrate limit, subtitle preferences.
-3. **Server config** — server-authoritative, fetched from Jellyfin on login, never written back to the registry. Lives in `m.global.user.config` and `m.global.user.policy`. **Home section ordering** (`homeSection0` through `homeSection6`) is also server-authoritative — populated from Jellyfin's DisplayPreferences API, not the local registry. (See `migrations.md` for the cleanup migration that removes any stale per-user `homeSection*` entries left over from earlier versions.)
+3. **Server config** — server-authoritative, fetched from Jellyfin on login, never written back to the registry. Lives in `m.global.user.config` and `m.global.user.policy`. **Home section ordering** (`homeSection0` through `homeSection6`) is also server-authoritative — populated from `Jellyfin`'s `DisplayPreferences` API, not the local registry. (See `migrations.md` for the cleanup migration that removes any stale per-user `homeSection*` entries left over from earlier versions.)
 
 Defaults for tiers 1 and 2 live exclusively in `settings/settings.json`. Tier 3 has no defaults — the server is the source of truth.
 
 ## `settings/settings.json` — single source of truth
 
-A nested JSON tree describing every JellyRock-managed setting:
+A nested JSON tree describing every `JellyRock-managed` setting:
 
 ```json
 [

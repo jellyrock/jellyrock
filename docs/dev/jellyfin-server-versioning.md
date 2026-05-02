@@ -57,7 +57,7 @@ Device profiles describe what media formats the Roku device can play. Different 
 
 **Key Files:**
 
-- `source/utils/deviceCapabilities.bs` - Generates the appropriate profile (V1 vs V2 selected internally based on `m.global.server.apiVersion`)
+- `source/utils/deviceCapabilities.bs` - Generates the appropriate profile (`V1` vs `V2` selected internally based on `m.global.server.apiVersion`)
 
 ### 3. Field Availability Versioning (BaseItemDto)
 
@@ -192,7 +192,7 @@ All code references this value to determine behavior.
 | System | Key Files |
 | ------ | --------- |
 | API Endpoints | `source/api/ApiClient.bs` (dispatcher), `source/api/sdk.bs` (static), `source/api/sdkV1.bs` (`V1` user), `source/api/sdkV2.bs` (`V2` user) |
-| Device Profile | `source/utils/deviceCapabilities.bs` (V1/V2 selection internal) |
+| Device Profile | `source/utils/deviceCapabilities.bs` (`V1/V2` selection internal) |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
 | Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
 | Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments) |
@@ -202,7 +202,7 @@ All code references this value to determine behavior.
 If Jellyfin 11.0 introduces breaking changes:
 
 1. **API Changes:** Create `source/api/sdk.v3.bs` with new endpoint paths
-2. **Profile Changes:** Add a V3 branch in `source/utils/deviceCapabilities.bs` (V1/V2 are already internal selectors; V3 follows the same pattern)
+2. **Profile Changes:** Add a `V3` branch in `source/utils/deviceCapabilities.bs` (`V1/V2` are already internal selectors; `V3` follows the same pattern)
 3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for 11.0+
 4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `ApiClient.bs`
 5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden

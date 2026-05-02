@@ -119,7 +119,7 @@ The whole file is well-commented and reads cleanly. It's frequently held up inte
 A `.bs` module (no `.xml` — it's not a component, just a function library). Its job is two-fold:
 
 1. **Player factory**: `CreateVideoPlayerView()` / `CreateAudioPlayerView()` instantiate the player node, wire observers, kick off metadata loading, and push the player into the scene stack.
-2. **Playback-time track selection**: when the user opens the OSD's track selection menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `ViewCreator` catches via observers and shows a `radioDialog`. (Note: *pre-playback* track selection happens inline via `ItemDetails`'s TrackDropdown cluster — see `user-journey.md`. The two flows write to the same VideoPlayerView fields; they're parallel entry points, not duplicates.)
+2. **Playback-time track selection**: when the user opens the `OSD`'s track selection menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `ViewCreator` catches via observers and shows a `radioDialog`. (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
 
 The dialog flow:
 
@@ -140,14 +140,14 @@ The processing functions write back into `VideoPlayerView`'s fields (`audioIndex
 
 `onStateChange` handles end-of-playback:
 
-- **`finished` state** but `isRetrying = true` → don't pop (mid-DoVi-fallback retry)
+- **`finished` state** but `isRetrying = true` → don't pop (`mid-DoVi-fallback` retry)
 - **Live TV channel that finished** → restart the same channel
 - **More items in queue** → pop player, advance position, push player for next item
 - **Queue exhausted** → pop scene back to whatever launched playback
 
 ## VideoPlayerView — `components/video/VideoPlayerView.bs/.xml`
 
-The canonical video player and the largest single component in the playback subsystem. Extends Roku's native `Video` node, so it inherits the full media-playback state machine and adds JellyRock-specific overlays, OSD, trickplay, captions, transcoding logic, and Jellyfin reporting.
+The canonical video player and the largest single component in the playback subsystem. Extends Roku's native `Video` node, so it inherits the full media-playback state machine and adds `JellyRock-specific` overlays, OSD, trickplay, captions, transcoding logic, and Jellyfin reporting.
 
 ### Component structure
 
@@ -192,7 +192,7 @@ The canonical video player and the largest single component in the playback subs
 </component>
 ```
 
-Note: the OSD's `inactiveTimeout` is **5 seconds**, not 10 as some sources may claim.
+Note: the `OSD`'s `inactiveTimeout` is **5 seconds**, not 10 as some sources may claim.
 
 ### Playback lifecycle
 
@@ -227,7 +227,7 @@ The OSD is the entry point for advanced controls — it has menu icons for audio
 
 The OSD adapts when the current item is a live TV channel or a DVR recording (vs. on-demand video). The hybrid behind-live math lives in `source/utils/liveTv.bs` (extracted as testable helpers). Notable adaptations:
 
-- **`goToLive` button** — appears in the OSD's left button menu when the user has scrubbed back from the live edge of a live TV stream. Pressing it seeks to live. The button auto-hides when the user is already at the live edge (detached from the layout entirely so it doesn't reserve dead space).
+- **`goToLive` button** — appears in the `OSD`'s left button menu when the user has scrubbed back from the live edge of a live TV stream. Pressing it seeks to live. The button auto-hides when the user is already at the live edge (detached from the layout entirely so it doesn't reserve dead space).
 - **Wall-clock fallback** — when stream metadata is missing (some recordings, mid-stream channel switches), OSD timestamps fall back to wall-clock time + program EPG data rather than reporting zeros.
 - **Logo/metadata refresh** — channel switches reset stale logo and metadata before the new channel's data arrives, so the OSD doesn't briefly show the previous channel's branding.
 - **Recording playback** — short MPEG-TS recordings stay on HLS so the trickplay scrub bar can scrub them; longer recordings remain progressive (the MPEG-TS → progressive MKV transcode path was tried and reverted as not worth the complexity).
@@ -253,7 +253,7 @@ Two kinds of notifications overlay during playback:
 
 Both notifications dismiss themselves on a timer or when the user navigates away.
 
-## AudioPlayer engine — `components/mediaPlayers/AudioPlayer.bs/.xml`
+## `AudioPlayer` engine — `components/mediaPlayers/AudioPlayer.bs/.xml`
 
 A small component that **extends Video** but is used exclusively for audio. Lives at `m.global.audioPlayer` for the entire app lifetime, so audio can keep playing while the user navigates other screens.
 
@@ -310,12 +310,12 @@ Before `VideoPlayerView` starts the `Video` node, it needs a URL. The decision t
 
 Multichannel audio handling lives in `source/api/items.bs` and `source/utils/deviceCapabilities.bs`:
 
-- **Direct-play multichannel by default** on surround-capable hardware — the device's `MaxAudioChannels` (from its TranscodingProfiles) gates whether 5.1+ tracks are direct-played.
+- **Direct-play multichannel by default** on surround-capable hardware — the device's `MaxAudioChannels` (from its `TranscodingProfiles`) gates whether 5.1+ tracks are direct-played.
 - **Surround codec preservation on transcode** — when a multichannel source can't direct-play, the transcoder is steered toward surround-capable codecs (`eac3`/`ac3`/`dts`) over downmixing to AAC stereo. The `surroundCodecs` list in `items.bs` is intentionally distinct from `stereoOutputCodecs` in `deviceCapabilities.bs`; the former is a pick-from-this-list hint to the server, the latter is an output capability.
 
-Special case: **Dolby Vision (DoVi)**. JellyRock has dedicated DoVi handling because Jellyfin's transcoder can sometimes produce HLS segments that overflow Roku's video buffer:
+Special case: **Dolby Vision (DoVi)**. JellyRock has dedicated DoVi handling because `Jellyfin`'s transcoder can sometimes produce HLS segments that overflow Roku's video buffer:
 
-- If `playbackPreserveDovi` is enabled and item is DoVi, attempt a DoVi-preserving transcode first.
+- If `playbackPreserveDovi` is enabled and item is DoVi, attempt a `DoVi-preserving` transcode first.
 - If that produces a `buffer:loop:` source error mid-playback, the player retries with `shouldBypassDoviPreservation = true` (the `isRetrying` flag prevents `ViewCreator.onStateChange` from popping the scene during this in-flight retry).
 - The retry typically succeeds with direct play (since the device supports DoVi natively, just not the way Jellyfin transcoded it).
 
@@ -335,7 +335,7 @@ Annoyance addressed in code: Roku **reorders** subtitle tracks unpredictably bet
 
 The current selection persists in user settings (`globalCaptionMode`) so it's remembered across sessions.
 
-Track *language names* (the labels shown in the TrackDropdown and OSD menus) are localized via `source/utils/languages.bs` — see `translations.md` for the 3-tier resolver (alias → translationKey → English fallback) and the `lint:language-coverage` CI script that catches silent localization gaps.
+Track *language names* (the labels shown in the `TrackDropdown` and OSD menus) are localized via `source/utils/languages.bs` — see `translations.md` for the 3-tier resolver (alias → `translationKey` → English fallback) and the `lint:language-coverage` CI script that catches silent localization gaps.
 
 ## A historical note: the legacy video player
 
@@ -346,7 +346,7 @@ The audio side has *two* components (`mediaPlayers/AudioPlayer` and `music/Audio
 ## Cruft callouts
 
 - **`VideoPlayerView.bs` is the most complex single component in the app.** It mixes: native `Video` event handling, OSD orchestration, trickplay coordination, transcoding logic, DoVi fallback, subtitle management, audio track switching, chapter navigation, and Jellyfin reporting. Some extraction (e.g., a separate `SubtitleController` module) would help. But it works, it's well-tested, and the DoVi handling is genuinely clever.
-- **The set-then-clear event pattern** appears on `select*Pressed` fields — `m.view.selectAudioPressed = true` from the OSD, observed by ViewCreator. Same trick as `quickPlayNode`; canonical explanation in `user-journey.md`.
+- **The set-then-clear event pattern** appears on `select*Pressed` fields — `m.view.selectAudioPressed = true` from the OSD, observed by `ViewCreator`. Same trick as `quickPlayNode`; canonical explanation in `user-journey.md`.
 - **`bufferCheckTimer`** — listed in the XML but its duration is set in code dynamically. Its job is to detect the DoVi `buffer:loop:` source overflow. It exists because Roku's native `state` doesn't always transition to `error` cleanly on this specific failure.
 - **No abstraction over "which player is active"**. Code that wants to control current playback has to know whether `m.global.audioPlayer` is the active player or whether a `VideoPlayerView` is on the scene stack. A common `IPlayer` interface or `m.global.activePlayer` reference would help.
 - **Trickplay tile pre-fetch range is hardcoded** in `TrickplayCarousel.bs` — should probably be a constant, possibly user-configurable for power users.

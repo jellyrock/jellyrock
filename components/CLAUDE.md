@@ -1,6 +1,6 @@
 # Rules for `components/`
 
-Roku Scene Graph (RSG) components — XML interface + paired BrighterScript backing file. See [docs/architecture/navigation.md](../docs/architecture/navigation.md) for the full scene-stack and lifecycle model, and [docs/architecture/global-state.md](../docs/architecture/global-state.md) for the typed-ContentNode data layer.
+Roku Scene Graph (RSG) components — XML interface + paired BrighterScript backing file. See [docs/architecture/navigation.md](../docs/architecture/navigation.md) for the full scene-stack and lifecycle model, and [docs/architecture/global-state.md](../docs/architecture/global-state.md) for the `typed-ContentNode` data layer.
 
 ## File pairing and scoping
 

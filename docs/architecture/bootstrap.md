@@ -176,7 +176,7 @@ device.EnableAudioGuideChangedEvent(true)
 The event loop branches on each of these. Notable handling:
 
 - **`AppFocusEvent`** — fired on app suspend (user pressed Home) and resume. JellyRock uses this to know when it's coming back from background.
-- **`LowGeneralMemoryEvent`** — Roku has signalled memory pressure. JellyRock uses `m.global.device.isLowMemoryDevice` (computed at startup from a hard-coded prefix list of 512MB models — see `LOW_MEMORY_DEVICE_PREFIXES` in `globals.bs`) to *preemptively* disable memory-heavy features like trickplay tile preloading on small devices.
+- **`LowGeneralMemoryEvent`** — Roku has signaled memory pressure. JellyRock uses `m.global.device.isLowMemoryDevice` (computed at startup from a hard-coded prefix list of `512MB` models — see `LOW_MEMORY_DEVICE_PREFIXES` in `globals.bs`) to *preemptively* disable memory-heavy features like trickplay tile preloading on small devices.
 - **`LinkStatusEvent`** — network up/down. App can show offline state.
 - **`CodecCapChangedEvent`** — the device's codec capabilities changed (e.g., user toggled HDR mode in Roku settings).
 - **`ScreensaverExitedEvent`** — fires when the screensaver dismisses; lets the app refresh state.
@@ -207,6 +207,6 @@ This runs **after** the home screen is loaded (so the user lands on home if they
 ## Cruft callouts
 
 - **`main.bs` is large** with many distinct responsibilities crammed into the event loop: playback, favorites toggle, watched toggle, voice search, quickplay dispatch, font download completion, screen lifecycle. Could be decomposed into per-concern handler modules. (See `tech-debt.md`.)
-- **The `appStart:` label and `goto`-based restart** for "log out and start over" is BrightScript-old-school. Works fine, but unusual today; a `loop { ... break }` would read more naturally.
+- **The `appStart:` label and `goto`-based restart** for "log out and start over" is `BrightScript-old-school`. Works fine, but unusual today; a `loop { ... break }` would read more naturally.
 - **`printRegistry()` runs unconditionally** at startup. Useful in dev, noisy in prod logs unless filtered by log level.
 - **The `quickPlayNode` set-then-clear pattern** is the unusual receiver side of the event idiom. Canonical explanation in `user-journey.md` ("The set-then-clear pattern" section).

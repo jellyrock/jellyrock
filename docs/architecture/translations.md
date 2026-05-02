@@ -178,7 +178,7 @@ Pre-login, only steps 3 and 4 run. Post-login, the user setting takes priority.
 
 ## Track language name resolution — `source/utils/languages.bs`
 
-A separate (and structurally distinct) localization concern: media stream language codes — what Jellyfin sends as `MediaStream.Language` for an audio or subtitle track — need to be displayed as the user's localized language name in the TrackDropdown cluster, OSD menus, and ItemDetails.
+A separate (and structurally distinct) localization concern: media stream language codes — what Jellyfin sends as `MediaStream.Language` for an audio or subtitle track — need to be displayed as the user's localized language name in the `TrackDropdown` cluster, OSD menus, and `ItemDetails`.
 
 The codes are messy: ffmpeg/Jellyfin pass through whatever the container says, so the same language can arrive as ISO 639-2/T (`fra`), 639-2/B (`fre`), or 639-1 (`fr`). `languages.bs` resolves these via a **3-tier cascade**:
 

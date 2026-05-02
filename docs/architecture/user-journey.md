@@ -45,13 +45,13 @@ Each step below traces what code runs and what state changes.
 
 At this point the user sees the `JRScene` backdrop (initially blank) and the `loadingText` "Loading…" centered. The overhang is hidden because no `JRGroup` has been pushed yet.
 
-## 2. LoginFlow — `source/showScenes.bs`
+## 2. `LoginFlow` — `source/showScenes.bs`
 
 `LoginFlow()` is the gating function. It returns `false` to abort the whole app (user backed out of server selection from a fresh install), or `true` once an authenticated session exists.
 
 The function is procedural with `goto` labels (`startLogin:`, `userSelect:`) for retry loops — old-school BrightScript style, but readable. All persistence is via the registry helpers in `source/utils/config.bs`.
 
-### 2a. Server selection
+### `2a`. Server selection
 
 ```brightscript
 serverUrl = getSetting("server")          ' last successful server URL
@@ -83,7 +83,7 @@ The user picks one; the function returns the selected server URL (or `"backPress
 
 If a saved server is valid, `LoginFlow` skips the picker UI but pushes a hidden `Group` placeholder onto the scene stack anyway — this keeps the stack depth consistent so back-button cleanup works regardless of which path was taken. Comment in the code explains: *"Using Group because it has a visible field (ContentNode does not)."*
 
-### 2b. User selection
+### `2b`. User selection
 
 ```brightscript
 activeUser = getSetting("active_user")
@@ -106,7 +106,7 @@ The Quick Connect button is removed at runtime if the server reports the feature
 
 If the user backs out, the function returns `"backPressed"`, which causes `LoginFlow` to delete the saved server (`unsetSetting("server")`) and `goto startLogin` for a full restart.
 
-### 2c. Authentication
+### `2c`. Authentication
 
 Once a user is selected (or Quick Connect completes), four auth paths exist:
 
@@ -159,7 +159,7 @@ loadHomeScreen()
 </component>
 ```
 
-The overhang (which the SceneManager wires up automatically when Home is pushed) shows: logo, current user, search icon, settings gear, and the library tabs (Movies, Shows, Music, etc.).
+The overhang (which the `SceneManager` wires up automatically when Home is pushed) shows: logo, current user, search icon, settings gear, and the library tabs (Movies, Shows, Music, etc.).
 
 ### Two main tab content components
 
@@ -215,7 +215,7 @@ The component contains:
   - **Shuffle** — for collections and playlists
   - **Trailer** — if a remote trailer URL is available
   - **Mark Watched / Unwatched**, **Mark Favorite / Unfavorite**
-- An inline **TrackDropdown cluster** (`trackCluster`) — three side-by-side dropdowns for Video / Audio / Subtitle source selection, replacing the older modal `ItemOptions` popup. Track titles localize via the `languages.bs` 3-tier resolver (alias → translationKey → English fallback). Slots auto-hide when no choices exist (e.g., the Video slot is hidden when only one source is available).
+- An inline **`TrackDropdown` cluster** (`trackCluster`) — three side-by-side dropdowns for Video / Audio / Subtitle source selection, replacing the older modal `ItemOptions` popup. Track titles localize via the `languages.bs` 3-tier resolver (alias → `translationKey` → English fallback). Slots auto-hide when no choices exist (e.g., the Video slot is hidden when only one source is available).
 - An "extras" panel (revealed by pressing DOWN) — `extrasGrid` shows related items: cast, episodes (for series), parts (for split media), recommendations, similar items
 
 When a Play button is pressed (handled by `onKeyEvent`):
@@ -229,7 +229,7 @@ This bubbles `quickPlayNode` up the parent chain. `main.bs` catches it.
 
 ### The set-then-clear pattern
 
-This appears in several places in `ItemDetails.bs`. The trick: SceneGraph's `observeField` only fires when a field's *value* changes. If the user plays the same item twice in a row, setting `quickPlayNode = content[0]` the second time wouldn't fire — the value didn't change. Setting to `invalid` immediately afterward guarantees the next set fires.
+This appears in several places in `ItemDetails.bs`. The trick: `SceneGraph`'s `observeField` only fires when a field's *value* changes. If the user plays the same item twice in a row, setting `quickPlayNode = content[0]` the second time wouldn't fire — the value didn't change. Setting to `invalid` immediately afterward guarantees the next set fires.
 
 The receiver in `main.bs` reads `msg.getData()` (the value at event-queue time) rather than the current field value (which is `invalid` by the time the handler runs):
 
@@ -295,7 +295,7 @@ The split is "synchronous types" vs "async types":
 
 ## 8. QueueManager.playQueue() — `components/manager/QueueManager.bs`
 
-The QueueManager looks at `getCurrentItem()`, classifies its type, and invokes the right player factory:
+The `QueueManager` looks at `getCurrentItem()`, classifies its type, and invokes the right player factory:
 
 ```brightscript
 sub playQueue()
@@ -349,7 +349,7 @@ The `VideoPlayerView` itself handles fetching media metadata, building the URL, 
 
 While the video plays:
 
-- `VideoPlayerView` runs a periodic timer that fires `ReportPlayback("Playing")` every ~10 seconds, sending position to Jellyfin's `/PlaybackInfo` endpoint via the side-effect task.
+- `VideoPlayerView` runs a periodic timer that fires `ReportPlayback("Playing")` every ~10 seconds, sending position to `Jellyfin`'s `/PlaybackInfo` endpoint via the side-effect task.
 - The OSD shows for 5 seconds when the user interacts, then hides.
 - Trickplay (seek scrubbing) shows a thumbnail carousel of preview images.
 - "Next episode" notification appears near the end of an episode if the queue has another item.
@@ -366,6 +366,6 @@ If the user backs out mid-playback, `SceneManager.popScene` detects the `Video` 
 
 - **`ItemDetails.bs` is huge.** Single file handling every item type. Splitting per type (or extracting the extras pane and metadata renderer) would make it more navigable. See `tech-debt.md`.
 - **`showScenes.bs` mixes login flow with scene factories.** `LoginFlow()` and a dozen `Create*Group()` functions live in the same file. Splitting `auth/LoginFlow.bs` and `screens/SearchPage.bs` etc. would clarify responsibilities.
-- **`goto`-based retry in LoginFlow.** Works, but unusual; a `do { ... } until success` loop would read more naturally to most modern eyes. Not worth changing for change's sake, but worth knowing about.
+- **`goto`-based retry in `LoginFlow`.** Works, but unusual; a `do { ... } until success` loop would read more naturally to most modern eyes. Not worth changing for change's sake, but worth knowing about.
 - **No persistent series playlist UI.** "Play next" routing always goes back through `ItemDetails → quickPlayNode → QueueManager`. There's no "now playing" sidebar to see the upcoming queue without going to the player.
-- **`selectedItem` bubbling has implicit contracts.** Every level in the chain just declares `<field id="selectedItem" alwaysNotify="true" />` and trusts that the level above will handle it. Tracing from a click to the handler requires walking the tree manually; there's no central registry of "who handles selectedItem from where."
+- **`selectedItem` bubbling has implicit contracts.** Every level in the chain just declares `<field id="selectedItem" alwaysNotify="true" />` and trusts that the level above will handle it. Tracing from a click to the handler requires walking the tree manually; there's no central registry of "who handles `selectedItem` from where."

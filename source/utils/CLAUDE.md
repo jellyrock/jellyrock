@@ -10,7 +10,7 @@ Cross-cutting utilities. See related architecture docs for the *why* of each:
 
 - Use `translate(translationKeys.X)` — never hard-code a string ID. The `translationKeys.X` constants are generated at build time by the BSC plugin from `locale/custom/en_US.json`; typos become compile errors.
 - `translatePlural(baseKey, count, params)` for Zero/One/Many forms. The `Zero`/`One`/`Many` keys must all exist in `en_US.json`.
-- For media stream language codes (audio/subtitle track labels), use the 3-tier resolver in `languages.bs` (alias → translationKey → English fallback). The `lint:language-coverage` script validates the cascade.
+- For media stream language codes (audio/subtitle track labels), use the 3-tier resolver in `languages.bs` (alias → `translationKey` → English fallback). The `lint:language-coverage` script validates the cascade.
 
 ## Config / registry
 

@@ -54,7 +54,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 - **API task pool** — a small set of persistent `ApiTask` Task nodes that execute HTTP requests off the render thread. A separate `ApiQueueTask` is the FIFO coordinator that dispatches into the pool. Per-request `ApiResultNode` is the data vehicle (immune to SceneGraph event coalescing).
 - **roku-log** — the logging library. Per-component pattern: `m.log = new log.Logger("ComponentName")`. Levels: error, warn, info, verbose, debug.
 - **ropm** — Roku Package Manager. Vendors `log`, `rr` (roku-requests), and `bslib` into `components/roku_modules/` and `source/roku_modules/`.
-- **Overhang** — the persistent top bar (logo, current user, search, settings, library tabs). Lives in `JRScene` as `JROverhang`. Each `JRGroup` exposes `overhangTitle`, `overhangTabs`, `selectedTabId`, `isOverhangVisible` so the SceneManager can wire it up automatically on push/pop.
+- **Overhang** — the persistent top bar (logo, current user, search, settings, library tabs). Lives in `JRScene` as `JROverhang`. Each `JRGroup` exposes `overhangTitle`, `overhangTabs`, `selectedTabId`, `isOverhangVisible` so the `SceneManager` can wire it up automatically on push/pop.
 - **Render thread** — Roku's main UI thread. Anything that does I/O (network, registry I/O, large file reads) **must** run on a Task thread to avoid blocking the UI. Task nodes (`ApiTask`, `LoadItemsTask`, etc.) are how this is enforced.
 - **`m.global`** — Roku's app-wide global node. JellyRock hangs a deep tree of nodes off it (`m.global.user`, `m.global.server`, `m.global.queueManager`, etc.) — see [global-state.md](./global-state.md).
 - **Quickplay** — namespace at `source/utils/quickplay.bs`. Wraps a Jellyfin item into a queue-ready format and dispatches by item type. Invoked by the `quickPlayNode` event on press of any Play button.
@@ -71,7 +71,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 
 ### Existing dev guides
 
-Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is auto-generated from the H1 heading of each file by `scripts/generate-dev-index.cjs` — never edit this list by hand.
+Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is auto-generated from the `H1` heading of each file by `scripts/generate-dev-index.cjs` — never edit this list by hand.
 
 <!-- BEGIN auto-generated dev-index (run `npm run docs:dev-index` to regenerate) -->
 

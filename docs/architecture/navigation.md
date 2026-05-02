@@ -216,9 +216,9 @@ Notable:
 
 Every `JRGroup` has a `lastFocus` field. The dance is:
 
-1. **On push** — SceneManager walks the current group's focus chain and saves the deepest focused node into `currentGroup.lastFocus`.
-2. **On pop** — SceneManager calls `OnScreenShown()` on the revealed `JRScreen`, whose default implementation reads `m.top.lastFocus` and calls `.setFocus(true)` on it. Subclasses can override `OnScreenShown` to do something more elaborate (e.g., re-fetch data first, then focus).
-3. **For non-JRScreen subtypes** (rare in screen position, but happens for some dialog-like groups), the SceneManager itself restores focus directly without calling `OnScreenShown`.
+1. **On push** — `SceneManager` walks the current group's focus chain and saves the deepest focused node into `currentGroup.lastFocus`.
+2. **On pop** — `SceneManager` calls `OnScreenShown()` on the revealed `JRScreen`, whose default implementation reads `m.top.lastFocus` and calls `.setFocus(true)` on it. Subclasses can override `OnScreenShown` to do something more elaborate (e.g., re-fetch data first, then focus).
+3. **For `non-JRScreen` subtypes** (rare in screen position, but happens for some dialog-like groups), the `SceneManager` itself restores focus directly without calling `OnScreenShown`.
 
 The `lastFocus` mechanism is one of the things JellyRock gets reliably right — UIs that are otherwise complex (rows of rows, tabs of grids) maintain cursor position consistently across navigation.
 

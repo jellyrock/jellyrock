@@ -82,4 +82,4 @@ Helpful structured methods:
 ## Cruft callouts
 
 - **`JRScreen.init` initializes the log manager.** This works because every screen extends JRScreen and inherits its init, but it's an unusual coupling — the log manager is a global resource initialized inside what looks like a screen's lifecycle hook. Repeated re-initialization is no-op in roku-log, but the design assumes JRScreen.init runs before any other component's init.
-- **No log filtering by namespace at runtime.** Once you set the level to 5 (debug), every component logs at debug. There's no way to say "show me only QueueManager logs at debug, everything else at info." Possible to add via roku-log's transport configuration but not currently set up.
+- **No log filtering by namespace at runtime.** Once you set the level to 5 (debug), every component logs at debug. There's no way to say "show me only `QueueManager` logs at debug, everything else at info." Possible to add via `roku-log`'s transport configuration but not currently set up.

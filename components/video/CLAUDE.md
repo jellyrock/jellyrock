@@ -10,7 +10,7 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 
 ## OSD
 
-- Single `OSD` instance per `VideoPlayerView`. Auto-hides after 5s of inactivity (`inactiveTimeout="5"` on the instance in `VideoPlayerView.xml`).
+- Single `OSD` instance per `VideoPlayerView`. Auto-hides after `5s` of inactivity (`inactiveTimeout="5"` on the instance in `VideoPlayerView.xml`).
 - Live TV / DVR recording mode adapts the OSD: `goToLive` button, hybrid behind-live math (in `source/utils/liveTv.bs`), wall-clock fallback when stream metadata is missing. See [docs/architecture/playback.md](../../docs/architecture/playback.md#live-tv--dvr-recording-mode).
 
 ## Transcoding
@@ -33,7 +33,7 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 
 - Position is in **Jellyfin ticks** (`int(positionSeconds) * 10000000&`). 1 tick = 100 ns.
 - Reports go through `GetApi().BuildPlaystateRequest()` + `SubmitSideEffect()` (fire-and-forget; never blocks playback).
-- States reported: `start` (once), `update` (every 10s while playing/paused), `stop` (once on finished/stopped).
+- States reported: `start` (once), `update` (every `10s` while playing/paused), `stop` (once on finished/stopped).
 
 ## What NOT to do
 

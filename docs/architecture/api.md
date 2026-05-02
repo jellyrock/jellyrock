@@ -21,7 +21,7 @@ How JellyRock talks to Jellyfin: the layered API model, the persistent task pool
 
 Roku has a hard rule: anything that does I/O **must not run on the render thread**, or the UI freezes. All HTTP requests therefore have to run on a Task thread (an `roSGNode` of type `Task` with a `functionName` that runs in a separate BrightScript interpreter).
 
-Naive implementations spawn a new Task per request. That's slow (Task creation is expensive on Roku) and gets tangled when many UI components want to fetch in parallel. JellyRock instead runs a **persistent pool** of three Task threads, with a FIFO coordinator that dispatches requests into them. The coordinator and its result vehicles are designed to be immune to SceneGraph's event-coalescing quirks (which can silently drop events when multiple writers hit the same field).
+Naive implementations spawn a new Task per request. That's slow (Task creation is expensive on Roku) and gets tangled when many UI components want to fetch in parallel. JellyRock instead runs a **persistent pool** of three Task threads, with a FIFO coordinator that dispatches requests into them. The coordinator and its result vehicles are designed to be immune to `SceneGraph`'s event-coalescing quirks (which can silently drop events when multiple writers hit the same field).
 
 This is one of the more clever pieces of the codebase. It mostly Just Works once you understand the shape.
 
@@ -65,10 +65,10 @@ Internally, `Build*Request` methods:
 
 - Inject the current user ID (`m.global.user.id`) into requests that need it
 - Apply image defaults (`EnableImageTypes: "Primary,Backdrop,Logo,Thumb"`, `ImageTypeLimit: 1`)
-- Route between V1 and V2 endpoints based on `getApiVersionFromGlobal()` (which reads `m.global.server.apiVersion`)
+- Route between `V1` and `V2` endpoints based on `getApiVersionFromGlobal()` (which reads `m.global.server.apiVersion`)
 - Return `invalid` if there's no user (so callers don't have to null-check globals)
 
-Example of V1/V2 routing (one method shown — the same pattern repeats per endpoint; canonical source: `source/api/ApiClient.bs`):
+Example of `V1/V2` routing (one method shown — the same pattern repeats per endpoint; canonical source: `source/api/ApiClient.bs`):
 
 ```brightscript
 function BuildGetItemRequest(itemId as string, params = {} as object) as dynamic
@@ -127,7 +127,7 @@ Equivalent helpers exist for backdrops (`GetBackdropURLFromItem`) and logos (`Ge
 - **Need a poster/backdrop/logo URL** → Layer 3 (`imageHelpers.bs`)
 - **Need a custom image URL** → Layer 2 (`image.bs.ImageURL`)
 - **Need to call any other API endpoint** → Layer 1 (`GetApi().Build*Request()` + task pool)
-- **Need to add a new endpoint** → add a `Build*Request()` method to ApiClient, route through V1/V2 if needed
+- **Need to add a new endpoint** → add a `Build*Request()` method to `ApiClient`, route through `V1/V2` if needed
 
 ## The task pool — the piece that makes async safe
 
@@ -305,9 +305,9 @@ end function
 
 So callers building requests don't need to remember to attach auth — it's automatic at the pool level.
 
-## V1 vs V2 dispatch
+## `V1` vs `V2` dispatch
 
-Jellyfin's API changed shape between **10.8** (V1) and **10.9+** (V2). Many endpoints moved or restructured: e.g., `/users/{userId}/items/{itemId}` (V1) → `/Items/{itemId}?userId={userId}` (V2).
+`Jellyfin`'s API changed shape between **10.8** (V1) and **10.9+** (V2). Many endpoints moved or restructured: e.g., `/users/{userId}/items/{itemId}` (V1) → `/Items/{itemId}?userId={userId}` (V2).
 
 JellyRock supports both. The dispatch is per-method inside `ApiClient`:
 
@@ -319,15 +319,15 @@ else
 end if
 ```
 
-`getApiVersionFromGlobal()` (in `misc.bs`) reads `m.global.server.apiVersion`, which is set during login from the server's `/System/Info/Public` response. There's a comment in `ApiClient.bs` indicating "When adding V3 support, add else-if branch in each method below" — the design accommodates future versions, but the dispatch is per-method (no centralized routing table).
+`getApiVersionFromGlobal()` (in `misc.bs`) reads `m.global.server.apiVersion`, which is set during login from the server's `/System/Info/Public` response. There's a comment in `ApiClient.bs` indicating "When adding `V3` support, add else-if branch in each method below" — the design accommodates future versions, but the dispatch is per-method (no centralized routing table).
 
 `docs/dev/jellyfin-server-versioning.md` has the canonical version-policy guide.
 
 ## Cruft callouts
 
 - **Two ways to call the same thing.** `ApiClient` has both `Get*()` (sync) and `Build*Request()` (async pool) methods for many endpoints. The migration to pool-only is ongoing. Sync methods are flagged in code with comments but not removed because the bootstrap path (login, server info) still needs them. Eventually the pool should be available pre-login and these can be unified.
-- **`source/api/sdk.bs` namespace is mostly legacy.** Per its own header comment: "Only used by ApiClient (via GetApi()). Do NOT call these functions directly." Some callers still bypass ApiClient and call `sdk.<namespace>.<function>` directly. These should be migrated.
-- **No request cancellation.** A `submitApiRequest` that's no longer needed (e.g., user navigated away) can't be cancelled — it'll complete and fire its callback regardless. Most callers handle this by checking "am I still the active screen?" in the callback, but that's defensive at the call site.
-- **Per-method V1/V2 branching.** Adding a third API version means editing every Build method. A central routing table (path templates per version) would scale better, but the current shape is explicit and grep-able, which has its own merits.
+- **`source/api/sdk.bs` namespace is mostly legacy.** Per its own header comment: "Only used by `ApiClient` (via `GetApi`()). Do NOT call these functions directly." Some callers still bypass `ApiClient` and call `sdk.<namespace>.<function>` directly. These should be migrated.
+- **No request cancellation.** A `submitApiRequest` that's no longer needed (e.g., user navigated away) can't be canceled — it'll complete and fire its callback regardless. Most callers handle this by checking "am I still the active screen?" in the callback, but that's defensive at the call site.
+- **Per-method `V1/V2` branching.** Adding a third API version means editing every Build method. A central routing table (path templates per version) would scale better, but the current shape is explicit and grep-able, which has its own merits.
 - **`buildParams` doesn't handle `roArray` values.** Has a `' TODO handle array params` comment. Workaround: callers join arrays into comma-separated strings before passing.
 - **API timeout is a single value.** `timeouts.API_WAIT_MS` is one number for all API calls. A long search vs. a quick favorite toggle have the same patience.

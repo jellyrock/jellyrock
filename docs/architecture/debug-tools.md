@@ -10,7 +10,7 @@ last-reviewed: 2026-05-01
 
 # Debug Tools
 
-The debug-only error injection system, the toast cheat code, and the testToast field. Logging primitives live in `logging.md`. Test infrastructure lives in `testing.md`.
+The debug-only error injection system, the toast cheat code, and the `testToast` field. Logging primitives live in `logging.md`. Test infrastructure lives in `testing.md`.
 
 ## Debug flags — `m.global.debug`
 

@@ -103,7 +103,7 @@ Four lint-only plugins encode unwritten conventions documented in `components/CL
 | `bsc-plugin-observe-without-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on JRScreen subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
 | `bsc-plugin-no-direct-sdk.cjs` | `sdk.<ns>.<fn>(...)` calls outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | None — the only allowed callers are explicitly listed |
 
-**Suppressing a false positive.** Each plugin honours these comment markers (case-insensitive, regex match against the source text):
+**Suppressing a false positive.** Each plugin honors these comment markers (case-insensitive, regex match against the source text):
 
 ```brightscript
 ' bsc-disable-line <plugin-id>           ← on the same line as the call
@@ -111,7 +111,7 @@ Four lint-only plugins encode unwritten conventions documented in `components/CL
 ' bsc-disable-file <plugin-id>           ← anywhere in the file (whole-file opt-out)
 ```
 
-Valid `<plugin-id>` values: `jrscreen-destroy`, `print-locations`, `observe-without-destroy`, `no-direct-sdk`. (Note: `jrscreen-destroy` only honours `bsc-disable-file` since the diagnostic is reported on the XML component declaration, not a specific source line.) Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
+Valid `<plugin-id>` values: `jrscreen-destroy`, `print-locations`, `observe-without-destroy`, `no-direct-sdk`. (Note: `jrscreen-destroy` only honors `bsc-disable-file` since the diagnostic is reported on the XML component declaration, not a specific source line.) Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
 
 ### Other plugins
 
@@ -157,7 +157,7 @@ Lint and format:
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
 | `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugin-*.cjs`). The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
-| `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the PostToolUse hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
+| `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
 | `npm run check-formatting` | `bsfmt --check` (read-only check) |
 | `npm run format` | `bsfmt --write` (apply formatting fixes) |
@@ -266,7 +266,7 @@ Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). M
 1. `npm run validate` — when `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
 2. `npm run lint:markdown` + `npm run lint:spelling` — when `*.md` changed.
 3. `npm run lint:json` — when `*.json` changed.
-4. `npm run lint:docs` — **always**. Validates `related-files:` paths, markdown link targets, and tech-debt slug references across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and `scripts/bsc-plugin-*.cjs`. Runs unconditionally because broken refs most often come from code renames or tech-debt slug deletions (no `*.md` in the push range), and limiting the check to doc-only pushes lets those slip through to CI. Cost is ~1s.
+4. `npm run lint:docs` — **always**. Validates `related-files:` paths, markdown link targets, and tech-debt slug references across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and `scripts/bsc-plugin-*.cjs`. Runs unconditionally because broken refs most often come from code renames or tech-debt slug deletions (no `*.md` in the push range), and limiting the check to doc-only pushes lets those slip through to CI. Cost is ~`1s`.
 
 **Safety:** auto-fix is skipped (with a warning) when the working tree is dirty so WIP can't be swept into the auto-fix commit. Check steps still run.
 
@@ -276,7 +276,7 @@ This is the reason agents and humans should NOT manually run `npm run lint*` or 
 
 ## Agent telemetry
 
-`.claude/settings.json` registers a PostToolUse hook that fires after every Read / Grep / Glob / Edit / Write / MultiEdit. The hook script (`.claude/hooks/log-tool-use.sh`) appends a JSONL line to `~/.claude/jellyrock-telemetry/tool-use.jsonl` (per-USER, not per-worktree — so contributors with multiple jellyrock copies see a single combined picture without manual log consolidation). Override the location with `$JELLYROCK_TELEMETRY_DIR` if needed.
+`.claude/settings.json` registers a `PostToolUse` hook that fires after every Read / Grep / Glob / Edit / Write / `MultiEdit`. The hook script (`.claude/hooks/log-tool-use.sh`) appends a JSONL line to `~/.claude/jellyrock-telemetry/tool-use.jsonl` (per-USER, not per-worktree — so contributors with multiple jellyrock copies see a single combined picture without manual log consolidation). Override the location with `$JELLYROCK_TELEMETRY_DIR` if needed.
 
 The hook is non-blocking: it runs after the tool, never delays the agent, and silences every error path so a missing `jq` (the only dep) just no-ops rather than failing the tool call.
 
@@ -292,7 +292,7 @@ JellyRock expects developers to use VS Code with the BrighterScript extension. W
 - **Diagnostics in the Problems panel** match what `bsc --noEmit` would report
 - **Auto-completion** works for `m.global.user.settings.<field>` (typed by the `JellyfinUserSettings` ContentNode) and for `translationKeys.<key>` (generated by the BSC plugin)
 - **Format on save** can be configured to run `bsfmt`
-- **The translation key plugin's fs.watch** ensures key constants are regenerated when `en_US.json` is edited, even though BSC's normal `Program.setFile` doesn't trigger on JSON
+- **The translation key plugin's fs.watch** ensures key constants are regenerated when `en_US.json` is edited, even though `BSC`'s normal `Program.setFile` doesn't trigger on JSON
 
 What the IDE does NOT cover universally:
 
@@ -303,13 +303,13 @@ So the rule is: **don't run `npm run validate` or `npm run lint:bs` manually** (
 
 ## Agent rules (from `CLAUDE.md`)
 
-- **Agents run tests** via `npm run test:tdd` / `test:unit` / `test:integration` / `test:all`. Credentials in `.env` (`ROKU_IP`, `ROKU_PASSWORD`); fall back to VSCode's `brightscript.debug.*` settings. Honest reporting is required when hardware isn't available — a green build is not a green test run.
+- **Agents run tests** via `npm run test:tdd` / `test:unit` / `test:integration` / `test:all`. Credentials in `.env` (`ROKU_IP`, `ROKU_PASSWORD`); fall back to `VSCode`'s `brightscript.debug.*` settings. Honest reporting is required when hardware isn't available — a green build is not a green test run.
 - **Cannot modify `CHANGELOG.md`** — CI-controlled only.
 - **`.bs` validation is live in the IDE** (BSC + bslint via the BrighterScript extension); `npm run validate` and `npm run lint:bs` shouldn't be run manually. **Other lint scripts have no universal IDE coverage** (markdown / spelling rely on per-dev extensions; JSON / translations / language-coverage / docs have none) — the pre-push hook is the backstop. Don't run `npm run build:*` manually either; the IDE handles dev builds.
 
 ## Cruft callouts
 
-- **Multiple bsconfig files.** Each is mostly a copy with a few overrides. A common base + overlays would be cleaner, but BSC's config schema doesn't currently support inheritance.
+- **Multiple bsconfig files.** Each is mostly a copy with a few overrides. A common base + overlays would be cleaner, but `BSC`'s config schema doesn't currently support inheritance.
 - **`bsconfig-tdd.json` is gitignored** — devs maintain their own copy of `bsconfig-tdd-sample.json`. This is fine but means new contributors have to figure out to copy the sample first.
 - **No CI-enforced version bumping.** `package.json` version and the manifest version are maintained by hand. A pre-release script that asserts they match would be helpful.
 - **`make` targets and npm scripts overlap.** Some devs prefer `make`, others `npm`. Both routes are maintained in parallel; documenting one as canonical would simplify onboarding.
