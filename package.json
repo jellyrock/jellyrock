@@ -57,7 +57,7 @@
     "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,out,locale ./",
     "lint:language-coverage": "node scripts/lint-language-coverage.cjs",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"!CLAUDE.md\" \"!out/\" \"!build/\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!tasks/\" \"!.opencode/**/*.md\"",
-    "lint:spelling": "spellchecker -d dictionary.txt --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!docs/user/app-settings.md\" \"!CHANGELOG.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
+    "lint:spelling": "spellchecker -d dictionary.txt -p spell indefinite-article repeated-words syntax-mentions syntax-urls frontmatter --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!docs/user/app-settings.md\" \"!CHANGELOG.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
     "lint:translations": "node scripts/update-translations.cjs",
     "postinstall": "npm run ropm",
     "ropm": "ropm copy && node scripts/ropm-hook.cjs",

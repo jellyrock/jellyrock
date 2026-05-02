@@ -11,7 +11,19 @@ related-files:
   - scripts/bsc-plugin-print-locations.cjs
   - scripts/bsc-plugin-observe-without-destroy.cjs
   - scripts/bsc-plugin-no-direct-sdk.cjs
-last-reviewed: 2026-05-01
+  - scripts/docs-check.cjs
+  - scripts/docs-stale.cjs
+  - scripts/docs-stale-blocking.cjs
+  - scripts/check-touched-related-files.cjs
+  - scripts/generate-dev-index.cjs
+  - .claude/settings.json
+  - .claude/hooks/log-tool-use.sh
+  - .claude/hooks/check-touched-related-files.sh
+  - .github/hooks/hooks.json
+  - .github/workflows/lint-docs.yml
+  - .github/workflows/_lint-docs.yml
+  - .github/workflows/docs-stale-tracker.yml
+last-reviewed: 2026-05-02
 ---
 
 # Build & Tooling
@@ -157,6 +169,7 @@ Lint and format:
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
 | `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugin-*.cjs`). The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
+| `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
 | `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
 | `npm run check-formatting` | `bsfmt --check` (read-only check) |
@@ -273,6 +286,38 @@ Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). M
 **Bypass:** `git push --no-verify` if you must (prefer fixing the underlying issue).
 
 This is the reason agents and humans should NOT manually run `npm run lint*` or `npm run validate`: the IDE catches issues live, the pre-push hook catches them at push time, and CI catches them on PR. Manual runs duplicate work.
+
+## Doc-maintenance enforcement
+
+The agent-context system (architecture docs, scoped CLAUDE.md, BSC convention plugins, `lint:docs`) only delivers value if the docs are kept in sync with the code. Three layers enforce that:
+
+### 1. End-of-turn reminder hook (soft, per-session)
+
+Fires when an agent finishes its turn. Prints which architecture doc(s) claim files the session touched, prompting the agent to re-read and update the doc if the change altered shape/why.
+
+- Logic: [`scripts/check-touched-related-files.cjs`](../../scripts/check-touched-related-files.cjs)
+- Claude Code wrapper: `Stop` hook in `.claude/settings.json` → [`.claude/hooks/check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh)
+- Copilot Coding Agent wrapper: `sessionEnd` in [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json). **Only fires for the GitHub-hosted Coding Agent variant** — in-IDE Copilot Chat doesn't consume that file.
+- opencode wrapper: not yet implemented (the `@opencode-ai/plugin` API surface needs verification before plugging in).
+
+Informational only — never blocks the agent. The point is to prompt the right action *during* work, not force it. Forced blocking would tempt the agent to bump `last-reviewed` mechanically to clear the block, which would erode the freshness signal.
+
+### 2. CI gate (hard, per-PR)
+
+The conditional hard gate. `lint-docs.yml` runs `npm run docs:stale:blocking` on every PR; the script exits non-zero only when the PR modifies a stale architecture doc's `related-files` without updating the doc itself. Surgical pressure: PRs that touch unrelated areas pass freely.
+
+Designed to avoid the blanket-gate trap (every PR blocked once any doc is stale) — see the docstring on [`scripts/docs-stale-blocking.cjs`](../../scripts/docs-stale-blocking.cjs) for the design rationale.
+
+### 3. Weekly stale tracker (visibility)
+
+[`.github/workflows/docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml) runs every Monday morning UTC, finds the stale list, and maintains a single canonical issue labeled `docs:stale`:
+
+- Opens the issue when stale docs exist and no issue is open
+- Edits the body in place when the list changes (one issue, not per-doc — keeps noise low)
+- Auto-closes when no docs are stale
+- Splits the body into "Architecture (PR-gated at 120 days)" and "Dev guides (informational)" so contributors understand which entries block PRs
+
+The combination: agent sees a soft prompt during work (#1), CI blocks at PR time if the stale-doc territory was touched (#2), weekly tracker keeps any unresolved staleness visible (#3).
 
 ## Agent telemetry
 

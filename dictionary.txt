@@ -1,5 +1,7 @@
 .bs
+.claude
 .editorconfig
+.github
 .vscode
 AAC
 AAs
@@ -71,6 +73,7 @@ devs
 dialogs
 Diátaxis
 DLNA
+docstring
 DoVi
 downmixing
 downscaled
@@ -171,6 +174,7 @@ npm
 NPM
 ns
 onboarding
+opencode
 orchestrator
 Orchestrator
 OSD
