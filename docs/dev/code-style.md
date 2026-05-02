@@ -417,3 +417,21 @@ startLogin:
 **Not currently enforced by tooling**: naming conventions (code review only), line length.
 
 The IDE runs validate + bslint live; the `.husky/pre-push` hook runs the full lint suite on the files in your push range, with bsfmt auto-applied. You don't need to run `npm run lint` manually except to debug a specific failure.
+
+---
+
+## Markdown conventions
+
+These apply to `.md` files in `docs/`, every `CLAUDE.md`, `AGENTS.md`, and the root `README.md`.
+
+### Wrap code identifiers in backticks
+
+Anything that is *code* — variable / function / class / type / event names, file paths, environment variable names, `npm` script names, hook event names, file extensions, command names — goes in single backticks for inline references or fenced blocks for multi-line snippets. Plain English does not.
+
+Concretely, the following are code and must be wrapped: `Stop`, `sessionEnd`, `PostToolUse`, `stdout`, `stderr`, `JELLYROCK_TELEMETRY_DIR`, `.claude/settings.json`, `check-touched-lint.cjs`, `force: true`, `workflow_call`, `lint:docs`.
+
+**Why this matters:** the spell-checker (`spellchecker-cli` with `retext-spell`) treats text inside backticks as code and skips it, but flags the same identifier appearing in prose as a misspelling. Forgetting to wrap an identifier is the most common reason a previously-clean doc fails spell-check after an edit. The end-of-turn lint hook ([`scripts/check-touched-lint.cjs`](../../scripts/check-touched-lint.cjs)) surfaces the failure the moment it happens, with a hint pointing back here.
+
+### When to add to `dictionary.txt` instead
+
+Add a word to `dictionary.txt` only when it's a real English word the spell-checker doesn't know — typically a legitimate technical or domain term (e.g., `idempotence`, `untracked`, `transcoder`). Code identifiers (e.g., `sessionEnd`, `JRScreen`, `apiPool`) should *not* be added — wrap them in backticks in prose instead. Putting identifiers in the dictionary defeats the spell-checker for any *actual* misspelling that happens to collide with an identifier.

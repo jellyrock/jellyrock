@@ -5,6 +5,11 @@
         "type": "command",
         "bash": "node scripts/check-touched-related-files.cjs --quiet",
         "comment": "Mirrors Claude Code's Stop hook (.claude/hooks/check-touched-related-files.sh) — surfaces architecture docs whose related-files were touched without the doc itself being updated. See .github/hooks/README.md for context."
+      },
+      {
+        "type": "command",
+        "bash": "node scripts/check-touched-lint.cjs --quiet",
+        "comment": "Mirrors Claude Code's Stop hook (.claude/hooks/check-touched-lint.sh) — runs spell / markdown / JSON lint on changed files so the agent sees failures before pre-push surfaces them. See .github/hooks/README.md for context."
       }
     ]
   }

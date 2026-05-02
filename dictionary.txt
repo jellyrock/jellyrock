@@ -19,7 +19,10 @@ Async
 auth
 Auth
 autocomplete
+backtick
 backtick-wrapped
+backticking
+backticks
 bitrate
 Bitrate
 bool
@@ -117,6 +120,7 @@ HLS
 how-tos
 HTTPS
 i18n
+idempotence
 ImageMagick
 in-repo
 ing
@@ -187,6 +191,9 @@ per-worktree
 PGS
 playstate
 PNGs
+pre-commit
+Pre-commit
+pre-commit's
 pre-existing
 pre-fetch
 Pre-fetches
@@ -250,6 +257,8 @@ stateful
 Stateful
 subclasses
 Subclasses
+subcommand
+subcommands
 subdir
 Subdir
 subdirs
@@ -286,6 +295,7 @@ unit-tests-tdd
 unobserve
 unshuffled
 unsynchronized
+untracked
 untyped
 Untyped
 Unwatched

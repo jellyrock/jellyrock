@@ -181,7 +181,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `changelog-syncer-mixes-validate-mutate`
 
 - **area**: `scripts/changelog-syncer.js`
-- **issue**: Same script provides both `validate()` (read-only) and `syncUnreleased()` / `syncRelease()` (writes the file). A failing `validate` run could be fixed by a `sync` run that then changes things — confusing for callers who expected idempotence.
+- **issue**: Same script provides both `validate()` (read-only) and `syncUnreleased()` / `syncRelease()` (writes the file). A failing `validate` run could be fixed by a `sync` run that then changes things — `validate` doesn't behave like a query when it's adjacent to a mutation in the same module.
 - **direction**: Split into separate read-only and write entry points (e.g., `scripts/changelog-validate.cjs` + `scripts/changelog-sync.cjs`), or keep one entry point but make the validate vs sync subcommands clearly distinct in CLI surface.
 
 #### `no-request-cancellation`

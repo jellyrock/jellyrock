@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Pre-commit hook: run file-scoped lint + auto-format on staged files via
+# lint-staged. Configuration is in `.lintstagedrc.cjs`.
+#
+# Auto-fix steps (bsfmt --write, markdownlint --fix) re-stage their output
+# automatically — the formatted version lands in the same commit, no
+# separate "auto-fix commit" needed.
+#
+# Check-only steps (spellchecker, jshint) abort the commit on failure with
+# the linter's native error output. Fix the issue and `git commit` again.
+#
+# Bypass with `git commit --no-verify` only as a last resort. The pre-push
+# hook still runs the project-wide checks (validate, bslint, lint:docs,
+# regens) and CI runs everything — so a `--no-verify` commit gets caught
+# downstream regardless.
+
+npx lint-staged

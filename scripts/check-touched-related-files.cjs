@@ -43,12 +43,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const {
   readFrontmatter,
   parseRelatedFiles,
   pathMatches,
 } = require('./lib/frontmatter.cjs');
+const { changedFiles } = require('./lib/changed-files.cjs');
 
 const args = process.argv.slice(2);
 
@@ -63,40 +63,6 @@ const QUIET = args.includes('--quiet');
 const ROOT_DIR = '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 
-// ────────────────────────────────────────────────────────────────────
-// Build the set of files touched in the current session. Combines:
-//   - committed changes since branch base (`git diff <base>...HEAD`)
-//   - uncommitted working-tree changes (`git diff HEAD`)
-// Union ensures we catch agent work whether it's been committed yet or not.
-// ────────────────────────────────────────────────────────────────────
-
-function safeDiff(cmd) {
-  try {
-    return execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-      .split(/\r?\n/)
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-function resolveTouched() {
-  const candidates = [`origin/${BASE_REF}`, BASE_REF, 'origin/main', 'main'];
-  let committed = [];
-  for (const base of candidates) {
-    try {
-      execSync(`git rev-parse --verify ${base}`, { stdio: 'ignore' });
-      committed = safeDiff(`git diff ${base}...HEAD --name-only`);
-      break;
-    } catch {
-      // ref not resolvable — try next
-    }
-  }
-  const uncommitted = safeDiff('git diff HEAD --name-only');
-  const untracked = safeDiff('git ls-files --others --exclude-standard');
-  return Array.from(new Set([...committed, ...uncommitted, ...untracked]));
-}
-
 function collectArchDocs() {
   if (!fs.existsSync(ARCH_DIR)) return [];
   return fs.readdirSync(ARCH_DIR)
@@ -105,7 +71,7 @@ function collectArchDocs() {
     .sort();
 }
 
-const touched = resolveTouched();
+const touched = changedFiles(BASE_REF);
 const docs = collectArchDocs();
 const reminders = [];
 

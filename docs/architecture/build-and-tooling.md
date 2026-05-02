@@ -15,11 +15,19 @@ related-files:
   - scripts/docs-stale.cjs
   - scripts/docs-stale-blocking.cjs
   - scripts/check-touched-related-files.cjs
+  - scripts/check-touched-lint.cjs
   - scripts/generate-dev-index.cjs
   - scripts/lib/frontmatter.cjs
+  - scripts/lib/changed-files.cjs
+  - scripts/lib/lint-excludes.cjs
+  - .lintstagedrc.cjs
+  - .husky/pre-commit
+  - .husky/pre-push
   - .claude/settings.json
   - .claude/hooks/log-tool-use.sh
   - .claude/hooks/check-touched-related-files.sh
+  - .claude/hooks/check-touched-lint.sh
+  - .claude/hooks/bsfmt-on-write.sh
   - .github/hooks/hooks.json
   - .github/actions/changed-paths/action.yml
   - .github/workflows/lint-docs.yml
@@ -268,27 +276,53 @@ make deploy        # lints, removes old, installs new
 make launch        # launches the channel
 ```
 
-## Pre-push hook — `.husky/pre-push`
+## Verification surfaces (defense in depth)
 
-Installed by `husky` on `npm install` (via `package.json`'s `prepare` script). Mirrors the CI lint suite, scoped to files in the push range, so issues are caught before they fail the build.
+JellyRock layers five verification surfaces, each owning checks the others can't do well. The principle: **every check runs at the cheapest surface that can do it correctly.** No surface duplicates another's responsibility.
 
-**Auto-fix steps** (mutate files; combined into a single `chore: auto-fix via pre-push hook` commit; never amends):
+| # | Surface | Trigger | What it owns | Latency |
+|---|---|---|---|---|
+| 1 | **IDE** (BrighterScript ext) | Live, per keystroke | `.bs` validation + bslint diagnostics, `bsfmt` on save | <100 ms |
+| 2 | **`PostToolUse` hook** ([`bsfmt-on-write.sh`](../../.claude/hooks/bsfmt-on-write.sh)) | Agent's `Edit` / `Write` / `MultiEdit` | `bsfmt --write` on the file just edited | ~500 ms |
+| 3 | **End-of-turn hook** ([`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) + [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh)) | Agent finishes turn (`Stop` / `sessionEnd`) | Architecture-doc reminder + lint on **uncommitted-only** files | 2–5 s |
+| 4 | **Pre-commit hook** ([`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) via `lint-staged`) | `git commit` | File-scoped lint + auto-format on staged files | 1–5 s |
+| 5 | **Pre-push hook** ([`.husky/pre-push`](../../.husky/pre-push)) | `git push` | Project-wide checks that aren't file-scoped | 10–30 s |
+| 6 | **CI** (`.github/workflows/lint-*.yml`) | PR open / sync | Same as pre-push, can't bypass | minutes (parallel) |
 
-1. `bsfmt --write` on `*.bs` / `*.brs` files in the push range.
-2. `npm run update-translations` if BS source / `locale/**` / `settings/settings.json` changed.
+### Why each surface exists
 
-**Check steps** (read-only; non-zero exit aborts the push) — run after auto-fix:
+- **IDE** — fastest possible feedback loop for human devs, but assumes a configured/working BrighterScript extension. Doesn't fire for agents.
+- **`PostToolUse`** — the agent's "format on save." Auto-formats `.bs` / `.brs` immediately after the agent writes them so the next read shows canonical form. Silent on success — no context noise. Limited to `bsfmt` because anything project-wide (validate, bslint) would be too slow per-edit.
+- **End-of-turn** — covers the gap when the agent has work that *isn't yet committed*. The lint variant scans only working-tree files (committed work is pre-commit's job — running it again here would be wasted cycles). The doc-maintenance variant reminds the agent about architecture-doc related-files territory it touched. Both informational, never block the turn.
+- **Pre-commit** (`lint-staged`) — the universal gate for both humans and agents. File-scoped: `bsfmt --write`, `markdownlint --fix`, `spellchecker`, `jshint`. Auto-fix steps re-stage their output so the formatted version lands in the same commit (no "auto-fix commit" ceremony). The `lint-staged` runner handles the staged-files plumbing.
+- **Pre-push** — what couldn't run per-commit: full BSC project compile (`bsc --noEmit`), `bslint` (needs full project context, can't be file-scoped), cross-doc reference check (`lint:docs`), drift check on the auto-generated dev-guides index, language-coverage. Plus project-wide regen tasks (`update-translations`, `docs:dev-index`) that mutate one output from many inputs.
+- **CI** — final backstop; can't be bypassed. Mirrors pre-push so the local hook isn't a load-bearing source of truth.
 
-1. `npm run validate` — when `*.bs` / `*.brs` / `*.xml` / `bsconfig*.json` changed.
-2. `npm run lint:markdown` + `npm run lint:spelling` — when `*.md` changed.
-3. `npm run lint:json` — when `*.json` changed.
-4. `npm run lint:docs` — **always**. Validates `related-files:` paths, markdown link targets, and tech-debt slug references across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and `scripts/bsc-plugin-*.cjs`. Runs unconditionally because broken refs most often come from code renames or tech-debt slug deletions (no `*.md` in the push range), and limiting the check to doc-only pushes lets those slip through to CI. Cost is ~`1s`.
+### Surface ownership of each lint command
 
-**Safety:** auto-fix is skipped (with a warning) when the working tree is dirty so WIP can't be swept into the auto-fix commit. Check steps still run.
+| Command | Pre-commit (file-scoped) | Pre-push (project-wide) | Why |
+|---|---|---|---|
+| `bsfmt --write` | ✓ | — | File-scoped; auto-fix re-stages |
+| `bslint` (`lint:bs`) | — | ✓ | Needs full project context (cross-file scope resolution) |
+| `bsc --noEmit` (`validate`) | — | ✓ | Project-wide compile, ~10–30 s |
+| `markdownlint-cli2 --fix` | ✓ | — | File-scoped; auto-fix re-stages |
+| `spellchecker` (`lint:spelling`) | ✓ | — | File-scoped; no auto-fix (correctness) |
+| `jshint` (`lint:json`) | ✓ | — | File-scoped; no auto-fix |
+| `docs-check.cjs` (`lint:docs`) | — | ✓ | Cross-doc reference check; needs all docs loaded |
+| `generate-dev-index.cjs --check` | — | ✓ | Drift check on auto-generated table |
+| `update-translations` (regen) | — | ✓ | Project-wide regen from `en_US.json` |
+| `lint:language-coverage` | — | ✓ | Conditional on specific files; unusual pattern |
 
-**Bypass:** `git push --no-verify` if you must (prefer fixing the underlying issue).
+Excludes mirror `package.json`'s `lint:*` scripts via shared helpers in [`scripts/lib/lint-excludes.cjs`](../../scripts/lib/lint-excludes.cjs) — the lint-staged config, the end-of-turn hook script, and the package.json scripts all consult the same source so excludes don't drift.
 
-This is the reason agents and humans should NOT manually run `npm run lint*` or `npm run validate`: the IDE catches issues live, the pre-push hook catches them at push time, and CI catches them on PR. Manual runs duplicate work.
+### Bypass discipline
+
+- `git commit --no-verify` skips the pre-commit hook; `git push --no-verify` skips the pre-push hook. Either is acceptable in genuine emergencies, but CI catches everything regardless — a `--no-verify` commit gets rejected at PR time.
+- `--no-verify` should never be the agent's first move when a hook complains. Fix the underlying issue.
+
+### Why agents shouldn't run `npm run lint:*` manually
+
+The hooks already do it at the right granularity (per-edit, per-commit, per-push). Manual runs duplicate work and waste tokens on output the agent didn't need. **Exception:** debugging a specific failure that the hook surfaced.
 
 ## CI lint workflows
 
@@ -336,6 +370,20 @@ Designed to avoid the blanket-gate trap (every PR blocked once any doc is stale)
 - Splits the body into "Architecture (PR-gated at 120 days)" and "Dev guides (informational)" so contributors understand which entries block PRs
 
 The combination: agent sees a soft prompt during work (#1), CI blocks at PR time if the stale-doc territory was touched (#2), weekly tracker keeps any unresolved staleness visible (#3).
+
+## End-of-turn lint feedback for agents
+
+The IDE catches `.bs` issues live. The pre-push hook is the catch-all backstop. **Between** them, an agent working autonomously had no live feedback on lint categories the IDE doesn't cover (markdown, spelling, JSON, etc.) — so a typo in a doc edit would surface only at `git push` time, after the agent had already reported "done." The user, not the agent, ends up debugging.
+
+[`scripts/check-touched-lint.cjs`](../../scripts/check-touched-lint.cjs) closes this gap. It runs on the same `Stop` / `sessionEnd` hook as the architecture-doc reminder (sibling wrappers in [`.claude/hooks/check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) and [`.github/hooks/hooks.json`](../../.github/hooks/hooks.json)) and:
+
+- Computes the set of files the agent touched this session (committed + uncommitted + untracked, via the shared [`scripts/lib/changed-files.cjs`](../../scripts/lib/changed-files.cjs) helper)
+- Runs `spellchecker-cli` and `markdownlint-cli2` on changed `.md` files, and `jshint --extra-ext .json` on changed `.json` files
+- Surfaces failures to `stdout` so they land in the agent's next-turn context
+
+What it does *not* run: `lint:bs` / `validate` / `check-formatting` (IDE), `lint:docs` (the related-files reminder + CI gate already cover this), `lint:translations` / `lint:language-coverage` (niche; the pre-push hook still catches them).
+
+Non-blocking by design — same rationale as the doc-maintenance reminder. If the failure is a false positive (e.g., legitimate new technical vocabulary that needs to be added to `dictionary.txt`), the agent can fix it without being blocked from declaring done. The pre-push hook still rejects the push if the agent ignores the surfaced output.
 
 ## Agent telemetry
 
