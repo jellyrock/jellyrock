@@ -11,6 +11,11 @@ JellyRock is a Jellyfin client for Roku devices allowing users to consume media 
 4. ALWAYS look for the best possible solution to a problem then provide the user with their best options
 5. Iterate on a plan with the user until they approve it, and only then begin coding
 6. When finished coding a user approve plan, provide a list of app behavior for the user to manually test and any expected debug logging output
+## Documentation Maintenance
+When you modify a file listed in any architecture doc's `related-files:` frontmatter (`docs/architecture/*.md`), also re-read that doc:
+- **Shape/why changed?** Update the doc, bump `last-reviewed` in the frontmatter to today
+- **No shape/why change?** State so explicitly in your response; do not bump `last-reviewed` (the date must reflect actual review)
+Enforcement: `npm run docs:stale:blocking` fails the PR if a stale architecture doc's `related-files` is touched without the doc being updated alongside (120-day threshold). The Coding Agent variant of Copilot also fires `.github/hooks/hooks.json` `sessionEnd` to surface affected docs at end-of-session.
 ## Development Context
 **Check relevant docs for specific areas:**
 - **Adding user settings?** → `docs/dev/adding-user-settings.md`
