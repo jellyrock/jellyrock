@@ -32,4 +32,3 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 | `source/migrations.bs` | Registry-schema migrations. See [docs/architecture/migrations.md](../docs/architecture/migrations.md). |
 | `source/main.bs` | Entry point; bootstrap; main event loop. See [docs/architecture/bootstrap.md](../docs/architecture/bootstrap.md). |
 | `source/showScenes.bs` | LoginFlow + scene factories. |
-
