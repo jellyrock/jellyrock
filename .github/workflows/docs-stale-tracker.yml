@@ -24,6 +24,9 @@ on:
     - cron: '0 13 * * MON'  # 13:00 UTC every Monday — start of the workweek for most contributors
   workflow_dispatch:
 
+# Permissions are unused when authenticating as the JellyRock GitHub App
+# (the App's installation permissions apply instead) — kept for clarity
+# and as a fallback for forks where APP_PRIVATE_KEY isn't available.
 permissions:
   contents: read
   issues: write
@@ -32,6 +35,13 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate JellyRock app token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -40,7 +50,7 @@ jobs:
       - name: Ensure docs:stale label exists
         run: gh label create docs:stale --color B60205 --description "Architecture/dev docs past their last-reviewed threshold" --force
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Compute stale list
         id: stale
@@ -96,7 +106,7 @@ jobs:
           echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
           echo "Existing tracker issue: ${ISSUE_NUMBER:-none}"
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Open or update tracker issue
         if: steps.stale.outputs.stale_count != '0'
@@ -110,11 +120,11 @@ jobs:
             gh issue create --title "📚 Stale docs tracker" --body-file /tmp/issue-body.md --label docs:stale
           fi
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Close tracker issue when no stale docs
         if: steps.stale.outputs.stale_count == '0' && steps.existing.outputs.issue_number != ''
         run: |
           gh issue close "${{ steps.existing.outputs.issue_number }}" --comment "All architecture + dev docs are within their review threshold. Closing automatically — this issue will reopen if any go stale again."
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
