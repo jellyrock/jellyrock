@@ -67,12 +67,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: 702-line file with three concerns: a 230-line `LoginFlow()` state machine, 7 scene factories (`CreateServerGroup`, `CreateUserSelectGroup`, `CreateSigninGroup`, `CreateHomeGroup`, `CreateItemDetailsGroup`, `CreateSearchPage`, plus `playbackOptionDialog`), and three server-list registry utilities (`SaveServerList`, `DeleteFromServerList`, `SendPerformanceBeacon`).
 - **direction**: Split into `source/auth/LoginFlow.bs` (the login state machine), `source/screens/<Name>Page.bs` (one factory per scene), and `source/utils/serverList.bs` (registry helpers).
 
-#### `per-method-v1-v2-routing`
-
-- **area**: `source/api/ApiClient.bs`
-- **issue**: 14 of 49 `Build*Request()` methods have inline `if m.getApiVersion() >= 2` branches; the conditional shape repeats per affected method. Adding a third API version means editing each of those 14 methods (the other 35 endpoints share a single code path because their path didn't change between server versions, so they're unaffected).
-- **direction**: Centralize via a routing table — `{ "GetItem": { v1: "/users/{userId}/items/{id}", v2: "/Items/{id}" }, ... }`. The 14 version-aware methods read from the table instead of branching inline; the other 35 stay as-is.
-
 #### `loginflow-error-boundaries`
 
 - **area**: `source/showScenes.bs` (`LoginFlow`) and elsewhere
@@ -101,11 +95,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `components/video/VideoPlayerView.xml`
 - **issue**: The OSD instance is declared with `inactiveTimeout="5"` (a literal). `OSD.xml` itself only declares the field — the value is set by the parent. Should be a named constant.
-
-#### `no-now-playing-queue-ui`
-
-- **area**: `components/ItemDetails`, `QueueManager`
-- **issue**: "Play next" routes through `ItemDetails → quickPlayNode` each time; no "now playing queue" sidebar to see upcoming items without going to the player.
 
 #### `scenemanager-stack-unbounded`
 
@@ -156,6 +145,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `source/constants/timeouts.bs`
 - **issue**: `timeouts.API_WAIT_MS` is one value for all API calls regardless of operation. A long search and a quick favorite toggle have the same patience.
+
+#### `per-method-v1-v2-routing`
+
+- **area**: `source/api/ApiClient.bs`
+- **issue**: 14 of 49 `Build*Request()` methods have inline `if m.getApiVersion() >= 2` branches; the conditional shape repeats per affected method. Adding a third API version means editing each of those 14 methods (the other 35 endpoints share a single code path because their path didn't change between server versions, so they're unaffected).
+- **direction**: Centralize via a routing table — `{ "GetItem": { v1: "/users/{userId}/items/{id}", v2: "/Items/{id}" }, ... }`. The 14 version-aware methods read from the table instead of branching inline; the other 35 stay as-is. Low-priority until `V3` is on the roadmap — adjacent work.
 
 #### `jrscreen-init-initializes-log-manager`
 
