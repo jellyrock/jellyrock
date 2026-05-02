@@ -60,8 +60,7 @@ describe('docs-check', () => {
 
   it('exits 1 on a broken inline markdown link', () => {
     dir = setup({
-      'docs/architecture/foo.md':
-        fmDoc([], 'See [missing](./missing-doc.md) for details.\n'),
+      'docs/architecture/foo.md': fmDoc([], 'See [missing](./missing-doc.md) for details.\n'),
       'docs/architecture/tech-debt.md': '---\ntopic: tech-debt\n---\n# Tech Debt\n',
     });
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
@@ -75,8 +74,7 @@ describe('docs-check', () => {
         [],
         'See [`old-slug`](./tech-debt.md#old-slug) — the canonical citation form.\n',
       ),
-      'docs/architecture/tech-debt.md':
-        '---\ntopic: tech-debt\n---\n# Tech Debt\n\n## Real Slug\n',
+      'docs/architecture/tech-debt.md': '---\ntopic: tech-debt\n---\n# Tech Debt\n\n## Real Slug\n',
     });
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);
@@ -104,7 +102,7 @@ describe('docs-check', () => {
       'docs/architecture/tech-debt.md':
         '---\ntopic: tech-debt\n---\n# Tech Debt\n\n## `real-slug`\n',
       'scripts/bsc-plugins/example.cjs':
-        "// Plugin enforces the rule documented at tech-debt.md#nonexistent-slug.\n",
+        '// Plugin enforces the rule documented at tech-debt.md#nonexistent-slug.\n',
     });
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);

@@ -11,9 +11,12 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { readFrontmatter, getLastReviewed, parseRelatedFiles, pathMatches } = require(
-  '../../../../scripts/lib/frontmatter.cjs',
-);
+const {
+  readFrontmatter,
+  getLastReviewed,
+  parseRelatedFiles,
+  pathMatches,
+} = require('../../../../scripts/lib/frontmatter.cjs');
 
 describe('frontmatter / readFrontmatter', () => {
   it('extracts the inner block from a fenced document', () => {
@@ -55,7 +58,8 @@ describe('frontmatter / parseRelatedFiles', () => {
   });
 
   it('parses the multi-line form', () => {
-    const fm = 'topic: foo\nrelated-files:\n  - source/foo.bs\n  - source/bar.bs\nlast-reviewed: 2026-05-01';
+    const fm =
+      'topic: foo\nrelated-files:\n  - source/foo.bs\n  - source/bar.bs\nlast-reviewed: 2026-05-01';
     expect(parseRelatedFiles(fm)).toEqual(['source/foo.bs', 'source/bar.bs']);
   });
 

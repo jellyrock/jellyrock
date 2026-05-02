@@ -5,7 +5,7 @@
 // past threshold, blocks if the PR touches the doc's related-files without
 // also updating the doc itself. Tests use a real temp git repo.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';

@@ -12,9 +12,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { changedFiles, workingTreeFiles } = require(
-  '../../../../scripts/lib/changed-files.cjs',
-);
+const { changedFiles, workingTreeFiles } = require('../../../../scripts/lib/changed-files.cjs');
 
 function git(repoDir, ...args) {
   return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8' });

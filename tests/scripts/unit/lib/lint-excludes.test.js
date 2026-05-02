@@ -9,9 +9,11 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { isSpellExcluded, isMarkdownExcluded, isJsonExcluded } = require(
-  '../../../../scripts/lib/lint-excludes.cjs',
-);
+const {
+  isSpellExcluded,
+  isMarkdownExcluded,
+  isJsonExcluded,
+} = require('../../../../scripts/lib/lint-excludes.cjs');
 
 describe('lint-excludes / isSpellExcluded', () => {
   it('matches CHANGELOG.md (exact)', () => {

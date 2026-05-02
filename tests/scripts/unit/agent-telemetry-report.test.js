@@ -56,9 +56,7 @@ describe('agent-telemetry-report', () => {
   });
 
   it('reports "no events in window" when all events are outside the window', () => {
-    dir = setupTelemetryDir([
-      { timestamp: yearAgo, tool: 'Read', file: 'components/Foo.bs' },
-    ]);
+    dir = setupTelemetryDir([{ timestamp: yearAgo, tool: 'Read', file: 'components/Foo.bs' }]);
     const { exitCode, stdout } = spawnScript(SCRIPT, ['--days', '7'], {
       env: { JELLYROCK_TELEMETRY_DIR: dir },
     });
@@ -67,9 +65,7 @@ describe('agent-telemetry-report', () => {
   });
 
   it('honors --days override', () => {
-    dir = setupTelemetryDir([
-      { timestamp: yearAgo, tool: 'Read', file: 'components/Foo.bs' },
-    ]);
+    dir = setupTelemetryDir([{ timestamp: yearAgo, tool: 'Read', file: 'components/Foo.bs' }]);
     // 1000-day window includes events from a year ago.
     const { exitCode, stdout } = spawnScript(SCRIPT, ['--days', '1000'], {
       env: { JELLYROCK_TELEMETRY_DIR: dir },

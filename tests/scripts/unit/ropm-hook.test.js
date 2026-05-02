@@ -9,7 +9,7 @@
 // Tests use a temp dir simulating the post-ropm-copy layout.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
