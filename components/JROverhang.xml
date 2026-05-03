@@ -11,14 +11,14 @@
 
   </children>
   <interface>
-    <field id="currentUser" type="string" onChange="currentUserChanged" />
-    <field id="title" type="string" onChange="titleChanged" />
-    <field id="isVisible" value="true" type="boolean" onChange="isVisibleChanged" />
+    <field id="currentUser" type="string" onChange="onCurrentUserChanged" />
+    <field id="title" type="string" onChange="onTitleChanged" />
+    <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />
-    <field id="isLogoVisible" value="true" type="boolean" onChange="isLogoVisibleChanged" />
+    <field id="isLogoVisible" value="true" type="boolean" onChange="onIsLogoVisibleChanged" />
     <field id="tabs" type="array" onChange="onTabsChanged" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
-    <field id="shouldShowIcons" type="boolean" value="false" onChange="shouldShowIconsChanged" />
+    <field id="shouldShowIcons" type="boolean" value="false" onChange="onShouldShowIconsChanged" />
     <field id="iconAction" type="string" alwaysNotify="true" />
     <function name="getTabBar" />
     <function name="getUserDropdown" />

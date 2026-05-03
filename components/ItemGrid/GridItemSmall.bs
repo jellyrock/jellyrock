@@ -25,7 +25,7 @@ sub initTitle()
   m.title = m.top.findNode("title")
 end sub
 
-sub itemContentChanged()
+sub onItemContentChanged()
   m.title.visible = false
 
   if isValid(m.topParent.showItemTitles)
@@ -70,7 +70,7 @@ sub itemContentChanged()
   m.title.text = itemData.title
 end sub
 
-sub focusChanged()
+sub onFocusChanged()
   if not isValid(m.title) then initTitle()
 
   if m.top.itemHasFocus = true

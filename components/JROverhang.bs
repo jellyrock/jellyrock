@@ -87,7 +87,7 @@ sub createSlideAnimations()
   m.top.appendChild(m.slideDownAnimation)
 end sub
 
-sub isVisibleChanged()
+sub onIsVisibleChanged()
   if m.top.isMoveAnimationDisabled
     m.top.translation = [0, 0]
     return
@@ -100,7 +100,7 @@ sub isVisibleChanged()
   m.slideUpAnimation.control = "start"
 end sub
 
-sub titleChanged()
+sub onTitleChanged()
   m.title.text = m.top.title
 end sub
 
@@ -108,7 +108,7 @@ end sub
 ' USER DROPDOWN
 ' ============================================
 
-sub currentUserChanged()
+sub onCurrentUserChanged()
   username = m.top.currentUser
 
   if username = ""
@@ -148,7 +148,7 @@ end sub
 ' Controls icon visibility. Icons require both showIcons=true (set by the active screen)
 ' AND a logged-in user. This lets screens opt in (Home) without icons appearing on
 ' screens that only set currentUser (e.g., Settings).
-sub shouldShowIconsChanged()
+sub onShouldShowIconsChanged()
   updateIconVisibility()
 end sub
 
@@ -377,7 +377,7 @@ sub positionOverhangIcons()
 end sub
 
 ' component boolean field isVisible has changed value
-sub isLogoVisibleChanged()
+sub onIsLogoVisibleChanged()
   if m.top.isLogoVisible
     if not isValid(m.logo)
       m.logo = m.logoPoster

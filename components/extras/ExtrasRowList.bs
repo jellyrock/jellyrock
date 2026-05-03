@@ -1126,9 +1126,9 @@ sub updatePanelPosition(rowIndex as integer)
   end if
 end sub
 
-' destroy: Full teardown releasing all resources before component removal.
-' Called by ItemDetails.destroy() before nulling the extrasGrid reference.
-sub destroy()
+' onDestroy: Full teardown releasing all resources before component removal.
+' Called by ItemDetails.onDestroy() before nulling the extrasGrid reference.
+sub onDestroy()
   ' Stop all in-flight tasks and unobserve their content fields
   cancelInFlightChain()
 

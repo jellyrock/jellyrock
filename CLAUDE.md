@@ -1,36 +1,39 @@
 # JellyRock — Agent Rules
 
-JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, transpiled to `.brs`) with **Roku Scene Graph** (`.xml`) for the UI. The Jellyfin REST API is wrapped by an in-house client + persistent task pool — see [`source/api/CLAUDE.md`](source/api/CLAUDE.md) and [`docs/architecture/api.md`](docs/architecture/api.md).
+JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, transpiled to `.brs`) with **Roku Scene Graph** (`.xml`) for the UI. The Jellyfin REST API is wrapped by an in-house client + persistent task pool — see [`source/api/CLAUDE.md`](source/api/CLAUDE.md) and [`docs/architecture/api.md`](docs/architecture/api.md)
 
 ## ⚠️ Mandatory rules
 
-1. DO NOT make things up or assume.
-2. Ask clarifying questions when you are not sure about something.
-3. Focus on best practices, industry standards, and easy long-term maintenance.
-4. ALWAYS look for the best possible solution to a problem then provide the user with their best options.
-5. Iterate on a plan with the user until they approve it, and only then begin coding.
-6. After finishing a user-approved plan: run automated tests to verify; provide a manual test plan only for UI/runtime behavior tests don't cover, plus any expected debug-log output.
+1. DO NOT make stuff up or make assumptions
+2. Ask clarifying questions when you are not sure about something
+3. Focus on best practices, industry standards, easy long-term maintenance, no regressions, and world-class UX and DX
+4. ALWAYS look for the best possible solution to a problem then provide the user with their best options
+5. Iterate on a plan with the user until they approve it, and only then begin coding
+6. After finishing a user-approved plan: run automated tests to verify; provide a manual test plan only for UI/runtime behavior tests don't cover, plus any expected debug-log output
 
 ## Agent rules
 
-- **Run tests to verify fixes — don't commit based on reasoning alone.** TDD (single spec, fastest): `npm run test:tdd`. Broader: `npm run test:unit | test:integration | test:all`. Setup, credentials, debugger contention: [`docs/dev/unit-tests-tdd.md`](docs/dev/unit-tests-tdd.md).
-- **When hardware isn't reachable, say so explicitly** — don't claim a fix was tested when only the build was verified.
-- **Cannot modify `CHANGELOG.md`** — CI-controlled.
-- **Don't run `npm run validate`, `npm run lint:*`, `npm run build:*`, `npm run check-formatting`, `npm run format`, or `npm run test:scripts` manually** — pre-commit / pre-push / CI runs them at the right moment and the IDE handles `.bs` live. Exception: debugging a specific lint failure.
+- **Run tests to verify fixes — don't commit based on reasoning alone.** Nothing auto-runs tests, so an agent is expected to run them. BS unit tests on Roku hardware — TDD (single spec, fastest): `npm run test:tdd`; broader: `npm run test:unit | test:integration | test:all`. BSC plugin / scripts changes (Vitest, no hardware needed): `npm run test:scripts`. Setup, credentials, debugger contention: [`docs/dev/unit-tests-tdd.md`](docs/dev/unit-tests-tdd.md).
+- **When hardware isn't reachable, say so explicitly** — don't claim a fix was tested when only the build was verified
+- **Cannot modify `CHANGELOG.md`** — CI-controlled
+- **Don't compulsively re-run lint / build / format mid-work.** `npm run validate`, `lint:*`, `build:*`, `check-formatting`, and `format` are already run by pre-commit / pre-push hooks and by CI on every push (and most editors surface BSC diagnostics live as you type). So they aren't for routine "did my change compile" checks — but they're fair game when debugging a specific failure, when no hook has fired yet, or when your editor isn't surfacing diagnostics. **Test scripts are NOT covered** — `test:tdd` / `test:unit` / `test:scripts` aren't auto-run anywhere before commit, so running them as part of finishing work is the expected workflow, not a redundancy.
+- **Capture cross-session agent guidance in `CLAUDE.md` (root or scoped), not in agent-private memory** — memory files are per-folder (worktrees / multiple JellyRock checkouts each get their own), aren't committed, and don't reach other contributors. Project rules belong in `CLAUDE.md` so everyone benefits. Auto-memory is disabled at the project level (`.claude/settings.json` → `autoMemoryEnabled: false`)
+- **Don't reference `tasks/` paths in shared artifacts** — `tasks/` is gitignored; reviewers can't navigate there. Keep it out of commit messages, PR bodies, and shared docs
+- **PR follow-ups land in [`docs/architecture/tech-debt.md`](docs/architecture/tech-debt.md), not just the PR body** — when a PR explicitly defers something ("out of scope", "follow-up"), add a tech-debt entry with a stable slug and link it from the PR. Otherwise the deferral evaporates the moment the PR merges
 
 ## Doc maintenance discipline
 
 When you modify a file listed in any architecture doc's `related-files:` frontmatter, you must also re-read that doc and either:
 
-- **Update it** if the change altered the subsystem's *shape* or *why*. Bump `last-reviewed` in the frontmatter to today's date.
-- **Explicitly confirm no shape/why change occurred** in your response, leaving the doc untouched. Don't bump `last-reviewed` — that signal must reflect actual review against current code.
+- **Update it** if the change altered the subsystem's *shape* or *why*. Bump `last-reviewed` in the frontmatter to today's date
+- **Explicitly confirm no shape/why change occurred** in your response, leaving the doc untouched. Don't bump `last-reviewed` — that signal must reflect actual review against current code
 
 Two enforcement layers back this up:
 
-- An **end-of-turn hook** (Claude Code `Stop`, Copilot Coding Agent `sessionEnd`) prints which docs claim the files you touched. Informational; doesn't block. Logic in [`scripts/lint/check-touched-related-files.cjs`](scripts/lint/check-touched-related-files.cjs).
-- A **CI gate** ([`scripts/lint/docs-stale-blocking.cjs`](scripts/lint/docs-stale-blocking.cjs), wired to [`.github/workflows/lint-docs.yml`](.github/workflows/lint-docs.yml)) fails the PR if a stale (over 120 days) architecture doc's territory was modified without the doc itself being updated. Hard pressure at PR time.
+- An **end-of-turn hook** (Claude Code `Stop`, Copilot Coding Agent `sessionEnd`) prints which docs claim the files you touched. Informational; doesn't block. Logic in [`scripts/lint/check-touched-related-files.cjs`](scripts/lint/check-touched-related-files.cjs)
+- A **CI gate** ([`scripts/lint/docs-stale-blocking.cjs`](scripts/lint/docs-stale-blocking.cjs), wired to [`.github/workflows/lint-docs.yml`](.github/workflows/lint-docs.yml)) fails the PR if a stale (over 120 days) architecture doc's territory was modified without the doc itself being updated. Hard pressure at PR time
 
-Soft prompt during work, hard gate before merge. The CI gate is architecture-only (dev guides under `docs/dev/` are informational — the soft signal in `npm run docs:stale` covers them).
+Soft prompt during work, hard gate before merge. The CI gate is architecture-only (dev guides under `docs/dev/` are informational — the soft signal in `npm run docs:stale` covers them)
 
 ## Where the rules actually live
 
@@ -64,8 +67,8 @@ Quick task pointers:
 
 ### IDE integration
 
-- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension during dev.
-- The IDE's BSC plugin watches `en_US.json` and regenerates `translationKeys` constants live.
+- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension during dev
+- The IDE's BSC plugin watches `en_US.json` and regenerates `translationKeys` constants live
 
 ### Pre-push hook (husky)
 
@@ -73,4 +76,8 @@ Quick task pointers:
 
 ### Commit messages
 
-Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer.
+Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer
+
+### Pull requests
+
+Use the `/pr` skill — it builds the body from `.github/pull_request_template.md`, scans for related issues, and surfaces architecture docs whose related-files were touched. No `🤖 Generated with Claude Code` footer or any other Claude attribution

@@ -32,6 +32,6 @@
     <field id="requestFocusExit" type="string" alwaysNotify="true" />
 
     <!-- Functions -->
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
 </component>

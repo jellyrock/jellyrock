@@ -73,9 +73,9 @@ class LiveTVPresenter extends GridPresenterBase
     return LCase(m.view.top.currentView) = "tvguide"
   end function
 
-  override sub destroy()
+  override sub onDestroy()
     m.log.info("LiveTVPresenter destroyed")
-    super.destroy()
+    super.onDestroy()
   end sub
 
 end class

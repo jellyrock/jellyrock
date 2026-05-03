@@ -3,7 +3,7 @@ topic: code-style
 related-files:
   - bslint.json
   - .editorconfig
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # Code Style Guide
@@ -135,6 +135,35 @@ The following boolean fields are exempt from the prefix rule:
 - **Signal fields**: XML fields with `alwaysNotify="true"` used purely as observable event triggers (e.g., `backPressed`, `refreshItemDetailsData`). The value is irrelevant; the write event itself is the message. Examples: `backPressed`, `exit`, `submit`, `reset`, `closeSidePanel`, `optionSelected`, `reloadHomeRequested`, `requestFocusReturn`.
 - **API-mirrored fields**: Fields in `JellyfinUserConfiguration` and `JellyfinUserPolicy` that mirror Jellyfin server API property names exactly (e.g., `playDefaultAudioTrack`, `enableNextEpisodeAutoPlay`). These are external contracts.
 - **Settings/registry keys**: `JellyfinUserSettings` field IDs that are 1:1 with Roku registry keys (e.g., `playbackCinemaMode`, `uiFontFallback`). Renaming requires a registry migration to avoid user data loss.
+
+### Event-handler & Lifecycle Functions — `on*` Prefix
+
+Functions registered as the callback target of an event-handler binding **should** start with `on` followed by an uppercase letter (camelCase). The bindings this convention applies to:
+
+1. XML `<field ... onChange="X" />` — `X` is invoked when the field changes.
+2. `observeField(<field>, "X")` — `X` is invoked when the field changes (Roku Scene Graph two-argument string-callback form).
+3. The JRScreen lifecycle hook `onDestroy()` — required for every JRScreen subclass; enforced by the `jellyrock-jrscreen-on-destroy` BSC plugin.
+
+```brighterscript
+' Preferred
+sub onContentChanged() ...
+sub onItemSelectedChanged() ...
+sub onDestroy() ...
+```
+
+```xml
+<!-- Preferred -->
+<field id="content" type="node" onChange="onContentChanged" />
+```
+
+**Not covered by this rule** (intentional — these are not callback registrations):
+
+- `init()` — universal Roku component constructor.
+- `populate*`, `setup*`, `handle*`, `reset*`, `cleanup*` — internal helpers, not callback registrations.
+- `callFunc(<name>, ...)` invocations — general-purpose remote-procedure-call across the component graph; targets are setters / getters / methods, not event handlers.
+- `observeField` overloads passing a port or function reference (non-string-literal) — not a callback name registration.
+
+This is **convention, not strict enforcement** outside of the `onDestroy()` lifecycle hook. The codebase has historical action-shaped callbacks (`setColors`, `getData`, `updateMessage`, etc.) that deliberately preserve their semantic names. Prefer `on*` for new callbacks; nudge existing ones at review time when they're touched anyway. A binding-based BSC plugin to enforce this strictly was tried and dropped — the marginal value didn't justify the friction of either renaming legacy action-shaped callbacks or sprinkling escape-hatch comments.
 
 ### Private Class Members
 

@@ -11,7 +11,7 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # Video & Audio Playback
@@ -176,7 +176,7 @@ The canonical video player and the largest single component in the playback subs
     <field id="fullAudioData" />
     <field id="fullVideoSourceData" />
     <field id="audioIndex" />
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
   <children>
     <Group id="captionGroup" />                                    <!-- Custom subtitle rendering -->
@@ -200,12 +200,12 @@ Note: the `OSD`'s `inactiveTimeout` is **5 seconds**, not 10 as some sources may
 2. **Metadata loaded** — `onPlaybackInfoLoaded()` populates `playbackData`. The player begins resolving the actual video URL (direct play vs. transcode — see "Transcoding decisions" below).
 3. **Underlying `Video` node starts** — the inherited `state` field transitions to `buffering` → `playing`. The player observes its own state and:
    - Shows the OSD briefly
-   - Starts the `playbackTimer` (10-second repeat) → `ReportPlayback("update")` to Jellyfin
+   - Starts the `playbackTimer` (10-second repeat) → `reportPlayback("update")` to Jellyfin
    - Becomes `visible = true`
-4. **Steady state** — `playbackTimer.fire` → `ReportPlayback("update")` every 10 seconds with current position. User interactions (pause, seek, OSD open) are all handled by `onKeyEvent` and the inherited `Video` machinery.
-5. **End / transition** — `state = "finished"` (or user backs out) → ViewCreator.onStateChange handles next-item / pop logic. Final `ReportPlayback("stop")` is sent.
+4. **Steady state** — `playbackTimer.fire` → `reportPlayback("update")` every 10 seconds with current position. User interactions (pause, seek, OSD open) are all handled by `onKeyEvent` and the inherited `Video` machinery.
+5. **End / transition** — `state = "finished"` (or user backs out) → ViewCreator.onStateChange handles next-item / pop logic. Final `reportPlayback("stop")` is sent.
 
-### `ReportPlayback` — server-side reporting
+### `reportPlayback` — server-side reporting
 
 Position is reported in **Jellyfin ticks** (1 tick = 100 ns; `int(positionSeconds) * 10000000`). The request is built by `GetApi().BuildPlaystateRequest(state, params)` and dispatched via `SubmitSideEffect()` so it doesn't block playback.
 
@@ -277,10 +277,10 @@ sub audioStateChanged()
     m.isPlayReported = false
   end if
 
-  ReportPlayback(reportedPlaybackState)
+  reportPlayback(reportedPlaybackState)
 end sub
 
-sub ReportPlayback(state as string)
+sub reportPlayback(state as string)
   params = {
     "ItemId": m.global.queueManager.callFunc("getCurrentItem").id,
     "PlaySessionId": m.top.content.id,

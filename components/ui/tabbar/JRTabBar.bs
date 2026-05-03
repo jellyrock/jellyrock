@@ -214,7 +214,7 @@ sub onFocusedTabIndexChanged()
   updateFocusedTabVisuals()
 end sub
 
-sub destroy()
+sub onDestroy()
   m.top.unobserveField("focusedChild")
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
   m.tabContainer = invalid

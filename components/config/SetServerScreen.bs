@@ -31,11 +31,11 @@ sub ScanForServers()
 
   m.ssdpScanner = CreateObject("roSGNode", "ServerDiscoveryTask")
   'run the task
-  m.ssdpScanner.observeField("content", "ScanForServersComplete")
+  m.ssdpScanner.observeField("content", "onScanForServersComplete")
   m.ssdpScanner.control = "RUN"
 end sub
 
-sub ScanForServersComplete(event)
+sub onScanForServersComplete(event)
   m.servers = event.getData()
 
   items = CreateObject("roSGNode", "ContentNode")
@@ -149,7 +149,7 @@ sub clearErrorMessage()
 end sub
 
 ' JRScreen hook called when the screen is displayed by the screen manager
-sub OnScreenShown()
+sub onScreenShown()
   ' Clear backdrop on config screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
@@ -223,10 +223,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return isHandled
 end function
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Unobserve m.top observer
   m.top.unobserveField("serverUrl")

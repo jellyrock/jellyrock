@@ -5,6 +5,6 @@
   <interface>
     <field id="isFocused" type="boolean" value="true" alwaysNotify="true" onChange="onIsFocusedChange" />
     <field id="shouldAffectFocus" type="boolean" value="true" />
-    <field id="displayedIndex" type="integer" value="0" onChange="displayedIndexChanged" />
+    <field id="displayedIndex" type="integer" value="0" onChange="onDisplayedIndexChanged" />
   </interface>
 </component>

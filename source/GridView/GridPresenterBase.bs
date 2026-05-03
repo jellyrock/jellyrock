@@ -206,8 +206,8 @@ class GridPresenterBase
 
   ' Called when presenter is being destroyed
   ' Override to clean up resources, stop tasks, unobserve fields
-  ' Always call super.destroy() at the end of overrides
-  sub destroy()
+  ' Always call super.onDestroy() at the end of overrides
+  sub onDestroy()
     if isValid(m.view) and isValid(m.view.getFiltersTask)
       m.view.getFiltersTask.control = "stop"
       m.view.getFiltersTask.unobserveField("filters")

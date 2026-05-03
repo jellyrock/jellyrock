@@ -10,7 +10,7 @@ sub onIsFocusedChange()
   end if
 end sub
 
-sub displayedIndexChanged()
+sub onDisplayedIndexChanged()
   if not m.top.shouldAffectFocus then return
 
   if m.top.displayedIndex < 0

@@ -173,9 +173,9 @@ class TVShowPresenter extends GridPresenterBase
   end sub
 
   ' Cleanup TV show-specific resources
-  override sub destroy()
+  override sub onDestroy()
     m.log.info("TVShowPresenter destroyed")
-    super.destroy()
+    super.onDestroy()
   end sub
 
 end class

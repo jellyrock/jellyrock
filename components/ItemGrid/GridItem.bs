@@ -29,7 +29,7 @@ sub init()
   ' Set once in setupGridTextureObserver() when the first itemContent is assigned.
   m.contentRoot = invalid
   ' Cached flat index of this cell's itemContent within the content root.
-  ' Recomputed on each cell recycle (itemContentChanged).
+  ' Recomputed on each cell recycle (onItemContentChanged).
   m.cachedFlatIndex = -1
 
   ' Add some padding space when Item Titles are always showing
@@ -53,7 +53,7 @@ sub init()
 
 end sub
 
-sub itemContentChanged()
+sub onItemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
 
@@ -168,7 +168,7 @@ sub setSquarePosterLayout()
 end sub
 
 ' Enable title scrolling based on item focus
-sub focusChanged()
+sub onFocusChanged()
   if m.top.itemHasFocus = true
     m.itemText.repeatCount = -1
   else
@@ -198,7 +198,7 @@ end sub
 ' MarkupGrid's content root. The content root is the direct parent of
 ' itemContent in the content tree (flat model, unlike RowList's 2-level hierarchy):
 '   contentRoot → itemNode (itemContent)
-' Called from itemContentChanged. Skips if already connected.
+' Called from onItemContentChanged. Skips if already connected.
 sub setupGridTextureObserver()
   item = m.top.itemContent
   if not isValid(item) then return
@@ -353,7 +353,7 @@ sub unloadGridTexture()
   m.backdrop.visible = true
 end sub
 
-' Force-unloads textures unconditionally — used only during destroy().
+' Force-unloads textures unconditionally — used only during onDestroy().
 ' Ignores m.isTextureUnloaded and m.cachedPosterUri guards so every cell releases memory.
 sub forceUnloadGridTexture()
   m.isTextureUnloaded = true

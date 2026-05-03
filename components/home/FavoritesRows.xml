@@ -4,6 +4,6 @@
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="quickPlayNode" type="node" />
     <function name="loadFavorites" />
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
 </component>

@@ -781,7 +781,7 @@ sub displaySubtitleNode(node as object)
   m.videoSubtitleGroup.appendChild(node)
 end sub
 
-sub OnScreenShown()
+sub onScreenShown()
   if m.isFirstRun
     m.isFirstRun = false
   else
@@ -825,10 +825,10 @@ function getLiveTvBehindLiveSeconds() as integer
   return computeLiveTvBehindLive(m.liveTvEpochAtPosition0, m.liveTvCalibrated, int(m.top.positionTime), CreateObject("roDateTime").AsSeconds(), m.liveTvPausedAtEpoch, m.liveTvAccumulatedBehind)
 end function
 
-' destroy: Full teardown releasing all resources before component removal
-' Called by VideoPlayerView.destroy() since OSD is a child component, not a SceneManager scene
-sub destroy()
-  m.log.verbose("destroy")
+' onDestroy: Full teardown releasing all resources before component removal
+' Called by VideoPlayerView.onDestroy() since OSD is a child component, not a SceneManager scene
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Unobserve all m.top observers
   m.top.unobserveField("itemData")

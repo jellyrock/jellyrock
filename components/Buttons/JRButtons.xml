@@ -22,6 +22,6 @@
   <interface>
     <field id="buttons" type="array" onChange="updateButtons" />
     <field id="focusedIndex" type="integer" alwaysNotify="true" />
-    <field id="selectedIndex" type="integer" onChange="selectedIndexChanged" />
+    <field id="selectedIndex" type="integer" onChange="onSelectedIndexChanged" />
   </interface>
 </component>

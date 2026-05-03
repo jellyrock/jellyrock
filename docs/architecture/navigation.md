@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.xml
   - components/JRScene.bs
   - components/JRScene.xml
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # Scene Stack & Navigation
@@ -57,16 +57,16 @@ The `SceneManager` reads these fields when registering a new group (see "Overhan
 Extends `JRGroup`. Adds three lifecycle virtual functions that subclasses override:
 
 ```brightscript
-sub OnScreenShown()       ' Called when this screen becomes visible (push, or pop revealing it)
-sub OnScreenHidden()      ' Called when this screen is hidden (push of a new screen, or pop)
-sub destroy()             ' Called when this screen is permanently removed from the stack
+sub onScreenShown()       ' Called when this screen becomes visible (push, or pop revealing it)
+sub onScreenHidden()      ' Called when this screen is hidden (push of a new screen, or pop)
+sub onDestroy()           ' Called when this screen is permanently removed from the stack
 ```
 
 The base implementations are minimal:
 
-- `OnScreenShown()` restores focus from `lastFocus` (or sets focus on the screen itself)
-- `OnScreenHidden()` is a no-op
-- `destroy()` is a no-op — subclasses **must** override to clean up tasks, observers, and large data structures (this is a known cruft point; see Cruft Callouts)
+- `onScreenShown()` restores focus from `lastFocus` (or sets focus on the screen itself)
+- `onScreenHidden()` is a no-op
+- `onDestroy()` is a no-op — subclasses **must** override to clean up tasks, observers, and large data structures (this is a known cruft point; see Cruft Callouts)
 
 `JRScreen.bs:init()` also initializes the `roku-log` log manager (debug builds: level 5; prod: level 2), so every JRScreen-derived component has logging available without each one having to call `initializeLogManager`.
 
@@ -87,7 +87,7 @@ m.content = m.scene.findNode("content")        ' the visible-group slot
 m.overhang = m.scene.findNode("overhang")      ' the persistent top bar
 ```
 
-Only the **top** of the stack is mounted in the rendered scene graph (as the single child of `m.content`). All other entries are kept in the `m.groups` array but are not part of the rendered tree. This means an entry in the stack still exists in memory, but its tasks/observers will not fire until it's restored. (Subclasses should consider this when deciding whether to suspend background work in `OnScreenHidden`.)
+Only the **top** of the stack is mounted in the rendered scene graph (as the single child of `m.content`). All other entries are kept in the `m.groups` array but are not part of the rendered tree. This means an entry in the stack still exists in memory, but its tasks/observers will not fire until it's restored. (Subclasses should consider this when deciding whether to suspend background work in `onScreenHidden`.)
 
 ### Public API
 
@@ -95,10 +95,10 @@ The full public surface (snippet illustrative, not exhaustive — canonical sour
 
 | Function | Purpose |
 |---|---|
-| `pushScene(newGroup)` | Push a group onto the stack and make it visible. Hides the previous top, calls `OnScreenHidden` on it, calls `OnScreenShown` on the new one. |
-| `popScene()` | Remove the top of the stack. **If the stack has only 1 entry, shows an exit confirmation dialog instead.** Calls `OnScreenHidden` + `destroy` on the removed group. Restores the next-top group's focus from `lastFocus`. |
+| `pushScene(newGroup)` | Push a group onto the stack and make it visible. Hides the previous top, calls `onScreenHidden` on it, calls `onScreenShown` on the new one. |
+| `popScene()` | Remove the top of the stack. **If the stack has only 1 entry, shows an exit confirmation dialog instead.** Calls `onScreenHidden` + `onDestroy` on the removed group. Restores the next-top group's focus from `lastFocus`. |
 | `getActiveScene()` | Peek the top of the stack (no removal). |
-| `clearScenes()` | Pop everything. Calls `OnScreenHidden` + `destroy` on every JRScreen, `destroy` on any `Video` subtype. Hides the overhang first to avoid staggered visual cleanup. |
+| `clearScenes()` | Pop everything. Calls `onScreenHidden` + `onDestroy` on every JRScreen, `onDestroy` on any `Video` subtype. Hides the overhang first to avoid staggered visual cleanup. |
 | `clearPreviousScene()` | Pop without restoration (used internally for queue advancement: video finishes → pop the player → push the next player). |
 | `deleteSceneAtIndex(index = 1)` | Delete a specific entry from the stack (rarely used). |
 | `settings()` | Convenience: create and push the `Settings` component. |
@@ -140,7 +140,7 @@ sub pushScene(newGroup)
     currentGroup.visible = false
 
     if currentGroup.isSubType("JRScreen")
-      currentGroup.callFunc("OnScreenHidden")
+      currentGroup.callFunc("onScreenHidden")
     end if
   end if
 
@@ -153,7 +153,7 @@ sub pushScene(newGroup)
   end if
 
   if newGroup.isSubType("JRScreen")
-    newGroup.callFunc("OnScreenShown")
+    newGroup.callFunc("onScreenShown")
   end if
 
   if newGroup.isSubType("JRGroup")
@@ -186,8 +186,8 @@ sub popScene()
     if group.isSubType("JRGroup")     then unregisterOverhangData(group)
     if group.isSubType("Video")       then group.control = "stop"   ' tell Jellyfin we stopped
     group.visible = false
-    if group.isSubType("JRScreen")    then group.callFunc("OnScreenHidden") + group.callFunc("destroy")
-    if group.isSubType("Video")       then group.callFunc("destroy")
+    if group.isSubType("JRScreen")    then group.callFunc("onScreenHidden") + group.callFunc("onDestroy")
+    if group.isSubType("Video")       then group.callFunc("onDestroy")
   end if
 
   group = m.groups.peek()             ' the newly-revealed top
@@ -196,7 +196,7 @@ sub popScene()
     group.visible = true
     m.content.replaceChild(group, 0)
     if group.isSubType("JRScreen")
-      group.callFunc("OnScreenShown")
+      group.callFunc("onScreenShown")
     else
       ' Restore focus directly (non-JRScreen subtype)
       if isValid(group.lastFocus) then group.lastFocus.setFocus(true)
@@ -217,8 +217,8 @@ Notable:
 Every `JRGroup` has a `lastFocus` field. The dance is:
 
 1. **On push** — `SceneManager` walks the current group's focus chain and saves the deepest focused node into `currentGroup.lastFocus`.
-2. **On pop** — `SceneManager` calls `OnScreenShown()` on the revealed `JRScreen`, whose default implementation reads `m.top.lastFocus` and calls `.setFocus(true)` on it. Subclasses can override `OnScreenShown` to do something more elaborate (e.g., re-fetch data first, then focus).
-3. **For `non-JRScreen` subtypes** (rare in screen position, but happens for some dialog-like groups), the `SceneManager` itself restores focus directly without calling `OnScreenShown`.
+2. **On pop** — `SceneManager` calls `onScreenShown()` on the revealed `JRScreen`, whose default implementation reads `m.top.lastFocus` and calls `.setFocus(true)` on it. Subclasses can override `onScreenShown` to do something more elaborate (e.g., re-fetch data first, then focus).
+3. **For `non-JRScreen` subtypes** (rare in screen position, but happens for some dialog-like groups), the `SceneManager` itself restores focus directly without calling `onScreenShown`.
 
 The `lastFocus` mechanism is one of the things JellyRock gets reliably right — UIs that are otherwise complex (rows of rows, tabs of grids) maintain cursor position consistently across navigation.
 

@@ -24,7 +24,7 @@ sub init()
   if m.global.server.isQuickConnectEnabled = false
     removeQuickConnectButton("server reports Quick Connect disabled (cached)")
   else
-    ' Probe is started in OnScreenShown (matches BrandingConfigTask timing).
+    ' Probe is started in onScreenShown (matches BrandingConfigTask timing).
     ' On 10.7 the /QuickConnect/Enabled endpoint is missing, so the probe
     ' fails open (button stays visible) - the dialog fallback handles the
     ' rare admin-disabled case there.
@@ -77,7 +77,7 @@ sub removeQuickConnectButton(reason as string)
   m.log.info("Quick Connect button removed", reason)
 end sub
 
-sub itemContentChanged()
+sub onItemContentChanged()
   stopLoadingSpinner()
   m.top.findNode("UserRow").ItemContent = m.top.itemContent
   redraw()
@@ -98,7 +98,7 @@ sub redraw()
 end sub
 
 ' JRScreen hook called when the screen is displayed by the screen manager
-sub OnScreenShown()
+sub onScreenShown()
   m.log.info("UserSelect screen shown")
 
   scene = m.top.getScene()
@@ -117,7 +117,7 @@ sub OnScreenShown()
 end sub
 
 ' JRScreen hook called when the screen is hidden by the screen manager
-sub OnScreenHidden()
+sub onScreenHidden()
   m.log.info("UserSelect screen hidden - clearing backdrop")
   ' Clear backdrop using forceBackdrop to ensure it clears even before login
   m.global.sceneManager.callFunc("setBackgroundImage", "", true, true)
@@ -237,11 +237,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
-' Note: OnScreenHidden already cleared the backdrop; this handles task/ref cleanup.
-sub destroy()
-  m.log.verbose("destroy")
+' Note: onScreenHidden already cleared the backdrop; this handles task/ref cleanup.
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Stop branding task and unobserve all scoped fields
   ' (may already be self-cleaned by task callbacks, guards are safe no-ops)

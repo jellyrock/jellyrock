@@ -1,18 +1,22 @@
 /**
- * BrighterScript plugin — JRScreen `destroy()` discipline.
+ * BrighterScript plugin — JRScreen `onDestroy()` discipline.
  *
  * Flags any RSG component that extends `JRScreen` (transitively) and whose
- * codebehind BS file does not declare a top-level `destroy` function.
+ * codebehind BS file does not declare a top-level `onDestroy` function.
  *
- * Rationale: the base `destroy()` in `components/JRScreen.bs` is a no-op
+ * Rationale: the base `onDestroy()` in `components/JRScreen.bs` is a no-op
  * virtual; forgetting to override it leaks observers and Tasks across
- * navigation. The companion `observe-without-destroy` plugin checks the
- * body of each subclass's destroy() for matching unobserve calls.
+ * navigation. The companion `observe-without-on-destroy` plugin checks the
+ * body of each subclass's onDestroy() for matching unobserve calls.
+ *
+ * The function name check is case-sensitive (must be exactly `onDestroy`,
+ * not `OnDestroy` / `ondestroy` / `destroy`) to enforce the lowerCamelCase
+ * lifecycle-hook convention alongside the prefix rule.
  *
  * Skips `components/JRScreen.xml` itself (the no-op base lives there by design).
  *
  * Escape hatch:
- *  - `' bsc-disable-file jrscreen-destroy` anywhere in the XML or its codebehind
+ *  - `' bsc-disable-file jrscreen-on-destroy` anywhere in the XML or its codebehind
  *    (rare — only for components that legitimately extend JRScreen but never
  *    own observers/Tasks; e.g. a thin pass-through wrapper).
  */
@@ -21,12 +25,13 @@
 const brighterscript = require('brighterscript');
 
 const TARGET_BASE = 'JRScreen';
+const REQUIRED_LIFECYCLE_FUNCTION = 'onDestroy';
 const MAX_PARENT_CHAIN_DEPTH = 32;
-const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+jrscreen-destroy\b/i;
+const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+jrscreen-on-destroy\b/i;
 
-class JRScreenDestroyPlugin {
+class JRScreenOnDestroyPlugin {
   constructor() {
-    this.name = 'jellyrock-jrscreen-destroy';
+    this.name = 'jellyrock-jrscreen-on-destroy';
   }
 
   afterValidateFile(event) {
@@ -46,17 +51,17 @@ class JRScreenDestroyPlugin {
       if (codebehind) {
         const bsContents = codebehind.fileContents;
         if (typeof bsContents === 'string' && DISABLE_FILE_MARKER.test(bsContents)) return;
-        if (hasTopLevelDestroyFunction(codebehind)) return;
+        if (hasTopLevelOnDestroyFunction(codebehind)) return;
       }
 
       const location = file.componentName?.location;
       if (!location) return;
 
       event.program.diagnostics.register({
-        code: 'jrscreen-destroy-required',
+        code: 'jrscreen-on-destroy-required',
         severity: 2, // Warning
         source: this.name,
-        message: `Component '${componentName}' extends JRScreen (transitively) but its codebehind does not declare a 'destroy' function. JRScreen subclasses must override destroy() to release observers and Tasks (otherwise they leak across navigation).`,
+        message: `Component '${componentName}' extends JRScreen (transitively) but its codebehind does not declare a top-level 'onDestroy' function. JRScreen subclasses must override onDestroy() to release observers and Tasks (otherwise they leak across navigation). The function name is case-sensitive — 'OnDestroy' / 'destroy' will not satisfy this.`,
         location: location,
       });
     } catch (_e) {
@@ -88,15 +93,16 @@ function findCodebehind(program, xmlFile) {
   return null;
 }
 
-function hasTopLevelDestroyFunction(brsFile) {
+function hasTopLevelOnDestroyFunction(brsFile) {
   const statements = brsFile?.parser?.ast?.statements;
   if (!Array.isArray(statements)) return false;
   for (const stmt of statements) {
     if (!brighterscript.isFunctionStatement(stmt)) continue;
     const name = stmt.tokens?.name?.text;
-    if (name && name.toLowerCase() === 'destroy') return true;
+    // Case-sensitive: enforce lowerCamelCase casing alongside the prefix rule.
+    if (name === REQUIRED_LIFECYCLE_FUNCTION) return true;
   }
   return false;
 }
 
-module.exports = () => new JRScreenDestroyPlugin();
+module.exports = () => new JRScreenOnDestroyPlugin();

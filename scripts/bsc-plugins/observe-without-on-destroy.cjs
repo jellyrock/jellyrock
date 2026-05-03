@@ -16,8 +16,8 @@
  * matches without an opt-out.
  *
  * "Matching" requires the same field name. We deliberately don't require the
- * unobserve to live inside `destroy()` because many codebases legitimately
- * unobserve in `OnScreenHidden`, dedicated cleanup helpers, or tear-down on
+ * unobserve to live inside `onDestroy()` because many codebases legitimately
+ * unobserve in `onScreenHidden`, dedicated cleanup helpers, or tear-down on
  * tab switch. The intent is to catch the common bug of "I set up an observer
  * and never tore it down anywhere".
  *
@@ -28,9 +28,9 @@
  * two scopes in separate maps and won't cross-match.
  *
  * Escape hatch:
- *  - `' bsc-disable-line observe-without-destroy` on the observeField line
- *  - `' bsc-disable-next-line observe-without-destroy` on the line above
- *  - `' bsc-disable-file observe-without-destroy` anywhere in the file
+ *  - `' bsc-disable-line observe-without-on-destroy` on the observeField line
+ *  - `' bsc-disable-next-line observe-without-on-destroy` on the line above
+ *  - `' bsc-disable-file observe-without-on-destroy` anywhere in the file
  */
 'use strict';
 
@@ -38,13 +38,13 @@ const brighterscript = require('brighterscript');
 
 const TARGET_BASE = 'JRScreen';
 const MAX_PARENT_CHAIN_DEPTH = 32;
-const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+observe-without-destroy\b/i;
-const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+observe-without-destroy\b/i;
-const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+observe-without-destroy\b/i;
+const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+observe-without-on-destroy\b/i;
+const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+observe-without-on-destroy\b/i;
+const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+observe-without-on-destroy\b/i;
 
-class ObserveWithoutDestroyPlugin {
+class ObserveWithoutOnDestroyPlugin {
   constructor() {
-    this.name = 'jellyrock-observe-without-destroy';
+    this.name = 'jellyrock-observe-without-on-destroy';
     this.jrscreenBrsFiles = new Set();
   }
 
@@ -156,10 +156,10 @@ class ObserveWithoutDestroyPlugin {
       const observeMethod = obs.scoped ? 'observeFieldScoped' : 'observeField';
       const unobserveMethod = obs.scoped ? 'unobserveFieldScoped' : 'unobserveField';
       program.diagnostics.register({
-        code: 'observe-without-destroy',
+        code: 'observe-without-on-destroy',
         severity: 2, // Warning
         source: this.name,
-        message: `${observeMethod}("${obs.fieldText}") on '${obs.targetRef}' has no matching ${unobserveMethod}("${obs.fieldText}") on this target (or a known alias) anywhere in this file. JRScreen subclasses must release every observer (typically in destroy()); scoped/unscoped pairs are tracked separately by Roku, so an ${obs.scoped ? 'unobserveField' : 'unobserveFieldScoped'} won't satisfy this. Add ' bsc-disable-next-line observe-without-destroy to suppress.`,
+        message: `${observeMethod}("${obs.fieldText}") on '${obs.targetRef}' has no matching ${unobserveMethod}("${obs.fieldText}") on this target (or a known alias) anywhere in this file. JRScreen subclasses must release every observer (typically in onDestroy()); scoped/unscoped pairs are tracked separately by Roku, so an ${obs.scoped ? 'unobserveField' : 'unobserveFieldScoped'} won't satisfy this. Add ' bsc-disable-next-line observe-without-on-destroy to suppress.`,
         location: obs.location,
       });
     }
@@ -258,4 +258,4 @@ class UnionFind {
   }
 }
 
-module.exports = () => new ObserveWithoutDestroyPlugin();
+module.exports = () => new ObserveWithoutOnDestroyPlugin();

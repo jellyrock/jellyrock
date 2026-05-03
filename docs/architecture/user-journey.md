@@ -8,7 +8,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # The User Journey
@@ -137,7 +137,7 @@ initializeFallbackFont()                    ' optional fallback font download (u
 loadHomeScreen()
 ```
 
-`clearScenes()` calls `OnScreenHidden` + `destroy` on every login screen so they release tasks/observers. `initializeFallbackFont()` triggers an async `FontDownloadTask` if the user has enabled fallback font support; the home screen waits for that to complete before rendering. Otherwise, `loadHomeScreen()` runs immediately.
+`clearScenes()` calls `onScreenHidden` + `onDestroy` on every login screen so they release tasks/observers. `initializeFallbackFont()` triggers an async `FontDownloadTask` if the user has enabled fallback font support; the home screen waits for that to complete before rendering. Otherwise, `loadHomeScreen()` runs immediately.
 
 ## 4. Home screen
 
@@ -349,7 +349,7 @@ The `VideoPlayerView` itself handles fetching media metadata, building the URL, 
 
 While the video plays:
 
-- `VideoPlayerView` runs a periodic timer that fires `ReportPlayback("Playing")` every ~10 seconds, sending position to `Jellyfin`'s `/PlaybackInfo` endpoint via the side-effect task.
+- `VideoPlayerView` runs a periodic timer that fires `reportPlayback("Playing")` every ~10 seconds, sending position to `Jellyfin`'s `/PlaybackInfo` endpoint via the side-effect task.
 - The OSD shows for 5 seconds when the user interacts, then hides.
 - Trickplay (seek scrubbing) shows a thumbnail carousel of preview images.
 - "Next episode" notification appears near the end of an episode if the queue has another item.

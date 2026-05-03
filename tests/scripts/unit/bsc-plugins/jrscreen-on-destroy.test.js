@@ -1,18 +1,20 @@
-// Tests for the jrscreen-destroy plugin.
+// Tests for the jrscreen-on-destroy plugin.
 //
-// Plugin under test: scripts/bsc-plugins/jrscreen-destroy.cjs
-// Diagnostic code: jrscreen-destroy-required
+// Plugin under test: scripts/bsc-plugins/jrscreen-on-destroy.cjs
+// Diagnostic code: jrscreen-on-destroy-required
 //
 // What the plugin enforces: every component that transitively extends
-// JRScreen must declare a top-level `destroy` function in its codebehind.
-// The base JRScreen.xml is skipped by name. Three escape hatches exist
-// (`' bsc-disable-file jrscreen-destroy` in the XML or in the codebehind).
+// JRScreen must declare a top-level `onDestroy` function in its codebehind.
+// The function name check is case-sensitive (exact `onDestroy`, not
+// `OnDestroy` / `ondestroy` / `destroy`). The base JRScreen.xml is skipped
+// by name. Three escape hatches exist (`' bsc-disable-file jrscreen-on-destroy`
+// in the XML or in the codebehind).
 
 import { describe, it, expect } from 'vitest';
 import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
-import jrscreenDestroyPlugin from '../../../../scripts/bsc-plugins/jrscreen-destroy.cjs';
+import jrscreenOnDestroyPlugin from '../../../../scripts/bsc-plugins/jrscreen-on-destroy.cjs';
 
-const CODE = 'jrscreen-destroy-required';
+const CODE = 'jrscreen-on-destroy-required';
 
 const xml = (name, parent, extra = '') =>
   `<?xml version="1.0" encoding="utf-8" ?>
@@ -20,9 +22,9 @@ const xml = (name, parent, extra = '') =>
   <script type="text/brightscript" uri="${name}.bs" />
 </component>`;
 
-describe('jrscreen-destroy', () => {
-  it('flags a JRScreen subclass whose codebehind has no destroy()', () => {
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+describe('jrscreen-on-destroy', () => {
+  it('flags a JRScreen subclass whose codebehind has no onDestroy()', () => {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/TestScreen.xml': xml('TestScreen', 'JRScreen'),
       'components/TestScreen.bs': `
         sub init()
@@ -34,8 +36,24 @@ describe('jrscreen-destroy', () => {
     expect(flagged[0].message).toMatch(/TestScreen/);
   });
 
-  it('does not flag a JRScreen subclass that declares destroy()', () => {
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+  it('does not flag a JRScreen subclass that declares onDestroy()', () => {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
+      'components/TestScreen.xml': xml('TestScreen', 'JRScreen'),
+      'components/TestScreen.bs': `
+        sub init()
+        end sub
+        sub onDestroy()
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+  });
+
+  it('flags a JRScreen subclass that still uses the old destroy() name', () => {
+    // Case-sensitive enforcement: pre-rename `destroy()` no longer satisfies
+    // the rule even though BrightScript's runtime function lookup is itself
+    // case-insensitive. The plugin checks the exact source spelling.
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/TestScreen.xml': xml('TestScreen', 'JRScreen'),
       'components/TestScreen.bs': `
         sub init()
@@ -44,11 +62,24 @@ describe('jrscreen-destroy', () => {
         end sub
       `,
     });
-    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(1);
+  });
+
+  it('flags a JRScreen subclass that uses PascalCase OnDestroy() (lowerCamelCase rule)', () => {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
+      'components/TestScreen.xml': xml('TestScreen', 'JRScreen'),
+      'components/TestScreen.bs': `
+        sub init()
+        end sub
+        sub OnDestroy()
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(1);
   });
 
   it('does not flag a component that does not extend JRScreen', () => {
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/TestGroup.xml': xml('TestGroup', 'Group'),
       'components/TestGroup.bs': `
         sub init()
@@ -59,10 +90,10 @@ describe('jrscreen-destroy', () => {
   });
 
   it('does not flag JRScreen.xml itself (skipped by name)', () => {
-    // Synthetic JRScreen base — extends Group like the real one, no destroy().
+    // Synthetic JRScreen base — extends Group like the real one, no onDestroy().
     // The plugin must NOT flag a component literally named "JRScreen"
     // regardless of the parent chain.
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/JRScreen.xml': xml('JRScreen', 'Group'),
       'components/JRScreen.bs': `
         sub init()
@@ -73,14 +104,14 @@ describe('jrscreen-destroy', () => {
   });
 
   it('flags a transitive descendant (Foo extends Bar extends JRScreen)', () => {
-    // Bar has destroy() so it doesn't get flagged itself; the only
+    // Bar has onDestroy() so it doesn't get flagged itself; the only
     // diagnostic in this program should be on Foo.
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/Bar.xml': xml('Bar', 'JRScreen'),
       'components/Bar.bs': `
         sub init()
         end sub
-        sub destroy()
+        sub onDestroy()
         end sub
       `,
       'components/Foo.xml': xml('Foo', 'Bar'),
@@ -95,11 +126,11 @@ describe('jrscreen-destroy', () => {
   });
 
   it('respects bsc-disable-file marker in the XML', () => {
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/TestScreen.xml': xml(
         'TestScreen',
         'JRScreen',
-        `\n  <!-- ' bsc-disable-file jrscreen-destroy -->`,
+        `\n  <!-- ' bsc-disable-file jrscreen-on-destroy -->`,
       ),
       'components/TestScreen.bs': `
         sub init()
@@ -110,10 +141,10 @@ describe('jrscreen-destroy', () => {
   });
 
   it('respects bsc-disable-file marker in the BS codebehind', () => {
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/TestScreen.xml': xml('TestScreen', 'JRScreen'),
       'components/TestScreen.bs': `
-        ' bsc-disable-file jrscreen-destroy
+        ' bsc-disable-file jrscreen-on-destroy
         sub init()
         end sub
       `,
@@ -126,7 +157,7 @@ describe('jrscreen-destroy', () => {
     // plugin still emits the diagnostic (the path through the code falls
     // through to the emit). If we want a different behavior, file as a
     // separate concern.
-    const diagnostics = runPluginOnSource(jrscreenDestroyPlugin, {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
       'components/TestScreen.xml': `<?xml version="1.0" encoding="utf-8" ?>
 <component name="TestScreen" extends="JRScreen">
 </component>`,

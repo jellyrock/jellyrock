@@ -213,8 +213,8 @@ sub init()
   end if
 end sub
 
-' OnScreenShown: Callback when view is presented on screen
-sub OnScreenShown()
+' onScreenShown: Callback when view is presented on screen
+sub onScreenShown()
   ' Restore texture management — reactivate and restore buffer range so cells reload.
   if isValid(m.extrasGrid) and isValid(m.extrasGrid.content)
     updateTextureBufferRange(m.extrasGrid.content, m.extrasGrid.rowItemFocused[0], m.extrasGrid.rowItemFocused[1], m.extrasGrid.numRows)
@@ -251,8 +251,8 @@ sub OnScreenShown()
   end if
 end sub
 
-sub OnScreenHidden()
-  m.log.info("OnScreenHidden")
+sub onScreenHidden()
+  m.log.info("onScreenHidden")
   hideTextureManager(m.extrasGrid.content)
 end sub
 
@@ -300,7 +300,7 @@ end sub
 
 ' Triggered by refreshResumeData field toggle (watched toggle on Series).
 ' Re-fetches ONLY the next-up/resume episode — no full rebuild, no setupButtons().
-' The existing nextUpEpisodeChanged() handles adding/removing/updating the resume button.
+' The existing onNextUpEpisodeChanged() handles adding/removing/updating the resume button.
 sub onRefreshResumeData()
   item = m.top.itemContent
   if not isValid(item) or item.type <> "Series" then return
@@ -372,7 +372,7 @@ sub onRefreshDetailsLoaded()
   end if
 end sub
 
-sub trailerAvailableChanged()
+sub onTrailerAvailableChanged()
   if m.top.trailerAvailable
     ' Guard: setupButtons() may have already restored the trailer button on refresh
     if not isValid(m.top.findNode("trailerButton"))
@@ -404,7 +404,7 @@ end sub
 ' nextUpEpisodeChanged: For Series — create/remove Resume button based on nextUpEpisode.
 ' On first load, replaces the LoadingButton placeholder from setupButtons().
 ' On refresh, inserts/updates/removes the Resume button directly.
-sub nextUpEpisodeChanged()
+sub onNextUpEpisodeChanged()
   item = m.top.nextUpEpisode
   resumeButton = m.top.findNode("resumeButton")
   loadingButton = m.top.findNode("resumeLoadingButton")
@@ -1143,7 +1143,7 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
 
   if isValid(seriesData) and seriesData.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     ' Compute end time directly from series runTimeTicks — do NOT swap m.top.itemContent,
-    ' as that fires itemContentChanged() synchronously causing reentrancy and row duplication.
+    ' as that fires onItemContentChanged() synchronously causing reentrancy and row duplication.
     m.endsAtDurationSeconds = int(seriesData.runTimeTicks / 10000000.0)
     endDate = CreateObject("roDateTime")
     endDate.fromSeconds(endDate.asSeconds() + m.endsAtDurationSeconds)
@@ -1744,7 +1744,7 @@ function getHistory() as string
   return words
 end function
 
-sub itemContentChanged()
+sub onItemContentChanged()
   m.seasonSeriesData = invalid
   item = m.top.itemContent
 
@@ -1852,7 +1852,7 @@ sub itemContentChanged()
 
     ' Series: kick off background fetch of resume/next-up episode for the Resume button.
     ' Don't reset nextUpEpisode here — setupButtons() just created a LoadingButton placeholder
-    ' and resetting to invalid would trigger nextUpEpisodeChanged() which removes it immediately.
+    ' and resetting to invalid would trigger onNextUpEpisodeChanged() which removes it immediately.
     ' onSeriesResumeLoaded() handles both the data and no-data cases.
     if item.type = "Series"
       ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
@@ -1864,7 +1864,7 @@ sub itemContentChanged()
     end if
 
     ' Trailer availability check — re-run on every content change so refreshes get fresh data.
-    ' trailerAvailableChanged() adds or removes the button when the result arrives.
+    ' onTrailerAvailableChanged() adds or removes the button when the result arrives.
     if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
       if isValid(m.trailerResultNode)
         m.trailerResultNode.unobserveField("isDone")
@@ -2593,7 +2593,7 @@ sub setupButtons(item as object)
   itemType = item.type
 
   ' Series Resume placeholder — shows a loading IconButton at position 0 while the seriesResume
-  ' task fetches the next-up episode. nextUpEpisodeChanged() replaces or removes it.
+  ' task fetches the next-up episode. onNextUpEpisodeChanged() replaces or removes it.
   ' Preserves the episode-specific text (e.g. "Resume S2E3") from prior data if available
   ' so the user sees a consistent label through the loading transition.
   if itemType = "Series"
@@ -2828,8 +2828,8 @@ sub setupButtons(item as object)
   end if
 
   ' Trailer button — on refresh, restored from prior run while the async re-check runs.
-  ' trailerAvailableChanged() will add/remove it if the server state changed.
-  ' Must come before Delete to match the insertion order used in trailerAvailableChanged()
+  ' onTrailerAvailableChanged() will add/remove it if the server state changed.
+  ' Must come before Delete to match the insertion order used in onTrailerAvailableChanged()
   if m.top.trailerAvailable
     trailerButton = CreateObject("roSGNode", "IconButton")
     trailerButton.id = "trailerButton"
@@ -3494,15 +3494,15 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Tear down ExtrasRowList FIRST — stops in-flight tasks (including any
   ' LoadChannelProgramsTask started by onProgramsExpired) and unobserves all
   ' fields before we destroy the texture manager or null out references.
-  m.extrasGrid.callFunc("destroy")
+  m.extrasGrid.callFunc("onDestroy")
 
   ' Unobserve m.port observers set by showScenes.bs CreateItemDetailsGroup().
   ' These persist until the node is garbage collected, so explicit cleanup
@@ -3536,7 +3536,7 @@ sub destroy()
     m.videoDropdown.unobserveField("requestFocusExit")
     m.videoDropdown.unobserveField("focusedChild")
     m.videoDropdown.unobserveField("menuOpen")
-    m.videoDropdown.callFunc("destroy")
+    m.videoDropdown.callFunc("onDestroy")
   end if
   if isValid(m.audioDropdown)
     m.audioDropdown.unobserveField("selectedAction")
@@ -3545,7 +3545,7 @@ sub destroy()
     m.audioDropdown.unobserveField("requestFocusExit")
     m.audioDropdown.unobserveField("focusedChild")
     m.audioDropdown.unobserveField("menuOpen")
-    m.audioDropdown.callFunc("destroy")
+    m.audioDropdown.callFunc("onDestroy")
   end if
   if isValid(m.subtitleDropdown)
     m.subtitleDropdown.unobserveField("selectedAction")
@@ -3554,7 +3554,7 @@ sub destroy()
     m.subtitleDropdown.unobserveField("requestFocusExit")
     m.subtitleDropdown.unobserveField("focusedChild")
     m.subtitleDropdown.unobserveField("menuOpen")
-    m.subtitleDropdown.callFunc("destroy")
+    m.subtitleDropdown.callFunc("onDestroy")
   end if
   m.lastFocusedDropdown = invalid
   m.dropdownDimmer = invalid

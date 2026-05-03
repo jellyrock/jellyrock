@@ -665,7 +665,7 @@ sub executeResetUserSettings()
 end sub
 
 ' JRScreen hook that gets ran when the screen is shown.
-sub OnScreenShown()
+sub onScreenShown()
   ' Clear backdrop on settings screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
@@ -687,7 +687,7 @@ end sub
 ' JRScreen hook that gets ran as needed.
 ' Assumes settings were changed and they affect the device profile.
 ' Posts a new device profile to the server via fire-and-forget side effect.
-sub OnScreenHidden()
+sub onScreenHidden()
   SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
 end sub
 
@@ -810,10 +810,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Unobserve all child node observers
   m.integerSetting.unobserveField("submit")

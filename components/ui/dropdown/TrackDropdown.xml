@@ -80,6 +80,6 @@
     <field id="triggerHeight" type="integer" value="0" />
 
     <!-- Functions -->
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
 </component>

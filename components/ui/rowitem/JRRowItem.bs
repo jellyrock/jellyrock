@@ -773,7 +773,7 @@ sub unloadTexture()
   end if
 end sub
 
-' Force-unloads textures unconditionally — used only during destroy().
+' Force-unloads textures unconditionally — used only during onDestroy().
 ' Ignores m.isTextureUnloaded and m.cachedPosterUri guards so every cell releases memory.
 sub forceUnloadTexture()
   m.isTextureUnloaded = true

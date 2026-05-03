@@ -387,13 +387,13 @@ class MoviePresenter extends GridPresenterBase
     infoGroup.appendChild(node)
   end sub
 
-  override sub destroy()
+  override sub onDestroy()
     if isValid(m.view) and isValid(m.view.loadLogoTask)
       m.view.loadLogoTask.control = "stop"
       m.view.loadLogoTask.unobserveField("content")
       m.view.loadLogoTask = invalid
     end if
-    super.destroy()
+    super.onDestroy()
   end sub
 
 end class

@@ -59,10 +59,10 @@
     <field id="shouldWatchSelectedChannel" type="boolean" value="false" />
     <field id="shouldRecordSelectedChannel" type="boolean" value="false" />
     <field id="shouldRecordSeriesSelectedChannel" type="boolean" value="false" />
-    <field id="channel" type="node" onchange="channelUpdated" />
-    <field id="favorite" type="node" onchange="channelUpdated" />
-    <field id="programDetails" type="node" onchange="programUpdated" />
+    <field id="channel" type="node" onchange="onChannelUpdated" />
+    <field id="favorite" type="node" onchange="onChannelUpdated" />
+    <field id="programDetails" type="node" onchange="onProgramUpdated" />
     <field id="height" type="integer" />
-    <field id="hasFocus" type="boolean" onChange="focusChanged" />
+    <field id="hasFocus" type="boolean" onChange="onFocusChanged" />
   </interface>
 </component>

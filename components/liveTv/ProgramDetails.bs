@@ -79,7 +79,7 @@ sub updateLabels(recordText = translate(translationKeys.ButtonRecord), recordSer
   m.recordSeriesButton.text = recordSeriesText
 end sub
 
-sub channelUpdated()
+sub onChannelUpdated()
   if not isValid(m.top.channel)
     m.top.findNode("noInfoChannelName").text = ""
     m.channelName.text = ""
@@ -93,7 +93,7 @@ sub channelUpdated()
   end if
 end sub
 
-sub programUpdated()
+sub onProgramUpdated()
 
   m.top.shouldWatchSelectedChannel = false
   m.top.shouldRecordSelectedChannel = false
@@ -105,7 +105,7 @@ sub programUpdated()
 
   ' If no program selected, hide details view
   if not isValid(prog)
-    channelUpdated()
+    onChannelUpdated()
     m.detailsView.visible = "false"
     m.noInfoView.visible = "true"
     return
@@ -268,7 +268,7 @@ end function
 
 '
 ' Show button group when item has Focus
-sub focusChanged()
+sub onFocusChanged()
   if m.top.hasFocus = true
     m.overview.maxLines = m.maxDetailLines
     m.buttonsFocusAnimationOpacity.keyValue = [0, 1]

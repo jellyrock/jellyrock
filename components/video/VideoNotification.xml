@@ -8,7 +8,7 @@
     - Call show() to display with fade-in animation and set focus
     - Call dismiss() to hide with fade-out animation
     - "action" fires "activated" on OK press, "dismissed" on timer/other key/manual dismiss
-    - Call destroy() during parent cleanup
+    - Call onDestroy() during parent cleanup
 -->
 <component name="VideoNotification" extends="Group">
   <interface>
@@ -21,7 +21,7 @@
     <function name="show" />
     <function name="hide" />
     <function name="dismiss" />
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
 
   <children>

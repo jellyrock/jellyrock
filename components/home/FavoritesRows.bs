@@ -356,7 +356,7 @@ end function
 ' TEARDOWN
 ' ============================================
 
-sub destroy()
+sub onDestroy()
   destroyTextureManager(m.top.content)
 
   m.top.unobserveField("rowItemSelected")
