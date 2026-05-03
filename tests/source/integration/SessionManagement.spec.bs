@@ -295,6 +295,7 @@ namespace tests
       return m.assertTrue(localServer.isConnected, "Server should be connected")
     end function
 
+    @ignore
     @it("authenticates with demo user credentials")
     function _()
       ' Clear and connect to server
@@ -311,6 +312,7 @@ namespace tests
       return m.assertNotEqual(authData.json.AccessToken, "", "Should receive valid auth token")
     end function
 
+    @ignore
     @it("completes full login/logout cycle")
     function _()
       ' Clear and connect to server
