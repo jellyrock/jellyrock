@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - feat(agents)+ci: doc-maintenance enforcement + layered verification surfaces ([#534](https://github.com/jellyrock/jellyrock/pull/534))
 - agent-context system (docs + governance tooling) ([#533](https://github.com/jellyrock/jellyrock/pull/533))
 
+### Changed
+
+- adopt on* prefix style for lifecycle/event callbacks ([#539](https://github.com/jellyrock/jellyrock/pull/539))
+
 ### Dependencies
 
 - Update brighterscript-formatter from v1.7.23 to v1.7.24 ([#532](https://github.com/jellyrock/jellyrock/pull/532))
