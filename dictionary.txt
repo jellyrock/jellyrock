@@ -335,7 +335,18 @@ CJS
 CLIs
 codegen
 CommonJS
+decrypting
 deps
+dev-id
+Dev-ID
+dev-ID
+dev-mode
+dev-portal
+filesystem
+footgun
+portal-UI
+rekey
+SHA-1
 ES5
 ESLint
 ESLint's
@@ -345,6 +356,7 @@ formatter
 JS
 JSONC
 multiline
+runbook
 unprefixed
 validator
 validators

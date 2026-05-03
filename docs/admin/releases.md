@@ -63,6 +63,62 @@ When you publish the draft release:
 - ✅ Converts `[Unreleased]` to versioned release in changelog
 - ✅ Release process is complete
 
+## Signed `.pkg` for Roku channel store
+
+Roku channel-store submission requires a **signed `.pkg`**, not the sideload zip. Roku has no submission API, so the upload itself is always manual — but the production of the `.pkg` is automated locally via `npm run package:signed`.
+
+### Run it
+
+Against your dev Roku, after the release PR has merged and you're ready to ship:
+
+```bash
+npm run package:signed
+```
+
+That composes `npm run build:prod` then `node scripts/create-signed-package.cjs`, which calls `roku-deploy.deployAndSignPackage()` against your local Roku. Output: `out/jellyrock-vX.Y.Z.pkg` (version pulled from `manifest`, so a missed version-bump shows up in the filename). Upload it to the [Roku Developer Portal](https://developer.roku.com/) manually.
+
+### One-time setup
+
+If you don't have a `.env` yet, copy [`.env.example`](../../.env.example) to `.env` and fill in the values. Otherwise just add the two new vars to your existing `.env`:
+
+```sh
+ROKU_SIGNING_PASSWORD=...   # what you currently type into the dev portal
+ROKU_DEV_ID=...             # optional but recommended; see "Finding ROKU_DEV_ID" below
+```
+
+`chmod 600 .env` to lock filesystem permissions. If you'd rather not store the signing password on disk, wrap with your preferred secret manager — the script just reads env vars:
+
+```bash
+ROKU_SIGNING_PASSWORD=$(pass show jellyrock/signing) npm run package:signed
+```
+
+### Finding `ROKU_DEV_ID`
+
+Roku has three different "developer ID" concepts and the naming overlap is a known footgun:
+
+| What | Format | Where it appears |
+|---|---|---|
+| Vendor / Account ID | short numeric (e.g. `819325`) | dev.roku.com → My Account |
+| **Keyed Developer ID** | **40-char SHA-1 hex** | what we want; derived from signing cert |
+| Channel ID | 32-char hex | channel-store URL `details/<this>:<other>/jellyrock` |
+
+For `ROKU_DEV_ID` you want the **Keyed Developer ID**. Easiest way to find yours:
+
+```bash
+curl -s "http://${ROKU_IP}:8060/query/device-info" | grep keyed-developer-id
+```
+
+Provided your existing prod `.pkg` installs on this device via "Install from File" in the dev portal, that value IS the cert your published channel was signed with — copy it into `.env`. If install fails, the device is on a different cert than what's published, and you need to rekey it from the existing prod `.pkg` first.
+
+### Safety guardrails
+
+- **Prod-build guard.** Refuses to sign if `build/` contains source maps outside `roku_modules/` (a sign that a dev or test build is sitting there). The composed `package:signed` runs `build:prod` first, so the default invocation is always safe — the guard catches direct `.cjs` invocations against a stale build. `roku_modules/` is excluded because vendored ropm packages ship their own `.brs.map` files regardless of our bsconfig.
+- **Dev-ID verification.** When `ROKU_DEV_ID` is set, the script queries the device's `keyed-developer-id` via ECP and aborts before signing if it doesn't match. Catches "wrong-cert .pkg" before manual upload to Roku.
+
+### Why local instead of CI
+
+Solo-maintainer release ritual; the time saved by CI signing (a sideload + a portal-UI sign) is washed out by the friction of downloading + decrypting a CI-produced artifact. Local stays simpler. If JellyRock ever gets multiple ship-capable maintainers, this is the natural moment to revisit.
+
 ## Workflows
 
 ### `release-management.yml`

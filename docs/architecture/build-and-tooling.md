@@ -6,6 +6,8 @@ related-files:
   - package.json
   - patches/
   - Makefile
+  - scripts/create-package.cjs
+  - scripts/create-signed-package.cjs
   - scripts/bsc-plugins/roku-log.cjs
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/bsc-plugins/jrscreen-on-destroy.cjs
@@ -164,6 +166,7 @@ Build:
 | `npm run build:tests-complete` | Complete suite |
 | `npm run build:tdd` | TDD watch mode (uses `bsconfig-tdd.json`) |
 | `npm run package` | Create installable .zip via `scripts/create-package.cjs` |
+| `npm run package:signed` | Compose `build:prod` then sign via `scripts/create-signed-package.cjs` — produces `out/jellyrock-vX.Y.Z.pkg` (version from `manifest`) for Roku channel-store upload. Local-only (no CI variant); requires a physical Roku in dev mode plus `ROKU_IP` / `ROKU_PASSWORD` / `ROKU_SIGNING_PASSWORD` in `.env`. Optional `ROKU_DEV_ID` enables dev-ID verification. Refuses to sign if `build/` contains source maps (dev/test build guard). See [`docs/admin/releases.md` → Signed `.pkg`](../admin/releases.md#signed-pkg-for-roku-channel-store) |
 | `npm run validate` | Type-check only (`bsc --noEmit`) |
 
 Run tests:
@@ -224,6 +227,20 @@ ropm + patches (post-install):
 | `npm run postinstall` | Runs `npm run ropm && npm run patches:apply` automatically after `npm install` |
 | `npm run ropm` | `ropm copy && node scripts/ropm-hook.cjs` — copies vendored Roku modules into `components/roku_modules/` and `source/roku_modules/` |
 | `npm run patches:apply` | `patch-package` — applies every diff in `patches/` to `node_modules/`. Lets us hold local fixes against upstream packages until the upstream change lands |
+
+## Roku signing pipeline (`.pkg` for channel store)
+
+Roku channel-store submission requires a signed `.pkg`, not the sideload `.zip`. Roku has no submission API — uploading the `.pkg` to the dev portal is always manual. The production of the `.pkg` is automated locally via [`scripts/create-signed-package.cjs`](../../scripts/create-signed-package.cjs) and `npm run package:signed`.
+
+**Why local, not CI.** Solo-maintainer ritual; the time CI signing would save (a sideload + a portal-UI sign) is washed out by the friction of a CI-produced artifact (download + auth + storage). Local stays simpler and matches the same `.env`-based credential pattern already used for `ROKU_IP` / `ROKU_PASSWORD` in `scripts/run-roku-tests.js`.
+
+**Why hardware is required.** `roku-deploy.deployAndSignPackage()` is a thin wrapper over `deploy()` + `signExistingPackage()`. The signing runs on the Roku itself: `roku-deploy` uploads the zip, hits the dev-portal sign endpoint with the signing password, and downloads the resulting `.pkg`. There is no offline signing path.
+
+**Prod-build guard.** The script refuses to sign a `build/` directory that contains source maps. `bsconfig-prod.json` has `sourceMap: false`; `bsconfig.json` and `bsconfig-tests*.json` both have `sourceMap: true`. Any `.map` file under `build/` means an unsafe build is sitting there. The composed npm script (`npm run build:prod && node scripts/create-signed-package.cjs`) makes the default invocation always safe; the in-script guard catches direct `.cjs` invocations against a stale build.
+
+**Dev-ID verification (optional).** When `ROKU_DEV_ID` is set, it's passed to `deployAndSignPackage()` and the call aborts if the device's cert produces a `.pkg` with a different ID. Roku channel-store updates must be signed with the same dev ID as prior versions, so this catches a wrong-cert `.pkg` before manual upload.
+
+Full operator runbook (env setup, when to run, manual upload): [`docs/admin/releases.md` → Signed `.pkg` for Roku channel store](../admin/releases.md#signed-pkg-for-roku-channel-store).
 
 ## ropm modules — Roku Package Manager
 
