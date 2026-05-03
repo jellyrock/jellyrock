@@ -122,13 +122,16 @@ jobs:
       # Security: --ignore-scripts blocks transitive deps' install/postinstall hooks,
       # which is the highest-bandwidth pull_request_target exfiltration path
       # (a malicious PR adds a dep whose postinstall reads runner env vars).
-      # We then run our OWN postinstall by name — `ropm` is in this repo, vetted.
+      # We then run our OWN postinstall steps by name — `ropm` and `patches:apply`
+      # are vetted scripts in this repo. Patch content lives under `patches/`
+      # (committed) and is applied to `node_modules/`; no PR-controlled execution.
       # If a future trusted dep needs install scripts, add it to an explicit
       # `npm rebuild <pkg>` line below — never re-enable scripts globally.
       - name: Install dependencies (security-hardened)
         run: |
           npm ci --ignore-scripts
           npm run ropm
+          npm run patches:apply
 
       - name: Run unit tests on Roku
         if: github.event.inputs.test_type == 'unit'

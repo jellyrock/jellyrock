@@ -1,0 +1,73 @@
+diff --git a/node_modules/rooibos-roku/dist/lib/framework/components/rooibos/CodeCoverage.brs b/node_modules/rooibos-roku/dist/lib/framework/components/rooibos/CodeCoverage.brs
+index 378a160..4ffb9fa 100644
+--- a/node_modules/rooibos-roku/dist/lib/framework/components/rooibos/CodeCoverage.brs
++++ b/node_modules/rooibos-roku/dist/lib/framework/components/rooibos/CodeCoverage.brs
+@@ -1,44 +1,43 @@
+ ' @ignore
+ function init()
+-    m.resolvedMap = {}
+-    m.top.observeField("entry", "onEntryChange")
+-    m.top.observeField("save", "onSave")
+-    m.results = []
++  m.resolvedMap = {}
++  m.top.observeField("entry", "onEntryChange")
++  m.top.observeField("save", "onSave")
+ end function
+ 
+ ' @ignore
+ function setExpectedMap()
+-    m.top.expectedMap = "#EXPECTED_MAP#"
++  m.top.expectedMap = "#EXPECTED_MAP#"
+ end function
+ 
+ ' @ignore
+ function setFilePathMap()
+-    m.top.filePathMap = "#FILE_PATH_MAP#"
++  m.top.filePathMap = "#FILE_PATH_MAP#"
+ end function
+ 
+ ' @ignore
++' Aggregate on write: O(1) per coverage event, distributed across the run.
++' The original implementation pushed every entry into m.results and aggregated
++' them all in onSave(), which exceeded Roku's render-thread execution-timeout
++' watchdog (runtime error &h23) on suites that produce many coverage events.
+ function onEntryChange()
+-    entry = m.top.entry
+-    ' defer till later
+-    m.results.push(entry)
++  entry = m.top.entry
++  if entry <> invalid then
++    fileId = entry.f
++    lineMap = m.resolvedMap[fileId]
++
++    if lineMap = invalid then
++      lineMap = {}
++      m.resolvedMap[fileId] = lineMap
++    end if
++    lineMap[entry.l] = entry.r
++  end if
+ end function
+ 
+ ' @ignore
+ function onSave()
+-    ? "saving data"
+-    for each entry in m.results
+-        if entry <> invalid then
+-            fileId = entry.f
+-            lineMap = m.resolvedMap[fileId]
+-
+-            if lineMap = invalid then
+-                lineMap = {}
+-                m.resolvedMap[fileId] = lineMap
+-            end if
+-            lineMap[entry.l] = entry.r
+-        end if
+-    end for
+-    m.top.resolvedMap = m.resolvedMap
+-    setExpectedMap()
+-    setFilePathMap()
++  ? "saving data"
++  m.top.resolvedMap = m.resolvedMap
++  setExpectedMap()
++  setFilePathMap()
+ end function
