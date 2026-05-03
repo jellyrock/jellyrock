@@ -77,6 +77,7 @@
     "ropm": "ropm copy && node scripts/ropm-hook.cjs",
     "update-translations": "node scripts/lint/update-translations.cjs --fix",
     "package": "node scripts/create-package.cjs",
+    "package:signed": "npm run build:prod && node scripts/create-signed-package.cjs",
     "validate": "npx bsc --noEmit",
     "test:tdd": "npm run build:tdd && node scripts/run-roku-tests.js",
     "test:unit": "npm run build:tests-unit && node scripts/run-roku-tests.js",

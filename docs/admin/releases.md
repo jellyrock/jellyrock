@@ -63,6 +63,45 @@ When you publish the draft release:
 - ✅ Converts `[Unreleased]` to versioned release in changelog
 - ✅ Release process is complete
 
+## Signed `.pkg` for Roku channel store
+
+Roku channel-store submission requires a **signed `.pkg`**, not the sideload zip. Roku has no submission API, so the upload itself is always manual — but the production of the `.pkg` is automated locally via `npm run package:signed`.
+
+### Run it
+
+Against your dev Roku, after the release PR has merged and you're ready to ship:
+
+```bash
+npm run package:signed
+```
+
+That composes `npm run build:prod` then `node scripts/create-signed-package.cjs`, which calls `roku-deploy.deployAndSignPackage()` against your local Roku. Output: `out/jellyrock.pkg`. Upload it to the [Roku Developer Portal](https://developer.roku.com/) manually.
+
+### One-time setup
+
+If you don't have a `.env` yet, copy [`.env.example`](../../.env.example) to `.env` and fill in the values. Otherwise just add the two new vars to your existing `.env`:
+
+```sh
+ROKU_SIGNING_PASSWORD=...   # what you currently type into the dev portal
+ROKU_DEV_ID=...             # optional but recommended; from dev portal Utilities page
+```
+
+`chmod 600 .env` to lock filesystem permissions. If you'd rather not store the signing password on disk, wrap with your preferred secret manager — the script just reads env vars:
+
+```bash
+ROKU_SIGNING_PASSWORD=$(pass show jellyrock/signing) npm run package:signed
+```
+
+### Safety guardrails
+
+The script refuses to run if `build/` contains source maps (a sign that a dev or test build is sitting there instead of a prod build). The composed npm script runs `build:prod` first, so the default invocation is always safe — the guard catches direct invocations of the `.cjs` against a stale build.
+
+`ROKU_DEV_ID`, when set, is passed to `deployAndSignPackage()` and the call aborts if the device's cert produces a `.pkg` with a different ID. Cheap insurance against a wrong-cert `.pkg` getting uploaded to Roku and rejected.
+
+### Why local instead of CI
+
+Solo-maintainer release ritual; the time saved by CI signing (a sideload + a portal-UI sign) is washed out by the friction of downloading + decrypting a CI-produced artifact. Local stays simpler. If JellyRock ever gets multiple ship-capable maintainers, this is the natural moment to revisit.
+
 ## Workflows
 
 ### `release-management.yml`
