@@ -28,7 +28,9 @@
  *        node scripts/create-signed-package.cjs   (direct; signs whatever's
  *                                                  in build/ — see prod-build
  *                                                  guard below)
- * Output: out/jellyrock.pkg
+ * Output: out/jellyrock-vX.Y.Z.pkg   (version pulled from manifest — if the
+ *         filename's version doesn't match what you expect, the version bump
+ *         didn't land)
  */
 
 require('dotenv').config();
@@ -49,6 +51,28 @@ function requireEnv(name) {
     process.exit(1);
   }
   return v;
+}
+
+function readVersionFromManifest(manifestPath) {
+  if (!fs.existsSync(manifestPath)) {
+    console.error(`❌ Expected manifest at ${manifestPath}`);
+    process.exit(1);
+  }
+  const text = fs.readFileSync(manifestPath, 'utf8');
+  const get = (key) => {
+    const match = text.match(new RegExp(`^${key}=(.*)$`, 'm'));
+    return match ? match[1].trim() : null;
+  };
+  const major = get('major_version');
+  const minor = get('minor_version');
+  const build = get('build_version');
+  if (!major || !minor || !build) {
+    console.error(
+      `❌ Could not parse version from ${manifestPath}. Need major_version, minor_version, build_version.`,
+    );
+    process.exit(1);
+  }
+  return `${major}.${minor}.${build}`;
 }
 
 async function createSignedPackage() {
@@ -79,6 +103,11 @@ async function createSignedPackage() {
     process.exit(1);
   }
 
+  // Version goes in the filename so a missed version-bump is obvious at a
+  // glance — the manifest is the canonical on-device version source.
+  const version = readVersionFromManifest(path.join(buildDir, 'manifest'));
+  const outFile = `jellyrock-v${version}`;
+
   const outDir = path.join(rootDir, 'out');
   const stagingDir = path.join(outDir, '.staging-signed');
 
@@ -90,16 +119,17 @@ async function createSignedPackage() {
     files: ['**/*'],
     stagingDir,
     outDir,
-    outFile: 'jellyrock',
+    outFile,
   };
   if (devId) options.devId = devId;
 
   console.log('🔐 Creating signed Roku package via deployAndSignPackage...');
   console.log(`  • host: ${host}`);
+  console.log(`  • version: ${version}`);
   console.log(`  • devId check: ${devId ? 'on' : 'off (skipped)'}`);
 
   const result = await rokuDeploy.deployAndSignPackage(options);
-  const pkgPath = typeof result === 'string' ? result : path.join(outDir, 'jellyrock.pkg');
+  const pkgPath = typeof result === 'string' ? result : path.join(outDir, `${outFile}.pkg`);
   console.log(`✅ Signed package created: ${pkgPath}`);
 }
 

@@ -166,7 +166,7 @@ Build:
 | `npm run build:tests-complete` | Complete suite |
 | `npm run build:tdd` | TDD watch mode (uses `bsconfig-tdd.json`) |
 | `npm run package` | Create installable .zip via `scripts/create-package.cjs` |
-| `npm run package:signed` | Compose `build:prod` then sign via `scripts/create-signed-package.cjs` — produces `out/jellyrock.pkg` for Roku channel-store upload. Local-only (no CI variant); requires a physical Roku in dev mode plus `ROKU_IP` / `ROKU_PASSWORD` / `ROKU_SIGNING_PASSWORD` in `.env`. Optional `ROKU_DEV_ID` enables dev-ID verification. Refuses to sign if `build/` contains source maps (dev/test build guard). See [`docs/admin/releases.md` → Signed `.pkg`](../admin/releases.md#signed-pkg-for-roku-channel-store) |
+| `npm run package:signed` | Compose `build:prod` then sign via `scripts/create-signed-package.cjs` — produces `out/jellyrock-vX.Y.Z.pkg` (version from `manifest`) for Roku channel-store upload. Local-only (no CI variant); requires a physical Roku in dev mode plus `ROKU_IP` / `ROKU_PASSWORD` / `ROKU_SIGNING_PASSWORD` in `.env`. Optional `ROKU_DEV_ID` enables dev-ID verification. Refuses to sign if `build/` contains source maps (dev/test build guard). See [`docs/admin/releases.md` → Signed `.pkg`](../admin/releases.md#signed-pkg-for-roku-channel-store) |
 | `npm run validate` | Type-check only (`bsc --noEmit`) |
 
 Run tests:

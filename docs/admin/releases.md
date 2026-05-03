@@ -75,7 +75,7 @@ Against your dev Roku, after the release PR has merged and you're ready to ship:
 npm run package:signed
 ```
 
-That composes `npm run build:prod` then `node scripts/create-signed-package.cjs`, which calls `roku-deploy.deployAndSignPackage()` against your local Roku. Output: `out/jellyrock.pkg`. Upload it to the [Roku Developer Portal](https://developer.roku.com/) manually.
+That composes `npm run build:prod` then `node scripts/create-signed-package.cjs`, which calls `roku-deploy.deployAndSignPackage()` against your local Roku. Output: `out/jellyrock-vX.Y.Z.pkg` (version pulled from `manifest`, so a missed version-bump shows up in the filename). Upload it to the [Roku Developer Portal](https://developer.roku.com/) manually.
 
 ### One-time setup
 
