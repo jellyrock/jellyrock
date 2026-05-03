@@ -349,7 +349,7 @@ The `VideoPlayerView` itself handles fetching media metadata, building the URL, 
 
 While the video plays:
 
-- `VideoPlayerView` runs a periodic timer that fires `ReportPlayback("Playing")` every ~10 seconds, sending position to `Jellyfin`'s `/PlaybackInfo` endpoint via the side-effect task.
+- `VideoPlayerView` runs a periodic timer that fires `reportPlayback("Playing")` every ~10 seconds, sending position to `Jellyfin`'s `/PlaybackInfo` endpoint via the side-effect task.
 - The OSD shows for 5 seconds when the user interacts, then hides.
 - Trickplay (seek scrubbing) shows a thumbnail carousel of preview images.
 - "Next episode" notification appears near the end of an episode if the queue has another item.

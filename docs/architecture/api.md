@@ -10,7 +10,7 @@ related-files:
   - components/api/ApiQueueTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # API Layer & Task Pool
@@ -269,7 +269,7 @@ The render thread does microseconds of work (create node, append, set wakeup fie
 For requests where you don't need the response: telemetry, playback reporting, mark-watched, mark-favorite.
 
 ```brightscript
-sub ReportPlayback(state as string)
+sub reportPlayback(state as string)
   req = GetApi().BuildPlaystateRequest(state, params)
   SubmitSideEffect(req)            ' returns immediately
 end sub

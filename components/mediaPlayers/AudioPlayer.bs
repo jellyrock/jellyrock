@@ -23,11 +23,11 @@ sub audioStateChanged()
     m.isPlayReported = false
   end if
 
-  ReportPlayback(reportedPlaybackState)
+  reportPlayback(reportedPlaybackState)
 end sub
 
 ' Report playback to server
-sub ReportPlayback(state as string)
+sub reportPlayback(state as string)
 
   if not isValid(m.top.position) then return
 

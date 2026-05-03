@@ -31,11 +31,11 @@ sub ScanForServers()
 
   m.ssdpScanner = CreateObject("roSGNode", "ServerDiscoveryTask")
   'run the task
-  m.ssdpScanner.observeField("content", "ScanForServersComplete")
+  m.ssdpScanner.observeField("content", "onScanForServersComplete")
   m.ssdpScanner.control = "RUN"
 end sub
 
-sub ScanForServersComplete(event)
+sub onScanForServersComplete(event)
   m.servers = event.getData()
 
   items = CreateObject("roSGNode", "ContentNode")

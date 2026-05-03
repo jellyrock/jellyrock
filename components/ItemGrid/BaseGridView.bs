@@ -312,7 +312,7 @@ sub loadInitialItems()
   ' Update title after all task fields are configured
   updateTitle()
 
-  m.loadItemsTask.observeField("content", "ItemDataLoaded")
+  m.loadItemsTask.observeField("content", "onItemDataLoaded")
   m.loadItemsTask.control = "RUN"
 
   SetUpOptions()
@@ -414,8 +414,8 @@ sub configureGrid()
   end if
 end sub
 
-sub ItemDataLoaded(msg)
-  m.log.debug("start ItemDataLoaded()")
+sub onItemDataLoaded(msg)
+  m.log.debug("start onItemDataLoaded()")
   itemData = msg.GetData()
   m.loadItemsTask.unobserveField("content")
   m.loadItemsTask.content = []
@@ -516,7 +516,7 @@ sub ItemDataLoaded(msg)
 
   ' Auto-load remaining items in chunks (don't wait for scroll trigger).
   ' Each chunk uses the normal page size (itemGridLimit); the recursive
-  ' ItemDataLoaded → loadMoreData cycle continues until all items are loaded.
+  ' onItemDataLoaded → loadMoreData cycle continues until all items are loaded.
   ' With texture management, only visible + buffer rows have loaded textures
   ' regardless of total ContentNode count, so loading all items is safe.
   if m.loadedItems > 0 and m.loadedItems < m.loadItemsTask.totalRecordCount
@@ -527,7 +527,7 @@ sub ItemDataLoaded(msg)
   if m.options.visible
     m.options.setFocus(true)
   end if
-  m.log.debug("end ItemDataLoaded()")
+  m.log.debug("end onItemDataLoaded()")
 end sub
 
 sub loadMoreData()
@@ -538,7 +538,7 @@ sub loadMoreData()
   m.emptyText.visible = false
   m.loading = true
   m.loadItemsTask.startIndex = m.loadedItems
-  m.loadItemsTask.observeField("content", "ItemDataLoaded")
+  m.loadItemsTask.observeField("content", "onItemDataLoaded")
   m.loadItemsTask.control = "RUN"
   m.log.debug("end loadMoreData()")
 end sub
@@ -904,7 +904,7 @@ sub onVoiceFilter()
     ' Set searchTerm after presenter to ensure it's not cleared
     m.loadItemsTask.searchTerm = voiceSearchTerm
 
-    m.loadItemsTask.observeField("content", "ItemDataLoaded")
+    m.loadItemsTask.observeField("content", "onItemDataLoaded")
     m.loadItemsTask.control = "RUN"
 
     if voiceSearchTerm.len() = 1

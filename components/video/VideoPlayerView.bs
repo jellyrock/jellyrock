@@ -81,7 +81,7 @@ sub init()
   ' Custom Caption Function
   m.top.observeField("shouldAllowCaptions", "onAllowCaptionsChange")
 
-  m.playbackTimer.observeField("fire", "ReportPlayback")
+  m.playbackTimer.observeField("fire", "reportPlayback")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
   m.top.transcodeReasons = []
@@ -614,7 +614,7 @@ sub onAudioIndexChange()
     newTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
     m.log.info("Direct play audio switch", "jellyfinIndex", m.top.audioIndex, "rokuTrack", newTrack)
     m.top.audioTrack = newTrack
-    ReportPlayback()
+    reportPlayback()
     return
   end if
 
@@ -1034,7 +1034,7 @@ sub forceFinishPlayback()
     m.log.info("Force-finishing playback — no item ID, skipping mark-played")
   end if
 
-  ' Tell ReportPlayback to report position at end of video so the server
+  ' Tell reportPlayback to report position at end of video so the server
   ' sees a natural completion — matching the mark-played request.
   m.forceFinished = true
 
@@ -1405,7 +1405,7 @@ sub onState()
     end if
 
     if m.isPlayReported = false
-      ReportPlayback("start")
+      reportPlayback("start")
       m.isPlayReported = true
 
       ' Load channel list in background for channel up/down navigation
@@ -1413,13 +1413,13 @@ sub onState()
         loadChannelListForQueue()
       end if
     else
-      ReportPlayback()
+      reportPlayback()
     end if
     m.playbackTimer.control = "start"
   else if m.top.state = "paused"
     stopLoadingSpinner()
     m.playbackTimer.control = "stop"
-    ReportPlayback()
+    reportPlayback()
   else if m.top.state = "stopped"
     ' Skip during channel switch; the incoming VideoPlayerView will hide the spinner
     if not (m.isSwitchingChannel = true)
@@ -1429,7 +1429,7 @@ sub onState()
     m.playbackTimer.unobserveField("fire")
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
-    ReportPlayback("stop")
+    reportPlayback("stop")
     m.isPlayReported = false
     if isValid(m.trickplayCarousel)
       m.trickplayCarousel.isVisible = false
@@ -1441,7 +1441,7 @@ sub onState()
     m.playbackTimer.unobserveField("fire")
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
-    ReportPlayback("finished")
+    reportPlayback("finished")
     if isValid(m.trickplayCarousel)
       m.trickplayCarousel.isVisible = false
       m.trickplayCarousel.callFunc("reset")
@@ -1454,10 +1454,10 @@ end sub
 
 '
 ' Report playback to server
-sub ReportPlayback(state = "update" as string)
+sub reportPlayback(state = "update" as string)
   if not isValid(m.top.position) then return
 
-  m.log.debug("start ReportPlayback", state, int(m.top.position))
+  m.log.debug("start reportPlayback", state, int(m.top.position))
 
   ' When force-finished, report position at end of video so the server
   ' sees a natural completion — matching the mark-played request.
@@ -1482,7 +1482,7 @@ sub ReportPlayback(state = "update" as string)
   end if
 
   if (state = "stop" or state = "finished") and isValid(m.originalClosedCaptionState)
-    m.log.debug("ReportPlayback setting", m.top.globalCaptionMode, "back to", m.originalClosedCaptionState)
+    m.log.debug("reportPlayback setting", m.top.globalCaptionMode, "back to", m.originalClosedCaptionState)
     m.top.globalCaptionMode = m.originalClosedCaptionState
     m.originalClosedCaptionState = invalid
   end if
@@ -1508,7 +1508,7 @@ sub ReportPlayback(state = "update" as string)
     end if
   end if
 
-  m.log.debug("end ReportPlayback", state, int(m.top.position))
+  m.log.debug("end reportPlayback", state, int(m.top.position))
 end sub
 
 '
