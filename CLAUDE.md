@@ -74,3 +74,7 @@ Quick task pointers:
 ### Commit messages
 
 Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer
+
+### Pull requests
+
+Use the `/pr` skill — it builds the body from `.github/pull_request_template.md`, scans for related issues, and surfaces architecture docs whose related-files were touched. No `🤖 Generated with Claude Code` footer or any other Claude attribution
