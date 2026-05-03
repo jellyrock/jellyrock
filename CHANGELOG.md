@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add Vitest coverage for update-translations and changelog-syncer ([#538](https://github.com/jellyrock/jellyrock/pull/538))
 - JS hygiene (ESLint+Prettier+Vitest) + scripts/ reorg + 134 tests ([#536](https://github.com/jellyrock/jellyrock/pull/536))
 - feat(agents)+ci: doc-maintenance enforcement + layered verification surfaces ([#534](https://github.com/jellyrock/jellyrock/pull/534))
 - agent-context system (docs + governance tooling) ([#533](https://github.com/jellyrock/jellyrock/pull/533))
