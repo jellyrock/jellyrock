@@ -14,9 +14,9 @@
  *   ROKU_SIGNING_PASSWORD  signing password used to encrypt the .pkg
  *
  * Optional env var:
- *   ROKU_DEV_ID            expected dev ID — deployAndSignPackage()
- *                          aborts if the device's cert produces a .pkg
- *                          with a different ID. Recommended for channel-store
+ *   ROKU_DEV_ID            expected dev ID — script queries the device's
+ *                          actual keyed-developer-id and aborts before signing
+ *                          if it doesn't match. Recommended for channel-store
  *                          updates (must be stable across versions).
  *
  * Storage: easiest is a gitignored .env (chmod 600) — same pattern used by
@@ -130,12 +130,29 @@ async function createSignedPackage() {
     outDir,
     outFile,
   };
-  if (devId) options.devId = devId;
+  // Note: roku-deploy's `options.devId` is ONLY consulted inside rekeyDevice()
+  // (which we don't call). signExistingPackage/deployAndSignPackage silently
+  // ignore it. So we have to run the check ourselves before signing — fail
+  // fast on mismatch rather than producing a .pkg the channel store will
+  // reject.
+  if (devId) {
+    const actualDevId = await rokuDeploy.getDevId({ host, password });
+    if (actualDevId !== devId) {
+      console.error(`❌ Dev ID mismatch.`);
+      console.error(`   Device ${host} reports: ${actualDevId}`);
+      console.error(`   .env ROKU_DEV_ID expects: ${devId}`);
+      console.error(
+        '   Either correct ROKU_DEV_ID in .env, or rekey this device to the expected cert.',
+      );
+      process.exit(1);
+    }
+    console.log(`  • devId verified: ${actualDevId}`);
+  }
 
   console.log('🔐 Creating signed Roku package via deployAndSignPackage...');
   console.log(`  • host: ${host}`);
   console.log(`  • version: ${version}`);
-  console.log(`  • devId check: ${devId ? 'on' : 'off (skipped)'}`);
+  console.log(`  • devId check: ${devId ? 'on (passed)' : 'off (no ROKU_DEV_ID set)'}`);
 
   const result = await rokuDeploy.deployAndSignPackage(options);
   const pkgPath = typeof result === 'string' ? result : path.join(outDir, `${outFile}.pkg`);
