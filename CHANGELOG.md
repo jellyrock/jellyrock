@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - adopt on* prefix style for lifecycle/event callbacks ([#539](https://github.com/jellyrock/jellyrock/pull/539))
 
+### Fixed
+
+- (ci) patch rooibos coverage to avoid render-thread watchdog ([#540](https://github.com/jellyrock/jellyrock/pull/540))
+
 ### Dependencies
 
 - Update brighterscript-formatter from v1.7.23 to v1.7.24 ([#532](https://github.com/jellyrock/jellyrock/pull/532))
