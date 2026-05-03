@@ -6,7 +6,7 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 
 1. DO NOT make stuff up or make assumptions
 2. Ask clarifying questions when you are not sure about something
-3. Focus on best practices, industry standards, and easy long-term maintenance
+3. Focus on best practices, industry standards, easy long-term maintenance, no regressions, and world-class UX and DX
 4. ALWAYS look for the best possible solution to a problem then provide the user with their best options
 5. Iterate on a plan with the user until they approve it, and only then begin coding
 6. After finishing a user-approved plan: run automated tests to verify; provide a manual test plan only for UI/runtime behavior tests don't cover, plus any expected debug-log output
