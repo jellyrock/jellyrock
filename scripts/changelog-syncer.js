@@ -98,13 +98,17 @@ class ChangelogSyncer {
   validate() {
     console.log('🔍 Validating changelog consistency...');
 
+    // File-existence check has to come before getStatus(), which reads the
+    // file unconditionally. Without this guard, a missing CHANGELOG.md
+    // crashes with ENOENT instead of producing the intended issue.
+    if (!fs.existsSync(this.changelogPath)) {
+      console.log('❌ Changelog validation failed:');
+      console.log('  - CHANGELOG.md file missing');
+      return false;
+    }
+
     const status = this.getStatus();
     const issues = [];
-
-    // Check file exists
-    if (!fs.existsSync(this.changelogPath)) {
-      issues.push('CHANGELOG.md file missing');
-    }
 
     // Check unreleased section consistency
     if (status.unreleasedCommits > 0 && !status.hasUnreleased) {
