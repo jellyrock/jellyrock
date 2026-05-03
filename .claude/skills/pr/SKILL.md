@@ -41,6 +41,10 @@ Imperative mood, < 70 chars. Synthesize from commits, not just the latest. Passe
 ### Changes
 Bulleted list. One line per logical change, not per file. Group related edits.
 
+### Follow-ups — required
+
+Mirrors the Issues-section pattern: write `None` (no bullet) when nothing is deferred; use bulleted lines only when listing actual follow-ups. Each follow-up must have a stable slug in `docs/architecture/tech-debt.md` — link the anchor inline, e.g. `- [\`itemdetails-size\`](../docs/architecture/tech-debt.md#itemdetails-size) — split per-item-type renderers into separate modules`. If a deferred item doesn't have a tech-debt entry yet, add it as part of this PR or drop the line. Don't invent deferrals to fill the section — `None` is the right answer most of the time.
+
 ### Issues — required, must contain something
 
 **Tier 1 — local scan (always):**

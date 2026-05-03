@@ -6,6 +6,11 @@
 <!-- Unordered list of changes made -->
 -
 
+## Follow-ups
+<!-- Anything explicitly out of scope / deferred. Each item must have a tech-debt.md entry — link the slug. Default to None. -->
+<!-- - [`slug-name`](docs/architecture/tech-debt.md#slug-name) — one-line description -->
+None
+
 ## Issues
 <!-- Fixes #123 -->
 <!-- Ref #123 -->
@@ -22,5 +27,5 @@ Architecturally-significant files (tend to need doc updates):
 - [ ] **`docs/dev/` how-to** updated if a workflow / recipe changed (adding a setting, writing a migration, etc.)
 - [ ] **Subdir `CLAUDE.md`** updated if a per-area rule / convention changed
 - [ ] **`docs/decisions.md`** entry added if a non-obvious design choice was made
-- [ ] **`docs/architecture/tech-debt.md`** entry removed if this PR fixes a listed item (or added if it introduces new debt)
+- [ ] **`docs/architecture/tech-debt.md`** entry removed if this PR fixes a listed item, or added if this PR introduces new debt or defers a follow-up
 - [ ] None — this PR doesn't change any of the above
