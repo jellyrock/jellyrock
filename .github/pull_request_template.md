@@ -1,6 +1,6 @@
 <!-- Your title should be short, descriptive, and in the imperative mood (Fix X, Change Y, instead of Fixed X, Changed Y) -->
 # Overview
-<!-- Brief overview of changes in 1-5 sentences -->
+<!-- Brief overview of PR -->
 
 ## Changes
 <!-- Unordered list of changes made -->
