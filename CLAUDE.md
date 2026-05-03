@@ -13,10 +13,10 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 
 ## Agent rules
 
-- **Run tests to verify fixes — don't commit based on reasoning alone.** TDD (single spec, fastest): `npm run test:tdd`. Broader: `npm run test:unit | test:integration | test:all`. Setup, credentials, debugger contention: [`docs/dev/unit-tests-tdd.md`](docs/dev/unit-tests-tdd.md).
+- **Run tests to verify fixes — don't commit based on reasoning alone.** Nothing auto-runs tests, so an agent is expected to run them. BS unit tests on Roku hardware — TDD (single spec, fastest): `npm run test:tdd`; broader: `npm run test:unit | test:integration | test:all`. BSC plugin / scripts changes (Vitest, no hardware needed): `npm run test:scripts`. Setup, credentials, debugger contention: [`docs/dev/unit-tests-tdd.md`](docs/dev/unit-tests-tdd.md).
 - **When hardware isn't reachable, say so explicitly** — don't claim a fix was tested when only the build was verified
 - **Cannot modify `CHANGELOG.md`** — CI-controlled
-- **Don't run `npm run validate`, `npm run lint:*`, `npm run build:*`, `npm run check-formatting`, `npm run format`, or `npm run test:scripts` manually** — pre-commit / pre-push / CI runs them at the right moment and the IDE handles `.bs` live. Exception: debugging a specific lint failure
+- **Don't compulsively re-run lint / build / format mid-work.** `npm run validate`, `lint:*`, `build:*`, `check-formatting`, and `format` are already run by pre-commit / pre-push hooks and by CI on every push (and most editors surface BSC diagnostics live as you type). So they aren't for routine "did my change compile" checks — but they're fair game when debugging a specific failure, when no hook has fired yet, or when your editor isn't surfacing diagnostics. **Test scripts are NOT covered** — `test:tdd` / `test:unit` / `test:scripts` aren't auto-run anywhere before commit, so running them as part of finishing work is the expected workflow, not a redundancy.
 - **Capture cross-session agent guidance in `CLAUDE.md` (root or scoped), not in agent-private memory** — memory files are per-folder (worktrees / multiple JellyRock checkouts each get their own), aren't committed, and don't reach other contributors. Project rules belong in `CLAUDE.md` so everyone benefits.
 
 ## Doc maintenance discipline
