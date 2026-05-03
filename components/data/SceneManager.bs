@@ -37,7 +37,7 @@ sub pushScene(newGroup)
       currentGroup.visible = false
 
       if currentGroup.isSubType("JRScreen")
-        currentGroup.callFunc("OnScreenHidden")
+        currentGroup.callFunc("onScreenHidden")
       end if
 
     end if
@@ -51,7 +51,7 @@ sub pushScene(newGroup)
     end if
 
     if newGroup.isSubType("JRScreen")
-      newGroup.callFunc("OnScreenShown")
+      newGroup.callFunc("onScreenShown")
     end if
 
     'observe info about new group, set overhang title, etc.
@@ -91,7 +91,7 @@ sub popScene()
     group.visible = false
 
     if group.isSubType("JRScreen")
-      group.callFunc("OnScreenHidden")
+      group.callFunc("onScreenHidden")
       group.callFunc("onDestroy")
     else if group.isSubType("Video")
       group.callFunc("onDestroy")
@@ -110,7 +110,7 @@ sub popScene()
     m.content.replaceChild(group, 0)
 
     if group.isSubType("JRScreen")
-      group.callFunc("OnScreenShown")
+      group.callFunc("onScreenShown")
     else
       ' Restore focus
       if isValid(group.lastFocus)
@@ -150,7 +150,7 @@ sub clearScenes()
   for each group in m.groups
     if type(group) = "roSGNode"
       if group.isSubtype("JRScreen")
-        group.callFunc("OnScreenHidden")
+        group.callFunc("onScreenHidden")
         group.callFunc("onDestroy")
       else if group.isSubtype("Video")
         group.callFunc("onDestroy")

@@ -63,8 +63,8 @@ sub loadLibraries()
 end sub
 
 ' JRScreen hook called when the screen is displayed by the screen manager
-sub OnScreenShown()
-  m.log.info("OnScreenShown")
+sub onScreenShown()
+  m.log.info("onScreenShown")
 
   ' Configure overhang UI
   scene = m.top.getScene()
@@ -77,7 +77,7 @@ sub OnScreenShown()
     m.overhang = overhang
 
     ' Cache overhang element references and observe their events ONCE.
-    ' OnScreenShown runs on every return (e.g. back from Settings) —
+    ' onScreenShown runs on every return (e.g. back from Settings) —
     ' calling observeField again would stack duplicate observers, causing
     ' actions to fire N times (1 extra per show).
     if not isValid(m.tabBar)
@@ -121,7 +121,7 @@ sub OnScreenShown()
     end if
   end if
 
-  ' Re-activate voice capture — matching BaseGridView's OnScreenShown pattern.
+  ' Re-activate voice capture — matching BaseGridView's onScreenShown pattern.
   ' Only toggle active; voiceEnabled was set once in init() and never changed.
   if isValid(m.voiceBox)
     m.voiceBox.active = true
@@ -169,8 +169,8 @@ sub OnScreenShown()
 end sub
 
 ' JRScreen hook called when the screen is hidden by the screen manager
-sub OnScreenHidden()
-  m.log.info("OnScreenHidden")
+sub onScreenHidden()
+  m.log.info("onScreenHidden")
 
   ' Release texture memory — cells with renderTracking "none" unload their URIs.
   if isValid(m.activeContent) and isValid(m.activeContent.content)
@@ -325,8 +325,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
       end if
 
       ' First visit — default to the tab bar (active tab)
-      ' Lazy-init: tab bar may not exist during first OnScreenShown (pushScene
-      ' calls OnScreenShown before registerOverhangData creates the tab bar)
+      ' Lazy-init: tab bar may not exist during first onScreenShown (pushScene
+      ' calls onScreenShown before registerOverhangData creates the tab bar)
       if not isValid(m.tabBar) and isValid(m.overhang)
         tabBar = m.overhang.callFunc("getTabBar")
         if isValid(tabBar)
@@ -354,7 +354,7 @@ sub onUserDropdownFocusReturn()
 end sub
 
 ' User dropdown menu item was selected — proxy to Home's interface for Main.bs.
-' Saves the dropdown so OnScreenShown can restore focus when the user returns,
+' Saves the dropdown so onScreenShown can restore focus when the user returns,
 ' then moves focus into Home's tree so pushScene can properly manage focus transfer.
 sub onUserMenuAction()
   if isValid(m.userDropdown)

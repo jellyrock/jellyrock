@@ -55,7 +55,7 @@ sub startLoading()
   m.LoadChannelsTask.control = "RUN"
 end sub
 
-sub OnScreenShown()
+sub onScreenShown()
   ' Restore focus for scene navigation
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)

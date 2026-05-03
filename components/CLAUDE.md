@@ -18,8 +18,8 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 ## Lifecycle hooks (JRScreen subclasses)
 
-- Override `OnScreenShown()` — restore focus, refresh data on revisit.
-- Override `OnScreenHidden()` — pause Tasks, hide UI, but keep state.
+- Override `onScreenShown()` — restore focus, refresh data on revisit.
+- Override `onScreenHidden()` — pause Tasks, hide UI, but keep state.
 - Override `onDestroy()` — release Task nodes, unobserve fields, drop large data structures. The base `onDestroy()` is a no-op; missing it leaks observers and tasks across navigation. Two BSC plugins enforce this; opt-out comments are documented in [build-and-tooling.md](../docs/architecture/build-and-tooling.md).
 
 ## Render thread protection

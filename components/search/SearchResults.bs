@@ -40,7 +40,7 @@ sub init()
 
 end sub
 
-sub OnScreenShown()
+sub onScreenShown()
   if m.top.shouldSkipInitialFocus
     m.top.shouldSkipInitialFocus = false
     ' Caller will set focus after pushScene — skip here to avoid a double-focus
@@ -62,8 +62,8 @@ sub OnScreenShown()
   end if
 end sub
 
-sub OnScreenHidden()
-  m.log.info("OnScreenHidden")
+sub onScreenHidden()
+  m.log.info("onScreenHidden")
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     hideTextureManager(m.searchSelect.content)
   end if

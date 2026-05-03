@@ -16,7 +16,7 @@ sub init()
 end sub
 
 ' JRScreen hook.
-sub OnScreenShown()
+sub onScreenShown()
   ' Clear backdrop on login screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 

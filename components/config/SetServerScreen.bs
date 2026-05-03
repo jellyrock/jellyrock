@@ -149,7 +149,7 @@ sub clearErrorMessage()
 end sub
 
 ' JRScreen hook called when the screen is displayed by the screen manager
-sub OnScreenShown()
+sub onScreenShown()
   ' Clear backdrop on config screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 

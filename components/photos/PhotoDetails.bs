@@ -102,7 +102,7 @@ end sub
 
 ' JRScreen hook.
 ' Used to ensure tasks are stopped
-sub OnScreenHidden()
+sub onScreenHidden()
   m.slideshowTimer.control = "stop"
   m.statusTimer.control = "stop"
 end sub
@@ -175,7 +175,7 @@ sub onDestroy()
   m.slideshowTimer.unobserveField("fire")
   m.statusTimer.unobserveField("fire")
 
-  ' Stop timers (may already be stopped by OnScreenHidden or user interaction)
+  ' Stop timers (may already be stopped by onScreenHidden or user interaction)
   m.slideshowTimer.control = "stop"
   m.statusTimer.control = "stop"
 

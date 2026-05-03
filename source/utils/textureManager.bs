@@ -27,9 +27,9 @@
 '   1. Parent calls initTextureManager() after creating content root
 '   2. Parent calls updateTextureBufferRange() after skeleton rows + on every focus change
 '   3. Parent calls activateTextureManager() once initial content is fully loaded
-'   4. Parent calls hideTextureManager() on OnScreenHidden
-'   5. Parent calls activateTextureManager() on OnScreenShown (after restoring range)
-'   6. Parent calls destroyTextureManager() in destroy()
+'   4. Parent calls hideTextureManager() on onScreenHidden
+'   5. Parent calls activateTextureManager() on onScreenShown (after restoring range)
+'   6. Parent calls destroyTextureManager() in onDestroy()
 '   7. JRRowItem observes textureManagerState, loadedRowRange, focusedColumns
 '
 ' Flow (MarkupGrid):
@@ -216,7 +216,7 @@ sub updateGridTextureBufferRange(contentRoot as object, focusedIndex as dynamic,
   end if
 end sub
 
-' Activates texture management after initial content load or on OnScreenShown.
+' Activates texture management after initial content load or on onScreenShown.
 ' Transitions state from "init" or "hidden" to "active", enabling buffer-based
 ' texture management. Callers should update loadedRowRange before calling this.
 '

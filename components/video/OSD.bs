@@ -781,7 +781,7 @@ sub displaySubtitleNode(node as object)
   m.videoSubtitleGroup.appendChild(node)
 end sub
 
-sub OnScreenShown()
+sub onScreenShown()
   if m.isFirstRun
     m.isFirstRun = false
   else

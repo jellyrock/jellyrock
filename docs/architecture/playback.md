@@ -11,7 +11,7 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # Video & Audio Playback
@@ -176,7 +176,7 @@ The canonical video player and the largest single component in the playback subs
     <field id="fullAudioData" />
     <field id="fullVideoSourceData" />
     <field id="audioIndex" />
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
   <children>
     <Group id="captionGroup" />                                    <!-- Custom subtitle rendering -->

@@ -131,7 +131,7 @@ end sub
 ' Lifecycle
 ' ============================================================================
 
-sub OnScreenShown()
+sub onScreenShown()
   ' Clear global backdrop - we handle our own backdrops
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
@@ -154,7 +154,7 @@ sub OnScreenShown()
   end if
 end sub
 
-sub OnScreenHidden()
+sub onScreenHidden()
   hideTextureManager(m.data)
 end sub
 

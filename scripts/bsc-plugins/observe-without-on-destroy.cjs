@@ -17,7 +17,7 @@
  *
  * "Matching" requires the same field name. We deliberately don't require the
  * unobserve to live inside `onDestroy()` because many codebases legitimately
- * unobserve in `OnScreenHidden`, dedicated cleanup helpers, or tear-down on
+ * unobserve in `onScreenHidden`, dedicated cleanup helpers, or tear-down on
  * tab switch. The intent is to catch the common bug of "I set up an observer
  * and never tore it down anywhere".
  *

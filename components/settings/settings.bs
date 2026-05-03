@@ -665,7 +665,7 @@ sub executeResetUserSettings()
 end sub
 
 ' JRScreen hook that gets ran when the screen is shown.
-sub OnScreenShown()
+sub onScreenShown()
   ' Clear backdrop on settings screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
@@ -687,7 +687,7 @@ end sub
 ' JRScreen hook that gets ran as needed.
 ' Assumes settings were changed and they affect the device profile.
 ' Posts a new device profile to the server via fire-and-forget side effect.
-sub OnScreenHidden()
+sub onScreenHidden()
   SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
 end sub
 

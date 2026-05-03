@@ -57,14 +57,14 @@ describe('observe-without-on-destroy', () => {
     expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(1);
   });
 
-  it('passes when unobserve lives in a non-destroy function (e.g. OnScreenHidden)', () => {
+  it('passes when unobserve lives in a non-destroy function (e.g. onScreenHidden)', () => {
     // The plugin intentionally does NOT require unobserve to live in
     // destroy() — anywhere in the file is enough.
     const diagnostics = runOnBody(`
       sub init()
         m.button.observeField("buttonSelected", "onSelect")
       end sub
-      sub OnScreenHidden()
+      sub onScreenHidden()
         m.button.unobserveField("buttonSelected")
       end sub
     `);

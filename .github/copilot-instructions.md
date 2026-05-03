@@ -25,7 +25,7 @@ Enforcement: `npm run docs:stale:blocking` fails the PR if a stale architecture 
 ## Architecture Overview
 ### `SceneManager` System
 - Stack navigation: `pushScene()`, `popScene()`, `clearScenes()`
-- Lifecycle: `OnScreenShown()`, `OnScreenHidden()`
+- Lifecycle: `onScreenShown()`, `onScreenHidden()`
 - Component hierarchy: `JRScene` → `JRScreen`/`JRGroup`
 - Focus management with `lastFocus` preservation
 ### Global State Structure

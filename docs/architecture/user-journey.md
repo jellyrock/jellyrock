@@ -8,7 +8,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # The User Journey
@@ -137,7 +137,7 @@ initializeFallbackFont()                    ' optional fallback font download (u
 loadHomeScreen()
 ```
 
-`clearScenes()` calls `OnScreenHidden` + `destroy` on every login screen so they release tasks/observers. `initializeFallbackFont()` triggers an async `FontDownloadTask` if the user has enabled fallback font support; the home screen waits for that to complete before rendering. Otherwise, `loadHomeScreen()` runs immediately.
+`clearScenes()` calls `onScreenHidden` + `onDestroy` on every login screen so they release tasks/observers. `initializeFallbackFont()` triggers an async `FontDownloadTask` if the user has enabled fallback font support; the home screen waits for that to complete before rendering. Otherwise, `loadHomeScreen()` runs immediately.
 
 ## 4. Home screen
 

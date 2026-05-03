@@ -213,8 +213,8 @@ sub init()
   end if
 end sub
 
-' OnScreenShown: Callback when view is presented on screen
-sub OnScreenShown()
+' onScreenShown: Callback when view is presented on screen
+sub onScreenShown()
   ' Restore texture management — reactivate and restore buffer range so cells reload.
   if isValid(m.extrasGrid) and isValid(m.extrasGrid.content)
     updateTextureBufferRange(m.extrasGrid.content, m.extrasGrid.rowItemFocused[0], m.extrasGrid.rowItemFocused[1], m.extrasGrid.numRows)
@@ -251,8 +251,8 @@ sub OnScreenShown()
   end if
 end sub
 
-sub OnScreenHidden()
-  m.log.info("OnScreenHidden")
+sub onScreenHidden()
+  m.log.info("onScreenHidden")
   hideTextureManager(m.extrasGrid.content)
 end sub
 

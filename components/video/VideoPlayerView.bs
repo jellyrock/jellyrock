@@ -1012,7 +1012,7 @@ sub checkTimeToDisplayNextEpisode()
 end sub
 
 ' Forces playback to finished state for proper watched-status and auto-play.
-' Triggers synchronous teardown (onState -> ViewCreator -> popScene -> destroy),
+' Triggers synchronous teardown (onState -> ViewCreator -> popScene -> onDestroy),
 ' invalidating all m. references. Callers MUST return immediately after calling.
 sub forceFinishPlayback()
   ' Explicitly mark as watched via dedicated API endpoint.
