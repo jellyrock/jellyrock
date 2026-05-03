@@ -2,7 +2,7 @@
 <component name="JRServer" extends="Group">
 
   <interface>
-    <field id="itemContent" type="node" onchange="itemContentChanged" />
+    <field id="itemContent" type="node" onchange="onItemContentChanged" />
     <field id="focusPercent" type="float" onchange="onFocusPercentChange" />
   </interface>
 

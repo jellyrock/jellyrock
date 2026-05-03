@@ -3,6 +3,6 @@
   <interface>
     <function name="OnScreenShown" />
     <function name="OnScreenHidden" />
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
 </component>

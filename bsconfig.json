@@ -12,9 +12,9 @@
     "brighterscript-xml-plugin",
     "./scripts/bsc-plugins/roku-log.cjs",
     "./scripts/bsc-plugins/translation-keys.cjs",
-    "./scripts/bsc-plugins/jrscreen-destroy.cjs",
+    "./scripts/bsc-plugins/jrscreen-on-destroy.cjs",
     "./scripts/bsc-plugins/print-locations.cjs",
-    "./scripts/bsc-plugins/observe-without-destroy.cjs",
+    "./scripts/bsc-plugins/observe-without-on-destroy.cjs",
     "./scripts/bsc-plugins/no-direct-sdk.cjs"
   ],
   "lintConfig": "bslint.json",

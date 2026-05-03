@@ -135,7 +135,7 @@ sub positionBottomRight()
 end sub
 
 ' Clean up all references and observers
-sub destroy()
+sub onDestroy()
   m.log.verbose("Destroying notification")
   m.top.state = "hidden"
   m.autoDismissTimer.control = "stop"

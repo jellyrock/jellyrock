@@ -23,11 +23,11 @@ sub quickConnectStatus()
   m.quickConnectTimer.control = "stop"
   m.checkTask = CreateObject("roSGNode", "QuickConnect")
   m.checkTask.secret = m.top.quickConnectJson.secret
-  m.checkTask.observeField("authenticated", "OnAuthenticated")
+  m.checkTask.observeField("authenticated", "onAuthenticated")
   m.checkTask.control = "run"
 end sub
 
-sub OnAuthenticated()
+sub onAuthenticated()
   m.checkTask.control = "stop"
   m.checkTask.unobserveField("authenticated")
 

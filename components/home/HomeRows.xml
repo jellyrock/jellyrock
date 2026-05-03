@@ -5,6 +5,6 @@
     <field id="quickPlayNode" type="node" />
     <function name="updateHomeRows" />
     <function name="loadLibraries" />
-    <function name="destroy" />
+    <function name="onDestroy" />
   </interface>
 </component>

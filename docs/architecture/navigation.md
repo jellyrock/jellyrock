@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.xml
   - components/JRScene.bs
   - components/JRScene.xml
-last-reviewed: 2026-05-01
+last-reviewed: 2026-05-03
 ---
 
 # Scene Stack & Navigation
@@ -59,14 +59,14 @@ Extends `JRGroup`. Adds three lifecycle virtual functions that subclasses overri
 ```brightscript
 sub OnScreenShown()       ' Called when this screen becomes visible (push, or pop revealing it)
 sub OnScreenHidden()      ' Called when this screen is hidden (push of a new screen, or pop)
-sub destroy()             ' Called when this screen is permanently removed from the stack
+sub onDestroy()           ' Called when this screen is permanently removed from the stack
 ```
 
 The base implementations are minimal:
 
 - `OnScreenShown()` restores focus from `lastFocus` (or sets focus on the screen itself)
 - `OnScreenHidden()` is a no-op
-- `destroy()` is a no-op — subclasses **must** override to clean up tasks, observers, and large data structures (this is a known cruft point; see Cruft Callouts)
+- `onDestroy()` is a no-op — subclasses **must** override to clean up tasks, observers, and large data structures (this is a known cruft point; see Cruft Callouts)
 
 `JRScreen.bs:init()` also initializes the `roku-log` log manager (debug builds: level 5; prod: level 2), so every JRScreen-derived component has logging available without each one having to call `initializeLogManager`.
 
@@ -186,8 +186,8 @@ sub popScene()
     if group.isSubType("JRGroup")     then unregisterOverhangData(group)
     if group.isSubType("Video")       then group.control = "stop"   ' tell Jellyfin we stopped
     group.visible = false
-    if group.isSubType("JRScreen")    then group.callFunc("OnScreenHidden") + group.callFunc("destroy")
-    if group.isSubType("Video")       then group.callFunc("destroy")
+    if group.isSubType("JRScreen")    then group.callFunc("OnScreenHidden") + group.callFunc("onDestroy")
+    if group.isSubType("Video")       then group.callFunc("onDestroy")
   end if
 
   group = m.groups.peek()             ' the newly-revealed top

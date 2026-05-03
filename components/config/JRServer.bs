@@ -20,7 +20,7 @@ sub init() as void
   end if
 end sub
 
-sub itemContentChanged() as void
+sub onItemContentChanged() as void
   serverItem = m.top.itemContent
 
   m.poster.uri = serverItem.iconUrl

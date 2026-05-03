@@ -95,7 +95,7 @@ function isFilterMenuDataValid() as boolean
   return true
 end function
 
-sub optionsSet()
+sub onOptionsSet()
   '  Views Tab
   if isValid(m.top.options.views)
     viewContent = CreateObject("roSGNode", "ContentNode")

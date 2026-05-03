@@ -11,7 +11,7 @@ namespace tests
     end function
 
     protected override function teardown()
-      if isValid(m.dropdown) then m.dropdown.callFunc("destroy")
+      if isValid(m.dropdown) then m.dropdown.callFunc("onDestroy")
       m.dropdown = invalid
     end function
 

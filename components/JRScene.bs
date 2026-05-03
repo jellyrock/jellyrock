@@ -58,11 +58,11 @@ sub onTestToast()
   showToast(message, toastType)
 end sub
 
-sub loadingTextChanged()
+sub onLoadingTextChanged()
   m.loadingText.text = m.top.loadingText
 end sub
 
-sub backgroundImageUriChanged()
+sub onBackgroundImageUriChanged()
   if not isValid(m.imageFader) then return
 
   ' Resolve backdrop setting on first use (lazy initialization)
@@ -147,7 +147,7 @@ sub refreshBackdropSetting()
 end sub
 
 ' Triggered when the isLoading boolean component field is changed
-sub isLoadingChanged()
+sub onIsLoadingChanged()
   ' toggle visibility of active view/group
   group = m.global.sceneManager.callFunc("getActiveScene")
   if isValid(group)

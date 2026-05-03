@@ -20,22 +20,22 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("destroy()")
+    @describe("onDestroy()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("handles destroy when view is already invalid")
+    @it("handles onDestroy when view is already invalid")
     function _()
       presenter = new GridPresenterBase()
       ' No onInit called — view is invalid. Should not crash.
-      presenter.destroy()
+      presenter.onDestroy()
       m.assertTrue(true)
     end function
 
-    @it("handles double destroy without crashing")
+    @it("handles double onDestroy without crashing")
     function _()
       presenter = new GridPresenterBase()
-      presenter.destroy()
-      presenter.destroy()
+      presenter.onDestroy()
+      presenter.onDestroy()
       m.assertTrue(true)
     end function
 

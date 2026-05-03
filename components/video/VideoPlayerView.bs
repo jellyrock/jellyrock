@@ -1775,9 +1775,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called by SceneManager when popping this scene
-sub destroy()
+sub onDestroy()
   ' Unobserve all fields first to prevent callbacks during teardown
   m.top.unobserveField("state")
   m.top.unobserveField("content")
@@ -1791,7 +1791,7 @@ sub destroy()
 
   if isValid(m.osd)
     m.osd.unobserveField("action")
-    m.osd.callFunc("destroy")
+    m.osd.callFunc("onDestroy")
   end if
 
   ' Stop and release timers
@@ -1837,7 +1837,7 @@ sub destroy()
     m.captionTask.control = "STOP"
     m.captionTask.unobserveField("currentCaption")
     m.captionTask.unobserveField("useThis")
-    m.captionTask.callFunc("destroy")
+    m.captionTask.callFunc("onDestroy")
     m.captionTask = invalid
   end if
 
@@ -1847,9 +1847,9 @@ sub destroy()
     m.trickPlayBarPositionText = invalid
   end if
 
-  ' Destroy child components that have destroy()
+  ' Destroy child components that have onDestroy()
   if isValid(m.trickplayCarousel)
-    m.trickplayCarousel.callFunc("destroy")
+    m.trickplayCarousel.callFunc("onDestroy")
     m.trickplayCarousel = invalid
   end if
 
@@ -1857,14 +1857,14 @@ sub destroy()
   if isValid(m.segmentNotification)
     m.segmentNotification.unobserveField("action")
     m.segmentNotification.unobserveField("state")
-    m.segmentNotification.callFunc("destroy")
+    m.segmentNotification.callFunc("onDestroy")
     m.segmentNotification = invalid
   end if
 
   if isValid(m.nextEpisodeNotification)
     m.nextEpisodeNotification.unobserveField("action")
     m.nextEpisodeNotification.unobserveField("state")
-    m.nextEpisodeNotification.callFunc("destroy")
+    m.nextEpisodeNotification.callFunc("onDestroy")
     m.nextEpisodeNotification = invalid
   end if
 

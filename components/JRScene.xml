@@ -16,10 +16,10 @@
   <interface>
     <field id="isRemoteDisabled" type="boolean" value="true" />
     <field id="shouldShowBackdrop" type="boolean" />
-    <field id="loadingText" type="string" value="" alwaysNotify="true" onchange="loadingTextChanged" />
-    <field id="isLoading" type="boolean" alwaysNotify="true" value="true" onchange="isLoadingChanged" />
+    <field id="loadingText" type="string" value="" alwaysNotify="true" onchange="onLoadingTextChanged" />
+    <field id="isLoading" type="boolean" alwaysNotify="true" value="true" onchange="onIsLoadingChanged" />
     <field id="exit" type="boolean" alwaysNotify="true" />
-    <field id="backgroundImageUri" type="string" value="" alwaysNotify="true" onchange="backgroundImageUriChanged" />
+    <field id="backgroundImageUri" type="string" value="" alwaysNotify="true" onchange="onBackgroundImageUriChanged" />
     <function name="setBackgroundImage" />
     <function name="refreshBackdropSetting" />
     <function name="showToast" />

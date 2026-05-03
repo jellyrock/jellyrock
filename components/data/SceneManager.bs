@@ -92,9 +92,9 @@ sub popScene()
 
     if group.isSubType("JRScreen")
       group.callFunc("OnScreenHidden")
-      group.callFunc("destroy")
+      group.callFunc("onDestroy")
     else if group.isSubType("Video")
-      group.callFunc("destroy")
+      group.callFunc("onDestroy")
     end if
   else
     ' Exit app if for some reason we don't have anything on the stack
@@ -151,9 +151,9 @@ sub clearScenes()
     if type(group) = "roSGNode"
       if group.isSubtype("JRScreen")
         group.callFunc("OnScreenHidden")
-        group.callFunc("destroy")
+        group.callFunc("onDestroy")
       else if group.isSubtype("Video")
-        group.callFunc("destroy")
+        group.callFunc("onDestroy")
       end if
     end if
   end for

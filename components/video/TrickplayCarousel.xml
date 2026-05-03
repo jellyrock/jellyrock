@@ -6,7 +6,7 @@
     <field id="playbackPosition" type="float" value="0" onChange="onPlaybackPositionChanged" />
     <field id="videoDuration" type="float" />
     <field id="isVisible" type="boolean" value="false" onChange="onIsVisibleChanged" />
-    <function name="destroy" />
+    <function name="onDestroy" />
     <function name="reset" />
   </interface>
 

@@ -23,7 +23,7 @@ sub init()
   m.postTextBackground.visible = false
 end sub
 
-sub itemContentChanged()
+sub onItemContentChanged()
   m.posterText.visible = false
   m.postTextBackground.visible = false
 
@@ -75,11 +75,11 @@ sub itemContentChanged()
       m.itemPoster.loadDisplayMode = "limitSize"
     end if
   end if
-  if m.top.itemHasFocus then focusChanged()
+  if m.top.itemHasFocus then onFocusChanged()
 end sub
 
 'Display or hide title Visibility on focus change
-sub focusChanged()
+sub onFocusChanged()
   if m.top.itemHasFocus = true
     m.posterText.repeatCount = -1
   else

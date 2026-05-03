@@ -191,7 +191,7 @@ end function
 
 sub updateCaption()
   if LCase(m.top.playerState) = "playingon"
-    ' Guard against m fields being invalid (e.g. destroy() was called but a
+    ' Guard against m fields being invalid (e.g. onDestroy() was called but a
     ' final queued timer event still fires before the observer is removed)
     if not isValid(m.tags) or not isValid(m.captionList) then return
 
@@ -238,20 +238,20 @@ function toMs(t)
   return 3600000 * timestamp[0].toint() + 60000 * timestamp[1].toint() + 1000 * timestamp[2].toint() + timestamp[3].toint()
 end function
 
-' destroy: Full teardown releasing all resources before component removal.
-' Called by VideoPlayerView.destroy() when popping the player scene.
+' onDestroy: Full teardown releasing all resources before component removal.
+' Called by VideoPlayerView.onDestroy() when popping the player scene.
 ' Stops the caption timer and unobserves all fields to prevent callbacks
 ' firing on an orphaned component — including the case where an in-flight
 ' HTTP request in fetchCaption() completes after the player is torn down.
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Unobserve captionData first — prevents onCaptionDataReceived from
   ' restarting the timer if a slow fetchCaption() HTTP response arrives
   ' after the player has already been destroyed.
   m.top.unobserveField("captionData")
 
-  ' Stop and release caption timer (guarded — safe if destroy() is called
+  ' Stop and release caption timer (guarded — safe if onDestroy() is called
   ' twice or if init() partially failed and m.captionTimer was never set)
   if isValid(m.captionTimer)
     m.captionTimer.unobserveField("fire")

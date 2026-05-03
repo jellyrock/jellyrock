@@ -519,8 +519,8 @@ end function
 ' TEARDOWN
 ' ============================================
 
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
   ' Clear menuOpen before tearing down so any parent-side observer that wasn't
   ' already unobserved sees a clean closed state. Safe even when the menu was
   ' never opened (closeMenu early-returns).

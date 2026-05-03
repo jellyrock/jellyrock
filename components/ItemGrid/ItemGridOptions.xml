@@ -41,7 +41,7 @@
   </children>
   <interface>
     <field id="buttons" type="nodearray" />
-    <field id="options" type="assocarray" onChange="optionsSet" />
+    <field id="options" type="assocarray" onChange="onOptionsSet" />
     <field id="selectedFavoriteItem" type="node" onChange="saveFavoriteItemSelected" />
 
     <field id="view" type="string" />

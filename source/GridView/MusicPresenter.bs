@@ -167,9 +167,9 @@ class MusicPresenter extends GridPresenterBase
   end sub
 
   ' Cleanup music-specific resources
-  override sub destroy()
+  override sub onDestroy()
     m.log.info("MusicPresenter destroyed")
-    super.destroy()
+    super.onDestroy()
   end sub
 
 end class

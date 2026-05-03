@@ -29,7 +29,7 @@ end sub
 
 ' Function called when the screen is being permanently removed by SceneManager
 ' Override this to clean up resources: task nodes, observers, large data structures
-' Parent components are responsible for calling destroy() on children that need it
-sub destroy()
+' Parent components are responsible for calling onDestroy() on children that need it
+sub onDestroy()
 end sub
 

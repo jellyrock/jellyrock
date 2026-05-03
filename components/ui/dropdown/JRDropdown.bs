@@ -331,7 +331,7 @@ end function
 ' TEARDOWN
 ' ============================================
 
-sub destroy()
+sub onDestroy()
   m.top.unobserveField("focusedChild")
   m.top.unobserveField("renderTracking")
 

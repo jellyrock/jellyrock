@@ -107,6 +107,7 @@ fns
 Formatter
 frontmatter
 fullscreen
+getters
 GitHub
 gitignored
 globals

@@ -817,7 +817,7 @@ end sub
 ' Alpha / Voice Search
 ' ============================================================================
 
-sub alphaSelectedChanged()
+sub onAlphaSelectedChanged()
   if m.top.alphaSelected <> ""
     m.loadedRows = 0
     m.loadedItems = 0
@@ -836,8 +836,8 @@ sub alphaSelectedChanged()
   end if
 end sub
 
-sub alphaActiveChanged()
-  m.log.debug("start alphaActiveChanged()", m.top.isAlphaActive)
+sub onAlphaActiveChanged()
+  m.log.debug("start onAlphaActiveChanged()", m.top.isAlphaActive)
 
   if m.top.isAlphaActive
     ' Clear backdrop when alpha menu is active
@@ -853,7 +853,7 @@ sub alphaActiveChanged()
     end if
   end if
 
-  m.log.debug("end alphaActiveChanged()")
+  m.log.debug("end onAlphaActiveChanged()")
 end sub
 
 sub onVoiceFilter()
@@ -1145,10 +1145,10 @@ function getItemFlatIndex(itemId as string) as integer
   return -1
 end function
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Destroy texture manager — force-unloads all grid item textures
   destroyTextureManager(m.data)
@@ -1175,7 +1175,7 @@ sub destroy()
 
   ' Destroy presenter class object (may already be invalid from back-press handler)
   if isValid(m.presenter)
-    m.presenter.destroy()
+    m.presenter.onDestroy()
     m.presenter = invalid
   end if
 

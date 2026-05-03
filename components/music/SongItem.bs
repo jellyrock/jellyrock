@@ -8,7 +8,7 @@ sub init()
   m.defaultTextColor = m.itemText.color
 end sub
 
-sub itemContentChanged()
+sub onItemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
   m.itemText.text = itemData.title
@@ -18,7 +18,7 @@ sub itemContentChanged()
   m.tracklength.text = ticksToHuman(itemData.runTimeTicks)
 end sub
 
-sub focusChanged()
+sub onFocusChanged()
   if m.top.itemHasFocus
     color = "#101010FF"
   else

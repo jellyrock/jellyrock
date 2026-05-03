@@ -35,7 +35,7 @@ end sub
 
 '
 ' When Selected Index set, ensure it is the one Focused
-sub selectedIndexChanged()
+sub onSelectedIndexChanged()
   m.selectedFocusedIndex = m.top.selectedIndex
 end sub
 

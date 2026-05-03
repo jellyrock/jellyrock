@@ -82,8 +82,8 @@
     <field id="loadLogoTask" type="node" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
-    <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" onChange="alphaSelectedChanged" />
-    <field id="isAlphaActive" type="boolean" value="false" onChange="alphaActiveChanged" />
+    <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" onChange="onAlphaSelectedChanged" />
+    <field id="isAlphaActive" type="boolean" value="false" onChange="onAlphaActiveChanged" />
     <field id="showItemTitles" type="string" value="showonhover" />
     <field id="jumpToItem" type="integer" value="" />
     <field id="gridTitles" type="string" />

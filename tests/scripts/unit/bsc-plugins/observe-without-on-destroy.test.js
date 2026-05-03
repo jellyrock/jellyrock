@@ -1,7 +1,7 @@
-// Tests for the observe-without-destroy plugin.
+// Tests for the observe-without-on-destroy plugin.
 //
-// Plugin under test: scripts/bsc-plugins/observe-without-destroy.cjs
-// Diagnostic code: observe-without-destroy
+// Plugin under test: scripts/bsc-plugins/observe-without-on-destroy.cjs
+// Diagnostic code: observe-without-on-destroy
 //
 // What the plugin enforces (in JRScreen subclasses only): every
 // `observeField` / `observeFieldScoped` call must have a matching
@@ -12,9 +12,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
-import observeWithoutDestroyPlugin from '../../../../scripts/bsc-plugins/observe-without-destroy.cjs';
+import observeWithoutOnDestroyPlugin from '../../../../scripts/bsc-plugins/observe-without-on-destroy.cjs';
 
-const CODE = 'observe-without-destroy';
+const CODE = 'observe-without-on-destroy';
 
 // Standard XML scaffold for a JRScreen subclass paired with a .bs codebehind.
 const xmlPaired = (name) => `<?xml version="1.0" encoding="utf-8" ?>
@@ -25,20 +25,20 @@ const xmlPaired = (name) => `<?xml version="1.0" encoding="utf-8" ?>
 // Convenience: a runner that always pairs the codebehind with a JRScreen
 // subclass XML so the plugin actually fires on the body.
 function runOnBody(bsBody, { componentName = 'TestScreen', extra = {} } = {}) {
-  return runPluginOnSource(observeWithoutDestroyPlugin, {
+  return runPluginOnSource(observeWithoutOnDestroyPlugin, {
     [`components/${componentName}.xml`]: xmlPaired(componentName),
     [`components/${componentName}.bs`]: bsBody,
     ...extra,
   });
 }
 
-describe('observe-without-destroy', () => {
+describe('observe-without-on-destroy', () => {
   it('passes when observeField has a matching unobserveField on the same target', () => {
     const diagnostics = runOnBody(`
       sub init()
         m.button.observeField("buttonSelected", "onSelect")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.button.unobserveField("buttonSelected")
       end sub
     `);
@@ -50,7 +50,7 @@ describe('observe-without-destroy', () => {
       sub init()
         m.button.observeField("buttonSelected", "onSelect")
       end sub
-      sub destroy()
+      sub onDestroy()
         ' nothing released
       end sub
     `);
@@ -77,7 +77,7 @@ describe('observe-without-destroy', () => {
         dialog = m.dialog
         dialog.observeField("backPressed", "onBack")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.dialog.unobserveField("backPressed")
       end sub
     `);
@@ -90,7 +90,7 @@ describe('observe-without-destroy', () => {
         m.activeContent = m.homeRows
         m.homeRows.observeField("itemSelected", "onPick")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.activeContent.unobserveField("itemSelected")
       end sub
     `);
@@ -104,7 +104,7 @@ describe('observe-without-destroy', () => {
       sub init()
         m.button.observeField("buttonSelected", "onSelect")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.button.unobserveFieldScoped("buttonSelected")
       end sub
     `);
@@ -116,7 +116,7 @@ describe('observe-without-destroy', () => {
       sub init()
         m.button.observeFieldScoped("buttonSelected", "onSelect")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.button.unobserveField("buttonSelected")
       end sub
     `);
@@ -128,7 +128,7 @@ describe('observe-without-destroy', () => {
       sub init()
         m.button.observeFieldScoped("buttonSelected", "onSelect")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.button.unobserveFieldScoped("buttonSelected")
       end sub
     `);
@@ -140,7 +140,7 @@ describe('observe-without-destroy', () => {
       sub init()
         m.button.observeField("foo", "onFoo")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.button.unobserveField("bar")
       end sub
     `);
@@ -150,9 +150,9 @@ describe('observe-without-destroy', () => {
   it('respects bsc-disable-line on the same line as the observe', () => {
     const diagnostics = runOnBody(`
       sub init()
-        m.button.observeField("buttonSelected", "onSelect") ' bsc-disable-line observe-without-destroy
+        m.button.observeField("buttonSelected", "onSelect") ' bsc-disable-line observe-without-on-destroy
       end sub
-      sub destroy()
+      sub onDestroy()
       end sub
     `);
     expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
@@ -161,10 +161,10 @@ describe('observe-without-destroy', () => {
   it('respects bsc-disable-next-line on the line above the observe', () => {
     const diagnostics = runOnBody(`
       sub init()
-        ' bsc-disable-next-line observe-without-destroy
+        ' bsc-disable-next-line observe-without-on-destroy
         m.button.observeField("buttonSelected", "onSelect")
       end sub
-      sub destroy()
+      sub onDestroy()
       end sub
     `);
     expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
@@ -172,12 +172,12 @@ describe('observe-without-destroy', () => {
 
   it('respects bsc-disable-file at the top of the file', () => {
     const diagnostics = runOnBody(`
-      ' bsc-disable-file observe-without-destroy
+      ' bsc-disable-file observe-without-on-destroy
       sub init()
         m.button.observeField("buttonSelected", "onSelect")
         m.other.observeField("textChange", "onChange")
       end sub
-      sub destroy()
+      sub onDestroy()
       end sub
     `);
     expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
@@ -186,7 +186,7 @@ describe('observe-without-destroy', () => {
   it('does not fire on a component that does not extend JRScreen', () => {
     // Plugin only inspects JRScreen subclass codebehinds. Free-standing
     // components with unbalanced observes are someone else's concern.
-    const diagnostics = runPluginOnSource(observeWithoutDestroyPlugin, {
+    const diagnostics = runPluginOnSource(observeWithoutOnDestroyPlugin, {
       'components/PlainGroup.xml': `<?xml version="1.0" encoding="utf-8" ?>
 <component name="PlainGroup" extends="Group">
   <script type="text/brightscript" uri="PlainGroup.bs" />
@@ -206,7 +206,7 @@ describe('observe-without-destroy', () => {
         m.button.observeField("buttonSelected", "onSelect")
         m.other.observeField("textChange", "onChange")
       end sub
-      sub destroy()
+      sub onDestroy()
         ' neither released
       end sub
     `);
@@ -218,7 +218,7 @@ describe('observe-without-destroy', () => {
       sub init()
         m.list.observeField("itemContent", "onItemChange")
       end sub
-      sub destroy()
+      sub onDestroy()
         m.list.unobserveField("itemContent")
       end sub
     `);

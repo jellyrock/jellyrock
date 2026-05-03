@@ -275,11 +275,11 @@ sub destroyActiveContent()
   m.activeContent.unobserveField("quickPlayNode")
 
   if m.activeTabId = "home" and isValid(m.homeRows)
-    m.homeRows.callFunc("destroy")
+    m.homeRows.callFunc("onDestroy")
     m.top.removeChild(m.homeRows)
     m.homeRows = invalid
   else if m.activeTabId = "favorites" and isValid(m.favoritesRows)
-    m.favoritesRows.callFunc("destroy")
+    m.favoritesRows.callFunc("onDestroy")
     m.top.removeChild(m.favoritesRows)
     m.favoritesRows = invalid
   end if
@@ -413,10 +413,10 @@ end sub
 ' TEARDOWN
 ' ============================================
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   m.top.unobserveField("selectedTabId")
 

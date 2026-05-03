@@ -14,7 +14,7 @@ sub init()
   m.value.maxTextLength = 120
 end sub
 
-sub itemContentChanged()
+sub onItemContentChanged()
   data = m.top.itemContent
 
   m.name.text = data.label

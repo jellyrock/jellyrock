@@ -77,7 +77,7 @@ sub removeQuickConnectButton(reason as string)
   m.log.info("Quick Connect button removed", reason)
 end sub
 
-sub itemContentChanged()
+sub onItemContentChanged()
   stopLoadingSpinner()
   m.top.findNode("UserRow").ItemContent = m.top.itemContent
   redraw()
@@ -237,11 +237,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
 ' Note: OnScreenHidden already cleared the backdrop; this handles task/ref cleanup.
-sub destroy()
-  m.log.verbose("destroy")
+sub onDestroy()
+  m.log.verbose("onDestroy")
 
   ' Stop branding task and unobserve all scoped fields
   ' (may already be self-cleaned by task callbacks, guards are safe no-ops)

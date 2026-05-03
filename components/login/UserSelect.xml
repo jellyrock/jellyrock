@@ -12,6 +12,6 @@
   </children>
   <interface>
     <field id="itemSelected" type="string" alwaysNotify="true" />
-    <field id="itemContent" type="array" onChange="itemContentChanged" />
+    <field id="itemContent" type="array" onChange="onItemContentChanged" />
   </interface>
 </component>

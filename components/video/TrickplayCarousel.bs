@@ -1027,10 +1027,10 @@ sub refreshPostersWithNewTiles(loadedTiles as object)
   end for
 end sub
 
-' destroy: Full teardown releasing all resources before component removal
+' onDestroy: Full teardown releasing all resources before component removal
 ' Called by parent when popping scene or navigating away
 ' Clears task nodes, observers, all node refs, and data structures
-sub destroy()
+sub onDestroy()
   ' First do soft reset (clears caches, resets state, stops task)
   reset()
 

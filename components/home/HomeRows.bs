@@ -827,9 +827,9 @@ end function
 ' TEARDOWN
 ' ============================================
 
-' destroy: Full teardown releasing all resources before component removal
-' Called by Home.bs destroy() before nulling the homeRows reference
-sub destroy()
+' onDestroy: Full teardown releasing all resources before component removal
+' Called by Home.bs onDestroy() before nulling the homeRows reference
+sub onDestroy()
   destroyTextureManager(m.top.content)
 
   ' Unobserve m.top fields
