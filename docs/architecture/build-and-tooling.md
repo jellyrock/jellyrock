@@ -4,6 +4,7 @@ related-files:
   - bsconfig.json
   - bsconfig-prod.json
   - package.json
+  - patches/
   - Makefile
   - scripts/bsc-plugins/roku-log.cjs
   - scripts/bsc-plugins/translation-keys.cjs
@@ -216,12 +217,13 @@ CHANGELOG management (CI-controlled, agents do NOT touch):
 | `npm run changelog:validate` | Validate changelog format |
 | `npm run changelog:status` | Show changelog status |
 
-ropm:
+ropm + patches (post-install):
 
 | Script | What it does |
 |---|---|
-| `npm run postinstall` | Runs `npm run ropm` automatically after `npm install` |
+| `npm run postinstall` | Runs `npm run ropm && npm run patches:apply` automatically after `npm install` |
 | `npm run ropm` | `ropm copy && node scripts/ropm-hook.cjs` — copies vendored Roku modules into `components/roku_modules/` and `source/roku_modules/` |
+| `npm run patches:apply` | `patch-package` — applies every diff in `patches/` to `node_modules/`. Lets us hold local fixes against upstream packages until the upstream change lands |
 
 ## ropm modules — Roku Package Manager
 
@@ -254,6 +256,7 @@ Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` blo
 | `dotenv` | `.env` file loading for device target/password |
 | `fast-glob` | File matching in scripts |
 | `husky` | Manages git hooks; installs `.husky/pre-push` on `npm install` (via `prepare` script) |
+| `patch-package` | Applies diffs under `patches/` to `node_modules/` post-install. Used to hold targeted upstream fixes until the corresponding PR lands (e.g. `patches/rooibos-roku+6.0.0-alpha.50.patch` → upstream [rokucommunity/rooibos#364](https://github.com/rokucommunity/rooibos/issues/364)) |
 
 Versions are pinned in `package.json` (currently on alpha versions of brighterscript ecosystem packages).
 
