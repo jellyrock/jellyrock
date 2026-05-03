@@ -17,6 +17,7 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 - **When hardware isn't reachable, say so explicitly** — don't claim a fix was tested when only the build was verified
 - **Cannot modify `CHANGELOG.md`** — CI-controlled
 - **Don't run `npm run validate`, `npm run lint:*`, `npm run build:*`, `npm run check-formatting`, `npm run format`, or `npm run test:scripts` manually** — pre-commit / pre-push / CI runs them at the right moment and the IDE handles `.bs` live. Exception: debugging a specific lint failure
+- **Capture cross-session agent guidance in `CLAUDE.md` (root or scoped), not in agent-private memory** — memory files are per-folder (worktrees / multiple JellyRock checkouts each get their own), aren't committed, and don't reach other contributors. Project rules belong in `CLAUDE.md` so everyone benefits.
 
 ## Doc maintenance discipline
 

@@ -15,10 +15,10 @@ Run in parallel:
 
 - `git rev-parse --abbrev-ref HEAD` — must NOT be `main`.
 - `git status --porcelain` — must be empty (no uncommitted changes).
-- `git rev-parse --abbrev-ref --symbolic-full-name @{u}` — must succeed (upstream exists). If not, ask the user before pushing with `git push -u origin <branch>`.
-- `git rev-list --count @{u}..HEAD` — must be `0` (no unpushed commits). If not, ask the user before `git push`.
+- `git rev-parse --abbrev-ref --symbolic-full-name @{u}` — if no upstream, run `git push -u origin <branch>`. The permission prompt is the gate; don't ask verbally.
+- `git rev-list --count @{u}..HEAD` — if non-zero, run `git push`.
 
-If any check fails, stop and report the exact problem. Do not proceed.
+If a hard check (on `main` / dirty tree) fails, stop and report. Pushing a feature branch to open its PR is obvious — don't gate it behind a verbal question.
 
 ## Gather context (in parallel)
 
