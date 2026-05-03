@@ -18,6 +18,10 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 
 - Component / class init: `m.log = new log.Logger("Name")`. Top-level functions in `source/*.bs` have no `m`, so no `m.log` — `print` is the only option there, and the `print-locations` plugin auto-skips them.
 - See [docs/architecture/logging.md](../docs/architecture/logging.md) for the levels and [build-and-tooling.md](../docs/architecture/build-and-tooling.md) for plugin opt-outs.
+- **Never concatenate values into log/print messages — use the multi-arg form.** BrightScript's `+` does not coerce booleans (and several other types) to string, so `"" + someBool` raises `ERR_TM` at runtime — not caught by lint, only by sideloading and crashing.
+  - `print` — separate label and values with `;` (or `,`): `print "channels="; channelCount; " codec="; codec`
+  - `m.log.*` — pass label/value pairs as separate args, never concatenated: `m.log.debug("channels", channelCount, "codec", codec)`
+- **`m.log.*` calls accept at most 9 args (including the message string).** roku-log was designed around a fixed-arity formatter; the cap is real. If you need more context, split into two log lines rather than concatenating.
 
 ## What lives in subfolders
 

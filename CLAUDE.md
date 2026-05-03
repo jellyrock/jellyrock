@@ -17,7 +17,9 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 - **When hardware isn't reachable, say so explicitly** — don't claim a fix was tested when only the build was verified
 - **Cannot modify `CHANGELOG.md`** — CI-controlled
 - **Don't compulsively re-run lint / build / format mid-work.** `npm run validate`, `lint:*`, `build:*`, `check-formatting`, and `format` are already run by pre-commit / pre-push hooks and by CI on every push (and most editors surface BSC diagnostics live as you type). So they aren't for routine "did my change compile" checks — but they're fair game when debugging a specific failure, when no hook has fired yet, or when your editor isn't surfacing diagnostics. **Test scripts are NOT covered** — `test:tdd` / `test:unit` / `test:scripts` aren't auto-run anywhere before commit, so running them as part of finishing work is the expected workflow, not a redundancy.
-- **Capture cross-session agent guidance in `CLAUDE.md` (root or scoped), not in agent-private memory** — memory files are per-folder (worktrees / multiple JellyRock checkouts each get their own), aren't committed, and don't reach other contributors. Project rules belong in `CLAUDE.md` so everyone benefits.
+- **Capture cross-session agent guidance in `CLAUDE.md` (root or scoped), not in agent-private memory** — memory files are per-folder (worktrees / multiple JellyRock checkouts each get their own), aren't committed, and don't reach other contributors. Project rules belong in `CLAUDE.md` so everyone benefits. Auto-memory is disabled at the project level (`.claude/settings.json` → `autoMemoryEnabled: false`)
+- **Don't reference `tasks/` paths in shared artifacts** — `tasks/` is gitignored; reviewers can't navigate there. Keep it out of commit messages, PR bodies, and shared docs
+- **PR follow-ups land in [`docs/architecture/tech-debt.md`](docs/architecture/tech-debt.md), not just the PR body** — when a PR explicitly defers something ("out of scope", "follow-up"), add a tech-debt entry with a stable slug and link it from the PR. Otherwise the deferral evaporates the moment the PR merges
 
 ## Doc maintenance discipline
 
