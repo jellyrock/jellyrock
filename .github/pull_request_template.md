@@ -1,14 +1,14 @@
-<!--
-Ensure your title is short, descriptive, and in the imperative mood (Fix X, Change Y, instead of Fixed X, Changed Y).
-For a good inspiration of what to write in commit messages and PRs please review https://chris.beams.io/posts/git-commit/ and our https://jellyfin.readthedocs.io/en/latest/developer-docs/contributing/ page.
--->
-<!-- markdownlint-disable MD041 first-line-heading -->
+<!-- Your title should be short, descriptive, and in the imperative mood (Fix X, Change Y, instead of Fixed X, Changed Y) -->
+# Overview
+<!-- Brief overview of changes in 1-5 sentences -->
+
 ## Changes
-<!-- Describe your changes here in 1-5 sentences. -->
+<!-- Unordered list of changes made -->
+-
 
 ## Issues
-<!-- Tag any issues that this PR solves here.
-ex. Fixes # -->
+<!-- Fixes #123 -->
+<!-- Ref #123 -->
 
 ## Docs / context updates
 
