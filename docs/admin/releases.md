@@ -83,7 +83,7 @@ If you don't have a `.env` yet, copy [`.env.example`](../../.env.example) to `.e
 
 ```sh
 ROKU_SIGNING_PASSWORD=...   # what you currently type into the dev portal
-ROKU_DEV_ID=...             # optional but recommended; from dev portal Utilities page
+ROKU_DEV_ID=...             # optional but recommended; see "Finding ROKU_DEV_ID" below
 ```
 
 `chmod 600 .env` to lock filesystem permissions. If you'd rather not store the signing password on disk, wrap with your preferred secret manager — the script just reads env vars:
@@ -92,11 +92,28 @@ ROKU_DEV_ID=...             # optional but recommended; from dev portal Utilitie
 ROKU_SIGNING_PASSWORD=$(pass show jellyrock/signing) npm run package:signed
 ```
 
+### Finding `ROKU_DEV_ID`
+
+Roku has three different "developer ID" concepts and the naming overlap is a known footgun:
+
+| What | Format | Where it appears |
+|---|---|---|
+| Vendor / Account ID | short numeric (e.g. `819325`) | dev.roku.com → My Account |
+| **Keyed Developer ID** | **40-char SHA-1 hex** | what we want; derived from signing cert |
+| Channel ID | 32-char hex | channel-store URL `details/<this>:<other>/jellyrock` |
+
+For `ROKU_DEV_ID` you want the **Keyed Developer ID**. Easiest way to find yours:
+
+```bash
+curl -s "http://${ROKU_IP}:8060/query/device-info" | grep keyed-developer-id
+```
+
+Provided your existing prod `.pkg` installs on this device via "Install from File" in the dev portal, that value IS the cert your published channel was signed with — copy it into `.env`. If install fails, the device is on a different cert than what's published, and you need to rekey it from the existing prod `.pkg` first.
+
 ### Safety guardrails
 
-The script refuses to run if `build/` contains source maps (a sign that a dev or test build is sitting there instead of a prod build). The composed npm script runs `build:prod` first, so the default invocation is always safe — the guard catches direct invocations of the `.cjs` against a stale build.
-
-`ROKU_DEV_ID`, when set, is passed to `deployAndSignPackage()` and the call aborts if the device's cert produces a `.pkg` with a different ID. Cheap insurance against a wrong-cert `.pkg` getting uploaded to Roku and rejected.
+- **Prod-build guard.** Refuses to sign if `build/` contains source maps outside `roku_modules/` (a sign that a dev or test build is sitting there). The composed `package:signed` runs `build:prod` first, so the default invocation is always safe — the guard catches direct `.cjs` invocations against a stale build. `roku_modules/` is excluded because vendored ropm packages ship their own `.brs.map` files regardless of our bsconfig.
+- **Dev-ID verification.** When `ROKU_DEV_ID` is set, the script queries the device's `keyed-developer-id` via ECP and aborts before signing if it doesn't match. Catches "wrong-cert .pkg" before manual upload to Roku.
 
 ### Why local instead of CI
 

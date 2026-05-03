@@ -343,7 +343,10 @@ dev-ID
 dev-mode
 dev-portal
 filesystem
+footgun
 portal-UI
+rekey
+SHA-1
 ES5
 ESLint
 ESLint's

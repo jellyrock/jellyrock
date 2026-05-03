@@ -14,10 +14,12 @@
  *   ROKU_SIGNING_PASSWORD  signing password used to encrypt the .pkg
  *
  * Optional env var:
- *   ROKU_DEV_ID            expected dev ID — script queries the device's
- *                          actual keyed-developer-id and aborts before signing
- *                          if it doesn't match. Recommended for channel-store
- *                          updates (must be stable across versions).
+ *   ROKU_DEV_ID            expected keyed-developer-id (40-char SHA-1 hex from
+ *                          your signing cert — NOT the numeric vendor ID on
+ *                          dev.roku.com, NOT the channel-store URL hash). Script
+ *                          queries device's actual keyed-developer-id and aborts
+ *                          before signing on mismatch. Recommended for channel-
+ *                          store updates (must be stable across versions).
  *
  * Storage: easiest is a gitignored .env (chmod 600) — same pattern used by
  * scripts/run-roku-tests.js for ROKU_IP/ROKU_PASSWORD. For encryption-at-rest,
@@ -141,9 +143,18 @@ async function createSignedPackage() {
       console.error(`❌ Dev ID mismatch.`);
       console.error(`   Device ${host} reports: ${actualDevId}`);
       console.error(`   .env ROKU_DEV_ID expects: ${devId}`);
+      console.error('');
       console.error(
-        '   Either correct ROKU_DEV_ID in .env, or rekey this device to the expected cert.',
+        '   ROKU_DEV_ID must be the 40-char keyed-developer-id (SHA-1 of your signing cert),',
       );
+      console.error(
+        '   NOT your numeric vendor/account ID from dev.roku.com and NOT the channel-store URL ID.',
+      );
+      console.error('');
+      console.error('   If your existing prod .pkg installs on this device via Install-from-File,');
+      console.error("   the device's reported value above is correct — copy it into .env:");
+      console.error(`     ROKU_DEV_ID=${actualDevId}`);
+      console.error('   Otherwise, this device is on a different cert than the published channel.');
       process.exit(1);
     }
     console.log(`  • devId verified: ${actualDevId}`);
