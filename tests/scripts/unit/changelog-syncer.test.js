@@ -76,13 +76,9 @@ describe('changelog-syncer.js', () => {
   describe('validate', () => {
     it('exits 1 when CHANGELOG.md is missing', () => {
       fixture = createGitFixture();
-      // No CHANGELOG.md written. The script's validate() reaches getStatus()
-      // which reads the file — assert that the script reports the error and
-      // exits non-zero, accepting either the script's intended message or the
-      // ENOENT crash path that the current code produces.
-      const { exitCode, stdout, stderr } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
       expect(exitCode).toBe(1);
-      expect(stdout + stderr).toMatch(/CHANGELOG\.md file missing|ENOENT/);
+      expect(stdout).toMatch(/CHANGELOG\.md file missing/);
     });
 
     it('exits 1 when CHANGELOG.md is missing the # Changelog header', () => {
