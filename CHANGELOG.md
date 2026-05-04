@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (translations) seed Language* keys in non-English locales from CLDR ([#543](https://github.com/jellyrock/jellyrock/pull/543))
 - (release) add local package:signed for Roku channel-store .pkg ([#542](https://github.com/jellyrock/jellyrock/pull/542))
 - Add Vitest coverage for update-translations and changelog-syncer ([#538](https://github.com/jellyrock/jellyrock/pull/538))
 - JS hygiene (ESLint+Prettier+Vitest) + scripts/ reorg + 134 tests ([#536](https://github.com/jellyrock/jellyrock/pull/536))
