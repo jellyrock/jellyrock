@@ -356,7 +356,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     return
   end if
 
-  addAudioStreamsToVideo(video)
+  addAudioStreamsToVideo(video, meta, mediaSourceId)
 
   audioIndexList = []
   for each audioTrackEntry in video.fullAudioData
@@ -538,18 +538,48 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
   end if
 end sub
 
-' addAudioStreamsToVideo: Add audio stream data to video
+' addAudioStreamsToVideo: Populate video.fullAudioData with the item's audio tracks.
 '
-' @param {dynamic} video component to add fullAudioData to
-sub addAudioStreamsToVideo(video)
-  audioStreams = []
-  mediaStreams = m.playbackInfo.MediaSources[0].MediaStreams
+' Sources from the original item metadata (meta.mediaSourcesData) — NOT from the
+' PlaybackInfo response. The /PlaybackInfo response can return a transcode-shaped
+' MediaSource carrying only the chosen audio stream, which would shrink the OSD picker
+' to a single entry (issue #500). The OSD picker must always list every original track
+' so the user can switch.
+'
+' @param {object} video - video AA receiving the fullAudioData field
+' @param {dynamic} meta - item metadata (from ItemMetaData) holding mediaSourcesData
+' @param {dynamic} mediaSourceId - chosen MediaSource ID (matches one entry under meta.mediaSourcesData.mediaSources)
+sub addAudioStreamsToVideo(video as object, meta as dynamic, mediaSourceId as dynamic)
+  mediaStreams = invalid
 
-  for i = 0 to mediaStreams.Count() - 1
-    if LCase(mediaStreams[i].Type) = "audio"
-      audioStreams.push(mediaStreams[i])
+  if isValid(meta) and isValid(meta.mediaSourcesData) and isValid(meta.mediaSourcesData.mediaSources)
+    sources = meta.mediaSourcesData.mediaSources
+    if isValidAndNotEmpty(mediaSourceId)
+      for each source in sources
+        if isValid(source) and source.Id = mediaSourceId and isValid(source.MediaStreams)
+          mediaStreams = source.MediaStreams
+          exit for
+        end if
+      end for
     end if
-  end for
+    if not isValid(mediaStreams) and isValid(sources[0]) and isValid(sources[0].MediaStreams)
+      mediaStreams = sources[0].MediaStreams
+    end if
+  end if
+
+  ' Defensive fallback if metadata is unavailable (shouldn't happen — ItemMetaData ran above)
+  if not isValid(mediaStreams) and isValid(m.playbackInfo) and isValid(m.playbackInfo.MediaSources) and isValid(m.playbackInfo.MediaSources[0])
+    mediaStreams = m.playbackInfo.MediaSources[0].MediaStreams
+  end if
+
+  audioStreams = []
+  if isValid(mediaStreams)
+    for i = 0 to mediaStreams.Count() - 1
+      if LCase(mediaStreams[i].Type) = "audio"
+        audioStreams.push(mediaStreams[i])
+      end if
+    end for
+  end if
 
   video.fullAudioData = audioStreams
 end sub
