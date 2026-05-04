@@ -605,12 +605,17 @@ end sub
 ' Event handler for when audioIndex changes.
 ' For direct play: switches audio track directly using Roku's availableAudioTracks
 ' (no stop/reload needed since all tracks are in the container).
-' For transcoded: must reload since the server needs to re-encode with the selected track.
+' For transcoded — or when the newly-selected stream exceeds the device's audio
+' capability (e.g. switching from stereo back to an 8ch track on a stereo Roku) —
+' must reload so the server transcodes the new selection.
 sub onAudioIndexChange()
   m.log.info("Audio index changed by user", "newIndex", m.top.audioIndex, "isTranscoded", m.top.isTranscoded, "position", m.top.position, "currentAudioTrack", m.top.audioTrack)
 
-  ' Direct play: all audio tracks are in the container — just switch the Roku track
-  if not m.top.isTranscoded and isValid(m.top.availableAudioTracks)
+  ' Direct play: all audio tracks are in the container — just switch the Roku track,
+  ' but only if the newly-selected stream is actually decodable by the device.
+  ' Roku's native audioTrack switch can't make an undecodable track playable, so
+  ' picking e.g. an 8ch track on a stereo device must go through the reload path.
+  if not m.top.isTranscoded and isValid(m.top.availableAudioTracks) and isSelectedAudioStreamDirectPlayable(m.top.audioIndex, m.top.fullAudioData)
     newTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
     m.log.info("Direct play audio switch", "jellyfinIndex", m.top.audioIndex, "rokuTrack", newTrack)
     m.top.audioTrack = newTrack
@@ -618,7 +623,7 @@ sub onAudioIndexChange()
     return
   end if
 
-  ' Transcoded or availableAudioTracks not available: must reload
+  ' Transcoded, availableAudioTracks not available, or stream not direct-playable: must reload
   m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
 
   ' Save the current video position

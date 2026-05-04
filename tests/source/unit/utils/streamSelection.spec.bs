@@ -425,6 +425,99 @@ namespace tests
       m.assertEqual(result, 2)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Commentary track deprioritization (issue #500)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("issue reproducer: stereo device, English 8ch main + English stereo commentary, playDefault=false picks main")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "English - AAC - 7.1 - Default", Language: "eng", channels: 8, codec: "aac", IsDefault: true },
+        { Type: "audio", index: 2, Title: "Commentary - English - AAC - Stereo", Language: "eng", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      ' Without deprioritization the 2ch commentary would win on a stereo device.
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("ignores a commentary track even when it is marked IsDefault (playDefault=true)")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "English - AAC - 5.1", Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Title: "Director's Commentary - Stereo", Language: "eng", channels: 2, codec: "aac", IsDefault: true }
+      ]
+      ' Even with IsDefault on the commentary track, the main track should win.
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("falls back to commentary when no non-commentary tracks exist")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "Director's Commentary - English", Language: "eng", channels: 2, codec: "aac", IsDefault: true },
+        { Type: "audio", index: 2, Title: "Cast Commentary - English", Language: "eng", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      ' Commentary-only file: don't return 0; pick one of the commentary tracks.
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false))
+      m.assertTrue(result = 1 or result = 2)
+    end function
+
+    @it("recognizes commentary regardless of title casing or position")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "DIRECTOR'S commentary track", Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Title: "English - AAC - Stereo", Language: "eng", channels: 2, codec: "aac", IsDefault: true }
+      ]
+      ' Commentary detection is case-insensitive substring match.
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("does not crash or misclassify streams with no Title field")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      ' Streams without Title field should not be treated as commentary.
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("isCommentaryAudioStream: true when Title contains 'commentary' (any case)")
+    function _()
+      m.assertTrue(isCommentaryAudioStream({ Title: "Commentary - English" }))
+      m.assertTrue(isCommentaryAudioStream({ Title: "DIRECTOR'S COMMENTARY" }))
+      m.assertTrue(isCommentaryAudioStream({ Title: "english audio with commentary mixed in" }))
+    end function
+
+    @it("isCommentaryAudioStream: false for non-commentary or missing titles")
+    function _()
+      m.assertFalse(isCommentaryAudioStream({ Title: "English - AAC - 5.1" }))
+      m.assertFalse(isCommentaryAudioStream({ Title: "" }))
+      m.assertFalse(isCommentaryAudioStream({}))
+      m.assertFalse(isCommentaryAudioStream(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isSelectedAudioStreamDirectPlayable() — production path uses real hardware caps")
+    ' Returns false when the chosen index is missing from the array; full coverage
+    ' of channel/codec gating lives in the isStreamDirectPlayable() tests.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns false when audioStreams is invalid")
+    function _()
+      m.assertFalse(isSelectedAudioStreamDirectPlayable(1, invalid))
+    end function
+
+    @it("returns false when no stream matches the chosen index")
+    function _()
+      audioStreams = [
+        { index: 1, channels: 2, codec: "aac", language: "eng" }
+      ]
+      m.assertFalse(isSelectedAudioStreamDirectPlayable(99, audioStreams))
+    end function
+
   end class
 
 end namespace

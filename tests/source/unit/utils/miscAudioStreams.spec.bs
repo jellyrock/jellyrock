@@ -259,6 +259,66 @@ namespace tests
       m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRokuAudioTrackPosition() - same-language ordinal disambiguation (issue #500)")
+    ' When multiple streams share a language (e.g. main + commentary), match the Nth
+    ' same-language Jellyfin stream to the Nth same-language Roku track in original order.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("picks the second English Roku track when the second English Jellyfin stream is selected")
+    function _()
+      ' Main English 8ch + commentary English 2ch — both eng.
+      audioStreams = [
+        { index: 1, language: "eng" },
+        { index: 2, language: "eng" }
+      ]
+      rokuTracks = [
+        { track: "2", language: "eng", name: "English Main" },
+        { track: "3", language: "eng", name: "English Commentary" }
+      ]
+      ' First English Jellyfin → first English Roku track
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+      ' Second English Jellyfin → second English Roku track (was returning "2" before fix)
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
+    end function
+
+    @it("ordinal match still works with mixed languages interleaved")
+    function _()
+      ' eng-main, jpn, eng-commentary, spa — three different languages mixed.
+      audioStreams = [
+        { index: 1, language: "eng" },
+        { index: 2, language: "jpn" },
+        { index: 3, language: "eng" },
+        { index: 4, language: "spa" }
+      ]
+      rokuTracks = [
+        { track: "2", language: "eng", name: "English Main" },
+        { track: "3", language: "jpn", name: "Japanese" },
+        { track: "4", language: "eng", name: "English Commentary" },
+        { track: "5", language: "spa", name: "Spanish" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+      m.assertEqual(getRokuAudioTrackPosition(3, audioStreams, rokuTracks), "4")
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
+      m.assertEqual(getRokuAudioTrackPosition(4, audioStreams, rokuTracks), "5")
+    end function
+
+    @it("falls back to Index + 1 when fewer same-language Roku tracks than Jellyfin streams")
+    function _()
+      ' Two Jellyfin English streams, but Roku only sees one (e.g., transcode hid the other).
+      audioStreams = [
+        { index: 1, language: "eng" },
+        { index: 2, language: "eng" }
+      ]
+      rokuTracks = [
+        { track: "2", language: "eng", name: "English" }
+      ]
+      ' First eng → Roku track "2" by ordinal match
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+      ' Second eng has no Roku counterpart → fallback Index + 1 = "3"
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
+    end function
+
   end class
 
 end namespace

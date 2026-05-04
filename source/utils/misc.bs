@@ -797,16 +797,18 @@ end function
 ' and also counts all track types, so Roku Track = Jellyfin Index + 1.
 '
 ' When availableAudioTracks is provided (populated by Roku during active playback),
-' matches by language for robustness against non-standard MKV track numbering.
-' Falls back to Index + 1 mapping when availableAudioTracks is not available
-' (e.g., before playback starts or for non-MKV containers).
+' matches by language with ordinal disambiguation: among same-language Jellyfin streams
+' (in original order), find the position N of the chosen index, then return the Nth
+' same-language Roku track. This avoids returning the wrong track when multiple streams
+' share a language (e.g. main + commentary, both English — issue #500).
+' Falls back to Index + 1 mapping when availableAudioTracks is not available or no
+' ordinal match can be found (e.g., before playback starts or for non-MKV containers).
 '
 ' @param {integer} jellyfinAudioIndex - The Jellyfin audio stream index
 ' @param {dynamic} audioStreamsArray - Jellyfin fullAudioData array (must have .index and .language fields)
 ' @param {dynamic} [availableAudioTracks=invalid] - Roku's availableAudioTracks array (has .track and .language)
 ' @returns {string} - Roku track identifier string for audioTrack field
 function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsArray as dynamic, availableAudioTracks = invalid as dynamic) as string
-  ' When Roku's availableAudioTracks is populated, match by language for accuracy
   if isValid(availableAudioTracks) and isValid(audioStreamsArray)
     ' Find the language of the selected Jellyfin stream
     selectedLanguage = ""
@@ -820,13 +822,29 @@ function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsAr
     end for
 
     if selectedLanguage <> ""
-      for each rokuTrack in availableAudioTracks
-        if isValid(rokuTrack.track) and isValid(rokuTrack.language)
-          if LCase(rokuTrack.language) = selectedLanguage
-            return rokuTrack.track
+      ' Position of the chosen stream among same-language Jellyfin streams
+      jfPosition = -1
+      jfSeen = 0
+      for each stream in audioStreamsArray
+        if isValid(stream.language) and LCase(stream.language) = selectedLanguage
+          if isValid(stream.index) and stream.index = jellyfinAudioIndex
+            jfPosition = jfSeen
+            exit for
           end if
+          jfSeen += 1
         end if
       end for
+
+      ' Take the Nth same-language Roku track
+      if jfPosition >= 0
+        rokuSeen = 0
+        for each rokuTrack in availableAudioTracks
+          if isValid(rokuTrack.track) and isValid(rokuTrack.language) and LCase(rokuTrack.language) = selectedLanguage
+            if rokuSeen = jfPosition then return rokuTrack.track
+            rokuSeen += 1
+          end if
+        end for
+      end if
     end if
   end if
 

@@ -183,6 +183,43 @@ function mapRokuLocaleToJellyfinLanguage(rokuLocale as dynamic) as string
   return ""
 end function
 
+' isSelectedAudioStreamDirectPlayable: Whether the audio stream at jellyfinAudioIndex
+' inside audioStreams is decodable by the current device.
+'
+' Used by mid-playback audio switching to decide whether Roku's native track-switch is
+' viable, or whether a server reload is required (e.g. switching back to an 8ch track
+' on a stereo device — Roku can't decode it natively, so a transcode reload is needed).
+'
+' @param {integer} jellyfinAudioIndex - Jellyfin index of the chosen audio stream
+' @param {dynamic} audioStreams - Array of audio MediaStream objects (e.g. fullAudioData)
+' @returns {boolean} - true if the chosen stream can be direct-played on this device
+function isSelectedAudioStreamDirectPlayable(jellyfinAudioIndex as integer, audioStreams as dynamic) as boolean
+  if not isValid(audioStreams) then return false
+  selected = invalid
+  for each stream in audioStreams
+    if isValid(stream.index) and stream.index = jellyfinAudioIndex
+      selected = stream
+      exit for
+    end if
+  end for
+  if not isValid(selected) then return false
+  return isStreamDirectPlayable(selected, getDeviceAudioCapabilities())
+end function
+
+' isCommentaryAudioStream: Determine whether a stream is a commentary/secondary track.
+'
+' Detection: case-insensitive substring match for "commentary" in the stream Title.
+' Used by findBestAudioStreamIndex() to deprioritize commentary tracks during auto-selection
+' so a director's-commentary stereo track doesn't outrank the main multichannel track on a
+' stereo device (issue #500).
+'
+' @param {object} stream - MediaStream object from Jellyfin metadata
+' @returns {boolean} - true if the stream looks like a commentary track
+function isCommentaryAudioStream(stream as object) as boolean
+  if not isValid(stream) or not isValid(stream.Title) then return false
+  return inStr(1, LCase(stream.Title), "commentary") > 0
+end function
+
 ' findBestAudioStreamIndex: Primary function for selecting the best audio stream
 '
 ' Selection priority when playDefault = true (Jellyfin: "Play default audio track regardless of language"):
@@ -246,6 +283,23 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
       return audioStreams[0].index
     end if
     return 0
+  end if
+
+  ' Deprioritize commentary tracks (issue #500): when at least one non-commentary track
+  ' exists, hide commentary entries from all subsequent selection logic so a stereo
+  ' commentary track can't outrank the multichannel main track on a stereo device.
+  ' Files with only commentary tracks fall through with the original list.
+  mainStreams = []
+  for i = 0 to audioStreams.Count() - 1
+    if not isCommentaryAudioStream(audioStreams[i])
+      mainStreams.push(audioStreams[i])
+    end if
+  end for
+  if mainStreams.Count() > 0
+    audioStreams = mainStreams
+    if audioStreams.Count() = 1 and isValid(audioStreams[0].index)
+      return audioStreams[0].index
+    end if
   end if
 
   ' Multiple audio tracks - apply selection logic
