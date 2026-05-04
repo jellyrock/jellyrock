@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) deprioritize commentary audio tracks; restore OSD switching ([#544](https://github.com/jellyrock/jellyrock/pull/544))
 - (ci) patch rooibos coverage to avoid render-thread watchdog ([#540](https://github.com/jellyrock/jellyrock/pull/540))
 
 ### Dependencies
