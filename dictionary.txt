@@ -52,6 +52,9 @@ changelog
 Changelog
 CHANGELOG
 checkboxes
+CI
+ci
+ci-triage
 CLDR
 CLI
 CLI-driven
@@ -113,6 +116,8 @@ gitignored
 globals
 Globals
 globals.
+handoff
+handoffs
 Hant
 hardcode
 Hardcode
