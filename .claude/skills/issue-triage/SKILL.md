@@ -1,18 +1,43 @@
 ---
 name: issue-triage
-description: Investigate a JellyRock GitHub issue. The skill (sonnet) does mechanical prep — fetches the issue body and comments via gh, parses the YAML-form fields, classifies (bug / feature / enhancement / arch-decision-needed), identifies the probable code area from labels + body keywords, and assembles initial file context — then delegates to the issue-investigator agent (opus) for the deep judgment work (validate, root-cause, semi-auto fix, or 2-3 tradeoff'd options for architectural calls). Use when you have an issue number and want to act on it (fix or present options).
-model: sonnet
+description: Investigate a JellyRock GitHub issue end-to-end. Fetches the issue body and comments via gh, parses YAML-form fields, classifies (bug / feature / enhancement / arch-decision-needed), identifies the probable code area, assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md) — validate, root-cause, semi-auto fix or 2-3 tradeoff'd options. Dedup-first: a recent unchanged triage on the same issue short-circuits to the existing handoff. Use when you have an issue number and want to act on it.
+model: opus
 user-invocable: true
-allowed-tools: Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search issues:*), Bash(git log:*), Bash(git ls-files:*), Read, Grep, Task
+allowed-tools: Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search issues:*), Bash(git log:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
 # /issue-triage `<N>` — investigate a GitHub issue
 
-Mechanical prep step before per-issue judgment work. The actual investigation (validate, diagnose, implement-or-present-options) is delegated to the [`issue-investigator`](../../agents/issue-investigator.md) agent (opus), which gets a structured handoff packet from this skill.
+Single-file workflow: prep + investigation, end-to-end on opus, in main thread, no Task delegation. The mechanical prep (Steps 1-7) produces a handoff packet that's written to `.claude/handoffs/` for cross-session resume + compaction recovery + `/catchup` discovery. The investigation contract — validate, root-cause, semi-auto-fix or present-options — is in sibling [`INVESTIGATION.md`](INVESTIGATION.md) and is followed in main thread once Step 7 completes.
 
 ## Inputs
 
 `$ARGUMENTS`: required issue number (e.g., `419`). If empty, prompt for it.
+
+## Step 0 — Check for prior triage (dedup)
+
+Before any prep, look for a recent handoff on this issue:
+
+```bash
+ls -t .claude/handoffs/issue-<N>-*.md 2>/dev/null | head -1
+```
+
+If a prior handoff exists, `Read` it. The handoff has a YAML frontmatter with `created`, `branch`, `sha`, `cited-files`. Check three signals:
+
+1. **Cited files unchanged?** `git log <sha>..HEAD -- <cited-file-1> <cited-file-2> ...` — empty output means no commits touched them on this branch.
+2. **Working tree clean for cited files?** `git status --porcelain -- <cited-files>` — empty means no uncommitted changes.
+3. **Issue itself unchanged?** `gh issue view <N> --json updatedAt` — compare to the frontmatter's `created`. If the issue's `updatedAt` is older than `created`, no new activity.
+
+If all three are clean, **do not write a new file**. Surface to the user:
+
+> Prior triage exists at `.claude/handoffs/issue-<N>-<timestamp>.md` from <relative-time>. Cited files unchanged (sha <abc>..HEAD has no commits on them, working tree clean), and the issue has no new activity since. Options:
+> - **(a) Resume from the existing triage** — Read the handoff and follow [`INVESTIGATION.md`](INVESTIGATION.md) from there
+> - **(b) Re-triage anyway** — fresh prep, new handoff file (use this if you suspect the prior prep itself was wrong, or want a different angle)
+> - **(c) Cancel**
+
+Then **STOP**. Wait for the user's pick before proceeding.
+
+If any signal shows change (or no prior handoff exists), proceed to Step 1.
 
 ## Step 1 — Fetch the issue
 
@@ -88,9 +113,19 @@ Pick 2-5 files that look most relevant based on the issue body. Don't pad — qu
 
 ## Step 6 — Build the handoff packet
 
-Format as markdown the agent can ingest:
+Construct the packet with a YAML frontmatter (so future Step-0 dedup checks can read it) plus the prep body:
 
 ```markdown
+---
+created: <ISO-8601 UTC timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
+target: issue-<N>
+branch: <git rev-parse --abbrev-ref HEAD>
+sha: <git rev-parse --short HEAD>
+cited-files:
+  - <path-1>
+  - <path-2>
+---
+
 Issue #<N>: <title>
 Status: <open | closed>
 Labels: <comma list>
@@ -111,23 +146,19 @@ Comments:
 <@author>: <body>
 ```
 
-Keep bodies untruncated. The agent needs full text to diagnose.
+Keep bodies untruncated — full text is needed to diagnose.
 
-## Step 7 — Delegate to issue-investigator
+## Step 7 — Write the handoff and continue into investigation
 
-Invoke via the Task tool with `subagent_type: issue-investigator`. Pass the handoff packet from Step 6 as the prompt, prefixed with the standard sub-agent boilerplate:
+1. Compute the timestamp once: `date +%Y%m%d-%H%M%S` (for the filename) and `date -u +%Y-%m-%dT%H:%M:%SZ` (for the frontmatter).
 
-```text
-You are the issue-investigator agent. The /issue-triage skill has done
-the mechanical prep below. Validate the report, identify root cause,
-and either implement a semi-auto fix (stop before commit) or present
-2-3 tradeoff'd options if architectural — per your operating contract.
-Do NOT re-fetch via gh — the prep is authoritative.
+2. Write the packet to `.claude/handoffs/issue-<N>-<YYYYMMDD-HHMMSS>.md` (gitignored; durable for compaction recovery + cross-session resume + `/catchup` discovery).
 
-<handoff packet>
-```
+3. Output a single confirmation line, this exact shape:
 
-The agent then walks its own contract: validate, diagnose, semi-auto-fix or present-options.
+   > Handoff saved: `.claude/handoffs/issue-<N>-<timestamp>.md` (classification: <X>, probable area: <Y>, <count> files cited). Now following [`INVESTIGATION.md`](INVESTIGATION.md) — adjust scope freely.
+
+4. Then **continue immediately** into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait — Step 7's "save the handoff + continue" is one motion.
 
 ## When NOT to use
 
@@ -138,4 +169,4 @@ The agent then walks its own contract: validate, diagnose, semi-auto-fix or pres
 
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent: parent passes `Read .claude/skills/issue-triage/SKILL.md and follow the steps for $ARGUMENTS=<issue-number>; build the handoff packet but do NOT delegate to the issue-investigator agent — surface the packet for review` in the Task prompt. Sub-agents shouldn't auto-delegate; the user picks when to invoke the deeper agent.
+To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/issue-triage/SKILL.md and follow Steps 0-7 for $ARGUMENTS=<issue-number>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive).
