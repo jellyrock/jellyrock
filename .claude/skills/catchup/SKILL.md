@@ -13,6 +13,13 @@ Distinct from `/ramp <area>`: `/catchup` is global; `/ramp` is area-scoped (used
 ## Step 1 — Pull state in parallel
 
 ```bash
+# Auto-prune handoff files older than 30 days (silent — abandoned triages
+# evaporate so /catchup stays useful)
+find .claude/handoffs -name '*.md' -mtime +30 -delete 2>/dev/null
+
+# Pending handoffs (skill-emitted reports waiting for follow-up)
+ls -t .claude/handoffs/*.md 2>/dev/null | head -5
+
 # Local working state
 git status --porcelain
 git rev-parse --abbrev-ref HEAD
@@ -82,6 +89,8 @@ Format short. Use this template — sections collapse to "(none)" when empty so 
 
 **Tech debt focus:** top entries — <slug-1>, <slug-2>, <slug-3>
 
+**Pending handoffs:** <count> — most recent: `<path>` from <skill> <relative-time> (or "(none)"). If count >= 10, append: "Cleanup hint: many handoffs accumulating — consider `rm`-ing the ones whose investigations are complete; >30d auto-prune handles the rest."
+
 **New skills/agents in last 7d:** <count, with notable subjects>
 
 **Suggested next:** <one or two action items, see Step 3>
@@ -93,6 +102,7 @@ If nothing has changed since your last session AND the working tree is clean, su
 
 Read the gathered state. If something looks like an alert or a decision point, name the right next-skill in the **Suggested next** line:
 
+- **Pending handoff for an in-flight triage** → `Read .claude/handoffs/<path>.md` and follow the sibling `INVESTIGATION.md` for that skill (resume from where you parked)
 - **High-engagement bug** → `/issue-triage <N>` (a label:bug issue with comment traction is the strongest "focus here next" signal)
 - **Recent bug report you haven't read yet** → `/issue-triage <N>`
 - **Recent discussion (non-bug) heating up** → read the issue; if it surfaces an architectural decision, capture it via `/add-decision`. Don't `/issue-triage` an enhancement — that flow is bug-shaped.
