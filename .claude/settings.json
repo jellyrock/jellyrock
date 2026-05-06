@@ -27,7 +27,8 @@
       "Bash(gh repo view:*)",
       "Bash(gh search:*)",
       "Bash(gh auth status)",
-      "Bash(gh label list:*)"
+      "Bash(gh label list:*)",
+      "Bash(grep:*)"
     ]
   },
   "hooks": {
