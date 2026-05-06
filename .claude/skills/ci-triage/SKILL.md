@@ -1,20 +1,44 @@
 ---
 name: ci-triage
-description: Triage a JellyRock CI failure (failed GitHub Actions workflow run). The skill (sonnet) does mechanical prep — fetches the run via gh, identifies which job/step failed, extracts the failure tail, classifies the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), and assembles initial file context — then delegates to the ci-investigator agent (opus) for root-cause analysis and either a semi-auto fix or 2-3 tradeoff'd options. Use when a CI workflow failed on a PR or on main and you want a focused investigation.
-model: sonnet
+description: Triage a JellyRock CI failure (failed GitHub Actions workflow run) end-to-end. Fetches the run via gh, identifies which job/step failed, extracts the failure tail, classifies the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Dedup-first: a recent unchanged triage on the same run-id (cited files unchanged) short-circuits to the existing handoff. Use when a CI workflow failed on a PR or on main.
+model: opus
 user-invocable: true
-allowed-tools: Bash(gh run view:*), Bash(gh run list:*), Bash(git log:*), Bash(git diff:*), Bash(git ls-files:*), Read, Grep, Task
+allowed-tools: Bash(gh run view:*), Bash(gh run list:*), Bash(git log:*), Bash(git diff:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
 
 # /ci-triage `<run-id>` — investigate a failing CI run
 
-Mechanical prep for the [`ci-investigator`](../../agents/ci-investigator.md) agent. Takes a GitHub Actions run ID (or a full run URL — extract the trailing number), fetches the failure detail via `gh`, classifies the category, builds initial file context, and hands off.
+Single-file workflow: prep + investigation, end-to-end on opus, in main thread, no Task delegation. The mechanical prep (Steps 1-6) produces a handoff packet that's written to `.claude/handoffs/` for cross-session resume + compaction recovery + `/catchup` discovery. The investigation contract is in sibling [`INVESTIGATION.md`](INVESTIGATION.md) and is followed in main thread once Step 6 completes.
 
 ## Inputs
 
 `$ARGUMENTS`: required run ID or URL (e.g., `1234567890` or `https://github.com/jellyrock/jellyrock/actions/runs/1234567890`). If empty, prompt or list recent failures: `gh run list --status failure --branch <current> --limit 5`.
 
 If the input is a URL, extract the run-id (`/runs/(\d+)`).
+
+## Step 0 — Check for prior triage (dedup)
+
+Before any prep, look for a recent handoff on this run-id:
+
+```bash
+ls -t .claude/handoffs/ci-<run-id>-*.md 2>/dev/null | head -1
+```
+
+If a prior handoff exists, `Read` it. The handoff has a YAML frontmatter with `created`, `branch`, `sha`, `cited-files`. The run-id itself is immutable (CI runs don't change), so check two signals:
+
+1. **Cited files unchanged?** `git log <sha>..HEAD -- <cited-files>` — empty output means no commits touched them on this branch.
+2. **Working tree clean for cited files?** `git status --porcelain -- <cited-files>` — empty means no uncommitted changes.
+
+If both are clean, **do not write a new file**. Surface to the user:
+
+> Prior CI triage exists at `.claude/handoffs/ci-<run-id>-<timestamp>.md` from <relative-time>. Cited files unchanged since then. Options:
+> - **(a) Resume from the existing triage** — Read the handoff and follow [`INVESTIGATION.md`](INVESTIGATION.md) from there
+> - **(b) Re-triage anyway** — fresh prep (use this if a re-run of the workflow produced different output)
+> - **(c) Cancel**
+
+Then **STOP**. Wait for the user's pick before proceeding.
+
+If any signal shows change (or no prior handoff exists), proceed to Step 1.
 
 ## Step 1 — Fetch the run
 
@@ -84,7 +108,19 @@ For test failures, include the test file + the SUT it tests.
 
 ## Step 6 — Build the handoff packet
 
+Construct the packet with a YAML frontmatter (so future Step-0 dedup checks can read it) plus the prep body:
+
 ```markdown
+---
+created: <ISO-8601 UTC timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
+target: ci-<run-id>
+branch: <git rev-parse --abbrev-ref HEAD>
+sha: <git rev-parse --short HEAD>
+cited-files:
+  - <path-1>
+  - <path-2>
+---
+
 CI failure
 Run: <run-id> (<workflow name>)
 Branch: <branch>
@@ -102,19 +138,17 @@ Failure tail (last 50-100 lines of the failed step):
   <log excerpt>
 ```
 
-## Step 7 — Delegate to ci-investigator
+## Step 7 — Write the handoff and continue into investigation
 
-```text
-You are the ci-investigator agent. The /ci-triage skill has done the
-mechanical prep below. Validate the diagnosis, identify root cause, and
-either implement a semi-auto fix (stop before commit) or present 2-3
-tradeoff'd options if architectural — per your operating contract. Do
-NOT re-fetch via gh — the prep is authoritative.
+1. Compute the timestamp: `date +%Y%m%d-%H%M%S` (filename) and `date -u +%Y-%m-%dT%H:%M:%SZ` (frontmatter).
 
-<handoff packet>
-```
+2. Write the packet to `.claude/handoffs/ci-<run-id>-<YYYYMMDD-HHMMSS>.md`.
 
-Invoke via the Task tool with `subagent_type: ci-investigator`.
+3. Output a single confirmation line, this exact shape:
+
+   > Handoff saved: `.claude/handoffs/ci-<run-id>-<timestamp>.md` (classification: <X>, failed step: <step>, <count> files cited). Now following [`INVESTIGATION.md`](INVESTIGATION.md) — adjust scope freely.
+
+4. Then **continue immediately** into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait.
 
 ## When NOT to use
 
@@ -122,8 +156,8 @@ Invoke via the Task tool with `subagent_type: ci-investigator`.
 - The run succeeded — there's nothing to triage.
 - The failure is a transient infra issue (GitHub Actions outage, runner unavailable) — re-run the workflow first; only triage code if the failure repeats.
 - The pasted text is a Roku log, not a CI log → use `/runtime-triage`.
-- The failure is a docs-stale-blocking and the fix is mechanical (just bump `last-reviewed` because no shape change occurred) → fix directly without invoking `/ci-investigator`.
+- The failure is a docs-stale-blocking and the fix is mechanical (just bump `last-reviewed` because no shape change occurred) → fix directly without invoking the investigation contract.
 
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent: parent passes `Read .claude/skills/ci-triage/SKILL.md and follow the steps for $ARGUMENTS=<run-id>; build the handoff packet but do NOT delegate to ci-investigator — surface the packet for review` in the Task prompt.
+To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/ci-triage/SKILL.md and follow Steps 0-7 for $ARGUMENTS=<run-id>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive).
