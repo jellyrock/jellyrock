@@ -11,7 +11,8 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
-last-reviewed: 2026-05-03
+  - source/utils/voiceTransport.bs
+last-reviewed: 2026-05-06
 ---
 
 # Video & Audio Playback
@@ -336,6 +337,30 @@ Annoyance addressed in code: Roku **reorders** subtitle tracks unpredictably bet
 The current selection persists in user settings (`globalCaptionMode`) so it's remembered across sessions.
 
 Track *language names* (the labels shown in the `TrackDropdown` and OSD menus) are localized via `source/utils/languages.bs` — see `translations.md` for the 3-tier resolver (alias → `translationKey` → English fallback) and the `lint:language-coverage` CI script that catches silent localization gaps.
+
+## Voice transport (Roku voice remote)
+
+Roku voice transport commands (`play`, `pause`, `seek`, `next`, `startover`, `replay`, `skip`, `nowplaying`, `shuffle`, `loop`, `like`, `dislike`, …) arrive on a **separate API surface** from `onKeyEvent` — they're delivered as `roInputEvent` with `info.type = "transport"`. Three pieces wire this up:
+
+1. **Manifest gates** (in `manifest`): `supports_voice_roinput=1`, `supports_etc_seek=1`, `supports_etc_next=1`. Without these, Roku OS shows a "command not available" HUD even if the app would have handled it.
+2. **Main-loop dispatch** (`source/main.bs`): `input.EnableTransportEvents()` opts in. The existing `roInputEvent` branch checks `info.type = "transport"` and dispatches to the active scene's `handleTransport(info)` `callFunc` when that scene is `VideoPlayerView` or `AudioPlayerView`. The return value's `status` is fed back via `input.EventResponse({id, status})` — the status code controls Roku's HUD message (`success` / `success.seek-start` / `success.seek-end` / `error.live` / `error.no-media` / `error.redundant` / `error.generic` / `unhandled`).
+3. **Per-player handlers** — `VideoPlayerView.handleTransport()` and `AudioPlayerView.handleTransport()`, each owning its own command map. Pure logic (setting fallback for instant-replay duration, voice `seek` payload parsing, bounds-checked seek math) lives in `source/utils/voiceTransport.bs` so it's unit-testable without instantiating a player.
+
+One deliberate per-player UX deviation from the Roku-doc default:
+
+- **Video `skip`** first tries to skip an active media segment (intro/recap/etc.) — if a `segmentNotification` is in-window, the same handler that fires on physical-OK fires; if no segment is active, falls through to `next`-item behavior per the Roku doc spec.
+
+The `replay` (instant-replay) duration is user-configurable via `playbackInstantReplaySeconds` in user settings — both video and audio honor it, defaulting to 10 seconds (industry standard, midpoint of Roku's 10-to-25-seconds guidance). The `voiceTransport.resolveInstantReplaySeconds()` helper falls back to 10 when the setting is missing or non-positive.
+
+Testing without a voice remote: ECP curl works for any `transport` command —
+
+```bash
+curl -d '' "http://<roku-ip>:8060/input/dev?id=1&type=transport&command=seek&direction=forward&duration=30"
+```
+
+This is how the Rooibos specs verify status-code logic, and it's the recommended manual smoke-test path.
+
+The deep-link launch branch (`info.DoesExist("mediatype")`) shares the same `roInputEvent` dispatcher — both ingress paths come through the same `roInput` object created at startup.
 
 ## A historical note: the legacy video player
 

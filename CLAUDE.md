@@ -65,6 +65,20 @@ Quick task pointers:
 
 ## Workflow
 
+### Looking up Roku platform docs
+
+The source-of-truth Roku developer docs live in [`rokudev/dev-doc`](https://github.com/rokudev/dev-doc) on branch `v2.0`. Prefer the GitHub source over the rendered site at `developer.roku.com/dev` — the rendered site sometimes blocks fetches and truncates HTML tables that the markdown source preserves. Fetch via `gh`:
+
+```bash
+# Path discovery:
+gh api repos/rokudev/dev-doc/git/trees/v2.0?recursive=1 --jq '.tree[].path' | grep <topic>
+
+# Read a file (decode the base64 content field):
+gh api repos/rokudev/dev-doc/contents/<path>?ref=v2.0 --jq '.content' | base64 -d
+```
+
+Most useful subtrees: `docs/REFERENCES/scenegraph/` (scene graph nodes + interface fields), `docs/REFERENCES/brightscript/` (components / events / interfaces — `roInput`, `roInputEvent`, `roMessagePort`, etc.), `docs/DEVELOPER/` (feature guides — voice transport, deep linking, certification). Trust the repo when it disagrees with the rendered site; the rendered site is built from this source.
+
 ### IDE integration
 
 - `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension during dev

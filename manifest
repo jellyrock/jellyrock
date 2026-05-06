@@ -25,6 +25,12 @@ confirm_partner_button=1
 
 supports_input_launch=1
 
+### Voice transport controls (see source/main.bs `roInputEvent` dispatcher
+### and `handleTransport()` callFunc on VideoPlayerView / AudioPlayerView).
+supports_voice_roinput=1
+supports_etc_seek=1
+supports_etc_next=1
+
 requires_mkv=1
 
 bs_const=debug=false

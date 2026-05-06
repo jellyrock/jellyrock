@@ -17,6 +17,7 @@ import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
+import "pkg:/source/utils/voiceTransport.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
 ' The trickPlayBar is part of the Video node and doesn't expose child IDs,
@@ -1886,3 +1887,209 @@ sub onDestroy()
   m.chapterContent = invalid
   m.captionGroup = invalid
 end sub
+
+' handleTransport: Roku voice transport handler. Called from source/main.bs when an
+' roInputEvent with info.type = "transport" arrives and the active scene is this player.
+'
+' Returns { status: "<code>" } per roInput.EventResponse() — Roku OS uses the status
+' to render the appropriate HUD message. Codes used here:
+'   - success / success.seek-start / success.seek-end — op completed (with bounds note)
+'   - error.redundant — state already matches request (e.g. pause-while-paused)
+'   - error.generic — op semantically unsupported in this context
+'   - unhandled — command we don't recognize; lets Roku show "Command not available"
+'
+' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+function handleTransport(evt as object) as object
+  if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
+  cmd = lcase(evt.command)
+  m.log.info("voice transport", cmd)
+
+  if cmd = "play" or cmd = "resume"
+    if m.top.state = "paused"
+      m.top.control = "resume"
+      return { status: "success" }
+    end if
+    if m.top.state = "playing" then return { status: "error.redundant" }
+    return { status: "success" }
+  end if
+
+  if cmd = "pause"
+    if m.top.state = "paused" then return { status: "error.redundant" }
+    m.top.control = "pause"
+    return { status: "success" }
+  end if
+
+  if cmd = "stop"
+    ' Mirror back-key behavior: stop playback AND pop the scene. ViewCreator's
+    ' onStateChange only pops on state="finished", not "stopped"; the physical
+    ' back key gets the pop for free via Roku's OS-default back handling, but
+    ' voice transport doesn't, so we pop explicitly.
+    m.top.control = "stop"
+    m.global.sceneManager.callFunc("popScene")
+    return { status: "success" }
+  end if
+
+  if cmd = "ok"
+    ' Mirror physical OK in idle video state — open the OSD. If already visible,
+    ' physical OK activates the focused button; voice can't replicate that without
+    ' synthesizing a key event, so treat the second voice-OK as a redundant noop.
+    if not stateAllowsOSD() then return { status: "error.generic" }
+    if isValid(m.osd) and m.osd.visible then return { status: "error.redundant" }
+    m.osd.visible = true
+    m.osd.hasFocus = true
+    m.osd.setFocus(true)
+    return { status: "success" }
+  end if
+
+  if cmd = "forward"
+    m.top.control = "fastforward"
+    return { status: "success" }
+  end if
+
+  if cmd = "rewind"
+    m.top.control = "rewind"
+    return { status: "success" }
+  end if
+
+  if cmd = "replay"
+    return seekRelativeWithBounds(-getInstantReplaySeconds())
+  end if
+
+  if cmd = "startover"
+    return seekToWithBounds(0)
+  end if
+
+  if cmd = "seek"
+    return handleVoiceSeekCommand(evt)
+  end if
+
+  if cmd = "next"
+    return handleVoiceNextItem()
+  end if
+
+  if cmd = "skip"
+    ' Try to skip an active media segment first; fall through to next-item if none.
+    if tryActiveSegmentSkip() then return { status: "success" }
+    return handleVoiceNextItem()
+  end if
+
+  if cmd = "nowplaying"
+    return announceNowPlaying()
+  end if
+
+  if cmd = "shuffle" or cmd = "loop"
+    ' Video player has no shuffle/loop UI. Audio player handles these.
+    return { status: "error.generic" }
+  end if
+
+  if cmd = "like"
+    return setFavorite(true)
+  end if
+
+  if cmd = "dislike"
+    return setFavorite(false)
+  end if
+
+  return { status: "unhandled" }
+end function
+
+function getInstantReplaySeconds() as integer
+  return voiceTransport.resolveInstantReplaySeconds(m.global.user.settings.playbackInstantReplaySeconds)
+end function
+
+function seekRelativeWithBounds(deltaSeconds as integer) as object
+  if not isValid(m.top.position) then return { status: "error.generic" }
+  return seekToWithBounds(m.top.position + deltaSeconds)
+end function
+
+' 30s end-slack matches the Roku transport-controls reference example for video —
+' clamping shy of duration prevents the player from firing end-of-content immediately.
+function seekToWithBounds(targetSeconds as float) as object
+  result = voiceTransport.computeSeekStatus(targetSeconds, m.top.duration, 30)
+  m.top.seek = result.clamped
+  return { status: result.status }
+end function
+
+function handleVoiceSeekCommand(evt as object) as object
+  parsed = voiceTransport.parseSeekDelta(evt)
+  if not parsed.valid then return { status: "error.generic" }
+  return seekRelativeWithBounds(parsed.delta)
+end function
+
+' Skip an active media segment (intro/recap/etc.) if one is currently in-window.
+' Returns true if a segment was skipped, false if no active segment.
+function tryActiveSegmentSkip() as boolean
+  if not isValid(m.activeSegmentId) or m.activeSegmentId = "" then return false
+  if not isValid(m.mediaSegments) or m.mediaSegments.count() = 0 then return false
+  segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
+  if not isValid(segment) then return false
+
+  seekPosition = segmentTicksToSeconds(segment.EndTicks)
+  segmentType = segment.Type ?? ""
+
+  ' Outro near end-of-content: force-finish so watched-state and auto-play fire.
+  if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+    forceFinishPlayback()
+  else
+    m.top.seek = seekPosition
+    m.skippedSegments[m.activeSegmentId] = true
+  end if
+
+  m.activeSegmentId = ""
+  if isValid(m.segmentNotification) and isNotificationVisible(m.segmentNotification)
+    m.segmentNotification.callFunc("dismiss")
+  end if
+  return true
+end function
+
+' Reuse the OSD itemNext code path so Live-TV channel advance, queue advance, and
+' Episode→next-Episode all behave identically to pressing the on-screen Next button.
+function handleVoiceNextItem() as object
+  queueManager = m.global.queueManager
+  if not isValid(queueManager) then return { status: "error.generic" }
+  queueCount = queueManager.callFunc("getCount")
+  queuePosition = queueManager.callFunc("getPosition")
+  isTvChannel = isLiveTvPlayback() and m.channelListLoaded and queueCount > 1
+
+  targetPosition = -1
+  if queuePosition < queueCount - 1
+    targetPosition = queuePosition + 1
+  else if isTvChannel
+    targetPosition = 0
+  end if
+
+  if targetPosition < 0 then return { status: "error.generic" }
+  switchToQueueItem(queueManager, targetPosition)
+  return { status: "success" }
+end function
+
+' Returns the metadata in the response — main.bs's transport dispatcher calls
+' roAppManager.SetNowPlayingContentMetaData() on the MAIN thread (roAppManager
+' can't be created on the render thread, where this callFunc executes).
+function announceNowPlaying() as object
+  if not isValid(m.osd) or not isValid(m.osd.itemData) then return { status: "error.generic" }
+  item = m.osd.itemData
+  title = item.name ?? ""
+  if title = "" then return { status: "error.generic" }
+  return {
+    status: "success",
+    nowPlaying: {
+      title: title,
+      contentType: item.type ?? ""
+    }
+  }
+end function
+
+function setFavorite(isLike as boolean) as object
+  if not isValid(m.osd) or not isValid(m.osd.itemData) or not isValid(m.osd.itemData.id)
+    return { status: "error.generic" }
+  end if
+  itemId = m.osd.itemData.id
+  if itemId = "" then return { status: "error.generic" }
+  if isLike
+    SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
+  else
+    SubmitSideEffect(GetApi().BuildUnmarkFavoriteRequest(itemId))
+  end if
+  return { status: "success" }
+end function

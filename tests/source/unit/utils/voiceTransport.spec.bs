@@ -1,0 +1,149 @@
+import "pkg:/source/utils/voiceTransport.bs"
+
+namespace tests
+
+  @suite("voiceTransport helpers")
+  class VoiceTransportTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveInstantReplaySeconds() — setting fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the configured value when valid and >= 1")
+    @params(1, 1)
+    @params(10, 10)
+    @params(15, 15)
+    @params(30, 30)
+    function _(configured, expected)
+      m.assertEqual(voiceTransport.resolveInstantReplaySeconds(configured), expected)
+    end function
+
+    @it("falls back to 10 when setting is invalid")
+    function _()
+      m.assertEqual(voiceTransport.resolveInstantReplaySeconds(invalid), 10)
+    end function
+
+    @it("falls back to 10 when setting is 0")
+    function _()
+      m.assertEqual(voiceTransport.resolveInstantReplaySeconds(0), 10)
+    end function
+
+    @it("falls back to 10 when setting is negative")
+    function _()
+      m.assertEqual(voiceTransport.resolveInstantReplaySeconds(-5), 10)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseSeekDelta() — voice seek payload parsing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a forward seek with explicit direction")
+    function _()
+      result = voiceTransport.parseSeekDelta({ duration: "30", direction: "forward" })
+      m.assertTrue(result.valid)
+      m.assertEqual(result.delta, 30)
+    end function
+
+    @it("treats missing direction as forward")
+    function _()
+      result = voiceTransport.parseSeekDelta({ duration: "60" })
+      m.assertTrue(result.valid)
+      m.assertEqual(result.delta, 60)
+    end function
+
+    @it("parses a backward seek as negative delta")
+    function _()
+      result = voiceTransport.parseSeekDelta({ duration: "30", direction: "backward" })
+      m.assertTrue(result.valid)
+      m.assertEqual(result.delta, -30)
+    end function
+
+    @it("parses backward seek case-insensitive")
+    function _()
+      result = voiceTransport.parseSeekDelta({ duration: "30", direction: "Backward" })
+      m.assertTrue(result.valid)
+      m.assertEqual(result.delta, -30)
+    end function
+
+    @it("returns invalid when evt is invalid")
+    function _()
+      result = voiceTransport.parseSeekDelta(invalid)
+      m.assertFalse(result.valid)
+    end function
+
+    @it("returns invalid when duration is missing")
+    function _()
+      result = voiceTransport.parseSeekDelta({ direction: "forward" })
+      m.assertFalse(result.valid)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("computeSeekStatus() — bounds-checked seek math")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns success and unchanged target when target is within bounds")
+    function _()
+      result = voiceTransport.computeSeekStatus(60.0, 600.0, 30)
+      m.assertEqual(result.status, "success")
+      m.assertEqual(result.clamped, 60.0)
+    end function
+
+    @it("returns success when duration is invalid (no upper-bound check possible)")
+    function _()
+      result = voiceTransport.computeSeekStatus(60.0, invalid, 30)
+      m.assertEqual(result.status, "success")
+      m.assertEqual(result.clamped, 60.0)
+    end function
+
+    @it("returns success when duration is 0 (live stream / unknown)")
+    function _()
+      result = voiceTransport.computeSeekStatus(60.0, 0.0, 30)
+      m.assertEqual(result.status, "success")
+      m.assertEqual(result.clamped, 60.0)
+    end function
+
+    @it("clamps negative target to 0 with seek-start status")
+    function _()
+      result = voiceTransport.computeSeekStatus(-30.0, 600.0, 30)
+      m.assertEqual(result.status, "success.seek-start")
+      m.assertEqual(result.clamped, 0.0)
+    end function
+
+    @it("treats target = 0 as success, not seek-start")
+    function _()
+      result = voiceTransport.computeSeekStatus(0.0, 600.0, 30)
+      m.assertEqual(result.status, "success")
+      m.assertEqual(result.clamped, 0.0)
+    end function
+
+    @it("clamps target past video duration with 30s end-slack")
+    function _()
+      result = voiceTransport.computeSeekStatus(700.0, 600.0, 30)
+      m.assertEqual(result.status, "success.seek-end")
+      m.assertEqual(result.clamped, 570.0)
+    end function
+
+    @it("clamps target past audio duration with 5s end-slack")
+    function _()
+      result = voiceTransport.computeSeekStatus(300.0, 240.0, 5)
+      m.assertEqual(result.status, "success.seek-end")
+      m.assertEqual(result.clamped, 235.0)
+    end function
+
+    @it("treats target == duration as seek-end")
+    function _()
+      result = voiceTransport.computeSeekStatus(600.0, 600.0, 30)
+      m.assertEqual(result.status, "success.seek-end")
+      m.assertEqual(result.clamped, 570.0)
+    end function
+
+    @it("clamps to 0 when duration is shorter than endSlack")
+    function _()
+      result = voiceTransport.computeSeekStatus(100.0, 20.0, 30)
+      m.assertEqual(result.status, "success.seek-end")
+      m.assertEqual(result.clamped, 0.0)
+    end function
+
+  end class
+
+end namespace

@@ -27,6 +27,7 @@
     <field id="playbackPreserveDovi" type="boolean" alwaysNotify="true" />
     <field id="playbackSubsCustom" type="boolean" alwaysNotify="true" />
     <field id="playbackResolutionMax" type="string" alwaysNotify="true" />
+    <field id="playbackInstantReplaySeconds" type="integer" alwaysNotify="true" />
     <field id="playbackNextUpButtonSeconds" type="integer" alwaysNotify="true" />
     <field id="playbackPlayNextEpisode" type="string" alwaysNotify="true" />
     <field id="playbackPreferredMultichannelCodec" type="string" alwaysNotify="true" />
