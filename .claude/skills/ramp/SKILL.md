@@ -55,6 +55,10 @@ gh pr list --state open --search "<keyword> in:title" --limit 5 --json number,ti
 
 # Skills / agents that mention this area in their description
 grep -l "<area>" .claude/skills/*/SKILL.md .claude/agents/*.md 2>/dev/null
+
+# Pending handoffs whose content mentions an area keyword (cheap area-scoped
+# resume signal — surfaces parked triages that touched this subsystem)
+grep -l "<keyword>" .claude/handoffs/*.md 2>/dev/null | head -5
 ```
 
 Substitute `<area>` and a sensible search keyword (e.g., for `components/video` use `video`; for `source/api` use `api`).
@@ -95,6 +99,11 @@ Output a single structured markdown briefing optimized for both human + sub-agen
 
 - [`/<skill>`](../.claude/skills/<skill>/SKILL.md) — <one-line description>
 - [`<agent>`](../.claude/agents/<agent>.md) — <one-line description>
+
+## Pending handoffs touching this area
+
+- `<path>` — <skill>, <relative-time>
+- (or "(none)")
 
 ## Suggested entry points
 
