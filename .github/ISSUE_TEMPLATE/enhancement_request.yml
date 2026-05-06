@@ -1,0 +1,44 @@
+name: Enhancement request
+description: Suggest an improvement to an existing JellyRock feature
+title: '[Enhancement]: '
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for refinements to features that already exist. For brand-new features, use the Feature request template instead.
+
+  - type: input
+    id: existing_feature
+    attributes:
+      label: Which existing feature?
+      description: Name the feature or screen you want to improve.
+      placeholder: The Movies library grid, or the OSD audio-track selector
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_change
+    attributes:
+      label: Proposed change
+      description: What should be different about how this feature behaves or looks?
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why this change? (optional)
+      description: What's the benefit? What does the current behavior get wrong, or what would the change unlock?
+    validations:
+      required: false
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups or examples (optional)
+      description: Screenshots of the current behavior, sketches, or links to similar implementations elsewhere.
+    validations:
+      required: false

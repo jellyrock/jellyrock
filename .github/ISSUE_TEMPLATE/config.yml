@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: App settings reference
+    url: https://github.com/jellyrock/jellyrock/blob/main/docs/user/app-settings.md
+    about: Documentation for every setting in the JellyRock app. Check here if your question is about how a setting works.
+  - name: Jellyfin server feature matrix
+    url: https://github.com/jellyrock/jellyrock/blob/main/docs/user/jellyfin-server-feature-matrix.md
+    about: Which JellyRock features require which Jellyfin server versions. Check here before filing a bug about a missing or unexpected behavior.
