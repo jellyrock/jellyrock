@@ -28,7 +28,10 @@
       "Bash(gh search:*)",
       "Bash(gh auth status)",
       "Bash(gh label list:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(date:*)",
+      "Bash(ls:*)",
+      "Bash(find .claude/handoffs:*)"
     ]
   },
   "hooks": {

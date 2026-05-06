@@ -16,16 +16,16 @@ This file is the index. The authoring conventions live in [`CLAUDE.md`](CLAUDE.m
 | [`/add-decision`](add-decision/SKILL.md) | sonnet | Append a slug-based entry to `docs/decisions.md` | After a non-obvious design choice closes off alternatives |
 | [`/tech-debt-scan`](tech-debt-scan/SKILL.md) | sonnet | Pre-PR debt sweep (resolved + new) | Before opening a PR for any non-trivial change |
 
-### Investigation flows (sonnet skill → opus agent)
+### Investigation flows (single-file opus skills)
 
-Each pair: a sonnet skill does mechanical prep (fetch, parse, classify, build context packet), then delegates to an opus agent for the judgment work. Token-efficient + consistently high-quality output.
+Each: an opus skill does prep (fetch, parse, classify, build context packet) + writes a handoff file to `.claude/handoffs/` for compaction recovery / `/catchup` discovery / cross-session resume + continues into the per-skill investigation contract at sibling `INVESTIGATION.md`. End-to-end, in main thread, no Task delegation — human-in-the-loop the entire time. Dedup-first: a recent unchanged triage on the same target short-circuits to the existing handoff.
 
-| Skill | Delegates to | What |
+| Skill | Investigation contract | What |
 |---|---|---|
-| [`/pr-review`](pr-review/SKILL.md) `<N>` | [`pr-review-investigator`](../agents/pr-review-investigator.md) | Investigate unresolved PR review comments one at a time |
-| [`/issue-triage`](issue-triage/SKILL.md) `<N>` | [`issue-investigator`](../agents/issue-investigator.md) | Diagnose + semi-auto-fix or present-options for a GitHub issue |
-| [`/runtime-triage`](runtime-triage/SKILL.md) `<paste>` | [`runtime-investigator`](../agents/runtime-investigator.md) | Diagnose a Roku log / crash / unexpected behavior |
-| [`/ci-triage`](ci-triage/SKILL.md) `<run-id>` | [`ci-investigator`](../agents/ci-investigator.md) | Diagnose a failing GitHub Actions run |
+| [`/pr-review`](pr-review/SKILL.md) `<N>` | [`pr-review/INVESTIGATION.md`](pr-review/INVESTIGATION.md) | Investigate unresolved PR review comments one at a time |
+| [`/issue-triage`](issue-triage/SKILL.md) `<N>` | [`issue-triage/INVESTIGATION.md`](issue-triage/INVESTIGATION.md) | Diagnose + semi-auto-fix or present-options for a GitHub issue |
+| [`/runtime-triage`](runtime-triage/SKILL.md) `<paste>` | [`runtime-triage/INVESTIGATION.md`](runtime-triage/INVESTIGATION.md) | Diagnose a Roku log / crash / unexpected behavior |
+| [`/ci-triage`](ci-triage/SKILL.md) `<run-id>` | [`ci-triage/INVESTIGATION.md`](ci-triage/INVESTIGATION.md) | Diagnose a failing GitHub Actions run |
 
 ### Source-of-truth bridges
 
@@ -45,14 +45,10 @@ Each pair: a sonnet skill does mechanical prep (fetch, parse, classify, build co
 
 ## Agents
 
-Agents are invoked via the Task tool. Most are paired with a skill (above); the standalone ones are listed here.
+Agents are invoked via the Task tool. The four triage workflows used to have paired investigator agents (`issue-investigator`, `pr-review-investigator`, `runtime-investigator`, `ci-investigator`); those were retired in favor of single-file opus skills with sibling `INVESTIGATION.md` contracts (see the audit log at `.claude/skills/issue-triage/AUDIT-LOG.md`). The remaining agents are genuinely sub-agent-shaped — narrow, scoped, return-and-done.
 
 | Agent | Model | One-line | When |
 |---|---|---|---|
-| [`pr-review-investigator`](../agents/pr-review-investigator.md) | opus | Per-comment investigation given a prepped handoff from `/pr-review` | Spawned by `/pr-review`; usually not invoked directly |
-| [`issue-investigator`](../agents/issue-investigator.md) | opus | Validate + diagnose + semi-auto-fix or present-options for a GH issue | Spawned by `/issue-triage` |
-| [`runtime-investigator`](../agents/runtime-investigator.md) | opus | Diagnose a runtime failure given a pre-classified packet | Spawned by `/runtime-triage` |
-| [`ci-investigator`](../agents/ci-investigator.md) | opus | Diagnose a CI failure given a pre-classified packet | Spawned by `/ci-triage` |
 | [`log-reviewer`](../agents/log-reviewer.md) | sonnet | Surgical roku-log audit — defaults to AUDIT-ONLY, never blanket-adds | When you want a read on logging adequacy in a file/function |
 | [`pattern-finder`](../agents/pattern-finder.md) | sonnet | Find the canonical JellyRock implementation pattern | Before adding new code — surfaces precedent + governing rule |
 
@@ -67,7 +63,7 @@ Agents are invoked via the Task tool. Most are paired with a skill (above); the 
 
 Rule of thumb: if you'd ever type `/<name>` to invoke it → skill. If it's "deep judgment given context" → agent. If it's "follow N steps every time you do X" with no decision-making → runbook. If it should fire automatically on a file pattern → hook.
 
-A workflow can have all four. Example: `/issue-triage` (skill) prepares context, hands off to `issue-investigator` (agent) for the investigation; the [`bsfmt-on-write`](../hooks/bsfmt-on-write.sh) hook auto-formats `.bs` files when the agent edits them; deferred work surfaces in the [`tech-debt.md`](../../docs/architecture/tech-debt.md) inventory (de-facto runbook for "track follow-up scope").
+A workflow can combine these. Example: `/issue-triage` (skill) does prep + investigation end-to-end in main thread; the [`bsfmt-on-write`](../hooks/bsfmt-on-write.sh) hook auto-formats `.bs` files when edits land; deferred work surfaces in the [`tech-debt.md`](../../docs/architecture/tech-debt.md) inventory (de-facto runbook for "track follow-up scope").
 
 ## Sub-agent invocation
 
