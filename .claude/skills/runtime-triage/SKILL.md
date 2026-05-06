@@ -1,14 +1,16 @@
 ---
 name: runtime-triage
-description: Triage a JellyRock runtime failure (crash, freeze, unexpected behavior) from a pasted Roku log tail / crash report. The skill (sonnet) does mechanical prep — parses the log, classifies the failure category (render-thread-crash / task-crash / api-error / registry-corruption / nav-error / unknown), maps to the probable code area, and assembles initial file context — then delegates to the runtime-investigator agent (opus) for root-cause analysis and either a semi-auto fix or 2-3 tradeoff'd options. Use when you have a Roku BrightScript log, debug-console output, or a crash report and want a focused investigation.
-model: sonnet
+description: Triage a JellyRock runtime failure (crash, freeze, unexpected behavior) from a pasted Roku log / crash report end-to-end. Parses the log, classifies the failure category (render-thread-crash / task-crash / api-error / registry-corruption / nav-error / unknown), maps to the probable code area, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). No dedup check — each runtime log is unique. Use when you have a Roku BrightScript log, debug-console output, or a crash report.
+model: opus
 user-invocable: true
-allowed-tools: Bash(git log:*), Bash(git ls-files:*), Bash(grep:*), Read, Grep, Task
+allowed-tools: Bash(git log:*), Bash(git ls-files:*), Bash(git rev-parse:*), Bash(grep:*), Bash(date:*), Read, Write, Grep
 ---
 
 # /runtime-triage — paste a Roku log, get a focused investigation
 
-Mechanical prep for the [`runtime-investigator`](../../agents/runtime-investigator.md) agent. Takes a pasted Roku log / crash report, extracts the failure signal, classifies the category, maps to the probable code area, and hands off a structured packet.
+Single-file workflow: prep + investigation, end-to-end on opus, in main thread, no Task delegation. The mechanical prep (Steps 1-5) extracts the failure signal and produces a handoff packet that's written to `.claude/handoffs/` for cross-session resume + compaction recovery + `/catchup` discovery. The investigation contract is in sibling [`INVESTIGATION.md`](INVESTIGATION.md) and is followed in main thread once Step 5 completes.
+
+(No Step 0 dedup — each runtime crash log is unique enough that scanning prior handoffs would be more friction than help. If the user re-pastes the same log, the duplicate is on them.)
 
 ## Inputs
 
@@ -80,7 +82,19 @@ For `render-thread-crash` and `task-crash`, the BS file named in the stack trace
 
 ## Step 5 — Build the handoff packet
 
+Construct the packet with a YAML frontmatter (consistent with the other triage skills, even though no Step-0 dedup uses it here — keeps the format uniform across `.claude/handoffs/`):
+
 ```markdown
+---
+created: <ISO-8601 UTC timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
+target: runtime
+branch: <git rev-parse --abbrev-ref HEAD>
+sha: <git rev-parse --short HEAD>
+cited-files:
+  - <path-1>
+  - <path-2>
+---
+
 Runtime failure
 Source: pasted log / crash report
 
@@ -97,26 +111,24 @@ Full pasted log (untruncated):
 <paste verbatim>
 ```
 
-## Step 6 — Delegate to runtime-investigator
+## Step 6 — Write the handoff and continue into investigation
 
-```text
-You are the runtime-investigator agent. The /runtime-triage skill has
-done the mechanical prep below. Validate the diagnosis, identify root
-cause, and either implement a semi-auto fix (stop before commit) or
-present 2-3 tradeoff'd options if architectural — per your operating
-contract. Do NOT re-parse — the prep is authoritative.
+1. Compute the timestamp: `date +%Y%m%d-%H%M%S` (filename) and `date -u +%Y-%m-%dT%H:%M:%SZ` (frontmatter).
 
-<handoff packet>
-```
+2. Write the packet to `.claude/handoffs/runtime-<YYYYMMDD-HHMMSS>.md`.
 
-Invoke via the Task tool with `subagent_type: runtime-investigator`.
+3. Output a single confirmation line, this exact shape:
+
+   > Handoff saved: `.claude/handoffs/runtime-<timestamp>.md` (classification: <X>, probable area: <Y>, <count> files cited). Now following [`INVESTIGATION.md`](INVESTIGATION.md) — adjust scope freely.
+
+4. Then **continue immediately** into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait.
 
 ## When NOT to use
 
 - The paste isn't a runtime failure — it's a CI failure log → use `/ci-triage`.
-- The paste is a GitHub issue body that contains a log → use `/issue-triage <N>` (the issue-investigator will read the embedded log).
+- The paste is a GitHub issue body that contains a log → use `/issue-triage <N>` (the issue-triage investigation contract will read the embedded log).
 - The paste is just a user description with no log/error info — the investigator can work from description-only, but a log dramatically narrows the scope. Ask for one if available.
 
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent: parent passes `Read .claude/skills/runtime-triage/SKILL.md and follow the steps for $ARGUMENTS=<pasted-log>; build the handoff packet but do NOT delegate to runtime-investigator — surface the packet for review` in the Task prompt.
+To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/runtime-triage/SKILL.md and follow Steps 1-6 for $ARGUMENTS=<pasted-log>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive).
