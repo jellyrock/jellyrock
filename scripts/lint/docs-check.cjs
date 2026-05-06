@@ -40,6 +40,14 @@
 //
 // Exits 1 on any broken reference, 0 when clean.
 //
+// Flags:
+//   --verbose  per-file counts on stdout
+//   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
+//              errors: [{category, file, message, target}]} where category is
+//              one of "broken-related-file", "broken-link", or "stale-anchor".
+//              Mutually exclusive with --verbose (verbose is a no-op under
+//              --json). Exit code semantics unchanged.
+//
 // npm scripts:
 //   lint:docs  → run this check
 
@@ -54,7 +62,8 @@ const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const TECH_DEBT_PATH = path.join(ARCH_DIR, 'tech-debt.md');
 const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
-const VERBOSE = process.argv.includes('--verbose');
+const JSON_MODE = process.argv.includes('--json');
+const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 
 // ────────────────────────────────────────────────────────────────────
 // Frontmatter parsing — minimal YAML, no external deps. Supported shapes:
@@ -183,11 +192,15 @@ function checkAnchorRefs(filePath, content) {
     if (techDebtAnchors.has(anchor)) {
       okCount++;
     } else {
-      errors.push(
-        `${filePath}: stale tech-debt anchor reference "tech-debt.md#${anchor}" — ` +
+      pushError({
+        category: 'stale-anchor',
+        file: filePath,
+        message:
+          `stale tech-debt anchor reference "tech-debt.md#${anchor}" — ` +
           `no heading with that anchor exists in docs/architecture/tech-debt.md. ` +
           `Either restore/rename the heading, or rewrite the reference.`,
-      );
+        target: anchor,
+      });
     }
   }
   return okCount;
@@ -199,13 +212,26 @@ const errors = [];
 let filesChecked = 0;
 const techDebtAnchors = extractTechDebtAnchors(TECH_DEBT_PATH);
 
+function pushError(err) {
+  errors.push(err);
+}
+
+function formatError(err) {
+  return `${err.file}: ${err.message}`;
+}
+
 function checkRelatedFiles(docPath, content) {
   const fm = readFrontmatter(content);
   const related = parseRelatedFiles(fm);
   for (const rel of related) {
     const target = path.resolve(ROOT_DIR, rel);
     if (!fs.existsSync(target)) {
-      errors.push(`${docPath}: related-files path does not exist: ${rel}`);
+      pushError({
+        category: 'broken-related-file',
+        file: docPath,
+        message: `related-files path does not exist: ${rel}`,
+        target: rel,
+      });
     }
   }
   return related.length;
@@ -216,7 +242,12 @@ function checkBodyLinks(docPath, content) {
   for (const link of links) {
     const target = path.resolve(path.dirname(docPath), link);
     if (!fs.existsSync(target)) {
-      errors.push(`${docPath}: markdown link target does not exist: ${link}`);
+      pushError({
+        category: 'broken-link',
+        file: docPath,
+        message: `markdown link target does not exist: ${link}`,
+        target: link,
+      });
     }
   }
   return links.length;
@@ -322,9 +353,22 @@ for (const file of findPluginScripts()) {
   }
 }
 
+if (JSON_MODE) {
+  // Single-line JSON to stdout regardless of pass/fail. Exit code carries
+  // the pass/fail signal so a consumer can pipe + check in one shot.
+  process.stdout.write(
+    JSON.stringify({
+      filesChecked,
+      errorsCount: errors.length,
+      errors,
+    }) + '\n',
+  );
+  process.exit(errors.length > 0 ? 1 : 0);
+}
+
 if (errors.length > 0) {
   console.error(`docs:check found ${errors.length} broken reference(s):\n`);
-  for (const err of errors) console.error(`  ${err}`);
+  for (const err of errors) console.error(`  ${formatError(err)}`);
   console.error('');
   process.exit(1);
 }

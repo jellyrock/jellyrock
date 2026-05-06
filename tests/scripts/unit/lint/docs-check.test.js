@@ -119,4 +119,39 @@ describe('docs-check', () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/foo\.md.*1 related/);
   });
+
+  it('--json emits structured output on a clean run (exit 0)', () => {
+    dir = setup({
+      'docs/architecture/foo.md': fmDoc(['source/foo.bs']),
+      'source/foo.bs': 'sub init()\nend sub\n',
+      'docs/architecture/tech-debt.md': '---\ntopic: tech-debt\n---\n# Tech Debt\n',
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.errorsCount).toBe(0);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.filesChecked).toBeGreaterThan(0);
+  });
+
+  it('--json categorizes errors and exits 1', () => {
+    dir = setup({
+      'docs/architecture/foo.md': fmDoc(
+        ['source/missing.bs'],
+        'See [missing](./missing-doc.md) and [`x`](./tech-debt.md#nope).\n',
+      ),
+      'docs/architecture/tech-debt.md': '---\ntopic: tech-debt\n---\n# Tech Debt\n',
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.errorsCount).toBe(3);
+    const cats = parsed.errors.map((e) => e.category).sort();
+    expect(cats).toEqual(['broken-link', 'broken-related-file', 'stale-anchor']);
+    for (const e of parsed.errors) {
+      expect(e.file).toMatch(/foo\.md$/);
+      expect(typeof e.message).toBe('string');
+      expect(typeof e.target).toBe('string');
+    }
+  });
 });
