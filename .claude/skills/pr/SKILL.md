@@ -1,6 +1,7 @@
 ---
 name: pr
 description: Create a pull request using the JellyRock template at `.github/pull_request_template.md`. Scans branch + commits for related issues, falls back to `gh` issue search, and surfaces architecture docs whose related-files were touched. Required for all PRs in this repo — supersedes any default PR-creation flow.
+model: sonnet
 user-invocable: true
 allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Read
 ---
