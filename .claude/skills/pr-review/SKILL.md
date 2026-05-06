@@ -1,18 +1,43 @@
 ---
 name: pr-review
-description: Investigate unresolved code review comments on a JellyRock PR. The skill (sonnet) does mechanical prep — fetches the PR's review comments via gh, sorts by file:line, groups co-located comments, and builds a structured handoff packet — then delegates to the pr-review-investigator agent (opus) for the per-comment judgment work (read code, validate, root-cause, present options, wait, implement). Use when you provide a PR number and want to systematically address review feedback one comment at a time. Distinct from /pr (which CREATES a pull request).
-model: sonnet
+description: Investigate unresolved code review comments on a JellyRock PR end-to-end. Fetches the PR's review comments via gh, sorts by file:line, groups co-located comments, writes a handoff packet to `.claude/handoffs/`, and continues into the per-comment investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md) — read code, validate, root-cause, present options, wait, implement. Dedup-first: a recent unchanged triage on the same PR (no new commits, no new comments) short-circuits to the existing handoff. Distinct from /pr (which CREATES a pull request).
+model: opus
 user-invocable: true
-allowed-tools: Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(git log:*), Bash(git diff:*), Bash(git status:*), Bash(git rev-parse:*), Read, Task
+allowed-tools: Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(git log:*), Bash(git diff:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write
 ---
 
 # /pr-review `<N>` — investigate PR review comments
 
-This skill is the mechanical prep step before per-comment judgment work. The actual investigation (reading code, validating intent, presenting options) is delegated to the [`pr-review-investigator`](../../agents/pr-review-investigator.md) agent (opus), which gets a structured handoff packet from this skill.
+Single-file workflow: prep + investigation, end-to-end on opus, in main thread, no Task delegation. The mechanical prep (Steps 1-5) produces a handoff packet that's written to `.claude/handoffs/` for cross-session resume + compaction recovery + `/catchup` discovery. The per-comment investigation contract is in sibling [`INVESTIGATION.md`](INVESTIGATION.md) and is followed in main thread once Step 5 completes.
 
 ## Inputs
 
 `$ARGUMENTS`: required PR number (e.g., `547`). If empty, prompt for it.
+
+## Step 0 — Check for prior triage (dedup)
+
+Before any prep, look for a recent handoff on this PR:
+
+```bash
+ls -t .claude/handoffs/pr-review-<N>-*.md 2>/dev/null | head -1
+```
+
+If a prior handoff exists, `Read` it. The handoff has a YAML frontmatter with `created`, `branch`, `sha`, `cited-files`. Check three signals:
+
+1. **PR head SHA unchanged?** `gh pr view <N> --json headRefOid` — compare to the frontmatter's `sha` (which captured the PR head at last triage). If unchanged, no new commits were pushed.
+2. **Cited files unchanged on the PR head?** `git log <sha>..<head-sha> -- <cited-files>` — empty means no commits touched them on the PR.
+3. **No new comments since last triage?** `gh pr view <N> --json updatedAt` — compare to the frontmatter's `created`.
+
+If all three are clean, **do not write a new file**. Surface to the user:
+
+> Prior PR-review triage exists at `.claude/handoffs/pr-review-<N>-<timestamp>.md` from <relative-time>. PR head unchanged, cited files unchanged on it, and no new review activity. Options:
+> - **(a) Resume from the existing triage** — Read the handoff and follow [`INVESTIGATION.md`](INVESTIGATION.md) from there
+> - **(b) Re-triage anyway** — fresh prep, new handoff file
+> - **(c) Cancel**
+
+Then **STOP**. Wait for the user's pick before proceeding.
+
+If any signal shows change (or no prior handoff exists), proceed to Step 1.
 
 ## Step 1 — Pre-flight
 
@@ -57,9 +82,19 @@ State the count and order before handing off:
 
 ## Step 4 — Build the handoff packet
 
-Format as markdown the agent can ingest:
+Construct the packet with a YAML frontmatter (so future Step-0 dedup checks can read it) plus the prep body:
 
 ```markdown
+---
+created: <ISO-8601 UTC timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
+target: pr-review-<N>
+branch: <git rev-parse --abbrev-ref HEAD>
+sha: <PR head SHA from `gh pr view <N> --json headRefOid`>
+cited-files:
+  - <path-1>
+  - <path-2>
+---
+
 PR <N>: <title>
 Branch: <head> → <base>
 
@@ -82,22 +117,19 @@ Full comment threads:
 ### Comment 2 — ...
 ```
 
-Keep bodies untruncated — the agent needs full text to judge intent.
+Keep bodies untruncated — full text is needed to judge intent.
 
-## Step 5 — Delegate to the pr-review-investigator agent
+## Step 5 — Write the handoff and continue into investigation
 
-Invoke via the Task tool with `subagent_type: pr-review-investigator`. Pass the handoff packet from Step 4 as the prompt, prefixed with the standard sub-agent boilerplate:
+1. Compute the timestamp once: `date +%Y%m%d-%H%M%S` (filename) and `date -u +%Y-%m-%dT%H:%M:%SZ` (frontmatter).
 
-```text
-You are the pr-review-investigator agent. The /pr-review skill has done
-the mechanical prep below. Walk each comment in the order given, one at
-a time, per your operating contract. Do NOT re-fetch via gh — the prep
-is authoritative.
+2. Write the packet to `.claude/handoffs/pr-review-<N>-<YYYYMMDD-HHMMSS>.md`.
 
-<handoff packet>
-```
+3. Output a single confirmation line, this exact shape:
 
-The agent then walks each comment per its SKILL.md contract: validate, root-cause, present 2-3 options, wait for explicit approval, implement only on approval, move to the next.
+   > Handoff saved: `.claude/handoffs/pr-review-<N>-<timestamp>.md` (<count> unresolved comments across <M> files; <co-located-groups> co-located groups). Now following [`INVESTIGATION.md`](INVESTIGATION.md), one comment at a time.
+
+4. Then **continue immediately** into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait — Step 5's "save the handoff + continue" is one motion.
 
 ## When NOT to use
 
@@ -108,4 +140,4 @@ The agent then walks each comment per its SKILL.md contract: validate, root-caus
 
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent: parent passes `Read .claude/skills/pr-review/SKILL.md and follow the steps for $ARGUMENTS=<PR-number>; build the handoff packet but do NOT delegate to the pr-review-investigator agent — surface the packet for review` in the Task prompt. Sub-agents shouldn't auto-delegate; the user picks when to invoke the deeper agent.
+To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/pr-review/SKILL.md and follow Steps 0-5 for $ARGUMENTS=<PR-number>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive).
