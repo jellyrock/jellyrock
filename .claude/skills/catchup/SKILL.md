@@ -1,71 +1,68 @@
 ---
 name: catchup
-description: Session-start briefing — "where did I leave off, what's currently happening, what needs attention?" Pulls git state, recent commits, open PRs (yours + awaiting your review), high-engagement bugs (label:bug + comment-sorted), recent bug reports (last 7d), recently-active discussion (any label, last 30d), current-branch CI runs, stale architecture docs, and the top of tech-debt.md. Outputs a concise briefing plus a "suggested next" line that hands off to /issue-triage / /runtime-triage / /ci-triage when an alert-shaped item surfaces. Invoke at the start of any genuine new session, especially after a multi-day gap, or whenever you ask "what's the state of the world?"
+description: Session-start briefing — "where did I leave off, what's currently happening, what needs attention?" Single-call aggregator at scripts/catchup-state.js returns one JSON document with git state, open PRs, high-engagement bugs, recent bug reports, active discussion, current-branch CI runs, pending handoffs, the four journals (progress.md state cursor, signals-backlog watchlist age, recent decisions, tech-debt focus), and architecture-doc staleness. Banner detection is deterministic JSON compares (no agent text-parsing). Surfaces ship-today candidates from open followups + signals; flags stale progress.md and stale signal rows. Outputs a "Suggested next" line that hands off to /log / /done / /issue-triage / /runtime-triage / /ci-triage. Mandated by CLAUDE.md's catchup-discipline rule — invoke at the start of any genuine new session, after a multi-day gap, or whenever you ask "what's the state of the world?"
 model: sonnet
 ---
 
 # /catchup — start-of-session brief
 
-Quick state-load skill. Goal: in <30 seconds, surface what you were working on last, what's open against the repo (PRs, high-engagement issues, recent bug reports), what's running on CI, and what needs a decision.
+Quick state-load skill. Goal: in <30 seconds, surface what you were working on last, what's open against the repo, what's running on CI, what's accumulating in the journals, and what needs a decision.
 
-Distinct from `/ramp <area>`: `/catchup` is global; `/ramp` is area-scoped (used after >2 weeks not touching a specific subsystem).
+Distinct from `/ramp <area>`: `/catchup` is global; `/ramp` is area-scoped (used after >2 weeks not touching a specific subsystem). `/ramp` uses the same aggregator with `--area=<name>`.
 
-## Step 1 — Pull state in parallel
+## Step 1 — Pull state in one call
+
+The aggregator at [`scripts/catchup-state.js`](../../../scripts/catchup-state.js) returns a single JSON document with every dynamic-state input the briefing needs. One Bash call replaces the previous ~13 parallel calls — deterministic, no agent text-parsing of mixed gh/git output, no permission-prompt-per-fetch.
 
 ```bash
-# Auto-prune handoff files older than 30 days (silent — abandoned triages
-# evaporate so /catchup stays useful)
-find .claude/handoffs -name '*.md' -mtime +30 -delete 2>/dev/null
-
-# Pending handoffs (skill-emitted reports waiting for follow-up)
-ls -t .claude/handoffs/*.md 2>/dev/null | head -5
-
-# Local working state
-git status --porcelain
-git rev-parse --abbrev-ref HEAD
-git log --oneline -5
-
-# Open PRs awaiting your review (strongest blocker signal)
-gh pr list --state open --search 'review-requested:@me' --limit 5 --json number,title,author,updatedAt
-
-# Your own open PRs (drafts, in-flight)
-gh pr list --state open --search 'author:@me' --limit 5 --json number,title,isDraft,updatedAt,reviewDecision
-
-# High-engagement BUGS — actionable signal (filtered to label:bug to skip the
-# noise from all-time-discussed enhancements / upstream-blocked items that
-# can't be acted on locally)
-gh issue list --state open --label bug --search 'sort:comments-desc' --limit 5 --json number,title,comments,updatedAt
-
-# Recent bug reports (last 7 days) — fresh inbox
-gh issue list --state open --label bug --search "created:>=$(date -d '7 days ago' +%Y-%m-%d)" --limit 5 --json number,title,createdAt
-
-# Recently-active discussion (any label, last 30d, has comments) — what's
-# heating up regardless of type. Surface secondary; the top signal is bugs.
-gh issue list --state open --search "comments:>0 updated:>=$(date -d '30 days ago' +%Y-%m-%d)" --limit 5 --json number,title,comments,labels,updatedAt
-
-# Recent CI runs on the current branch
-gh run list --branch "$(git rev-parse --abbrev-ref HEAD)" --limit 3 --json status,conclusion,name,createdAt,event
-
-# Architecture-doc staleness (informational signal)
-npm run docs:stale --silent 2>&1 | tail -20
-
-# Top of tech-debt.md (current debt focus)
-head -50 docs/architecture/tech-debt.md
-
-# Skills + agents added in the last 7 days
-git log --since='7 days ago' --oneline -- .claude/skills/ .claude/agents/
+node scripts/catchup-state.js --pretty
 ```
 
-Run these in parallel where possible (single message, multiple Bash calls).
+Top-level keys returned: `meta`, `git`, `prs`, `issues`, `ci`, `handoffs`, `progress`, `signals`, `decisions`, `tech_debt`, `docs_stale`, `_errors`. If `_errors[<section>]` is populated, that section's value is `null`; surface the error in the briefing rather than pretending the section is clean.
 
-## Step 2 — Compose the briefing
+Optional Read calls for full-text context (parallel; only when the JSON's summary isn't enough):
 
-Format short. Use this template — sections collapse to "(none)" when empty so the shape is consistent:
+- `Read docs/progress.md` (~50 lines) — the "where you left off" sentence already comes from `progress.currently_running_summary` in the JSON; only Read if you need to see specific open followups verbatim
+- `Read docs/decisions.md` last ~80 lines — the JSON gives slug + date + status for the most-recent 3; Read for the body if a recent decision looks relevant to a banner
+
+## Step 2 — Detect drift and elevate to banners
+
+Every banner check is a deterministic compare against the aggregator JSON. **Banner-check is mandatory** — never skip silently. If a section is `null` due to `_errors`, surface that as its own banner (`⚠ catchup-state: <section> failed — <error>`) rather than letting it vanish.
+
+Banners (top of briefing, before the template):
+
+- **Stale `progress.md`**: when `state.progress.days_since > 7 && state.progress.commits_since > 0` → `⚠ progress.md stale — last updated <progress.last_updated>, <progress.commits_since> commit(s) since. Bump it via /log followup or /done.`
+- **Stale signal rows**: when `state.signals.stale_count > 0` → `⚠ signals-backlog: <stale_count> row(s) past staleness threshold (<list slugs from rows where stale=true>). Re-check upstream and update via /log signal or /done <slug>.`
+- **Action-pending signals**: when `state.signals.action_pending_count > 0` → `📌 <count> signal(s) in action_pending status (<slugs>). These need a JellyRock change.`
+- **Failed CI on this branch**: for each run in `state.ci.current_branch_runs` where `conclusion != 'success'` → `⚠ CI run "<name>" <conclusion> (<createdAt>). Suggested next: /ci-triage.`
+- **Pending review-requested PRs**: when `state.prs.review_requested.length > 0` → `📥 <count> PR(s) awaiting your review: <list #N — title>.`
+- **Stale architecture docs**: when `state.docs_stale.architecture.length > 0` → `📅 <count> architecture doc(s) stale: <list file (Nd)>.` (Informational only — the blocking gate fires only when a stale doc's territory is touched.)
+- **Schema-broken journals**: from `_errors` for `progress` or `signals` → name the file + parser error.
+
+## Step 3 — Compose the briefing
+
+Format short. Banners (if any) at top, then this template — sections collapse to "(none)" when empty so the shape is consistent:
 
 ```markdown
-**Branch:** `<current branch>` — <clean / N file(s) modified>
+[banner block, if any]
 
-**Last session activity:** <last commit subject> (`<short hash>`, <relative date>)
+**Branch:** `<git.branch>` — <git.status_porcelain summary OR "clean">
+
+**Last session activity:** <git.last_commit.subject> (`<sha>`, <relative committed_at>)
+
+**Where you left off** (from progress.md `## Currently running`):
+<progress.currently_running_summary, or "(no progress.md cursor set)">
+
+**Open followups** (from progress.md):
+- <progress.open_followups_total> open across <Object.keys(open_followups_by_area).length> areas (<area: count, area: count, ...>)
+  (If 0: "(none)")
+
+**Signals watchlist** (from signals-backlog.md):
+- <signals.rows.length> watching, <stale_count> stale, <action_pending_count> action_pending
+  (For each row in rows: "  <slug> [status] — current=<current>, latest=<latest_upstream>, age=<age_days>d")
+
+**Recent decisions** (last 3 from decisions.md):
+- <YYYY-MM-DD> <slug> [<status>]
 
 **Your open PRs:**
 - #<N> — <title> (<draft? | review state>)
@@ -85,44 +82,44 @@ Format short. Use this template — sections collapse to "(none)" when empty so 
 **CI on this branch** (last 3 runs):
 - <run name>: <conclusion> (<relative date>)
 
-**Stale architecture docs:** <count>, oldest <topic> (<days old>)
+**Tech debt focus:** <tech_debt.high_count> high, <medium_count> medium, <low_count> low
 
-**Tech debt focus:** top entries — <slug-1>, <slug-2>, <slug-3>
+**Pending handoffs:** <handoffs.pending.length> pending (<handoffs.pruned_count> pruned this run). Most recent: `<name>` <age_days>d ago. (or "(none)"). If count >= 10, append: "Cleanup hint: many handoffs accumulating — consider `rm`-ing the ones whose investigations are complete; >30d auto-prune handles the rest."
 
-**Pending handoffs:** <count> — most recent: `<path>` from <skill> <relative-time> (or "(none)"). If count >= 10, append: "Cleanup hint: many handoffs accumulating — consider `rm`-ing the ones whose investigations are complete; >30d auto-prune handles the rest."
-
-**New skills/agents in last 7d:** <count, with notable subjects>
-
-**Suggested next:** <one or two action items, see Step 3>
+**Suggested next:** <one or two action items, see Step 4>
 ```
 
-If nothing has changed since your last session AND the working tree is clean, surface that explicitly: "Clean tree, nothing new since `<short hash>`. Probably a coffee-break resume — pick up where you left off."
+If nothing has changed since your last session AND the working tree is clean, surface that explicitly: "Clean tree, nothing new since `<sha>`. Probably a coffee-break resume — pick up where you left off."
 
-## Step 3 — Hand-off to the right next-skill
+## Step 4 — Hand-off to the right next-skill
 
-Read the gathered state. If something looks like an alert or a decision point, name the right next-skill in the **Suggested next** line:
+Read the JSON. If something looks like an alert or a decision point, name the right next-skill in the **Suggested next** line:
 
+- **Stale progress.md banner** → "bump it: `/log followup` to add the next deferred item, or `/done <slug-or-keyword>` to close one that shipped"
+- **Stale signal rows** → "re-check upstream and bump `last_checked`: invoke `/log signal <slug>` to update an existing row (or `/done <slug>` if upstream resolved)"
 - **Pending handoff for an in-flight triage** → `Read .claude/handoffs/<path>.md` and follow the sibling `INVESTIGATION.md` for that skill (resume from where you parked)
 - **High-engagement bug** → `/issue-triage <N>` (a label:bug issue with comment traction is the strongest "focus here next" signal)
 - **Recent bug report you haven't read yet** → `/issue-triage <N>`
-- **Recent discussion (non-bug) heating up** → read the issue; if it surfaces an architectural decision, capture it via `/add-decision`. Don't `/issue-triage` an enhancement — that flow is bug-shaped.
+- **Recent discussion (non-bug) heating up** → read the issue; if it surfaces an architectural decision, capture it via `/log decision`. Don't `/issue-triage` an enhancement — that flow is bug-shaped.
 - **Failed CI run on this branch** → `/ci-triage <run-id>`
 - **You have a Roku log tail / crash handy** → `/runtime-triage` with the log pasted
-- **PR awaiting your review** → `pr-review-analyzer` (agent) on the PR number
+- **PR awaiting your review** → `/pr-review <N>`
 - **Stale architecture doc whose territory you're about to touch** → re-read the doc, decide whether to update or just bump `last-reviewed`
 
 Pick at most ONE suggestion. Two means you couldn't decide; better to surface the highest-leverage item.
 
-## Step 4 — Don't apply, just brief
+## Step 5 — Don't apply, just brief
 
-This is a READ-ONLY skill. Even if a fix is obvious, surface it as the **Suggested next** line — don't kick off `/issue-triage`, `/runtime-triage`, or any write actions from inside `/catchup`. The user picks the next move.
+This is a READ-ONLY skill. Even if a fix is obvious, surface it as the **Suggested next** line — don't kick off `/log`, `/done`, `/issue-triage`, `/runtime-triage`, or any write actions from inside `/catchup`. The user picks the next move.
+
+If a sub-agent invokes /catchup and surfaces a capture-shaped finding (a decision was made mid-session, an idea worth tracking, a followup to defer), that sub-agent does NOT write to journals directly — it ends its report with a "Captures for /log" section so the parent can invoke `/log` for each.
 
 ## When NOT to use
 
 - You're mid-task and asking a specific question → answer directly, don't dump a full briefing.
-- You just typed `/catchup` after a 2-minute coffee break → respond "still here, last commit `<hash>`" and stop. Save the full state load for genuine session-start moments.
-- You just context-switched into a specific area (`components/video`, `source/api`, etc.) after >2 weeks → use `/ramp <area>` instead. `/catchup` is global; `/ramp` is scoped.
+- You just typed `/catchup` after a 2-minute coffee break → respond "still here, last commit `<sha>`" and stop. Save the full state load for genuine session-start moments.
+- You just context-switched into a specific area (`components/video`, `source/api`, etc.) after >2 weeks → use `/ramp <area>` instead. `/catchup` is global; `/ramp` is scoped (uses the same aggregator with `--area=`).
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/catchup/SKILL.md and follow the steps; report the briefing` in the Task prompt. Sub-agents should treat the briefing as authoritative for current session state.
+To invoke from a sub-agent: parent passes `Read .claude/skills/catchup/SKILL.md and follow the steps; report the briefing. Surface any capture-shaped findings in a "Captures for /log" section — do NOT write to journals directly` in the Task prompt.

@@ -14,54 +14,48 @@ Mandated by the JellyRock onboarding discipline for area-switches >2 weeks. Comp
 
 If `$ARGUMENTS` is empty, list the recognized areas and ask which one. If it's not in the list, treat as cross-cutting and tell the user to use `/catchup` instead (or pick the closest matching area).
 
-## Step 1 — Load state in parallel
+## Step 1 — Load state via the aggregator + targeted reads
 
-Run these in parallel (single message, multiple Bash calls):
+State for the briefing comes from two sources:
 
-```bash
-# Scoped rules (auto-load convention)
-cat <area>/CLAUDE.md
+1. **Single aggregator call** — `scripts/catchup-state.js` with `--area=<area>` returns area-scoped JSON: PRs/issues filtered by the area→keyword map (mirrors the map below), git commits scoped via `git log -- <area>`, plus the four journals (progress.md followups filtered to this area, full signals watchlist, recent decisions, tech-debt severity counts, pending handoffs):
 
-# Area-matching architecture topic doc(s) — search frontmatter related-files
-grep -lE "^  - <area>" docs/architecture/*.md
-# Then for each match, read its frontmatter + first ~40 lines
+   ```bash
+   node scripts/catchup-state.js --area=<area> --pretty
+   ```
 
-# Area-relevant tech-debt slugs
-grep -B1 -A4 "^### " docs/architecture/tech-debt.md | grep -i -B1 -A4 "<area>"
-# (or simpler: head -60 docs/architecture/tech-debt.md, then narrow visually)
+2. **Targeted file reads** for area-specific content the aggregator doesn't carry (file-content data, not state):
 
-# Recent activity (last 10 commits scoped to the area)
-git log --oneline -10 -- <area>/
+   ```bash
+   # Scoped rules (auto-load convention) — full content
+   cat <area>/CLAUDE.md 2>/dev/null
 
-# Open issues whose TITLE matches an area keyword (signal-narrow)
-# JellyRock has no area-specific labels, so use `in:title` to avoid body-match
-# noise. If a title-only run returns <2 results, broaden by dropping `in:title`
-# and judge the body matches skeptically.
-#
-# Area → keyword map (use multiple OR'd keywords for richer scopes):
-#   components/video   → video|playback|player|osd|trickplay|transcode
-#   components/data    → scenemanager|ContentNode|library
-#   components         → component|scene|focus|navigation
-#   source/api         → api|jellyfin|task|http|auth
-#   source/utils       → util|helper|registry|config
-#   source             → migration|bootstrap|main
-#   tests              → test|rooibos|spec
-#   locale             → translation|locale|i18n|en_US
-#   scripts            → bsc|plugin|lint|generate
-gh issue list --state open --search "<keyword> in:title" --limit 5 --json number,title,labels
+   # Area-matching architecture topic doc(s) — find then Read
+   grep -lE "^  - <area>" docs/architecture/*.md
 
-# Open PRs whose TITLE matches an area keyword
-gh pr list --state open --search "<keyword> in:title" --limit 5 --json number,title,author
+   # Area-relevant tech-debt slugs (substring match on the area keyword)
+   grep -B1 -A4 "^#### " docs/architecture/tech-debt.md | grep -i -B1 -A4 "<keyword>"
 
-# Skills / agents that mention this area in their description
-grep -l "<area>" .claude/skills/*/SKILL.md .claude/agents/*.md 2>/dev/null
+   # Skills / agents that mention this area
+   grep -l "<area>" .claude/skills/*/SKILL.md .claude/agents/*.md 2>/dev/null
 
-# Pending handoffs whose content mentions an area keyword (cheap area-scoped
-# resume signal — surfaces parked triages that touched this subsystem)
-grep -l "<keyword>" .claude/handoffs/*.md 2>/dev/null | head -5
-```
+   # Pending handoffs whose content mentions an area keyword
+   grep -l "<keyword>" .claude/handoffs/*.md 2>/dev/null | head -5
+   ```
 
-Substitute `<area>` and a sensible search keyword (e.g., for `components/video` use `video`; for `source/api` use `api`).
+Substitute `<area>` and a sensible search keyword. Area → keyword map (mirrors `scripts/catchup-state.js` `AREA_KEYWORDS`; if these drift, re-sync to the aggregator):
+
+| Area | Keywords |
+|---|---|
+| `components/video` | `video\|playback\|player\|osd\|trickplay\|transcode` |
+| `components/data` | `scenemanager\|ContentNode\|library` |
+| `components` | `component\|scene\|focus\|navigation` |
+| `source/api` | `api\|jellyfin\|task\|http\|auth` |
+| `source/utils` | `util\|helper\|registry\|config` |
+| `source` | `migration\|bootstrap\|main` |
+| `tests` | `test\|rooibos\|spec` |
+| `locale` | `translation\|locale\|i18n\|en_US` |
+| `scripts` | `bsc\|plugin\|lint\|generate` |
 
 ## Step 2 — Compose the briefing
 
