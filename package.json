@@ -60,6 +60,7 @@
     "docs:stale": "node scripts/lint/docs-stale.cjs",
     "docs:stale:blocking": "node scripts/lint/docs-stale-blocking.cjs",
     "agent-telemetry": "node scripts/agent-telemetry-report.cjs",
+    "catchup:state": "node scripts/catchup-state.js",
     "format": "npm run format:bs && npm run format:js",
     "format:bs": "npx bsfmt --write",
     "format:js": "npx prettier --write .",

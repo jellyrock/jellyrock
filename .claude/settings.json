@@ -7,6 +7,7 @@
       "Bash(npm ci)",
       "Bash(npm install)",
       "Bash(node scripts/*)",
+      "Bash(node scripts/catchup-state.js:*)",
       "Bash(node .claude/skills/*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
