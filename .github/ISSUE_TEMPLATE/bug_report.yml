@@ -1,6 +1,6 @@
 name: Bug report
 description: Report a bug in JellyRock
-title: '[Bug]: '
+title: ""
 labels:
   - bug
   - needs-triage
@@ -8,14 +8,18 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to file a bug report. Five quick fields are required so we can triage and reproduce — everything else is optional. If you skip an optional field, no harm done.
+        Thanks for taking the time to file a bug report. Five quick fields are required so we can triage and reproduce — everything else is optional.
 
   - type: textarea
     id: description
     attributes:
       label: What happened?
-      description: A clear description of the bug. What you saw, what you expected, and anything else relevant. (You don't need to fill out separate "expected" and "actual" fields — describe both here.)
-      placeholder: When I press OK on the home screen library tile, the app freezes for 5 seconds before navigating. I expected the navigation to be immediate.
+      description: A clear description of the bug. What you saw, what you expected,
+        and anything else relevant. (You don't need to fill out separate
+        "expected" and "actual" fields — describe both here.)
+      placeholder: When I press OK on the home screen library tile, the app freezes
+        for 5 seconds before navigating. I expected the navigation to be
+        immediate.
     validations:
       required: true
 
@@ -23,7 +27,8 @@ body:
     id: reproduction
     attributes:
       label: Steps to reproduce
-      description: Numbered steps that reliably reproduce the bug. Include the navigation path on your Roku.
+      description: Numbered steps that reliably reproduce the bug. Include the
+        navigation path on your Roku.
       placeholder: |
         1. Sign in to Jellyfin server
         2. Navigate to the Movies library
@@ -36,7 +41,7 @@ body:
     id: jellyrock_version
     attributes:
       label: JellyRock client version
-      description: 'Found in JellyRock''s Settings screen. Example: 2.16.0'
+      description: "Found in JellyRock's Settings screen. Example: 2.16.0"
       placeholder: 2.16.0
     validations:
       required: true
@@ -45,10 +50,11 @@ body:
     id: roku_device
     attributes:
       label: Roku device info
-      description: 'Roku model and software version. Both are in your Roku at Settings → System → About. Paste them as one block.'
+      description: "Roku model and OS version. Both are in your Roku at Settings →
+        System → About."
       placeholder: |
-        Model: Roku Ultra (4802X)
-        Software: 14.5.4 build 4209
+        Model: 4802X
+        OS: 14.5.4
     validations:
       required: true
 
@@ -56,7 +62,8 @@ body:
     id: connection
     attributes:
       label: Server connection type
-      description: How JellyRock connects to your Jellyfin server. Bug behavior often depends on direct-play vs transcoding, which depends on this.
+      description: How JellyRock connects to your Jellyfin server. Bug behavior often
+        depends on direct-play vs transcoding, which depends on this.
       options:
         - Local network, HTTP
         - Local network, HTTPS
@@ -70,8 +77,9 @@ body:
     id: jellyfin_version
     attributes:
       label: Jellyfin server version (optional)
-      description: 'Helpful for server-side bug triage. Found in your Jellyfin server''s admin dashboard. Example: 10.10.3'
-      placeholder: 10.10.3
+      description: "Helpful for server-side bug triage. Found in your Jellyfin
+        server's admin dashboard. Example: 10.11.8"
+      placeholder: 10.11.8
     validations:
       required: false
 
@@ -79,7 +87,8 @@ body:
     id: logs
     attributes:
       label: Logs (optional)
-      description: BrightScript console output, Jellyfin server log, network capture — whatever's relevant. Triple-backtick blocks render best.
+      description: BrightScript console output, Jellyfin server log, network capture —
+        whatever's relevant. Triple-backtick blocks render best.
       render: shell
     validations:
       required: false
@@ -96,6 +105,7 @@ body:
     id: additional_context
     attributes:
       label: Additional context (optional)
-      description: Anything else that might help — recent changes, related issues, workarounds tried.
+      description: Anything else that might help — recent changes, related issues,
+        workarounds tried.
     validations:
       required: false

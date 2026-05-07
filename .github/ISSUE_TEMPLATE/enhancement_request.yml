@@ -1,6 +1,6 @@
 name: Enhancement request
 description: Suggest an improvement to an existing JellyRock feature
-title: '[Enhancement]: '
+title: ""
 labels:
   - enhancement
   - needs-triage
@@ -31,7 +31,8 @@ body:
     id: rationale
     attributes:
       label: Why this change? (optional)
-      description: What's the benefit? What does the current behavior get wrong, or what would the change unlock?
+      description: What's the benefit? What does the current behavior get wrong, or
+        what would the change unlock?
     validations:
       required: false
 
@@ -39,6 +40,7 @@ body:
     id: mockups
     attributes:
       label: Mockups or examples (optional)
-      description: Screenshots of the current behavior, sketches, or links to similar implementations elsewhere.
+      description: Screenshots of the current behavior, sketches, or links to similar
+        implementations elsewhere.
     validations:
       required: false
