@@ -75,6 +75,7 @@ Settings relating to playback and supported codec and media types.
   - [Preview Action](#playbackSegmentActionPreview)
   - [Recap Action](#playbackSegmentActionRecap)
   - [Unknown Action](#playbackSegmentActionUnknown)
+- [Instant Replay Duration](#playbackInstantReplaySeconds)
 - [Next Episode Button Time](#playbackNextUpButtonSeconds)
 - [Play Default Audio Track](#playbackPlayDefaultAudioTrack)
 - [Play Next Episode Automatically](#playbackPlayNextEpisode)
@@ -137,6 +138,18 @@ Configure the maximum resolution when transcoding video files to this device.
 | Type | `radio` |
 | Default | `auto` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Off - Attempt to direct play all resolutions</td><td><code>off</code></td></tr><tr><td>Auto - Use TV resolution</td><td><code>auto</code></td></tr><tr><td>360p</td><td><code>360</code></td></tr><tr><td>480p</td><td><code>480</code></td></tr><tr><td>720p</td><td><code>720</code></td></tr><tr><td>1080p</td><td><code>1080</code></td></tr><tr><td>4k</td><td><code>2160</code></td></tr><tr><td>8k</td><td><code>4320</code></td></tr></tbody></table> |
+
+<h3 id="playbackInstantReplaySeconds">Instant Replay Duration</h3>
+
+<a href="#playback">Playback</a> › <a href="#playbackInstantReplaySeconds">Instant Replay Duration</a>
+
+How many seconds the instant replay button (and the "replay" voice command) jumps backward during video playback.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackInstantReplaySeconds` |
+| Type | `integer` |
+| Default | `10` |
 
 <h3 id="playbackNextUpButtonSeconds">Next Episode Button Time</h3>
 
