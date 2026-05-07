@@ -18,7 +18,7 @@
     "eslint": "10.3.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-n": "17.24.0",
-    "ajv": "6.15.0",
+    "ajv": "8.20.0",
     "fast-glob": "3.3.3",
     "husky": "9.1.7",
     "js-yaml": "4.1.1",
