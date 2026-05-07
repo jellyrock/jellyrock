@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (playback) wire Roku voice transport controls ([#554](https://github.com/jellyrock/jellyrock/pull/554))
+
 ### Changed
 
 - Overhaul dev-experience: skills, agents, four-pillar journals ([#555](https://github.com/jellyrock/jellyrock/pull/555))
