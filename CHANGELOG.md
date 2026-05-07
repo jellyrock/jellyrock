@@ -15,10 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Overhaul dev-experience: skills, agents, four-pillar journals ([#555](https://github.com/jellyrock/jellyrock/pull/555))
 
+<<<<<<< Updated upstream
 ### Fixed
 
 - (issue-templates) drop empty title field; add schema lint ([f952c12](https://github.com/jellyrock/jellyrock/commit/f952c128))
 
+=======
+>>>>>>> Stashed changes
 ### Dependencies
 
 - Update roku-deploy from v3.17.1 to v3.17.2 ([#552](https://github.com/jellyrock/jellyrock/pull/552))
