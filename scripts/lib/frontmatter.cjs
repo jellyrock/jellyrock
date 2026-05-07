@@ -33,6 +33,20 @@ function getLastReviewed(frontmatter) {
 }
 
 /**
+ * Reads the `last-updated:` ISO date (YYYY-MM-DD) from a frontmatter
+ * string, or null if absent / malformed. Used by the journal files
+ * (`docs/progress.md`, `docs/signals-backlog.md`) where "updated"
+ * semantics differ from architecture-doc "reviewed" — updated bumps
+ * any time content moves; reviewed bumps only on substantive shape/why
+ * re-reads.
+ */
+function getLastUpdated(frontmatter) {
+  if (!frontmatter) return null;
+  const m = frontmatter.match(/^last-updated:\s*(\d{4}-\d{2}-\d{2})/m);
+  return m ? m[1] : null;
+}
+
+/**
  * Parses the `related-files:` list from a frontmatter string. Supports both
  * the empty-array literal (`related-files: []`) and the multi-line form:
  *
@@ -89,6 +103,7 @@ function pathMatches(touched, related) {
 module.exports = {
   readFrontmatter,
   getLastReviewed,
+  getLastUpdated,
   parseRelatedFiles,
   pathMatches,
 };
