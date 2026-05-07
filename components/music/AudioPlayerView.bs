@@ -353,21 +353,11 @@ function previousClicked() as boolean
     m.audioPlayer.control = "stop"
   end if
 
-  ' Reset loop mode due to manual user interaction
-  if m.audioPlayer.loopMode = "one"
-    resetLoopModeToDefault()
-  end if
-
   m.queueManager.callFunc("moveBack")
   pageContentChanged()
 
   return true
 end function
-
-sub resetLoopModeToDefault()
-  m.audioPlayer.loopMode = ""
-  setLoopButtonImage()
-end sub
 
 function loopClicked() as boolean
   if m.audioPlayer.loopMode = ""
@@ -402,8 +392,8 @@ sub setLoopButtonImage()
 end sub
 
 ' Returns false at end-of-queue so callers can distinguish "advanced" from "no-op".
-' Side effects only fire when an advance actually happens — pressing Next on the
-' last track is a no-op, not a partial reset of position/loop state.
+' Side effects (timestamp reset) only fire when an advance actually happens —
+' pressing Next on the last track is a no-op, not a partial reset.
 function nextClicked() as boolean
   currentQueuePosition = m.queueManager.callFunc("getPosition")
   if currentQueuePosition >= m.queueManager.callFunc("getCount") - 1 then return false
@@ -426,11 +416,6 @@ function nextClicked() as boolean
 
   m.lastRecordedPositionTimestamp = 0
   m.positionTimestamp.text = "0:00"
-
-  ' Reset loop mode due to manual user interaction
-  if m.audioPlayer.loopMode = "one"
-    resetLoopModeToDefault()
-  end if
 
   LoadNextSong()
 
