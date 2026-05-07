@@ -28,6 +28,10 @@ jobs:
     uses: ./.github/workflows/_lint-docs.yml
     with:
       force: true
+  lint-issue-templates:
+    uses: ./.github/workflows/_lint-issue-templates.yml
+    with:
+      force: true
   lint-js:
     uses: ./.github/workflows/_lint-js.yml
     with:

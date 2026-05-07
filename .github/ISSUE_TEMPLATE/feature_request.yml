@@ -1,6 +1,5 @@
 name: Feature request
 description: Suggest a new feature for JellyRock
-title: ""
 labels:
   - feature-request
   - needs-triage

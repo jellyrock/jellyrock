@@ -1,6 +1,5 @@
 name: Enhancement request
 description: Suggest an improvement to an existing JellyRock feature
-title: ""
 labels:
   - enhancement
   - needs-triage

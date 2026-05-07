@@ -12,6 +12,7 @@ locale/
 
 # Vendor JSON snapshots — generated upstream, mirrored here.
 tasks/jellyfin-server-openapi/
+scripts/lint/issue-forms.schema.json
 
 # Gitignored / per-machine.
 .claude/settings.local.json

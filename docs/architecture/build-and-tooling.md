@@ -19,6 +19,8 @@ related-files:
   - scripts/lint/docs-stale-blocking.cjs
   - scripts/lint/check-touched-related-files.cjs
   - scripts/lint/check-touched-lint.cjs
+  - scripts/lint/issue-templates-check.cjs
+  - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
   - scripts/lib/frontmatter.cjs
   - scripts/lib/changed-files.cjs
@@ -39,13 +41,15 @@ related-files:
   - .github/workflows/lint-js.yml
   - .github/workflows/_test-scripts.yml
   - .github/workflows/test-scripts.yml
+  - .github/workflows/_lint-issue-templates.yml
+  - .github/workflows/lint-issue-templates.yml
   - .github/workflows/_validate-dependencies.yml
   - .github/workflows/docs-stale-tracker.yml
   - eslint.config.js
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-07
+last-reviewed: 2026-05-06
 ---
 
 # Build & Tooling
@@ -192,6 +196,7 @@ Lint and format:
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
 | `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, `docs/progress.md`, `docs/signals-backlog.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugins/*.cjs`). Also runs two journal-system gates: (4) `progress-stale` — fails if `docs/progress.md` `last-updated:` is >7 days old and commits exist since; (5) `signals-schema-invalid` — fails if a `docs/signals-backlog.md` row is missing required bullets, has an invalid `status` enum, or a malformed ISO date. The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
+| `npm run lint:issue-templates` | Validates `.github/ISSUE_TEMPLATE/*.yml` against GitHub's vendored issue-forms JSON Schema (`scripts/lint/issue-forms.schema.json`). GitHub silently drops invalid templates from `/issues/new/choose` with no error surfaced anywhere — schema breakage (empty `title`, missing required field, unknown body type) is otherwise invisible until someone tries to file an issue |
 | `npm run catchup:state` | Runs the session-state aggregator (`scripts/catchup-state.js`) and emits a JSON document with git state, open PRs, issues, CI runs, handoffs, and the four project journals. Primary consumer is `/catchup` (global session brief) and `/ramp <area>` (area-scoped brief); not a lint or build step — useful for debugging what those skills receive |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
 | `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
@@ -386,6 +391,7 @@ JellyRock layers five verification surfaces, each owning checks the others can't
 | `generate-dev-index.cjs --check` | — | ✓ | Drift check on auto-generated table |
 | `update-translations` (regen) | — | ✓ | Project-wide regen from `en_US.json` |
 | `lint:language-coverage` | — | ✓ | Conditional on specific files; unusual pattern |
+| `lint:issue-templates` | — | ✓ | Conditional on `.github/ISSUE_TEMPLATE/` changes; validates against vendored GitHub schema (invalid forms otherwise hide silently) |
 
 Excludes mirror `package.json`'s `lint:*` scripts via shared helpers in [`scripts/lib/lint-excludes.cjs`](../../scripts/lib/lint-excludes.cjs) — the lint-staged config, the end-of-turn hook script, and the package.json scripts all consult the same source so excludes don't drift.
 

@@ -1,6 +1,5 @@
 name: Bug report
 description: Report a bug in JellyRock
-title: ""
 labels:
   - bug
   - needs-triage
