@@ -12,7 +12,7 @@ The load-bearing trick: when proposing fixes, **name the anti-pattern explicitly
 
 ## Inputs
 
-`$ARGUMENTS`: required skill name (e.g., `pr`, `add-decision`, `catchup`, `runtime-triage`). Optional `--session <id>` after the skill name to override the default-most-recent transcript.
+`$ARGUMENTS`: required skill name (e.g., `pr`, `log`, `catchup`, `runtime-triage`). Optional `--session <id>` after the skill name to override the default-most-recent transcript.
 
 ## Step 1 — Locate the transcript
 
@@ -90,9 +90,9 @@ Every audit (regardless of size) gets one section in `.claude/skills/<audited-sk
 
 This stays out of [`docs/decisions.md`](../../../docs/decisions.md). Future agents reading the audited skill can grep `.claude/skills/<name>/AUDIT-LOG.md` for the running history without diluting the architectural-decision log.
 
-### 6b — Conditionally: invoke /add-decision for architectural-grade audits
+### 6b — Conditionally: invoke /log decision for architectural-grade audits
 
-Only when the audit produces ONE of: a NEW helper script under `.claude/skills/<name>/`; a model change on the audited skill (opus ↔ sonnet ↔ haiku); skill retired entirely; a new `.claude/hooks/*.sh` hook; a change to a load-bearing rule in [`/CLAUDE.md`](../../../CLAUDE.md) or an area-scoped CLAUDE.md. Routine wording fixes, anti-pattern callouts, allowlist-only additions, and model-fit "watch" notes do NOT trigger `/add-decision` — they live only in the per-skill AUDIT-LOG.md. When triggered, invoke `/add-decision` with slug like `audit-of-<skill>-<one-line-architectural-fix>`.
+Only when the audit produces ONE of: a NEW helper script under `.claude/skills/<name>/`; a model change on the audited skill (opus ↔ sonnet ↔ haiku); skill retired entirely; a new `.claude/hooks/*.sh` hook; a change to a load-bearing rule in [`/CLAUDE.md`](../../../CLAUDE.md) or an area-scoped CLAUDE.md. Routine wording fixes, anti-pattern callouts, allowlist-only additions, and model-fit "watch" notes do NOT trigger `/log decision` — they live only in the per-skill AUDIT-LOG.md. When triggered, invoke `/log decision` with slug like `audit-of-<skill>-<one-line-architectural-fix>`.
 
 ## Step 7 — Don't auto-commit
 

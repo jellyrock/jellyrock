@@ -112,7 +112,7 @@ The integration suite runs on the Roku and exercises real registry I/O. If hardw
 
 ## Step 8 — Capture the rename in a decisions.md entry (optional)
 
-If the rename is non-obvious (e.g., the new name is shorter or follows a new convention), invoke `/add-decision` with a slug like `rename-<old>-to-<new>` so future-you knows why.
+If the rename is non-obvious (e.g., the new name is shorter or follows a new convention), invoke `/log decision` with a slug like `rename-<old>-to-<new>` so future-you knows why.
 
 ## Common pitfalls (from the doc)
 

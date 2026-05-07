@@ -30,4 +30,4 @@ Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`
 
 **Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock/07074348-9877-4142-b097-1e4cf6a70a55.jsonl`
 
-**Related architectural decision:** captured separately in `docs/decisions.md` (slug TBD via `/add-decision`).
+**Related architectural decision:** captured separately in `docs/decisions.md` (slug TBD via `/log decision`).

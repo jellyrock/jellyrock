@@ -11,9 +11,10 @@ This file is the index. The authoring conventions live in [`CLAUDE.md`](CLAUDE.m
 | Skill | Model | One-line | When |
 |---|---|---|---|
 | [`/pr`](pr/SKILL.md) | sonnet | Create a PR using the JellyRock template | Anytime you'd otherwise run `gh pr create` directly |
-| [`/catchup`](catchup/SKILL.md) | sonnet | Session-start briefing (state + GH signals + tech-debt) | Start of any genuine new session |
-| [`/ramp`](ramp/SKILL.md) `<area>` | sonnet | Area-scoped deep-dive briefing | Switching into an area not touched in >2 weeks |
-| [`/add-decision`](add-decision/SKILL.md) | sonnet | Append a slug-based entry to `docs/decisions.md` | After a non-obvious design choice closes off alternatives |
+| [`/catchup`](catchup/SKILL.md) | sonnet | Session-start briefing via `scripts/catchup-state.js` aggregator (git + GH + four journals) | Start of any genuine new session |
+| [`/ramp`](ramp/SKILL.md) `<area>` | sonnet | Area-scoped deep-dive briefing (uses aggregator with `--area=`) | Switching into an area not touched in >2 weeks |
+| [`/log`](log/SKILL.md) `<type>` | sonnet | Append a journal entry — routes `decision` / `followup` / `signal` to the right file. Diff-and-wait. | After a decision-shaped commit, when deferring non-debt work, or when adding a new upstream watch row |
+| [`/done`](done/SKILL.md) `<slug>` | sonnet | Close a journal entry — followup → recently-shipped, or signal → completed status | When a deferred followup ships or a watched signal resolves |
 | [`/tech-debt-scan`](tech-debt-scan/SKILL.md) | sonnet | Pre-PR debt sweep (resolved + new) | Before opening a PR for any non-trivial change |
 
 ### Investigation flows (single-file opus skills)

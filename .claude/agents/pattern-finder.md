@@ -93,7 +93,7 @@ Keep it short. The user wants pointers, not prose.
 
 If a thorough search shows no canonical pattern (the question is genuinely novel), say so explicitly:
 
-> No canonical pattern found. Closest existing patterns are <list> but they don't quite fit because <why>. This may be a place to define a new convention — consider invoking `/add-decision` to capture the design rationale.
+> No canonical pattern found. Closest existing patterns are <list> but they don't quite fit because <why>. This may be a place to define a new convention — consider invoking `/log decision` to capture the design rationale.
 
 DON'T fabricate a pattern. The honest answer ("no precedent; this is genuinely new territory") is more useful than a confident wrong one.
 
@@ -101,7 +101,7 @@ DON'T fabricate a pattern. The honest answer ("no precedent; this is genuinely n
 
 - The user is asking "what does this code do?" — read the code and explain. That's not pattern-finding; it's code-reading.
 - The user is debugging a specific bug — use `/runtime-triage` or `/issue-triage`.
-- The user wants to refactor an existing implementation — they need the new pattern OR the design space, which is `/add-decision` territory once the choice is made.
+- The user wants to refactor an existing implementation — they need the new pattern OR the design space, which is `/log decision` territory once the choice is made.
 - The pattern is documented in a `docs/dev/<recipe>.md` how-to — point them at the how-to instead of grepping for examples. Skills like `/new-setting`, `/new-migration`, `/translation-add` already wrap those.
 
 ## Critical constraints
