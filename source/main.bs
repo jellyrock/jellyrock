@@ -869,8 +869,10 @@ sub Main (args as dynamic) as void
           if isValid(transportNowPlaying)
             appMgr = CreateObject("roAppManager")
             appMgr.SetNowPlayingContentMetaData(transportNowPlaying)
-          else if LCase(info.command) = "nowplaying" and transportStatus = "error.no-media"
-            ' Per Roku doc: when no content is playing, pass invalid to clear stale metadata.
+          else if LCase(info.command) = "nowplaying"
+            ' Per Roku doc: when we can't report current content, pass invalid to clear
+            ' stale metadata. Covers both "no active player" and "player mounted but
+            ' item not yet loaded" — neither is "currently playing" from the user's POV.
             appMgr = CreateObject("roAppManager")
             appMgr.SetNowPlayingContentMetaData(invalid)
           end if
