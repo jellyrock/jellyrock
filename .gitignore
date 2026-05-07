@@ -17,3 +17,4 @@ node_modules/
 .claudesync
 /tasks/
 .claude/logs/
+.claude/handoffs/

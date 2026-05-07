@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest a new feature for JellyRock
+title: '[Feature]: '
+labels:
+  - feature-request
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. A clear problem statement plus a proposed solution helps a lot — everything else is optional.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What's missing today? What workflow is painful, awkward, or impossible without this feature?
+      placeholder: Right now there's no way to filter the Movies library by year of release. To find a specific decade I have to scroll through hundreds of tiles.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should JellyRock do instead?
+      placeholder: Add a "Filter by year" option to the library options menu, similar to the existing genre filter.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: Other approaches you thought about and why you preferred the proposed solution.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context (optional)
+      description: Mockups, screenshots, links to similar features in other apps — anything that helps illustrate the idea.
+    validations:
+      required: false

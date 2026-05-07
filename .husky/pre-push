@@ -23,6 +23,11 @@
 #                                    Cross-doc check; not file-scopable.
 #  10. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
 #                                     dev-guides table.
+#  11. node scripts/lint/decision-shape-nudge.cjs — ALWAYS. Advisory only
+#                                    (always exit 0). Pattern-matches commit
+#                                    messages for decision-shape language and
+#                                    nudges toward /log decision when the
+#                                    range doesn't touch docs/decisions.md.
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
 # can't be swept into the auto-fix commit. Check steps still run.
@@ -132,3 +137,9 @@ npm run lint:docs
 
 echo "📑 Checking dev-index drift..."
 npm run docs:dev-index:check
+
+# Decision-shape commit nudge — advisory only, never blocks the push.
+# Detects commits whose messages look like decisions (decided/switched-from/
+# instead-of/etc.) but didn't touch docs/decisions.md; reminds the user to
+# invoke /log decision in the same change set if the commit warrants it.
+node scripts/lint/decision-shape-nudge.cjs || true

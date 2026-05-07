@@ -40,6 +40,14 @@
 //
 // Exits 1 on any broken reference, 0 when clean.
 //
+// Flags:
+//   --verbose  per-file counts on stdout
+//   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
+//              errors: [{category, file, message, target}]} where category is
+//              one of "broken-related-file", "broken-link", or "stale-anchor".
+//              Mutually exclusive with --verbose (verbose is a no-op under
+//              --json). Exit code semantics unchanged.
+//
 // npm scripts:
 //   lint:docs  → run this check
 
@@ -47,58 +55,39 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
+const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
+const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
+const SIGNALS_PATH = path.join(ROOT_DIR, 'docs/signals-backlog.md');
 const TECH_DEBT_PATH = path.join(ARCH_DIR, 'tech-debt.md');
 const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
-const VERBOSE = process.argv.includes('--verbose');
+const JSON_MODE = process.argv.includes('--json');
+const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 
-// ────────────────────────────────────────────────────────────────────
-// Frontmatter parsing — minimal YAML, no external deps. Supported shapes:
-//
-//   key: value
-//   key: []                         ← empty inline list
-//   key:                            ← block list
-//     - item
-//     - item
-//
-// Anything else (nested objects, multiline strings) we don't need for
-// the current frontmatter format.
-// ────────────────────────────────────────────────────────────────────
+// Journal-staleness gate: progress.md is the live state cursor; FAIL when
+// it's gone >7 days without an update AND the repo has had commits since.
+// `last-updated` semantics differ from architecture-docs' `last-reviewed`
+// (see scripts/lib/frontmatter.cjs comments) — this gate uses the former.
+const PROGRESS_STALE_DAYS = 7;
 
-function readFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  return match ? match[1] : null;
-}
-
-function parseRelatedFiles(frontmatter) {
-  if (!frontmatter) return [];
-
-  // Inline empty list: "related-files: []" (with optional comment after)
-  if (/^related-files:\s*\[\s*\]/m.test(frontmatter)) return [];
-
-  const lines = frontmatter.split(/\r?\n/);
-  const startIdx = lines.findIndex((l) => /^related-files:\s*$/.test(l));
-  if (startIdx === -1) return [];
-
-  const items = [];
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    // Block list item: leading whitespace + "- " + value
-    const m = line.match(/^\s+-\s+(.+?)\s*$/);
-    if (m) {
-      items.push(m[1]);
-      continue;
-    }
-    // Top-level key (back at column 0) ends the list
-    if (/^\S/.test(line)) break;
-    // Blank line is allowed within frontmatter; continue scanning
-  }
-  return items;
-}
+// Signals-backlog row schema. Required bullets, valid status values,
+// optional `staleness_days` override (must be a positive integer when
+// present). The schema is documented in docs/signals-backlog.md's preamble.
+const SIGNALS_REQUIRED_BULLETS = [
+  'watching',
+  'current',
+  'latest_upstream',
+  'last_checked',
+  'action_when_moves',
+  'status',
+];
+const SIGNALS_VALID_STATUSES = ['watching', 'action_pending', 'completed'];
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ────────────────────────────────────────────────────────────────────
 // Markdown link extraction — relative path links only.
@@ -183,11 +172,15 @@ function checkAnchorRefs(filePath, content) {
     if (techDebtAnchors.has(anchor)) {
       okCount++;
     } else {
-      errors.push(
-        `${filePath}: stale tech-debt anchor reference "tech-debt.md#${anchor}" — ` +
+      pushError({
+        category: 'stale-anchor',
+        file: filePath,
+        message:
+          `stale tech-debt anchor reference "tech-debt.md#${anchor}" — ` +
           `no heading with that anchor exists in docs/architecture/tech-debt.md. ` +
           `Either restore/rename the heading, or rewrite the reference.`,
-      );
+        target: anchor,
+      });
     }
   }
   return okCount;
@@ -199,13 +192,26 @@ const errors = [];
 let filesChecked = 0;
 const techDebtAnchors = extractTechDebtAnchors(TECH_DEBT_PATH);
 
+function pushError(err) {
+  errors.push(err);
+}
+
+function formatError(err) {
+  return `${err.file}: ${err.message}`;
+}
+
 function checkRelatedFiles(docPath, content) {
   const fm = readFrontmatter(content);
   const related = parseRelatedFiles(fm);
   for (const rel of related) {
     const target = path.resolve(ROOT_DIR, rel);
     if (!fs.existsSync(target)) {
-      errors.push(`${docPath}: related-files path does not exist: ${rel}`);
+      pushError({
+        category: 'broken-related-file',
+        file: docPath,
+        message: `related-files path does not exist: ${rel}`,
+        target: rel,
+      });
     }
   }
   return related.length;
@@ -216,10 +222,173 @@ function checkBodyLinks(docPath, content) {
   for (const link of links) {
     const target = path.resolve(path.dirname(docPath), link);
     if (!fs.existsSync(target)) {
-      errors.push(`${docPath}: markdown link target does not exist: ${link}`);
+      pushError({
+        category: 'broken-link',
+        file: docPath,
+        message: `markdown link target does not exist: ${link}`,
+        target: link,
+      });
     }
   }
   return links.length;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Journal-system checks — operate on specific files (progress.md,
+// signals-backlog.md) rather than directory iteration. These are post-loop
+// because they're whole-file validations, not link / anchor checks.
+// ────────────────────────────────────────────────────────────────────
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysBetween(isoStart, isoEnd) {
+  const a = new Date(isoStart + 'T00:00:00Z');
+  const b = new Date(isoEnd + 'T00:00:00Z');
+  return Math.floor((b - a) / (1000 * 60 * 60 * 24));
+}
+
+function checkProgressStaleness() {
+  if (!fs.existsSync(PROGRESS_PATH)) return; // silent when absent
+  const content = fs.readFileSync(PROGRESS_PATH, 'utf8');
+  const fm = readFrontmatter(content);
+  const lastUpdated = getLastUpdated(fm);
+  if (!lastUpdated) {
+    pushError({
+      category: 'progress-stale',
+      file: PROGRESS_PATH,
+      message:
+        'progress.md is missing or has malformed `last-updated:` frontmatter (expected ISO YYYY-MM-DD)',
+      target: 'last-updated',
+    });
+    return;
+  }
+  const today = todayIso();
+  const days = daysBetween(lastUpdated, today);
+  if (days <= PROGRESS_STALE_DAYS) return;
+
+  // Stale by date alone; only block if commits have happened since.
+  // Skips silently on git failure (test fixtures without a git repo, etc.) —
+  // the goal is to gate real CI runs, not flake on tempdirs.
+  let commitsSince;
+  try {
+    const out = execSync(`git rev-list --count --since="${lastUpdated}T00:00:00" HEAD`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: ROOT_DIR,
+    });
+    commitsSince = parseInt(out.trim(), 10) || 0;
+  } catch {
+    return;
+  }
+  if (commitsSince === 0) return;
+
+  pushError({
+    category: 'progress-stale',
+    file: PROGRESS_PATH,
+    message:
+      `progress.md is ${days} days stale (last-updated: ${lastUpdated}) with ` +
+      `${commitsSince} commit(s) since. Bump it via /log followup or /done, ` +
+      `or update last-updated to today after a manual review.`,
+    target: lastUpdated,
+  });
+}
+
+function checkSignalsSchema() {
+  if (!fs.existsSync(SIGNALS_PATH)) return;
+  const content = fs.readFileSync(SIGNALS_PATH, 'utf8');
+  const lines = content.split(/\r?\n/);
+
+  let inCodeFence = false;
+  let currentSlug = null;
+  let currentStartLine = 0;
+  let currentBullets = {};
+
+  function finalize() {
+    if (!currentSlug) return;
+    for (const required of SIGNALS_REQUIRED_BULLETS) {
+      if (!(required in currentBullets)) {
+        pushError({
+          category: 'signals-schema-invalid',
+          file: SIGNALS_PATH,
+          message:
+            `signals row "${currentSlug}" (line ${currentStartLine + 1}) is ` +
+            `missing required bullet \`**${required}**\``,
+          target: currentSlug,
+        });
+      }
+    }
+    if ('status' in currentBullets && !SIGNALS_VALID_STATUSES.includes(currentBullets.status)) {
+      pushError({
+        category: 'signals-schema-invalid',
+        file: SIGNALS_PATH,
+        message:
+          `signals row "${currentSlug}" has invalid status "${currentBullets.status}" — ` +
+          `must be one of: ${SIGNALS_VALID_STATUSES.join(', ')}`,
+        target: currentSlug,
+      });
+    }
+    if ('last_checked' in currentBullets && !ISO_DATE_RE.test(currentBullets.last_checked)) {
+      pushError({
+        category: 'signals-schema-invalid',
+        file: SIGNALS_PATH,
+        message:
+          `signals row "${currentSlug}" has invalid last_checked ` +
+          `"${currentBullets.last_checked}" — must be ISO YYYY-MM-DD`,
+        target: currentSlug,
+      });
+    }
+    if ('staleness_days' in currentBullets) {
+      const n = Number(currentBullets.staleness_days);
+      if (!Number.isInteger(n) || n <= 0) {
+        pushError({
+          category: 'signals-schema-invalid',
+          file: SIGNALS_PATH,
+          message:
+            `signals row "${currentSlug}" has invalid staleness_days ` +
+            `"${currentBullets.staleness_days}" — must be a positive integer`,
+          target: currentSlug,
+        });
+      }
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) continue;
+
+    // H2 boundary closes any active row
+    if (/^##\s+/.test(line)) {
+      finalize();
+      currentSlug = null;
+      currentBullets = {};
+      continue;
+    }
+
+    // H3 starts a new row: ### <slug>: <label>
+    const h3 = line.match(/^###\s+([a-z0-9][a-z0-9-]*)\s*:/);
+    if (h3) {
+      finalize();
+      currentSlug = h3[1];
+      currentBullets = {};
+      currentStartLine = i;
+      continue;
+    }
+
+    if (!currentSlug) continue;
+
+    // Bullet: - **key**: value
+    const bullet = line.match(/^-\s+\*\*([a-z_]+)\*\*:\s*(.+?)\s*$/);
+    if (bullet) {
+      currentBullets[bullet[1]] = bullet[2];
+    }
+  }
+  finalize();
 }
 
 function checkDirOfMds(dir) {
@@ -259,6 +428,33 @@ if (fs.existsSync(DECISIONS_PATH)) {
   if (VERBOSE) {
     console.log(
       `  ${path.relative(ROOT_DIR, DECISIONS_PATH)} — ${linkCount} links, ${anchorCount} anchors`,
+    );
+  }
+}
+
+// Progress journal — body links + tech-debt anchor refs. Schema gate runs
+// post-loop in checkProgressStaleness().
+if (fs.existsSync(PROGRESS_PATH)) {
+  const content = fs.readFileSync(PROGRESS_PATH, 'utf8');
+  const linkCount = checkBodyLinks(PROGRESS_PATH, content);
+  const anchorCount = checkAnchorRefs(PROGRESS_PATH, content);
+  filesChecked++;
+  if (VERBOSE) {
+    console.log(
+      `  ${path.relative(ROOT_DIR, PROGRESS_PATH)} — ${linkCount} links, ${anchorCount} anchors`,
+    );
+  }
+}
+
+// Signals backlog — same. Schema gate runs post-loop in checkSignalsSchema().
+if (fs.existsSync(SIGNALS_PATH)) {
+  const content = fs.readFileSync(SIGNALS_PATH, 'utf8');
+  const linkCount = checkBodyLinks(SIGNALS_PATH, content);
+  const anchorCount = checkAnchorRefs(SIGNALS_PATH, content);
+  filesChecked++;
+  if (VERBOSE) {
+    console.log(
+      `  ${path.relative(ROOT_DIR, SIGNALS_PATH)} — ${linkCount} links, ${anchorCount} anchors`,
     );
   }
 }
@@ -322,9 +518,28 @@ for (const file of findPluginScripts()) {
   }
 }
 
+// Post-loop journal-system checks. These don't iterate files (they target
+// specific paths) so they run after the per-file scan so their errors
+// participate in the same accumulator.
+checkProgressStaleness();
+checkSignalsSchema();
+
+if (JSON_MODE) {
+  // Single-line JSON to stdout regardless of pass/fail. Exit code carries
+  // the pass/fail signal so a consumer can pipe + check in one shot.
+  process.stdout.write(
+    JSON.stringify({
+      filesChecked,
+      errorsCount: errors.length,
+      errors,
+    }) + '\n',
+  );
+  process.exit(errors.length > 0 ? 1 : 0);
+}
+
 if (errors.length > 0) {
   console.error(`docs:check found ${errors.length} broken reference(s):\n`);
-  for (const err of errors) console.error(`  ${err}`);
+  for (const err of errors) console.error(`  ${formatError(err)}`);
   console.error('');
   process.exit(1);
 }
