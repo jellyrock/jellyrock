@@ -401,23 +401,24 @@ sub setLoopButtonImage()
   end if
 end sub
 
+' Returns false at end-of-queue so callers can distinguish "advanced" from "no-op".
+' Side effects only fire when an advance actually happens — pressing Next on the
+' last track is a no-op, not a partial reset of position/loop state.
 function nextClicked() as boolean
+  currentQueuePosition = m.queueManager.callFunc("getPosition")
+  if currentQueuePosition >= m.queueManager.callFunc("getCount") - 1 then return false
 
   if m.playlistTypeCount > 1
-    currentQueuePosition = m.queueManager.callFunc("getPosition")
-    if currentQueuePosition < m.queueManager.callFunc("getCount") - 1
+    nextItem = m.queueManager.callFunc("getItemByIndex", currentQueuePosition + 1)
+    nextItemType = m.queueManager.callFunc("getItemType", nextItem)
 
-      nextItem = m.queueManager.callFunc("getItemByIndex", currentQueuePosition + 1)
-      nextItemType = m.queueManager.callFunc("getItemType", nextItem)
+    if nextItemType <> "audio"
+      m.audioPlayer.control = "stop"
 
-      if nextItemType <> "audio"
-        m.audioPlayer.control = "stop"
-
-        m.global.sceneManager.callFunc("clearPreviousScene")
-        m.queueManager.callFunc("moveForward")
-        m.queueManager.callFunc("playQueue")
-        return true
-      end if
+      m.global.sceneManager.callFunc("clearPreviousScene")
+      m.queueManager.callFunc("moveForward")
+      m.queueManager.callFunc("playQueue")
+      return true
     end if
   end if
 
@@ -431,9 +432,7 @@ function nextClicked() as boolean
     resetLoopModeToDefault()
   end if
 
-  if m.queueManager.callFunc("getPosition") < m.queueManager.callFunc("getCount") - 1
-    LoadNextSong()
-  end if
+  LoadNextSong()
 
   return true
 end function
@@ -1004,10 +1003,7 @@ end function
 
 function audioNextTrack() as object
   if not isValid(m.queueManager) then return { status: "error.generic" }
-  position = m.queueManager.callFunc("getPosition")
-  count = m.queueManager.callFunc("getCount")
-  if position >= count - 1 then return { status: "error.generic" }
-  nextClicked()
+  if not nextClicked() then return { status: "error.generic" }
   return { status: "success" }
 end function
 
