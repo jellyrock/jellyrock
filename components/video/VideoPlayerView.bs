@@ -2069,7 +2069,7 @@ end function
 function announceNowPlaying() as object
   if not isValid(m.osd) or not isValid(m.osd.itemData) then return { status: "error.generic" }
   item = m.osd.itemData
-  title = item.name ?? ""
+  title = voiceTransport.formatNowPlayingTitle(item)
   if title = "" then return { status: "error.generic" }
   return {
     status: "success",

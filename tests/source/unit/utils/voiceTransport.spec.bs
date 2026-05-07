@@ -144,6 +144,67 @@ namespace tests
       m.assertEqual(result.clamped, 0.0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatNowPlayingTitle() — show-name prefix for episodes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("prefixes seriesName for Episode items")
+    function _()
+      title = voiceTransport.formatNowPlayingTitle({ type: "Episode", name: "Pilot", seriesName: "The Show" })
+      m.assertEqual(title, "The Show - Pilot")
+    end function
+
+    @it("prefixes seriesName for Recording items")
+    function _()
+      title = voiceTransport.formatNowPlayingTitle({ type: "Recording", name: "Pilot", seriesName: "The Show" })
+      m.assertEqual(title, "The Show - Pilot")
+    end function
+
+    @it("matches type case-insensitively")
+    function _()
+      title = voiceTransport.formatNowPlayingTitle({ type: "EPISODE", name: "Pilot", seriesName: "The Show" })
+      m.assertEqual(title, "The Show - Pilot")
+    end function
+
+    @it("falls back to name when seriesName is missing on an Episode")
+    function _()
+      title = voiceTransport.formatNowPlayingTitle({ type: "Episode", name: "Pilot" })
+      m.assertEqual(title, "Pilot")
+    end function
+
+    @it("falls back to name when seriesName is empty on an Episode")
+    function _()
+      title = voiceTransport.formatNowPlayingTitle({ type: "Episode", name: "Pilot", seriesName: "" })
+      m.assertEqual(title, "Pilot")
+    end function
+
+    @it("returns name as-is for non-episode types (Movie)")
+    function _()
+      title = voiceTransport.formatNowPlayingTitle({ type: "Movie", name: "Inception", seriesName: "ignored" })
+      m.assertEqual(title, "Inception")
+    end function
+
+    @it("returns name as-is when type is missing")
+    function _()
+      title = voiceTransport.formatNowPlayingTitle({ name: "Inception" })
+      m.assertEqual(title, "Inception")
+    end function
+
+    @it("returns empty string when item is invalid")
+    function _()
+      m.assertEqual(voiceTransport.formatNowPlayingTitle(invalid), "")
+    end function
+
+    @it("returns empty string when name is missing")
+    function _()
+      m.assertEqual(voiceTransport.formatNowPlayingTitle({ type: "Movie" }), "")
+    end function
+
+    @it("returns empty string when name is empty")
+    function _()
+      m.assertEqual(voiceTransport.formatNowPlayingTitle({ type: "Episode", name: "", seriesName: "The Show" }), "")
+    end function
+
   end class
 
 end namespace

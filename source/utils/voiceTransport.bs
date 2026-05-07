@@ -47,4 +47,20 @@ namespace voiceTransport
     return { clamped: target, status: "success" }
   end function
 
+  ' Build the title string for SetNowPlayingContentMetaData(). For Episodes and
+  ' Recordings with a populated `seriesName`, prepends the show name as
+  ' "SeriesName - EpisodeTitle" so Roku's HUD reads back the show, not just the
+  ' episode title in isolation. Falls back to `name` for everything else (Movies,
+  ' Episodes missing seriesName, …). Returns "" when no usable title exists.
+  function formatNowPlayingTitle(item as object) as string
+    if not isValid(item) then return ""
+    title = item.name ?? ""
+    if title = "" then return ""
+    itemType = LCase(item.type ?? "")
+    if (itemType = "episode" or itemType = "recording") and isValidAndNotEmpty(item.seriesName)
+      return `${item.seriesName} - ${title}`
+    end if
+    return title
+  end function
+
 end namespace
