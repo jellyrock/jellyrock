@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -5,6 +7,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/voiceTransport.bs"
 
 sub init()
   m.log = new log.Logger("AudioPlayerView")
@@ -350,21 +353,11 @@ function previousClicked() as boolean
     m.audioPlayer.control = "stop"
   end if
 
-  ' Reset loop mode due to manual user interaction
-  if m.audioPlayer.loopMode = "one"
-    resetLoopModeToDefault()
-  end if
-
   m.queueManager.callFunc("moveBack")
   pageContentChanged()
 
   return true
 end function
-
-sub resetLoopModeToDefault()
-  m.audioPlayer.loopMode = ""
-  setLoopButtonImage()
-end sub
 
 function loopClicked() as boolean
   if m.audioPlayer.loopMode = ""
@@ -398,23 +391,24 @@ sub setLoopButtonImage()
   end if
 end sub
 
+' Returns false at end-of-queue so callers can distinguish "advanced" from "no-op".
+' Side effects (timestamp reset) only fire when an advance actually happens —
+' pressing Next on the last track is a no-op, not a partial reset.
 function nextClicked() as boolean
+  currentQueuePosition = m.queueManager.callFunc("getPosition")
+  if currentQueuePosition >= m.queueManager.callFunc("getCount") - 1 then return false
 
   if m.playlistTypeCount > 1
-    currentQueuePosition = m.queueManager.callFunc("getPosition")
-    if currentQueuePosition < m.queueManager.callFunc("getCount") - 1
+    nextItem = m.queueManager.callFunc("getItemByIndex", currentQueuePosition + 1)
+    nextItemType = m.queueManager.callFunc("getItemType", nextItem)
 
-      nextItem = m.queueManager.callFunc("getItemByIndex", currentQueuePosition + 1)
-      nextItemType = m.queueManager.callFunc("getItemType", nextItem)
+    if nextItemType <> "audio"
+      m.audioPlayer.control = "stop"
 
-      if nextItemType <> "audio"
-        m.audioPlayer.control = "stop"
-
-        m.global.sceneManager.callFunc("clearPreviousScene")
-        m.queueManager.callFunc("moveForward")
-        m.queueManager.callFunc("playQueue")
-        return true
-      end if
+      m.global.sceneManager.callFunc("clearPreviousScene")
+      m.queueManager.callFunc("moveForward")
+      m.queueManager.callFunc("playQueue")
+      return true
     end if
   end if
 
@@ -423,14 +417,7 @@ function nextClicked() as boolean
   m.lastRecordedPositionTimestamp = 0
   m.positionTimestamp.text = "0:00"
 
-  ' Reset loop mode due to manual user interaction
-  if m.audioPlayer.loopMode = "one"
-    resetLoopModeToDefault()
-  end if
-
-  if m.queueManager.callFunc("getPosition") < m.queueManager.callFunc("getCount") - 1
-    LoadNextSong()
-  end if
+  LoadNextSong()
 
   return true
 end function
@@ -897,3 +884,138 @@ sub onDestroy()
   m.BounceAnimation = invalid
   m.PosterOneFadeIn = invalid
 end sub
+
+' handleTransport: Roku voice transport handler. Called from source/main.bs when an
+' roInputEvent with info.type = "transport" arrives and AudioPlayerView is the active scene.
+'
+' Returns { status: "<code>" } per roInput.EventResponse(). Status codes mirror video.
+'
+' JellyRock-specific behaviors (audio has no continuous trickplay, no media segments):
+'   - "forward"/"rewind" are discrete 10s seeks.
+'   - "replay" seeks backward by playbackInstantReplaySeconds (same setting as video) —
+'     matches the Roku platform spec; users wanting loop control use the "loop" command.
+'   - "skip" advances to the next track.
+'
+' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+function handleTransport(evt as object) as object
+  if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
+  cmd = LCase(evt.command)
+  m.log.info("voice transport", cmd)
+
+  if cmd = "play" or cmd = "resume"
+    if m.audioPlayer.state = "paused"
+      m.audioPlayer.control = "resume"
+      return { status: "success" }
+    end if
+    if m.audioPlayer.state = "playing" then return { status: "error.redundant" }
+    m.audioPlayer.control = "play"
+    return { status: "success" }
+  end if
+
+  if cmd = "pause"
+    if m.audioPlayer.state = "paused" then return { status: "error.redundant" }
+    m.audioPlayer.control = "pause"
+    return { status: "success" }
+  end if
+
+  if cmd = "stop"
+    ' Mirror back-key behavior: stop playback, clear loop mode, and pop the scene.
+    ' Audio's onStateChange only pops on "finished"; the physical back key gets
+    ' the scene pop for free via Roku's OS-default back handling, but voice
+    ' transport doesn't, so we pop explicitly.
+    m.audioPlayer.control = "stop"
+    m.audioPlayer.loopMode = ""
+    m.global.sceneManager.callFunc("popScene")
+    return { status: "success" }
+  end if
+
+  if cmd = "ok"
+    ' No idle "open menu" equivalent for audio — the player is its own menu.
+    return { status: "unhandled" }
+  end if
+
+  if cmd = "forward" then return audioSeekRelative(10)
+  if cmd = "rewind" then return audioSeekRelative(-10)
+  if cmd = "startover" then return audioSeekTo(0)
+
+  if cmd = "replay"
+    return audioSeekRelative(-voiceTransport.resolveInstantReplaySeconds(m.global.user.settings.playbackInstantReplaySeconds))
+  end if
+
+  if cmd = "seek" then return handleAudioVoiceSeek(evt)
+
+  if cmd = "next" or cmd = "skip" then return audioNextTrack()
+
+  if cmd = "nowplaying" then return announceAudioNowPlaying()
+
+  if cmd = "shuffle"
+    if not isValid(m.shuffleButton) then return { status: "error.generic" }
+    shuffleClicked()
+    return { status: "success" }
+  end if
+
+  if cmd = "loop"
+    if not isValid(m.repeatButton) then return { status: "error.generic" }
+    loopClicked()
+    return { status: "success" }
+  end if
+
+  if cmd = "like" then return setAudioFavorite(true)
+  if cmd = "dislike" then return setAudioFavorite(false)
+
+  return { status: "unhandled" }
+end function
+
+function audioSeekRelative(deltaSeconds as integer) as object
+  if not isValid(m.audioPlayer) or not isValid(m.audioPlayer.position) then return { status: "error.generic" }
+  return audioSeekTo(m.audioPlayer.position + deltaSeconds)
+end function
+
+' 5s end-slack (vs 30s for video) — songs are short, and we still want the seek to
+' land before the track auto-advances to the next.
+function audioSeekTo(targetSeconds as float) as object
+  if not isValid(m.audioPlayer) then return { status: "error.generic" }
+  result = voiceTransport.computeSeekStatus(targetSeconds, m.songDuration, 5)
+  m.audioPlayer.seek = result.clamped
+  return { status: result.status }
+end function
+
+function handleAudioVoiceSeek(evt as object) as object
+  parsed = voiceTransport.parseSeekDelta(evt)
+  if not parsed.valid then return { status: "error.generic" }
+  return audioSeekRelative(parsed.delta)
+end function
+
+function audioNextTrack() as object
+  if not isValid(m.queueManager) then return { status: "error.generic" }
+  if not nextClicked() then return { status: "error.generic" }
+  return { status: "success" }
+end function
+
+' Returns the metadata in the response — main.bs's transport dispatcher does the
+' roAppManager call on the MAIN thread (roAppManager isn't creatable on render).
+function announceAudioNowPlaying() as object
+  if not isValid(m.queueManager) then return { status: "error.generic" }
+  item = m.queueManager.callFunc("getCurrentItem")
+  if not isValid(item) or not isValid(item.name) or item.name = "" then return { status: "error.generic" }
+  return {
+    status: "success",
+    nowPlaying: {
+      title: item.name,
+      contentType: item.type ?? "audio"
+    }
+  }
+end function
+
+function setAudioFavorite(isLike as boolean) as object
+  if not isValid(m.queueManager) then return { status: "error.generic" }
+  item = m.queueManager.callFunc("getCurrentItem")
+  if not isValid(item) or not isValid(item.id) or item.id = "" then return { status: "error.generic" }
+  itemId = item.id
+  if isLike
+    SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
+  else
+    SubmitSideEffect(GetApi().BuildUnmarkFavoriteRequest(itemId))
+  end if
+  return { status: "success" }
+end function

@@ -1,0 +1,66 @@
+' Pure helpers for the Roku voice transport dispatch path. The player components
+' (`VideoPlayerView`, `AudioPlayerView`) own the state mutations (m.top.control,
+' m.top.seek, m.audioPlayer.*) but delegate the math + setting resolution + payload
+' parsing here so it's unit-testable without instantiating a full player.
+'
+' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+namespace voiceTransport
+
+  ' Resolve the user's instant-replay setting (in seconds), falling back to 10s
+  ' (the platform-standard "rewind 10-25 seconds" midpoint) when the setting is
+  ' missing, invalid, or non-positive.
+  function resolveInstantReplaySeconds(configured as dynamic) as integer
+    if isValid(configured) and configured >= 1 then return configured
+    return 10
+  end function
+
+  ' Parse the `seek` voice command's payload into a signed delta in seconds.
+  ' Roku delivers `direction` ("forward" or "backward") and `duration` (string seconds)
+  ' alongside `command = "seek"`. Returns:
+  '   { valid: true, delta: <signed int> } when the payload is parsable
+  '   { valid: false, delta: 0 } when `duration` is missing
+  function parseSeekDelta(evt as object) as object
+    if not isValid(evt) or not isValid(evt.duration) then return { valid: false, delta: 0 }
+    delta = evt.duration.toInt()
+    if isValid(evt.direction) and LCase(evt.direction) = "backward" then delta = -delta
+    return { valid: true, delta: delta }
+  end function
+
+  ' Compute the bounds-checked seek result. Returns:
+  '   { clamped: <float seconds>, status: "<roInput status code>" }
+  ' Status codes:
+  '   "success.seek-start" — target < 0; clamped to 0
+  '   "success.seek-end" — target >= duration; clamped to (duration - endSlackSeconds)
+  '   "success" — within bounds; clamped == target
+  ' `endSlackSeconds` is how far before the duration to clamp end-of-content seeks
+  ' so the player doesn't immediately fire end-of-playback (Roku reference uses 30
+  ' for video; audio uses 5 since songs are short).
+  function computeSeekStatus(target as float, duration as dynamic, endSlackSeconds as integer) as object
+    if target < 0
+      return { clamped: 0.0, status: "success.seek-start" }
+    end if
+    if isValid(duration) and duration > 0 and target >= duration
+      clamped = duration - endSlackSeconds
+      if clamped < 0 then clamped = 0.0
+      return { clamped: clamped, status: "success.seek-end" }
+    end if
+    return { clamped: target, status: "success" }
+  end function
+
+  ' Build the title string for SetNowPlayingContentMetaData(). For Episodes and
+  ' Recordings with a populated `seriesName`, prepends the show name as
+  ' "SeriesName - EpisodeTitle" so Roku's HUD reads back the show, not just the
+  ' episode title in isolation. Falls back to `name` for everything else (Movies,
+  ' Episodes missing seriesName, …). Returns "" when no usable title exists.
+  function formatNowPlayingTitle(item as object) as string
+    if not isValid(item) then return ""
+    title = item.name ?? ""
+    if title = "" then return ""
+    itemType = LCase(item.type ?? "")
+    if (itemType = "episode" or itemType = "recording") and isValidAndNotEmpty(item.seriesName)
+      return `${item.seriesName} - ${title}`
+    end if
+    return title
+  end function
+
+end namespace

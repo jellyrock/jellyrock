@@ -53,6 +53,10 @@ sub Main (args as dynamic) as void
   ' Handle input messages
   input = CreateObject("roInput")
   input.SetMessagePort(m.port)
+  ' Receive Roku voice transport commands (play/pause/seek/next/startover/skip/etc.)
+  ' as roInputEvent with info.type = "transport". Manifest gates: supports_voice_roinput,
+  ' supports_etc_seek, supports_etc_next. Dispatch lives in the roInputEvent branch below.
+  input.EnableTransportEvents()
 
   device = CreateObject("roDeviceInfo")
   device.setMessagePort(m.port)
@@ -835,9 +839,44 @@ sub Main (args as dynamic) as void
       if msg.IsInput()
         info = msg.GetInfo()
         if info.DoesExist("mediatype") and info.DoesExist("contentid")
+          ' Deep-link launch: another app handed us content to play.
           m.global.queueManager.callFunc("clear")
           m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: info.contentId, type: "video" }))
           m.global.queueManager.callFunc("playQueue")
+        else if isValid(info.type) and info.type = "transport"
+          ' Voice transport command (play, pause, seek, next, startover, skip, ...).
+          ' Dispatch to the active player; otherwise ack as no-media so Roku OS shows
+          ' "Nothing is playing" rather than the default "Command not available".
+          ' roAppManager calls happen here (MAIN thread) — it can't be created on the
+          ' render thread where the player's callFunc executes.
+          activeScene = m.global.sceneManager.callFunc("getActiveScene")
+          transportStatus = "error.no-media"
+          transportNowPlaying = invalid
+          if isValid(activeScene)
+            sceneType = activeScene.subtype()
+            if sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
+              transportRet = activeScene.callFunc("handleTransport", info)
+              if isValid(transportRet) and isValid(transportRet.status)
+                transportStatus = transportRet.status
+              else
+                transportStatus = "unhandled"
+              end if
+              if isValid(transportRet) and isValid(transportRet.nowPlaying)
+                transportNowPlaying = transportRet.nowPlaying
+              end if
+            end if
+          end if
+          if isValid(transportNowPlaying)
+            appMgr = CreateObject("roAppManager")
+            appMgr.SetNowPlayingContentMetaData(transportNowPlaying)
+          else if LCase(info.command) = "nowplaying"
+            ' Per Roku doc: when we can't report current content, pass invalid to clear
+            ' stale metadata. Covers both "no active player" and "player mounted but
+            ' item not yet loaded" — neither is "currently playing" from the user's POV.
+            appMgr = CreateObject("roAppManager")
+            appMgr.SetNowPlayingContentMetaData(invalid)
+          end if
+          input.EventResponse({ id: info.id, status: transportStatus })
         end if
       end if
     else if isNodeEvent(msg, "isDataReturned")

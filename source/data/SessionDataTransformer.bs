@@ -131,6 +131,9 @@ class SessionDataTransformer
     settingsNode.playbackPreserveDovi = toBoolean(settingsData["playbackPreserveDovi"])
     settingsNode.playbackSubsCustom = toBoolean(settingsData["playbackSubsCustom"])
     settingsNode.playbackResolutionMax = settingsData["playbackResolutionMax"] ?? ""
+    if settingsData.DoesExist("playbackInstantReplaySeconds")
+      settingsNode.playbackInstantReplaySeconds = Val(settingsData["playbackInstantReplaySeconds"])
+    end if
     if settingsData.DoesExist("playbackNextUpButtonSeconds")
       settingsNode.playbackNextUpButtonSeconds = Val(settingsData["playbackNextUpButtonSeconds"])
     end if

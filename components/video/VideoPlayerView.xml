@@ -36,6 +36,7 @@
     <field id="shouldAllowCaptions" type="boolean" value="false" />
     <field id="cachedPlaybackInfo" type="assocarray" />
     <function name="onDestroy" />
+    <function name="handleTransport" />
   </interface>
 
   <children>

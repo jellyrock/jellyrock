@@ -431,6 +431,15 @@
         ]
       },
       {
+        "title": "Instant Replay Duration",
+        "description": "How many seconds the instant replay button (and the \"replay\" voice command) jumps backward during video playback.",
+        "settingName": "playbackInstantReplaySeconds",
+        "type": "integer",
+        "default": "10",
+        "titleKey": "LabelInstantReplayDuration",
+        "descriptionKey": "MessageHowManySecondsTheInstantReplay"
+      },
+      {
         "title": "Next Episode Button Time",
         "description": "Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable.",
         "settingName": "playbackNextUpButtonSeconds",
