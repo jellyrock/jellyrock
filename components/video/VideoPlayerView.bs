@@ -1910,6 +1910,7 @@ function handleTransport(evt as object) as object
       return { status: "success" }
     end if
     if m.top.state = "playing" then return { status: "error.redundant" }
+    m.top.control = "play"
     return { status: "success" }
   end if
 
