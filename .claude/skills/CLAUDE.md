@@ -18,14 +18,14 @@ Read the [How to add a new skill](README.md#how-to-add-a-new-skill) section in t
 
 ## Model-fit hygiene
 
-Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The choice should track the actual reasoning load, not aspiration. Procedural workflows (mechanical checklists, structured runbooks like `/pr`, `/add-decision`, `/new-setting`) belong on sonnet; judgment-heavy skills (`/audit-skill`, `/runtime-triage`, `/ci-triage`) belong on opus; pure data assembly with no judgment seams could go on haiku (none currently in JellyRock). After a few real invocations, run [`/audit-skill <name>`](audit-skill/SKILL.md) to assess whether the assigned model still fits — the helper's `model_fit` profile surfaces sub-agent / TodoWrite / AskUserQuestion / verbose-text signals as evidence for downgrade or upgrade.
+Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The choice should track the actual reasoning load, not aspiration. Procedural workflows (mechanical checklists, structured runbooks like `/pr`, `/log`, `/new-setting`) belong on sonnet; judgment-heavy skills (`/audit-skill`, `/runtime-triage`, `/ci-triage`) belong on opus; pure data assembly with no judgment seams could go on haiku (none currently in JellyRock). After a few real invocations, run [`/audit-skill <name>`](audit-skill/SKILL.md) to assess whether the assigned model still fits — the helper's `model_fit` profile surfaces sub-agent / TodoWrite / AskUserQuestion / verbose-text signals as evidence for downgrade or upgrade.
 
 ## When you change a skill
 
 - New helper script under `.claude/skills/<name>/`? Allowlist `Bash(node .claude/skills/<name>/<script>:*)` (or whichever bash shape the helper introduces) in `.claude/settings.json` in the same change set. Project-level settings benefit all contributors; user-local overrides go in `.claude/settings.local.json`.
 - New bash shape the skill invokes (e.g., a `gh` subcommand not already in the allowlist)? Same — add it to `.claude/settings.json` so the prompt doesn't fire mid-skill.
 - Changed a step's intent? Mirror the change in the at-a-glance row + per-skill detail in [`README.md`](README.md).
-- The change is audit-driven (came out of `/audit-skill`)? Append a section to the audited skill's `AUDIT-LOG.md` per the per-skill audit-log convention. Only invoke `/add-decision` if the audit produced an architectural-grade change (new agent, model change, new helper script, hook change, or load-bearing-rule change in `CLAUDE.md`).
+- The change is audit-driven (came out of `/audit-skill`)? Append a section to the audited skill's `AUDIT-LOG.md` per the per-skill audit-log convention. Only invoke `/log decision` if the audit produced an architectural-grade change (new agent, model change, new helper script, hook change, or load-bearing-rule change in `CLAUDE.md`).
 - Touched a file listed in any architecture doc's `related-files:` frontmatter? Read [`/CLAUDE.md`'s Doc maintenance discipline section](../../CLAUDE.md#doc-maintenance-discipline) — same rule applies here. The skills tree is its own subsystem and lives outside the architecture-doc tree, but if you touched an architecture-doc-territory file as part of a skill change (e.g., updated a validator referenced by `/docs-lint`), the architecture-doc rule fires.
 
 ## When you retire a skill
@@ -34,5 +34,5 @@ Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The ch
 2. Search for inbound references: `grep -rn "/skill-name" CLAUDE.md docs/ .claude/` — fix or remove every backtick reference.
 3. `git rm -r .claude/skills/<name>/`.
 4. Remove the row from [`README.md`](README.md)'s at-a-glance table + the per-skill detail section.
-5. Append a `docs/decisions.md` entry: "Retired `/<name>` skill — Reason: <rationale>". Mandated by the Decision-discipline norm.
+5. Invoke `/log decision` with slug `retire-<name>-skill` to capture the rationale. Mandated by the Capture-discipline rule in root [`CLAUDE.md`](../../CLAUDE.md).
 6. Run `npm run lint:docs` to confirm no orphan references remain.
