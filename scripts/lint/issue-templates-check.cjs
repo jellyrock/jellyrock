@@ -42,8 +42,11 @@ function main() {
   }
 
   const schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, 'utf8'));
-  const ajv = new Ajv({ allErrors: true, schemaId: 'auto' });
-  ajv.addMetaSchema(require('ajv/lib/refs/json-schema-draft-06.json'));
+  // The schema is Draft-07, which both ajv 6 and ajv 8 support natively.
+  // Don't pass `schemaId` (ajv 6-only) or addMetaSchema — npm hoisting may
+  // resolve a different ajv major than what's pinned at the top level
+  // (eslint and other devDeps pull ajv transitively).
+  const ajv = new Ajv({ allErrors: true });
   const validate = ajv.compile(schema);
 
   let failures = 0;
