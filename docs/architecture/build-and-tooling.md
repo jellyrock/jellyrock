@@ -45,7 +45,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-03
+last-reviewed: 2026-05-07
 ---
 
 # Build & Tooling
@@ -191,7 +191,8 @@ Lint and format:
 | `npm run lint:spelling` | spellchecker on Markdown files |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
-| `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugins/*.cjs`). The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
+| `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, `docs/progress.md`, `docs/signals-backlog.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugins/*.cjs`). Also runs two journal-system gates: (4) `progress-stale` — fails if `docs/progress.md` `last-updated:` is >7 days old and commits exist since; (5) `signals-schema-invalid` — fails if a `docs/signals-backlog.md` row is missing required bullets, has an invalid `status` enum, or a malformed ISO date. The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |
+| `npm run catchup:state` | Runs the session-state aggregator (`scripts/catchup-state.js`) and emits a JSON document with git state, open PRs, issues, CI runs, handoffs, and the four project journals. Primary consumer is `/catchup` (global session brief) and `/ramp <area>` (area-scoped brief); not a lint or build step — useful for debugging what those skills receive |
 | `npm run docs:stale` | Reports docs whose `last-reviewed` frontmatter is older than 90 days. Powers the quarterly arch-audit cadence; not a CI gate by default. Pass `--strict` to fail the run (e.g. for a quarterly check) |
 | `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
 | `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
@@ -368,7 +369,7 @@ JellyRock layers five verification surfaces, each owning checks the others can't
 - **`PostToolUse`** — the agent's "format on save." Auto-formats `.bs` / `.brs` immediately after the agent writes them so the next read shows canonical form. Silent on success — no context noise. Limited to `bsfmt` because anything project-wide (validate, bslint) would be too slow per-edit.
 - **End-of-turn** — covers the gap when the agent has work that *isn't yet committed*. The lint variant scans only working-tree files (committed work is pre-commit's job — running it again here would be wasted cycles). The doc-maintenance variant reminds the agent about architecture-doc related-files territory it touched. Both informational, never block the turn.
 - **Pre-commit** (`lint-staged`) — the universal gate for both humans and agents. File-scoped: `bsfmt --write`, `markdownlint --fix`, `spellchecker`, `jshint`. Auto-fix steps re-stage their output so the formatted version lands in the same commit (no "auto-fix commit" ceremony). The `lint-staged` runner handles the staged-files plumbing.
-- **Pre-push** — what couldn't run per-commit: full BSC project compile (`bsc --noEmit`), `bslint` (needs full project context, can't be file-scoped), cross-doc reference check (`lint:docs`), drift check on the auto-generated dev-guides index, language-coverage. Plus project-wide regen tasks (`update-translations`, `docs:dev-index`) that mutate one output from many inputs.
+- **Pre-push** — what couldn't run per-commit: full BSC project compile (`bsc --noEmit`), `bslint` (needs full project context, can't be file-scoped), cross-doc reference check (`lint:docs`), drift check on the auto-generated dev-guides index, language-coverage. Plus project-wide regen tasks (`update-translations`, `docs:dev-index`) that mutate one output from many inputs. Also runs `decision-shape-nudge.cjs` (advisory, always exits 0) — pattern-matches commit messages for decision-shaped language and nudges toward `/log decision` when the range doesn't touch `docs/decisions.md`; human-facing complement to the agent-facing Capture-discipline rule in `CLAUDE.md`.
 - **CI** — final backstop; can't be bypassed. Mirrors pre-push so the local hook isn't a load-bearing source of truth.
 
 ### Surface ownership of each lint command
