@@ -1,6 +1,6 @@
 ---
 name: log
-description: Append a new entry to one of the project journals — `decision` (`docs/decisions.md`, ADR-grade rationale that closes off alternatives or has a constraint behind it), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped), or `signal` (`docs/signals-backlog.md`, an external version-watch row). Routes by first $ARGUMENTS token. Diff-and-wait — drafts the entry and surfaces the proposed diff; NEVER writes without user confirmation. The sole sanctioned capture path for these three journals; raw markdown edits are not permitted (per CLAUDE.md capture-discipline rule).
+description: Append/update an entry in one of the project journals — `decision` (`docs/decisions.md`, ADR-grade rationale that closes off alternatives or has a constraint behind it), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped), `signal` (`docs/signals-backlog.md`, an external version-watch row), or `running` (`docs/progress.md` `## Currently running` paragraph; replaces the in-flight cursor). Routes by first $ARGUMENTS token. Diff-and-wait — drafts the entry and surfaces the proposed diff; NEVER writes without user confirmation. The sole sanctioned capture path for these three journals; raw markdown edits are not permitted (per CLAUDE.md capture-discipline rule).
 model: sonnet
 ---
 
@@ -10,9 +10,9 @@ The unified capture surface for the three fast/medium-decay journals: decisions,
 
 ## Inputs
 
-`$ARGUMENTS`: `<type> <rest...>` where `<type>` is one of `decision`, `followup`, `signal`.
+`$ARGUMENTS`: `<type> <rest...>` where `<type>` is one of `decision`, `followup`, `signal`, `running`.
 
-If `$ARGUMENTS` is empty or `<type>` isn't recognized: list the three valid types with one-line descriptions and ask which one. Don't guess.
+If `$ARGUMENTS` is empty or `<type>` isn't recognized: list the four valid types with one-line descriptions and ask which one. Don't guess.
 
 ## The capture rule
 
@@ -25,8 +25,9 @@ Inspect the first whitespace-separated token of `$ARGUMENTS`:
 - `decision` → Step 2-D
 - `followup` → Step 2-F
 - `signal` → Step 2-S
+- `running` → Step 2-R
 
-Anything else (including missing): tell the user the three valid types and ask.
+Anything else (including missing): tell the user the four valid types and ask.
 
 ## Step 2-D — Decision
 
@@ -123,18 +124,22 @@ Same diff-and-wait shape as decision. After apply, run `npm run lint:docs` to co
 
 Appends an `H3` row block to [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) under `## Watching`, then bumps `last-updated:` to today.
 
+### Scope
+
+This skill is for **adding new watch rows** OR for manually editing an existing row's prose fields (`current`, `action_when_moves`, etc). The three currently-tracked rows — `jellyfin-server-stable`, `jellyfin-server-rc`, `roku-os` — have their `latest_upstream` + `last_checked` auto-maintained by [`scripts/catchup-state.js`](../../../scripts/catchup-state.js) on each `/catchup` run. Don't manually bump those two fields for auto-managed slugs; the aggregator owns them.
+
 ### Schema (mirrors signals-backlog.md preamble)
 
 ```markdown
 ### <slug>: <one-line label>
 
 - **watching**: <what we're watching upstream>
-- **current**: <version JellyRock pins / supports>
+- **current**: <static prose describing JellyRock's posture toward this upstream>
 - **latest_upstream**: <last known upstream version>
+- **latest_acknowledged**: <last upstream version reviewed via /done; seed = latest_upstream at row creation>
 - **last_checked**: YYYY-MM-DD
 - **action_when_moves**: <what triggers a JellyRock change>
 - **status**: watching | action_pending | completed
-- **staleness_days**: <optional override; default 30>
 ```
 
 ### Capture
@@ -143,8 +148,9 @@ Elicit (or derive from `$ARGUMENTS`):
 
 - **slug** (kebab-case, stable). Reuses the same hygiene rules as decision slugs.
 - **label** (one short phrase to follow the slug).
-- The 6 (or 7 with optional `staleness_days`) bullet fields above.
+- The 7 bullet fields above.
 - Default `last_checked` to today's ISO date.
+- Default `latest_acknowledged` to whatever the user provides for `latest_upstream` (so the row starts non-stale; the next genuine upstream bump fires the banner once).
 - Default `status` to `watching`.
 
 ### Slug uniqueness
@@ -156,6 +162,29 @@ Elicit (or derive from `$ARGUMENTS`):
 Insert the new H3 block at the bottom of the `## Watching` section (newest at end). Bump `last-updated:` frontmatter. Surface diff, wait, apply.
 
 `npm run lint:docs` runs the schema validator — every required bullet present, valid `status` enum, valid ISO `last_checked`, valid positive-int `staleness_days`. Catches typos at write time.
+
+## Step 2-R — Running
+
+Replaces the single paragraph under `## Currently running` in [`docs/progress.md`](../../../docs/progress.md). The "in-flight cursor" — what you're actively working on right now. Distinct from open followups (deferred work) and recently-shipped (closed work). Replacing the cursor when the in-flight work changes is the path; closing the cursor when work ships is `/done running`.
+
+### Forms
+
+- `/log running "<text>"` — replace the paragraph with `<text>` (1-2 sentences, free-form prose).
+- `/log running --clear` — blank the paragraph (leaves the section heading; the catchup parser surfaces "(no progress.md cursor set)").
+
+If `<text>` is missing AND `--clear` isn't passed, ask: "What's currently in flight?" Don't guess.
+
+### Compose the diff
+
+1. Locate `## Currently running` in `docs/progress.md`.
+2. Replace every line between that heading and the next `## ` heading (excluding both headings themselves) with: a leading blank line, the new `<text>` paragraph, a trailing blank line. For `--clear`, the body is just two blank lines (heading-blank-blank-next-heading).
+3. Bump `last-updated:` frontmatter to today.
+
+### Surface, apply, verify
+
+Diff-and-wait shape (same as decision / followup). After apply, run `npm run lint:docs` to confirm the staleness gate passes.
+
+The Currently-running paragraph itself isn't schema-validated — it's free-form prose — so `lint:docs` only catches the frontmatter staleness signal here.
 
 ## Step 3 — Don't commit
 

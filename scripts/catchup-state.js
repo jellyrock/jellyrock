@@ -7,7 +7,7 @@
 // JSON compares instead of agent text-parsing of mixed tool outputs.
 //
 // Usage:
-//   node scripts/catchup-state.js [--pretty] [--area=<name>] [--no-gh]
+//   node scripts/catchup-state.js [--pretty] [--area=<name>] [--no-gh] [--no-network]
 //
 // Flags:
 //   --pretty       indent JSON output (default is single-line)
@@ -17,19 +17,30 @@
 //                  via the area→keyword map (mirrors /ramp/SKILL.md) and
 //                  filters progress.open_followups_by_area.
 //   --no-gh        skip all `gh` API calls (offline / fast tests)
+//   --no-network   skip ALL network I/O — same as --no-gh PLUS skip the
+//                  signals upstream-version fetch. Used by tests and any
+//                  fully offline invocation.
 //
 // Per-section error handling: each fetcher is wrapped in try/catch; failures
 // return null for that section + an entry in `_errors`. Never throws to
 // the caller.
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { readFrontmatter, getLastUpdated } = require('./lib/frontmatter.cjs');
+const { fetchJellyfinVersions, fetchRokuOs } = require('./lib/signals-fetch.cjs');
 
 // Resolve sibling script paths relative to THIS script's location, not cwd.
 // Lets the aggregator be invoked from any working directory (real repo, test
@@ -42,9 +53,20 @@ const DOCS_STALE_SCRIPT = join(SCRIPT_DIR, 'lint/docs-stale.cjs');
 
 const args = process.argv.slice(2);
 const PRETTY = args.includes('--pretty');
-const NO_GH = args.includes('--no-gh');
+const NO_NETWORK = args.includes('--no-network');
+// --no-network implies --no-gh (gh ops are network).
+const NO_GH = NO_NETWORK || args.includes('--no-gh');
 const AREA_ARG = args.find((a) => a.startsWith('--area='));
 const AREA = AREA_ARG ? AREA_ARG.split('=')[1] : null;
+
+const SIGNALS_PATH = 'docs/signals-backlog.md';
+// Slugs whose latest_upstream + last_checked are auto-maintained by the
+// aggregator. Anything else stays manually managed via /log signal.
+const AUTO_MANAGED_SIGNAL_SLUGS = new Set([
+  'jellyfin-server-stable',
+  'jellyfin-server-rc',
+  'roku-os',
+]);
 
 const VALID_AREAS = [
   'components',
@@ -107,6 +129,25 @@ function daysBetween(isoStart, isoEnd) {
   const a = new Date(isoStart + 'T00:00:00Z');
   const b = new Date(isoEnd + 'T00:00:00Z');
   return Math.floor((b - a) / (1000 * 60 * 60 * 24));
+}
+
+// Compress a tech-debt **issue** bullet body to a single short line for the
+// /catchup briefing. First sentence wins; if shorter than 40 chars (anemic
+// preamble like "1,315-line file."), glue on the next sentence. Over-120
+// chars get word-trimmed + ellipsis. Markdown spans are left intact.
+function summarizeIssue(text) {
+  const sentences = text.match(/[^.]+(?:\.|$)/g) || [text];
+  let oneline = sentences[0].trim();
+  if (oneline.length < 40 && sentences[1]) {
+    oneline = (oneline + ' ' + sentences[1].trim()).trim();
+  }
+  if (oneline.length > 120) {
+    let cut = oneline.slice(0, 120);
+    const sp = cut.lastIndexOf(' ');
+    if (sp > 60) cut = cut.slice(0, sp);
+    oneline = cut + '…';
+  }
+  return oneline;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -185,9 +226,15 @@ run('issues', () => {
   const keyword = AREA && AREA_KEYWORDS[AREA] ? AREA_KEYWORDS[AREA] : null;
   const titleScope = keyword ? ` "${keyword}" in:title` : '';
 
+  // Exclude upstream/wontfix-tagged bugs (platform limitations we can't fix)
+  // and require activity in the last 60 days. The lifetime comment-count sort
+  // surfaces classics that haven't moved in a year as if they were urgent;
+  // pairing it with `updated:>=` filters those out. `labels` is included in
+  // --json so the briefing can render them inline (extra signal for anything
+  // that slips the filter).
   const high_engagement_bugs = JSON.parse(
     exec(
-      `gh issue list --state open --label bug --search 'sort:comments-desc${titleScope}' --limit 5 --json number,title,comments,updatedAt`,
+      `gh issue list --state open --label bug --search '-label:upstream -label:wontfix updated:>=${isoDaysAgo(60)} sort:comments-desc${titleScope}' --limit 5 --json number,title,comments,labels,updatedAt`,
     ),
   );
   const recent_bug_reports = JSON.parse(
@@ -339,10 +386,22 @@ run('progress', () => {
   };
 });
 
+// Stale = upstream moved past the version the user has acknowledged.
+// `current` is static prose about JellyRock's posture, NOT a version pin —
+// the close-loop counterpart to `latest_upstream` is `latest_acknowledged`,
+// bumped via `/done <slug>`. A row is banner-worthy when:
+// - status is `watching` (action_pending = already triaged; completed = done).
+// - latest_upstream != latest_acknowledged (raw string compare; placeholder
+//   strings like "(no RC in flight)" are equal to themselves and don't fire).
+function isSignalStale(row) {
+  if (row.status !== 'watching') return false;
+  if (!row.latest_upstream || !row.latest_acknowledged) return false;
+  return row.latest_upstream !== row.latest_acknowledged;
+}
+
 run('signals', () => {
-  const path = 'docs/signals-backlog.md';
-  if (!existsSync(path)) return null;
-  const content = readFileSync(path, 'utf8');
+  if (!existsSync(SIGNALS_PATH)) return null;
+  const content = readFileSync(SIGNALS_PATH, 'utf8');
   const lines = content.split(/\r?\n/);
 
   let inFence = false;
@@ -352,19 +411,7 @@ run('signals', () => {
 
   function finalize() {
     if (!currentSlug) return;
-    const staleness_days = currentBullets.staleness_days
-      ? Number(currentBullets.staleness_days)
-      : 30;
-    const age_days = currentBullets.last_checked
-      ? daysBetween(currentBullets.last_checked, todayIso())
-      : null;
-    rows.push({
-      slug: currentSlug,
-      ...currentBullets,
-      staleness_days,
-      age_days,
-      stale: age_days != null && age_days > staleness_days,
-    });
+    rows.push({ slug: currentSlug, ...currentBullets });
   }
 
   for (const line of lines) {
@@ -397,6 +444,9 @@ run('signals', () => {
   }
   finalize();
 
+  for (const row of rows) {
+    row.stale = isSignalStale(row);
+  }
   const stale_count = rows.filter((r) => r.stale).length;
   const action_pending_count = rows.filter((r) => r.status === 'action_pending').length;
 
@@ -431,31 +481,59 @@ run('decisions', () => {
 
 run('tech_debt', () => {
   const path = 'docs/architecture/tech-debt.md';
-  if (!existsSync(path)) return { high_count: 0, medium_count: 0, low_count: 0 };
+  if (!existsSync(path)) {
+    return { top_3: [], high_count: 0, medium_count: 0, low_count: 0 };
+  }
   const content = readFileSync(path, 'utf8');
-  // Structure: `## Refactor candidates` → `### High|Medium|Low` → `#### slug` items.
-  // A non-severity H3 or any H2 closes the current severity section.
+  // Structure: `## Refactor candidates` → `### High|Medium|Low` → `#### `slug``
+  // items, each followed by an `- **issue**: <text>` bullet. A non-severity H3
+  // or any H2 closes the current severity section. We capture {slug, severity,
+  // issue_oneline} in file order — file order encodes author priority within
+  // severity, and the High → Medium → Low file ordering means top_3 just slices
+  // the first 3 (cross-severity) and naturally surfaces the most-important
+  // remaining work.
   const counts = { High: 0, Medium: 0, Low: 0 };
+  const items = [];
   let currentSeverity = null;
+  let pendingItem = null;
+
   for (const line of content.split(/\r?\n/)) {
     const sevMatch = line.match(/^###\s+(High|Medium|Low)\s*$/);
     if (sevMatch) {
       currentSeverity = sevMatch[1];
+      pendingItem = null;
       continue;
     }
     if (/^###\s+/.test(line)) {
       currentSeverity = null;
+      pendingItem = null;
       continue;
     }
     if (/^##\s+/.test(line)) {
       currentSeverity = null;
+      pendingItem = null;
       continue;
     }
-    if (currentSeverity && /^####\s+/.test(line)) {
+    if (!currentSeverity) continue;
+
+    const slugMatch = line.match(/^####\s+`([^`]+)`/);
+    if (slugMatch) {
       counts[currentSeverity]++;
+      pendingItem = { slug: slugMatch[1], severity: currentSeverity, issue_oneline: null };
+      items.push(pendingItem);
+      continue;
+    }
+    if (pendingItem && pendingItem.issue_oneline === null) {
+      const issueMatch = line.match(/^-\s+\*\*issue\*\*:\s*(.+?)\s*$/);
+      if (issueMatch) {
+        pendingItem.issue_oneline = summarizeIssue(issueMatch[1]);
+        pendingItem = null;
+      }
     }
   }
+
   return {
+    top_3: items.slice(0, 3),
     high_count: counts.High,
     medium_count: counts.Medium,
     low_count: counts.Low,
@@ -477,7 +555,152 @@ run('docs_stale', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────
+// Async tail: auto-maintain known-managed signals.
+//
+// Done after all sync sections so the file's parsed state is the baseline.
+// For each auto-managed slug whose `last_checked != today`, fetch the upstream
+// version and (if anything changed) write back to docs/signals-backlog.md
+// in-place. Per-slug failures fall back to the file's existing values and
+// surface in `_errors.signals_fetch`. The skipped-when-already-checked-today
+// behavior IS the cache: no separate cache file, no gitignored state.
+
+async function maintainSignals() {
+  if (NO_NETWORK) return;
+  if (!state.signals || !Array.isArray(state.signals.rows)) return;
+
+  const today = todayIso();
+  const needs = state.signals.rows.filter(
+    (r) => AUTO_MANAGED_SIGNAL_SLUGS.has(r.slug) && r.last_checked !== today,
+  );
+  if (needs.length === 0) return;
+
+  const wantJellyfin = needs.some(
+    (r) => r.slug === 'jellyfin-server-stable' || r.slug === 'jellyfin-server-rc',
+  );
+  const wantRoku = needs.some((r) => r.slug === 'roku-os');
+
+  const fetchErrors = {};
+  let jellyfin = null;
+  let roku = null;
+
+  await Promise.all([
+    wantJellyfin
+      ? fetchJellyfinVersions().then(
+          (v) => (jellyfin = v),
+          (err) => (fetchErrors.jellyfin = String(err.message || err).slice(0, 200)),
+        )
+      : Promise.resolve(),
+    wantRoku
+      ? fetchRokuOs().then(
+          (v) => (roku = v),
+          (err) => (fetchErrors.roku = String(err.message || err).slice(0, 200)),
+        )
+      : Promise.resolve(),
+  ]);
+
+  // Build per-slug update map from the fetch results.
+  const updatesBySlug = {};
+  for (const row of state.signals.rows) {
+    if (!AUTO_MANAGED_SIGNAL_SLUGS.has(row.slug)) continue;
+    let upstream = null;
+    if (row.slug === 'jellyfin-server-stable' && jellyfin) {
+      upstream = jellyfin.stable;
+    } else if (row.slug === 'jellyfin-server-rc' && jellyfin) {
+      upstream = jellyfin.rc || '(no RC in flight)';
+    } else if (row.slug === 'roku-os' && roku) {
+      upstream = roku;
+    }
+    if (upstream === null) continue; // fetch failed for this slug
+
+    const u = { last_checked: today };
+    if (row.latest_upstream !== upstream) u.latest_upstream = upstream;
+    updatesBySlug[row.slug] = u;
+
+    // Reflect in the in-memory state so the JSON output matches what we wrote.
+    row.last_checked = today;
+    row.latest_upstream = upstream;
+  }
+
+  if (Object.keys(updatesBySlug).length > 0) {
+    const content = readFileSync(SIGNALS_PATH, 'utf8');
+    const updated = applySignalUpdates(content, updatesBySlug, today);
+    if (updated !== content) writeFileSync(SIGNALS_PATH, updated);
+  }
+
+  // Recompute stale + counts after updates.
+  for (const row of state.signals.rows) row.stale = isSignalStale(row);
+  state.signals.stale_count = state.signals.rows.filter((r) => r.stale).length;
+
+  if (Object.keys(fetchErrors).length > 0) {
+    _errors.signals_fetch = JSON.stringify(fetchErrors);
+  }
+}
+
+// In-place line-targeted rewrite of the signals file. ONLY touches lines we
+// own (latest_upstream/last_checked bullets in known slug blocks, plus the
+// frontmatter last-updated date). Everything else is preserved byte-for-byte.
+function applySignalUpdates(content, updatesBySlug, today) {
+  const lines = content.split(/\r?\n/);
+  let inFence = false;
+  let currentSlug = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^```/.test(lines[i])) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    if (/^##\s+/.test(lines[i])) {
+      currentSlug = null;
+      continue;
+    }
+    const h3 = lines[i].match(/^###\s+([a-z0-9][a-z0-9-]*)\s*:/);
+    if (h3) {
+      currentSlug = h3[1];
+      continue;
+    }
+    if (!currentSlug || !updatesBySlug[currentSlug]) continue;
+
+    const u = updatesBySlug[currentSlug];
+    if (u.latest_upstream !== undefined) {
+      const m = lines[i].match(/^(-\s+\*\*latest_upstream\*\*:\s*)(.+?)(\s*)$/);
+      if (m && m[2] !== u.latest_upstream) {
+        lines[i] = m[1] + u.latest_upstream + m[3];
+      }
+    }
+    if (u.last_checked !== undefined) {
+      const m = lines[i].match(/^(-\s+\*\*last_checked\*\*:\s*)(\d{4}-\d{2}-\d{2})(\s*)$/);
+      if (m && m[2] !== u.last_checked) {
+        lines[i] = m[1] + u.last_checked + m[3];
+      }
+    }
+  }
+
+  // Frontmatter `last-updated` lives in the first ~10 lines. Bump only when
+  // a row write happened (the staleness lint only cares that the file moved
+  // on a real change day, which mirrors how /log signal already updates it).
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    if (/^last-updated:\s*\d{4}-\d{2}-\d{2}/.test(lines[i])) {
+      const updated = lines[i].replace(/^(last-updated:\s*)\d{4}-\d{2}-\d{2}/, `$1${today}`);
+      if (updated !== lines[i]) lines[i] = updated;
+      break;
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Output
 
-const result = { ...state, _errors };
-process.stdout.write(JSON.stringify(result, null, PRETTY ? 2 : 0) + '\n');
+(async () => {
+  try {
+    await maintainSignals();
+  } catch (err) {
+    _errors.signals_fetch = String(err.message || err)
+      .split('\n')[0]
+      .slice(0, 200);
+  }
+  const result = { ...state, _errors };
+  process.stdout.write(JSON.stringify(result, null, PRETTY ? 2 : 0) + '\n');
+})();

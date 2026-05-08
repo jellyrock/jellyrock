@@ -233,6 +233,7 @@ describe('docs-check — signals-backlog schema', () => {
       watching: 'something',
       current: 'v1',
       latest_upstream: 'v2',
+      latest_acknowledged: 'v2',
       last_checked: '2026-05-06',
       action_when_moves: 'do thing',
       status: 'watching',
