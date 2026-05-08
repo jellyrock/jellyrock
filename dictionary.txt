@@ -267,6 +267,7 @@ SRT
 SSDP
 stateful
 Stateful
+stopword
 subclasses
 Subclasses
 subcommand
@@ -285,6 +286,7 @@ SVG
 SVGs
 teardown
 tmpdir
+tokenizer
 Tooltip
 transcode
 Transcode

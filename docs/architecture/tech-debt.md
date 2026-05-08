@@ -1,7 +1,7 @@
 ---
 topic: tech-debt
 related-files: []  # touches everything; per-item area fields point to specific files
-last-reviewed: 2026-05-02
+last-reviewed: 2026-05-08
 ---
 
 # Tech Debt & Cruft
@@ -193,7 +193,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `mixed-esm-cjs-scripts`
 
 - **area**: `scripts/` (top-level, excluding `bsc-plugins/` and `lib/`)
-- **issue**: Of the 13 top-level scripts in `scripts/`, only 2 are ESM `.js` (`changelog-syncer.js`, `run-roku-tests.js`); the other 11 are `.cjs`. `package.json` has `"type": "module"`, so ESM is the modern default for new code. Forward rule for net-new scripts is documented (ESM `.js` unless `require()`'d), but existing `.cjs` are kept for now.
+- **issue**: Top-level `scripts/*.js` are ESM (4: `catchup-state.js`, `changelog-syncer.js`, `journal-sync.js`, `run-roku-tests.js`); the other 4 top-level scripts are `.cjs`. `scripts/lint/` (10 scripts) and `scripts/lib/` (4 scripts) are all `.cjs`. `package.json` has `"type": "module"`, so ESM is the modern default for new code. Forward rule for net-new scripts is documented (ESM `.js` unless `require()`'d), but the existing `.cjs` files in `lint/` and `lib/` are kept for now.
 - **direction**: Audit the require-graph first. Anything `require()`'d by a BSC plugin or another locked CJS file (incl. `scripts/lib/*` callers) is forced `.cjs`. Top-level CLI scripts that aren't required by anything are migrate-able to ESM `.js`. Mechanical conversion (`require` → `import`, `module.exports` → `export`, `__dirname` → `fileURLToPath(import.meta.url)`), but needs the audit first because some scripts that look standalone are actually required by lint-staged or other CJS callers.
 - **enforced**: [`scripts/CLAUDE.md`](../../scripts/CLAUDE.md) documents the forward rule; [`docs/dev/scripts-development.md`](../dev/scripts-development.md) covers the gotchas. ESLint's `eslint-plugin-n` `flat/mixed-esm-and-cjs` preset handles both extensions transparently.
 
@@ -231,6 +231,18 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `tests/source/e2e/`
 - **issue**: RTA-based UI automation was planned, hasn't materialized. Real coverage today is unit + integration only.
+
+#### `tokenize-stopwords-duplicated`
+
+- **area**: `scripts/journal-sync.js`, `scripts/lint/progress-cursor-nudge.cjs`
+- **issue**: `tokenize()` and the 50-word `STOPWORDS` set are copy-pasted between the two files. `journal-sync.js` is ESM; `progress-cursor-nudge.cjs` is CJS — CJS cannot `require()` ESM, which forced the copy at write time. A stopword addition or tokenizer fix must be applied in both places.
+- **direction**: Extract to `scripts/lib/tokenize.cjs`. Both callers `require()` it: `progress-cursor-nudge.cjs` via its existing `require()` chain; `journal-sync.js` via `createRequire(import.meta.url)` (same pattern it already uses for `frontmatter.cjs` and `signals-fetch.cjs`). Then remove the inline copies.
+
+#### `journal-sync-workflow-injection`
+
+- **area**: `.github/workflows/journal-sync.yml` (lines 72, 101)
+- **issue**: PR title + number are interpolated into shell strings via `${{ github.event.pull_request.title }}` inside a `run:` block. A title containing `'` breaks the single-quoted shell assignment on line 72; a title containing `"` or backticks breaks the `git commit -m "..."` on line 101. GitHub Actions docs classify this as script injection.
+- **direction**: Move the interpolations into `env:` fields on the step and reference them as `$PR_TITLE` / `$PR_NUMBER` inside the shell. The `env:` block is not shell-parsed, so no quoting escape is needed.
 
 ## Recently removed — don't go searching for these
 
