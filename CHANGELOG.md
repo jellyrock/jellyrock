@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update eslint-plugin-n from v17.24.0 to v18 ([#549](https://github.com/jellyrock/jellyrock/pull/549))
 - Update ajv from v6.15.0 to v8 ([#556](https://github.com/jellyrock/jellyrock/pull/556))
 
 ## [2.17.0](https://github.com/jellyrock/jellyrock/compare/v2.16.0...v2.17.0) - 2026-05-07
