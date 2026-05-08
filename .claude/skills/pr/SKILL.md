@@ -3,7 +3,7 @@ name: pr
 description: Create OR update a pull request using the JellyRock template at `.github/pull_request_template.md`. Detects an existing open PR for the current branch and routes to update-mode (diff body, ask, then `gh pr edit`) instead of duplicating; aborts cleanly on merged/closed PRs. Scans branch + commits for related issues, falls back to `gh` issue search, surfaces architecture docs whose related-files were touched, and runs the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture) so journal hygiene is part of shipping rather than a separate manual step. Required for all PRs in this repo — supersedes any default PR-creation flow.
 model: sonnet
 user-invocable: true
-allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(gh api user --jq .login), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git merge-base --is-ancestor:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Bash(node scripts/lint/decision-shape-nudge.cjs:*), Read
+allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(gh api user --jq .login), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git merge-base --is-ancestor:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Bash(node scripts/lint/decision-shape-nudge.cjs:*), Read, Task
 ---
 
 # Create or Update a Pull Request
@@ -57,6 +57,8 @@ Invoke [`/tech-debt-scan`](../tech-debt-scan/SKILL.md) as a sub-agent (not inlin
 ```
 Read .claude/skills/tech-debt-scan/SKILL.md and follow the steps; scope the changed-files set to `git diff <lower>..HEAD --name-only` so only file areas that became relevant since the last /pr render are considered; surface candidate slugs + ask about new debt but do NOT apply edits — return the proposed diff for the parent to confirm.
 ```
+
+**Anti-pattern: do not narrate "running the tech-debt scan sub-agent" while reading [`docs/architecture/tech-debt.md`](../../../docs/architecture/tech-debt.md) inline via `Read`.** That inline read IS the context-pollution this step is designed to prevent. If you find yourself about to call `Read` on `tech-debt.md` from inside `/pr`, stop and call `Task` with `subagent_type: general-purpose` instead. The sub-agent's job is to walk the entry list and return a diff; the parent's job is to surface that diff to the user. Never conflate the two — and never claim sub-agent invocation in narration when the JSONL will show a `Read` instead of a `Task` tool_use.
 
 If the sub-agent returns proposed diffs (existing slugs to remove, new slugs to add), surface them to the user one at a time with `apply / skip / edit` per candidate. Apply via `Edit` only on user accept.
 

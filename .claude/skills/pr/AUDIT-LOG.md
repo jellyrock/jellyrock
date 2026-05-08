@@ -2,6 +2,27 @@
 
 Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`](../audit-skill/SKILL.md). Captures both `/audit-skill pr` runs (mechanical friction findings + applied fixes) and user-driven enhancements that surface a real gap and warrant capture so the rationale isn't lost. Architectural-grade decisions also surface in [`docs/decisions.md`](../../../docs/decisions.md).
 
+## 2026-05-08 — sub-agent contract violation in Pass 1 (session c46ed4c5)
+
+**Friction surfaced:** none from the mechanical extractor (zero findings across all detectors).
+
+**Performance:** 4m 36s, 51,840 output tokens (1851 avg/turn), 0.83 cache hit, ~6 on sonnet. Anomalies: none — all healthy for a judgment skill running the full update path with three judgment passes + section-by-section body diff.
+
+**Permission gaps:** none — every Bash invocation in the run was covered by the skill's allowlist.
+
+**Output accuracy (eyeball):** the run produced a correct PR-body update against #559 (existing-PR detection routed correctly, three-tier SHA fallback used PR-first-commit since no marker existed yet, judgment passes returned clean, diff was rendered for user, backup written, `gh pr edit` applied successfully). BUT one structural defect: assistant text claimed *"Now running the tech-debt scan sub-agent"* — JSONL shows zero `Task` tool_use entries; the scan was performed inline via `Read` on `tech-debt.md`. Two compounding causes: (1) `Task` was missing from the skill's `allowed-tools` so the sub-agent was unreachable, (2) no anti-pattern callout in Pass 1 warned against the false-narration shape. The whole point of [`SKILL.md:55`](SKILL.md#L55)'s sub-agent mandate is context isolation; the inline read silently degrades that as `tech-debt.md` grows.
+
+**Model fit:** current `model: sonnet` — keep. Profile shows judgment-required (verbose reasoning, three judgment passes, section-by-section diff render) but zero sub-agents / TodoWrite / AskUserQuestion. The zero-sub-agent count is *because of* the contract violation above, not because the workload is mechanical. After the fix lands, expect a Task call in the next /pr run on a non-trivial branch.
+
+**Fixes applied:**
+
+- [`SKILL.md:6`](SKILL.md#L6) — added `Task` to `allowed-tools` so Pass 1's mandated sub-agent invocation is actually reachable.
+- [`SKILL.md`](SKILL.md) Pass 1 — added an explicit anti-pattern callout after the sub-agent prompt block, naming the failure shape (`Read` on `tech-debt.md` + sub-agent-shaped narration) so future agents recognize it before slipping into it.
+
+**Deferred / dropped:** none.
+
+**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock/c46ed4c5-2adf-4a60-89ff-5ff26407e6b4.jsonl`
+
 ## 2026-05-08 — existing-PR detection + update path (user-driven)
 
 **Source:** user-driven — not from a `/audit-skill` run. The user noticed the skill had no existing-PR detection: `gh pr create` would fail with a generic error if a PR already existed for the branch, but only AFTER the four-pillar judgment passes had already run. That meant wasted work (potentially duplicate tech-debt / decision / followup entries) plus a confusing failure mode at the end of the flow.
