@@ -8,6 +8,8 @@ model: sonnet
 
 The completion side of the capture/completion ritual. `/log` adds; `/done` closes. Operates on `progress.md` (followups → recently shipped) and `signals-backlog.md` (status flip). Tech-debt removal stays via [`/tech-debt-scan`](../tech-debt-scan/SKILL.md); GitHub issues stay via `gh issue close`.
 
+**Auto-close-loop note:** the `running` cursor close-loop fires automatically when a PR merges to main via [`.github/workflows/journal-sync.yml`](../../../.github/workflows/journal-sync.yml). You only need to invoke `/done running` manually when the work shipped via a path that bypasses the workflow (direct push to main, squash-merge with a heavily edited title, the workflow being skipped by label). For the normal `/pr` → review → merge path, the cursor close happens for you.
+
 ## Inputs
 
 `$ARGUMENTS`: a slug or keyword identifying what's done. Must be present.

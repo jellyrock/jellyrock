@@ -1,0 +1,102 @@
+# Post-merge journal sync.
+#
+# When a PR merges to main, this workflow runs scripts/journal-sync.js to
+# perform the mechanical close-loop edit on docs/progress.md:
+#   - Prepend "- YYYY-MM-DD — <pr-title>" to ## Recently shipped
+#   - Clear ## Currently running when its text overlaps the PR title
+#   - Bump frontmatter last-updated:
+#
+# Judgment-bearing entries (decisions, tech-debt, followups) stay on the
+# user-driven /pr → /log path. This workflow is the auto-close-loop side
+# only — see docs/architecture/system-shape.md for the full four-pillar
+# pattern, and .claude/skills/pr/SKILL.md for the judgment side.
+#
+# Skips (no commit pushed):
+#   - PRs labeled dependencies / documentation / docs-only / ci / automated
+#   - PRs authored by app/dependabot, app/renovate, jellyrock[bot]
+#   - PR titles matching Renovate / Dependabot / Weblate patterns
+#   - Idempotency: today's date already has a Recently shipped bullet
+#     overlapping the PR title (re-runs are safe)
+#
+# Concurrency: serialized with the same group jellyrock-bot uses for main
+# pushes — these workflows mutate the same files, so a shared queue prevents
+# stale-base push failures.
+
+name: Journal Sync (post-merge)
+
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: jellyrock-bot-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Configure Git as the GitHub App Bot
+        run: |
+          APP_USER_ID=$(gh api "/users/jellyrock[bot]" --jq .id)
+          git config --global user.name "jellyrock[bot]"
+          git config --global user.email "${APP_USER_ID}+jellyrock[bot]@users.noreply.github.com"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "lts/*"
+
+      # Build the labels CSV and author handle from the merged PR's metadata.
+      # Using the event payload directly avoids an extra `gh pr view` call.
+      - name: Run journal-sync
+        id: sync
+        run: |
+          PR_TITLE='${{ github.event.pull_request.title }}'
+          PR_AUTHOR='${{ github.event.pull_request.user.login }}'
+          PR_LABELS='${{ join(github.event.pull_request.labels.*.name, ',') }}'
+
+          echo "PR title: $PR_TITLE"
+          echo "PR author: $PR_AUTHOR"
+          echo "PR labels: $PR_LABELS"
+
+          node scripts/journal-sync.js ship \
+            --pr-title "$PR_TITLE" \
+            --pr-author "$PR_AUTHOR" \
+            --pr-labels "$PR_LABELS"
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet docs/progress.md; then
+            echo "ℹ️ No journal changes to commit (skipped or already up-to-date)"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ progress.md has changes"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git pull --rebase --autostash origin main
+          git add docs/progress.md
+          git commit -m "chore(journal): sync ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})"
+          git push origin main

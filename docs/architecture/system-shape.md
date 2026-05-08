@@ -11,9 +11,13 @@ related-files:
   - .claude/skills/catchup/SKILL.md
   - .claude/skills/ramp/SKILL.md
   - .claude/skills/tech-debt-scan/SKILL.md
+  - .claude/skills/pr/SKILL.md
   - scripts/catchup-state.js
+  - scripts/journal-sync.js
   - scripts/lint/docs-check.cjs
-last-reviewed: 2026-05-06
+  - scripts/lint/progress-cursor-nudge.cjs
+  - .github/workflows/journal-sync.yml
+last-reviewed: 2026-05-08
 ---
 
 # System shape — how this repo's dev-process is structured and why
@@ -58,29 +62,31 @@ GitHub issues remain JellyRock's primary backlog for issue-shaped work (bugs, fe
 
 ### 3. Skills for the daily ritual
 
-The central principle: **rules without skills drift**, because every rule that requires "remember to update X file at Y moment" eventually fails. Three skills cover the journal ritual:
+The central principle: **rules without skills drift**, because every rule that requires "remember to update X file at Y moment" eventually fails. Four skills cover the journal ritual:
 
 | Skill | When | What it does |
 |---|---|---|
 | [`/catchup`](../../.claude/skills/catchup/SKILL.md) | Start of session, after multi-day gap, "what's the state of the world?" | Reads all 4 journals + GH state via the [`scripts/catchup-state.js`](../../scripts/catchup-state.js) aggregator (one Node call → JSON); banner-detects on stale `progress.md`, stale signal rows, failing CI, etc. |
-| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal` | Routes to the right journal with templated format; auto-bumps `last-updated:` on followup/signal append; diff-and-wait (never auto-applies) |
-| [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Any work landing: followup completed, signal resolved | Polymorphic match (followups first, then signals); for followups: removes bullet + prepends to "Recently shipped"; for signals: flips status → `completed`; bumps `last-updated:` |
+| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal`, `running` | Routes to the right journal with templated format; auto-bumps `last-updated:` on followup/signal append; diff-and-wait (never auto-applies) |
+| [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Any work landing: followup completed, signal resolved, cursor manually closed | Polymorphic match (followups first, then signals); for followups: removes bullet + prepends to "Recently shipped"; for signals: flips status → `completed`; bumps `last-updated:`. The `running` cursor close-loop normally fires automatically via [`journal-sync.yml`](../../.github/workflows/journal-sync.yml); manual `/done running` is the bypass path. |
+| [`/pr`](../../.claude/skills/pr/SKILL.md) | Ship moment — opening a PR | Bundles the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture from PR body) so journal hygiene lands in the same change set as the code |
 
-Plus area-scoped variant [`/ramp <area>`](../../.claude/skills/ramp/SKILL.md) which uses the same aggregator with `--area=<name>` and adds area-specific file reads (scoped CLAUDE.md, matching architecture doc). Plus [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md) which handles the tech-debt journal independently.
+Plus area-scoped variant [`/ramp <area>`](../../.claude/skills/ramp/SKILL.md) which uses the same aggregator with `--area=<name>` and adds area-specific file reads (scoped CLAUDE.md, matching architecture doc). Plus [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md) which handles the tech-debt journal independently and is invoked by `/pr` as part of the ship ritual.
 
 The full skill index is at [`.claude/skills/README.md`](../../.claude/skills/README.md). Skill authoring conventions are in [`.claude/skills/CLAUDE.md`](../../.claude/skills/CLAUDE.md).
 
 ### 4. Enforcement (so rules don't depend on memory)
 
-Three layers, fastest feedback first:
+Four layers, fastest feedback first:
 
-- **Edit-time (Stop hook)**: [`.claude/hooks/check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) prints which architecture docs claim files the agent touched. Informational; doesn't block.
-- **Pre-push (husky)**: [`.husky/pre-push`](../../.husky/pre-push) runs the full validate / lint suite scoped to the push range. Auto-fix steps mutate files and create a follow-up commit; check steps abort the push.
+- **Edit-time (Stop hook)**: three sibling hooks fire at end-of-turn — [`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) (architecture-doc reminder), [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) (file-scoped lint surface), and [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh) (stale `progress.md` + Currently-running cursor that overlaps with shipped commits). All three are advisory; never block.
+- **Pre-push (husky)**: [`.husky/pre-push`](../../.husky/pre-push) runs the full validate / lint suite scoped to the push range PLUS two advisory nudges — [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (decision-shape commits without a `decisions.md` change) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the Stop hook). Check steps abort the push; nudges never do.
+- **Post-merge (GitHub Action)**: [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) fires on PR merge to main and runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) — the *mechanical* close-loop side. Prepends a Recently shipped bullet, conditionally clears the Currently-running cursor (token-overlap heuristic), bumps `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate/Dependabot/bot authors. This layer is what turns the four-pillar pattern from "remember to invoke `/done running`" into automatic — judgment-bearing entries (decisions, tech-debt, followups) still flow through `/pr` → `/log`.
 - **CI**: [`.github/workflows/lint-docs.yml`](../../.github/workflows/_lint-docs.yml) re-runs [`docs-check.cjs`](../../scripts/lint/docs-check.cjs) (broken refs + `progress-stale` + `signals-schema-invalid`) and [`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) (architecture-doc territory gate). Hard pressure at PR time.
 
 Specifically for the journal layer:
 
-- `progress.md` staleness gate — `docs-check.cjs` FAILs when `last-updated` is >7 days old AND there are commits since (the territory-touched logic is implicit: any commit means the cursor moved).
+- `progress.md` staleness gate — `docs-check.cjs` FAILs when `last-updated` is >7 days old AND there are commits since (the territory-touched logic is implicit: any commit means the cursor moved). The post-merge auto-sync layer is what keeps this gate quiet — without it, `last-updated:` only moves when the user remembers to invoke `/log` or `/done`.
 - `signals-backlog.md` schema validator — `docs-check.cjs` FAILs on missing required bullets, invalid `status` enum, malformed `last_checked` ISO date, or non-positive `staleness_days`.
 - `decisions.md` doesn't get a staleness gate (it's append-only — staleness is meaningless), but its body links + tech-debt anchors are validated.
 
@@ -107,7 +113,7 @@ Distilled from the source-project's audit + reshape that preceded JellyRock's ad
 - **Automation closes loops; memory-dependent rules drift** — every rule the source-project's audit found broken was memory-dependent.
 - **Friction at the cause-point, not the symptom** — pre-push nudge for decision-shaped commits, not a quarterly cleanup.
 - **Drift surfaces visibly at retrieval** — banners, not buried sentences.
-- **Tools NEVER auto-apply captures** — `/log` and `/done` always surface a diff and wait. The journals are load-bearing project state — a hallucinated entry written without confirmation is silent corruption.
+- **Agent tools NEVER auto-apply captures; CI mechanical sync is the sole exception** — `/log` and `/done` always surface a diff and wait. The journals are load-bearing project state, and a hallucinated entry written without confirmation is silent corruption. The post-merge [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) workflow is the only non-skill writer to `progress.md` — it performs only the mechanical close-loop (deterministic, not judgment-bearing) using merged-PR metadata as input. The "no agent text-corruption" risk that motivated the diff-and-wait rule doesn't apply to deterministic CI on stable input.
 
 **Meta (the iteration discipline):**
 
