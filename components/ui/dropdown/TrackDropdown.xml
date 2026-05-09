@@ -34,7 +34,7 @@
     <!-- Dropdown affordance: only rendered for interactive (multi-option) slots.
          Tinted via blendColor to track the trigger label's color across focus states.
          Sized 1:1 with the source bitmap so it renders crisp at native resolution. -->
-    <Poster id="triggerChevron" uri="pkg:/images/icons/expand.png" width="24" height="24" />
+    <Poster id="triggerChevron" uri="pkg:/images/icons/expand_$$RES$$.png" width="24" height="24" />
 
     <!-- Hidden Label used to measure each item title's natural pixel width before
          the menu is sized. LabelPrimarySmaller mirrors the rendered row's font/scale

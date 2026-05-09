@@ -329,7 +329,7 @@ sub onRefreshItemDetailsData()
     else if not isValid(m.top.findNode("resumeLoadingButton"))
       m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
       m.resumeLoadingButton.id = "resumeLoadingButton"
-      m.resumeLoadingButton.icon = "pkg:/images/icons/resume.png"
+      m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
       if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
         m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
       else
@@ -378,7 +378,7 @@ sub onTrailerAvailableChanged()
     if not isValid(m.top.findNode("trailerButton"))
       trailerButton = CreateObject("roSGNode", "IconButton")
       trailerButton.id = "trailerButton"
-      trailerButton.icon = "pkg:/images/icons/playOutline.png"
+      trailerButton.icon = "pkg:/images/icons/playOutline_$$RES$$.png"
       trailerButton.text = translate(translationKeys.LabelPlayTrailer)
       ' Insert before Delete (if present) to match setupButtons() ordering, else before Refresh
       deleteButtonIndex = getButtonIndex("deleteButton")
@@ -414,7 +414,7 @@ sub onNextUpEpisodeChanged()
     if not isValid(resumeButton)
       resumeButton = CreateObject("roSGNode", "ResumeButton")
       resumeButton.id = "resumeButton"
-      resumeButton.icon = "pkg:/images/icons/resume.png"
+      resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
       resumeButton.text = resumeText
       resumeButton.playbackPositionTicks = item.playbackPositionTicks
       resumeButton.runtimeTicks = item.runTimeTicks
@@ -515,7 +515,7 @@ sub manageResumeButton()
 
         resumeButton = CreateObject("roSGNode", "ResumeButton")
         resumeButton.id = "resumeButton"
-        resumeButton.icon = "pkg:/images/icons/resume.png"
+        resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
         resumeButton.text = translate(translationKeys.ButtonResume)
         resumeButton.playbackPositionTicks = item.playbackPositionTicks
         resumeButton.runtimeTicks = item.runTimeTicks
@@ -2170,7 +2170,7 @@ sub setItemLogo(item as object)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = "pkg:/images/icons/baseline_person_white_48dp.png"
+      m.itemLogo.uri = "pkg:/images/icons/person_$$RES$$.png"
     end if
     return
   else if item.type = "MusicArtist"
@@ -2599,7 +2599,7 @@ sub setupButtons(item as object)
   if itemType = "Series"
     m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
     m.resumeLoadingButton.id = "resumeLoadingButton"
-    m.resumeLoadingButton.icon = "pkg:/images/icons/resume.png"
+    m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
     if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
       m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
     else
@@ -2613,7 +2613,7 @@ sub setupButtons(item as object)
   if itemType = "Photo"
     viewPhotoButton = CreateObject("roSGNode", "IconButton")
     viewPhotoButton.id = "viewPhotoButton"
-    viewPhotoButton.icon = "pkg:/images/icons/play.png"
+    viewPhotoButton.icon = "pkg:/images/icons/play_$$RES$$.png"
     viewPhotoButton.text = translate(translationKeys.LabelView)
     m.buttonGrp.appendChild(viewPhotoButton)
   end if
@@ -2622,7 +2622,7 @@ sub setupButtons(item as object)
   if itemType = "PhotoAlbum"
     slideshowButton = CreateObject("roSGNode", "IconButton")
     slideshowButton.id = "slideshowButton"
-    slideshowButton.icon = "pkg:/images/icons/play.png"
+    slideshowButton.icon = "pkg:/images/icons/play_$$RES$$.png"
     slideshowButton.text = translate(translationKeys.LabelSlideshow)
     m.buttonGrp.appendChild(slideshowButton)
   end if
@@ -2673,13 +2673,13 @@ sub setupButtons(item as object)
 
       watchChannelButton = CreateObject("roSGNode", "ResumeButton")
       watchChannelButton.id = "watchChannelButton"
-      watchChannelButton.icon = "pkg:/images/icons/play.png"
+      watchChannelButton.icon = "pkg:/images/icons/play_$$RES$$.png"
       watchChannelButton.runtimeTicks = runtimeSeconds& * 10000000&
       watchChannelButton.playbackPositionTicks = elapsedSeconds& * 10000000&
     else
       watchChannelButton = CreateObject("roSGNode", "IconButton")
       watchChannelButton.id = "watchChannelButton"
-      watchChannelButton.icon = "pkg:/images/icons/play.png"
+      watchChannelButton.icon = "pkg:/images/icons/play_$$RES$$.png"
     end if
 
     watchChannelButton.text = translate(translationKeys.LabelWatch)
@@ -2692,7 +2692,7 @@ sub setupButtons(item as object)
     if showRecord
       recordButton = CreateObject("roSGNode", "IconButton")
       recordButton.id = "recordButton"
-      recordButton.icon = "pkg:/images/icons/record.png"
+      recordButton.icon = "pkg:/images/icons/record_$$RES$$.png"
       ' Check existing recording state — colorError icon when active
       isRecording = false
       if itemType = "Program" and isValidAndNotEmpty(item.timerId)
@@ -2715,7 +2715,7 @@ sub setupButtons(item as object)
   if itemType <> "Person" and itemType <> "Photo" and itemType <> "PhotoAlbum" and itemType <> "TvChannel" and itemType <> "Program"
     playButton = CreateObject("roSGNode", "IconButton")
     playButton.id = "playButton"
-    playButton.icon = "pkg:/images/icons/play.png"
+    playButton.icon = "pkg:/images/icons/play_$$RES$$.png"
     if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
       playButton.text = translate(translationKeys.LabelPlayAll)
     else
@@ -2728,7 +2728,7 @@ sub setupButtons(item as object)
   if itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist" or itemType = "PhotoAlbum"
     m.shuffleButton = CreateObject("roSGNode", "IconButton")
     m.shuffleButton.id = "shuffleButton"
-    m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
+    m.shuffleButton.icon = "pkg:/images/icons/shuffle_$$RES$$.png"
     m.shuffleButton.text = translate(translationKeys.ButtonShuffle)
     m.buttonGrp.appendChild(m.shuffleButton)
   end if
@@ -2738,7 +2738,7 @@ sub setupButtons(item as object)
   if not inArray(itemTypeOrder.NO_WATCHED, itemType)
     watchedButton = CreateObject("roSGNode", "IconButton")
     watchedButton.id = "watchedButton"
-    watchedButton.icon = "pkg:/images/icons/check.png"
+    watchedButton.icon = "pkg:/images/icons/check_$$RES$$.png"
     watchedButton.text = translate(translationKeys.LabelWatched)
     m.buttonGrp.appendChild(watchedButton)
   end if
@@ -2748,7 +2748,7 @@ sub setupButtons(item as object)
   if itemType = "Person"
     m.shuffleLoadingButton = CreateObject("roSGNode", "IconButton")
     m.shuffleLoadingButton.id = "shuffleLoadingButton"
-    m.shuffleLoadingButton.icon = "pkg:/images/icons/shuffle.png"
+    m.shuffleLoadingButton.icon = "pkg:/images/icons/shuffle_$$RES$$.png"
     m.shuffleLoadingButton.text = translate(translationKeys.ButtonShuffle)
     m.shuffleLoadingButton.isLoading = true
     m.buttonGrp.appendChild(m.shuffleLoadingButton)
@@ -2762,7 +2762,7 @@ sub setupButtons(item as object)
   if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio"
     instantMixButton = CreateObject("roSGNode", "IconButton")
     instantMixButton.id = "instantMixButton"
-    instantMixButton.icon = "pkg:/images/icons/instantMix.png"
+    instantMixButton.icon = "pkg:/images/icons/instantMix_$$RES$$.png"
     instantMixButton.text = translate(translationKeys.LabelInstantMix)
     m.buttonGrp.appendChild(instantMixButton)
   end if
@@ -2770,7 +2770,7 @@ sub setupButtons(item as object)
   ' Favorite button — all types
   favoriteButton = CreateObject("roSGNode", "IconButton")
   favoriteButton.id = "favoriteButton"
-  favoriteButton.icon = "pkg:/images/icons/heart.png"
+  favoriteButton.icon = "pkg:/images/icons/heart_$$RES$$.png"
   favoriteButton.text = translate(translationKeys.LabelFavorite)
   m.buttonGrp.appendChild(favoriteButton)
 
@@ -2778,7 +2778,7 @@ sub setupButtons(item as object)
   if itemType = "Season" or itemType = "Episode" or (itemType = "Program" and isValidAndNotEmpty(item.seriesId))
     goToSeriesButton = CreateObject("roSGNode", "IconButton")
     goToSeriesButton.id = "goToSeriesButton"
-    goToSeriesButton.icon = "pkg:/images/icons/tv.png"
+    goToSeriesButton.icon = "pkg:/images/icons/tv_$$RES$$.png"
     goToSeriesButton.text = translate(translationKeys.LabelGoToSeries)
     m.buttonGrp.appendChild(goToSeriesButton)
   end if
@@ -2787,7 +2787,7 @@ sub setupButtons(item as object)
   if itemType = "Program" and isValidAndNotEmpty(item.channelId)
     goToChannelButton = CreateObject("roSGNode", "IconButton")
     goToChannelButton.id = "goToChannelButton"
-    goToChannelButton.icon = "pkg:/images/icons/tv.png"
+    goToChannelButton.icon = "pkg:/images/icons/tv_$$RES$$.png"
     goToChannelButton.text = translate(translationKeys.LabelGoToChannel)
     m.buttonGrp.appendChild(goToChannelButton)
   end if
@@ -2796,7 +2796,7 @@ sub setupButtons(item as object)
   if itemType = "Audio" and isValidAndNotEmpty(item.albumId)
     goToAlbumButton = CreateObject("roSGNode", "IconButton")
     goToAlbumButton.id = "goToAlbumButton"
-    goToAlbumButton.icon = "pkg:/images/icons/album.png"
+    goToAlbumButton.icon = "pkg:/images/icons/album_$$RES$$.png"
     goToAlbumButton.text = translate(translationKeys.LabelGoToAlbum)
     m.buttonGrp.appendChild(goToAlbumButton)
   end if
@@ -2821,7 +2821,7 @@ sub setupButtons(item as object)
     if hasNavigableArtist
       goToArtistButton = CreateObject("roSGNode", "IconButton")
       goToArtistButton.id = "goToArtistButton"
-      goToArtistButton.icon = "pkg:/images/icons/baseline_person_white_48dp.png"
+      goToArtistButton.icon = "pkg:/images/icons/person_$$RES$$.png"
       goToArtistButton.text = translate(translationKeys.LabelGoToArtist)
       m.buttonGrp.appendChild(goToArtistButton)
     end if
@@ -2833,7 +2833,7 @@ sub setupButtons(item as object)
   if m.top.trailerAvailable
     trailerButton = CreateObject("roSGNode", "IconButton")
     trailerButton.id = "trailerButton"
-    trailerButton.icon = "pkg:/images/icons/playOutline.png"
+    trailerButton.icon = "pkg:/images/icons/playOutline_$$RES$$.png"
     trailerButton.text = translate(translationKeys.LabelPlayTrailer)
     m.buttonGrp.appendChild(trailerButton)
   end if
@@ -2842,7 +2842,7 @@ sub setupButtons(item as object)
   if item.canDelete
     deleteButton = CreateObject("roSGNode", "IconButton")
     deleteButton.id = "deleteButton"
-    deleteButton.icon = "pkg:/images/icons/delete.png"
+    deleteButton.icon = "pkg:/images/icons/delete_$$RES$$.png"
     deleteButton.text = translate(translationKeys.ButtonDelete)
     m.buttonGrp.appendChild(deleteButton)
   end if
@@ -2850,7 +2850,7 @@ sub setupButtons(item as object)
   ' Refresh button — always last
   refreshButton = CreateObject("roSGNode", "IconButton")
   refreshButton.id = "refreshButton"
-  refreshButton.icon = "pkg:/images/icons/refresh.png"
+  refreshButton.icon = "pkg:/images/icons/refresh_$$RES$$.png"
   refreshButton.text = translate(translationKeys.ButtonRefresh)
   m.buttonGrp.appendChild(refreshButton)
 
@@ -2886,7 +2886,7 @@ sub onPersonHasMediaChanged()
     if not isValid(m.shuffleButton)
       m.shuffleButton = CreateObject("roSGNode", "IconButton")
       m.shuffleButton.id = "shuffleButton"
-      m.shuffleButton.icon = "pkg:/images/icons/shuffle.png"
+      m.shuffleButton.icon = "pkg:/images/icons/shuffle_$$RES$$.png"
       m.shuffleButton.text = translate(translationKeys.ButtonShuffle)
 
       if isValid(loadingButton)
@@ -2984,7 +2984,7 @@ sub onPlaylistContentKindChanged()
     if not isValid(watchedButton)
       watchedButton = CreateObject("roSGNode", "IconButton")
       watchedButton.id = "watchedButton"
-      watchedButton.icon = "pkg:/images/icons/check.png"
+      watchedButton.icon = "pkg:/images/icons/check_$$RES$$.png"
       watchedButton.text = translate(translationKeys.LabelWatched)
 
       currentFocusIndex = m.buttonGrp.buttonFocused

@@ -19,7 +19,24 @@ splash_screen_fhd=pkg:/images/branding/splash-screen_fhd.png
 splash_screen_hd=pkg:/images/branding/splash-screen_hd.png
 splash_screen_sd=pkg:/images/branding/splash-screen_sd.png
 
+### UI resolution + per-resolution asset URI substitution.
+### See docs/architecture/build-and-tooling.md (icon resolution pipeline) and
+### resources/icons/README.md.
+###
+### ui_resolutions=fhd: app is designed at 1920x1080 design coords; the OS
+### auto-downsamples the framebuffer to 720p / 480p on HD/SD devices. We
+### canNOT declare ui_resolutions=hd,fhd without first rewriting every
+### layout coordinate to be runtime-computed from m.global.device.uiResolution
+### — declaring both tells Roku NOT to autoscale and to use the device's
+### native coord space, which causes our 1920-wide elements to overflow on
+### HD devices. Tracked as tech-debt slug hd-native-layout-refactor.
+###
+### uri_resolution_autosub rewrites $$RES$$ in any image URI to sd/hd/fhd at
+### load time. Currently of limited value because the OS holds rendering at
+### FHD coord space, but the per-resolution PNG assets are in place as
+### foundation work for the eventual layout refactor.
 ui_resolutions=fhd
+uri_resolution_autosub=$$RES$$,sd,hd,fhd
 
 confirm_partner_button=1
 

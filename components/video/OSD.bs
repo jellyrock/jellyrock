@@ -579,11 +579,11 @@ end sub
 sub onPlaybackStateChanged()
   state = LCase(m.top.playbackState)
   if state = "playing"
-    m.videoPlayPause.icon = "pkg:/images/icons/pause.png"
+    m.videoPlayPause.icon = "pkg:/images/icons/pause_$$RES$$.png"
     calibrateLiveTvIfNeeded()
     onLiveTvResumeIfNeeded()
   else
-    m.videoPlayPause.icon = "pkg:/images/icons/play.png"
+    m.videoPlayPause.icon = "pkg:/images/icons/play_$$RES$$.png"
     if state = "paused" then onLiveTvPauseIfNeeded()
   end if
 end sub

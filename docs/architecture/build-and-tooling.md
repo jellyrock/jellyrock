@@ -25,6 +25,9 @@ related-files:
   - scripts/journal-sync.js
   - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
+  - scripts/generate/icons-build.js
+  - resources/icons/
+  - manifest
   - scripts/lib/frontmatter.cjs
   - scripts/lib/changed-files.cjs
   - scripts/lib/lint-excludes.cjs
@@ -207,6 +210,8 @@ Lint and format:
 | `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
 | `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
+| `npm run icons:build` / `:check` | Regenerates / checks the per-resolution PNG triples (`<name>_fhd.png` + `<name>_hd.png`) under `images/` from SVG sources in `resources/icons/`. Powers the `uri_resolution_autosub` pipeline (see [Icon resolution pipeline](#icon-resolution-pipeline) below). Pre-push runs the regen as an auto-fix when `resources/icons/*.svg`, `resources/icons/icons.json`, or [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) changes; `:check` runs as a check step in the same conditional |
+| `npm run icons:add -- <material_name> [--as <jellyrock_name>]` | Adds a new icon by fetching the canonical Material Symbols SVG from `google/material-design-icons` (Rounded variant, weight 500, fill 1, `24px` — locked house style), injecting white fill for `blendColor` tinting, saving to `resources/icons/`, and appending a row to the [provenance table](../../resources/icons/README.md#provenance). Removes the manual `icons.google.com` browse step. After running, follow up with `npm run icons:build` and update the call-site URI |
 | `npm run check-formatting` | `bs` + `js` (project-wide). Aggregates `check-formatting:bs` (`bsfmt --check`) and `check-formatting:js` (`prettier --check .`) |
 | `npm run check-formatting:bs` / `:js` | Type-scoped formatting checks. CI per-type workflows call the scoped variant (`lint-brightscript` runs `:bs` only, `lint-js` runs `:js` only) |
 | `npm run format` | `bs` + `js` (project-wide). Aggregates `format:bs` (`bsfmt --write`) and `format:js` (`prettier --write .`) |
@@ -238,6 +243,46 @@ ropm + patches (post-install):
 | `npm run postinstall` | Runs `npm run ropm && npm run patches:apply` automatically after `npm install` |
 | `npm run ropm` | `ropm copy && node scripts/ropm-hook.cjs` — copies vendored Roku modules into `components/roku_modules/` and `source/roku_modules/` |
 | `npm run patches:apply` | `patch-package` — applies every diff in `patches/` to `node_modules/`. Lets us hold local fixes against upstream packages until the upstream change lands |
+
+## Icon resolution pipeline
+
+JellyRock declares `ui_resolutions=fhd` in [`manifest`](../../manifest) — the app is designed at 1920×1080 design coordinates and the Roku OS automatically downsamples the framebuffer to 720p / 480p on HD / SD devices. The manifest also declares:
+
+```text
+uri_resolution_autosub=$$RES$$,sd,hd,fhd
+```
+
+This is a Roku-blessed primitive: at image-load time, the OS rewrites the magic token `$$RES$$` in any image URI to `sd`, `hd`, or `fhd`. A Poster URI like `pkg:/images/icons/play_$$RES$$.png` then resolves to `play_fhd.png`, `play_hd.png`, or `play_sd.png`.
+
+> **Current limitation — read this before assuming the HD assets deliver native rendering.** With `ui_resolutions=fhd` set, the OS holds rendering at FHD design space and downsamples the whole framebuffer at the end. So even though the autosub mechanism + per-resolution PNGs are in place, the HD assets do not currently deliver a measurable quality win — they get loaded into Posters sized at FHD and scaled by the framebuffer downsample like everything else. Fully realizing this pipeline requires a layout refactor so every dimension is computed from `m.global.device.uiResolution` instead of hardcoded against `1920` / `1080`; only then can we declare `ui_resolutions=hd,fhd` and have Roku render natively per device. Tracked as [`hd-native-layout-refactor`](tech-debt.md#hd-native-layout-refactor). The current PR is foundation work — the asset pipeline is durable and the per-resolution PNGs will start delivering value immediately when the layout refactor lands.
+
+### Source-of-truth layout
+
+- **SVG sources** live in [`resources/icons/`](../../resources/icons/) and are committed. JellyRock standardizes on the [Material Symbols](https://fonts.google.com/icons) family (Rounded variant, weight 500, filled, `24px`) — locked in the `npm run icons:add` script so contributors can't drift. See [`resources/icons/README.md`](../../resources/icons/README.md) for the provenance table and full contributor workflow.
+- **Generated PNGs** at `images/icons/<name>_fhd.png` and `<name>_hd.png` are produced by [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) via [sharp](https://sharp.pixelplumbing.com/). These are committed too (matches the pattern of committed-but-generated artifacts elsewhere in the repo, e.g. `source/utils/translationKeys.bs`).
+- **Per-icon overrides** in `resources/icons/icons.json` carry two distinct sizes: `sizeFhd` (canvas dimensions in pixels — the Poster's `width`/`height`) and `glyphSize` (how big the visible glyph is *inside* the canvas; the rest is transparent padding). Both auto-detect from existing PNGs when migrating; explicit overrides are only needed when the auto-detection would produce the wrong result. See the [glyph-density section in the README](../../resources/icons/README.md#glyph-density) for the resolution order.
+
+### Pipeline contract
+
+`npm run icons:build` reads each `resources/icons/*.svg`, determines the canvas size and glyph size per icon (override > measurement of the existing PNG > defaults `96`/`54`), then for each render: rasterizes the SVG large, trims Material's design-grid padding, resizes the bare glyph to the target glyph size (preserving aspect ratio), and center-pads with transparent border to canvas size. The trim step is the load-bearing piece — it kills Material's ~25% built-in padding so per-icon density is honored. Sharp config is locked (compression level, `lanczos3` kernel, exact-pinned sharp version) so byte-identical output is reproducible across runs.
+
+`npm run icons:check` does the same render in-memory and compares against on-disk PNGs, exiting nonzero on drift — the CI / pre-push enforcement.
+
+### Pre-push integration
+
+When a push includes changes to `resources/icons/*.svg`, `resources/icons/icons.json`, or `scripts/generate/icons-build.js`, the pre-push hook runs `npm run icons:build` in the auto-fix bucket (alongside translation regen and the `docs:dev-index` regen) and folds the regenerated PNGs into the auto-fix commit. `npm run icons:check` then runs as a check step. Drift never lands.
+
+### Migration / opt-in
+
+Existing single-resolution PNGs in `images/icons/` continue to work unchanged. The `uri_resolution_autosub` rewrite only fires when the magic `$$RES$$` token is present in the URI — call sites that load `pkg:/images/icons/<name>.png` (no token) get the asset as-is and are auto-scaled by the OS as today. Migrating an icon to the per-resolution pipeline is per-asset and reversible: drop the SVG, run `icons:build`, swap the call-site URI, delete the legacy single-res PNG.
+
+### Coexistence with `splash_screen_*` / `mm_icon_focus_*`
+
+The manifest's existing splash + channel-poster triples (lines 8-21) use a different OS mechanism (explicit per-resolution manifest keys) and are unaffected by `uri_resolution_autosub`. Both mechanisms coexist cleanly.
+
+### Phase-2 deferral — native SD
+
+The `sd` slot in `uri_resolution_autosub` is reserved but not yet populated. Native SD support requires NTSC pixel-aspect-ratio handling in the build script (SD framebuffer pixels are non-square: 720×480 with 8:9 or 32:27 SAR). A naive square-pixel render would produce horizontally-squished SD assets that may look worse than the alternative — letting the OS auto-scale from HD. Until that's empirically verified on hardware, SD devices fall back to the `hd` substring (one downsample step). Tracked as [`sd-resolution-native-support`](tech-debt.md#sd-resolution-native-support).
 
 ## Roku signing pipeline (`.pkg` for channel store)
 

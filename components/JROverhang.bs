@@ -27,14 +27,14 @@ sub init()
   ' Create overhang icon buttons (search and settings shortcuts)
   m.searchIcon = CreateObject("roSGNode", "JROverhangIcon")
   m.searchIcon.id = "searchIcon"
-  m.searchIcon.icon = "pkg:/images/icons/search.png"
+  m.searchIcon.icon = "pkg:/images/icons/search_$$RES$$.png"
   m.searchIcon.actionId = HomeAction.OPEN_SEARCH
   m.searchIcon.visible = false
   m.top.appendChild(m.searchIcon)
 
   m.settingsIcon = CreateObject("roSGNode", "JROverhangIcon")
   m.settingsIcon.id = "settingsIcon"
-  m.settingsIcon.icon = "pkg:/images/icons/settings.png"
+  m.settingsIcon.icon = "pkg:/images/icons/settings_$$RES$$.png"
   m.settingsIcon.actionId = HomeAction.OPEN_SETTINGS
   m.settingsIcon.visible = false
   m.top.appendChild(m.settingsIcon)
@@ -130,7 +130,7 @@ sub onCurrentUserChanged()
       end if
     else
       m.userDropdown.triggerIconBlendColor = m.global.constants.colorTextSecondary
-      m.userDropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
+      m.userDropdown.triggerIconUri = "pkg:/images/icons/person_36px_$$RES$$.png"
     end if
 
     ' Set menu items — user-related actions only

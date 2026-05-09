@@ -44,22 +44,22 @@ namespace tests
 
     @it("has iconSuccess path")
     function _()
-      m.assertEqual(m.constants.iconSuccess, "pkg:/images/icons/check.png")
+      m.assertEqual(m.constants.iconSuccess, "pkg:/images/icons/check_$$RES$$.png")
     end function
 
     @it("has iconError path")
     function _()
-      m.assertEqual(m.constants.iconError, "pkg:/images/icons/error.png")
+      m.assertEqual(m.constants.iconError, "pkg:/images/icons/error_$$RES$$.png")
     end function
 
     @it("has iconWarning path")
     function _()
-      m.assertEqual(m.constants.iconWarning, "pkg:/images/icons/warning.png")
+      m.assertEqual(m.constants.iconWarning, "pkg:/images/icons/warning_$$RES$$.png")
     end function
 
     @it("has iconInfo path")
     function _()
-      m.assertEqual(m.constants.iconInfo, "pkg:/images/icons/info.png")
+      m.assertEqual(m.constants.iconInfo, "pkg:/images/icons/info_$$RES$$.png")
     end function
 
   end class

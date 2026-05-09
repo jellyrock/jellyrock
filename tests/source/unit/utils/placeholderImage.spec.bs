@@ -90,7 +90,7 @@ namespace tests
     @it("returns false for non-placeholder URIs")
     @params("https://jellyfin.example.com/Items/abc123/Images/Primary", false)
     @params("pkg:/images/media_type_icons/live_tv_white.png", false)
-    @params("pkg:/images/spinner.png", false)
+    @params("pkg:/images/icons/spinner_$$RES$$.png", false)
     @params("", false)
     function _(uri, expected)
       m.assertEqual(isPlaceholderUri(uri), expected)

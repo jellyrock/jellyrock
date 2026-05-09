@@ -62,18 +62,18 @@
     <field id="fontSizeLargest" type="integer" value="60" />
 
     <!-- Icon Paths -->
-    <field id="iconArrowUpBlack" type="string" value="pkg:/images/icons/arrow-up-black.png" />
-    <field id="iconArrowUpWhite" type="string" value="pkg:/images/icons/arrow-up-white.png" />
-    <field id="iconArrowDownBlack" type="string" value="pkg:/images/icons/arrow-down-black.png" />
-    <field id="iconArrowDownWhite" type="string" value="pkg:/images/icons/arrow-down-white.png" />
-    <field id="iconCheckBlack" type="string" value="pkg:/images/icons/check-black.png" />
-    <field id="iconCheckWhite" type="string" value="pkg:/images/icons/check_white.png" />
-    <field id="iconTomatoFresh" type="string" value="pkg:/images/icons/tomato-fresh.png" />
-    <field id="iconTomatoRotten" type="string" value="pkg:/images/icons/tomato-rotten.png" />
-    <field id="iconSuccess" type="string" value="pkg:/images/icons/check.png" />
-    <field id="iconError" type="string" value="pkg:/images/icons/error.png" />
-    <field id="iconWarning" type="string" value="pkg:/images/icons/warning.png" />
-    <field id="iconInfo" type="string" value="pkg:/images/icons/info.png" />
+    <field id="iconArrowUpBlack" type="string" value="pkg:/images/icons/arrow-up-black_$$RES$$.png" />
+    <field id="iconArrowUpWhite" type="string" value="pkg:/images/icons/arrow-up-white_$$RES$$.png" />
+    <field id="iconArrowDownBlack" type="string" value="pkg:/images/icons/arrow-down-black_$$RES$$.png" />
+    <field id="iconArrowDownWhite" type="string" value="pkg:/images/icons/arrow-down-white_$$RES$$.png" />
+    <field id="iconCheckBlack" type="string" value="pkg:/images/icons/check-black_$$RES$$.png" />
+    <field id="iconCheckWhite" type="string" value="pkg:/images/icons/check-white_$$RES$$.png" />
+    <field id="iconTomatoFresh" type="string" value="pkg:/images/icons/tomato-fresh_$$RES$$.png" />
+    <field id="iconTomatoRotten" type="string" value="pkg:/images/icons/tomato-rotten_$$RES$$.png" />
+    <field id="iconSuccess" type="string" value="pkg:/images/icons/check_$$RES$$.png" />
+    <field id="iconError" type="string" value="pkg:/images/icons/error_$$RES$$.png" />
+    <field id="iconWarning" type="string" value="pkg:/images/icons/warning_$$RES$$.png" />
+    <field id="iconInfo" type="string" value="pkg:/images/icons/info_$$RES$$.png" />
 
     <!-- Other Constants -->
     <field id="jellyfinServerResponse" type="string" value="jellyfin server" />

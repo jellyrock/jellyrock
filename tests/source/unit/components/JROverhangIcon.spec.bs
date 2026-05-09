@@ -137,9 +137,9 @@ namespace tests
 
     @it("updates buttonIcon URI when icon field changes")
     function _()
-      m.icon.icon = "pkg:/images/icons/search.png"
+      m.icon.icon = "pkg:/images/icons/search_$$RES$$.png"
       poster = m.icon.findNode("buttonIcon")
-      m.assertEqual(poster.uri, "pkg:/images/icons/search.png")
+      m.assertEqual(poster.uri, "pkg:/images/icons/search_$$RES$$.png")
     end function
 
   end class
