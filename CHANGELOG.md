@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Add Material Symbols icon pipeline with per-resolution assets ([#560](https://github.com/jellyrock/jellyrock/pull/560))
+
 ### Changed
 
 - Skills overhaul: /catchup, journal sync, /pr update-path, audit-skill ([#559](https://github.com/jellyrock/jellyrock/pull/559))
