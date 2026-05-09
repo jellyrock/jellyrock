@@ -16,10 +16,11 @@ import { join } from 'node:path';
 
 describe('icons-add', () => {
   describe('parseArgs', () => {
-    it('parses a single material name with no flags', () => {
+    it('parses a single material name with no flags (defaults to fill=0 outlined)', () => {
       const out = parseArgs(['node', 'icons-add.js', 'play_arrow']);
       expect(out.materialName).toBe('play_arrow');
       expect(out.jellyRockName).toBe('play_arrow');
+      expect(out.fill).toBe(0);
       expect(out.dryRun).toBe(false);
     });
 
@@ -32,6 +33,11 @@ describe('icons-add', () => {
     it('honors --dry-run', () => {
       const out = parseArgs(['node', 'icons-add.js', 'play_arrow', '--dry-run']);
       expect(out.dryRun).toBe(true);
+    });
+
+    it('honors --filled to opt into fill=1', () => {
+      const out = parseArgs(['node', 'icons-add.js', 'favorite_selected', '--filled']);
+      expect(out.fill).toBe(1);
     });
 
     it('handles --as before positional', () => {
@@ -96,20 +102,27 @@ describe('icons-add', () => {
       '| File | Material Symbols name | Style | Weight | Fill | Size | Downloaded |';
     const TABLE_SEP = '|---|---|---|---|---|---|---|';
 
-    it('appends a row to an empty provenance table', () => {
+    it('appends an outlined row (fill=0)', () => {
       const readme = setupReadme(`Some preamble.\n\n${TABLE_HEADER}\n${TABLE_SEP}\n`);
-      const result = appendProvenanceRow(readme, 'play', 'play_arrow');
+      const result = appendProvenanceRow(readme, 'play', 'play_arrow', 0);
       expect(result).toMatch(
-        /\| `play\.svg` \| `play_arrow` \| Rounded \| 500 \| 1 \| `24px` \| \d{4}-\d{2}-\d{2} \|/,
+        /\| `play\.svg` \| `play_arrow` \| Rounded \| 500 \| 0 \| `24px` \| \d{4}-\d{2}-\d{2} \|/,
+      );
+    });
+
+    it('appends a filled row (fill=1)', () => {
+      const readme = setupReadme(`Some preamble.\n\n${TABLE_HEADER}\n${TABLE_SEP}\n`);
+      const result = appendProvenanceRow(readme, 'favorite_selected', 'favorite', 1);
+      expect(result).toMatch(
+        /\| `favorite_selected\.svg` \| `favorite` \| Rounded \| 500 \| 1 \| `24px` \| \d{4}-\d{2}-\d{2} \|/,
       );
     });
 
     it('appends after existing rows', () => {
       const existing = `${TABLE_HEADER}\n${TABLE_SEP}\n| \`pause.svg\` | \`pause\` | Rounded | 500 | 1 | \`24px\` | 2026-01-01 |\n`;
       const readme = setupReadme(`# Header\n\n${existing}`);
-      const result = appendProvenanceRow(readme, 'play', 'play_arrow');
+      const result = appendProvenanceRow(readme, 'play', 'play_arrow', 0);
       const lines = result.split('\n');
-      // pause.svg row should still be present, play.svg row should follow it
       const pauseIdx = lines.findIndex((l) => l.includes('pause.svg'));
       const playIdx = lines.findIndex((l) => l.includes('play.svg'));
       expect(pauseIdx).toBeGreaterThan(0);
@@ -119,8 +132,7 @@ describe('icons-add', () => {
     it('replaces an existing row for the same icon (idempotent re-add)', () => {
       const existing = `${TABLE_HEADER}\n${TABLE_SEP}\n| \`play.svg\` | \`old_name\` | Rounded | 500 | 1 | \`24px\` | 2024-01-01 |\n`;
       const readme = setupReadme(existing);
-      const result = appendProvenanceRow(readme, 'play', 'play_arrow');
-      // Old row gone, new row present, only one play.svg row exists
+      const result = appendProvenanceRow(readme, 'play', 'play_arrow', 0);
       const matches = result.match(/play\.svg/g) || [];
       expect(matches.length).toBe(1);
       expect(result).toMatch(/play_arrow/);
@@ -129,7 +141,7 @@ describe('icons-add', () => {
 
     it('throws when the table header is missing', () => {
       const readme = setupReadme('No table here.\n');
-      expect(() => appendProvenanceRow(readme, 'play', 'play_arrow')).toThrow(
+      expect(() => appendProvenanceRow(readme, 'play', 'play_arrow', 0)).toThrow(
         /Provenance table header not found/,
       );
     });

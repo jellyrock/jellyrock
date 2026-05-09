@@ -4,28 +4,43 @@
 // table.
 //
 // Why this exists: JellyRock standardizes on the Material Symbols family
-// (Rounded variant, weight 500, fill 1, 24px) for all in-app icons. Letting
-// contributors browse icons.google.com and manually download SVGs invites
-// drift — wrong variant, wrong weight, missing white-fill injection. This
-// script encodes the convention as code so a contributor's only choice is
-// "which Material symbol do I want" — everything else is locked.
+// (Rounded variant, weight 500, 24px, **outlined by default**) for all
+// in-app icons. Letting contributors browse icons.google.com and manually
+// download SVGs invites drift — wrong variant, wrong weight, missing
+// white-fill injection. This script encodes the convention as code so a
+// contributor's only choice is "which Material symbol do I want" —
+// everything else is locked.
+//
+// Fill convention: outlined (`fill=0`) is the default — outlined glyphs
+// read more clearly at 10-foot UI distance because the silhouette is
+// recognizable without color information. Use the `--filled` flag (or
+// document a per-icon override in resources/icons/README.md) ONLY when:
+//   1. The icon is the "on" state of a toggle paired with an outlined
+//      "off" state (e.g. `favorite` outlined / `favorite_selected` filled).
+//   2. The glyph is a pure shape with no meaningful outlined variant
+//      (e.g. `play` triangle, `pause` bars, `circle`, rating-dot `star`).
+//   3. A documented per-icon visual review concluded outlined is illegible
+//      at the rendered size (rare; record the rationale inline).
 //
 // Source-of-truth: google/material-design-icons on GitHub. Path pattern:
 //   symbols/web/<material_name>/materialsymbolsrounded/<material_name>_wght500fill1_24px.svg
 //
 // Usage:
-//   node scripts/generate/icons-add.js <material_name> [--as <jellyrock_name>]
+//   node scripts/generate/icons-add.js <material_name> [--as <jellyrock_name>] [--filled]
 //
 //   <material_name>     Material Symbols name (snake_case), e.g. play_arrow.
 //   --as <name>         Save as resources/icons/<name>.svg instead of using
 //                       the Material name. Use this to preserve existing
 //                       JellyRock callsite names (e.g. play_arrow → play.svg).
+//   --filled            Fetch the filled (fill=1) variant instead of the
+//                       outlined default. Use ONLY for the documented
+//                       exception cases (toggle on-states, pure shapes).
 //   --dry-run           Print what would happen without writing any files.
 //
 // Examples:
-//   node scripts/generate/icons-add.js play_arrow --as play
+//   node scripts/generate/icons-add.js play_arrow --as play --filled
 //   node scripts/generate/icons-add.js menu_book --as chapters
-//   node scripts/generate/icons-add.js favorite
+//   node scripts/generate/icons-add.js favorite_selected --filled
 //
 // After running:
 //   1. (Optional) Add a glyphSize entry to resources/icons/icons.json if the
@@ -44,13 +59,16 @@ const README_REL = 'resources/icons/README.md';
 const PROVENANCE_TABLE_HEADER =
   '| File | Material Symbols name | Style | Weight | Fill | Size | Downloaded |';
 
-// Locked house-style coordinates. If these need to change, update them in one
-// place and re-fetch every icon.
+// Locked house-style coordinates (variant + weight + size). If these need to
+// change, update them in one place and re-fetch every icon.
 const STYLE = 'Rounded';
 const WEIGHT = 500;
-const FILL = 1;
 const SIZE = '24px';
 const VARIANT_PATH = 'materialsymbolsrounded';
+// Fill defaults to 0 (outlined) per the Fill convention documented at the
+// top of this file. The --filled CLI flag opts into fill=1 for the
+// documented exception cases.
+const FILL_DEFAULT = 0;
 
 // ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +77,7 @@ function parseArgs(argv) {
   const positional = [];
   let asName = null;
   let dryRun = false;
+  let filled = false;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -67,6 +86,8 @@ function parseArgs(argv) {
       if (!asName) throw new Error('--as requires a name argument');
     } else if (a === '--dry-run') {
       dryRun = true;
+    } else if (a === '--filled') {
+      filled = true;
     } else if (a.startsWith('--')) {
       throw new Error(`Unknown flag: ${a}`);
     } else {
@@ -77,7 +98,7 @@ function parseArgs(argv) {
   if (positional.length === 0) {
     throw new Error(
       'Missing required argument: <material_name>\n' +
-        'Usage: node scripts/generate/icons-add.js <material_name> [--as <jellyrock_name>] [--dry-run]',
+        'Usage: node scripts/generate/icons-add.js <material_name> [--as <jellyrock_name>] [--filled] [--dry-run]',
     );
   }
   if (positional.length > 1) {
@@ -87,12 +108,20 @@ function parseArgs(argv) {
   return {
     materialName: positional[0],
     jellyRockName: asName ?? positional[0],
+    fill: filled ? 1 : FILL_DEFAULT,
     dryRun,
   };
 }
 
-function fetchMaterialSvg(materialName) {
-  const ghPath = `repos/google/material-design-icons/contents/symbols/web/${materialName}/${VARIANT_PATH}/${materialName}_wght${WEIGHT}fill${FILL}_${SIZE}.svg?ref=master`;
+function fetchMaterialSvg(materialName, fill) {
+  // Material's GitHub repo names files by axis-deviation from defaults:
+  //   - fill=0 (default outlined):  <name>_wght500_24px.svg     (no "fill0")
+  //   - fill=1 (explicit filled):   <name>_wght500fill1_24px.svg
+  // We always pin weight=500, so wght500 is always present. fill suffix only
+  // appears when fill !== 0.
+  const fillSuffix = fill === 0 ? '' : `fill${fill}`;
+  const filename = `${materialName}_wght${WEIGHT}${fillSuffix}_${SIZE}.svg`;
+  const ghPath = `repos/google/material-design-icons/contents/symbols/web/${materialName}/${VARIANT_PATH}/${filename}?ref=master`;
   let raw;
   try {
     raw = execFileSync('gh', ['api', ghPath, '--jq', '.content'], { encoding: 'utf8' });
@@ -128,9 +157,9 @@ function injectWhiteFill(svg) {
   return svg.replace(/<path d=/g, '<path fill="#FFFFFF" d=');
 }
 
-function appendProvenanceRow(readmePath, jellyRockName, materialName) {
+function appendProvenanceRow(readmePath, jellyRockName, materialName, fill) {
   const today = new Date().toISOString().slice(0, 10);
-  const newRow = `| \`${jellyRockName}.svg\` | \`${materialName}\` | ${STYLE} | ${WEIGHT} | ${FILL} | \`${SIZE}\` | ${today} |`;
+  const newRow = `| \`${jellyRockName}.svg\` | \`${materialName}\` | ${STYLE} | ${WEIGHT} | ${fill} | \`${SIZE}\` | ${today} |`;
 
   const readme = readFileSync(readmePath, 'utf8');
   const headerIdx = readme.indexOf(PROVENANCE_TABLE_HEADER);
@@ -178,7 +207,7 @@ function main() {
     process.exit(1);
   }
 
-  const { materialName, jellyRockName, dryRun } = parsed;
+  const { materialName, jellyRockName, fill, dryRun } = parsed;
   const repoRoot = '.';
   const svgPath = join(repoRoot, SVG_DIR_REL, `${jellyRockName}.svg`);
   const readmePath = join(repoRoot, README_REL);
@@ -190,7 +219,7 @@ function main() {
 
   let svg;
   try {
-    svg = fetchMaterialSvg(materialName);
+    svg = fetchMaterialSvg(materialName, fill);
   } catch (err) {
     console.error(`icons:add: ${err.message}`);
     process.exit(1);
@@ -200,7 +229,7 @@ function main() {
 
   let updatedReadme;
   try {
-    updatedReadme = appendProvenanceRow(readmePath, jellyRockName, materialName);
+    updatedReadme = appendProvenanceRow(readmePath, jellyRockName, materialName, fill);
   } catch (err) {
     console.error(`icons:add: ${err.message}`);
     process.exit(1);
@@ -208,7 +237,7 @@ function main() {
 
   if (dryRun) {
     console.log(`icons:add: dry-run — would write:`);
-    console.log(`  ${svgPath} (${svg.length} bytes)`);
+    console.log(`  ${svgPath} (${svg.length} bytes, fill=${fill})`);
     console.log(`  ${readmePath} (provenance table updated)`);
     process.exit(0);
   }
@@ -216,7 +245,7 @@ function main() {
   writeFileSync(svgPath, svg);
   writeFileSync(readmePath, updatedReadme);
 
-  console.log(`icons:add: wrote ${svgPath}`);
+  console.log(`icons:add: wrote ${svgPath} (fill=${fill})`);
   console.log(`icons:add: appended provenance row to ${readmePath}`);
   console.log(``);
   console.log(`Next steps:`);
