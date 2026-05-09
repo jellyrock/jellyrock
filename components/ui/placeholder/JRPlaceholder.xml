@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  JRPlaceholder: themed card backdrop + themed-tinted Material glyph fallback
+  for image surfaces (poster tiles, grid items, item-detail logos) when the
+  real image fails to load or hasn't loaded yet.
+
+  Encapsulates the historical JRRowItem inline pattern (RectangleBackgroundSecondary
+  backdrop + Poster with blendColor=colorBackgroundPrimary + getPlaceholderImagePath
+  URI mapping) so future surfaces drop in a single declarative child instead of
+  re-implementing the composition. Driven by `itemType` — the component handles
+  the URI mapping internally via getPlaceholderImagePath().
+
+  States:
+    - itemType=""       → backdrop visible, glyph hidden (loading state)
+    - itemType="Movie"  → backdrop visible, glyph visible (placeholder fallback state)
+    - top.visible=false → entire placeholder hidden (real image loaded)
+-->
+<component name="JRPlaceholder" extends="Group">
+  <children>
+    <RectangleBackgroundSecondary id="backdrop" />
+    <Poster id="glyph" loadDisplayMode="scaleToFit" visible="false" />
+  </children>
+  <interface>
+    <!--
+      itemType: Jellyfin item type string (e.g., "Movie", "Person"). Maps via
+      getPlaceholderImagePath() to a placeholder URI. Empty string hides the
+      glyph (loading state); non-empty shows the corresponding glyph.
+    -->
+    <field id="itemType" type="string" value="" onChange="onItemTypeChanged" />
+    <!--
+      width / height: declared so they're never invalid. Sized by parent (the
+      grid cell or row item dimensions); the backdrop and glyph follow.
+    -->
+    <field id="width" type="float" value="0" onChange="onSizeChanged" />
+    <field id="height" type="float" value="0" onChange="onSizeChanged" />
+  </interface>
+</component>

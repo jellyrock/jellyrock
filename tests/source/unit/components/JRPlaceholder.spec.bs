@@ -1,0 +1,153 @@
+namespace tests
+
+  @suite("JRPlaceholder - Node interface, defaults, and itemType behavior")
+  class JRPlaceholderTests extends tests.BaseTestSuite
+
+    private placeholder as object
+
+    protected override function setup()
+      super.setup()
+      m.placeholder = CreateObject("roSGNode", "JRPlaceholder")
+    end function
+
+    protected override function teardown()
+      m.placeholder = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has itemType field")
+    function _()
+      m.assertTrue(m.placeholder.doesExist("itemType"))
+    end function
+
+    @it("has width field")
+    function _()
+      m.assertTrue(m.placeholder.doesExist("width"))
+    end function
+
+    @it("has height field")
+    function _()
+      m.assertTrue(m.placeholder.doesExist("height"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Default values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("itemType defaults to empty string")
+    function _()
+      m.assertEqual(m.placeholder.itemType, "")
+    end function
+
+    @it("width defaults to 0")
+    function _()
+      m.assertEqual(m.placeholder.width, 0)
+    end function
+
+    @it("height defaults to 0")
+    function _()
+      m.assertEqual(m.placeholder.height, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Child nodes exist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has backdrop rectangle")
+    function _()
+      m.assertNotInvalid(m.placeholder.findNode("backdrop"))
+    end function
+
+    @it("has glyph poster")
+    function _()
+      m.assertNotInvalid(m.placeholder.findNode("glyph"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Glyph initial state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("glyph is hidden by default (loading state)")
+    function _()
+      m.assertFalse(m.placeholder.findNode("glyph").visible)
+    end function
+
+    @it("glyph blendColor is set to colorBackgroundPrimary in init")
+    function _()
+      glyph = m.placeholder.findNode("glyph")
+      m.assertEqual(glyph.blendColor, m.global.constants.colorBackgroundPrimary)
+    end function
+
+    @it("glyph loadDisplayMode is scaleToFit (preserves aspect, never stretched)")
+    function _()
+      glyph = m.placeholder.findNode("glyph")
+      m.assertEqual(glyph.loadDisplayMode, "scaleToFit")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Size propagation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("setting width sizes both backdrop and glyph")
+    function _()
+      m.placeholder.width = 234
+      m.placeholder.height = 324
+      m.assertEqual(m.placeholder.findNode("backdrop").width, 234)
+      m.assertEqual(m.placeholder.findNode("backdrop").height, 324)
+      m.assertEqual(m.placeholder.findNode("glyph").width, 234)
+      m.assertEqual(m.placeholder.findNode("glyph").height, 324)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemType drives glyph visibility and URI")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("Movie itemType shows glyph with movie placeholder URI")
+    function _()
+      m.placeholder.itemType = "Movie"
+      glyph = m.placeholder.findNode("glyph")
+      m.assertTrue(glyph.visible)
+      m.assertEqual(glyph.uri, getPlaceholderImagePath("Movie"))
+    end function
+
+    @it("Person itemType shows glyph with person placeholder URI")
+    function _()
+      m.placeholder.itemType = "Person"
+      glyph = m.placeholder.findNode("glyph")
+      m.assertTrue(glyph.visible)
+      m.assertEqual(glyph.uri, getPlaceholderImagePath("Person"))
+    end function
+
+    @it("Unknown itemType falls back to folder placeholder URI")
+    function _()
+      m.placeholder.itemType = "SomeUnknownType"
+      glyph = m.placeholder.findNode("glyph")
+      m.assertTrue(glyph.visible)
+      m.assertEqual(glyph.uri, getPlaceholderImagePath("SomeUnknownType"))
+    end function
+
+    @it("Empty itemType hides glyph and clears URI (loading state)")
+    function _()
+      m.placeholder.itemType = "Movie"
+      m.placeholder.itemType = ""
+      glyph = m.placeholder.findNode("glyph")
+      m.assertFalse(glyph.visible)
+      m.assertEqual(glyph.uri, "")
+    end function
+
+    @it("Switching itemType updates URI")
+    function _()
+      m.placeholder.itemType = "Movie"
+      movieUri = m.placeholder.findNode("glyph").uri
+      m.placeholder.itemType = "MusicAlbum"
+      albumUri = m.placeholder.findNode("glyph").uri
+      m.assertNotEqual(movieUri, albumUri)
+      m.assertEqual(albumUri, getPlaceholderImagePath("MusicAlbum"))
+    end function
+
+  end class
+
+end namespace
