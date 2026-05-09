@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-06
+last-updated: 2026-05-09
 ---
 
 # Progress
@@ -22,12 +22,12 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Reshaping the journal/skill system into the four-pillar pattern (branch: `feat/skills-and-agents-overhaul`). Adds `progress.md` + `signals-backlog.md`, replaces `/add-decision` with `/log <type>` router, adds `/done`, reshapes `/catchup` and `/ramp` to use a Node-based state aggregator at `scripts/catchup-state.js`.
 
 ## Recently shipped
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
 
+- 2026-05-09 — Skills overhaul: /catchup, journal sync, /pr update-path, audit-skill
 - 2026-05-06 — `docs(decisions): record triage-opus-inline-investigation`
 - 2026-05-06 — `chore(claude): update skills README + allowlist for triage refactor`
 - 2026-05-06 — `feat(skills): /ramp surfaces area-scoped pending handoffs`
