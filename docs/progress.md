@@ -22,7 +22,6 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-
 ## Recently shipped
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
