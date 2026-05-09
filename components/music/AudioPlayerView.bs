@@ -270,9 +270,9 @@ sub audioStateChanged()
   ' Update play/pause button icon based on audio state
   if isValid(m.playButton)
     if m.audioPlayer.state = "playing"
-      m.playButton.icon = "pkg:/images/icons/pause.png"
+      m.playButton.icon = "pkg:/images/icons/pause_$$RES$$.png"
     else
-      m.playButton.icon = "pkg:/images/icons/play.png"
+      m.playButton.icon = "pkg:/images/icons/play_$$RES$$.png"
     end if
   end if
 
@@ -309,17 +309,17 @@ function playAction() as boolean
   if m.audioPlayer.state = "playing"
     m.audioPlayer.control = "pause"
     if isValid(m.playButton)
-      m.playButton.icon = "pkg:/images/icons/play.png"
+      m.playButton.icon = "pkg:/images/icons/play_$$RES$$.png"
     end if
   else if m.audioPlayer.state = "paused"
     m.audioPlayer.control = "resume"
     if isValid(m.playButton)
-      m.playButton.icon = "pkg:/images/icons/pause.png"
+      m.playButton.icon = "pkg:/images/icons/pause_$$RES$$.png"
     end if
   else if m.audioPlayer.state = "finished"
     m.audioPlayer.control = "play"
     if isValid(m.playButton)
-      m.playButton.icon = "pkg:/images/icons/pause.png"
+      m.playButton.icon = "pkg:/images/icons/pause_$$RES$$.png"
     end if
   end if
 
@@ -378,15 +378,15 @@ sub setLoopButtonImage()
 
   if m.audioPlayer.loopMode = "all"
     ' Repeat all - use repeat.png with active state
-    m.repeatButton.icon = "pkg:/images/icons/repeat.png"
+    m.repeatButton.icon = "pkg:/images/icons/repeat_$$RES$$.png"
     m.repeatButton.isButtonSelected = true
   else if m.audioPlayer.loopMode = "one"
     ' Repeat one - use repeat-1.png with active state
-    m.repeatButton.icon = "pkg:/images/icons/repeat-1.png"
+    m.repeatButton.icon = "pkg:/images/icons/repeat-1_$$RES$$.png"
     m.repeatButton.isButtonSelected = true
   else
     ' Repeat off - use repeat.png without active state
-    m.repeatButton.icon = "pkg:/images/icons/repeat.png"
+    m.repeatButton.icon = "pkg:/images/icons/repeat_$$RES$$.png"
     m.repeatButton.isButtonSelected = false
   end if
 end sub
@@ -568,7 +568,7 @@ sub onAudioStreamLoaded()
         setPosterImage(ImageURL(currentItem.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.primaryImageTag }))
       else
         ' no poster available, show placeholder image
-        setPosterImage("pkg:/images/icons/album.png")
+        setPosterImage("pkg:/images/icons/album_$$RES$$.png")
       end if
 
       setScreenTitle(currentItem)
@@ -609,7 +609,7 @@ sub onMetaDataLoaded()
   else if isValidAndNotEmpty(data.primaryImageTag)
     setPosterImage(ImageURL(data.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": data.primaryImageTag }))
   else
-    setPosterImage("pkg:/images/icons/album.png")
+    setPosterImage("pkg:/images/icons/album_$$RES$$.png")
   end if
 
   setScreenTitle(data)
@@ -627,7 +627,7 @@ end sub
 sub setPosterImage(posterURL)
   if isValid(posterURL)
     if m.albumCover.uri <> posterURL
-      if posterURL = "pkg:/images/icons/album.png"
+      if posterURL = "pkg:/images/icons/album_$$RES$$.png"
         constants = m.global.constants
         ' color the white album placeholder to match theme
         m.albumCover.blendColor = constants.colorTextSecondary

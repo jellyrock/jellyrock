@@ -81,11 +81,12 @@ HAS_LANGUAGE_TRIGGERS=$(echo "$CHANGED" | grep -qE '^source/utils/(languages|med
 HAS_ISSUE_TEMPLATES=$(echo "$CHANGED" | grep -qE '^\.github/ISSUE_TEMPLATE/|^scripts/lint/issue-templates-check\.cjs$|^scripts/lint/issue-forms\.schema\.json$' && echo 1 || true)
 HAS_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs)$' && echo 1 || true)
 HAS_JSON_OR_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs|json)$' && echo 1 || true)
+HAS_ICON_SOURCES=$(echo "$CHANGED" | grep -qE '^resources/icons/.*\.svg$|^resources/icons/icons\.json$|^scripts/generate/icons-build\.js$' && echo 1 || true)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Auto-fix steps (project-wide regens; combined into one commit at the end)
 # ──────────────────────────────────────────────────────────────────────────
-if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ]; then
+if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ] || [ -n "$HAS_ICON_SOURCES" ]; then
   if ! git diff-index --quiet HEAD --; then
     echo "⚠️  Working tree has uncommitted changes; skipping auto-fix steps."
     echo "   Commit or stash them, then re-push to enable auto-fix."
@@ -98,6 +99,11 @@ if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ]; then
     if [ -n "$HAS_DEV_DOCS" ]; then
       echo "📑 Regenerating docs/dev/ index in architecture README..."
       npm run docs:dev-index
+    fi
+
+    if [ -n "$HAS_ICON_SOURCES" ]; then
+      echo "🎨 Regenerating icon PNGs from SVG sources..."
+      npm run icons:build
     fi
 
     if ! git diff --quiet; then
@@ -152,6 +158,11 @@ npm run lint:docs
 
 echo "📑 Checking dev-index drift..."
 npm run docs:dev-index:check
+
+if [ -n "$HAS_ICON_SOURCES" ]; then
+  echo "🎨 Checking icon-asset drift..."
+  npm run icons:check
+fi
 
 # Decision-shape commit nudge — advisory only, never blocks the push.
 # Detects commits whose messages look like decisions (decided/switched-from/

@@ -187,15 +187,15 @@ namespace tests
 
     @it("shows trigger icon when URI is set")
     function _()
-      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
+      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px_$$RES$$.png"
       icon = m.dropdown.findNode("triggerIcon")
       m.assertTrue(icon.visible)
-      m.assertEqual(icon.uri, "pkg:/images/icons/person_36px.png")
+      m.assertEqual(icon.uri, "pkg:/images/icons/person_36px_$$RES$$.png")
     end function
 
     @it("hides trigger icon when URI is cleared")
     function _()
-      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
+      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px_$$RES$$.png"
       m.dropdown.triggerIconUri = ""
       icon = m.dropdown.findNode("triggerIcon")
       m.assertFalse(icon.visible)
@@ -203,7 +203,7 @@ namespace tests
 
     @it("applies blend color to trigger icon")
     function _()
-      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px.png"
+      m.dropdown.triggerIconUri = "pkg:/images/icons/person_36px_$$RES$$.png"
       m.dropdown.triggerIconBlendColor = "0xFF0000FF"
       icon = m.dropdown.findNode("triggerIcon")
       ' Color fields are stored as integers — 0xFF0000FF = -16776961

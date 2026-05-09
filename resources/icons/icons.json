@@ -1,0 +1,17 @@
+{
+  "spinner": { "sizeFhd": 125, "glyphSize": 125 },
+  "play": { "glyphSize": 43 },
+  "pause": { "glyphSize": 38 },
+  "itemPrevious": { "glyphSize": 42 },
+  "itemNext": { "glyphSize": 42 },
+  "chapters": { "glyphSize": 60 },
+  "star": { "sizeFhd": 36, "glyphSize": 30 },
+  "person": { "glyphSize": 64 },
+  "album": { "sizeFhd": 450, "glyphSize": 382 },
+  "missingArtist": { "sizeFhd": 512, "glyphSize": 256 },
+  "musicFolder": { "sizeFhd": 256, "glyphSize": 256 },
+  "playlist": { "sizeFhd": 450, "glyphSize": 362 },
+  "circle": { "sizeFhd": 48, "glyphSize": 48 },
+  "tomato-fresh": { "sizeFhd": 64, "glyphSize": 64 },
+  "tomato-rotten": { "sizeFhd": 64, "glyphSize": 64 }
+}

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="CommunityRating" extends="Group">
   <children>
-    <Poster id="star" uri="pkg:/images/icons/sharp_star_white_18dp.png" loadDisplayMode="limitSize" translation="[0, 0]" />
+    <Poster id="star" uri="pkg:/images/icons/star_$$RES$$.png" loadDisplayMode="limitSize" translation="[0, 0]" />
     <LabelPrimaryMedium id="communityRating" isBold="true" />
   </children>
   <interface>

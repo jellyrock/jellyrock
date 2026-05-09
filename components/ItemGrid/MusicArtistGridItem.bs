@@ -49,13 +49,13 @@ sub onItemContentChanged()
     folderType = LCase(itemData.folderType)
 
     if itemType = "musicalbum"
-      fallbackIconUri = "pkg:/images/icons/album.png"
+      fallbackIconUri = "pkg:/images/icons/album_$$RES$$.png"
       shouldShowFallbackIcon = true
     else if itemType = "musicartist"
-      fallbackIconUri = "pkg:/images/icons/missingArtist.png"
+      fallbackIconUri = "pkg:/images/icons/missingArtist_$$RES$$.png"
       shouldShowFallbackIcon = true
     else if itemType = "musicgenre" or folderType = "musicgenre"
-      fallbackIconUri = "pkg:/images/icons/musicFolder.png"
+      fallbackIconUri = "pkg:/images/icons/musicFolder_$$RES$$.png"
       shouldShowFallbackIcon = true
     end if
   end if

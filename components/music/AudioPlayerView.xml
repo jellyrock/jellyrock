@@ -14,14 +14,14 @@
       <Rectangle id="seekBar" width="500" height="9">
         <Rectangle id="bufferPosition" height="9"></Rectangle>
         <Rectangle id="playPosition" height="9"></Rectangle>
-        <Poster id="thumb" width="25" loadWidth="25" height="25" loadHeight="25" uri="pkg:/images/icons/circle.png" visible="false" translation="[0, -10]" loadDisplayMode="limitSize" />
+        <Poster id="thumb" width="25" loadWidth="25" height="25" loadHeight="25" uri="pkg:/images/icons/circle_$$RES$$.png" visible="false" translation="[0, -10]" loadDisplayMode="limitSize" />
       </Rectangle>
       <JRButtonGroup id="buttons" itemSpacings="[36]">
-        <IconButton id="previous" icon="pkg:/images/icons/itemPrevious.png" />
-        <IconButton id="play" icon="pkg:/images/icons/play.png" />
-        <IconButton id="next" icon="pkg:/images/icons/itemNext.png" />
-        <IconButton id="shuffle" icon="pkg:/images/icons/shuffle.png" />
-        <IconButton id="repeat" icon="pkg:/images/icons/repeat.png" />
+        <IconButton id="previous" icon="pkg:/images/icons/itemPrevious_$$RES$$.png" />
+        <IconButton id="play" icon="pkg:/images/icons/play_$$RES$$.png" />
+        <IconButton id="next" icon="pkg:/images/icons/itemNext_$$RES$$.png" />
+        <IconButton id="shuffle" icon="pkg:/images/icons/shuffle_$$RES$$.png" />
+        <IconButton id="repeat" icon="pkg:/images/icons/repeat_$$RES$$.png" />
       </JRButtonGroup>
       <Animation id="bufferPositionAnimation" duration="1" repeat="false" easeFunction="linear">
         <FloatFieldInterpolator id="bufferPositionAnimationWidth" key="[0.0, 1.0]" fieldToInterp="bufferPosition.width" />

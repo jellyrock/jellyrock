@@ -19,7 +19,7 @@
       </LayoutGroup>
       <CheckList opacity="0" translation="[900, 200]" id="filterOptions" numRows="8" itemSize="[250, 70]" />
       <ButtonGroup translation="[1250,50]">
-        <Button id="favoriteMenu" iconUri="pkg:/images/icons/favorite.png" focusedIconUri="pkg:/images/icons/favorite.png" focusBitmapUri="" focusFootprintBitmapUri="" text="" showFocusFootprint="false"></Button>
+        <Button id="favoriteMenu" iconUri="pkg:/images/icons/favorite_$$RES$$.png" focusedIconUri="pkg:/images/icons/favorite_$$RES$$.png" focusBitmapUri="" focusFootprintBitmapUri="" text="" showFocusFootprint="false"></Button>
       </ButtonGroup>
     </Group>
 
