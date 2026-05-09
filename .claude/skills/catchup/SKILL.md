@@ -32,7 +32,7 @@ Every banner check is a deterministic compare against the aggregator JSON. **Ban
 Banners (top of briefing, before the template):
 
 - **Stale `progress.md`**: when `state.progress.days_since > 7 && state.progress.commits_since > 0` → `⚠ progress.md stale — last updated <progress.last_updated>, <progress.commits_since> commit(s) since. Bump it via /log followup or /done.`
-- **Stale signal rows**: when `state.signals.stale_count > 0` → `⚠ signals-backlog: <stale_count> row(s) past staleness threshold (<list slugs from rows where stale=true>). Re-check upstream and update via /log signal or /done <slug>.`
+- **Stale signal rows**: when `state.signals.stale_count > 0` → `⚠ signals-backlog: <stale_count> upstream(s) ahead of `latest_acknowledged` (<list slugs from rows where stale=true>). Run /done <slug> after reviewing each — that bumps latest_acknowledged and clears the stale flag.`
 - **Action-pending signals**: when `state.signals.action_pending_count > 0` → `📌 <count> signal(s) in action_pending status (<slugs>). These need a JellyRock change.`
 - **Failed CI on this branch**: for each run in `state.ci.current_branch_runs` where `conclusion != 'success'` → `⚠ CI run "<name>" <conclusion> (<createdAt>). Suggested next: /ci-triage.`
 - **Pending review-requested PRs**: when `state.prs.review_requested.length > 0` → `📥 <count> PR(s) awaiting your review: <list #N — title>.`
@@ -57,9 +57,9 @@ Format short. Banners (if any) at top, then this template — sections collapse 
 - <progress.open_followups_total> open across <Object.keys(open_followups_by_area).length> areas (<area: count, area: count, ...>)
   (If 0: "(none)")
 
-**Signals watchlist** (from signals-backlog.md):
-- <signals.rows.length> watching, <stale_count> stale, <action_pending_count> action_pending
-  (For each row in rows: "  <slug> [status] — current=<current>, latest=<latest_upstream>, age=<age_days>d")
+**Signals watchlist** (from signals-backlog.md; `latest_upstream` auto-fetched on each /catchup):
+- <signals.rows.length> watching, <stale_count> with upstream ahead of latest_acknowledged, <action_pending_count> action_pending
+  (For each row in rows: "  <slug> [status] — latest=<latest_upstream>, ack=<latest_acknowledged>" + " ← REVIEW NEEDED" suffix when row.stale)
 
 **Recent decisions** (last 3 from decisions.md):
 - <YYYY-MM-DD> <slug> [<status>]
@@ -70,8 +70,8 @@ Format short. Banners (if any) at top, then this template — sections collapse 
 **PRs awaiting your review:**
 - #<N> — <title> by @<author> (updated <relative>)
 
-**High-engagement bugs** (label:bug, sort by comments):
-- #<N> — <title> (<comment count> comments, last touched <relative>)
+**High-engagement bugs** (label:bug, excluding upstream/wontfix, active in last 60d):
+- #<N> — <title> (<comment count> comments, labels: <label names>, last touched <relative>)
 
 **Recent bug reports** (label:bug, last 7d):
 - #<N> — <title> (<relative date>)
@@ -82,7 +82,9 @@ Format short. Banners (if any) at top, then this template — sections collapse 
 **CI on this branch** (last 3 runs):
 - <run name>: <conclusion> (<relative date>)
 
-**Tech debt focus:** <tech_debt.high_count> high, <medium_count> medium, <low_count> low
+**Tech debt focus** (top <tech_debt.top_3.length> of <high_count + medium_count + low_count>: <high_count> High / <medium_count> Medium / <low_count> Low):
+  For each item in `tech_debt.top_3`: `- [<severity>] \`<slug>\` — <issue_oneline>`
+  (or "(none)" when top_3 is empty)
 
 **Pending handoffs:** <handoffs.pending.length> pending (<handoffs.pruned_count> pruned this run). Most recent: `<name>` <age_days>d ago. (or "(none)"). If count >= 10, append: "Cleanup hint: many handoffs accumulating — consider `rm`-ing the ones whose investigations are complete; >30d auto-prune handles the rest."
 
@@ -96,7 +98,7 @@ If nothing has changed since your last session AND the working tree is clean, su
 Read the JSON. If something looks like an alert or a decision point, name the right next-skill in the **Suggested next** line:
 
 - **Stale progress.md banner** → "bump it: `/log followup` to add the next deferred item, or `/done <slug-or-keyword>` to close one that shipped"
-- **Stale signal rows** → "re-check upstream and bump `last_checked`: invoke `/log signal <slug>` to update an existing row (or `/done <slug>` if upstream resolved)"
+- **Stale signal rows** → "review the upstream change, then `/done <slug>` to bump `latest_acknowledged`. If the change requires JellyRock work, flip `status` to `action_pending` first via `/log signal <slug>` (the action_pending banner will keep it visible until you ship)."
 - **Pending handoff for an in-flight triage** → `Read .claude/handoffs/<path>.md` and follow the sibling `INVESTIGATION.md` for that skill (resume from where you parked)
 - **High-engagement bug** → `/issue-triage <N>` (a label:bug issue with comment traction is the strongest "focus here next" signal)
 - **Recent bug report you haven't read yet** → `/issue-triage <N>`

@@ -10,11 +10,11 @@ This file is the index. The authoring conventions live in [`CLAUDE.md`](CLAUDE.m
 
 | Skill | Model | One-line | When |
 |---|---|---|---|
-| [`/pr`](pr/SKILL.md) | sonnet | Create a PR using the JellyRock template | Anytime you'd otherwise run `gh pr create` directly |
+| [`/pr`](pr/SKILL.md) | sonnet | Create OR update a PR using the JellyRock template + run the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture). Detects existing open PR for the branch and routes to update-mode (diff body, ask, `gh pr edit`); aborts on merged/closed PRs. Judgment passes scope to since-last-render via a hidden body marker on update. Mechanical close-loop fires after merge via [`journal-sync.yml`](../../.github/workflows/journal-sync.yml). | Anytime you'd otherwise run `gh pr create` or `gh pr edit` directly — the ship moment for the four-pillar journal flow |
 | [`/catchup`](catchup/SKILL.md) | sonnet | Session-start briefing via `scripts/catchup-state.js` aggregator (git + GH + four journals) | Start of any genuine new session |
 | [`/ramp`](ramp/SKILL.md) `<area>` | sonnet | Area-scoped deep-dive briefing (uses aggregator with `--area=`) | Switching into an area not touched in >2 weeks |
-| [`/log`](log/SKILL.md) `<type>` | sonnet | Append a journal entry — routes `decision` / `followup` / `signal` to the right file. Diff-and-wait. | After a decision-shaped commit, when deferring non-debt work, or when adding a new upstream watch row |
-| [`/done`](done/SKILL.md) `<slug>` | sonnet | Close a journal entry — followup → recently-shipped, or signal → completed status | When a deferred followup ships or a watched signal resolves |
+| [`/log`](log/SKILL.md) `<type>` | sonnet | Append/update a journal entry — routes `decision` / `followup` / `signal` / `running` to the right file. Diff-and-wait. | After a decision-shaped commit, when deferring non-debt work, when adding a new upstream watch row, or when changing what's in flight |
+| [`/done`](done/SKILL.md) `<slug-or-running>` | sonnet | Close a journal entry — followup → recently-shipped, signal → completed status, or `running` cursor → recently-shipped | When a deferred followup ships, a watched signal resolves, or in-flight work completes |
 | [`/tech-debt-scan`](tech-debt-scan/SKILL.md) | sonnet | Pre-PR debt sweep (resolved + new) | Before opening a PR for any non-trivial change |
 
 ### Investigation flows (single-file opus skills)

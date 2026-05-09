@@ -1,5 +1,5 @@
-// Extract friction-point evidence from a Claude Code session transcript
-// for the /audit-skill flow.
+// Extract audit signals from a Claude Code session transcript for the
+// /audit-skill flow.
 //
 // Reads a JSONL transcript at
 // `~/.claude/projects/<sanitized-cwd>/<session>.jsonl`,
@@ -7,6 +7,19 @@
 // field), runs the JellyRock-relevant detectors over the Bash + text
 // content, and emits a structured JSON document for the /audit-skill
 // SKILL.md prose to classify with judgment.
+//
+// Output covers four dimensions; friction is one of them:
+//   1. Friction findings (the detectors below)
+//   2. Performance — clock time, token usage per model, cache-hit ratio,
+//      cost estimate
+//   3. Permission gaps — Bash invocations targeting repo-internal scripts
+//      that aren't covered by .claude/settings.json's allow list
+//   4. Model-fit profile — sub-agent / TodoWrite / AskUserQuestion / text
+//      density, used to recommend opus / sonnet / haiku
+//
+// The fifth dimension — output accuracy — is not mechanizable; the
+// auditor reads the audited skill's actual user-visible output and
+// judges it. The SKILL.md prose owns that step.
 //
 // Detectors:
 //     repeated-command       same Bash command in two consecutive tool_use
@@ -37,11 +50,13 @@
 //                            and no follow-up successful run occurred.
 //                            Maps to CLAUDE.md's "When hardware isn't
 //                            reachable, say so explicitly" rule.
-//
-// Also emits a `model_fit` profile (sub-agent count, TodoWrite use,
-// AskUserQuestion use, distinct edited files, text length, confusion +
-// failed-recovery counts, tool/text ratio) so the /audit-skill prose can
-// recommend opus / sonnet / haiku for the audited skill's frontmatter.
+//     permission-gap         Bash invocation targeting a repo-internal
+//                            script (scripts/, .claude/) that is NOT
+//                            covered by .claude/settings.json's allow
+//                            list. Maps to .claude/skills/CLAUDE.md's
+//                            "When you change a skill" allowlist rule —
+//                            our own repo files should be trusted, not
+//                            permission-prompted.
 //
 // Exit codes:
 //     0  findings produced (zero is valid)
@@ -287,6 +302,8 @@ function projectTurn(obj, lineNo) {
     timestamp: obj.timestamp || '',
     role: obj.type || '',
     attributionSkill: obj.attributionSkill || null,
+    modelId: msg.model || null,
+    usage: msg.usage || null,
     bashCommands,
     editTargets,
     textContent: textChunks.join('\n'),
@@ -898,6 +915,251 @@ function detectHardwareClaimMismatch(turns, range) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Performance — clock time, token usage, cost estimate
+//
+// PRICING is in USD per 1M tokens for the active Claude family.
+// Update when Anthropic publishes new pricing; keep verifiedDate current
+// so future audits can flag a stale table.
+// ──────────────────────────────────────────────────────────────────────
+
+const PRICING = {
+  verifiedDate: '2026-05-08',
+  models: {
+    'claude-opus-4-7': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
+    'claude-opus-4-6': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
+    'claude-sonnet-4-6': { input: 3.0, cacheWrite: 3.75, cacheRead: 0.3, output: 15.0 },
+    'claude-sonnet-4-5': { input: 3.0, cacheWrite: 3.75, cacheRead: 0.3, output: 15.0 },
+    'claude-haiku-4-5': { input: 1.0, cacheWrite: 1.25, cacheRead: 0.1, output: 5.0 },
+  },
+};
+
+function modelKey(modelId) {
+  // The JSONL stores model IDs like "claude-sonnet-4-6-20250929" with a
+  // date suffix. Strip suffix to match PRICING keys.
+  if (!modelId) return null;
+  const m = modelId.match(/^(claude-(?:opus|sonnet|haiku)-\d+-\d+)/);
+  return m ? m[1] : modelId;
+}
+
+function buildPerformance(turns, range) {
+  let firstTs = null;
+  let lastTs = null;
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCacheRead = 0;
+  let totalCacheCreate = 0;
+  let nAssistantWithUsage = 0;
+  const perModel = new Map(); // key → { input, output, cacheRead, cacheCreate }
+  let costUSD = 0;
+  let costUnknownTokens = 0;
+  for (let i = range[0]; i <= range[1]; i++) {
+    const t = turns[i];
+    if (t.timestamp) {
+      if (firstTs === null) firstTs = t.timestamp;
+      lastTs = t.timestamp;
+    }
+    if (t.role !== 'assistant' || !t.usage) continue;
+    nAssistantWithUsage += 1;
+    const u = t.usage;
+    const inp = u.input_tokens || 0;
+    const out = u.output_tokens || 0;
+    const cr = u.cache_read_input_tokens || 0;
+    const cc = u.cache_creation_input_tokens || 0;
+    totalInput += inp;
+    totalOutput += out;
+    totalCacheRead += cr;
+    totalCacheCreate += cc;
+    const key = modelKey(t.modelId);
+    if (key) {
+      const slot = perModel.get(key) || { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
+      slot.input += inp;
+      slot.output += out;
+      slot.cacheRead += cr;
+      slot.cacheCreate += cc;
+      perModel.set(key, slot);
+    }
+    const price = PRICING.models[key];
+    if (price) {
+      costUSD +=
+        (inp * price.input + out * price.output + cr * price.cacheRead + cc * price.cacheWrite) /
+        1e6;
+    } else {
+      costUnknownTokens += inp + out + cr + cc;
+    }
+  }
+  const durationSec =
+    firstTs && lastTs
+      ? Math.max(0, Math.round((Date.parse(lastTs) - Date.parse(firstTs)) / 1000))
+      : 0;
+  const totalContextIn = totalInput + totalCacheRead + totalCacheCreate;
+  const cacheHitRatio =
+    totalContextIn > 0 ? Math.round((totalCacheRead / totalContextIn) * 100) / 100 : 0;
+  const perModelOut = {};
+  for (const [k, v] of perModel) perModelOut[k] = v;
+  return {
+    durationSec,
+    durationHuman: humanDuration(durationSec),
+    nAssistantTurnsWithUsage: nAssistantWithUsage,
+    totalInputTokens: totalInput,
+    totalOutputTokens: totalOutput,
+    totalCacheReadTokens: totalCacheRead,
+    totalCacheCreationTokens: totalCacheCreate,
+    cacheHitRatio,
+    avgOutputTokensPerTurn:
+      nAssistantWithUsage > 0 ? Math.round(totalOutput / nAssistantWithUsage) : 0,
+    perModel: perModelOut,
+    costEstimateUSD: Math.round(costUSD * 10000) / 10000,
+    costUnknownTokens,
+    pricingVerifiedDate: PRICING.verifiedDate,
+  };
+}
+
+function humanDuration(sec) {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm ? `${h}h ${mm}m` : `${h}h`;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Permission-gap detection — repo-internal scripts that fall outside
+// .claude/settings.json's allow list cause permission prompts. Surface
+// each gap with a concrete allowlist line to add.
+//
+// Maps to .claude/skills/CLAUDE.md's "When you change a skill" rule —
+// new helper scripts must land an allowlist entry in the same change set
+// so the prompt doesn't fire mid-skill.
+// ──────────────────────────────────────────────────────────────────────
+
+// Repo-internal path prefixes — paths starting with these (or `./` +
+// these) are project-owned and should never trigger a permission prompt.
+const REPO_INTERNAL_PREFIXES = [
+  'scripts/',
+  '.claude/',
+  'tests/',
+  'source/',
+  'components/',
+  'locale/',
+];
+
+function loadAllowlist(cwd) {
+  const out = [];
+  for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
+    const fp = path.join(cwd, rel);
+    if (!fs.existsSync(fp)) continue;
+    try {
+      const obj = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const allow =
+        obj.permissions && Array.isArray(obj.permissions.allow) ? obj.permissions.allow : [];
+      for (const a of allow) if (typeof a === 'string') out.push(a);
+    } catch {
+      // Malformed settings file — skip rather than fail the audit.
+    }
+  }
+  return out;
+}
+
+function bashIsAllowlisted(command, allowlist) {
+  // Allowlist entries shaped `Bash(<pattern>)` where `<pattern>` may
+  // contain `*` globs and `:*` trailing-arg wildcards. We translate to a
+  // regex anchored at the start of `command` (Claude Code matches
+  // prefixes for `:*`-style entries).
+  for (const entry of allowlist) {
+    const m = entry.match(/^Bash\((.+)\)$/);
+    if (!m) continue;
+    const raw = m[1];
+    const trailingAny = raw.endsWith(':*');
+    const core = trailingAny ? raw.slice(0, -2) : raw;
+    const escaped = core.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    const re = trailingAny
+      ? new RegExp('^' + escaped + '(\\s|$)')
+      : new RegExp('^' + escaped + '$');
+    if (re.test(command.trim())) return true;
+  }
+  return false;
+}
+
+function repoInternalScriptTarget(command) {
+  // Detect `node <path>` or direct `<path>` execution where `<path>` is
+  // repo-internal. Returns the relative path, or null.
+  const trimmed = command.trim();
+  const nodeMatch = trimmed.match(/^node\s+(\S+)/);
+  let target = null;
+  if (nodeMatch) {
+    target = nodeMatch[1];
+  } else {
+    const directMatch = trimmed.match(/^(\.\/|)(\S+\.(?:cjs|js|mjs|sh))(\s|$)/);
+    if (directMatch) target = (directMatch[1] || '') + directMatch[2];
+  }
+  if (!target) return null;
+  const stripped = target.replace(/^\.\//, '');
+  for (const p of REPO_INTERNAL_PREFIXES) {
+    if (stripped.startsWith(p)) return stripped;
+  }
+  return null;
+}
+
+function suggestAllowlistLine(command) {
+  const trimmed = command.trim();
+  const nodeMatch = trimmed.match(/^(node\s+\S+)/);
+  if (nodeMatch) return `Bash(${nodeMatch[1]}:*)`;
+  const directMatch = trimmed.match(/^(\.\/?\S+|\S+\.(?:cjs|js|mjs|sh))/);
+  if (directMatch) return `Bash(${directMatch[1]}:*)`;
+  return null;
+}
+
+function detectPermissionGap(turns, range, allowlist) {
+  const findings = [];
+  let counter = 0;
+  const seenCommands = new Set();
+  for (let i = range[0]; i <= range[1]; i++) {
+    const t = turns[i];
+    for (const bc of t.bashCommands) {
+      const target = repoInternalScriptTarget(bc.command);
+      if (!target) continue;
+      if (bashIsAllowlisted(bc.command, allowlist)) continue;
+      // De-dup on the suggested allowlist pattern — one finding per gap,
+      // not one per invocation, since the fix is the same.
+      const suggested = suggestAllowlistLine(bc.command);
+      const dedupKey = suggested || bc.command;
+      if (seenCommands.has(dedupKey)) continue;
+      seenCommands.add(dedupKey);
+      counter += 1;
+      findings.push({
+        id: `perm-gap-${String(counter).padStart(3, '0')}`,
+        category: 'permission-gap',
+        severity: 'med',
+        evidence: {
+          transcriptLine: t.lineNo,
+          uuid: t.uuid,
+          timestamp: t.timestamp,
+          command: bc.command,
+          repoTarget: target,
+        },
+        ruleViolated: {
+          anchor: '.claude/skills/CLAUDE.md#when-you-change-a-skill',
+          summary:
+            'Repo-internal scripts should be allowlisted so the permission prompt ' +
+            "doesn't fire mid-skill. Trust our own repo files.",
+        },
+        suggestedFix: {
+          kind: 'mechanical',
+          text:
+            `Add ${suggested ? '`' + suggested + '`' : 'the corresponding allowlist line'} to ` +
+            '`.claude/settings.json` under `permissions.allow`. The Bash invocation targets ' +
+            `\`${target}\`, which is project-owned, but no existing allowlist entry covers it.`,
+          allowlistLine: suggested,
+        },
+      });
+    }
+  }
+  return findings;
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Model-fit profile
 // ──────────────────────────────────────────────────────────────────────
 
@@ -1006,8 +1268,11 @@ function main(argv) {
 
   const ranges = args.invocation === 'latest' ? [invocations[invocations.length - 1]] : invocations;
 
+  const allowlist = loadAllowlist(process.cwd());
+
   const allFindings = [];
   const fits = [];
+  const performance = [];
   const invocationMeta = [];
 
   for (const rng of ranges) {
@@ -1019,6 +1284,7 @@ function main(argv) {
     const tasksFindings = detectTasksLeakage(turns, rng);
     const testClaimFindings = detectTestClaimWithoutEvidence(turns, rng);
     const hwClaimFindings = detectHardwareClaimMismatch(turns, rng);
+    const permGapFindings = detectPermissionGap(turns, rng, allowlist);
     const rngFindings = [
       ...repeatedFindings,
       ...recoverFindings,
@@ -1028,6 +1294,7 @@ function main(argv) {
       ...tasksFindings,
       ...testClaimFindings,
       ...hwClaimFindings,
+      ...permGapFindings,
     ];
     allFindings.push(...rngFindings);
     let nAssistant = 0;
@@ -1042,6 +1309,7 @@ function main(argv) {
       nAssistantTurns: nAssistant,
     });
     fits.push(buildModelFit(turns, rng, confuseFindings.length, recoverFindings.length));
+    performance.push(buildPerformance(turns, rng));
   }
 
   const byCategory = {};
@@ -1062,6 +1330,7 @@ function main(argv) {
       byCategory,
       bySeverity,
     },
+    performance,
     modelFit: fits,
     findings: allFindings,
   };
@@ -1084,18 +1353,28 @@ module.exports = {
   detectTasksLeakage,
   detectTestClaimWithoutEvidence,
   detectHardwareClaimMismatch,
+  detectPermissionGap,
   buildModelFit,
+  buildPerformance,
+  loadAllowlist,
   defaultTranscriptsDir,
   locateTranscript,
   // Internals exported for testability
   _internals: {
     normalizeCommand,
     meaningfullySimilar,
+    bashIsAllowlisted,
+    repoInternalScriptTarget,
+    suggestAllowlistLine,
+    humanDuration,
+    modelKey,
+    PRICING,
     LINT_SHAPE,
     TEST_SHAPE,
     TEST_CLAIM,
     CHANGELOG_PATH,
     TASKS_LEAKAGE,
     CONFUSION_MARKER,
+    REPO_INTERNAL_PREFIXES,
   },
 };

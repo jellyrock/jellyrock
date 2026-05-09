@@ -19,7 +19,10 @@ related-files:
   - scripts/lint/docs-stale-blocking.cjs
   - scripts/lint/check-touched-related-files.cjs
   - scripts/lint/check-touched-lint.cjs
+  - scripts/lint/decision-shape-nudge.cjs
+  - scripts/lint/progress-cursor-nudge.cjs
   - scripts/lint/issue-templates-check.cjs
+  - scripts/journal-sync.js
   - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
   - scripts/lib/frontmatter.cjs
@@ -32,6 +35,7 @@ related-files:
   - .claude/hooks/log-tool-use.sh
   - .claude/hooks/check-touched-related-files.sh
   - .claude/hooks/check-touched-lint.sh
+  - .claude/hooks/check-progress-cursor.sh
   - .claude/hooks/bsfmt-on-write.sh
   - .github/hooks/hooks.json
   - .github/actions/changed-paths/action.yml
@@ -45,11 +49,12 @@ related-files:
   - .github/workflows/lint-issue-templates.yml
   - .github/workflows/_validate-dependencies.yml
   - .github/workflows/docs-stale-tracker.yml
+  - .github/workflows/journal-sync.yml
   - eslint.config.js
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-06
+last-reviewed: 2026-05-08
 ---
 
 # Build & Tooling
@@ -357,24 +362,26 @@ make launch        # launches the channel
 
 ## Verification surfaces (defense in depth)
 
-JellyRock layers five verification surfaces, each owning checks the others can't do well. The principle: **every check runs at the cheapest surface that can do it correctly.** No surface duplicates another's responsibility.
+JellyRock layers six verification + automation surfaces, each owning checks or sync work the others can't do well. The principle: **every check runs at the cheapest surface that can do it correctly.** No surface duplicates another's responsibility.
 
 | # | Surface | Trigger | What it owns | Latency |
 |---|---|---|---|---|
 | 1 | **IDE** (BrighterScript ext) | Live, per keystroke | `.bs` validation + bslint diagnostics, `bsfmt` on save | <100 ms |
 | 2 | **`PostToolUse` hook** ([`bsfmt-on-write.sh`](../../.claude/hooks/bsfmt-on-write.sh)) | Agent's `Edit` / `Write` / `MultiEdit` | `bsfmt --write` on the file just edited | ~500 ms |
-| 3 | **End-of-turn hook** ([`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) + [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh)) | Agent finishes turn (`Stop` / `sessionEnd`) | Architecture-doc reminder + lint on **uncommitted-only** files | 2–5 s |
+| 3 | **End-of-turn hook** ([`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) + [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) + [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh)) | Agent finishes turn (`Stop` / `sessionEnd`) | Architecture-doc reminder + lint on **uncommitted-only** files + stale-progress / cursor-shipped nudges | 2–5 s |
 | 4 | **Pre-commit hook** ([`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) via `lint-staged`) | `git commit` | File-scoped lint + auto-format on staged files | 1–5 s |
-| 5 | **Pre-push hook** ([`.husky/pre-push`](../../.husky/pre-push)) | `git push` | Project-wide checks that aren't file-scoped | 10–30 s |
-| 6 | **CI** (`.github/workflows/lint-*.yml`) | PR open / sync | Same as pre-push, can't bypass | minutes (parallel) |
+| 5 | **Pre-push hook** ([`.husky/pre-push`](../../.husky/pre-push)) | `git push` | Project-wide checks that aren't file-scoped + decision/cursor advisory nudges | 10–30 s |
+| 6 | **Post-merge journal-sync** ([`journal-sync.yml`](../../.github/workflows/journal-sync.yml)) | PR merges to main | Mechanical close-loop on `progress.md` (running → shipped, last-updated bump) via [`scripts/journal-sync.js`](../../scripts/journal-sync.js) | seconds |
+| 7 | **CI** (`.github/workflows/lint-*.yml`) | PR open / sync | Same as pre-push, can't bypass | minutes (parallel) |
 
 ### Why each surface exists
 
 - **IDE** — fastest possible feedback loop for human devs, but assumes a configured/working BrighterScript extension. Doesn't fire for agents.
 - **`PostToolUse`** — the agent's "format on save." Auto-formats `.bs` / `.brs` immediately after the agent writes them so the next read shows canonical form. Silent on success — no context noise. Limited to `bsfmt` because anything project-wide (validate, bslint) would be too slow per-edit.
-- **End-of-turn** — covers the gap when the agent has work that *isn't yet committed*. The lint variant scans only working-tree files (committed work is pre-commit's job — running it again here would be wasted cycles). The doc-maintenance variant reminds the agent about architecture-doc related-files territory it touched. Both informational, never block the turn.
+- **End-of-turn** — covers the gap when the agent has work that *isn't yet committed*. The lint variant scans only working-tree files (committed work is pre-commit's job — running it again here would be wasted cycles). The doc-maintenance variant reminds the agent about architecture-doc related-files territory it touched. The progress-cursor variant flags stale `docs/progress.md` and Currently-running cursors that overlap with shipped commits. All three informational, never block the turn.
 - **Pre-commit** (`lint-staged`) — the universal gate for both humans and agents. File-scoped: `bsfmt --write`, `markdownlint --fix`, `spellchecker`, `jshint`. Auto-fix steps re-stage their output so the formatted version lands in the same commit (no "auto-fix commit" ceremony). The `lint-staged` runner handles the staged-files plumbing.
-- **Pre-push** — what couldn't run per-commit: full BSC project compile (`bsc --noEmit`), `bslint` (needs full project context, can't be file-scoped), cross-doc reference check (`lint:docs`), drift check on the auto-generated dev-guides index, language-coverage. Plus project-wide regen tasks (`update-translations`, `docs:dev-index`) that mutate one output from many inputs. Also runs `decision-shape-nudge.cjs` (advisory, always exits 0) — pattern-matches commit messages for decision-shaped language and nudges toward `/log decision` when the range doesn't touch `docs/decisions.md`; human-facing complement to the agent-facing Capture-discipline rule in `CLAUDE.md`.
+- **Pre-push** — what couldn't run per-commit: full BSC project compile (`bsc --noEmit`), `bslint` (needs full project context, can't be file-scoped), cross-doc reference check (`lint:docs`), drift check on the auto-generated dev-guides index, language-coverage. Plus project-wide regen tasks (`update-translations`, `docs:dev-index`) that mutate one output from many inputs. Also runs two advisory nudges (always exit 0): [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (pattern-matches commit messages for decision-shaped language and nudges toward `/log decision` when the range doesn't touch `docs/decisions.md`) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the end-of-turn hook, doubled here so the prompt fires before push regardless of whether the IDE / agent is running). Both are human-facing complements to the agent-facing Capture-discipline rule in `CLAUDE.md`.
+- **Post-merge journal-sync** — fires on PR merge to main. Reads PR title / labels / author from the event payload, then runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) to perform the *mechanical* close-loop on [`docs/progress.md`](../progress.md): prepend "- YYYY-MM-DD — \<pr-title\>" to `## Recently shipped`, conditionally clear `## Currently running` (token-overlap heuristic), bump `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate / Dependabot / bot authors. Concurrency-grouped with the existing `jellyrock-bot-main` group so it queues against the changelog-sync workflow rather than racing it. This surface is what keeps the four-pillar journal flow from depending on the user remembering `/done running` after every merge.
 - **CI** — final backstop; can't be bypassed. Mirrors pre-push so the local hook isn't a load-bearing source of truth.
 
 ### Surface ownership of each lint command

@@ -267,6 +267,7 @@ SRT
 SSDP
 stateful
 Stateful
+stopword
 subclasses
 Subclasses
 subcommand
@@ -285,6 +286,7 @@ SVG
 SVGs
 teardown
 tmpdir
+tokenizer
 Tooltip
 transcode
 Transcode
@@ -440,3 +442,11 @@ templated
 walkthrough
 14d
 OSS-eventual
+dep-bump
+dev-doc
+rokudev
+Dependabot
+Prepend
+Prepends
+YYYY-MM-DD
+changelog-sync

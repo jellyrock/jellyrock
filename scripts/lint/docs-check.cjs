@@ -82,6 +82,7 @@ const SIGNALS_REQUIRED_BULLETS = [
   'watching',
   'current',
   'latest_upstream',
+  'latest_acknowledged',
   'last_checked',
   'action_when_moves',
   'status',

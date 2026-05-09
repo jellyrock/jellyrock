@@ -1,25 +1,82 @@
 ---
 name: pr
-description: Create a pull request using the JellyRock template at `.github/pull_request_template.md`. Scans branch + commits for related issues, falls back to `gh` issue search, and surfaces architecture docs whose related-files were touched. Required for all PRs in this repo — supersedes any default PR-creation flow.
+description: Create OR update a pull request using the JellyRock template at `.github/pull_request_template.md`. Detects an existing open PR for the current branch and routes to update-mode (diff body, ask, then `gh pr edit`) instead of duplicating; aborts cleanly on merged/closed PRs. Scans branch + commits for related issues, falls back to `gh` issue search, surfaces architecture docs whose related-files were touched, and runs the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture) so journal hygiene is part of shipping rather than a separate manual step. Required for all PRs in this repo — supersedes any default PR-creation flow.
 model: sonnet
 user-invocable: true
-allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Read
+allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(gh api user --jq .login), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git merge-base --is-ancestor:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Bash(node scripts/lint/decision-shape-nudge.cjs:*), Read, Task
 ---
 
-# Create a Pull Request
+# Create or Update a Pull Request
 
-Open a PR whose body comes from `.github/pull_request_template.md`, with the Issues and Docs sections filled in from real signal on the branch. This replaces the generic PR-creation flow — do not call `gh pr create` directly outside this skill.
+Open a PR whose body comes from `.github/pull_request_template.md`, with the Issues and Docs sections filled in from real signal on the branch, and run the four-pillar judgment passes BEFORE pushing so journal hygiene lands in the same change set. If a PR already exists for the current branch, route to update-mode: diff the current body against the freshly-rendered one, ask before applying, and use `gh pr edit` instead of `gh pr create`. This replaces the generic PR-creation flow — do not call `gh pr create` or `gh pr edit` directly outside this skill.
+
+`gh pr edit` and `Write` are intentionally NOT pre-approved in this skill's frontmatter — the permission prompts they trigger are the user-approval gate for body overwrites and local backup file creation. Don't try to suppress them.
+
+The mechanical close-loop side (move `## Currently running` → `## Recently shipped`, bump `last-updated:`) runs automatically after the PR merges via [`.github/workflows/journal-sync.yml`](../../../.github/workflows/journal-sync.yml). This skill does NOT touch that — its job is the judgment side: tech-debt entries, decision entries, and followup entries that need a human call.
 
 ## Pre-flight (abort if any fails)
 
 Run in parallel:
 
-- `git rev-parse --abbrev-ref HEAD` — must NOT be `main`.
+- `git rev-parse --abbrev-ref HEAD` — must NOT be `main`, must NOT be `HEAD` (detached). If detached, abort and ask the user to check out a branch first.
 - `git status --porcelain` — must be empty (no uncommitted changes).
 - `git rev-parse --abbrev-ref --symbolic-full-name @{u}` — if no upstream, run `git push -u origin <branch>`. The permission prompt is the gate; don't ask verbally.
 - `git rev-list --count @{u}..HEAD` — if non-zero, run `git push`.
 
-If a hard check (on `main` / dirty tree) fails, stop and report. Pushing a feature branch to open its PR is obvious — don't gate it behind a verbal question.
+If a hard check (on `main` / detached HEAD / dirty tree) fails, stop and report. Pushing a feature branch to open its PR is obvious — don't gate it behind a verbal question.
+
+## Detect existing PR (route create vs update)
+
+Run `gh pr view --json number,url,state,isDraft,author,body,headRefOid` for the current branch. Branch on `state`:
+
+- **`MERGED`** — abort. Print: `PR #<N> is already merged at <url>. Switch off this branch (e.g. `git switch main && git pull`) before opening a follow-up PR.` Don't try to update or open a duplicate.
+- **`CLOSED`** (not merged) — abort. Print: `PR #<N> at <url> was closed without merging. Reopen manually with `gh pr reopen <N>` if you want to revive it, or start a new branch.` Don't silently open a duplicate.
+- **`OPEN`** — enter the **update path**. Capture `<N>`, `<url>`, `<author.login>`, `<body>`, and `<headRefOid>` for later steps.
+- **No PR exists** (`gh pr view` exits non-zero with "no pull requests found for branch") — enter the **create path** (today's flow).
+
+### Update-path setup (skip on create path)
+
+1. **Author warn** (best-effort) — run `gh api user --jq .login`. If the result differs from the captured `<author.login>`, print one line: `Note: PR #<N> was opened by <other-user>. Body edits will appear under your account.` Don't abort. If `gh api user` fails (auth/rate limit), skip the warn silently — it's informational only.
+2. **Resolve lower-bound SHA** — this becomes the input range for judgment passes (so the user isn't re-asked about candidates already accepted/skipped on the prior /pr render):
+   1. Parse the PR body for the marker `<!-- /pr render: sha=([a-f0-9]{40}) ts=(\S+) -->`. If multiple markers exist (rare — copy-paste), take the LAST match.
+   2. If a marker SHA is found AND `git merge-base --is-ancestor <sha> HEAD` exits 0 → use that SHA.
+   3. Otherwise, fall back: `gh pr view --json commits --jq '.commits[0].oid'`. If that SHA is also reachable from HEAD, use it.
+   4. Ultimate fallback (force-push edge case where neither prior SHA is reachable): use `main` — same scope as the create path. Print one line so the user knows the narrow scope was lost: `Note: prior /pr render SHA unreachable from HEAD (rebase or force-push?). Falling back to full-branch scope for judgment passes.`
+3. The resolved SHA is referenced as `<lower>` throughout the rest of this skill. On the **create path**, `<lower>` is `main`.
+
+## Four-pillar judgment passes (before drafting the PR body)
+
+Three quick passes that surface journal entries the user should write — each with one-line confirm/skip per candidate. Drafts only; the user accepts before any /log invocation. Skip the whole block (with one user "skip judgment passes" confirmation) if the change is trivial (typo / dep bump / docs-only).
+
+Both pass 1 and pass 2 use the `<lower>` SHA resolved in "Detect existing PR" above as their lower bound. On the create path that's `main` (today's behavior). On the update path it's the prior /pr render SHA — so the user isn't re-asked about candidates already accepted/skipped on a previous /pr invocation against the same PR.
+
+### Pass 1 — Tech-debt scan
+
+Invoke [`/tech-debt-scan`](../tech-debt-scan/SKILL.md) as a sub-agent (not inline) to keep its candidate-walk from polluting the /pr skill's context. Pass (substitute the resolved SHA for `<lower>`):
+
+```
+Read .claude/skills/tech-debt-scan/SKILL.md and follow the steps; scope the changed-files set to `git diff <lower>..HEAD --name-only` so only file areas that became relevant since the last /pr render are considered; surface candidate slugs + ask about new debt but do NOT apply edits — return the proposed diff for the parent to confirm.
+```
+
+**Anti-pattern: do not narrate "running the tech-debt scan sub-agent" while reading [`docs/architecture/tech-debt.md`](../../../docs/architecture/tech-debt.md) inline via `Read`.** That inline read IS the context-pollution this step is designed to prevent. If you find yourself about to call `Read` on `tech-debt.md` from inside `/pr`, stop and call `Task` with `subagent_type: general-purpose` instead. The sub-agent's job is to walk the entry list and return a diff; the parent's job is to surface that diff to the user. Never conflate the two — and never claim sub-agent invocation in narration when the JSONL will show a `Read` instead of a `Task` tool_use.
+
+If the sub-agent returns proposed diffs (existing slugs to remove, new slugs to add), surface them to the user one at a time with `apply / skip / edit` per candidate. Apply via `Edit` only on user accept.
+
+### Pass 2 — Decision-shape detect
+
+Run the existing nudge against the in-scope commit log (substitute the resolved SHA for `<lower>`):
+
+```bash
+node scripts/lint/decision-shape-nudge.cjs --range=<lower>..HEAD
+```
+
+If it surfaces matches, walk them with the user: "this commit message has decision-shape language — does it close off alternatives or have a non-obvious rationale worth recording?" If yes, invoke [`/log decision`](../log/SKILL.md) for that commit. If no (the keyword was incidental), move on. Don't draft entries for commits the user dismisses.
+
+### Pass 3 — Followup capture from PR body
+
+While drafting the PR body's "Follow-ups" section (Step 4 below), if you find yourself writing a deferral that doesn't already have a `tech-debt.md` anchor, invoke [`/log followup`](../log/SKILL.md) for it (or [`/tech-debt-scan`](../tech-debt-scan/SKILL.md) Step 4 if it's a refactor candidate that warrants a stable slug). Reference the new slug from the PR body.
+
+The CLAUDE.md `Followup-discipline rule` governs which journal each deferral lands in. Follow it strictly — the rule's branching logic (`/log followup` vs `/tech-debt-scan` vs `/log signal`) is the answer, not the user's preference.
 
 ## Gather context (in parallel)
 
@@ -70,19 +127,63 @@ Never silently omit this section. If multiple plausible candidates surface and y
 
 Render every checkbox from the template; tick only those that genuinely apply (i.e. you actually edited a file in that category). Use `git diff main...HEAD --name-only` as ground truth, not intent.
 
-## Create the PR
+## Create or update the PR
+
+### Marker line (both paths)
+
+The rendered body always ends with a hidden HTML-comment marker so subsequent /pr invocations against the same PR can narrow the judgment-pass scope to "since last render." Format, with a blank line above it:
+
+```
+<!-- /pr render: sha=<full-40-char-HEAD-sha> ts=<ISO-8601-UTC> -->
+```
+
+Resolve `<full-40-char-HEAD-sha>` via `git rev-parse HEAD`. Resolve `<ISO-8601-UTC>` via `date -u +%Y-%m-%dT%H:%M:%SZ`. The marker survives most manual body edits (it's the last line, visually unobtrusive); if a user deletes it the next /pr update degrades to PR-first-commit fallback — no harm done.
+
+### Create path
 
 ```sh
 gh pr create \
   --title "<title>" \
   --body "$(cat <<'EOF'
 <filled template — section headings exactly as in the template>
+
+<!-- /pr render: sha=<sha> ts=<ts> -->
 EOF
 )"
 ```
 
-Default to non-draft. Use `--draft` only when work is genuinely incomplete and you want CI early — and say so explicitly to the user.
+Default to non-draft. Use `--draft` only when work is genuinely incomplete and you want CI early — and say so explicitly to the user. The `gh pr create` permission prompt is the user's gate on body content; that's intentional and not allowlisted.
 
-## After creating
+### Update path
+
+1. **Render** the new title and body the same way as the create path (template + marker line at the bottom). The body describes the FULL PR (the gather-context commands run against `main..HEAD`), not just the delta since last render.
+2. **Compare** the freshly-rendered title and body to the captured `<body>` and the PR's current title from the existing-PR detection step:
+   - If both are byte-for-byte unchanged after re-render (modulo the marker timestamp, which always changes — strip it for the comparison) → print `PR #<N> already up to date at <url>` and stop. No backup, no `gh pr edit` call, no permission prompt.
+   - Otherwise, show the user a unified diff for the title (only if changed) and a section-by-section diff for the body so they can scan it quickly. Highlight whether the change is to auto-rendered sections (Issues / Docs checkboxes) or to human-curated sections (Overview / Changes / Follow-ups) — the latter are likelier to have manual edits worth preserving.
+3. **Confirm** — ask the user `apply / skip / edit-then-apply`:
+   - `skip` — print `<url>` and stop. The PR body is unchanged.
+   - `edit-then-apply` — let the user revise the proposed body (paste edits, or have them dictate the change) before re-prompting.
+   - `apply` — proceed to backup + apply.
+4. **Backup** (apply path only) — write the captured prior `<body>` to `.claude/handoffs/pr-<N>-pre-render-<ISO-8601-compact-ts>.md`. The `Write` tool will trigger a permission prompt; that's expected — it's the user's last gate before the body is overwritten. The backup file is gitignored and auto-pruned by `/catchup` after 30 days.
+5. **Apply** via:
+
+   ```sh
+   gh pr edit <N> [--title "<new-title>"] --body "$(cat <<'EOF'
+   <filled template + marker>
+   EOF
+   )"
+   ```
+
+   Pass `--title` only if it actually changed. The `gh pr edit` permission prompt is the second user gate; it's intentionally NOT allowlisted in this skill's frontmatter.
+
+   If `gh pr edit` fails (network, auth, conflict): the backup file is still on disk — the previous body wasn't lost. Tell the user the backup path and abort. They can recover by running `gh pr edit <N> --body-file <backup-path>` manually.
+
+## After creating or updating
 
 Print the PR URL. Do not summarize the body — the user can read it.
+
+On the **create path**, mention once (one short line): the [`journal-sync.yml`](../../../.github/workflows/journal-sync.yml) workflow will move `## Currently running` → `## Recently shipped` automatically when this PR merges. The user does not need to run `/done running` manually unless they want to close the cursor before merge.
+
+On the **update path**, skip that line — the user already saw it on the initial /pr.
+
+Skip the journal-sync line when the change was trivial too (the journal-sync workflow will skip on its own — bot/dep/docs labels, Renovate-shaped titles).

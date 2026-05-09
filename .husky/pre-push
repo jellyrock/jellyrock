@@ -31,6 +31,12 @@
 #                                    messages for decision-shape language and
 #                                    nudges toward /log decision when the
 #                                    range doesn't touch docs/decisions.md.
+#  12. node scripts/lint/progress-cursor-nudge.cjs — ALWAYS. Advisory only
+#                                    (always exit 0). Flags stale progress.md
+#                                    and Currently-running cursors that look
+#                                    shipped (token overlap with recent commit
+#                                    subjects). Mid-session safety net for the
+#                                    post-merge journal-sync workflow.
 #
 # Auto-fix is skipped (with a warning) when the working tree is dirty so WIP
 # can't be swept into the auto-fix commit. Check steps still run.
@@ -152,3 +158,11 @@ npm run docs:dev-index:check
 # instead-of/etc.) but didn't touch docs/decisions.md; reminds the user to
 # invoke /log decision in the same change set if the commit warrants it.
 node scripts/lint/decision-shape-nudge.cjs || true
+
+# Progress-cursor nudge — advisory only, never blocks the push.
+# Surfaces when docs/progress.md is stale OR the Currently-running cursor
+# overlaps with recent commit subjects (i.e. the work it tracks shipped but
+# /done running was never invoked). Mechanical close-loop on PR merge ships
+# via .github/workflows/journal-sync.yml; this nudge catches the gap when
+# the user pushes from a feature branch before the merge fires.
+node scripts/lint/progress-cursor-nudge.cjs --quiet || true

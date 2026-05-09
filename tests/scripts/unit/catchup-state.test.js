@@ -26,7 +26,9 @@ function setupFixture() {
 }
 
 function runAggregator(cwd, args = []) {
-  return spawnScript(SCRIPT, ['--no-gh', ...args], { cwd });
+  // --no-network implies --no-gh AND skips the signals upstream-version fetch.
+  // Critical for tests so we never hit api.jellyfin.org or raw.githubusercontent.com.
+  return spawnScript(SCRIPT, ['--no-network', ...args], { cwd });
 }
 
 describe('catchup-state', () => {
@@ -73,7 +75,7 @@ describe('catchup-state', () => {
     expect(parsed.git.commits_7d.total).toBe(2);
   });
 
-  it('--no-gh empties prs / issues / ci and reports no errors', () => {
+  it('--no-network empties prs / issues / ci and reports no errors', () => {
     fix = setupFixture();
     fix.commit('seed');
     const { stdout } = runAggregator(fix.dir);
@@ -108,18 +110,26 @@ describe('catchup-state', () => {
     expect(parsed.progress).toBeNull();
   });
 
-  it('signals section parses rows + computes age_days + flags stale rows', () => {
+  it('signals section flags stale when latest_upstream != latest_acknowledged', () => {
     fix = setupFixture();
+    // Three rows exercising the stale rule:
+    //   in-sync: latest_upstream == latest_acknowledged → not stale
+    //   ahead:   latest_upstream != latest_acknowledged AND status=watching → stale
+    //   ahead-pending: ahead BUT status=action_pending → NOT stale (already triaged)
     fix.commit('seed', {
-      'docs/signals-backlog.md': `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n### fresh-row: label\n\n- **watching**: x\n- **current**: v1\n- **latest_upstream**: v1\n- **last_checked**: ${TODAY}\n- **action_when_moves**: do thing\n- **status**: watching\n\n### stale-row: label\n\n- **watching**: y\n- **current**: v0\n- **latest_upstream**: v1\n- **last_checked**: 2020-01-01\n- **action_when_moves**: do thing\n- **status**: action_pending\n- **staleness_days**: 30\n`,
+      'docs/signals-backlog.md':
+        `---\nlast-updated: ${TODAY}\n---\n# Signals\n\n## Watching\n\n` +
+        `### in-sync: label\n\n- **watching**: x\n- **current**: prose\n- **latest_upstream**: 1.0.0\n- **latest_acknowledged**: 1.0.0\n- **last_checked**: ${TODAY}\n- **action_when_moves**: do\n- **status**: watching\n\n` +
+        `### ahead: label\n\n- **watching**: y\n- **current**: prose\n- **latest_upstream**: 2.0.0\n- **latest_acknowledged**: 1.0.0\n- **last_checked**: ${TODAY}\n- **action_when_moves**: do\n- **status**: watching\n\n` +
+        `### ahead-pending: label\n\n- **watching**: z\n- **current**: prose\n- **latest_upstream**: 3.0.0\n- **latest_acknowledged**: 2.0.0\n- **last_checked**: ${TODAY}\n- **action_when_moves**: do\n- **status**: action_pending\n`,
     });
     const { stdout } = runAggregator(fix.dir);
     const parsed = JSON.parse(stdout);
-    expect(parsed.signals.rows).toHaveLength(2);
-    expect(parsed.signals.rows[0].slug).toBe('fresh-row');
-    expect(parsed.signals.rows[0].stale).toBe(false);
-    expect(parsed.signals.rows[1].slug).toBe('stale-row');
-    expect(parsed.signals.rows[1].stale).toBe(true);
+    expect(parsed.signals.rows).toHaveLength(3);
+    const bySlug = Object.fromEntries(parsed.signals.rows.map((r) => [r.slug, r]));
+    expect(bySlug['in-sync'].stale).toBe(false);
+    expect(bySlug['ahead'].stale).toBe(true);
+    expect(bySlug['ahead-pending'].stale).toBe(false);
     expect(parsed.signals.stale_count).toBe(1);
     expect(parsed.signals.action_pending_count).toBe(1);
   });
@@ -137,14 +147,23 @@ describe('catchup-state', () => {
     expect(parsed.decisions.recent_3[0].status).toBe('accepted');
   });
 
-  it('tech_debt section counts items by severity', () => {
+  it('tech_debt section counts items + surfaces top-3 cross-severity', () => {
     fix = setupFixture();
     fix.commit('seed', {
-      'docs/architecture/tech-debt.md': `# Tech Debt\n\n## Refactor candidates\n\n### High\n\n#### \`high-1\`\n\nbody\n\n#### \`high-2\`\n\nbody\n\n### Medium\n\n#### \`med-1\`\n\nbody\n\n### Low\n\n#### \`low-1\`\n\n#### \`low-2\`\n\n## Recently removed\n\nnothing here counts\n`,
+      'docs/architecture/tech-debt.md': `# Tech Debt\n\n## Refactor candidates\n\n### High\n\n#### \`high-1\`\n\n- **issue**: First high issue. Extra trailing detail.\n\n#### \`high-2\`\n\n- **issue**: Second high.\n\n### Medium\n\n#### \`med-1\`\n\n- **issue**: Medium issue.\n\n### Low\n\n#### \`low-1\`\n\n- **issue**: Low one.\n\n#### \`low-2\`\n\n- **issue**: Low two.\n\n## Recently removed\n\nnothing here counts\n`,
     });
     const { stdout } = runAggregator(fix.dir);
     const parsed = JSON.parse(stdout);
-    expect(parsed.tech_debt).toEqual({ high_count: 2, medium_count: 1, low_count: 2 });
+    expect(parsed.tech_debt.high_count).toBe(2);
+    expect(parsed.tech_debt.medium_count).toBe(1);
+    expect(parsed.tech_debt.low_count).toBe(2);
+    // Top-3 takes file order (which is High → Medium → Low); within severity,
+    // file order is preserved (= author intent).
+    expect(parsed.tech_debt.top_3).toHaveLength(3);
+    expect(parsed.tech_debt.top_3[0]).toMatchObject({ slug: 'high-1', severity: 'High' });
+    expect(parsed.tech_debt.top_3[0].issue_oneline).toMatch(/First high issue/);
+    expect(parsed.tech_debt.top_3[1]).toMatchObject({ slug: 'high-2', severity: 'High' });
+    expect(parsed.tech_debt.top_3[2]).toMatchObject({ slug: 'med-1', severity: 'Medium' });
   });
 
   it('--area filters progress.open_followups_by_area to the requested area', () => {
