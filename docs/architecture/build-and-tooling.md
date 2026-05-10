@@ -14,10 +14,12 @@ related-files:
   - scripts/bsc-plugins/print-locations.cjs
   - scripts/bsc-plugins/observe-without-on-destroy.cjs
   - scripts/bsc-plugins/no-direct-sdk.cjs
+  - scripts/lint/dictionary-audit.cjs
   - scripts/lint/docs-check.cjs
   - scripts/lint/docs-stale.cjs
   - scripts/lint/docs-stale-blocking.cjs
   - scripts/lint/check-touched-related-files.cjs
+  - dictionary.txt
   - scripts/lint/check-touched-lint.cjs
   - scripts/lint/decision-shape-nudge.cjs
   - scripts/lint/progress-cursor-nudge.cjs
@@ -60,7 +62,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-09
+last-reviewed: 2026-05-10
 ---
 
 # Build & Tooling
@@ -149,7 +151,7 @@ Four lint-only plugins encode unwritten conventions documented in `components/CL
 |---|---|---|
 | `bsc-plugin-jrscreen-on-destroy.cjs` | XML components that transitively extend `JRScreen` whose codebehind doesn't declare a top-level `onDestroy` function (case-sensitive — `destroy` / `OnDestroy` won't satisfy this) | Skips `JRScreen.xml` itself; walks `parentComponent` chain up to depth 32 |
 | `bsc-plugin-print-locations.cjs` | Raw `print` calls outside the allowed sites | Allows `source/main.bs` (whole file) and `#if debug` blocks in `source/utils/globals.bs`; auto-skips top-level functions in any `source/*.bs` file (no `m` context, so no `m.log` available) |
-| `bsc-plugin-observe-without-on-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on JRScreen subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
+| `bsc-plugin-observe-without-on-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on `JRScreen` subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
 | `bsc-plugin-no-direct-sdk.cjs` | `sdk.<ns>.<fn>(...)` calls outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | None — the only allowed callers are explicitly listed |
 
 **Suppressing a false positive.** Each plugin honors these comment markers (case-insensitive, regex match against the source text):
@@ -204,6 +206,7 @@ Lint and format:
 | `npm run lint:json` | jshint on JSON files (excluding node_modules, scripts, tasks, build, out, locale, eslint.config.js, vitest.config.js). Catches duplicate keys; complementary to Prettier (which handles whitespace) |
 | `npm run lint:markdown` | markdownlint on all `.md` (with exclusions for AI agent docs) |
 | `npm run lint:spelling` | spellchecker on Markdown files |
+| `npm run lint:dictionary` | Audits `dictionary.txt` for identifier-shaped entries (PascalCase / camelCase / file extensions / paths). Code identifiers belong in backticks in source markdown, not in the dictionary — see [code-style.md](../dev/code-style.md#when-to-add-to-dictionarytxt-instead). Acronym plurals (`URIs`, `PNGs`) and product names (`BrighterScript`, `ESLint`) are bypassed via pattern + allowlist |
 | `npm run lint:translations` | Custom translation lint (sort order, completeness, placeholder parity) |
 | `npm run lint:language-coverage` | Validates the 3-tier language-name resolver in `source/utils/languages.bs` (alias targets exist, tier 1 entries have alias coverage, no redundant fallbacks) — see `translations.md` |
 | `npm run lint:docs` | Validates (1) `related-files:` paths in frontmatter, (2) relative markdown links, and (3) tech-debt anchor references of the form `tech-debt.md#<anchor>` — across `docs/architecture/*.md`, `docs/dev/*.md`, `docs/decisions.md`, `docs/progress.md`, `docs/signals-backlog.md`, every `CLAUDE.md`, and the BSC convention plugins (`scripts/bsc-plugins/*.cjs`). Also runs two journal-system gates: (4) `progress-stale` — fails if `docs/progress.md` `last-updated:` is >7 days old and commits exist since; (5) `signals-schema-invalid` — fails if a `docs/signals-backlog.md` row is missing required bullets, has an invalid `status` enum, or a malformed ISO date. The anchor form is the canonical way to cite a slug; narrative-form mentions are intentionally not checked (see [tech-debt.md](tech-debt.md) preamble for the convention) |

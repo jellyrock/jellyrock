@@ -62,7 +62,7 @@ file) ONLY when one of these seven pinned-filled rules applies:
 | 4 | Placeholder / representative content | Lives in `images/placeholders/` | All 10 placeholders (`movie`, `album`, `folder`, etc.) — Apple Finder / Google Drive / Material 3 file pickers all use filled placeholders |
 | 5 | Rating glyph | Inline rating display | `star` — industry-standard filled for ratings |
 | 6 | Playback action button | Composes filled `play` | `resume` (arc + play-triangle) — visual consistency with the `play` standalone |
-| 7 | Toggle on-state | Paired with outlined off-state | `heart` (on-state in ItemDetails Favorite button), `favorite_selected` (on-state in ItemGridOptions favorite menu — geometry outlined, signaled by hard-coded red color) |
+| 7 | Toggle on-state | Paired with outlined off-state | `heart` (on-state in `ItemDetails` Favorite button), `favorite_selected` (on-state in `ItemGridOptions` favorite menu — geometry outlined, signaled by hard-coded red color) |
 
 **Decision tree for adding a new icon:**
 
@@ -83,7 +83,7 @@ files: `<name>.svg` (outlined for icon use) + `<name>_filled.svg` (filled
 for placeholder use). The placeholder config (`resources/placeholders/placeholders.json`)
 points at the `_filled.svg` source. Subject-identity glyphs (Rule 3 —
 `album`, `missingArtist`, `musicFolder`, `musicNote`, `person`) skip the
-two-SVG dance because they're filled in BOTH contexts; one SVG file
+two-file dance because they're filled in BOTH contexts; one SVG file
 suffices and `placeholders.json` references the same file the icon set
 uses. Single-context placeholder-only glyphs (Rule 4 — e.g., `movie`,
 `folder`, `playlist`) live as `<name>_filled.svg` only.
@@ -192,7 +192,7 @@ an icon needs a `glyphSize` or `sizeFhd` override that isn't self-explanatory.
   positions it assuming that bitmap size. The `glyphSize: 125` makes the
   Material `progress_activity` arc fill the entire canvas (no padding) to
   match the original spinner's outer-circle visual. Don't shrink without
-  re-positioning the JRScene placement.
+  re-positioning the `JRScene` placement.
 - **`play`/`pause`/`itemPrevious`/`itemNext`/`chapters`** (`glyphSize` between
   38 and 60): each pinned to the max bbox dimension of the original trimmed
   hand-authored PNG, so the migration to Material is a pure visual swap with
@@ -208,8 +208,8 @@ an icon needs a `glyphSize` or `sizeFhd` override that isn't self-explanatory.
   exploiting the `extend()` step's `Math.max(0, canvas - dim)` clamp: when
   the resized glyph (22 tall × 16 wide at the natural mic aspect) exceeds
   `sizeFhd: 16` in height, no vertical padding is added and the glyph
-  overflows the canvas naturally. Same 16×22 footprint as the pre-pipeline
-  hand-authored asset.
+  overflows the canvas naturally. Same 16×22 footprint as the legacy
+  hand-authored asset that predated the pipeline.
 - **`favorite.svg` (`fill="#000000"`) and `favorite_selected.svg`
   (`fill="#FF0000"`)**: toggle pair for the favorite state. Both use the
   outlined Material `favorite` glyph; the visual distinction between off/on

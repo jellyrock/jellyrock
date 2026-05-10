@@ -50,6 +50,36 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { workingTreeFiles } = require('../lib/changed-files.cjs');
 const { isSpellExcluded, isMarkdownExcluded, isJsonExcluded } = require('../lib/lint-excludes.cjs');
+const { classify } = require('./dictionary-audit.cjs');
+
+const GENERIC_SPELL_HINT =
+  'For a code identifier (variable, function, event name, file/path), wrap in backticks — the spell-checker skips code spans. For legitimate English vocabulary, add to `dictionary.txt`. Otherwise, rephrase. See docs/dev/code-style.md "Markdown conventions" for the rule.';
+
+function buildSpellHint(output) {
+  // Pull `Unexpected unknown word \`X\`` out of the spellchecker output and
+  // run each through the dictionary-audit classifier. Words that look
+  // identifier-shaped get a targeted call-out so the agent doesn't reach
+  // for `dictionary.txt` and trip the dictionary-audit lint a step later.
+  const wordRe = /Unexpected unknown word `([^`]+)`/g;
+  const seen = new Set();
+  const identifiers = [];
+  for (const match of output.matchAll(wordRe)) {
+    const word = match[1];
+    if (seen.has(word)) continue;
+    seen.add(word);
+    if (classify(word)) identifiers.push(word);
+  }
+
+  if (identifiers.length === 0) return GENERIC_SPELL_HINT;
+
+  const list = identifiers
+    .slice(0, 5)
+    .map((w) => `\`${w}\``)
+    .join(', ');
+  const more = identifiers.length > 5 ? ` (+${identifiers.length - 5} more)` : '';
+  const verb = identifiers.length === 1 ? 'looks' : 'look';
+  return `${list}${more} ${verb} like code identifier${identifiers.length === 1 ? '' : 's'} — wrap in backticks in the source markdown. DO NOT add to dictionary.txt; \`npm run lint:dictionary\` rejects identifier-shaped entries (PascalCase / camelCase / file extensions / paths). For real English vocabulary missing from the base dictionary, dictionary.txt is the right home; otherwise rephrase. See docs/dev/code-style.md.`;
+}
 
 const args = process.argv.slice(2);
 const QUIET = args.includes('--quiet');
@@ -104,11 +134,12 @@ if (spellTargets.length > 0 && binExists('spellchecker')) {
     ...spellTargets,
   ]);
   if (code !== 0) {
+    const output = (stdout + stderr).trim();
     findings.push({
       tool: 'spell',
       title: 'Spell check found unknown words in changed `.md` files',
-      output: (stdout + stderr).trim(),
-      hint: 'For a code identifier (variable, function, event name, file/path), wrap in backticks — the spell-checker skips code spans. For legitimate English vocabulary, add to `dictionary.txt` (alphabetical). Otherwise, rephrase. See docs/dev/code-style.md "Markdown conventions" for the rule.',
+      output,
+      hint: buildSpellHint(output),
     });
   }
 }

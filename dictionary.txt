@@ -1,3 +1,24 @@
+# Spellchecker dictionary. One entry per line.
+#
+# Lines starting with # are safe comments: each line becomes a regex
+# anchored as ^line$ matched against single word tokens, so a line
+# containing spaces can never match a tokenized word.
+#
+# Add a word ONLY when it is a real English word, acronym, or
+# legitimate technical term the base dictionary does not know
+# (e.g., idempotence, transcoder, FHD).
+#
+# DO NOT add code identifiers, file names, class names, paths,
+# or path fragments. Backtick those in the source markdown instead.
+#   bad   ... the JRRowItem cell renders     (and adding JRRowItem here)
+#   good  ... the `JRRowItem` cell renders   (no dictionary edit needed)
+#
+# Adding identifiers defeats the spellchecker for any actual typo
+# that happens to collide with an identifier name. Enforced by
+# scripts/lint/dictionary-audit.cjs (npm run lint:dictionary).
+#
+# See docs/dev/code-style.md for the full rationale.
+
 1080p
 14d
 480p
@@ -46,10 +67,8 @@ brighterscript
 BrighterScript
 BrighterScript's
 BrightScript
-.bs
 BSC
 bsconfig
-bsconfig-tests.json
 BSC-plugin-generated
 BSC's
 bsfmt
@@ -61,7 +80,6 @@ callsites
 camelCase
 cancellable
 catchup
-catchup-state.js
 changelog
 Changelog
 CHANGELOG
@@ -103,7 +121,6 @@ dep
 deps
 dev
 Dev
-devDependencies
 devguide
 DEVGUIDE
 dev-guides
@@ -206,7 +223,6 @@ in-repo
 instantiation
 interpolators
 invariants
-ItemGrid
 JavaScript
 jellyfin
 Jellyfin
@@ -217,10 +233,6 @@ jellyrock
 JellyRock
 jellyrock-bot
 JellyRock's
-JRGroup
-JRScene
-JRScreen
-JRScreen-derived
 JS
 JSDoc
 jshint
@@ -247,7 +259,6 @@ Luhmann
 Luhmann's
 Makefile
 markdownlint
-mediaPlayers
 mixin
 Mixin
 MKV
@@ -278,7 +289,6 @@ OSS
 OSS-eventual
 OSS-readability
 outro
-package.json
 PARA
 params
 PascalCase
@@ -317,7 +327,6 @@ prerolls
 pre-test
 Procida
 Procida's
-progress.md
 progress-stale
 PRs
 quickplay
@@ -373,7 +382,6 @@ ship-today
 sideload
 Sideload
 sideloads
-signals-backlog.md
 signals-schema-invalid
 slow-decay
 solo-ish
@@ -440,7 +448,6 @@ untracked
 untyped
 Untyped
 Unwatched
-update-translations.cjs
 uppercases
 upstream
 upstreams
@@ -502,18 +509,9 @@ Prepends
 YYYY-MM-DD
 changelog-sync
 HIG
-ItemDetails
-ItemGridOptions
-URIs
-URI's
-ui
-rowitem
-user-customizable
-theming
-blendColor
-JRRowItem
-JRPlaceholder
 CDN
+URIs
+theming
 affordance
-two-SVG
-pre-pipeline
+user-customizable
+allowlist
