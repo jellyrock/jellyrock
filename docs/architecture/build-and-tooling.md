@@ -26,7 +26,10 @@ related-files:
   - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
   - scripts/generate/icons-build.js
+  - scripts/generate/icons-add.js
   - resources/icons/
+  - resources/placeholders/
+  - resources/placeholders/placeholders.json
   - manifest
   - scripts/lib/frontmatter.cjs
   - scripts/lib/changed-files.cjs
@@ -57,7 +60,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-08
+last-reviewed: 2026-05-09
 ---
 
 # Build & Tooling
@@ -210,8 +213,8 @@ Lint and format:
 | `npm run docs:stale:blocking` | The conditional hard gate. Fails (exit 1) if a stale (>120 days) **architecture** doc's `related-files` was modified by the PR without the doc itself being updated alongside. Architecture-only by design — dev guides under `docs/dev/` are informational, gating both would force `last-reviewed` bumps for unrelated workflow docs. Wired into the `lint-docs` workflow as a required check |
 | `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
-| `npm run icons:build` / `:check` | Regenerates / checks the per-resolution PNG triples (`<name>_fhd.png` + `<name>_hd.png`) under `images/` from SVG sources in `resources/icons/`. Powers the `uri_resolution_autosub` pipeline (see [Icon resolution pipeline](#icon-resolution-pipeline) below). Pre-push runs the regen as an auto-fix when `resources/icons/*.svg`, `resources/icons/icons.json`, or [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) changes; `:check` runs as a check step in the same conditional |
-| `npm run icons:add -- <material_name> [--as <jellyrock_name>]` | Adds a new icon by fetching the canonical Material Symbols SVG from `google/material-design-icons` (Rounded variant, weight 500, fill 1, `24px` — locked house style), injecting white fill for `blendColor` tinting, saving to `resources/icons/`, and appending a row to the [provenance table](../../resources/icons/README.md#provenance). Removes the manual `icons.google.com` browse step. After running, follow up with `npm run icons:build` and update the call-site URI |
+| `npm run icons:build` / `:check` | Regenerates / checks the per-resolution PNG triples (`<name>_fhd.png` + `<name>_hd.png`) under `images/icons/` (icon set) and `images/placeholders/` (placeholder set) from SVG sources in `resources/icons/`. Driven by `resources/icons/icons.json` (icon overrides) and `resources/placeholders/placeholders.json` (placeholder set). Powers the `uri_resolution_autosub` pipeline (see [Icon resolution pipeline](#icon-resolution-pipeline) below). Pre-push runs the regen as an auto-fix when `resources/icons/*.svg`, `resources/icons/icons.json`, `resources/placeholders/placeholders.json`, or [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) changes; `:check` runs as a check step in the same conditional |
+| `npm run icons:add -- <material_name> [--as <jellyrock_name>] [--filled]` | Adds a new icon by fetching the canonical Material Symbols SVG from `google/material-design-icons` (Rounded variant, weight 500, **outlined by default — `fill=0`**, `24px` — locked house style), injecting white fill for `blendColor` tinting, saving to `resources/icons/`, and appending a row to the [provenance table](../../resources/icons/README.md#provenance). The `--filled` flag fetches the filled variant for the documented exception cases (toggle on-states, pure shapes, avatars, placeholders — see [Fill convention](../../resources/icons/README.md#fill-convention)). Removes the manual `icons.google.com` browse step. After running, follow up with `npm run icons:build` and update the call-site URI |
 | `npm run check-formatting` | `bs` + `js` (project-wide). Aggregates `check-formatting:bs` (`bsfmt --check`) and `check-formatting:js` (`prettier --check .`) |
 | `npm run check-formatting:bs` / `:js` | Type-scoped formatting checks. CI per-type workflows call the scoped variant (`lint-brightscript` runs `:bs` only, `lint-js` runs `:js` only) |
 | `npm run format` | `bs` + `js` (project-wide). Aggregates `format:bs` (`bsfmt --write`) and `format:js` (`prettier --write .`) |
@@ -258,9 +261,11 @@ This is a Roku-blessed primitive: at image-load time, the OS rewrites the magic 
 
 ### Source-of-truth layout
 
-- **SVG sources** live in [`resources/icons/`](../../resources/icons/) and are committed. JellyRock standardizes on the [Material Symbols](https://fonts.google.com/icons) family (Rounded variant, weight 500, filled, `24px`) — locked in the `npm run icons:add` script so contributors can't drift. See [`resources/icons/README.md`](../../resources/icons/README.md) for the provenance table and full contributor workflow.
+- **SVG sources** live in [`resources/icons/`](../../resources/icons/) and are committed. JellyRock standardizes on the [Material Symbols](https://fonts.google.com/icons) family (Rounded variant, weight 500, **outlined by default**, `24px`) — locked in the `npm run icons:add` script so contributors can't drift. The Fill convention has 7 documented exception cases (pure shapes, small-canvas sizes, avatars, placeholders, ratings, playback action buttons, toggle on-states); see [`resources/icons/README.md`](../../resources/icons/README.md#fill-convention) for the rules + decision tree.
 - **Generated PNGs** at `images/icons/<name>_fhd.png` and `<name>_hd.png` are produced by [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) via [sharp](https://sharp.pixelplumbing.com/). These are committed too (matches the pattern of committed-but-generated artifacts elsewhere in the repo, e.g. `source/utils/translationKeys.bs`).
 - **Per-icon overrides** in `resources/icons/icons.json` carry two distinct sizes: `sizeFhd` (canvas dimensions in pixels — the Poster's `width`/`height`) and `glyphSize` (how big the visible glyph is *inside* the canvas; the rest is transparent padding). Both auto-detect from existing PNGs when migrating; explicit overrides are only needed when the auto-detection would produce the wrong result. See the [glyph-density section in the README](../../resources/icons/README.md#glyph-density) for the resolution order.
+- **Placeholder set** in `resources/placeholders/placeholders.json` defines a second render pass through the same pipeline — placeholder glyphs render at 256×256 FHD into `images/placeholders/<name>_fhd.png` (and `_hd.png`). Each entry maps a placeholder name to a source SVG (typically a filled variant from `resources/icons/`) plus its canvas / glyph sizing. The `JRPlaceholder` SceneGraph component (see `components/ui/placeholder/`) loads the resulting URI through `getPlaceholderImagePath()` (`source/utils/placeholderImage.bs`) and overlays it on a themed `RectangleBackgroundSecondary` backdrop tinted via `blendColor=colorBackgroundPrimary` — backgrounds are runtime-themed SceneGraph composition, not baked-in PNG layers.
+- **Shared glyphs** (Material symbols needed in both an outlined-icon context and a filled-placeholder context — e.g. `album`) commit two SVG files: `<name>.svg` (outlined for icon use) + `<name>_filled.svg` (filled for placeholder use, referenced from `placeholders.json`). The build script auto-skips files ending in `_filled.svg` from the icons-rendering loop so we don't generate orphan icon PNGs for placeholder sources.
 
 ### Pipeline contract
 
