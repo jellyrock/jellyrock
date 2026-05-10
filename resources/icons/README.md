@@ -197,11 +197,19 @@ an icon needs a `glyphSize` or `sizeFhd` override that isn't self-explanatory.
   38 and 60): each pinned to the max bbox dimension of the original trimmed
   hand-authored PNG, so the migration to Material is a pure visual swap with
   the same screen footprint.
-- **`mic_icon`** (`sizeFhd: 24`, `glyphSize: 22`): voice-search inline indicator
+- **`mic_icon`** (`sizeFhd: 16`, `glyphSize: 22`): voice-search inline indicator
   in [`components/ItemGrid/Alpha.xml`](../../components/ItemGrid/Alpha.xml),
-  positioned next to a keyboard letter at width 15 × height 22 (`<Poster
-  id="alphaMic" height="22" width="15" />`). The 24×24 canvas with a 22-pixel
-  glyph preserves the natural mic aspect; the Poster scale-to-fits.
+  positioned next to a keyboard letter at non-square `width=15 height=22`
+  (`<Poster id="alphaMic" height="22" width="15" />`). A square canvas
+  forces the Poster to letterbox under aspect-preserving rendering — the
+  square source collapses to the Poster's smaller dimension (15×15),
+  wasting ~30% of the available vertical space. To match the Poster's
+  tall-narrow shape, the build produces a non-square 16×22 PNG by
+  exploiting the `extend()` step's `Math.max(0, canvas - dim)` clamp: when
+  the resized glyph (22 tall × 16 wide at the natural mic aspect) exceeds
+  `sizeFhd: 16` in height, no vertical padding is added and the glyph
+  overflows the canvas naturally. Same 16×22 footprint as the pre-pipeline
+  hand-authored asset.
 - **`favorite.svg` (`fill="#000000"`) and `favorite_selected.svg`
   (`fill="#FF0000"`)**: toggle pair for the favorite state. Both use the
   outlined Material `favorite` glyph; the visual distinction between off/on

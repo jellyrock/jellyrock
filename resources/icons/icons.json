@@ -7,7 +7,7 @@
   "chapters": { "glyphSize": 60 },
   "star": { "sizeFhd": 36, "glyphSize": 30 },
   "person": { "glyphSize": 64 },
-  "mic_icon": { "sizeFhd": 24, "glyphSize": 22 },
+  "mic_icon": { "sizeFhd": 16, "glyphSize": 22 },
   "album": { "sizeFhd": 450, "glyphSize": 382 },
   "missingArtist": { "sizeFhd": 512, "glyphSize": 256 },
   "musicFolder": { "sizeFhd": 256, "glyphSize": 256 },
