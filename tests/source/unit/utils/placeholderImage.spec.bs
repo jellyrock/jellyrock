@@ -9,91 +9,69 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("returns movie placeholder for Movie and BoxSet")
-    @params("Movie", "pkg:/images/placeholders/movie.png")
-    @params("BoxSet", "pkg:/images/placeholders/movie.png")
+    @params("Movie", "pkg:/images/placeholders/movie_$$RES$$.png")
+    @params("BoxSet", "pkg:/images/placeholders/movie_$$RES$$.png")
     function _(itemType, expected)
       m.assertEqual(getPlaceholderImagePath(itemType), expected)
     end function
 
     @it("returns person placeholder for Person")
     function _()
-      m.assertEqual(getPlaceholderImagePath("Person"), "pkg:/images/placeholders/person.png")
+      m.assertEqual(getPlaceholderImagePath("Person"), "pkg:/images/placeholders/person_$$RES$$.png")
     end function
 
     @it("returns playCircle placeholder for video/episode types")
-    @params("Episode", "pkg:/images/placeholders/playCircle.png")
-    @params("Video", "pkg:/images/placeholders/playCircle.png")
-    @params("MusicVideo", "pkg:/images/placeholders/playCircle.png")
-    @params("Recording", "pkg:/images/placeholders/playCircle.png")
-    @params("Program", "pkg:/images/placeholders/playCircle.png")
-    @params("Series", "pkg:/images/placeholders/playCircle.png")
-    @params("Season", "pkg:/images/placeholders/playCircle.png")
-    @params("Chapter", "pkg:/images/placeholders/playCircle.png")
+    @params("Episode", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("Video", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("MusicVideo", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("Recording", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("Program", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("Series", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("Season", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("Chapter", "pkg:/images/placeholders/playCircle_$$RES$$.png")
     function _(itemType, expected)
       m.assertEqual(getPlaceholderImagePath(itemType), expected)
     end function
 
     @it("returns album placeholder for MusicAlbum")
     function _()
-      m.assertEqual(getPlaceholderImagePath("MusicAlbum"), "pkg:/images/placeholders/album.png")
+      m.assertEqual(getPlaceholderImagePath("MusicAlbum"), "pkg:/images/placeholders/album_$$RES$$.png")
     end function
 
     @it("returns artist placeholder for MusicArtist")
     function _()
-      m.assertEqual(getPlaceholderImagePath("MusicArtist"), "pkg:/images/placeholders/artist.png")
+      m.assertEqual(getPlaceholderImagePath("MusicArtist"), "pkg:/images/placeholders/artist_$$RES$$.png")
     end function
 
     @it("returns musicNote placeholder for Audio")
     function _()
-      m.assertEqual(getPlaceholderImagePath("Audio"), "pkg:/images/placeholders/musicNote.png")
+      m.assertEqual(getPlaceholderImagePath("Audio"), "pkg:/images/placeholders/musicNote_$$RES$$.png")
     end function
 
     @it("returns playlist placeholder for Playlist")
     function _()
-      m.assertEqual(getPlaceholderImagePath("Playlist"), "pkg:/images/placeholders/playlist.png")
+      m.assertEqual(getPlaceholderImagePath("Playlist"), "pkg:/images/placeholders/playlist_$$RES$$.png")
     end function
 
     @it("returns photo placeholder for Photo")
     function _()
-      m.assertEqual(getPlaceholderImagePath("Photo"), "pkg:/images/placeholders/photo.png")
+      m.assertEqual(getPlaceholderImagePath("Photo"), "pkg:/images/placeholders/photo_$$RES$$.png")
     end function
 
     @it("returns photoAlbum placeholder for PhotoAlbum")
     function _()
-      m.assertEqual(getPlaceholderImagePath("PhotoAlbum"), "pkg:/images/placeholders/photoAlbum.png")
+      m.assertEqual(getPlaceholderImagePath("PhotoAlbum"), "pkg:/images/placeholders/photoAlbum_$$RES$$.png")
     end function
 
     @it("returns folder fallback for unknown or unmatched types")
-    @params("CollectionFolder", "pkg:/images/placeholders/folder.png")
-    @params("UserView", "pkg:/images/placeholders/folder.png")
-    @params("Channel", "pkg:/images/placeholders/folder.png")
-    @params("TvChannel", "pkg:/images/placeholders/folder.png")
-    @params("SomeUnknownType", "pkg:/images/placeholders/folder.png")
-    @params("", "pkg:/images/placeholders/folder.png")
+    @params("CollectionFolder", "pkg:/images/placeholders/folder_$$RES$$.png")
+    @params("UserView", "pkg:/images/placeholders/folder_$$RES$$.png")
+    @params("Channel", "pkg:/images/placeholders/folder_$$RES$$.png")
+    @params("TvChannel", "pkg:/images/placeholders/folder_$$RES$$.png")
+    @params("SomeUnknownType", "pkg:/images/placeholders/folder_$$RES$$.png")
+    @params("", "pkg:/images/placeholders/folder_$$RES$$.png")
     function _(itemType, expected)
       m.assertEqual(getPlaceholderImagePath(itemType), expected)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("isPlaceholderUri(uri)")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("returns true for placeholder paths")
-    @params("pkg:/images/placeholders/movie.png", true)
-    @params("pkg:/images/placeholders/person.png", true)
-    @params("pkg:/images/placeholders/folder.png", true)
-    @params("pkg:/images/placeholders/playCircle.png", true)
-    function _(uri, expected)
-      m.assertEqual(isPlaceholderUri(uri), expected)
-    end function
-
-    @it("returns false for non-placeholder URIs")
-    @params("https://jellyfin.example.com/Items/abc123/Images/Primary", false)
-    @params("pkg:/images/media_type_icons/live_tv_white.png", false)
-    @params("pkg:/images/icons/spinner_$$RES$$.png", false)
-    @params("", false)
-    function _(uri, expected)
-      m.assertEqual(isPlaceholderUri(uri), expected)
     end function
 
   end class

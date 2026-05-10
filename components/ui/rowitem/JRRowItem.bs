@@ -11,7 +11,7 @@ const FOCUS_PADDING = 18
 
 sub init()
   m.log = new log.Logger("JRRowItem")
-  m.backdrop = m.top.findNode("backdrop")
+  m.placeholder = m.top.findNode("placeholder")
   m.poster = m.top.findNode("poster")
   m.itemIcon = m.top.findNode("itemIcon")
   m.title = m.top.findNode("title")
@@ -32,10 +32,6 @@ sub init()
   ' Reference to the RowList's root ContentNode — used to observe loadedRowRange.
   ' Set once in setupTextureObserver() when the first itemContent is assigned.
   m.contentRoot = invalid
-
-  ' Default blendColor for the poster (white = no tint). Placeholder state overrides
-  ' this to colorBackgroundPrimary so the white silhouette icon picks up the theme color.
-  m.defaultPosterBlendColor = m.poster.blendColor
 
   ' Reactive bridge for live Program progress bars. When this cell is bound to
   ' a Program content node, an observer is installed on that node's
@@ -90,15 +86,16 @@ sub renderItem()
 
   updateLayout(slotWidth, posterHeight)
 
-  ' Reset poster blendColor in case the previous render on this recycled cell
-  ' was a placeholder (which overrides blendColor to colorBackgroundPrimary).
-  m.poster.blendColor = m.defaultPosterBlendColor
+  ' Reset placeholder to loading state (themed backdrop only, no glyph) on
+  ' every recycle. JRPlaceholder resets glyph visibility internally when
+  ' itemType becomes "".
+  m.placeholder.itemType = ""
+  m.placeholder.visible = true
 
   ' Skeleton placeholder — show backdrop + centered spinner, no poster or text
   if item.type = "Loading"
     m.cachedPosterUri = ""
     m.cachedIconUri = ""
-    m.backdrop.visible = true
     m.poster.uri = ""
     m.poster.visible = false
     m.staticTitle.visible = false
@@ -121,11 +118,13 @@ sub renderItem()
   end if
 end sub
 
-' Renders a My Media library tile: colored backdrop + type icon + library name.
+' Renders a My Media library tile: themed backdrop + type icon + library name.
 ' The poster loads the library's Primary image; when it loads successfully the
-' backdrop (and overlaid text) hide to reveal the image.
+' placeholder (and overlaid text) hide to reveal the image. Library tiles never
+' set placeholder.itemType — the type-specific itemIcon (live_tv_white etc.)
+' overlays the backdrop, so the JRPlaceholder glyph stays empty.
 sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
-  m.backdrop.visible = true
+  m.placeholder.visible = true
   m.title.visible = false
   m.staticTitle.visible = false
   m.subtitle.visible = false
@@ -163,9 +162,9 @@ sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
 
   ' When the same URL is re-assigned (e.g. data refresh returns identical libraries),
   ' Roku's Poster won't re-trigger loadStatus, so onPosterLoadStatusChanged() never
-  ' fires to hide the backdrop. Detect this and hide immediately.
-  if not m.isTextureUnloaded and m.poster.loadStatus = "ready" and posterUri <> "" and not isPlaceholderUri(posterUri)
-    m.backdrop.visible = false
+  ' fires to hide the placeholder. Detect this and hide immediately.
+  if not m.isTextureUnloaded and m.poster.loadStatus = "ready" and posterUri <> ""
+    m.placeholder.visible = false
     if isValid(backdropText)
       backdropText.visible = false
     end if
@@ -193,8 +192,9 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     backdropText.visible = false
   end if
 
-  ' Backdrop shows while poster is loading, hidden once image is ready
-  m.backdrop.visible = true
+  ' Placeholder shows while poster is loading (themed backdrop, no glyph yet),
+  ' hidden once the real image is ready.
+  m.placeholder.visible = true
 
   ' Pre-compute webclient episode image flag to keep the utility function pure
   useEpisodeImages = false
@@ -299,8 +299,8 @@ end sub
 ' Updates positions and sizes of all child nodes to match the current slot dimensions.
 ' Called at the start of every renderItem() before branching into tile/standard mode.
 sub updateLayout(slotWidth as float, posterHeight as float)
-  m.backdrop.width = slotWidth
-  m.backdrop.height = posterHeight
+  m.placeholder.width = slotWidth
+  m.placeholder.height = posterHeight
 
   m.poster.width = slotWidth
   m.poster.height = posterHeight
@@ -361,48 +361,51 @@ function getLibraryIconPath(collectionType as string) as string
   return ""
 end function
 
-' Hides the backdrop (and any backdropText) once the poster image loads.
-' Shows the backdrop as a fallback when the image is unavailable or still loading.
-' Placeholder URIs are excluded from the "ready" check — the backdrop must stay visible
-' behind placeholder icons. On failure, shows a type-appropriate placeholder icon.
-' backdropText visibility is only toggled for library tiles — standard items must not
-' inherit a stale label when this component instance is recycled from a library row.
+' Hides the placeholder (and any backdropText) once the real poster image loads.
+' Shows the placeholder when the image is unavailable, still loading, or failed.
+' On failure, sets placeholder.itemType so JRPlaceholder surfaces a
+' type-appropriate glyph on the themed backdrop.
+'
+' backdropText visibility is only toggled for library tiles — standard items
+' must not inherit a stale label when this component instance is recycled from
+' a library row.
 sub onPosterLoadStatusChanged()
   ' Ignore status changes triggered by intentional texture unloads (uri set to "").
   ' Without this guard, the "failed" status from clearing the URI would trigger
-  ' showPlaceholder() and destroy the cached URI, preventing reload.
+  ' a stale placeholder render and destroy the cached URI, preventing reload.
   if m.isTextureUnloaded then return
 
-  if m.poster.loadStatus = "ready" and m.poster.uri <> "" and not isPlaceholderUri(m.poster.uri)
-    m.poster.blendColor = m.defaultPosterBlendColor
-    m.backdrop.visible = false
+  if m.poster.loadStatus = "ready" and m.poster.uri <> ""
+    ' Real image loaded — hide the placeholder so the poster shows through.
+    m.placeholder.visible = false
     if m.isLibraryTile
       backdropText = m.top.findNode("backdropText")
       if isValid(backdropText)
         backdropText.visible = false
       end if
     end if
-  else if m.poster.loadStatus = "failed" and not isPlaceholderUri(m.poster.uri)
-    ' Image failed to load — show placeholder icon on backdrop.
-    ' Library tiles already have their own fallback (backdrop + icon + text),
-    ' so skip the generic placeholder to avoid covering the correct icon.
+  else if m.poster.loadStatus = "failed" and m.poster.uri <> ""
+    ' Real image failed — surface a type-appropriate placeholder glyph on the
+    ' themed backdrop. Library tiles already have their own fallback (backdrop
+    ' + itemIcon + text), so skip the generic glyph to avoid covering them.
+    ' Keep cachedPosterUri intact so reloadTexture() retries the original URL
+    ' when the cell scrolls off-screen and back. If the failure was transient
+    ' (network hiccup, server throttle), the retry succeeds and the real image
+    ' replaces the placeholder. If it fails again, this callback fires again
+    ' and the placeholder stays.
+    '
+    ' The uri <> "" guard prevents recursive re-trigger after showPlaceholder
+    ' clears the URI: clearing produces a "failed" loadStatus from Roku, but
+    ' since we set uri="" intentionally there's nothing to fall back to.
     if not m.isLibraryTile
       itemType = ""
       if isValid(m.top.itemContent) then itemType = m.top.itemContent.type
       showPlaceholder(itemType)
     end if
-    ' Keep cachedPosterUri intact so reloadTexture() retries the original URL
-    ' when the cell scrolls off-screen and back (or on screen show/hide transitions).
-    ' If the failure was transient (network hiccup, server throttle), the retry
-    ' succeeds and the real image replaces the placeholder. If it fails again,
-    ' this callback fires again and the placeholder stays.
-  else if isPlaceholderUri(m.poster.uri)
-    ' Placeholder loaded successfully — keep backdrop visible and blendColor as-is.
-    ' Do NOT reset blendColor here; showPlaceholder() already set it.
-    m.backdrop.visible = true
   else
-    m.poster.blendColor = m.defaultPosterBlendColor
-    m.backdrop.visible = true
+    ' Loading or no URI — keep the placeholder visible behind the (transparent)
+    ' poster.
+    m.placeholder.visible = true
     if m.isLibraryTile
       backdropText = m.top.findNode("backdropText")
       if isValid(backdropText)
@@ -448,18 +451,23 @@ end sub
 ' PLACEHOLDER & TEXTURE MANAGEMENT
 ' ============================================
 
-' Shows a type-appropriate placeholder icon centered on the backdrop.
-' The backdrop switches to backgroundPrimary to visually distinguish placeholder
-' state from the normal loading state (backgroundSecondary). The placeholder image
-' uses scaleToFit so it is never stretched — it renders at its natural aspect ratio,
-' centered within the poster bounds.
+' Shows a type-appropriate placeholder glyph on the themed backdrop. Delegated
+' to JRPlaceholder, which owns the backdrop + glyph + themed-blendColor
+' composition and the itemType → URI mapping (via getPlaceholderImagePath).
+'
+' The poster URI is cleared to "" so a recycled cell's stale image (e.g.,
+' the previous cell's photo) doesn't render on top of the placeholder.
+' JRPoster sits ON TOP of JRPlaceholder per the XML order, so a stale URI
+' would cover the placeholder glyph entirely. m.cachedPosterUri retains
+' the real URL so reloadTexture() can retry it when the cell scrolls back
+' on screen.
+'
 ' @param itemType - Jellyfin item type string (e.g., "Movie", "Person")
 sub showPlaceholder(itemType as string)
   m.log.verbose("showPlaceholder", itemType)
-  m.poster.loadDisplayMode = "scaleToFit"
-  m.poster.blendColor = m.global.constants.colorBackgroundPrimary
-  m.poster.uri = getPlaceholderImagePath(itemType)
-  m.backdrop.visible = true
+  m.placeholder.itemType = itemType
+  m.placeholder.visible = true
+  m.poster.uri = ""
 end sub
 
 ' Returns a human-readable identifier for the current cell: "[RowTitle] ItemName"
@@ -765,7 +773,7 @@ sub unloadTexture()
   logTextureAction("unloadTexture")
   m.isTextureUnloaded = true
   m.poster.uri = ""
-  m.backdrop.visible = true
+  m.placeholder.visible = true
 
   if m.cachedIconUri <> ""
     m.itemIcon.uri = ""
@@ -778,22 +786,26 @@ end sub
 sub forceUnloadTexture()
   m.isTextureUnloaded = true
   m.poster.uri = ""
-  m.backdrop.visible = true
+  m.placeholder.visible = true
   m.itemIcon.uri = ""
   m.itemIcon.visible = false
 end sub
 
 ' Restores poster/icon URIs from cache when the cell scrolls back on screen.
-' The backdrop will show briefly while the image reloads from Roku's HTTP cache.
-' Also serves as a retry path for previously failed loads — if the cached URI
-' differs from the current poster URI (e.g. placeholder), it re-attempts the load.
+' The placeholder will show briefly while the real image reloads from Roku's
+' HTTP cache. Also serves as a retry path for previously failed loads — if the
+' cell currently shows the fallback placeholder glyph, this re-attempts the
+' real load.
 sub reloadTexture()
   if m.cachedPosterUri <> "" and m.poster.uri <> m.cachedPosterUri
     logTextureAction("reloadTexture")
     m.isTextureUnloaded = false
-    m.poster.blendColor = m.defaultPosterBlendColor
     m.poster.loadDisplayMode = m.cachedLoadDisplayMode
     m.poster.uri = m.cachedPosterUri
+    ' Reset the placeholder to loading state (backdrop only, no glyph) — the
+    ' real image is starting to load again.
+    m.placeholder.itemType = ""
+    m.placeholder.visible = true
   end if
   if m.cachedIconUri <> "" and m.itemIcon.uri <> m.cachedIconUri
     m.itemIcon.uri = m.cachedIconUri

@@ -1,39 +1,30 @@
-' Returns the local placeholder image path for a given Jellyfin item type.
-' Used when an item has no image URL or the image fails to load.
-' The placeholder icon is displayed centered on the backdrop rectangle
-' using loadDisplayMode="limitSize" so it renders at its natural size.
+' Returns the local placeholder image URI for a given Jellyfin item type.
+' Used by JRPlaceholder when an item has no image URL or its image fails to
+' load. The returned URI uses Roku's `$$RES$$` autosub token (see manifest's
+' `uri_resolution_autosub` declaration) so the OS rewrites it to the correct
+' per-device asset (`_fhd.png` / `_hd.png`) at load time.
 '
 ' @param itemType - Jellyfin item type string (e.g., "Movie", "Person")
-' @returns pkg:/ path to the appropriate placeholder image
+' @returns pkg:/ URI to the appropriate placeholder image
 function getPlaceholderImagePath(itemType as string) as string
   if itemType = "Movie" or itemType = "BoxSet"
-    return "pkg:/images/placeholders/movie.png"
+    return "pkg:/images/placeholders/movie_$$RES$$.png"
   else if itemType = "Person"
-    return "pkg:/images/placeholders/person.png"
+    return "pkg:/images/placeholders/person_$$RES$$.png"
   else if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "Recording" or itemType = "Program" or itemType = "Series" or itemType = "Season" or itemType = "Chapter"
-    return "pkg:/images/placeholders/playCircle.png"
+    return "pkg:/images/placeholders/playCircle_$$RES$$.png"
   else if itemType = "MusicAlbum"
-    return "pkg:/images/placeholders/album.png"
+    return "pkg:/images/placeholders/album_$$RES$$.png"
   else if itemType = "MusicArtist"
-    return "pkg:/images/placeholders/artist.png"
+    return "pkg:/images/placeholders/artist_$$RES$$.png"
   else if itemType = "Audio"
-    return "pkg:/images/placeholders/musicNote.png"
+    return "pkg:/images/placeholders/musicNote_$$RES$$.png"
   else if itemType = "Playlist"
-    return "pkg:/images/placeholders/playlist.png"
+    return "pkg:/images/placeholders/playlist_$$RES$$.png"
   else if itemType = "Photo"
-    return "pkg:/images/placeholders/photo.png"
+    return "pkg:/images/placeholders/photo_$$RES$$.png"
   else if itemType = "PhotoAlbum"
-    return "pkg:/images/placeholders/photoAlbum.png"
+    return "pkg:/images/placeholders/photoAlbum_$$RES$$.png"
   end if
-  return "pkg:/images/placeholders/folder.png"
-end function
-
-' Checks whether a URI points to a local placeholder image.
-' Used to guard onPosterLoadStatusChanged from hiding the backdrop
-' when a placeholder loads successfully.
-'
-' @param uri - the poster URI to check
-' @returns true if the URI is a placeholder path
-function isPlaceholderUri(uri as string) as boolean
-  return uri.startsWith("pkg:/images/placeholders/")
+  return "pkg:/images/placeholders/folder_$$RES$$.png"
 end function
