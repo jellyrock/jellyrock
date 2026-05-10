@@ -24,9 +24,6 @@ const path = require('path');
 
 const DICTIONARY_PATH = path.join(__dirname, '..', '..', 'dictionary.txt');
 
-// Product / brand / service names that legitimately use PascalCase or mixed
-// case but ARE real proper nouns referenced in prose. Add new entries only
-// when an entry is genuinely a proper noun (not a code identifier).
 // Product / brand / service names and CS-domain proper nouns that
 // legitimately use mixed case or PascalCase but ARE referenced in prose
 // (not as code identifiers). Add new entries only when the entry is a
