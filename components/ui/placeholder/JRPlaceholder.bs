@@ -1,9 +1,7 @@
-import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 
 sub init()
-  m.log = new log.Logger("JRPlaceholder")
   m.backdrop = m.top.findNode("backdrop")
   m.glyph = m.top.findNode("glyph")
   ' The white-fill source SVG renders white pixels in the PNG; blendColor
@@ -16,13 +14,11 @@ end sub
 ' Resize the backdrop and glyph to track the parent's declared dimensions.
 ' Glyph uses scaleToFit (declared in XML) so the 256×256 placeholder PNG
 ' renders centered at the smaller of width/height, preserving aspect ratio.
+' setFields batches the two writes per child, halving the field-write count.
 sub onSizeChanged()
-  width = m.top.width
-  height = m.top.height
-  m.backdrop.width = width
-  m.backdrop.height = height
-  m.glyph.width = width
-  m.glyph.height = height
+  size = { width: m.top.width, height: m.top.height }
+  m.backdrop.setFields(size)
+  m.glyph.setFields(size)
 end sub
 
 ' Empty itemType → loading state (backdrop visible, glyph hidden).
