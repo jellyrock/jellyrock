@@ -44,12 +44,12 @@ namespace tests
 
     @it("width defaults to 0")
     function _()
-      m.assertEqual(m.placeholder.width, 0)
+      m.assertEqual(m.placeholder.width, 0!)
     end function
 
     @it("height defaults to 0")
     function _()
-      m.assertEqual(m.placeholder.height, 0)
+      m.assertEqual(m.placeholder.height, 0!)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -78,13 +78,19 @@ namespace tests
     @it("glyph blendColor is set to colorBackgroundPrimary in init")
     function _()
       glyph = m.placeholder.findNode("glyph")
-      m.assertEqual(glyph.blendColor, m.global.constants.colorBackgroundPrimary)
+      ' blendColor is an Integer (RGBA-packed) field. Roku coerces the 6-digit
+      ' hex string from constants by appending FF for alpha, so we mirror that
+      ' coercion via a throwaway Poster instead of comparing String -> Integer.
+      expectedPoster = CreateObject("roSGNode", "Poster")
+      expectedPoster.blendColor = m.global.constants.colorBackgroundPrimary
+      m.assertEqual(glyph.blendColor, expectedPoster.blendColor)
     end function
 
     @it("glyph loadDisplayMode is scaleToFit (preserves aspect, never stretched)")
     function _()
       glyph = m.placeholder.findNode("glyph")
-      m.assertEqual(glyph.loadDisplayMode, "scaleToFit")
+      ' Roku normalizes Poster.loadDisplayMode to lowercase on read.
+      m.assertEqual(glyph.loadDisplayMode, "scaletofit")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -95,10 +101,10 @@ namespace tests
     function _()
       m.placeholder.width = 234
       m.placeholder.height = 324
-      m.assertEqual(m.placeholder.findNode("backdrop").width, 234)
-      m.assertEqual(m.placeholder.findNode("backdrop").height, 324)
-      m.assertEqual(m.placeholder.findNode("glyph").width, 234)
-      m.assertEqual(m.placeholder.findNode("glyph").height, 324)
+      m.assertEqual(m.placeholder.findNode("backdrop").width, 234!)
+      m.assertEqual(m.placeholder.findNode("backdrop").height, 324!)
+      m.assertEqual(m.placeholder.findNode("glyph").width, 234!)
+      m.assertEqual(m.placeholder.findNode("glyph").height, 324!)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
