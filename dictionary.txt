@@ -514,3 +514,5 @@ blendColor
 JRRowItem
 JRPlaceholder
 CDN
+affordance
+two-SVG

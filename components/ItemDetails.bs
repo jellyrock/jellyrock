@@ -2170,7 +2170,7 @@ sub setItemLogo(item as object)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = "pkg:/images/icons/person_$$RES$$.png"
+      m.itemLogo.uri = "pkg:/images/placeholders/person_$$RES$$.png"
     end if
     return
   else if item.type = "MusicArtist"

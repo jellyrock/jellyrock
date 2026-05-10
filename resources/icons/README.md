@@ -58,7 +58,7 @@ file) ONLY when one of these seven pinned-filled rules applies:
 |---|---|---|---|
 | 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check`, `arrow-*` |
 | 2 | Small-canvas size | Canvas width less than `32px` | `mic_icon` (24×24) — outlined strokes lose visibility at small sizes (Material 3 small-target guidance, Apple HIG ≤ `28pt`) |
-| 3 | Avatar / identity | Represents a person or user | `person`, `person_36px` — universal across Apple TV / Netflix / YouTube / Disney+ profile selectors |
+| 3 | Subject / identity content | Represents a person, user, or content-type subject (album, artist, music collection) | `person`, `person_36px` (avatars), `album`, `missingArtist`, `musicFolder`, `musicNote` (content-type representations) — filled glyphs read more clearly than outlined when the icon IS the subject (e.g., the album disc on the audio player's now-playing screen) rather than an action affordance |
 | 4 | Placeholder / representative content | Lives in `images/placeholders/` | All 10 placeholders (`movie`, `album`, `folder`, etc.) — Apple Finder / Google Drive / Material 3 file pickers all use filled placeholders |
 | 5 | Rating glyph | Inline rating display | `star` — industry-standard filled for ratings |
 | 6 | Playback action button | Composes filled `play` | `resume` (arc + play-triangle) — visual consistency with the `play` standalone |
@@ -69,7 +69,7 @@ file) ONLY when one of these seven pinned-filled rules applies:
 ```text
 Is it a `play` triangle / `pause` bars / `circle` / pure shape?    → --filled (Rule 1)
 Is its rendered canvas below 32 pixels wide?                       → --filled (Rule 2)
-Does it represent a person or user identity?                       → --filled (Rule 3)
+Does it represent a person OR a content-type subject?              → --filled (Rule 3)
 Does it live in images/placeholders/ (item-type representation)?   → --filled (Rule 4)
 Is it a star used for ratings?                                     → --filled (Rule 5)
 Does it visually compose `play` for a playback action?             → --filled (Rule 6)
@@ -78,12 +78,15 @@ Otherwise:                                                         → outlined 
 ```
 
 **Shared glyphs:** when the same Material symbol is needed in BOTH an
-outlined-icon context and a filled-placeholder context (e.g., `album` is used
-as a small button in `ItemDetails` AND as a 256×256 placeholder), commit two
-SVG files: `album.svg` (outlined for icon use) + `album_filled.svg` (filled
+outlined-icon context and a filled-placeholder context, commit two SVG
+files: `<name>.svg` (outlined for icon use) + `<name>_filled.svg` (filled
 for placeholder use). The placeholder config (`resources/placeholders/placeholders.json`)
-points at the `_filled.svg` source. Single-context glyphs (only icon, or only
-placeholder) need just one SVG file.
+points at the `_filled.svg` source. Subject-identity glyphs (Rule 3 —
+`album`, `missingArtist`, `musicFolder`, `musicNote`, `person`) skip the
+two-SVG dance because they're filled in BOTH contexts; one SVG file
+suffices and `placeholders.json` references the same file the icon set
+uses. Single-context placeholder-only glyphs (Rule 4 — e.g., `movie`,
+`folder`, `playlist`) live as `<name>_filled.svg` only.
 
 The build script ([`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js))
 auto-skips files ending in `_filled.svg` from the icons-rendering loop —
@@ -107,9 +110,11 @@ npm run icons:add -- person --filled
 # Toggle on-state (Rule 7)
 npm run icons:add -- favorite --as favorite_selected --filled
 
-# Shared glyph: outlined for icon, filled-variant for placeholder
-npm run icons:add -- album                    # outlined → album.svg
-npm run icons:add -- album --as album_filled --filled  # filled → album_filled.svg
+# Subject-identity (Rule 3): one filled SVG used by both icon and placeholder
+npm run icons:add -- album --filled
+
+# Placeholder-only glyph (Rule 4): filename signals placeholder-only intent
+npm run icons:add -- movie --as movie_filled --filled
 ```
 
 ## Adding a new icon
@@ -280,7 +285,7 @@ this table automatically.
 | `expand.svg` | `unfold_more` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `closedCaptions.svg` | `closed_caption` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `liveTV.svg` | `live_tv` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `musicNote.svg` | `music_note` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `musicNote.svg` | `music_note` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
 | `repeat.svg` | `repeat` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `repeat-1.svg` | `repeat_one` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `instantMix.svg` | `instant_mix` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
@@ -302,9 +307,9 @@ this table automatically.
 | `favorite.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `favorite_selected.svg` | `favorite` (hand-edited fill `#FF0000`) | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `heart.svg` | `favorite` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `album.svg` | `album` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `missingArtist.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `musicFolder.svg` | `library_music` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `album.svg` | `album` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `missingArtist.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `musicFolder.svg` | `library_music` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
 | `playlist_filled.svg` | `playlist_play` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `circle.svg` | `circle` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `tomato-fresh.svg` | non-Material — [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg) (PD-textlogo) | n/a | n/a | (red) | 139×141 | 2026-05-09 |
@@ -314,5 +319,3 @@ this table automatically.
 | `photo_filled.svg` | `photo` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `photoAlbum_filled.svg` | `photo_album` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `folder_filled.svg` | `folder` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `album_filled.svg` | `album` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `musicNote_filled.svg` | `music_note` | Rounded | 500 | 1 | `24px` | 2026-05-09 |

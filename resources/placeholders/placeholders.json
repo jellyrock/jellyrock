@@ -6,13 +6,9 @@
     "sizeFhd": 256,
     "outputDir": "images/placeholders"
   },
-  "album": { "source": "album_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "album": { "source": "album.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
   "artist": { "source": "missingArtist.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
-  "musicNote": {
-    "source": "musicNote_filled.svg",
-    "sizeFhd": 256,
-    "outputDir": "images/placeholders"
-  },
+  "musicNote": { "source": "musicNote.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
   "playlist": {
     "source": "playlist_filled.svg",
     "sizeFhd": 256,
