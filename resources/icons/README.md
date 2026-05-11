@@ -34,7 +34,8 @@ family at these locked coordinates:
   downsample, matches the soft Jellyfin/JellyRock brand language)
 - **Weight**: 500 (heavier than Material's 400 default — better legibility at
   TV viewing distance)
-- **Fill**: 1 (filled, not outlined)
+- **Fill**: 0 (outlined) by default — see [Fill convention](#fill-convention)
+  for the exception cases
 - **Optical size**: `24px`
 
 The `npm run icons:add` script enforces these — contributors don't pick a
@@ -42,6 +43,79 @@ variant per icon, so the system never drifts. If a future icon genuinely needs
 a different style (e.g., a bespoke brand mark), commit a hand-authored SVG
 directly and document the reason in the [Density notes](#density-notes) section
 below.
+
+### Fill convention
+
+**Default: outlined (`fill=0`).** Outlined glyphs read more clearly at TV
+viewing distance because the silhouette is recognizable independent of color.
+Modern Material 3 / Apple HIG / IBM Carbon all default to outlined for
+medium-size action icons.
+
+Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant
+file) ONLY when one of these seven pinned-filled rules applies:
+
+| # | Rule | Trigger | Examples |
+|---|---|---|---|
+| 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check`, `arrow-*` |
+| 2 | Small-canvas size | Canvas width less than `32px` | `mic_icon` (24×24) — outlined strokes lose visibility at small sizes (Material 3 small-target guidance, Apple HIG ≤ `28pt`) |
+| 3 | Subject / identity content | Represents a person, user, or content-type subject (album, artist, music collection) | `person`, `person_36px` (avatars), `album`, `missingArtist`, `musicFolder`, `musicNote` (content-type representations) — filled glyphs read more clearly than outlined when the icon IS the subject (e.g., the album disc on the audio player's now-playing screen) rather than an action affordance |
+| 4 | Placeholder / representative content | Lives in `images/placeholders/` | All 10 placeholders (`movie`, `album`, `folder`, etc.) — Apple Finder / Google Drive / Material 3 file pickers all use filled placeholders |
+| 5 | Rating glyph | Inline rating display | `star` — industry-standard filled for ratings |
+| 6 | Playback action button | Composes filled `play` | `resume` (arc + play-triangle) — visual consistency with the `play` standalone |
+| 7 | Toggle on-state | Paired with outlined off-state | `heart` (on-state in `ItemDetails` Favorite button), `favorite_selected` (on-state in `ItemGridOptions` favorite menu — geometry outlined, signaled by hard-coded red color) |
+
+**Decision tree for adding a new icon:**
+
+```text
+Is it a `play` triangle / `pause` bars / `circle` / pure shape?    → --filled (Rule 1)
+Is its rendered canvas below 32 pixels wide?                       → --filled (Rule 2)
+Does it represent a person OR a content-type subject?              → --filled (Rule 3)
+Does it live in images/placeholders/ (item-type representation)?   → --filled (Rule 4)
+Is it a star used for ratings?                                     → --filled (Rule 5)
+Does it visually compose `play` for a playback action?             → --filled (Rule 6)
+Is it the on-state of a toggle paired with an outlined off-state?  → --filled (Rule 7)
+Otherwise:                                                         → outlined (default)
+```
+
+**Shared glyphs:** when the same Material symbol is needed in BOTH an
+outlined-icon context and a filled-placeholder context, commit two SVG
+files: `<name>.svg` (outlined for icon use) + `<name>_filled.svg` (filled
+for placeholder use). The placeholder config (`resources/placeholders/placeholders.json`)
+points at the `_filled.svg` source. Subject-identity glyphs (Rule 3 —
+`album`, `missingArtist`, `musicFolder`, `musicNote`, `person`) skip the
+two-file dance because they're filled in BOTH contexts; one SVG file
+suffices and `placeholders.json` references the same file the icon set
+uses. Single-context placeholder-only glyphs (Rule 4 — e.g., `movie`,
+`folder`, `playlist`) live as `<name>_filled.svg` only.
+
+The build script ([`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js))
+auto-skips files ending in `_filled.svg` from the icons-rendering loop —
+these variants exist purely as placeholder sources, so rendering them as
+`images/icons/<name>_filled_*.png` would produce unused orphan PNGs. They
+are still rendered through the placeholders loop when referenced from
+`placeholders.json`.
+
+**Examples:**
+
+```bash
+# Default outlined chrome action icon
+npm run icons:add -- search
+
+# Sub-32px small icon (Rule 2)
+npm run icons:add -- mic --as mic_icon --filled
+
+# Avatar (Rule 3)
+npm run icons:add -- person --filled
+
+# Toggle on-state (Rule 7)
+npm run icons:add -- favorite --as favorite_selected --filled
+
+# Subject-identity (Rule 3): one filled SVG used by both icon and placeholder
+npm run icons:add -- album --filled
+
+# Placeholder-only glyph (Rule 4): filename signals placeholder-only intent
+npm run icons:add -- movie --as movie_filled --filled
+```
 
 ## Adding a new icon
 
@@ -118,11 +192,32 @@ an icon needs a `glyphSize` or `sizeFhd` override that isn't self-explanatory.
   positions it assuming that bitmap size. The `glyphSize: 125` makes the
   Material `progress_activity` arc fill the entire canvas (no padding) to
   match the original spinner's outer-circle visual. Don't shrink without
-  re-positioning the JRScene placement.
+  re-positioning the `JRScene` placement.
 - **`play`/`pause`/`itemPrevious`/`itemNext`/`chapters`** (`glyphSize` between
   38 and 60): each pinned to the max bbox dimension of the original trimmed
   hand-authored PNG, so the migration to Material is a pure visual swap with
   the same screen footprint.
+- **`mic_icon`** (`sizeFhd: 16`, `glyphSize: 22`): voice-search inline indicator
+  in [`components/ItemGrid/Alpha.xml`](../../components/ItemGrid/Alpha.xml),
+  positioned next to a keyboard letter at non-square `width=15 height=22`
+  (`<Poster id="alphaMic" height="22" width="15" />`). A square canvas
+  forces the Poster to letterbox under aspect-preserving rendering — the
+  square source collapses to the Poster's smaller dimension (15×15),
+  wasting ~30% of the available vertical space. To match the Poster's
+  tall-narrow shape, the build produces a non-square 16×22 PNG by
+  exploiting the `extend()` step's `Math.max(0, canvas - dim)` clamp: when
+  the resized glyph (22 tall × 16 wide at the natural mic aspect) exceeds
+  `sizeFhd: 16` in height, no vertical padding is added and the glyph
+  overflows the canvas naturally. Same 16×22 footprint as the legacy
+  hand-authored asset that predated the pipeline.
+- **`favorite.svg` (`fill="#000000"`) and `favorite_selected.svg`
+  (`fill="#FF0000"`)**: toggle pair for the favorite state. Both use the
+  outlined Material `favorite` glyph; the visual distinction between off/on
+  comes from hand-modified fill colors (black / red), not fill geometry. This
+  predates the [Fill convention](#fill-convention) and the [Why white fill](#why-white-fill)
+  rule — it means `blendColor` cannot tint these (the hard-coded fill
+  dominates). If a future surface needs themed favorite icons, replace these
+  with the standard white-fill convention and apply `blendColor` at usage time.
 
 ## Why white fill
 
@@ -181,34 +276,34 @@ this table automatically.
 |---|---|---|---|---|---|---|
 | `play.svg` | `play_arrow` | Rounded | 500 | 1 | `24px` | 2026-05-08 |
 | `pause.svg` | `pause` | Rounded | 500 | 1 | `24px` | 2026-05-08 |
-| `itemPrevious.svg` | `skip_previous` | Rounded | 500 | 1 | `24px` | 2026-05-08 |
-| `itemNext.svg` | `skip_next` | Rounded | 500 | 1 | `24px` | 2026-05-08 |
-| `chapters.svg` | `menu_book` | Rounded | 500 | 1 | `24px` | 2026-05-08 |
+| `itemPrevious.svg` | `skip_previous` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `itemNext.svg` | `skip_next` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `chapters.svg` | `menu_book` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `spinner.svg` | `progress_activity` | Rounded | 500 | 1 | `24px` | 2026-05-08 |
 | `playOutline.svg` | `play_arrow` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `error.svg` | `error` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `info.svg` | `info` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `warning.svg` | `warning` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `refresh.svg` | `refresh` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `search.svg` | `search` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `settings.svg` | `settings` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `shuffle.svg` | `shuffle` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `error.svg` | `error` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `info.svg` | `info` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `warning.svg` | `warning` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `refresh.svg` | `refresh` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `search.svg` | `search` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `settings.svg` | `settings` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `shuffle.svg` | `shuffle` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `tv.svg` | `tv_gen` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `delete.svg` | `delete_forever` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `expand.svg` | `unfold_more` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `closedCaptions.svg` | `closed_caption` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `liveTV.svg` | `live_tv` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `musicNote.svg` | `music_note` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `repeat.svg` | `repeat` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `repeat-1.svg` | `repeat_one` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `instantMix.svg` | `instant_mix` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `fileInfo.svg` | `unknown_document` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `delete.svg` | `delete_forever` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `expand.svg` | `unfold_more` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `closedCaptions.svg` | `closed_caption` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `liveTV.svg` | `live_tv` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `musicNote.svg` | `music_note` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `repeat.svg` | `repeat` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `repeat-1.svg` | `repeat_one` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `instantMix.svg` | `instant_mix` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `fileInfo.svg` | `unknown_document` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `record.svg` | `fiber_manual_record` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `videoFile.svg` | `video_file` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `videoFile.svg` | `video_file` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `mic_icon.svg` | `mic` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `star.svg` | `star` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `person.svg` | `person` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `person_36px.svg` | `person` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `person.svg` | `person` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `person_36px.svg` | `person` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `resume.svg` | `resume` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `check.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `check-black.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
@@ -218,12 +313,17 @@ this table automatically.
 | `arrow-down-black.svg` | `arrow_downward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `arrow-down-white.svg` | `arrow_downward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `favorite.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `favorite_selected.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `favorite_selected.svg` | `favorite` (hand-edited fill `#FF0000`) | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `heart.svg` | `favorite` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `album.svg` | `album` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `missingArtist.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `musicFolder.svg` | `library_music` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `playlist.svg` | `playlist_play` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `album.svg` | `album` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `missingArtist.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `musicFolder.svg` | `library_music` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `playlist_filled.svg` | `playlist_play` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `circle.svg` | `circle` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `tomato-fresh.svg` | non-Material — [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg) (PD-textlogo) | n/a | n/a | (red) | 139×141 | 2026-05-09 |
 | `tomato-rotten.svg` | non-Material — [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes_rotten.svg) (PD-textlogo) | n/a | n/a | (green) | 145×140 | 2026-05-09 |
+| `movie_filled.svg` | `movie` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `playCircle_filled.svg` | `play_circle` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `photo_filled.svg` | `photo` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `photoAlbum_filled.svg` | `photo_album` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `folder_filled.svg` | `folder` | Rounded | 500 | 1 | `24px` | 2026-05-09 |

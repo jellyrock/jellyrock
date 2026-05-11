@@ -1,7 +1,7 @@
 ---
 topic: tech-debt
 related-files: []  # touches everything; per-item area fields point to specific files
-last-reviewed: 2026-05-08
+last-reviewed: 2026-05-10
 ---
 
 # Tech Debt & Cruft
@@ -78,6 +78,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `source/utils/globals.bs` (`applyThemeColorOverrides`), `components/data/SceneManager.bs` (`refreshThemeColors`, `reloadHome`), call sites in `components/settings/settings.bs:763-766` and `source/utils/session.bs:463-464,488`.
 - **issue**: Settings change → `applyThemeColorOverrides` (writes to `m.global.constants`) → `sceneManager.callFunc("refreshThemeColors")` (re-applies styles) → `sceneManager.callFunc("reloadHome")` (rebuilds home rows) is a 3-step manual chain that every theme-changing call site must invoke in order. Components that cache theme colors at construction time miss updates entirely unless the home is rebuilt.
 - **direction**: Either (a) all components read from `m.global.constants` in event handlers (not `init`), or (b) define a "theme observable" — a node on `m.global` whose updates fire observers — that components opt into instead of relying on `reloadHome` as a blunt rebuild.
+
+#### `migrate-grids-to-jrplaceholder`
+
+- **area**: [`components/ItemGrid/GridItem.bs`](../../components/ItemGrid/GridItem.bs) (`onPosterLoadStatusChanged`), [`components/ItemGrid/GridItemSmall.bs`](../../components/ItemGrid/GridItemSmall.bs) (same), [`components/ItemGrid/MusicArtistGridItem.bs`](../../components/ItemGrid/MusicArtistGridItem.bs) (custom fallback at lines 51-76), [`components/music/AudioPlayerView.bs`](../../components/music/AudioPlayerView.bs) (`setPosterImage` fallback at lines 571 / 612 / 630), and [`resources/icons/icons.json`](../../resources/icons/icons.json) (the large-canvas overrides for `album` / `missingArtist` / `musicFolder` exist solely to support these grid fallbacks).
+- **issue**: PR #561 introduced [`components/ui/placeholder/JRPlaceholder.xml/.bs`](../../components/ui/placeholder/JRPlaceholder.xml) as the canonical themed-card + glyph fallback component and migrated `JRRowItem` to use it. Other surfaces still have ad-hoc placeholder logic with three real divergences from the canonical pattern: (1) `GridItem` and `GridItemSmall` show a themed backdrop only — **no glyph** on load failure, even though `JRPlaceholder` would surface a type-appropriate one; (2) `MusicArtistGridItem` tints its fallback glyph with `colorTextSecondary`, not `colorBackgroundPrimary` — visible drift from the rest of the app; (3) `AudioPlayerView`'s music poster fallback loads the icon-set `album_$$RES$$.png` directly, bypassing `getPlaceholderImagePath`. The icon overrides for `album` (450/382), `missingArtist` (512/256), and `musicFolder` (256/256) in `icons.json` exist only because these grids load icon URIs at placeholder dimensions; once they migrate to `pkg:/images/placeholders/<name>_$$RES$$.png` the icon-set entries shrink to default 96/54 (or, for `missingArtist` / `musicFolder`, the SVGs become placeholder-only sources renamed to `_filled.svg`).
+- **direction**: For each grid, replace the inline `m.itemPoster` fallback pattern with a `<JRPlaceholder>` sibling node sized to the cell. `MusicArtistGridItem` needs a deliberate visual review on hardware to decide whether the existing `colorTextSecondary` tint was intentional or a bug — the migration locks in `colorBackgroundPrimary` per the canonical pattern. After migration: switch `AudioPlayerView`'s three fallback callsites to `getPlaceholderImagePath("MusicAlbum")` (returns `pkg:/images/placeholders/album_$$RES$$.png`); shrink `album` in `icons.json` to default; rename `missingArtist.svg` and `musicFolder.svg` to the `_filled.svg` placeholder-only convention; remove the corresponding icons.json overrides. Out of scope for PR #561 because each grid carries nuance (glyph-vs-no-glyph, tint discrepancy, sizing assumptions in `loadDisplayMode="limitSize"` paths) that warrants a focused visual-audit pass per surface.
 
 ### Low
 

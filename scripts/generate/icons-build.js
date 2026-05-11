@@ -18,6 +18,14 @@
 //   - Default output dir is `images/icons/`. Per-icon overrides
 //     (canvas size, glyph size, output directory) live in
 //     `resources/icons/icons.json`.
+//   - Also processes `resources/placeholders/placeholders.json` (optional):
+//     each entry maps a placeholder name to a source SVG (typically reused
+//     from `resources/icons/`) plus placeholder-specific canvas/glyph sizes
+//     and output dir. Same render path, larger canvas, different output
+//     directory. The themed card backdrop and glyph tint are runtime
+//     SceneGraph concerns (see JRPlaceholder component) — placeholder PNGs
+//     are still transparent-canvas white-fill glyphs, identical contract to
+//     icons.
 //
 //   Two distinct sizes per icon:
 //     - canvasSize (sizeFhd): the full PNG dimensions; matches the Poster's
@@ -67,6 +75,7 @@ const CHECK_MODE = args.includes('--check');
 const SVG_DIR = join(ROOT_DIR, 'resources/icons');
 const DEFAULT_OUTPUT_DIR = 'images/icons';
 const ICONS_JSON_PATH = join(SVG_DIR, 'icons.json');
+const PLACEHOLDERS_JSON_PATH = join(ROOT_DIR, 'resources/placeholders/placeholders.json');
 
 const HD_SCALE = 2 / 3;
 const DEFAULT_CANVAS_SIZE = 96;
@@ -96,6 +105,11 @@ const TRANSPARENT_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 0 };
 function loadOverrides() {
   if (!existsSync(ICONS_JSON_PATH)) return {};
   return JSON.parse(readFileSync(ICONS_JSON_PATH, 'utf8'));
+}
+
+function loadPlaceholders() {
+  if (!existsSync(PLACEHOLDERS_JSON_PATH)) return {};
+  return JSON.parse(readFileSync(PLACEHOLDERS_JSON_PATH, 'utf8'));
 }
 
 async function readPngWidth(pngPath) {
@@ -190,17 +204,20 @@ async function renderPng(svgBuffer, canvasSize, glyphSize) {
     .toBuffer();
 }
 
-async function buildOne(svgFile, overrides) {
-  const name = basename(svgFile, '.svg');
-  const override = overrides[name] || {};
-  const outputDir = join(ROOT_DIR, override.outputDir ?? DEFAULT_OUTPUT_DIR);
+// spec: { svgFile, name, sizeFhd?, glyphSize?, outputDir? }
+//   svgFile  — file in SVG_DIR to render
+//   name     — output basename (may differ from svgFile basename when
+//              reusing an icon SVG for a placeholder, e.g.
+//              missingArtist.svg → artist_fhd.png)
+//   sizeFhd / glyphSize / outputDir — same semantics as icons.json overrides
+async function buildOne(spec) {
+  const { svgFile, name, sizeFhd, glyphSize, outputDir: outputDirOverride } = spec;
+  const outputDir = join(ROOT_DIR, outputDirOverride ?? DEFAULT_OUTPUT_DIR);
 
-  const canvasFhd =
-    override.sizeFhd ?? (await detectCanvasSize(outputDir, name)) ?? DEFAULT_CANVAS_SIZE;
+  const canvasFhd = sizeFhd ?? (await detectCanvasSize(outputDir, name)) ?? DEFAULT_CANVAS_SIZE;
   const canvasHd = Math.round(canvasFhd * HD_SCALE);
 
-  const glyphFhd =
-    override.glyphSize ?? (await detectGlyphSize(outputDir, name)) ?? DEFAULT_GLYPH_SIZE;
+  const glyphFhd = glyphSize ?? (await detectGlyphSize(outputDir, name)) ?? DEFAULT_GLYPH_SIZE;
   const glyphHd = Math.round(glyphFhd * HD_SCALE);
 
   const svgBuffer = readFileSync(join(SVG_DIR, svgFile));
@@ -225,6 +242,40 @@ async function buildOne(svgFile, overrides) {
   ];
 }
 
+// Builds the unified spec list from icons.json + placeholders.json. Icons
+// first (preserves existing render order); placeholders second.
+//
+// SVG files whose name ends in `_filled.svg` are treated as placeholder-only
+// filled variants (per the Fill convention in resources/icons/README.md);
+// they are skipped in the icons loop so we don't generate orphan icon PNGs
+// for placeholder sources. They're still rendered through the placeholders
+// loop when referenced from placeholders.json.
+function buildSpecs(svgFiles, overrides, placeholders) {
+  const specs = [];
+  for (const svgFile of svgFiles) {
+    const name = basename(svgFile, '.svg');
+    if (name.endsWith('_filled')) continue;
+    const ov = overrides[name] || {};
+    specs.push({
+      svgFile,
+      name,
+      sizeFhd: ov.sizeFhd,
+      glyphSize: ov.glyphSize,
+      outputDir: ov.outputDir,
+    });
+  }
+  for (const [name, entry] of Object.entries(placeholders)) {
+    specs.push({
+      svgFile: entry.source,
+      name,
+      sizeFhd: entry.sizeFhd,
+      glyphSize: entry.glyphSize,
+      outputDir: entry.outputDir,
+    });
+  }
+  return specs;
+}
+
 // ────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -237,23 +288,25 @@ async function main() {
     .filter((f) => f.endsWith('.svg'))
     .sort();
 
-  if (svgFiles.length === 0) {
+  const overrides = loadOverrides();
+  const placeholders = loadPlaceholders();
+  const specs = buildSpecs(svgFiles, overrides, placeholders);
+
+  if (specs.length === 0) {
     console.log(`icons:build: no SVG sources in ${SVG_DIR}.`);
     process.exit(0);
   }
-
-  const overrides = loadOverrides();
 
   const driftPaths = [];
   let writtenCount = 0;
   let unchangedCount = 0;
 
-  for (const svgFile of svgFiles) {
+  for (const spec of specs) {
     let outputs;
     try {
-      outputs = await buildOne(svgFile, overrides);
+      outputs = await buildOne(spec);
     } catch (err) {
-      console.error(`icons:build: failed to render ${svgFile} — ${err.message}`);
+      console.error(`icons:build: failed to render ${spec.svgFile} — ${err.message}`);
       process.exit(1);
     }
     for (const { path: outPath, buffer, canvas, glyph } of outputs) {
@@ -291,15 +344,15 @@ async function main() {
       process.exit(1);
     }
     console.log(
-      `icons:check: all PNGs in sync (${svgFiles.length} sources, ${unchangedCount} files).`,
+      `icons:check: all PNGs in sync (${specs.length} sources, ${unchangedCount} files).`,
     );
     process.exit(0);
   }
 
   if (writtenCount === 0) {
-    console.log(`icons:build: all PNGs already in sync (${svgFiles.length} sources).`);
+    console.log(`icons:build: all PNGs already in sync (${specs.length} sources).`);
   } else {
-    console.log(`icons:build: ${writtenCount} file(s) written from ${svgFiles.length} sources.`);
+    console.log(`icons:build: ${writtenCount} file(s) written from ${specs.length} sources.`);
   }
   process.exit(0);
 }
@@ -312,9 +365,11 @@ if (isDirectInvocation) {
 
 export {
   buildOne,
+  buildSpecs,
   renderPng,
   detectCanvasSize,
   detectGlyphSize,
   readPngGlyphMaxDim,
   loadOverrides,
+  loadPlaceholders,
 };

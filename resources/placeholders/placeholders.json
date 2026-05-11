@@ -1,0 +1,24 @@
+{
+  "movie": { "source": "movie_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "person": { "source": "person.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "playCircle": {
+    "source": "playCircle_filled.svg",
+    "sizeFhd": 256,
+    "outputDir": "images/placeholders"
+  },
+  "album": { "source": "album.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "artist": { "source": "missingArtist.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "musicNote": { "source": "musicNote.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "playlist": {
+    "source": "playlist_filled.svg",
+    "sizeFhd": 256,
+    "outputDir": "images/placeholders"
+  },
+  "photo": { "source": "photo_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "photoAlbum": {
+    "source": "photoAlbum_filled.svg",
+    "sizeFhd": 256,
+    "outputDir": "images/placeholders"
+  },
+  "folder": { "source": "folder_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" }
+}

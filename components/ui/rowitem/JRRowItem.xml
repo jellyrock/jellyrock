@@ -2,10 +2,13 @@
 <component name="JRRowItem" extends="Group">
   <children>
     <!--
-      backdrop: colored rectangle behind the poster; visible until the poster image loads,
-      then hidden. Always visible for library tiles (backdrop IS the tile background).
+      placeholder: themed backdrop + themed-tinted glyph fallback rendered behind
+      the poster. Visible until the real poster image loads (then hidden). When
+      the real image fails, the parent sets itemType to surface a type-appropriate
+      glyph on the backdrop. For library tiles the backdrop stays visible (with
+      itemIcon overlaid) — JRPlaceholder.itemType stays empty so no glyph shows.
     -->
-    <RectangleBackgroundSecondary id="backdrop" width="234" height="324" />
+    <JRPlaceholder id="placeholder" width="234" height="324" />
 
     <!--
       poster: the main item image. Positioned at [0,0], sized to fill the image area

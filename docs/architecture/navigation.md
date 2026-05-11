@@ -68,7 +68,7 @@ The base implementations are minimal:
 - `onScreenHidden()` is a no-op
 - `onDestroy()` is a no-op — subclasses **must** override to clean up tasks, observers, and large data structures (this is a known cruft point; see Cruft Callouts)
 
-`JRScreen.bs:init()` also initializes the `roku-log` log manager (debug builds: level 5; prod: level 2), so every JRScreen-derived component has logging available without each one having to call `initializeLogManager`.
+`JRScreen.bs:init()` also initializes the `roku-log` log manager (debug builds: level 5; prod: level 2), so every `JRScreen`-derived component has logging available without each one having to call `initializeLogManager`.
 
 ### `JRScene` — `components/JRScene.xml/.bs`
 
@@ -98,7 +98,7 @@ The full public surface (snippet illustrative, not exhaustive — canonical sour
 | `pushScene(newGroup)` | Push a group onto the stack and make it visible. Hides the previous top, calls `onScreenHidden` on it, calls `onScreenShown` on the new one. |
 | `popScene()` | Remove the top of the stack. **If the stack has only 1 entry, shows an exit confirmation dialog instead.** Calls `onScreenHidden` + `onDestroy` on the removed group. Restores the next-top group's focus from `lastFocus`. |
 | `getActiveScene()` | Peek the top of the stack (no removal). |
-| `clearScenes()` | Pop everything. Calls `onScreenHidden` + `onDestroy` on every JRScreen, `onDestroy` on any `Video` subtype. Hides the overhang first to avoid staggered visual cleanup. |
+| `clearScenes()` | Pop everything. Calls `onScreenHidden` + `onDestroy` on every `JRScreen`, `onDestroy` on any `Video` subtype. Hides the overhang first to avoid staggered visual cleanup. |
 | `clearPreviousScene()` | Pop without restoration (used internally for queue advancement: video finishes → pop the player → push the next player). |
 | `deleteSceneAtIndex(index = 1)` | Delete a specific entry from the stack (rarely used). |
 | `settings()` | Convenience: create and push the `Settings` component. |

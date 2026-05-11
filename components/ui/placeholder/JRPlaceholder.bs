@@ -1,0 +1,35 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/placeholderImage.bs"
+
+sub init()
+  m.backdrop = m.top.findNode("backdrop")
+  m.glyph = m.top.findNode("glyph")
+  ' The white-fill source SVG renders white pixels in the PNG; blendColor
+  ' multiplies per-channel at draw time, tinting the glyph to whatever themed
+  ' color we set. backgroundPrimary contrasts against the backdrop's
+  ' backgroundSecondary (themed via RectangleBackgroundSecondary).
+  m.glyph.blendColor = m.global.constants.colorBackgroundPrimary
+end sub
+
+' Resize the backdrop and glyph to track the parent's declared dimensions.
+' Glyph uses scaleToFit (declared in XML) so the 256×256 placeholder PNG
+' renders centered at the smaller of width/height, preserving aspect ratio.
+' setFields batches the two writes per child, halving the field-write count.
+sub onSizeChanged()
+  size = { width: m.top.width, height: m.top.height }
+  m.backdrop.setFields(size)
+  m.glyph.setFields(size)
+end sub
+
+' Empty itemType → loading state (backdrop visible, glyph hidden).
+' Non-empty itemType → placeholder fallback state (backdrop + tinted glyph).
+sub onItemTypeChanged()
+  itemType = m.top.itemType
+  if isValidAndNotEmpty(itemType)
+    m.glyph.uri = getPlaceholderImagePath(itemType)
+    m.glyph.visible = true
+  else
+    m.glyph.visible = false
+    m.glyph.uri = ""
+  end if
+end sub

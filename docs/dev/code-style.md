@@ -142,7 +142,7 @@ Functions registered as the callback target of an event-handler binding **should
 
 1. XML `<field ... onChange="X" />` — `X` is invoked when the field changes.
 2. `observeField(<field>, "X")` — `X` is invoked when the field changes (Roku Scene Graph two-argument string-callback form).
-3. The JRScreen lifecycle hook `onDestroy()` — required for every JRScreen subclass; enforced by the `jellyrock-jrscreen-on-destroy` BSC plugin.
+3. The `JRScreen` lifecycle hook `onDestroy()` — required for every `JRScreen` subclass; enforced by the `jellyrock-jrscreen-on-destroy` BSC plugin.
 
 ```brighterscript
 ' Preferred
@@ -464,3 +464,5 @@ Concretely, the following are code and must be wrapped: `Stop`, `sessionEnd`, `P
 ### When to add to `dictionary.txt` instead
 
 Add a word to `dictionary.txt` only when it's a real English word the spell-checker doesn't know — typically a legitimate technical or domain term (e.g., `idempotence`, `untracked`, `transcoder`). Code identifiers (e.g., `sessionEnd`, `JRScreen`, `apiPool`) should *not* be added — wrap them in backticks in prose instead. Putting identifiers in the dictionary defeats the spell-checker for any *actual* misspelling that happens to collide with an identifier.
+
+Enforced by [`scripts/lint/dictionary-audit.cjs`](../../scripts/lint/dictionary-audit.cjs) (`npm run lint:dictionary`) — a CI-blocking lint that flags PascalCase / camelCase / file-extension / path-shaped entries. Legitimate proper nouns (product names, brands, CS-domain conventions like `camelCase`) live in the script's `ALLOWLIST`; acronym plurals (`URIs`, `APIs`, `PNGs`) and possessives (`BSC's`) are recognized via pattern. The end-of-turn lint hook surfaces the failure with a targeted "wrap in backticks" hint when the failing word looks identifier-shaped.

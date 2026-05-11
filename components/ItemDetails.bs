@@ -2170,17 +2170,19 @@ sub setItemLogo(item as object)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = "pkg:/images/icons/person_$$RES$$.png"
+      m.itemLogo.uri = "pkg:/images/placeholders/person_$$RES$$.png"
     end if
     return
   else if item.type = "MusicArtist"
-    ' Same as Person — primary photo where the logo sits; hide if none (no silhouette fallback)
+    ' Same as Person — primary photo where the logo sits, falling back to the
+    ' canonical artist silhouette (account_box) when no primary image. Matches
+    ' what JRRowItem shows for MusicArtist items in the row list and what
+    ' MusicArtistGridItem shows on grid fallback.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = "pkg:/images/placeholders/artist_$$RES$$.png"
     end if
     return
   else if item.type = "MusicAlbum"
