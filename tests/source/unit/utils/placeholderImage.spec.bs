@@ -43,6 +43,11 @@ namespace tests
       m.assertEqual(getPlaceholderImagePath("MusicArtist"), "pkg:/images/placeholders/artist_$$RES$$.png")
     end function
 
+    @it("returns musicFolder placeholder for MusicGenre")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("MusicGenre"), "pkg:/images/placeholders/musicFolder_$$RES$$.png")
+    end function
+
     @it("returns musicNote placeholder for Audio")
     function _()
       m.assertEqual(getPlaceholderImagePath("Audio"), "pkg:/images/placeholders/musicNote_$$RES$$.png")

@@ -17,6 +17,8 @@ function getPlaceholderImagePath(itemType as string) as string
     return "pkg:/images/placeholders/album_$$RES$$.png"
   else if itemType = "MusicArtist"
     return "pkg:/images/placeholders/artist_$$RES$$.png"
+  else if itemType = "MusicGenre"
+    return "pkg:/images/placeholders/musicFolder_$$RES$$.png"
   else if itemType = "Audio"
     return "pkg:/images/placeholders/musicNote_$$RES$$.png"
   else if itemType = "Playlist"
