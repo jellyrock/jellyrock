@@ -252,16 +252,18 @@ namespace tests
     @describe("setItemLogo() for BoxSet")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("hides logo when both logoImageTag and primaryImageTag are empty")
+    @it("falls back to the movie placeholder when both logoImageTag and primaryImageTag are empty")
     function _()
       item = m.makeBoxSet()
       item.logoImageTag = ""
       item.primaryImageTag = ""
       m.itemDetails.itemContent = item
 
+      ' BoxSet shares the Movie placeholder (per getPlaceholderImagePath). Asserting URI
+      ' only — visibility is flipped to true asynchronously by onLogoLoadStatusChanged
+      ' once the placeholder PNG loads, which is after this synchronous test returns.
       logoNode = m.itemDetails.findNode("itemLogo")
-      m.assertFalse(logoNode.visible)
-      m.assertEqual(logoNode.uri, "")
+      m.assertEqual(logoNode.uri, "pkg:/images/placeholders/movie_$$RES$$.png")
     end function
 
   end class
