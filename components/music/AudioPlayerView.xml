@@ -6,7 +6,17 @@
 
     <LayoutGroup id="toplevel" layoutDirection="vert" horizAlignment="center" translation="[960,175]" itemSpacings="[40]">
       <LayoutGroup id="mainGroup" layoutDirection="vert" horizAlignment="center" itemSpacings="[15]">
-        <Poster id="albumCover" width="500" height="500" loadWidth="500" loadHeight="500" loadDisplayMode="limitSize" />
+        <!--
+          albumCoverContainer wraps the JRPlaceholder + Poster so they overlap. The
+          LayoutGroup parent stacks children vertically and measures this Group at
+          500×500 (the bounds of its largest child). The placeholder renders first
+          (behind), with the real poster on top; when albumCover.uri is empty or
+          fails to load, the placeholder is visible underneath.
+        -->
+        <Group id="albumCoverContainer">
+          <JRPlaceholder id="albumPlaceholder" width="500" height="500" itemType="MusicAlbum" />
+          <Poster id="albumCover" width="500" height="500" loadWidth="500" loadHeight="500" loadDisplayMode="limitSize" />
+        </Group>
         <LabelPrimaryMedium id="artist" width="900" height="25" horizAlign="center" />
         <LabelPrimaryMedium id="song" width="900" height="25" horizAlign="center" />
         <LabelSecondarySmallest id="numberofsongs" width="500" height="25" horizAlign="center" />
