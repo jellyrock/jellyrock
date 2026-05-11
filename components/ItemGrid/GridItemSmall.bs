@@ -1,6 +1,7 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/placeholderImage.bs"
 
 sub init()
   m.itemPoster = m.top.findNode("itemPoster")
@@ -71,7 +72,7 @@ sub onItemContentChanged()
       ' "failed" for an empty URI, so we must set the placeholder state here rather
       ' than waiting for onPosterLoadStatusChanged.
       m.itemPoster.uri = ""
-      showPlaceholder(itemTypeFromContent())
+      showPlaceholder(resolveItemPlaceholderType(itemData))
     else
       ' Image expected — start in loading state. The load-status observer flips to
       ' the typed-glyph failure state on "failed", or hides on "ready".
@@ -106,24 +107,16 @@ sub onPosterLoadStatusChanged()
   if m.itemPoster.loadStatus = "ready" and m.itemPoster.uri <> ""
     m.placeholder.visible = false
   else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
-    showPlaceholder(itemTypeFromContent())
+    showPlaceholder(resolveItemPlaceholderType(m.top.itemContent))
   else
     m.placeholder.visible = true
   end if
 end sub
 
-' Returns the Jellyfin item type for the cell's current content, or "" if
-' itemContent is invalid. The string matches getPlaceholderImagePath's
-' title-cased vocabulary (e.g. "Movie", "MusicAlbum").
-function itemTypeFromContent() as string
-  itemData = m.top.itemContent
-  if not isValid(itemData) then return ""
-  if not isValidAndNotEmpty(itemData.type) then return ""
-  return itemData.type
-end function
-
 ' Flip the placeholder into failure state with a type-appropriate glyph, then
 ' clear the poster URI so the glyph isn't covered by a stale broken image.
+' itemType="" is meaningful — JRPlaceholder renders the backdrop alone, which
+' is what resolveItemPlaceholderType returns for generic library-tile containers.
 sub showPlaceholder(itemType as string)
   m.placeholder.itemType = itemType
   m.placeholder.visible = true

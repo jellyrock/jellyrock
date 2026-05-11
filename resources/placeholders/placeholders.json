@@ -26,5 +26,11 @@
     "sizeFhd": 256,
     "outputDir": "images/placeholders"
   },
-  "folder": { "source": "folder_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" }
+  "folder": { "source": "folder_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "livetv": {
+    "source": "liveTV.svg",
+    "sizeFhd": 256,
+    "glyphSize": 218,
+    "outputDir": "images/placeholders"
+  }
 }

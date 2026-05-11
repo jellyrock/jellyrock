@@ -2,6 +2,7 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/textureManager.bs"
 
 sub init()
@@ -137,7 +138,7 @@ sub onItemContentChanged()
     ' Load-status never fires "failed" for an empty URI, so we must set the
     ' placeholder state here rather than waiting for onPosterLoadStatusChanged.
     m.itemPoster.uri = ""
-    showPlaceholder(itemTypeFromContent())
+    showPlaceholder(resolveItemPlaceholderType(m.top.itemContent))
   else if shouldLoadGridTexture()
     ' Image expected and the texture manager wants this cell loaded — start
     ' the placeholder in loading state; the load-status observer takes over.
@@ -192,26 +193,18 @@ sub onPosterLoadStatusChanged()
     m.placeholder.visible = false
   else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
     ' Real image failed — surface a type-appropriate glyph on the backdrop
-    showPlaceholder(itemTypeFromContent())
+    showPlaceholder(resolveItemPlaceholderType(m.top.itemContent))
   else
     ' Loading or no URI — keep the placeholder visible in its current state
     m.placeholder.visible = true
   end if
 end sub
 
-' Returns the Jellyfin item type for the cell's current content, or "" if
-' itemContent is invalid. The string matches getPlaceholderImagePath's
-' title-cased vocabulary (e.g. "Movie", "MusicAlbum") since itemContent.type
-' is already in that form.
-function itemTypeFromContent() as string
-  itemData = m.top.itemContent
-  if not isValid(itemData) then return ""
-  if not isValidAndNotEmpty(itemData.type) then return ""
-  return itemData.type
-end function
-
 ' Flip the placeholder into failure state with a type-appropriate glyph, then
 ' clear the poster URI so the glyph isn't covered by a stale broken image.
+' itemType="" is meaningful — it tells JRPlaceholder to render the backdrop
+' alone without any glyph, which is what resolveItemPlaceholderType returns
+' for generic library-tile containers (no known content type to advertise).
 sub showPlaceholder(itemType as string)
   m.placeholder.itemType = itemType
   m.placeholder.visible = true

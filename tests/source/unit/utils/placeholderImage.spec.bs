@@ -68,15 +68,77 @@ namespace tests
       m.assertEqual(getPlaceholderImagePath("PhotoAlbum"), "pkg:/images/placeholders/photoAlbum_$$RES$$.png")
     end function
 
+    @it("returns livetv placeholder for TvChannel and Channel")
+    @params("TvChannel", "pkg:/images/placeholders/livetv_$$RES$$.png")
+    @params("Channel", "pkg:/images/placeholders/livetv_$$RES$$.png")
+    function _(itemType, expected)
+      m.assertEqual(getPlaceholderImagePath(itemType), expected)
+    end function
+
     @it("returns folder fallback for unknown or unmatched types")
     @params("CollectionFolder", "pkg:/images/placeholders/folder_$$RES$$.png")
     @params("UserView", "pkg:/images/placeholders/folder_$$RES$$.png")
-    @params("Channel", "pkg:/images/placeholders/folder_$$RES$$.png")
-    @params("TvChannel", "pkg:/images/placeholders/folder_$$RES$$.png")
     @params("SomeUnknownType", "pkg:/images/placeholders/folder_$$RES$$.png")
     @params("", "pkg:/images/placeholders/folder_$$RES$$.png")
     function _(itemType, expected)
       m.assertEqual(getPlaceholderImagePath(itemType), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveItemPlaceholderType(item)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty for invalid input")
+    function _()
+      m.assertEqual(resolveItemPlaceholderType(invalid), "")
+    end function
+
+    @it("returns empty when type is missing")
+    function _()
+      item = createObject("roSGNode", "JellyfinBaseItem")
+      m.assertEqual(resolveItemPlaceholderType(item), "")
+    end function
+
+    @it("passes media item types through unchanged")
+    @params("Movie", "Movie")
+    @params("Series", "Series")
+    @params("Episode", "Episode")
+    @params("MusicAlbum", "MusicAlbum")
+    @params("MusicArtist", "MusicArtist")
+    @params("Person", "Person")
+    @params("TvChannel", "TvChannel")
+    function _(itemType, expected)
+      item = createObject("roSGNode", "JellyfinBaseItem")
+      item.type = itemType
+      m.assertEqual(resolveItemPlaceholderType(item), expected)
+    end function
+
+    @it("routes library-tile container types via collectionType")
+    @params("CollectionFolder", "movies", "Movie")
+    @params("CollectionFolder", "tvshows", "Series")
+    @params("CollectionFolder", "music", "MusicAlbum")
+    @params("CollectionFolder", "livetv", "TvChannel")
+    @params("CollectionFolder", "photos", "Photo")
+    @params("CollectionFolder", "photoalbum", "Photo")
+    @params("UserView", "movies", "Movie")
+    @params("Folder", "music", "MusicAlbum")
+    @params("ChannelFolderItem", "tvshows", "Series")
+    function _(itemType, collectionType, expected)
+      item = createObject("roSGNode", "JellyfinBaseItem")
+      item.type = itemType
+      item.collectionType = collectionType
+      m.assertEqual(resolveItemPlaceholderType(item), expected)
+    end function
+
+    @it("returns empty for generic library-tile containers (no collectionType)")
+    @params("CollectionFolder")
+    @params("UserView")
+    @params("Folder")
+    @params("ChannelFolderItem")
+    function _(itemType)
+      item = createObject("roSGNode", "JellyfinBaseItem")
+      item.type = itemType
+      m.assertEqual(resolveItemPlaceholderType(item), "")
     end function
 
   end class

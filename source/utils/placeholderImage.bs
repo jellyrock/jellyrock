@@ -1,3 +1,6 @@
+import "pkg:/source/libraryViewFactory.bs"
+import "pkg:/source/utils/misc.bs"
+
 ' Returns the local placeholder image URI for a given Jellyfin item type.
 ' Used by JRPlaceholder when an item has no image URL or its image fails to
 ' load. The returned URI uses Roku's `$$RES$$` autosub token (see manifest's
@@ -19,6 +22,8 @@ function getPlaceholderImagePath(itemType as string) as string
     return "pkg:/images/placeholders/artist_$$RES$$.png"
   else if itemType = "MusicGenre"
     return "pkg:/images/placeholders/musicFolder_$$RES$$.png"
+  else if itemType = "TvChannel" or itemType = "Channel"
+    return "pkg:/images/placeholders/livetv_$$RES$$.png"
   else if itemType = "Audio"
     return "pkg:/images/placeholders/musicNote_$$RES$$.png"
   else if itemType = "Playlist"
@@ -29,4 +34,38 @@ function getPlaceholderImagePath(itemType as string) as string
     return "pkg:/images/placeholders/photoAlbum_$$RES$$.png"
   end if
   return "pkg:/images/placeholders/folder_$$RES$$.png"
+end function
+
+' Resolves the Jellyfin item type string to use as JRPlaceholder.itemType for a
+' given content node. For most types this is just `item.type`. For library-tile
+' types (CollectionFolder / UserView / Folder / ChannelFolderItem) it consults
+' DeterminePresenterType() in libraryViewFactory.bs so that, e.g., a Movies
+' library with no custom art surfaces the Movie glyph instead of a generic
+' folder, a Music library surfaces the album glyph, and so on.
+'
+' Returns "" for items whose container type cannot be resolved — callers should
+' interpret "" as "show the placeholder backdrop only, no glyph" rather than
+' falling through to the folder default (genuinely-unknown containers).
+'
+' @param item - Jellyfin content node
+' @returns Title-cased Jellyfin type string compatible with getPlaceholderImagePath,
+'          or "" if the container is generic and should remain glyph-less
+function resolveItemPlaceholderType(item as object) as string
+  if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.type) then return ""
+
+  itemType = LCase(item.type)
+  isLibraryTile = (itemType = "collectionfolder" or itemType = "userview" or itemType = "folder" or itemType = "channelfolderitem")
+  if not isLibraryTile then return item.type
+
+  ' Library-tile container — pick the glyph from what's inside.
+  presenterType = DeterminePresenterType(item)
+  if presenterType = "movie" then return "Movie"
+  if presenterType = "tvshow" then return "Series"
+  if presenterType = "music" then return "MusicAlbum"
+  if presenterType = "livetv" then return "TvChannel"
+  if presenterType = "photo" then return "Photo"
+
+  ' "generic" or anything unmapped — let the caller render backdrop-only.
+  return ""
 end function
