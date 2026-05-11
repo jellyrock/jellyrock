@@ -7,7 +7,13 @@
     "outputDir": "images/placeholders"
   },
   "album": { "source": "album.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
-  "artist": { "source": "missingArtist.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "artist": { "source": "artist_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "musicFolder": {
+    "source": "musicFolder_filled.svg",
+    "sizeFhd": 256,
+    "glyphSize": 218,
+    "outputDir": "images/placeholders"
+  },
   "musicNote": { "source": "musicNote.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
   "playlist": {
     "source": "playlist_filled.svg",
