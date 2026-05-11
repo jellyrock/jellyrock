@@ -8,9 +8,8 @@ sub init()
   m.log = new log.Logger("GridItem")
   m.itemPoster = m.top.findNode("itemPoster")
   m.itemIcon = m.top.findNode("itemIcon")
-  m.posterText = m.top.findNode("posterText")
   m.itemText = m.top.findNode("itemText")
-  m.backdrop = m.top.findNode("backdrop")
+  m.placeholder = m.top.findNode("placeholder")
 
   m.itemPoster.observeField("loadStatus", "onPosterLoadStatusChanged")
 
@@ -129,25 +128,31 @@ sub onItemContentChanged()
     m.log.warn("Unhandled Grid Item Type", itemData.type)
   end if
 
-  ' Cache URI for texture management and conditionally load
+  ' Cache URI for texture management
   m.cachedPosterUri = posterUri
   m.cachedLoadDisplayMode = m.itemPoster.loadDisplayMode
-  if posterUri = "" or shouldLoadGridTexture()
+
+  if posterUri = ""
+    ' Known-missing image — eagerly surface the typed glyph on the backdrop.
+    ' Load-status never fires "failed" for an empty URI, so we must set the
+    ' placeholder state here rather than waiting for onPosterLoadStatusChanged.
+    m.itemPoster.uri = ""
+    showPlaceholder(itemTypeFromContent())
+  else if shouldLoadGridTexture()
+    ' Image expected and the texture manager wants this cell loaded — start
+    ' the placeholder in loading state; the load-status observer takes over.
+    m.placeholder.itemType = ""
+    m.placeholder.visible = true
     m.itemPoster.uri = posterUri
   else
+    ' Image expected but the texture manager is keeping this cell off-screen
+    ' to save memory. Loading state until the cell scrolls into range and
+    ' reloadGridTexture() restores the URI.
     m.isTextureUnloaded = true
+    m.placeholder.itemType = ""
+    m.placeholder.visible = true
     m.itemPoster.uri = ""
-    m.backdrop.visible = true
   end if
-
-  'If Poster not loaded, ensure "blue box" is shown until loaded
-  if m.itemPoster.loadStatus <> "ready"
-    m.backdrop.visible = true
-    m.posterText.visible = true
-  end if
-
-  m.posterText.text = m.itemText.text
-
 end sub
 
 ' Apply square 323x323 layout for music items (artists, albums, genres)
@@ -160,11 +165,8 @@ sub setSquarePosterLayout()
   m.itemText.translation = [0, m.itemPoster.translation[1] + m.itemPoster.height + 18]
   m.itemText.maxWidth = 323
 
-  m.backdrop.height = 323
-  m.backdrop.width = 323
-
-  m.posterText.height = 313
-  m.posterText.width = 313
+  m.placeholder.width = 323
+  m.placeholder.height = 323
 end sub
 
 ' Enable title scrolling based on item focus
@@ -179,15 +181,41 @@ sub onFocusChanged()
   end if
 end sub
 
-'Hide backdrop and text when poster loaded
+' Toggle the JRPlaceholder fallback based on the real poster's load state.
+' Mirrors the canonical state machine from JRRowItem.bs onPosterLoadStatusChanged.
 sub onPosterLoadStatusChanged()
   ' Ignore status changes from intentional texture unloads (uri cleared to free memory)
   if m.isTextureUnloaded then return
 
-  if m.itemPoster.loadStatus = "ready"
-    m.backdrop.visible = false
-    m.posterText.visible = false
+  if m.itemPoster.loadStatus = "ready" and m.itemPoster.uri <> ""
+    ' Real image loaded — placeholder is no longer needed
+    m.placeholder.visible = false
+  else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
+    ' Real image failed — surface a type-appropriate glyph on the backdrop
+    showPlaceholder(itemTypeFromContent())
+  else
+    ' Loading or no URI — keep the placeholder visible in its current state
+    m.placeholder.visible = true
   end if
+end sub
+
+' Returns the Jellyfin item type for the cell's current content, or "" if
+' itemContent is invalid. The string matches getPlaceholderImagePath's
+' title-cased vocabulary (e.g. "Movie", "MusicAlbum") since itemContent.type
+' is already in that form.
+function itemTypeFromContent() as string
+  itemData = m.top.itemContent
+  if not isValid(itemData) then return ""
+  if not isValidAndNotEmpty(itemData.type) then return ""
+  return itemData.type
+end function
+
+' Flip the placeholder into failure state with a type-appropriate glyph, then
+' clear the poster URI so the glyph isn't covered by a stale broken image.
+sub showPlaceholder(itemType as string)
+  m.placeholder.itemType = itemType
+  m.placeholder.visible = true
+  m.itemPoster.uri = ""
 end sub
 
 ' ============================================================================
@@ -350,7 +378,8 @@ sub unloadGridTexture()
 
   m.isTextureUnloaded = true
   m.itemPoster.uri = ""
-  m.backdrop.visible = true
+  m.placeholder.itemType = ""
+  m.placeholder.visible = true
 end sub
 
 ' Force-unloads textures unconditionally — used only during onDestroy().
@@ -358,7 +387,8 @@ end sub
 sub forceUnloadGridTexture()
   m.isTextureUnloaded = true
   m.itemPoster.uri = ""
-  m.backdrop.visible = true
+  m.placeholder.itemType = ""
+  m.placeholder.visible = true
 end sub
 
 ' Restores poster URI from cache when the cell scrolls back on screen.

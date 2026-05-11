@@ -4,9 +4,10 @@ import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.itemPoster = m.top.findNode("itemPoster")
-  m.posterText = m.top.findNode("posterText")
+  m.placeholder = m.top.findNode("placeholder")
+  m.genreBackdrop = m.top.findNode("genreBackdrop")
+  m.genreLabel = m.top.findNode("genreLabel")
   initTitle()
-  m.backdrop = m.top.findNode("backdrop")
 
   m.itemPoster.observeField("loadStatus", "onPosterLoadStatusChanged")
 
@@ -50,23 +51,36 @@ sub onItemContentChanged()
   end if
 
   if LCase(itemData.type) = "genre" or LCase(itemData.folderType) = "genre"
-    ' "View All [Genre]" items always display as backdrop-with-text — never load an image.
-    ' Force the no-image fallback state immediately so it looks intentional, not like a load failure.
-    ' Check both type and folderType: if Jellyfin returns IsFolder=false/absent the transformer
-    ' leaves type="Genre" and folderType="", so we must match on type directly.
+    ' "View All [Genre]" items are action tiles, not media — they get a dedicated themed
+    ' backdrop + in-cell label rather than going through JRPlaceholder, so they don't
+    ' read as failed-to-load placeholders. Check both type and folderType: if Jellyfin
+    ' returns IsFolder=false/absent the transformer leaves type="Genre" and folderType="" so
+    ' we must match on type directly.
     m.itemPoster.uri = ""
-    m.backdrop.visible = true
-    m.posterText.visible = true
+    m.placeholder.visible = false
+    m.genreBackdrop.visible = true
+    m.genreLabel.text = itemData.title
+    m.genreLabel.visible = true
   else
-    m.itemPoster.uri = getItemPosterUrl(itemData)
-    'If Poster not loaded, ensure "blue box" is shown until loaded
-    if m.itemPoster.loadStatus <> "ready"
-      m.backdrop.visible = true
-      m.posterText.visible = true
+    m.genreBackdrop.visible = false
+    m.genreLabel.visible = false
+
+    posterUrl = getItemPosterUrl(itemData)
+    if posterUrl = ""
+      ' Known-missing image — eagerly surface the typed glyph. Load-status never fires
+      ' "failed" for an empty URI, so we must set the placeholder state here rather
+      ' than waiting for onPosterLoadStatusChanged.
+      m.itemPoster.uri = ""
+      showPlaceholder(itemTypeFromContent())
+    else
+      ' Image expected — start in loading state. The load-status observer flips to
+      ' the typed-glyph failure state on "failed", or hides on "ready".
+      m.placeholder.itemType = ""
+      m.placeholder.visible = true
+      m.itemPoster.uri = posterUrl
     end if
   end if
 
-  m.posterText.text = itemData.title
   m.title.text = itemData.title
 end sub
 
@@ -86,10 +100,32 @@ sub onFocusChanged()
   end if
 end sub
 
-'Hide backdrop and text when poster loaded
+' Toggle the JRPlaceholder fallback based on the real poster's load state.
+' Mirrors the canonical state machine from JRRowItem.bs onPosterLoadStatusChanged.
 sub onPosterLoadStatusChanged()
-  if m.itemPoster.loadStatus = "ready"
-    m.backdrop.visible = false
-    m.posterText.visible = false
+  if m.itemPoster.loadStatus = "ready" and m.itemPoster.uri <> ""
+    m.placeholder.visible = false
+  else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
+    showPlaceholder(itemTypeFromContent())
+  else
+    m.placeholder.visible = true
   end if
+end sub
+
+' Returns the Jellyfin item type for the cell's current content, or "" if
+' itemContent is invalid. The string matches getPlaceholderImagePath's
+' title-cased vocabulary (e.g. "Movie", "MusicAlbum").
+function itemTypeFromContent() as string
+  itemData = m.top.itemContent
+  if not isValid(itemData) then return ""
+  if not isValidAndNotEmpty(itemData.type) then return ""
+  return itemData.type
+end function
+
+' Flip the placeholder into failure state with a type-appropriate glyph, then
+' clear the poster URI so the glyph isn't covered by a stale broken image.
+sub showPlaceholder(itemType as string)
+  m.placeholder.itemType = itemType
+  m.placeholder.visible = true
+  m.itemPoster.uri = ""
 end sub
