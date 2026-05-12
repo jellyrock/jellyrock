@@ -122,11 +122,10 @@ If the failure reveals scope beyond this fix, surface as a `tech-debt.md` slug c
 
 ## Critical constraints
 
+Repo-wide rules in root [`CLAUDE.md`](../../../CLAUDE.md) still apply (CHANGELOG is CI-controlled, no `tasks/` leakage in shared artifacts, hardware-reachable claim discipline, pre-push hook discipline). Flow-specific constraints:
+
 - NEVER commit, push, or open a PR. The user owns those steps.
-- NEVER claim a fix is tested if hardware wasn't reachable.
 - NEVER suggest solutions that violate render-thread requirements.
-- NEVER edit `CHANGELOG.md`.
-- NEVER reference `tasks/` paths in any output destined for a shared artifact.
 - NEVER blanket-add logging. If a fix would benefit from a single targeted log on a critical-error path, propose it; otherwise invoke `log-reviewer` for an audit.
 
 ## When you're done

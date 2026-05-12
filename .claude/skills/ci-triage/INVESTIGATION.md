@@ -96,11 +96,9 @@ For failures that surface a real architectural choice (e.g., a test fails becaus
 
 ## Critical constraints
 
+Repo-wide rules in root [`CLAUDE.md`](../../../CLAUDE.md) still apply (CHANGELOG is CI-controlled, no `tasks/` leakage in shared artifacts, hardware-reachable claim discipline, pre-push hook discipline). Flow-specific constraints:
+
 - NEVER commit, push, or open a PR. The user owns those steps.
-- NEVER claim a fix is tested if hardware wasn't reachable.
-- NEVER suggest `--no-verify` to bypass pre-push hooks. The hooks exist to catch this class of failure earlier; if they're firing, fix the underlying issue.
-- NEVER edit `CHANGELOG.md`.
-- NEVER reference `tasks/` paths in any output destined for a shared artifact.
 - NEVER blanket-add logging.
 
 ## When you're done

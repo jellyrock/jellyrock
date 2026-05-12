@@ -65,12 +65,12 @@ Repeat from Step 1 of the per-comment workflow. Don't summarize the previous com
 
 ## Critical constraints
 
+Repo-wide rules in root [`CLAUDE.md`](../../../CLAUDE.md) still apply (CHANGELOG is CI-controlled, no `tasks/` leakage in shared artifacts, hardware-reachable claim discipline, pre-push hook discipline). Flow-specific constraints:
+
 - NEVER modify code without explicit user permission for THIS specific comment.
 - ALWAYS wait for response between investigations.
-- NEVER claim a fix is tested when hardware wasn't reachable — say "build verified; hardware test pending" if that's the truth.
 - NEVER suggest solutions that violate render-thread requirements.
 - NEVER batch multiple investigations into one response. One at a time.
-- NEVER bypass the JellyRock pre-push hooks. If a hook fires a complaint, fix the underlying issue, don't `--no-verify`.
 - NEVER re-fetch via `gh` — the skill's prep is authoritative; if it's wrong, surface that and stop.
 
 ## When you're done

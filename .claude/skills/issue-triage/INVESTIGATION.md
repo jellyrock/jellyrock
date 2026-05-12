@@ -109,12 +109,10 @@ The user can either run `/tech-debt-scan` later or add the entry directly. The C
 
 ## Critical constraints
 
+Repo-wide rules in root [`CLAUDE.md`](../../../CLAUDE.md) still apply (CHANGELOG is CI-controlled, no `tasks/` leakage in shared artifacts, hardware-reachable claim discipline, pre-push hook discipline). Flow-specific constraints:
+
 - NEVER commit, push, or open a PR. The user owns those steps after reviewing the diff.
-- NEVER claim a fix is tested if hardware wasn't reachable — say "build verified; hardware test pending" if that's the truth.
 - NEVER suggest solutions that violate render-thread requirements.
-- NEVER edit `CHANGELOG.md` — CI-controlled.
-- NEVER reference `tasks/` paths in any output destined for a shared artifact (issue comment, PR body, commit message draft).
-- NEVER bypass JellyRock pre-push hooks if/when the user does eventually commit. If a hook would fail, fix the underlying issue, don't recommend `--no-verify`.
 - NEVER re-fetch via `gh` — the skill's prep is authoritative; if it's wrong, surface and stop.
 - NEVER blanket-add logging. If a fix would benefit from a single targeted log on a critical-error path, propose it; otherwise invoke `log-reviewer` for an audit.
 
