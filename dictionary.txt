@@ -80,6 +80,7 @@ callsites
 camelCase
 cancellable
 catchup
+catchup-discipline
 changelog
 Changelog
 CHANGELOG
@@ -377,6 +378,7 @@ schema-validated
 sdk
 SDK
 selectable
+SessionStart
 SHA-1
 ship-today
 sideload

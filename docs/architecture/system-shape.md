@@ -9,6 +9,7 @@ related-files:
   - .claude/skills/log/SKILL.md
   - .claude/skills/done/SKILL.md
   - .claude/skills/catchup/SKILL.md
+  - .claude/skills/focus/SKILL.md
   - .claude/skills/ramp/SKILL.md
   - .claude/skills/tech-debt-scan/SKILL.md
   - .claude/skills/pr/SKILL.md
@@ -16,8 +17,9 @@ related-files:
   - scripts/journal-sync.js
   - scripts/lint/docs-check.cjs
   - scripts/lint/progress-cursor-nudge.cjs
+  - scripts/lint/session-start-nudge.cjs
   - .github/workflows/journal-sync.yml
-last-reviewed: 2026-05-08
+last-reviewed: 2026-05-13
 ---
 
 # System shape — how this repo's dev-process is structured and why
@@ -67,6 +69,7 @@ The central principle: **rules without skills drift**, because every rule that r
 | Skill | When | What it does |
 |---|---|---|
 | [`/catchup`](../../.claude/skills/catchup/SKILL.md) | Start of session, after multi-day gap, "what's the state of the world?" | Reads all 4 journals + GH state via the [`scripts/catchup-state.js`](../../scripts/catchup-state.js) aggregator (one Node call → JSON); banner-detects on stale `progress.md`, stale signal rows, failing CI, etc. |
+| [`/focus`](../../.claude/skills/focus/SKILL.md) | Same moments as `/catchup`, but when multiple things look actionable and you want help picking | Same aggregator; ranks 3–5 next-move candidates across five tiers (Resume / Blocked / Drift / Hot / Momentum), surfaces a numbered menu with a "Recommended" call that cites the rule, then routes the user pick to the right downstream skill (`/issue-triage`, `/ci-triage`, `/done`, `/log`, `/tech-debt-scan`) with a session-context preamble. Opus (judgment-heavy); read-only |
 | [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal`, `running` | Routes to the right journal with templated format; auto-bumps `last-updated:` on followup/signal append; diff-and-wait (never auto-applies) |
 | [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Any work landing: followup completed, signal resolved, cursor manually closed | Polymorphic match (followups first, then signals); for followups: removes bullet + prepends to "Recently shipped"; for signals: flips status → `completed`; bumps `last-updated:`. The `running` cursor close-loop normally fires automatically via [`journal-sync.yml`](../../.github/workflows/journal-sync.yml); manual `/done running` is the bypass path. |
 | [`/pr`](../../.claude/skills/pr/SKILL.md) | Ship moment — opening a PR | Bundles the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture from PR body) so journal hygiene lands in the same change set as the code |
@@ -77,8 +80,9 @@ The full skill index is at [`.claude/skills/README.md`](../../.claude/skills/REA
 
 ### 4. Enforcement (so rules don't depend on memory)
 
-Four layers, fastest feedback first:
+Five layers, fastest feedback first:
 
+- **Session-start (SessionStart hook)**: [`session-start-nudge.sh`](../../.claude/hooks/session-start-nudge.sh) (calls [`scripts/lint/session-start-nudge.cjs`](../../scripts/lint/session-start-nudge.cjs)) prints a single advisory line at session start when local state is actionable (pending handoffs, stale `progress.md`, schema-broken journals); silent on clean state. Local-only — no network calls so it stays cheap and offline-tolerant. Surfaces the catchup-discipline rule at the one moment it applies.
 - **Edit-time (Stop hook)**: three sibling hooks fire at end-of-turn — [`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) (architecture-doc reminder), [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) (file-scoped lint surface), and [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh) (stale `progress.md` + Currently-running cursor that overlaps with shipped commits). All three are advisory; never block.
 - **Pre-push (husky)**: [`.husky/pre-push`](../../.husky/pre-push) runs the full validate / lint suite scoped to the push range PLUS two advisory nudges — [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (decision-shape commits without a `decisions.md` change) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the Stop hook). Check steps abort the push; nudges never do.
 - **Post-merge (GitHub Action)**: [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) fires on PR merge to main and runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) — the *mechanical* close-loop side. Prepends a Recently shipped bullet, conditionally clears the Currently-running cursor (token-overlap heuristic), bumps `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate/Dependabot/bot authors. This layer is what turns the four-pillar pattern from "remember to invoke `/done running`" into automatic — judgment-bearing entries (decisions, tech-debt, followups) still flow through `/pr` → `/log`.

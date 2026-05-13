@@ -8,7 +8,10 @@ model: sonnet
 
 Quick state-load skill. Goal: in <30 seconds, surface what you were working on last, what's open against the repo, what's running on CI, what's accumulating in the journals, and what needs a decision.
 
-Distinct from `/ramp <area>`: `/catchup` is global; `/ramp` is area-scoped (used after >2 weeks not touching a specific subsystem). `/ramp` uses the same aggregator with `--area=<name>`.
+Distinct from siblings:
+
+- `/ramp <area>` (sonnet) — area-scoped briefing, same aggregator with `--area=<name>`. Use after >2 weeks away from a specific subsystem.
+- `/focus` (opus) — session-start triage + routing, not a state-only briefing. Ranks 3–5 next-move candidates with a "Recommended" call and hands the user pick off to the right downstream skill. Use `/focus` when multiple things look actionable and you want help picking; use `/catchup` for the pure state load.
 
 ## Step 1 — Pull state in one call
 
