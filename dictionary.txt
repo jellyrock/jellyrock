@@ -378,7 +378,6 @@ schema-validated
 sdk
 SDK
 selectable
-SessionStart
 SHA-1
 ship-today
 sideload
