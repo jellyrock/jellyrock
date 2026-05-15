@@ -62,7 +62,7 @@ function resolveItemPlaceholderType(item as object) as string
   presenterType = DeterminePresenterType(item)
   if presenterType = "movie" then return "Movie"
   if presenterType = "tvshow" then return "Series"
-  if presenterType = "music" then return "MusicAlbum"
+  if presenterType = "music" then return "Audio"
   if presenterType = "livetv" then return "TvChannel"
   if presenterType = "photo" then return "Photo"
 
