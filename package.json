@@ -34,7 +34,7 @@
     "sharp": "0.34.5",
     "spellchecker-cli": "7.0.3",
     "undent": "1.0.0",
-    "vitest": "4.1.5",
+    "vitest": "4.1.6",
     "xml2js": "0.6.2"
   },
   "overrides": {
