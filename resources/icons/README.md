@@ -58,7 +58,7 @@ file) ONLY when one of these seven pinned-filled rules applies:
 |---|---|---|---|
 | 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check`, `arrow-*` |
 | 2 | Small-canvas size | Canvas width less than `32px` | `mic_icon` (24×24) — outlined strokes lose visibility at small sizes (Material 3 small-target guidance, Apple HIG ≤ `28pt`) |
-| 3 | Subject / identity content | Represents a person, user, or content-type subject (album, artist, music collection) | `person`, `person_36px` (avatars), `album`, `missingArtist`, `musicFolder`, `musicNote` (content-type representations) — filled glyphs read more clearly than outlined when the icon IS the subject (e.g., the album disc on the audio player's now-playing screen) rather than an action affordance |
+| 3 | Subject / identity content | Represents a person, user, or content-type subject (album, music note, etc.) | `person`, `person_36px` (avatars), `album`, `musicNote` (content-type representations) — filled glyphs read more clearly than outlined when the icon IS the subject (e.g., the album disc on the audio player's now-playing screen) rather than an action affordance |
 | 4 | Placeholder / representative content | Lives in `images/placeholders/` | All 10 placeholders (`movie`, `album`, `folder`, etc.) — Apple Finder / Google Drive / Material 3 file pickers all use filled placeholders |
 | 5 | Rating glyph | Inline rating display | `star` — industry-standard filled for ratings |
 | 6 | Playback action button | Composes filled `play` | `resume` (arc + play-triangle) — visual consistency with the `play` standalone |
@@ -82,11 +82,11 @@ outlined-icon context and a filled-placeholder context, commit two SVG
 files: `<name>.svg` (outlined for icon use) + `<name>_filled.svg` (filled
 for placeholder use). The placeholder config (`resources/placeholders/placeholders.json`)
 points at the `_filled.svg` source. Subject-identity glyphs (Rule 3 —
-`album`, `missingArtist`, `musicFolder`, `musicNote`, `person`) skip the
-two-file dance because they're filled in BOTH contexts; one SVG file
-suffices and `placeholders.json` references the same file the icon set
-uses. Single-context placeholder-only glyphs (Rule 4 — e.g., `movie`,
-`folder`, `playlist`) live as `<name>_filled.svg` only.
+`album`, `musicNote`, `person`) skip the two-file dance because they're
+filled in BOTH contexts; one SVG file suffices and `placeholders.json`
+references the same file the icon set uses. Single-context placeholder-only
+glyphs (Rule 4 — e.g., `movie`, `folder`, `playlist`, `artist`, `musicFolder`,
+`book`, `studio`) live as `<name>_filled.svg` only.
 
 The build script ([`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js))
 auto-skips files ending in `_filled.svg` from the icons-rendering loop —
@@ -316,8 +316,8 @@ this table automatically.
 | `favorite_selected.svg` | `favorite` (hand-edited fill `#FF0000`) | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `heart.svg` | `favorite` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `album.svg` | `album` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
-| `missingArtist.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
-| `musicFolder.svg` | `library_music` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `artist_filled.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
+| `musicFolder_filled.svg` | `library_music` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
 | `playlist_filled.svg` | `playlist_play` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `circle.svg` | `circle` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `tomato-fresh.svg` | non-Material — [Wikimedia](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg) (PD-textlogo) | n/a | n/a | (red) | 139×141 | 2026-05-09 |
@@ -327,3 +327,5 @@ this table automatically.
 | `photo_filled.svg` | `photo` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `photoAlbum_filled.svg` | `photo_album` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `folder_filled.svg` | `folder` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
+| `book_filled.svg` | `menu_book` | Rounded | 500 | 1 | `24px` | 2026-05-15 |
+| `studio_filled.svg` | `domain` | Rounded | 500 | 1 | `24px` | 2026-05-15 |

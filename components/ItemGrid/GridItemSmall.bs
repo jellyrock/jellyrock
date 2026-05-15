@@ -115,8 +115,9 @@ end sub
 
 ' Flip the placeholder into failure state with a type-appropriate glyph, then
 ' clear the poster URI so the glyph isn't covered by a stale broken image.
-' itemType="" is meaningful — JRPlaceholder renders the backdrop alone, which
-' is what resolveItemPlaceholderType returns for generic library-tile containers.
+' itemType="" puts JRPlaceholder in loading state (backdrop only, no glyph);
+' resolveItemPlaceholderType returns "" only for invalid/typeless items, so
+' valid items always end up here with a typed glyph or the Folder fallback.
 sub showPlaceholder(itemType as string)
   m.placeholder.itemType = itemType
   m.placeholder.visible = true

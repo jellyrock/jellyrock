@@ -142,16 +142,14 @@ sub onItemContentChanged()
   else if shouldLoadGridTexture()
     ' Image expected and the texture manager wants this cell loaded — start
     ' the placeholder in loading state; the load-status observer takes over.
-    m.placeholder.itemType = ""
-    m.placeholder.visible = true
+    resetPlaceholderToLoading()
     m.itemPoster.uri = posterUri
   else
     ' Image expected but the texture manager is keeping this cell off-screen
     ' to save memory. Loading state until the cell scrolls into range and
     ' reloadGridTexture() restores the URI.
     m.isTextureUnloaded = true
-    m.placeholder.itemType = ""
-    m.placeholder.visible = true
+    resetPlaceholderToLoading()
     m.itemPoster.uri = ""
   end if
 end sub
@@ -202,13 +200,22 @@ end sub
 
 ' Flip the placeholder into failure state with a type-appropriate glyph, then
 ' clear the poster URI so the glyph isn't covered by a stale broken image.
-' itemType="" is meaningful — it tells JRPlaceholder to render the backdrop
-' alone without any glyph, which is what resolveItemPlaceholderType returns
-' for generic library-tile containers (no known content type to advertise).
+' itemType="" puts JRPlaceholder in loading state (backdrop only, no glyph);
+' resolveItemPlaceholderType returns "" only for invalid/typeless items, so
+' valid items always end up here with a typed glyph or the Folder fallback.
 sub showPlaceholder(itemType as string)
   m.placeholder.itemType = itemType
   m.placeholder.visible = true
   m.itemPoster.uri = ""
+end sub
+
+' Reset the JRPlaceholder to loading state (themed backdrop visible, no glyph).
+' Used by the initial-load branches in onItemContentChanged and by the texture
+' unload paths so off-screen / unloaded cells don't carry a stale failure-state
+' glyph back into view when they reload.
+sub resetPlaceholderToLoading()
+  m.placeholder.itemType = ""
+  m.placeholder.visible = true
 end sub
 
 ' ============================================================================
@@ -371,8 +378,7 @@ sub unloadGridTexture()
 
   m.isTextureUnloaded = true
   m.itemPoster.uri = ""
-  m.placeholder.itemType = ""
-  m.placeholder.visible = true
+  resetPlaceholderToLoading()
 end sub
 
 ' Force-unloads textures unconditionally — used only during onDestroy().
@@ -380,8 +386,7 @@ end sub
 sub forceUnloadGridTexture()
   m.isTextureUnloaded = true
   m.itemPoster.uri = ""
-  m.placeholder.itemType = ""
-  m.placeholder.visible = true
+  resetPlaceholderToLoading()
 end sub
 
 ' Restores poster URI from cache when the cell scrolls back on screen.

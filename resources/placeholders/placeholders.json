@@ -8,6 +8,18 @@
   },
   "album": { "source": "album.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
   "artist": { "source": "artist_filled.svg", "sizeFhd": 256, "outputDir": "images/placeholders" },
+  "book": {
+    "source": "book_filled.svg",
+    "sizeFhd": 256,
+    "glyphSize": 218,
+    "outputDir": "images/placeholders"
+  },
+  "studio": {
+    "source": "studio_filled.svg",
+    "sizeFhd": 256,
+    "glyphSize": 218,
+    "outputDir": "images/placeholders"
+  },
   "musicFolder": {
     "source": "musicFolder_filled.svg",
     "sizeFhd": 256,

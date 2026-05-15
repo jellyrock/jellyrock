@@ -29,8 +29,21 @@ namespace tests
     @params("Series", "pkg:/images/placeholders/playCircle_$$RES$$.png")
     @params("Season", "pkg:/images/placeholders/playCircle_$$RES$$.png")
     @params("Chapter", "pkg:/images/placeholders/playCircle_$$RES$$.png")
+    @params("Trailer", "pkg:/images/placeholders/playCircle_$$RES$$.png")
     function _(itemType, expected)
       m.assertEqual(getPlaceholderImagePath(itemType), expected)
+    end function
+
+    @it("returns book placeholder for Book and AudioBook")
+    @params("Book", "pkg:/images/placeholders/book_$$RES$$.png")
+    @params("AudioBook", "pkg:/images/placeholders/book_$$RES$$.png")
+    function _(itemType, expected)
+      m.assertEqual(getPlaceholderImagePath(itemType), expected)
+    end function
+
+    @it("returns studio placeholder for Studio")
+    function _()
+      m.assertEqual(getPlaceholderImagePath("Studio"), "pkg:/images/placeholders/studio_$$RES$$.png")
     end function
 
     @it("returns album placeholder for MusicAlbum")
@@ -68,9 +81,10 @@ namespace tests
       m.assertEqual(getPlaceholderImagePath("PhotoAlbum"), "pkg:/images/placeholders/photoAlbum_$$RES$$.png")
     end function
 
-    @it("returns livetv placeholder for TvChannel and Channel")
+    @it("returns livetv placeholder for TvChannel, Channel, and ChannelFolderItem")
     @params("TvChannel", "pkg:/images/placeholders/livetv_$$RES$$.png")
     @params("Channel", "pkg:/images/placeholders/livetv_$$RES$$.png")
+    @params("ChannelFolderItem", "pkg:/images/placeholders/livetv_$$RES$$.png")
     function _(itemType, expected)
       m.assertEqual(getPlaceholderImagePath(itemType), expected)
     end function
@@ -107,6 +121,11 @@ namespace tests
     @params("MusicArtist", "MusicArtist")
     @params("Person", "Person")
     @params("TvChannel", "TvChannel")
+    @params("Book", "Book")
+    @params("AudioBook", "AudioBook")
+    @params("Trailer", "Trailer")
+    @params("Studio", "Studio")
+    @params("ChannelFolderItem", "ChannelFolderItem")
     function _(itemType, expected)
       item = createObject("roSGNode", "JellyfinBaseItem")
       item.type = itemType
@@ -122,7 +141,6 @@ namespace tests
     @params("CollectionFolder", "photoalbum", "Photo")
     @params("UserView", "movies", "Movie")
     @params("Folder", "music", "Audio")
-    @params("ChannelFolderItem", "tvshows", "Series")
     function _(itemType, collectionType, expected)
       item = createObject("roSGNode", "JellyfinBaseItem")
       item.type = itemType
@@ -130,15 +148,14 @@ namespace tests
       m.assertEqual(resolveItemPlaceholderType(item), expected)
     end function
 
-    @it("returns empty for generic library-tile containers (no collectionType)")
+    @it("falls back to Folder for generic library-tile containers (no collectionType)")
     @params("CollectionFolder")
     @params("UserView")
     @params("Folder")
-    @params("ChannelFolderItem")
     function _(itemType)
       item = createObject("roSGNode", "JellyfinBaseItem")
       item.type = itemType
-      m.assertEqual(resolveItemPlaceholderType(item), "")
+      m.assertEqual(resolveItemPlaceholderType(item), "Folder")
     end function
 
   end class
