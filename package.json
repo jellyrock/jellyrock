@@ -13,7 +13,7 @@
     "@rokucommunity/bslint": "1.0.0-alpha.50",
     "ajv": "8.20.0",
     "brighterscript": "1.0.0-alpha.50",
-    "brighterscript-formatter": "1.7.24",
+    "brighterscript-formatter": "1.7.25",
     "brighterscript-xml-plugin": "1.0.0-alpha.3",
     "dotenv": "17.4.2",
     "eslint": "10.3.0",
