@@ -24,6 +24,9 @@
 #   9. npm run lint:docs          — ALWAYS. Validates related-files: paths and
 #                                    markdown links across every doc + CLAUDE.md.
 #                                    Cross-doc check; not file-scopable.
+#  9b. npm run lint:ci-workflow-sync — ALWAYS. Verifies every _lint-*.yml /
+#                                    _test-*.yml / _smoke-test-*.yml reusable
+#                                    workflow is listed in _validate-dependencies.yml.
 #  10. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
 #                                     dev-guides table.
 #  11. node scripts/lint/decision-shape-nudge.cjs — ALWAYS. Advisory only
@@ -156,6 +159,9 @@ fi
 
 echo "📚 Validating doc references..."
 npm run lint:docs
+
+echo "🔄 Validating CI workflow sync..."
+npm run lint:ci-workflow-sync
 
 echo "📑 Checking dev-index drift..."
 npm run docs:dev-index:check
