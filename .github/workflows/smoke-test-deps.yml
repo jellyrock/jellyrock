@@ -1,0 +1,12 @@
+name: smoke-test-deps
+
+# No event-time `paths:` filter — see .github/actions/changed-paths.
+# The reusable workflow short-circuits internally when neither package.json
+# nor the smoke-test workflow files changed, so this can be wired as a
+# required check without stalling unrelated PRs.
+on:
+  pull_request:
+
+jobs:
+  smoke-test:
+    uses: ./.github/workflows/_smoke-test-deps.yml

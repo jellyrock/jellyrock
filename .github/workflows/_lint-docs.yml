@@ -1,12 +1,16 @@
 name: lint-docs
 
-# Validates doc references and generated indexes:
+# Validates doc references, generated indexes, and CI workflow sync:
 #   - lint:docs              — related-files paths, markdown links, tech-debt anchors
 #   - docs:dev-index:check   — drift on the auto-generated dev-guides index in
 #                              docs/architecture/README.md
 #   - docs:stale:blocking    — conditional hard gate (only fails if this PR
 #                              touches a stale doc's related-files without
 #                              also updating the doc; see lint/docs-stale-blocking.cjs)
+#   - lint:ci-workflow-sync  — verifies every _lint-*.yml / _test-*.yml /
+#                              _smoke-test-*.yml reusable is listed in
+#                              _validate-dependencies.yml so dep-update PRs
+#                              can't silently skip a check
 #
 # These checks run only in .husky/pre-push otherwise — fork PRs and pushes
 # with --no-verify bypass that hook entirely. Running them in CI closes
@@ -37,7 +41,7 @@ jobs:
           # Mirrors the previous event-time paths filter (**/*.md, docs/**,
           # the four docs-related scripts, **/CLAUDE.md, AGENTS.md). The
           # \.md$ alternative covers **/CLAUDE.md and AGENTS.md by extension.
-          pattern: '\.md$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking)\.cjs$|^scripts/generate/dev-index\.cjs$'
+          pattern: '\.md$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking|validate-deps-workflow-sync)\.cjs$|^scripts/generate/dev-index\.cjs$|^\.github/workflows/_.*\.yml$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         if: steps.detect.outputs.relevant == 'true'
@@ -54,3 +58,6 @@ jobs:
         run: node scripts/lint/docs-stale-blocking.cjs
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+      - name: Validate _validate-dependencies.yml workflow sync
+        if: steps.detect.outputs.relevant == 'true'
+        run: node scripts/lint/validate-deps-workflow-sync.cjs

@@ -24,6 +24,7 @@ related-files:
   - scripts/lint/decision-shape-nudge.cjs
   - scripts/lint/progress-cursor-nudge.cjs
   - scripts/lint/issue-templates-check.cjs
+  - scripts/lint/validate-deps-workflow-sync.cjs
   - scripts/journal-sync.js
   - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
@@ -55,6 +56,7 @@ related-files:
   - .github/workflows/test-scripts.yml
   - .github/workflows/_lint-issue-templates.yml
   - .github/workflows/lint-issue-templates.yml
+  - .github/workflows/_smoke-test-deps.yml
   - .github/workflows/_validate-dependencies.yml
   - .github/workflows/docs-stale-tracker.yml
   - .github/workflows/journal-sync.yml
@@ -62,7 +64,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-10
+last-reviewed: 2026-05-16
 ---
 
 # Build & Tooling
@@ -478,6 +480,14 @@ The pair pattern exists so the same lint logic can be invoked from other workflo
 This avoids the standard GitHub gotcha with event-time `paths:` filters: a workflow filtered by `paths:` simply doesn't run when paths don't match, which means *no status is reported*. If such a workflow is wired as a required check in branch protection, PRs that don't touch matching paths get stuck with `Expected — Waiting for status to be reported` and can't merge. Always-queue + internal-skip dodges this — the workflow always reports a status (success when the gate skipped, success or failure when it actually ran), so it's safe to wire as a required check.
 
 When adding a new lint workflow, copy an existing `_lint-X.yml` and update the `pattern:` regex passed to `changed-paths`. The regex must mirror what would have gone into the old `paths:` block. Always also expose a `force: boolean` `workflow_call` input and forward it to the action — orchestrator workflows like [`_validate-dependencies.yml`](../../.github/workflows/_validate-dependencies.yml) need to bypass the path check (a dep bump can regress a linter even when no matching source file changed in the PR).
+
+### Dependency update orchestration (`_validate-dependencies.yml` + `_smoke-test-deps.yml`)
+
+[`_validate-dependencies.yml`](../../.github/workflows/_validate-dependencies.yml) is the dependency-update orchestrator: it re-runs every lint and test reusable with `force: true` on any PR labeled `dependencies`. Renovate and Dependabot auto-apply that label, so their PRs automatically trigger full CI. This is what makes [`renovate.json`](../../renovate.json)'s `automerge: true` for patch updates safe — a Renovate patch PR can only auto-merge once every downstream job passes.
+
+**When you add a new `_lint-*.yml`, `_test-*.yml`, or `_smoke-test-*.yml` reusable, add a matching `force: true` job to `_validate-dependencies.yml` immediately.** Skipping this means dependency bumps that break your new workflow silently pass CI. `npm run lint:ci-workflow-sync` ([`scripts/lint/validate-deps-workflow-sync.cjs`](../../scripts/lint/validate-deps-workflow-sync.cjs)) enforces this mechanically — it runs in `_lint-docs.yml` and in the pre-push hook and exits non-zero when any `_lint-*` / `_test-*` / `_smoke-test-*` reusable is not listed in `_validate-dependencies.yml`.
+
+[`_smoke-test-deps.yml`](../../.github/workflows/_smoke-test-deps.yml) is a smoke-test companion (not a lint workflow). It covers the two dev dependencies nothing else in CI exercises: `roku-deploy` (never invoked in CI — only by manual deploy scripts) and `lint-staged` (only invoked by the husky pre-commit hook locally). Smoke tests are cheap CLI invocations (`--version`, `--print-config`) that catch catastrophic breakage (package missing, CLI broken) without full integration tests. Husky itself is already covered for free: `"prepare": "husky"` in `package.json` runs the husky CLI on every `npm ci`.
 
 ## Doc-maintenance enforcement
 
