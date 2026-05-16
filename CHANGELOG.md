@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update vitest from v4.1.5 to v4.1.6 ([#572](https://github.com/jellyrock/jellyrock/pull/572))
+- Update roku-deploy from v3.17.2 to v3.17.3 ([#570](https://github.com/jellyrock/jellyrock/pull/570))
+- Update ropm from v0.11.5 to v0.11.6 ([#571](https://github.com/jellyrock/jellyrock/pull/571))
+- Update brighterscript-formatter from v1.7.24 to v1.7.25 ([#569](https://github.com/jellyrock/jellyrock/pull/569))
 - Update eslint-plugin-n from v17.24.0 to v18 ([#549](https://github.com/jellyrock/jellyrock/pull/549))
 - Update ajv from v6.15.0 to v8 ([#556](https://github.com/jellyrock/jellyrock/pull/556))
 
