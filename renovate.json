@@ -2,6 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>jellyrock/.github//renovate/default"],
   "separateMinorPatch": true,
+  "prConcurrentLimit": 0,
+  "prHourlyLimit": 0,
   "packageRules": [
     {
       "description": "BrighterScript compiler/lint/format stack — coordinated rokucommunity releases",

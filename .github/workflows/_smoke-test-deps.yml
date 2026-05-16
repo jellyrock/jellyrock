@@ -34,7 +34,7 @@ jobs:
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
-          pattern: '^package(-lock)?\.json$'
+          pattern: '^package(-lock)?\.json$|^\.github/workflows/_?smoke-test-deps\.yml$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         if: steps.detect.outputs.relevant == 'true'
