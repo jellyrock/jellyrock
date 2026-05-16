@@ -1,4 +1,86 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>jellyrock/.github//renovate/default"]
+  "extends": ["github>jellyrock/.github//renovate/default"],
+  "separateMinorPatch": true,
+  "packageRules": [
+    {
+      "description": "BrighterScript compiler/lint/format stack — coordinated rokucommunity releases",
+      "matchPackageNames": [
+        "brighterscript",
+        "brighterscript-formatter",
+        "brighterscript-xml-plugin",
+        "@rokucommunity/bslint"
+      ],
+      "groupName": "brighterscript",
+      "addLabels": ["brighterscript"]
+    },
+    {
+      "description": "ropm — BS package manager; postinstall validated in CI",
+      "matchPackageNames": ["ropm"],
+      "addLabels": ["brighterscript"]
+    },
+    {
+      "description": "Roku runtime BS libs — bundled into .zip; API caught by bsc --validate. Includes real names + npm aliases (log → roku-log, rr → roku-requests).",
+      "matchPackageNames": ["@rokucommunity/bslib", "roku-log", "log", "roku-requests", "rr"],
+      "groupName": "roku runtime",
+      "addLabels": ["roku-runtime"]
+    },
+    {
+      "description": "Roku deploy & test runners — CLI smoke-tested by _smoke-test-deps.yml; API caught by bsc --validate",
+      "matchPackageNames": ["roku-deploy", "rooibos-roku"],
+      "groupName": "roku deploy & test",
+      "addLabels": ["roku-runtime"]
+    },
+    {
+      "description": "JS lint & format tooling",
+      "matchPackageNames": [
+        "eslint",
+        "@eslint/js",
+        "eslint-config-prettier",
+        "eslint-plugin-n",
+        "prettier",
+        "jshint"
+      ],
+      "groupName": "linting",
+      "addLabels": ["javascript"]
+    },
+    {
+      "description": "Docs quality tooling",
+      "matchPackageNames": ["markdownlint-cli2", "spellchecker-cli"],
+      "groupName": "docs lint",
+      "addLabels": ["javascript"]
+    },
+    {
+      "description": "Git hooks tooling — husky validated by `prepare` script on every npm ci; lint-staged CLI smoke-tested by _smoke-test-deps.yml",
+      "matchPackageNames": ["husky", "lint-staged"],
+      "groupName": "git hooks",
+      "addLabels": ["javascript"]
+    },
+    {
+      "description": "Remaining JS dev utilities — label only, no grouping (diverse upstreams)",
+      "matchPackageNames": [
+        "vitest",
+        "ajv",
+        "dotenv",
+        "fast-glob",
+        "js-yaml",
+        "patch-package",
+        "rimraf",
+        "sharp",
+        "undent",
+        "xml2js"
+      ],
+      "addLabels": ["javascript"]
+    },
+    {
+      "description": "Patch automerge — _validate-dependencies.yml runs full lint + test on every dep PR, so a passing CI is sufficient validation",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    },
+    {
+      "description": "Minor + major — weekly Monday review batch",
+      "matchUpdateTypes": ["minor", "major"],
+      "schedule": ["before 6am on monday"]
+    }
+  ]
 }

@@ -15,6 +15,12 @@ name: validate-dependencies
 # This list MUST stay in sync with the set of `_*.yml` reusables in
 # .github/workflows/. When you add a new reusable lint/test workflow,
 # add it here too — otherwise a dep that breaks it will land green.
+#
+# Coverage note: this orchestrator is what makes Renovate patch automerge
+# safe. Every devDep in package.json is exercised by at least one of the
+# downstream jobs (lint stages, test:scripts, or _smoke-test-deps for the
+# few CLIs CI doesn't otherwise touch). See renovate.json for the
+# automerge rule that depends on this coverage.
 
 on:
   workflow_call:
@@ -54,6 +60,10 @@ jobs:
       force: true
   lint-translation-files:
     uses: ./.github/workflows/_lint-translation-files.yml
+    with:
+      force: true
+  smoke-test-deps:
+    uses: ./.github/workflows/_smoke-test-deps.yml
     with:
       force: true
   test-scripts:

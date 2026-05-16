@@ -1,0 +1,60 @@
+name: smoke-test-deps
+
+# Cheap CLI smoke tests for devDeps that nothing else in CI exercises.
+#
+# Coverage matrix (why these and not others):
+# - roku-deploy: only invoked by `npm run deploy` (manual), never in CI
+# - lint-staged: only invoked by the husky pre-commit hook locally,
+#   not run by any CI script
+#
+# Husky itself is NOT smoke-tested here because `"prepare": "husky"` in
+# package.json runs the husky CLI on every `npm ci` — so any CI workflow
+# that installs deps already exercises husky. Adding a husky step here
+# would be redundant.
+#
+# These checks catch catastrophic breakage (package missing, CLI doesn't
+# load, config file unparseable). They don't catch subtle behavior
+# changes — same epistemic stance as automerging vitest patches without
+# running every test against every supported runtime version.
+
+on:
+  workflow_call:
+    inputs:
+      force:
+        description: 'When true, skip path detection and run unconditionally (used by the dependencies validator).'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - id: detect
+        uses: ./.github/actions/changed-paths
+        with:
+          pattern: '^package(-lock)?\.json$'
+          force: ${{ inputs.force }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        if: steps.detect.outputs.relevant == 'true'
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+      - name: Cache ropm dependencies
+        if: steps.detect.outputs.relevant == 'true'
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            source/roku_modules
+            components/roku_modules
+          key: ropm-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: ropm-
+      - if: steps.detect.outputs.relevant == 'true'
+        run: npm ci
+      - name: roku-deploy CLI smoke test
+        if: steps.detect.outputs.relevant == 'true'
+        run: npx roku-deploy --version
+      - name: lint-staged config-parse smoke test
+        if: steps.detect.outputs.relevant == 'true'
+        run: npx lint-staged --print-config
