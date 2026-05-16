@@ -1,21 +1,22 @@
 name: smoke-test-deps
 
-# Cheap CLI smoke tests for devDeps that nothing else in CI exercises.
+# Module-level smoke tests for devDeps that nothing else in CI exercises.
 #
-# Coverage matrix (why these and not others):
-# - roku-deploy: only invoked by `npm run deploy` (manual), never in CI
-# - lint-staged: only invoked by the husky pre-commit hook locally,
-#   not run by any CI script
+# Coverage matrix:
+# - roku-deploy (CJS): require() the module + verify .deploy and .createPackage
+#   are exported as functions. Only invoked by `npm run deploy` (manual), never
+#   in CI, so without this check a bad patch could land green.
+# - lint-staged (ESM): dynamic import the module + verify default export is
+#   a function. Plus require() .lintstagedrc.cjs to verify the config file
+#   parses (lint-staged only runs via the husky pre-commit hook locally).
 #
-# Husky itself is NOT smoke-tested here because `"prepare": "husky"` in
-# package.json runs the husky CLI on every `npm ci` — so any CI workflow
-# that installs deps already exercises husky. Adding a husky step here
-# would be redundant.
+# Husky itself is NOT smoke-tested here: `"prepare": "husky"` in package.json
+# runs the husky CLI on every `npm ci`, so it's already covered.
 #
-# These checks catch catastrophic breakage (package missing, CLI doesn't
-# load, config file unparseable). They don't catch subtle behavior
-# changes — same epistemic stance as automerging vitest patches without
-# running every test against every supported runtime version.
+# These checks load modules but DON'T invoke the CLIs. Invoking
+# `roku-deploy --version` would actually try to deploy — the CLI has no
+# --version flag and falls through to the default action. Module-load + API
+# surface check catches catastrophic package breakage without side effects.
 
 on:
   workflow_call:
@@ -52,9 +53,33 @@ jobs:
           restore-keys: ropm-
       - if: steps.detect.outputs.relevant == 'true'
         run: npm ci
-      - name: roku-deploy CLI smoke test
+      - name: roku-deploy module + API smoke test
         if: steps.detect.outputs.relevant == 'true'
-        run: npx roku-deploy --version
-      - name: lint-staged config-parse smoke test
+        run: |
+          node -e '
+            const rd = require("roku-deploy");
+            const pkg = require("roku-deploy/package.json");
+            for (const fn of ["deploy", "createPackage", "deployAndSignPackage"]) {
+              if (typeof rd[fn] !== "function") {
+                console.error("roku-deploy API broken: ." + fn + " is not a function");
+                process.exit(1);
+              }
+            }
+            console.log("roku-deploy@" + pkg.version + " — module + API OK");
+          '
+      - name: lint-staged module + config smoke test
         if: steps.detect.outputs.relevant == 'true'
-        run: npx lint-staged --print-config
+        run: |
+          node --input-type=module -e '
+            const ls = await import("lint-staged");
+            if (typeof ls.default !== "function") {
+              console.error("lint-staged API broken: default export is not a function");
+              process.exit(1);
+            }
+            console.log("lint-staged dynamic import — default export OK");
+          '
+          node -e '
+            require("./.lintstagedrc.cjs");
+            const pkg = require("lint-staged/package.json");
+            console.log("lint-staged@" + pkg.version + " — .lintstagedrc.cjs parses OK");
+          '
