@@ -6,7 +6,7 @@
 // nothing in this suite shells out or touches the network.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
@@ -15,6 +15,7 @@ import {
   REQUIRED_CSV_HEADERS,
   DEFAULT_MIN_DEVICES,
   DEFAULT_MIN_DATES,
+  DEFAULT_SPIKE_MULTIPLIER,
   validateRokuCrashCsv,
   parseCsv,
   mergeCsvs,
@@ -31,6 +32,11 @@ import {
   searchExistingIssues,
   renderRunSummary,
   parseArgs,
+  loadNoiseConfig,
+  matchNoisePattern,
+  classifyAgainstNoise,
+  evaluateSpikes,
+  draftSpikeComment,
 } from '../../../scripts/crash-report.js';
 
 // ────────────────────────────────────────────────────────────────────
@@ -480,6 +486,303 @@ describe('parseArgs', () => {
   it('supports --flag=value form', () => {
     const parsed = parseArgs(['plan', '--input=foo.csv']);
     expect(parsed.flags.input).toBe('foo.csv');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Known-noise classification + spike detection.
+
+describe('loadNoiseConfig', () => {
+  let dir;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'crash-noise-test-'));
+  });
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('returns empty patterns when the config file does not exist', () => {
+    const empty = mkdtempSync(join(tmpdir(), 'crash-noise-empty-'));
+    try {
+      expect(loadNoiseConfig(empty)).toEqual({ patterns: [] });
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('parses a valid config and defaults spike_multiplier', () => {
+    const root = mkdtempSync(join(tmpdir(), 'crash-noise-valid-'));
+    try {
+      const cfgDir = join(root, '.crash-report');
+      mkdirSync(cfgDir);
+      writeFileSync(
+        join(cfgDir, 'known-noise.yml'),
+        `patterns:
+  - id: example
+    tracker_issue: 42
+    baseline_crashes_per_week: 5
+    match:
+      function: ^init$
+`,
+      );
+      const cfg = loadNoiseConfig(root);
+      expect(cfg.patterns).toHaveLength(1);
+      expect(cfg.patterns[0].id).toBe('example');
+      expect(cfg.patterns[0].spike_multiplier).toBe(DEFAULT_SPIKE_MULTIPLIER);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('throws on missing required fields', () => {
+    const root = mkdtempSync(join(tmpdir(), 'crash-noise-bad-'));
+    try {
+      const cfgDir = join(root, '.crash-report');
+      mkdirSync(cfgDir);
+      writeFileSync(
+        join(cfgDir, 'known-noise.yml'),
+        `patterns:
+  - id: missing-tracker
+    baseline_crashes_per_week: 5
+    match: { function: x }
+`,
+      );
+      expect(() => loadNoiseConfig(root)).toThrow(/tracker_issue/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('matchNoisePattern', () => {
+  const group = {
+    function: 'init',
+    signature: 'pkg:/x.brs(1)',
+    inferredCategory: 'global-state-race',
+  };
+  const source = {
+    bsFile: 'components/ui/rectangle/RectangleSecondary.bs',
+    bsLine: 2,
+    codeSnippet: 'm.top.color = m.global.constants.colorSecondary',
+  };
+
+  it('matches when all predicates agree', () => {
+    const pattern = {
+      match: {
+        function: '^init$',
+        category: 'global-state-race',
+        file_glob: ['components/ui/**'],
+        snippet_regex: 'm\\.global\\.constants',
+      },
+    };
+    expect(matchNoisePattern(group, source, pattern)).toBe(true);
+  });
+
+  it('does not match when category differs', () => {
+    const pattern = { match: { category: 'array-bounds' } };
+    expect(matchNoisePattern(group, source, pattern)).toBe(false);
+  });
+
+  it('does not match when file glob misses', () => {
+    const pattern = { match: { file_glob: ['source/api/**'] } };
+    expect(matchNoisePattern(group, source, pattern)).toBe(false);
+  });
+
+  it('returns false when source is missing but file_glob is required', () => {
+    const pattern = { match: { file_glob: ['components/**'] } };
+    expect(matchNoisePattern(group, null, pattern)).toBe(false);
+  });
+
+  it('matches with no predicates (empty match = wildcard)', () => {
+    expect(matchNoisePattern(group, source, { match: {} })).toBe(true);
+  });
+});
+
+describe('classifyAgainstNoise', () => {
+  function makeGroup(overrides = {}) {
+    return {
+      signature: 'pkg:/x.brs(1)',
+      function: 'init',
+      pkgPath: 'pkg:/x.brs',
+      line: 1,
+      rawErrorText: 'Function init() As Void; pkg:/x.brs(1)',
+      versions: new Set(['2.17.0']),
+      osReleases: new Set(['G2']),
+      dates: new Set(['2026-05-16']),
+      totalCrashes: 3,
+      maxDevicesPerRow: 2,
+      rows: [{ date: '2026-05-16', osRelease: 'G2', crashes: 3, devices: 2 }],
+      ...overrides,
+    };
+  }
+
+  it('partitions groups into byPattern and novel', () => {
+    const noiseGroup = makeGroup({
+      signature: 'pkg:/components/ui/rectangle/RectangleSecondary.brs(2)',
+      function: 'init',
+    });
+    const novelGroup = makeGroup({
+      signature: 'pkg:/components/api/Sessions.brs(50)',
+      function: 'fetchSessions',
+    });
+    const sourceBySig = new Map([
+      [
+        noiseGroup.signature,
+        {
+          bsFile: 'components/ui/rectangle/RectangleSecondary.bs',
+          bsLine: 2,
+          codeSnippet: 'm.global.constants.colorSecondary',
+        },
+      ],
+      [
+        novelGroup.signature,
+        { bsFile: 'components/api/Sessions.bs', bsLine: 50, codeSnippet: 'print "fetching"' },
+      ],
+    ]);
+    const config = {
+      patterns: [
+        {
+          id: 'p1',
+          tracker_issue: 103,
+          baseline_crashes_per_week: 10,
+          spike_multiplier: 2.0,
+          match: { function: '^init$', category: 'global-state-race' },
+        },
+      ],
+    };
+    const { byPattern, novel } = classifyAgainstNoise(
+      [noiseGroup, novelGroup],
+      sourceBySig,
+      config,
+    );
+    expect(byPattern.size).toBe(1);
+    expect(byPattern.get('p1').groups).toHaveLength(1);
+    expect(byPattern.get('p1').groups[0].signature).toBe(noiseGroup.signature);
+    expect(novel).toHaveLength(1);
+    expect(novel[0].signature).toBe(novelGroup.signature);
+  });
+
+  it('first-match wins when multiple patterns could match', () => {
+    const group = makeGroup({ function: 'init' });
+    const sourceBySig = new Map([
+      [group.signature, { bsFile: 'components/x.bs', bsLine: 1, codeSnippet: 'm.global.x = 1' }],
+    ]);
+    const config = {
+      patterns: [
+        {
+          id: 'first',
+          tracker_issue: 1,
+          baseline_crashes_per_week: 5,
+          spike_multiplier: 2.0,
+          match: { category: 'global-state-race' },
+        },
+        {
+          id: 'second',
+          tracker_issue: 2,
+          baseline_crashes_per_week: 5,
+          spike_multiplier: 2.0,
+          match: { category: 'global-state-race' },
+        },
+      ],
+    };
+    const { byPattern } = classifyAgainstNoise([group], sourceBySig, config);
+    expect(byPattern.has('first')).toBe(true);
+    expect(byPattern.has('second')).toBe(false);
+  });
+
+  it('with no patterns, all groups are novel', () => {
+    const group = makeGroup();
+    const { byPattern, novel } = classifyAgainstNoise([group], new Map(), { patterns: [] });
+    expect(byPattern.size).toBe(0);
+    expect(novel).toHaveLength(1);
+  });
+});
+
+describe('evaluateSpikes', () => {
+  const pattern = {
+    id: 'p',
+    tracker_issue: 103,
+    baseline_crashes_per_week: 10,
+    spike_multiplier: 2.0,
+    match: {},
+  };
+
+  it('does NOT spike when combined count is below baseline × multiplier', () => {
+    const byPattern = new Map([
+      [
+        'p',
+        {
+          pattern,
+          groups: [
+            { signature: 'a', totalCrashes: 5, maxDevicesPerRow: 1 },
+            { signature: 'b', totalCrashes: 7, maxDevicesPerRow: 2 },
+          ],
+        },
+      ],
+    ]);
+    const [spike] = evaluateSpikes(byPattern, {
+      runDate: '2026-05-17',
+      csvWindow: { start: '2026-05-12', end: '2026-05-17' },
+    });
+    expect(spike.totalCrashes).toBe(12);
+    expect(spike.isSpike).toBe(false);
+    expect(spike.commentBody).toBeNull();
+    expect(spike.ratio).toBeCloseTo(1.2);
+  });
+
+  it('spikes when combined count strictly exceeds baseline × multiplier', () => {
+    const byPattern = new Map([
+      [
+        'p',
+        {
+          pattern,
+          groups: [
+            { signature: 'a', totalCrashes: 15, maxDevicesPerRow: 3 },
+            { signature: 'b', totalCrashes: 10, maxDevicesPerRow: 2 },
+          ],
+        },
+      ],
+    ]);
+    const [spike] = evaluateSpikes(byPattern, {
+      runDate: '2026-05-17',
+      csvWindow: { start: '2026-05-12', end: '2026-05-17' },
+    });
+    expect(spike.totalCrashes).toBe(25);
+    expect(spike.isSpike).toBe(true);
+    expect(spike.commentBody).toContain('Spike alert');
+    expect(spike.commentBody).toContain('25');
+    expect(spike.commentBody).toContain(
+      'm-global-constants-init-race'.length > 0 ? 'pattern `p`' : '',
+    );
+    expect(spike.ratio).toBe(2.5);
+  });
+});
+
+describe('draftSpikeComment', () => {
+  it('includes pattern id, totals, baseline, ratio, and per-signature breakdown', () => {
+    const body = draftSpikeComment(
+      {
+        id: 'm-global-constants-init-race',
+        baseline_crashes_per_week: 10,
+        spike_multiplier: 2.0,
+      },
+      [
+        { signature: 'pkg:/a.brs(1)', totalCrashes: 12, maxDevicesPerRow: 3 },
+        { signature: 'pkg:/b.brs(2)', totalCrashes: 9, maxDevicesPerRow: 2 },
+      ],
+      {
+        runDate: '2026-05-17',
+        csvWindow: { start: '2026-05-12', end: '2026-05-17' },
+      },
+    );
+    expect(body).toContain('Spike alert');
+    expect(body).toContain('`m-global-constants-init-race`');
+    expect(body).toContain('21'); // total
+    expect(body).toContain('baseline **10/week**');
+    expect(body).toContain('multiplier **2×**');
+    expect(body).toContain('2.10×'); // ratio is toFixed(2)
+    expect(body).toContain('pkg:/a.brs(1)');
+    expect(body).toContain('pkg:/b.brs(2)');
   });
 });
 

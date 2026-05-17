@@ -3,6 +3,7 @@ topic: crash-reports
 related-files:
   - scripts/crash-report.js
   - bsconfig-analysis.json
+  - .crash-report/known-noise.yml
   - .claude/skills/crash-report/SKILL.md
   - tests/scripts/unit/crash-report.test.js
 last-reviewed: 2026-05-17
@@ -50,6 +51,63 @@ You can also paste the CSV inline if you don't want to save it to disk.
 9. Renders a plan table and asks the user to confirm before any GH writes happen.
 10. Performs `gh issue create` for new signatures, `gh issue comment` for already-open matches, and `gh issue reopen` + comment for closed matches (regressions).
 11. Writes a run-summary handoff to `.claude/handoffs/crash-report-<timestamp>.md`.
+
+## Known-noise patterns + spike detection
+
+Some crashes are long-running race conditions, hardware-specific bugs, or other "won't fix" classes the team has decided to live with. Filing per-signature issues for these every week is pure noise. The skill consults [`.crash-report/known-noise.yml`](../../.crash-report/known-noise.yml) — each entry binds a class of matching crashes to a tracker issue and a baseline.
+
+**Normal path**: matched signatures are suppressed (no GH issue, no comment). They show up in the run summary under "Suppressed (known noise)" so the run remains fully visible to the human reading the summary.
+
+**Spike path**: when the combined crash count across all matched signatures for a pattern exceeds `baseline_crashes_per_week × spike_multiplier`, the skill posts ONE comment to the tracker issue with the spike details (count, baseline, ratio, per-signature breakdown). The tracker is NOT reopened automatically — the human decides whether the spike warrants reopening, further investigation, or adjusting the baseline.
+
+### Config schema
+
+```yaml
+patterns:
+  - id: <kebab-case-slug>            # used in run summary + spike comment subject
+    notes: |
+      Multi-line human description of the class of crashes.
+    tracker_issue: <number>           # GH issue that tracks this class
+    baseline_crashes_per_week: <int>  # eyeball estimate from observed history
+    spike_multiplier: <float>         # defaults to 2.0 if omitted
+    match:                            # ALL provided fields must agree (AND)
+      function: <regex>               # e.g. `^init$`
+      category: <one-of>              # global-state-race | null-node-ref |
+                                      #   array-bounds | callback-exception |
+                                      #   event-handler-nil-arg | unknown
+      file_glob:                      # list of globs, any-match
+        - components/ui/**
+      snippet_regex: <regex>          # optional gate against code snippet
+```
+
+First-match wins when a crash could bind to multiple patterns. Empty / omitted match fields are wildcards.
+
+### Adding a new pattern (workflow)
+
+1. After a `/crash-report` run files a class of issues you decide are "known and accepted":
+   - **If a tracker issue doesn't exist yet** for this class: pick one of the filed issues that's most representative, label it `known-issue` (gray), edit its title to a stable description like "Known: `<short description>`", and add a comment summarizing the decision to accept + the rationale.
+   - **If a tracker exists**: reopen it (if closed) and apply the `known-issue` label.
+2. Add an entry to [`.crash-report/known-noise.yml`](../../.crash-report/known-noise.yml) pointing `tracker_issue` at the tracker.
+3. Pick a `baseline_crashes_per_week` from history (eyeball the last 4-6 weekly reports' combined count for this class; round up).
+4. Set `spike_multiplier` to `2.0` unless you have reason to be more or less sensitive.
+5. Close the duplicate filed issues with a comment linking the tracker.
+6. Next `/crash-report` run will suppress matching signatures.
+
+### Tuning the baseline
+
+- **Too noisy** (you keep getting spike-alert comments on the tracker for benign weeks): raise `baseline_crashes_per_week` or `spike_multiplier`.
+- **Too quiet** (a real degradation isn't tripping the alert): lower one of them.
+- **Spike alert is real, sustained**: re-investigate root cause; consider removing the pattern from the noise config so future crashes flow into the normal file-issue path.
+
+### One-time label setup
+
+Once per repo:
+
+```bash
+gh label create known-issue --color cccccc --description "Long-running known bug — tracked but deprioritized; /crash-report uses these as noise dampeners"
+```
+
+The skill's preflight checks for the label and prints this command if missing.
 
 ## Threshold (default: file when ≥2 devices OR ≥2 distinct dates)
 

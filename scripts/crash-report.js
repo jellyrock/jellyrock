@@ -315,6 +315,198 @@ export function inferCategory(codeSnippet, errorText = '') {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Known-noise classification
+//
+// Some crashes are long-running, hardware-specific, or otherwise "won't fix"
+// — race conditions the team has accepted as ongoing noise. Filing a new
+// issue per signature per week for these is pure noise. Instead the user
+// declares them in .crash-report/known-noise.yml; the skill suppresses
+// per-signature issue activity AND posts a single comment to the tracker
+// issue when combined occurrence count crosses a baseline × multiplier
+// threshold (spike detection). See docs/dev/crash-reports.md.
+// ────────────────────────────────────────────────────────────────────
+
+export const NOISE_CONFIG_PATH = '.crash-report/known-noise.yml';
+export const DEFAULT_SPIKE_MULTIPLIER = 2.0;
+
+/**
+ * Load the noise config from <repoRoot>/.crash-report/known-noise.yml.
+ * Returns `{ patterns: [] }` when the file doesn't exist (noise filter
+ * silently inactive). Throws on parse error / schema violation — fail-loud
+ * is the right move here because a silently-broken filter would leak the
+ * noise it's meant to dampen.
+ */
+export function loadNoiseConfig(repoRoot = REPO_ROOT) {
+  const path = join(repoRoot, NOISE_CONFIG_PATH);
+  if (!existsSync(path)) return { patterns: [] };
+  const yaml = require('js-yaml');
+  const raw = readFileSync(path, 'utf8');
+  const parsed = yaml.load(raw) ?? {};
+  const patterns = Array.isArray(parsed.patterns) ? parsed.patterns : [];
+  for (const p of patterns) {
+    if (!p || typeof p !== 'object') {
+      throw new Error(`${NOISE_CONFIG_PATH}: each pattern must be a mapping`);
+    }
+    if (typeof p.id !== 'string' || !p.id) {
+      throw new Error(`${NOISE_CONFIG_PATH}: pattern missing required string \`id\``);
+    }
+    if (typeof p.tracker_issue !== 'number') {
+      throw new Error(
+        `${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing numeric \`tracker_issue\``,
+      );
+    }
+    if (typeof p.baseline_crashes_per_week !== 'number') {
+      throw new Error(
+        `${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing numeric \`baseline_crashes_per_week\``,
+      );
+    }
+    if (!p.match || typeof p.match !== 'object') {
+      throw new Error(`${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing \`match\` mapping`);
+    }
+    p.spike_multiplier ??= DEFAULT_SPIKE_MULTIPLIER;
+  }
+  return { patterns };
+}
+
+/**
+ * Decide whether a single crash group matches a single noise pattern.
+ *
+ * All provided match fields must agree (AND). Empty / missing match fields
+ * are "wildcards" that don't constrain.
+ */
+export function matchNoisePattern(group, sourceInfo, pattern) {
+  const m = pattern.match ?? {};
+  if (m.function) {
+    if (!new RegExp(m.function).test(group.function)) return false;
+  }
+  if (m.category) {
+    // Category is computed downstream from source; require source resolution
+    // to have succeeded AND match. We carry category through the group's
+    // metadata when classification runs (see classifyAgainstNoise).
+    if (group.inferredCategory !== m.category) return false;
+  }
+  if (m.file_glob) {
+    const globs = Array.isArray(m.file_glob) ? m.file_glob : [m.file_glob];
+    const bsFile = sourceInfo?.bsFile;
+    if (!bsFile) return false;
+    if (!globs.some((g) => globMatch(g, bsFile))) return false;
+  }
+  if (m.snippet_regex) {
+    const snippet = sourceInfo?.codeSnippet ?? '';
+    if (!new RegExp(m.snippet_regex).test(snippet)) return false;
+  }
+  return true;
+}
+
+// Minimal glob → regex (supports * and **). Path separators are '/'.
+function globMatch(glob, path) {
+  const re = new RegExp(
+    '^' +
+      glob
+        .split(/(\*\*|\*)/)
+        .map((segment) => {
+          if (segment === '**') return '.*';
+          if (segment === '*') return '[^/]*';
+          return segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+        })
+        .join('') +
+      '$',
+  );
+  return re.test(path);
+}
+
+/**
+ * Partition groups into noise-matched (per pattern) and novel. Mutates each
+ * group to carry `inferredCategory` so matchNoisePattern can read it.
+ *
+ * Returns:
+ *   { byPattern: Map<patternId, { pattern, groups[] }>, novel: groups[] }
+ */
+export function classifyAgainstNoise(groups, sourceBySig, config) {
+  const byPattern = new Map();
+  const novel = [];
+  for (const group of groups) {
+    const source = sourceBySig.get(group.signature) ?? null;
+    // Stash category on the group so matchNoisePattern can read it without
+    // re-deriving from snippet + errorText.
+    group.inferredCategory = inferCategory(source?.codeSnippet ?? '', group.rawErrorText);
+    let matched = null;
+    for (const pattern of config.patterns) {
+      if (matchNoisePattern(group, source, pattern)) {
+        matched = pattern;
+        break; // first-match wins
+      }
+    }
+    if (matched) {
+      let bucket = byPattern.get(matched.id);
+      if (!bucket) {
+        bucket = { pattern: matched, groups: [] };
+        byPattern.set(matched.id, bucket);
+      }
+      bucket.groups.push(group);
+    } else {
+      novel.push(group);
+    }
+  }
+  return { byPattern, novel };
+}
+
+/**
+ * For each pattern with matched groups, decide whether the combined count
+ * exceeds the spike threshold and prepare a structured spike record.
+ *
+ * Returns array of:
+ *   { patternId, trackerIssue, signatures, totalCrashes, baseline,
+ *     spikeMultiplier, ratio, isSpike, commentBody (null when not a spike) }
+ */
+export function evaluateSpikes(byPattern, { runDate, csvWindow }) {
+  const out = [];
+  for (const { pattern, groups } of byPattern.values()) {
+    const totalCrashes = groups.reduce((sum, g) => sum + g.totalCrashes, 0);
+    const baseline = pattern.baseline_crashes_per_week;
+    const multiplier = pattern.spike_multiplier;
+    const threshold = baseline * multiplier;
+    const isSpike = totalCrashes > threshold;
+    const ratio = baseline > 0 ? totalCrashes / baseline : Infinity;
+    out.push({
+      patternId: pattern.id,
+      trackerIssue: pattern.tracker_issue,
+      signatures: groups.map((g) => g.signature),
+      totalCrashes,
+      baseline,
+      spikeMultiplier: multiplier,
+      ratio: Number(ratio.toFixed(2)),
+      isSpike,
+      commentBody: isSpike ? draftSpikeComment(pattern, groups, { runDate, csvWindow }) : null,
+    });
+  }
+  return out;
+}
+
+export function draftSpikeComment(pattern, groups, { runDate, csvWindow }) {
+  const totalCrashes = groups.reduce((sum, g) => sum + g.totalCrashes, 0);
+  const baseline = pattern.baseline_crashes_per_week;
+  const multiplier = pattern.spike_multiplier;
+  const ratio = baseline > 0 ? (totalCrashes / baseline).toFixed(2) : '∞';
+  const windowStr =
+    csvWindow.start && csvWindow.end ? `${csvWindow.start} to ${csvWindow.end}` : runDate;
+  const sigLines = groups
+    .map(
+      (g) => `- \`${g.signature}\` — ${g.totalCrashes} crashes, max ${g.maxDevicesPerRow} devices`,
+    )
+    .join('\n');
+  return `**Spike alert** from \`/crash-report\` run on ${runDate} (Roku report window: ${windowStr})
+
+Combined crashes matching noise pattern \`${pattern.id}\`: **${totalCrashes}** across ${groups.length} signature(s) — vs baseline **${baseline}/week** and spike multiplier **${multiplier}×**. Ratio: **${ratio}×**.
+
+Matched signatures:
+${sigLines}
+
+This pattern is normally suppressed (see [.crash-report/known-noise.yml](../tree/HEAD/.crash-report/known-noise.yml)). The spike crossed the configured threshold, so this comment is automated. If the spike is a one-off, no action needed. If it's sustained or growing, consider re-investigating or tuning the baseline.
+`;
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Version-to-tag resolution
 // ────────────────────────────────────────────────────────────────────
 
@@ -804,6 +996,7 @@ export async function buildPlan({
   minDates = DEFAULT_MIN_DATES,
   noBuild = false,
   buildDirOverride = null,
+  noiseConfig = null,
   gitExec = defaultGitExec,
   ghExec = defaultGhExec,
   logger = console.error,
@@ -815,6 +1008,7 @@ export async function buildPlan({
   const window = csvWindowFromRows(rows);
   const groups = groupBySignature(rows);
   const { kept, filtered } = applyThreshold(groups, { minDevices, minDates });
+  const resolvedNoiseConfig = noiseConfig ?? loadNoiseConfig();
 
   // Determine the build tag. Most reports cite a single version; if multiple
   // appear we resolve all of them and build once per version.
@@ -872,12 +1066,23 @@ export async function buildPlan({
     }
   }
 
-  const matches = searchExistingIssues(kept, { ghExec });
   const runDate = new Date().toISOString().slice(0, 10);
+
+  // Partition kept groups into noise-matched vs novel. inferredCategory is
+  // attached to each group as a side effect (used by matchNoisePattern). The
+  // novel set goes through the normal GH dedup + draft flow; the noise-
+  // matched set goes to suppress-noise actions + (when combined count
+  // exceeds baseline × multiplier) a single spike comment on the tracker.
+  const { byPattern, novel } = classifyAgainstNoise(kept, sourceBySig, resolvedNoiseConfig);
+  const spikeAlerts = evaluateSpikes(byPattern, { runDate, csvWindow: window });
+
+  const matches = searchExistingIssues(novel, { ghExec });
   const actions = [];
-  for (const group of kept) {
+
+  // Per-signature actions for novel groups (existing flow).
+  for (const group of novel) {
     const source = sourceBySig.get(group.signature) ?? null;
-    const category = inferCategory(source?.codeSnippet ?? '', group.rawErrorText);
+    const category = group.inferredCategory; // set by classifyAgainstNoise
     const title = draftIssueTitle(group);
     const body = draftIssueBody(group, source, category, { runDate, csvWindow: window });
     const existing = matches.get(group.signature) ?? null;
@@ -915,6 +1120,34 @@ export async function buildPlan({
     });
   }
 
+  // Per-signature info actions for noise-matched groups (no GH writes; the
+  // spike comment if any fires once per pattern, not per signature).
+  for (const { pattern, groups: matchedGroups } of byPattern.values()) {
+    for (const group of matchedGroups) {
+      actions.push({
+        signature: group.signature,
+        pkgPath: group.pkgPath,
+        line: group.line,
+        function: group.function,
+        versions: [...group.versions],
+        totalCrashes: group.totalCrashes,
+        maxDevicesPerRow: group.maxDevicesPerRow,
+        dates: [...group.dates].sort(),
+        osReleases: [...group.osReleases].sort(),
+        category: group.inferredCategory,
+        source: sourceBySig.get(group.signature) ?? null,
+        action: 'suppress-noise',
+        title: draftIssueTitle(group),
+        body: null,
+        labels: [],
+        commentBody: null,
+        existingIssue: null,
+        noisePatternId: pattern.id,
+        trackerIssue: pattern.tracker_issue,
+      });
+    }
+  }
+
   // Cleanup builds — we've extracted all the source info we need.
   for (const cleanup of buildCleanups) {
     try {
@@ -943,6 +1176,15 @@ export async function buildPlan({
       maxDevicesPerRow: g.maxDevicesPerRow,
       dates: [...g.dates].sort(),
     })),
+    noiseSuppressed: [...byPattern.values()].map(({ pattern, groups: gs }) => ({
+      patternId: pattern.id,
+      trackerIssue: pattern.tracker_issue,
+      signatures: gs.map((g) => g.signature),
+      totalCrashes: gs.reduce((s, g) => s + g.totalCrashes, 0),
+      baseline: pattern.baseline_crashes_per_week,
+      spikeMultiplier: pattern.spike_multiplier,
+    })),
+    spikeAlerts,
     buildErrors,
     actions,
   };
@@ -955,6 +1197,12 @@ export async function buildPlan({
 export function executePlan(plan, { ghExec = defaultGhExec, logger = console.error } = {}) {
   const results = [];
   for (const action of plan.actions) {
+    if (action.action === 'suppress-noise') {
+      // Info-only — no GH writes. The spike comment fires once per pattern
+      // below, not per signature.
+      results.push({ ...action, issueNumber: null, error: null });
+      continue;
+    }
     try {
       let issueNumber;
       if (action.action === 'create') {
@@ -998,6 +1246,27 @@ export function executePlan(plan, { ghExec = defaultGhExec, logger = console.err
       results.push({ ...action, issueNumber: null, error: err.message });
     }
   }
+  // Spike alerts — ONE comment per pattern on the tracker issue. Per the
+  // locked design: comment, don't reopen.
+  const spikeResults = [];
+  for (const spike of plan.spikeAlerts ?? []) {
+    if (!spike.isSpike) continue;
+    try {
+      ghExec(['issue', 'comment', String(spike.trackerIssue), '--body', spike.commentBody]);
+      logger(
+        `[crash-report] spike alert posted to #${spike.trackerIssue} (pattern ${spike.patternId}, ratio ${spike.ratio}x)`,
+      );
+      spikeResults.push({ ...spike, error: null });
+    } catch (err) {
+      logger(
+        `[crash-report] spike comment FAILED on #${spike.trackerIssue} (pattern ${spike.patternId}): ${err.message}`,
+      );
+      spikeResults.push({ ...spike, error: err.message });
+    }
+  }
+  // Attach spike results to the results array shape so renderRunSummary can
+  // surface them. Spike results have no `action` field; we tag them.
+  for (const sr of spikeResults) results.push({ ...sr, action: 'spike-alert' });
   return results;
 }
 
@@ -1015,7 +1284,13 @@ export function renderRunSummary(plan, results) {
   const created = results.filter((r) => r.action === 'create' && r.issueNumber);
   const commented = results.filter((r) => r.action === 'comment' && r.issueNumber);
   const reopened = results.filter((r) => r.action === 'reopen' && r.issueNumber);
+  const suppressed = results.filter((r) => r.action === 'suppress-noise');
+  const spikeResults = results.filter((r) => r.action === 'spike-alert');
   const errors = results.filter((r) => r.error);
+  const totalNoiseSuppressed = (plan.noiseSuppressed ?? []).reduce(
+    (n, p) => n + p.signatures.length,
+    0,
+  );
   const frontmatter = [
     '---',
     `created: ${plan.createdAt}`,
@@ -1028,6 +1303,8 @@ export function renderRunSummary(plan, results) {
     `unique-signatures: ${plan.uniqueSignatures}`,
     `above-threshold: ${plan.aboveThreshold}`,
     `below-threshold: ${plan.belowThreshold}`,
+    `noise-suppressed: ${totalNoiseSuppressed}`,
+    `spike-alerts: ${spikeResults.filter((s) => !s.error).length}`,
     `threshold: min-devices=${plan.threshold.minDevices} min-dates=${plan.threshold.minDates}`,
     '---',
   ].join('\n');
@@ -1037,6 +1314,8 @@ export function renderRunSummary(plan, results) {
     `- **Created**: ${created.length}\n` +
       `- **Commented (open)**: ${commented.length}\n` +
       `- **Reopened (regression)**: ${reopened.length}\n` +
+      `- **Suppressed (known noise)**: ${totalNoiseSuppressed} signature(s) across ${(plan.noiseSuppressed ?? []).length} pattern(s)\n` +
+      `- **Spike alerts**: ${spikeResults.filter((s) => !s.error).length}\n` +
       `- **Skipped below threshold**: ${plan.belowThreshold}\n` +
       `- **Errors**: ${errors.length}\n` +
       `- **Build errors**: ${plan.buildErrors.length}`,
@@ -1063,6 +1342,42 @@ export function renderRunSummary(plan, results) {
   if (reopened.length) {
     sections.push(`## Reopened (closed → open, regression)`);
     sections.push(reopened.map((r) => `- #${r.issueNumber} — ${r.title}`).join('\n'));
+  }
+  if ((plan.noiseSuppressed ?? []).length) {
+    sections.push(`## Suppressed (known noise)`);
+    sections.push(
+      plan.noiseSuppressed
+        .map((p) => {
+          const status =
+            p.totalCrashes > p.baseline * p.spikeMultiplier
+              ? ` — **SPIKE** (${p.totalCrashes} > ${p.baseline} × ${p.spikeMultiplier})`
+              : ` — within baseline (${p.totalCrashes} / ${p.baseline} per week)`;
+          return (
+            `- pattern \`${p.patternId}\` → tracker #${p.trackerIssue}${status}\n` +
+            p.signatures.map((s) => `  - ${s}`).join('\n')
+          );
+        })
+        .join('\n'),
+    );
+    if (suppressed.length === 0 && totalNoiseSuppressed > 0) {
+      // Defensive: noiseSuppressed plan section was populated but no
+      // per-signature action rows? Likely an execute-side bug.
+      sections.push(
+        `_Note: ${totalNoiseSuppressed} signature(s) were classified as noise in the plan but no suppress-noise actions appeared in results. This is a bug._`,
+      );
+    }
+  }
+  if (spikeResults.length) {
+    sections.push(`## Spike alerts`);
+    sections.push(
+      spikeResults
+        .map((s) => {
+          const sigCount = s.signatures?.length ?? 0;
+          const errSuffix = s.error ? ` (FAILED: ${s.error})` : '';
+          return `- #${s.trackerIssue} — pattern \`${s.patternId}\`: ${s.totalCrashes} crashes / baseline ${s.baseline} × ${s.spikeMultiplier} = ratio ${s.ratio}× across ${sigCount} signature(s)${errSuffix}`;
+        })
+        .join('\n'),
+    );
   }
   if (plan.skippedBelowThreshold.length) {
     sections.push(`## Skipped below threshold`);
