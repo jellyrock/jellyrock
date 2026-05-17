@@ -231,8 +231,20 @@ namespace tests
       m.assertEqual(tsProfile.AudioCodec, "", "Empty codec string should remain empty")
     end function
 
-    @it("handles codec list with only AAC (results in empty list for multichannel)")
+    @it("falls back to 'aac' when AAC-only list would be emptied (issue #573 guard)")
     function _()
+      ' GIVEN: a profile with AAC-only AudioCodec on a multichannel-capable container
+      ' (e.g. MaxAudioChannels=6) — this shape arises when a device's passthrough detection
+      ' reports surround capability via codecs not in our surroundPriority (truehd-only,
+      ' dtshd-only), so no surround codec ends up in the AudioCodec list during construction.
+      '
+      ' WHEN: optimizeAudioCodecListForSource runs for a 6ch source, it would normally strip
+      ' "aac" as a stereo-output codec and emit an empty AudioCodec.
+      '
+      ' EXPECT: the guard falls back to "aac" — the universal Roku decode codec. An empty
+      ' AudioCodec sent to Jellyfin makes the server's StreamBuilder omit the audioCodec query
+      ' param from the TranscodingUrl, which causes the server's InferAudioCodec to return the
+      ' literal container name ("m3u8") and ffmpeg receives -codec:a:0 m3u8 → exit code 8.
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-aac-only")
       channelCount = 6
 
@@ -247,7 +259,37 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertEqual(tsProfile.AudioCodec, "", "AAC-only list should become empty")
+      m.assertEqual(tsProfile.AudioCodec, "aac", "guard should fall back to 'aac' instead of emitting empty AudioCodec — empty AudioCodec triggers server's m3u8 fallback bug")
+    end function
+
+    @it("falls back to 'aac' when all-stereo codec list would be emptied (issue #573 guard)")
+    function _()
+      ' GIVEN: a video transcoding profile whose AudioCodec list contains only stereo-output
+      ' codecs (no eac3/ac3/dts), but MaxAudioChannels advertises multichannel capability. This
+      ' shape can arise when getTranscodingProfiles' getSupportedPassthruCodecs returns only
+      ' codecs not in surroundPriority (e.g. truehd-only or dtshd-only passthrough).
+      deviceProfile = {
+        TranscodingProfiles: [
+          {
+            Container: "ts",
+            Type: "Video",
+            AudioCodec: "aac,mp3,flac,alac,pcm",
+            VideoCodec: "h264",
+            MaxAudioChannels: "6"
+          }
+        ]
+      }
+      channelCount = 6
+
+      ' WHEN: optimizeAudioCodecListForSource runs for a 6ch source, EVERY codec would normally
+      ' be stripped as stereo-output.
+      optimizeAudioCodecListForSource(deviceProfile, channelCount)
+
+      ' EXPECT: the guard falls back to "aac" (universal Roku decode codec). If we emitted an
+      ' empty AudioCodec, the server's StreamBuilder would produce a TranscodingUrl without
+      ' audioCodec=, which makes the segment endpoint's InferAudioCodec fall through to the
+      ' literal "m3u8" → ffmpeg fails with `-codec:a:0 m3u8` (issue #573).
+      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "aac", "all-stereo list must fall back to 'aac' when filtering would empty it")
     end function
 
     @it("handles missing AudioCodec field gracefully")

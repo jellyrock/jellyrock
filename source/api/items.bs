@@ -559,6 +559,16 @@ end sub
 ' Stereo source (≤2ch):
 '   Strips surround passthrough codecs (eac3, ac3, dts) plus aac so transcoding falls through to
 '   mp3. Avoids handing the server a surround target codec for content that's only 2ch anyway.
+'
+' Empty-list guard (issue #573):
+'   If filtering would empty a previously non-empty list, the AudioCodec falls back to "aac" —
+'   the universal Roku decode codec, decodable up to 6ch natively, downmixable to stereo on any
+'   device. An empty AudioCodec field causes Jellyfin's StreamBuilder to omit the audioCodec
+'   query param from the TranscodingUrl, which causes the server's InferAudioCodec to fall
+'   through to the literal container name ("m3u8") as the audio codec — ffmpeg then receives
+'   `-codec:a:0 m3u8` and exits with code 8. Falling back to AAC trades the (rare)
+'   multichannel-variant selection issue this function was designed to prevent for a
+'   guaranteed-playable transcode.
 sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as integer)
   ' Validate inputs
   if not isValid(deviceProfile) then return
@@ -594,8 +604,13 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
           end if
         end for
 
+        ' Empty-list guard: if filtering would empty a previously non-empty list, fall back to
+        ' "aac" — the universal Roku decode codec. See block comment above for the server-side
+        ' bug this prevents.
         if newCodecList.count() = 0 and codecList.count() > 0
-          print "[optimizeAudioCodecListForSource] WARN: AudioCodec list for container '" + rule.Container + "' became empty after optimization (source ch=" + channelCount.toStr() + ", original=" + rule.AudioCodec + "); server may reject the transcoding rule"
+          print "[optimizeAudioCodecListForSource] WARN: AudioCodec list for container '"; rule.Container; "' would be emptied by optimization (source ch="; channelCount; ", original="; rule.AudioCodec; "); falling back to 'aac' to avoid triggering server's m3u8 fallback (issue #573)"
+          rule.AudioCodec = "aac"
+          continue for
         end if
 
         rule.AudioCodec = newCodecList.join(",")
