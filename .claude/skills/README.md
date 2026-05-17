@@ -34,6 +34,7 @@ Each: an opus skill does prep (fetch, parse, classify, build context packet) + w
 | Skill | Model | What |
 |---|---|---|
 | [`/create-issue`](create-issue/SKILL.md) | sonnet | Draft + submit a GitHub issue from a Reddit/Discord/freeform report, using the YAML form templates |
+| [`/crash-report`](crash-report/SKILL.md) `<csv-or-zip-path>` | opus | Turn Roku's weekly aggregate crash CSV (or a zip containing one or more CSVs) into tracked GH issues — one per above-threshold unique crash. Resolves transpiled `.brs:line` back to source `.bs:line` via [roku-report-analyzer](https://github.com/rokucommunity/roku-report-analyzer) + source maps built in a temporary git worktree. Dedup-aware (comments on open match, reopens closed match as regression). Per-crash deep-dive offloaded to `/issue-triage <N>` |
 | [`/docs-lint`](docs-lint/SKILL.md) | sonnet | Run docs validators with a structured fix list, grouped by category |
 | [`/audit-skill`](audit-skill/SKILL.md) `<name>` | opus | Audit a skill's recent execution, propose SKILL.md edits + assess model fit |
 

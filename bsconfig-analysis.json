@@ -1,0 +1,32 @@
+{
+  "files": [
+    "manifest",
+    "source/**/*.*",
+    "components/**/*.*",
+    "images/**/*.*",
+    "locale/**/*.*",
+    "settings/**/*.*",
+    {
+      "src": "resources/branding/release/*.*",
+      "dest": "images/branding"
+    }
+  ],
+  "plugins": [
+    "@rokucommunity/bslint",
+    "./scripts/bsc-plugins/roku-log.cjs",
+    "./scripts/bsc-plugins/translation-keys.cjs",
+    "./scripts/bsc-plugins/jrscreen-on-destroy.cjs",
+    "./scripts/bsc-plugins/print-locations.cjs",
+    "./scripts/bsc-plugins/observe-without-on-destroy.cjs",
+    "./scripts/bsc-plugins/no-direct-sdk.cjs"
+  ],
+  "rokuLog": {
+    "strip": true,
+    "insertPkgPath": false,
+    "removeComments": true
+  },
+  "diagnosticFilters": [{ "files": "node_modules/**/*" }, { "files": "**/roku_modules/**/*" }],
+  "sourceMap": true,
+  "autoImportComponentScript": true,
+  "outDir": "build-analysis"
+}

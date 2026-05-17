@@ -108,15 +108,19 @@ codegen
 CommonJS
 config
 Config
+configs
 ContentNode
 coord
 coords
 crossfade
 crowdsourced
+CSV
+CSVs
 Daniele
 decision-shape
 decrypting
 dedup
+Dedup
 deduplicated
 dep
 deps
@@ -251,6 +255,7 @@ linter
 Linter
 linters
 load-bearing
+lockfile
 longinteger
 lookups
 lookups.
@@ -294,6 +299,8 @@ PARA
 params
 PascalCase
 PD-textlogo
+PDF
+PDFs
 per-dev
 per-worktree
 PGS
@@ -311,6 +318,7 @@ pre-fetch
 Prefetch
 Pre-fetches
 pre-fetching
+preflight
 preloading
 pre-login
 Pre-login
@@ -478,6 +486,8 @@ whitespace
 Whitespace
 Wikimedia
 WIP
+worktree
+worktree's
 write-only
 YAML
 zero-to-running
