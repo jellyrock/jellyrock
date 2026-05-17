@@ -54,6 +54,10 @@ backtick
 backticking
 backticks
 backtick-wrapped
+backtrace
+Backtrace
+backtraces
+Backtraces
 bbox
 bitrate
 Bitrate
@@ -304,6 +308,7 @@ PDFs
 per-dev
 per-worktree
 PGS
+PII
 PKM
 playstate
 Plex
@@ -441,8 +446,10 @@ transpiled
 Transpiled
 transpile-mutating
 Transpile-mutating
+triaging
 trickplay
 Trickplay
+TSV
 tvchannel
 UI
 UIs

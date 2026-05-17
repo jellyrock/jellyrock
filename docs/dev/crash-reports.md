@@ -45,7 +45,7 @@ You can also paste the CSV inline if you don't want to save it to disk.
 3. Applies the threshold (see below). Below-threshold crashes are listed in the summary but not filed.
 4. Checks out the cited app version in a temporary git worktree.
 5. Generates `bsconfig-analysis.json` from the worktree's own `bsconfig-prod.json` (so plugin lists track the tagged commit) and runs `npx bsc` against it to produce source maps.
-6. Uses [`roku-report-analyzer`](https://github.com/rokucommunity/roku-report-analyzer) to resolve each `.brs:line` to its original `.bs:line`.
+6. Walks the source maps emitted alongside each transpiled `.brs` to resolve `pkg:/path.brs:line` back to the original `.bs:line`, using Mozilla's [`source-map`](https://github.com/mozilla/source-map) library directly (one `SourceMapConsumer` per unique map, cached across signatures and across backtrace frames).
 7. Reads a 5-line code snippet around the resolved location and runs a small set of regex heuristics to infer a suspected category (`global-state-race`, `null-node-ref`, `array-bounds`, `callback-exception`, `event-handler-nil-arg`, `unknown`).
 8. Searches GitHub for an existing issue per signature (matched by the stable `<basename>.brs:<line>` substring and the `[crash]` title prefix).
 9. Renders a plan table and asks the user to confirm before any GH writes happen.
@@ -117,6 +117,48 @@ Filing every single-device, single-date crash creates noise — many of those ar
 - **Distinct dates ≥ 2** — captures "persistent" crashes that keep happening across days even if they hit only one device at a time.
 
 Override with `--min-devices N` or `--min-dates N` to widen or narrow the filter. To file everything: `/crash-report report.csv --min-devices 1 --min-dates 1`.
+
+## Optional: backtrace enrichment via the dashboard CSV
+
+The weekly email CSV carries exactly one frame per crash — the location where the BrightScript runtime detected the failure. Roku's analytics dashboard has a richer view: for each unique crash you can download a tab-separated CSV that includes the full multi-frame backtrace plus a snapshot of local variables at crash time. Pass it to `/crash-report` via `--dashboard-csv <path>` and each filed issue gets two extra sections: a "Backtrace (innermost frame first)" table with every frame's source-mapped location, and a "Local variables at crash time" block showing the runtime state of named locals.
+
+### Pulling the dashboard CSV
+
+1. Open Roku's analytics dashboard → BrightScript Errors view (the same place the weekly email summary comes from).
+2. Filter to the same date range as the weekly CSV (typically the last 7 days).
+3. Export the "BrightScript Error Backtrace" report as TSV. The export has 4 columns: `Agg Channel Brightscript Error Daily Error Key`, `Date`, `Agg Channel Brightscript Error Backtrace Formatted`, and `Backtrace Text Formatted`. The skill parses the 4th column; the others are ignored (the Daily Error Key is opaque to us and the Formatted column is HTML markup that just duplicates the text column).
+4. Save the export anywhere (e.g. `~/Downloads/crash-backtraces-2026-05-13.tsv`).
+
+### Running with both inputs
+
+```text
+/crash-report path/to/weekly-report.csv --dashboard-csv ~/Downloads/crash-backtraces-2026-05-13.tsv
+```
+
+The weekly CSV still drives all filing decisions (thresholds, dedup, known-noise classification, GH writes). The dashboard CSV is pure enrichment: signatures with no matching backtrace fall back to today's single-frame view, and dashboard-only signatures (no matching email row) are ignored entirely — without crash counts there's nothing to threshold on.
+
+### Format details
+
+The dashboard CSV is tab-separated (the weekly email is comma-separated). Inside the `Backtrace Text Formatted` column, `~~` is the in-cell line separator (Roku's export collapses the multi-line backtrace into a single cell to play nicely with downstream spreadsheet tooling). The skill splits on `~~` and walks three sections:
+
+- Header line: `'<message>' (runtime error &h<hex>) in pkg:/<path>(<line>)`
+- Frames after the `Backtrace:` marker: `#<N>  Function <name>(<args>) As <returnType> file/line: pkg:/<path>(<line>)` — `#0` is the entry point, the highest-numbered frame is the crash site.
+- Locals after the `Local Variables:` marker — one variable per line. Primitives show their value (`val:"..."`); collections show metadata only (`refcnt`, `count`). Roku's export already redacts collection contents, so there's no risk of leaking PII when we dump the block verbatim into a public GH issue.
+
+Same-signature rows on different dates collapse to one entry; the most-recent date wins (backtrace shape doesn't change for a fixed crash, but local-variable values are a per-event snapshot, so we keep one).
+
+### When to use this
+
+Worth pulling the dashboard CSV when:
+
+- The single-frame email view is ambiguous (e.g. a generic helper like `m.global.constants` lookup failing — you want to know which caller triggered it).
+- You're triaging a re-emerging crash and want to see whether the call chain changed since the last occurrence.
+- A bug report from a user references a specific feature and you want to confirm the call chain matches that flow.
+
+Skip it when:
+
+- The crash signature is already self-explanatory (single-method failure with a clear cause).
+- You're running on weekly cadence and want the fastest path through.
 
 ## Issue shape
 

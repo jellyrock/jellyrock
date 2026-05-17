@@ -9,6 +9,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SourceMapGenerator } from 'source-map';
 import { spawnScript } from './_helpers/spawn-script.js';
 
 import {
@@ -17,13 +18,19 @@ import {
   DEFAULT_MIN_DATES,
   DEFAULT_SPIKE_MULTIPLIER,
   validateRokuCrashCsv,
+  validateDashboardCsv,
   parseCsv,
   mergeCsvs,
   parseErrorText,
+  parseBacktraceCell,
+  parseDashboardCsv,
+  innermostFrame,
   groupBySignature,
   applyThreshold,
   inferCategory,
   resolveVersionTag,
+  resolveSourceLocations,
+  resolveBacktraceFrames,
   draftIssueTitle,
   draftIssueBody,
   draftDedupComment,
@@ -154,6 +161,145 @@ describe('parseErrorText', () => {
     expect(parseErrorText('not a crash signature')).toBeNull();
     expect(parseErrorText('')).toBeNull();
     expect(parseErrorText(null)).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Dashboard CSV (manually exported from Roku analytics — carries the
+// multi-frame backtrace + local-variable snapshot the weekly email omits).
+// ────────────────────────────────────────────────────────────────────
+
+const SAMPLE_DASHBOARD_CELL =
+  `~~'Dot' Operator attempted with invalid BrightScript Component or interface reference. ` +
+  `(runtime error &hec) in pkg:/components/captionTask.brs(276) ` +
+  `~~Backtrace: ` +
+  `~~#2  Function toms(t As Dynamic) As $1 file/line: pkg:/components/captionTask.brs(276) ` +
+  `~~#1  Function parsevtt(lines As Dynamic) As $1 file/line: pkg:/components/captionTask.brs(312) ` +
+  `~~#0  Function fetchcaption() As $1 file/line: pkg:/components/captionTask.brs(146) ` +
+  `~~Local Variables: ` +
+  `~~t                roString (2.1 was String) refcnt=1 val:"15:00,170?" ` +
+  `~~global           Interface:ifGlobal ` +
+  `~~m                roAssociativeArray refcnt=4 count:17 ` +
+  `~~timestamp        roList refcnt=1 count:2 ~~`;
+
+// Tab-separated, 4 columns. The cell is CSV-quoted; embedded `"` is doubled.
+const SAMPLE_DASHBOARD_CSV =
+  `Agg Channel Brightscript Error Daily Error Key\tDate\tAgg Channel Brightscript Error Backtrace Formatted\tBacktrace Text Formatted\n` +
+  `\t2026-05-13\t\t"${SAMPLE_DASHBOARD_CELL.replaceAll('"', '""')}"\n`;
+
+describe('validateDashboardCsv', () => {
+  it('accepts a tab-separated header containing the required columns', () => {
+    expect(
+      validateDashboardCsv('Daily Error Key\tDate\tBacktrace Formatted\tBacktrace Text Formatted'),
+    ).toBe(true);
+  });
+
+  it('rejects a comma-separated header', () => {
+    expect(
+      validateDashboardCsv('Daily Error Key,Date,Backtrace Formatted,Backtrace Text Formatted'),
+    ).toBe(false);
+  });
+
+  it('rejects empty or non-string input', () => {
+    expect(validateDashboardCsv('')).toBe(false);
+    expect(validateDashboardCsv(null)).toBe(false);
+  });
+});
+
+describe('parseBacktraceCell', () => {
+  it('parses error header, every frame, and every local variable', () => {
+    const parsed = parseBacktraceCell(SAMPLE_DASHBOARD_CELL);
+    expect(parsed).toBeTruthy();
+    expect(parsed.errorCode).toBe('&hec');
+    expect(parsed.errorMessage).toMatch(/Dot' Operator attempted/);
+    expect(parsed.frames).toHaveLength(3);
+    expect(parsed.frames[0]).toEqual({
+      index: 2,
+      function: 'toms',
+      args: 't As Dynamic',
+      returnType: '$1',
+      pkgPath: 'pkg:/components/captionTask.brs',
+      line: 276,
+    });
+    expect(parsed.frames[2].function).toBe('fetchcaption');
+    expect(parsed.locals).toHaveLength(4);
+    expect(parsed.locals[0].raw).toMatch(/^t\s+roString.*15:00,170\?/);
+  });
+
+  it('returns null for empty / non-string / unrecognized input', () => {
+    expect(parseBacktraceCell('')).toBeNull();
+    expect(parseBacktraceCell(null)).toBeNull();
+    expect(parseBacktraceCell('just some random text with no error header')).toBeNull();
+  });
+
+  it('returns null when the cell has a header but no frames', () => {
+    const headerOnly = `~~Header (runtime error &hff) in pkg:/x.brs(1) ~~Backtrace: ~~Local Variables: ~~`;
+    expect(parseBacktraceCell(headerOnly)).toBeNull();
+  });
+
+  it('tolerates a missing Local Variables section', () => {
+    const noLocals =
+      `~~msg (runtime error &h22) in pkg:/x.brs(1) ` +
+      `~~Backtrace: ~~#0  Function foo() As Void file/line: pkg:/x.brs(1) ~~`;
+    const parsed = parseBacktraceCell(noLocals);
+    expect(parsed).toBeTruthy();
+    expect(parsed.frames).toHaveLength(1);
+    expect(parsed.locals).toEqual([]);
+  });
+});
+
+describe('innermostFrame', () => {
+  it('returns the frame with the highest index (innermost / crash site)', () => {
+    const parsed = parseBacktraceCell(SAMPLE_DASHBOARD_CELL);
+    expect(innermostFrame(parsed)).toMatchObject({ index: 2, function: 'toms' });
+  });
+
+  it('returns null when no frames are present', () => {
+    expect(innermostFrame(null)).toBeNull();
+    expect(innermostFrame({ frames: [] })).toBeNull();
+  });
+});
+
+describe('parseDashboardCsv', () => {
+  it('keys entries by innermost-frame signature (matches email-CSV signature shape)', () => {
+    const map = parseDashboardCsv(SAMPLE_DASHBOARD_CSV);
+    const entry = map.get('pkg:/components/captionTask.brs(276)');
+    expect(entry).toBeTruthy();
+    expect(entry.date).toBe('2026-05-13');
+    expect(entry.errorCode).toBe('&hec');
+    expect(entry.frames).toHaveLength(3);
+    expect(entry.locals).toHaveLength(4);
+  });
+
+  it('throws when the input does not look like a dashboard export', () => {
+    expect(() => parseDashboardCsv('foo,bar,baz\n1,2,3\n')).toThrow(/dashboard/i);
+  });
+
+  it('returns an empty map for empty / nullish input', () => {
+    expect(parseDashboardCsv('').size).toBe(0);
+    expect(parseDashboardCsv(null).size).toBe(0);
+  });
+
+  it('dedups same-signature rows across dates by keeping the most-recent date', () => {
+    const cellNewer = SAMPLE_DASHBOARD_CELL.replace('val:"15:00,170?"', 'val:"NEWER"');
+    const csv =
+      `Daily Error Key\tDate\tBacktrace Formatted\tBacktrace Text Formatted\n` +
+      `\t2026-05-10\t\t"${SAMPLE_DASHBOARD_CELL.replaceAll('"', '""')}"\n` +
+      `\t2026-05-13\t\t"${cellNewer.replaceAll('"', '""')}"\n`;
+    const map = parseDashboardCsv(csv);
+    expect(map.size).toBe(1);
+    const entry = map.get('pkg:/components/captionTask.brs(276)');
+    expect(entry.date).toBe('2026-05-13');
+    expect(entry.locals[0].raw).toMatch(/NEWER/);
+  });
+
+  it('skips rows with unparseable backtrace cells', () => {
+    const csv =
+      `Daily Error Key\tDate\tBacktrace Formatted\tBacktrace Text Formatted\n` +
+      `\t2026-05-13\t\t"garbage with no error header"\n` +
+      `\t2026-05-13\t\t"${SAMPLE_DASHBOARD_CELL.replaceAll('"', '""')}"\n`;
+    const map = parseDashboardCsv(csv);
+    expect(map.size).toBe(1);
   });
 });
 
@@ -786,6 +932,277 @@ describe('draftSpikeComment', () => {
   });
 });
 
+describe('resolveSourceLocations', () => {
+  let dir;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'crash-report-srcmap-'));
+    mkdirSync(join(dir, 'build-analysis', 'source'), { recursive: true });
+    mkdirSync(join(dir, 'source'), { recursive: true });
+
+    // Source .bs file the map points back to.
+    writeFileSync(
+      join(dir, 'source', 'foo.bs'),
+      'sub bar()\n    print "line two"\n    print "line three"\nend sub\n',
+    );
+
+    // Transpiled .brs file present in build output.
+    writeFileSync(
+      join(dir, 'build-analysis', 'source', 'foo.brs'),
+      'sub bar()\n    print "line two"\n    print "line three"\nend sub\n',
+    );
+
+    // Synthetic source map: build/source/foo.brs(N) → ../../source/foo.bs(N) for N=1..3.
+    const gen = new SourceMapGenerator({ file: 'foo.brs' });
+    for (let i = 1; i <= 3; i++) {
+      gen.addMapping({
+        source: '../../source/foo.bs',
+        original: { line: i, column: 0 },
+        generated: { line: i, column: 0 },
+      });
+    }
+    writeFileSync(join(dir, 'build-analysis', 'source', 'foo.brs.map'), gen.toString());
+
+    // A second .brs file with NO sibling .map (no-transpile fallback path).
+    writeFileSync(
+      join(dir, 'build-analysis', 'source', 'no-map.brs'),
+      'sub baz()\n    return 42\nend sub\n',
+    );
+  });
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('maps pkg:/source/foo.brs(2) back to source/foo.bs:2 via the source map', async () => {
+    const result = await resolveSourceLocations(
+      [{ pkgPath: 'pkg:/source/foo.brs', line: 2, signature: 'pkg:/source/foo.brs(2)' }],
+      join(dir, 'build-analysis'),
+      dir,
+    );
+    const loc = result.get('pkg:/source/foo.brs(2)');
+    expect(loc).toBeTruthy();
+    expect(loc.bsFile).toBe('source/foo.bs');
+    expect(loc.bsLine).toBe(2);
+    expect(loc.codeSnippet).toContain('line two');
+  });
+
+  it('falls back to 1:1 mapping (build-dir path) when destination file exists but has no source map', async () => {
+    const result = await resolveSourceLocations(
+      [{ pkgPath: 'pkg:/source/no-map.brs', line: 2, signature: 'sig-no-map' }],
+      join(dir, 'build-analysis'),
+      dir,
+    );
+    const loc = result.get('sig-no-map');
+    expect(loc).toBeTruthy();
+    expect(loc.bsFile).toBe('build-analysis/source/no-map.brs');
+    expect(loc.bsLine).toBe(2);
+  });
+
+  it('returns null for a pkg path with neither a .map nor a destination .brs file', async () => {
+    const result = await resolveSourceLocations(
+      [{ pkgPath: 'pkg:/source/nonexistent.brs', line: 1, signature: 'sig-missing' }],
+      join(dir, 'build-analysis'),
+      dir,
+    );
+    expect(result.get('sig-missing')).toBe(null);
+  });
+
+  it('reuses one SourceMapConsumer across multiple signatures in the same .brs file', async () => {
+    const result = await resolveSourceLocations(
+      [
+        { pkgPath: 'pkg:/source/foo.brs', line: 1, signature: 'sig-1' },
+        { pkgPath: 'pkg:/source/foo.brs', line: 2, signature: 'sig-2' },
+        { pkgPath: 'pkg:/source/foo.brs', line: 3, signature: 'sig-3' },
+      ],
+      join(dir, 'build-analysis'),
+      dir,
+    );
+    expect(result.get('sig-1').bsLine).toBe(1);
+    expect(result.get('sig-2').bsLine).toBe(2);
+    expect(result.get('sig-3').bsLine).toBe(3);
+  });
+});
+
+describe('resolveBacktraceFrames', () => {
+  let dir;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'crash-report-backtrace-'));
+    mkdirSync(join(dir, 'build-analysis', 'components'), { recursive: true });
+    mkdirSync(join(dir, 'components'), { recursive: true });
+
+    // Source .bs has 200 lines of comments — enough to satisfy any line lookup.
+    writeFileSync(
+      join(dir, 'components', 'captionTask.bs'),
+      Array.from({ length: 200 }, (_, i) => `' source line ${i + 1}`).join('\n'),
+    );
+    writeFileSync(
+      join(dir, 'build-analysis', 'components', 'captionTask.brs'),
+      Array.from({ length: 350 }, (_, i) => `' transpiled line ${i + 1}`).join('\n'),
+    );
+
+    const gen = new SourceMapGenerator({ file: 'captionTask.brs' });
+    for (const [g, o] of [
+      [276, 124],
+      [312, 155],
+      [146, 72],
+    ]) {
+      gen.addMapping({
+        source: '../../components/captionTask.bs',
+        original: { line: o, column: 0 },
+        generated: { line: g, column: 0 },
+      });
+    }
+    writeFileSync(join(dir, 'build-analysis', 'components', 'captionTask.brs.map'), gen.toString());
+  });
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('resolves every frame and preserves frame metadata (index, function, args)', async () => {
+    const frames = [
+      {
+        index: 2,
+        function: 'toms',
+        args: 't As Dynamic',
+        returnType: '$1',
+        pkgPath: 'pkg:/components/captionTask.brs',
+        line: 276,
+      },
+      {
+        index: 1,
+        function: 'parsevtt',
+        args: 'lines As Dynamic',
+        returnType: '$1',
+        pkgPath: 'pkg:/components/captionTask.brs',
+        line: 312,
+      },
+      {
+        index: 0,
+        function: 'fetchcaption',
+        args: '',
+        returnType: '$1',
+        pkgPath: 'pkg:/components/captionTask.brs',
+        line: 146,
+      },
+    ];
+    const resolved = await resolveBacktraceFrames(frames, join(dir, 'build-analysis'), dir);
+    expect(resolved).toHaveLength(3);
+    expect(resolved[0]).toMatchObject({
+      index: 2,
+      function: 'toms',
+      args: 't As Dynamic',
+      bsFile: 'components/captionTask.bs',
+      bsLine: 124,
+    });
+    expect(resolved[1].bsLine).toBe(155);
+    expect(resolved[2].bsLine).toBe(72);
+  });
+
+  it('flags unresolvable frames with bsFile/bsLine = null but keeps the frame in the array', async () => {
+    const frames = [
+      {
+        index: 0,
+        function: 'foo',
+        args: '',
+        returnType: 'Void',
+        pkgPath: 'pkg:/does/not/exist.brs',
+        line: 5,
+      },
+    ];
+    const resolved = await resolveBacktraceFrames(frames, join(dir, 'build-analysis'), dir);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0].bsFile).toBeNull();
+    expect(resolved[0].bsLine).toBeNull();
+    expect(resolved[0].function).toBe('foo');
+  });
+});
+
+describe('draftIssueBody with backtrace', () => {
+  const group = {
+    function: 'toms',
+    pkgPath: 'pkg:/components/captionTask.brs',
+    line: 276,
+    rawErrorText: 'Function toms(t As Dynamic) As Dynamic; pkg:/components/captionTask.brs(276)',
+    versions: new Set(['2.17.0']),
+    osReleases: new Set(['G1']),
+    rows: [{ date: '2026-05-13', osRelease: 'G1', crashes: 5, devices: 3 }],
+  };
+  const source = {
+    bsFile: 'components/captionTask.bs',
+    bsLine: 124,
+    codeSnippet: '    print "near crash site"',
+  };
+  const backtrace = {
+    errorMessage:
+      "'Dot' Operator attempted with invalid BrightScript Component or interface reference.",
+    errorCode: '&hec',
+    date: '2026-05-13',
+    frames: [
+      {
+        index: 2,
+        function: 'toms',
+        args: 't As Dynamic',
+        returnType: '$1',
+        pkgPath: 'pkg:/components/captionTask.brs',
+        line: 276,
+      },
+      {
+        index: 0,
+        function: 'fetchcaption',
+        args: '',
+        returnType: '$1',
+        pkgPath: 'pkg:/components/captionTask.brs',
+        line: 146,
+      },
+    ],
+    locals: [{ raw: 't                roString val:"15:00,170?"' }],
+  };
+  const resolvedFrames = [
+    { ...backtrace.frames[0], bsFile: 'components/captionTask.bs', bsLine: 124, codeSnippet: '' },
+    { ...backtrace.frames[1], bsFile: 'components/captionTask.bs', bsLine: 72, codeSnippet: '' },
+  ];
+
+  it('renders runtime-error header, backtrace table, and local-variables block', () => {
+    const body = draftIssueBody(group, source, 'unknown', {
+      runDate: '2026-05-13',
+      csvWindow: { start: '2026-05-11', end: '2026-05-17' },
+      backtrace,
+      resolvedFrames,
+    });
+    expect(body).toMatch(/Runtime error.*`&hec`/);
+    expect(body).toMatch(/Dot' Operator attempted/);
+    expect(body).toMatch(/Backtrace.*innermost frame first/);
+    expect(body).toMatch(/\| 2 \| `toms\(t As Dynamic\) As \$1`/);
+    expect(body).toMatch(/\| 0 \| `fetchcaption\(\) As \$1`/);
+    expect(body).toMatch(/components\/captionTask\.bs:72/);
+    expect(body).toMatch(/Local variables at crash time.*2026-05-13/);
+    expect(body).toMatch(/val:"15:00,170\?"/);
+  });
+
+  it('omits the backtrace block when no backtrace is provided (back-compat)', () => {
+    const body = draftIssueBody(group, source, 'unknown', {
+      runDate: '2026-05-13',
+      csvWindow: { start: '2026-05-11', end: '2026-05-17' },
+    });
+    expect(body).not.toMatch(/Backtrace.*innermost/);
+    expect(body).not.toMatch(/Local variables/);
+    expect(body).not.toMatch(/Runtime error/);
+  });
+
+  it('shows *unresolved* for backtrace frames whose source-map lookup failed', () => {
+    const partiallyResolved = [
+      { ...resolvedFrames[0] },
+      { ...backtrace.frames[1], bsFile: null, bsLine: null, codeSnippet: '' },
+    ];
+    const body = draftIssueBody(group, source, 'unknown', {
+      runDate: '2026-05-13',
+      csvWindow: { start: '2026-05-11', end: '2026-05-17' },
+      backtrace,
+      resolvedFrames: partiallyResolved,
+    });
+    expect(body).toMatch(/\| 0 \|.*\*unresolved\*/);
+  });
+});
+
 // ────────────────────────────────────────────────────────────────────
 // CLI integration smoke tests (spawn the script as a subprocess).
 // These cover the plan/execute orchestration without performing network or
@@ -820,6 +1237,42 @@ describe('CLI: plan subcommand', () => {
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toMatch(/Usage:/);
     expect(r.stdout).toMatch(/plan --input/);
+    expect(r.stdout).toMatch(/--dashboard-csv/);
     expect(r.stdout).toMatch(/execute --plan/);
+  });
+
+  it('accepts --dashboard-csv without error and merges into the plan', () => {
+    const dashPath = join(dir, 'dashboard.csv');
+    writeFileSync(dashPath, SAMPLE_DASHBOARD_CSV);
+    const csvPath = join(dir, 'sample.csv');
+    const r = spawnScript('scripts/crash-report.js', [
+      'plan',
+      '--input',
+      csvPath,
+      '--dashboard-csv',
+      dashPath,
+      '--no-build',
+    ]);
+    // --no-build skips builds → no source resolution → no backtrace resolution
+    // (since both need a build dir). But the flag itself must parse cleanly
+    // and the dashboard CSV must parse without throwing.
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toMatch(/"actions":/);
+  });
+
+  it('errors clearly when --dashboard-csv points at a non-dashboard CSV', () => {
+    const bogusPath = join(dir, 'bogus.csv');
+    writeFileSync(bogusPath, UNRELATED_CSV);
+    const csvPath = join(dir, 'sample.csv');
+    const r = spawnScript('scripts/crash-report.js', [
+      'plan',
+      '--input',
+      csvPath,
+      '--dashboard-csv',
+      bogusPath,
+      '--no-build',
+    ]);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.stderr).toMatch(/dashboard/i);
   });
 });

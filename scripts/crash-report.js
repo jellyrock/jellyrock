@@ -16,18 +16,13 @@
 //
 // Usage:
 //   node scripts/crash-report.js plan --input <csv|zip> [--min-devices N]
-//     [--min-dates N] [--no-build] --plan-out <path>
+//     [--min-dates N] [--no-build] [--dashboard-csv <path>] --plan-out <path>
 //   node scripts/crash-report.js execute --plan <plan.json> [--label crash]
 //     [--handoff-dir <path>]
 //
 // Public exports (for tests): all pure / IO-free helpers are named exports so
 // the Vitest suite at tests/scripts/unit/crash-report.test.js can drive them
 // directly without spawning a subprocess.
-//
-// Workaround note: roku-report-analyzer@0.3.19 ships package.json main pointing
-// at dist/index.js, but that file is missing from the published tarball. We
-// import the Runner class directly from dist/Runner.js. Revisit when rra fixes
-// the publish.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
@@ -43,6 +38,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { SourceMapConsumer } from 'source-map';
 
 const require = createRequire(import.meta.url);
 
@@ -61,19 +57,12 @@ export const DEFAULT_MIN_DEVICES = 2;
 export const DEFAULT_MIN_DATES = 2;
 export const DEFAULT_LABEL = 'crash';
 
-// Lazy-loaded heavy deps so tests can import the pure helpers without paying
-// the rra / adm-zip load cost.
+// Lazy-loaded heavy dep so tests can import the pure helpers without paying
+// the adm-zip load cost.
 let _admZipCtor = null;
-let _rraRunnerCtor = null;
 function loadAdmZip() {
   if (!_admZipCtor) _admZipCtor = require('adm-zip');
   return _admZipCtor;
-}
-function loadRraRunner() {
-  if (!_rraRunnerCtor) {
-    _rraRunnerCtor = require('roku-report-analyzer/dist/Runner.js').Runner;
-  }
-  return _rraRunnerCtor;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -91,10 +80,11 @@ export function validateRokuCrashCsv(headerLine) {
 }
 
 /**
- * Parse a single CSV line, handling quoted fields containing commas and escaped
- * double-quotes ("") per RFC-4180.
+ * Parse a single CSV line, handling quoted fields containing the separator
+ * and escaped double-quotes ("") per RFC-4180. `sep` defaults to ',' for the
+ * weekly email CSV; pass '\t' for the dashboard's tab-separated export.
  */
-function parseCsvLine(line) {
+function parseCsvLine(line, sep = ',') {
   const fields = [];
   let cur = '';
   let inQuotes = false;
@@ -111,7 +101,7 @@ function parseCsvLine(line) {
       }
     } else {
       if (c === '"') inQuotes = true;
-      else if (c === ',') {
+      else if (c === sep) {
         fields.push(cur);
         cur = '';
       } else cur += c;
@@ -198,6 +188,163 @@ export function mergeCsvs(csvTexts) {
     }
   }
   return allRows;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Dashboard backtrace CSV (optional enrichment input)
+// ────────────────────────────────────────────────────────────────────
+//
+// Pulled manually from Roku's analytics dashboard. Tab-separated, 4 columns:
+//   Daily Error Key | Date | Backtrace Formatted | Backtrace Text Formatted
+//
+// One row per (signature, date) — the same crash on different days produces
+// separate rows. The 4th column carries the parseable payload: a single CSV-
+// quoted string where `~~` separates what would otherwise be newlines.
+//
+// The weekly email CSV remains the primary input (it carries crash counts
+// and drives thresholds). The dashboard CSV is optional enrichment that
+// attaches multi-frame backtraces + local-variable snapshots to issue bodies.
+
+const DASHBOARD_REQUIRED_HEADERS = ['Date', 'Backtrace Text Formatted'];
+
+const BACKTRACE_FRAME_RE =
+  /^#(\d+)\s+Function\s+(\w+)\s*\(([^)]*)\)\s*As\s+(\S+)\s+file\/line:\s*(pkg:\/[^()\s]+)\((\d+)\)/i;
+
+const ERROR_HEADER_RE = /\(runtime error\s+(&h[0-9a-f]+)\)\s+in\s+(pkg:\/[^()\s]+)\((\d+)\)/i;
+
+/**
+ * Validate that a header line looks like a Roku analytics dashboard export.
+ */
+export function validateDashboardCsv(headerLine) {
+  if (typeof headerLine !== 'string' || headerLine.length === 0) return false;
+  const headers = parseCsvLine(headerLine, '\t').map((h) => h.trim());
+  return DASHBOARD_REQUIRED_HEADERS.every((req) => headers.includes(req));
+}
+
+/**
+ * Parse the `Backtrace Text Formatted` cell into structured pieces. Returns
+ * null when the cell can't be recognized as a backtrace. The cell uses `~~`
+ * as an in-cell line separator; we split on it and walk three sections —
+ * header (one line), frames (after `Backtrace:`), locals (after
+ * `Local Variables:`).
+ *
+ * Returns:
+ *   {
+ *     errorMessage: string,        // top-line message (quoted body)
+ *     errorCode: string | null,    // "&hec" etc.
+ *     frames: [{ index, function, args, returnType, pkgPath, line }, ...],
+ *                                  // ordered as printed (innermost first)
+ *     locals: [{ raw }, ...],      // raw text per local line (preserved as-is)
+ *   }
+ */
+export function parseBacktraceCell(cellText) {
+  if (typeof cellText !== 'string' || cellText.length === 0) return null;
+  const parts = cellText
+    .split('~~')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (parts.length === 0) return null;
+
+  const header = parts[0];
+  const headerMatch = ERROR_HEADER_RE.exec(header);
+  if (!headerMatch) return null;
+  const errorCode = headerMatch[1];
+
+  // Extract the human-readable message: everything before the runtime-error tail.
+  // Strip surrounding single-quotes if present.
+  const tailIdx = header.search(/\(runtime error/i);
+  let errorMessage = tailIdx > 0 ? header.slice(0, tailIdx).trim() : header;
+  if (errorMessage.startsWith("'") && errorMessage.endsWith("'")) {
+    errorMessage = errorMessage.slice(1, -1);
+  }
+
+  const frames = [];
+  const locals = [];
+  let mode = 'preamble'; // preamble → frames → locals
+  for (let i = 1; i < parts.length; i++) {
+    const line = parts[i];
+    if (/^Backtrace:/i.test(line)) {
+      mode = 'frames';
+      continue;
+    }
+    if (/^Local Variables:/i.test(line)) {
+      mode = 'locals';
+      continue;
+    }
+    if (mode === 'frames') {
+      const m = BACKTRACE_FRAME_RE.exec(line);
+      if (m) {
+        frames.push({
+          index: Number(m[1]),
+          function: m[2],
+          args: m[3].trim(),
+          returnType: m[4],
+          pkgPath: m[5],
+          line: Number(m[6]),
+        });
+      }
+    } else if (mode === 'locals') {
+      locals.push({ raw: line });
+    }
+  }
+
+  if (frames.length === 0) return null;
+  return { errorMessage, errorCode, frames, locals };
+}
+
+/**
+ * The crash signature is keyed by the *innermost* frame — same convention as
+ * groupBySignature uses with the email CSV (which only carries one frame).
+ * In a backtrace, the innermost frame is the one with the highest index.
+ */
+export function innermostFrame(parsed) {
+  if (!parsed || !Array.isArray(parsed.frames) || parsed.frames.length === 0) return null;
+  return parsed.frames.reduce((acc, f) => (acc == null || f.index > acc.index ? f : acc), null);
+}
+
+/**
+ * Parse a Roku analytics dashboard CSV. Returns Map<signature, BacktraceEntry>
+ * where signature is `${pkgPath}(${line})` of the innermost frame (matching
+ * the email-CSV signature key from groupBySignature). When multiple rows
+ * share a signature (same crash on different days), the most-recent-by-date
+ * row wins — local variable values are a per-crash snapshot, so we keep one.
+ */
+export function parseDashboardCsv(text) {
+  const out = new Map();
+  if (typeof text !== 'string' || text.length === 0) return out;
+  const rows = splitCsvRows(text);
+  if (rows.length === 0) return out;
+  if (!validateDashboardCsv(rows[0])) {
+    throw new Error(
+      `Input does not look like a Roku analytics dashboard CSV. Expected tab-separated headers including: ${DASHBOARD_REQUIRED_HEADERS.join(', ')}.`,
+    );
+  }
+  const headers = parseCsvLine(rows[0], '\t').map((h) => h.trim());
+  const dateIdx = headers.indexOf('Date');
+  const textIdx = headers.indexOf('Backtrace Text Formatted');
+  for (let r = 1; r < rows.length; r++) {
+    const fields = parseCsvLine(rows[r], '\t');
+    const date = (fields[dateIdx] ?? '').trim();
+    const cell = fields[textIdx] ?? '';
+    const parsed = parseBacktraceCell(cell);
+    if (!parsed) continue;
+    const inner = innermostFrame(parsed);
+    if (!inner) continue;
+    const signature = `${inner.pkgPath}(${inner.line})`;
+    const entry = {
+      signature,
+      date,
+      errorMessage: parsed.errorMessage,
+      errorCode: parsed.errorCode,
+      frames: parsed.frames,
+      locals: parsed.locals,
+    };
+    const prev = out.get(signature);
+    if (!prev || (date && date > (prev.date ?? ''))) {
+      out.set(signature, entry);
+    }
+  }
+  return out;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -756,44 +903,112 @@ function runStep(cmd, cwd, logger) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Source location resolution via roku-report-analyzer
+// Source location resolution via source-map
 // ────────────────────────────────────────────────────────────────────
 
 /**
+ * Resolve a single (pkgPath, lineOneBased) pair to the original source
+ * {path, line, character} using the source map BSC emits alongside the
+ * transpiled .brs. Returns null when no mapping is available. consumerCache
+ * is a Map<destMapPath, SourceMapConsumer | null | undefined> for reuse
+ * across calls inside one resolveSourceLocations invocation.
+ *
+ * `null` means "no map but dest file exists → assume 1:1"; `undefined`
+ * means "no map AND no dest file → unresolvable".
+ */
+async function mapPkgLocationToSource(pkgPath, lineOneBased, buildDir, consumerCache) {
+  const destPath = join(buildDir, pkgPath.replace(/^pkg:/i, ''));
+  const destMapPath = destPath + '.map';
+
+  let consumer = consumerCache.get(destMapPath);
+  if (!consumerCache.has(destMapPath)) {
+    if (existsSync(destMapPath)) {
+      const mapJson = JSON.parse(readFileSync(destMapPath, 'utf8'));
+      consumer = await new SourceMapConsumer(mapJson);
+    } else {
+      consumer = existsSync(destPath) ? null : undefined;
+    }
+    consumerCache.set(destMapPath, consumer);
+  }
+
+  if (consumer === undefined) return null;
+  if (consumer === null) {
+    return { path: destPath, line: lineOneBased, character: 0 };
+  }
+
+  const pos = consumer.originalPositionFor({
+    line: lineOneBased,
+    column: 0,
+    bias: SourceMapConsumer.LEAST_UPPER_BOUND,
+  });
+  if (!pos || typeof pos.source !== 'string') return null;
+  return {
+    path: resolve(dirname(destMapPath), pos.source),
+    line: pos.line ?? lineOneBased,
+    character: pos.column ?? 0,
+  };
+}
+
+/**
  * Resolve a set of {pkgPath, line} pairs to source {bsFile, bsLine, codeSnippet}
- * using roku-report-analyzer against the analysis build output.
+ * by reading source maps emitted alongside the transpiled .brs files.
  *
  * Returns Map<signature, SourceLocation | null>.
  */
 export async function resolveSourceLocations(signatures, buildDir, worktreePath) {
-  const Runner = loadRraRunner();
-  const runner = new Runner({
-    crashlogs: ['__placeholder__'],
-    projects: [buildDir],
-    cwd: '/',
-    logLevel: 'error',
-  });
-  await runner.loadProjects();
+  const consumerCache = new Map();
   const out = new Map();
-  for (const sig of signatures) {
-    // Roku line numbers are 1-based; rra expects 0-based input.
-    const locs = await runner.getOriginalLocations({
-      path: sig.pkgPath,
-      line: sig.line - 1,
-      character: 0,
-    });
-    const first = locs?.[0];
-    if (!first || typeof first.path !== 'string') {
-      out.set(sig.signature, null);
-      continue;
+  try {
+    for (const sig of signatures) {
+      const mapped = await mapPkgLocationToSource(sig.pkgPath, sig.line, buildDir, consumerCache);
+      if (!mapped) {
+        out.set(sig.signature, null);
+        continue;
+      }
+      out.set(sig.signature, {
+        bsFile: relativeToWorktree(mapped.path, worktreePath),
+        bsLine: mapped.line,
+        codeSnippet: readSnippet(mapped.path, mapped.line, 2),
+      });
     }
-    const bsLineOneBased = (first.line ?? 0) + 1;
-    const codeSnippet = readSnippet(first.path, bsLineOneBased, 2);
-    out.set(sig.signature, {
-      bsFile: relativeToWorktree(first.path, worktreePath),
-      bsLine: bsLineOneBased,
-      codeSnippet,
-    });
+  } finally {
+    for (const c of consumerCache.values()) {
+      if (c && typeof c.destroy === 'function') c.destroy();
+    }
+  }
+  return out;
+}
+
+/**
+ * Resolve every frame in a backtrace to source. Frames are returned in the
+ * same order they came in (innermost first, per parseBacktraceCell's
+ * convention). Unresolvable frames keep their pkgPath/line and get
+ * { bsFile: null, bsLine: null, codeSnippet: '' }.
+ *
+ * Shares a SourceMapConsumer cache across the call so frames hitting the
+ * same .brs only build one consumer.
+ */
+export async function resolveBacktraceFrames(frames, buildDir, worktreePath) {
+  const consumerCache = new Map();
+  const out = [];
+  try {
+    for (const f of frames) {
+      const mapped = await mapPkgLocationToSource(f.pkgPath, f.line, buildDir, consumerCache);
+      if (mapped) {
+        out.push({
+          ...f,
+          bsFile: relativeToWorktree(mapped.path, worktreePath),
+          bsLine: mapped.line,
+          codeSnippet: readSnippet(mapped.path, mapped.line, 2),
+        });
+      } else {
+        out.push({ ...f, bsFile: null, bsLine: null, codeSnippet: '' });
+      }
+    }
+  } finally {
+    for (const c of consumerCache.values()) {
+      if (c && typeof c.destroy === 'function') c.destroy();
+    }
   }
   return out;
 }
@@ -905,7 +1120,39 @@ function occurrenceTable(rows) {
   return `${header}\n${body}`;
 }
 
-export function draftIssueBody(group, source, category, { runDate, csvWindow }) {
+function backtraceTable(resolvedFrames) {
+  const header = '| # | Function | Transpiled | Source |\n|---|---|---|---|';
+  const body = resolvedFrames
+    .map((f) => {
+      const sig = `${f.function}(${f.args})${f.returnType ? ` As ${f.returnType}` : ''}`;
+      const transpiled = `\`${f.pkgPath.replace(/^pkg:\//, '')}(${f.line})\``;
+      const source = f.bsFile
+        ? `[\`${f.bsFile}:${f.bsLine}\`](${f.bsFile}#L${f.bsLine})`
+        : '*unresolved*';
+      return `| ${f.index} | \`${sig}\` | ${transpiled} | ${source} |`;
+    })
+    .join('\n');
+  return `${header}\n${body}`;
+}
+
+function backtraceSection(backtrace, resolvedFrames) {
+  if (!backtrace || !resolvedFrames || resolvedFrames.length === 0) return '';
+  const errorLine = backtrace.errorCode
+    ? `**Runtime error**: \`${backtrace.errorCode}\` — ${backtrace.errorMessage}\n\n`
+    : `**Runtime error**: ${backtrace.errorMessage}\n\n`;
+  const localsBlock =
+    backtrace.locals && backtrace.locals.length > 0
+      ? `\n**Local variables at crash time** (snapshot from ${backtrace.date}):\n\n\`\`\`text\n${backtrace.locals.map((l) => l.raw).join('\n')}\n\`\`\`\n`
+      : '';
+  return `${errorLine}**Backtrace** (innermost frame first):\n\n${backtraceTable(resolvedFrames)}\n${localsBlock}`;
+}
+
+export function draftIssueBody(
+  group,
+  source,
+  category,
+  { runDate, csvWindow, backtrace, resolvedFrames } = {},
+) {
   const version = [...group.versions][0] ?? 'unknown';
   const osReleases = [...group.osReleases].sort().join(', ') || 'unknown';
   const windowStr =
@@ -918,6 +1165,8 @@ export function draftIssueBody(group, source, category, { runDate, csvWindow }) 
     : '';
   const inferredCategory =
     category && category !== 'unknown' ? `**Suspected category**: ${category}\n` : '';
+  const backtraceBlock = backtraceSection(backtrace, resolvedFrames);
+  const backtraceTrailer = backtraceBlock ? `\n${backtraceBlock}` : '';
 
   return `### What happened?
 JellyRock crashed on user devices. Filed automatically by \`/crash-report\` from Roku's weekly crash report (window: ${windowStr}).
@@ -934,7 +1183,7 @@ ${occurrenceTable(group.rows)}
 \`\`\`
 ${group.rawErrorText}
 \`\`\`
-
+${backtraceTrailer}
 ### Steps to reproduce
 Not user-reproduced. This is telemetry-sourced — no repro steps are available from Roku's aggregate crash report. The component containing this function initializes / runs when the relevant code path executes (often on app start, screen transition, or user interaction with the affected feature).
 
@@ -997,10 +1246,12 @@ export async function buildPlan({
   noBuild = false,
   buildDirOverride = null,
   noiseConfig = null,
+  dashboardCsvText = null,
   gitExec = defaultGitExec,
   ghExec = defaultGhExec,
   logger = console.error,
 } = {}) {
+  const backtraceMap = dashboardCsvText ? parseDashboardCsv(dashboardCsvText) : new Map();
   const rows = mergeCsvs(input.csvTexts);
   if (rows.length === 0) {
     throw new Error('Input contained no parsable Roku crash-report rows.');
@@ -1048,6 +1299,7 @@ export async function buildPlan({
 
   // Resolve source locations + existing GH issues.
   const sourceBySig = new Map();
+  const backtraceFramesBySig = new Map();
   for (const group of kept) {
     // Use the first version's build (most groups have just one version).
     const ver = [...group.versions][0];
@@ -1063,6 +1315,20 @@ export async function buildPlan({
     } catch (err) {
       logger(`[crash-report] source resolve failed for ${group.signature}: ${err.message}`);
       sourceBySig.set(group.signature, null);
+    }
+    // Optional: resolve every frame of the dashboard-provided backtrace.
+    const bt = backtraceMap.get(group.signature);
+    if (bt) {
+      try {
+        const resolvedFrames = await resolveBacktraceFrames(
+          bt.frames,
+          build.buildDir,
+          build.worktreePath,
+        );
+        backtraceFramesBySig.set(group.signature, resolvedFrames);
+      } catch (err) {
+        logger(`[crash-report] backtrace resolve failed for ${group.signature}: ${err.message}`);
+      }
     }
   }
 
@@ -1083,8 +1349,15 @@ export async function buildPlan({
   for (const group of novel) {
     const source = sourceBySig.get(group.signature) ?? null;
     const category = group.inferredCategory; // set by classifyAgainstNoise
+    const backtrace = backtraceMap.get(group.signature) ?? null;
+    const resolvedFrames = backtraceFramesBySig.get(group.signature) ?? null;
     const title = draftIssueTitle(group);
-    const body = draftIssueBody(group, source, category, { runDate, csvWindow: window });
+    const body = draftIssueBody(group, source, category, {
+      runDate,
+      csvWindow: window,
+      backtrace,
+      resolvedFrames,
+    });
     const existing = matches.get(group.signature) ?? null;
     let action = 'create';
     let commentBody = null;
@@ -1438,6 +1711,8 @@ async function cmdPlan(args) {
   const minDates = args.flags['min-dates'] ? Number(args.flags['min-dates']) : DEFAULT_MIN_DATES;
   const noBuild = Boolean(args.flags['no-build']);
   const buildDirOverride = args.flags['build-dir'] ?? null;
+  const dashboardCsvPath = args.flags['dashboard-csv'] ?? null;
+  const dashboardCsvText = dashboardCsvPath ? readFileSync(dashboardCsvPath, 'utf8') : null;
 
   const input = resolveInput(inputArg);
   try {
@@ -1447,6 +1722,7 @@ async function cmdPlan(args) {
       minDates,
       noBuild,
       buildDirOverride,
+      dashboardCsvText,
     });
     const json = JSON.stringify(plan, null, 2);
     if (planOut) {
@@ -1490,7 +1766,7 @@ async function main() {
   if (sub === '--help' || sub === 'help' || !sub) {
     process.stdout.write(`Usage:
   node scripts/crash-report.js plan --input <csv|zip|-> [--min-devices N]
-    [--min-dates N] [--no-build] [--plan-out <path>]
+    [--min-dates N] [--no-build] [--dashboard-csv <path>] [--plan-out <path>]
   node scripts/crash-report.js execute --plan <plan.json> [--handoff-dir <path>]
 `);
     return;
