@@ -81,6 +81,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/api-layering-guide.md`](../dev/api-layering-guide.md) | API Architecture Layering Guide |
 | [`docs/dev/api-patterns.md`](../dev/api-patterns.md) | API Request Patterns |
 | [`docs/dev/code-style.md`](../dev/code-style.md) | Code Style Guide |
+| [`docs/dev/crash-reports.md`](../dev/crash-reports.md) | Weekly Roku crash-report workflow |
 | [`docs/dev/debug-flags.md`](../dev/debug-flags.md) | Debug Flags & Toast Testing |
 | [`docs/dev/developer-mode.md`](../dev/developer-mode.md) | Developer Mode for Roku Devices |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | JellyRock Versioning Systems Overview |
