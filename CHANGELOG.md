@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update undent from v1.0.0 to v1.0.1 ([#579](https://github.com/jellyrock/jellyrock/pull/579))
 - Update roku-deploy from v3.17.2 to v3.17.4 ([#570](https://github.com/jellyrock/jellyrock/pull/570), [#578](https://github.com/jellyrock/jellyrock/pull/578))
 - Update vitest from v4.1.5 to v4.1.6 ([#572](https://github.com/jellyrock/jellyrock/pull/572))
 - Update ropm from v0.11.5 to v0.11.6 ([#571](https://github.com/jellyrock/jellyrock/pull/571))
