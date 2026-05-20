@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update brighterscript to v1.0.0 ([#586](https://github.com/jellyrock/jellyrock/pull/586))
 - Update vitest from v4.1.5 to v4.1.7 ([#572](https://github.com/jellyrock/jellyrock/pull/572), [#581](https://github.com/jellyrock/jellyrock/pull/581))
 - Update brighterscript-formatter from v1.7.24 to v1.7.26 ([#569](https://github.com/jellyrock/jellyrock/pull/569), [#580](https://github.com/jellyrock/jellyrock/pull/580))
 - Update undent from v1.0.0 to v1.0.1 ([#579](https://github.com/jellyrock/jellyrock/pull/579))
