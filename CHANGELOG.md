@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update eslint from v10.3.0 to v10.4.0 ([#576](https://github.com/jellyrock/jellyrock/pull/576))
 - Update lint-staged from v16.4.0 to v17 ([#577](https://github.com/jellyrock/jellyrock/pull/577))
 - Update brighterscript to v1.0.0 ([#586](https://github.com/jellyrock/jellyrock/pull/586))
 - Update vitest from v4.1.5 to v4.1.7 ([#572](https://github.com/jellyrock/jellyrock/pull/572), [#581](https://github.com/jellyrock/jellyrock/pull/581))
