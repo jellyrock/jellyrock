@@ -30,6 +30,7 @@
       "Bash(gh issue create:*)",
       "Bash(gh issue comment:*)",
       "Bash(gh issue reopen:*)",
+      "Bash(gh issue close:*)",
       "Bash(gh label create:*)",
       "Bash(gh run view:*)",
       "Bash(gh run list:*)",

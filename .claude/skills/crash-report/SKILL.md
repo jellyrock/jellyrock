@@ -1,9 +1,9 @@
 ---
 name: crash-report
-description: Process a Roku weekly crash-report CSV (or a zip containing one or more CSVs) and turn each above-threshold unique crash into a tracked GitHub issue. Parses the CSV, groups crashes by pkg-path signature, builds the cited app version in a temporary git worktree, resolves the transpiled `.brs:line` back to source `.bs:line` via source maps from a generated bsconfig-analysis.json (using Mozilla's `source-map` library directly). Optional `--dashboard-csv <path>` flag enriches each issue with multi-frame backtraces + local-variable snapshots pulled manually from Roku's analytics dashboard (the weekly email CSV only carries the immediate failure frame). Dedup-aware: comments on already-open matches, reopens closed matches as regressions. Known-noise-aware: crashes matching patterns in `.crash-report/known-noise.yml` are suppressed (no issue, no comment) unless their combined count exceeds `baseline × spike_multiplier`, in which case ONE spike-alert comment lands on the configured tracker issue. Use when a fresh Roku crash CSV arrives (typically once a week — Roku emails them on a weekly cadence with the last 7 days). Per-crash investigation is offloaded — after filing, anyone on the team can run `/issue-triage <N>` to dig in.
+description: Process a Roku weekly crash-report CSV (or a zip containing one or more CSVs) and turn each above-threshold unique crash into a tracked GitHub issue. Parses the CSV, groups crashes by pkg-path signature, builds the cited app version in a temporary git worktree, resolves the transpiled `.brs:line` back to source `.bs:line` via source maps from a generated bsconfig-analysis.json (using Mozilla's `source-map` library directly). Multi-frame backtrace enrichment is per-error (Roku's dashboard only exposes backtraces one click at a time) — pull a plaintext backtrace per issue from the analytics dashboard, then run `node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path>` to attach a resolved-frame table + locals snapshot to that one issue. The `--dashboard-csv` flag on `plan`/`execute` is a forward-compatible bulk path for a TSV that doesn't currently exist as a one-click export. Dedup-aware: comments on already-open matches, reopens closed matches as regressions. Known-noise-aware: crashes matching patterns in `.crash-report/known-noise.yml` are suppressed (no issue, no comment) unless their combined count exceeds `baseline × spike_multiplier`, in which case ONE spike-alert comment lands on the configured tracker issue. Use when a fresh Roku crash CSV arrives (typically once a week — Roku emails them on a weekly cadence with the last 7 days). Per-crash investigation is offloaded — after filing, anyone on the team can run `/issue-triage <N>` to dig in.
 model: opus
 user-invocable: true
-allowed-tools: Bash(node scripts/crash-report.js:*), Bash(gh issue create:*), Bash(gh issue comment:*), Bash(gh issue reopen:*), Bash(gh label create:*), Bash(gh label list:*), Bash(gh issue list:*), Bash(git tag:*), Bash(git worktree:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Bash(npm:*), Read, Write
+allowed-tools: Bash(node scripts/crash-report.js:*), Bash(gh issue create:*), Bash(gh issue comment:*), Bash(gh issue reopen:*), Bash(gh issue view:*), Bash(gh label create:*), Bash(gh label list:*), Bash(gh issue list:*), Bash(git tag:*), Bash(git worktree:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Bash(npm:*), Read, Write
 ---
 
 # /crash-report — turn the weekly Roku crash CSV into tracked GH issues
@@ -25,7 +25,11 @@ The config schema is documented in [`docs/dev/crash-reports.md`](../../../docs/d
 
 `$ARGUMENTS`: either a path to the CSV (e.g. `tasks/sample-crash-report.csv`), a path to a zip archive Roku emailed you (which may contain multiple CSVs interleaved with unrelated files like release notes — header-based filtering ignores those), or pasted CSV text in the conversation if no path given. Optional override flags accepted in `$ARGUMENTS`: `--min-devices N` (default 2), `--min-dates N` (default 2). Either threshold being met causes a crash to be filed; both must fail for it to be skipped.
 
-**Optional backtrace enrichment**: pass `--dashboard-csv <path>` to attach multi-frame backtraces + local-variable snapshots to each filed issue. The weekly email CSV only carries the immediate failure frame (one location per crash); the dashboard CSV is a separate manual export from Roku's analytics dashboard that includes the full call chain + variable state at crash time. Join key is the innermost-frame `pkg:/path.brs(line)` signature — the same signature `groupBySignature` uses, so the two CSVs line up automatically. Dashboard-only signatures (no matching email row) are ignored; without crash counts the threshold doesn't apply. See [`docs/dev/crash-reports.md`](../../../docs/dev/crash-reports.md) for how to pull the dashboard CSV.
+**Backtrace enrichment** is per-issue and runs as a follow-up via [`/crash-backtrace <N>`](../crash-backtrace/SKILL.md). Roku's analytics dashboard only exposes the full multi-frame backtrace + locals snapshot one click at a time — there's no bulk export — so enrichment is one-issue-at-a-time after this skill has filed the issues. Step 5 of this skill points the user at `/crash-backtrace` and lists the new issue numbers.
+
+The `--dashboard-csv <path>` flag on `plan`/`execute` is a forward-compatible bulk path for an as-yet-unavailable Roku bulk export. Not the daily workflow today; leave it documented but don't expect to use it.
+
+See [`docs/dev/crash-reports.md`](../../../docs/dev/crash-reports.md) for the dashboard click-through and plaintext-backtrace format.
 
 ## Step 0 — Preflight
 
@@ -81,7 +85,7 @@ The helper performs the GH writes (`gh issue create` / `gh issue comment` / `gh 
 
 Read the run-summary file from `.claude/handoffs/`. Output a brief recap to the user:
 
-> Filed 2 new issues (#742, #743), commented on 1 open (#618), reopened 1 closed regression (#501). Skipped 5 below threshold. Full summary: `.claude/handoffs/crash-report-<timestamp>.md`. Per-crash deep dive: `/issue-triage <N>`.
+> Filed 2 new issues (#742, #743), commented on 1 open (#618), reopened 1 closed regression (#501). Skipped 5 below threshold. Full summary: `.claude/handoffs/crash-report-<timestamp>.md`. **Next**: enrich each new issue with a multi-frame backtrace via `/crash-backtrace <N>` (pull each from Roku's analytics dashboard). Per-crash deep dive: `/issue-triage <N>`.
 
 If any actions failed (the helper continues on individual GH failures and records them in the results), call those out separately so the user can retry manually.
 

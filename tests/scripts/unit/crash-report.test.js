@@ -36,6 +36,16 @@ import {
   draftDedupComment,
   draftRegressionComment,
   draftDedupSearchQuery,
+  parseCrashIssueTitle,
+  normalizeBacktraceText,
+  enrichIssue,
+  getOrBuildAnalysis,
+  ANALYSIS_CACHE_PREFIX,
+  classifyBacktraceForEnrichment,
+  parseOccurrenceCount,
+  classifyForEnrichment,
+  TIMEOUT_ERROR_CODE,
+  NULL_DOT_ERROR_CODE,
   searchExistingIssues,
   renderRunSummary,
   parseArgs,
@@ -528,6 +538,425 @@ describe('draftDedupComment / draftRegressionComment', () => {
     expect(c).toContain('Regression');
     expect(c).toContain('reoccurring');
     expect(c).toContain('Reopening for investigation');
+  });
+
+  describe('with dashboard-csv backtrace enrichment', () => {
+    const backtrace = {
+      errorMessage:
+        "'Dot' Operator attempted with invalid BrightScript Component or interface reference.",
+      errorCode: '&hec',
+      date: '2026-05-16',
+      frames: [
+        {
+          index: 1,
+          function: 'init',
+          args: '',
+          returnType: 'Void',
+          pkgPath: 'pkg:/components/x.brs',
+          line: 2,
+        },
+      ],
+      locals: [{ raw: 'm                roAssociativeArray refcnt=2 count:5' }],
+    };
+    const resolvedFrames = [
+      { ...backtrace.frames[0], bsFile: 'components/x.bs', bsLine: 2, codeSnippet: '' },
+    ];
+
+    it('dedup comment includes backtrace section when enrichment data is passed', () => {
+      const c = draftDedupComment(group, { ...ctx, backtrace, resolvedFrames });
+      expect(c).toContain('New occurrences');
+      expect(c).toMatch(/Runtime error.*`&hec`/);
+      expect(c).toMatch(/Backtrace.*innermost frame first/);
+      expect(c).toMatch(/\| 1 \| `init\(\) As Void`/);
+      expect(c).toMatch(/Local variables at crash time.*2026-05-16/);
+    });
+
+    it('regression comment includes backtrace section when enrichment data is passed', () => {
+      const c = draftRegressionComment(group, {
+        ...ctx,
+        previousState: 'closed',
+        backtrace,
+        resolvedFrames,
+      });
+      expect(c).toContain('Regression');
+      expect(c).toMatch(/Runtime error.*`&hec`/);
+      expect(c).toMatch(/Backtrace.*innermost frame first/);
+    });
+
+    it('dedup comment omits backtrace block when no enrichment is provided (back-compat)', () => {
+      const c = draftDedupComment(group, ctx);
+      expect(c).not.toMatch(/Backtrace.*innermost/);
+      expect(c).not.toMatch(/Runtime error/);
+    });
+  });
+});
+
+describe('parseCrashIssueTitle (inverse of draftIssueTitle)', () => {
+  it('extracts function, basename, line, version from a well-formed crash title', () => {
+    const r = parseCrashIssueTitle(
+      '[crash] downloadfallbackfont() in FontDownloadTask.brs:29 (v2.17.0)',
+    );
+    expect(r).toEqual({
+      function: 'downloadfallbackfont',
+      basename: 'FontDownloadTask.brs',
+      line: 29,
+      version: '2.17.0',
+    });
+  });
+
+  it('handles 4-segment versions (patch + build suffix-free)', () => {
+    const r = parseCrashIssueTitle('[crash] popscene() in SceneManager.brs:83 (v2.17.0.1)');
+    expect(r.version).toBe('2.17.0.1');
+  });
+
+  it('tolerates trailing whitespace', () => {
+    const r = parseCrashIssueTitle('[crash] init() in JRLabel.brs:5 (v2.17.0)   ');
+    expect(r).not.toBeNull();
+    expect(r.line).toBe(5);
+  });
+
+  it('returns null for a non-crash title', () => {
+    expect(parseCrashIssueTitle('Bug: something is broken')).toBe(null);
+    expect(parseCrashIssueTitle('[crash] but missing the version part')).toBe(null);
+    expect(parseCrashIssueTitle('')).toBe(null);
+    expect(parseCrashIssueTitle(null)).toBe(null);
+  });
+});
+
+describe('normalizeBacktraceText (dashboard plaintext → cell format)', () => {
+  it('joins newline-separated lines with `~~` so parseBacktraceCell can consume them', () => {
+    const text = `'Type Mismatch' (runtime error &h18) in pkg:/components/captionTask.brs(276)
+Backtrace:
+#0  Function fetchcaption() As Void file/line: pkg:/components/captionTask.brs(146)
+#1  Function toms(t As Dynamic) As Dynamic file/line: pkg:/components/captionTask.brs(276)
+Local Variables:
+t                roString val:"15:00,170?"`;
+    const normalized = normalizeBacktraceText(text);
+    expect(normalized).toContain('~~Backtrace:~~');
+    expect(normalized).toContain('~~Local Variables:~~');
+    const parsed = parseBacktraceCell(normalized);
+    expect(parsed).not.toBeNull();
+    expect(parsed.errorCode).toBe('&h18');
+    expect(parsed.frames).toHaveLength(2);
+    expect(parsed.locals).toHaveLength(1);
+  });
+
+  it('handles CRLF line endings', () => {
+    const text =
+      "'X' (runtime error &h01) in pkg:/x.brs(1)\r\nBacktrace:\r\n#0  Function a() As Void file/line: pkg:/x.brs(1)\r\n";
+    const parsed = parseBacktraceCell(normalizeBacktraceText(text));
+    expect(parsed).not.toBeNull();
+    expect(parsed.frames[0].function).toBe('a');
+  });
+
+  it('drops empty and whitespace-only lines', () => {
+    const text =
+      "\n\n  \n'X' (runtime error &h01) in pkg:/x.brs(1)\n\nBacktrace:\n#0  Function a() As Void file/line: pkg:/x.brs(1)\n";
+    const normalized = normalizeBacktraceText(text);
+    expect(normalized.startsWith("'X'")).toBe(true);
+    expect(normalized).not.toMatch(/~~~~/);
+  });
+
+  it('returns empty string for non-string input', () => {
+    expect(normalizeBacktraceText(null)).toBe('');
+    expect(normalizeBacktraceText(undefined)).toBe('');
+    expect(normalizeBacktraceText(123)).toBe('');
+  });
+});
+
+describe('classifyBacktraceForEnrichment (pre-enrichment noise check)', () => {
+  function makeBacktrace({ errorCode, errorMessage, innermostFn = 'someFunc' }) {
+    return {
+      errorCode,
+      errorMessage,
+      date: '2026-05-15',
+      frames: [
+        {
+          index: 1,
+          function: innermostFn,
+          args: '',
+          returnType: '$1',
+          pkgPath: 'pkg:/components/x.brs',
+          line: 100,
+        },
+        {
+          index: 0,
+          function: 'onpositionchanged',
+          args: '',
+          returnType: '$1',
+          pkgPath: 'pkg:/components/y.brs',
+          line: 200,
+        },
+      ],
+      locals: [],
+    };
+  }
+
+  it('flags Execution timeout (&h23) with exactly 1 occurrence as timeout-one-off', () => {
+    const bt = makeBacktrace({
+      errorCode: TIMEOUT_ERROR_CODE,
+      errorMessage: 'Execution timeout',
+      innermostFn: 'onprogresspercentagechanged',
+    });
+    const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 1 });
+    expect(c).not.toBeNull();
+    expect(c.kind).toBe('timeout-one-off');
+    expect(c.recommendedAction).toBe('close-as-not-actionable');
+  });
+
+  it('flags Execution timeout with 2+ occurrences as timeout-recurring (enrich + escalate)', () => {
+    const bt = makeBacktrace({ errorCode: TIMEOUT_ERROR_CODE, errorMessage: 'Execution timeout' });
+    const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 3 });
+    expect(c.kind).toBe('timeout-recurring');
+    expect(c.recommendedAction).toBe('enrich-and-escalate');
+  });
+
+  it('matches timeout by error-message substring too (case-insensitive)', () => {
+    const bt = makeBacktrace({ errorCode: '&h99', errorMessage: 'Execution TIMEOUT after 30s' });
+    const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 1 });
+    expect(c).not.toBeNull();
+    expect(c.kind).toBe('timeout-one-off');
+  });
+
+  it('flags init() + Dot-operator error (&hec) as #103 suspect (belt-and-suspenders)', () => {
+    const bt = makeBacktrace({
+      errorCode: NULL_DOT_ERROR_CODE,
+      errorMessage:
+        "'Dot' Operator attempted with invalid BrightScript Component or interface reference.",
+      innermostFn: 'init',
+    });
+    const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 5 });
+    expect(c.kind).toBe('global-constants-init-race-suspect');
+    expect(c.tracker).toBe(103);
+    expect(c.recommendedAction).toBe('close-as-duplicate-of-103');
+  });
+
+  it('returns null for a backtrace that is neither timeout nor #103-shape', () => {
+    const bt = makeBacktrace({ errorCode: '&h18', errorMessage: 'Type Mismatch' });
+    expect(classifyBacktraceForEnrichment(bt, { occurrenceCount: 5 })).toBeNull();
+  });
+
+  it('returns null for missing backtrace input', () => {
+    expect(classifyBacktraceForEnrichment(null, {})).toBeNull();
+    expect(classifyBacktraceForEnrichment(undefined, {})).toBeNull();
+  });
+
+  it('does NOT classify init() + non-Dot error as #103 (avoids false positives)', () => {
+    const bt = makeBacktrace({
+      errorCode: '&h18',
+      errorMessage: 'Type Mismatch',
+      innermostFn: 'init',
+    });
+    expect(classifyBacktraceForEnrichment(bt, { occurrenceCount: 1 })).toBeNull();
+  });
+});
+
+describe('parseOccurrenceCount (extract total crashes from issue body)', () => {
+  it('sums the Crashes column across all rows of the Occurrence stats table', () => {
+    const body = `### What happened?
+Lorem ipsum.
+
+**Occurrence stats** (this report window):
+
+| Date | Roku OS | Crashes | Devices |
+|---|---|---|---|
+| 2026-05-12 | G2 | 5 | 2 |
+| 2026-05-13 | G1 | 2 | 1 |
+| 2026-05-14 | G2 | 1 | 1 |
+
+### Steps to reproduce
+N/A
+`;
+    expect(parseOccurrenceCount(body)).toBe(8);
+  });
+
+  it('returns the single-row count for a single-occurrence issue', () => {
+    const body = `**Occurrence stats** (this report window):
+
+| Date | Roku OS | Crashes | Devices |
+|---|---|---|---|
+| 2026-05-15 | G2 | 1 | 1 |
+`;
+    expect(parseOccurrenceCount(body)).toBe(1);
+  });
+
+  it('returns null when the body has no Occurrence stats section', () => {
+    expect(parseOccurrenceCount('A normal issue body without that table.')).toBeNull();
+  });
+
+  it('returns null for non-string input', () => {
+    expect(parseOccurrenceCount(null)).toBeNull();
+    expect(parseOccurrenceCount(undefined)).toBeNull();
+    expect(parseOccurrenceCount(123)).toBeNull();
+  });
+
+  it('skips malformed rows but counts valid ones', () => {
+    const body = `**Occurrence stats** (this report window):
+
+| Date | Roku OS | Crashes | Devices |
+|---|---|---|---|
+| 2026-05-12 | G2 | 4 | 2 |
+| malformed row |
+| 2026-05-13 | G1 | not-a-number | 1 |
+| 2026-05-14 | G2 | 3 | 1 |
+`;
+    expect(parseOccurrenceCount(body)).toBe(7);
+  });
+});
+
+describe('classifyForEnrichment (end-to-end wiring)', () => {
+  function makeGhExec(viewJson) {
+    return (args) => {
+      if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify(viewJson);
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    };
+  }
+
+  it('returns a timeout-one-off classification given a real-shape timeout backtrace + a 1-crash issue body', async () => {
+    const backtraceText = `Execution timeout (runtime error &h23) in pkg:/components/video/OSD.brs(504)
+Backtrace:
+#1  Function onprogresspercentagechanged() As $1 file/line: pkg:/components/video/OSD.brs(506)
+#0  Function onpositionchanged() As $1 file/line: pkg:/components/video/VideoPlayerView.brs(1156)
+Local Variables:
+global           Interface:ifGlobal
+m                roAssociativeArray refcnt=2 count:31`;
+    const ghExec = makeGhExec({
+      title: '[crash] onprogresspercentagechanged() in OSD.brs:506 (v2.17.0)',
+      body: `**Occurrence stats** (this report window):
+
+| Date | Roku OS | Crashes | Devices |
+|---|---|---|---|
+| 2026-05-15 | G2 | 1 | 1 |
+`,
+      labels: [{ name: 'crash' }],
+      state: 'OPEN',
+    });
+    const result = await classifyForEnrichment({ issueNumber: 583, backtraceText, ghExec });
+    expect(result.errorCode).toBe('&h23');
+    expect(result.occurrenceCount).toBe(1);
+    expect(result.innermostFrame.function).toBe('onprogresspercentagechanged');
+    expect(result.classification.kind).toBe('timeout-one-off');
+  });
+
+  it('returns null classification for a unique backtrace worth enriching', async () => {
+    const backtraceText = `'Type Mismatch' (runtime error &h18) in pkg:/components/captionTask.brs(276)
+Backtrace:
+#0  Function toms(t As Dynamic) As Dynamic file/line: pkg:/components/captionTask.brs(276)
+Local Variables:
+t                roString val:"15:00,170?"`;
+    const ghExec = makeGhExec({
+      title: '[crash] toms() in captionTask.brs:276 (v2.17.0)',
+      body: `**Occurrence stats** (this report window):
+
+| Date | Roku OS | Crashes | Devices |
+|---|---|---|---|
+| 2026-05-13 | G1 | 2 | 1 |
+`,
+      labels: [{ name: 'crash' }],
+      state: 'OPEN',
+    });
+    const result = await classifyForEnrichment({ issueNumber: 584, backtraceText, ghExec });
+    expect(result.classification).toBeNull();
+    expect(result.errorCode).toBe('&h18');
+    expect(result.occurrenceCount).toBe(2);
+  });
+});
+
+describe('getOrBuildAnalysis (worktree cache)', () => {
+  let cacheDir;
+  let buildDirPath;
+  const tag = 'v9.99.99';
+
+  beforeAll(() => {
+    // Pre-seed a "cached" worktree at the path the cache would use.
+    cacheDir = join(tmpdir(), `${ANALYSIS_CACHE_PREFIX}${tag}`);
+    buildDirPath = join(cacheDir, 'build-analysis');
+    mkdirSync(buildDirPath, { recursive: true });
+    // Drop a fake source map so the cache hit returns a usable buildDir.
+    writeFileSync(join(buildDirPath, 'placeholder.brs.map'), '{}');
+  });
+
+  afterAll(() => {
+    if (cacheDir) rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it('returns cached worktree when build-analysis exists and is within TTL', () => {
+    // Stub gitExec so resolveVersionTag returns our fake tag without shelling out.
+    const gitExec = () => `${tag}\n`;
+    const logs = [];
+    const result = getOrBuildAnalysis('9.99.99', { gitExec, logger: (m) => logs.push(m) });
+    expect(result.fromCache).toBe(true);
+    expect(result.buildDir).toBe(buildDirPath);
+    expect(result.worktreePath).toBe(cacheDir);
+    // Cleanup is a no-op for cached returns (we keep the cache for re-use).
+    expect(typeof result.cleanup).toBe('function');
+    expect(logs.some((m) => m.includes('reusing cached worktree'))).toBe(true);
+  });
+
+  it('treats a TTL of 0 as immediate staleness (forces rebuild path)', () => {
+    const gitExec = () => `${tag}\n`;
+    const logs = [];
+    // ttlMs: 0 → the existsSync(buildDir) check still passes but the ageMs < ttlMs
+    // check fails (any age is > 0), so we expect a rebuild log.
+    expect(() => getOrBuildAnalysis('9.99.99', { gitExec, ttlMs: 0, logger: (m) => logs.push(m) }))
+      // Will throw because resolveVersionTag returns our fake tag but no real
+      // worktree can be built from it. We only care that we entered the rebuild
+      // branch — verified via the staleness log message.
+      .toThrow();
+    expect(logs.some((m) => m.includes('stale') && m.includes('rebuilding'))).toBe(true);
+  });
+});
+
+describe('enrichIssue (orchestrator wiring)', () => {
+  // The full end-to-end requires a real `buildAnalysisInWorktree` call. We
+  // exercise the wiring shape via the failure paths that bail before the build
+  // step — title-shape rejection and missing-label rejection. The happy path
+  // is covered by composition: parseCrashIssueTitle + normalizeBacktraceText +
+  // parseBacktraceCell + resolveBacktraceFrames + backtraceSection are each
+  // independently tested above.
+
+  function makeGhExec(viewJson) {
+    return (args) => {
+      if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify(viewJson);
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    };
+  }
+
+  it('rejects an issue whose title does not match the [crash] shape', async () => {
+    const ghExec = makeGhExec({
+      title: 'Bug: something is broken',
+      labels: [{ name: 'crash' }],
+      state: 'OPEN',
+    });
+    await expect(
+      enrichIssue({ issueNumber: 999, backtraceText: 'irrelevant', ghExec }),
+    ).rejects.toThrow(/doesn't match the \[crash\] shape/);
+  });
+
+  it('rejects an issue missing the `crash` label', async () => {
+    const ghExec = makeGhExec({
+      title: '[crash] init() in JRLabel.brs:5 (v2.17.0)',
+      labels: [{ name: 'bug' }],
+      state: 'OPEN',
+    });
+    await expect(
+      enrichIssue({ issueNumber: 999, backtraceText: 'irrelevant', ghExec }),
+    ).rejects.toThrow(/missing the 'crash' label/);
+  });
+
+  it('rejects when the backtrace text is unparseable', async () => {
+    const ghExec = makeGhExec({
+      title: '[crash] init() in JRLabel.brs:5 (v2.17.0)',
+      labels: [{ name: 'crash' }],
+      state: 'OPEN',
+    });
+    await expect(
+      enrichIssue({
+        issueNumber: 999,
+        backtraceText: 'this is not a backtrace at all',
+        ghExec,
+      }),
+    ).rejects.toThrow(/Could not parse backtrace text/);
   });
 });
 

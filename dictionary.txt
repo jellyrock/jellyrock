@@ -56,8 +56,13 @@ backticks
 backtick-wrapped
 backtrace
 Backtrace
+backtrace's
 backtraces
 Backtraces
+backfill
+Backfill
+backfilling
+Backfilling
 bbox
 bitrate
 Bitrate
@@ -116,6 +121,9 @@ configs
 ContentNode
 coord
 coords
+crash-backtrace
+crash-report
+CRLF
 crossfade
 crowdsourced
 CSV
@@ -164,6 +172,9 @@ E2E
 ECP
 .editorconfig
 editorconfig
+enrichment
+Enrichment
+enrichments
 enum
 Enum
 enums
@@ -310,6 +321,8 @@ per-worktree
 PGS
 PII
 PKM
+plaintext
+Plaintext
 playstate
 Plex
 PNG
@@ -318,6 +331,8 @@ portal-UI
 pre-commit
 Pre-commit
 pre-commit's
+pre-enrichment
+Pre-enrichment
 pre-existing
 pre-fetch
 Prefetch
@@ -450,6 +465,7 @@ triaging
 trickplay
 Trickplay
 TSV
+TTL
 tvchannel
 UI
 UIs
@@ -494,6 +510,7 @@ Whitespace
 Wikimedia
 WIP
 worktree
+Worktree
 worktree's
 write-only
 YAML

@@ -9,16 +9,22 @@
 //
 // Two-phase CLI keeps the user-confirmation step in the orchestrating skill:
 //
-//   plan    — parse input, build the version, resolve source locations,
-//             search GH for existing matches, emit a JSON plan. No GH writes.
-//   execute — read a plan JSON, perform GH writes (create / comment / reopen),
-//             write a run-summary handoff.
+//   plan         — parse input, build the version, resolve source locations,
+//                  search GH for existing matches, emit a JSON plan. No GH writes.
+//   execute      — read a plan JSON, perform GH writes (create / comment / reopen),
+//                  write a run-summary handoff.
+//   enrich-issue — backfill a multi-frame backtrace onto one already-filed crash
+//                  issue. Takes the plaintext backtrace from Roku's "View report"
+//                  page (per-error click-through), resolves frames against the
+//                  issue's cited version, posts a single enrichment comment.
 //
 // Usage:
 //   node scripts/crash-report.js plan --input <csv|zip> [--min-devices N]
 //     [--min-dates N] [--no-build] [--dashboard-csv <path>] --plan-out <path>
 //   node scripts/crash-report.js execute --plan <plan.json> [--label crash]
 //     [--handoff-dir <path>]
+//   node scripts/crash-report.js enrich-issue --issue <N>
+//     [--backtrace-file <path>]    # else read backtrace text from stdin
 //
 // Public exports (for tests): all pure / IO-free helpers are named exports so
 // the Vitest suite at tests/scripts/unit/crash-report.test.js can drive them
@@ -833,9 +839,9 @@ function readStdin() {
  */
 export function buildAnalysisInWorktree(
   tag,
-  { repoRoot = REPO_ROOT, logger = console.error } = {},
+  { repoRoot = REPO_ROOT, logger = console.error, worktreePath: targetPath = null } = {},
 ) {
-  const worktreePath = mkdtempSync(join(tmpdir(), 'jellyrock-crash-wt-'));
+  const worktreePath = targetPath ?? mkdtempSync(join(tmpdir(), 'jellyrock-crash-wt-'));
   const cleanup = () => {
     try {
       execFileSync('git', ['worktree', 'remove', '--force', worktreePath], {
@@ -887,6 +893,91 @@ export function buildAnalysisInWorktree(
     cleanup();
     throw err;
   }
+}
+
+// Cache wrapper for `buildAnalysisInWorktree`. Git tags are immutable so the
+// source maps generated from one are deterministic across builds (modulo
+// package-lock.json + npm registry resolution, which `npm ci` pins). For the
+// enrich-issue flow this saves ~30-90s per call when the same version was
+// built recently. The cache key is the resolved tag (not the version string,
+// since version → tag resolution does fallback matching).
+export const ANALYSIS_CACHE_TTL_MS = 60 * 60 * 1000;
+export const ANALYSIS_CACHE_PREFIX = 'jellyrock-crash-wt-cache-';
+
+export function getOrBuildAnalysis(
+  version,
+  { logger = console.error, ttlMs = ANALYSIS_CACHE_TTL_MS, gitExec = defaultGitExec } = {},
+) {
+  const resolved = resolveVersionTag(version, gitExec);
+  if (!resolved) throw new Error(`Could not resolve version ${version} to a git tag.`);
+  const tag = resolved.tag;
+
+  const safeTag = tag.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const cacheDir = join(tmpdir(), `${ANALYSIS_CACHE_PREFIX}${safeTag}`);
+  const buildDir = join(cacheDir, 'build-analysis');
+
+  if (existsSync(buildDir)) {
+    const ageMs = Date.now() - statSync(buildDir).mtimeMs;
+    if (ageMs < ttlMs) {
+      logger(
+        `[crash-report] reusing cached worktree at ${cacheDir} (${Math.round(ageMs / 1000)}s old)`,
+      );
+      return { worktreePath: cacheDir, buildDir, cleanup: () => {}, fromCache: true };
+    }
+    logger(
+      `[crash-report] cache at ${cacheDir} is stale (${Math.round(ageMs / 60000)}min > ${Math.round(ttlMs / 60000)}min TTL); rebuilding`,
+    );
+  }
+
+  // Clear any leftover cache dir (stale or partial) before rebuilding.
+  if (existsSync(cacheDir)) {
+    try {
+      execFileSync('git', ['worktree', 'remove', '--force', cacheDir], {
+        cwd: REPO_ROOT,
+        stdio: 'pipe',
+      });
+    } catch {
+      // best-effort
+    }
+    try {
+      rmSync(cacheDir, { recursive: true, force: true });
+    } catch {
+      // best-effort
+    }
+  }
+
+  const built = buildAnalysisInWorktree(tag, { logger, worktreePath: cacheDir });
+  // Override cleanup — we keep the cache for next-call reuse.
+  return {
+    worktreePath: built.worktreePath,
+    buildDir: built.buildDir,
+    cleanup: () => {},
+    fromCache: false,
+  };
+}
+
+export function cleanAnalysisCache({ logger = console.error } = {}) {
+  const entries = readdirSync(tmpdir()).filter((n) => n.startsWith(ANALYSIS_CACHE_PREFIX));
+  let removed = 0;
+  for (const name of entries) {
+    const path = join(tmpdir(), name);
+    try {
+      execFileSync('git', ['worktree', 'remove', '--force', path], {
+        cwd: REPO_ROOT,
+        stdio: 'pipe',
+      });
+    } catch {
+      // best-effort
+    }
+    try {
+      rmSync(path, { recursive: true, force: true });
+      removed += 1;
+    } catch (err) {
+      logger(`[crash-report] could not remove ${path}: ${err.message}`);
+    }
+  }
+  logger(`[crash-report] cleaned ${removed} cached worktree(s)`);
+  return removed;
 }
 
 function runStep(cmd, cwd, logger) {
@@ -1041,6 +1132,116 @@ export function draftIssueTitle(group) {
   const base = basename(group.pkgPath); // e.g. RectangleSecondary.brs
   const version = [...group.versions][0] ?? 'unknown';
   return `${TITLE_PREFIX} ${group.function}() in ${base}:${group.line} (v${version})`;
+}
+
+// Pre-enrichment classification — flags backtraces that look like known-noise
+// patterns the user probably doesn't want enriched. Two cases today:
+//
+//   1. timeout-one-off  — `Execution timeout` (&h23) with exactly 1 occurrence.
+//      Roku OS killed our thread for running too long. One-offs are usually
+//      transient (server disconnect, network blip); recurring timeouts are a
+//      real bug class worth investigating.
+//
+//   2. global-constants-init-race-suspect — init() with the `'Dot' Operator`
+//      error (&hec). Belt-and-suspenders behind /crash-report's filing-time
+//      noise filter; catches variants the YAML pattern missed.
+//
+// Returns null when the backtrace looks unique enough to enrich without prompting.
+export const TIMEOUT_ERROR_CODE = '&h23';
+export const NULL_DOT_ERROR_CODE = '&hec';
+
+export function classifyBacktraceForEnrichment(backtrace, { occurrenceCount } = {}) {
+  if (!backtrace) return null;
+  const innermost = innermostFrame(backtrace);
+
+  if (
+    innermost &&
+    /^init$/i.test(innermost.function) &&
+    backtrace.errorCode === NULL_DOT_ERROR_CODE
+  ) {
+    return {
+      kind: 'global-constants-init-race-suspect',
+      reason: `Backtrace shape matches the #103 (m-global-constants-init-race) pattern: errorCode=${backtrace.errorCode}, innermost=init(). The /crash-report noise filter should have suppressed this at filing time — either the YAML pattern missed a variant or this is a new init-time bug class.`,
+      recommendedAction: 'close-as-duplicate-of-103',
+      tracker: 103,
+    };
+  }
+
+  const isTimeout =
+    backtrace.errorCode === TIMEOUT_ERROR_CODE ||
+    /execution timeout/i.test(backtrace.errorMessage ?? '');
+  if (isTimeout) {
+    if (occurrenceCount === 1) {
+      return {
+        kind: 'timeout-one-off',
+        reason: `Execution timeout (${backtrace.errorCode}) with exactly 1 occurrence. Roku OS killed our thread for running too long. One-offs are usually transient — server disconnect, network blip, or device-specific stall — and not actionable as a per-issue investigation.`,
+        recommendedAction: 'close-as-not-actionable',
+      };
+    }
+    return {
+      kind: 'timeout-recurring',
+      reason: `Execution timeout (${backtrace.errorCode}) with ${occurrenceCount ?? 'unknown'} occurrence(s). Timeouts at this frequency are the class of bug worth investigating — app code ran too long, Roku killed the thread.`,
+      recommendedAction: 'enrich-and-escalate',
+    };
+  }
+
+  return null;
+}
+
+// Parse the total crash count from an issue body's Occurrence stats table.
+// /crash-report renders the table as:
+//
+//   **Occurrence stats** (this report window):
+//
+//   | Date | Roku OS | Crashes | Devices |
+//   |---|---|---|---|
+//   | 2026-05-12 | G2 | 5 | 2 |
+//
+// Returns the sum of the Crashes column, or null when the table can't be found.
+export function parseOccurrenceCount(issueBody) {
+  if (typeof issueBody !== 'string') return null;
+  const tableMatch = issueBody.match(/\*\*Occurrence stats\*\*[^\n]*\n+((?:\|[^\n]*\n)+)/);
+  if (!tableMatch) return null;
+  const lines = tableMatch[1].split('\n').filter((l) => l.trim().startsWith('|'));
+  // Skip header (line 0) + alignment row (line 1). Sum cell index 2 (Crashes).
+  let total = 0;
+  let parsedAny = false;
+  for (let i = 2; i < lines.length; i++) {
+    const cells = lines[i]
+      .split('|')
+      .slice(1, -1)
+      .map((c) => c.trim());
+    if (cells.length < 3) continue;
+    const n = parseInt(cells[2], 10);
+    if (!Number.isNaN(n)) {
+      total += n;
+      parsedAny = true;
+    }
+  }
+  return parsedAny ? total : null;
+}
+
+// Inverse of draftIssueTitle — extracts { function, basename, line, version }
+// from an existing crash-issue title for the enrich-issue flow.
+const CRASH_ISSUE_TITLE_RE =
+  /^\[crash\]\s+(\w+)\(\)\s+in\s+([^:]+\.brs):(\d+)\s+\(v([0-9.]+)\)\s*$/;
+export function parseCrashIssueTitle(title) {
+  if (typeof title !== 'string') return null;
+  const m = CRASH_ISSUE_TITLE_RE.exec(title.trim());
+  if (!m) return null;
+  return { function: m[1], basename: m[2], line: Number(m[3]), version: m[4] };
+}
+
+// The dashboard's per-error plaintext export is newline-separated; the cell
+// parser expects `~~`-separated. Normalize so both formats share one parser.
+export function normalizeBacktraceText(text) {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .join('~~');
 }
 
 export function draftDedupSearchQuery(group) {
@@ -1205,22 +1406,29 @@ Not available in the aggregate report. To gather logs, reproduce in dev mode and
 `;
 }
 
-export function draftDedupComment(group, { runDate, csvWindow }) {
+export function draftDedupComment(group, { runDate, csvWindow, backtrace, resolvedFrames } = {}) {
   const version = [...group.versions][0] ?? 'unknown';
   const windowStr =
     csvWindow.start && csvWindow.end ? `${csvWindow.start} to ${csvWindow.end}` : runDate;
+  const backtraceBlock = backtraceSection(backtrace, resolvedFrames);
+  const backtraceTrailer = backtraceBlock ? `\n${backtraceBlock}` : '';
   return `**New occurrences from \`/crash-report\` run on ${runDate}** (Roku report window: ${windowStr}):
 
 ${occurrenceTable(group.rows)}
 
 Still occurring in app version ${version}. Crash signature unchanged.
-`;
+${backtraceTrailer}`;
 }
 
-export function draftRegressionComment(group, { runDate, csvWindow, previousState }) {
+export function draftRegressionComment(
+  group,
+  { runDate, csvWindow, previousState, backtrace, resolvedFrames } = {},
+) {
   const version = [...group.versions][0] ?? 'unknown';
   const windowStr =
     csvWindow.start && csvWindow.end ? `${csvWindow.start} to ${csvWindow.end}` : runDate;
+  const backtraceBlock = backtraceSection(backtrace, resolvedFrames);
+  const backtraceTrailer = backtraceBlock ? `\n${backtraceBlock}` : '';
   return `**Regression — this crash is reoccurring** after being marked ${previousState ?? 'closed'}.
 
 This crash signature reappeared in app version ${version} during the Roku report window ${windowStr}:
@@ -1228,7 +1436,7 @@ This crash signature reappeared in app version ${version} during the Roku report
 ${occurrenceTable(group.rows)}
 
 Reopening for investigation. If this is a false-positive (same crash signature, different root cause), close again with a note.
-`;
+${backtraceTrailer}`;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -1363,13 +1571,20 @@ export async function buildPlan({
     let commentBody = null;
     if (existing && existing.state === 'OPEN') {
       action = 'comment';
-      commentBody = draftDedupComment(group, { runDate, csvWindow: window });
+      commentBody = draftDedupComment(group, {
+        runDate,
+        csvWindow: window,
+        backtrace,
+        resolvedFrames,
+      });
     } else if (existing && existing.state === 'CLOSED') {
       action = 'reopen';
       commentBody = draftRegressionComment(group, {
         runDate,
         csvWindow: window,
         previousState: 'closed',
+        backtrace,
+        resolvedFrames,
       });
     }
     actions.push({
@@ -1387,7 +1602,7 @@ export async function buildPlan({
       action,
       title,
       body,
-      labels: ['bug', DEFAULT_LABEL, 'needs-triage'],
+      labels: ['bug', DEFAULT_LABEL],
       commentBody,
       existingIssue: existing,
     });
@@ -1736,6 +1951,155 @@ async function cmdPlan(args) {
   }
 }
 
+/**
+ * Backfill a multi-frame backtrace + locals snapshot onto an already-filed
+ * crash issue. The Roku analytics dashboard exposes backtraces only per-error
+ * (one click per signature), so this is the realistic enrichment path — pull
+ * the plaintext backtrace for one error, hand it to this command.
+ */
+export async function enrichIssue({
+  issueNumber,
+  backtraceText,
+  ghExec = defaultGhExec,
+  gitExec = defaultGitExec,
+  logger = console.error,
+}) {
+  const json = ghExec(['issue', 'view', String(issueNumber), '--json', 'title,labels,state']);
+  const issue = JSON.parse(json);
+  const parsed = parseCrashIssueTitle(issue.title);
+  if (!parsed) {
+    throw new Error(`Issue #${issueNumber} title doesn't match the [crash] shape: ${issue.title}`);
+  }
+  if (!Array.isArray(issue.labels) || !issue.labels.some((l) => l.name === DEFAULT_LABEL)) {
+    throw new Error(`Issue #${issueNumber} is missing the '${DEFAULT_LABEL}' label.`);
+  }
+
+  const cellText = normalizeBacktraceText(backtraceText);
+  const backtrace = parseBacktraceCell(cellText);
+  if (!backtrace) {
+    throw new Error(
+      `Could not parse backtrace text for issue #${issueNumber}. Expected the plaintext export from Roku's "View report → Backtrace" page.`,
+    );
+  }
+  backtrace.date = backtrace.date ?? new Date().toISOString().slice(0, 10);
+
+  const innermost = innermostFrame(backtrace);
+  const innermostBase = innermost && innermost.pkgPath ? basename(innermost.pkgPath) : null;
+  if (innermostBase !== parsed.basename || innermost.line !== parsed.line) {
+    logger(
+      `[crash-report] WARNING: backtrace innermost frame (${innermostBase}:${innermost && innermost.line}) doesn't match issue #${issueNumber} title (${parsed.basename}:${parsed.line}). Posting anyway.`,
+    );
+  }
+
+  const { buildDir, worktreePath, cleanup, fromCache } = getOrBuildAnalysis(parsed.version, {
+    logger,
+    gitExec,
+  });
+  if (fromCache) logger(`[crash-report] (cache hit — saved ~30-90s)`);
+  let comment;
+  let resolvedFrames;
+  try {
+    resolvedFrames = await resolveBacktraceFrames(backtrace.frames, buildDir, worktreePath);
+    const block = backtraceSection(backtrace, resolvedFrames);
+    if (!block) throw new Error('Backtrace section came back empty after frame resolution.');
+    comment = `**Backtrace enrichment from Roku analytics dashboard** (manually pulled, posted ${new Date().toISOString().slice(0, 10)}):
+
+${block}`;
+  } finally {
+    cleanup();
+  }
+
+  const tmpFile = join(tmpdir(), `crash-report-enrich-${issueNumber}-${Date.now()}.md`);
+  writeFileSync(tmpFile, comment);
+  try {
+    ghExec(['issue', 'comment', String(issueNumber), '--body-file', tmpFile]);
+    logger(
+      `[crash-report] enriched #${issueNumber} with ${resolvedFrames.length} backtrace frame(s)`,
+    );
+  } finally {
+    try {
+      rmSync(tmpFile);
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+/**
+ * Lightweight pre-enrichment classifier. Does NOT build a worktree — pure
+ * backtrace parsing + issue-body inspection. Emits a JSON document so the
+ * orchestrating skill can branch on the classification before paying the
+ * worktree-build cost.
+ */
+export async function classifyForEnrichment({
+  issueNumber,
+  backtraceText,
+  ghExec = defaultGhExec,
+}) {
+  const cellText = normalizeBacktraceText(backtraceText);
+  const backtrace = parseBacktraceCell(cellText);
+  if (!backtrace) {
+    throw new Error('Could not parse backtrace text. Re-check the dashboard export.');
+  }
+  const json = ghExec(['issue', 'view', String(issueNumber), '--json', 'title,body,labels,state']);
+  const issue = JSON.parse(json);
+  const occurrenceCount = parseOccurrenceCount(issue.body);
+  const innermost = innermostFrame(backtrace);
+  const classification = classifyBacktraceForEnrichment(backtrace, { occurrenceCount });
+  return {
+    issueNumber,
+    issueState: issue.state,
+    occurrenceCount,
+    errorCode: backtrace.errorCode,
+    errorMessage: backtrace.errorMessage,
+    innermostFrame: innermost
+      ? { function: innermost.function, pkgPath: innermost.pkgPath, line: innermost.line }
+      : null,
+    classification,
+  };
+}
+
+async function cmdClassifyBacktrace(args) {
+  const issueNumber = Number(args.flags.issue ?? args._[1]);
+  if (!issueNumber || Number.isNaN(issueNumber)) {
+    throw new Error('Missing --issue <N>.');
+  }
+  const backtraceFile = args.flags['backtrace-file'];
+  let backtraceText;
+  if (backtraceFile) {
+    backtraceText = readFileSync(backtraceFile, 'utf8');
+  } else {
+    backtraceText = await readStdin();
+  }
+  if (!backtraceText || backtraceText.trim().length === 0) {
+    throw new Error(
+      'No backtrace text provided. Pass --backtrace-file <path> or pipe text on stdin.',
+    );
+  }
+  const result = await classifyForEnrichment({ issueNumber, backtraceText });
+  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+}
+
+async function cmdEnrichIssue(args) {
+  const issueNumber = Number(args.flags.issue ?? args._[1]);
+  if (!issueNumber || Number.isNaN(issueNumber)) {
+    throw new Error('Missing --issue <N>.');
+  }
+  const backtraceFile = args.flags['backtrace-file'];
+  let backtraceText;
+  if (backtraceFile) {
+    backtraceText = readFileSync(backtraceFile, 'utf8');
+  } else {
+    backtraceText = await readStdin();
+  }
+  if (!backtraceText || backtraceText.trim().length === 0) {
+    throw new Error(
+      'No backtrace text provided. Pass --backtrace-file <path> or pipe text on stdin.',
+    );
+  }
+  await enrichIssue({ issueNumber, backtraceText });
+}
+
 function cmdExecute(args) {
   const planPath = args.flags.plan ?? args._[1];
   if (!planPath) throw new Error('Missing --plan <plan.json>.');
@@ -1763,11 +2127,22 @@ async function main() {
   const sub = args._[0];
   if (sub === 'plan') return cmdPlan(args);
   if (sub === 'execute') return cmdExecute(args);
+  if (sub === 'enrich-issue') return cmdEnrichIssue(args);
+  if (sub === 'classify-backtrace') return cmdClassifyBacktrace(args);
+  if (sub === 'clean-cache') {
+    cleanAnalysisCache();
+    return;
+  }
   if (sub === '--help' || sub === 'help' || !sub) {
     process.stdout.write(`Usage:
   node scripts/crash-report.js plan --input <csv|zip|-> [--min-devices N]
     [--min-dates N] [--no-build] [--dashboard-csv <path>] [--plan-out <path>]
   node scripts/crash-report.js execute --plan <plan.json> [--handoff-dir <path>]
+  node scripts/crash-report.js enrich-issue --issue <N>
+    [--backtrace-file <path>]    # else read backtrace text from stdin
+  node scripts/crash-report.js classify-backtrace --issue <N>
+    [--backtrace-file <path>]    # JSON output; flags noise-like patterns
+  node scripts/crash-report.js clean-cache    # remove all cached worktrees
 `);
     return;
   }

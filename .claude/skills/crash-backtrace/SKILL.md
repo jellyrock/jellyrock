@@ -1,0 +1,150 @@
+---
+name: crash-backtrace
+description: Attach a multi-frame backtrace + locals snapshot to a single already-filed crash issue. Roku's analytics dashboard only exposes backtraces one click at a time (no bulk export), so this is the realistic per-issue enrichment workflow that follows up after `/crash-report` files the issues. Reads the issue's cited app version from the title, builds (or reuses a cached) git worktree at that version, source-maps every backtrace frame back to its `.bs:line`, and posts ONE enrichment comment on the issue. Accepts the backtrace via `@file` reference OR inline paste in the prompt. Pre-enrichment classifier flags known-noise patterns — `timeout-one-off` (`Execution timeout` &h23 with exactly 1 occurrence; usually transient server/network blip), `timeout-recurring` (timeout class to escalate to /issue-triage), and `global-constants-init-race-suspect` (init() with the Dot-operator error &hec; belt-and-suspenders behind the /crash-report YAML filter for #103). For each flagged pattern the user picks: close-as-known-noise / enrich-anyway / abort. Worktree builds are cached at `/tmp/jellyrock-crash-wt-cache-<tag>` with a 1h TTL so consecutive enrichments on the same version cost ~1s after the first ~30-90s build.
+model: sonnet
+user-invocable: true
+allowed-tools: Bash(node scripts/crash-report.js:*), Bash(gh issue view:*), Bash(gh issue comment:*), Bash(gh issue close:*), Bash(mkdir:*), Bash(mktemp:*), Bash(rm:*), Bash(cat:*), Read, Write, Edit
+---
+
+# /crash-backtrace — enrich one filed crash issue with a dashboard backtrace
+
+Single-issue follow-up to `/crash-report`. The orchestrating skill `/crash-report` files issues; `/crash-backtrace` enriches them with the multi-frame backtrace + local-variable snapshot Roku only exposes per-error in its analytics dashboard. See [`docs/dev/crash-reports.md`](../../../docs/dev/crash-reports.md) for the dashboard click-through and the plaintext-backtrace shape.
+
+The mechanical work lives in [`scripts/crash-report.js`](../../../scripts/crash-report.js)'s `enrich-issue` subcommand. This skill orchestrates input handling (parse arg / read file / detect paste) and surfaces the result.
+
+## Inputs
+
+`$ARGUMENTS` shapes (parse the first token as the issue number, then locate the backtrace text):
+
+| Shape | Example | What to do |
+|---|---|---|
+| Issue number + file ref | `/crash-backtrace 582 @tasks/582-backtrace.txt` | Use the file path. Read it via the Read tool to confirm it has the backtrace shape, then pass to the helper. |
+| Issue number + inline paste | `/crash-backtrace 582\n\n'Type Mismatch' (runtime error &h18) in pkg:/...\nBacktrace:\n#0  Function ...` | Write the pasted text (everything after the issue number on subsequent lines) to a temp file, pass to the helper. |
+| Issue number only | `/crash-backtrace 582` | Ask the user to paste the backtrace text OR provide a file path in their next message. Do NOT proceed until you have backtrace text. |
+
+A well-formed plaintext backtrace looks like:
+
+```text
+'<message>' (runtime error &h<hex>) in pkg:/<path>(<line>)
+Backtrace:
+#0  Function <name>(<args>) As <returnType> file/line: pkg:/<path>(<line>)
+#1  Function ...
+Local Variables:
+<name>           <type> val:"<value>"
+```
+
+If the input doesn't start with `'<message>' (runtime error` or contain a `Backtrace:` marker, surface the problem to the user before invoking the helper — they likely grabbed the wrong dashboard view (e.g. the "App" or "Platform" report instead of "Backtrace").
+
+## Step 0 — Preflight
+
+Confirm:
+
+1. **Issue exists and has the `[crash]` shape.** `gh issue view <N> --json title,labels,state` — title must match `[crash] <fn>() in <basename>.brs:<line> (v<version>)`. The helper validates this too, but checking up front gives a clearer error than the helper's stderr.
+2. **The `crash` label is present.** Same `gh issue view`. The helper refuses without it.
+
+If either fails, surface the problem and stop — don't proceed to enrichment.
+
+## Step 1 — Locate the backtrace text
+
+Per the input shapes above:
+
+- **`@file` reference**: use Read tool to load the file. If the file isn't found, ask the user for the right path.
+- **Inline paste**: write everything after the issue-number token to `$(mktemp -t crash-bt-${ISSUE}.XXXXXX.txt)`. Strip any markdown code fences (` ``` `) the user may have wrapped around the paste.
+- **Neither**: ask the user once for the backtrace text, then wait. Don't loop.
+
+In all cases, the final state is: a file path on disk containing the plaintext backtrace, ready to hand to the helper.
+
+## Step 2 — Sanity-check the backtrace
+
+Before invoking the helper, do a 30-second cross-check on the loaded text:
+
+- First non-blank line should match `^'.+' \(runtime error &h[0-9a-f]+\) in pkg:/.+\(\d+\)` (case-insensitive). If not, the user likely pasted the wrong view.
+- The text should contain `Backtrace:` and at least one `#<N>  Function ...` frame line.
+- Extract the innermost-frame's basename + line (the highest-`#N` frame, or the only frame). Compare against the issue title's basename + line. If they mismatch, warn the user — they may have grabbed the wrong row in the dashboard. Ask whether to proceed anyway.
+
+These checks are belt-and-suspenders — the helper does them too — but they let the skill surface a clean error before spending ~60s on a worktree build that's going to fail or attach to the wrong issue.
+
+## Step 3 — Classify before enriching
+
+Cheap pre-check (no worktree build) — surfaces known-noise patterns so the user can decide whether to enrich, close, or escalate. Run:
+
+```bash
+node scripts/crash-report.js classify-backtrace --issue <N> --backtrace-file <path-from-step-1>
+```
+
+The output is a single JSON document:
+
+```json
+{
+  "issueNumber": 583,
+  "issueState": "OPEN",
+  "occurrenceCount": 1,
+  "errorCode": "&h23",
+  "errorMessage": "Execution timeout",
+  "innermostFrame": { "function": "onprogresspercentagechanged", "pkgPath": "pkg:/...", "line": 506 },
+  "classification": {
+    "kind": "timeout-one-off",
+    "reason": "Execution timeout (&h23) with exactly 1 occurrence...",
+    "recommendedAction": "close-as-not-actionable"
+  }
+}
+```
+
+**If `classification` is `null`** — proceed straight to Step 4 (enrich).
+
+**If `classification.kind` is set** — surface the classification + reason to the user, then ask via `AskUserQuestion` what to do. Each kind has a recommended action, but the user always has the final say:
+
+| `kind` | Recommended action | Other choices |
+|---|---|---|
+| `timeout-one-off` | Close the issue as not-actionable with a comment ("one-off timeout — likely transient server/network blip; reopen if it recurs"). Do NOT enrich. | Enrich anyway (if user has signal it's a real bug), Abort |
+| `timeout-recurring` | Enrich + escalate: post the backtrace, then suggest the user run `/issue-triage <N>`. | Abort |
+| `global-constants-init-race-suspect` | Close as duplicate of #103 with a comment linking the tracker. Optionally update `.crash-report/known-noise.yml` if it's a new file pattern not yet matched (file_glob, snippet_regex). | Enrich anyway (if user has signal it's a different root cause), Abort |
+
+For close-as-X actions: post the comment first (`gh issue comment <N> --body "..."`), then `gh issue close <N>`. Don't double-comment — one comment is enough.
+
+For update-noise-yml: that's a deliberate edit to `.crash-report/known-noise.yml`. Surface the diff, ask for confirmation, then Edit.
+
+## Step 4 — Run the helper
+
+```bash
+node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path-from-step-1>
+```
+
+Surface the helper's log lines as they happen — the worktree-build messages (`creating worktree at v2.17.0`, `installing dependencies`, `building analysis output`) explain the ~30-90s wait. Cache-hit runs print `reusing cached worktree at ... (Ns old)` and finish in ~1s.
+
+On success the helper prints `[crash-report] enriched #<N> with <K> backtrace frame(s)`.
+
+On failure, the helper exits non-zero with a clear message — relay it verbatim. Common failure modes:
+
+- **Title shape mismatch** (`Issue #N title doesn't match the [crash] shape`): the issue wasn't filed by `/crash-report`. Use `gh issue comment` manually instead.
+- **Missing label** (`Issue #N is missing the 'crash' label`): same as above.
+- **Parse failure** (`Could not parse backtrace text`): the input isn't the expected plaintext shape. Re-run Step 2's sanity check; the dashboard probably exported a different view.
+- **Version resolution** (`Could not resolve version X.Y.Z to a git tag`): the issue cites a version that doesn't exist in `git tag`. Could be a typo in the title or an unreleased build.
+- **Build failure** (npm/bsc error): the worktree build itself failed. Surface the helper's stderr; common cause is a tag too old to have `bsconfig-prod.json`. The cache for this tag was wiped — re-running won't help without a fix.
+
+## Step 5 — Surface the comment URL
+
+After success, fetch the latest comment URL so the user can click through:
+
+```bash
+gh issue view <N> --json comments --jq '.comments | last | .url'
+```
+
+Output a one-line confirmation: `Enriched #<N> — <comment-url>`. No further follow-up; the team gets to the data via the GH issue, not a local file.
+
+## Worktree cache notes
+
+Cached builds live at `/tmp/jellyrock-crash-wt-cache-<sanitized-tag>` and survive across invocations within 1h. To force a rebuild on the next call, run `node scripts/crash-report.js clean-cache` (wipes all cached worktrees) or just delete the specific cache dir.
+
+The cache is keyed by the resolved tag, not the version string — so an exact-match version (`2.17.0` → `v2.17.0`) and a fallback-match version (`2.17.4` → `v2.17.0`) hit the same cache entry. Tag-immutability makes this safe.
+
+## When NOT to use
+
+- The issue wasn't filed by `/crash-report` (no `[crash]` title, no `crash` label) → comment manually with `gh issue comment <N>`.
+- The crash already has multiple enrichment comments — re-enriching is harmless but creates visible noise.
+- You want a *fix* for the crash, not just data → `/issue-triage <N>` instead.
+- You don't have a backtrace yet → pull from Roku analytics first; this skill doesn't fetch.
+
+## Sub-agent invocation
+
+To invoke from a parent sub-agent: parent passes `Read .claude/skills/crash-backtrace/SKILL.md and follow Steps 0-5 to enrich GH issue #<N> with the backtrace at <path-or-paste>` in the Task prompt.

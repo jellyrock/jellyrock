@@ -6,7 +6,7 @@ related-files:
   - .crash-report/known-noise.yml
   - .claude/skills/crash-report/SKILL.md
   - tests/scripts/unit/crash-report.test.js
-last-reviewed: 2026-05-17
+last-reviewed: 2026-05-20
 ---
 
 # Weekly Roku crash-report workflow
@@ -118,47 +118,90 @@ Filing every single-device, single-date crash creates noise — many of those ar
 
 Override with `--min-devices N` or `--min-dates N` to widen or narrow the filter. To file everything: `/crash-report report.csv --min-devices 1 --min-dates 1`.
 
-## Optional: backtrace enrichment via the dashboard CSV
+## Optional: backtrace enrichment from the analytics dashboard
 
-The weekly email CSV carries exactly one frame per crash — the location where the BrightScript runtime detected the failure. Roku's analytics dashboard has a richer view: for each unique crash you can download a tab-separated CSV that includes the full multi-frame backtrace plus a snapshot of local variables at crash time. Pass it to `/crash-report` via `--dashboard-csv <path>` and each filed issue gets two extra sections: a "Backtrace (innermost frame first)" table with every frame's source-mapped location, and a "Local variables at crash time" block showing the runtime state of named locals.
+The weekly email CSV carries exactly one frame per crash — the location where the BrightScript runtime detected the failure. Roku's analytics dashboard has a richer per-error view: for each unique crash row you can click "View report" under the Backtrace column to see the full multi-frame backtrace plus a snapshot of local variables at crash time. There is no bulk export — backtraces are pulled one error at a time.
 
-### Pulling the dashboard CSV
+Two workflows attach this data to filed issues:
 
-1. Open Roku's analytics dashboard → BrightScript Errors view (the same place the weekly email summary comes from).
-2. Filter to the same date range as the weekly CSV (typically the last 7 days).
-3. Export the "BrightScript Error Backtrace" report as TSV. The export has 4 columns: `Agg Channel Brightscript Error Daily Error Key`, `Date`, `Agg Channel Brightscript Error Backtrace Formatted`, and `Backtrace Text Formatted`. The skill parses the 4th column; the others are ignored (the Daily Error Key is opaque to us and the Formatted column is HTML markup that just duplicates the text column).
-4. Save the export anywhere (e.g. `~/Downloads/crash-backtraces-2026-05-13.tsv`).
+1. **`enrich-issue` subcommand** (recommended for the per-error click-through reality) — manually pull the plaintext backtrace for ONE filed issue, hand it to the helper, get one enrichment comment posted.
+2. **`--dashboard-csv` flag** on `plan` / `execute` — if you ever manage to assemble a TSV containing multiple backtraces in Roku's expected format (e.g. via API access or a future bulk export), pass it once and every matching new or already-open issue is enriched in a single run. Today this is a forward-compatible path, not a daily workflow.
 
-### Running with both inputs
+### `/crash-backtrace <N>` workflow
+
+For each issue you want to enrich:
+
+1. Open Roku's analytics dashboard → BrightScript Errors view.
+2. Find the row whose `Error Text` matches the filed issue's signature (`basename` + line in the issue title).
+3. Click "View report" under the Backtrace column for that row.
+4. Download the plaintext export (or copy the rendered backtrace text — header line + `Backtrace:` section + `Local Variables:` section).
+5. Invoke the [`/crash-backtrace`](../../.claude/skills/crash-backtrace/SKILL.md) skill, passing the issue number and the backtrace:
+
+   ```text
+   /crash-backtrace 582 @tasks/582-bt.txt
+   ```
+
+   …or paste the backtrace text directly after the command in the same prompt. The skill detects either shape.
+
+Under the hood, the skill runs `node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path>` (the helper is also available directly if you need to wire it into other automation; both call the same `enrichIssue` function). Worktree builds are cached at `/tmp/jellyrock-crash-wt-cache-<tag>` with a `1h` TTL — so the first enrichment per version pays the `~30-90s` build cost, then subsequent same-version enrichments cost `~1s`.
+
+### Pre-enrichment classification
+
+Before paying the worktree build cost, the skill runs a cheap classifier (`classify-backtrace` subcommand — pure backtrace parsing + issue-body inspection, no build) that flags known-noise patterns the team usually doesn't want enriched:
+
+- **`timeout-one-off`** — `Execution timeout` (runtime error `&h23`) with exactly 1 occurrence per the issue's stats table. Roku OS killed the thread for running too long. Single occurrences are usually transient (server disconnect, network blip, device-specific stall) and not actionable. Recommended action: close as not-actionable with a comment ("one-off timeout — reopen if it recurs").
+- **`timeout-recurring`** — same error code/message but ≥2 occurrences. The class of bug the team actually needs to investigate. Recommended action: enrich + escalate to `/issue-triage <N>`.
+- **`global-constants-init-race-suspect`** — `init()` with the `'Dot' Operator attempted with invalid BrightScript Component...` error (`&hec`). Belt-and-suspenders behind the `/crash-report` YAML filter for #103 — catches signature variants the YAML pattern missed (e.g., a new themed component whose file glob isn't covered). Recommended action: close as duplicate of #103; optionally extend `.crash-report/known-noise.yml` to cover the new variant.
+
+The skill surfaces the classification + reason + recommended action, then asks the user before proceeding. The user always has the final say (enrich anyway, follow the recommendation, or abort). Classifier code lives in `classifyBacktraceForEnrichment` ([scripts/crash-report.js](../../scripts/crash-report.js)) and is unit-tested in `tests/scripts/unit/crash-report.test.js`. To add a new classification rule (e.g., a `null-node-deref` one-off), edit the function and add a Vitest case — there's no YAML config layer for these checks today.
+
+The helper:
+
+- Reads the issue via `gh issue view <N>` and parses its `[crash] <fn>() in <basename>.brs:<line> (v<version>)` title for the version + signature.
+- Cross-checks that the issue carries the `crash` label (refuses to enrich anything else).
+- Parses the plaintext backtrace (handles CRLF endings, drops blank lines, splits on the `Backtrace:` / `Local Variables:` markers).
+- Warns (but does not abort) if the backtrace's innermost frame doesn't match the issue title's `basename:line` — happens if you grabbed the wrong row.
+- Builds a temp git worktree at the issue's cited version, runs `bsc` to get source maps, and resolves every backtrace frame back to its `.bs:line`.
+- Posts ONE comment to the issue with the resolved-frame table + locals block under a clear "Backtrace enrichment from Roku analytics dashboard" header.
+
+Each invocation builds its own worktree (~30-90 s). For 4 issues that's a few minutes of wall-clock per weekly batch, which is acceptable for the click-through cadence the dashboard imposes.
+
+#### Plaintext backtrace format expected
 
 ```text
-/crash-report path/to/weekly-report.csv --dashboard-csv ~/Downloads/crash-backtraces-2026-05-13.tsv
+'<message>' (runtime error &h<hex>) in pkg:/<path>(<line>)
+Backtrace:
+#0  Function <name>(<args>) As <returnType> file/line: pkg:/<path>(<line>)
+#1  Function ...
+Local Variables:
+<name>           <type> val:"<value>"
+<name>           <type> refcnt=<n> count:<n>
 ```
 
-The weekly CSV still drives all filing decisions (thresholds, dedup, known-noise classification, GH writes). The dashboard CSV is pure enrichment: signatures with no matching backtrace fall back to today's single-frame view, and dashboard-only signatures (no matching email row) are ignored entirely — without crash counts there's nothing to threshold on.
+Indices are inside-out: `#0` is the entry point, the highest-numbered frame is the crash site. Primitives show their value; collections show metadata only (`refcnt`, `count`). Roku redacts collection contents in the export, so dumping the block verbatim into a public GH issue is safe.
 
-### Format details
+### `--dashboard-csv` (bulk path, forward-compatible)
 
-The dashboard CSV is tab-separated (the weekly email is comma-separated). Inside the `Backtrace Text Formatted` column, `~~` is the in-cell line separator (Roku's export collapses the multi-line backtrace into a single cell to play nicely with downstream spreadsheet tooling). The skill splits on `~~` and walks three sections:
+If you ever have a TSV containing multiple backtraces in the dashboard's expected shape — one row per unique signature, with the `Backtrace Text Formatted` column using `~~` as the in-cell line separator — pass it to `plan`:
 
-- Header line: `'<message>' (runtime error &h<hex>) in pkg:/<path>(<line>)`
-- Frames after the `Backtrace:` marker: `#<N>  Function <name>(<args>) As <returnType> file/line: pkg:/<path>(<line>)` — `#0` is the entry point, the highest-numbered frame is the crash site.
-- Locals after the `Local Variables:` marker — one variable per line. Primitives show their value (`val:"..."`); collections show metadata only (`refcnt`, `count`). Roku's export already redacts collection contents, so there's no risk of leaking PII when we dump the block verbatim into a public GH issue.
+```bash
+/crash-report path/to/weekly-report.csv --dashboard-csv path/to/backtraces.tsv
+```
 
-Same-signature rows on different dates collapse to one entry; the most-recent date wins (backtrace shape doesn't change for a fixed crash, but local-variable values are a per-event snapshot, so we keep one).
+The weekly CSV still drives all filing decisions (thresholds, dedup, known-noise classification, GH writes). The dashboard CSV is pure enrichment that flows into both new-issue bodies and dedup/regression comments on existing issues. Signatures with no matching backtrace fall back to the single-frame view; dashboard-only signatures (no matching email row) are ignored.
 
-### When to use this
+### When to enrich
 
-Worth pulling the dashboard CSV when:
+Worth pulling backtraces when:
 
-- The single-frame email view is ambiguous (e.g. a generic helper like `m.global.constants` lookup failing — you want to know which caller triggered it).
+- The single-frame email view is ambiguous (e.g. a generic helper failing — you want to know which caller triggered it).
 - You're triaging a re-emerging crash and want to see whether the call chain changed since the last occurrence.
 - A bug report from a user references a specific feature and you want to confirm the call chain matches that flow.
 
 Skip it when:
 
 - The crash signature is already self-explanatory (single-method failure with a clear cause).
-- You're running on weekly cadence and want the fastest path through.
+- You're running on weekly cadence and want the fastest path through — file first, enrich on demand if triage stalls.
 
 ## Issue shape
 
@@ -200,6 +243,10 @@ If `npm ci` or `bsc` fails in the worktree, the affected signatures get an unres
 ## Re-running on the same report
 
 Safe — the skill is idempotent. New issues won't be duplicated (dedup matches them); open matches get a duplicate "new occurrences" comment (visible noise, harmless). Prefer running once per weekly report on the freshest CSV.
+
+### Backfilling backtraces onto already-filed issues
+
+If a batch of issues was filed without `--dashboard-csv` and you later want to attach the multi-frame backtrace + locals, just re-run with the same email CSV plus `--dashboard-csv <path>`. The dedup search will find each open issue, switch the action from `create` to `comment`, and the comment body includes the backtrace section in addition to the "new occurrences" stats. Closed-match (regression) comments are likewise enriched. Dashboard-only signatures with no matching email row are still ignored (no email row → no occurrence stats → nothing to threshold on).
 
 ## Tests
 
