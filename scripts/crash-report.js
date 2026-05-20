@@ -17,6 +17,10 @@
 //                  issue. Takes the plaintext backtrace from Roku's "View report"
 //                  page (per-error click-through), resolves frames against the
 //                  issue's cited version, posts a single enrichment comment.
+//   resolve-issue— reverse-lookup: given a backtrace, find every [crash] issue
+//                  whose title carries the innermost frame's basename:line.
+//                  JSON output; powers /crash-backtrace's auto-resolve flow so
+//                  the user doesn't have to remember issue numbers.
 //
 // Usage:
 //   node scripts/crash-report.js plan --input <csv|zip> [--min-devices N]
@@ -2059,6 +2063,81 @@ export async function classifyForEnrichment({
   };
 }
 
+/**
+ * Reverse-lookup: given a parsed backtrace, find every [crash] issue whose
+ * title carries the innermost frame's `<basename>:<line>` substring. Same
+ * search shape `searchExistingIssues` uses at /crash-report filing time —
+ * so the auto-resolve lands on whatever the dedup search would have hit.
+ */
+export function resolveIssuesByBacktrace(backtrace, { ghExec = defaultGhExec } = {}) {
+  const innermost = innermostFrame(backtrace);
+  if (!innermost) return [];
+  const query = draftDedupSearchQuery({ pkgPath: innermost.pkgPath, line: innermost.line });
+  let raw;
+  try {
+    raw = ghExec([
+      'issue',
+      'list',
+      '--search',
+      query,
+      '--state',
+      'all',
+      '--limit',
+      '20',
+      '--json',
+      'number,title,state',
+    ]);
+  } catch {
+    return [];
+  }
+  let issues;
+  try {
+    issues = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(issues)) return [];
+  return issues
+    .filter((i) => typeof i.title === 'string' && i.title.startsWith(TITLE_PREFIX))
+    .map((i) => ({ number: i.number, title: i.title, state: i.state }));
+}
+
+async function cmdResolveIssue(args) {
+  const backtraceFile = args.flags['backtrace-file'];
+  let backtraceText;
+  if (backtraceFile) {
+    backtraceText = readFileSync(backtraceFile, 'utf8');
+  } else {
+    backtraceText = await readStdin();
+  }
+  if (!backtraceText || backtraceText.trim().length === 0) {
+    throw new Error(
+      'No backtrace text provided. Pass --backtrace-file <path> or pipe text on stdin.',
+    );
+  }
+  const cellText = normalizeBacktraceText(backtraceText);
+  const backtrace = parseBacktraceCell(cellText);
+  if (!backtrace) {
+    throw new Error('Could not parse backtrace text. Re-check the dashboard export.');
+  }
+  const innermost = innermostFrame(backtrace);
+  const matches = resolveIssuesByBacktrace(backtrace);
+  process.stdout.write(
+    JSON.stringify(
+      {
+        innermostFrame: innermost
+          ? { function: innermost.function, pkgPath: innermost.pkgPath, line: innermost.line }
+          : null,
+        errorCode: backtrace.errorCode,
+        errorMessage: backtrace.errorMessage,
+        matches,
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+}
+
 async function cmdClassifyBacktrace(args) {
   const issueNumber = Number(args.flags.issue ?? args._[1]);
   if (!issueNumber || Number.isNaN(issueNumber)) {
@@ -2129,6 +2208,7 @@ async function main() {
   if (sub === 'execute') return cmdExecute(args);
   if (sub === 'enrich-issue') return cmdEnrichIssue(args);
   if (sub === 'classify-backtrace') return cmdClassifyBacktrace(args);
+  if (sub === 'resolve-issue') return cmdResolveIssue(args);
   if (sub === 'clean-cache') {
     cleanAnalysisCache();
     return;
@@ -2142,6 +2222,8 @@ async function main() {
     [--backtrace-file <path>]    # else read backtrace text from stdin
   node scripts/crash-report.js classify-backtrace --issue <N>
     [--backtrace-file <path>]    # JSON output; flags noise-like patterns
+  node scripts/crash-report.js resolve-issue
+    [--backtrace-file <path>]    # JSON output; finds [crash] issues matching the backtrace
   node scripts/crash-report.js clean-cache    # remove all cached worktrees
 `);
     return;

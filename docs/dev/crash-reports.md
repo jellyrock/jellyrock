@@ -127,21 +127,30 @@ Two workflows attach this data to filed issues:
 1. **`enrich-issue` subcommand** (recommended for the per-error click-through reality) — manually pull the plaintext backtrace for ONE filed issue, hand it to the helper, get one enrichment comment posted.
 2. **`--dashboard-csv` flag** on `plan` / `execute` — if you ever manage to assemble a TSV containing multiple backtraces in Roku's expected format (e.g. via API access or a future bulk export), pass it once and every matching new or already-open issue is enriched in a single run. Today this is a forward-compatible path, not a daily workflow.
 
-### `/crash-backtrace <N>` workflow
+### `/crash-backtrace` workflow
 
-For each issue you want to enrich:
+Per weekly batch:
 
 1. Open Roku's analytics dashboard → BrightScript Errors view.
-2. Find the row whose `Error Text` matches the filed issue's signature (`basename` + line in the issue title).
-3. Click "View report" under the Backtrace column for that row.
-4. Download the plaintext export (or copy the rendered backtrace text — header line + `Backtrace:` section + `Local Variables:` section).
-5. Invoke the [`/crash-backtrace`](../../.claude/skills/crash-backtrace/SKILL.md) skill, passing the issue number and the backtrace:
+2. For each crash you want to enrich, click "View report" under the Backtrace column.
+3. Download the plaintext export and save into a folder (e.g. `tasks/bt-2026-05-20/`). Filenames don't matter — the skill auto-resolves the matching issue from each backtrace's innermost frame signature.
+4. Invoke the [`/crash-backtrace`](../../.claude/skills/crash-backtrace/SKILL.md) skill against one or many files:
 
    ```text
-   /crash-backtrace 582 @tasks/582-bt.txt
+   /crash-backtrace @tasks/bt-2026-05-20/file-1.txt @tasks/bt-2026-05-20/file-2.txt @tasks/bt-2026-05-20/file-3.txt
    ```
 
-   …or paste the backtrace text directly after the command in the same prompt. The skill detects either shape.
+   Or one at a time via inline paste:
+
+   ```text
+   /crash-backtrace
+
+   Execution timeout (runtime error &h23) in pkg:/components/video/OSD.brs(504)
+   Backtrace:
+   #1  Function onprogresspercentagechanged() ...
+   ```
+
+   The skill resolves each backtrace to a `[crash]` issue via `<basename>:<line>` substring search. If the auto-resolve is ambiguous (multiple matches, or a CLOSED match), the skill asks which to use. Pass an explicit issue number to bypass auto-resolve: `/crash-backtrace 582 @tasks/582.txt`.
 
 Under the hood, the skill runs `node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path>` (the helper is also available directly if you need to wire it into other automation; both call the same `enrichIssue` function). Worktree builds are cached at `/tmp/jellyrock-crash-wt-cache-<tag>` with a `1h` TTL — so the first enrichment per version pays the `~30-90s` build cost, then subsequent same-version enrichments cost `~1s`.
 

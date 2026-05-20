@@ -46,6 +46,7 @@ import {
   classifyForEnrichment,
   TIMEOUT_ERROR_CODE,
   NULL_DOT_ERROR_CODE,
+  resolveIssuesByBacktrace,
   searchExistingIssues,
   renderRunSummary,
   parseArgs,
@@ -859,6 +860,85 @@ t                roString val:"15:00,170?"`;
     expect(result.classification).toBeNull();
     expect(result.errorCode).toBe('&h18');
     expect(result.occurrenceCount).toBe(2);
+  });
+});
+
+describe('resolveIssuesByBacktrace (auto-resolve issue from backtrace)', () => {
+  const backtrace = {
+    errorCode: '&h18',
+    errorMessage: 'Type Mismatch',
+    date: '2026-05-13',
+    frames: [
+      {
+        index: 1,
+        function: 'toms',
+        args: 't As Dynamic',
+        returnType: '$1',
+        pkgPath: 'pkg:/components/captionTask.brs',
+        line: 276,
+      },
+      {
+        index: 0,
+        function: 'fetchcaption',
+        args: '',
+        returnType: '$1',
+        pkgPath: 'pkg:/components/captionTask.brs',
+        line: 146,
+      },
+    ],
+    locals: [],
+  };
+
+  it('returns open + closed [crash] issues matching the innermost frame basename:line', () => {
+    const ghExec = (args) => {
+      expect(args).toContain('--search');
+      const queryIdx = args.indexOf('--search') + 1;
+      expect(args[queryIdx]).toBe('"captionTask.brs:276"');
+      return JSON.stringify([
+        { number: 584, title: '[crash] toms() in captionTask.brs:276 (v2.17.0)', state: 'OPEN' },
+        { number: 410, title: '[crash] toms() in captionTask.brs:276 (v2.15.0)', state: 'CLOSED' },
+      ]);
+    };
+    const matches = resolveIssuesByBacktrace(backtrace, { ghExec });
+    expect(matches).toHaveLength(2);
+    expect(matches[0]).toEqual({
+      number: 584,
+      title: '[crash] toms() in captionTask.brs:276 (v2.17.0)',
+      state: 'OPEN',
+    });
+  });
+
+  it('filters out gh search hits whose title is not [crash]-prefixed (avoid false positives)', () => {
+    const ghExec = () =>
+      JSON.stringify([
+        { number: 584, title: '[crash] toms() in captionTask.brs:276 (v2.17.0)', state: 'OPEN' },
+        { number: 999, title: 'Bug: captionTask.brs:276 looks weird', state: 'OPEN' },
+      ]);
+    const matches = resolveIssuesByBacktrace(backtrace, { ghExec });
+    expect(matches).toHaveLength(1);
+    expect(matches[0].number).toBe(584);
+  });
+
+  it('returns [] when gh returns no results', () => {
+    const ghExec = () => '[]';
+    expect(resolveIssuesByBacktrace(backtrace, { ghExec })).toEqual([]);
+  });
+
+  it('returns [] when gh exec throws (network/auth)', () => {
+    const ghExec = () => {
+      throw new Error('auth failure');
+    };
+    expect(resolveIssuesByBacktrace(backtrace, { ghExec })).toEqual([]);
+  });
+
+  it('returns [] when backtrace has no innermost frame', () => {
+    expect(resolveIssuesByBacktrace({ frames: [] })).toEqual([]);
+    expect(resolveIssuesByBacktrace(null)).toEqual([]);
+  });
+
+  it('returns [] when gh returns malformed JSON', () => {
+    const ghExec = () => 'not json at all';
+    expect(resolveIssuesByBacktrace(backtrace, { ghExec })).toEqual([]);
   });
 });
 

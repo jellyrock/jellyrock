@@ -1,9 +1,9 @@
 ---
 name: crash-backtrace
-description: Attach a multi-frame backtrace + locals snapshot to a single already-filed crash issue. Roku's analytics dashboard only exposes backtraces one click at a time (no bulk export), so this is the realistic per-issue enrichment workflow that follows up after `/crash-report` files the issues. Reads the issue's cited app version from the title, builds (or reuses a cached) git worktree at that version, source-maps every backtrace frame back to its `.bs:line`, and posts ONE enrichment comment on the issue. Accepts the backtrace via `@file` reference OR inline paste in the prompt. Pre-enrichment classifier flags known-noise patterns — `timeout-one-off` (`Execution timeout` &h23 with exactly 1 occurrence; usually transient server/network blip), `timeout-recurring` (timeout class to escalate to /issue-triage), and `global-constants-init-race-suspect` (init() with the Dot-operator error &hec; belt-and-suspenders behind the /crash-report YAML filter for #103). For each flagged pattern the user picks: close-as-known-noise / enrich-anyway / abort. Worktree builds are cached at `/tmp/jellyrock-crash-wt-cache-<tag>` with a 1h TTL so consecutive enrichments on the same version cost ~1s after the first ~30-90s build.
+description: Attach a multi-frame backtrace + locals snapshot to an already-filed crash issue. Roku's analytics dashboard only exposes backtraces one click at a time (no bulk export), so this is the realistic per-issue enrichment workflow that follows up after `/crash-report` files the issues. Accepts the backtrace via `@file` reference(s) OR inline paste in the prompt, with an OPTIONAL leading issue number — when omitted, the skill auto-resolves the matching `[crash]` issue from the backtrace's innermost frame signature (`<basename>:<line>`). Batch mode supported: `/crash-backtrace @file1 @file2 @file3` enriches each file's auto-resolved issue in sequence, paying the worktree build cost only once per cached version. Reads the issue's cited app version from the title, builds (or reuses a cached) git worktree, source-maps every backtrace frame back to its `.bs:line`, and posts ONE enrichment comment. Pre-enrichment classifier flags known-noise patterns — `timeout-one-off` (`Execution timeout` &h23 with exactly 1 occurrence; usually transient server/network blip), `timeout-recurring` (timeout class to escalate to /issue-triage), and `global-constants-init-race-suspect` (init() with the Dot-operator error &hec; belt-and-suspenders behind the /crash-report YAML filter for #103). For each flagged pattern the user picks: close-as-known-noise / enrich-anyway / abort. Worktree builds are cached at `/tmp/jellyrock-crash-wt-cache-<tag>` with a 1h TTL so consecutive enrichments on the same version cost ~1s after the first ~30-90s build.
 model: sonnet
 user-invocable: true
-allowed-tools: Bash(node scripts/crash-report.js:*), Bash(gh issue view:*), Bash(gh issue comment:*), Bash(gh issue close:*), Bash(mkdir:*), Bash(mktemp:*), Bash(rm:*), Bash(cat:*), Read, Write, Edit
+allowed-tools: Bash(node scripts/crash-report.js:*), Bash(gh issue view:*), Bash(gh issue comment:*), Bash(gh issue close:*), Bash(gh issue reopen:*), Bash(mkdir:*), Bash(mktemp:*), Bash(rm:*), Bash(cat:*), Read, Write, Edit
 ---
 
 # /crash-backtrace — enrich one filed crash issue with a dashboard backtrace
@@ -14,13 +14,16 @@ The mechanical work lives in [`scripts/crash-report.js`](../../../scripts/crash-
 
 ## Inputs
 
-`$ARGUMENTS` shapes (parse the first token as the issue number, then locate the backtrace text):
+`$ARGUMENTS` shapes (parse the first integer token as the optional issue number; everything else is backtrace text or `@file` references):
 
 | Shape | Example | What to do |
 |---|---|---|
-| Issue number + file ref | `/crash-backtrace 582 @tasks/582-backtrace.txt` | Use the file path. Read it via the Read tool to confirm it has the backtrace shape, then pass to the helper. |
-| Issue number + inline paste | `/crash-backtrace 582\n\n'Type Mismatch' (runtime error &h18) in pkg:/...\nBacktrace:\n#0  Function ...` | Write the pasted text (everything after the issue number on subsequent lines) to a temp file, pass to the helper. |
-| Issue number only | `/crash-backtrace 582` | Ask the user to paste the backtrace text OR provide a file path in their next message. Do NOT proceed until you have backtrace text. |
+| File ref(s), no issue number | `/crash-backtrace @tasks/bt-1.txt @tasks/bt-2.txt` | **Batch mode.** For each file, Read it, auto-resolve the matching GH issue via `resolve-issue` (Step 1.5), then run the full classify + enrich loop (Steps 2–5). The worktree cache means after the first file's build, the rest are ~1s each. |
+| Inline paste, no issue number | `/crash-backtrace\n\n'Execution timeout' (runtime error &h23) in pkg:/...` | Single backtrace. Write the pasted text to a temp file, auto-resolve via Step 1.5, then continue. |
+| Issue number + file ref | `/crash-backtrace 582 @tasks/582-backtrace.txt` | Single backtrace, explicit issue. Skip Step 1.5 — use the provided number directly. |
+| Issue number + inline paste | `/crash-backtrace 582\n\n'Type Mismatch' ...` | Same — single explicit, write paste to temp file. |
+| Issue number only | `/crash-backtrace 582` | Ask the user to paste the backtrace text OR provide a file path in their next message. Don't proceed until you have backtrace text. |
+| Nothing | `/crash-backtrace` | Ask the user how they want to invoke (file refs, inline paste, or explicit number + paste). |
 
 A well-formed plaintext backtrace looks like:
 
@@ -35,24 +38,58 @@ Local Variables:
 
 If the input doesn't start with `'<message>' (runtime error` or contain a `Backtrace:` marker, surface the problem to the user before invoking the helper — they likely grabbed the wrong dashboard view (e.g. the "App" or "Platform" report instead of "Backtrace").
 
+**Anti-pattern**: don't accept `<N> @file1 @file2` (explicit number + multiple files). The number applies to one backtrace, not many. Error out asking the user to drop the explicit number OR pick a single file.
+
 ## Step 0 — Preflight
 
-Confirm:
+For each input that already carries an issue number (explicit form), confirm before doing anything else:
 
 1. **Issue exists and has the `[crash]` shape.** `gh issue view <N> --json title,labels,state` — title must match `[crash] <fn>() in <basename>.brs:<line> (v<version>)`. The helper validates this too, but checking up front gives a clearer error than the helper's stderr.
 2. **The `crash` label is present.** Same `gh issue view`. The helper refuses without it.
 
-If either fails, surface the problem and stop — don't proceed to enrichment.
+For auto-resolve inputs (no explicit number), preflight runs after Step 1.5 picks the issue.
 
-## Step 1 — Locate the backtrace text
+## Step 1 — Locate the backtrace text(s)
 
-Per the input shapes above:
+Per the input shapes above, produce one or more `(issueNumberOrNull, backtraceFilePath)` pairs:
 
-- **`@file` reference**: use Read tool to load the file. If the file isn't found, ask the user for the right path.
-- **Inline paste**: write everything after the issue-number token to `$(mktemp -t crash-bt-${ISSUE}.XXXXXX.txt)`. Strip any markdown code fences (` ``` `) the user may have wrapped around the paste.
-- **Neither**: ask the user once for the backtrace text, then wait. Don't loop.
+- **`@file` reference(s)**: use Read tool to load each file. If a file isn't found, ask the user for the right path. Each file becomes one pair with `issueNumberOrNull = null` (unless an explicit number was passed alongside a single file).
+- **Inline paste**: write everything after the issue-number token (or the entire `$ARGUMENTS` body if no number) to `$(mktemp -t crash-bt-XXXXXX.txt)`. Strip any markdown code fences (` ``` `) the user may have wrapped around the paste. Single pair.
+- **Nothing**: ask the user once for the backtrace text or file path, then wait. Don't loop.
 
-In all cases, the final state is: a file path on disk containing the plaintext backtrace, ready to hand to the helper.
+In all cases, the final state is a list of pairs ready for Step 1.5.
+
+## Step 1.5 — Auto-resolve the issue (only for pairs with `issueNumberOrNull = null`)
+
+For each pair that doesn't have an explicit issue number, run:
+
+```bash
+node scripts/crash-report.js resolve-issue --backtrace-file <path>
+```
+
+The JSON output looks like:
+
+```json
+{
+  "innermostFrame": { "function": "onprogresspercentagechanged", "pkgPath": "pkg:/components/video/OSD.brs", "line": 506 },
+  "errorCode": "&h23",
+  "errorMessage": "Execution timeout",
+  "matches": [
+    { "number": 583, "title": "[crash] onprogresspercentagechanged() in OSD.brs:506 (v2.17.0)", "state": "CLOSED" }
+  ]
+}
+```
+
+Branch on `matches.length`:
+
+- **0 matches** — print: "No `[crash]` issue found for `<basename>:<line>`. Either run `/crash-report` first to file it, or pass the issue number explicitly: `/crash-backtrace <N> @<file>`." Skip this backtrace from the batch (don't abort other backtraces).
+- **1 match, state = OPEN** — one-line confirm: "Auto-resolved to #N: `<title>` — proceeding." Use the number, continue to preflight.
+- **1 match, state = CLOSED** — surface via `AskUserQuestion`: this might be a regression (signature reappeared in a fresh report) OR a one-off the team intentionally closed. Options: (a) reopen #N + enrich as a regression comment, (b) pass a different issue number explicitly, (c) skip this backtrace.
+- **2+ matches** — surface every candidate via `AskUserQuestion` (number + truncated title + state); user picks which one. Also offer "skip this backtrace" and "pass a different number" options.
+
+Don't auto-decide on closed matches — the user always picks. The recommendation in the question text is fine; the decision is theirs.
+
+Once an issue number is locked for a pair, run **Step 0 preflight** against it before continuing. If preflight fails (wrong title shape, missing `crash` label), surface the error and skip this backtrace.
 
 ## Step 2 — Sanity-check the backtrace
 
