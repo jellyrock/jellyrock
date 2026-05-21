@@ -1,7 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>jellyrock/.github//renovate/default"],
-  "separateMinorPatch": true,
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
   "packageRules": [
@@ -34,19 +33,6 @@
       "addLabels": ["roku-runtime"]
     },
     {
-      "description": "JS lint & format tooling",
-      "matchPackageNames": [
-        "eslint",
-        "@eslint/js",
-        "eslint-config-prettier",
-        "eslint-plugin-n",
-        "prettier",
-        "jshint"
-      ],
-      "groupName": "linting",
-      "addLabels": ["javascript"]
-    },
-    {
       "description": "Docs quality tooling",
       "matchPackageNames": ["markdownlint-cli2", "spellchecker-cli"],
       "groupName": "docs lint",
@@ -73,16 +59,6 @@
         "xml2js"
       ],
       "addLabels": ["javascript"]
-    },
-    {
-      "description": "Patch automerge — _validate-dependencies.yml runs full lint + test on every dep PR, so a passing CI is sufficient validation",
-      "matchUpdateTypes": ["patch"],
-      "automerge": true
-    },
-    {
-      "description": "Minor + major — weekly Monday review batch",
-      "matchUpdateTypes": ["minor", "major"],
-      "schedule": ["before 6am on monday"]
     }
   ]
 }
