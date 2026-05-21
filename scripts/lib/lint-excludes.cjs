@@ -45,6 +45,12 @@ const JSON_PREFIXES = [
   'build/',
   'out/',
   'locale/',
+  // VSCode's *.json files (settings.json, launch.json, tasks.json,
+  // extensions.json, *.code-workspace) are JSONC by convention — they
+  // permit // comments and trailing commas. jshint flags those as W094
+  // ("Unexpected comma") errors and would block commits. VSCode itself
+  // parses these files correctly; nothing else lints them.
+  '.vscode/',
 ];
 
 function _matches(file, exact, prefixes, suffixes = []) {

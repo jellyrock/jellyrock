@@ -7,6 +7,11 @@
     ".claude/agents/*.md": "instructions",
     "CLAUDE.md": "instructions",
     ".github/copilot-instructions.md": "instructions",
+    // Stop the markdownlint extension from flagging dotfiles whose first line
+    // starts with '#'. None of these are markdown.
+    ".prettierignore": "ignore",
+    ".env": "properties",
+    ".env.example": "properties",
   },
   "[xml]": {
     "editor.defaultFormatter": "redhat.vscode-xml",
