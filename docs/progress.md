@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-16
+last-updated: 2026-05-21
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
 
+- 2026-05-21 — vscode: associate dotfiles to stop markdownlint false positives
 - 2026-05-16 — chore: reduce Renovate PR noise + close dep CI gaps
 - 2026-05-09 — Skills overhaul: /catchup, journal sync, /pr update-path, audit-skill
 - 2026-05-06 — `docs(decisions): record triage-opus-inline-investigation`
