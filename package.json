@@ -77,7 +77,7 @@
     "lint:ci-workflow-sync": "node scripts/lint/validate-deps-workflow-sync.cjs",
     "lint:issue-templates": "node scripts/lint/issue-templates-check.cjs",
     "lint:js": "eslint .",
-    "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,out,locale,tests/scripts,eslint.config.js,vitest.config.js ./",
+    "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,out,locale,tests/scripts,.vscode,eslint.config.js,vitest.config.js ./",
     "lint:language-coverage": "node scripts/lint/language-coverage.cjs",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"!**/CLAUDE.md\" \"!**/AGENTS.md\" \"!out/\" \"!build/\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!tasks/\" \"!.opencode/**/*.md\"",
     "lint:spelling": "spellchecker -d dictionary.txt -p spell indefinite-article repeated-words syntax-mentions syntax-urls frontmatter --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!docs/user/app-settings.md\" \"!CHANGELOG.md\" \"!**/CLAUDE.md\" \"!**/AGENTS.md\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
