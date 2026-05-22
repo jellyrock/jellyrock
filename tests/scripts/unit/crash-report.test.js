@@ -663,6 +663,26 @@ t                roString val:"15:00,170?"`;
     expect(normalizeBacktraceText(undefined)).toBe('');
     expect(normalizeBacktraceText(123)).toBe('');
   });
+
+  it('extracts the first data row cell when fed a dashboard TSV directly', () => {
+    const normalized = normalizeBacktraceText(SAMPLE_DASHBOARD_CSV);
+    const parsed = parseBacktraceCell(normalized);
+    expect(parsed).not.toBeNull();
+    expect(parsed.errorCode).toBe('&hec');
+    expect(parsed.frames).toHaveLength(3);
+  });
+
+  it('throws on a dashboard TSV with no data rows', () => {
+    const headerOnly = `Daily Error Key\tDate\tBacktrace Formatted\tBacktrace Text Formatted\n`;
+    expect(() => normalizeBacktraceText(headerOnly)).toThrow(/no data rows/i);
+  });
+
+  it('throws on a dashboard TSV whose first data row has an empty backtrace cell', () => {
+    const emptyCell =
+      `Daily Error Key\tDate\tBacktrace Formatted\tBacktrace Text Formatted\n` +
+      `\t2026-05-13\t\t\n`;
+    expect(() => normalizeBacktraceText(emptyCell)).toThrow(/empty/i);
+  });
 });
 
 describe('classifyBacktraceForEnrichment (pre-enrichment noise check)', () => {

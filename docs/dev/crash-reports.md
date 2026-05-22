@@ -6,7 +6,7 @@ related-files:
   - .crash-report/known-noise.yml
   - .claude/skills/crash-report/SKILL.md
   - tests/scripts/unit/crash-report.test.js
-last-reviewed: 2026-05-20
+last-reviewed: 2026-05-22
 ---
 
 # Weekly Roku crash-report workflow
@@ -133,7 +133,7 @@ Per weekly batch:
 
 1. Open Roku's analytics dashboard → BrightScript Errors view.
 2. For each crash you want to enrich, click "View report" under the Backtrace column.
-3. Download the plaintext export and save into a folder (e.g. `tasks/bt-2026-05-20/`). Filenames don't matter — the skill auto-resolves the matching issue from each backtrace's innermost frame signature.
+3. Download the export and save into a folder (e.g. `tasks/bt-2026-05-20/`). Either the "Backtrace" plaintext view or the "Daily Error Key" TSV row works — the helper auto-detects both. Filenames don't matter; the skill auto-resolves the matching issue from each backtrace's innermost frame signature.
 4. Invoke the [`/crash-backtrace`](../../.claude/skills/crash-backtrace/SKILL.md) skill against one or many files:
 
    ```text
@@ -168,7 +168,7 @@ The helper:
 
 - Reads the issue via `gh issue view <N>` and parses its `[crash] <fn>() in <basename>.brs:<line> (v<version>)` title for the version + signature.
 - Cross-checks that the issue carries the `crash` label (refuses to enrich anything else).
-- Parses the plaintext backtrace (handles CRLF endings, drops blank lines, splits on the `Backtrace:` / `Local Variables:` markers).
+- Parses the backtrace via `normalizeBacktraceText`, which accepts three shapes interchangeably: dashboard TSV (header sniff → first data row's `Backtrace Text Formatted` cell wins), plaintext from the per-error "View report → Backtrace" page (handles CRLF, drops blanks), and already-normalized `~~`-separated cell text.
 - Warns (but does not abort) if the backtrace's innermost frame doesn't match the issue title's `basename:line` — happens if you grabbed the wrong row.
 - Builds a temp git worktree at the issue's cited version, runs `bsc` to get source maps, and resolves every backtrace frame back to its `.bs:line`.
 - Posts ONE comment to the issue with the resolved-frame table + locals block under a clear "Backtrace enrichment from Roku analytics dashboard" header.

@@ -1236,10 +1236,31 @@ export function parseCrashIssueTitle(title) {
   return { function: m[1], basename: m[2], line: Number(m[3]), version: m[4] };
 }
 
-// The dashboard's per-error plaintext export is newline-separated; the cell
-// parser expects `~~`-separated. Normalize so both formats share one parser.
+// Normalize any of the three shapes the user might paste into a single
+// `~~`-separated cell that parseBacktraceCell can consume:
+//   1. Roku dashboard TSV export (header row + N data rows, `~~` inside cells).
+//      First data row's `Backtrace Text Formatted` cell wins — multi-error TSVs
+//      belong on `plan --dashboard-csv`, not the single-issue subcommands.
+//   2. Plaintext backtrace (newline-separated) from the dashboard's per-error
+//      "View report → Backtrace" page.
+//   3. Already-normalized cell text (`~~`-separated, no header) — passes through.
 export function normalizeBacktraceText(text) {
   if (typeof text !== 'string') return '';
+  const firstNewline = text.indexOf('\n');
+  if (firstNewline > 0 && validateDashboardCsv(text.slice(0, firstNewline))) {
+    const rows = splitCsvRows(text);
+    if (rows.length < 2) {
+      throw new Error('Dashboard TSV has a header but no data rows.');
+    }
+    const headers = parseCsvLine(rows[0], '\t').map((h) => h.trim());
+    const textIdx = headers.indexOf('Backtrace Text Formatted');
+    const fields = parseCsvLine(rows[1], '\t');
+    const cell = (fields[textIdx] ?? '').trim();
+    if (!cell) {
+      throw new Error('Dashboard TSV first data row has an empty `Backtrace Text Formatted` cell.');
+    }
+    return cell;
+  }
   return text
     .replace(/\r\n?/g, '\n')
     .split('\n')

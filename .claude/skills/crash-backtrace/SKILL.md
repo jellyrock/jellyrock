@@ -25,18 +25,24 @@ The mechanical work lives in [`scripts/crash-report.js`](../../../scripts/crash-
 | Issue number only | `/crash-backtrace 582` | Ask the user to paste the backtrace text OR provide a file path in their next message. Don't proceed until you have backtrace text. |
 | Nothing | `/crash-backtrace` | Ask the user how they want to invoke (file refs, inline paste, or explicit number + paste). |
 
-A well-formed plaintext backtrace looks like:
+The helper accepts three input shapes interchangeably — pass any of them as `--backtrace-file` and `normalizeBacktraceText` will route to the right path:
 
 ```text
+# 1. Plaintext (dashboard "View report → Backtrace" page)
 '<message>' (runtime error &h<hex>) in pkg:/<path>(<line>)
 Backtrace:
 #0  Function <name>(<args>) As <returnType> file/line: pkg:/<path>(<line>)
-#1  Function ...
 Local Variables:
 <name>           <type> val:"<value>"
+
+# 2. Dashboard TSV export ("Daily Error Key" view; tab-separated, `~~` inside cells)
+Daily Error Key\tDate\tBacktrace Formatted\tBacktrace Text Formatted
+<key>\t<date>\t...\t'<message>' (runtime error...)~~Backtrace:~~#0  Function ...~~...
+
+# 3. Raw `~~`-separated cell (already-extracted Backtrace Text Formatted content)
 ```
 
-If the input doesn't start with `'<message>' (runtime error` or contain a `Backtrace:` marker, surface the problem to the user before invoking the helper — they likely grabbed the wrong dashboard view (e.g. the "App" or "Platform" report instead of "Backtrace").
+For dashboard TSV input the helper takes the first data row's cell — multi-error TSVs belong on `plan --dashboard-csv`, not the single-issue subcommands. If the input matches none of these shapes, the helper exits with a parse error; surface its message to the user (they likely grabbed the wrong dashboard view).
 
 **Anti-pattern**: don't accept `<N> @file1 @file2` (explicit number + multiple files). The number applies to one backtrace, not many. Error out asking the user to drop the explicit number OR pick a single file.
 
@@ -53,8 +59,8 @@ For auto-resolve inputs (no explicit number), preflight runs after Step 1.5 pick
 
 Per the input shapes above, produce one or more `(issueNumberOrNull, backtraceFilePath)` pairs:
 
-- **`@file` reference(s)**: use Read tool to load each file. If a file isn't found, ask the user for the right path. Each file becomes one pair with `issueNumberOrNull = null` (unless an explicit number was passed alongside a single file).
-- **Inline paste**: write everything after the issue-number token (or the entire `$ARGUMENTS` body if no number) to `$(mktemp -t crash-bt-XXXXXX.txt)`. Strip any markdown code fences (` ``` `) the user may have wrapped around the paste. Single pair.
+- **`@file` reference(s)**: pass the path straight through to the helper — no `Read` and no reformatting. `normalizeBacktraceText` accepts dashboard TSV, plaintext, and already-normalized cell shapes (see Inputs above). If the file is missing the helper exits with a clear stderr; relay it. Each file becomes one pair with `issueNumberOrNull = null` (unless an explicit number was passed alongside a single file).
+- **Inline paste**: write the paste body (everything after the issue-number token, if any) to a temp file via the `Write` tool — name it `/tmp/crash-bt-<short-tag>.txt`. Strip surrounding markdown code fences. Single pair.
 - **Nothing**: ask the user once for the backtrace text or file path, then wait. Don't loop.
 
 In all cases, the final state is a list of pairs ready for Step 1.5.
@@ -91,15 +97,11 @@ Don't auto-decide on closed matches — the user always picks. The recommendatio
 
 Once an issue number is locked for a pair, run **Step 0 preflight** against it before continuing. If preflight fails (wrong title shape, missing `crash` label), surface the error and skip this backtrace.
 
-## Step 2 — Sanity-check the backtrace
+## Step 2 — (formerly: belt-and-suspenders parse check; now subsumed)
 
-Before invoking the helper, do a 30-second cross-check on the loaded text:
+Step 3's `classify-backtrace` is the cheap pre-check — it parses the file (via `normalizeBacktraceText` + `parseBacktraceCell`), validates the shape, and runs without a worktree build. There's no value in doing a redundant regex scan from the skill: it would only catch the same parse failures the helper surfaces, and any handwritten shape-check would have to know about the three input shapes the helper now accepts.
 
-- First non-blank line should match `^'.+' \(runtime error &h[0-9a-f]+\) in pkg:/.+\(\d+\)` (case-insensitive). If not, the user likely pasted the wrong view.
-- The text should contain `Backtrace:` and at least one `#<N>  Function ...` frame line.
-- Extract the innermost-frame's basename + line (the highest-`#N` frame, or the only frame). Compare against the issue title's basename + line. If they mismatch, warn the user — they may have grabbed the wrong row in the dashboard. Ask whether to proceed anyway.
-
-These checks are belt-and-suspenders — the helper does them too — but they let the skill surface a clean error before spending ~60s on a worktree build that's going to fail or attach to the wrong issue.
+Skip ahead to Step 3.
 
 ## Step 3 — Classify before enriching
 
