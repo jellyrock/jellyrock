@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add /crash-report + /crash-backtrace for weekly Roku crash triage ([#575](https://github.com/jellyrock/jellyrock/pull/575))
 - Add JRPlaceholder, placeholder pipeline, and outlined icon defaults ([#561](https://github.com/jellyrock/jellyrock/pull/561))
 - Add Material Symbols icon pipeline with per-resolution assets ([#560](https://github.com/jellyrock/jellyrock/pull/560))
 
