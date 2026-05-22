@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- renovate: strip rules now covered by org default ([#590](https://github.com/jellyrock/jellyrock/pull/590))
+- vscode: associate dotfiles to stop markdownlint false positives ([#589](https://github.com/jellyrock/jellyrock/pull/589))
 - Skills overhaul: /catchup, journal sync, /pr update-path, audit-skill ([#559](https://github.com/jellyrock/jellyrock/pull/559))
 
 ### Dependencies
