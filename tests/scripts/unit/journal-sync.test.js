@@ -19,6 +19,7 @@ import {
   shouldSkip,
   applyShipEdit,
   extractCurrentlyRunning,
+  checkBulletAgainstDictionary,
 } from '../../../scripts/journal-sync.js';
 
 import { spawnScript } from './_helpers/spawn-script.js';
@@ -380,5 +381,103 @@ describe('CLI: ship', () => {
     // Use the same exported helper so the test mirrors the script's parser
     // exactly — earlier inline regex had a `\s*\n` greedy-swallow bug.
     expect(extractCurrentlyRunning(after)).toBe('');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Dictionary precheck — guards docs/progress.md against un-dictionarized
+// PR-title words landing via post-merge journal-sync.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('checkBulletAgainstDictionary', () => {
+  it('passes through the candidate bullet to the runner with date + title', () => {
+    let captured = null;
+    const runner = (content) => {
+      captured = content;
+      return { ok: true, output: '' };
+    };
+    const result = checkBulletAgainstDictionary({
+      today: '2026-05-22',
+      prTitle: 'feat(catchup): auto-maintain signals',
+      repoRoot: '/repo',
+      runner,
+    });
+    expect(result.ok).toBe(true);
+    expect(captured).toBe('- 2026-05-22 — feat(catchup): auto-maintain signals\n');
+  });
+
+  it('surfaces runner failure verbatim (the caller writes the user message)', () => {
+    const runner = () => ({
+      ok: false,
+      output: 'docs/progress.md\n1:5-1:13  warning  Unexpected unknown word `dotfiles`',
+    });
+    const result = checkBulletAgainstDictionary({
+      today: '2026-05-22',
+      prTitle: 'vscode: associate dotfiles',
+      repoRoot: '/repo',
+      runner,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toMatch(/dotfiles/);
+  });
+
+  it('passes repoRoot to the runner so it can find dictionary.txt', () => {
+    let capturedRepoRoot = null;
+    const runner = (_content, repoRoot) => {
+      capturedRepoRoot = repoRoot;
+      return { ok: true, output: '' };
+    };
+    checkBulletAgainstDictionary({
+      today: '2026-05-22',
+      prTitle: 'feat: x',
+      repoRoot: '/some/repo',
+      runner,
+    });
+    expect(capturedRepoRoot).toBe('/some/repo');
+  });
+});
+
+describe('check command (CLI)', () => {
+  let fix;
+  afterEach(() => {
+    fix?.cleanup();
+    fix = null;
+  });
+
+  function setupFixture() {
+    fix = createGitFixture();
+    mkdirSync(join(fix.dir, 'docs'), { recursive: true });
+    writeFileSync(join(fix.dir, 'docs/progress.md'), progressTemplate());
+    // No dictionary.txt — defaultSpellRunner detects the absence and skips
+    // (test-fixture branch). The skip-rule case below never reaches the
+    // spawn, so it works regardless.
+  }
+
+  it('exits 0 with "skipped" when the PR matches a skip rule (no spellcheck spawn)', () => {
+    setupFixture();
+    const { exitCode, stdout } = spawnScript(
+      SCRIPT,
+      [
+        'check',
+        '--pr-title',
+        'chore(deps): update dependency vitest to v4.1.7',
+        '--pr-labels',
+        'dependencies',
+        '--repo-root',
+        fix.dir,
+      ],
+      { cwd: fix.dir },
+    );
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^check skipped:/);
+  });
+
+  it('exits 2 when --pr-title is missing', () => {
+    setupFixture();
+    const { exitCode, stderr } = spawnScript(SCRIPT, ['check', '--repo-root', fix.dir], {
+      cwd: fix.dir,
+    });
+    expect(exitCode).toBe(2);
+    expect(stderr).toMatch(/--pr-title is required/);
   });
 });

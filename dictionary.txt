@@ -155,6 +155,7 @@ diff-and-wait
 DLNA
 docs-as-code
 docstring
+dotfiles
 DoVi
 downmixing
 downsample

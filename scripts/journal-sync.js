@@ -40,8 +40,11 @@
 //   0  always (skipped or wrote — both are success). Errors print to stderr.
 //   2  malformed args / missing required input.
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const STOPWORDS = new Set([
   // English filler
@@ -306,6 +309,78 @@ export function applyShipEdit(content, { prTitle, today }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Dictionary check — keep PR-title-derived words from landing in progress.md
+// without first being added to dictionary.txt. The PR-time precheck workflow
+// runs `check`, and `ship` runs the same check as a safety net before write.
+// ──────────────────────────────────────────────────────────────────────────
+
+// Same plugin set and dictionary path as `npm run lint:spelling`. Keeping them
+// in sync is load-bearing — if the bullet passes here, it must pass the lint
+// on the next PR that touches a .md file.
+const SPELL_PLUGINS = [
+  'spell',
+  'indefinite-article',
+  'repeated-words',
+  'syntax-mentions',
+  'syntax-urls',
+  'frontmatter',
+];
+
+// Resolve spellchecker-cli's binary from THIS script's own node_modules so
+// runs against a fixture repo (test or CI checkout of a different working
+// tree) still find the tool. The `dictionary.txt` location stays governed by
+// the caller's `repoRoot` — different concern, different source.
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const SPELLCHECKER_BIN = resolve(SCRIPT_DIR, '..', 'node_modules', '.bin', 'spellchecker');
+
+/**
+ * Default runner: spawns spellchecker-cli against a temp file holding the
+ * candidate content. When the binary isn't present (e.g., a test fixture
+ * without an `npm install`), returns `{ ok: true, output: 'skipped: ...' }`
+ * — production runs always have it installed (the workflow `npm ci`s).
+ * Injectable via `runner` on checkBulletAgainstDictionary so unit tests can
+ * short-circuit the spawn explicitly.
+ */
+export function defaultSpellRunner(content, repoRoot) {
+  if (!existsSync(SPELLCHECKER_BIN)) {
+    return {
+      ok: true,
+      output: `skipped: spellchecker binary not found at ${SPELLCHECKER_BIN}`,
+    };
+  }
+  const dictPath = join(repoRoot, 'dictionary.txt');
+  if (!existsSync(dictPath)) {
+    return {
+      ok: true,
+      output: `skipped: ${dictPath} not present (test fixture or fresh checkout)`,
+    };
+  }
+  const tmpDir = mkdtempSync(join(tmpdir(), 'journal-sync-spell-'));
+  const tmpFile = join(tmpDir, 'candidate.md');
+  try {
+    writeFileSync(tmpFile, content);
+    const res = spawnSync(
+      SPELLCHECKER_BIN,
+      ['-d', join(repoRoot, 'dictionary.txt'), '-p', ...SPELL_PLUGINS, '--files', tmpFile],
+      { encoding: 'utf8' },
+    );
+    return { ok: res.status === 0, output: (res.stdout || '') + (res.stderr || '') };
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Build the candidate progress.md bullet from a PR title and run it through
+ * the spell runner. Returns `{ ok, output }` — `ok: true` means the bullet
+ * would lint cleanly. Pure over its `runner` arg.
+ */
+export function checkBulletAgainstDictionary({ today, prTitle, repoRoot, runner }) {
+  const bullet = `- ${today} — ${prTitle}\n`;
+  return runner(bullet, repoRoot);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // CLI shell
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -376,11 +451,72 @@ function shipCommand(args) {
     process.exit(0);
   }
 
+  // Safety net — the PR-time precheck workflow should have caught a dirty
+  // title before merge. If we reach this point with one (admin bypass,
+  // mid-merge label flip), refuse to corrupt progress.md.
+  const spell = checkBulletAgainstDictionary({
+    today: todayIso(),
+    prTitle,
+    repoRoot,
+    runner: defaultSpellRunner,
+  });
+  if (!spell.ok) {
+    console.error(
+      'refusing to write progress.md: PR title would introduce un-dictionarized word(s).',
+    );
+    console.error(spell.output);
+    console.error(
+      'Add the missing word(s) to dictionary.txt (alphabetically) and re-run this workflow.',
+    );
+    process.exit(3);
+  }
+
   writeFileSync(progressPath, result.content);
   console.log(
     `shipped: ${prTitle} (cursorCleared=${result.cursorCleared}, overlap=${result.cursorOverlap})`,
   );
   process.exit(0);
+}
+
+function checkCommand(args) {
+  const prTitle = args['pr-title'];
+  const prLabels = (args['pr-labels'] || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const prAuthor = args['pr-author'] || '';
+  const repoRoot = resolve(args['repo-root'] || process.cwd());
+
+  if (!prTitle) {
+    console.error('error: --pr-title is required');
+    process.exit(2);
+  }
+
+  const skipReason = shouldSkip({ prTitle, prLabels, prAuthor });
+  if (skipReason) {
+    console.log(`check skipped: ${skipReason} (no progress.md write would happen)`);
+    process.exit(0);
+  }
+
+  const spell = checkBulletAgainstDictionary({
+    today: todayIso(),
+    prTitle,
+    repoRoot,
+    runner: defaultSpellRunner,
+  });
+  if (spell.ok) {
+    console.log('check passed: PR title would write cleanly to docs/progress.md');
+    process.exit(0);
+  }
+
+  console.error(
+    'PR title would introduce un-dictionarized word(s) into docs/progress.md after merge:',
+  );
+  console.error(spell.output);
+  console.error('Fix one of:');
+  console.error('  1. Add the missing word(s) to dictionary.txt alphabetically.');
+  console.error('  2. Rephrase the PR title to avoid those words.');
+  process.exit(1);
 }
 
 function main() {
@@ -390,8 +526,14 @@ function main() {
     shipCommand(args);
     return;
   }
+  if (cmd === 'check') {
+    checkCommand(args);
+    return;
+  }
   console.error(
-    'usage: node scripts/journal-sync.js ship --pr-title "<title>" [--pr-labels a,b] [--pr-author "@user"] [--repo-root <path>] [--dry-run]',
+    'usage:\n' +
+      '  node scripts/journal-sync.js ship  --pr-title "<title>" [--pr-labels a,b] [--pr-author "@user"] [--repo-root <path>] [--dry-run]\n' +
+      '  node scripts/journal-sync.js check --pr-title "<title>" [--pr-labels a,b] [--pr-author "@user"] [--repo-root <path>]',
   );
   process.exit(2);
 }
