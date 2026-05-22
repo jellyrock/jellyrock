@@ -4,6 +4,7 @@
 dist/apps
 out/
 build/
+build-analysis/
 roku_modules
 # Rooibos
 bsconfig-tdd.json

@@ -82,6 +82,7 @@ Quick task pointers:
 - **Working in `scripts/` (BSC plugins, doc validators, codegen)?** → [`docs/dev/scripts-development.md`](docs/dev/scripts-development.md)
 - **Debug flags / toast testing?** → [`docs/dev/debug-flags.md`](docs/dev/debug-flags.md)
 - **Code style?** → [`docs/dev/code-style.md`](docs/dev/code-style.md)
+- **Processing the weekly Roku crash CSV?** → [`docs/dev/crash-reports.md`](docs/dev/crash-reports.md) (run [`/crash-report`](.claude/skills/crash-report/SKILL.md))
 
 ## Workflow
 

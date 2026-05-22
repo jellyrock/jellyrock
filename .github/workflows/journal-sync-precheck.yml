@@ -1,0 +1,52 @@
+# PR-time precheck for the post-merge journal sync.
+#
+# Mirrors the skip rules of .github/workflows/journal-sync.yml: only PRs that
+# WILL be synced (i.e., the same predicate that the bot runs post-merge) are
+# checked. For those, the script builds the candidate "- YYYY-MM-DD — <title>"
+# bullet and spell-checks it against dictionary.txt with the same spellchecker
+# plugins lint:spelling uses.
+#
+# Why this exists: the existing _lint-spelling.yml is gated on .md files
+# changing in the PR. PR titles that ship into docs/progress.md via the
+# post-merge sync bypass that gate entirely (the PR can touch zero .md files
+# and still introduce an un-dictionarized word). This precheck closes that
+# loophole at PR time, before merge, while the author can still fix it.
+#
+# Failure modes (PR check fails):
+#   - PR title introduces a word not in dictionary.txt and not in
+#     spellchecker-cli's built-in dictionary.
+#
+# Skip modes (check passes with no spawn):
+#   - PR labels / authors / title patterns matched by shouldSkip in
+#     scripts/journal-sync.js — those PRs never write to progress.md anyway.
+
+name: Journal Sync Precheck (PR-time)
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Spell-check candidate progress.md bullet
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          echo "PR title:  $PR_TITLE"
+          echo "PR author: $PR_AUTHOR"
+          echo "PR labels: $PR_LABELS"
+          node scripts/journal-sync.js check \
+            --pr-title "$PR_TITLE" \
+            --pr-author "$PR_AUTHOR" \
+            --pr-labels "$PR_LABELS"

@@ -1,0 +1,63 @@
+# /crash-report — known-noise patterns
+#
+# The /crash-report skill consumes this file when processing Roku's weekly
+# crash CSV. Each entry describes a class of crashes the team has accepted as
+# ongoing noise (race conditions, hardware-specific bugs, environmental
+# flakiness we can't or won't defensively code around). For crashes matching
+# a pattern here:
+#
+#   - normal path: skill SUPPRESSES new-issue creation + dedup commenting,
+#     surfaces the count in the run summary's "Suppressed (known noise)"
+#     section, and moves on.
+#   - spike path: if the combined occurrence count across ALL matched
+#     signatures exceeds `baseline_crashes_per_week * spike_multiplier`,
+#     skill posts ONE comment to `tracker_issue` flagging the spike. Tracker
+#     is not reopened (per design — keeps the human in the loop on the
+#     reopen-vs-leave-open call).
+#
+# Schema per pattern:
+#   id                          — kebab-case slug, used in run summary +
+#                                 spike-comment subject.
+#   notes                       — multi-line description for humans.
+#   tracker_issue               — GH issue number this pattern tracks. Should
+#                                 ideally be OPEN with a `known-issue` label
+#                                 so future contributors land on it instead
+#                                 of getting confused by a closed "fixed-ish"
+#                                 issue.
+#   baseline_crashes_per_week   — integer. Eyeball estimate from observed
+#                                 history; re-tune as needed.
+#   spike_multiplier            — float. Combined count beyond
+#                                 baseline × this triggers a spike comment.
+#                                 Defaults to 2.0 in code if omitted.
+#   match                       — predicates. ALL provided fields must match
+#                                 for a crash to bind to this pattern:
+#       function     — regex string. Function name from the crash signature.
+#       category     — exact-match string. One of: global-state-race,
+#                      null-node-ref, array-bounds, callback-exception,
+#                      event-handler-nil-arg, unknown.
+#       file_glob    — list of globs against the source .bs path. Any-match.
+#       snippet_regex — regex against the code-context snippet around the
+#                      crash line.
+#
+# First-match wins when a crash binds to multiple patterns.
+#
+# Editing this file: write directly. The skill re-reads it every run. No
+# code regeneration required.
+
+patterns:
+  - id: m-global-constants-init-race
+    notes: |
+      `m.global.constants` access in themed component `init()` occasionally
+      throws "Dot operator with invalid BrightScript component" — the global
+      AA is not yet populated when the component's init runs. Believed to be
+      a Roku-side bootstrap race; PR #116 reduced frequency by converting
+      `m.global.constants` to a ContentNode but didn't eliminate. Appears
+      hardware-specific (Roku TV / Express 4K observed; Ultra / Streaming
+      Stick 4K not). See #103 for full history. We've decided not to
+      defensively-code around it.
+    tracker_issue: 103
+    baseline_crashes_per_week: 10
+    spike_multiplier: 2.0
+    match:
+      function: ^init$
+      category: global-state-race

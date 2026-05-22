@@ -22,6 +22,7 @@ export default [
     ignores: [
       'node_modules/',
       'build/',
+      'build-analysis/',
       'out/',
       'locale/',
       'tasks/',

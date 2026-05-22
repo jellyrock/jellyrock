@@ -466,7 +466,15 @@ if (fs.existsSync(SIGNALS_PATH)) {
 function findClaudeMds(rootDir) {
   const found = [];
   // Skip directories that don't host project source / docs
-  const skipDirs = new Set(['node_modules', 'build', 'out', 'tasks', '.git', '.husky']);
+  const skipDirs = new Set([
+    'node_modules',
+    'build',
+    'build-analysis',
+    'out',
+    'tasks',
+    '.git',
+    '.husky',
+  ]);
   function walk(dir) {
     let entries;
     try {

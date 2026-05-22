@@ -1,6 +1,7 @@
 # Build output / vendor / generated.
 node_modules/
 build/
+build-analysis/
 out/
 **/roku_modules/
 

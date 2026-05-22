@@ -193,13 +193,13 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `bsconfig-files-duplicated`
 
-- **area**: repo root
+- **area**: repo root (`bsconfig.json`, `bsconfig-prod.json`, `bsconfig-analysis.json`)
 - **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance.
 
 #### `mixed-esm-cjs-scripts`
 
 - **area**: `scripts/` (top-level, excluding `bsc-plugins/` and `lib/`)
-- **issue**: Top-level `scripts/*.js` are ESM (4: `catchup-state.js`, `changelog-syncer.js`, `journal-sync.js`, `run-roku-tests.js`); the other 4 top-level scripts are `.cjs`. `scripts/lint/` (10 scripts) and `scripts/lib/` (4 scripts) are all `.cjs`. `package.json` has `"type": "module"`, so ESM is the modern default for new code. Forward rule for net-new scripts is documented (ESM `.js` unless `require()`'d), but the existing `.cjs` files in `lint/` and `lib/` are kept for now.
+- **issue**: Top-level `scripts/*.js` are ESM (5: `catchup-state.js`, `changelog-syncer.js`, `crash-report.js`, `journal-sync.js`, `run-roku-tests.js`); the other 4 top-level scripts are `.cjs`. `scripts/lint/` (10 scripts) and `scripts/lib/` (4 scripts) are all `.cjs`. `package.json` has `"type": "module"`, so ESM is the modern default for new code. Forward rule for net-new scripts is documented (ESM `.js` unless `require()`'d), but the existing `.cjs` files in `lint/` and `lib/` are kept for now.
 - **direction**: Audit the require-graph first. Anything `require()`'d by a BSC plugin or another locked CJS file (incl. `scripts/lib/*` callers) is forced `.cjs`. Top-level CLI scripts that aren't required by anything are migrate-able to ESM `.js`. Mechanical conversion (`require` → `import`, `module.exports` → `export`, `__dirname` → `fileURLToPath(import.meta.url)`), but needs the audit first because some scripts that look standalone are actually required by lint-staged or other CJS callers.
 - **enforced**: [`scripts/CLAUDE.md`](../../scripts/CLAUDE.md) documents the forward rule; [`docs/dev/scripts-development.md`](../dev/scripts-development.md) covers the gotchas. ESLint's `eslint-plugin-n` `flat/mixed-esm-and-cjs` preset handles both extensions transparently.
 
