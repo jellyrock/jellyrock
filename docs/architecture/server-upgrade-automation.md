@@ -4,6 +4,8 @@ related-files:
   - scripts/generate/api-usage-manifest.js
   - scripts/generate/spec-fingerprint.js
   - scripts/generate/spec-diff.js
+  - scripts/generate/findings-candidates.js
+  - .api-watch/suppressions.yml
   - scripts/lib/spec-fetch.cjs
   - scripts/lib/version-boundaries.cjs
   - docs/architecture/api-usage-manifest.json
@@ -24,11 +26,15 @@ ships, mechanically detect every API change that intersects code JellyRock
 actually ships, have an agent investigate the real impact, and file/triage GitHub
 issues — while staying silent about the churn that doesn't affect us.
 
-> **Status (2026-05-29):** Phases 0 + 0.5 + 1 are built and verified (the
-> API-usage manifest with `apiVersion` tiers, plus the supply+diff layer:
+> **Status (2026-05-29):** Phases 0 + 0.5 + 1 + 2 are built and verified (the
+> API-usage manifest with `apiVersion` tiers; the supply+diff layer:
 > version-boundary map, spec fetch/cache, fingerprint generator with committed
-> floor/baseline anchors, and the structural diff engine). Phases 2–5 are
-> designed here but not yet built. See the [roadmap](#roadmap) below.
+> floor/baseline anchors, and the structural diff engine; and the join+classify
+> layer: `findings-candidates.js` with the forward + backward checks,
+> tier-relevance filtering, and `.api-watch` suppression). Phases 3–5 are
+> designed here but not yet built. At the end of Phase 2 the full report runs by
+> hand (`npm run api-watch:findings <from> <to>`); the `/server-upgrade` agent
+> skill that consumes it is Phase 3. See the [roadmap](#roadmap) below.
 
 ## Why this exists
 
@@ -233,9 +239,10 @@ reproducibility without repo bloat.
   [`spec-fingerprints/`](spec-fingerprints/); drift-gated), and the structural
   diff engine ([`spec-diff.js`](../../scripts/generate/spec-diff.js)). Script;
   fixture-tested; fully offline.
-- **Phase 2 — Join + classify.** Produce `findings-candidates.json` with forward
-  and backward checks, tier-relevance filtering, and `.api-watch` suppression
-  (script; tested). *At the end of Phase 2 the full report runs by hand.*
+- **Phase 2 — Join + classify.** ✅ *done.* Produce `findings-candidates.json`
+  with forward and backward checks, tier-relevance filtering, and `.api-watch`
+  suppression ([`findings-candidates.js`](../../scripts/generate/findings-candidates.js);
+  fixture-tested; offline). *At the end of Phase 2 the full report runs by hand.*
 - **Phase 3 — `/server-upgrade` skill.** Agent investigation over the report +
   plan/execute issue automation (human-gated), dedup/reopen/labels.
 - **Phase 4 — Proactive CI.** Scheduled tracker-issue + `signals-backlog` wiring.
@@ -291,6 +298,66 @@ The diff output (`spec-diff.json`, gitignored cache) is the input to Phase 2's
 join against the manifest. Carry forward the documented lesson: the **join must
 be case-insensitive on field names** (the app sends PascalCase, the spec defines
 camelCase) — see the manifest's `coverage.knownGaps`.
+
+## Phase 2 — implementation notes (built; kept as the build record)
+
+> **Built 2026-05-29.** A record of *how* Phase 2 was implemented. The next
+> session picks up at **Phase 3 — the `/server-upgrade` skill** (agent
+> investigation over `findings-candidates.json` + plan/execute issue automation).
+
+[`findings-candidates.js`](../../scripts/generate/findings-candidates.js) is the
+deterministic join+classify step. It is a pure, offline transform over committed
+inputs — no network, no GitHub writes — so it is fully fixture-tested.
+
+1. **Anchor strategy (Phase 1's open question, decided here): committed
+   fingerprints.** The join reads the committed `from`/`to`/`floor` fingerprints
+   and computes the forward diff in-process via the already-exported
+   `diffFingerprints()`. "Fetch latest + commit its fingerprint" stays the
+   existing separate step (`spec-fingerprint.js <version>`). Rejected
+   fetch-latest-on-demand because it would make the join network-dependent and
+   less reproducible — at odds with the pipeline's deterministic/cacheable/offline
+   principle, and committing the latest fingerprint is a natural part of the
+   release trigger anyway. CLI:
+   `node scripts/generate/findings-candidates.js <from> <to> [--floor <v>] [--root <dir>] [--no-opportunities] [--stdout]`
+   (npm: `api-watch:findings`); writes the gitignored
+   `.api-watch/cache/findings-candidates-<from>..<to>.json`.
+2. **Forward check** intersects the diff with the manifest. Endpoints join via
+   the manifest's `normalized` form (the script mirrors the manifest's
+   `normalizePath` exactly — `{x}`→`{}`, lowercased, trailing slash stripped,
+   idempotent), keyed by **normalized-path + method** because the same path can
+   appear under several entries with different methods *and* tier ranges (e.g.
+   `/items/{}` has a `V1` `DELETE` and a `V2` `GET`). A method recorded as `UNKNOWN`
+   (verb not statically resolvable) falls back to a path-level match. Fields join
+   **case-insensitively by name** — the load-bearing carry-forward lesson.
+   Tier-relevance: the change's tier is `serverToTier(diff.toVersion)`; an
+   endpoint whose `[minApiVersion, maxApiVersion]` range includes it →
+   `active-tier` (investigate), otherwise `frozen-skip` (`needsInvestigation:
+   false`). Frozen-tier immunity falls out of this range math — no allowlist.
+3. **Backward floor-coverage check** flags a `coverage-gap` for every manifest
+   endpoint whose range includes the floor tier yet is absent from the floor
+   fingerprint. Modern-only endpoints (`minApiVersion > 1`) are intentionally not
+   flagged. NOTE: the manifest's known coarseness (an endpoint guarded by a
+   capability check rather than a `getApiVersion()` branch tags `[1,∞)`, e.g.
+   `/audio/{}/lyrics`) means some coverage-gaps are *expected* and the Phase 4
+   agent dispositions them via the capability guard — that is the intended seam,
+   not a bug.
+4. **Classification.** Breaking = the removed/changed kinds on a used surface;
+   `opportunity` = an `endpoint-added` the app does not already use (gate off with
+   `--no-opportunities`); purely additive kinds (`param-added`, `field-added`) and
+   unused changes are dropped (counted in the run summary, never silently). For
+   `enum-changed` there is no field name, so the schema name of the enum joins
+   against consumed field names (catches `MediaType`-style enums; misses
+   `BaseItemKind`-style — acceptable over/under-capture, the agent resolves).
+5. **Suppression.** [`.api-watch/suppressions.yml`](../../.api-watch/suppressions.yml)
+   (committed; the cache subdir is the only gitignored part of `.api-watch/`)
+   holds accepted-churn rules (kind/path/method/schema/name predicates, ALL must
+   match, first-match-wins), mirroring `.crash-report/known-noise.yml`. A
+   suppressed candidate stays in the report flagged `suppressed: true` +
+   `suppressedBy`, forced `needsInvestigation: false` — nothing vanishes silently.
+6. **Tests** ([`findings-candidates.test.js`](../../tests/scripts/unit/generate/findings-candidates.test.js))
+   exercise every path with tiny hand-written manifests + fingerprints (direct
+   import for the pure builders, `spawnScript` for the CLI), mirroring
+   `spec-diff.test.js`.
 
 ## Related
 
