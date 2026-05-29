@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-08
+last-updated: 2026-05-29
 ---
 
 # Signals backlog
@@ -34,9 +34,9 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 
 - **watching**: latest stable release on api.jellyfin.org/openapi/stable/
 - **current**: 10.7.0 minimum supported; latest tested per [user/jellyfin-server-feature-matrix.md](user/jellyfin-server-feature-matrix.md)
-- **latest_upstream**: 10.11.8
+- **latest_upstream**: 10.11.10
 - **latest_acknowledged**: 10.11.8
-- **last_checked**: 2026-05-08
+- **last_checked**: 2026-05-29
 - **action_when_moves**: review [dev/jellyfin-server-versioning.md](dev/jellyfin-server-versioning.md); if a new minor introduces a breaking endpoint shape, add a v3 dispatcher per the doc's "Adding Support for New Server Versions" section
 - **status**: watching
 
@@ -46,7 +46,7 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **current**: n/a (we don't pre-test against RCs by default)
 - **latest_upstream**: (no RC in flight)
 - **latest_acknowledged**: (no RC in flight)
-- **last_checked**: 2026-05-08
+- **last_checked**: 2026-05-29
 - **action_when_moves**: spin up the RC against a test library; file findings as GitHub issues if breakage is detected before the stable release
 - **status**: watching
 
@@ -56,6 +56,6 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **current**: not pinned in source; we run on whatever Roku OS the device ships — review when the latest jumps a major
 - **latest_upstream**: 15.2
 - **latest_acknowledged**: 15.2
-- **last_checked**: 2026-05-08
+- **last_checked**: 2026-05-29
 - **action_when_moves**: review video pipeline + scene graph capability changes; update [architecture/playback.md](architecture/playback.md) if a codec / DRM / OSD change affects JellyRock
 - **status**: watching
