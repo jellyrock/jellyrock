@@ -42,6 +42,7 @@ assignees
 AST
 async
 Async
+auditable
 auth
 Auth
 autocomplete
@@ -87,6 +88,7 @@ Callouts
 callsite
 callsites
 camelCase
+cacheable
 cancellable
 catchup
 catchup-discipline
@@ -152,6 +154,7 @@ dialogs
 Diátaxis
 Diátaxis-lite
 diff-and-wait
+diffable
 DLNA
 docs-as-code
 docstring
@@ -166,6 +169,7 @@ downscaled
 DRM
 dropdown
 dropdowns
+DTO
 durations
 DX
 e2e
@@ -232,6 +236,7 @@ HD
 HDR
 HK-specific
 HLS
+hotfix
 how-tos
 HTTPS
 i18n
@@ -290,6 +295,7 @@ namespace
 namespaced
 namespaces
 Namespaces
+nullable
 natively
 Niklas
 nodearray
@@ -303,6 +309,7 @@ NTSC
 Nygard
 Nygard's
 onboarding
+OpenAPI
 opencode
 orchestrator
 Orchestrator
@@ -355,6 +362,7 @@ pre-release
 pre-roll
 prerolls
 pre-test
+proactivity
 Procida
 Procida's
 progress-stale
@@ -379,16 +387,21 @@ rekey
 remuxing
 renderer
 renderers
+refetch
+regenerable
 repo
 Repo
 repo's
 repo-scoped
+reproducibility
 repo-size
 repo-wide
 retry-with-backoff
 revalidation
+reviewable
 RGB
 roadmap
+Roadmap
 rokucommunity
 roku-log
 roku-log-expert
