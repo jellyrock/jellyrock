@@ -33,6 +33,8 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 | global state — what hangs off `m.global` | [global-state.md](./global-state.md) |
 | video and audio playback | [playback.md](./playback.md) |
 | the API layer and task pool | [api.md](./api.md) |
+| the app's Jellyfin API footprint (generated manifest) | [api-usage-manifest.md](./api-usage-manifest.md) |
+| Jellyfin server-upgrade automation (API spec-diff pipeline) | [server-upgrade-automation.md](./server-upgrade-automation.md) |
 | translations and i18n | [translations.md](./translations.md) |
 | settings — sources, persistence, defaults | [settings.md](./settings.md) |
 | registry migrations | [migrations.md](./migrations.md) |
