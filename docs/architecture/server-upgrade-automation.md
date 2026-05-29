@@ -338,9 +338,9 @@ inputs — no network, no GitHub writes — so it is fully fixture-tested.
    fingerprint. Modern-only endpoints (`minApiVersion > 1`) are intentionally not
    flagged. NOTE: the manifest's known coarseness (an endpoint guarded by a
    capability check rather than a `getApiVersion()` branch tags `[1,∞)`, e.g.
-   `/audio/{}/lyrics`) means some coverage-gaps are *expected* and the Phase 4
-   agent dispositions them via the capability guard — that is the intended seam,
-   not a bug.
+   `/audio/{}/lyrics`) means some coverage-gaps are *expected* and the Phase 3
+   agent (pipeline stage 4, "Investigate") dispositions them via the capability
+   guard — that is the intended seam, not a bug.
 4. **Classification.** Breaking = the removed/changed kinds on a used surface;
    `opportunity` = an `endpoint-added` the app does not already use (gate off with
    `--no-opportunities`); purely additive kinds (`param-added`, `field-added`) and
