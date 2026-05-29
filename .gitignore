@@ -19,3 +19,6 @@ node_modules/
 /tasks/
 .claude/logs/
 .claude/handoffs/
+# server-upgrade-automation: raw spec + transient diff/findings caches.
+# Committed fingerprints (docs/architecture/spec-fingerprints/) are NOT ignored.
+.api-watch/
