@@ -51,6 +51,11 @@ const JSON_PREFIXES = [
   // ("Unexpected comma") errors and would block commits. VSCode itself
   // parses these files correctly; nothing else lints them.
   '.vscode/',
+  // Generated OpenAPI fingerprints (scripts/generate/spec-fingerprint.js) are
+  // ~0.5 MB of JSON.stringify output — valid by construction and drift-checked
+  // by docs:spec-fingerprints:check. jshint OOMs (SIGKILL) parsing them, and it
+  // would catch nothing the generator doesn't already guarantee.
+  'docs/architecture/spec-fingerprints/',
 ];
 
 function _matches(file, exact, prefixes, suffixes = []) {
