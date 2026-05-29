@@ -67,6 +67,7 @@
     "docs:api-manifest:check": "node scripts/generate/api-usage-manifest.js --check",
     "docs:spec-fingerprints": "node scripts/generate/spec-fingerprint.js",
     "docs:spec-fingerprints:check": "node scripts/generate/spec-fingerprint.js --check",
+    "api-watch:findings": "node scripts/generate/findings-candidates.js",
     "docs:settings": "node scripts/generate/settings-docs.cjs",
     "docs:stale": "node scripts/lint/docs-stale.cjs",
     "docs:stale:blocking": "node scripts/lint/docs-stale-blocking.cjs",
