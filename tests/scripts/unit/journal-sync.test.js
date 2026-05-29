@@ -20,6 +20,7 @@ import {
   applyShipEdit,
   extractCurrentlyRunning,
   checkBulletAgainstDictionary,
+  extractFlaggedWords,
 } from '../../../scripts/journal-sync.js';
 
 import { spawnScript } from './_helpers/spawn-script.js';
@@ -434,6 +435,29 @@ describe('checkBulletAgainstDictionary', () => {
       runner,
     });
     expect(capturedRepoRoot).toBe('/some/repo');
+  });
+});
+
+describe('extractFlaggedWords', () => {
+  it('pulls the backticked word out of a spellchecker violation line', () => {
+    const out =
+      '/tmp/candidate.md\n1:23-1:36 warning Unexpected unknown word `JRPlaceholder` jrplaceholder retext-spell';
+    expect(extractFlaggedWords(out)).toEqual(['JRPlaceholder']);
+  });
+
+  it('returns multiple words in order, deduplicated', () => {
+    const out = [
+      '1:5-1:9 warning Unexpected unknown word `Foo` foo retext-spell',
+      '1:20-1:24 warning Unexpected unknown word `Bar` bar retext-spell',
+      '2:1-2:5 warning Unexpected unknown word `Foo` foo retext-spell',
+    ].join('\n');
+    expect(extractFlaggedWords(out)).toEqual(['Foo', 'Bar']);
+  });
+
+  it('returns [] for clean / empty output', () => {
+    expect(extractFlaggedWords('')).toEqual([]);
+    expect(extractFlaggedWords(undefined)).toEqual([]);
+    expect(extractFlaggedWords('Spellchecking 1 file...\nno issues found')).toEqual([]);
   });
 });
 
