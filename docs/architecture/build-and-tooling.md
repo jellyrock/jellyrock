@@ -64,7 +64,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-16
+last-reviewed: 2026-05-28
 ---
 
 # Build & Tooling
@@ -446,8 +446,8 @@ JellyRock layers six verification + automation surfaces, each owning checks or s
 | `bsfmt --write` | ✓ | — | File-scoped; auto-fix re-stages |
 | `bslint` (`lint:bs`) | — | ✓ | Needs full project context (cross-file scope resolution) |
 | `bsc --noEmit` (`validate`) | — | ✓ | Project-wide compile, ~10–30 s |
-| `markdownlint-cli2 --fix` | ✓ | — | File-scoped; auto-fix re-stages |
-| `spellchecker` (`lint:spelling`) | ✓ | — | File-scoped; no auto-fix (correctness) |
+| `markdownlint-cli2 --fix` (`lint:markdown`) | ✓ | ✓ | Pre-commit auto-fixes + re-stages; pre-push re-runs the read-only check (gated on `.md` changes) because rebase / cherry-pick / merge commits skip the pre-commit hook entirely |
+| `spellchecker` (`lint:spelling`) | ✓ | ✓ | Pre-commit checks (no auto-fix — correctness); pre-push re-runs it (gated on `.md` changes) as the same backstop for commits that bypass pre-commit |
 | `jshint` (`lint:json`) | ✓ | — | File-scoped; no auto-fix |
 | `docs-check.cjs` (`lint:docs`) | — | ✓ | Cross-doc reference check; needs all docs loaded |
 | `generate-dev-index.cjs --check` | — | ✓ | Drift check on auto-generated table |

@@ -367,6 +367,7 @@ RCs
 README
 READMEs
 read-only
+rebase
 recurse
 Reddit
 re-derive

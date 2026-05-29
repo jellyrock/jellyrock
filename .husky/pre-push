@@ -24,6 +24,12 @@
 #   9. npm run lint:docs          — ALWAYS. Validates related-files: paths and
 #                                    markdown links across every doc + CLAUDE.md.
 #                                    Cross-doc check; not file-scopable.
+#  9a. npm run lint:markdown      — when any *.md changed. markdownlint style
+#                                    (MD022 blanks-around-headings, etc.). Backstop
+#                                    for the pre-commit auto-fix, which git skips on
+#                                    rebase / cherry-pick / merge commits.
+#  9a'. npm run lint:spelling     — when any *.md changed. spellchecker against
+#                                    dictionary.txt. Same rebase-bypass backstop.
 #  9b. npm run lint:ci-workflow-sync — ALWAYS. Verifies every _lint-*.yml /
 #                                    _test-*.yml / _smoke-test-*.yml reusable
 #                                    workflow is listed in _validate-dependencies.yml.
@@ -46,8 +52,9 @@
 #
 # What's NOT here (handled in pre-commit / lint-staged):
 #   - bsfmt --write / --check on .bs/.brs (file-scoped)
-#   - markdownlint --fix on .md (file-scoped)
-#   - spellchecker on .md (file-scoped)
+#   - markdownlint --fix on .md (file-scoped auto-fix; the read-only CHECK
+#     runs here too — see step 9a — to catch commits that bypass pre-commit)
+#   - spellchecker on .md (file-scoped; the CHECK also runs here — step 9a')
 #   - jshint on .json (file-scoped)
 #   - eslint --fix on *.js / *.cjs / *.mjs (file-scoped, auto-fix)
 #   - prettier --write on *.js / *.cjs / *.mjs / *.json (file-scoped, auto-fix)
@@ -86,6 +93,7 @@ HAS_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs)$' && echo 1 || true)
 HAS_JSON_OR_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs|json)$' && echo 1 || true)
 HAS_ICON_SOURCES=$(echo "$CHANGED" | grep -qE '^resources/icons/.*\.svg$|^resources/(icons/icons|placeholders/placeholders)\.json$|^scripts/generate/icons-build\.js$' && echo 1 || true)
 HAS_DICTIONARY=$(echo "$CHANGED" | grep -qE '^dictionary\.txt$|^scripts/lint/dictionary-audit\.cjs$' && echo 1 || true)
+HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Auto-fix steps (project-wide regens; combined into one commit at the end)
@@ -159,6 +167,14 @@ fi
 
 echo "📚 Validating doc references..."
 npm run lint:docs
+
+if [ -n "$HAS_MD" ]; then
+  echo "📝 Linting markdown style..."
+  npm run lint:markdown
+
+  echo "🔤 Spell-checking docs..."
+  npm run lint:spelling
+fi
 
 echo "🔄 Validating CI workflow sync..."
 npm run lint:ci-workflow-sync
