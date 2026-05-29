@@ -2,8 +2,14 @@
 topic: server-upgrade-automation
 related-files:
   - scripts/generate/api-usage-manifest.js
+  - scripts/generate/spec-fingerprint.js
+  - scripts/generate/spec-diff.js
+  - scripts/lib/spec-fetch.cjs
+  - scripts/lib/version-boundaries.cjs
   - docs/architecture/api-usage-manifest.json
   - docs/architecture/api-usage-manifest.md
+  - docs/architecture/spec-fingerprints/
+  - docs/dev/jellyfin-version-boundaries.yml
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
@@ -18,9 +24,11 @@ ships, mechanically detect every API change that intersects code JellyRock
 actually ships, have an agent investigate the real impact, and file/triage GitHub
 issues — while staying silent about the churn that doesn't affect us.
 
-> **Status (2026-05-29):** Phase 0 + 0.5 are built and verified (the API-usage
-> manifest with `apiVersion` tiers). Phases 1–5 are designed here but not yet
-> built. See the [roadmap](#roadmap) below.
+> **Status (2026-05-29):** Phases 0 + 0.5 + 1 are built and verified (the
+> API-usage manifest with `apiVersion` tiers, plus the supply+diff layer:
+> version-boundary map, spec fetch/cache, fingerprint generator with committed
+> floor/baseline anchors, and the structural diff engine). Phases 2–5 are
+> designed here but not yet built. See the [roadmap](#roadmap) below.
 
 ## Why this exists
 
@@ -215,9 +223,16 @@ reproducibility without repo bloat.
   real 10.11.10 spec.
 - **Phase 0.5 — `apiVersion` tiers** ✅ *done.* `minApiVersion`/`maxApiVersion`
   per endpoint, generalized to nested `V3`.
-- **Phase 1 — Supply + diff.** Version-boundary map + spec fetch/cache +
-  fingerprint generator + structural diff engine (script; fixture-tested; fully
-  offline).
+- **Phase 1 — Supply + diff.** ✅ *done.* Version-boundary map
+  ([`jellyfin-version-boundaries.yml`](../dev/jellyfin-version-boundaries.yml) +
+  [`version-boundaries.cjs`](../../scripts/lib/version-boundaries.cjs) loader),
+  spec fetch/cache ([`spec-fetch.cjs`](../../scripts/lib/spec-fetch.cjs) →
+  gitignored `.api-watch/cache/`), fingerprint generator
+  ([`spec-fingerprint.js`](../../scripts/generate/spec-fingerprint.js); committed
+  floor 10.7.0 + baseline 10.11.8 anchors under
+  [`spec-fingerprints/`](spec-fingerprints/); drift-gated), and the structural
+  diff engine ([`spec-diff.js`](../../scripts/generate/spec-diff.js)). Script;
+  fixture-tested; fully offline.
 - **Phase 2 — Join + classify.** Produce `findings-candidates.json` with forward
   and backward checks, tier-relevance filtering, and `.api-watch` suppression
   (script; tested). *At the end of Phase 2 the full report runs by hand.*
@@ -227,12 +242,20 @@ reproducibility without repo bloat.
 - **Phase 5 — Maturation.** Coverage-symmetry advisory; graduate auto-file per
   finding-class once false-positive rates are proven low.
 
-## Phase 1 — implementation notes (start here)
+## Phase 1 — implementation notes (built; kept as the build record)
 
-Concrete guidance for the next session picking up Phase 1 (supply + diff). All of
-it is offline — no GitHub writes — so it is safe to build and validate in
-isolation. Follow `scripts/CLAUDE.md`: top-level CLI scripts are ESM `.js`, no new
-runtime deps (`js-yaml` is already available if the version map is YAML).
+> **Built 2026-05-29.** This section is now a record of *how* Phase 1 was
+> implemented rather than a to-do; the next session picks up at **Phase 2 —
+> join + classify** (intersect [`spec-diff.js`](../../scripts/generate/spec-diff.js)
+> output against the API-usage manifest, apply tier-relevance via
+> [`version-boundaries.cjs`](../../scripts/lib/version-boundaries.cjs), emit
+> `findings-candidates.json`). The notes below still describe the supply+diff
+> layer's shape accurately.
+
+Concrete guidance for Phase 1 (supply + diff). All of it is offline — no GitHub
+writes — so it is safe to build and validate in isolation. Follow
+`scripts/CLAUDE.md`: top-level CLI scripts are ESM `.js`, no new runtime deps
+(`js-yaml` is already available if the version map is YAML).
 
 1. **Version-boundary map** — a small committed file (the source of truth tying
    tiers to server versions). Shape: `{ tiers: { 1: {minServer, maxServer,
