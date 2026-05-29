@@ -6,8 +6,7 @@ sub init()
   m.itemPoster = m.top.findNode("itemPoster")
   m.postTextBackground = m.top.findNode("postTextBackground")
   m.posterText = m.top.findNode("posterText")
-  m.backdrop = m.top.findNode("backdrop")
-  m.backdrop.blendColor = m.global.constants.colorBackgroundSecondary
+  m.placeholder = m.top.findNode("placeholder")
 
   m.itemPoster.observeField("loadStatus", "onPosterLoadStatusChanged")
 
@@ -38,43 +37,22 @@ sub onItemContentChanged()
 
   if not isValid(itemData) then return
 
-  ' Check if we need to show a fallback icon (only when no poster image available)
-  shouldShowFallbackIcon = false
-  fallbackIconUri = ""
-
-  posterUrl = getItemPosterUrl(itemData)
-
-  if not isValidAndNotEmpty(posterUrl)
-    itemType = LCase(itemData.type)
-    folderType = LCase(itemData.folderType)
-
-    if itemType = "musicalbum"
-      fallbackIconUri = "pkg:/images/icons/album_$$RES$$.png"
-      shouldShowFallbackIcon = true
-    else if itemType = "musicartist"
-      fallbackIconUri = "pkg:/images/icons/missingArtist_$$RES$$.png"
-      shouldShowFallbackIcon = true
-    else if itemType = "musicgenre" or folderType = "musicgenre"
-      fallbackIconUri = "pkg:/images/icons/musicFolder_$$RES$$.png"
-      shouldShowFallbackIcon = true
-    end if
-  end if
-
-  m.itemPoster.uri = posterUrl
   m.posterText.text = itemData.title
 
-  'If Poster not loaded, show colored backdrop
-  if m.itemPoster.loadStatus <> "ready"
-    m.backdrop.visible = true
-    ' If we need a fallback icon, prepare to show it on top of backdrop
-    if shouldShowFallbackIcon
-      m.itemPoster.uri = fallbackIconUri
-      m.itemPoster.blendColor = m.global.constants.colorTextSecondary
-      m.itemPoster.loadWidth = 280
-      m.itemPoster.loadHeight = 280
-      m.itemPoster.loadDisplayMode = "limitSize"
-    end if
+  posterUrl = getItemPosterUrl(itemData)
+  if posterUrl = ""
+    ' Known-missing image — eagerly surface the typed glyph on the backdrop.
+    ' Load-status never fires "failed" for an empty URI, so we must set the
+    ' placeholder state here rather than waiting for onPosterLoadStatusChanged.
+    showPlaceholder(musicItemType())
+  else
+    ' Image expected — start in loading state. The load-status observer flips
+    ' to the typed-glyph failure state on "failed", or hides on "ready".
+    m.placeholder.itemType = ""
+    m.placeholder.visible = true
+    m.itemPoster.uri = posterUrl
   end if
+
   if m.top.itemHasFocus then onFocusChanged()
 end sub
 
@@ -94,18 +72,33 @@ sub onFocusChanged()
   end if
 end sub
 
-'Hide backdrop when real poster loaded (not fallback icon)
+' Toggle the JRPlaceholder fallback based on the real poster's load state.
+' Mirrors the canonical state machine from JRRowItem.bs onPosterLoadStatusChanged.
 sub onPosterLoadStatusChanged()
-  if m.itemPoster.loadStatus = "ready"
-    ' Only hide backdrop if we loaded an actual poster image
-    itemData = m.top.itemContent
-    if isValid(itemData) and isValidAndNotEmpty(getItemPosterUrl(itemData))
-      m.backdrop.visible = false
-      m.itemPoster.blendColor = "0xFFFFFFFF" ' Reset to white
-      ' Restore original display mode if parent specifies one
-      if isValid(m.topParent.imageDisplayMode)
-        m.itemPoster.loadDisplayMode = m.topParent.imageDisplayMode
-      end if
-    end if
+  if m.itemPoster.loadStatus = "ready" and m.itemPoster.uri <> ""
+    m.placeholder.visible = false
+  else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
+    showPlaceholder(musicItemType())
+  else
+    m.placeholder.visible = true
   end if
+end sub
+
+' Resolve the Jellyfin item type string for the current cell. MusicGenre items
+' arrive with type="MusicGenre" (typed by the transformer) or, in pre-typed
+' contexts, with folderType="MusicGenre" — handle both.
+function musicItemType() as string
+  itemData = m.top.itemContent
+  if not isValid(itemData) then return ""
+  if isValidAndNotEmpty(itemData.type) then return itemData.type
+  if isValidAndNotEmpty(itemData.folderType) then return itemData.folderType
+  return ""
+end function
+
+' Flip the placeholder into failure state with a type-appropriate glyph, then
+' clear the poster URI so the glyph isn't covered by a stale broken image.
+sub showPlaceholder(itemType as string)
+  m.placeholder.itemType = itemType
+  m.placeholder.visible = true
+  m.itemPoster.uri = ""
 end sub

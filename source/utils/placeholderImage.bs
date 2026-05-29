@@ -1,3 +1,6 @@
+import "pkg:/source/libraryViewFactory.bs"
+import "pkg:/source/utils/misc.bs"
+
 ' Returns the local placeholder image URI for a given Jellyfin item type.
 ' Used by JRPlaceholder when an item has no image URL or its image fails to
 ' load. The returned URI uses Roku's `$$RES$$` autosub token (see manifest's
@@ -11,14 +14,22 @@ function getPlaceholderImagePath(itemType as string) as string
     return "pkg:/images/placeholders/movie_$$RES$$.png"
   else if itemType = "Person"
     return "pkg:/images/placeholders/person_$$RES$$.png"
-  else if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "Recording" or itemType = "Program" or itemType = "Series" or itemType = "Season" or itemType = "Chapter"
+  else if itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "Recording" or itemType = "Program" or itemType = "Series" or itemType = "Season" or itemType = "Chapter" or itemType = "Trailer"
     return "pkg:/images/placeholders/playCircle_$$RES$$.png"
   else if itemType = "MusicAlbum"
     return "pkg:/images/placeholders/album_$$RES$$.png"
   else if itemType = "MusicArtist"
     return "pkg:/images/placeholders/artist_$$RES$$.png"
+  else if itemType = "MusicGenre"
+    return "pkg:/images/placeholders/musicFolder_$$RES$$.png"
+  else if itemType = "TvChannel" or itemType = "Channel" or itemType = "ChannelFolderItem"
+    return "pkg:/images/placeholders/livetv_$$RES$$.png"
   else if itemType = "Audio"
     return "pkg:/images/placeholders/musicNote_$$RES$$.png"
+  else if itemType = "Book" or itemType = "AudioBook"
+    return "pkg:/images/placeholders/book_$$RES$$.png"
+  else if itemType = "Studio"
+    return "pkg:/images/placeholders/studio_$$RES$$.png"
   else if itemType = "Playlist"
     return "pkg:/images/placeholders/playlist_$$RES$$.png"
   else if itemType = "Photo"
@@ -27,4 +38,54 @@ function getPlaceholderImagePath(itemType as string) as string
     return "pkg:/images/placeholders/photoAlbum_$$RES$$.png"
   end if
   return "pkg:/images/placeholders/folder_$$RES$$.png"
+end function
+
+' Resolves the Jellyfin item type string to use as JRPlaceholder.itemType for a
+' given content node. For most types this is just `item.type`. For library-tile
+' container types (CollectionFolder / UserView / Folder) it consults
+' DeterminePresenterType() in libraryViewFactory.bs so that, e.g., a Movies
+' library with no custom art surfaces the Movie glyph instead of a generic
+' folder, a Music library surfaces the album glyph, and so on. Unresolved
+' library tiles fall back to "Folder" so every cell surfaces a placeholder
+' rather than rendering as an empty backdrop.
+'
+' ChannelFolderItem is intentionally NOT treated as a library-tile here — it
+' passes through unchanged so getPlaceholderImagePath maps it to the livetv
+' glyph (matching its parent channel's visual treatment).
+'
+' NOTE: The library-tile set here (CollectionFolder / UserView / Folder) is
+' intentionally narrower than what might initially seem natural and is distinct
+' from JRRowItem.bs's isLibraryTile check at line 112 (CollectionFolder /
+' UserView / Channel). JRRowItem renders library tiles in a dedicated branch
+' with its own backdropText + itemIcon overlay (not via JRPlaceholder), so its
+' set reflects what naturally appears in horizontal rows on Home. This routing
+' is grid-side and serves a different purpose (typed-glyph fallback for
+' empty-art tiles).
+'
+' Returns "" only when the item itself is invalid or has no type at all —
+' valid items always resolve to a typed glyph or the "Folder" catch-all.
+'
+' @param item - Jellyfin content node
+' @returns Title-cased Jellyfin type string compatible with getPlaceholderImagePath,
+'          or "" only when item is invalid / typeless
+function resolveItemPlaceholderType(item as object) as string
+  if not isValid(item) then return ""
+  if not isValidAndNotEmpty(item.type) then return ""
+
+  itemType = LCase(item.type)
+  isLibraryTile = (itemType = "collectionfolder" or itemType = "userview" or itemType = "folder")
+  if not isLibraryTile then return item.type
+
+  ' Library-tile container — pick the glyph from what's inside.
+  presenterType = DeterminePresenterType(item)
+  if presenterType = "movie" then return "Movie"
+  if presenterType = "tvshow" then return "Series"
+  if presenterType = "music" then return "Audio"
+  if presenterType = "livetv" then return "TvChannel"
+  if presenterType = "photo" then return "Photo"
+
+  ' "generic" / unmapped library tile (homevideos folder, nested generic
+  ' container, raw Genre/Studio from a bypass path, etc.) — fall back to
+  ' "Folder" rather than returning "" so the cell still surfaces a glyph.
+  return "Folder"
 end function

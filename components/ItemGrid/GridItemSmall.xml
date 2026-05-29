@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="GridItemSmall" extends="Group">
   <children>
-    <RectangleBackgroundSecondary id="backdrop" translation="[0,22]" width="230" height="320" />
+    <JRPlaceholder id="placeholder" translation="[0,22]" width="230" height="320" />
+    <!--
+      genreBackdrop / genreLabel: action-tile treatment for "View All [Genre]" items.
+      These tiles aren't media — they're navigation buttons that intentionally have no image,
+      so they get a themed backdrop + in-cell label instead of going through JRPlaceholder.
+      Hidden by default; toggled visible only in the Genre branch of onItemContentChanged.
+    -->
+    <RectangleBackgroundSecondary id="genreBackdrop" translation="[0,22]" width="230" height="320" visible="false" />
+    <LabelPrimaryMedium id="genreLabel" width="220" height="310" translation="[5,27]" horizAlign="center" vertAlign="center" ellipsizeOnBoundary="true" wrap="true" visible="false" />
     <JRPoster id="itemPoster" translation="[0,22]" width="230" height="320" loadDisplayMode="scaleToZoom" />
     <ScrollingLabelPrimarySmaller translation="[0,347]" id="title" horizAlign="center" repeatCount="0" maxWidth="230" />
     <Poster id="itemIcon" width="50" height="50" translation="[230,17]" />
-    <LabelPrimaryMedium id="posterText" width="230" height="320" translation="[5,27]" horizAlign="center" vertAlign="center" ellipsizeOnBoundary="true" wrap="true" />
   </children>
   <interface>
     <field id="itemContent" type="node" onChange="onItemContentChanged" />

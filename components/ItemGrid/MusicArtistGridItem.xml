@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="MusicArtistGridItem" extends="Group">
   <children>
-    <Poster id="backdrop" translation="[0,22]" width="280" height="280" loadDisplayMode="scaleToZoom" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <JRPlaceholder id="placeholder" translation="[0,22]" width="280" height="280" />
     <Poster id="itemPoster" translation="[0,22]" width="280" height="280" loadDisplayMode="scaleToZoom" />
     <Rectangle id="postTextBackground" height="50" width="270" color="0x000000DD" translation="[5, 240]">
       <ScrollingLabelPrimarySmall id="posterText" maxWidth="270" height="50" horizAlign="center" vertAlign="center" />

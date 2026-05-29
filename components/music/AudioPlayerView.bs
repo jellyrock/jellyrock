@@ -155,6 +155,8 @@ end sub
 
 sub setupInfoNodes()
   m.albumCover = m.top.findNode("albumCover")
+  m.albumPlaceholder = m.top.findNode("albumPlaceholder")
+  m.albumCover.observeField("loadStatus", "onAlbumCoverLoadStatusChanged")
   m.playPosition = m.top.findNode("playPosition")
   m.bufferPosition = m.top.findNode("bufferPosition")
   m.seekBar = m.top.findNode("seekBar")
@@ -561,14 +563,16 @@ sub onAudioStreamLoaded()
       m.LoadMetaDataTask.control = "RUN"
     else
 
-      ' poster image — prefer album art, fall back to song primary, then placeholder
+      ' poster image — prefer album art, fall back to song primary. When neither is
+      ' available, clear the URI: the JRPlaceholder behind albumCover surfaces, and the
+      ' screensaver activator at startScreenSaver() falls into the audio-logo branch
+      ' instead of drifting a fallback glyph around the screen.
       if isValidAndNotEmpty(currentItem.albumId) and isValidAndNotEmpty(currentItem.albumPrimaryImageTag)
         setPosterImage(ImageURL(currentItem.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.albumPrimaryImageTag }))
       else if isValidAndNotEmpty(currentItem.primaryImageTag)
         setPosterImage(ImageURL(currentItem.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.primaryImageTag }))
       else
-        ' no poster available, show placeholder image
-        setPosterImage("pkg:/images/icons/album_$$RES$$.png")
+        setPosterImage("")
       end if
 
       setScreenTitle(currentItem)
@@ -603,13 +607,14 @@ sub onMetaDataLoaded()
     m.global.sceneManager.callFunc("setBackgroundImage", "")
   end if
 
-  ' poster image — prefer album art, fall back to song primary, then placeholder
+  ' poster image — prefer album art, fall back to song primary, then placeholder.
+  ' Empty string surfaces the JRPlaceholder behind albumCover and gates the screensaver.
   if isValidAndNotEmpty(data.albumId) and isValidAndNotEmpty(data.albumPrimaryImageTag)
     setPosterImage(ImageURL(data.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": data.albumPrimaryImageTag }))
   else if isValidAndNotEmpty(data.primaryImageTag)
     setPosterImage(ImageURL(data.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": data.primaryImageTag }))
   else
-    setPosterImage("pkg:/images/icons/album_$$RES$$.png")
+    setPosterImage("")
   end if
 
   setScreenTitle(data)
@@ -623,24 +628,31 @@ sub onMetaDataLoaded()
   end if
 end sub
 
-' Set poster image on screen
-sub setPosterImage(posterURL)
-  if isValid(posterURL)
-    if m.albumCover.uri <> posterURL
-      if posterURL = "pkg:/images/icons/album_$$RES$$.png"
-        constants = m.global.constants
-        ' color the white album placeholder to match theme
-        m.albumCover.blendColor = constants.colorTextSecondary
-        m.screenSaverAlbumCover.blendColor = constants.colorTextSecondary
-      else
-        ' reset blend color to default white
-        m.albumCover.blendColor = "0xFFFFFFFF"
-        m.screenSaverAlbumCover.blendColor = "0xFFFFFFFF"
-      end if
+' Set poster image on screen. Empty string clears the URI on both the main album cover
+' and the screensaver cover — the JRPlaceholder behind albumCover surfaces, and the
+' screensaver activator at startScreenSaver() routes to the audio-logo branch instead
+' of drifting a fallback glyph around.
+sub setPosterImage(posterURL as dynamic)
+  if not isValid(posterURL) then return
+  if m.albumCover.uri = posterURL then return
+  m.albumCover.uri = posterURL
+  m.screenSaverAlbumCover.uri = posterURL
+end sub
 
-      m.albumCover.uri = posterURL
-      m.screenSaverAlbumCover.uri = posterURL
-    end if
+' Toggle the JRPlaceholder behind albumCover based on the real poster's load state.
+' Mirrors the canonical state machine from JRRowItem.bs onPosterLoadStatusChanged,
+' but with itemType statically set to "MusicAlbum" in XML (no per-state retyping).
+sub onAlbumCoverLoadStatusChanged()
+  if m.albumCover.loadStatus = "ready" and m.albumCover.uri <> ""
+    m.albumPlaceholder.visible = false
+  else if m.albumCover.loadStatus = "failed" and m.albumCover.uri <> ""
+    ' Real image failed — clear both URIs so the placeholder shows and the screensaver
+    ' gate at startScreenSaver() sees an empty albumCover.uri (audio-logo branch).
+    m.albumCover.uri = ""
+    m.screenSaverAlbumCover.uri = ""
+    m.albumPlaceholder.visible = true
+  else
+    m.albumPlaceholder.visible = true
   end if
 end sub
 
@@ -858,12 +870,16 @@ sub onDestroy()
   m.audioPlayer = invalid
   m.queueManager = invalid
 
+  ' Release the placeholder load-status observer before clearing refs
+  if isValid(m.albumCover) then m.albumCover.unobserveField("loadStatus")
+
   ' Clear node references
   m.buttons = invalid
   m.playButton = invalid
   m.shuffleButton = invalid
   m.repeatButton = invalid
   m.albumCover = invalid
+  m.albumPlaceholder = invalid
   m.playPosition = invalid
   m.bufferPosition = invalid
   m.seekBar = invalid

@@ -45,6 +45,7 @@ import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { classify } from './lint/dictionary-audit.cjs';
 
 const STOPWORDS = new Set([
   // English filler
@@ -380,6 +381,26 @@ export function checkBulletAgainstDictionary({ today, prTitle, repoRoot, runner 
   return runner(bullet, repoRoot);
 }
 
+/**
+ * Pull the flagged words out of spellchecker output. Each violation line looks
+ * like: `… warning Unexpected unknown word `JRPlaceholder` jrplaceholder …`.
+ * The offending word is the one wrapped in backticks. Deduplicated, order
+ * preserved.
+ */
+export function extractFlaggedWords(output) {
+  const seen = new Set();
+  const words = [];
+  const re = /Unexpected unknown word `([^`]+)`/g;
+  let m;
+  while ((m = re.exec(output || '')) !== null) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1]);
+      words.push(m[1]);
+    }
+  }
+  return words;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // CLI shell
 // ──────────────────────────────────────────────────────────────────────────
@@ -513,9 +534,36 @@ function checkCommand(args) {
     'PR title would introduce un-dictionarized word(s) into docs/progress.md after merge:',
   );
   console.error(spell.output);
+
+  // Distinguish real-word typos (fixable via dictionary.txt) from code
+  // identifiers (PascalCase class/component names etc.). Adding an identifier
+  // to dictionary.txt would pass THIS check but then fail `lint:dictionary`,
+  // whose dictionary-audit rejects identifier-shaped entries — a dead end.
+  // For those, the only real fix is rephrasing the title. Reuse the audit's
+  // own `classify` so the two gates can't drift on what counts as identifier-
+  // shaped.
+  const flagged = extractFlaggedWords(spell.output);
+  const identifierShaped = flagged.filter((w) => classify(w) !== null);
+
   console.error('Fix one of:');
-  console.error('  1. Add the missing word(s) to dictionary.txt alphabetically.');
-  console.error('  2. Rephrase the PR title to avoid those words.');
+  if (identifierShaped.length > 0) {
+    console.error(
+      `  1. Rephrase the PR title to avoid: ${identifierShaped.join(', ')}. ` +
+        'These are code identifiers (class/component names) — they belong in ' +
+        'backticks in prose, and adding them to dictionary.txt would be ' +
+        'rejected by `lint:dictionary`.',
+    );
+    const realWords = flagged.filter((w) => classify(w) === null);
+    if (realWords.length > 0) {
+      console.error(
+        `  2. For the non-identifier word(s) (${realWords.join(', ')}), either ` +
+          'rephrase or add them to dictionary.txt alphabetically.',
+      );
+    }
+  } else {
+    console.error('  1. Add the missing word(s) to dictionary.txt alphabetically.');
+    console.error('  2. Rephrase the PR title to avoid those words.');
+  }
   process.exit(1);
 }
 

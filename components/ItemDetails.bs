@@ -9,6 +9,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/trackClusterFocus.bs"
@@ -2152,11 +2153,16 @@ sub updateWatchedButton()
 end sub
 
 ' setItemLogo: Set the item logo image URL if available.
-' Fallback chains by type:
-' - Movie/Series:   Logo → primaryImageTag (poster, compact size)
-' - Episode/Season/Recording: primaryImageTag (item thumb/poster) → parentLogoImageTag (series logo) → seriesPrimaryImageTag → hide
-' - Video/MusicVideo: primaryImageTag (poster)
-' - Person: primaryImageTag (portrait photo, tall) → silhouette icon
+' Fallback chains by type — every chain ends in a typed placeholder via
+' getPlaceholderImagePath() so the logo slot never goes blank, matching the
+' pattern Person and MusicArtist always used:
+' - Movie/Series/BoxSet: Logo → primaryImageTag (poster, compact size) → placeholder
+' - Episode/Season/Recording: primaryImageTag → parentLogoImageTag (series logo) → seriesPrimaryImageTag → placeholder
+' - Video/MusicVideo: primaryImageTag → placeholder
+' - MusicAlbum / Playlist / Photo / PhotoAlbum / TvChannel: primaryImageTag → placeholder
+' - Program: primaryImageTag → channel logo → placeholder
+' - Audio: primaryImageTag → album art → placeholder
+' - Person / MusicArtist: primaryImageTag (portrait) → placeholder
 ' @param {object} item - JellyfinBaseItem node
 sub setItemLogo(item as object)
   if not isValid(m.itemLogo) then return
@@ -2165,12 +2171,12 @@ sub setItemLogo(item as object)
   logoImageTag = item.logoImageTag
 
   if item.type = "Person"
-    ' Person: display primary (portrait) photo where the logo sits; fall back to silhouette icon
+    ' Person: display primary (portrait) photo where the logo sits; fall back to silhouette glyph
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = "pkg:/images/placeholders/person_$$RES$$.png"
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "MusicArtist"
@@ -2182,51 +2188,47 @@ sub setItemLogo(item as object)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = "pkg:/images/placeholders/artist_$$RES$$.png"
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "MusicAlbum"
-    ' Square album art as the primary image; hide if none
+    ' Square album art as the primary image; typed placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "Playlist"
-    ' Square playlist cover as primary image; hide if none
+    ' Square playlist cover as primary image; typed placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "Photo" or item.type = "PhotoAlbum"
-    ' Photo thumbnail or album cover as primary image; hide if none
+    ' Photo thumbnail or album cover as primary image; typed placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "TvChannel"
-    ' Channel logo (typically square); hide if none
+    ' Channel logo (typically square); folder-fallback placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "Program"
-    ' Program image; fall back to channel logo
+    ' Program image → channel logo → typed placeholder
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
@@ -2234,12 +2236,11 @@ sub setItemLogo(item as object)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.channelPrimaryImageTag }
       m.itemLogo.uri = ImageURL(item.channelId, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "Audio"
-    ' Own primary image → album art fallback → hide
+    ' Own primary image → album art fallback → typed placeholder
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
@@ -2247,8 +2248,7 @@ sub setItemLogo(item as object)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.albumPrimaryImageTag }
       m.itemLogo.uri = ImageURL(item.albumId, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
     return
   else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
@@ -2264,14 +2264,14 @@ sub setItemLogo(item as object)
       logoImageTag = item.parentLogoImageTag
     end if
   else if item.type = "Video" or item.type = "MusicVideo"
-    ' Videos and MusicVideos don't typically have Logo images — use Primary (poster) image instead
+    ' Videos and MusicVideos don't typically have Logo images — use Primary (poster)
+    ' image instead; playCircle placeholder if none.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
-      return
+    else
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
-    m.itemLogo.visible = false
-    m.itemLogo.uri = ""
     return
   end if
 
@@ -2281,25 +2281,26 @@ sub setItemLogo(item as object)
   else if item.type = "Movie" or item.type = "Series" or item.type = "BoxSet"
     ' No logo: fall back to primary (poster) image — fetch at full quality; display height is
     ' capped by LOGO_MAX_DISPLAY_HEIGHT in onLogoLoadStatusChanged to avoid overlapping info rows.
+    ' Movie placeholder if neither logo nor primary is available.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
       m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
   else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
-    ' No item primary (already tried above), no series logo: fall back to series primary poster
+    ' No item primary (already tried above), no series logo: fall back to series primary poster,
+    ' then a playCircle placeholder if the series has no primary image either.
     if isValidAndNotEmpty(item.seriesPrimaryImageTag) and isValidAndNotEmpty(item.seriesId)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.seriesPrimaryImageTag }
       m.itemLogo.uri = ImageURL(item.seriesId, "Primary", imgParams)
     else
-      m.itemLogo.visible = false
-      m.itemLogo.uri = ""
+      m.itemLogo.uri = getPlaceholderImagePath(item.type)
     end if
   else
-    m.itemLogo.visible = false
-    m.itemLogo.uri = ""
+    ' Catch-all: any other type without a known fallback chain gets the type-driven
+    ' placeholder (falls through to the folder glyph for genuinely unknown types).
+    m.itemLogo.uri = getPlaceholderImagePath(item.type)
   end if
 end sub
 
@@ -2387,6 +2388,17 @@ sub onLogoLoadStatusChanged()
   if not isValid(m.itemLogo) then return
 
   if m.itemLogo.loadStatus = "ready"
+    ' Tint placeholder PNGs (white glyph on transparent BG) with a near-page-BG
+    ' color so they recess like a watermark instead of competing with the title.
+    ' Detection by URI prefix: every placeholder asset lives under
+    ' pkg:/images/placeholders/. Real (server-loaded) images need the default
+    ' white blendColor so their native colors render correctly.
+    if Left(m.itemLogo.uri, 24) = "pkg:/images/placeholders"
+      m.itemLogo.blendColor = m.global.constants.colorBackgroundSecondary
+    else
+      m.itemLogo.blendColor = "0xFFFFFFFF"
+    end if
+
     logoWidth = m.itemLogo.bitmapWidth
     logoHeight = m.itemLogo.bitmapHeight
 
