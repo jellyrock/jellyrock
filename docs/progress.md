@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-22
+last-updated: 2026-05-29
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
 
+- 2026-05-29 — Expand placeholder coverage to grids, audio player, and item details
 - 2026-05-22 — Add /crash-report + /crash-backtrace for weekly Roku crash triage
 - 2026-05-21 — vscode: associate dotfiles to stop markdownlint false positives
 - 2026-05-16 — chore: reduce Renovate PR noise + close dep CI gaps
