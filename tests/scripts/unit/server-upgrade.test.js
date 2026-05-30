@@ -29,6 +29,7 @@ import {
   assembleIssueBody,
   reconcileActions,
   buildPlan,
+  executePlan,
   renderRunSummary,
   isAutoFileEligible,
   AUTO_FILE_CLASSES,
@@ -456,6 +457,115 @@ describe('trust ratchet (Phase 3: all human-gated)', () => {
     for (const t of ['breaking', 'coverage-gap', 'opportunity', 'symmetry-advisory']) {
       expect(isAutoFileEligible(t)).toBe(false);
     }
+  });
+});
+
+// ── Execute (write branches, injected gh) ────────────────────────────────────
+
+describe('executePlan — write branches via injected ghExec', () => {
+  function fakeGh(calls) {
+    return (args) => {
+      calls.push(args);
+      if (args[0] === 'issue' && args[1] === 'create') {
+        return 'https://github.com/owner/repo/issues/901\n';
+      }
+      return '';
+    };
+  }
+
+  it('creates with title/body/labels and extracts the new issue number', () => {
+    const calls = [];
+    const plan = {
+      actions: [
+        {
+          action: 'create',
+          findingKey: 'k',
+          title: '[server-upgrade] endpoint removed: GET /Items/{itemId} (→ 10.11.10)',
+          body: 'BODY',
+          labels: ['server-upgrade', 'bug'],
+          existingIssue: null,
+        },
+      ],
+    };
+    const results = executePlan(plan, { ghExec: fakeGh(calls), logger: () => {} });
+    expect(results[0].issueNumber).toBe(901);
+    expect(results[0].error).toBeNull();
+    expect(calls[0]).toEqual([
+      'issue',
+      'create',
+      '--title',
+      plan.actions[0].title,
+      '--body',
+      'BODY',
+      '--label',
+      'server-upgrade,bug',
+    ]);
+  });
+
+  it('comments on the open issue (recurrence) without creating', () => {
+    const calls = [];
+    const plan = {
+      actions: [
+        {
+          action: 'comment',
+          findingKey: 'k',
+          title: 't',
+          existingIssue: { number: 42, state: 'OPEN' },
+          commentBody: 'recurred',
+        },
+      ],
+    };
+    const results = executePlan(plan, { ghExec: fakeGh(calls), logger: () => {} });
+    expect(results[0].issueNumber).toBe(42);
+    expect(calls[0]).toEqual(['issue', 'comment', '42', '--body', 'recurred']);
+  });
+
+  it('reopens then comments on a closed issue (regression)', () => {
+    const calls = [];
+    const plan = {
+      actions: [
+        {
+          action: 'reopen',
+          findingKey: 'k',
+          title: 't',
+          existingIssue: { number: 7, state: 'CLOSED' },
+          commentBody: 'regressed',
+        },
+      ],
+    };
+    executePlan(plan, { ghExec: fakeGh(calls), logger: () => {} });
+    expect(calls[0]).toEqual(['issue', 'reopen', '7']);
+    expect(calls[1]).toEqual(['issue', 'comment', '7', '--body', 'regressed']);
+  });
+
+  it('records a gh failure per action and keeps going', () => {
+    const plan = {
+      actions: [
+        { action: 'create', findingKey: 'k1', title: 't', body: 'b', labels: ['server-upgrade'] },
+        { action: 'skip', findingKey: 'k2' },
+      ],
+    };
+    const throwGh = () => {
+      throw new Error('gh boom');
+    };
+    const results = executePlan(plan, { ghExec: throwGh, logger: () => {} });
+    expect(results[0].error).toBe('gh boom');
+    expect(results[1].action).toBe('skip');
+    expect(results[1].error).toBeNull();
+  });
+
+  it('makes NO gh calls for skip / monitor / missing-verdict / invalid-verdict', () => {
+    const calls = [];
+    const plan = {
+      actions: [
+        { action: 'skip', findingKey: 'a' },
+        { action: 'monitor', findingKey: 'b' },
+        { action: 'missing-verdict', findingKey: 'c' },
+        { action: 'invalid-verdict', findingKey: 'd', problems: ['x'] },
+      ],
+    };
+    executePlan(plan, { ghExec: fakeGh(calls), logger: () => {} });
+    expect(calls).toHaveLength(0);
   });
 });
 
