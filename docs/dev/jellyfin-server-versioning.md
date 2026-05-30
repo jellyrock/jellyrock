@@ -226,6 +226,15 @@ If Jellyfin 11.0 introduces breaking changes:
 4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `ApiClient.bs`
 5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden
 
+### Also update the server-upgrade-automation pipeline
+
+The release-detection pipeline ([server-upgrade-automation.md](../architecture/server-upgrade-automation.md)) is generalized to `N` tiers via range math, so its diff / join / floor / registry logic needs **no** rewrite when `V3` lands — but it has two data/config touch-points that DO need updating, plus the manifest must be regenerated:
+
+1. **Tier boundary map:** in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml), flip tier `2` to `status: frozen` with a concrete `maxServer` (the last 10.x release before 11.0), and add tier `3` with `status: active`, `maxServer: null`. (The loader requires exactly one active tier, and it must be the unbounded one.)
+2. **Manifest tier clamp:** in [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js), the cross-function clamp that pins `sdkV1.bs → max ≤ 1` / `sdkV2.bs → min ≥ 2` needs a `sdkV3.bs → min ≥ 3` line, and the `sdkV2.bs` line gains a `max ≤ 2` clamp (V2 becomes the frozen middle tier). Then regenerate: `npm run docs:api-manifest`. The `getApiVersion() >= 3` branches added in the dispatcher step above are picked up automatically (the extractor reads the literal `N`).
+
+After those, regenerate/commit a fresh baseline fingerprint at the next acknowledged release as usual — the floor (`10.7.0`) stays put forever (we support the oldest servers indefinitely), so the backward + symmetry + endpoint-availability checks need no change.
+
 ## Related Documentation
 
 - `docs/user/jellyfin-server-feature-matrix.md` - User-facing feature support by server version
