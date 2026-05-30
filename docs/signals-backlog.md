@@ -37,7 +37,7 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **latest_upstream**: 10.11.10
 - **latest_acknowledged**: 10.11.8
 - **last_checked**: 2026-05-29
-- **action_when_moves**: review [dev/jellyfin-server-versioning.md](dev/jellyfin-server-versioning.md); if a new minor introduces a breaking endpoint shape, add a v3 dispatcher per the doc's "Adding Support for New Server Versions" section
+- **action_when_moves**: run [`/server-upgrade`](../.claude/skills/server-upgrade/SKILL.md) to triage the release (mechanical report → agent investigation → human-gated issue filing); the proactive tracker issue maintained by [.github/workflows/server-upgrade-tracker.yml](../.github/workflows/server-upgrade-tracker.yml) nudges this with candidate counts. If a new minor introduces a breaking endpoint shape, the triage adds a v3 dispatcher per [dev/jellyfin-server-versioning.md](dev/jellyfin-server-versioning.md)'s "Adding Support for New Server Versions" section
 - **status**: watching
 
 ### jellyfin-server-rc: Jellyfin server release candidate channel

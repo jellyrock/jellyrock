@@ -6,6 +6,8 @@ related-files:
   - scripts/generate/spec-diff.js
   - scripts/generate/findings-candidates.js
   - scripts/server-upgrade.js
+  - scripts/server-upgrade-tracker.js
+  - .github/workflows/server-upgrade-tracker.yml
   - .claude/skills/server-upgrade/SKILL.md
   - .api-watch/suppressions.yml
   - scripts/lib/spec-fetch.cjs
@@ -17,7 +19,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-05-29
+last-reviewed: 2026-05-30
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -28,16 +30,19 @@ ships, mechanically detect every API change that intersects code JellyRock
 actually ships, have an agent investigate the real impact, and file/triage GitHub
 issues — while staying silent about the churn that doesn't affect us.
 
-> **Status (2026-05-29):** Phases 0 + 0.5 + 1 + 2 + 3 are built and verified (the
-> API-usage manifest with `apiVersion` tiers; the supply+diff layer:
+> **Status (2026-05-30):** Phases 0 + 0.5 + 1 + 2 + 3 + 4 are built and verified
+> (the API-usage manifest with `apiVersion` tiers; the supply+diff layer:
 > version-boundary map, spec fetch/cache, fingerprint generator with committed
 > floor/baseline anchors, and the structural diff engine; the join+classify
 > layer: `findings-candidates.js` with the forward + backward checks,
-> tier-relevance filtering, and `.api-watch` suppression; and the
+> tier-relevance filtering, and `.api-watch` suppression; the
 > `/server-upgrade` skill + `scripts/server-upgrade.js` filer that investigate
-> the report and file/dedup GitHub issues, human-gated). Phases 4–5 (proactive
-> CI tracker-issue; coverage-symmetry advisory + auto-file graduation) are
-> designed here but not yet built. See the [roadmap](#roadmap) below.
+> the report and file/dedup GitHub issues, human-gated; and the proactive-CI
+> tracker: `scripts/server-upgrade-tracker.js` +
+> `.github/workflows/server-upgrade-tracker.yml` maintaining ONE tracker issue
+> with ephemeral-computed candidate counts). Phase 5 (coverage-symmetry
+> advisory + auto-file graduation) is designed here but not yet built. See the
+> [roadmap](#roadmap) below.
 
 ## Why this exists
 
@@ -201,7 +206,8 @@ reproducibility without repo bloat.
   workflow maintains ONE issue — *"10.x available; N breaking candidates, M
   opportunities; run `/server-upgrade` to triage"* — mirroring
   `docs-stale-tracker.yml`. The stale-signal route in `signals-backlog.md` is
-  rewired to point at `/server-upgrade`.
+  rewired to point at `/server-upgrade`. **Built in Phase 4** — see the build
+  record below.
 
 ## Decisions
 
@@ -252,7 +258,12 @@ reproducibility without repo bloat.
   ([`server-upgrade.js`](../../scripts/server-upgrade.js); human-gated),
   dedup/reopen/labels. Fixture-tested; the GH writes live behind the human
   `execute` gate.
-- **Phase 4 — Proactive CI.** Scheduled tracker-issue + `signals-backlog` wiring.
+- **Phase 4 — Proactive CI.** ✅ *done.* Scheduled tracker-issue
+  ([`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js) plus
+  [`server-upgrade-tracker.yml`](../../.github/workflows/server-upgrade-tracker.yml)),
+  with the `signals-backlog` route rewired to `/server-upgrade`. Counts are
+  computed from an ephemeral in-CI fingerprint (no repo write); fixture-tested
+  offline.
 - **Phase 5 — Maturation.** Coverage-symmetry advisory; graduate auto-file per
   finding-class once false-positive rates are proven low.
 
@@ -422,6 +433,77 @@ mirrors `scripts/crash-report.js`'s plan/execute split. The filer never decides
    validation, reconciliation across all action classes, plan counts, the
    `executePlan` write branches via an injected `gh` mock, and the run-summary
    render — plus the CLI scaffold/plan path with `--no-dedup` (no network).
+
+## Phase 4 — implementation notes (built; kept as the build record)
+
+> **Built 2026-05-30.** A record of *how* Phase 4 was implemented. The next
+> session picks up at **Phase 5 — maturation** (coverage-symmetry advisory;
+> graduate auto-file per finding-class once false-positive rates are proven
+> low — the ratchet's `AUTO_FILE_CLASSES` is already wired, see Phase 3 note 4).
+
+Phase 4 is the proactive, fully-autonomous, zero-judgment surface: a scheduled
+workflow that maintains ONE tracker issue nudging a human to run
+`/server-upgrade`. The judgment + filing halves (Phases 3) stay human-gated; the
+tracker only *announces* and never files per-finding issues. Two artifacts plus
+one journal rewire:
+[`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js) (the
+testable compute core) and
+[`server-upgrade-tracker.yml`](../../.github/workflows/server-upgrade-tracker.yml)
+(the `gh` plumbing, mirroring `docs-stale-tracker.yml`).
+
+1. **Decision (a) — the fingerprint problem: ephemeral in-CI, never committed.**
+   The tracker's counts need the `to` (latest) fingerprint, which is normally a
+   human-committed, drift-gated, *reviewed* anchor. Rather than auto-commit it
+   (an autonomous repo write that would decouple "committed" from "reviewed" —
+   a bot would leave orphan anchors for versions nobody triaged) the tracker
+   builds the `to` fingerprint **in memory** from the fetched spec
+   (`buildFingerprint`) and runs the Phase-2 `buildReport` against the committed
+   `from`/`floor` fingerprints. Nothing touches the working tree; the human
+   commits the `to` fingerprint when they run `/server-upgrade`
+   (`spec-fingerprint.js <latest>` is that skill's documented prerequisite).
+   Counts are a transient nudge, not a durable artifact, so they need no stored
+   reproducibility — anyone can rebuild them from the immutable archive spec.
+   When the spec fetch fails or a baseline fingerprint is absent, the tracker
+   **degrades to announce-only** (the rejected option c, kept as the
+   fallback) so it still nudges rather than hard-failing. The tracker reuses
+   `findings-candidates.js`'s exact committed-input readers
+   (`readFingerprint`/`readManifest`/`readSuppressions`, exported for this) so
+   CI counts can't drift from a local `api-watch:findings` run.
+2. **Decision (b) — one persistent issue, found by a dedicated label.** The
+   tracker issue carries `server-upgrade:tracker`, deliberately DISTINCT from
+   the `server-upgrade` label the Phase-3 *filer* puts on per-finding issues —
+   reusing that label would make the tracker's `gh issue list` collide with real
+   findings. The workflow finds the one open tracker by label and edits it in
+   place each run (the title carries the version, the body the counts), mirroring
+   `docs-stale-tracker.yml`. **What closes it:** the scheduled run itself, when
+   `latest_stable == latest_acknowledged` — i.e. after the human runs
+   `/done jellyfin-server-stable` post-triage, the next run detects "caught up"
+   and closes. If the human closes it manually while still behind, the next run
+   reopens (no open issue → create), which is the intended "still needs triage"
+   behavior.
+3. **Decision (c) — schedule + guards.** Weekly `cron: '0 12 * * TUE'` (offset
+   from docs-stale's Monday) + `workflow_dispatch` with a `version` override for
+   testing. Jellyfin ships ~monthly, so weekly bounds detection latency to ≤7
+   days cheaply. Detection fetches the live latest **stable** via
+   `fetchJellyfinVersions().stable` (RCs are excluded by that fetcher's own
+   rule — RCs are tracked by the separate `jellyfin-server-rc` signal and never
+   generate issues) and compares against `latest_acknowledged` read from the
+   file — robust whether or not `/catchup` has refreshed `latest_upstream`. The
+   workflow is read-only on the repo (`contents: read`, `issues: write`) and
+   **never touches the journals** — `latest_upstream`/`last_checked` stay
+   `/catchup`'s job; the tracker strictly comments/closes one issue.
+4. **The script/workflow seam.** All judgment-free decisions (parse the signal
+   row, decide announce vs caught-up, render the title + body) are pure named
+   exports in the script; the workflow YAML only does `gh` plumbing and reads a
+   one-line decision JSON the script prints to `stdout` (body written to a file).
+   The title is single-sourced from that JSON so the YAML never re-derives it.
+5. **Tests** ([`server-upgrade-tracker.test.js`](../../tests/scripts/unit/server-upgrade-tracker.test.js))
+   exercise the pure parts (signal parse incl. fence/next-row skipping, the
+   announce/caught-up/placeholder decision matrix, title + body render with and
+   without counts) and the count-compute + CLI path **fully offline** via
+   `--latest` + `--to-file` (an injected `to` spec) against tiny hand-written
+   committed inputs — including the graceful-degradation branch (a missing
+   baseline fingerprint → announce-only). No network, no GitHub writes.
 
 ## Related
 
