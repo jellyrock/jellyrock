@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-29
+last-updated: 2026-05-30
 ---
 
 # Progress
@@ -21,6 +21,8 @@ This file is updated through skills, not raw markdown edits:
 Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 days old AND there are commits since.
 
 ## Currently running
+
+Server-upgrade automation, Phases 0–5 built + committed on `feat/server-upgrade-automation` — **no PR yet, by design: the whole initiative ships as ONE PR at the very end.** Phase 5 delivered the coverage-symmetry advisory, the auto-file graduation policy (graduate nothing; mechanism wired), a `--fetch`/`--manifest` dry-run on the join step, and a daily tracker cadence; validated end-to-end on real Jellyfin specs (incl. a historical simulation of the `V1`→`V2` split transition). **Next: design + build Phase 6 (the release-triage-issue model — one auto-opened issue per server version with the rendered report as a digestible checklist; CI auto-closes ONLY when mechanically clean; `/server-upgrade` edits that one issue with verdicts instead of spraying N per-finding issues) per the design-doc roadmap, in a fresh session.** Phase 6 must land before the PR (user wants it included); then open the single PR for Phases 0–6 via `/pr`.
 
 ## Recently shipped
 
