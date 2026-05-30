@@ -1,0 +1,109 @@
+# Jellyfin endpoint-availability registry — the server-upgrade-automation
+# pipeline's validated DISPOSITION LEDGER for post-floor endpoints
+# (docs/architecture/server-upgrade-automation.md, Phase 6).
+#
+# WHAT THIS IS (and is NOT):
+#   The V1/V2 two-tier model (docs/dev/jellyfin-version-boundaries.yml) is too
+#   COARSE to express endpoints introduced *inside* a tier — MediaSegments landed
+#   at 10.10, Lyrics at 10.9, the QuickConnect probe at 10.8, all inside the V2
+#   (10.9+) tier. The AST manifest therefore tags each `[1, ∞)` (callable on every
+#   server) because there is no literal `getApiVersion() >= N` branch around it, so
+#   the floor-coverage / symmetry checks flag every one as "absent from the 10.7.0
+#   floor" on EVERY run, forever. They are not bugs — each degrades gracefully or
+#   is version-guarded one layer up where the AST can't see it.
+#
+#   This file is the per-endpoint LEDGER that records, for each such endpoint, the
+#   minimum server version + HOW JellyRock copes on older servers. The floor check
+#   (scripts/generate/findings-candidates.js) consumes it: a coverage-gap /
+#   symmetry-advisory whose endpoint is registered here becomes `floor-known`
+#   (needsInvestigation: false) — it stays in the report as an audit trail but
+#   drops out of the actionable set.
+#
+#   It is NOT a hand-maintained catalog you must keep comprehensive — the
+#   spec-derived floor check is the comprehensive ENUMERATOR (a coverage-gap *is*
+#   "an endpoint we use that's absent from the floor spec"). Anything the floor
+#   check enumerates that is NOT registered here keeps flagging
+#   needsInvestigation, so a new post-floor endpoint cannot hide. This ledger only
+#   says "yes, this absence is known and here's how we handle it."
+#
+#   `handling.type` ∈ { version-guard | dispatch-sibling | sdk-dispatch |
+#   graceful-degradation }. The first two make a CODE claim that
+#   scripts/lint/endpoint-availability-check.cjs VALIDATES against current source /
+#   the manifest — if the cited guard symbol or sibling path disappears, the lint
+#   FAILS and the finding resurfaces, so this is regression-safe and NOT a blunt
+#   suppression. `graceful-degradation` is the one honestly-unvalidatable class
+#   (it relies on a 404 → invalid → handled path the AST can't prove); it is the
+#   SAFE failure mode (feature absent, never a crash), documented via `note`.
+#
+#   `minServer` is DOCUMENTARY context (best-effort from the code audit / the spec
+#   archive); the floor check only needs "absent from the floor", which it already
+#   knows. The load-bearing fields are `path` + `method` + `handling`.
+#
+# Cross-references (human-readable mirrors, NOT the source of truth here):
+#   docs/dev/jellyfin-server-versioning.md §4/§5, docs/user/jellyfin-server-feature-matrix.md
+#
+# Paths are the manifest's NORMALIZED form ({placeholder} → {}, lowercased) so they
+# join to api-usage-manifest.json `normalized` exactly. `method` is one or more
+# HTTP verbs (comma/space separated) or `*` for any; it must intersect the
+# endpoint's manifest methods.
+
+schemaVersion: 1
+
+endpoints:
+  - path: /mediasegments/{}
+    method: GET
+    minServer: "10.10.0"
+    handling:
+      type: version-guard
+      symbol: supportsMediaSegments
+      note: >-
+        GetMediaSegments() (source/api/items.bs) early-returns invalid unless
+        supportsMediaSegments() (source/utils/mediaSegments.bs, versionChecker
+        ≥10.10.0) passes, so the request is never built on older servers. The
+        guard lives in Layer 2, not an ApiClient getApiVersion() branch, which is
+        why the AST tags the endpoint [1, ∞).
+
+  - path: /audio/{}/lyrics
+    method: GET
+    minServer: "10.9.0"
+    handling:
+      type: graceful-degradation
+      note: >-
+        Unguarded; on 10.7/10.8 the request 404s, fetchJson() returns invalid,
+        and the caller (components/home/LoadItemsTask.bs) checks
+        `isValid(lyricsData) and isValid(lyricsData.Lyrics)` before indexing — no
+        lyrics shown, no crash.
+
+  - path: /quickconnect/enabled
+    method: GET
+    minServer: "10.8.0"
+    handling:
+      type: graceful-degradation
+      note: >-
+        Unguarded probe; intentional fail-open. On 10.7 (endpoint missing) the
+        404 is caught by `if not res.ok` in QuickConnectEnabledTask, which leaves
+        m.global.server.isQuickConnectEnabled at its default true — the button
+        stays visible (documented in components/login/UserSelect.bs).
+
+  - path: /quickconnect/initiate
+    method: GET,POST
+    minServer: "10.8.0"
+    handling:
+      type: sdk-dispatch
+      note: >-
+        sdk.bs Initiate() dispatches the HTTP method by version (GET on 10.7/10.8,
+        POST on 10.9+ via getApiVersionFromGlobal() >= 2). On 10.7 the endpoint is
+        absent entirely; the request returns invalid and initQuickConnect()
+        (source/api/userAuth.bs) surfaces a "Quick Connect not available" dialog.
+
+  - path: /items
+    method: GET
+    minServer: "10.9.0"
+    handling:
+      type: dispatch-sibling
+      sibling: /users/{}/items
+      note: >-
+        Wired tier-2-only (top-level /Items?userId=) because the V1 dispatch branch
+        in ApiClient calls the /Users/{userId}/Items sibling instead. The floor
+        server serves GET /Items directly, so symmetry flags it; the V1 sibling
+        covers the floor. (The expected coverage-symmetry case from Phase 5.)

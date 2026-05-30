@@ -34,6 +34,12 @@ import {
   isAutoFileEligible,
   AUTO_FILE_CLASSES,
   TITLE_PREFIX,
+  digestTitle,
+  issueIsDigestFor,
+  renderDigestBody,
+  renderDigestVerdicts,
+  attachSubIssue,
+  TRIAGING_LABEL,
 } from '../../../scripts/server-upgrade.js';
 
 const SCRIPT = 'scripts/server-upgrade.js';
@@ -607,6 +613,219 @@ describe('executePlan — write branches via injected ghExec', () => {
     };
     executePlan(plan, { ghExec: fakeGh(calls), logger: () => {} });
     expect(calls).toHaveLength(0);
+  });
+});
+
+// ── Per-version digest (Phase 6) ───────────────────────────────────────────────
+
+describe('digest identity + render', () => {
+  it('digestTitle + issueIsDigestFor round-trip per version', () => {
+    expect(digestTitle('10.11.10')).toBe('[server-upgrade] Jellyfin 10.11.10 — release triage');
+    expect(issueIsDigestFor(digestTitle('10.11.10'), '10.11.10')).toBe(true);
+    expect(issueIsDigestFor(digestTitle('10.11.10'), '10.11.11')).toBe(false);
+    expect(issueIsDigestFor('some other issue', '10.11.10')).toBe(false);
+  });
+
+  it('renderDigestBody renders a candidate checklist when there are candidates', () => {
+    const report = {
+      counts: {
+        breaking: 1,
+        'coverage-gap': 0,
+        'symmetry-advisory': 0,
+        needsInvestigation: 1,
+        floorKnown: 5,
+      },
+      candidates: [
+        {
+          type: 'breaking',
+          needsInvestigation: true,
+          change: {
+            kind: 'endpoint-removed',
+            path: '/Items/{itemId}',
+            method: 'GET',
+            detail: 'gone',
+          },
+          appUsage: { sites: ['source/api/ApiClient.bs:59'] },
+        },
+      ],
+    };
+    const body = renderDigestBody({
+      version: '10.11.10',
+      acknowledged: '10.11.8',
+      floor: '10.7.0',
+      report,
+    });
+    expect(body).toContain('### Candidates to triage');
+    expect(body).toContain('- [ ] **endpoint removed: GET /Items/{itemId}**');
+    expect(body).toContain('✅ 5 floor-known');
+    expect(body).toContain(TRIAGING_LABEL);
+  });
+
+  it('renderDigestBody renders the mechanically-clean record when 0 candidates', () => {
+    const report = { counts: { needsInvestigation: 0, floorKnown: 5 }, candidates: [] };
+    const body = renderDigestBody({
+      version: '10.11.11',
+      acknowledged: '10.11.10',
+      floor: '10.7.0',
+      report,
+    });
+    expect(body).toContain('Mechanically clean');
+    expect(body).toContain('CI closes this issue');
+    expect(body).not.toContain('### Candidates to triage');
+  });
+
+  it('renderDigestVerdicts checks off each disposition with its link/rationale', () => {
+    const results = [
+      {
+        action: 'create',
+        issueNumber: 851,
+        change: { kind: 'endpoint-removed', path: '/Items/{itemId}', method: 'GET' },
+        rationale: 'real break',
+      },
+      {
+        action: 'skip',
+        change: { kind: 'coverage-gap', path: '/x/{}' },
+        rationale: 'guarded by V1 sibling',
+      },
+      { action: 'monitor', change: { kind: 'coverage-symmetry', path: '/y' }, rationale: 'later' },
+    ];
+    const body = renderDigestVerdicts(
+      { version: '10.11.10', acknowledged: '10.11.8', floor: '10.7.0' },
+      results,
+      { triagedOn: '2026-05-30' },
+    );
+    expect(body).toContain('FILED**: endpoint removed: GET /Items/{itemId} → #851');
+    expect(body).toContain('SKIP**: floor coverage gap: /x/{} — guarded by V1 sibling');
+    expect(body).toContain('MONITOR**: coverage symmetry: /y — later');
+  });
+});
+
+describe('attachSubIssue', () => {
+  it('resolves the child db id then POSTs to the digest sub_issues endpoint', () => {
+    const calls = [];
+    const ghExec = (args) => {
+      calls.push(args);
+      if (args.includes('--jq') && args.includes('.id')) return '555\n';
+      return '';
+    };
+    const id = attachSubIssue(ghExec, 840, 851);
+    expect(id).toBe(555);
+    expect(calls[0]).toEqual(['api', 'repos/{owner}/{repo}/issues/851', '--jq', '.id']);
+    expect(calls[1]).toEqual([
+      'api',
+      '--method',
+      'POST',
+      'repos/{owner}/{repo}/issues/840/sub_issues',
+      '-F',
+      'sub_issue_id=555',
+    ]);
+  });
+});
+
+describe('executePlan — digest edit + sub-issue attach + close guard (Phase 6)', () => {
+  function fakeGh(calls) {
+    return (args) => {
+      calls.push(args);
+      if (args[0] === 'issue' && args[1] === 'create') {
+        return 'https://github.com/owner/repo/issues/901\n';
+      }
+      if (args[0] === 'api' && args.includes('--jq') && args.includes('.id')) return '555\n';
+      return '';
+    };
+  }
+
+  const planWith = (extraActions = []) => ({
+    toVersion: '10.11.10',
+    fromVersion: '10.11.8',
+    floorVersion: '10.7.0',
+    actions: [
+      {
+        action: 'create',
+        findingKey: 'k1',
+        title: '[server-upgrade] endpoint removed: GET /Items/{itemId} (→ 10.11.10)',
+        body: 'B',
+        labels: ['server-upgrade', 'bug'],
+        change: { kind: 'endpoint-removed', path: '/Items/{itemId}', method: 'GET' },
+        existingIssue: null,
+      },
+      ...extraActions,
+    ],
+  });
+
+  it('files the promotion, links it as a sub-issue, edits + triages the digest, and closes it', () => {
+    const calls = [];
+    const results = executePlan(planWith(), {
+      ghExec: fakeGh(calls),
+      digest: 840,
+      closeDigest: true,
+      triagedOn: '2026-05-30',
+      logger: () => {},
+    });
+    const flat = calls.map((c) => c.join(' '));
+    // promotion created
+    expect(flat.some((c) => c.startsWith('issue create'))).toBe(true);
+    // sub-issue linked (child 901 → digest 840)
+    expect(calls).toContainEqual(['api', 'repos/{owner}/{repo}/issues/901', '--jq', '.id']);
+    expect(calls).toContainEqual([
+      'api',
+      '--method',
+      'POST',
+      'repos/{owner}/{repo}/issues/840/sub_issues',
+      '-F',
+      'sub_issue_id=555',
+    ]);
+    expect(results[0].subIssueError).toBeNull();
+    // digest edited with the triaging label
+    const edit = calls.find((c) => c[0] === 'issue' && c[1] === 'edit');
+    expect(edit).toBeTruthy();
+    expect(edit).toContain('840');
+    expect(edit).toContain('--add-label');
+    expect(edit).toContain(TRIAGING_LABEL);
+    // digest closed (fully triaged)
+    expect(calls.some((c) => c[0] === 'issue' && c[1] === 'close' && c[2] === '840')).toBe(true);
+  });
+
+  it('does NOT close the digest when a candidate is unresolved (missing-verdict), even with --close-digest', () => {
+    const calls = [];
+    executePlan(
+      planWith([
+        {
+          action: 'missing-verdict',
+          findingKey: 'k2',
+          change: { kind: 'field-removed', schema: 'X', name: 'y' },
+        },
+      ]),
+      {
+        ghExec: fakeGh(calls),
+        digest: 840,
+        closeDigest: true,
+        logger: () => {},
+      },
+    );
+    expect(calls.some((c) => c[0] === 'issue' && c[1] === 'edit')).toBe(true); // still edits
+    expect(calls.some((c) => c[0] === 'issue' && c[1] === 'close')).toBe(false); // but does NOT close
+  });
+
+  it('records a sub-issue link failure without aborting (promotion still filed)', () => {
+    const calls = [];
+    const ghExec = (args) => {
+      calls.push(args);
+      if (args[0] === 'issue' && args[1] === 'create') return 'https://github.com/o/r/issues/901\n';
+      if (args[0] === 'api') throw new Error('sub-issues API 404');
+      return '';
+    };
+    const results = executePlan(planWith(), { ghExec, digest: 840, logger: () => {} });
+    expect(results[0].issueNumber).toBe(901);
+    expect(results[0].subIssueError).toMatch(/sub-issues API 404/);
+  });
+
+  it('skips all digest steps when no digest is given (standalone promotions)', () => {
+    const calls = [];
+    executePlan(planWith(), { ghExec: fakeGh(calls), logger: () => {} });
+    expect(calls.some((c) => c[0] === 'api')).toBe(false);
+    expect(calls.some((c) => c[0] === 'issue' && (c[1] === 'edit' || c[1] === 'close'))).toBe(
+      false,
+    );
   });
 });
 

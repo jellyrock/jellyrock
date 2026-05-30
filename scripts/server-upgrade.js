@@ -512,6 +512,195 @@ export function buildPlan({ report, verdicts, dedupMatches }) {
   };
 }
 
+// ── Per-version release digest (Phase 6) ───────────────────────────────────────
+//
+// Phase 6 replaces the per-finding issue burst with ONE auto-opened issue per
+// server version (the "digest") carrying the rendered report as a checklist +
+// discussion hub. The CI tracker opens it with the MECHANICAL body
+// (renderDigestBody); `/server-upgrade` then triages and rewrites it with VERDICTS
+// (renderDigestVerdicts) + creates per-finding "promotion" issues as native
+// GitHub SUB-ISSUES of the digest for the findings worth standalone tracking.
+// Skip/monitor findings get an inline disposition note on the digest, no sub-issue.
+//
+// The digest carries DIGEST_LABEL (distinct from the per-finding BASE_LABEL so the
+// tracker's `gh issue list` never collides with promotions) and is found per-
+// version by its title. Once `/server-upgrade` has triaged it, the skill adds
+// TRIAGING_LABEL so the CI tracker hands off the body (stops overwriting it).
+export const DIGEST_LABEL = 'server-upgrade:tracker';
+export const TRIAGING_LABEL = 'server-upgrade:triaging';
+
+export function digestTitle(version) {
+  return `${TITLE_PREFIX} Jellyfin ${version} — release triage`;
+}
+
+// Confirm a `gh issue list` hit is really the per-version digest for this version:
+// our title prefix + the version token + the "release triage" suffix.
+export function issueIsDigestFor(issueTitle, version) {
+  if (typeof issueTitle !== 'string') return false;
+  return (
+    issueTitle.startsWith(TITLE_PREFIX) &&
+    issueTitle.includes(digestTitle(version).slice(TITLE_PREFIX.length).trim())
+  );
+}
+
+// Disposition glyph + label per reconciled action (drives the triaged checklist).
+const DISPOSITION = {
+  create: { icon: '📌', label: 'FILED' },
+  comment: { icon: '📌', label: 'FILED (recurrence)' },
+  reopen: { icon: '📌', label: 'FILED (regression)' },
+  skip: { icon: '⏭️', label: 'SKIP' },
+  monitor: { icon: '👁️', label: 'MONITOR' },
+  'missing-verdict': { icon: '⚠️', label: 'NEEDS A VERDICT' },
+  'invalid-verdict': { icon: '⚠️', label: 'INVALID VERDICT' },
+};
+
+function siteNote(sites) {
+  if (!sites || !sites.length) return '';
+  return ` · \`${sites[0]}\`${sites.length > 1 ? ` (+${sites.length - 1})` : ''}`;
+}
+
+// One UNCHECKED mechanical checklist line for an investigation candidate (the CI
+// body). `titleIdentity` already reads `<kindLabel>: <locator>`.
+export function digestCandidateLine(candidate) {
+  const detail = candidate.change?.detail ? ` — ${candidate.change.detail}` : '';
+  return `- [ ] **${titleIdentity(candidate)}**${detail}${siteNote(candidate.appUsage?.sites)}`;
+}
+
+function digestHeader(version, acknowledged, floor) {
+  return [
+    '| | Version |',
+    '| --- | --- |',
+    `| This release | \`${version}\` |`,
+    `| Acknowledged baseline | \`${acknowledged ?? 'unknown'}\` |`,
+    `| Supported floor | \`${floor ?? 'unknown'}\` |`,
+  ].join('\n');
+}
+
+function digestCountsLine(counts) {
+  if (!counts) return '';
+  return (
+    `🔴 **${counts.breaking ?? 0}** breaking · 🟢 **${counts.opportunity ?? 0}** opportunit(y/ies) · ` +
+    `🟡 **${counts['coverage-gap'] ?? 0}** coverage-gap(s) · 🔵 **${counts['symmetry-advisory'] ?? 0}** symmetry · ` +
+    `🔎 **${counts.needsInvestigation ?? 0}** to investigate` +
+    (counts.floorKnown ? ` · ✅ ${counts.floorKnown} floor-known (handled)` : '') +
+    (counts.suppressed ? ` · 🔇 ${counts.suppressed} suppressed` : '')
+  );
+}
+
+// The MECHANICAL digest body the CI tracker opens with (zero judgment). A clean
+// report (0 needsInvestigation) renders the "nothing touches us" record — the
+// open-then-close audit trail. Otherwise renders the candidate checklist.
+export function renderDigestBody({ version, acknowledged, floor, report }) {
+  const counts = report?.counts ?? null;
+  const candidates = investigationCandidates(report ?? {});
+  const lines = [];
+  lines.push(digestHeader(version, acknowledged, floor));
+  lines.push('');
+
+  if (!counts) {
+    lines.push(
+      '**Candidate counts**: _unavailable this run_ — `/server-upgrade` generates the report locally.',
+    );
+  } else if (candidates.length === 0) {
+    lines.push(
+      `✅ **Mechanically clean** — nothing JellyRock uses changed in \`${acknowledged} → ${version}\`, ` +
+        'and every post-floor endpoint we call is a known, handled case.',
+    );
+    lines.push('');
+    lines.push(digestCountsLine(counts));
+    lines.push('');
+    lines.push(
+      '_This is a judgment-free claim (0 candidates touch us), so CI closes this issue ' +
+        'automatically as a record. No triage needed._',
+    );
+  } else {
+    lines.push(
+      '**Mechanical candidates** — a first pass over what intersects code we ship. NOT verdicts:',
+    );
+    lines.push('');
+    lines.push(digestCountsLine(counts));
+    lines.push('');
+    lines.push('### Candidates to triage');
+    for (const c of candidates) lines.push(digestCandidateLine(c));
+    lines.push('');
+    lines.push(
+      '> Run **`/server-upgrade`** to investigate each against real app usage. It edits this ' +
+        'issue with verdicts (skip / file / monitor), files the ones worth standalone tracking ' +
+        'as **sub-issues**, and inline-notes the rest.',
+    );
+  }
+
+  lines.push('');
+  lines.push('---');
+  lines.push(
+    '_Auto-generated by the server-upgrade tracker. CI refreshes this body until first triage ' +
+      `(\`${TRIAGING_LABEL}\`). See \`docs/architecture/server-upgrade-automation.md\`._`,
+  );
+  return lines.join('\n') + '\n';
+}
+
+// The TRIAGED digest body `/server-upgrade execute` rewrites in place: each
+// candidate checked off with its disposition + sub-issue link (file) or inline
+// rationale (skip/monitor). `results` is executePlan's per-action result list.
+export function renderDigestVerdicts(
+  { version, acknowledged, floor },
+  results,
+  { triagedOn } = {},
+) {
+  const lines = [];
+  lines.push(digestHeader(version, acknowledged, floor));
+  lines.push('');
+  lines.push(
+    `**Triaged by \`/server-upgrade\`${triagedOn ? ` on ${triagedOn}` : ''}** (${acknowledged} → ${version}).`,
+  );
+  lines.push('');
+  lines.push('### Verdicts');
+  for (const r of results) {
+    const d = DISPOSITION[r.action];
+    if (!d) continue;
+    const filed = r.issueNumber ? ` → #${r.issueNumber}` : '';
+    const why = r.rationale ? ` — ${r.rationale}` : '';
+    const problems = r.problems?.length ? ` — ${r.problems.join('; ')}` : '';
+    // file actions link the sub-issue; skip/monitor carry the inline rationale.
+    const tail = r.issueNumber
+      ? `${filed}${r.rationale ? ` — ${r.rationale}` : ''}`
+      : `${why}${problems}`;
+    lines.push(`- [x] ${d.icon} **${d.label}**: ${titleIdentity({ change: r.change })}${tail}`);
+  }
+  lines.push('');
+  lines.push(
+    '> 📌 = filed as a sub-issue (worth standalone tracking) · ⏭️ = investigated, no action ' +
+      '(false-positive / guarded / cosmetic) · 👁️ = real but deferred.',
+  );
+  lines.push('');
+  lines.push('---');
+  lines.push(
+    '_Triaged via `/server-upgrade`. Sub-issues above track the actionable findings; close this ' +
+      'digest when the release is fully triaged. See `docs/architecture/server-upgrade-automation.md`._',
+  );
+  return lines.join('\n') + '\n';
+}
+
+// Attach a child issue to the digest as a native GitHub sub-issue. The sub-issues
+// REST endpoint keys on the child's DATABASE id (not its number), so resolve that
+// first. {owner}/{repo} are gh's auto-populated placeholders. Best-effort: a
+// failure is logged + recorded, never aborts the run (the promotion issue still
+// exists; only the parent/child link is missing).
+export function attachSubIssue(ghExec, digestNumber, childNumber) {
+  const idRaw = ghExec(['api', `repos/{owner}/{repo}/issues/${childNumber}`, '--jq', '.id']);
+  const childId = Number(String(idRaw).trim());
+  if (!Number.isFinite(childId)) throw new Error(`could not resolve db id for #${childNumber}`);
+  ghExec([
+    'api',
+    '--method',
+    'POST',
+    `repos/{owner}/{repo}/issues/${digestNumber}/sub_issues`,
+    '-F',
+    `sub_issue_id=${childId}`,
+  ]);
+  return childId;
+}
+
 // ── Execute (the only GH-writing path) ─────────────────────────────────────────
 
 function extractIssueNumber(ghCreateOutput) {
@@ -519,7 +708,22 @@ function extractIssueNumber(ghCreateOutput) {
   return m ? Number(m[1]) : null;
 }
 
-export function executePlan(plan, { ghExec = defaultGhExec, logger = console.error } = {}) {
+// Execute the plan's writes. In Phase 6, `file` actions become per-finding
+// PROMOTION issues attached as native SUB-ISSUES of the per-version digest (when
+// `digest` is given); after the loop the digest body is rewritten with the verdict
+// checklist + marked triaged, and optionally closed (the human/skill close — never
+// CI on caught-up). When `digest` is omitted (a manual run with no CI digest open)
+// promotions are filed standalone and the digest steps are skipped.
+export function executePlan(
+  plan,
+  {
+    ghExec = defaultGhExec,
+    logger = console.error,
+    digest = null,
+    closeDigest = false,
+    triagedOn = null,
+  } = {},
+) {
   const results = [];
   for (const action of plan.actions) {
     // Non-writing actions are recorded verbatim for the run summary.
@@ -564,18 +768,67 @@ export function executePlan(plan, { ghExec = defaultGhExec, logger = console.err
         issueNumber = action.existingIssue.number;
         logger(`[server-upgrade] reopened + commented on #${issueNumber}: ${action.title}`);
       }
-      results.push({ ...action, issueNumber, error: null });
+      // Link the promotion as a sub-issue of the digest (best-effort).
+      let subIssueError = null;
+      if (digest && issueNumber) {
+        try {
+          attachSubIssue(ghExec, digest, issueNumber);
+          logger(`[server-upgrade] linked #${issueNumber} as sub-issue of digest #${digest}`);
+        } catch (err) {
+          subIssueError = err.message;
+          logger(`[server-upgrade] sub-issue link FAILED for #${issueNumber}: ${err.message}`);
+        }
+      }
+      results.push({ ...action, issueNumber, error: null, subIssueError });
     } catch (err) {
       logger(`[server-upgrade] action FAILED for ${action.findingKey}: ${err.message}`);
       results.push({ ...action, issueNumber: null, error: err.message });
     }
   }
+
+  // ── Digest edit + close (Phase 6) ───────────────────────────────────────────
+  if (digest) {
+    try {
+      const body = renderDigestVerdicts(
+        { version: plan.toVersion, acknowledged: plan.fromVersion, floor: plan.floorVersion },
+        results,
+        { triagedOn },
+      );
+      ghExec(['issue', 'edit', String(digest), '--body', body, '--add-label', TRIAGING_LABEL]);
+      logger(`[server-upgrade] edited digest #${digest} with verdicts + marked triaged`);
+
+      // Close the digest only when the human/skill asked AND every candidate is
+      // dispositioned (no missing/invalid verdict left unresolved). A candidate-
+      // bearing digest is NEVER closed by CI — this is the human-gated close.
+      const unresolved = results.filter(
+        (r) => r.action === 'missing-verdict' || r.action === 'invalid-verdict',
+      );
+      if (closeDigest && unresolved.length === 0) {
+        ghExec([
+          'issue',
+          'close',
+          String(digest),
+          '--comment',
+          'Release fully triaged via `/server-upgrade` — verdicts recorded above; ' +
+            'actionable findings tracked as sub-issues. Closing.',
+        ]);
+        logger(`[server-upgrade] closed digest #${digest} (fully triaged)`);
+      } else if (closeDigest) {
+        logger(
+          `[server-upgrade] NOT closing digest #${digest}: ${unresolved.length} unresolved verdict(s)`,
+        );
+      }
+    } catch (err) {
+      logger(`[server-upgrade] digest #${digest} edit/close FAILED: ${err.message}`);
+    }
+  }
+
   return results;
 }
 
 // ── Run summary handoff ─────────────────────────────────────────────────────────
 
-export function renderRunSummary(plan, results, { createdAt } = {}) {
+export function renderRunSummary(plan, results, { createdAt, digest = null } = {}) {
   const created = results.filter((r) => r.action === 'create' && r.issueNumber);
   const commented = results.filter((r) => r.action === 'comment' && r.issueNumber);
   const reopened = results.filter((r) => r.action === 'reopen' && r.issueNumber);
@@ -584,6 +837,7 @@ export function renderRunSummary(plan, results, { createdAt } = {}) {
   const missing = results.filter((r) => r.action === 'missing-verdict');
   const invalid = results.filter((r) => r.action === 'invalid-verdict');
   const errors = results.filter((r) => r.error);
+  const subIssueErrors = results.filter((r) => r.subIssueError);
 
   const frontmatter = [
     '---',
@@ -593,6 +847,7 @@ export function renderRunSummary(plan, results, { createdAt } = {}) {
     `from-version: ${plan.fromVersion ?? '?'}`,
     `to-version: ${plan.toVersion ?? '?'}`,
     `floor-version: ${plan.floorVersion ?? '?'}`,
+    `digest: ${digest ?? '(none)'}`,
     `created-issues: ${created.length}`,
     `commented: ${commented.length}`,
     `reopened: ${reopened.length}`,
@@ -648,6 +903,12 @@ export function renderRunSummary(plan, results, { createdAt } = {}) {
   if (invalid.length) {
     sections.push('## Invalid verdicts');
     sections.push(list(invalid, (r) => `- \`${r.findingKey}\` — ${(r.problems ?? []).join('; ')}`));
+  }
+  if (subIssueErrors.length) {
+    sections.push('## Sub-issue link failures (promotion filed, parent link missing)');
+    sections.push(
+      list(subIssueErrors, (r) => `- #${r.issueNumber} \`${r.findingKey}\`: ${r.subIssueError}`),
+    );
   }
   if (errors.length) {
     sections.push('## Errors');
@@ -746,9 +1007,13 @@ function cmdExecute(args) {
   if (!planPath) throw new Error('Missing --plan <plan.json>.');
   const handoffDir = args.flags['handoff-dir'] ?? join(REPO_ROOT, '.claude', 'handoffs');
   const plan = readJson(planPath);
-  const results = executePlan(plan, {});
+  // Phase 6: --digest <N> edits/closes the per-version digest; promotions land as
+  // its sub-issues. --close-digest closes it when fully triaged (human-gated).
+  const digest = args.flags.digest ? Number(args.flags.digest) : null;
+  const closeDigest = !!args.flags['close-digest'];
   const createdAt = nowStamp();
-  const summary = renderRunSummary(plan, results, { createdAt });
+  const results = executePlan(plan, { digest, closeDigest, triagedOn: createdAt.slice(0, 10) });
+  const summary = renderRunSummary(plan, results, { createdAt, digest });
   const stamp = createdAt.replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
   const handoffPath = join(handoffDir, `server-upgrade-${stamp}.md`);
   try {
@@ -770,7 +1035,7 @@ function main() {
     process.stdout.write(`Usage:
   node scripts/server-upgrade.js scaffold --report <findings-candidates.json> [--out <verdict-template.json>]
   node scripts/server-upgrade.js plan --report <findings-candidates.json> --verdicts <filled.json> [--plan-out <plan.json>] [--no-dedup]
-  node scripts/server-upgrade.js execute --plan <plan.json> [--handoff-dir <dir>]
+  node scripts/server-upgrade.js execute --plan <plan.json> [--digest <issue#>] [--close-digest] [--handoff-dir <dir>]
 `);
     return;
   }

@@ -1,9 +1,9 @@
 ---
 name: server-upgrade
-description: Triage a Jellyfin server release against JellyRock's API usage and file/dedup GitHub issues for the changes that actually affect us. Consumes the Phase-2 data report (`.api-watch/cache/findings-candidates-<from>..<to>.json` from `npm run api-watch:findings`), investigates each candidate that needs investigation by reading the cited app-usage sites, resolves the edge cases the design doc lists (spec-contract break vs runtime break, capability-guarded fallbacks, spec-regeneration artifacts, enum switches, graceful degradation, opportunity-worth-it, coverage symmetry), and emits a verdict per finding. The mechanical filer (`scripts/server-upgrade.js`, plan/execute split mirroring `/crash-report`) then dedups against existing `[server-upgrade]` issues and does `gh issue create / comment / reopen` with labels. Human-gated: running execute is one batch approval per release (the graduated trust ratchet) — nothing auto-files. Use when a new Jellyfin stable release lands and you want to know what (if anything) it breaks for us, and file the issues. Prerequisite: the report exists (run `api-watch:findings <acknowledged> <latest>` first, committing the latest version's fingerprint via `spec-fingerprint.js <latest>` if needed). RCs are tracked separately and do NOT generate issues.
+description: Triage a Jellyfin server release against JellyRock's API usage by editing the ONE per-version release-triage digest issue (auto-opened by CI) with verdicts and filing per-finding sub-issues for the changes worth standalone tracking. Consumes the Phase-2 data report (`.api-watch/cache/findings-candidates-<from>..<to>.json` from `npm run api-watch:findings`), investigates each candidate that needs investigation by reading the cited app-usage sites, resolves the edge cases the design doc lists (spec-contract break vs runtime break, capability-guarded fallbacks, spec-regeneration artifacts, enum switches, graceful degradation, opportunity-worth-it, coverage symmetry), and emits a verdict per finding. The mechanical filer (`scripts/server-upgrade.js`, plan/execute split mirroring `/crash-report`) then dedups against existing `[server-upgrade]` issues, files `file` verdicts as native GitHub SUB-ISSUES of the digest (`gh issue create / comment / reopen` with findingKey dedup), inline-notes the skip/monitor ones, rewrites the digest with the verdict checklist, and closes it when fully triaged. Human-gated: running execute is one batch approval per release (the graduated trust ratchet) — nothing auto-files. The recurring floor findings (post-floor endpoints like MediaSegments/Lyrics/QuickConnect) self-resolve via the committed endpoint-availability registry, so they don't reappear every release. Use when a new Jellyfin stable release lands and you want to know what (if anything) it breaks for us. Prerequisite: the report exists (run `api-watch:findings <acknowledged> <latest>` first, committing the latest version's fingerprint via `spec-fingerprint.js <latest>` if needed). RCs are tracked separately and do NOT generate issues.
 model: opus
 user-invocable: true
-allowed-tools: Bash(node scripts/server-upgrade.js:*), Bash(node scripts/generate/spec-fingerprint.js:*), Bash(node scripts/generate/findings-candidates.js:*), Bash(npm run api-watch:findings:*), Bash(npm run docs:spec-fingerprints:*), Bash(gh issue create:*), Bash(gh issue comment:*), Bash(gh issue reopen:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh label create:*), Bash(gh label list:*), Bash(ls:*), Bash(date:*), Read, Grep, Glob, Write
+allowed-tools: Bash(node scripts/server-upgrade.js:*), Bash(node scripts/generate/spec-fingerprint.js:*), Bash(node scripts/generate/findings-candidates.js:*), Bash(npm run api-watch:findings:*), Bash(npm run docs:spec-fingerprints:*), Bash(gh issue create:*), Bash(gh issue comment:*), Bash(gh issue reopen:*), Bash(gh issue edit:*), Bash(gh issue close:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh api:*), Bash(gh label create:*), Bash(gh label list:*), Bash(ls:*), Bash(date:*), Read, Grep, Glob, Write
 ---
 
 # /server-upgrade — investigate a Jellyfin release + file the issues that matter
@@ -32,9 +32,14 @@ Like `/crash-report`, this skill has **no sibling `INVESTIGATION.md`** — each 
 
    To just **preview** a release without committing its fingerprint (e.g. a quick "what would this flag?" before a full triage), `node scripts/generate/findings-candidates.js <from> <to> --fetch --stdout` builds the `<to>` fingerprint in-memory and prints the full report. The real triage still commits the `<to>` fingerprint (the reviewed anchor) per the step above.
 
-2. **The `server-upgrade` label exists.** Check `gh label list --search server-upgrade`. If missing, surface: `gh label create server-upgrade --color 1d76db --description "Filed automatically by /server-upgrade from a Jellyfin release API diff"`. (`bug` / `enhancement` are GitHub defaults — don't create them.) One-time setup per repo.
+2. **The labels exist.** Check `gh label list --search server-upgrade`. Ensure all three (one-time per repo; `bug` / `enhancement` are GitHub defaults — don't create them):
+   - `gh label create server-upgrade --color 1d76db --description "Filed automatically by /server-upgrade from a Jellyfin release API diff"` (per-finding sub-issues)
+   - `gh label create server-upgrade:tracker --color 1D76DB --description "Per-version Jellyfin release-triage digest"` (the digest)
+   - `gh label create server-upgrade:triaging --color FBCA04 --description "A server-upgrade digest /server-upgrade has triaged — CI hands off the body"`
 
-3. **Read the report's counts** (`counts` block) so you can tell the user up front: N candidates needing investigation (broken down as `breaking` / `coverage-gap` / `symmetry-advisory` / `opportunity`), plus how many were suppressed / frozen-skipped (those are *not* re-filed — respect `suppressed: true` and `needsInvestigation: false`).
+3. **Locate the per-version digest** (Phase 6). CI auto-opens ONE digest issue per server version (`[server-upgrade] Jellyfin <to> — release triage`, label `server-upgrade:tracker`). Find it: `gh issue list --label server-upgrade:tracker --state all --json number,title,state --limit 100` and match the `<to>` version in the title. Capture its number (`$DIGEST`) for Step 5 — `execute --digest $DIGEST` rewrites it with verdicts, files sub-issues under it, and (when fully triaged) closes it. If no digest exists (you're triaging ahead of CI), either open one first (`gh issue create --title "[server-upgrade] Jellyfin <to> — release triage" --label server-upgrade:tracker --body "Triaged manually ahead of CI."`) or run without `--digest` (promotions file standalone — acceptable, but the digest is the preferred hub).
+
+4. **Read the report's counts** (`counts` block) so you can tell the user up front: N candidates needing investigation (broken down as `breaking` / `coverage-gap` / `symmetry-advisory` / `opportunity`), plus how many were `floorKnown` (post-floor endpoints resolved by the endpoint-availability registry — *not* investigated), suppressed, or frozen-skipped (respect `suppressed: true` and `needsInvestigation: false`). If a coverage-gap or symmetry candidate that you'd expect to be floor-known instead shows `needsInvestigation: true`, it's an UNREGISTERED post-floor endpoint — investigate it, and if it's a known-handled case, the fix is to add an entry to [`docs/dev/jellyfin-endpoint-availability.yml`](../../../docs/dev/jellyfin-endpoint-availability.yml) (mention this to the user; the `lint:endpoint-availability` check validates the entry's guard/sibling claim).
 
 ## Step 1 — Scaffold the verdict template
 
@@ -74,14 +79,14 @@ PLAN=$(mktemp --suffix=.json /tmp/server-upgrade-plan.XXXXXX.json)
 node scripts/server-upgrade.js plan --report <report-path> --verdicts "$SCAFFOLD" --plan-out "$PLAN"
 ```
 
-The filer joins your verdicts back to the report by `findingKey`, **dedup-searches GitHub** (reads only) for an existing `[server-upgrade]` issue carrying each finding's version-independent identity, and reconciles into concrete actions: `create` (no existing issue), `comment` (recurrence on an open issue — same finding, new release), `reopen` (regression on a closed issue), plus the non-writing `skip` / `monitor` / `missing-verdict` / `invalid-verdict`.
+The filer joins your verdicts back to the report by `findingKey`, **dedup-searches GitHub** (reads only) for an existing `[server-upgrade]` issue carrying each finding's version-independent identity, and reconciles into concrete actions: `create` (no existing issue), `comment` (recurrence on an open issue — same finding, new release), `reopen` (regression on a closed issue), plus the non-writing `skip` / `monitor` / `missing-verdict` / `invalid-verdict`. In Phase 6 the `file` actions (`create`/`comment`/`reopen`) become per-finding **promotions** filed as native GitHub **sub-issues** of the per-version digest; `skip` / `monitor` become inline checked-off notes on the digest.
 
 ## Step 4 — Render the plan + confirm
 
 Read `$PLAN`. Render it as:
 
-1. **Header**: `<from>` → `<to>` (floor `<floor>`); investigation-candidate count; suppressed/frozen-skip count from `reportCounts` (deliberately not investigated).
-2. **Action table** — one row per write action:
+1. **Header**: the digest issue (`#$DIGEST`) being triaged; `<from>` → `<to>` (floor `<floor>`); investigation-candidate count; `floorKnown` + suppressed/frozen-skip counts from `reportCounts` (deliberately not investigated).
+2. **Promotion table** — one row per write action (each becomes a sub-issue of the digest):
 
    | # | Action | Existing | Severity | Finding | Labels |
    |---|---|---|---|---|---|
@@ -89,7 +94,7 @@ Read `$PLAN`. Render it as:
    | 2 | comment | #812 (OPEN) | medium | field retyped: BaseItemDto.runTimeTicks | server-upgrade, bug |
    | 3 | reopen | #790 (CLOSED) | high | floor coverage gap: GET /UserViews | server-upgrade, bug |
 
-3. **Investigated, not filing** — the `skip` rows with their rationale (the audit trail), and `monitor` rows.
+3. **Investigated, not filing (inline notes on the digest)** — the `skip` rows with their rationale (the audit trail), and `monitor` rows.
 4. **⚠️ Needs attention** — any `missing-verdict` (you skipped investigating a candidate — go back to Step 2) or `invalid-verdict` (malformed verdict; the `problems` say why). Resolve these before executing, or the findings won't be filed.
 
 Then ask via AskUserQuestion: (a) execute the plan as-is, (b) revise verdicts and re-plan (loop to Step 2/3), or (c) abort. **This confirmation IS the graduated-trust-ratchet gate** — one batch approval per release, not per finding. Nothing files without it. (If a finding-class has *graduated* — its `type` is in `AUTO_FILE_CLASSES`, so its actions carry `autoFileEligible: true` — that class's `create` actions are pre-approved within this batch and don't need separate confirmation. Today `AUTO_FILE_CLASSES` is empty: every class is still gated. Graduation only ever relaxes *this in-session* approval; the CI tracker never auto-files. See the design doc's "Graduation procedure".)
@@ -97,16 +102,16 @@ Then ask via AskUserQuestion: (a) execute the plan as-is, (b) revise verdicts an
 ## Step 5 — Execute
 
 ```bash
-node scripts/server-upgrade.js execute --plan "$PLAN"
+node scripts/server-upgrade.js execute --plan "$PLAN" --digest "$DIGEST" --close-digest
 ```
 
-Performs the GH writes (`gh issue create` / `gh issue comment` / `gh issue reopen`) + labels for each write action, continuing past individual failures (recorded in the summary), then writes a run-summary handoff to `.claude/handoffs/server-upgrade-<timestamp>.md`.
+Performs the GH writes for each write action — `gh issue create` / `comment` / `reopen` + labels for the per-finding promotions, then `gh api .../sub_issues` to link each as a sub-issue of `$DIGEST` — continuing past individual failures (recorded in the summary). It then rewrites the digest body with the verdict checklist and adds `server-upgrade:triaging` (so CI hands off the body). With `--close-digest` it closes the digest **only if every candidate is dispositioned** (no `missing-verdict` / `invalid-verdict` left) — the human-gated close (CI never closes a candidate-bearing digest). Drop `--close-digest` if you want to leave the digest open for more discussion. Omit `--digest` only if no digest exists (promotions then file standalone). Finally writes a run-summary handoff to `.claude/handoffs/server-upgrade-<timestamp>.md`.
 
 ## Step 6 — Surface the summary + capture deferrals
 
 Read the run-summary. Recap briefly, e.g.:
 
-> Filed 2 new issues (#842, #843), commented on 1 recurrence (#812), reopened 1 regression (#790). Skipped 4 after investigation (guarded fallbacks / cosmetic). 1 to monitor. Summary: `.claude/handoffs/server-upgrade-<ts>.md`. **Next**: deep-dive any issue with `/issue-triage <N>`.
+> Triaged the Jellyfin 10.11.10 digest (#840): filed 2 sub-issues (#842, #843), commented on 1 recurrence (#812), reopened 1 regression (#790). Skipped 4 after investigation (guarded fallbacks / cosmetic). 1 to monitor. Digest closed (fully triaged). Summary: `.claude/handoffs/server-upgrade-<ts>.md`. **Next**: deep-dive any sub-issue with `/issue-triage <N>`.
 
 Then close the loops the design's capture-discipline rule expects:
 

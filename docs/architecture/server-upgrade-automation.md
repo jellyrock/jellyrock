@@ -10,6 +10,9 @@ related-files:
   - .github/workflows/server-upgrade-tracker.yml
   - .claude/skills/server-upgrade/SKILL.md
   - .api-watch/suppressions.yml
+  - docs/dev/jellyfin-endpoint-availability.yml
+  - scripts/lib/endpoint-availability.cjs
+  - scripts/lint/endpoint-availability-check.cjs
   - scripts/lib/spec-fetch.cjs
   - scripts/lib/version-boundaries.cjs
   - docs/architecture/api-usage-manifest.json
@@ -30,22 +33,26 @@ ships, mechanically detect every API change that intersects code JellyRock
 actually ships, have an agent investigate the real impact, and file/triage GitHub
 issues — while staying silent about the churn that doesn't affect us.
 
-> **Status (2026-05-30):** Phases 0 + 0.5 + 1 + 2 + 3 + 4 + 5 are built and
+> **Status (2026-05-30):** Phases 0 + 0.5 + 1 + 2 + 3 + 4 + 5 + 6 are built and
 > verified (the API-usage manifest with `apiVersion` tiers; the supply+diff
 > layer: version-boundary map, spec fetch/cache, fingerprint generator with
 > committed floor/baseline anchors, and the structural diff engine; the
 > join+classify layer: `findings-candidates.js` with the forward + backward +
-> coverage-symmetry checks, tier-relevance filtering, and `.api-watch`
-> suppression; the `/server-upgrade` skill + `scripts/server-upgrade.js` filer
-> that investigate the report and file/dedup GitHub issues, human-gated; and the
+> coverage-symmetry checks, tier-relevance filtering, `.api-watch` suppression,
+> and the Phase-6 endpoint-availability ledger; the `/server-upgrade` skill +
+> `scripts/server-upgrade.js` filer that investigate the report, edit the
+> per-version digest, and file per-finding sub-issues, human-gated; and the
 > proactive-CI tracker: `scripts/server-upgrade-tracker.js` +
-> `.github/workflows/server-upgrade-tracker.yml` maintaining ONE tracker issue
-> with ephemeral-computed candidate counts). Phase 5 added the coverage-symmetry
-> advisory (the mirror of the backward check) and locked the auto-file
-> graduation policy — the ratchet stays human-gated (no class graduated; the bar
-> needs observed false-positive data that doesn't exist yet) with the graduation
-> procedure documented for a future config flip. See the
-> [roadmap](#roadmap) and the Phase 5 build record below.
+> `.github/workflows/server-upgrade-tracker.yml` maintaining one PER-VERSION
+> release-triage digest with the ephemeral-computed mechanical report). Phase 6
+> replaced the per-finding issue burst + single rolling tracker with the
+> per-version digest model (one auto-opened digest per release; CI opens-then-
+> closes a clean release as a record; `/server-upgrade` edits the digest with
+> verdicts + files sub-issues; never CI-closed once it bears a candidate) and
+> added the endpoint-availability registry — a validated disposition ledger that
+> resolves the recurring floor findings (`MediaSegments` 10.10, Lyrics 10.9,
+> `QuickConnect` 10.8, …) at the source so they stop reappearing every release. See
+> the [roadmap](#roadmap) and the Phase 5 + 6 build records below.
 
 ## Why this exists
 
@@ -286,21 +293,27 @@ reproducibility without repo bloat.
   data justifies a config flip); plus a `--fetch`/`--manifest` dry-run on the join
   step (preview any release's full report without committing a fingerprint).
   Fixture-tested; offline. See the build record below.
-- **Phase 6 — Release-triage issue model (planned).** Replace the per-finding
-  issue burst with **one auto-opened issue per server version** carrying the
-  rendered report as a digestible checklist + discussion hub. CI auto-closes it
-  **only** when the report is mechanically clean (0 candidates touch us — a
-  judgment-free claim); any issue that ever has a candidate is closed by a
-  human/the skill, never by CI on a "caught-up" signal. `/server-upgrade` *edits*
-  that one issue with verdicts instead of spraying N issues; per-finding issues
-  become opt-in promotions for work worth tracking standalone. This makes the
-  autonomous surface the per-version *summary* (no judgment), keeping *judgment*
-  (real vs skip) human-gated — a cleaner trust boundary than auto-filing
-  per-finding. Revises Phase 3 (filer output) + Phase 4 (tracker lifecycle);
-  needs its own design pass + a `/log decision` superseding the relevant part of
-  `server-upgrade-issue-filing`. Motivated by the real-data finding that a big
-  migration release (a 10.9-style event) would otherwise file 10–15+ separate
-  issues at once.
+- **Phase 6 — Release-triage digest model + endpoint-availability ledger.** ✅
+  *done.* Replaced the per-finding issue burst + single rolling tracker with
+  **one auto-opened digest per server version** carrying the rendered report as a
+  checklist + discussion hub. CI opens-then-closes a **mechanically-clean**
+  release as a persistent audit record (the only CI close — a judgment-free
+  claim); a digest that bears a candidate is closed by a human/the skill, never by
+  CI on a "caught-up" signal (Phase 4's caught-up-close is removed).
+  `/server-upgrade` *edits* the digest with verdicts and files `file` verdicts as
+  native GitHub **sub-issues** (`findingKey` dedup intact), inline-noting skip/
+  monitor — so per-finding issues are opt-in promotions for work worth standalone
+  tracking. The autonomous surface is the per-version *summary* (no judgment);
+  *judgment* (real vs skip) stays human-gated. Also added the **endpoint-
+  availability registry** (the committed [`jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml),
+  its [`endpoint-availability.cjs`](../../scripts/lib/endpoint-availability.cjs)
+  loader, and the [`endpoint-availability-check.cjs`](../../scripts/lint/endpoint-availability-check.cjs)
+  validation lint): a validated disposition ledger that resolves the recurring
+  floor findings at the source (the `V1`/`V2` tier model can't express sub-tier
+  introduction versions). Revised Phase 3 (filer output) + Phase 4 (tracker
+  lifecycle). See the Phase 6 build record below + the `server-upgrade-phase6`
+  decision in [`decisions.md`](../decisions.md) (supersedes the per-finding-default
+  part of `server-upgrade-issue-filing`).
 
 ## Phase 1 — implementation notes (built; kept as the build record)
 
@@ -672,8 +685,123 @@ CLI flags so a maintainer (or a validation pass) can run the full report against
   `endpoint-removed` candidates). Production always uses the committed manifest
   (current code).
 
-These are the same primitives Phase 6's CI will reuse to render the per-version
+These are the same primitives Phase 6's CI reuses to render the per-version
 report ephemerally.
+
+## Phase 6 — implementation notes (built; kept as the build record)
+
+> **Built 2026-05-30.** A record of *how* Phase 6 was implemented. Phase 6 is the
+> issue-model maturation: the per-finding issue burst + single rolling tracker
+> become ONE per-version release-triage *digest* with per-finding *sub-issues*,
+> and the recurring floor findings self-resolve via a validated availability
+> ledger. Two independent sub-features.
+
+### (1) The endpoint-availability registry (the recurring-floor-findings fix)
+
+The backward + symmetry checks fire on **5 standing floor findings every run** on
+the real manifest — `GET /audio/{}/lyrics`, `GET /mediasegments/{}`,
+`GET /quickconnect/enabled`, `GET,POST /quickconnect/initiate`, and the
+`GET /items` symmetry advisory. An audit confirmed **none are bugs** (all degrade
+gracefully or are version-guarded), yet they recur forever because the `V1`/`V2`
+two-tier model is too coarse to express sub-tier introduction versions
+(`MediaSegments` lands at 10.10, Lyrics at 10.9, `QuickConnect` at 10.8 — all *inside*
+the `V2` tier), and the AST manifest tags each `[1, ∞)` because there is no literal
+`getApiVersion() >= N` branch around it. The decisive proof: **`MediaSegments` has a
+real `supportsMediaSegments()` guard and still flagged** — because the guard lives
+in Layer 2, not an `ApiClient` version branch.
+
+1. **A validated disposition ledger, not a catalog.** The committed
+   [`jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml)
+   records, per post-floor endpoint, its `minServer` (documentary) + the old-server
+   `handling` (`version-guard` | `dispatch-sibling` | `sdk-dispatch` |
+   `graceful-degradation`). The floor check (`applyFloorAvailability` in
+   [`findings-candidates.js`](../../scripts/generate/findings-candidates.js))
+   marks a registered coverage-gap/symmetry `relevance: floor-known`,
+   `needsInvestigation: false` — it stays in the report as an audit trail but drops
+   out of the actionable set (mirrors suppression, but distinct: `suppressed`
+   stays false). The 5 are floor-known now; steady-state floor noise is **zero**.
+2. **Completeness without relying on docs.** The docs are NOT the source of
+   completeness (they're not comprehensive — versioning §4 listed only
+   `MediaSegments`). The **spec-derived floor check is the enumerator** (a
+   coverage-gap *is* "an endpoint we use absent from the floor spec"); the registry
+   is the disposition ledger. An UNREGISTERED post-floor endpoint keeps flagging
+   `needsInvestigation`, so a new one can't hide — and it surfaces in the next
+   per-version digest as a normal candidate, blocking its clean auto-close.
+   Handling/`minServer` are sourced from the **code audit** (authoritative), docs
+   only as cross-reference.
+3. **Regression-safe via a lint, not a blunt mute.** Suppressing these via
+   `suppressions.yml` was rejected — a permanent mute would *hide a regression*
+   (e.g. someone deletes the `supportsMediaSegments()` guard → the endpoint really
+   would 404 on old servers). Instead
+   [`endpoint-availability-check.cjs`](../../scripts/lint/endpoint-availability-check.cjs)
+   (npm `lint:endpoint-availability`, in the main lint chain) validates each
+   entry's CODE claim: `version-guard` → the symbol must exist in `source/*.bs`;
+   `dispatch-sibling` → the sibling path must be a floor-tier manifest endpoint;
+   plus every entry's endpoint must still be in the manifest (no dead entries). If
+   a guard is removed, the lint FAILS in CI → restore it or drop the entry, and the
+   floor finding correctly resurfaces. (Reconciles with the `apiVersion tiers
+   inferred, not hand-listed` decision: the manifest stays purely inferred from the
+   AST; the ledger is a *separate*, hand-maintained-but-CI-validated input to the
+   floor check, never written into the manifest.)
+4. **Why not finer manifest tiers / app-code guards.** The two-tier model can't
+   express "10.10+", and adding explicit guards to the 3 unguarded-but-graceful
+   endpoints (Lyrics, `QuickConnect` ×2) would either change *deliberate* fail-open
+   behavior (`QuickConnect`) or need on-hardware testing — out of scope for a
+   tooling-only PR. The ledger clears all 5 with no app/behavior change. A
+   followup tracks a proactive PR-time floor lint (catch a *new* floor gap from our
+   own commits without waiting for a Jellyfin release).
+
+### (2) The per-version release-triage digest model
+
+Replaces Phase 3's per-finding issue burst + Phase 4's single rolling tracker.
+Digest renderers + sub-issue mechanics live in
+[`server-upgrade.js`](../../scripts/server-upgrade.js) (the filer, the natural home
+for issue-body rendering); the Phase-4 tracker imports them.
+
+1. **Two issue kinds, one trust seam.** The **per-version digest** (label
+   `server-upgrade:tracker`, found by its version-stamped title) is CI's
+   autonomous, judgment-free summary surface. The **per-finding promotion** (label
+   `server-upgrade`, the existing version-independent `findingKey` dedup) is the
+   opt-in durable work item, filed by the human-gated skill as a native GitHub
+   **sub-issue** of the digest (`gh api .../sub_issues`, resolving the child's db
+   id first; best-effort — a link failure is recorded, never aborts). Skip/monitor
+   verdicts become inline checked-off notes on the digest.
+2. **Lifecycle (decided + confirmed this session).** `none` (caught up) → do
+   nothing; **Phase 4's close-on-caught-up is removed** (acknowledging ≠ work
+   done). `clean` (0 candidates) → CI opens-then-closes the digest as a persistent
+   audit record (the ONLY CI close — a judgment-free claim). `triage` (≥1
+   candidate, or degraded) → CI opens/refreshes the digest body until first triage,
+   detected by the `server-upgrade:triaging` label the skill adds, then HANDS OFF
+   (never overwrites or closes). A candidate-bearing digest is closed only by a
+   human/the skill (and the filer's `--close-digest` refuses to close while any
+   `missing-verdict`/`invalid-verdict` remains). Digests STACK per version as a
+   per-release audit trail; in steady state the close-plus-`/done` ritual prevents
+   pile-up, and a backlog shows each newer digest as a forward superset of the prior.
+3. **Open-then-close clean (decided this session): persistent audit records.**
+   Clean releases get a closed digest rather than staying silent — these issues are
+   the durable audit trail of what the mechanical pass found for each release,
+   surviving GitHub Actions' 90-day log retention.
+4. **The script/workflow seam.** The tracker
+   ([`server-upgrade-tracker.js`](../../scripts/server-upgrade-tracker.js)) computes
+   the full report ephemerally (now passing the availability ledger so CI counts
+   match a local run) and emits a decision JSON (`action ∈ none|clean|triage` +
+   title + body-file); the workflow
+   ([`server-upgrade-tracker.yml`](../../.github/workflows/server-upgrade-tracker.yml))
+   does the open/refresh/close + triaged-hands-off `gh` plumbing, matching the digest
+   by exact title (not `--search`, which would mangle the bracketed/em-dash title).
+5. **Tests.** `endpoint-availability.test.js` (loader schema + the lint's
+   guard/sibling/stale checks, offline via `spawnScript`); `findings-candidates.test.js`
+   (`applyFloorAvailability` floor-known + unregistered-still-flags + `floorKnown`
+   counts); `server-upgrade.test.js` (digest identity + both body renders +
+   `attachSubIssue` + `executePlan` with a digest: sub-issue attach, the
+   `server-upgrade:triaging` label edit, close-guard); `server-upgrade-tracker.test.js` (the none/clean/triage
+   decision matrix + the CLI emitting each, fully offline). No network, no GitHub.
+
+### Migration note (single rolling tracker → per-version digests)
+
+Code-only — there was **no live issue to migrate**. The Phase-4 tracker workflow
+only ever existed on the `feat/server-upgrade-automation` branch, never on `main`,
+so scheduled CI never ran it and no rolling tracker issue exists in the repo.
 
 ## Related
 

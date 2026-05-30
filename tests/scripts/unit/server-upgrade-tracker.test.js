@@ -1,10 +1,12 @@
-// Tests for scripts/server-upgrade-tracker.js (Phase 4: proactive CI tracker).
+// Tests for scripts/server-upgrade-tracker.js — the proactive-CI surface,
+// Phase 4 generalized by Phase 6 into the PER-VERSION release-triage DIGEST model.
 //
-// The pure parts (signal parse, action decision, body/title render) are
-// exercised directly. The count-computation + CLI path is driven OFFLINE via
+// The pure parts (signal parse, version-state + digest-action decisions) are
+// exercised directly. The report-computation + CLI path is driven OFFLINE via
 // --to-file (an injected `to` spec) against tiny hand-written committed inputs
-// (from/floor fingerprints + manifest + boundaries + suppressions), mirroring
-// the findings-candidates CLI test. No network, no GitHub writes.
+// (from/floor fingerprints + manifest + boundaries + suppressions + the
+// endpoint-availability ledger), mirroring the findings-candidates CLI test. No
+// network, no GitHub writes.
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -13,17 +15,13 @@ import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
 import {
   parseStableSignal,
-  decideAction,
-  renderTrackerTitle,
-  renderTrackerBody,
-  computeCounts,
+  decideVersionState,
+  decideDigestAction,
+  computeReport,
 } from '../../../scripts/server-upgrade-tracker.js';
 
 const SCRIPT = 'scripts/server-upgrade-tracker.js';
 
-// A minimal signals-backlog.md with the jellyfin-server-stable row plus a
-// neighbour row and a code fence (the schema example) to prove the parser skips
-// fences and stops at the next row.
 function signalsDoc({ acknowledged = '10.11.8', upstream = '10.11.10', status = 'watching' } = {}) {
   return `---
 last-updated: 2026-05-29
@@ -70,68 +68,50 @@ describe('parseStableSignal', () => {
   });
 });
 
-describe('decideAction', () => {
-  it('announces when latest stable is strictly newer than acknowledged', () => {
-    expect(decideAction({ latestStable: '10.11.10', acknowledged: '10.11.8' })).toBe('announce');
-    expect(decideAction({ latestStable: '10.12.0', acknowledged: '10.11.10' })).toBe('announce');
+describe('decideVersionState', () => {
+  it('is ahead when latest stable is strictly newer than acknowledged', () => {
+    expect(decideVersionState({ latestStable: '10.11.10', acknowledged: '10.11.8' })).toBe('ahead');
+    expect(decideVersionState({ latestStable: '10.12.0', acknowledged: '10.11.10' })).toBe('ahead');
   });
 
   it('is caught-up when equal or acknowledged is ahead', () => {
-    expect(decideAction({ latestStable: '10.11.10', acknowledged: '10.11.10' })).toBe('caught-up');
-    expect(decideAction({ latestStable: '10.11.8', acknowledged: '10.11.10' })).toBe('caught-up');
+    expect(decideVersionState({ latestStable: '10.11.10', acknowledged: '10.11.10' })).toBe(
+      'caught-up',
+    );
+    expect(decideVersionState({ latestStable: '10.11.8', acknowledged: '10.11.10' })).toBe(
+      'caught-up',
+    );
   });
 
-  it('announces when acknowledged is a non-semver placeholder (nudge rather than go quiet)', () => {
-    expect(decideAction({ latestStable: '10.11.10', acknowledged: '(none)' })).toBe('announce');
+  it('is ahead when acknowledged is a non-semver placeholder (nudge rather than go quiet)', () => {
+    expect(decideVersionState({ latestStable: '10.11.10', acknowledged: '(none)' })).toBe('ahead');
   });
 
   it('is caught-up when there is no latest stable', () => {
-    expect(decideAction({ latestStable: null, acknowledged: '10.11.8' })).toBe('caught-up');
+    expect(decideVersionState({ latestStable: null, acknowledged: '10.11.8' })).toBe('caught-up');
   });
 });
 
-describe('renderTrackerTitle', () => {
-  it('carries the version + the /server-upgrade call to action', () => {
-    expect(renderTrackerTitle('10.11.10')).toBe(
-      '🔔 Jellyfin 10.11.10 available — run /server-upgrade to triage',
-    );
+describe('decideDigestAction', () => {
+  it("caught-up → 'none' regardless of report", () => {
+    expect(decideDigestAction('caught-up', null)).toBe('none');
+    expect(decideDigestAction('caught-up', { counts: { needsInvestigation: 5 } })).toBe('none');
+  });
+
+  it("ahead + ≥1 candidate → 'triage'", () => {
+    expect(decideDigestAction('ahead', { counts: { needsInvestigation: 3 } })).toBe('triage');
+  });
+
+  it("ahead + 0 candidates → 'clean'", () => {
+    expect(decideDigestAction('ahead', { counts: { needsInvestigation: 0 } })).toBe('clean');
+  });
+
+  it("ahead + report unavailable (degraded) → 'triage' (can't claim clean)", () => {
+    expect(decideDigestAction('ahead', null)).toBe('triage');
   });
 });
 
-describe('renderTrackerBody', () => {
-  const base = { version: '10.11.10', acknowledged: '10.11.8', floor: '10.7.0' };
-
-  it('renders the counts block when counts are present', () => {
-    const body = renderTrackerBody({
-      ...base,
-      counts: {
-        breaking: 2,
-        opportunity: 1,
-        'coverage-gap': 3,
-        'symmetry-advisory': 1,
-        needsInvestigation: 7,
-        suppressed: 1,
-      },
-    });
-    expect(body).toContain('**2** breaking');
-    expect(body).toContain('**1** opportunit');
-    expect(body).toContain('**3** floor coverage-gap');
-    expect(body).toContain('**1** coverage-symmetry advisor');
-    expect(body).toContain('**7** total needing investigation');
-    expect(body).toContain('1 suppressed');
-    expect(body).toContain('spec-fingerprint.js 10.11.10');
-    expect(body).toContain('/done jellyfin-server-stable');
-  });
-
-  it('degrades to announce-only when counts are null, surfacing the error', () => {
-    const body = renderTrackerBody({ ...base, counts: null, error: 'boom' });
-    expect(body).toContain('_unavailable this run_');
-    expect(body).toContain('boom');
-    expect(body).not.toContain('breaking candidate');
-  });
-});
-
-// ── Offline count computation + CLI ──────────────────────────────────────────
+// ── Offline report computation + CLI ─────────────────────────────────────────
 
 const BOUNDARIES_YML =
   'floor: "10.7.0"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n';
@@ -140,10 +120,9 @@ function fp(specVersion, operations = {}) {
   return { schemaVersion: 1, specVersion, operations, schemas: {} };
 }
 
-// A tiny raw OpenAPI spec for the `to` version. /Items/{itemId} GET is dropped
-// vs the `from` fingerprint below → a breaking candidate on a used active-tier
-// endpoint.
-const TO_SPEC = {
+// `to` spec that DROPS /Items/{itemId} GET vs the `from` fingerprint → a breaking
+// candidate on a used active-tier endpoint (needsInvestigation ≥ 1 → triage).
+const TO_SPEC_TRIAGE = {
   info: { version: '10.11.10' },
   paths: {
     '/Users/{userId}/Items': { get: { parameters: [], responses: { 200: {} } } },
@@ -151,14 +130,25 @@ const TO_SPEC = {
   components: { schemas: {} },
 };
 
-describe('computeCounts (offline, injected toSpec)', () => {
+// `to` spec that KEEPS /Items/{itemId} GET → no forward break; with no floor gaps
+// the report is mechanically clean (needsInvestigation 0 → clean).
+const TO_SPEC_CLEAN = {
+  info: { version: '10.11.10' },
+  paths: {
+    '/Users/{userId}/Items': { get: { parameters: [], responses: { 200: {} } } },
+    '/Items/{itemId}': { get: { parameters: [], responses: { 200: {} } } },
+  },
+  components: { schemas: {} },
+};
+
+describe('computeReport + CLI (offline, injected toSpec)', () => {
   let dir;
   afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
     dir = undefined;
   });
 
-  function scaffoldRepo() {
+  function scaffoldRepo({ availability = 'endpoints: []\n' } = {}) {
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-su-tracker-'));
     const write = (rel, obj) => {
       const full = join(dir, rel);
@@ -166,7 +156,6 @@ describe('computeCounts (offline, injected toSpec)', () => {
       writeFileSync(full, typeof obj === 'string' ? obj : JSON.stringify(obj));
     };
     const fpRel = (v) => `docs/architecture/spec-fingerprints/jellyfin-${v}.json`;
-    // Floor + acknowledged both have the endpoint; the `to` spec drops it.
     write(fpRel('10.7.0'), fp('10.7.0', { 'GET /Users/{userId}/Items': { parameters: [] } }));
     write(
       fpRel('10.11.8'),
@@ -191,28 +180,28 @@ describe('computeCounts (offline, injected toSpec)', () => {
     });
     write('docs/dev/jellyfin-version-boundaries.yml', BOUNDARIES_YML);
     write('.api-watch/suppressions.yml', 'rules: []\n');
+    write('docs/dev/jellyfin-endpoint-availability.yml', availability);
     write('docs/signals-backlog.md', signalsDoc());
   }
 
   it('runs the Phase-2 report against an ephemeral to fingerprint', async () => {
     scaffoldRepo();
-    const counts = await computeCounts({
+    const report = await computeReport({
       rootDir: dir,
       from: '10.11.8',
       to: '10.11.10',
       floor: '10.7.0',
-      toSpec: TO_SPEC,
+      toSpec: TO_SPEC_TRIAGE,
     });
-    // /Items/{} GET removed on a used active-tier endpoint → a breaking candidate.
-    expect(counts.breaking).toBeGreaterThanOrEqual(1);
-    expect(counts.needsInvestigation).toBeGreaterThanOrEqual(1);
+    expect(report.counts.breaking).toBeGreaterThanOrEqual(1);
+    expect(report.counts.needsInvestigation).toBeGreaterThanOrEqual(1);
   });
 
-  it('CLI --latest + --to-file emits an announce decision with counts; no repo write', () => {
+  it("CLI --latest + --to-file emits a 'triage' decision with the per-version digest title; no repo write", () => {
     scaffoldRepo();
     const bodyOut = join(dir, 'body.md');
     const toFile = join(dir, 'to-spec.json');
-    writeFileSync(toFile, JSON.stringify(TO_SPEC));
+    writeFileSync(toFile, JSON.stringify(TO_SPEC_TRIAGE));
 
     const res = spawnScript(SCRIPT, [
       '--root',
@@ -226,36 +215,51 @@ describe('computeCounts (offline, injected toSpec)', () => {
     ]);
     expect(res.exitCode).toBe(0);
     const decision = JSON.parse(res.stdout);
-    expect(decision.action).toBe('announce');
+    expect(decision.action).toBe('triage');
     expect(decision.version).toBe('10.11.10');
     expect(decision.acknowledged).toBe('10.11.8');
     expect(decision.degraded).toBe(false);
-    expect(decision.counts.breaking).toBeGreaterThanOrEqual(1);
+    expect(decision.needsInvestigation).toBeGreaterThanOrEqual(1);
     expect(decision.title).toContain('10.11.10');
+    expect(decision.title).toContain('release triage');
+    expect(decision.trackerLabel).toBe('server-upgrade:tracker');
+    expect(decision.triagingLabel).toBe('server-upgrade:triaging');
   });
 
-  it('CLI emits caught-up (no body, no counts) when --latest equals acknowledged', () => {
+  it("CLI emits 'clean' when nothing JellyRock uses changed (0 candidates)", () => {
+    scaffoldRepo();
+    const toFile = join(dir, 'to-spec.json');
+    writeFileSync(toFile, JSON.stringify(TO_SPEC_CLEAN));
+    const res = spawnScript(SCRIPT, ['--root', dir, '--latest', '10.11.10', '--to-file', toFile]);
+    expect(res.exitCode).toBe(0);
+    const decision = JSON.parse(res.stdout);
+    expect(decision.action).toBe('clean');
+    expect(decision.needsInvestigation).toBe(0);
+  });
+
+  it("CLI emits 'none' when --latest equals acknowledged (caught up; no work)", () => {
     scaffoldRepo();
     const res = spawnScript(SCRIPT, ['--root', dir, '--latest', '10.11.8']);
     expect(res.exitCode).toBe(0);
     const decision = JSON.parse(res.stdout);
-    expect(decision.action).toBe('caught-up');
+    expect(decision.action).toBe('none');
     expect(decision.version).toBe('10.11.8');
   });
 
-  it('CLI degrades to announce-only when a baseline fingerprint is missing (offline)', () => {
+  it("CLI degrades to 'triage' (announce-only) when a baseline fingerprint is missing (offline)", () => {
     scaffoldRepo();
     // Acknowledged 10.10.0 has no committed fingerprint → readFingerprint(from)
-    // throws inside computeCounts. With --to-file there is NO network, so the
+    // throws inside computeReport. With --to-file there is NO network, so the
     // degradation is the fingerprint miss, exercised fully offline.
     writeFileSync(join(dir, 'docs/signals-backlog.md'), signalsDoc({ acknowledged: '10.10.0' }));
     const toFile = join(dir, 'to-spec.json');
-    writeFileSync(toFile, JSON.stringify(TO_SPEC));
+    writeFileSync(toFile, JSON.stringify(TO_SPEC_TRIAGE));
     const res = spawnScript(SCRIPT, ['--root', dir, '--latest', '10.11.10', '--to-file', toFile]);
     expect(res.exitCode).toBe(0);
     const decision = JSON.parse(res.stdout);
-    expect(decision.action).toBe('announce');
+    expect(decision.action).toBe('triage');
     expect(decision.degraded).toBe(true);
+    expect(decision.needsInvestigation).toBeNull();
     expect(decision.error).toMatch(/no committed fingerprint for 10\.10\.0/);
   });
 });

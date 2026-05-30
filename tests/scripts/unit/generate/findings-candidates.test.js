@@ -20,11 +20,13 @@ import {
   symmetryFindings,
   matchSuppression,
   applySuppressions,
+  applyFloorAvailability,
   buildReport,
   serializeReport,
   readManifestFrom,
   resolveFingerprint,
 } from '../../../../scripts/generate/findings-candidates.js';
+import { validateRegistry } from '../../../../scripts/lib/endpoint-availability.cjs';
 
 const SCRIPT = 'scripts/generate/findings-candidates.js';
 
@@ -394,6 +396,122 @@ describe('symmetryFindings — coverage-symmetry advisory (the mirror of the bac
     });
     expect(symmetryFindings(m, floorFp, BOUNDARIES)).toHaveLength(1);
     expect(backwardFindings(m, floorFp, BOUNDARIES)).toHaveLength(0);
+  });
+});
+
+describe('applyFloorAvailability — the endpoint-availability ledger (Phase 6)', () => {
+  const floorFp = fp('10.7.0', { operations: { 'GET /Users/{userId}/Items': { parameters: [] } } });
+
+  // A coverage-gap: floor-tier endpoint absent from the floor spec.
+  function coverageGapCandidate() {
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/MediaSegments/{0}',
+          normalized: '/mediasegments/{}',
+          methods: ['GET'],
+          minApiVersion: 1,
+          maxApiVersion: null,
+        }),
+      ],
+    });
+    return backwardFindings(m, floorFp, BOUNDARIES);
+  }
+
+  it('marks a registered coverage-gap floor-known (needsInvestigation:false) with the handling note', () => {
+    const candidates = coverageGapCandidate();
+    expect(candidates[0].needsInvestigation).toBe(true); // before
+    const registry = validateRegistry({
+      endpoints: [
+        {
+          path: '/mediasegments/{}',
+          method: 'GET',
+          minServer: '10.10.0',
+          handling: { type: 'version-guard', symbol: 'supportsMediaSegments' },
+        },
+      ],
+    });
+    applyFloorAvailability(candidates, registry);
+    expect(candidates[0]).toMatchObject({
+      relevance: 'floor-known',
+      needsInvestigation: false,
+    });
+    expect(candidates[0].floorHandling).toMatchObject({
+      type: 'version-guard',
+      symbol: 'supportsMediaSegments',
+      minServer: '10.10.0',
+    });
+    expect(candidates[0].suppressed).toBe(false); // distinct from suppression
+  });
+
+  it('leaves an UNREGISTERED post-floor endpoint flagged needsInvestigation (cannot hide)', () => {
+    const candidates = coverageGapCandidate();
+    applyFloorAvailability(candidates, validateRegistry({ endpoints: [] }));
+    expect(candidates[0].needsInvestigation).toBe(true);
+    expect(candidates[0].relevance).toBe('floor-coverage');
+  });
+
+  it('resolves a symmetry-advisory the same way (method intersection)', () => {
+    const symFloor = fp('10.7.0', { operations: { 'GET /Items': { parameters: [] } } });
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/Items',
+          normalized: '/items',
+          methods: ['GET'],
+          minApiVersion: 2,
+          maxApiVersion: null,
+        }),
+      ],
+    });
+    const candidates = symmetryFindings(m, symFloor, BOUNDARIES);
+    expect(candidates[0].type).toBe('symmetry-advisory');
+    const registry = validateRegistry({
+      endpoints: [
+        {
+          path: '/items',
+          method: 'GET',
+          handling: { type: 'dispatch-sibling', sibling: '/users/{}/items' },
+        },
+      ],
+    });
+    applyFloorAvailability(candidates, registry);
+    expect(candidates[0]).toMatchObject({ relevance: 'floor-known', needsInvestigation: false });
+  });
+
+  it('buildReport counts registered floor findings as floorKnown, not needsInvestigation', () => {
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/MediaSegments/{0}',
+          normalized: '/mediasegments/{}',
+          methods: ['GET'],
+          minApiVersion: 1,
+          maxApiVersion: null,
+        }),
+      ],
+    });
+    const toFp = fp('10.11.10', { operations: {} });
+    const fromFp = fp('10.11.8', { operations: {} });
+    const report = buildReport({
+      fromFp,
+      toFp,
+      floorFp,
+      manifest: m,
+      boundaries: BOUNDARIES,
+      availability: validateRegistry({
+        endpoints: [
+          {
+            path: '/mediasegments/{}',
+            method: 'GET',
+            handling: { type: 'version-guard', symbol: 'supportsMediaSegments' },
+          },
+        ],
+      }),
+    });
+    expect(report.counts.floorKnown).toBe(1);
+    expect(report.counts.needsInvestigation).toBe(0);
+    expect(report.counts['coverage-gap']).toBe(1); // still classified by type
   });
 });
 

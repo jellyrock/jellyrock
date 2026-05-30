@@ -1,5 +1,6 @@
-// scripts/server-upgrade-tracker.js — Phase 4 (proactive CI) of the
-// server-upgrade-automation pipeline (docs/architecture/server-upgrade-automation.md).
+// scripts/server-upgrade-tracker.js — the proactive-CI surface of the
+// server-upgrade-automation pipeline (docs/architecture/server-upgrade-automation.md),
+// Phase 4 generalized by Phase 6 into the PER-VERSION RELEASE-TRIAGE DIGEST model.
 //
 // This is the ONE fully-autonomous, zero-judgment surface in the pipeline. A
 // scheduled GitHub Actions workflow (.github/workflows/server-upgrade-tracker.yml)
@@ -9,21 +10,38 @@
 //      JellyRock has acknowledged. Detection is robust whether or not /catchup
 //      has run: it fetches the live latest stable (RCs excluded, per the
 //      fetcher) and reads `latest_acknowledged` from docs/signals-backlog.md.
-//   2. COMPUTES the mechanical candidate counts (breaking / opportunity /
-//      coverage-gap / symmetry-advisory / needsInvestigation) by running the Phase-2 report against
-//      an EPHEMERAL, in-memory `to` fingerprint built from the fetched spec —
-//      NOTHING is written to the repo. The reviewed-anchor invariant (a
-//      committed fingerprint means a human reviewed it) is preserved; the human
-//      commits the `to` fingerprint when they run `/server-upgrade`. If counts
-//      can't be computed (spec fetch fails / a baseline fingerprint is missing)
-//      the tracker DEGRADES to announce-only rather than hard-failing.
-//   3. EMITS a one-line decision JSON to stdout + writes the issue body to a
-//      file. The workflow does the gh issue create/edit/close plumbing
-//      (mirroring docs-stale-tracker.yml's single-tracker-issue lifecycle).
+//   2. COMPUTES the full mechanical report (the Phase-2 buildReport, including the
+//      Phase-6 endpoint-availability ledger so the recurring floor findings are
+//      floor-known, not flagged) against an EPHEMERAL, in-memory `to` fingerprint
+//      built from the fetched spec — NOTHING is written to the repo. The
+//      reviewed-anchor invariant (a committed fingerprint means a human reviewed
+//      it) is preserved; the human commits the `to` fingerprint when they run
+//      `/server-upgrade`. If the report can't be computed (spec fetch fails / a
+//      baseline fingerprint is missing) the tracker DEGRADES to announce-only.
+//   3. RENDERS the per-version digest body (server-upgrade.js renderDigestBody) —
+//      a mechanical checklist when there are candidates, or the "mechanically
+//      clean" record when 0 candidates touch us — and EMITS a decision JSON the
+//      workflow uses to open / refresh / open-then-close the ONE digest issue for
+//      THIS version (mirroring docs-stale-tracker.yml's lifecycle, but per-version).
+//
+// LIFECYCLE (Phase 6 — what changed from the single rolling tracker):
+//   - There is one digest issue PER server version (label server-upgrade:tracker,
+//     found by its version-stamped title). They stack; each is a persistent audit
+//     record of what the mechanical pass found for that release.
+//   - action 'clean'  → 0 candidates: a judgment-free claim, so CI opens-then-closes
+//                       the digest as a record (the only CI close).
+//   - action 'triage' → ≥1 candidate: CI opens/refreshes the digest body until the
+//                       digest is first triaged (it carries server-upgrade:triaging,
+//                       added by /server-upgrade) — then CI HANDS OFF and never
+//                       overwrites or closes it. A candidate-bearing digest is closed
+//                       only by a human / the skill (acknowledging ≠ work done).
+//   - action 'none'   → caught up (acknowledged == latest): do NOTHING. (Phase 4's
+//                       "close on caught-up" is REMOVED — that conflated acknowledgment
+//                       with work done.)
 //
 // It NEVER files per-finding issues (that stays human-gated behind
-// `/server-upgrade execute`) and NEVER touches the journals (latest_upstream /
-// last_checked stay /catchup's job). It only maintains ONE tracker issue.
+// `/server-upgrade execute`, which files them as sub-issues of the digest) and
+// NEVER touches the journals (latest_upstream / last_checked stay /catchup's job).
 //
 // CLI:
 //   node scripts/server-upgrade-tracker.js [--root <dir>] [--signals <path>]
@@ -32,9 +50,9 @@
 //     --latest   override the live upstream fetch (workflow_dispatch / tests)
 //     --to-file  build the `to` fingerprint from a local spec (offline; tests)
 //     --body-out write the rendered issue body markdown to this path
-//   → prints decision JSON: { action, version, acknowledged, floor, counts,
-//                             title, degraded, error }
-//     action ∈ { announce | caught-up }
+//   → prints decision JSON: { action, version, acknowledged, floor,
+//                             needsInvestigation, title, degraded, error }
+//     action ∈ { none | clean | triage }
 //
 // Pure parts (parse / decide / render) are named exports so the Vitest suite at
 // tests/scripts/unit/server-upgrade-tracker.test.js drives them offline.
@@ -47,8 +65,10 @@ import {
   readFingerprint,
   readManifest,
   readSuppressions,
+  readAvailability,
 } from './generate/findings-candidates.js';
 import { buildFingerprint } from './generate/spec-fingerprint.js';
+import { digestTitle, renderDigestBody, DIGEST_LABEL, TRIAGING_LABEL } from './server-upgrade.js';
 
 const require = createRequire(import.meta.url);
 const { fetchSpec } = require('./lib/spec-fetch.cjs');
@@ -57,7 +77,8 @@ const { loadBoundaries } = require('./lib/version-boundaries.cjs');
 
 const SIGNALS_REL = 'docs/signals-backlog.md';
 const STABLE_SLUG = 'jellyfin-server-stable';
-const TRACKER_LABEL = 'server-upgrade:tracker';
+// The per-version digest label, single-sourced from the filer (server-upgrade.js).
+const TRACKER_LABEL = DIGEST_LABEL;
 
 // ── Signal parsing ────────────────────────────────────────────────────────────
 
@@ -99,116 +120,49 @@ export function parseStableSignal(markdown) {
 
 // ── Decision ──────────────────────────────────────────────────────────────────
 
-// 'announce' when the latest stable is strictly newer than what we've
-// acknowledged; 'caught-up' otherwise (equal, or — defensively — acknowledged
-// somehow ahead). A non-semver acknowledged value (placeholder) is treated as
-// "behind" so the tracker still nudges rather than silently going quiet.
-export function decideAction({ latestStable, acknowledged }) {
+// 'ahead' when the latest stable is strictly newer than what we've acknowledged;
+// 'caught-up' otherwise (equal, or — defensively — acknowledged somehow ahead). A
+// non-semver acknowledged value (placeholder) is treated as "behind" so the
+// tracker still nudges rather than silently going quiet. The emitted action
+// (none/clean/triage) is derived from this plus the report (see main).
+export function decideVersionState({ latestStable, acknowledged }) {
   if (!latestStable) return 'caught-up';
   const isSemver = (v) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
-  if (!isSemver(acknowledged)) return 'announce';
-  return compareSemverBase(latestStable, acknowledged) > 0 ? 'announce' : 'caught-up';
+  if (!isSemver(acknowledged)) return 'ahead';
+  return compareSemverBase(latestStable, acknowledged) > 0 ? 'ahead' : 'caught-up';
 }
 
-// ── Rendering ───────────────────────────────────────────────────────────────────
-
-export function renderTrackerTitle(version) {
-  return `🔔 Jellyfin ${version} available — run /server-upgrade to triage`;
+// Map (version-state, report) → the emitted digest action.
+//   caught-up                       → 'none'   (do nothing; Phase 4's close-on-caught-up is gone)
+//   ahead + report unavailable      → 'triage' (announce-only; can't claim clean)
+//   ahead + 0 candidates            → 'clean'  (judgment-free → CI opens-then-closes a record)
+//   ahead + ≥1 candidate            → 'triage' (CI opens/refreshes until first triage)
+export function decideDigestAction(versionState, report) {
+  if (versionState === 'caught-up') return 'none';
+  if (!report) return 'triage';
+  return (report.counts?.needsInvestigation ?? 0) > 0 ? 'triage' : 'clean';
 }
 
-// The tracker issue body. `counts` is the Phase-2 report's counts block, or null
-// when count computation degraded (announce-only fallback); `error` carries the
-// degradation reason in that case.
-export function renderTrackerBody({ version, acknowledged, floor, counts, error }) {
-  const lines = [];
-  lines.push(
-    'A new Jellyfin **stable** release is available upstream, past the version ' +
-      'JellyRock has acknowledged.',
-  );
-  lines.push('');
-  lines.push('| | Version |');
-  lines.push('| --- | --- |');
-  lines.push(`| Latest stable (upstream) | \`${version}\` |`);
-  lines.push(`| Acknowledged (\`signals-backlog.md\`) | \`${acknowledged ?? 'unknown'}\` |`);
-  lines.push(`| Supported floor | \`${floor ?? 'unknown'}\` |`);
-  lines.push('');
+// ── Report computation (the only network/IO path) ───────────────────────────────
 
-  if (counts) {
-    lines.push(
-      '**Candidate counts** — a mechanical first pass over ' +
-        `\`${acknowledged} → ${version}\` (+ floor coverage). These are NOT ` +
-        'verdicts:',
-    );
-    lines.push('');
-    lines.push(`- 🔴 **${counts.breaking ?? 0}** breaking candidate(s)`);
-    lines.push(`- 🟢 **${counts.opportunity ?? 0}** opportunit(y/ies)`);
-    lines.push(`- 🟡 **${counts['coverage-gap'] ?? 0}** floor coverage-gap(s)`);
-    lines.push(`- 🔵 **${counts['symmetry-advisory'] ?? 0}** coverage-symmetry advisor(y/ies)`);
-    lines.push(`- 🔎 **${counts.needsInvestigation ?? 0}** total needing investigation`);
-    if (counts.suppressed) lines.push(`- 🔇 ${counts.suppressed} suppressed (accepted churn)`);
-    lines.push('');
-    lines.push(
-      '> The `/server-upgrade` agent investigates each candidate against real ' +
-        'app usage and decides what (if anything) to file. A coverage-gap is ' +
-        'often dispositioned by a capability guard, not a real break.',
-    );
-  } else {
-    lines.push(
-      `**Candidate counts**: _unavailable this run_${error ? ` (${error})` : ''}. ` +
-        'The release is still worth triaging — `/server-upgrade` generates the ' +
-        'report locally.',
-    );
-  }
-
-  lines.push('');
-  lines.push('## Next step');
-  lines.push('');
-  lines.push('Run **`/server-upgrade`** to triage this release. The skill will:');
-  lines.push('');
-  lines.push(
-    `1. Commit the \`${version}\` spec fingerprint ` +
-      `(\`node scripts/generate/spec-fingerprint.js ${version}\`) — the reviewed ` +
-      'anchor these counts were computed from ephemerally in CI.',
-  );
-  lines.push(
-    '2. Generate the Phase-2 data report, investigate each candidate, and ' +
-      '(human-gated) file/dedup the issues that actually affect us.',
-  );
-  lines.push('');
-  lines.push(
-    `When you've reviewed the release, run \`/done ${STABLE_SLUG}\` to bump ` +
-      '`latest_acknowledged` — this tracker closes automatically on the next run.',
-  );
-  lines.push('');
-  lines.push('---');
-  lines.push(
-    '_Auto-generated by `.github/workflows/server-upgrade-tracker.yml`. Edits to ' +
-      'this body are overwritten on the next run; counts are recomputed from an ' +
-      'ephemeral in-CI fingerprint and are never committed. See ' +
-      '`docs/architecture/server-upgrade-automation.md`._',
-  );
-  return lines.join('\n') + '\n';
-}
-
-// ── Count computation (the only network/IO path) ───────────────────────────────
-
-// Build the Phase-2 report against an EPHEMERAL in-memory `to` fingerprint and
-// return its counts block. `toSpec` may be injected (tests / offline); otherwise
-// the spec is fetched + cached. `from`/`floor` fingerprints + manifest +
-// suppressions are read from committed repo state via the exact same readers
-// findings-candidates.js uses.
-export async function computeCounts({ rootDir, from, to, floor, toSpec }) {
+// Build the full Phase-2 report against an EPHEMERAL in-memory `to` fingerprint.
+// `toSpec` may be injected (tests / offline); otherwise the spec is fetched +
+// cached. from/floor fingerprints + manifest + suppressions + the Phase-6
+// endpoint-availability ledger are read from committed repo state via the exact
+// same readers findings-candidates.js uses, so CI can't drift from a local run
+// (and the recurring floor findings are floor-known here too, not flagged).
+export async function computeReport({ rootDir, from, to, floor, toSpec }) {
   const spec = toSpec ?? (await fetchSpec(to, { rootDir }));
   const toFp = buildFingerprint(spec, { specVersion: to });
-  const report = buildReport({
+  return buildReport({
     fromFp: readFingerprint(rootDir, from),
     toFp,
     floorFp: readFingerprint(rootDir, floor),
     manifest: readManifest(rootDir),
     boundaries: loadBoundaries(rootDir),
     rules: readSuppressions(rootDir),
+    availability: readAvailability(rootDir),
   });
-  return report.counts;
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -243,41 +197,45 @@ async function main() {
   // Live latest stable (RCs excluded by fetchJellyfinVersions), unless overridden.
   const latestStable = flags.latest ?? (await fetchJellyfinVersions()).stable;
 
-  const action = decideAction({ latestStable, acknowledged });
-  if (action === 'caught-up') {
-    emit({ action, version: latestStable, acknowledged });
+  const versionState = decideVersionState({ latestStable, acknowledged });
+  if (versionState === 'caught-up') {
+    emit({ action: 'none', version: latestStable, acknowledged });
     return;
   }
 
   const boundaries = loadBoundaries(rootDir);
   const floor = flags.floor ?? boundaries.floor;
 
-  let counts = null;
+  let report = null;
   let error = null;
   try {
     const toSpec = flags['to-file']
       ? JSON.parse(readFileSync(flags['to-file'], 'utf8'))
       : undefined;
-    counts = await computeCounts({ rootDir, from: acknowledged, to: latestStable, floor, toSpec });
+    report = await computeReport({ rootDir, from: acknowledged, to: latestStable, floor, toSpec });
   } catch (err) {
     error = err.message;
-    console.error(`server-upgrade-tracker: count computation degraded — ${err.message}`);
+    console.error(`server-upgrade-tracker: report computation degraded — ${err.message}`);
   }
 
-  const title = renderTrackerTitle(latestStable);
-  const body = renderTrackerBody({ version: latestStable, acknowledged, floor, counts, error });
+  const action = decideDigestAction(versionState, report);
+  const title = digestTitle(latestStable);
+  // Render the per-version digest body (mechanical checklist, or the clean record).
+  const body = renderDigestBody({ version: latestStable, acknowledged, floor, report });
   if (flags['body-out']) {
     writeFileSync(flags['body-out'], body);
-    console.error(`server-upgrade-tracker: issue body → ${flags['body-out']}`);
+    console.error(`server-upgrade-tracker: digest body → ${flags['body-out']}`);
   }
   emit({
     action,
     version: latestStable,
     acknowledged,
     floor,
-    counts,
+    needsInvestigation: report ? (report.counts?.needsInvestigation ?? 0) : null,
     title,
-    degraded: counts === null,
+    triagingLabel: TRIAGING_LABEL,
+    trackerLabel: TRACKER_LABEL,
+    degraded: report === null,
     error,
   });
 }

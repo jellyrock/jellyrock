@@ -55,3 +55,11 @@ Requires the Jellyfin server to have media segment detection configured (e.g., v
 **Recommended**: 10.10.0+ (enables Trickplay thumbnails and Media Segments)
 
 JellyRock will continue supporting 10.7.x indefinitely.
+
+---
+
+_For contributors: the machine-readable map of which endpoints require which
+server version (and how JellyRock copes on older servers) lives in
+[`docs/dev/jellyfin-endpoint-availability.yml`](../dev/jellyfin-endpoint-availability.yml),
+consumed by the server-upgrade-automation pipeline. This user-facing table is the
+plain-language mirror._

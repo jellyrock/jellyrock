@@ -8,7 +8,8 @@ related-files:
   - source/utils/deviceCapabilities.bs
   - source/utils/misc.bs
   - source/utils/mediaSegments.bs
-last-reviewed: 2026-05-01
+  - docs/dev/jellyfin-endpoint-availability.yml
+last-reviewed: 2026-05-30
 ---
 
 # JellyRock Versioning Systems Overview
@@ -95,6 +96,24 @@ Some Jellyfin API endpoints are only available on specific server versions. Thes
 - Guard functions call `versionChecker(m.global.server.version, "x.y.z")` to compare the raw server version string
 - Callers check the guard before making the API request — the endpoint simply isn't called on older servers
 - No `apiVersion` dispatch needed because these are top-level paths, not user-scoped endpoints
+
+**Endpoints that gracefully degrade (no explicit guard):** some post-floor
+endpoints have no version guard but are safe because a missing endpoint returns a
+404 and the caller checks `isValid()` before use — e.g. `Audio/{itemId}/Lyrics`
+(10.9+, no lyrics shown on older servers) and the Quick Connect probe `/QuickConnect/Enabled`
+(10.8+, fail-open). These are not bugs, but they *do* trip the server-upgrade
+pipeline's floor-coverage check (we call an endpoint the 10.7.0 floor spec lacks).
+
+**Machine-readable registry:** every post-floor endpoint and its old-server
+handling (guard / dispatch-sibling / graceful-degradation) is recorded in
+[`jellyfin-endpoint-availability.yml`](jellyfin-endpoint-availability.yml) — the
+server-upgrade pipeline's validated disposition ledger
+([server-upgrade-automation.md](../architecture/server-upgrade-automation.md),
+Phase 6). The table above is the human-readable mirror; the YAML is the source the
+floor check consumes, and `npm run lint:endpoint-availability` validates each
+entry's guard/sibling claim against current code so a removed guard resurfaces the
+finding. When you add a version-gated or post-floor endpoint, add a registry entry
+(the lint will tell you if you forgot — the finding will flag `needsInvestigation`).
 
 **Media Segments (10.10.0+):**
 
