@@ -22,6 +22,8 @@ import {
   applySuppressions,
   buildReport,
   serializeReport,
+  readManifestFrom,
+  resolveFingerprint,
 } from '../../../../scripts/generate/findings-candidates.js';
 
 const SCRIPT = 'scripts/generate/findings-candidates.js';
@@ -574,5 +576,71 @@ describe('CLI --stdout against committed fixtures', () => {
     const missing = spawnScript(SCRIPT, ['10.11.8', '9.9.9', '--root', dir, '--stdout']);
     expect(missing.exitCode).not.toBe(0);
     expect(missing.stderr).toMatch(/no committed fingerprint for 9\.9\.9/);
+  });
+
+  it('--manifest <path> overrides the committed manifest (what-if simulation)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-findings-'));
+    const fpRel = (v) => `docs/architecture/spec-fingerprints/jellyfin-${v}.json`;
+    write(fpRel('10.7.0'), fp('10.7.0', { operations: {} }));
+    write(fpRel('10.11.8'), fp('10.11.8', { operations: { 'GET /Items/{itemId}': {} } }));
+    write(fpRel('10.11.10'), fp('10.11.10', { operations: {} })); // /items/{} removed
+    // committed manifest USES /items/{} → its removal is a breaking candidate.
+    write(
+      'docs/architecture/api-usage-manifest.json',
+      manifest({ endpoints: [endpoint({ minApiVersion: 2 })] }),
+    );
+    write(
+      'docs/dev/jellyfin-version-boundaries.yml',
+      'floor: "10.7.0"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n',
+    );
+    write('.api-watch/suppressions.yml', 'rules: []\n');
+    // an ALTERNATE manifest that uses nothing → the same diff yields 0 breaking.
+    write('alt-manifest.json', manifest({ endpoints: [] }));
+
+    const base = spawnScript(SCRIPT, ['10.11.8', '10.11.10', '--root', dir, '--stdout']);
+    expect(JSON.parse(base.stdout).counts.breaking).toBeGreaterThanOrEqual(1);
+
+    const overridden = spawnScript(SCRIPT, [
+      '10.11.8',
+      '10.11.10',
+      '--root',
+      dir,
+      '--manifest',
+      join(dir, 'alt-manifest.json'),
+      '--stdout',
+    ]);
+    expect(overridden.exitCode).toBe(0);
+    expect(JSON.parse(overridden.stdout).counts.breaking).toBe(0);
+  });
+});
+
+describe('readManifestFrom + resolveFingerprint (dry-run helpers)', () => {
+  let dir;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('readManifestFrom reads an explicit path and throws a clear error on a bad path', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-findings-'));
+    const p = join(dir, 'm.json');
+    writeFileSync(p, JSON.stringify(manifest({ endpoints: [endpoint()] })));
+    expect(readManifestFrom(p).endpoints).toHaveLength(1);
+    expect(() => readManifestFrom(join(dir, 'nope.json'))).toThrow(/cannot read manifest/);
+  });
+
+  it('resolveFingerprint prefers a committed fingerprint; missing + no --fetch throws (no network)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-findings-'));
+    const rel = 'docs/architecture/spec-fingerprints/jellyfin-10.11.8.json';
+    mkdirSync(join(dir, rel, '..'), { recursive: true });
+    writeFileSync(join(dir, rel), JSON.stringify(fp('10.11.8', { operations: { 'GET /x': {} } })));
+
+    const committed = await resolveFingerprint(dir, '10.11.8', { fetch: false });
+    expect(committed.specVersion).toBe('10.11.8');
+
+    // missing + fetch:false → the helpful "no committed fingerprint" error, no network.
+    await expect(resolveFingerprint(dir, '9.9.9', { fetch: false })).rejects.toThrow(
+      /no committed fingerprint for 9\.9\.9/,
+    );
   });
 });
