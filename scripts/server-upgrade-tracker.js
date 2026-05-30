@@ -10,7 +10,7 @@
 //      has run: it fetches the live latest stable (RCs excluded, per the
 //      fetcher) and reads `latest_acknowledged` from docs/signals-backlog.md.
 //   2. COMPUTES the mechanical candidate counts (breaking / opportunity /
-//      coverage-gap / needsInvestigation) by running the Phase-2 report against
+//      coverage-gap / symmetry-advisory / needsInvestigation) by running the Phase-2 report against
 //      an EPHEMERAL, in-memory `to` fingerprint built from the fetched spec —
 //      NOTHING is written to the repo. The reviewed-anchor invariant (a
 //      committed fingerprint means a human reviewed it) is preserved; the human
@@ -143,6 +143,7 @@ export function renderTrackerBody({ version, acknowledged, floor, counts, error 
     lines.push(`- 🔴 **${counts.breaking ?? 0}** breaking candidate(s)`);
     lines.push(`- 🟢 **${counts.opportunity ?? 0}** opportunit(y/ies)`);
     lines.push(`- 🟡 **${counts['coverage-gap'] ?? 0}** floor coverage-gap(s)`);
+    lines.push(`- 🔵 **${counts['symmetry-advisory'] ?? 0}** coverage-symmetry advisor(y/ies)`);
     lines.push(`- 🔎 **${counts.needsInvestigation ?? 0}** total needing investigation`);
     if (counts.suppressed) lines.push(`- 🔇 ${counts.suppressed} suppressed (accepted churn)`);
     lines.push('');

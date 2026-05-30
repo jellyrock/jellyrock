@@ -108,14 +108,16 @@ describe('renderTrackerBody', () => {
         breaking: 2,
         opportunity: 1,
         'coverage-gap': 3,
-        needsInvestigation: 6,
+        'symmetry-advisory': 1,
+        needsInvestigation: 7,
         suppressed: 1,
       },
     });
     expect(body).toContain('**2** breaking');
     expect(body).toContain('**1** opportunit');
     expect(body).toContain('**3** floor coverage-gap');
-    expect(body).toContain('**6** total needing investigation');
+    expect(body).toContain('**1** coverage-symmetry advisor');
+    expect(body).toContain('**7** total needing investigation');
     expect(body).toContain('1 suppressed');
     expect(body).toContain('spec-fingerprint.js 10.11.10');
     expect(body).toContain('/done jellyfin-server-stable');

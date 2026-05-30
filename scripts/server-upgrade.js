@@ -81,14 +81,32 @@ export const KIND_LABEL = {
   'field-retyped': 'field retyped',
   'enum-changed': 'enum changed',
   'coverage-gap': 'floor coverage gap',
+  'coverage-symmetry': 'coverage symmetry',
 };
 
 // The verdict's recommendedAction vocabulary.
 export const ACTIONS = new Set(['file', 'skip', 'monitor']);
 
-// Phase-3 trust ratchet: NO class auto-files. Empty set = everything is
-// human-gated (running `execute` is the gate). Phase 5 graduates a class by
-// adding it here once its observed false-positive rate is proven low.
+// Graduated trust ratchet: which finding-CLASSES auto-file. EMPTY = everything is
+// human-gated (running `execute` is the per-release batch approval).
+//
+// Phase 5 deliberately keeps this empty: no class has an OBSERVED false-positive
+// rate yet (the pipeline has filed zero issues), so graduating any class would be
+// graduating on faith — exactly what the ratchet decision forbids. The MECHANISM
+// is fully wired (each action carries autoFileEligible via isAutoFileEligible), so
+// graduating a class later is a one-line config change here, NOT a rewrite.
+//
+// What graduation MEANS (decided Phase 5): adding a class here relaxes the per-class
+// batch-approval gate inside a human-run `/server-upgrade execute` — that class's
+// `create` actions no longer need the Step-4 confirmation. It does NOT add an
+// autonomous auto-file path to the Phase-4 CI tracker: the CI tracker stays the one
+// fully-autonomous surface and only ANNOUNCES; auto-filing a mechanically-derived
+// candidate without the agent's per-finding disposition would file the very
+// false-positives the disposition exists to catch.
+//
+// The evidence bar + the FP-rate query that justifies a future graduation live in
+// the "Graduation procedure" subsection of the Phase-5 build record in
+// docs/architecture/server-upgrade-automation.md.
 export const AUTO_FILE_CLASSES = new Set();
 
 export function isAutoFileEligible(type) {

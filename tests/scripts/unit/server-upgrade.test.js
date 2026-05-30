@@ -123,6 +123,27 @@ function coverageGapCandidate(over = {}) {
   };
 }
 
+function symmetryCandidate(over = {}) {
+  return {
+    type: 'symmetry-advisory',
+    change: {
+      kind: 'coverage-symmetry',
+      path: '/items',
+      method: 'GET',
+      detail:
+        '/items/: method(s) GET present on floor spec 10.7.0 but endpoint wired tier ≥2 only — confirm a lower-tier sibling/fallback covers the floor',
+      fromVersion: '10.7.0',
+      toVersion: null,
+    },
+    appUsage: { used: true, apiVersionRange: [2, null], sites: ['source/api/ApiClient.bs'] },
+    relevance: 'floor-symmetry',
+    severityGuess: 'low',
+    needsInvestigation: true,
+    suppressed: false,
+    ...over,
+  };
+}
+
 function report(candidates, over = {}) {
   return {
     schemaVersion: 1,
@@ -158,6 +179,9 @@ describe('findingKey — stable, version-independent', () => {
   });
   it('keys coverage-gaps by kind + normalized path + method', () => {
     expect(findingKey(coverageGapCandidate())).toBe('coverage-gap /userviews GET');
+  });
+  it('keys symmetry advisories by kind + normalized path + method', () => {
+    expect(findingKey(symmetryCandidate())).toBe('coverage-symmetry /items GET');
   });
   it('does NOT include the version (recurrence dedups to the same key)', () => {
     const k1 = findingKey(
@@ -200,6 +224,9 @@ describe('findingLocator + title', () => {
     );
     expect(draftIssueTitle(coverageGapCandidate())).toBe(
       '[server-upgrade] floor coverage gap: GET /userviews (floor 10.7.0)',
+    );
+    expect(draftIssueTitle(symmetryCandidate())).toBe(
+      '[server-upgrade] coverage symmetry: GET /items (floor 10.7.0)',
     );
   });
 });
@@ -414,6 +441,20 @@ describe('reconcileActions', () => {
     );
     expect(actions[0].action).toBe('invalid-verdict');
     expect(actions[0].problems.length).toBeGreaterThan(0);
+  });
+
+  it('files a symmetry-advisory with enhancement base labels, still human-gated', () => {
+    const sc = symmetryCandidate();
+    const k = findingKey(sc);
+    const actions = reconcileActions(
+      [sc],
+      [fileVerdict(k, { severity: 'low', labels: ['server-upgrade', 'enhancement'] })],
+      new Map([[k, null]]),
+      META,
+    );
+    expect(actions[0].action).toBe('create');
+    expect(actions[0].labels).toEqual(['server-upgrade', 'enhancement']);
+    expect(actions[0].autoFileEligible).toBe(false);
   });
 
   it('matches the verdict to the candidate by findingKey regardless of order', () => {
