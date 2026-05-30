@@ -32,7 +32,7 @@ Like `/crash-report`, this skill has **no sibling `INVESTIGATION.md`** — each 
 
 2. **The `server-upgrade` label exists.** Check `gh label list --search server-upgrade`. If missing, surface: `gh label create server-upgrade --color 1d76db --description "Filed automatically by /server-upgrade from a Jellyfin release API diff"`. (`bug` / `enhancement` are GitHub defaults — don't create them.) One-time setup per repo.
 
-3. **Read the report's counts** (`counts` block) so you can tell the user up front: N candidates needing investigation, plus how many were suppressed / frozen-skipped (those are *not* re-filed — respect `suppressed: true` and `needsInvestigation: false`).
+3. **Read the report's counts** (`counts` block) so you can tell the user up front: N candidates needing investigation (broken down as `breaking` / `coverage-gap` / `symmetry-advisory` / `opportunity`), plus how many were suppressed / frozen-skipped (those are *not* re-filed — respect `suppressed: true` and `needsInvestigation: false`).
 
 ## Step 1 — Scaffold the verdict template
 
@@ -90,7 +90,7 @@ Read `$PLAN`. Render it as:
 3. **Investigated, not filing** — the `skip` rows with their rationale (the audit trail), and `monitor` rows.
 4. **⚠️ Needs attention** — any `missing-verdict` (you skipped investigating a candidate — go back to Step 2) or `invalid-verdict` (malformed verdict; the `problems` say why). Resolve these before executing, or the findings won't be filed.
 
-Then ask via AskUserQuestion: (a) execute the plan as-is, (b) revise verdicts and re-plan (loop to Step 2/3), or (c) abort. **This confirmation IS the graduated-trust-ratchet gate** — one batch approval per release, not per finding. Nothing files without it.
+Then ask via AskUserQuestion: (a) execute the plan as-is, (b) revise verdicts and re-plan (loop to Step 2/3), or (c) abort. **This confirmation IS the graduated-trust-ratchet gate** — one batch approval per release, not per finding. Nothing files without it. (If a finding-class has *graduated* — its `type` is in `AUTO_FILE_CLASSES`, so its actions carry `autoFileEligible: true` — that class's `create` actions are pre-approved within this batch and don't need separate confirmation. Today `AUTO_FILE_CLASSES` is empty: every class is still gated. Graduation only ever relaxes *this in-session* approval; the CI tracker never auto-files. See the design doc's "Graduation procedure".)
 
 ## Step 5 — Execute
 

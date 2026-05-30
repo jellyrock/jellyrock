@@ -30,19 +30,22 @@ ships, mechanically detect every API change that intersects code JellyRock
 actually ships, have an agent investigate the real impact, and file/triage GitHub
 issues — while staying silent about the churn that doesn't affect us.
 
-> **Status (2026-05-30):** Phases 0 + 0.5 + 1 + 2 + 3 + 4 are built and verified
-> (the API-usage manifest with `apiVersion` tiers; the supply+diff layer:
-> version-boundary map, spec fetch/cache, fingerprint generator with committed
-> floor/baseline anchors, and the structural diff engine; the join+classify
-> layer: `findings-candidates.js` with the forward + backward checks,
-> tier-relevance filtering, and `.api-watch` suppression; the
-> `/server-upgrade` skill + `scripts/server-upgrade.js` filer that investigate
-> the report and file/dedup GitHub issues, human-gated; and the proactive-CI
-> tracker: `scripts/server-upgrade-tracker.js` +
+> **Status (2026-05-30):** Phases 0 + 0.5 + 1 + 2 + 3 + 4 + 5 are built and
+> verified (the API-usage manifest with `apiVersion` tiers; the supply+diff
+> layer: version-boundary map, spec fetch/cache, fingerprint generator with
+> committed floor/baseline anchors, and the structural diff engine; the
+> join+classify layer: `findings-candidates.js` with the forward + backward +
+> coverage-symmetry checks, tier-relevance filtering, and `.api-watch`
+> suppression; the `/server-upgrade` skill + `scripts/server-upgrade.js` filer
+> that investigate the report and file/dedup GitHub issues, human-gated; and the
+> proactive-CI tracker: `scripts/server-upgrade-tracker.js` +
 > `.github/workflows/server-upgrade-tracker.yml` maintaining ONE tracker issue
-> with ephemeral-computed candidate counts). Phase 5 (coverage-symmetry
-> advisory + auto-file graduation) is designed here but not yet built. See the
-> [roadmap](#roadmap) below.
+> with ephemeral-computed candidate counts). Phase 5 added the coverage-symmetry
+> advisory (the mirror of the backward check) and locked the auto-file
+> graduation policy — the ratchet stays human-gated (no class graduated; the bar
+> needs observed false-positive data that doesn't exist yet) with the graduation
+> procedure documented for a future config flip. See the
+> [roadmap](#roadmap) and the Phase 5 build record below.
 
 ## Why this exists
 
@@ -123,6 +126,16 @@ which enables a check that has no anchor otherwise:
 | ------------ | ------------------------------------------------- | ------------------------------ | --------------------------------------------------- |
 | **Forward**  | Did something we use change in the new release?   | delta: acknowledged → latest   | Breakage on **modern** servers                      |
 | **Backward** | Do we use something the floor server lacks?       | absolute: manifest → 10.7.0    | A new feature silently broken on the **oldest** servers (used a too-new endpoint with no dispatch/guard) |
+| **Symmetry** | Is an op we gate modern-only also served on the floor? | absolute: manifest → 10.7.0 | An operation wired for one tier only that's plausibly missing a low-tier fallback — the mirror image of the backward check (see Phase 5) |
+
+The **backward** and **symmetry** checks partition the manifest by the *same*
+predicate (`does the endpoint's tier range include the floor tier?`): backward
+owns the floor-included endpoints and flags the ones *absent* from the floor
+spec; symmetry owns the modern-only endpoints and flags the ones *present* in
+the floor spec. They can never double-report a given endpoint, and a genuinely
+modern-only endpoint (absent from the floor — a real 10.9+ feature) is flagged
+by neither. Both over-capture in a known way the agent dispositions (backward via
+capability guards; symmetry via an unlinked V1 dispatch sibling).
 
 ## Data-flow pipeline
 
@@ -148,7 +161,7 @@ self-describing so the agent (and a human) can act without re-deriving anything:
               "fromVersion": "10.11.8", "toVersion": "10.11.10" },
   "appUsage": { "used": true, "apiVersionRange": [2, null],
                 "sites": ["source/api/ApiClient.bs:59", "source/data/JellyfinDataTransformer.bs:96"] },
-  "relevance": "active-tier | frozen-skip | floor-coverage",
+  "relevance": "active-tier | frozen-skip | floor-coverage | floor-symmetry",
   "severityGuess": "high",      // mechanical first guess; the agent overrides
   "needsInvestigation": true,
   "suppressed": false           // by .api-watch ignore rules
@@ -264,8 +277,14 @@ reproducibility without repo bloat.
   with the `signals-backlog` route rewired to `/server-upgrade`. Counts are
   computed from an ephemeral in-CI fingerprint (no repo write); fixture-tested
   offline.
-- **Phase 5 — Maturation.** Coverage-symmetry advisory; graduate auto-file per
-  finding-class once false-positive rates are proven low.
+- **Phase 5 — Maturation.** ✅ *done.* Coverage-symmetry advisory
+  (`symmetryFindings` in
+  [`findings-candidates.js`](../../scripts/generate/findings-candidates.js), the
+  mirror of the backward check; surfaced in the filer's title/labels +
+  the CI tracker counts); auto-file graduation **policy + mechanism** locked (no
+  class graduated — the ratchet stays human-gated until observed false-positive
+  data justifies a config flip). Fixture-tested; offline. See the build
+  record below.
 
 ## Phase 1 — implementation notes (built; kept as the build record)
 
@@ -504,6 +523,116 @@ testable compute core) and
    `--latest` + `--to-file` (an injected `to` spec) against tiny hand-written
    committed inputs — including the graceful-degradation branch (a missing
    baseline fingerprint → announce-only). No network, no GitHub writes.
+
+## Phase 5 — implementation notes (built; kept as the build record)
+
+> **Built 2026-05-30.** A record of *how* Phase 5 was implemented. Phase 5 is the
+> pipeline's maturation: a new directional check (coverage-symmetry) and the
+> locked policy for graduating the trust ratchet. Two independent sub-features.
+
+### (1) Coverage-symmetry advisory
+
+`symmetryFindings` in
+[`findings-candidates.js`](../../scripts/generate/findings-candidates.js) is the
+exact **complement** of the backward floor-coverage check, and the two are the
+two branches of one predicate — `rangeIncludes(min, max, floorTier)`:
+
+| Check | Tier filter | Floor-spec test | Meaning |
+| --- | --- | --- | --- |
+| backward `coverage-gap` | floor *in* range (`min == 1`) | op **ABSENT** from floor | we call it; the oldest server lacks it → break on old servers |
+| `symmetry-advisory` (new) | floor *excluded* (`min > 1`) | op **PRESENT** in floor | the oldest server *serves* it, yet we wire it modern-only → plausibly a missing low-tier fallback |
+
+1. **Mechanical signal (decision a).** Script-side, fixture-testable — not
+   agent-only. A modern-only endpoint whose operation is *present* in the floor
+   fingerprint (path+method, with the same UNKNOWN-verb→path-level fallback the
+   backward check uses) emits a `symmetry-advisory` candidate with
+   `change.kind: "coverage-symmetry"`, `relevance: "floor-symmetry"`,
+   `severityGuess: "low"`, joining by path+method+tier exactly like
+   `coverage-gap`. **Boundary vs coverage-gap:** the two partition the manifest
+   by `min == 1` vs `min > 1`, so they can never double-report; a genuinely
+   modern-only endpoint (absent from the floor — a real 10.9+ feature) is flagged
+   by neither, which is what "accounting for intentionally-modern-only guarded
+   features" means mechanically. On the real committed manifest this fires on
+   exactly **one** candidate — `GET /items`, served on the floor but gated to V2+
+   because the V1 dispatch branch uses the `/Users/{}/Items` sibling. That's the
+   *expected* coarseness false-positive the agent dispositions (via the unlinked
+   sibling), exactly mirroring how it dispositions capability-guarded
+   coverage-gaps. A future feature that adds a call gated to `V2`+ *without* a
+   `V1` dispatch branch is the new bug class this catches.
+2. **Surfacing.** `KIND_LABEL['coverage-symmetry'] = 'coverage symmetry'` in the
+   filer gives advisories a readable title + a stable, version-independent dedup
+   identity; `BASE_LABELS_BY_TYPE['symmetry-advisory']` was already
+   `[server-upgrade, enhancement]`. The Phase-4 tracker body gained a
+   coverage-symmetry count line. The report `counts` block gained
+   `symmetry-advisory`.
+3. **Tests.** `findings-candidates.test.js` exercises fires/skips/partition/
+   method-specificity/UNKNOWN-fallback; `server-upgrade.test.js` covers the
+   symmetry `findingKey`/title/labels (still human-gated);
+   `server-upgrade-tracker.test.js` covers the count line.
+
+### (2) Auto-file graduation — policy + mechanism (no class graduated)
+
+The mechanism was wired in Phase 3 (`AUTO_FILE_CLASSES`, `isAutoFileEligible`,
+`autoFileEligible` on every action), so graduation is config, not a rewrite.
+Phase 5 locks the *policy*; it graduates **nothing**.
+
+1. **Decision (b) — graduate nothing yet; what graduation means.** No class has
+   an *observed* false-positive rate — the pipeline has filed zero issues — so
+   graduating any class would be on faith, which the ratchet decision forbids.
+   When a class does graduate, it **relaxes the per-class batch-approval gate
+   inside a human-run `/server-upgrade execute`** (that class's `create` actions
+   skip the Step-4 confirmation). It does **not** add an autonomous auto-file path
+   to the Phase-4 CI tracker: the tracker stays the *one* fully-autonomous
+   surface and only announces. Auto-filing a mechanically-derived candidate in CI
+   *without* the agent's per-finding disposition would file precisely the
+   false-positives the disposition exists to catch (coverage-gap's
+   capability-guard coarseness and symmetry's unlinked sibling coarseness are both
+   structural FP sources the agent resolves by reading code).
+2. **Decision (c) — ship (1) fully; (2) is policy/docs only.** No measurement
+   command was built — it would query an issue corpus that doesn't exist yet and
+   couldn't be validated. The graduation procedure below preserves its *design*
+   at zero dead-code cost.
+
+#### Graduation procedure (for a future maintainer, once real data exists)
+
+A finding-class graduates when its false-positive rate — *issues filed for that
+class that were later closed as not-a-real-problem* ÷ *total filed for that
+class* — is proven low across enough releases. Suggested bar: **≥ ~8 filed in the
+class across ≥ 3 releases, FP rate < ~10%.** Tune with judgment; the point is a
+real track record, not a single clean release.
+
+Measuring the rate (read-only; run when `[server-upgrade]` issues exist):
+
+```bash
+# All filed server-upgrade issues, by state. Closed-as-"not planned" is the
+# false-positive signal (the /server-upgrade run that skipped should NOT have
+# filed); closed-as-completed = a real finding we fixed.
+gh issue list --label server-upgrade --state all --limit 200 \
+  --json number,title,state,stateReason,labels,closedAt \
+  | jq '
+    map(select(.title | startswith("[server-upgrade]"))) as $all
+    | ($all | length) as $total
+    | ($all | map(select(.stateReason == "not_planned")) | length) as $fp
+    | { total: $total, falsePositives: $fp,
+        fpRate: (if $total == 0 then null else ($fp / $total) end) }'
+```
+
+To break the rate down per class, partition by the title's kind-label prefix
+(`endpoint removed:`, `floor coverage gap:`, `coverage symmetry:`, `new
+endpoint:`, …) before the ratio. Note the convention to establish *first*: when
+a maintainer closes a `[server-upgrade]` issue because it was a false alarm, they
+must close it **as "not planned"** (not "completed") — that state-reason is the
+load-bearing signal this query keys on. (A `false-positive` label is a fine
+belt-and-suspenders but the query above keys on `stateReason`.)
+
+Once the bar is met for a class, graduation is one line:
+`export const AUTO_FILE_CLASSES = new Set(['<class>']);` in
+[`server-upgrade.js`](../../scripts/server-upgrade.js) — plus a `/log decision`
+recording the observed rate that justified it. `opportunity` is the most natural
+*first* candidate (an over-filed enhancement is low-harm vs a wrong `bug`);
+`coverage-gap` is the *worst* (the `/audio/{}/lyrics` capability-guard coarseness
+is a structural FP source), and `symmetry-advisory` is brand-new with no track
+record. None graduate today.
 
 ## Related
 
