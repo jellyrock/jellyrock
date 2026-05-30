@@ -5,6 +5,8 @@ related-files:
   - scripts/generate/spec-fingerprint.js
   - scripts/generate/spec-diff.js
   - scripts/generate/findings-candidates.js
+  - scripts/server-upgrade.js
+  - .claude/skills/server-upgrade/SKILL.md
   - .api-watch/suppressions.yml
   - scripts/lib/spec-fetch.cjs
   - scripts/lib/version-boundaries.cjs
@@ -26,15 +28,16 @@ ships, mechanically detect every API change that intersects code JellyRock
 actually ships, have an agent investigate the real impact, and file/triage GitHub
 issues — while staying silent about the churn that doesn't affect us.
 
-> **Status (2026-05-29):** Phases 0 + 0.5 + 1 + 2 are built and verified (the
+> **Status (2026-05-29):** Phases 0 + 0.5 + 1 + 2 + 3 are built and verified (the
 > API-usage manifest with `apiVersion` tiers; the supply+diff layer:
 > version-boundary map, spec fetch/cache, fingerprint generator with committed
-> floor/baseline anchors, and the structural diff engine; and the join+classify
+> floor/baseline anchors, and the structural diff engine; the join+classify
 > layer: `findings-candidates.js` with the forward + backward checks,
-> tier-relevance filtering, and `.api-watch` suppression). Phases 3–5 are
-> designed here but not yet built. At the end of Phase 2 the full report runs by
-> hand (`npm run api-watch:findings <from> <to>`); the `/server-upgrade` agent
-> skill that consumes it is Phase 3. See the [roadmap](#roadmap) below.
+> tier-relevance filtering, and `.api-watch` suppression; and the
+> `/server-upgrade` skill + `scripts/server-upgrade.js` filer that investigate
+> the report and file/dedup GitHub issues, human-gated). Phases 4–5 (proactive
+> CI tracker-issue; coverage-symmetry advisory + auto-file graduation) are
+> designed here but not yet built. See the [roadmap](#roadmap) below.
 
 ## Why this exists
 
@@ -243,8 +246,12 @@ reproducibility without repo bloat.
   with forward and backward checks, tier-relevance filtering, and `.api-watch`
   suppression ([`findings-candidates.js`](../../scripts/generate/findings-candidates.js);
   fixture-tested; offline). *At the end of Phase 2 the full report runs by hand.*
-- **Phase 3 — `/server-upgrade` skill.** Agent investigation over the report +
-  plan/execute issue automation (human-gated), dedup/reopen/labels.
+- **Phase 3 — `/server-upgrade` skill.** ✅ *done.* Agent investigation over the
+  report ([`SKILL.md`](../../.claude/skills/server-upgrade/SKILL.md)) +
+  scaffold/plan/execute issue automation
+  ([`server-upgrade.js`](../../scripts/server-upgrade.js); human-gated),
+  dedup/reopen/labels. Fixture-tested; the GH writes live behind the human
+  `execute` gate.
 - **Phase 4 — Proactive CI.** Scheduled tracker-issue + `signals-backlog` wiring.
 - **Phase 5 — Maturation.** Coverage-symmetry advisory; graduate auto-file per
   finding-class once false-positive rates are proven low.
@@ -358,6 +365,63 @@ inputs — no network, no GitHub writes — so it is fully fixture-tested.
    exercise every path with tiny hand-written manifests + fingerprints (direct
    import for the pure builders, `spawnScript` for the CLI), mirroring
    `spec-diff.test.js`.
+
+## Phase 3 — implementation notes (built; kept as the build record)
+
+> **Built 2026-05-29.** A record of *how* Phase 3 was implemented. The next
+> session picks up at **Phase 4 — proactive CI** (scheduled tracker-issue +
+> `signals-backlog` wiring).
+
+Phase 3 is the two-halves seam in code: the judgment half is the
+[`/server-upgrade`](../../.claude/skills/server-upgrade/SKILL.md) opus skill
+(pipeline stage 4, "Investigate"); the mechanical half is
+[`server-upgrade.js`](../../scripts/server-upgrade.js) (stage 5, "File"), which
+mirrors `scripts/crash-report.js`'s plan/execute split. The filer never decides
+"is this a real problem"; the skill never touches GitHub.
+
+1. **Three filer commands bridge the agent seam.** `scaffold` is a pure read of
+   the data report → a verdict-template JSON listing the candidates the report
+   flagged `needsInvestigation` (so suppressed + frozen-skip self-exclude),
+   keyed by a stable `findingKey` the *script* derives. The agent fills judgment
+   fields in place (`real`, `severity`, `recommendedAction ∈ {file, skip,
+   monitor}`, `labels`, `rationale`, `draftIssueBody`). `plan` joins the filled
+   verdicts back by `findingKey`, runs the GitHub dedup search (reads only), and
+   reconciles into `create | comment | reopen | skip | monitor | missing-verdict
+   | invalid-verdict`. `execute` is the only path that writes to GitHub + writes
+   a run-summary handoff to `.claude/handoffs/`. npm: `api-watch:file`.
+2. **Decision (a) — version-independent dedup key.** `findingKey` =
+   `kind + locator` (normalized path+method, or `Schema.field`, or enum schema),
+   never the version. The same structural concern recurring in a later release
+   maps to the same key → comment/reopen instead of a duplicate. This is
+   load-bearing for the recompute-every-run classes (every `coverage-gap` and
+   symmetry advisory is derived from manifest×floor, so a version-scoped key
+   would re-file the identical issue every release). The title carries the
+   readable locator; dedup confirms by the version-independent
+   `<kindLabel>: <locator>` substring (mirrors crash-report's stable substring +
+   `[server-upgrade]` title-prefix confirm). Base labels by type: breaking +
+   coverage-gap → `server-upgrade`+`bug`; opportunity + symmetry →
+   `server-upgrade`+`enhancement`; the agent may append. Only `server-upgrade`
+   is created during preflight.
+3. **Decision (b) — the script owns the verdict template.** The script derives
+   `findingKey` so the agent can't drift keys, and `scaffold` enumerates *every*
+   investigation candidate so `plan` surfaces any candidate left without a
+   verdict as `missing-verdict` rather than dropping it silently. Both silent
+   failure modes (a verdict whose key doesn't match, a missed candidate) are
+   closed for the price of one small pure command.
+4. **Decision (c) — all finding-classes human-gated (the trust ratchet).**
+   Running `execute` IS the per-release batch approval (one approval ~monthly,
+   not per finding). `AUTO_FILE_CLASSES` is empty and every action carries
+   `autoFileEligible: false`, so Phase 5 graduates a low-false-positive class by
+   config, not a rewrite. Coverage-gap is the *worst* auto-file candidate today
+   — the manifest's capability-guard coarseness (`/audio/{}/lyrics` tagged
+   `[1, ∞)`) is a known structural false-positive source the agent dispositions
+   by reading the guard, so it stays gated.
+5. **Tests** ([`server-upgrade.test.js`](../../tests/scripts/unit/server-upgrade.test.js))
+   exercise every pure part — stable identity, title draft + dedup confirm
+   (incl. kind disambiguation on a shared locator), scaffold, verdict
+   validation, reconciliation across all action classes, plan counts, the
+   `executePlan` write branches via an injected `gh` mock, and the run-summary
+   render — plus the CLI scaffold/plan path with `--no-dedup` (no network).
 
 ## Related
 
