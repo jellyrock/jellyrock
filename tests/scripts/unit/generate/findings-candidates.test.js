@@ -17,6 +17,7 @@ import {
   buildFieldIndex,
   forwardFindings,
   backwardFindings,
+  symmetryFindings,
   matchSuppression,
   applySuppressions,
   buildReport,
@@ -300,6 +301,100 @@ describe('backwardFindings — floor-coverage check', () => {
   });
 });
 
+describe('symmetryFindings — coverage-symmetry advisory (the mirror of the backward check)', () => {
+  // Floor spec serves GET /Items (the real 10.7.0 case the app gates to V2+).
+  const floorFp = fp('10.7.0', {
+    operations: { 'GET /Items': { parameters: [] } },
+  });
+
+  it('flags a modern-only endpoint whose op IS present on the floor spec', () => {
+    const m = manifest({
+      endpoints: [
+        endpoint({ path: '/items/', normalized: '/items', methods: ['GET'], minApiVersion: 2 }),
+      ],
+    });
+    const candidates = symmetryFindings(m, floorFp, BOUNDARIES);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      type: 'symmetry-advisory',
+      relevance: 'floor-symmetry',
+      severityGuess: 'low',
+      needsInvestigation: true,
+      change: { kind: 'coverage-symmetry', path: '/items', method: 'GET', toVersion: null },
+      appUsage: { used: true, apiVersionRange: [2, null] },
+    });
+    expect(candidates[0].change.detail).toContain('present on floor spec 10.7.0');
+    expect(candidates[0].change.detail).toContain('wired tier ≥2 only');
+  });
+
+  it('does NOT flag a genuinely modern-only endpoint ABSENT from the floor spec', () => {
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/UserViews',
+          normalized: '/userviews',
+          methods: ['GET'],
+          minApiVersion: 2,
+        }),
+      ],
+    });
+    expect(symmetryFindings(m, floorFp, BOUNDARIES)).toHaveLength(0);
+  });
+
+  it('does NOT flag a floor-included endpoint (min==1) — that is the backward check’s territory', () => {
+    const m = manifest({
+      endpoints: [
+        endpoint({ path: '/items/', normalized: '/items', methods: ['GET'], minApiVersion: 1 }),
+      ],
+    });
+    expect(symmetryFindings(m, floorFp, BOUNDARIES)).toHaveLength(0);
+  });
+
+  it('flags a modern-only endpoint when only a specific method is present on the floor', () => {
+    // Floor serves GET /Items but not POST /Items; only the GET surfaces.
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/items/',
+          normalized: '/items',
+          methods: ['GET', 'POST'],
+          minApiVersion: 2,
+        }),
+      ],
+    });
+    const candidates = symmetryFindings(m, floorFp, BOUNDARIES);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].change.method).toBe('GET');
+  });
+
+  it('treats an UNKNOWN-method modern-only endpoint as present when the path exists on the floor', () => {
+    const floorWithPath = fp('10.7.0', { operations: { 'POST /UserImage': { parameters: [] } } });
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/UserImage',
+          normalized: '/userimage',
+          methods: ['UNKNOWN'],
+          minApiVersion: 2,
+        }),
+      ],
+    });
+    const candidates = symmetryFindings(m, floorWithPath, BOUNDARIES);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].change.method).toBe('UNKNOWN');
+  });
+
+  it('partition: a modern-only floor-present endpoint is a symmetry-advisory and NOT a coverage-gap', () => {
+    const m = manifest({
+      endpoints: [
+        endpoint({ path: '/items/', normalized: '/items', methods: ['GET'], minApiVersion: 2 }),
+      ],
+    });
+    expect(symmetryFindings(m, floorFp, BOUNDARIES)).toHaveLength(1);
+    expect(backwardFindings(m, floorFp, BOUNDARIES)).toHaveLength(0);
+  });
+});
+
 describe('suppression', () => {
   const breakingCandidate = {
     type: 'breaking',
@@ -397,6 +492,27 @@ describe('buildReport — integration over fingerprints', () => {
     expect(serializeReport(report)).toBe(
       serializeReport(buildReport({ fromFp, toFp, floorFp, manifest: m, boundaries: BOUNDARIES })),
     );
+  });
+
+  it('surfaces a symmetry-advisory in counts when a modern-only endpoint is present on the floor', () => {
+    const symMatch = manifest({
+      endpoints: [
+        endpoint({ path: '/items/', normalized: '/items', methods: ['GET'], minApiVersion: 2 }),
+      ],
+    });
+    const symFloor = fp('10.7.0', { operations: { 'GET /Items': { parameters: [] } } });
+    const fromFp = fp('10.11.8', { operations: {} });
+    const toFp = fp('10.11.10', { operations: {} });
+    const report = buildReport({
+      fromFp,
+      toFp,
+      floorFp: symFloor,
+      manifest: symMatch,
+      boundaries: BOUNDARIES,
+    });
+    expect(report.counts['symmetry-advisory']).toBe(1);
+    expect(report.counts['coverage-gap']).toBe(0);
+    expect(report.counts.needsInvestigation).toBe(1);
   });
 
   it('respects --no-opportunities via emitOpportunities flag', () => {
