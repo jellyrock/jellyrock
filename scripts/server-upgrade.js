@@ -113,6 +113,22 @@ export function isAutoFileEligible(type) {
   return AUTO_FILE_CLASSES.has(type);
 }
 
+// Read-side schema-version guard. The pipeline emits `schemaVersion` on every
+// report/scaffold/plan; a consumer reading a file shaped by a different version
+// should know. WARN + CONTINUE (never throw): a mismatch surfaces drift without
+// aborting an in-flight triage. Returns true when the version matches (or is
+// absent on a doc that legitimately carries none), false when it mismatched.
+export function assertSchemaVersion(doc, label, logger = console.error) {
+  if (doc == null || typeof doc !== 'object' || !('schemaVersion' in doc)) return true;
+  if (doc.schemaVersion === SCHEMA_VERSION) return true;
+  logger(
+    `[server-upgrade] WARNING: schemaVersion mismatch in ${label} — ` +
+      `expected ${SCHEMA_VERSION}, found ${doc.schemaVersion}. Continuing, but the ` +
+      `file may be shaped for a different pipeline version; regenerate if results look off.`,
+  );
+  return false;
+}
+
 // ── Path normalization (mirrors findings-candidates.js / the manifest) ───────
 
 // Collapse every {placeholder} to {}, fold case, strip a trailing slash, ensure
@@ -955,6 +971,7 @@ function cmdScaffold(args) {
   const reportPath = args.flags.report ?? args._[1];
   if (!reportPath) throw new Error('Missing --report <findings-candidates.json>.');
   const report = readJson(reportPath);
+  assertSchemaVersion(report, basename(reportPath));
   // Tag the report with its filename so the plan/handoff can cite it.
   report.report = report.report ?? basename(reportPath);
   const scaffold = buildScaffold(report);
@@ -976,8 +993,11 @@ function cmdPlan(args) {
   if (!reportPath) throw new Error('Missing --report <findings-candidates.json>.');
   if (!verdictsPath) throw new Error('Missing --verdicts <filled-verdicts.json>.');
   const report = readJson(reportPath);
+  assertSchemaVersion(report, basename(reportPath));
   report.report = report.report ?? basename(reportPath);
   const verdictsDoc = readJson(verdictsPath);
+  // Verdicts may be a bare array (no envelope) or a {schemaVersion, verdicts} doc.
+  assertSchemaVersion(verdictsDoc, basename(verdictsPath));
   const verdicts = Array.isArray(verdictsDoc) ? verdictsDoc : (verdictsDoc.verdicts ?? []);
 
   const candidates = investigationCandidates(report);

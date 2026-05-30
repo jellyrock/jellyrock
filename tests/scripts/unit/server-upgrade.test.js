@@ -40,6 +40,8 @@ import {
   renderDigestVerdicts,
   attachSubIssue,
   TRIAGING_LABEL,
+  searchExistingIssues,
+  assertSchemaVersion,
 } from '../../../scripts/server-upgrade.js';
 
 const SCRIPT = 'scripts/server-upgrade.js';
@@ -906,5 +908,90 @@ describe('CLI scaffold + plan via spawnScript', () => {
     const r = spawnScript(SCRIPT, ['scaffold']);
     expect(r.exitCode).not.toBe(0);
     expect(r.stderr).toMatch(/Missing --report/);
+  });
+});
+
+// ── searchExistingIssues (dedup read via injected ghExec) ──────────────────────
+// The idempotency-critical GitHub read. Driven through the same injected-ghExec
+// seam executePlan uses, so no real `gh` runs.
+
+describe('searchExistingIssues — dedup read', () => {
+  function suCandidate() {
+    return {
+      type: 'breaking',
+      change: {
+        kind: 'endpoint-removed',
+        path: '/Items/{itemId}',
+        method: 'GET',
+        detail: 'GET /Items/{itemId} removed',
+      },
+    };
+  }
+
+  it('returns the matching open issue keyed by findingKey, with the right search args', () => {
+    const calls = [];
+    const matchTitle = `${TITLE_PREFIX} endpoint removed: GET /Items/{itemId} (→ 10.11.10)`;
+    const ghExec = (args) => {
+      calls.push(args);
+      return JSON.stringify([
+        { number: 51, state: 'OPEN', title: matchTitle, updatedAt: '2026-05-01T00:00:00Z' },
+      ]);
+    };
+    const c = suCandidate();
+    const out = searchExistingIssues([c], { ghExec });
+    expect(out.get(findingKey(c))).toEqual({ number: 51, state: 'OPEN', title: matchTitle });
+    // broad search by the quoted locator token, confirmed in-title
+    expect(calls[0]).toContain('list');
+    expect(calls[0]).toContain('--search');
+    expect(calls[0]).toContain('"/Items/{itemId}" in:title');
+  });
+
+  it('returns null when only a foreign (non-matching) issue is found', () => {
+    const ghExec = () =>
+      JSON.stringify([{ number: 9, state: 'OPEN', title: 'unrelated /Items/{itemId} chatter' }]);
+    const c = suCandidate();
+    expect(searchExistingIssues([c], { ghExec }).get(findingKey(c))).toBeNull();
+  });
+
+  it('returns null on an empty gh result', () => {
+    const c = suCandidate();
+    expect(searchExistingIssues([c], { ghExec: () => '' }).get(findingKey(c))).toBeNull();
+  });
+
+  it('falls back to null when ghExec throws (never crashes the run)', () => {
+    const ghExec = () => {
+      throw new Error('gh boom');
+    };
+    const c = suCandidate();
+    expect(searchExistingIssues([c], { ghExec }).get(findingKey(c))).toBeNull();
+  });
+});
+
+// ── assertSchemaVersion (read-side guard: warn + continue, never throw) ─────────
+
+describe('assertSchemaVersion — warn + continue', () => {
+  it('is silent and returns true when the version matches', () => {
+    const warnings = [];
+    const ok = assertSchemaVersion({ schemaVersion: 1 }, 'report.json', (m) => warnings.push(m));
+    expect(ok).toBe(true);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('warns and returns false on a mismatch, without throwing', () => {
+    const warnings = [];
+    const ok = assertSchemaVersion({ schemaVersion: 99 }, 'report.json', (m) => warnings.push(m));
+    expect(ok).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('schemaVersion mismatch');
+    expect(warnings[0]).toContain('report.json');
+  });
+
+  it('is silent for a doc that legitimately carries no schemaVersion', () => {
+    const warnings = [];
+    const push = (m) => warnings.push(m);
+    expect(assertSchemaVersion([], 'verdicts.json', push)).toBe(true);
+    expect(assertSchemaVersion({ verdicts: [] }, 'verdicts.json', push)).toBe(true);
+    expect(assertSchemaVersion(null, 'nothing.json', push)).toBe(true);
+    expect(warnings).toHaveLength(0);
   });
 });
