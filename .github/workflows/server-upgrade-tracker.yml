@@ -24,7 +24,11 @@ name: server-upgrade tracker
 
 on:
   schedule:
-    - cron: '0 12 * * TUE' # 12:00 UTC Tuesday — offset from docs-stale's Monday run
+    # Daily at 12:00 UTC. Jellyfin can ship more than one (hot)fix in a week, so
+    # weekly could miss a release for up to 7 days. Daily is cheap: a run
+    # short-circuits to a sub-second version-compare when we're caught up — the
+    # spec fetch + report compute only happen when a genuinely newer stable exists.
+    - cron: '0 12 * * *'
   workflow_dispatch:
     inputs:
       version:

@@ -30,6 +30,8 @@ Like `/crash-report`, this skill has **no sibling `INVESTIGATION.md`** — each 
 
    `spec-fingerprint.js <to>` hits the network (Jellyfin's permanent OpenAPI archive) — surface that to the user before running it. **Stable releases only**: if `<to>` is an RC, stop — RCs are tracked by the `jellyfin-server-rc` signal and do NOT generate issues.
 
+   To just **preview** a release without committing its fingerprint (e.g. a quick "what would this flag?" before a full triage), `node scripts/generate/findings-candidates.js <from> <to> --fetch --stdout` builds the `<to>` fingerprint in-memory and prints the full report. The real triage still commits the `<to>` fingerprint (the reviewed anchor) per the step above.
+
 2. **The `server-upgrade` label exists.** Check `gh label list --search server-upgrade`. If missing, surface: `gh label create server-upgrade --color 1d76db --description "Filed automatically by /server-upgrade from a Jellyfin release API diff"`. (`bug` / `enhancement` are GitHub defaults — don't create them.) One-time setup per repo.
 
 3. **Read the report's counts** (`counts` block) so you can tell the user up front: N candidates needing investigation (broken down as `breaking` / `coverage-gap` / `symmetry-advisory` / `opportunity`), plus how many were suppressed / frozen-skipped (those are *not* re-filed — respect `suppressed: true` and `needsInvestigation: false`).
@@ -53,7 +55,7 @@ Read `$SCAFFOLD`. For **every** verdict entry, open each path in `appUsage.sites
 4. **Enum changes.** A value added/removed on an enum the app switches on (`BaseItemKind`, stream `Type`, `MediaType`). Read the switch sites — an added value the app falls through on gracefully is low/skip; a removed value the app still sends, or relies on receiving, is real.
 5. **Graceful degradation vs genuine break** when a field disappears: does the feature still work degraded, or does a screen break?
 6. **Opportunity worth it?** For `opportunity` (new endpoint) candidates, decide whether it maps to a real JellyRock feature gap worth an `enhancement` issue (`file`) or is noise for us (`skip`), or worth tracking but not now (`monitor`).
-7. **Coverage symmetry.** For symmetry-advisory candidates, an operation wired for only one tier that's likely missing on the rest of the supported range — accounting for intentionally-modern-only guarded features.
+7. **Coverage symmetry.** A `symmetry-advisory` flags a modern-only endpoint (wired tier ≥N) whose operation the **floor** server *also* serves — so the app might be leaving floor users without it. Disposition the same way as #2, but looking for a **lower-tier dispatch sibling**: grep the cited site (and nearby) for an `if m.getApiVersion() >= N` branch that calls a *different* endpoint for the floor (e.g. `/Items/{}` on V2 vs `/Users/{}/Items/{}` on V1). If a sibling covers the floor → **`skip`** with that rationale — this is the *expected* `GET /items` case (the V1 branch uses `/Users/{userId}/Items`), the symmetry analogue of #2's guarded-fallback. If **no** floor path exists for the operation → floor users genuinely lack it → **`file`** (a real coverage gap, `enhancement`). Cosmetic / not worth it → **`monitor`**.
 
 For each, set in place (do **not** change `findingKey`):
 

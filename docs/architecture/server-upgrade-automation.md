@@ -283,8 +283,24 @@ reproducibility without repo bloat.
   mirror of the backward check; surfaced in the filer's title/labels +
   the CI tracker counts); auto-file graduation **policy + mechanism** locked (no
   class graduated — the ratchet stays human-gated until observed false-positive
-  data justifies a config flip). Fixture-tested; offline. See the build
-  record below.
+  data justifies a config flip); plus a `--fetch`/`--manifest` dry-run on the join
+  step (preview any release's full report without committing a fingerprint).
+  Fixture-tested; offline. See the build record below.
+- **Phase 6 — Release-triage issue model (planned).** Replace the per-finding
+  issue burst with **one auto-opened issue per server version** carrying the
+  rendered report as a digestible checklist + discussion hub. CI auto-closes it
+  **only** when the report is mechanically clean (0 candidates touch us — a
+  judgment-free claim); any issue that ever has a candidate is closed by a
+  human/the skill, never by CI on a "caught-up" signal. `/server-upgrade` *edits*
+  that one issue with verdicts instead of spraying N issues; per-finding issues
+  become opt-in promotions for work worth tracking standalone. This makes the
+  autonomous surface the per-version *summary* (no judgment), keeping *judgment*
+  (real vs skip) human-gated — a cleaner trust boundary than auto-filing
+  per-finding. Revises Phase 3 (filer output) + Phase 4 (tracker lifecycle);
+  needs its own design pass + a `/log decision` superseding the relevant part of
+  `server-upgrade-issue-filing`. Motivated by the real-data finding that a big
+  migration release (a 10.9-style event) would otherwise file 10–15+ separate
+  issues at once.
 
 ## Phase 1 — implementation notes (built; kept as the build record)
 
@@ -500,10 +516,12 @@ testable compute core) and
    and closes. If the human closes it manually while still behind, the next run
    reopens (no open issue → create), which is the intended "still needs triage"
    behavior.
-3. **Decision (c) — schedule + guards.** Weekly `cron: '0 12 * * TUE'` (offset
-   from docs-stale's Monday) + `workflow_dispatch` with a `version` override for
-   testing. Jellyfin ships ~monthly, so weekly bounds detection latency to ≤7
-   days cheaply. Detection fetches the live latest **stable** via
+3. **Decision (c) — schedule + guards.** Daily `cron: '0 12 * * *'` +
+   `workflow_dispatch` with a `version` override for testing. Daily (not weekly):
+   Jellyfin can ship more than one (hot)fix in a week, so weekly could miss a
+   release for up to 7 days. Daily is cheap because a run short-circuits to a
+   sub-second version-compare when caught up — the spec fetch + report compute
+   only happen when a genuinely newer stable exists. Detection fetches the live latest **stable** via
    `fetchJellyfinVersions().stable` (RCs are excluded by that fetcher's own
    rule — RCs are tracked by the separate `jellyfin-server-rc` signal and never
    generate issues) and compares against `latest_acknowledged` read from the
@@ -633,6 +651,29 @@ recording the observed rate that justified it. `opportunity` is the most natural
 `coverage-gap` is the *worst* (the `/audio/{}/lyrics` capability-guard coarseness
 is a structural FP source), and `symmetry-advisory` is brand-new with no track
 record. None graduate today.
+
+### (3) Dry-run / preview (`--fetch`, `--manifest`)
+
+[`findings-candidates.js`](../../scripts/generate/findings-candidates.js) gained two
+CLI flags so a maintainer (or a validation pass) can run the full report against
+*any* inputs without mutating the committed tree:
+
+- `--fetch` — for any version lacking a committed fingerprint, build one
+  IN-MEMORY from the fetched spec (`resolveFingerprint` prefers the committed
+  anchor, falls back to `fetchSpec` + `buildFingerprint` — the same ephemeral path
+  the Phase-4 tracker uses). Lets you preview a brand-new release's *full* report
+  (not just the tracker's counts) before committing its fingerprint. Only the
+  gitignored raw-spec cache is touched.
+- `--manifest <path>` — read the demand manifest from an explicit path instead of
+  the committed one. For what-if / historical simulation (e.g. reconstructing the
+  manifest as it was before the V2 split — the `/Users/{userId}/*` family
+  unbounded as `V1` code would have had it — to confirm the system would have
+  flagged those removals at the 10.9.0 release: it does, as 18 active-tier
+  `endpoint-removed` candidates). Production always uses the committed manifest
+  (current code).
+
+These are the same primitives Phase 6's CI will reuse to render the per-version
+report ephemerally.
 
 ## Related
 
