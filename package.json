@@ -24,7 +24,7 @@
     "husky": "9.1.7",
     "js-yaml": "4.1.1",
     "jshint": "2.13.6",
-    "lint-staged": "17.0.5",
+    "lint-staged": "17.0.6",
     "markdownlint-cli2": "0.22.1",
     "patch-package": "8.0.1",
     "prettier": "3.8.3",
