@@ -1,0 +1,117 @@
+name: server-upgrade tracker
+
+# Proactive CI for the server-upgrade-automation pipeline
+# (docs/architecture/server-upgrade-automation.md, Phase 4). This is the ONE
+# fully-autonomous, zero-judgment surface: it maintains a single tracker issue
+# nudging a human to triage a new Jellyfin stable release. It NEVER files
+# per-finding issues (that stays human-gated behind `/server-upgrade execute`)
+# and NEVER writes the repo or the journals.
+#
+# Behavior (mirrors docs-stale-tracker.yml's single-tracker-issue lifecycle):
+#   - Detects the latest Jellyfin STABLE (RCs excluded) and compares it to
+#     `latest_acknowledged` on the jellyfin-server-stable row of
+#     signals-backlog.md.
+#   - When upstream is ahead ("announce"): computes the mechanical candidate
+#     counts from an EPHEMERAL in-CI fingerprint (nothing committed — preserves
+#     the reviewed-anchor invariant; degrades to announce-only if counts can't
+#     be computed) and opens/updates ONE issue labeled `server-upgrade:tracker`.
+#   - When caught up: closes the tracker issue if open. The human runs
+#     `/done jellyfin-server-stable` after triage, which makes the next run
+#     detect "caught up" and close.
+#
+# One canonical issue (not per-release) keeps noise low and lets the count
+# figures update in place as the release line moves.
+
+on:
+  schedule:
+    - cron: '0 12 * * TUE' # 12:00 UTC Tuesday — offset from docs-stale's Monday run
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override the detected latest stable (testing); blank = fetch live'
+        required: false
+
+# Permissions are unused when authenticating as the JellyRock GitHub App (the
+# App's installation permissions apply instead) — kept for clarity and as a
+# fallback for forks where APP_PRIVATE_KEY isn't available.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate JellyRock app token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      # The tracker script needs js-yaml + the spec fetch/diff helpers.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure tracker label exists
+        run: gh label create server-upgrade:tracker --color 1D76DB --description "Proactive tracker for a new Jellyfin stable to triage via /server-upgrade" --force
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Detect release + compute counts
+        id: detect
+        run: |
+          set -euo pipefail
+          ARGS=(--body-out /tmp/tracker-body.md)
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            ARGS+=(--latest "${{ github.event.inputs.version }}")
+          fi
+          node scripts/server-upgrade-tracker.js "${ARGS[@]}" > /tmp/decision.json
+          cat /tmp/decision.json
+          {
+            echo "action=$(jq -r .action /tmp/decision.json)"
+            echo "version=$(jq -r .version /tmp/decision.json)"
+            echo "title=$(jq -r '.title // empty' /tmp/decision.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Find existing tracker issue
+        id: existing
+        run: |
+          set -euo pipefail
+          ISSUE_NUMBER=$(gh issue list --label server-upgrade:tracker --state open --limit 1 --json number --jq '.[0].number // ""')
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Existing tracker issue: ${ISSUE_NUMBER:-none}"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Open or update tracker issue
+        if: steps.detect.outputs.action == 'announce'
+        run: |
+          set -euo pipefail
+          if [ -n "${{ steps.existing.outputs.issue_number }}" ]; then
+            echo "Updating existing tracker issue #${{ steps.existing.outputs.issue_number }}"
+            gh issue edit "${{ steps.existing.outputs.issue_number }}" \
+              --title "${{ steps.detect.outputs.title }}" \
+              --body-file /tmp/tracker-body.md
+          else
+            echo "Opening new tracker issue"
+            gh issue create \
+              --title "${{ steps.detect.outputs.title }}" \
+              --body-file /tmp/tracker-body.md \
+              --label server-upgrade:tracker
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Close tracker issue when caught up
+        if: steps.detect.outputs.action == 'caught-up' && steps.existing.outputs.issue_number != ''
+        run: |
+          gh issue close "${{ steps.existing.outputs.issue_number }}" --comment "Latest acknowledged Jellyfin stable now matches upstream — closing automatically. This tracker reopens when a newer stable ships."
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
