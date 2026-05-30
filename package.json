@@ -69,6 +69,7 @@
     "docs:spec-fingerprints:check": "node scripts/generate/spec-fingerprint.js --check",
     "api-watch:findings": "node scripts/generate/findings-candidates.js",
     "api-watch:file": "node scripts/server-upgrade.js",
+    "api-watch:tracker": "node scripts/server-upgrade-tracker.js",
     "docs:settings": "node scripts/generate/settings-docs.cjs",
     "docs:stale": "node scripts/lint/docs-stale.cjs",
     "docs:stale:blocking": "node scripts/lint/docs-stale-blocking.cjs",
