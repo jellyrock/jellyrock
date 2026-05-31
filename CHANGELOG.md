@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - vscode: associate dotfiles to stop markdownlint false positives ([#589](https://github.com/jellyrock/jellyrock/pull/589))
 - Skills overhaul: /catchup, journal sync, /pr update-path, audit-skill ([#559](https://github.com/jellyrock/jellyrock/pull/559))
 
+### Fixed
+
+- (ci) pass PR title/author/labels via env in journal-sync (command injection) ([#604](https://github.com/jellyrock/jellyrock/pull/604))
+- (server-upgrade) clearer digest counts, honest root-cause comments, harden commit-msg injection ([#603](https://github.com/jellyrock/jellyrock/pull/603))
+- Fix server-upgrade tracker issue writes (REST) + digest legend & nudge ([#600](https://github.com/jellyrock/jellyrock/pull/600))
+
 ### Dependencies
 
 - Update lint-staged from v16.4.0 to v17.0.7 ([#577](https://github.com/jellyrock/jellyrock/pull/577), [#596](https://github.com/jellyrock/jellyrock/pull/596), [#598](https://github.com/jellyrock/jellyrock/pull/598))
