@@ -129,6 +129,8 @@ jobs:
         if: steps.detect.outputs.action == 'triage'
         run: |
           set -euo pipefail
+          # Body edits go through REST `gh api` (not `gh issue edit`, which routes
+          # through GraphQL's updateIssue — blocked for the App installation token).
           if [ -z "$NUM" ]; then
             echo "Opening new triage digest"
             gh issue create --title "$TITLE" \
@@ -137,7 +139,7 @@ jobs:
             echo "Digest #$NUM already triaged (server-upgrade:triaging) — CI hands off, leaving it to /server-upgrade."
           elif [ "$STATE" = "OPEN" ]; then
             echo "Refreshing untriaged digest #$NUM"
-            gh issue edit "$NUM" --body-file /tmp/digest-body.md
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/$NUM" -F "body=@/tmp/digest-body.md" >/dev/null
           else
             echo "Digest #$NUM is closed and untriaged — respecting the human close (a candidate-bearing digest is closed only by a human)."
           fi
@@ -154,18 +156,25 @@ jobs:
         run: |
           set -euo pipefail
           CLOSE_MSG="Mechanically clean — nothing JellyRock uses changed in this release, and every post-floor endpoint we call is a known, handled case. Closing automatically as a record (a judgment-free claim)."
+          # Issue writes go through the REST API (`gh api`), not `gh issue close/edit/comment`.
+          # The latter route the comment + state change through GraphQL's `addComment`
+          # mutation, which the GitHub App installation token can't call ("Resource not
+          # accessible by integration"). The REST endpoints ride the same issues:write
+          # scope that `gh issue create` already proves works under this token.
           if [ -z "$NUM" ]; then
             echo "Opening clean record digest"
             URL=$(gh issue create --title "$TITLE" \
               --body-file /tmp/digest-body.md --label server-upgrade:tracker)
             NEW_NUM=$(echo "$URL" | sed -E 's#.*/issues/([0-9]+).*#\1#')
-            gh issue close "$NEW_NUM" --comment "$CLOSE_MSG"
+            gh api "repos/$GITHUB_REPOSITORY/issues/$NEW_NUM/comments" -f "body=$CLOSE_MSG" >/dev/null
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/$NEW_NUM" -f state=closed >/dev/null
           elif [ "$TRIAGED" = "true" ]; then
             echo "Digest #$NUM already triaged — CI hands off."
           elif [ "$STATE" = "OPEN" ]; then
             echo "Untriaged digest #$NUM went clean — updating + closing as a record"
-            gh issue edit "$NUM" --body-file /tmp/digest-body.md
-            gh issue close "$NUM" --comment "$CLOSE_MSG"
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/$NUM" -F "body=@/tmp/digest-body.md" >/dev/null
+            gh api "repos/$GITHUB_REPOSITORY/issues/$NUM/comments" -f "body=$CLOSE_MSG" >/dev/null
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/$NUM" -f state=closed >/dev/null
           else
             echo "Clean digest #$NUM already closed — nothing to do."
           fi
