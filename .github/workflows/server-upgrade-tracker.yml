@@ -129,12 +129,19 @@ jobs:
         if: steps.detect.outputs.action == 'triage'
         run: |
           set -euo pipefail
-          # Body edits go through REST `gh api` (not `gh issue edit`, which routes
-          # through GraphQL's updateIssue — blocked for the App installation token).
+          # All issue writes go through REST `gh api`, not `gh issue create/edit`.
+          # `gh issue create --label` silently dropped the label under the App
+          # installation token (it resolves + attaches labels via a GraphQL mutation
+          # the token can't call), leaving the digest unlabelled and therefore
+          # invisible to the label-keyed dedup in "Find this version's digest" — the
+          # next run would then create a DUPLICATE. The REST POST attaches labels
+          # atomically at creation and returns the number directly (no URL parsing).
           if [ -z "$NUM" ]; then
             echo "Opening new triage digest"
-            gh issue create --title "$TITLE" \
-              --body-file /tmp/digest-body.md --label server-upgrade:tracker
+            gh api "repos/$GITHUB_REPOSITORY/issues" \
+              -f "title=$TITLE" \
+              -F "body=@/tmp/digest-body.md" \
+              -f "labels[]=server-upgrade:tracker" >/dev/null
           elif [ "$TRIAGED" = "true" ]; then
             echo "Digest #$NUM already triaged (server-upgrade:triaging) — CI hands off, leaving it to /server-upgrade."
           elif [ "$STATE" = "OPEN" ]; then
@@ -156,16 +163,19 @@ jobs:
         run: |
           set -euo pipefail
           CLOSE_MSG="Mechanically clean — nothing JellyRock uses changed in this release, and every post-floor endpoint we call is a known, handled case. Closing automatically as a record (a judgment-free claim)."
-          # Issue writes go through the REST API (`gh api`), not `gh issue close/edit/comment`.
-          # The latter route the comment + state change through GraphQL's `addComment`
-          # mutation, which the GitHub App installation token can't call ("Resource not
-          # accessible by integration"). The REST endpoints ride the same issues:write
-          # scope that `gh issue create` already proves works under this token.
+          # All issue writes go through the REST API (`gh api`), not `gh issue
+          # create/close/edit/comment`. Those route create-with-label + the comment +
+          # the state change through GraphQL mutations the GitHub App installation
+          # token can't call ("Resource not accessible by integration"); the REST
+          # endpoints ride the same issues:write scope. REST POST also attaches the
+          # label atomically (so the digest is dedup-visible) and returns the number.
           if [ -z "$NUM" ]; then
             echo "Opening clean record digest"
-            URL=$(gh issue create --title "$TITLE" \
-              --body-file /tmp/digest-body.md --label server-upgrade:tracker)
-            NEW_NUM=$(echo "$URL" | sed -E 's#.*/issues/([0-9]+).*#\1#')
+            NEW_NUM=$(gh api "repos/$GITHUB_REPOSITORY/issues" \
+              -f "title=$TITLE" \
+              -F "body=@/tmp/digest-body.md" \
+              -f "labels[]=server-upgrade:tracker" \
+              --jq '.number')
             gh api "repos/$GITHUB_REPOSITORY/issues/$NEW_NUM/comments" -f "body=$CLOSE_MSG" >/dev/null
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/$NEW_NUM" -f state=closed >/dev/null
           elif [ "$TRIAGED" = "true" ]; then
