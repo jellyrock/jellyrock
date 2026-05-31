@@ -250,12 +250,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: `tokenize()` and the 50-word `STOPWORDS` set are copy-pasted between the two files. `journal-sync.js` is ESM; `progress-cursor-nudge.cjs` is CJS — CJS cannot `require()` ESM, which forced the copy at write time. A stopword addition or tokenizer fix must be applied in both places.
 - **direction**: Extract to `scripts/lib/tokenize.cjs`. Both callers `require()` it: `progress-cursor-nudge.cjs` via its existing `require()` chain; `journal-sync.js` via `createRequire(import.meta.url)` (same pattern it already uses for `frontmatter.cjs` and `signals-fetch.cjs`). Then remove the inline copies.
 
-#### `journal-sync-workflow-injection`
-
-- **area**: `.github/workflows/journal-sync.yml` (lines 72, 101)
-- **issue**: PR title + number are interpolated into shell strings via `${{ github.event.pull_request.title }}` inside a `run:` block. A title containing `'` breaks the single-quoted shell assignment on line 72; a title containing `"` or backticks breaks the `git commit -m "..."` on line 101. GitHub Actions docs classify this as script injection.
-- **direction**: Move the interpolations into `env:` fields on the step and reference them as `$PR_TITLE` / `$PR_NUMBER` inside the shell. The `env:` block is not shell-parsed, so no quoting escape is needed.
-
 #### `hd-native-layout-refactor`
 
 - **area**: every `.bs` / `.brs` / `.xml` file with hardcoded `1920` or `1080` layout coordinates (~223 sites at last count), plus [`manifest`](../../manifest)
