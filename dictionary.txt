@@ -550,3 +550,5 @@ theming
 affordance
 user-customizable
 allowlist
+NUL
+diffstat
