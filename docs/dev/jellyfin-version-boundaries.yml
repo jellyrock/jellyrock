@@ -1,0 +1,38 @@
+# Jellyfin server-version → apiVersion tier boundary map.
+#
+# The single source of truth that ties JellyRock's integer apiVersion tiers
+# (the `if m.getApiVersion() >= N` dispatch in source/api/) to concrete Jellyfin
+# server-version ranges. The server-upgrade-automation pipeline reads this to
+# decide, for a given spec change at server version X, which tier it lands in —
+# and therefore whether any endpoint we ship is even a candidate for breakage.
+#
+# Why it lives here: it is the data twin of docs/dev/jellyfin-server-versioning.md
+# (the prose explanation of the same tiers). Keep the two in sync — when a tier
+# boundary moves, update both. See docs/architecture/server-upgrade-automation.md
+# for how the pipeline consumes this file.
+#
+# Model (see the design doc's "generalized version model"):
+#   - `floor` is the oldest server JellyRock supports, indefinitely. It never
+#     rises. It anchors the backward floor-coverage check.
+#   - Each tier records the server-version range it serves and a `status`:
+#       frozen — the upstream line is closed (no further releases will ever
+#                ship for it), so endpoints pinned to it CANNOT break upstream.
+#       active — the current top tier; the latest release lands here.
+#   - A future V3 is added as tier `3` here, alongside the `>= 3` dispatch in
+#     source/api/ApiClient.bs, with tier 2 flipped to frozen + a maxServer set.
+
+floor: '10.7.0'
+
+tiers:
+  # apiVersion 1 — legacy user endpoints (/Users/{userId}/ path prefix).
+  # 10.8.13 is the last 10.8 release that will ever exist, so this line is frozen.
+  1:
+    minServer: '10.7.0'
+    maxServer: '10.8.13'
+    status: frozen
+  # apiVersion 2 — top-level user paths + userId query param (10.9 onward).
+  # The active tier: every new stable release lands here until a V3 split.
+  2:
+    minServer: '10.9.0'
+    maxServer: null
+    status: active

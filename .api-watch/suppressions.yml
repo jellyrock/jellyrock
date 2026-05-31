@@ -1,0 +1,46 @@
+# server-upgrade-automation — .api-watch suppression rules
+#
+# Phase 2 of the pipeline (scripts/generate/findings-candidates.js) consumes
+# this file when it joins a spec-diff against the API-usage manifest. Each rule
+# describes a class of change the team has accepted as non-actionable churn —
+# spec-regeneration artifacts, fields/endpoints we deliberately ignore, enums we
+# don't switch on. For a candidate matching a rule:
+#
+#   - the candidate is NOT dropped — it stays in findings-candidates.json with
+#     `suppressed: true` and `suppressedBy: <id>`, so the report stays fully
+#     visible to the human/agent reading it (same discipline as /crash-report's
+#     "Suppressed (known noise)" section). `needsInvestigation` is forced false.
+#   - the run summary counts suppressed candidates separately from live ones.
+#
+# This is the deterministic, mechanical layer. It does NOT decide "is this a real
+# problem" — that's the Phase 4 agent's job. It only silences changes a human has
+# already looked at once and classified as permanent noise.
+#
+# Schema per rule:
+#   id     — kebab-case slug. Appears in the candidate's `suppressedBy` and in
+#            the run summary. Must be unique.
+#   notes  — multi-line human description of WHY this is suppressed. Required so
+#            a future contributor can re-evaluate (every suppression is debt).
+#   match  — predicates. ALL provided fields must match for a candidate to bind
+#            to this rule. Omitted fields are wildcards. First-match wins when a
+#            candidate matches multiple rules.
+#       kind    — change kind, or a list of kinds. Exact match against
+#                 change.kind (endpoint-removed | endpoint-added | param-added |
+#                 param-removed | param-changed | requestbody-changed |
+#                 response-changed | field-added | field-removed | field-retyped
+#                 | enum-changed | coverage-gap).
+#       path    — regex (string) tested against the change's NORMALIZED path
+#                 ({}-collapsed, lowercased) for operation-scoped changes.
+#       method  — exact HTTP method (case-insensitive) for operation-scoped
+#                 changes.
+#       schema  — regex tested against the component-schema name for
+#                 schema-scoped changes (field-*/enum-changed).
+#       name    — regex tested against the param/field name (matched
+#                 case-insensitively, since the spec is camelCase and the app is
+#                 PascalCase).
+#
+# Editing this file: write directly. The script re-reads it every run; no code
+# regeneration. Keep it small — a large suppression list is a smell that the
+# join is too coarse, not that there's a lot of real noise.
+
+rules: []

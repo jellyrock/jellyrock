@@ -133,6 +133,7 @@ async function fetchRokuOs({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 }
 
 module.exports = {
+  httpGet,
   fetchJellyfinVersions,
   fetchRokuOs,
   parseJellyfinIndex,

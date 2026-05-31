@@ -8,7 +8,8 @@ related-files:
   - source/utils/deviceCapabilities.bs
   - source/utils/misc.bs
   - source/utils/mediaSegments.bs
-last-reviewed: 2026-05-01
+  - docs/dev/jellyfin-endpoint-availability.yml
+last-reviewed: 2026-05-30
 ---
 
 # JellyRock Versioning Systems Overview
@@ -95,6 +96,24 @@ Some Jellyfin API endpoints are only available on specific server versions. Thes
 - Guard functions call `versionChecker(m.global.server.version, "x.y.z")` to compare the raw server version string
 - Callers check the guard before making the API request — the endpoint simply isn't called on older servers
 - No `apiVersion` dispatch needed because these are top-level paths, not user-scoped endpoints
+
+**Endpoints that gracefully degrade (no explicit guard):** some post-floor
+endpoints have no version guard but are safe because a missing endpoint returns a
+404 and the caller checks `isValid()` before use — e.g. `Audio/{itemId}/Lyrics`
+(10.9+, no lyrics shown on older servers) and the Quick Connect probe `/QuickConnect/Enabled`
+(10.8+, fail-open). These are not bugs, but they *do* trip the server-upgrade
+pipeline's floor-coverage check (we call an endpoint the 10.7.0 floor spec lacks).
+
+**Machine-readable registry:** every post-floor endpoint and its old-server
+handling (guard / dispatch-sibling / graceful-degradation) is recorded in
+[`jellyfin-endpoint-availability.yml`](jellyfin-endpoint-availability.yml) — the
+server-upgrade pipeline's validated disposition ledger
+([server-upgrade-automation.md](../architecture/server-upgrade-automation.md),
+Phase 6). The table above is the human-readable mirror; the YAML is the source the
+floor check consumes, and `npm run lint:endpoint-availability` validates each
+entry's guard/sibling claim against current code so a removed guard resurfaces the
+finding. When you add a version-gated or post-floor endpoint, add a registry entry
+(the lint will tell you if you forgot — the finding will flag `needsInvestigation`).
 
 **Media Segments (10.10.0+):**
 
@@ -206,6 +225,15 @@ If Jellyfin 11.0 introduces breaking changes:
 3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for 11.0+
 4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `ApiClient.bs`
 5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden
+
+### Also update the server-upgrade-automation pipeline
+
+The release-detection pipeline ([server-upgrade-automation.md](../architecture/server-upgrade-automation.md)) is generalized to `N` tiers via range math, so its diff / join / floor / registry logic needs **no** rewrite when `V3` lands — but it has two data/config touch-points that DO need updating, plus the manifest must be regenerated:
+
+1. **Tier boundary map:** in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml), flip tier `2` to `status: frozen` with a concrete `maxServer` (the last 10.x release before 11.0), and add tier `3` with `status: active`, `maxServer: null`. (The loader requires exactly one active tier, and it must be the unbounded one.)
+2. **Manifest tier clamp:** in [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js), the cross-function clamp that pins `sdkV1.bs → max ≤ 1` / `sdkV2.bs → min ≥ 2` needs a `sdkV3.bs → min ≥ 3` line, and the `sdkV2.bs` line gains a `max ≤ 2` clamp (V2 becomes the frozen middle tier). Then regenerate: `npm run docs:api-manifest`. The `getApiVersion() >= 3` branches added in the dispatcher step above are picked up automatically (the extractor reads the literal `N`).
+
+After those, regenerate/commit a fresh baseline fingerprint at the next acknowledged release as usual — the floor (`10.7.0`) stays put forever (we support the oldest servers indefinitely), so the backward + symmetry + endpoint-availability checks need no change.
 
 ## Related Documentation
 

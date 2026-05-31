@@ -1,0 +1,3091 @@
+{
+  "schemaVersion": 1,
+  "generator": "scripts/generate/api-usage-manifest.js",
+  "description": "GENERATED FILE — DO NOT EDIT BY HAND. The Jellyfin REST API surface JellyRock depends on, extracted from source via the BrighterScript AST. Run `npm run docs:api-manifest` to regenerate. See docs/architecture/api-usage-manifest.md for what this is and how it is used.",
+  "endpoints": [
+    {
+      "path": "/artists",
+      "normalized": "/artists",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/artists/{0}",
+      "normalized": "/artists/{}",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Artists/{0}/Similar",
+      "normalized": "/artists/{}/similar",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/artists/albumartists",
+      "normalized": "/artists/albumartists",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Audio/{0}/Lyrics",
+      "normalized": "/audio/{}/lyrics",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Audio/{0}/stream",
+      "normalized": "/audio/{}/stream",
+      "methods": [
+        "UNKNOWN"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "path": "/branding/configuration",
+      "normalized": "/branding/configuration",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/displaypreferences/{0}",
+      "normalized": "/displaypreferences/{}",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/genres",
+      "normalized": "/genres",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/items/",
+      "normalized": "/items",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/items/{0}",
+      "normalized": "/items/{}",
+      "methods": [
+        "DELETE"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/{0}",
+      "normalized": "/items/{}",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/items/{0}/images/{1}/{2}",
+      "normalized": "/items/{}/images/{}/{}",
+      "methods": [
+        "HEAD",
+        "UNKNOWN"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs",
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/items/{0}/instantmix",
+      "normalized": "/items/{}/instantmix",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/{0}/Intros",
+      "normalized": "/items/{}/intros",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/{0}/LocalTrailers",
+      "normalized": "/items/{}/localtrailers",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/items/{0}/playbackinfo",
+      "normalized": "/items/{}/playbackinfo",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/{0}/Similar",
+      "normalized": "/items/{}/similar",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/{0}/SpecialFeatures",
+      "normalized": "/items/{}/specialfeatures",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/items/filters",
+      "normalized": "/items/filters",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Items/Latest",
+      "normalized": "/items/latest",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/livetv/channels",
+      "normalized": "/livetv/channels",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/livetv/programs",
+      "normalized": "/livetv/programs",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/Programs",
+      "normalized": "/livetv/programs",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/Programs/{0}",
+      "normalized": "/livetv/programs/{}",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/Programs/Recommended",
+      "normalized": "/livetv/programs/recommended",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/Recordings",
+      "normalized": "/livetv/recordings",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/SeriesTimers",
+      "normalized": "/livetv/seriestimers",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/SeriesTimers/{0}",
+      "normalized": "/livetv/seriestimers/{}",
+      "methods": [
+        "DELETE"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/Timers",
+      "normalized": "/livetv/timers",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/Timers/{0}",
+      "normalized": "/livetv/timers/{}",
+      "methods": [
+        "DELETE"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/LiveTv/Timers/Defaults",
+      "normalized": "/livetv/timers/defaults",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/MediaSegments/{0}",
+      "normalized": "/mediasegments/{}",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/persons",
+      "normalized": "/persons",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/playlists/{0}/items",
+      "normalized": "/playlists/{}/items",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/quickconnect/connect",
+      "normalized": "/quickconnect/connect",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/quickconnect/enabled",
+      "normalized": "/quickconnect/enabled",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/quickconnect/initiate",
+      "normalized": "/quickconnect/initiate",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/sessions",
+      "normalized": "/sessions",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Sessions/Capabilities/Full",
+      "normalized": "/sessions/capabilities/full",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/sessions/playing",
+      "normalized": "/sessions/playing",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/sessions/playing/progress",
+      "normalized": "/sessions/playing/progress",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/sessions/playing/stopped",
+      "normalized": "/sessions/playing/stopped",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/shows/{0}/episodes",
+      "normalized": "/shows/{}/episodes",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/shows/{0}/seasons",
+      "normalized": "/shows/{}/seasons",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/shows/nextup",
+      "normalized": "/shows/nextup",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/studios",
+      "normalized": "/studios",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/system/configuration/{0}",
+      "normalized": "/system/configuration/{}",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/system/info/public",
+      "normalized": "/system/info/public",
+      "methods": [
+        "UNKNOWN"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/utils/session.bs"
+      ]
+    },
+    {
+      "path": "/UserFavoriteItems/{0}",
+      "normalized": "/userfavoriteitems/{}",
+      "methods": [
+        "DELETE",
+        "POST"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/UserImage",
+      "normalized": "/userimage",
+      "methods": [
+        "UNKNOWN"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdkV2.bs"
+      ]
+    },
+    {
+      "path": "/UserItems/Resume",
+      "normalized": "/useritems/resume",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/UserPlayedItems/{0}",
+      "normalized": "/userplayeditems/{}",
+      "methods": [
+        "DELETE",
+        "POST"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users",
+      "normalized": "/users",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/favoriteitems/{1}",
+      "normalized": "/users/{}/favoriteitems/{}",
+      "methods": [
+        "DELETE",
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/images/{1}/{2}",
+      "normalized": "/users/{}/images/{}/{}",
+      "methods": [
+        "UNKNOWN"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/sdkV1.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/items",
+      "normalized": "/users/{}/items",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/items/{1}",
+      "normalized": "/users/{}/items/{}",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/items/{1}/intros",
+      "normalized": "/users/{}/items/{}/intros",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/items/{1}/localtrailers",
+      "normalized": "/users/{}/items/{}/localtrailers",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/items/{1}/specialfeatures",
+      "normalized": "/users/{}/items/{}/specialfeatures",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/items/latest",
+      "normalized": "/users/{}/items/latest",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/items/resume",
+      "normalized": "/users/{}/items/resume",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/playeditems/{1}",
+      "normalized": "/users/{}/playeditems/{}",
+      "methods": [
+        "DELETE",
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/{0}/views",
+      "normalized": "/users/{}/views",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": 1,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/users/authenticatebyname",
+      "normalized": "/users/authenticatebyname",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/users/authenticatewithquickconnect",
+      "normalized": "/users/authenticatewithquickconnect",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/users/public",
+      "normalized": "/users/public",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "path": "/UserViews",
+      "normalized": "/userviews",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/videos/{0}/additionalparts",
+      "normalized": "/videos/{}/additionalparts",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    }
+  ],
+  "requestFields": [
+    {
+      "name": "AlbumArtistIds",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ArtistIds",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "AudioCodec",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "AudioStreamIndex",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "AutoOpenLiveStream",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Cache-Control",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Condition",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Conditions",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Container",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Content-Type",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "ContributingArtistIds",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "DatePlayed",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "DeviceProfile",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "EnableDirectPlay",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "EnableImageTypes",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "EnableTotalRecordCount",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ImageTypeLimit",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "IsPaused",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "IsRequired",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Items",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Limit",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "MaxStreamingBitrate",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "MediaSourceId",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "MinSegments",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "PlaybackPositionTicks",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "PositionTicks",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "name": "Property",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Pw",
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "name": "Recursive",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Secret",
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "name": "SegmentLength",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "SortOrder",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "StartTimeTicks",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Static",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "SubtitleStreamIndex",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Token",
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "name": "TotalRecordCount",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Type",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "UserId",
+      "sourceFiles": [
+        "source/api/ApiClient.bs",
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Username",
+      "sourceFiles": [
+        "source/api/sdk.bs"
+      ]
+    },
+    {
+      "name": "Value",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    }
+  ],
+  "responseFields": [
+    {
+      "name": "AccessSchedules",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AirDays",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AirsAfterSeasonNumber",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AirsBeforeEpisodeNumber",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AirsBeforeSeasonNumber",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AirTime",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Album",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AlbumArtist",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AlbumArtists",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AlbumCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AlbumId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AlbumPrimaryImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AllowedTags",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ArtistItems",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Artists",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AspectRatio",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Audio",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AudioLanguagePreference",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "AuthenticationProviderId",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "BackdropImageTags",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "BlockedChannels",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "BlockedMediaFolders",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "BlockedTags",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "BlockUnratedItems",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CameraMake",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CameraModel",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CanDelete",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CanDownload",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CastReceiverId",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ChannelId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ChannelName",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ChannelNumber",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ChannelPrimaryImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ChannelType",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Chapters",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ChildCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CollectionType",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CommunityRating",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CompletionPercentage",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Configuration",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Container",
+      "readVia": [
+        "firstSource"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CriticRating",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CumulativeRunTimeTicks",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CurrentProgram",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "CustomRating",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "DateCreated",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "DateLastMediaAdded",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "DisplayCollectionsView",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "DisplayMissingEpisodes",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "DisplayOrder",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableAllChannels",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableAllDevices",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableAllFolders",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableAudioPlaybackTranscoding",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableCollectionManagement",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableContentDeletion",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableContentDeletionFromFolders",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableContentDownloading",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnabledChannels",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnabledDevices",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnabledFolders",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableLiveTvAccess",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableLiveTvManagement",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableLocalPassword",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableLyricManagement",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableMediaConversion",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableMediaPlayback",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableNextEpisodeAutoPlay",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnablePlaybackRemuxing",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnablePublicSharing",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableRemoteAccess",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableRemoteControlOfOtherUsers",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableSharedDeviceControl",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableSubtitleManagement",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableSyncTranscoding",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableUserPreferenceAccess",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EnableVideoPlaybackTranscoding",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EndDate",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EpisodeCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "EpisodeTitle",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Etag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ExternalUrls",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ExtraType",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ForceRemoteSourceTranscoding",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "GenreItems",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Genres",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "GroupedFolders",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "HasLyrics",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "HasSubtitles",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Height",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "HidePlayedInLatest",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Id",
+      "readVia": [
+        "apiData",
+        "firstSource",
+        "person"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ImageBlurHashes",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ImageTags",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IndexNumber",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IndexNumberEnd",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "InvalidLoginAttemptCount",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsAdministrator",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsDefault",
+      "readVia": [
+        "stream"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsDisabled",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsFavorite",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsFolder",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsForced",
+      "readVia": [
+        "stream"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsHD",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsHidden",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsKids",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsLive",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsMovie",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsNews",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsPlaceHolder",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsPremiere",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsRepeat",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsSeries",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "IsSports",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Items",
+      "readVia": [
+        "response",
+        "segmentsResponse"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Language",
+      "readVia": [
+        "stream"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "LastPlayedDate",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "LatestItemsExcludes",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Likes",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "LocalTrailerCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "LocationType",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "LoginAttemptsBeforeLockout",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Logo",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MaxActiveSessions",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MediaAttachments",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MediaSourceCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MediaSources",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MediaStreams",
+      "readVia": [
+        "firstSource"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MediaType",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MovieCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MusicVideoCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "MyMediaExcludes",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Name",
+      "readVia": [
+        "apiData",
+        "it",
+        "person"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "NormalizationGain",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Number",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "OfficialRating",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "OrderedViews",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "OriginalTitle",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Overview",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentArtImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentArtItemId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentBackdropImageTags",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentBackdropItemId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentIndexNumber",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentLogoImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentLogoItemId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentPrimaryImageItemId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentPrimaryImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentThumbImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ParentThumbItemId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PartCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PasswordResetProviderId",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Path",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "People",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PlayAccess",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PlaybackPositionTicks",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PlayCount",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PlayDefaultAudioTrack",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Played",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PlayedPercentage",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PlaylistItemId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Policy",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PremiereDate",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Primary",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PrimaryImageAspectRatio",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "PrimaryImageTag",
+      "readVia": [
+        "person"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ProductionLocations",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ProductionYear",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ProgramCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ProgramId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Protocol",
+      "readVia": [
+        "firstSource"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ProviderIds",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Rating",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "RecursiveItemCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "RememberAudioSelections",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "RememberSubtitleSelections",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "RemoteClientBitrateLimit",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "RemoteTrailers",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Role",
+      "readVia": [
+        "person"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "RunTimeTicks",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ScreenshotImageTags",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeasonId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeasonName",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeriesCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeriesId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeriesName",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeriesPrimaryImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeriesStudio",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeriesThumbImageTag",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SeriesTimerId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "ServerId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SongCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SortName",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SourceType",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SpecialFeatureCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "StartDate",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Status",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Studios",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SubtitleLanguagePreference",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SubtitleMode",
+      "readVia": [
+        "configData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SupportsDirectPlay",
+      "readVia": [
+        "firstSource"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "SyncPlayAccess",
+      "readVia": [
+        "policyData"
+      ],
+      "sourceFiles": [
+        "source/data/SessionDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Taglines",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Tags",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Thumb",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "TimerId",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "TrailerCount",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Trickplay",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Type",
+      "readVia": [
+        "apiData",
+        "person",
+        "segment",
+        "stream"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "UnplayedItemCount",
+      "readVia": [
+        "userData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "UserData",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "VideoType",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
+      "name": "Width",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    }
+  ],
+  "coverage": {
+    "scope": {
+      "endpoints": {
+        "globs": [
+          "source/**/*.bs"
+        ],
+        "exclude": [
+          "source/api/baseRequest.bs",
+          "source/api/image.bs"
+        ]
+      },
+      "requestFields": {
+        "globs": [
+          "source/api/**/*.bs"
+        ],
+        "exclude": [
+          "source/api/baseRequest.bs"
+        ]
+      },
+      "responseFields": {
+        "files": [
+          "source/data/JellyfinDataTransformer.bs",
+          "source/data/SessionDataTransformer.bs"
+        ]
+      }
+    },
+    "counts": {
+      "endpoints": 70,
+      "requestFields": 41,
+      "responseFields": 214,
+      "unresolvedEndpointSinks": 2
+    },
+    "unresolvedEndpointSinks": [
+      {
+        "sourceFile": "source/api/items.bs",
+        "line": 446
+      },
+      {
+        "sourceFile": "source/utils/subtitles.bs",
+        "line": 160
+      }
+    ],
+    "knownGaps": [
+      "Response-field extraction is scoped to the data transformers (the canonical DTO→ContentNode boundary). Ad-hoc DTO reads outside the transformers (e.g. playback tuning in source/api/items.bs) are not yet captured.",
+      "PascalCase heuristic may include nested map keys (e.g. ImageTags.Primary) and over-capture is intentional — names that are not real Jellyfin schema fields are ignored when joined against the spec.",
+      "Endpoint paths built by non-literal string concatenation are reported under unresolvedEndpointSinks rather than guessed.",
+      "Field names are recorded as the app spells them (PascalCase). Jellyfin spells query parameters in camelCase (e.g. the app sends \"Recursive\", the spec defines \"recursive\"), so a spec-diff join over request/response field names MUST be case-insensitive — as it already is for endpoints (the `normalized` field case-folds).",
+      "requestFields may include HTTP header names (e.g. Content-Type) lifted from `headers:` AAs, not just body/query fields. Harmless: they are ignored when joined against the spec.",
+      "minApiVersion/maxApiVersion (max=null → unbounded) record the apiVersion tier range each endpoint serves, derived from the `getApiVersion() >= N` dispatch guards (then/else branches and the early-return fall-through). They generalize to a future v3. A spec-diff at a given tier is a breaking candidate only for endpoints whose range includes that tier, so endpoints pinned to frozen older tiers (e.g. V1, server 10.7–10.8) are excluded automatically — no allowlist needed.",
+      "The apiVersion range captures the getApiVersion() dispatch split only, NOT finer per-endpoint floors enforced at the call site (e.g. MediaSegments is 10.10+ guarded by supportsMediaSegments(), but its builder has no getApiVersion branch, so it tags [1,∞)). Refining those is a later step if the backward floor-coverage check needs it."
+    ]
+  }
+}

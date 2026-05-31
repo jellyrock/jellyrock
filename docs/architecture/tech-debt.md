@@ -1,7 +1,7 @@
 ---
 topic: tech-debt
 related-files: []  # touches everything; per-item area fields point to specific files
-last-reviewed: 2026-05-15
+last-reviewed: 2026-05-30
 ---
 
 # Tech Debt & Cruft
@@ -267,6 +267,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `manifest`, `scripts/generate/icons-build.js`, `images/icons/*_sd.png`
 - **issue**: Native SD assets aren't shipped (the `_sd` slot in `uri_resolution_autosub=$$RES$$,sd,hd,fhd` is reserved but unused) because correct rendering requires NTSC pixel-aspect-ratio handling — SD framebuffer pixels are non-square (720×480 with 8:9 or 32:27 SAR depending on 4:3 vs 16:9 output mode). A naive square-pixel SD render via sharp would produce horizontally-squished icons that may look worse than what the OS produces by auto-scaling. Blocked on [`hd-native-layout-refactor`](#hd-native-layout-refactor) anyway — until that lands, native SD assets share the same fate as native HD ones (loaded into Posters sized at FHD with no per-device-resolution win).
 - **direction**: After `hd-native-layout-refactor` lands and SD becomes a meaningful target: extend `scripts/generate/icons-build.js` with a render path that compensates for the non-square SAR. Empirically verify on hardware: set Roku Display Type to `480p`, sideload, compare a candidate hand-authored SD asset against the OS-produced fallback. Ship native SD only if measurably better. If not, leave the `_sd` slot empty (autosub falls through to `hd` per Roku spec) and document the decision. Promote severity to Medium if SD-specific user reports surface.
+
+#### `nul-bytes-in-scripts-source`
+
+- **area**: `scripts/**/*.{js,cjs}`; a guard would live in `scripts/lint/`.
+- **issue**: A raw literal NUL (`\x00`) byte used as an in-memory join separator for a sort/group key has been committed into a `scripts/` source file twice — first in [`scripts/generate/findings-candidates.js`](../../scripts/generate/findings-candidates.js) (`opKey`), then in [`scripts/generate/spec-diff.js`](../../scripts/generate/spec-diff.js) (`changeSortKey`, fixed in `a4a92e78`). A raw NUL makes git + `file(1)` classify the source as **binary**, so it lands with no reviewable diff. Both were semantics-preserving (the separator is sort-only, never persisted) and both are now fixed to use the `'\0'` escape, but nothing prevents a third occurrence — no lint rejects control bytes in `scripts/` sources (ESLint's `no-control-regex` is regex-only; Prettier passes a file containing a NUL clean).
+- **direction**: Add a CI-gated lint (e.g. `scripts/lint/no-control-bytes.cjs`) that fails when any `scripts/**/*.{js,cjs}` file contains a NUL or other control byte outside tab/newline; wire it into `npm run lint` + pre-push. The fix it enforces is always the same — use the `'\0'` string escape, never a literal control byte.
 
 ## Recently removed — don't go searching for these
 

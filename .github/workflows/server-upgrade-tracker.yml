@@ -1,0 +1,177 @@
+name: server-upgrade tracker
+
+# Proactive CI for the server-upgrade-automation pipeline
+# (docs/architecture/server-upgrade-automation.md). The ONE fully-autonomous,
+# zero-judgment surface: it maintains the PER-VERSION release-triage DIGEST issues
+# that nudge a human to triage a new Jellyfin stable release. It NEVER files
+# per-finding issues (that stays human-gated behind `/server-upgrade execute`,
+# which files them as sub-issues of the digest) and NEVER writes the repo or the
+# journals.
+#
+# Behaviour (Phase 6 — per-version digests, mirroring docs-stale-tracker.yml's
+# single-issue lifecycle but keyed on the version, not one rolling issue):
+#   - Detects the latest Jellyfin STABLE (RCs excluded) and compares it to
+#     `latest_acknowledged` on the jellyfin-server-stable row of signals-backlog.md.
+#   - action 'none'   (caught up): do nothing. Acknowledging != work done — Phase 4's
+#     "close on caught-up" is intentionally GONE.
+#   - action 'clean'  (≥1 newer release, 0 candidates touch us): a judgment-free
+#     claim, so open-then-close the version's digest as a persistent audit record
+#     (the ONLY CI close). Counts come from an EPHEMERAL in-CI fingerprint (nothing
+#     committed — preserves the reviewed-anchor invariant).
+#   - action 'triage' (≥1 candidate, or degraded): open/refresh the version's digest
+#     with the mechanical checklist UNTIL it's first triaged (it carries
+#     `server-upgrade:triaging`, added by /server-upgrade) — then HAND OFF: never
+#     overwrite or close it. A candidate-bearing digest is closed only by a human /
+#     the skill.
+#
+# One digest issue PER version (label `server-upgrade:tracker`, found by its
+# version-stamped title); they stack as a per-release audit trail.
+
+on:
+  schedule:
+    # Daily at 12:00 UTC. Jellyfin can ship more than one (hot)fix in a week, so
+    # weekly could miss a release for up to 7 days. Daily is cheap: a run
+    # short-circuits to a sub-second version-compare when caught up — the spec
+    # fetch + report compute only happen when a genuinely newer stable exists.
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override the detected latest stable (testing); blank = fetch live'
+        required: false
+
+# Permissions are unused when authenticating as the JellyRock GitHub App (the
+# App's installation permissions apply instead) — kept for clarity and as a
+# fallback for forks where APP_PRIVATE_KEY isn't available.
+permissions:
+  contents: read
+  issues: write
+
+# Serialize runs: a manual workflow_dispatch could otherwise overlap the daily
+# cron, and both resolve the same per-version digest by title-match dedup — two
+# concurrent runs could each see "no digest" and double-create. Queue rather than
+# cancel so an in-flight run finishes its GH-write sequence cleanly.
+concurrency:
+  group: server-upgrade-tracker
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate JellyRock app token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      # The tracker script needs js-yaml + the spec fetch/diff helpers.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure tracker labels exist
+        run: |
+          gh label create server-upgrade:tracker --color 1D76DB --description "Per-version Jellyfin release-triage digest (run /server-upgrade)" --force
+          gh label create server-upgrade:triaging --color FBCA04 --description "A server-upgrade digest /server-upgrade has triaged — CI hands off the body" --force
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Detect release + render digest body
+        id: detect
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          ARGS=(--body-out /tmp/digest-body.md)
+          if [ -n "$VERSION" ]; then
+            ARGS+=(--latest "$VERSION")
+          fi
+          node scripts/server-upgrade-tracker.js "${ARGS[@]}" > /tmp/decision.json
+          cat /tmp/decision.json
+          {
+            echo "action=$(jq -r .action /tmp/decision.json)"
+            echo "version=$(jq -r .version /tmp/decision.json)"
+            echo "title=$(jq -r '.title // empty' /tmp/decision.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      # Find THIS version's digest (per-version: matched by exact title among the
+      # tracker-labelled issues, any state) and whether it's already been triaged.
+      - name: Find this version's digest
+        id: existing
+        if: steps.detect.outputs.action != 'none'
+        run: |
+          set -euo pipefail
+          # List all tracker-labelled digests and match the title EXACTLY in jq —
+          # the title carries brackets + an em-dash that gh's --search would mangle.
+          MATCH=$(gh issue list --label server-upgrade:tracker --state all \
+            --json number,title,state,labels --limit 100 \
+            | jq -c --arg t "$TITLE" 'map(select(.title == $t)) | .[0] // {}')
+          NUM=$(echo "$MATCH" | jq -r '.number // ""')
+          STATE=$(echo "$MATCH" | jq -r '.state // ""')
+          TRIAGED=$(echo "$MATCH" | jq -r '[.labels[]?.name] | index("server-upgrade:triaging") != null')
+          echo "number=$NUM" >> "$GITHUB_OUTPUT"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+          echo "triaged=$TRIAGED" >> "$GITHUB_OUTPUT"
+          echo "Digest for this version: ${NUM:-none} (state=${STATE:-n/a}, triaged=$TRIAGED)"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TITLE: ${{ steps.detect.outputs.title }}
+
+      # triage: open or refresh the digest until it's been triaged, then hand off.
+      - name: Open or refresh triage digest
+        if: steps.detect.outputs.action == 'triage'
+        run: |
+          set -euo pipefail
+          if [ -z "$NUM" ]; then
+            echo "Opening new triage digest"
+            gh issue create --title "$TITLE" \
+              --body-file /tmp/digest-body.md --label server-upgrade:tracker
+          elif [ "$TRIAGED" = "true" ]; then
+            echo "Digest #$NUM already triaged (server-upgrade:triaging) — CI hands off, leaving it to /server-upgrade."
+          elif [ "$STATE" = "OPEN" ]; then
+            echo "Refreshing untriaged digest #$NUM"
+            gh issue edit "$NUM" --body-file /tmp/digest-body.md
+          else
+            echo "Digest #$NUM is closed and untriaged — respecting the human close (a candidate-bearing digest is closed only by a human)."
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TITLE: ${{ steps.detect.outputs.title }}
+          NUM: ${{ steps.existing.outputs.number }}
+          TRIAGED: ${{ steps.existing.outputs.triaged }}
+          STATE: ${{ steps.existing.outputs.state }}
+
+      # clean: open-then-close the digest as a judgment-free audit record.
+      - name: Open-then-close clean digest (audit record)
+        if: steps.detect.outputs.action == 'clean'
+        run: |
+          set -euo pipefail
+          CLOSE_MSG="Mechanically clean — nothing JellyRock uses changed in this release, and every post-floor endpoint we call is a known, handled case. Closing automatically as a record (a judgment-free claim)."
+          if [ -z "$NUM" ]; then
+            echo "Opening clean record digest"
+            URL=$(gh issue create --title "$TITLE" \
+              --body-file /tmp/digest-body.md --label server-upgrade:tracker)
+            NEW_NUM=$(echo "$URL" | sed -E 's#.*/issues/([0-9]+).*#\1#')
+            gh issue close "$NEW_NUM" --comment "$CLOSE_MSG"
+          elif [ "$TRIAGED" = "true" ]; then
+            echo "Digest #$NUM already triaged — CI hands off."
+          elif [ "$STATE" = "OPEN" ]; then
+            echo "Untriaged digest #$NUM went clean — updating + closing as a record"
+            gh issue edit "$NUM" --body-file /tmp/digest-body.md
+            gh issue close "$NUM" --comment "$CLOSE_MSG"
+          else
+            echo "Clean digest #$NUM already closed — nothing to do."
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TITLE: ${{ steps.detect.outputs.title }}
+          NUM: ${{ steps.existing.outputs.number }}
+          TRIAGED: ${{ steps.existing.outputs.triaged }}
+          STATE: ${{ steps.existing.outputs.state }}
