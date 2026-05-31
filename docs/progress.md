@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
 
+- 2026-05-31 — chore(ci): harden journal-sync workflow against PR-title injection
 - 2026-05-31 — Fix server-upgrade digest counts + harden CI command injection
 - 2026-05-31 — Fix server-upgrade tracker issue writes (REST) + digest legend & nudge
 - 2026-05-30 — Server-upgrade automation, Phases 0–6 built + committed on `feat/server-upgrade-automation` — **no PR yet, by design: the whole initiative ships as ONE PR at the very end.** Phase 6 (just built) replaced the per-finding issue burst + single rolling tracker with the **per-version release-triage digest** model (one auto-opened digest per release; CI opens-then-closes a mechanically-clean release as a persistent audit record; `/server-upgrade` edits the digest with verdicts + files per-finding **sub-issues**; never CI-closed once it bears a candidate) and added the **endpoint-availability registry** ([`jellyfin-endpoint-availability.yml`](dev/jellyfin-endpoint-availability.yml) + `.cjs` loader + `lint:endpoint-availability`) — a validated disposition ledger that resolves the 5 recurring floor findings (`MediaSegments`/Lyrics/`QuickConnect`/`GET /items`) at the source so they stop reappearing every release. All offline/tooling-tier; `npm run test:scripts` green (675 tests); see the `server-upgrade-phase6` decision. **Next: open the single PR for Phases 0–6 via `/pr`.**
