@@ -632,8 +632,8 @@ describe('digest identity + render', () => {
     const report = {
       counts: {
         breaking: 1,
-        'coverage-gap': 0,
-        'symmetry-advisory': 0,
+        'coverage-gap': 4,
+        'symmetry-advisory': 1,
         needsInvestigation: 1,
         floorKnown: 5,
       },
@@ -659,12 +659,57 @@ describe('digest identity + render', () => {
     });
     expect(body).toContain('### Candidates to triage');
     expect(body).toContain('- [ ] **endpoint removed: GET /Items/{itemId}**');
-    expect(body).toContain('✅ 5 floor-known');
     expect(body).toContain(TRIAGING_LABEL);
+    // Two-axis split: release-delta line + standing-floor block (subset framing).
+    expect(body).toContain("**This release's changes**");
+    expect(body).toContain('🔴 **1** breaking');
+    expect(body).toContain('**Standing floor findings**: 5 total');
+    expect(body).toContain('🟡 4 coverage-gap + 🔵 1 symmetry');
+    expect(body).toContain('🔎 1 need investigation');
+    // Collapsible glyph legend + the maintainer action-needed nudge.
+    expect(body).toContain('<details><summary>What the counts mean</summary>');
+    expect(body).toContain('Maintainers — action needed');
+    expect(body).toContain('`/server-upgrade`');
   });
 
   it('renderDigestBody renders the mechanically-clean record when 0 candidates', () => {
-    const report = { counts: { needsInvestigation: 0, floorKnown: 5 }, candidates: [] };
+    const report = {
+      counts: {
+        breaking: 0,
+        opportunity: 0,
+        'coverage-gap': 4,
+        'symmetry-advisory': 1,
+        needsInvestigation: 0,
+        floorKnown: 5,
+      },
+      candidates: [],
+    };
+    const body = renderDigestBody({
+      version: '10.11.10',
+      acknowledged: '10.11.8',
+      floor: '10.7.0',
+      report,
+    });
+    expect(body).toContain('Mechanically clean');
+    expect(body).toContain('CI closes this issue');
+    expect(body).not.toContain('### Candidates to triage');
+    // Two-axis split, subset framing: the 4+1 ARE the 5 handled, 0 to investigate.
+    expect(body).toContain("**This release's changes**");
+    expect(body).toContain('🔴 **0** breaking');
+    expect(body).toContain('**Standing floor findings**: 5 total, all handled ✅');
+    expect(body).toContain('🟡 4 coverage-gap + 🔵 1 symmetry');
+    expect(body).toContain('🔎 0 need investigation');
+    // Legend renders on the clean body too; the maintainer nudge is SOFT here.
+    expect(body).toContain('<details><summary>What the counts mean</summary>');
+    expect(body).toContain('auto-closed as clean');
+    expect(body).toContain('Optional — no action is required');
+  });
+
+  it('renderDigestBody omits the floor block when there are no floor findings', () => {
+    const report = {
+      counts: { breaking: 0, opportunity: 0, needsInvestigation: 0, floorKnown: 0 },
+      candidates: [],
+    };
     const body = renderDigestBody({
       version: '10.11.11',
       acknowledged: '10.11.10',
@@ -672,8 +717,7 @@ describe('digest identity + render', () => {
       report,
     });
     expect(body).toContain('Mechanically clean');
-    expect(body).toContain('CI closes this issue');
-    expect(body).not.toContain('### Candidates to triage');
+    expect(body).not.toContain('Standing floor findings');
   });
 
   it('renderDigestVerdicts checks off each disposition with its link/rationale', () => {
