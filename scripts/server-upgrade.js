@@ -603,6 +603,26 @@ function digestCountsLine(counts) {
   );
 }
 
+// Glyph legend for the counts line. Collapsible so the digest stays compact while
+// every category in digestCountsLine is self-documenting (the glyphs are otherwise
+// opaque to a maintainer seeing their first digest).
+function digestLegend() {
+  return [
+    '<details><summary>What the counts mean</summary>',
+    '',
+    '| Glyph | Category | Meaning |',
+    '| --- | --- | --- |',
+    '| 🔴 | breaking | A spec change to an endpoint / field / enum JellyRock uses that could break a call (endpoint or param removed, field retyped, request/response shape changed). |',
+    '| 🟢 | opportunity | A newly-added endpoint or field JellyRock could adopt — additive, never breaking. |',
+    '| 🟡 | coverage-gap | An endpoint we call that is absent from the supported **floor** spec — may 404 on the oldest supported server unless guarded. |',
+    '| 🔵 | symmetry | A floor-coverage advisory: an endpoint wired tier-≥2-only whose lower-tier sibling / fallback should be confirmed to cover the floor. |',
+    '| 🔎 | to investigate | Candidates needing a human verdict via `/server-upgrade` (excludes floor-known + suppressed — those need no action). |',
+    '| ✅ | floor-known | Post-floor endpoints already recorded as handled in the endpoint-availability ledger (`docs/dev/jellyfin-endpoint-availability.yml`). |',
+    '| 🔇 | suppressed | Findings muted via `.api-watch/suppressions.yml`. |',
+    '</details>',
+  ].join('\n');
+}
+
 // The MECHANICAL digest body the CI tracker opens with (zero judgment). A clean
 // report (0 needsInvestigation) renders the "nothing touches us" record — the
 // open-then-close audit trail. Otherwise renders the candidate checklist.
@@ -625,9 +645,17 @@ export function renderDigestBody({ version, acknowledged, floor, report }) {
     lines.push('');
     lines.push(digestCountsLine(counts));
     lines.push('');
+    lines.push(digestLegend());
+    lines.push('');
     lines.push(
       '_This is a judgment-free claim (0 candidates touch us), so CI closes this issue ' +
         'automatically as a record. No triage needed._',
+    );
+    lines.push('');
+    lines.push(
+      '> 🧰 **Maintainers**: this release auto-closed as clean, but you can still run ' +
+        '**`/server-upgrade`** to double-check the mechanical call against real app usage ' +
+        '(and to acknowledge the new spec). Optional — no action is required.',
     );
   } else {
     lines.push(
@@ -636,13 +664,16 @@ export function renderDigestBody({ version, acknowledged, floor, report }) {
     lines.push('');
     lines.push(digestCountsLine(counts));
     lines.push('');
+    lines.push(digestLegend());
+    lines.push('');
     lines.push('### Candidates to triage');
     for (const c of candidates) lines.push(digestCandidateLine(c));
     lines.push('');
     lines.push(
-      '> Run **`/server-upgrade`** to investigate each against real app usage. It edits this ' +
-        'issue with verdicts (skip / file / monitor), files the ones worth standalone tracking ' +
-        'as **sub-issues**, and inline-notes the rest.',
+      '> 🧰 **Maintainers — action needed**: run **`/server-upgrade`** to investigate each ' +
+        'candidate against real app usage. It edits this issue with verdicts (skip / file / ' +
+        'monitor), files the ones worth standalone tracking as **sub-issues**, and inline-notes ' +
+        'the rest.',
     );
   }
 
