@@ -476,7 +476,20 @@ end function
 ' @param {string} itemId - The Audio item ID
 ' @returns {dynamic} LyricDto: { Metadata: {...}, Lyrics: [{Start: ticks, Text: string}] }, or invalid
 function GetItemLyrics(itemId as string) as dynamic
+  if not supportsLyrics() then return invalid
   return fetchJson(GetApi().BuildGetItemLyricsRequest(itemId), "lyrics")
+end function
+
+' supportsLyrics: Checks if the connected Jellyfin server supports the Lyrics API.
+'
+' The /Audio/{itemId}/Lyrics endpoint was introduced in Jellyfin 10.9.0.
+' Servers below 10.9.0 do not have this endpoint and will return 404. Guarding
+' the request mirrors supportsMediaSegments() (source/utils/mediaSegments.bs) and
+' lets the endpoint-availability ledger record this as a validated version-guard.
+'
+' @returns {boolean} - true if server supports lyrics
+function supportsLyrics() as boolean
+  return versionChecker(m.global.server.version, "10.9.0")
 end function
 
 function BackdropImage(id as string)
