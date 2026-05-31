@@ -750,6 +750,12 @@ in Layer 2, not an `ApiClient` version branch.
    tooling-only PR. The ledger clears all 5 with no app/behavior change. A
    followup tracks a proactive PR-time floor lint (catch a *new* floor gap from our
    own commits without waiting for a Jellyfin release).
+   **Update (post-Phase-6):** Lyrics was subsequently given a real
+   `supportsLyrics()` version-guard (`source/api/items.bs`), so its ledger entry is
+   now `version-guard` (CI-validated), not `graceful-degradation` — leaving
+   `QuickConnect` ×2 as the remaining deliberate graceful/fail-open cases (their
+   handling is correct as-is; see the Quick Connect analysis in
+   [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md)).
 
 ### (2) The per-version release-triage digest model
 
