@@ -68,11 +68,15 @@ jobs:
       # Using the event payload directly avoids an extra `gh pr view` call.
       - name: Run journal-sync
         id: sync
+        # All PR-controlled values come in via env, NOT interpolated into the shell.
+        # A `${{ ...title }}` expanded into a `run:` line lets a `'` end the quote
+        # (and backticks / $(...) execute) as the line is parsed — GitHub Actions
+        # script-injection. env values are not shell-parsed, so "$PR_TITLE" is inert.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
-          PR_TITLE='${{ github.event.pull_request.title }}'
-          PR_AUTHOR='${{ github.event.pull_request.user.login }}'
-          PR_LABELS='${{ join(github.event.pull_request.labels.*.name, ',') }}'
-
           echo "PR title: $PR_TITLE"
           echo "PR author: $PR_AUTHOR"
           echo "PR labels: $PR_LABELS"
@@ -95,8 +99,14 @@ jobs:
 
       - name: Commit and push
         if: steps.check_changes.outputs.has_changes == 'true'
+        # PR title via env (same injection reason as the Run journal-sync step) so a
+        # title with a quote/backtick can't break or inject into git commit -m. The
+        # number is a controlled integer, safe to interpolate.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           git pull --rebase --autostash origin main
           git add docs/progress.md
-          git commit -m "chore(journal): sync ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})"
+          git commit -m "chore(journal): sync ${PR_TITLE} (#${PR_NUMBER})"
           git push origin main
