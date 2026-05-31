@@ -129,13 +129,15 @@ jobs:
         if: steps.detect.outputs.action == 'triage'
         run: |
           set -euo pipefail
-          # All issue writes go through REST `gh api`, not `gh issue create/edit`.
-          # `gh issue create --label` silently dropped the label under the App
-          # installation token (it resolves + attaches labels via a GraphQL mutation
-          # the token can't call), leaving the digest unlabelled and therefore
-          # invisible to the label-keyed dedup in "Find this version's digest" — the
-          # next run would then create a DUPLICATE. The REST POST attaches labels
-          # atomically at creation and returns the number directly (no URL parsing).
+          # ROOT CAUSE (resolved): the GitHub App installation lacked the Issues
+          # permission, so the token could create an issue but not comment, attach a
+          # label, or list — every non-create write returned HTTP 403 "Resource not
+          # accessible by integration" (REST *and* GraphQL alike — REST is not a
+          # workaround for the 403; the permission grant is the fix). Granting the App
+          # Issues: read & write fixed it. We use REST `gh api` here regardless because
+          # it creates + labels atomically (so the digest is immediately visible to
+          # the label-keyed dedup in "Find this version's digest", avoiding a
+          # duplicate) and returns the number directly (no URL parsing).
           if [ -z "$NUM" ]; then
             echo "Opening new triage digest"
             gh api "repos/$GITHUB_REPOSITORY/issues" \
@@ -163,12 +165,11 @@ jobs:
         run: |
           set -euo pipefail
           CLOSE_MSG="Mechanically clean — nothing JellyRock uses changed in this release, and every post-floor endpoint we call is a known, handled case. Closing automatically as a record (a judgment-free claim)."
-          # All issue writes go through the REST API (`gh api`), not `gh issue
-          # create/close/edit/comment`. Those route create-with-label + the comment +
-          # the state change through GraphQL mutations the GitHub App installation
-          # token can't call ("Resource not accessible by integration"); the REST
-          # endpoints ride the same issues:write scope. REST POST also attaches the
-          # label atomically (so the digest is dedup-visible) and returns the number.
+          # See the ROOT CAUSE note in the triage step above: the App installation
+          # was missing the Issues permission (HTTP 403 on every non-create write,
+          # REST and GraphQL alike); granting Issues: read & write fixed it. REST
+          # `gh api` is used here because the create call attaches the label
+          # atomically (dedup-visible) and returns the number directly.
           if [ -z "$NUM" ]; then
             echo "Opening clean record digest"
             NEW_NUM=$(gh api "repos/$GITHUB_REPOSITORY/issues" \

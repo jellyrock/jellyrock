@@ -57,9 +57,18 @@ jobs:
 
       - name: Check if push is from PR merge
         id: merge_check
+        # COMMIT_MSG is passed via env, NOT interpolated into the shell. A commit
+        # message is attacker-controllable; `${{ github.event.head_commit.message }}`
+        # expanded directly into a `run:` line lets backticks / $(...) in the message
+        # execute as the line is parsed (GitHub Actions script-injection — a real
+        # backtick-heavy merge commit tripped exactly this). env values are not
+        # shell-parsed, so the quoted "$COMMIT_MSG" is inert. (event_name/ref are
+        # controlled values, safe to interpolate.)
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            if echo "${{ github.event.head_commit.message }}" | grep -q "Merge pull request"; then
+            if printf '%s' "$COMMIT_MSG" | grep -q "Merge pull request"; then
               echo "This is a PR merge to main - tests already ran on PR"
               echo "skip=true" >> $GITHUB_OUTPUT
             else

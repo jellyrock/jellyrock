@@ -592,23 +592,60 @@ function digestHeader(version, acknowledged, floor) {
   ].join('\n');
 }
 
-function digestCountsLine(counts) {
+// The digest counts mix THREE different axes, which a single line conflates into
+// an apparent contradiction ("4 coverage-gap … 5 floor-known" reads like 9 things
+// or a paradox). They are split here into the two questions a maintainer actually
+// asks:
+//
+//   1. What changed in THIS release?  → breaking + opportunity (the acknowledged→
+//      latest diff). Both zero means the release itself touched nothing we use.
+//   2. What standing FLOOR findings exist?  → coverage-gap + symmetry. These are
+//      recomputed from manifest×floor every run and recur forever regardless of
+//      the release; each is independently either `floor-known` (handled, recorded
+//      in the ledger) or still needs investigation.
+//
+// coverage-gap/symmetry is the TYPE of a finding; floor-known is its DISPOSITION —
+// the same finding is counted under both, by design, not double-counting.
+
+// Line for axis 1: what the release delta touched.
+function digestReleaseLine(counts) {
   if (!counts) return '';
-  return (
-    `🔴 **${counts.breaking ?? 0}** breaking · 🟢 **${counts.opportunity ?? 0}** opportunit(y/ies) · ` +
-    `🟡 **${counts['coverage-gap'] ?? 0}** coverage-gap(s) · 🔵 **${counts['symmetry-advisory'] ?? 0}** symmetry · ` +
-    `🔎 **${counts.needsInvestigation ?? 0}** to investigate` +
-    (counts.floorKnown ? ` · ✅ ${counts.floorKnown} floor-known (handled)` : '') +
-    (counts.suppressed ? ` · 🔇 ${counts.suppressed} suppressed` : '')
-  );
+  return `🔴 **${counts.breaking ?? 0}** breaking · 🟢 **${counts.opportunity ?? 0}** new endpoint(s)`;
 }
 
-// Glyph legend for the counts line. Collapsible so the digest stays compact while
-// every category in digestCountsLine is self-documenting (the glyphs are otherwise
-// opaque to a maintainer seeing their first digest).
+// Lines for axis 2: standing floor findings + their disposition. Returns an array
+// (may be empty when there are no floor findings at all).
+function digestFloorLines(counts) {
+  if (!counts) return [];
+  const gap = counts['coverage-gap'] ?? 0;
+  const sym = counts['symmetry-advisory'] ?? 0;
+  const floorTotal = gap + sym;
+  if (floorTotal === 0) return [];
+  const handled = counts.floorKnown ?? 0;
+  const investigate = counts.needsInvestigation ?? 0;
+  const lines = [];
+  lines.push(
+    `**Standing floor findings**: ${floorTotal} total` +
+      (handled === floorTotal ? ', all handled ✅' : '') +
+      (counts.suppressed ? ` · 🔇 ${counts.suppressed} suppressed` : ''),
+  );
+  lines.push(
+    `  └ 🟡 ${gap} coverage-gap + 🔵 ${sym} symmetry — ` +
+      `✅ ${handled} recorded in the endpoint-availability ledger, ` +
+      `🔎 ${investigate} need investigation. These are floor facts (recur every ` +
+      'run), not changes in this release.',
+  );
+  return lines;
+}
+
+// Glyph legend for the counts. Collapsible so the digest stays compact while every
+// category is self-documenting (the glyphs are otherwise opaque to a maintainer
+// seeing their first digest).
 function digestLegend() {
   return [
     '<details><summary>What the counts mean</summary>',
+    '',
+    "_Two axes: **what changed in this release** (breaking / opportunity) vs. **standing floor findings** (coverage-gap / symmetry, recomputed every run). A floor finding's TYPE is coverage-gap or symmetry; its DISPOSITION is floor-known or needs-investigation — the same finding appears under both, by design._",
     '',
     '| Glyph | Category | Meaning |',
     '| --- | --- | --- |',
@@ -616,8 +653,8 @@ function digestLegend() {
     '| 🟢 | opportunity | A newly-added endpoint or field JellyRock could adopt — additive, never breaking. |',
     '| 🟡 | coverage-gap | An endpoint we call that is absent from the supported **floor** spec — may 404 on the oldest supported server unless guarded. |',
     '| 🔵 | symmetry | A floor-coverage advisory: an endpoint wired tier-≥2-only whose lower-tier sibling / fallback should be confirmed to cover the floor. |',
-    '| 🔎 | to investigate | Candidates needing a human verdict via `/server-upgrade` (excludes floor-known + suppressed — those need no action). |',
-    '| ✅ | floor-known | Post-floor endpoints already recorded as handled in the endpoint-availability ledger (`docs/dev/jellyfin-endpoint-availability.yml`). |',
+    '| 🔎 | to investigate | Findings still needing a human verdict via `/server-upgrade` (excludes floor-known + suppressed — those need no action). |',
+    '| ✅ | floor-known | Floor findings already recorded as handled in the endpoint-availability ledger (`docs/dev/jellyfin-endpoint-availability.yml`). |',
     '| 🔇 | suppressed | Findings muted via `.api-watch/suppressions.yml`. |',
     '</details>',
   ].join('\n');
@@ -640,15 +677,22 @@ export function renderDigestBody({ version, acknowledged, floor, report }) {
   } else if (candidates.length === 0) {
     lines.push(
       `✅ **Mechanically clean** — nothing JellyRock uses changed in \`${acknowledged} → ${version}\`, ` +
-        'and every post-floor endpoint we call is a known, handled case.',
+        'and every standing floor finding is a known, handled case.',
     );
     lines.push('');
-    lines.push(digestCountsLine(counts));
+    lines.push(
+      `**This release's changes** (\`${acknowledged} → ${version}\`): ${digestReleaseLine(counts)}`,
+    );
+    const floorLines = digestFloorLines(counts);
+    if (floorLines.length) {
+      lines.push('');
+      lines.push(...floorLines);
+    }
     lines.push('');
     lines.push(digestLegend());
     lines.push('');
     lines.push(
-      '_This is a judgment-free claim (0 candidates touch us), so CI closes this issue ' +
+      '_This is a judgment-free claim (0 findings need investigation), so CI closes this issue ' +
         'automatically as a record. No triage needed._',
     );
     lines.push('');
@@ -662,7 +706,14 @@ export function renderDigestBody({ version, acknowledged, floor, report }) {
       '**Mechanical candidates** — a first pass over what intersects code we ship. NOT verdicts:',
     );
     lines.push('');
-    lines.push(digestCountsLine(counts));
+    lines.push(
+      `**This release's changes** (\`${acknowledged} → ${version}\`): ${digestReleaseLine(counts)}`,
+    );
+    const floorLines = digestFloorLines(counts);
+    if (floorLines.length) {
+      lines.push('');
+      lines.push(...floorLines);
+    }
     lines.push('');
     lines.push(digestLegend());
     lines.push('');
