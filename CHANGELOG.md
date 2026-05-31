@@ -23,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
-- Update lint-staged from v16.4.0 to v17.0.6 ([#577](https://github.com/jellyrock/jellyrock/pull/577), [#596](https://github.com/jellyrock/jellyrock/pull/596))
+- Update lint-staged from v16.4.0 to v17.0.7 ([#577](https://github.com/jellyrock/jellyrock/pull/577), [#596](https://github.com/jellyrock/jellyrock/pull/596), [#598](https://github.com/jellyrock/jellyrock/pull/598))
 - Update ropm from v0.11.5 to v0.11.8 ([#571](https://github.com/jellyrock/jellyrock/pull/571), [#588](https://github.com/jellyrock/jellyrock/pull/588), [#595](https://github.com/jellyrock/jellyrock/pull/595))
 - Update roku-deploy from v3.17.2 to v3.17.5 ([#570](https://github.com/jellyrock/jellyrock/pull/570), [#578](https://github.com/jellyrock/jellyrock/pull/578), [#594](https://github.com/jellyrock/jellyrock/pull/594))
 - Update rooibos-roku to v6.0.0 ([#593](https://github.com/jellyrock/jellyrock/pull/593))
