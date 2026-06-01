@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Version-guard the Lyrics request on Jellyfin 10.9+ ([#605](https://github.com/jellyrock/jellyrock/pull/605))
 - Server-upgrade automation: detect + triage Jellyfin API changes that affect us (Phases 0–6) ([#597](https://github.com/jellyrock/jellyrock/pull/597))
 - Expand placeholder coverage to grids, audio player, and item details ([#567](https://github.com/jellyrock/jellyrock/pull/567))
 - renovate: strip rules now covered by org default ([#590](https://github.com/jellyrock/jellyrock/pull/590))
