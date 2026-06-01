@@ -1,0 +1,53 @@
+name: lint-floor-system
+
+# Runs the two Phase-6 floor-governance lints of the server-upgrade-automation
+# pipeline (docs/architecture/server-upgrade-automation.md):
+#
+#   - lint:endpoint-availability — validates each endpoint-availability ledger
+#     entry's CODE claim (the version-guard symbol still exists in source/, the
+#     dispatch-sibling is still a floor-tier manifest endpoint, no dead entries).
+#     Reads source/*.bs, so a `.bs` change can flip its verdict.
+#   - lint:floor-coverage — proactive PR-time check: FAILs when JellyRock's own
+#     commit starts calling an endpoint absent from the 10.7.0 floor spec with no
+#     ledger entry / guard (symmetry advisories warn, don't block).
+#
+# Both are offline Node tooling (no build, no network, no hardware), so running
+# the pair behind one path gate is cheap. Combining them ALSO gives
+# lint:endpoint-availability its only CI home — it otherwise ran only in the local
+# `npm run lint` aggregate.
+
+on:
+  workflow_call:
+    inputs:
+      force:
+        description: 'When true, skip path detection and run unconditionally (used by the dependencies validator).'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  floor-system:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone github repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - id: detect
+        uses: ./.github/actions/changed-paths
+        with:
+          pattern: '^source/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/generate/findings-candidates\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
+          force: ${{ inputs.force }}
+      - name: Setup Node.js
+        if: steps.detect.outputs.relevant == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+      - name: Install dependencies
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm ci
+      - name: Validate endpoint-availability ledger
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:endpoint-availability
+      - name: Check floor coverage (proactive)
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:floor-coverage
