@@ -1,0 +1,9 @@
+name: lint-floor-system
+
+# No event-time `paths:` filter — see .github/actions/changed-paths for why.
+on:
+  pull_request:
+
+jobs:
+  floor-system:
+    uses: ./.github/workflows/_lint-floor-system.yml

@@ -13,6 +13,7 @@ related-files:
   - docs/dev/jellyfin-endpoint-availability.yml
   - scripts/lib/endpoint-availability.cjs
   - scripts/lint/endpoint-availability-check.cjs
+  - scripts/lint/floor-coverage-check.js
   - scripts/lib/spec-fetch.cjs
   - scripts/lib/version-boundaries.cjs
   - docs/architecture/api-usage-manifest.json
@@ -22,7 +23,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-05-30
+last-reviewed: 2026-06-01
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -747,9 +748,17 @@ in Layer 2, not an `ApiClient` version branch.
    express "10.10+", and adding explicit guards to the 3 unguarded-but-graceful
    endpoints (Lyrics, `QuickConnect` ×2) would either change *deliberate* fail-open
    behavior (`QuickConnect`) or need on-hardware testing — out of scope for a
-   tooling-only PR. The ledger clears all 5 with no app/behavior change. A
-   followup tracks a proactive PR-time floor lint (catch a *new* floor gap from our
-   own commits without waiting for a Jellyfin release).
+   tooling-only PR. The ledger clears all 5 with no app/behavior change.
+   **Shipped (post-Phase-6):** the proactive PR-time floor lint
+   ([`floor-coverage-check.js`](../../scripts/lint/floor-coverage-check.js), npm
+   `lint:floor-coverage`) now catches a *new* floor gap from our own commits without
+   waiting for a Jellyfin release. It reuses the same `backwardFindings` /
+   `symmetryFindings` / `applySuppressions` / `applyFloorAvailability` functions as the
+   digest, so its residual == the digest's floor actionable set: an unregistered
+   `coverage-gap` FAILs the PR (exit 1), a `symmetry-advisory` only warns. It runs in
+   CI via the combined [`_lint-floor-system.yml`](../../.github/workflows/_lint-floor-system.yml)
+   reusable, which ALSO gives `lint:endpoint-availability` its first CI home (it had
+   previously run only in the local `npm run lint` aggregate).
    **Update (post-Phase-6):** Lyrics was subsequently given a real
    `supportsLyrics()` version-guard (`source/api/items.bs`), so its ledger entry is
    now `version-guard` (CI-validated), not `graceful-degradation` — leaving
@@ -796,7 +805,10 @@ for issue-body rendering); the Phase-4 tracker imports them.
    does the open/refresh/close + triaged-hands-off `gh` plumbing, matching the digest
    by exact title (not `--search`, which would mangle the bracketed/em-dash title).
 5. **Tests.** `endpoint-availability.test.js` (loader schema + the lint's
-   guard/sibling/stale checks, offline via `spawnScript`); `findings-candidates.test.js`
+   guard/sibling/stale checks, offline via `spawnScript`); `floor-coverage-check.test.js`
+   (the proactive PR-time lint, offline via `spawnScript`: registered-clean,
+   unregistered-gap-fails, symmetry-warns-not-fails, suppression clears, `--json` shape,
+   missing-floor-fingerprint → exit 2); `findings-candidates.test.js`
    (`applyFloorAvailability` floor-known + unregistered-still-flags + `floorKnown`
    counts); `server-upgrade.test.js` (digest identity + both body renders +
    `attachSubIssue` + `executePlan` with a digest: sub-issue attach, the
