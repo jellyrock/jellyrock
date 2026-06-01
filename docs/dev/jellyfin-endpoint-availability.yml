@@ -67,12 +67,14 @@ endpoints:
     method: GET
     minServer: "10.9.0"
     handling:
-      type: graceful-degradation
+      type: version-guard
+      symbol: supportsLyrics
       note: >-
-        Unguarded; on 10.7/10.8 the request 404s, fetchJson() returns invalid,
-        and the caller (components/home/LoadItemsTask.bs) checks
-        `isValid(lyricsData) and isValid(lyricsData.Lyrics)` before indexing — no
-        lyrics shown, no crash.
+        GetItemLyrics() (source/api/items.bs) early-returns invalid unless
+        supportsLyrics() (source/api/items.bs, versionChecker >=10.9.0) passes, so
+        the request is never built on older servers. Belt-and-suspenders: the
+        caller (components/home/LoadItemsTask.bs) still checks
+        `isValid(lyricsData) and isValid(lyricsData.Lyrics)` before indexing.
 
   - path: /quickconnect/enabled
     method: GET
