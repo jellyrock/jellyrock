@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
 
+- 2026-06-01 — Add proactive PR-time floor-coverage lint
 - 2026-06-01 — Proactive PR-time floor-coverage lint: run the server-upgrade floor check (backward + symmetry, minus the endpoint-availability ledger) on PRs so a NEW floor gap introduced by our own code surfaces immediately, instead of waiting for the next Jellyfin release to open a digest. (Phase 6 followup — the digest model only surfaces floor findings on release-triggered runs.)
 - 2026-06-01 — Version-guard the Lyrics request on Jellyfin 10.9+
 - 2026-05-31 — chore(ci): harden journal-sync workflow against PR-title injection
