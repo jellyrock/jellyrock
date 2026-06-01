@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-31
+last-updated: 2026-06-01
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
 
+- 2026-06-01 — Version-guard the Lyrics request on Jellyfin 10.9+
 - 2026-05-31 — chore(ci): harden journal-sync workflow against PR-title injection
 - 2026-05-31 — Fix server-upgrade digest counts + harden CI command injection
 - 2026-05-31 — Fix server-upgrade tracker issue writes (REST) + digest legend & nudge
