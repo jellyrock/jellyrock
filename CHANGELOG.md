@@ -31,12 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update rooibos-roku to v6.0.0 ([#609](https://github.com/jellyrock/jellyrock/pull/609), [#593](https://github.com/jellyrock/jellyrock/pull/593))
 - Update brighterscript to v1.0.0 ([#608](https://github.com/jellyrock/jellyrock/pull/608), [#586](https://github.com/jellyrock/jellyrock/pull/586))
 - Update vitest from v4.1.5 to v4.1.8 ([#572](https://github.com/jellyrock/jellyrock/pull/572), [#581](https://github.com/jellyrock/jellyrock/pull/581), [#606](https://github.com/jellyrock/jellyrock/pull/606))
 - Update lint-staged from v16.4.0 to v17.0.7 ([#577](https://github.com/jellyrock/jellyrock/pull/577), [#596](https://github.com/jellyrock/jellyrock/pull/596), [#598](https://github.com/jellyrock/jellyrock/pull/598))
 - Update ropm from v0.11.5 to v0.11.8 ([#571](https://github.com/jellyrock/jellyrock/pull/571), [#588](https://github.com/jellyrock/jellyrock/pull/588), [#595](https://github.com/jellyrock/jellyrock/pull/595))
 - Update roku-deploy from v3.17.2 to v3.17.5 ([#570](https://github.com/jellyrock/jellyrock/pull/570), [#578](https://github.com/jellyrock/jellyrock/pull/578), [#594](https://github.com/jellyrock/jellyrock/pull/594))
-- Update rooibos-roku to v6.0.0 ([#593](https://github.com/jellyrock/jellyrock/pull/593))
 - Update eslint from v10.3.0 to v10.4.1 ([#576](https://github.com/jellyrock/jellyrock/pull/576), [#592](https://github.com/jellyrock/jellyrock/pull/592))
 - Update @rokucommunity/bslint to v1.0.0 ([#587](https://github.com/jellyrock/jellyrock/pull/587))
 - Update brighterscript-formatter from v1.7.24 to v1.7.26 ([#569](https://github.com/jellyrock/jellyrock/pull/569), [#580](https://github.com/jellyrock/jellyrock/pull/580))
