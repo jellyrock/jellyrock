@@ -19,6 +19,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
 const { compareSemverBase } = require('./signals-fetch.cjs');
+const { isUnstableVersion } = require('./spec-fetch.cjs');
 
 const MAP_REL = 'docs/dev/jellyfin-version-boundaries.yml';
 const VALID_STATUSES = new Set(['frozen', 'active']);
@@ -94,15 +95,32 @@ function loadBoundaries(rootDir = '.') {
   return validateBoundaries(parsed);
 }
 
-// Map a concrete server version (MAJOR.MINOR.PATCH) to its apiVersion tier
-// integer, or null if it falls below the floor / outside every tier range.
-// A tier with maxServer:null is unbounded above.
+// The active (top, open-ended) tier integer — validateBoundaries guarantees
+// exactly one. null only if called on an unvalidated map.
+function activeTier(boundaries) {
+  const entry = Object.entries(boundaries.tiers).find(([, t]) => t.status === 'active');
+  return entry ? parseInt(entry[0], 10) : null;
+}
+
+// Map a server version to its apiVersion tier integer, or null if it falls below
+// the floor / outside every tier range. A tier with maxServer:null is unbounded.
+//
+// Handles all three archive channels:
+//   - stable  (10.11.10)        → range lookup against the boundary map;
+//   - RC       (10.12.0-rc1)    → resolves to the same tier as its base release
+//                                 (the suffix is stripped before comparison);
+//   - unstable (20240402201942) → the bleeding edge, ahead of every released
+//                                 boundary, so it lands in the active tier by
+//                                 definition. We special-case it rather than rely
+//                                 on the accidental datestamp-vs-semver ordering.
 function serverToTier(boundaries, version) {
-  if (!isSemverBase(version)) return null;
-  if (compareSemverBase(version, boundaries.floor) < 0) return null;
+  if (isUnstableVersion(version)) return activeTier(boundaries);
+  const base = typeof version === 'string' ? version.replace(/-.*$/, '') : version;
+  if (!isSemverBase(base)) return null;
+  if (compareSemverBase(base, boundaries.floor) < 0) return null;
   for (const [key, tier] of Object.entries(boundaries.tiers)) {
-    const atOrAboveMin = compareSemverBase(version, tier.minServer) >= 0;
-    const atOrBelowMax = tier.maxServer === null || compareSemverBase(version, tier.maxServer) <= 0;
+    const atOrAboveMin = compareSemverBase(base, tier.minServer) >= 0;
+    const atOrBelowMax = tier.maxServer === null || compareSemverBase(base, tier.maxServer) <= 0;
     if (atOrAboveMin && atOrBelowMax) return parseInt(key, 10);
   }
   return null;
@@ -120,5 +138,6 @@ module.exports = {
   loadBoundaries,
   validateBoundaries,
   serverToTier,
+  activeTier,
   isTierFrozen,
 };

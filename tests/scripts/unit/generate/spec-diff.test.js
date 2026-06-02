@@ -92,6 +92,58 @@ describe('diffFingerprints — operations', () => {
   });
 });
 
+describe('diffFingerprints — renameCandidates (removal-vs-rename heuristic)', () => {
+  const op = (params) => ({ operations: { 'GET /Items': { parameters: params } } });
+  const P = (name, type = 'string', required = false) => ({ name, in: 'query', type, required });
+
+  it('param-removed: lists a same-signature addition as a high-confidence candidate', () => {
+    const from = fp('1.0.0', op([P('gone'), P('keep')]));
+    const to = fp('1.1.0', op([P('fresh'), P('keep')])); // fresh: same sig as gone
+    const removed = only(diffFingerprints(from, to), (c) => c.kind === 'param-removed');
+    expect(removed.name).toBe('gone');
+    expect(removed.renameCandidates).toEqual([{ name: 'fresh', sameSignature: true }]);
+  });
+
+  it('param-removed: EMPTY candidates when nothing was added (genuine-removal signal)', () => {
+    const from = fp('1.0.0', op([P('gone'), P('keep')]));
+    const to = fp('1.1.0', op([P('keep')]));
+    const removed = only(diffFingerprints(from, to), (c) => c.kind === 'param-removed');
+    expect(removed.renameCandidates).toEqual([]); // the NextUp/disableFirstEpisode case
+  });
+
+  it('param-removed: a different-signature addition is a low-confidence candidate, sorted last', () => {
+    const from = fp('1.0.0', op([P('gone', 'string')]));
+    const to = fp('1.1.0', op([P('sameTy', 'string'), P('diffTy', 'integer:int32')]));
+    const removed = only(diffFingerprints(from, to), (c) => c.kind === 'param-removed');
+    // same-signature first, then the rest
+    expect(removed.renameCandidates).toEqual([
+      { name: 'sameTy', sameSignature: true },
+      { name: 'diffTy', sameSignature: false },
+    ]);
+  });
+
+  it('field-removed: matches on the property type signature', () => {
+    const from = fp('1.0.0', {
+      schemas: { Dto: { properties: { Old: 'string', Keep: 'integer:int32' } } },
+    });
+    const to = fp('1.1.0', {
+      schemas: { Dto: { properties: { New: 'string', Keep: 'integer:int32' } } },
+    });
+    const removed = only(diffFingerprints(from, to), (c) => c.kind === 'field-removed');
+    expect(removed.name).toBe('Old');
+    expect(removed.renameCandidates).toEqual([{ name: 'New', sameSignature: true }]);
+  });
+
+  it('field-removed: EMPTY candidates when the schema only lost a field', () => {
+    const from = fp('1.0.0', {
+      schemas: { Dto: { properties: { Old: 'string', Keep: 'string' } } },
+    });
+    const to = fp('1.1.0', { schemas: { Dto: { properties: { Keep: 'string' } } } });
+    const removed = only(diffFingerprints(from, to), (c) => c.kind === 'field-removed');
+    expect(removed.renameCandidates).toEqual([]);
+  });
+});
+
 describe('diffFingerprints — schemas', () => {
   it('flags field add/remove/retype on a common schema', () => {
     const from = fp('1.0.0', {

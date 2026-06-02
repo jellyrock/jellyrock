@@ -9,7 +9,9 @@ related-files:
   - source/utils/misc.bs
   - source/utils/mediaSegments.bs
   - docs/dev/jellyfin-endpoint-availability.yml
-last-reviewed: 2026-05-30
+  - docs/dev/jellyfin-version-boundaries.yml
+  - scripts/lint/apiversion-consistency-check.js
+last-reviewed: 2026-06-01
 ---
 
 # JellyRock Versioning Systems Overview
@@ -218,11 +220,13 @@ All code references this value to determine behavior.
 
 ## Adding Support for New Server Versions
 
-If Jellyfin 11.0 introduces breaking changes:
+> **Guided path:** the [`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md) skill wraps this whole recipe (boundary map + `resolveApiVersion()` twin, the `sdkVN.bs` shim, dispatch branches, device profile, manifest clamp, docs + validators) and stops at each verify gate. Use it so a tier split can't land half-built.
 
-1. **API Changes:** Create `source/api/sdk.v3.bs` with new endpoint paths
+If a future Jellyfin release introduces breaking changes — including a **cross-major jump** like `12.0.0` (Jellyfin has discussed dropping the `10.` prefix), which the version logic already handles since comparison is numeric-per-segment and the active tier is unbounded above:
+
+1. **API Changes:** Create `source/api/sdkV3.bs` with new endpoint paths
 2. **Profile Changes:** Add a `V3` branch in `source/utils/deviceCapabilities.bs` (`V1/V2` are already internal selectors; `V3` follows the same pattern)
-3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for 11.0+
+3. **Update Detection:** Modify `resolveApiVersion()` to return `3` for the new minimum (e.g. `12.0.0+`). **This must stay in lockstep with the boundary map** — `npm run lint:apiversion-consistency` ([`scripts/lint/apiversion-consistency-check.js`](../../scripts/lint/apiversion-consistency-check.js)) statically parses `resolveApiVersion()` and fails CI if its guards drift from `jellyfin-version-boundaries.yml`. This is what lets you verify a tier split **offline**, with no Roku hardware.
 4. **Update Dispatchers:** Add `apiVersion >= 3` branches in `ApiClient.bs`
 5. **Forward Compatibility:** Existing `>= 2` checks automatically fall through to `V2` until overridden
 
@@ -234,6 +238,16 @@ The release-detection pipeline ([server-upgrade-automation.md](../architecture/s
 2. **Manifest tier clamp:** in [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js), the cross-function clamp that pins `sdkV1.bs → max ≤ 1` / `sdkV2.bs → min ≥ 2` needs a `sdkV3.bs → min ≥ 3` line, and the `sdkV2.bs` line gains a `max ≤ 2` clamp (V2 becomes the frozen middle tier). Then regenerate: `npm run docs:api-manifest`. The `getApiVersion() >= 3` branches added in the dispatcher step above are picked up automatically (the extractor reads the literal `N`).
 
 After those, regenerate/commit a fresh baseline fingerprint at the next acknowledged release as usual — the floor (`10.7.0`) stays put forever (we support the oldest servers indefinitely), so the backward + symmetry + endpoint-availability checks need no change.
+
+### Reacting proactively (RC + master/unstable)
+
+You don't have to wait for a stable release to find out what breaks. The server-upgrade pipeline can diff against a **release candidate** or a **master/unstable** build, so you can start tier work (above) before the final ships:
+
+- **Triage an RC or master build:** `/server-upgrade <from> <to>` where `<to>` is an RC (`10.12.0-rc1`), the literal `unstable`/`master` (resolves to the latest immutable datestamped build), or an explicit datestamp. It investigates locally and writes a `.claude/handoffs/` note — it files **no** GitHub issues (durable filing is the stable flow when the final lands).
+- **Re-diff as it changes:** RCs and master move. After triaging `rc1`, set the `jellyfin-server-rc` signal's `latest_acknowledged = <base>-rc1`; when `rc2` lands, `/server-upgrade` diffs `rc1 → rc2`, surfacing only the delta since your proactive work. For master, the pinned datestamp lives in the handoff and becomes the next `<from>`.
+- **Why ephemeral:** pre-release fingerprints are built in-memory from the permanent archive (`--fetch`), never committed — RC/master builds are throwaway anchors. See [server-upgrade-automation.md → "Pre-release channels"](../architecture/server-upgrade-automation.md).
+
+When that triage shows a breaking shift warranting a new tier, the follow-up is [`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md), which automates the recipe above. **RCs can still change before release** — always re-run `/server-upgrade` against the final stable once it ships.
 
 ## Related Documentation
 

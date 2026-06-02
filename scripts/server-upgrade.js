@@ -50,6 +50,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { normalizeSpecPath } from './lib/spec-path.cjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -129,16 +130,10 @@ export function assertSchemaVersion(doc, label, logger = console.error) {
   return false;
 }
 
-// ── Path normalization (mirrors findings-candidates.js / the manifest) ───────
-
-// Collapse every {placeholder} to {}, fold case, strip a trailing slash, ensure
-// a leading slash. Idempotent. Used to make the dedup key stable regardless of
-// how a path's placeholders are spelled (/Items/{itemId} vs /items/{}).
-export function normalizeSpecPath(p) {
-  let s = (p.startsWith('/') ? p : '/' + p).replace(/\{[^}]*\}/g, '{}').toLowerCase();
-  if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
-  return s;
-}
+// normalizeSpecPath is imported above from ./lib/spec-path.cjs (shared with
+// findings-candidates.js so Phase-2 paths and Phase-3 dedup keys normalize
+// identically). Re-export it so the existing test import path stays stable.
+export { normalizeSpecPath };
 
 const isSchemaChange = (c) => typeof c.schema === 'string';
 const isOperationChange = (c) => typeof c.path === 'string';
@@ -262,6 +257,10 @@ export function buildScaffold(report) {
         kind: c.change.kind,
         locator: findingLocator(c),
         detail: c.change.detail ?? null,
+        // Only the *-removed kinds carry this (from spec-diff). Surface it so the
+        // agent can resolve rename-vs-removal: [] ⇒ likely genuine removal; a
+        // populated list names the rename candidate(s) to confirm upstream.
+        ...(c.change.renameCandidates ? { renameCandidates: c.change.renameCandidates } : {}),
       },
       appUsage: {
         apiVersionRange: c.appUsage?.apiVersionRange ?? null,

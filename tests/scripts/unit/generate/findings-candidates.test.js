@@ -646,6 +646,32 @@ describe('buildReport — integration over fingerprints', () => {
     expect(withOpp.counts.opportunity).toBe(1);
     expect(without.counts.opportunity).toBe(0);
   });
+
+  // Pre-release support (RC + unstable): the pipeline is version-string-agnostic,
+  // so a report builds the same way against an RC or a datestamped master build as
+  // `to`. The only requirement is that serverToTier resolves the pre-release `to`
+  // to the active tier so forward changes are still tier-relevant.
+  it('builds a report against an RC `to`, carrying the suffix into versions', () => {
+    const fromFp = fp('10.11.10', {
+      operations: { 'GET /Items/{itemId}': { parameters: [] } },
+    });
+    const toFp = fp('10.12.0-rc1', { operations: {} }); // /Items/{} removed in the RC
+    const report = buildReport({ fromFp, toFp, floorFp, manifest: m, boundaries: BOUNDARIES });
+    expect(report).toMatchObject({ fromVersion: '10.11.10', toVersion: '10.12.0-rc1' });
+    // The forward removal lands in the active tier (RC base 10.12.0 → tier 2), so it's
+    // a real breaking candidate, not dropped as frozen-tier.
+    expect(report.counts.breaking).toBeGreaterThanOrEqual(1);
+  });
+
+  it('builds a report against an unstable datestamped `to`', () => {
+    const fromFp = fp('10.11.10', {
+      operations: { 'GET /Items/{itemId}': { parameters: [] } },
+    });
+    const toFp = fp('20240402201942', { operations: {} });
+    const report = buildReport({ fromFp, toFp, floorFp, manifest: m, boundaries: BOUNDARIES });
+    expect(report).toMatchObject({ fromVersion: '10.11.10', toVersion: '20240402201942' });
+    expect(report.counts.breaking).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('CLI --stdout against committed fixtures', () => {

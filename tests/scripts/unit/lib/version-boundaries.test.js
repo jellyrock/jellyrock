@@ -16,6 +16,7 @@ const {
   loadBoundaries,
   validateBoundaries,
   serverToTier,
+  activeTier,
   isTierFrozen,
 } = require('../../../../scripts/lib/version-boundaries.cjs');
 
@@ -96,6 +97,13 @@ describe('serverToTier', () => {
     expect(serverToTier(m, '11.0.0')).toBe(2); // unbounded active tier
   });
 
+  it('handles a cross-major jump (Jellyfin "dropping the 10" → 12.0.0)', () => {
+    // The active tier is unbounded above, and comparison is numeric-per-segment,
+    // so a new major lands in the active tier with no special-casing.
+    expect(serverToTier(m, '12.0.0')).toBe(2);
+    expect(serverToTier(m, '12.0.0-rc1')).toBe(2); // RC of the next major, suffix stripped
+  });
+
   it('returns null below the floor', () => {
     expect(serverToTier(m, '10.6.0')).toBeNull();
   });
@@ -108,6 +116,26 @@ describe('serverToTier', () => {
 
   it('returns null for a malformed version string', () => {
     expect(serverToTier(m, 'latest')).toBeNull();
+  });
+
+  it('resolves an RC to the same tier as its base release', () => {
+    // The -rcN suffix is stripped before the range lookup, so an RC lands wherever
+    // its base version would (10.12.0 → active tier 2; an old-line RC → tier 1).
+    expect(serverToTier(m, '10.12.0-rc1')).toBe(2);
+    expect(serverToTier(m, '10.9.0-beta2')).toBe(2);
+    expect(serverToTier(m, '10.8.13-rc1')).toBe(1);
+    expect(serverToTier(m, '10.6.0-rc1')).toBeNull(); // base below floor
+  });
+
+  it('maps an unstable datestamp to the active tier (bleeding edge)', () => {
+    expect(serverToTier(m, '20240402201942')).toBe(2); // 14-digit stamp
+    expect(serverToTier(m, '20240207.2')).toBe(2); // legacy <YYYYMMDD>.<N> form
+  });
+});
+
+describe('activeTier', () => {
+  it('returns the integer key of the open-ended active tier', () => {
+    expect(activeTier(validMap())).toBe(2);
   });
 });
 

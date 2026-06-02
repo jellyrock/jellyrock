@@ -14,8 +14,11 @@ related-files:
   - scripts/lib/endpoint-availability.cjs
   - scripts/lint/endpoint-availability-check.cjs
   - scripts/lint/floor-coverage-check.js
+  - scripts/lint/apiversion-consistency-check.js
   - scripts/lib/spec-fetch.cjs
+  - scripts/lib/signals-fetch.cjs
   - scripts/lib/version-boundaries.cjs
+  - .claude/skills/new-api-version/SKILL.md
   - docs/architecture/api-usage-manifest.json
   - docs/architecture/api-usage-manifest.md
   - docs/architecture/spec-fingerprints/
@@ -23,7 +26,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-06-01
+last-reviewed: 2026-06-02
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -166,6 +169,11 @@ self-describing so the agent (and a human) can act without re-deriving anything:
   "type": "breaking | opportunity | coverage-gap | symmetry-advisory",
   "change": { "kind": "endpoint-removed | field-removed | field-retyped | enum-changed | param-changed | endpoint-added",
               "path": "/Items/{}", "detail": "RunTimeTicks: int64 → int32",
+              // param-removed / field-removed also carry renameCandidates (always
+              // present, possibly []): same-scope additions that could be the rename,
+              // same-signature first. [] ⇒ likely-genuine removal. The diff surfaces
+              // candidates; the agent confirms rename-vs-removal (see /server-upgrade).
+              "renameCandidates": [{ "name": "newName", "sameSignature": true }],
               "fromVersion": "10.11.8", "toVersion": "10.11.10" },
   "appUsage": { "used": true, "apiVersionRange": [2, null],
                 "sites": ["source/api/ApiClient.bs:59", "source/data/JellyfinDataTransformer.bs:96"] },
@@ -243,14 +251,72 @@ reproducibility without repo bloat.
   all investigation + drafting; gate per-finding creation initially; graduate
   specific finding-classes to auto-file once their false-positive rate is proven
   low. (The CI tracker-issue is the one fully-autonomous surface.)
-- **Stable releases only** for issue-filing; RCs are tracked separately by the
-  `jellyfin-server-rc` signal but don't generate issues.
+- **Stable releases only** for GitHub issue-filing. RCs and master/unstable builds
+  have a proactive **local** triage path (see "Pre-release channels" below) — they
+  never file issues; the durable filing is the stable flow when the final ships.
 - **`apiVersion` tiers inferred, not hand-listed.** Because old-version support is
   indefinite and new `V1` calls are legitimate, an inferred range annotation that
   self-suppresses frozen tiers is strictly better than a hand-maintained
   legacy-endpoint allowlist that would drift.
 - **AST extraction, not grep**, for the manifest — durable against formatting and
   ~95% complete vs grep's ~80%.
+
+## Pre-release channels (RC + unstable/master)
+
+The mechanical pipeline is version-string-agnostic, so the same fetch→diff→join
+machinery runs against pre-release builds — letting a maintainer react to an
+upcoming release (or master) **before it ships**, and re-diff as it evolves. This
+is a manual, maintainer-initiated surface; the daily CI tracker stays stable-only.
+
+**Archive channels** (verified live):
+
+| Channel | Dir | Filename | Mutability |
+| --- | --- | --- | --- |
+| stable + RC | `/openapi/stable/` | `jellyfin-openapi-<X.Y.Z>.json`, `…-rcN.json` | immutable per build |
+| unstable/master | `/openapi/unstable/` | `jellyfin-openapi-<datestamp>.json` (e.g. `20240402201942`) | immutable per build |
+| rolling pointers | `/openapi/` root | `jellyfin-openapi-unstable.json` | **mutable** — never pinned |
+
+**Design choices** (locked):
+
+- **Manual trigger, not CI.** The proactive RC/master triage is run by hand via
+  `/server-upgrade <rc-or-unstable>`. The scheduled tracker keeps acting on stable
+  only — proactive pre-release work is opt-in, not a daily nag.
+- **Ephemeral baselines, nothing committed.** Pre-release fingerprints are built
+  in-memory from the permanent archive (`findings-candidates.js --fetch`, the same
+  path the Phase-4 tracker uses). Committing ~20,000-line fingerprints for throwaway
+  RC/master builds would be pure churn, and it keeps the "committed fingerprint =
+  reviewed **stable** anchor" invariant intact. Re-diff (`rc1 → rc2`, or
+  `datestampA → datestampB`) just refetches — the archive is permanent per build.
+- **Pin immutable builds, never the rolling pointer.** The `unstable`/`master`
+  convenience token (`findings-candidates.js <from> unstable`) resolves via
+  `signals-fetch.cjs`'s `fetchLatestUnstable()` to the latest **datestamped** build
+  and records that concrete datestamp (reproducible + re-diffable). The mutable
+  `jellyfin-openapi-unstable.json` root pointer is never pinned as a baseline.
+- **Local output, not GitHub.** Pre-release runs write a `.claude/handoffs/` note
+  with per-finding verdicts + a "fix proactively" list; they file no issues. The
+  RC re-diff baseline is carried in the `jellyfin-server-rc` signal's
+  `latest_acknowledged`; the master datestamp lives in the handoff (master moves
+  too fast for a daily acknowledged cursor).
+
+**Tier resolution.** `version-boundaries.cjs` `serverToTier` resolves an RC to its
+base release's tier (suffix stripped) and a datestamp to the **active** tier (the
+bleeding edge is, by definition, the top tier). This keeps forward tier-relevance
+honest for pre-release `to` versions.
+
+**When pre-release triage warrants a new tier.** If a breaking shift in an RC/master
+build needs a new `if m.getApiVersion() >= N` dispatch level, the follow-up is the
+[`/new-api-version`](../../.claude/skills/new-api-version/SKILL.md) skill, which
+keeps [`jellyfin-version-boundaries.yml`](../dev/jellyfin-version-boundaries.yml)
+and its BrightScript twin `resolveApiVersion()` in lockstep — and that lockstep is
+machine-enforced **offline** by `npm run lint:apiversion-consistency`
+([`apiversion-consistency-check.js`](../../scripts/lint/apiversion-consistency-check.js),
+in the floor-system CI lint), which parses `resolveApiVersion()` with the same
+BrighterScript AST the manifest generator uses and fails if its guards drift from the
+boundary map. No Roku hardware is needed to verify a tier split. A **cross-major jump**
+(e.g. `12.0.0` — Jellyfin dropping the `10.` prefix) needs no special-casing: version
+comparison is numeric-per-segment and the active tier is unbounded above, so the new
+major lands in the active tier and diffs against the prior stable normally. RCs can
+still change, so re-run `/server-upgrade` against the FINAL stable when it ships.
 
 ## Roadmap
 

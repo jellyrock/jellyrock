@@ -304,6 +304,22 @@ describe('investigationCandidates + buildScaffold', () => {
     expect(baseLabelsFor('opportunity')).toEqual(['server-upgrade', 'enhancement']);
     expect(baseLabelsFor('symmetry-advisory')).toEqual(['server-upgrade', 'enhancement']);
   });
+
+  it('surfaces renameCandidates on a removal verdict, and omits it on other kinds', () => {
+    const withCands = opCandidate({
+      change: {
+        kind: 'param-removed',
+        path: '/Shows/NextUp',
+        method: 'GET',
+        detail: 'query param "disableFirstEpisode" removed',
+        renameCandidates: [], // the genuine-removal signal must reach the agent
+      },
+    });
+    const noCands = opCandidate(); // endpoint-removed default, no renameCandidates on the change
+    const scaffold = buildScaffold(report([withCands, noCands]));
+    expect(scaffold.verdicts[0].change.renameCandidates).toEqual([]);
+    expect(scaffold.verdicts[1].change).not.toHaveProperty('renameCandidates');
+  });
 });
 
 // ── Verdict validation + label merge ──────────────────────────────────────────

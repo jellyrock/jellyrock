@@ -1,12 +1,21 @@
 // scripts/lib/spec-fetch.cjs — fetch + cache Jellyfin OpenAPI specs for the
 // server-upgrade-automation pipeline (docs/architecture/server-upgrade-automation.md).
 //
-// The Jellyfin archive at api.jellyfin.org/openapi/stable/ serves EVERY version
-// back to 10.7.0 at a permanent URL, so:
-//   - historical versions are immutable → cache forever, never a TTL miss;
+// The Jellyfin archive serves EVERY immutable build at a permanent URL across two
+// channels (verified against the live archive):
+//   - stable/   → jellyfin-openapi-<X.Y.Z>.json and -rcN/-betaN/-alphaN release
+//                 candidates (RCs live in the stable dir);
+//   - unstable/ → jellyfin-openapi-<datestamp>.json master builds (e.g.
+//                 20240402201942, or the legacy <YYYYMMDD>.<N> form).
+// Both serve IMMUTABLE per-build files, so:
+//   - historical builds are immutable → cache forever, never a TTL miss;
 //   - raw specs are ~2 MB → cache to the gitignored .api-watch/cache/ rather
 //     than committing them (committed fingerprints give reproducibility — see
 //     scripts/generate/spec-fingerprint.js).
+// The MUTABLE rolling pointers at /openapi/ root (jellyfin-openapi-unstable.json)
+// are deliberately NOT wired here — pinning a baseline to a moving file isn't
+// reproducible. To target "latest master", resolve a concrete datestamp via
+// signals-fetch.cjs's fetchLatestUnstable() first, then fetch THAT.
 //
 // Reuses the redirect-following httpGet from signals-fetch.cjs (same archive
 // host). `.cjs` per scripts/CLAUDE.md's module rule; ESM callers (the Phase 1
@@ -18,23 +27,45 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { httpGet } = require('./signals-fetch.cjs');
 
-const ARCHIVE_BASE = 'https://api.jellyfin.org/openapi/stable/';
+const ARCHIVE_STABLE = 'https://api.jellyfin.org/openapi/stable/';
+const ARCHIVE_UNSTABLE = 'https://api.jellyfin.org/openapi/unstable/';
+// Back-compat alias: the stable dir was the only channel before unstable support.
+const ARCHIVE_BASE = ARCHIVE_STABLE;
 const CACHE_REL = '.api-watch/cache';
 // Specs are large; allow well beyond the signals-fetch 5s default.
 const SPEC_TIMEOUT_MS = 30000;
 
-function isSemverBase(v) {
-  return typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
+// A stable-channel version: MAJOR.MINOR.PATCH with an optional pre-release suffix
+// (-rcN / -betaN / -alphaN). RCs ship in the stable dir alongside finals.
+function isStableVersion(v) {
+  return typeof v === 'string' && /^\d+\.\d+\.\d+(?:-(?:rc|beta|alpha)\d+)?$/.test(v);
 }
 
-// The archive filename for a stable version: jellyfin-openapi-<version>.json.
+// An unstable-channel (master) build label: an 8-digit date, optionally followed
+// by a 6-digit time (20240402201942) or the legacy <YYYYMMDD>.<N> minor (20240207.2).
+function isUnstableVersion(v) {
+  return typeof v === 'string' && /^\d{8}(?:\d{6}|\.\d+)?$/.test(v);
+}
+
+// Any fetchable spec label across both channels.
+function isSpecVersion(v) {
+  return isStableVersion(v) || isUnstableVersion(v);
+}
+
+// The archive dir a version lives in: datestamped master builds → unstable/,
+// everything else (finals + RCs) → stable/.
+function archiveBaseFor(version) {
+  return isUnstableVersion(version) ? ARCHIVE_UNSTABLE : ARCHIVE_STABLE;
+}
+
+// The archive filename for a build: jellyfin-openapi-<version>.json (channel-agnostic).
 function specFileName(version) {
   return `jellyfin-openapi-${version}.json`;
 }
 
-// Permanent archive URL for a stable version's spec.
+// Permanent archive URL for a build's spec, routed to the right channel dir.
 function specUrl(version) {
-  return ARCHIVE_BASE + specFileName(version);
+  return archiveBaseFor(version) + specFileName(version);
 }
 
 // Absolute path the cached raw spec lives at, under a repo root.
@@ -59,8 +90,11 @@ async function fetchSpec(
   version,
   { rootDir = '.', force = false, timeoutMs = SPEC_TIMEOUT_MS } = {},
 ) {
-  if (!isSemverBase(version)) {
-    throw new Error(`spec-fetch: version must be MAJOR.MINOR.PATCH, got ${version}`);
+  if (!isSpecVersion(version)) {
+    throw new Error(
+      `spec-fetch: version must be MAJOR.MINOR.PATCH (optionally -rcN/-betaN/-alphaN) ` +
+        `or an unstable datestamp, got ${version}`,
+    );
   }
   const file = cachePathFor(rootDir, version);
   if (!force && fs.existsSync(file)) {
@@ -82,7 +116,13 @@ async function fetchSpec(
 
 module.exports = {
   ARCHIVE_BASE,
+  ARCHIVE_STABLE,
+  ARCHIVE_UNSTABLE,
   CACHE_REL,
+  isStableVersion,
+  isUnstableVersion,
+  isSpecVersion,
+  archiveBaseFor,
   specFileName,
   specUrl,
   cachePathFor,

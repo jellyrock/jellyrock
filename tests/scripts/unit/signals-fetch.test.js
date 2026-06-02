@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   parseJellyfinIndex,
+  parseUnstableIndex,
   parseRokuOsMarkdown,
   compareSemverBase,
 } = require('../../../scripts/lib/signals-fetch.cjs');
@@ -61,6 +62,35 @@ describe('parseJellyfinIndex', () => {
   it('throws when only prerelease filenames exist (no stable)', () => {
     const html = '<a href="jellyfin-openapi-1.0.0-rc1.json">x</a>\n';
     expect(() => parseJellyfinIndex(html)).toThrow(/no non-prerelease versions/);
+  });
+});
+
+describe('parseUnstableIndex', () => {
+  it('returns the newest 14-digit datestamp from a master-build listing', () => {
+    const html =
+      '<a href="jellyfin-openapi-20240326101620.json">x</a>\n' +
+      '<a href="jellyfin-openapi-20240402201942.json">x</a>\n' +
+      '<a href="jellyfin-openapi-20240331204745.json">x</a>\n';
+    expect(parseUnstableIndex(html)).toBe('20240402201942');
+  });
+
+  it('ignores legacy <YYYYMMDD>.<N> builds when modern stamps are present', () => {
+    const html =
+      '<a href="jellyfin-openapi-20240207.2.json">legacy</a>\n' +
+      '<a href="jellyfin-openapi-20240226.1.json">legacy</a>\n' +
+      '<a href="jellyfin-openapi-20240325170309.json">modern</a>\n';
+    expect(parseUnstableIndex(html)).toBe('20240325170309');
+  });
+
+  it('falls back to legacy builds when no modern stamps exist', () => {
+    const html =
+      '<a href="jellyfin-openapi-20240207.2.json">x</a>\n' +
+      '<a href="jellyfin-openapi-20240214.1.json">x</a>\n';
+    expect(parseUnstableIndex(html)).toBe('20240214.1');
+  });
+
+  it('throws when no datestamped filenames are present', () => {
+    expect(() => parseUnstableIndex('<html>nothing</html>')).toThrow(/no jellyfin-openapi/);
   });
 });
 
