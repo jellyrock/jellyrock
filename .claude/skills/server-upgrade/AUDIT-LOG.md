@@ -2,6 +2,31 @@
 
 Running history of `/audit-skill server-upgrade` runs. Newest first. Architectural-grade conclusions also live in `docs/decisions.md`; routine notes stay here.
 
+## 2026-06-02 — Investigation-depth regression on identical input; added a citation floor (session 89737734)
+
+Third pre-release audit of the day, same `10.11.10 → master` window, same resolved build `20260531151854`. The mechanical extraction was clean — but the audit took **two wrong turns before landing the real finding**, both caught by user pushback. Logged in full because the auditor misses are the instructive part.
+
+**Friction surfaced:** none. 0 findings (11 bash calls, 0 repeated-command / failed-recovery / confusion / test-claim / permission-gap).
+
+**Performance:** 1h 6m wall-clock, 51,936 output tokens (~1,208/turn), 0.91 cache hit, ~$11.15. Anomalies: none actionable — "1h 6m" inflated by human think-time on the AskUserQuestion; ~$11.15 dominated by 2.1M *inherited* cache-read tokens (mid-large-session), same intrinsic-cost conclusion as the two prior audits.
+
+**Permission gaps:** none — all `node scripts/...`, `gh api`, `grep`, `ls`/`date`/`rm`/`mktemp` allowlist-covered.
+
+**Output accuracy (eyeball) — the real finding:** verdicts were all *correct* (5 skip, 1 monitor, `disableFirstEpisode` trap resolved via the Step 2.8 FROM-version read — that fix held). **But the run self-reported an evidence-depth regression vs the same-day prior handoff** (`...091056.md`): the prior run pinned the exact audio call-site `items.bs:457` and cited upstream PR #13687 (NextUp date-filtering context); this run cited neither. Same correct conclusions, weaker support → investigation depth is **non-deterministic across runs**, and a re-run silently regressed. This recurs the meta-audit's "depth was luck-of-the-draw" note (below), which had only fixed the specific `disableFirstEpisode` case.
+
+**Model fit:** current `model: opus` — keep. Profile: `judgmentRequired: true`, 1 AskUserQuestion, 7,373 chars reasoning, 0 confusion / failed-recovery / sub-agent / TodoWrite. Genuine non-mechanizable judgment.
+
+**Fixes applied:**
+- `SKILL.md:93` (Step 2, new "Citation-depth floor" paragraph) — every usage / non-usage claim in a `rationale` must pin the exact `file:line`, not just the file; a claim without it is "unfinished" like a hedged `draftIssueBody`. Names the anti-pattern ("luck-of-the-draw across runs") and cites the `items.bs:457`-vs-`items.bs` regression concretely. Deterministic + network-free by design; explicitly excludes mandating an upstream-PR `gh search` hunt (enrichment, not floor). Chose this scoped general floor (Option B) over a prior-handoff-baseline (Option A) because A only fires on re-runs — useless for the first triage of a freshly-advanced build, which is the case that matters — and the user's re-runs are deliberate audit-fodder, so A's mechanism would idle.
+
+**Deferred / dropped:**
+- **Dropped: a Step 0a "dedup short-circuit" to avoid re-triaging an unchanged build.** Auditor false-positive — the duplicate same-build handoffs were the user *intentionally* re-running `/server-upgrade` to produce audit transcripts; a short-circuit would have broken that workflow. Classic "pattern-match noise on a recently-audited run" trap.
+- **Dropped: Option A (prior-handoff floor) and Option C (both)** — see Fixes; A idles on the cases that matter for this project's usage.
+
+**Lessons for the auditor (two this run):** (1) before proposing a fix for a surface anomaly (duplicate artifacts, repeated invocations), check whether the *session's own purpose* explains it — a skill audited 3× in a day on identical input is a flashing audit-fodder signal. (2) Dimension-4 isn't "did it complete + were verdicts right" — the run had *literally narrated its own quality regression* and the first audit pass still rubber-stamped accuracy. Read what the run says about itself.
+
+**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock2/89737734-0abc-47ac-b651-5d9e4e49a593.jsonl`
+
 ## 2026-06-02 — Step 2.8's own example was the counterexample: genuine-removal ≠ behavior-change (session 3f597901)
 
 First run to actually exercise the freshly-added Step 2.8 `renameCandidates` guidance on a real removal (`10.11.10 → master`, pre-release path). The mechanical extraction was clean (0 friction), but dimension-4 surfaced a real guidance flaw — **the skill's canonical "genuine removal → replicate client-side" example is itself a no-op removal that should be `skip`ped.**
