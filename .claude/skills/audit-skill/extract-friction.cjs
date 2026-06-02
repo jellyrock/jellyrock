@@ -923,8 +923,12 @@ function detectHardwareClaimMismatch(turns, range) {
 // ──────────────────────────────────────────────────────────────────────
 
 const PRICING = {
-  verifiedDate: '2026-05-08',
+  verifiedDate: '2026-06-02',
   models: {
+    // Opus 4.x all share the standard Opus rate. These figures are the public
+    // list price; for a flat-fee plan (e.g. Claude Max) treat the dollar number
+    // as a RELATIVE cost yardstick between skills, not a literal bill.
+    'claude-opus-4-8': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
     'claude-opus-4-7': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
     'claude-opus-4-6': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
     'claude-sonnet-4-6': { input: 3.0, cacheWrite: 3.75, cacheRead: 0.3, output: 15.0 },
