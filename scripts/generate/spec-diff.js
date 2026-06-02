@@ -21,6 +21,10 @@
 //   requestbody-changed | response-changed
 //   field-added | field-removed | field-retyped
 //   enum-changed
+// `param-removed` and `field-removed` additionally carry `renameCandidates`
+// (always present, possibly empty): same-scope additions that could be a rename,
+// same-signature first — an empty list signals a likely-genuine removal. See
+// rankRenameCandidates.
 // Each change is self-describing: { kind, ...locator, detail, fromVersion,
 // toVersion }, where the locator is `path`+`method` for operation-scoped changes
 // and `schema` for component-schema changes (`name` names the param/field).
@@ -43,12 +47,35 @@ const CACHE_DIR_REL = '.api-watch/cache';
 
 // ── Pure diff ──────────────────────────────────────────────────────────────
 
+// Rank the same-scope additions that could be a RENAME of a removed param/field.
+// `additions` is [{name, sig}]; `sameSignature` is true when an addition's type
+// signature matches the removed item's `removedSig` (a high-confidence rename).
+// Always returns an array (possibly empty) — an EMPTY list is the load-bearing
+// signal: nothing in the same operation/schema could be the rename, so the removal
+// is very likely genuine (not a rename/move). Mirrors enum-changed always carrying
+// its full added/removed delta. The spec diff can surface candidates but never
+// proves intent — confirming a populated list is rename-vs-removal is the agent's
+// job (see the /server-upgrade skill's "Removal vs rename" edge case). Same-
+// signature candidates sort first.
+function rankRenameCandidates(removedSig, additions) {
+  return additions
+    .map((a) => ({ name: a.name, sameSignature: a.sig === removedSig }))
+    .sort((x, y) => Number(y.sameSignature) - Number(x.sameSignature));
+}
+
 // Compare two parameter lists (each [{name,in,type,required}]) keyed by in+name.
 function diffParameters(fromParams, toParams) {
   const changes = [];
   const key = (p) => `${p.in} ${p.name}`;
+  const sig = (p) => `${p.in}|${p.type}|${p.required}`;
   const fromMap = new Map((fromParams ?? []).map((p) => [key(p), p]));
   const toMap = new Map((toParams ?? []).map((p) => [key(p), p]));
+
+  // Additions in THIS operation — the pool a removed param could have been
+  // renamed into. Empty ⇒ the removal has no in-scope rename candidate.
+  const additions = [...toMap.values()]
+    .filter((p) => !fromMap.has(key(p)))
+    .map((p) => ({ name: p.name, sig: sig(p) }));
 
   for (const [k, p] of fromMap) {
     if (!toMap.has(k)) {
@@ -57,6 +84,7 @@ function diffParameters(fromParams, toParams) {
         name: p.name,
         in: p.in,
         detail: `${p.in} param "${p.name}" removed`,
+        renameCandidates: rankRenameCandidates(sig(p), additions),
       });
     }
   }
@@ -137,6 +165,11 @@ function diffProperties(schemaName, fromProps, toProps) {
   const changes = [];
   const from = fromProps ?? {};
   const to = toProps ?? {};
+  // Added fields in THIS schema — the pool a removed field could have been
+  // renamed into (signature = the property's type signature string).
+  const additions = Object.keys(to)
+    .filter((name) => !(name in from))
+    .map((name) => ({ name, sig: to[name] }));
   for (const name of Object.keys(from)) {
     if (!(name in to)) {
       changes.push({
@@ -144,6 +177,7 @@ function diffProperties(schemaName, fromProps, toProps) {
         schema: schemaName,
         name,
         detail: `${schemaName}.${name} removed`,
+        renameCandidates: rankRenameCandidates(from[name], additions),
       });
     } else if (from[name] !== to[name]) {
       changes.push({

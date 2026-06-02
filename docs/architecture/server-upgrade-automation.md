@@ -26,7 +26,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-06-01
+last-reviewed: 2026-06-02
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -169,6 +169,11 @@ self-describing so the agent (and a human) can act without re-deriving anything:
   "type": "breaking | opportunity | coverage-gap | symmetry-advisory",
   "change": { "kind": "endpoint-removed | field-removed | field-retyped | enum-changed | param-changed | endpoint-added",
               "path": "/Items/{}", "detail": "RunTimeTicks: int64 → int32",
+              // param-removed / field-removed also carry renameCandidates (always
+              // present, possibly []): same-scope additions that could be the rename,
+              // same-signature first. [] ⇒ likely-genuine removal. The diff surfaces
+              // candidates; the agent confirms rename-vs-removal (see /server-upgrade).
+              "renameCandidates": [{ "name": "newName", "sameSignature": true }],
               "fromVersion": "10.11.8", "toVersion": "10.11.10" },
   "appUsage": { "used": true, "apiVersionRange": [2, null],
                 "sites": ["source/api/ApiClient.bs:59", "source/data/JellyfinDataTransformer.bs:96"] },

@@ -262,6 +262,10 @@ export function buildScaffold(report) {
         kind: c.change.kind,
         locator: findingLocator(c),
         detail: c.change.detail ?? null,
+        // Only the *-removed kinds carry this (from spec-diff). Surface it so the
+        // agent can resolve rename-vs-removal: [] ⇒ likely genuine removal; a
+        // populated list names the rename candidate(s) to confirm upstream.
+        ...(c.change.renameCandidates ? { renameCandidates: c.change.renameCandidates } : {}),
       },
       appUsage: {
         apiVersionRange: c.appUsage?.apiVersionRange ?? null,

@@ -232,7 +232,8 @@ export function forwardFindings(diff, manifest, boundaries, { emitOpportunities 
       const includes = rangeIncludes(ep.minApiVersion, ep.maxApiVersion, changeTier);
       candidates.push({
         type: 'breaking',
-        change,
+        change, // carries spec-diff's renameCandidates on *-removed kinds, untouched
+
         appUsage: {
           used: true,
           apiVersionRange: [ep.minApiVersion, ep.maxApiVersion],
