@@ -2,6 +2,27 @@
 
 Running history of `/audit-skill server-upgrade` runs. Newest first. Architectural-grade conclusions also live in `docs/decisions.md`; routine notes stay here.
 
+## 2026-06-02 — Step 2.8's own example was the counterexample: genuine-removal ≠ behavior-change (session 3f597901)
+
+First run to actually exercise the freshly-added Step 2.8 `renameCandidates` guidance on a real removal (`10.11.10 → master`, pre-release path). The mechanical extraction was clean (0 friction), but dimension-4 surfaced a real guidance flaw — **the skill's canonical "genuine removal → replicate client-side" example is itself a no-op removal that should be `skip`ped.**
+
+**Friction surfaced:** none. 0 findings across all detectors (14 bash calls, 0 repeated-command / failed-recovery / confusion / test-claim / permission-gap).
+
+**Performance:** 16m 34s, 55,872 output tokens (~1,016/turn), 0.91 cache hit, ~$14.64. Anomalies: cost is high but driven by 3.06M *inherited* cache-read tokens (ran mid-large-session, not a fresh load) — not a skill defect. Wall-clock inflated by ~8 rate-limited `gh api` upstream reads, which earned their keep (they flipped the verdict — see below).
+
+**Permission gaps:** none — all `node scripts/...`, `gh api`, `grep`, `mktemp`/`rm`/`date`/`ls` calls allowlist-covered.
+
+**Output accuracy (eyeball):** accepted first try. Correctly took the pre-release path (`master` → datestamp `20260531151854`, relayed), investigated all 6 candidates against cited sites, made zero `gh issue` calls, named the handoff by resolved datestamp, cleaned temps. **Caught a guidance gap the prior audit (below) missed:** that audit concluded `disableFirstEpisode` was a "genuine removal" and stopped; this run read the FROM-tag controller and found it was already `[ParameterObsolete]` + unwired into `NextUpQuery` in `v10.11.10` → master deletes a dead param → **`skip`**, not "replicate client-side." The upstream read is what distinguished real break from dead-code cleanup.
+
+**Model fit:** current `model: opus` — keep. Profile: `judgmentRequired: true`, 4 TodoWrite, verbose reasoning (5,447 chars), 0 confusion/failed-recovery, 0 sub-agent/AskUserQuestion (AskUserQuestion absent because this was the pre-release path; that gate is Step 4, stable-only). Genuine non-mechanizable judgment, incl. the upstream-source-reading path the prior audit only watched.
+
+**Fixes applied:**
+- `SKILL.md:101` (Step 2.8) — rewrote the empty-`renameCandidates` bullet to name the anti-pattern explicitly ("empty `renameCandidates` → behavior changed → replicate client-side, without checking the baseline") and add the cheap FROM-version honoring-check (`gh api .../contents/<path>?ref=v<from>`). Replaced the now-wrong `disableFirstEpisode` canonical example with the same example correctly resolved as the *trap* (`[ParameterObsolete]` + unwired → `skip`).
+
+**Deferred / dropped:** cost-pricing gap is now resolved (extractor priced `claude-opus-4-8` this run, `pricingVerifiedDate: 2026-06-02`). High inherited-context cost is intrinsic to running mid-session, not actionable on `server-upgrade`.
+
+**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock2/3f597901-8891-4474-95cd-3458271a3d6f.jsonl`
+
 ## 2026-06-02 — Meta-audit (second pass): the audit under-called dimension 4
 
 Reviewed the run **and** the audit below. The mechanical extraction was right (0 friction — no repeated commands / failed recoveries), and the plumbing fixes from `7ae44e64` (mktemp / fresh `$VERDICTS` / `--stdout`-drop / Read-tool / datestamp handoff) all held end-to-end. **But the audit's dimension-4 (output accuracy) was a rubber-stamp** — it recited what the run did without reading the verdict content, so it missed two real issues:
