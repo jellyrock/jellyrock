@@ -49,6 +49,10 @@
 //   node scripts/generate/findings-candidates.js <fromVersion> <toVersion>
 //        [--floor <version>] [--root <dir>] [--manifest <path>] [--fetch]
 //        [--no-opportunities] [--stdout]
+//     <toVersion> may be a stable (10.11.10), an RC (10.12.0-rc1), an unstable
+//       datestamp (20240402201942), or the literal `unstable`/`master` — which
+//       resolves to the latest immutable master build. Pre-release `to` versions
+//       have no committed fingerprint, so pair them with --fetch.
 //     → read the committed from/to/floor fingerprints + the API-usage manifest,
 //       build the report, write the gitignored
 //       .api-watch/cache/findings-candidates-<from>..<to>.json
@@ -72,6 +76,7 @@ const require = createRequire(import.meta.url);
 const yaml = require('js-yaml');
 const { loadBoundaries, serverToTier } = require('../lib/version-boundaries.cjs');
 const { fetchSpec } = require('../lib/spec-fetch.cjs');
+const { fetchLatestUnstable } = require('../lib/signals-fetch.cjs');
 const {
   loadEndpointAvailability,
   entryMatchesCandidate,
@@ -681,13 +686,25 @@ async function main() {
   const emitOpportunities = !args.includes('--no-opportunities');
   const consumed = new Set([rootIdx + 1, floorIdx + 1, manifestIdx + 1].filter((i) => i > 0));
   const positional = args.filter((a, i) => !a.startsWith('--') && !consumed.has(i));
-  const [fromVersion, toVersion] = positional;
+  const [fromVersion, toArg] = positional;
+
+  // The `unstable`/`master` convenience token resolves to the latest IMMUTABLE
+  // datestamped master build (re-diffable + reproducible) — never the mutable
+  // /openapi/ root pointer. The resolved datestamp becomes `toVersion`, so it lands
+  // in the report + cache filename and can be reused as the next `<from>`.
+  let toVersion = toArg;
+  if (toArg === 'unstable' || toArg === 'master') {
+    toVersion = await fetchLatestUnstable();
+    console.error(`findings-candidates: resolved ${toArg} → ${toVersion} (latest master build)`);
+  }
 
   if (!fromVersion || !toVersion) {
     console.error(
       'usage: node scripts/generate/findings-candidates.js <fromVersion> <toVersion> ' +
         '[--floor <version>] [--root <dir>] [--manifest <path>] [--fetch] ' +
-        '[--no-opportunities] [--stdout]',
+        '[--no-opportunities] [--stdout]\n' +
+        '  <toVersion> accepts a stable/RC version, an unstable datestamp, or the ' +
+        'literal `unstable`/`master` (pair pre-release versions with --fetch).',
     );
     process.exit(1);
   }

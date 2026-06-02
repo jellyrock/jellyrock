@@ -10,9 +10,13 @@ name: lint-floor-system
 #   - lint:floor-coverage — proactive PR-time check: FAILs when JellyRock's own
 #     commit starts calling an endpoint absent from the 10.7.0 floor spec with no
 #     ledger entry / guard (symmetry advisories warn, don't block).
+#   - lint:apiversion-consistency — static cross-check that resolveApiVersion() in
+#     source/utils/misc.bs agrees with the jellyfin-version-boundaries.yml tier map
+#     (parses the .bs with the BrighterScript AST). Catches a half-built apiVersion
+#     tier — the YAML and the dispatch twin drifting — without any Roku hardware.
 #
-# Both are offline Node tooling (no build, no network, no hardware), so running
-# the pair behind one path gate is cheap. Combining them ALSO gives
+# All three are offline Node tooling (no build, no network, no hardware), so running
+# them behind one path gate is cheap. Combining them ALSO gives
 # lint:endpoint-availability its only CI home — it otherwise ran only in the local
 # `npm run lint` aggregate.
 
@@ -34,7 +38,7 @@ jobs:
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
-          pattern: '^source/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/generate/findings-candidates\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
+          pattern: '^source/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/lint/apiversion-consistency-check\.js$|^scripts/generate/findings-candidates\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
           force: ${{ inputs.force }}
       - name: Setup Node.js
         if: steps.detect.outputs.relevant == 'true'
@@ -51,3 +55,6 @@ jobs:
       - name: Check floor coverage (proactive)
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:floor-coverage
+      - name: Check apiVersion twin consistency (boundaries ↔ resolveApiVersion)
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:apiversion-consistency

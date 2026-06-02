@@ -552,3 +552,8 @@ user-customizable
 allowlist
 NUL
 diffstat
+datestamp
+datestamped
+Pre-release
+re-diffable
+refetches

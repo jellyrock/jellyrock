@@ -1,6 +1,6 @@
 ---
 name: server-upgrade
-description: Triage a Jellyfin server release against JellyRock's API usage by editing the ONE per-version release-triage digest issue (auto-opened by CI) with verdicts and filing per-finding sub-issues for the changes worth standalone tracking. Consumes the Phase-2 data report (`.api-watch/cache/findings-candidates-<from>..<to>.json` from `npm run api-watch:findings`), investigates each candidate that needs investigation by reading the cited app-usage sites, resolves the edge cases the design doc lists (spec-contract break vs runtime break, capability-guarded fallbacks, spec-regeneration artifacts, enum switches, graceful degradation, opportunity-worth-it, coverage symmetry), and emits a verdict per finding. The mechanical filer (`scripts/server-upgrade.js`, plan/execute split mirroring `/crash-report`) then dedups against existing `[server-upgrade]` issues, files `file` verdicts as native GitHub SUB-ISSUES of the digest (`gh issue create / comment / reopen` with findingKey dedup), inline-notes the skip/monitor ones, rewrites the digest with the verdict checklist, and closes it when fully triaged. Human-gated: running execute is one batch approval per release (the graduated trust ratchet) — nothing auto-files. The recurring floor findings (post-floor endpoints like MediaSegments/Lyrics/QuickConnect) self-resolve via the committed endpoint-availability registry, so they don't reappear every release. Use when a new Jellyfin stable release lands and you want to know what (if anything) it breaks for us. Prerequisite: the report exists (run `api-watch:findings <acknowledged> <latest>` first, committing the latest version's fingerprint via `spec-fingerprint.js <latest>` if needed). RCs are tracked separately and do NOT generate issues.
+description: Triage a Jellyfin server release against JellyRock's API usage by editing the ONE per-version release-triage digest issue (auto-opened by CI) with verdicts and filing per-finding sub-issues for the changes worth standalone tracking. Consumes the Phase-2 data report (`.api-watch/cache/findings-candidates-<from>..<to>.json` from `npm run api-watch:findings`), investigates each candidate that needs investigation by reading the cited app-usage sites, resolves the edge cases the design doc lists (spec-contract break vs runtime break, capability-guarded fallbacks, spec-regeneration artifacts, enum switches, graceful degradation, opportunity-worth-it, coverage symmetry), and emits a verdict per finding. The mechanical filer (`scripts/server-upgrade.js`, plan/execute split mirroring `/crash-report`) then dedups against existing `[server-upgrade]` issues, files `file` verdicts as native GitHub SUB-ISSUES of the digest (`gh issue create / comment / reopen` with findingKey dedup), inline-notes the skip/monitor ones, rewrites the digest with the verdict checklist, and closes it when fully triaged. Human-gated: running execute is one batch approval per release (the graduated trust ratchet) — nothing auto-files. The recurring floor findings (post-floor endpoints like MediaSegments/Lyrics/QuickConnect) self-resolve via the committed endpoint-availability registry, so they don't reappear every release. Use when a new Jellyfin stable release lands and you want to know what (if anything) it breaks for us. Prerequisite: the report exists (run `api-watch:findings <acknowledged> <latest>` first, committing the latest version's fingerprint via `spec-fingerprint.js <latest>` if needed). RCs and unstable/master builds have a proactive LOCAL triage path (ephemeral fetch, findings written to a `.claude/handoffs/` note, re-diffable as the pre-release evolves) but still never file GitHub issues — durable filing happens via this same skill on the eventual stable release.
 model: opus
 user-invocable: true
 allowed-tools: Bash(node scripts/server-upgrade.js:*), Bash(node scripts/generate/spec-fingerprint.js:*), Bash(node scripts/generate/findings-candidates.js:*), Bash(npm run api-watch:findings:*), Bash(npm run docs:spec-fingerprints:*), Bash(gh issue create:*), Bash(gh issue comment:*), Bash(gh issue reopen:*), Bash(gh issue edit:*), Bash(gh issue close:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh api:*), Bash(gh label create:*), Bash(gh label list:*), Bash(ls:*), Bash(date:*), Read, Grep, Glob, Write
@@ -16,7 +16,12 @@ Like `/crash-report`, this skill has **no sibling `INVESTIGATION.md`** — each 
 
 ## Inputs
 
-`$ARGUMENTS`: optionally the path to a Phase-2 report (`.api-watch/cache/findings-candidates-<from>..<to>.json`). If omitted, resolve it in Step 0 from the signals-backlog `jellyfin-server-stable` row (`latest_acknowledged` → `latest_upstream`).
+`$ARGUMENTS`: optionally the path to a Phase-2 report (`.api-watch/cache/findings-candidates-<from>..<to>.json`), OR an explicit `<from> <to>` version pair. If omitted, resolve it in Step 0 from the signals-backlog `jellyfin-server-stable` row (`latest_acknowledged` → `latest_upstream`).
+
+`<to>` selects the **channel** and the path through this skill:
+
+- A **stable** version (`10.11.10`) → the full pipeline below (investigate → file GitHub issues against the per-version digest).
+- An **RC** (`10.12.0-rc1`), the literal **`unstable`** / **`master`**, or an explicit **datestamp** (`20240402201942`) → the **pre-release path** (Step 0a): investigate locally, write a handoff, file **no** GitHub issues. This is the proactive surface — react to an upcoming release (or master) before it ships, and re-diff as it changes.
 
 ## Step 0 — Preflight
 
@@ -28,7 +33,7 @@ Like `/crash-report`, this skill has **no sibling `INVESTIGATION.md`** — each 
    npm run api-watch:findings <from> <to>                     # writes the gitignored report
    ```
 
-   `spec-fingerprint.js <to>` hits the network (Jellyfin's permanent OpenAPI archive) — surface that to the user before running it. **Stable releases only**: if `<to>` is an RC, stop — RCs are tracked by the `jellyfin-server-rc` signal and do NOT generate issues.
+   `spec-fingerprint.js <to>` hits the network (Jellyfin's permanent OpenAPI archive) — surface that to the user before running it. **This committed-fingerprint flow is stable-only**: if `<to>` is an RC, `unstable`/`master`, or a datestamp, do NOT commit a fingerprint — jump to **Step 0a** (the pre-release path), which fetches ephemerally and never writes a committed anchor.
 
    To just **preview** a release without committing its fingerprint (e.g. a quick "what would this flag?" before a full triage), `node scripts/generate/findings-candidates.js <from> <to> --fetch --stdout` builds the `<to>` fingerprint in-memory and prints the full report. The real triage still commits the `<to>` fingerprint (the reviewed anchor) per the step above.
 
@@ -40,6 +45,30 @@ Like `/crash-report`, this skill has **no sibling `INVESTIGATION.md`** — each 
 3. **Locate the per-version digest** (Phase 6). CI auto-opens ONE digest issue per server version (`[server-upgrade] Jellyfin <to> — release triage`, label `server-upgrade:tracker`). Find it: `gh issue list --label server-upgrade:tracker --state all --json number,title,state --limit 100` and match the `<to>` version in the title. Capture its number (`$DIGEST`) for Step 5 — `execute --digest $DIGEST` rewrites it with verdicts, files sub-issues under it, and (when fully triaged) closes it. If no digest exists (you're triaging ahead of CI), either open one first (`gh issue create --title "[server-upgrade] Jellyfin <to> — release triage" --label server-upgrade:tracker --body "Triaged manually ahead of CI."`) or run without `--digest` (promotions file standalone — acceptable, but the digest is the preferred hub).
 
 4. **Read the report's counts** (`counts` block) so you can tell the user up front: N candidates needing investigation (broken down as `breaking` / `coverage-gap` / `symmetry-advisory` / `opportunity`), plus how many were `floorKnown` (post-floor endpoints resolved by the endpoint-availability registry — *not* investigated), suppressed, or frozen-skipped (respect `suppressed: true` and `needsInvestigation: false`). If a coverage-gap or symmetry candidate that you'd expect to be floor-known instead shows `needsInvestigation: true`, it's an UNREGISTERED post-floor endpoint — investigate it, and if it's a known-handled case, the fix is to add an entry to [`docs/dev/jellyfin-endpoint-availability.yml`](../../../docs/dev/jellyfin-endpoint-availability.yml) (mention this to the user; the `lint:endpoint-availability` check validates the entry's guard/sibling claim).
+
+## Step 0a — Pre-release path (RC / unstable / master)
+
+Fires when `<to>` is an RC (`-rcN`/`-betaN`/`-alphaN` suffix), the literal `unstable`/`master`, or a datestamp (`20240402201942`). This is the proactive surface: triage an upcoming release (or master) before it ships, then re-diff as it changes. **It investigates locally and files NO GitHub issues** — the durable filing is the normal stable flow when the final lands. (Background + rationale: [`docs/architecture/server-upgrade-automation.md`](../../../docs/architecture/server-upgrade-automation.md) → "Pre-release channels".)
+
+1. **Resolve `<from>` / `<to>`** (explicit `<from> <to>` args always override):
+   - **RC:** read the [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) `jellyfin-server-rc` row — `latest_acknowledged` is the `<from>`, `latest_upstream` is the `<to>`. The re-diff story: after triaging `rc1` you set that row's `latest_acknowledged = <base>-rc1` (Step 6); when `rc2` lands, this diffs `rc1 → rc2`, surfacing only the delta since your proactive work.
+   - **Unstable / master:** pass the literal `unstable` (or `master`) as `<to>` — `findings-candidates.js` resolves it to the latest **immutable datestamped** build and prints `resolved unstable → <datestamp>` to stderr (and into the report's `toVersion`). **Relay that pinned datestamp to the user** — it makes the run reproducible and becomes the next `<from>` for a master-over-master re-diff. `<from>` defaults to the latest acknowledged stable, or an explicit prior datestamp. The mutable `jellyfin-openapi-unstable.json` root pointer is never pinned.
+
+2. **Generate the report ephemerally** — no committed fingerprint (these are throwaway anchors; the archive is permanent, so `--fetch` rebuilds them in-memory). For unstable, capture the resolved datestamp from stderr and use it in the cache filename:
+
+   ```bash
+   node scripts/generate/findings-candidates.js <from> <to> --fetch --stdout \
+     > .api-watch/cache/findings-candidates-<from>..<to>.json
+   # <to> may be a version, an RC, or the literal `unstable` / `master`.
+   ```
+
+   Surface that this hits the network for any spec not already in `.api-watch/cache/`.
+
+3. **Investigate** — run Steps 1–2 below exactly as written (scaffold + per-candidate judgment); they're version-agnostic.
+
+4. **Then SKIP Steps 3–5.** Instead of the GitHub plan/execute, write a local handoff to `.claude/handoffs/server-upgrade-prerelease-<to>-<timestamp>.md` capturing: the `<from> → <to>` window (and the pinned datestamp if unstable), the per-finding verdicts + rationale, and a **"to fix proactively"** list (the `file`-worthy findings, as fix targets — not GitHub issues). If a finding implies a new API tier is warranted, point the user at `/new-api-version`. Make **zero** `gh` calls.
+
+5. **Close the loop (Step 6 applies):** for RC, offer to `/log signal jellyfin-server-rc` to set `latest_acknowledged = <to>` so the next re-diff baselines correctly. For unstable, the pinned datestamp lives in the handoff (master moves too fast for a daily acknowledged cursor). Then stop — the pre-release path ends here.
 
 ## Step 1 — Scaffold the verdict template
 
@@ -73,6 +102,8 @@ For each, set in place (do **not** change `findingKey`):
 Write the filled file back with `Write` (overwrite `$SCAFFOLD`, or a sibling `$VERDICTS` path). Every entry must end with a non-null `recommendedAction` — the filer flags any you leave blank as `missing-verdict` rather than dropping it.
 
 ## Step 3 — Plan (mechanical; no GitHub writes)
+
+> **Stable path only.** If you arrived here via the pre-release path (Step 0a), stop — Steps 3–5 file GitHub issues, which pre-release runs never do. You should already have written the local handoff (Step 0a.4) and closed the loop (Step 0a.5).
 
 ```bash
 PLAN=$(mktemp --suffix=.json /tmp/server-upgrade-plan.XXXXXX.json)
@@ -123,7 +154,7 @@ Clean up the temp files: `rm -f "$SCAFFOLD" "$PLAN"`.
 
 ## When NOT to use
 
-- A new Jellyfin **RC** (not stable) dropped → it's tracked by the `jellyfin-server-rc` signal; do not file issues. (Spin it up manually against a test library if you want early signal.)
+- A new Jellyfin **RC** or **master** build → this skill *does* handle it, via the **pre-release path** (Step 0a): it triages locally and writes a handoff, but files **no** GitHub issues. (It's still also tracked by the `jellyfin-server-rc` signal.) Don't reach for the stable Steps 3–5 for a pre-release.
 - You want to investigate one **already-filed** `[server-upgrade]` issue → use `/issue-triage <N>`.
 - The report shows zero investigation candidates → there's nothing to do; that's the system working (silent on churn that doesn't touch us).
 - You need to (re)generate the manifest, fingerprints, or the report itself → those are the Phase 0–2 generators (`docs:api-manifest`, `docs:spec-fingerprints`, `api-watch:findings`), not this skill.

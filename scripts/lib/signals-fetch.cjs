@@ -115,6 +115,38 @@ async function fetchJellyfinVersions({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   return parseJellyfinIndex(html);
 }
 
+// Pure parser for the api.jellyfin.org/openapi/unstable/ index HTML.
+//
+// unstable/ is an Apache-style directory listing of IMMUTABLE master builds:
+// `jellyfin-openapi-<datestamp>.json`. Recent builds carry a 14-digit
+// YYYYMMDDHHMMSS stamp (20240402201942); legacy builds used a <YYYYMMDD>.<N>
+// form (20240207.2). We return the NEWEST 14-digit build — lexical sort equals
+// chronological order for fixed-width datestamps. The legacy `.N` builds are
+// years old and structurally unsortable against the modern form, so they're
+// ignored when modern stamps exist (noted here so a future maintainer isn't
+// surprised that "latest" skips them).
+//
+// Returns a concrete datestamp string the caller can PIN (immutable, re-diffable)
+// — never the mutable /openapi/ root pointer. Exported separately for unit-test
+// parity with parseJellyfinIndex.
+function parseUnstableIndex(html) {
+  const re = /jellyfin-openapi-(\d{8}(?:\d{6}|\.\d+)?)\.json/g;
+  const stamps = new Set();
+  for (let m; (m = re.exec(html)); ) stamps.add(m[1]);
+  if (stamps.size === 0) {
+    throw new Error('no jellyfin-openapi-<datestamp>.json filenames matched in unstable/ index');
+  }
+  const modern = [...stamps].filter((s) => /^\d{14}$/.test(s));
+  const pool = modern.length > 0 ? modern : [...stamps];
+  pool.sort(); // lexical == chronological for fixed-width datestamps
+  return pool[pool.length - 1];
+}
+
+async function fetchLatestUnstable({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  const html = await httpGet('https://api.jellyfin.org/openapi/unstable/', { timeoutMs });
+  return parseUnstableIndex(html);
+}
+
 // Pure parser for the rokudev/dev-doc release-notes markdown. File order is
 // newest-first by author convention, so the first `## Roku OS X.Y` heading
 // wins. Exported separately for unit-test parity with parseJellyfinIndex.
@@ -135,8 +167,10 @@ async function fetchRokuOs({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 module.exports = {
   httpGet,
   fetchJellyfinVersions,
+  fetchLatestUnstable,
   fetchRokuOs,
   parseJellyfinIndex,
+  parseUnstableIndex,
   parseRokuOsMarkdown,
   compareSemverBase,
 };
