@@ -226,7 +226,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
         end if
 
         if shouldOptimize
-          optimizeAudioCodecListForSource(postData.DeviceProfile, channelCount)
+          optimizeAudioCodecListForSource(postData.DeviceProfile, channelCount, globalUser.settings.playbackPreferredMultichannelCodec)
         end if
       end if
     end if
@@ -559,7 +559,24 @@ end sub
 ' Stereo source (≤2ch):
 '   Strips surround passthrough codecs (eac3, ac3, dts) plus aac so transcoding falls through to
 '   mp3. Avoids handing the server a surround target codec for content that's only 2ch anyway.
-sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as integer)
+'   If filtering empties a previously non-empty list, falls back to "mp3" (the intended target).
+'
+' Multichannel surround target (issue #573):
+'   For a >2ch source, the stripped list MUST lead with a server-encodeable surround codec.
+'   Two failure modes this prevents, both observed on Jellyfin 10.11 via PlaybackInfo probes:
+'     - Empty list: Jellyfin's StreamBuilder omits the audioCodec query param, the server's
+'       InferAudioCodec falls through to the container name ("m3u8"), ffmpeg gets
+'       `-codec:a:0 m3u8` and exits 8. Happens when passthrough is detected only via codecs
+'       not in surroundPriority (truehd/dtshd-only) so no surround codec is in the list.
+'     - On-device-decode leak: a list like "truehd,opus" (truehd un-encodeable for a non-truehd
+'       source; opus on-device-decode only) resolves server-side to opus, silently abandoning
+'       the user's surround/passthrough intent for a decoded stereo-ish path.
+'   Fix: prepend the user's preferred multichannel codec (playbackPreferredMultichannelCodec),
+'   clamped to a reliably-encodeable HLS surround target — eac3 or ac3 (dts is excluded: the
+'   server emits no audio stream for a dts transcode target). This is a no-op for healthy
+'   profiles (their stripped list already leads with eac3/ac3) and only rescues the degenerate
+'   truehd/dtshd-only shape.
+sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as integer, preferredMultichannelCodec = "eac3" as string)
   ' Validate inputs
   if not isValid(deviceProfile) then return
   if not isValid(deviceProfile.TranscodingProfiles) then return
@@ -594,12 +611,46 @@ sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as int
           end if
         end for
 
-        if newCodecList.count() = 0 and codecList.count() > 0
-          print "[optimizeAudioCodecListForSource] WARN: AudioCodec list for container '" + rule.Container + "' became empty after optimization (source ch=" + channelCount.toStr() + ", original=" + rule.AudioCodec + "); server may reject the transcoding rule"
+        if channelCount > 2 and rule.AudioCodec <> ""
+          ' Multichannel with a real source list: guarantee a user-preferred, server-encodeable
+          ' surround codec leads the list so the server can never resolve to an empty list (→ m3u8)
+          ' or an on-device-decode codec (opus/aac). See block comment above for the server-side
+          ' bugs this prevents. (An originally-empty AudioCodec is left untouched — optimize rescues
+          ' lists it would otherwise empty, it doesn't invent a codec where the profile had none.)
+          surroundTarget = resolveMultichannelSurroundTarget(preferredMultichannelCodec)
+          finalList = [surroundTarget]
+          for each codec in newCodecList
+            if codec <> surroundTarget
+              finalList.push(codec)
+            end if
+          end for
+          rule.AudioCodec = finalList.join(",")
+        else if channelCount <= 2
+          ' Stereo AAC-profile case: if filtering emptied a previously non-empty list, fall back
+          ' to "mp3" (the intended fallthrough target) rather than re-emitting an empty AudioCodec.
+          if newCodecList.count() = 0 and rule.AudioCodec <> ""
+            newCodecList = ["mp3"]
+          end if
+          rule.AudioCodec = newCodecList.join(",")
+        else
+          ' Multichannel but the profile had an originally-empty AudioCodec — leave it empty
+          ' (handled gracefully; optimize does not invent a codec where the profile had none).
+          rule.AudioCodec = newCodecList.join(",")
         end if
-
-        rule.AudioCodec = newCodecList.join(",")
       end if
     end if
   end for
 end sub
+
+' Resolve the surround transcode target for a multichannel source from the user's preferred
+' multichannel codec setting (playbackPreferredMultichannelCodec). Clamped to the reliably-
+' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded — the
+' Jellyfin server emits no audio stream for a dts transcode target (verified on 10.11), so a dts
+' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid HLS audio
+' targets in every video transcoding container (ts and mp4), so no per-container clamp is needed.
+function resolveMultichannelSurroundTarget(preferredMultichannelCodec as string) as string
+  if isValidAndNotEmpty(preferredMultichannelCodec) and LCase(preferredMultichannelCodec) = "ac3"
+    return "ac3"
+  end if
+  return "eac3"
+end function

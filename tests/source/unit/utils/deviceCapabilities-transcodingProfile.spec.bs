@@ -1,0 +1,375 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("deviceCapabilities.bs - Video Transcoding Profile Construction (issue #573 audit)")
+  class TranscodingProfileBuildTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getHlsTranscodeTargetsForContainer() — mirror of server's HLS-codec filter sets")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the TS HLS target set for container 'ts'")
+    function _()
+      result = getHlsTranscodeTargetsForContainer("ts")
+      m.assertArrayCount(result, 4)
+      for each codec in ["aac", "ac3", "eac3", "mp3"]
+        m.assertTrue(arrayHasValue(result, codec), "TS HLS target set must contain '" + codec + "'")
+      end for
+    end function
+
+    @it("returns the MP4 HLS target set for container 'mp4'")
+    function _()
+      result = getHlsTranscodeTargetsForContainer("mp4")
+      m.assertArrayCount(result, 9)
+      for each codec in ["aac", "ac3", "eac3", "mp3", "alac", "flac", "opus", "dts", "truehd"]
+        m.assertTrue(arrayHasValue(result, codec), "MP4 HLS target set must contain '" + codec + "'")
+      end for
+    end function
+
+    @it("returns empty array for unknown container")
+    function _()
+      result = getHlsTranscodeTargetsForContainer("mkv")
+      m.assertEqual(result.count(), 0, "Unknown container yields empty target set")
+    end function
+
+    @it("returns empty array for empty container string")
+    function _()
+      result = getHlsTranscodeTargetsForContainer("")
+      m.assertEqual(result.count(), 0, "Empty container yields empty target set")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildVideoTranscodingAudioCodecsForContainer() — per-container codec list invariants")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("TS profile output is always a subset of the TS HLS target set")
+    function _()
+      ' GIVEN: a maximalist hardware profile (every surround codec, every fallback)
+      allSurroundCodecs = ["eac3", "ac3", "dts", "truehd"]
+      decodableStereoFallbacks = ["mp3", "flac", "alac", "opus"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      ' EXPECT: only codecs in the TS HLS target set survive
+      tsTargets = ["aac", "ac3", "eac3", "mp3"]
+      for each codec in result
+        m.assertTrue(arrayHasValue(tsTargets, codec), "TS profile contains '" + codec + "' which is NOT in the server's TS HLS target set — would be silently stripped and trigger #573")
+      end for
+    end function
+
+    @it("MP4 profile output is always a subset of the MP4 HLS target set")
+    function _()
+      allSurroundCodecs = ["eac3", "ac3", "dts", "truehd"]
+      decodableStereoFallbacks = ["mp3", "flac", "alac", "opus"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      mp4Targets = ["aac", "ac3", "eac3", "mp3", "alac", "flac", "opus", "dts", "truehd"]
+      for each codec in result
+        m.assertTrue(arrayHasValue(mp4Targets, codec), "MP4 profile contains '" + codec + "' which is NOT in the server's MP4 HLS target set — would be silently stripped and trigger #573")
+      end for
+    end function
+
+    @it("AAC is always at index 0 regardless of hardware shape")
+    function _()
+      ' Run through several hardware shapes and confirm aac is always first
+      shapes = [
+        { surround: [], fallbacks: ["mp3"] },
+        { surround: ["eac3"], fallbacks: ["mp3", "flac"] },
+        { surround: ["dts"], fallbacks: [] },
+        { surround: ["truehd"], fallbacks: ["opus"] },
+        { surround: ["eac3", "ac3", "dts", "truehd"], fallbacks: ["mp3", "flac", "alac", "opus"] }
+      ]
+      for each shape in shapes
+        for each container in ["mp4", "ts"]
+          result = buildVideoTranscodingAudioCodecsForContainer(container, shape.surround, "auto", shape.fallbacks)
+          m.assertTrue(result.count() > 0, "Profile must always contain at least AAC (container=" + container + ")")
+          m.assertEqual(result[0], "aac", "AAC must be at index 0 (container=" + container + ")")
+        end for
+      end for
+    end function
+
+    @it("never produces an empty codec list (AAC baseline guarantee)")
+    function _()
+      ' Worst-case: device reports no passthru and no decodable stereo fallbacks
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", [], "auto", [])
+      m.assertEqual(result.count(), 1, "Even with zero passthru and zero fallbacks, AAC baseline ensures non-empty list")
+      m.assertEqual(result[0], "aac")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Hardware shapes — eac3+ac3 passthrough (typical receiver / soundbar)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("TS profile contains aac, eac3, ac3, and stereo fallbacks")
+    function _()
+      allSurroundCodecs = ["eac3", "ac3"]
+      decodableStereoFallbacks = ["mp3", "flac", "alac", "opus"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      ' aac at 0, then surround in priority order, then stereo fallbacks (but only those server supports for TS)
+      m.assertEqual(result[0], "aac")
+      m.assertTrue(arrayHasValue(result, "eac3"), "eac3 must be present")
+      m.assertTrue(arrayHasValue(result, "ac3"), "ac3 must be present")
+      m.assertTrue(arrayHasValue(result, "mp3"), "mp3 must be present (stereo fallback)")
+      m.assertFalse(arrayHasValue(result, "flac"), "flac must NOT be in TS profile (server can't deliver flac in TS HLS)")
+      m.assertFalse(arrayHasValue(result, "alac"), "alac must NOT be in TS profile (server can't deliver alac in TS HLS)")
+      m.assertFalse(arrayHasValue(result, "opus"), "opus must NOT be in TS profile (server can't deliver opus in TS HLS)")
+    end function
+
+    @it("MP4 profile contains aac, eac3, ac3, and all stereo fallbacks")
+    function _()
+      allSurroundCodecs = ["eac3", "ac3"]
+      decodableStereoFallbacks = ["mp3", "flac", "alac", "opus"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      m.assertEqual(result[0], "aac")
+      m.assertTrue(arrayHasValue(result, "eac3"))
+      m.assertTrue(arrayHasValue(result, "ac3"))
+      m.assertTrue(arrayHasValue(result, "mp3"))
+      m.assertTrue(arrayHasValue(result, "flac"), "flac IS supported in MP4 HLS")
+      m.assertTrue(arrayHasValue(result, "alac"), "alac IS supported in MP4 HLS")
+      m.assertTrue(arrayHasValue(result, "opus"), "opus IS supported in MP4 HLS")
+    end function
+
+    @it("surround codecs are ordered eac3 before ac3 (auto mode)")
+    function _()
+      allSurroundCodecs = ["ac3", "eac3"] ' deliberately reversed input
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "auto", [])
+
+      ' Find indices
+      eac3Idx = -1
+      ac3Idx = -1
+      for i = 0 to result.count() - 1
+        if result[i] = "eac3" then eac3Idx = i
+        if result[i] = "ac3" then ac3Idx = i
+      end for
+      m.assertTrue(eac3Idx >= 0 and ac3Idx >= 0, "Both eac3 and ac3 must be present")
+      m.assertTrue(eac3Idx < ac3Idx, "eac3 must appear before ac3 in auto mode (it's the higher-priority surround target)")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Hardware shapes — dts-only passthrough (the unusual case from issue #573)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("TS profile falls back to aac+mp3 only (dts is not a valid TS HLS target)")
+    function _()
+      ' GIVEN: device reports passthru only for dts (no eac3, no ac3)
+      allSurroundCodecs = ["dts"]
+      decodableStereoFallbacks = ["mp3"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      ' EXPECT: dts is filtered out (TS HLS doesn't support it); aac+mp3 remain
+      m.assertFalse(arrayHasValue(result, "dts"), "dts must NOT be in TS profile even when device passthru detects it — server's TS HLS filter would strip it and trigger #573")
+      m.assertEqual(result[0], "aac", "aac at index 0 — server's safe transcode target")
+      m.assertTrue(arrayHasValue(result, "mp3"), "mp3 must be present as stereo fallback")
+    end function
+
+    @it("MP4 profile contains dts (because MP4 HLS supports dts)")
+    function _()
+      allSurroundCodecs = ["dts"]
+      decodableStereoFallbacks = ["mp3"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      m.assertTrue(arrayHasValue(result, "dts"), "dts IS valid in MP4 HLS — preserves surround for dts-only-passthru users")
+      m.assertEqual(result[0], "aac", "aac still at index 0 as safe fallback")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Hardware shapes — truehd-only passthrough")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("TS profile falls back to aac+mp3 only (truehd is not a valid TS HLS target)")
+    function _()
+      allSurroundCodecs = ["truehd"]
+      decodableStereoFallbacks = ["mp3"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      m.assertFalse(arrayHasValue(result, "truehd"), "truehd must NOT be in TS profile — server's TS HLS filter would strip it")
+      m.assertEqual(result[0], "aac")
+      m.assertTrue(arrayHasValue(result, "mp3"))
+    end function
+
+    @it("MP4 profile contains truehd (because MP4 HLS supports truehd)")
+    function _()
+      allSurroundCodecs = ["truehd"]
+      decodableStereoFallbacks = ["mp3"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      m.assertTrue(arrayHasValue(result, "truehd"), "truehd IS valid in MP4 HLS")
+      m.assertEqual(result[0], "aac")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Hardware shapes — stereo-only device (no surround passthrough)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("TS profile is just aac+decodable fallbacks (no surround codecs)")
+    function _()
+      allSurroundCodecs = []
+      decodableStereoFallbacks = ["mp3", "flac", "alac", "opus"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      m.assertEqual(result[0], "aac")
+      m.assertFalse(arrayHasValue(result, "eac3"))
+      m.assertFalse(arrayHasValue(result, "ac3"))
+      m.assertFalse(arrayHasValue(result, "dts"))
+      m.assertFalse(arrayHasValue(result, "truehd"))
+      m.assertTrue(arrayHasValue(result, "mp3"))
+      ' flac/alac/opus NOT in TS server target set
+      m.assertFalse(arrayHasValue(result, "flac"))
+      m.assertFalse(arrayHasValue(result, "alac"))
+      m.assertFalse(arrayHasValue(result, "opus"))
+    end function
+
+    @it("MP4 profile is aac+all decodable fallbacks (no surround codecs)")
+    function _()
+      allSurroundCodecs = []
+      decodableStereoFallbacks = ["mp3", "flac", "alac", "opus"]
+
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", decodableStereoFallbacks)
+
+      m.assertEqual(result[0], "aac")
+      m.assertFalse(arrayHasValue(result, "eac3"))
+      m.assertTrue(arrayHasValue(result, "mp3"))
+      m.assertTrue(arrayHasValue(result, "flac"))
+      m.assertTrue(arrayHasValue(result, "alac"))
+      m.assertTrue(arrayHasValue(result, "opus"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("User preferredCodec ordering")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("preferredCodec='ac3' appears at index 1 in TS profile (before eac3)")
+    function _()
+      allSurroundCodecs = ["eac3", "ac3", "dts"]
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "ac3", [])
+
+      m.assertEqual(result[0], "aac")
+      m.assertEqual(result[1], "ac3", "User-preferred ac3 must come right after aac (before standard-priority eac3)")
+      m.assertEqual(result[2], "eac3", "eac3 follows in standard priority order")
+    end function
+
+    @it("preferredCodec='truehd' appears at index 1 in MP4 profile (TS strips it)")
+    function _()
+      allSurroundCodecs = ["truehd", "eac3", "ac3"]
+
+      mp4Result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "truehd", [])
+      m.assertEqual(mp4Result[0], "aac")
+      m.assertEqual(mp4Result[1], "truehd", "User-preferred truehd at index 1 in MP4")
+
+      tsResult = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "truehd", [])
+      m.assertFalse(arrayHasValue(tsResult, "truehd"), "truehd preference cannot apply to TS profile — server filter would strip it")
+      m.assertEqual(tsResult[0], "aac")
+      m.assertEqual(tsResult[1], "eac3", "TS falls back to standard-priority surround (eac3)")
+    end function
+
+    @it("preferredCodec='auto' applies standard priority order (no user-specified bias)")
+    function _()
+      allSurroundCodecs = ["eac3", "ac3", "dts"]
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "auto", [])
+
+      m.assertEqual(result[0], "aac")
+      m.assertEqual(result[1], "eac3", "Auto mode: eac3 first (highest standard priority)")
+      m.assertEqual(result[2], "ac3")
+      m.assertEqual(result[3], "dts")
+    end function
+
+    @it("preferredCodec='dts' is ignored on TS profile (gracefully falls back to standard order)")
+    function _()
+      allSurroundCodecs = ["eac3", "ac3", "dts"]
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", allSurroundCodecs, "dts", [])
+
+      m.assertEqual(result[0], "aac")
+      m.assertEqual(result[1], "eac3", "TS strips dts so user preference doesn't apply; eac3 takes index 1")
+      m.assertFalse(arrayHasValue(result, "dts"), "dts must not appear in TS profile regardless of preference")
+    end function
+
+    @it("preferredCodec set to a codec the device does NOT passthru is silently ignored")
+    function _()
+      allSurroundCodecs = ["eac3"] ' device only has eac3
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "ac3", [])
+
+      m.assertFalse(arrayHasValue(result, "ac3"), "Preferred ac3 not added (device doesn't passthru)")
+      m.assertEqual(result[0], "aac")
+      m.assertEqual(result[1], "eac3", "Falls back to whatever surround the device CAN do")
+    end function
+
+    @it("preferredCodec='' (empty string) behaves as auto mode")
+    function _()
+      allSurroundCodecs = ["eac3", "ac3"]
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", allSurroundCodecs, "", [])
+
+      m.assertEqual(result[0], "aac")
+      m.assertEqual(result[1], "eac3")
+      m.assertEqual(result[2], "ac3")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("PCM and other server-unsupported codecs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("PCM is never added to a TS profile even if caller listed it as decodable")
+    function _()
+      ' Caller could accidentally include pcm — the helper should still filter it
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", [], "auto", ["mp3", "pcm"])
+      m.assertFalse(arrayHasValue(result, "pcm"), "pcm not in TS server target set — must be filtered")
+    end function
+
+    @it("PCM is never added to an MP4 profile either (not in server's MP4 HLS target set)")
+    function _()
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", [], "auto", ["mp3", "pcm"])
+      m.assertFalse(arrayHasValue(result, "pcm"), "pcm not in MP4 server target set — must be filtered")
+    end function
+
+    @it("invalid container (e.g. 'mkv') returns empty list")
+    function _()
+      result = buildVideoTranscodingAudioCodecsForContainer("mkv", ["eac3"], "auto", ["mp3"])
+      m.assertEqual(result.count(), 0, "Unknown container yields empty list — caller's responsibility to use a supported container")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Issue #573 regression — no shape produces an empty AudioCodec list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("dts-only passthru + zero decodable fallbacks still produces aac for TS")
+    function _()
+      ' Pathological: device reports passthru only for dts and decodes nothing else
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", ["dts"], "auto", [])
+
+      m.assertEqual(result.count(), 1, "Only aac survives (dts stripped by TS server filter)")
+      m.assertEqual(result[0], "aac", "aac baseline closes the empty-list bug at construction site")
+    end function
+
+    @it("truehd-only passthru with no fallbacks still produces aac for TS")
+    function _()
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", ["truehd"], "auto", [])
+      m.assertEqual(result.count(), 1)
+      m.assertEqual(result[0], "aac")
+    end function
+
+    @it("truehd-only passthru with no fallbacks still produces aac+truehd for MP4")
+    function _()
+      result = buildVideoTranscodingAudioCodecsForContainer("mp4", ["truehd"], "auto", [])
+      m.assertEqual(result.count(), 2)
+      m.assertEqual(result[0], "aac")
+      m.assertEqual(result[1], "truehd")
+    end function
+
+  end class
+
+end namespace

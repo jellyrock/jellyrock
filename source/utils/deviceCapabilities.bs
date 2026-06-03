@@ -444,8 +444,15 @@ function getTranscodingProfiles() as object
   ' ========================================
   ' VIDEO CODEC DETECTION (per container)
   ' ========================================
-
-  transcodingContainers = ["ts", "mp4"]
+  '
+  ' Container preference order: mp4 (HLS-fmp4) first, then ts (HLS-mpegts). This
+  ' matches the official Jellyfin Roku app and the original jellyfin-roku fork parent.
+  ' The order matters because Jellyfin's StreamBuilder picks FirstOrDefault when
+  ' profile ranks tie — mp4-first unlocks the wider HLS audio target set
+  ' (alac/flac/opus/dts/truehd in addition to aac/ac3/eac3/mp3) for surround
+  ' transcoding scenarios where the user's hardware passthrough is detected only
+  ' for a codec that's TS-incompatible (issue #573).
+  transcodingContainers = ["mp4", "ts"]
   containerVideoCodecs = {}
 
   for each container in transcodingContainers
@@ -494,53 +501,22 @@ function getTranscodingProfiles() as object
     allSurroundCodecs = sixChannelPassthruCodecs
   end if
 
-  ' Build optimal audio codec list for transcoding
-  ' Order: AAC (stereo), passthrough surround, multichannel decode, stereo fallbacks
+  ' Build per-container audio codec list. The construction logic is in the pure helper
+  ' buildVideoTranscodingAudioCodecsForContainer so it can be exhaustively unit-tested
+  ' against a full matrix of hardware shapes (eac3+ac3 passthru, dts-only, truehd-only,
+  ' stereo-only). The helper applies the per-container HLS-target filter that prevents
+  ' issue #573 at the construction site.
   for each container in transcodingContainers
-    audioCodecList = []
-
-    ' 1. AAC always first (efficient for stereo). On multichannel + passthru playback, all
-    '    stereo-output codecs (including AAC) are stripped at playback time by
-    '    optimizeAudioCodecListForSource (see items.bs).
-    audioCodecList.push("aac")
-
-    ' 2. Add surround passthrough codecs if supported (in preference order)
-    if allSurroundCodecs.count() > 0
-      ' Apply user's preferred codec ordering
-      if isValid(preferredCodec) and preferredCodec <> "" and preferredCodec <> "auto"
-        ' Preferred codec first (if supported)
-        if arrayHasValue(allSurroundCodecs, preferredCodec)
-          audioCodecList.push(preferredCodec)
-        end if
-
-        ' Then other surround codecs in priority order: eac3 > ac3 > dts
-        surroundPriority = ["eac3", "ac3", "dts"]
-        for each codec in surroundPriority
-          if arrayHasValue(allSurroundCodecs, codec) and codec <> preferredCodec
-            audioCodecList.push(codec)
-          end if
-        end for
-      else
-        ' Auto mode: use default priority order (eac3 > ac3 > dts)
-        surroundPriority = ["eac3", "ac3", "dts"]
-        for each codec in surroundPriority
-          if arrayHasValue(allSurroundCodecs, codec)
-            audioCodecList.push(codec)
-          end if
-        end for
-      end if
-    end if
-
-    ' 3. Add stereo fallback codecs if device supports them (MP3 most compatible, then lossless as fallbacks)
-    stereoFallbacks = ["mp3", "flac", "alac", "pcm"]
-    for each codec in stereoFallbacks
-      if not arrayHasValue(audioCodecList, codec)
-        ' Validate device can decode this codec at 2 channels in this container
-        if di.CanDecodeAudio({ Codec: codec, ChCnt: 2, Container: container }).Result
-          audioCodecList.push(codec)
-        end if
+    ' Detect which stereo fallback codecs the device can decode at 2ch in this container.
+    ' Pre-computing this lets the construction helper stay pure.
+    decodableStereoFallbacks = []
+    for each codec in ["mp3", "flac", "alac", "opus"]
+      if di.CanDecodeAudio({ Codec: codec, ChCnt: 2, Container: container }).Result
+        decodableStereoFallbacks.push(codec)
       end if
     end for
+
+    audioCodecList = buildVideoTranscodingAudioCodecsForContainer(container, allSurroundCodecs, preferredCodec, decodableStereoFallbacks)
 
     ' Create single profile per container
     profile = {
@@ -566,6 +542,75 @@ function getTranscodingProfiles() as object
   end for
 
   return transcodingProfiles
+end function
+
+' Mirror of Jellyfin server's _supportedHlsAudioCodecs* from
+' MediaBrowser.Model/Dlna/StreamBuilder.cs. Codecs outside these per-container sets
+' get silently stripped by the server's HLS-codec filter when building the
+' TranscodingUrl, leaving an empty AudioCodec field that triggers the server's
+' InferAudioCodec("m3u8") fallback chain (issue #573). Listing only codecs the
+' server will actually use as HLS transcode targets keeps the profile honest and
+' prevents the bug class at the construction site.
+function getHlsTranscodeTargetsForContainer(container as string) as object
+  if container = "ts"
+    return ["aac", "ac3", "eac3", "mp3"]
+  end if
+  if container = "mp4"
+    return ["aac", "ac3", "eac3", "mp3", "alac", "flac", "opus", "dts", "truehd"]
+  end if
+  return []
+end function
+
+' Build the AudioCodec list for a single HLS video transcoding profile container.
+' Pure function — all inputs explicit so the full hardware matrix can be unit-tested
+' without mocking roDeviceInfo or m.global.
+'
+' Ordering rules (leftmost is the server's first-choice transcode target):
+'   1. AAC (universal Roku decode, in both ts and mp4 server target sets)
+'   2. User's preferredCodec if set, device-passthru-supported, and server-target
+'   3. Other surround codecs in priority order (eac3 > ac3 > dts > truehd), each
+'      gated by device passthru AND server-target for this container
+'   4. Stereo fallback codecs the device decodes (mp3 > flac > alac > opus), each
+'      gated by server-target for this container
+'
+' @param container - "ts" or "mp4"
+' @param allSurroundCodecs - array of surround codec names with device passthrough
+' @param preferredCodec - user's playbackPreferredMultichannelCodec value, or "auto" / ""
+' @param decodableStereoFallbacks - stereo fallback codec names the device can decode
+'                                   at 2ch in this container (subset of mp3/flac/alac/opus)
+' @returns array of codec name strings in preference order
+function buildVideoTranscodingAudioCodecsForContainer(container as string, allSurroundCodecs as object, preferredCodec as string, decodableStereoFallbacks as object) as object
+  serverTargets = getHlsTranscodeTargetsForContainer(container)
+  if serverTargets.count() = 0 then return []
+
+  surroundPriority = ["eac3", "ac3", "dts", "truehd"]
+  audioCodecList = []
+
+  ' 1. AAC always first
+  audioCodecList.push("aac")
+
+  ' 2. User's preferred surround codec, if both device-supported and server-supported
+  if isValid(preferredCodec) and preferredCodec <> "" and preferredCodec <> "auto"
+    if arrayHasValue(allSurroundCodecs, preferredCodec) and arrayHasValue(serverTargets, preferredCodec)
+      audioCodecList.push(preferredCodec)
+    end if
+  end if
+
+  ' 3. Other surround codecs in priority order
+  for each codec in surroundPriority
+    if not arrayHasValue(audioCodecList, codec) and arrayHasValue(allSurroundCodecs, codec) and arrayHasValue(serverTargets, codec)
+      audioCodecList.push(codec)
+    end if
+  end for
+
+  ' 4. Stereo fallbacks — caller already verified device decode capability
+  for each codec in decodableStereoFallbacks
+    if not arrayHasValue(audioCodecList, codec) and arrayHasValue(serverTargets, codec)
+      audioCodecList.push(codec)
+    end if
+  end for
+
+  return audioCodecList
 end function
 
 function getContainerProfiles() as object
