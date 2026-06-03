@@ -54,15 +54,16 @@
       id="genreList"
       opacity="0"
       translation="[120, 120]"
-      itemComponentName="GridItemSmall"
+      itemComponentName="GridItem"
       numColumns="1"
       numRows="3"
       vertFocusAnimationStyle="fixed"
-      itemSize="[1702, 360]"
-      rowItemSize="[[230, 320]]"
+      itemSize="[1702, 400]"
+      rowItemSize="[[213, 320]]"
+      rowHeights="[400]"
       rowItemSpacing="[[20, 0]]"
       rowLabelOffset="[[0, 0]]"
-      itemSpacing="[0, 60]" />
+      itemSpacing="[0, 40]" />
 
     <!-- Empty state message -->
     <LabelPrimaryLarge id="emptyText" isBold="true" width="1910" horizAlign="center" vertAlign="center" height="64" translation="[0, 540]" visible="false" />

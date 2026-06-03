@@ -100,14 +100,16 @@ class TVShowPresenter extends GridPresenterBase
         imageDisplayMode: "scaleToZoom"
       }
     else if viewLower = "genres"
-      ' genres - smaller posters
+      ' genres - smaller posters. scaleToZoom (matching MoviePresenter) so 2:3 posters
+      ' fill the genre RowList cell with no crop (the cell is 2:3) and the watched/unplayed
+      ' badge anchors to the image corner rather than a letterbox bar.
       return {
         translation: [96, 102],
         itemSize: [230, 315],
         rowHeights: [315],
         numRows: "4",
         numColumns: "7",
-        imageDisplayMode: "scaleToFit"
+        imageDisplayMode: "scaleToZoom"
       }
     else
       ' Default: standard grid
