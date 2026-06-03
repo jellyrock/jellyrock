@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) preserve surround on multichannel transcode fallback ([#574](https://github.com/jellyrock/jellyrock/pull/574))
 - Fix photo selection opening the viewer behind `ItemDetails` ([#614](https://github.com/jellyrock/jellyrock/pull/614))
 
 ## [2.18.0](https://github.com/jellyrock/jellyrock/compare/v2.17.0...v2.18.0) - 2026-06-03
