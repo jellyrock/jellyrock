@@ -231,7 +231,7 @@ namespace tests
       m.assertEqual(tsProfile.AudioCodec, "", "Empty codec string should remain empty")
     end function
 
-    @it("falls back to 'aac' when AAC-only list would be emptied (issue #573 guard)")
+    @it("falls back to the preferred surround codec when AAC-only list would be emptied (issue #573)")
     function _()
       ' GIVEN: a profile with AAC-only AudioCodec on a multichannel-capable container
       ' (e.g. MaxAudioChannels=6) — this shape arises when a device's passthrough detection
@@ -241,10 +241,11 @@ namespace tests
       ' WHEN: optimizeAudioCodecListForSource runs for a 6ch source, it would normally strip
       ' "aac" as a stereo-output codec and emit an empty AudioCodec.
       '
-      ' EXPECT: the guard falls back to "aac" — the universal Roku decode codec. An empty
-      ' AudioCodec sent to Jellyfin makes the server's StreamBuilder omit the audioCodec query
-      ' param from the TranscodingUrl, which causes the server's InferAudioCodec to return the
-      ' literal container name ("m3u8") and ffmpeg receives -codec:a:0 m3u8 → exit code 8.
+      ' EXPECT: the multichannel branch prepends a server-encodeable surround codec (default
+      ' eac3) rather than the stereo "aac". An empty AudioCodec makes the server's StreamBuilder
+      ' omit the audioCodec query param, so InferAudioCodec returns the container name ("m3u8")
+      ' and ffmpeg receives -codec:a:0 m3u8 → exit 8. Falling back to aac (a stereo-output codec)
+      ' would have re-introduced the exact stereo variant this function exists to strip.
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-aac-only")
       channelCount = 6
 
@@ -259,10 +260,10 @@ namespace tests
       end for
 
       m.assertNotInvalid(tsProfile)
-      m.assertEqual(tsProfile.AudioCodec, "aac", "guard should fall back to 'aac' instead of emitting empty AudioCodec — empty AudioCodec triggers server's m3u8 fallback bug")
+      m.assertEqual(tsProfile.AudioCodec, "eac3", "emptied multichannel list should fall back to the preferred surround codec (default eac3), never the stereo 'aac'")
     end function
 
-    @it("falls back to 'aac' when all-stereo codec list would be emptied (issue #573 guard)")
+    @it("falls back to the preferred surround codec when all-stereo list would be emptied (issue #573)")
     function _()
       ' GIVEN: a video transcoding profile whose AudioCodec list contains only stereo-output
       ' codecs (no eac3/ac3/dts), but MaxAudioChannels advertises multichannel capability. This
@@ -285,11 +286,60 @@ namespace tests
       ' be stripped as stereo-output.
       optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
-      ' EXPECT: the guard falls back to "aac" (universal Roku decode codec). If we emitted an
-      ' empty AudioCodec, the server's StreamBuilder would produce a TranscodingUrl without
-      ' audioCodec=, which makes the segment endpoint's InferAudioCodec fall through to the
-      ' literal "m3u8" → ffmpeg fails with `-codec:a:0 m3u8` (issue #573).
-      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "aac", "all-stereo list must fall back to 'aac' when filtering would empty it")
+      ' EXPECT: the multichannel branch prepends the preferred surround codec (default eac3) so
+      ' the server transcodes to a real surround target instead of producing an empty AudioCodec
+      ' (→ server bakes "m3u8" → ffmpeg fails, issue #573).
+      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "eac3", "all-stereo list must fall back to the preferred surround codec when filtering would empty it")
+    end function
+
+    @it("honors the user's preferred multichannel codec (ac3) as the surround fallback")
+    function _()
+      ' GIVEN: a truehd-only-shaped list and a user who picked ac3 as their preferred surround codec.
+      deviceProfile = {
+        TranscodingProfiles: [
+          { Container: "ts", Type: "Video", AudioCodec: "aac,mp3", VideoCodec: "h264", MaxAudioChannels: "6" }
+        ]
+      }
+
+      ' WHEN: a 6ch source is optimized with the preferred codec passed through.
+      optimizeAudioCodecListForSource(deviceProfile, 6, "ac3")
+
+      ' EXPECT: ac3 (the user's choice, a reliably-encodeable surround target) leads the list.
+      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "ac3", "preferred ac3 should be the surround fallback")
+    end function
+
+    @it("clamps an unencodeable preferred codec (dts) to eac3")
+    function _()
+      ' GIVEN: a user who picked dts — which the Jellyfin server emits no audio stream for as a
+      ' transcode target, so it cannot be used as a fallback without re-triggering issue #573.
+      deviceProfile = {
+        TranscodingProfiles: [
+          { Container: "ts", Type: "Video", AudioCodec: "aac,mp3", VideoCodec: "h264", MaxAudioChannels: "6" }
+        ]
+      }
+
+      optimizeAudioCodecListForSource(deviceProfile, 6, "dts")
+
+      ' EXPECT: dts is clamped to eac3 (the universal encodeable surround target).
+      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "eac3", "dts preference must clamp to eac3, never fall back to dts")
+    end function
+
+    @it("rescues an on-device-decode-only list (truehd,opus) by leading with the surround target")
+    function _()
+      ' GIVEN: the mp4 list a truehd-only device produces after construction + stereo stripping:
+      ' truehd (un-encodeable for a non-truehd source) + opus (on-device decode only). Left as-is
+      ' the server resolves this to opus, silently abandoning surround. (issue #573 audit)
+      deviceProfile = {
+        TranscodingProfiles: [
+          { Container: "mp4", Type: "Video", AudioCodec: "truehd,opus", VideoCodec: "h264", MaxAudioChannels: "6" }
+        ]
+      }
+
+      optimizeAudioCodecListForSource(deviceProfile, 6, "eac3")
+
+      ' EXPECT: eac3 leads so the server transcodes to a real surround codec; truehd/opus are kept
+      ' as trailing options but never chosen ahead of eac3.
+      m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, "eac3,truehd,opus", "preferred surround codec must lead so the server doesn't resolve to opus")
     end function
 
     @it("handles missing AudioCodec field gracefully")
