@@ -54,7 +54,7 @@
       id="genreList"
       opacity="0"
       translation="[120, 120]"
-      itemComponentName="GridItemSmall"
+      itemComponentName="GridItem"
       numColumns="1"
       numRows="3"
       vertFocusAnimationStyle="fixed"

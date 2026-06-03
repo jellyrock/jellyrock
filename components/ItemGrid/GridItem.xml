@@ -2,14 +2,31 @@
 <component name="GridItem" extends="Group">
   <children>
     <JRPlaceholder id="placeholder" translation="[0,22]" width="264" height="396" />
+    <!--
+      genreBackdrop / genreLabel: action-tile treatment for "View All [Genre]" items.
+      These tiles aren't media — they're navigation buttons that intentionally have no image,
+      so they get a themed backdrop + in-cell label instead of going through JRPlaceholder.
+      Hidden by default; toggled visible only in the Genre branch of renderItem().
+      Used when this component backs the genre RowList (genreList in BaseGridView).
+    -->
+    <RectangleBackgroundSecondary id="genreBackdrop" translation="[0,22]" width="264" height="396" visible="false" />
+    <LabelPrimaryMedium id="genreLabel" width="254" height="386" translation="[5,27]" horizAlign="center" vertAlign="center" ellipsizeOnBoundary="true" wrap="true" visible="false" />
     <JRPoster id="itemPoster" translation="[0,22]" width="264" height="396" loadDisplayMode="scaleToZoom" />
-    <Poster id="itemIcon" width="50" height="50" translation="[204,32]" />
 
     <ScrollingLabelPrimarySmaller id="itemText" isBold="true" horizAlign="center" maxWidth="264" repeatCount="0" visible="false" />
   </children>
 
   <interface>
     <field id="itemContent" type="node" onChange="onItemContentChanged" />
-    <field id="itemHasFocus" type="boolean" onChange="onFocusChanged" />
+    <field id="itemHasFocus" type="boolean" onChange="onFocusChanged" alwaysNotify="true" />
+    <!--
+      width/height: set by the parent MarkupGrid (itemSize) or RowList (rowItemSize).
+      Declaring them with a default guarantees they are never Invalid (unlike width on a
+      raw Group node) and lets us observe size changes to drive updateLayout(). This is
+      what lets one component render every cell size: 264x396 (default), 323x323 (music,
+      via the presenter's itemSize), 230x320 (genre RowList).
+    -->
+    <field id="width" type="float" value="0" onChange="onSizeChanged" />
+    <field id="height" type="float" value="0" onChange="onSizeChanged" />
   </interface>
 </component>

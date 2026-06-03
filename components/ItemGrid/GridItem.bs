@@ -3,14 +3,25 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
+import "pkg:/source/utils/rowItemText.bs"
 import "pkg:/source/utils/textureManager.bs"
+
+' Vertical offset of the poster/placeholder from the cell top. The title label sits
+' below the poster, inside the grid's inter-row spacing (see updateLayout).
+const POSTER_TOP_OFFSET = 22
+' Gap between the bottom of the poster and the title label. Matches JRRowItem's
+' FOCUS_PADDING so grid and row cells share one vertical rhythm.
+const TITLE_GAP = 18
+' Inset of the genre action-tile label from the backdrop edges.
+const GENRE_LABEL_INSET = 5
 
 sub init()
   m.log = new log.Logger("GridItem")
   m.itemPoster = m.top.findNode("itemPoster")
-  m.itemIcon = m.top.findNode("itemIcon")
   m.itemText = m.top.findNode("itemText")
   m.placeholder = m.top.findNode("placeholder")
+  m.genreBackdrop = m.top.findNode("genreBackdrop")
+  m.genreLabel = m.top.findNode("genreLabel")
 
   m.itemPoster.observeField("loadStatus", "onPosterLoadStatusChanged")
 
@@ -32,104 +43,137 @@ sub init()
   ' Recomputed on each cell recycle (onItemContentChanged).
   m.cachedFlatIndex = -1
 
-  ' Add some padding space when Item Titles are always showing
-  if m.itemText.visible then m.itemText.maxWidth = 224
+  ' Display/title config read from the owning BaseGridView (the grandparent of this
+  ' cell in both the MarkupGrid and the genre RowList — see comment on m.itemGrid).
+  m.imageDisplayMode = "scaleToZoom"
+  m.gridTitles = ""
 
-  ' grab data from ItemGrid node
-  m.itemGrid = m.top.GetParent().GetParent() 'Parent is JRMarkupGrid and it's parent is the ItemGrid
+  ' grab data from the owning BaseGridView node.
+  ' Parent is the MarkupGrid/RowList and its parent is the BaseGridView (named
+  ' m.itemGrid here for historical reasons; it is the screen, not the grid node).
+  m.itemGrid = m.top.GetParent().GetParent()
 
   if isValid(m.itemGrid)
     if isValid(m.itemGrid.imageDisplayMode)
-      m.itemPoster.loadDisplayMode = m.itemGrid.imageDisplayMode
+      m.imageDisplayMode = m.itemGrid.imageDisplayMode
     end if
     if isValid(m.itemGrid.gridTitles)
       m.gridTitles = m.itemGrid.gridTitles
     end if
   end if
-
-  posterY = m.itemPoster.translation[1]
-  m.itemText.translation = [0, posterY + m.itemPoster.height + 18]
-  m.itemText.visible = m.gridTitles = "showalways"
-
 end sub
 
+' Re-render when the parent assigns a new item to this (possibly recycled) cell.
+' Texture observers only need itemContent, so wire them up even before the cell has
+' been sized; the actual render waits until width/height are known (onSizeChanged
+' fires the first paint when the parent applies itemSize/rowItemSize).
 sub onItemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
 
   setupGridTextureObserver()
+
+  if m.top.width <= 0 or m.top.height <= 0 then return
+  renderItem()
+end sub
+
+' Re-render when the parent applies/changes the cell size (MarkupGrid itemSize or
+' RowList rowItemSize). Mirrors JRRowItem so one component renders every cell size.
+sub onSizeChanged()
+  if not isValid(m.top.itemContent) then return
+  if m.top.width <= 0 or m.top.height <= 0 then return
+  renderItem()
+end sub
+
+sub renderItem()
+  itemData = m.top.itemContent
+  if not isValid(itemData) then return
+
+  updateLayout(m.top.width, m.top.height)
+
+  ' Clear any badge from a prior bind before this recycled cell renders the new item.
+  m.itemPoster.callFunc("resetBadge")
   m.isTextureUnloaded = false
 
-  if itemData.isWatched
-    m.itemPoster.isWatched = true
-  end if
-
-  if itemData.unplayedItemCount > 0
-    m.itemPoster.unplayedCount = itemData.unplayedItemCount
-  end if
+  ' Title text + default (always-on) visibility — recomputed every recycle.
+  m.itemText.text = getRowItemTitle(itemData)
+  m.itemText.visible = m.gridTitles = "showalways"
 
   itemType = LCase(itemData.type)
-  posterUri = ""
+  itemFolderType = ""
+  if isValid(itemData.folderType) then itemFolderType = LCase(itemData.folderType)
 
-  if itemType = "movie" or itemType = "musicvideo"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "series"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "boxset"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "tvchannel"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "folder" or itemType = "collectionfolder" or itemType = "channelfolderitem" or itemType = "photoalbum"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-    m.itemPoster.loadDisplayMode = m.itemGrid.imageDisplayMode
-  else if itemType = "genre" or itemType = "studio"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "musicgenre"
-    ' Music genres use square 1:1 sizing
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-    setSquarePosterLayout()
-    m.itemPoster.loadDisplayMode = "scaleToFit"
-  else if itemType = "video" or itemType = "recording"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "playlist"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "photo"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-  else if itemType = "episode"
-    posterUri = getItemPosterUrl(itemData)
-    if isValidAndNotEmpty(itemData.seriesName)
-      m.itemText.text = itemData.seriesName + " - " + itemData.title
-    else
-      m.itemText.text = itemData.title
-    end if
-  else if itemType = "musicartist"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-    setSquarePosterLayout()
-    m.itemPoster.loadDisplayMode = "limitSize"
-  else if itemType = "musicalbum"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
-    setSquarePosterLayout()
-    m.itemPoster.loadDisplayMode = "limitSize"
-  else if itemType = "audio"
-    posterUri = getItemPosterUrl(itemData)
-    m.itemText.text = itemData.title
+  if itemType = "genre" or itemFolderType = "genre"
+    ' "View All [Genre]" action tiles are navigation buttons, not media — they get a
+    ' themed backdrop + in-cell label rather than going through JRPlaceholder, so they
+    ' don't read as failed-to-load placeholders. Check both type and folderType: if
+    ' Jellyfin returns IsFolder=false/absent the transformer leaves type="Genre" and
+    ' folderType="" so we must match on type directly. MusicGenre/Studio do NOT match
+    ' here and keep the regular poster path.
+    renderGenreTile(itemData)
   else
-    m.log.warn("Unhandled Grid Item Type", itemData.type)
+    renderMediaItem(itemData, itemType)
+  end if
+end sub
+
+' Sizes and positions every child to the current cell dimensions. Driven by the
+' parent-applied width/height so a single component handles 264x396, 323x323 (music),
+' and 230x320 (genre RowList) without per-type reshaping.
+sub updateLayout(w as float, h as float)
+  m.placeholder.translation = [0, POSTER_TOP_OFFSET]
+  m.placeholder.width = w
+  m.placeholder.height = h
+
+  m.itemPoster.translation = [0, POSTER_TOP_OFFSET]
+  m.itemPoster.width = w
+  m.itemPoster.height = h
+  m.itemPoster.loadWidth = int(w)
+  m.itemPoster.loadHeight = int(h)
+
+  m.genreBackdrop.translation = [0, POSTER_TOP_OFFSET]
+  m.genreBackdrop.width = w
+  m.genreBackdrop.height = h
+
+  m.genreLabel.translation = [GENRE_LABEL_INSET, POSTER_TOP_OFFSET + GENRE_LABEL_INSET]
+  m.genreLabel.width = w - 2 * GENRE_LABEL_INSET
+  m.genreLabel.height = h - 2 * GENRE_LABEL_INSET
+
+  m.itemText.translation = [0, POSTER_TOP_OFFSET + h + TITLE_GAP]
+  m.itemText.maxWidth = w
+end sub
+
+' Renders a "View All [Genre]" action tile: themed backdrop + centered genre label,
+' no poster image. cachedPosterUri is cleared so texture management skips this cell.
+sub renderGenreTile(itemData as object)
+  m.itemPoster.uri = ""
+  m.placeholder.visible = false
+  m.genreBackdrop.visible = true
+  m.genreLabel.text = itemData.title
+  m.genreLabel.visible = true
+  m.cachedPosterUri = ""
+end sub
+
+' Renders a standard media item: poster image with the JRPlaceholder fallback state
+' machine and texture management.
+sub renderMediaItem(itemData as object, itemType as string)
+  m.genreBackdrop.visible = false
+  m.genreLabel.visible = false
+
+  ' Watched / unplayed-count badges, honoring the user setting (matches JRRowItem and
+  ' the former GridItemSmall; the former GridItem ignored this setting).
+  if not m.global.user.settings.uiTvShowsDisableUnwatchedCount
+    if itemData.isWatched
+      m.itemPoster.isWatched = true
+    else if itemData.unplayedItemCount > 0
+      m.itemPoster.unplayedCount = itemData.unplayedItemCount
+    end if
   end if
 
-  ' Cache URI for texture management
+  m.itemPoster.loadDisplayMode = resolveLoadDisplayMode(itemType)
+
+  posterUri = getItemPosterUrl(itemData)
+
+  ' Cache URI + display mode for texture management
   m.cachedPosterUri = posterUri
   m.cachedLoadDisplayMode = m.itemPoster.loadDisplayMode
 
@@ -154,19 +198,16 @@ sub onItemContentChanged()
   end if
 end sub
 
-' Apply square 323x323 layout for music items (artists, albums, genres)
-sub setSquarePosterLayout()
-  m.itemPoster.height = 323
-  m.itemPoster.width = 323
-  m.itemPoster.loadWidth = 323
-  m.itemPoster.loadHeight = 323
-
-  m.itemText.translation = [0, m.itemPoster.translation[1] + m.itemPoster.height + 18]
-  m.itemText.maxWidth = 323
-
-  m.placeholder.width = 323
-  m.placeholder.height = 323
-end sub
+' Picks the poster scaling mode. Music posters are square art that must not be cropped;
+' everything else uses the grid's configured display mode (default scaleToZoom).
+function resolveLoadDisplayMode(itemType as string) as string
+  if itemType = "musicartist" or itemType = "musicalbum"
+    return "limitSize"
+  else if itemType = "musicgenre"
+    return "scaleToFit"
+  end if
+  return m.imageDisplayMode
+end function
 
 ' Enable title scrolling based on item focus
 sub onFocusChanged()
@@ -210,7 +251,7 @@ sub showPlaceholder(itemType as string)
 end sub
 
 ' Reset the JRPlaceholder to loading state (themed backdrop visible, no glyph).
-' Used by the initial-load branches in onItemContentChanged and by the texture
+' Used by the initial-load branches in renderMediaItem and by the texture
 ' unload paths so off-screen / unloaded cells don't carry a stale failure-state
 ' glyph back into view when they reload.
 sub resetPlaceholderToLoading()
@@ -220,6 +261,12 @@ end sub
 
 ' ============================================================================
 ' Texture Management
+'
+' Active when this component backs the MarkupGrid (itemGrid), whose content root is
+' texture-managed via initTextureManager. In the genre RowList the content root has no
+' textureManagerState/loadedRowRange fields, so getGridTextureManagerState() resolves to
+' "init" — which means "always load, never unload" — making this section naturally inert
+' there (matching the former GridItemSmall, which had no texture management at all).
 ' ============================================================================
 
 ' One-time setup: observes loadedRowRange and textureManagerState on the
@@ -234,8 +281,10 @@ sub setupGridTextureObserver()
   contentRoot = item.getParent()
   if not isValid(contentRoot) then return
 
-  ' Cache flat index for row position calculations (O(1) lookup via BaseGridView)
+  ' Cache flat index for row position calculations (O(1) lookup via BaseGridView).
+  ' Returns -1 for items not in the texture-managed grid (e.g. genre RowList rows).
   m.cachedFlatIndex = m.itemGrid.callFunc("getItemFlatIndex", item.id)
+  if not isValid(m.cachedFlatIndex) then m.cachedFlatIndex = -1
 
   ' One-time observer setup — only run once per content root
   if isValid(m.contentRoot) and m.contentRoot.isSameNode(contentRoot) then return
