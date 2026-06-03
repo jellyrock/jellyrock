@@ -59,7 +59,7 @@
       numRows="3"
       vertFocusAnimationStyle="fixed"
       itemSize="[1702, 360]"
-      rowItemSize="[[230, 320]]"
+      rowItemSize="[[213, 320]]"
       rowItemSpacing="[[20, 0]]"
       rowLabelOffset="[[0, 0]]"
       itemSpacing="[0, 60]" />
