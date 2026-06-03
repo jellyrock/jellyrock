@@ -127,37 +127,46 @@ sub renderItem()
   end if
 end sub
 
-' Sizes and positions every child to the current cell dimensions. Driven by the
-' parent-applied width/height so a single component handles 264x396, 323x323 (music),
-' and 230x320 (genre RowList) without per-type reshaping.
+' Sizes and positions every child to the current cell dimensions. The focus slot is
+' rowItemSize/itemSize; the poster fills it at POSTER_TOP_OFFSET so the poster overflows
+' the slot bottom and the focus border (drawn behind it) reads with a top margin and no
+' overlap. The title sits below at POSTER_TOP_OFFSET + h + TITLE_GAP — kept OUTSIDE the
+' focus border because the container sets rowHeights/itemSize taller than the slot (the
+' focus border pins to the slot, not the cell's full bounding box).
 sub updateLayout(w as float, h as float)
-  m.placeholder.translation = [0, POSTER_TOP_OFFSET]
-  m.placeholder.width = w
-  m.placeholder.height = h
-
-  m.itemPoster.translation = [0, POSTER_TOP_OFFSET]
-  m.itemPoster.width = w
-  m.itemPoster.height = h
-  m.itemPoster.loadWidth = int(w)
-  m.itemPoster.loadHeight = int(h)
-
-  m.genreBackdrop.translation = [0, POSTER_TOP_OFFSET]
-  m.genreBackdrop.width = w
-  m.genreBackdrop.height = h
-
+  setPosterRect(0, POSTER_TOP_OFFSET, w, h)
   m.genreLabel.translation = [GENRE_LABEL_INSET, POSTER_TOP_OFFSET + GENRE_LABEL_INSET]
   m.genreLabel.width = w - 2 * GENRE_LABEL_INSET
   m.genreLabel.height = h - 2 * GENRE_LABEL_INSET
-
   m.itemText.translation = [0, POSTER_TOP_OFFSET + h + TITLE_GAP]
   m.itemText.maxWidth = w
 end sub
 
+' Positions/sizes the placeholder, poster, and genre backdrop to the same rect.
+sub setPosterRect(x as integer, y as integer, rw as float, rh as float)
+  m.placeholder.translation = [x, y]
+  m.placeholder.width = rw
+  m.placeholder.height = rh
+
+  m.itemPoster.translation = [x, y]
+  m.itemPoster.width = rw
+  m.itemPoster.height = rh
+  m.itemPoster.loadWidth = int(rw)
+  m.itemPoster.loadHeight = int(rh)
+
+  m.genreBackdrop.translation = [x, y]
+  m.genreBackdrop.width = rw
+  m.genreBackdrop.height = rh
+end sub
+
 ' Renders a "View All [Genre]" action tile: themed backdrop + centered genre label,
-' no poster image. cachedPosterUri is cleared so texture management skips this cell.
+' no poster image. The below-tile item title is hidden — the tile's own centered label
+' already names the genre, and the row's genre header sits directly above it, so a third
+' copy is redundant. cachedPosterUri is cleared so texture management skips this cell.
 sub renderGenreTile(itemData as object)
   m.itemPoster.uri = ""
   m.placeholder.visible = false
+  m.itemText.visible = false
   m.genreBackdrop.visible = true
   m.genreLabel.text = itemData.title
   m.genreLabel.visible = true
