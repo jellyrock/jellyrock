@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-03 — Skip Roku device tests when only Node tests change
 - 2026-06-03 — Auto-prune the shipped log and backtick code identifiers in PR titles
 - 2026-06-03 — Unify `GridItem`/`GridItemSmall` and fix genre grid rendering
 - 2026-06-03 — Fix photo selection opening the viewer behind `ItemDetails`
