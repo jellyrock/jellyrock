@@ -30,7 +30,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 | how login → home → playback flows end-to-end (the spine) | [user-journey.md](./user-journey.md) |
 | app startup and lifecycle | [bootstrap.md](./bootstrap.md) |
 | the scene stack and navigation | [navigation.md](./navigation.md) |
-| RowList/grid item layout & the focus indicator (the `rowHeights` trap) | [list-grid-item-layout.md](./list-grid-item-layout.md) |
+| `RowList`/grid item layout & the focus indicator (the `rowHeights` trap) | [list-grid-item-layout.md](./list-grid-item-layout.md) |
 | global state — what hangs off `m.global` | [global-state.md](./global-state.md) |
 | video and audio playback | [playback.md](./playback.md) |
 | the API layer and task pool | [api.md](./api.md) |

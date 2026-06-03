@@ -9,7 +9,7 @@ related-files:
 last-reviewed: 2026-06-03
 ---
 
-# RowList / grid item layout & the focus indicator
+# `RowList` / grid item layout & the focus indicator
 
 How a custom item component (the `itemComponentName` of a `RowList` / `MarkupGrid`)
 must be laid out so the built-in focus indicator frames the poster cleanly and the
@@ -34,7 +34,7 @@ For an item component that shows a **poster with a title below it**:
 
 1. **`rowItemSize`** = the poster/focus-slot size. This is what the focus indicator
    frames.
-2. **`rowHeights`** (RowList) = `rowItemSize` height **+ a title area**. Setting it
+2. **`rowHeights`** (`RowList`) = `rowItemSize` height **+ a title area**. Setting it
    taller than `rowItemSize` is what pins the indicator to the slot and puts the title
    _outside_ the indicator. `MarkupGrid` gets the equivalent from its presenter's
    `rowHeights`/`itemSize`.
@@ -50,17 +50,17 @@ For an item component that shows a **poster with a title below it**:
 - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) + [`HomeRows`](../../components/home/HomeRows.bs):
   `HomeRows` sets `rowHeights = rowItemSize + 90` (see the comment at `HomeRows.bs`
   near `applyRowSizes`); `JRRowItem` fills the slot and places its title below.
-- [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre RowList
+- [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre `RowList`
   ([`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml) `genreList`):
   `rowItemSize="[[213,320]]"`, `rowHeights="[400]"`, poster filled at
   `POSTER_TOP_OFFSET`, title below.
-- Roku's official [RowList sample](https://github.com/rokudev/samples/tree/master/ux%20components/lists%20and%20grids/RowListExample)
+- Roku's official [`RowList` sample](https://github.com/rokudev/samples/tree/master/ux%20components/lists%20and%20grids/RowListExample)
   uses `rowItemSize=[536,308]` with the poster inset to `512×288` — another way to keep
   the indicator off the image.
 
 ## Why this doc exists (evidence)
 
-2026-06-03, unifying `GridItem` into the genre RowList: the `genreList` set
+2026-06-03, unifying `GridItem` into the genre `RowList`: the `genreList` set
 `rowItemSize` but never `rowHeights`, so the focus border wrapped the cell's full
 bounding box — overlapping the poster and bumping the title off-screen. Many wrong
 turns (insetting the poster, moving offsets, growing the row) chased the symptom; the
