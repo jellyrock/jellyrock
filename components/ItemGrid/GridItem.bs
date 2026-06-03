@@ -43,24 +43,34 @@ sub init()
   ' Recomputed on each cell recycle (onItemContentChanged).
   m.cachedFlatIndex = -1
 
-  ' Display/title config read from the owning BaseGridView (the grandparent of this
-  ' cell in both the MarkupGrid and the genre RowList — see comment on m.itemGrid).
+  ' Display/title config read from the owning BaseGridView. Resolved lazily via
+  ' resolveGridViewConfig() (defaults until then).
   m.imageDisplayMode = "scaleToZoom"
   m.gridTitles = ""
+  ' The owning BaseGridView node, resolved lazily by walking up the node tree.
+  ' Also the callFunc target for getItemFlatIndex in texture management.
+  m.gridView = invalid
+end sub
 
-  ' grab data from the owning BaseGridView node.
-  ' Parent is the MarkupGrid/RowList and its parent is the BaseGridView (named
-  ' m.itemGrid here for historical reasons; it is the screen, not the grid node).
-  m.itemGrid = m.top.GetParent().GetParent()
+' Resolves the owning BaseGridView and reads its display/title config. Walks up
+' the node tree to the first ancestor exposing gridTitles rather than assuming a
+' fixed depth: the MarkupGrid puts cells 2 levels below BaseGridView, but the genre
+' RowList nests them deeper. The old fixed GetParent().GetParent() walk missed
+' BaseGridView for RowList cells, so genre tiles silently fell back to scaleToZoom
+' (cropping posters the presenter intended as scaleToFit) and an empty gridTitles
+' (no titles ever). Idempotent — caches m.gridView on first success.
+sub resolveGridViewConfig()
+  if isValid(m.gridView) then return
 
-  if isValid(m.itemGrid)
-    if isValid(m.itemGrid.imageDisplayMode)
-      m.imageDisplayMode = m.itemGrid.imageDisplayMode
-    end if
-    if isValid(m.itemGrid.gridTitles)
-      m.gridTitles = m.itemGrid.gridTitles
-    end if
-  end if
+  node = m.top.getParent()
+  while isValid(node) and not node.hasField("gridTitles")
+    node = node.getParent()
+  end while
+  if not isValid(node) then return
+
+  m.gridView = node
+  if isValid(node.imageDisplayMode) then m.imageDisplayMode = node.imageDisplayMode
+  if isValid(node.gridTitles) then m.gridTitles = node.gridTitles
 end sub
 
 ' Re-render when the parent assigns a new item to this (possibly recycled) cell.
@@ -71,6 +81,7 @@ sub onItemContentChanged()
   itemData = m.top.itemContent
   if not isValid(itemData) then return
 
+  resolveGridViewConfig()
   setupGridTextureObserver()
 
   if m.top.width <= 0 or m.top.height <= 0 then return
@@ -282,9 +293,13 @@ sub setupGridTextureObserver()
   if not isValid(contentRoot) then return
 
   ' Cache flat index for row position calculations (O(1) lookup via BaseGridView).
-  ' Returns -1 for items not in the texture-managed grid (e.g. genre RowList rows).
-  m.cachedFlatIndex = m.itemGrid.callFunc("getItemFlatIndex", item.id)
-  if not isValid(m.cachedFlatIndex) then m.cachedFlatIndex = -1
+  ' Returns -1 for items not in the texture-managed grid (e.g. genre RowList rows),
+  ' or when BaseGridView couldn't be resolved.
+  m.cachedFlatIndex = -1
+  if isValid(m.gridView)
+    flatIndex = m.gridView.callFunc("getItemFlatIndex", item.id)
+    if isValid(flatIndex) then m.cachedFlatIndex = flatIndex
+  end if
 
   ' One-time observer setup — only run once per content root
   if isValid(m.contentRoot) and m.contentRoot.isSameNode(contentRoot) then return
