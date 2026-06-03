@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
 
+- 2026-06-03 — Unify `GridItem`/`GridItemSmall` and fix genre grid rendering
 - 2026-06-03 — Fix photo selection opening the viewer behind `ItemDetails`
 - 2026-06-02 — Support RC + unstable/master channels in server-upgrade automation
 - 2026-06-01 — Add proactive PR-time floor-coverage lint
