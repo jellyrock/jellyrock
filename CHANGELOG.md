@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Unify `GridItem`/`GridItemSmall` and fix genre grid rendering ([#613](https://github.com/jellyrock/jellyrock/pull/613))
+
 ### Fixed
 
 - Fix photo selection opening the viewer behind `ItemDetails` ([#614](https://github.com/jellyrock/jellyrock/pull/614))
