@@ -42,6 +42,12 @@ sub init()
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.focusXOffset = 0
   m.genreList.rowLabelOffset = [0, 21]
+  ' Override JRRowList's inherited "fixedFocusWrap": this is a browse view with an
+  ' alpha menu to its left, so Left at the first item must exit to that menu (handled
+  ' in onKeyEvent) rather than wrap to the end of the row. floatingFocus stops the row
+  ' from consuming/wrapping the boundary key so it bubbles up. Genre rows no longer
+  ' cycle horizontally — matching the main MarkupGrid's browse behavior.
+  m.genreList.rowFocusAnimationStyle = "floatingFocus"
   m.genreList.observeField("rowItemFocused", "onGenreItemFocused")
   m.genreList.observeField("itemSelected", "onGenreItemSelected")
   m.genreList.content = m.genreData
