@@ -10,6 +10,9 @@
 //   2. Clears ## Currently running when its text overlaps the PR title
 //      (>=2 shared content tokens). Otherwise leaves the cursor alone.
 //   3. Bumps frontmatter last-updated: to today.
+//   4. Prunes ## Recently shipped bullets older than the retention window
+//      (RECENTLY_SHIPPED_PRUNE_DAYS) — so the section stays bounded without a
+//      manual /catchup sweep.
 //
 // What it skips (exit 0, prints "skipped: <reason>"):
 //   - PRs labeled dependencies / documentation / ci / automated
@@ -300,6 +303,12 @@ export function applyShipEdit(content, { prTitle, today }) {
   // 3. Bump frontmatter last-updated.
   next = next.replace(/^(---\s*\nlast-updated:\s*)\d{4}-\d{2}-\d{2}/, `$1${today}`);
 
+  // 4. Prune Recently shipped bullets older than the retention window. This runs
+  //    in the same post-merge commit that prepends the new bullet, so the section
+  //    stays bounded automatically instead of relying on a manual /catchup sweep.
+  //    The just-prepended bullet is dated `today`, so it is always retained.
+  next = pruneRecentlyShipped(next, today, RECENTLY_SHIPPED_PRUNE_DAYS);
+
   return {
     content: next,
     changed: true,
@@ -307,6 +316,40 @@ export function applyShipEdit(content, { prTitle, today }) {
     cursorCleared: clearCursor,
     cursorOverlap,
   };
+}
+
+// Retention window for the "Recently shipped" list. Bullets older than this are
+// pruned by applyShipEdit (post-merge). ~2 weeks keeps the section a useful
+// "what shipped lately" glance without unbounded growth.
+const RECENTLY_SHIPPED_PRUNE_DAYS = 14;
+
+// Returns the ISO date (YYYY-MM-DD) `days` before `isoDate`.
+function isoDaysBefore(isoDate, days) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Removes "- YYYY-MM-DD — …" bullets older than `maxAgeDays` from the Recently
+// shipped section ONLY. Scoped by the section regex so dated bullets elsewhere
+// (e.g. Open followups) are untouched. ISO dates compare lexically = chrono, so
+// a string >= is a correct date comparison. Non-bullet lines (heading intro,
+// blanks) and bullets within the window are kept verbatim. Exported for tests.
+export function pruneRecentlyShipped(content, today, maxAgeDays) {
+  const cutoff = isoDaysBefore(today, maxAgeDays);
+  return content.replace(
+    /(##\s+Recently shipped[^\n]*\n)([\s\S]*?)(?=\n##\s|$)/,
+    (_match, header, body) => {
+      const kept = body
+        .split('\n')
+        .filter((line) => {
+          const m = line.match(/^- (\d{4}-\d{2}-\d{2}) /);
+          return !m || m[1] >= cutoff;
+        })
+        .join('\n');
+      return header + kept;
+    },
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ Live state cursor — repo-scoped, ~14-day rolling. The "where did I leave off, 
 Sections:
 
 - **Currently running** — 1-2 sentences on what's actively in flight
-- **Recently shipped** — newest first; items older than ~14 days are pruned during weekly cleanup
+- **Recently shipped** — newest first; bullets older than 14 days are pruned automatically by the post-merge journal-sync
 - **Open followups** — grouped by area; deferred work that's not yet issue-shaped or tech-debt-shaped
 
 This file is updated through skills, not raw markdown edits:
@@ -24,7 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
-Newest first. Prepended by `/done`. Items older than ~14 days are pruned manually during the next `/catchup`.
+Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
 - 2026-06-03 — Unify `GridItem`/`GridItemSmall` and fix genre grid rendering
 - 2026-06-03 — Fix photo selection opening the viewer behind `ItemDetails`

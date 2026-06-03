@@ -18,6 +18,7 @@ import {
   tokenOverlap,
   shouldSkip,
   applyShipEdit,
+  pruneRecentlyShipped,
   extractCurrentlyRunning,
   checkBulletAgainstDictionary,
   extractFlaggedWords,
@@ -180,6 +181,19 @@ describe('applyShipEdit', () => {
     expect(oldIdx).toBeGreaterThan(newIdx);
   });
 
+  it('prunes Recently shipped bullets older than the retention window', () => {
+    const before = progressTemplate({
+      lastUpdated: '2026-05-01',
+      running: '',
+      shipped: ['2026-05-20 — recent shipment', '2026-05-01 — ancient shipment'],
+    });
+    // today 2026-05-21, 14-day window → cutoff 2026-05-07: recent kept, ancient pruned.
+    const r = applyShipEdit(before, { prTitle: 'feat: new thing', today: '2026-05-21' });
+    expect(r.content).toContain('- 2026-05-21 — feat: new thing'); // just-prepended, always kept
+    expect(r.content).toContain('- 2026-05-20 — recent shipment');
+    expect(r.content).not.toContain('ancient shipment');
+  });
+
   it('clears Currently running when cursor overlaps PR title', () => {
     const before = progressTemplate({
       running: 'Reshaping the journal pillar system into four-pillar pattern.',
@@ -227,6 +241,38 @@ describe('applyShipEdit', () => {
 
   it('throws on empty content (refuses to write blind)', () => {
     expect(() => applyShipEdit('', { prTitle: 'x', today: TODAY })).toThrow(/empty/);
+  });
+});
+
+describe('pruneRecentlyShipped', () => {
+  it('drops bullets older than the window, keeps within-window + edge + non-bullet lines', () => {
+    const before = progressTemplate({
+      shipped: ['2026-05-20 — keep recent', '2026-05-07 — keep edge', '2026-05-06 — drop old'],
+    });
+    // today 2026-05-21, window 14 → cutoff 2026-05-07 (kept via >=).
+    const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+    expect(out).toContain('- 2026-05-20 — keep recent');
+    expect(out).toContain('- 2026-05-07 — keep edge');
+    expect(out).not.toContain('drop old');
+    expect(out).toContain('Newest first'); // intro line preserved
+  });
+
+  it('only prunes the Recently shipped section — dated bullets elsewhere survive', () => {
+    const before = `---
+last-updated: 2026-05-01
+---
+
+## Recently shipped
+
+- 2026-05-01 — old ship
+
+## Open followups
+
+- 2026-05-01 — an old but still-open followup
+`;
+    const out = pruneRecentlyShipped(before, '2026-05-21', 14);
+    expect(out).not.toContain('old ship'); // pruned from Recently shipped
+    expect(out).toContain('an old but still-open followup'); // untouched elsewhere
   });
 });
 
