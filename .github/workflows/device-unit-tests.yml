@@ -84,10 +84,12 @@ jobs:
         id: path_check
         uses: ./.github/actions/changed-paths
         with:
-          # Mirrors the previous event-time paths filter:
-          #   tests/**, source/**, components/**, settings/settings.json,
-          #   bsconfig.json, bsconfig-tests*.json, package.json, package-lock.json
-          pattern: '^(tests/|source/|components/|settings/settings\.json$|bsconfig\.json$|bsconfig-tests[^/]*\.json$|package(-lock)?\.json$)'
+          # Files whose changes can affect the Roku-device test run:
+          #   tests/source/** (the BrightScript suites — NOT tests/scripts/**,
+          #   which are Node/Vitest tests run by the separate `vitest` job),
+          #   source/**, components/**, settings/settings.json, bsconfig.json,
+          #   bsconfig-tests*.json, package.json, package-lock.json
+          pattern: '^(tests/source/|source/|components/|settings/settings\.json$|bsconfig\.json$|bsconfig-tests[^/]*\.json$|package(-lock)?\.json$)'
 
       - name: Combine skip reasons
         id: combined
