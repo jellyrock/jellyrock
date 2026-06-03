@@ -22,6 +22,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
+Investigating issue #573 (surround audio fails to play; the server emits a bad ffmpeg audio argument). Reworked PR #574 so the playback audio logic prefers the user's chosen surround format setting instead of falling back to stereo — fixing the crash and keeping surround output intact. Verified against a live Jellyfin 10.11 server and on Roku hardware (50 of 50 audio specs); next is the PR description update and asking the reporter to retest.
+
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
