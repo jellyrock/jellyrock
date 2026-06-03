@@ -539,24 +539,31 @@ function checkCommand(args) {
   // identifiers (PascalCase class/component names etc.). Adding an identifier
   // to dictionary.txt would pass THIS check but then fail `lint:dictionary`,
   // whose dictionary-audit rejects identifier-shaped entries — a dead end.
-  // For those, the only real fix is rephrasing the title. Reuse the audit's
-  // own `classify` so the two gates can't drift on what counts as identifier-
-  // shaped.
+  // For those the fix is to BACKTICK them in the PR title: the spellchecker
+  // skips backticked tokens and the title renders as code when the post-merge
+  // sync writes it into docs/progress.md. Rephrasing to drop the reference is a
+  // fallback, not the goal. Reuse the audit's own `classify` so the two gates
+  // can't drift on what counts as identifier-shaped.
   const flagged = extractFlaggedWords(spell.output);
   const identifierShaped = flagged.filter((w) => classify(w) !== null);
 
   console.error('Fix one of:');
   if (identifierShaped.length > 0) {
+    const backticked = identifierShaped.map((w) => '`' + w + '`').join(', ');
     console.error(
-      `  1. Rephrase the PR title to avoid: ${identifierShaped.join(', ')}. ` +
-        'These are code identifiers (class/component names) — they belong in ' +
-        'backticks in prose, and adding them to dictionary.txt would be ' +
-        'rejected by `lint:dictionary`.',
+      `  1. Backtick them in the PR title: ${backticked}. ` +
+        'They are code identifiers (class/component/file names); backticking lets ' +
+        'the spellchecker skip them and renders them as code in docs/progress.md. ' +
+        'Keep the reference — do NOT rephrase the title to remove it.',
+    );
+    console.error(
+      '  2. (Fallback) rephrase the title to avoid them. Do not add them to ' +
+        'dictionary.txt — `lint:dictionary` rejects identifier-shaped entries.',
     );
     const realWords = flagged.filter((w) => classify(w) === null);
     if (realWords.length > 0) {
       console.error(
-        `  2. For the non-identifier word(s) (${realWords.join(', ')}), either ` +
+        `  3. For the non-identifier word(s) (${realWords.join(', ')}), either ` +
           'rephrase or add them to dictionary.txt alphabetically.',
       );
     }
