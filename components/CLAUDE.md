@@ -43,6 +43,10 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - **Set-then-clear single-shot pattern** (`field = node; field = invalid`): use to fire the same value twice in a row. Canonical explanation: [docs/architecture/user-journey.md](../docs/architecture/user-journey.md).
 - **Custom subtype inheritance:** XML `extends="JRScreen"`. Inherits all parent interface fields and component children.
 
+## RowList / grid item components (focus-indicator layout)
+
+Building or changing the `itemComponentName` for a `RowList` / `MarkupGrid` (a poster with a title below it)? The focus indicator pins to the poster slot (`rowItemSize`/`itemSize`) **only when `rowHeights` is set taller than the slot**. Without `rowHeights` it wraps the item's full bounding box (poster **+ title**), so the border extends past the image and swallows the title. Set `rowHeights = rowItemSize height + a title area`, fill the poster at a top offset, put the title below. Canonical: `JRRowItem` + `HomeRows`. This wastes a session every time it's rediscovered — full contract + evidence in [docs/architecture/list-grid-item-layout.md](../docs/architecture/list-grid-item-layout.md).
+
 ## What does NOT belong here
 
 - No synchronous network calls from a component — always go through the task pool.

@@ -2,6 +2,19 @@
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
 
+' ┌────────────────────────────────────────────────────────────────────────────┐
+' │ FOCUS-INDICATOR LAYOUT CONTRACT — read before building/changing an item      │
+' │ component (the itemComponentName) for any RowList.                            │
+' │                                                                              │
+' │ The focus indicator pins to the poster slot (rowItemSize) ONLY when          │
+' │ rowHeights is set TALLER than the slot. Without rowHeights, it wraps the      │
+' │ item component's full bounding box — including a title below the poster — so  │
+' │ the border extends past the image and swallows the title. Set                │
+' │ rowHeights = rowItemSize height + a title area, fill the poster at a top      │
+' │ offset (so it overflows the slot and the border reads behind it), and put    │
+' │ the title in the rowHeights area below. Canonical: JRRowItem + HomeRows.      │
+' │ Full explanation + evidence: docs/architecture/list-grid-item-layout.md      │
+' └────────────────────────────────────────────────────────────────────────────┘
 sub init()
   constants = m.global.constants
 

@@ -7,6 +7,8 @@ import "pkg:/source/utils/textureManager.bs"
 
 ' Vertical gap between the bottom of the poster (= bottom of the RowList focus ring)
 ' and the first text label. Prevents the focus border from overlapping the title.
+' The title stays OUTSIDE the focus border because the RowList sets rowHeights taller
+' than rowItemSize — see docs/architecture/list-grid-item-layout.md.
 const FOCUS_PADDING = 18
 
 sub init()
