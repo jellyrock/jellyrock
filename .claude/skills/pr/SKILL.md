@@ -93,6 +93,8 @@ Start from the template literally. Keep all section headings and HTML comments i
 ### Title
 Imperative mood, < 70 chars. Synthesize from commits, not just the latest. Passed via `--title`, not in the body.
 
+**Backtick every code identifier in the title** — class/component/file names like `` `GridItem` ``, `` `BaseGridView.bs` ``, `` `ItemDetails` ``. The post-merge journal-sync writes the title verbatim into `docs/progress.md` and the PR-time precheck ([`journal-sync-precheck.yml`](../../../.github/workflows/journal-sync-precheck.yml)) spell-checks it; a bare identifier fails that check. Synthesizing from commit subjects (which don't backtick) yields a bare title, so add the backticks yourself. When the precheck fails, **backtick the identifier — never rephrase the title to drop the reference** (that's the wrong fix, even though the old error message led with it). Backticks render as code in `progress.md`; GitHub shows them literally in the title, which is the accepted trade-off.
+
 ### Overview
 1–5 sentences describing *what* changed and *why*. Synthesize from the full commit log, not the last commit.
 
