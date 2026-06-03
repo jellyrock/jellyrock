@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-03 — Auto-prune the shipped log and backtick code identifiers in PR titles
 - 2026-06-03 — Unify `GridItem`/`GridItemSmall` and fix genre grid rendering
 - 2026-06-03 — Fix photo selection opening the viewer behind `ItemDetails`
 - 2026-06-02 — Support RC + unstable/master channels in server-upgrade automation
@@ -39,18 +40,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-05-29 — Expand placeholder coverage to grids, audio player, and item details
 - 2026-05-22 — Add /crash-report + /crash-backtrace for weekly Roku crash triage
 - 2026-05-21 — vscode: associate dotfiles to stop markdownlint false positives
-- 2026-05-16 — chore: reduce Renovate PR noise + close dep CI gaps
-- 2026-05-09 — Skills overhaul: /catchup, journal sync, /pr update-path, audit-skill
-- 2026-05-06 — `docs(decisions): record triage-opus-inline-investigation`
-- 2026-05-06 — `chore(claude): update skills README + allowlist for triage refactor`
-- 2026-05-06 — `feat(skills): /ramp surfaces area-scoped pending handoffs`
-- 2026-05-06 — `feat(skills): /catchup auto-prunes + surfaces pending handoffs`
-- 2026-05-06 — Triage skills (`/issue-triage`, `/pr-review`, `/runtime-triage`, `/ci-triage`) refactored to opus + `INVESTIGATION.md` sibling pattern
-- 2026-05-06 — `chore(claude): retire investigator agents + gitignore handoffs/`
-- 2026-05-06 — `docs(skills): author the skills index README`
-- 2026-05-06 — `feat(agents): add pattern-finder`
-- 2026-05-06 — `feat(skills): add /tech-debt-scan pre-PR sweep`
-- 2026-05-06 — Guided workflow skills added: `/new-setting`, `/new-migration`, `/translation-add`
 
 ## Open followups
 
