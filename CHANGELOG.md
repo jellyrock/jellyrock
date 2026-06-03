@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Skip Roku device tests when only Node tests change ([#616](https://github.com/jellyrock/jellyrock/pull/616))
 - Auto-prune the shipped log and backtick code identifiers in PR titles ([#615](https://github.com/jellyrock/jellyrock/pull/615))
 - Unify `GridItem`/`GridItemSmall` and fix genre grid rendering ([#613](https://github.com/jellyrock/jellyrock/pull/613))
 
