@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - (playback) restore ts-first transcode container order in `getTranscodingProfiles` ([#620](https://github.com/jellyrock/jellyrock/pull/620))
 
+### Dependencies
+
+- Update roku deploy & test to v3.17.6 ([#619](https://github.com/jellyrock/jellyrock/pull/619))
+
 ## [2.19.0](https://github.com/jellyrock/jellyrock/compare/v2.18.0...v2.19.0) - 2026-06-04
 
 ### Changed
