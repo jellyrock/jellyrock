@@ -445,14 +445,21 @@ function getTranscodingProfiles() as object
   ' VIDEO CODEC DETECTION (per container)
   ' ========================================
   '
-  ' Container preference order: mp4 (HLS-fmp4) first, then ts (HLS-mpegts). This
-  ' matches the official Jellyfin Roku app and the original jellyfin-roku fork parent.
-  ' The order matters because Jellyfin's StreamBuilder picks FirstOrDefault when
-  ' profile ranks tie — mp4-first unlocks the wider HLS audio target set
-  ' (alac/flac/opus/dts/truehd in addition to aac/ac3/eac3/mp3) for surround
-  ' transcoding scenarios where the user's hardware passthrough is detected only
-  ' for a codec that's TS-incompatible (issue #573).
-  transcodingContainers = ["mp4", "ts"]
+  ' Container preference order: ts (HLS-mpegts) first, then mp4 (HLS-fmp4). One
+  ' video transcoding profile is emitted PER container, in this array order, just
+  ' below — so this order IS the emitted profile order, and Jellyfin's StreamBuilder
+  ' picks FirstOrDefault when profile ranks tie. ts-first => the server prefers an
+  ' mpegts-HLS transcode, which is what Roku reliably plays audio for.
+  '
+  ' Do NOT flip this to mp4-first. fmp4-HLS transcodes produce silent audio on some
+  ' Roku hardware (issue #573 regression: stereo files that played under mpegts went
+  ' silent under fmp4). Upstream jellyfin-roku declares ["mp4","ts"] but only uses
+  ' that loop to accumulate per-container codec strings — it emits its ts video
+  ' profile BEFORE its mp4 one, i.e. ts-first, the same as here. The #573 empty-codec
+  ' fix lives in buildVideoTranscodingAudioCodecsForContainer (always leads with aac,
+  ' never empty) and optimizeAudioCodecListForSource — it does not depend on container
+  ' order, so this stays ts-first.
+  transcodingContainers = ["ts", "mp4"]
   containerVideoCodecs = {}
 
   for each container in transcodingContainers
