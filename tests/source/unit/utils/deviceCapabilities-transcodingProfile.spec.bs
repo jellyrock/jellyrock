@@ -370,6 +370,34 @@ namespace tests
       m.assertEqual(result[1], "truehd")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Issue #573 regression — video transcoding profile emission order (ts before mp4)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' One video profile is emitted PER container in getTranscodingProfiles(), in the
+    ' order of the local transcodingContainers array. That order is the server's
+    ' StreamBuilder tie-break preference (FirstOrDefault), so it decides whether the
+    ' server transcodes to mpegts-HLS or fmp4-HLS. fmp4-first regressed stereo files
+    ' to silent audio on some Roku hardware (the #574 follow-up); ts must lead.
+    @it("emits the ts HLS-video profile before the mp4 HLS-video profile")
+    function _()
+      profiles = getTranscodingProfiles()
+
+      tsIndex = -1
+      mp4Index = -1
+      for i = 0 to profiles.count() - 1
+        p = profiles[i]
+        if p.Type = "Video" and p.Protocol = "hls"
+          if p.Container = "ts" and tsIndex = -1 then tsIndex = i
+          if p.Container = "mp4" and mp4Index = -1 then mp4Index = i
+        end if
+      end for
+
+      m.assertTrue(tsIndex >= 0, "Expected a ts HLS-video transcoding profile to be present")
+      m.assertTrue(mp4Index >= 0, "Expected an mp4 HLS-video transcoding profile to be present")
+      m.assertTrue(tsIndex < mp4Index, "ts HLS-video profile must be emitted before mp4 — mp4-first regresses fmp4 transcodes to silent audio on Roku (issue #573 follow-up)")
+    end function
+
   end class
 
 end namespace
