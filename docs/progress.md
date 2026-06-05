@@ -28,6 +28,7 @@ Investigating issue #573 (surround audio fails to play; the server emits a bad f
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-05 — ci: notify jellyrock.app to redeploy on screenshot changes
 - 2026-06-05 — fix(playback): restore ts-first transcode container order in `getTranscodingProfiles`
 - 2026-06-03 — fix(playback): preserve surround on multichannel transcode fallback
 - 2026-06-03 — Skip Roku device tests when only Node tests change
