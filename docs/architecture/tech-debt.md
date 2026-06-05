@@ -229,8 +229,14 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `no-request-cancellation`
 
-- **area**: `source/api/apiPool.bs`
-- **issue**: A `submitApiRequest` that's no longer needed completes anyway and fires its callback. Most callers handle this defensively in the callback.
+- **area**: `source/api/apiPool.bs`, `source/api/apiPromise.bs`
+- **issue**: A raw `submitApiRequest` that's no longer needed completes anyway and fires its callback. Most callers handle this defensively in the callback. **Partially addressed (#551):** render-thread promise requests via `fetchAsync` now auto-abandon on owner destroy — the `auto-abandon-promises` plugin injects `abandonApiPromises()` into `onDestroy`, so a late pool response settles nothing. The remaining gap is the raw `submitApiRequest` + `observeField` call sites not yet migrated; it closes as #551 moves them to `fetchAsync`.
+
+#### `two-async-model-split`
+
+- **area**: `source/api/apiPromise.bs`, `source/api/apiPool.bs`
+- **issue**: JellyRock deliberately runs two async models at once: promises (`fetchAsync`) on the render thread, and blocking `fetchRes` / `fetchJson` inside Task threads for the bootstrap path and linear/branching orchestrators (`components/tasks/QuickPlayTask.bs`, `LoadItemsTask`, `source/api/items.bs`). This is the intentional Option A split from decision `promise-native-interface-fetchres-exception` — not an accident, but a tracked divergence to revisit.
+- **direction**: Collapse to a single promise model once BrighterScript **async/await** ships — `await fetchAsync(...)` restores the linear/branching readability that today justifies keeping blocking `fetchRes` in Task orchestrators. Re-open decision `promise-native-interface-fetchres-exception` at that point. Until then the split is correct; do NOT preemptively rewrite working orchestrators into `wait2` promise-loops (negative readability, regression risk on hot paths).
 
 #### `legacy-print-statements`
 
