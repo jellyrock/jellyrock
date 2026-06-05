@@ -34,6 +34,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 | global state — what hangs off `m.global` | [global-state.md](./global-state.md) |
 | video and audio playback | [playback.md](./playback.md) |
 | the API layer and task pool | [api.md](./api.md) |
+| async work — promises layered over the task pool | [async.md](./async.md) |
 | the app's Jellyfin API footprint (generated manifest) | [api-usage-manifest.md](./api-usage-manifest.md) |
 | Jellyfin server-upgrade automation (API spec-diff pipeline) | [server-upgrade-automation.md](./server-upgrade-automation.md) |
 | translations and i18n | [translations.md](./translations.md) |
@@ -49,7 +50,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 
 - **JRScene** — the persistent root scene; see [bootstrap.md](./bootstrap.md). Defined in `components/JRScene.xml`.
 - **JRScreen** — base class for full-screen scenes (`extends="JRScreen"` in XML). Provides `onScreenShown`, `onScreenHidden`, `onDestroy` virtuals + `lastFocus` field. Defined in `components/JRScreen.bs/.xml`.
-- **JRGroup** — base class for sub-panels and dialogs (`extends="JRGroup"`). Pure interface declaration in `components/JRGroup.xml` (no `.bs`). Adds common interface fields used for navigation, focus preservation, and overhang wiring — see [navigation.md](./navigation.md) for the full field table. `JRScreen` extends `JRGroup`.
+- **JRGroup** — base class for sub-panels and dialogs (`extends="JRGroup"`). Interface declared in `components/JRGroup.xml`; a minimal `components/JRGroup.bs` provides only the `onDestroy()` auto-abandon floor (see [async.md](./async.md#cancellation--auto-abandon)). Adds common interface fields used for navigation, focus preservation, and overhang wiring — see [navigation.md](./navigation.md) for the full field table. `JRScreen` extends `JRGroup`.
 - **SceneManager** — global stack-based navigator at `m.global.sceneManager`. The only thing that swaps groups in/out of `JRScene`'s `content` slot.
 - **QueueManager** — global play queue at `m.global.queueManager`. Holds the list of items to play, current position, shuffle state.
 - **ViewCreator** — a `.bs` module (not a component) at `components/manager/ViewCreator.bs`. Factory for `VideoPlayerView` and `AudioPlayerView`, plus playback-time dialog handlers (subtitle/audio/source selection).
@@ -90,6 +91,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | JellyRock Versioning Systems Overview |
 | [`docs/dev/logging.md`](../dev/logging.md) | Logging Guide (roku-log) |
 | [`docs/dev/new-user-setting.md`](../dev/new-user-setting.md) | Adding User Settings Guide |
+| [`docs/dev/promises.md`](../dev/promises.md) | Promises How-To & Style Guide |
 | [`docs/dev/registry-migrations.md`](../dev/registry-migrations.md) | Registry Migrations Guide |
 | [`docs/dev/scripts-development.md`](../dev/scripts-development.md) | Working in `scripts/` |
 | [`docs/dev/translations.md`](../dev/translations.md) | Translations |

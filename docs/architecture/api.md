@@ -264,6 +264,11 @@ The render thread does microseconds of work (create node, append, set wakeup fie
 
 **Don't use this when the callback needs data transforms or array processing** — those belong on a Task thread (use Pattern 1 from an orchestrator).
 
+> **Prefer a promise for new render-thread call sites.** `fetchAsync(req, id).then(...)` wraps this
+> same `submitApiRequest` bridge and removes the manual observe/unobserve plumbing (and auto-abandons
+> on destroy). See [async.md](./async.md) and [the promises how-to](../dev/promises.md). The raw
+> observer pattern above is the convention that predates promises, still used by call sites not yet migrated.
+
 ### Pattern 3 — `SubmitSideEffect` (fire-and-forget POST/DELETE)
 
 For requests where you don't need the response: telemetry, playback reporting, mark-watched, mark-favorite.

@@ -51,7 +51,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### scripts
 
-(none)
+- Build promises anti-backslide ratchet (`scripts/lint/promise-ratchet.cjs` + committed baseline; fail CI when render-thread `submitApiRequest`+`observeField` count rises; grep-zero hard guard at 0). Part of #551 — see decision `promise-native-interface-fetchres-exception`.
 
 ### components
 

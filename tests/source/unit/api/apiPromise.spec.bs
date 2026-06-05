@@ -1,0 +1,187 @@
+import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/roku_modules/promises/promises.brs"
+
+namespace tests
+
+  ' Contract tests for the pool → promises adapter (source/api/apiPromise.bs).
+  '
+  ' These assert the SYNCHRONOUS state machine of the adapter — the resolve /
+  ' reject decision (decision #5) and the abandon model (decision #6) — by
+  ' driving settleApiPromise()/abandonApiPromises() directly against a populated
+  ' registry and reading the promise node's `promiseState` / `promiseResult`
+  ' immediately. `promises.resolve()` / `.reject()` flip those fields
+  ' synchronously, so no render-loop pump is needed. (Actual `.then` callback
+  ' delivery rides the library's next-tick Timer, which a synchronous Rooibos
+  ' test can't pump — the state-transition assertions below are the contract.)
+  @suite("apiPromise - pool → promises adapter contract")
+  class ApiPromiseTests extends tests.BaseTestSuite
+
+    ' The adapter stores its pending-request registry on the owning component's
+    ' `m`; under test that's the suite instance. Declared so the class can
+    ' read/write the same key the free functions in apiPromise.bs use.
+    private __apiPromisePending
+
+    ' Registers a pending entry on m exactly as fetchAsync() would, but with a
+    ' caller-supplied result node so the test controls the pool outcome.
+    private function registerPending(requestId as string, result as dynamic) as object
+      promise = promises.create()
+      resultNode = createObject("roSGNode", "ApiResultNode")
+      resultNode.id = requestId
+      if isValid(result) then resultNode.result = result
+      timer = createObject("roSGNode", "Timer")
+      timer.id = requestId
+
+      if not isValid(m.__apiPromisePending) then m.__apiPromisePending = {}
+      m.__apiPromisePending[requestId] = {
+        promise: promise,
+        resultNode: resultNode,
+        timer: timer
+      }
+      return promise
+    end function
+
+    protected override function setup()
+      super.setup()
+      ' Start each test with a clean registry on the suite m.
+      m.__apiPromisePending = {}
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPromiseShouldResolve - error contract decision (decision #5)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resolves on a 2xx response")
+    function _()
+      m.assertTrue(apiPromiseShouldResolve({ statusCode: 200, ok: true }))
+    end function
+
+    @it("RESOLVES on 4xx (expected 404s flow as data, not errors)")
+    function _()
+      m.assertTrue(apiPromiseShouldResolve({ statusCode: 404, ok: false }))
+    end function
+
+    @it("RESOLVES on 5xx (an HTTP response still arrived)")
+    function _()
+      m.assertTrue(apiPromiseShouldResolve({ statusCode: 500, ok: false }))
+    end function
+
+    @it("rejects on a transport failure (statusCode <= 0)")
+    function _()
+      m.assertFalse(apiPromiseShouldResolve({ statusCode: 0, ok: false }))
+      m.assertFalse(apiPromiseShouldResolve({ statusCode: -1, ok: false }))
+    end function
+
+    @it("rejects when statusCode is missing")
+    function _()
+      m.assertFalse(apiPromiseShouldResolve({ ok: false }))
+    end function
+
+    @it("rejects when the result is invalid (timeout / abandoned slot)")
+    function _()
+      m.assertFalse(apiPromiseShouldResolve(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settleApiPromise - resolve / reject + cleanup")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resolves the promise with the response AA on a 2xx")
+    function _()
+      res = { requestId: "r1", ok: true, statusCode: 200, json: { value: 42 } }
+      promise = m.registerPending("r1", res)
+
+      settleApiPromiseIn(m.__apiPromisePending, "r1")
+
+      m.assertEqual(promise.promiseState, "resolved")
+      m.assertEqual(promise.promiseResult.statusCode, 200)
+      m.assertTrue(promise.promiseResult.ok)
+    end function
+
+    @it("RESOLVES (not rejects) on a 4xx, with res.ok = false inspectable")
+    function _()
+      res = { requestId: "r2", ok: false, statusCode: 404, json: invalid }
+      promise = m.registerPending("r2", res)
+
+      settleApiPromiseIn(m.__apiPromisePending, "r2")
+
+      m.assertEqual(promise.promiseState, "resolved")
+      m.assertFalse(promise.promiseResult.ok)
+      m.assertEqual(promise.promiseResult.statusCode, 404)
+    end function
+
+    @it("rejects on a transport failure (statusCode 0)")
+    function _()
+      res = { requestId: "r3", ok: false, statusCode: 0 }
+      promise = m.registerPending("r3", res)
+
+      settleApiPromiseIn(m.__apiPromisePending, "r3")
+
+      m.assertEqual(promise.promiseState, "rejected")
+      m.assertFalse(promise.promiseResult.ok)
+    end function
+
+    @it("rejects with a timeout error when no response arrived (result invalid)")
+    function _()
+      promise = m.registerPending("r4", invalid)
+
+      settleApiPromiseIn(m.__apiPromisePending, "r4")
+
+      m.assertEqual(promise.promiseState, "rejected")
+      m.assertEqual(promise.promiseResult.reason, "timeout")
+    end function
+
+    @it("removes the registry entry after settling and is idempotent")
+    function _()
+      res = { requestId: "r5", ok: true, statusCode: 200 }
+      promise = m.registerPending("r5", res)
+
+      settleApiPromiseIn(m.__apiPromisePending, "r5")
+      m.assertFalse(m.__apiPromisePending.doesExist("r5"))
+
+      ' Second settle (e.g. the timeout firing just after isDone) is a no-op:
+      ' the resolved state is unchanged and nothing throws.
+      settleApiPromiseIn(m.__apiPromisePending, "r5")
+      m.assertEqual(promise.promiseState, "resolved")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("abandonApiPromises - cancellation (decision #6)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("clears the registry and leaves abandoned promises pending forever")
+    function _()
+      res = { requestId: "r6", ok: true, statusCode: 200 }
+      promise = m.registerPending("r6", res)
+
+      abandonApiPromisesIn(m.__apiPromisePending)
+
+      m.assertEqual(m.__apiPromisePending.count(), 0)
+      ' A late pool response now settles nothing — the callback can never fire
+      ' into the destroyed owner.
+      settleApiPromiseIn(m.__apiPromisePending, "r6")
+      m.assertEqual(promise.promiseState, "pending")
+    end function
+
+    @it("is a no-op when nothing is pending")
+    function _()
+      m.__apiPromisePending = {}
+      abandonApiPromisesIn(m.__apiPromisePending)
+      m.assertEqual(m.__apiPromisePending.count(), 0)
+    end function
+
+    @it("abandons every pending request, not just one")
+    function _()
+      p1 = m.registerPending("a", { statusCode: 200, ok: true })
+      p2 = m.registerPending("b", { statusCode: 200, ok: true })
+
+      abandonApiPromisesIn(m.__apiPromisePending)
+
+      m.assertEqual(m.__apiPromisePending.count(), 0)
+      settleApiPromiseIn(m.__apiPromisePending, "a")
+      settleApiPromiseIn(m.__apiPromisePending, "b")
+      m.assertEqual(p1.promiseState, "pending")
+      m.assertEqual(p2.promiseState, "pending")
+    end function
+
+  end class
+end namespace
