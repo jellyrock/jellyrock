@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-05
+last-updated: 2026-06-06
 ---
 
 # Progress
@@ -28,6 +28,7 @@ Investigating issue #573 (surround audio fails to play; the server emits a bad f
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-06 — Adopt `@rokucommunity/promises` foundation + 3 reference migrations
 - 2026-06-05 — ci: notify jellyrock.app to redeploy on screenshot changes
 - 2026-06-05 — fix(playback): restore ts-first transcode container order in `getTranscodingProfiles`
 - 2026-06-03 — fix(playback): preserve surround on multichannel transcode fallback
@@ -44,7 +45,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-05-31 — Fix server-upgrade tracker issue writes (REST) + digest legend & nudge
 - 2026-05-30 — Server-upgrade automation, Phases 0–6 built + committed on `feat/server-upgrade-automation` — **no PR yet, by design: the whole initiative ships as ONE PR at the very end.** Phase 6 (just built) replaced the per-finding issue burst + single rolling tracker with the **per-version release-triage digest** model (one auto-opened digest per release; CI opens-then-closes a mechanically-clean release as a persistent audit record; `/server-upgrade` edits the digest with verdicts + files per-finding **sub-issues**; never CI-closed once it bears a candidate) and added the **endpoint-availability registry** ([`jellyfin-endpoint-availability.yml`](dev/jellyfin-endpoint-availability.yml) + `.cjs` loader + `lint:endpoint-availability`) — a validated disposition ledger that resolves the 5 recurring floor findings (`MediaSegments`/Lyrics/`QuickConnect`/`GET /items`) at the source so they stop reappearing every release. All offline/tooling-tier; `npm run test:scripts` green (675 tests); see the `server-upgrade-phase6` decision. **Next: open the single PR for Phases 0–6 via `/pr`.**
 - 2026-05-29 — Expand placeholder coverage to grids, audio player, and item details
-- 2026-05-22 — Add /crash-report + /crash-backtrace for weekly Roku crash triage
 
 ## Open followups
 
