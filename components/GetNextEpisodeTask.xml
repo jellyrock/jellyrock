@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-
-<component name="GetNextEpisodeTask" extends="Task">
-  <interface>
-    <field id="videoID" type="string" />
-    <field id="showID" type="string" />
-    <field id="nextEpisodeData" type="assocarray" />
-  </interface>
-</component>

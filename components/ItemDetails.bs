@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
@@ -177,8 +178,9 @@ sub init()
   m.loadDetailsTask = CreateObject("roSGNode", "LoadItemsTask")
   m.loadDetailsTask.itemsToLoad = "metaDataDetails"
 
-  ' Trailer check result node (Pattern 1: submitApiRequest, trivial callback)
-  m.trailerResultNode = invalid
+  ' Monotonic counter giving each trailer-availability fetch a unique requestId, so a
+  ' rapid content refresh can never collide two in-flight requests on the same key.
+  m.trailerCheckSeq = 0
 
   m.isFirstRun = true
 
@@ -287,16 +289,80 @@ sub onDetailsLoaded()
   stopLoadingSpinner()
 end sub
 
-' Callback when trailer availability check completes
-sub onTrailerCheckDone()
-  res = m.trailerResultNode.result
-  m.trailerResultNode.unobserveField("isDone")
-  m.trailerResultNode = invalid
-  if isValid(res) and res.ok and isValid(res.json)
-    m.top.trailerAvailable = res.json.Count() > 0
-  else
+' Fetches whether the item has local trailers, to add/remove the Trailer button
+' (onTrailerAvailableChanged reacts to the result). Render-thread promise — replaces
+' the former trailerResultNode + onTrailerCheckDone observer (Phase-3b: a render-thread
+' submitApiRequest + observeField flow → fetchAsync().then(); canonical in docs/dev/promises.md).
+sub checkTrailerAvailability(itemId as string)
+  m.trailerCheckSeq += 1
+  req = GetApi().BuildGetLocalTrailersRequest(itemId)
+
+  ' Pass itemId through the promise context (the no-closure state channel) so a result
+  ' that lands after the user navigated to a different item is dropped — content changes
+  ' re-run this check, and only the current item's answer should touch trailerAvailable.
+  promises.chain(fetchAsync(req, "trailerCheck-" + m.trailerCheckSeq.toStr()), { itemId: itemId }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return ' stale — content changed under us
+    if res.ok and isValid(res.json)
+      m.top.trailerAvailable = res.json.Count() > 0
+    else
+      ' Any non-ok HTTP response (the error contract resolves these) → no trailer button.
+      m.top.trailerAvailable = false
+    end if
+  end sub).catch(sub(err as object, ctx as object)
+    ' Transport failure / timeout — treat as "no trailer", same as the old callback's else.
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("trailer-availability fetch failed", err.reason)
     m.top.trailerAvailable = false
+  end sub)
+end sub
+
+' callFunc entry — toggles the favorite state of the current item. Invoked from main.bs's
+' button router; because callFunc rendezvouses to this render-thread-owned node, the body
+' (and the fetchAsync().then() promise delivery + auto-abandon) runs on this component's
+' render thread, where the named-observer adapter works. This is the Phase-3c canonical
+' "main thread → render thread delegation" pattern — see docs/dev/promises.md. It moves the
+' favorite toggle off main.bs's god-loop (was submitApiRequest + isDone branch + handler).
+sub toggleFavorite()
+  favoriteButton = m.top.findNode("favoriteButton")
+  item = m.top.itemContent
+  if not (isValid(item) and isValidAndNotEmpty(item.id) and isValid(favoriteButton)) then return
+  if favoriteButton.isLoading then return ' already in-flight
+
+  ' Read the desired state from the button (writing itemContent would trigger a full rebuild).
+  newState = not favoriteButton.isButtonSelected
+  if newState
+    req = GetApi().BuildMarkFavoriteRequest(item.id)
+  else
+    req = GetApi().BuildUnmarkFavoriteRequest(item.id)
   end if
+  favoriteButton.isLoading = true
+
+  ' Carry the button + intended state through the promise context (no closures in BS).
+  promises.chain(fetchAsync(req, "favoriteToggle-" + item.id), { button: favoriteButton, newState: newState }).then(sub(res as object, ctx as object)
+    ok = res.ok
+    ' Debug error injection — compiled out in production (bs_const=debug=false).
+    #if debug
+      if isValid(m.global.debug) and m.global.debug.shouldForceFavoriteFail then ok = false
+    #end if
+    if ok
+      ctx.button.isButtonSelected = ctx.newState
+    else
+      ' 4xx/5xx resolve under the error contract — the server rejected the change.
+      onFavoriteToggleFailed(ctx.button, ctx.newState)
+    end if
+    ctx.button.isLoading = false
+  end sub).catch(sub(err as object, ctx as object)
+    ' Transport failure / timeout / pool-unavailable — the request never completed.
+    m.log.warn("favorite toggle failed", err.reason)
+    onFavoriteToggleFailed(ctx.button, ctx.newState)
+    ctx.button.isLoading = false
+  end sub)
+end sub
+
+' Reverts the favorite button to its pre-press state and surfaces an error toast.
+sub onFavoriteToggleFailed(favoriteButton as object, attemptedState as boolean)
+  if isValid(favoriteButton) then favoriteButton.isButtonSelected = not attemptedState
+  displayToast(translate(translationKeys.ErrorFailedToUpdateFavorite), "error")
 end sub
 
 ' Triggered by refreshResumeData field toggle (watched toggle on Series).
@@ -1867,14 +1933,7 @@ sub onItemContentChanged()
     ' Trailer availability check — re-run on every content change so refreshes get fresh data.
     ' onTrailerAvailableChanged() adds or removes the button when the result arrives.
     if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
-      if isValid(m.trailerResultNode)
-        m.trailerResultNode.unobserveField("isDone")
-        m.trailerResultNode = invalid
-      end if
-      m.trailerResultNode = submitApiRequest(GetApi().BuildGetLocalTrailersRequest(m.top.itemId), "trailerCheck")
-      if isValid(m.trailerResultNode)
-        m.trailerResultNode.observeField("isDone", "onTrailerCheckDone")
-      end if
+      checkTrailerAvailability(m.top.itemId)
     end if
 
     ' Season: kick off background fetch of parent series metadata for ratings/runtime/genres/logo
@@ -3598,11 +3657,6 @@ sub onDestroy()
   m.loadDetailsTask.unobserveField("content")
   m.loadDetailsTask.control = "STOP"
   m.loadDetailsTask = invalid
-
-  if isValid(m.trailerResultNode)
-    m.trailerResultNode.unobserveField("isDone")
-    m.trailerResultNode = invalid
-  end if
 
   ' Clear node references
   m.extrasGrp = invalid

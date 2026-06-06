@@ -31,17 +31,19 @@ import "pkg:/source/api/apiPromise.bs"
 
 sub loadNextEpisode()
   req = GetApi().BuildGetNextEpisodeRequest(m.itemId)
-  promises.chain(fetchAsync(req, "nextEpisode-" + m.itemId)) _
-    .then(sub(res as object)
-      ' Any HTTP response lands here — including 4xx/5xx. Inspect res.ok.
-      if res.ok then m.nextEpisode = res.json
-    end sub) _
-    .catch(sub(err as object)
-      ' Only transport failures / timeouts land here (see "Error contract").
-      m.log.warn("next-episode fetch failed", err.reason)
-    end sub)
+  promises.chain(fetchAsync(req, "nextEpisode-" + m.itemId)).then(sub(res as object)
+    ' Any HTTP response lands here — including 4xx/5xx. Inspect res.ok.
+    if res.ok then m.nextEpisode = res.json
+  end sub).catch(sub(err as object)
+    ' Only transport failures / timeouts land here (see "Error contract").
+    m.log.warn("next-episode fetch failed", err.reason)
+  end sub)
 end sub
 ```
+
+> **No `_` line-continuation.** BrighterScript does not support the classic BrightScript `_`
+> continuation character. Chain by placing `.then(` / `.catch(` directly after the previous
+> callback's `end sub)` on the same line (as above) — not on a new line with a leading dot.
 
 - `req` is the AA from any `GetApi().Build*Request()` method (same input `fetchRes` takes).
 - `requestId` is a **unique** string per in-flight request — it's the registry key and the id the
@@ -76,6 +78,16 @@ AA with `ok: false`, `statusCode: 0`, and a `reason` (`"timeout"` / `"pool-unava
   `promises.setMessagePort(port)` + `promises.wait2(timeoutMs, port)` so promise events are pumped
   alongside your other events. In practice you rarely need this — Task code should use blocking
   `fetchRes` (see below), not promises.
+- **On the main thread (`main.bs`'s event loop): you can't call `fetchAsync` directly.** The
+  adapter bridges the pool via a *named-function* `observeField`, which Roku only dispatches inside
+  a SceneGraph component (the render thread). `main.bs`'s `Main()` runs on the main BrightScript
+  thread (`wait(0, m.port)`), so named observers never fire there — that's why every observation in
+  `main.bs` is port-based. **Delegate the async work to a render-thread component method via
+  `callFunc`** instead: `callFunc` rendezvouses to the node's render thread, so a `fetchAsync().then()`
+  inside that method runs where the adapter works. The canonical example is `main.bs`'s button
+  router invoking `group.callFunc("toggleFavorite")` (see Canonical examples below). Do **not** wire
+  `setMessagePort`/`wait2` into the `main.bs` loop for this — delegation is simpler and keeps the
+  one async vocabulary.
 
 ## Parallel requests
 
@@ -117,7 +129,8 @@ render thread. Collapse criteria:
 
 - **Collapse → render-thread promise:** a Task that does *pure I/O* (one or a few `fetchRes`, no
   heavy transform) consumed via `createObject` + `observeField`. Replace with a
-  `fetchAsync(...).then(...)` at the call site and **delete** the `.xml` + `.bs` pair.
+  `fetchAsync(...).then(...)` at the call site and **delete** the `.xml` + `.bs` pair. Worked
+  example: `3a` below (`GetNextEpisodeTask` → `VideoPlayerView.fetchNextEpisode`).
 - **Keep as a Task:** a Task doing **array processing / heavy data transforms**. That work must
   stay off the render thread — collapsing it would move the transform *onto* the render thread,
   which the render-thread-protection rule forbids. The promise only moves the *I/O wait*, not the
@@ -156,3 +169,21 @@ pattern. Key points:
   — bare calls from a Rooibos class method don't share the instance `m`). Assert the promise's
   `promiseState` / `promiseResult` synchronously.
 - Run on hardware: `npm run test:tdd` (single spec) → `npm run test:unit` before commit.
+
+## Canonical examples (copy these)
+
+The three Phase-3 reference migrations, each verified on hardware. They cover the three real
+shapes you'll hit:
+
+| # | Pattern | Where | What it shows |
+|---|---|---|---|
+| `3a` | **Collapse a pure-fetch Task** | [`VideoPlayerView.fetchNextEpisode`](../../components/video/VideoPlayerView.bs) | A whole `.xml`+`.bs` Task (`GetNextEpisodeTask`) deleted; one `fetchRes` becomes a render-thread `fetchAsync().then().catch()`. The biggest DX win. |
+| `3b` | **Render-thread `submitApiRequest`+`observeField` → promise** | [`ItemDetails.checkTrailerAvailability`](../../components/ItemDetails.bs) | Swaps a named-observer result node for `fetchAsync().then()`. Uses the **`context`** AA to drop a result that lands after the user navigated away (no closures in BS). |
+| `3c` | **Main-thread caller → render-thread promise via `callFunc`** | [`ItemDetails.toggleFavorite`](../../components/ItemDetails.bs), invoked from [`main.bs`](../../source/main.bs)'s button router | The favorite toggle moves off `main.bs`'s god-loop. `main.bs` (main thread) calls `group.callFunc("toggleFavorite")`; the method runs on the render thread where `fetchAsync` works. Exercises the **error contract** (revert button + toast when `res.ok` is false or on reject). |
+
+> **Why no "two dependent calls" example?** Dependent fetch *sequences* in this codebase live
+> inside the Task orchestrators (`QuickPlayTask`, `LoadItemsTask`, …) that decision #3 deliberately
+> **keeps** as blocking `fetchRes`. Render-thread components almost always fire a single request, so
+> there's no honest render-thread chain to migrate. For the chaining + error-propagation pattern,
+> see the sequential-chain example under "Parallel requests" above and the library's README
+> (`auth → profile → image`).

@@ -6,7 +6,8 @@ related-files:
   - components/JRScreen.bs
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
-last-reviewed: 2026-06-05
+  - scripts/lint/promise-ratchet.cjs
+last-reviewed: 2026-06-06
 ---
 
 # Async & Promises
@@ -101,8 +102,35 @@ re-open it when BrighterScript **async/await** ships, at which point `await fetc
 the single-model convergence the right call. Both the interface decision and the abandon-mechanism
 decision live in [`../decisions.md`](../decisions.md).
 
+### Where `fetchAsync` can be called from — render thread only
+
+`fetchAsync` bridges the pool with a **named-function** `observeField("isDone", "...")`, which Roku
+only dispatches inside a SceneGraph component (the render thread). So:
+
+- **Render-thread component code** (init, observer handlers, `callFunc` methods) — call `fetchAsync`
+  directly. The common case.
+- **`main.bs`'s `Main()` loop runs on the main BrightScript thread** (`wait(0, m.port)`), where named
+  observers never fire — which is why every observation there is port-based. It **cannot** consume
+  `fetchAsync` directly. A main-thread caller **delegates to a render-thread component method via
+  `callFunc`** (which rendezvouses to the render thread); the canonical example is `main.bs`'s button
+  router calling `group.callFunc("toggleFavorite")` → `ItemDetails.toggleFavorite` (issue #551,
+  Phase `3c`). This is preferred over wiring `promises.setMessagePort`/`wait2` into the main loop —
+  delegation needs no foundation change and keeps the one async vocabulary.
+- **Task threads** — don't use promises; use blocking `fetchRes` (above). If you ever must, that's
+  the `setMessagePort` + `wait2` path.
+
 ## Risk & coexistence
 
 The pool engine is untouched, so the blast radius of promise adoption is the *interface* layer
 only. Observer-based and promise-based call sites **coexist** during migration — expected and fine.
 Worst case for any migration batch: revert it; the pool keeps working.
+
+### Anti-backslide ratchet
+
+While the two paradigms coexist, the danger is *net-new* spaghetti. [`scripts/lint/promise-ratchet.cjs`](../../scripts/lint/promise-ratchet.cjs)
+counts the banned signature — a raw `.observeField("isDone", …)` on a `submitApiRequest` result, in
+app code, excluding the pool engine + adapter — and fails (in `npm run lint`, so CI-blocking; advisory
+at pre-push) when the count rises above the committed integer in
+[`.promise-ratchet-baseline`](../../.promise-ratchet-baseline). The count only moves **down**: each
+migration batch lowers the baseline. When it reaches `0` the ratchet is automatically a hard
+grep-zero guard. The baseline never names which files are "done" — it's a pure count.
