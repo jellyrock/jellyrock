@@ -365,6 +365,76 @@ sub onFavoriteToggleFailed(favoriteButton as object, attemptedState as boolean)
   displayToast(translate(translationKeys.ErrorFailedToUpdateFavorite), "error")
 end sub
 
+' callFunc entry — toggles the watched/played state of the current item. Invoked from main.bs's
+' button router; Movie/Episode call it directly, while Series route through the "mark all
+' episodes" confirmation dialog first (main.bs keeps that dialog routing and re-invokes this on
+' confirm — #550 sgRouter territory). Because callFunc rendezvouses to this render-thread-owned
+' node, the body (and the fetchAsync().then() promise delivery + auto-abandon) runs on this
+' component's render thread, where the named-observer adapter works. This is the deferred twin of
+' toggleFavorite() — the Phase-3c "main thread → render thread delegation" pattern (see
+' docs/dev/promises.md). It moves the LAST raw submitApiRequest + isDone flow off main.bs's god-loop.
+sub toggleWatched()
+  watchedButton = m.top.findNode("watchedButton")
+  item = m.top.itemContent
+  if not (isValid(item) and isValidAndNotEmpty(item.id) and isValid(watchedButton)) then return
+  if watchedButton.isLoading then return ' already in-flight
+
+  isSeries = (item.type = "Series")
+  ' Read the desired state from the button (writing itemContent would trigger a full rebuild).
+  newState = not watchedButton.isButtonSelected
+  if newState
+    req = GetApi().BuildMarkPlayedRequest(item.id)
+  else
+    req = GetApi().BuildUnmarkPlayedRequest(item.id)
+  end if
+  watchedButton.isLoading = true
+
+  ' Show the resume button as loading while the toggle is in flight: always for a Series (its
+  ' next-up episode is re-fetched on success), and on mark-watched for a Movie/Episode (its now
+  ' stale resume button is removed on success).
+  if isSeries or newState
+    resumeButton = m.top.findNode("resumeButton")
+    if isValid(resumeButton) then resumeButton.isLoading = true
+  end if
+
+  ' Carry the button + intended state + itemType through the promise context (no closures in BS).
+  promises.chain(fetchAsync(req, "watchedToggle-" + item.id), { button: watchedButton, newState: newState, isSeries: isSeries }).then(sub(res as object, ctx as object)
+    ok = res.ok
+    ' Debug error injection — compiled out in production (bs_const=debug=false).
+    #if debug
+      if isValid(m.global.debug) and m.global.debug.shouldForceWatchedFail then ok = false
+    #end if
+    if ok
+      ctx.button.isButtonSelected = ctx.newState
+      if ctx.isSeries
+        ' Series: re-fetch next-up episode (may change or disappear).
+        m.top.refreshResumeData = not m.top.refreshResumeData
+      else if ctx.newState
+        ' Non-Series marking watched: server clears playback position — drop the stale resume button.
+        removeResumeButtonWithFocus(m.top.findNode("resumeButton"))
+      end if
+    else
+      ' 4xx/5xx resolve under the error contract — the server rejected the change.
+      onWatchedToggleFailed(ctx.button, ctx.newState)
+    end if
+    ctx.button.isLoading = false
+  end sub).catch(sub(err as object, ctx as object)
+    ' Transport failure / timeout / pool-unavailable — the request never completed.
+    m.log.warn("watched toggle failed", err.reason)
+    onWatchedToggleFailed(ctx.button, ctx.newState)
+    ctx.button.isLoading = false
+  end sub)
+end sub
+
+' Reverts the watched button to its pre-press state, clears the resume button's loading
+' state, and surfaces an error toast.
+sub onWatchedToggleFailed(watchedButton as object, attemptedState as boolean)
+  if isValid(watchedButton) then watchedButton.isButtonSelected = not attemptedState
+  resumeButton = m.top.findNode("resumeButton")
+  if isValid(resumeButton) then resumeButton.isLoading = false
+  displayToast(translate(translationKeys.ErrorFailedToUpdateWatchedStatus), "error")
+end sub
+
 ' Triggered by refreshResumeData field toggle (watched toggle on Series).
 ' Re-fetches ONLY the next-up/resume episode — no full rebuild, no setupButtons().
 ' The existing onNextUpEpisodeChanged() handles adding/removing/updating the resume button.

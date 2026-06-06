@@ -5,7 +5,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-06-05
+last-reviewed: 2026-06-06
 ---
 
 # Bootstrap & Lifecycle
@@ -145,13 +145,12 @@ while true
   else if isNodeEvent(msg, "voiceQuery")               ' Voice search from home screen
   else if isNodeEvent(msg, "output")                   ' QuickPlayTask returned a queue
   else if isNodeEvent(msg, "result")                   ' RecordProgramTask returned
-  else if isNodeEvent(msg, "isDone")                   ' Watched toggle ApiResultNode fired (favorite now a render-thread promise)
   else if isNodeEvent(msg, "selectedItem")             ' Library / row item selected → push detail
   ' ...many more event branches
 end while
 ```
 
-The event loop is the central hub for cross-screen actions. Most events are wired by `setGlobalNodes()` (e.g., `sceneManager.observeField("isDataReturned", m.port)`) or by other code paths assigning `m.watchedResultNode` and observing it on the same port. (The favorite toggle was migrated off this loop in issue #551 — `main.bs`'s button router now calls `group.callFunc("toggleFavorite")`, which runs as a render-thread `fetchAsync()` promise in `ItemDetails`; the watched toggle follows in a later batch.)
+The event loop is the central hub for cross-screen actions. Most events are wired by `setGlobalNodes()` (e.g., `sceneManager.observeField("isDataReturned", m.port)`) or by other code paths observing a node on the same port. (Both the favorite and watched toggles were migrated off this loop in issue #551 — `main.bs`'s button router now calls `group.callFunc("toggleFavorite")` / `group.callFunc("toggleWatched")`, which run as render-thread `fetchAsync()` promises in `ItemDetails`. The Series "mark all watched" confirmation dialog still routes through this loop's `isDataReturned` branch, which re-invokes `toggleWatched` on confirm; only the fetch + result handling moved to the render thread. With the watched toggle migrated, no raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is now a hard grep-zero guard.)
 
 The dominant event is **`quickPlayNode`** — the universal "play this item" signal. Any UI that wants to start playback sets a node on its `quickPlayNode` field; `main.bs` reads that node, classifies it by `type` (movie / episode / audio / musicvideo / photo / chapter / tvchannel / program / etc.), and either:
 
