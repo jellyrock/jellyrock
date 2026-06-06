@@ -28,6 +28,7 @@ Investigating issue #573 (surround audio fails to play; the server emits a bad f
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-06 — feat(promises): collapse the watched toggle to a render-thread promise
 - 2026-06-06 — Collapse `BrandingConfigTask` + `QuickConnectEnabledTask` to render-thread promises
 - 2026-06-06 — Build promises anti-backslide ratchet (`scripts/lint/promise-ratchet.cjs` + committed baseline; fail CI when render-thread `submitApiRequest`+`observeField` count rises; grep-zero hard guard at 0). Part of #551 — see decision `promise-native-interface-fetchres-exception`.
 - 2026-06-06 — Adopt `@rokucommunity/promises` foundation + 3 reference migrations
