@@ -151,7 +151,9 @@
     <field id="nextUpEpisode" type="node" onChange="onNextUpEpisodeChanged" />
     <field id="refreshResumeData" type="boolean" value="false" alwaysNotify="true" onChange="onRefreshResumeData" />
     <!-- Invoked by main.bs's button router (main thread → render thread via callFunc), so the
-         favorite toggle's fetchAsync().then() runs on this component's render thread. -->
+         favorite / watched toggles' fetchAsync().then() run on this component's render thread.
+         toggleWatched is also re-invoked from the Series "mark all" confirmation dialog. -->
     <function name="toggleFavorite" />
+    <function name="toggleWatched" />
   </interface>
 </component>

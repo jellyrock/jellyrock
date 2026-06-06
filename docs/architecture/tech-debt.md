@@ -227,11 +227,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: Same script provides both `validate()` (read-only) and `syncUnreleased()` / `syncRelease()` (writes the file). A failing `validate` run could be fixed by a `sync` run that then changes things — `validate` doesn't behave like a query when it's adjacent to a mutation in the same module.
 - **direction**: Split into separate read-only and write entry points (e.g., `scripts/changelog-validate.cjs` + `scripts/changelog-sync.cjs`), or keep one entry point but make the validate vs sync subcommands clearly distinct in CLI surface.
 
-#### `no-request-cancellation`
-
-- **area**: `source/api/apiPool.bs`, `source/api/apiPromise.bs`
-- **issue**: A raw `submitApiRequest` that's no longer needed completes anyway and fires its callback. Most callers handle this defensively in the callback. **Partially addressed (#551):** render-thread promise requests via `fetchAsync` now auto-abandon on owner destroy — the `auto-abandon-promises` plugin injects `abandonApiPromises()` into `onDestroy`, so a late pool response settles nothing. The remaining gap is the raw `submitApiRequest` + `observeField` call sites not yet migrated; it closes as #551 moves them to `fetchAsync`.
-
 #### `two-async-model-split`
 
 - **area**: `source/api/apiPromise.bs`, `source/api/apiPool.bs`

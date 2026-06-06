@@ -190,11 +190,6 @@ sub Main (args as dynamic) as void
       if isValid(task) and task.subtype() = "RecordProgramTask"
         handleRecordResult(task)
       end if
-    else if isNodeEvent(msg, "isDone")
-      resultNode = msg.getRoSGNode()
-      if isValid(resultNode) and resultNode.isSameNode(m.watchedResultNode)
-        handleWatchedToggleDone()
-      end if
     else if isNodeEvent(msg, "selectedItem")
       ' If you select a library from ANYWHERE, follow this flow
       selectedItem = msg.getData()
@@ -538,55 +533,29 @@ sub Main (args as dynamic) as void
         else if btn.id = "watchedButton"
           item = group.itemContent
           if isValid(item) and isValidAndNotEmpty(item.id)
-            ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of episodes)
+            ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of
+            ' episodes). The dialog routing stays here (#550 sgRouter territory); the fetch itself is
+            ' delegated to ItemDetails.toggleWatched() on confirm (see the isDataReturned handler).
             if item.type = "Series"
               watchedButton = group.findNode("watchedButton")
-              m.pendingWatchedItemId = item.id
               ' Read current state from button — writing to itemContent triggers a full rebuild
-              m.pendingWatchedIsCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
-              if m.pendingWatchedIsCurrentlyWatched
+              isCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
+              if isCurrentlyWatched
                 confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries)
                 confirmBtn = translate(translationKeys.ButtonMarkUnwatched)
               else
                 confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries2)
                 confirmBtn = translate(translationKeys.ButtonMarkWatched)
               end if
+              m.pendingWatchedConfirmation = true
               m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelWatched), [confirmMsg], [translate(translationKeys.ButtonCancel), confirmBtn])
             else
-              watchedButton = group.findNode("watchedButton")
-              if isValid(watchedButton) and watchedButton.isLoading then continue while ' Already in-flight
-              ' Read current state from button — writing to itemContent triggers a full rebuild
-              isCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
-              if isCurrentlyWatched
-                req = GetApi().BuildUnmarkPlayedRequest(item.id)
-              else
-                req = GetApi().BuildMarkPlayedRequest(item.id)
-              end if
-              newWatchedState = not isCurrentlyWatched
-              if isValid(watchedButton) then watchedButton.isLoading = true
-              ' Set resume button to loading while we wait for async response
-              if newWatchedState
-                resumeButton = group.findNode("resumeButton")
-                if isValid(resumeButton) then resumeButton.isLoading = true
-              end if
-              resultNode = submitApiRequest(req, "watchedToggle")
-              if isValid(resultNode)
-                m.watchedResultNode = resultNode
-                m.pendingWatchedButton = watchedButton
-                m.pendingWatchedNewState = newWatchedState
-                m.pendingWatchedItemType = item.type
-                m.watchedResultNode.observeField("isDone", m.port)
-              else
-                ' Pool not ready — fall back to fire-and-forget + direct update
-                SubmitSideEffect(req)
-                if isValid(watchedButton)
-                  watchedButton.isButtonSelected = newWatchedState
-                  watchedButton.isLoading = false
-                end if
-                ' Remove stale resume button when marking as watched
-                if newWatchedState
-                  removeResumeButtonFromGroup(group)
-                end if
+              ' Movie/Episode: toggle immediately on the active screen's render-thread method
+              ' (callFunc rendezvouses there, where the toggle runs as a promise). The in-flight
+              ' guard, optimistic state, stale-resume removal, and error contract all live in
+              ' ItemDetails.toggleWatched().
+              if isValid(group)
+                group.callFunc("toggleWatched")
               end if
             end if
           end if
@@ -882,50 +851,17 @@ sub Main (args as dynamic) as void
             m.pendingDeleteItemId = invalid
           end if
           ' Handle watched confirmation dialog (Series only)
-        else if isValid(m.pendingWatchedItemId)
+        else if m.pendingWatchedConfirmation = true
+          m.pendingWatchedConfirmation = false
           if popupNode.returnData.indexSelected = 1
-            ' User confirmed — mark/unmark all episodes
-            if m.pendingWatchedIsCurrentlyWatched
-              req = GetApi().BuildUnmarkPlayedRequest(m.pendingWatchedItemId)
-            else
-              req = GetApi().BuildMarkPlayedRequest(m.pendingWatchedItemId)
-            end if
-            newWatchedState = not m.pendingWatchedIsCurrentlyWatched
-            m.pendingWatchedItemId = invalid
-            m.pendingWatchedIsCurrentlyWatched = invalid
+            ' User confirmed — delegate the mark/unmark of all episodes to the active screen's
+            ' render-thread method (callFunc rendezvouses there, where it runs as a promise).
+            ' toggleWatched() re-reads the button state to pick mark vs unmark, so no fetch state
+            ' needs threading through the dialog.
             activeGroup = m.global.sceneManager.callFunc("getActiveScene")
-            watchedButton = invalid
             if isValid(activeGroup)
-              watchedButton = activeGroup.findNode("watchedButton")
+              activeGroup.callFunc("toggleWatched")
             end if
-            if isValid(watchedButton) then watchedButton.isLoading = true
-            ' Set resume button to loading while we wait for async data
-            resumeButton = invalid
-            if isValid(activeGroup) then resumeButton = activeGroup.findNode("resumeButton")
-            if isValid(resumeButton) then resumeButton.isLoading = true
-            resultNode = submitApiRequest(req, "watchedToggle")
-            if isValid(resultNode)
-              m.watchedResultNode = resultNode
-              m.pendingWatchedButton = watchedButton
-              m.pendingWatchedNewState = newWatchedState
-              m.pendingWatchedItemType = "Series"
-              m.watchedResultNode.observeField("isDone", m.port)
-            else
-              ' Pool not ready — fall back to fire-and-forget + direct update
-              SubmitSideEffect(req)
-              if isValid(watchedButton)
-                watchedButton.isButtonSelected = newWatchedState
-                watchedButton.isLoading = false
-              end if
-              ' Series: refresh resume data to reflect new watched state
-              if isValid(activeGroup)
-                activeGroup.refreshResumeData = not activeGroup.refreshResumeData
-              end if
-            end if
-          else
-            ' User cancelled
-            m.pendingWatchedItemId = invalid
-            m.pendingWatchedIsCurrentlyWatched = invalid
           end if
         else
           selectedItem = m.global.queueManager.callFunc("getHold")
@@ -1143,55 +1079,6 @@ sub handleQuickPlayOutput(task as object)
   end if
 end sub
 
-sub handleWatchedToggleDone()
-  res = m.watchedResultNode.result
-  m.watchedResultNode.unobserveField("isDone")
-  m.watchedResultNode = invalid
-
-  ' Debug error injection — compiled out in production (bs_const=debug=false)
-  #if debug
-    if isValid(m.global.debug) and m.global.debug.shouldForceWatchedFail
-      res = { ok: false }
-    end if
-  #end if
-
-  if isValid(res) and res.ok
-    if isValid(m.pendingWatchedButton)
-      m.pendingWatchedButton.isButtonSelected = m.pendingWatchedNewState
-    end if
-    ' Update resume button to reflect new watched state
-    activeGroup = m.global.sceneManager.callFunc("getActiveScene")
-    if isValid(activeGroup)
-      if m.pendingWatchedItemType = "Series"
-        ' Series: re-fetch next-up episode (may change or disappear)
-        activeGroup.refreshResumeData = not activeGroup.refreshResumeData
-      else if m.pendingWatchedNewState
-        ' Non-Series marking watched: server clears playback position, remove stale resume button
-        removeResumeButtonFromGroup(activeGroup)
-      end if
-    end if
-  else
-    ' Revert button to original state on failure
-    if isValid(m.pendingWatchedButton)
-      m.pendingWatchedButton.isButtonSelected = not m.pendingWatchedNewState
-    end if
-    ' Revert resume button loading state on failure
-    activeGroup = m.global.sceneManager.callFunc("getActiveScene")
-    if isValid(activeGroup)
-      resumeButton = activeGroup.findNode("resumeButton")
-      if isValid(resumeButton) then resumeButton.isLoading = false
-    end if
-    displayToast(translate(translationKeys.ErrorFailedToUpdateWatchedStatus), "error")
-  end if
-
-  if isValid(m.pendingWatchedButton)
-    m.pendingWatchedButton.isLoading = false
-  end if
-  m.pendingWatchedButton = invalid
-  m.pendingWatchedNewState = invalid
-  m.pendingWatchedItemType = invalid
-end sub
-
 sub handleRecordResult(task as object)
   res = task.result
   task.unobserveField("result")
@@ -1231,42 +1118,6 @@ sub handleRecordResult(task as object)
   end if
   m.pendingRecordButton = invalid
   m.pendingRecordIsCancel = invalid
-end sub
-
-' removeResumeButtonFromGroup: Remove the resume button from an ItemDetails button group.
-' Used after marking an item as watched — the server clears playback position so the
-' resume button is stale. Focus is preserved on the nearest remaining button.
-sub removeResumeButtonFromGroup(group as object)
-  resumeButton = group.findNode("resumeButton")
-  if not isValid(resumeButton) then return
-
-  buttonGrp = group.findNode("buttons")
-  if not isValid(buttonGrp) then return
-
-  currentFocusIndex = buttonGrp.buttonFocused
-  resumeIndex = -1
-  for i = 0 to buttonGrp.getChildCount() - 1
-    child = buttonGrp.getChild(i)
-    if isValid(child) and child.isSameNode(resumeButton)
-      resumeIndex = i
-      exit for
-    end if
-  end for
-
-  wasFocused = resumeButton.isInFocusChain()
-  buttonGrp.removeChild(resumeButton)
-
-  if resumeIndex >= 0 and currentFocusIndex >= resumeIndex
-    focusIdx = currentFocusIndex - 1
-    if focusIdx < 0 then focusIdx = 0
-    buttonGrp.buttonFocused = focusIdx
-  end if
-  if wasFocused
-    nextButton = buttonGrp.getChild(buttonGrp.buttonFocused)
-    if isValid(nextButton)
-      nextButton.setFocus(true)
-    end if
-  end if
 end sub
 
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.

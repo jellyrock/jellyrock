@@ -16,7 +16,8 @@
     "./scripts/bsc-plugins/print-locations.cjs",
     "./scripts/bsc-plugins/observe-without-on-destroy.cjs",
     "./scripts/bsc-plugins/auto-abandon-promises.cjs",
-    "./scripts/bsc-plugins/no-direct-sdk.cjs"
+    "./scripts/bsc-plugins/no-direct-sdk.cjs",
+    "./scripts/bsc-plugins/callfunc-interface.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {

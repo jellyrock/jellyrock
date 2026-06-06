@@ -14,6 +14,7 @@ related-files:
   - scripts/bsc-plugins/print-locations.cjs
   - scripts/bsc-plugins/observe-without-on-destroy.cjs
   - scripts/bsc-plugins/no-direct-sdk.cjs
+  - scripts/bsc-plugins/callfunc-interface.cjs
   - scripts/lint/dictionary-audit.cjs
   - scripts/lint/docs-check.cjs
   - scripts/lint/docs-stale.cjs
@@ -64,7 +65,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-28
+last-reviewed: 2026-06-06
 ---
 
 # Build & Tooling
@@ -147,7 +148,7 @@ The plugin uses `fs.watch` to detect en_US.json changes in language-server mode 
 
 ### Convention plugins
 
-Four lint-only plugins encode unwritten conventions documented in `components/CLAUDE.md` / `source/CLAUDE.md` so violations surface as IDE warnings + CI failures instead of bugs at runtime. All emit warnings (severity 2), never errors, and never crash the build on edge cases.
+Five plugins encode unwritten conventions documented in `components/CLAUDE.md` / `source/CLAUDE.md` so violations surface as IDE diagnostics + CI failures instead of bugs at runtime, and never crash the build on edge cases. The first four emit warnings (severity 2); `callfunc-interface` emits an **error** (severity 1) because an undeclared `callFunc` target is a guaranteed silent no-op, not a style nit.
 
 | Plugin | Flags | Smart filtering |
 |---|---|---|
@@ -155,6 +156,7 @@ Four lint-only plugins encode unwritten conventions documented in `components/CL
 | `bsc-plugin-print-locations.cjs` | Raw `print` calls outside the allowed sites | Allows `source/main.bs` (whole file) and `#if debug` blocks in `source/utils/globals.bs`; auto-skips top-level functions in any `source/*.bs` file (no `m` context, so no `m.log` available) |
 | `bsc-plugin-observe-without-on-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on `JRScreen` subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
 | `bsc-plugin-no-direct-sdk.cjs` | `sdk.<ns>.<fn>(...)` calls outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | None — the only allowed callers are explicitly listed |
+| `bsc-plugin-callfunc-interface.cjs` **(error)** | `callFunc("X")` where `X` is a method DEFINED in one of our component codebehinds but declared in NO component `<interface><function>` anywhere — the silent-no-op bug | Program-wide, case-insensitive membership: if ANY component exposes `X`, no site is flagged (errs toward false-negatives, away from false-positives). Skips `roku_modules`; ignores non-literal `callFunc` args |
 
 **Suppressing a false positive.** Each plugin honors these comment markers (case-insensitive, regex match against the source text):
 
@@ -164,7 +166,7 @@ Four lint-only plugins encode unwritten conventions documented in `components/CL
 ' bsc-disable-file <plugin-id>           ← anywhere in the file (whole-file opt-out)
 ```
 
-Valid `<plugin-id>` values: `jrscreen-on-destroy`, `print-locations`, `observe-without-on-destroy`, `no-direct-sdk`. (Note: `jrscreen-on-destroy` only honors `bsc-disable-file` since the diagnostic is reported on the XML component declaration, not a specific source line.) Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
+Valid `<plugin-id>` values: `jrscreen-on-destroy`, `print-locations`, `observe-without-on-destroy`, `no-direct-sdk`, `callfunc-interface`. (Note: `jrscreen-on-destroy` only honors `bsc-disable-file` since the diagnostic is reported on the XML component declaration, not a specific source line. Suppressing `callfunc-interface` should be extremely rare — an undeclared target is normally a real bug, not a false positive.) Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
 
 ### Other plugins
 
