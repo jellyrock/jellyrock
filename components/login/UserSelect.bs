@@ -1,3 +1,5 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
@@ -21,48 +23,58 @@ sub init()
   m.quickConnectButton.text = translate(translationKeys.ButtonQuickConnect)
   ' Apply prior probe result immediately if already known disabled this session.
   ' Default of true (fail-open) means the button stays unless we have evidence.
+  ' Otherwise the probe runs in onScreenShown (render-thread fetchAsync). On 10.7
+  ' the /QuickConnect/Enabled endpoint is missing, so the probe fails open (button
+  ' stays visible) - the dialog fallback handles the rare admin-disabled case there.
   if m.global.server.isQuickConnectEnabled = false
     removeQuickConnectButton("server reports Quick Connect disabled (cached)")
-  else
-    ' Probe is started in onScreenShown (matches BrandingConfigTask timing).
-    ' On 10.7 the /QuickConnect/Enabled endpoint is missing, so the probe
-    ' fails open (button stays visible) - the dialog fallback handles the
-    ' rare admin-disabled case there.
-    m.quickConnectEnabledTask = createObject("roSGNode", "QuickConnectEnabledTask")
-    m.log.debug("Created QuickConnectEnabledTask")
   end if
 
   m.buttons.callFunc("center")
-
-  ' Create branding config task (reusable instance)
-  m.brandingTask = createObject("roSGNode", "BrandingConfigTask")
-  m.log.debug("Created BrandingConfigTask")
 end sub
 
 ' Probe the server's /QuickConnect/Enabled endpoint and remove the QC button if
-' the server reports it disabled. Mirrors loadSplashscreen()'s wiring of
-' BrandingConfigTask: observe the task's responseCode, read the global field
-' on completion. Fail-open: only act on a definitive false.
+' the server reports it disabled. Render-thread promise (#551 Batch 1, 3b pattern)
+' — replaces the former QuickConnectEnabledTask (createObject + observeFieldScoped
+' on responseCode). Fail-open: only a definitive `false` removes the button; any
+' non-ok HTTP response, transport failure, or timeout leaves it visible.
 sub probeQuickConnectAvailability()
-  if not isValid(m.quickConnectEnabledTask) then return
-  m.log.info("Probing /QuickConnect/Enabled to gate the Quick Connect button")
-  m.quickConnectEnabledTask.observeFieldScoped("responseCode", "onQuickConnectEnabledProbeComplete")
-  m.quickConnectEnabledTask.control = "RUN"
-end sub
+  ' Already removed this session (cached-disabled in init) → nothing to probe.
+  if not isValid(m.quickConnectButton) then return
 
-' Called when QuickConnectEnabledTask finishes. Reads the global field the task
-' wrote and removes the button if the server reports Quick Connect disabled.
-sub onQuickConnectEnabledProbeComplete()
-  responseCode = m.quickConnectEnabledTask.responseCode
-  enabled = m.global.server.isQuickConnectEnabled
-  m.log.info("Quick Connect probe complete", "responseCode:", responseCode, "enabled:", enabled)
-
-  m.quickConnectEnabledTask.unobserveFieldScoped("responseCode")
-  m.quickConnectEnabledTask.callFunc("empty")
-
-  if enabled = false
-    removeQuickConnectButton("server reports Quick Connect disabled")
+  req = GetApi().BuildGetQuickConnectEnabledRequest()
+  if not isValid(req)
+    m.log.warn("Quick Connect probe skipped - server URL not configured")
+    return
   end if
+  m.log.info("Probing /QuickConnect/Enabled to gate the Quick Connect button", "url:", req.url)
+
+  promises.chain(fetchAsync(req, "quickConnectEnabled")).then(sub(res as object)
+    if not res.ok
+      ' Server reachable but returned a non-2xx status (e.g. 10.7 has no endpoint).
+      ' Fail-open: leave the button and the cached global field as-is.
+      m.log.warn("Quick Connect probe got non-OK response - failing open", "statusCode:", res.statusCode)
+      return
+    end if
+
+    ' Endpoint returns a plain boolean body. Coerce defensively in case a future
+    ' server returns an object envelope or wraps the value as a string.
+    enabled = res.json
+    enabledType = type(enabled)
+    if enabledType <> "Boolean" and enabledType <> "roBoolean"
+      m.log.warn("Quick Connect probe got unexpected body type", "type:", enabledType, "raw:", res.text)
+      enabled = (LCase(res.text.Trim()) = "true")
+    end if
+
+    m.global.server.isQuickConnectEnabled = enabled
+    m.log.info("Quick Connect availability probed", "enabled:", enabled, "statusCode:", res.statusCode)
+    if enabled = false
+      removeQuickConnectButton("server reports Quick Connect disabled")
+    end if
+  end sub).catch(sub(err as object)
+    ' Transport failure / timeout — fail-open, leave the button visible.
+    m.log.warn("Quick Connect probe failed - failing open", err.reason)
+  end sub)
 end sub
 
 ' Remove the Quick Connect button and re-center the remaining buttons.
@@ -141,47 +153,31 @@ sub loadSplashscreen()
     m.log.debug("Splashscreen setting not cached")
   end if
 
-  ' Always observe and refresh in case cached value is stale
-  serverNode.observeFieldScoped("isSplashscreenEnabled", "onSplashscreenEnabledLoaded")
-  m.brandingTask.observeFieldScoped("responseCode", "onBrandingConfigComplete")
-  m.brandingTask.control = "RUN"
-end sub
-
-' Called when branding config task completes
-sub onBrandingConfigComplete()
-  responseCode = m.brandingTask.responseCode
-  m.log.debug("Branding config fetch completed", "responseCode:", responseCode)
-
-  if responseCode = 200
-    m.log.info("Branding config cached successfully", "splashscreenEnabled:", m.global.server.isSplashscreenEnabled)
-  else
-    failureReason = m.brandingTask.failureReason
-    m.log.warn("Branding config fetch failed", "reason:", failureReason)
-  end if
-
-  ' Cleanup task
-  m.brandingTask.unobserveFieldScoped("responseCode")
-  m.brandingTask.callFunc("empty")
-end sub
-
-' Called when branding config finishes loading (if we had to wait)
-sub onSplashscreenEnabledLoaded()
-  serverNode = m.global.server
-  isSplashEnabled = serverNode.isSplashscreenEnabled
-
-  m.log.debug("Branding config loaded (async)", "splashscreenEnabled:", isSplashEnabled)
-
-  ' Unobserve (only fire once)
-  serverNode.unobserveFieldScoped("isSplashscreenEnabled")
-
-  ' Check validity again (defensive)
-  if isValid(isSplashEnabled)
-    applySplashscreen(isSplashEnabled)
-  else
-    m.log.warn("Branding config still invalid after loading - using default")
-    ' Clear backdrop using forceBackdrop to ensure it works before login
-    m.global.sceneManager.callFunc("setBackgroundImage", "", true, true)
-  end if
+  ' Always refresh in case the cached value is stale. Render-thread promise (#551
+  ' Batch 1, 3b pattern) — replaces the former BrandingConfigTask (createObject +
+  ' observeFieldScoped on responseCode) plus its companion observer on the global
+  ' isSplashscreenEnabled field. The task also wrote that global session-cache
+  ' field; we keep that write here and apply the result directly in .then().
+  req = GetApi().BuildGetBrandingConfigurationRequest()
+  promises.chain(fetchAsync(req, "brandingConfig")).then(sub(res as object)
+    serverNode = m.global.server
+    if res.ok and isValid(res.json) and isValid(res.json.SplashscreenEnabled)
+      serverNode.isSplashscreenEnabled = res.json.SplashscreenEnabled
+      m.log.info("Branding config cached successfully", "splashscreenEnabled:", res.json.SplashscreenEnabled)
+    else
+      ' Any non-ok HTTP response (the error contract resolves these) or a missing
+      ' SplashscreenEnabled field → default to disabled, matching the old task's
+      ' failure path.
+      serverNode.isSplashscreenEnabled = false
+      m.log.warn("Branding config fetch returned no usable data - defaulting splashscreen to disabled")
+    end if
+    applySplashscreen(serverNode.isSplashscreenEnabled)
+  end sub).catch(sub(err as object)
+    ' Transport failure / timeout — default to disabled, same as the old failure path.
+    m.log.warn("Branding config fetch failed", err.reason)
+    m.global.server.isSplashscreenEnabled = false
+    applySplashscreen(false)
+  end sub)
 end sub
 
 ' Apply splash background based on enabled flag
@@ -243,21 +239,9 @@ end function
 sub onDestroy()
   m.log.verbose("onDestroy")
 
-  ' Stop branding task and unobserve all scoped fields
-  ' (may already be self-cleaned by task callbacks, guards are safe no-ops)
-  m.brandingTask.control = "STOP"
-  m.global.server.unobserveFieldScoped("isSplashscreenEnabled")
-  m.brandingTask.unobserveFieldScoped("responseCode")
-  m.brandingTask.callFunc("empty")
-  m.brandingTask = invalid
-
-  ' Stop Quick Connect availability probe (only present when version gate passed)
-  if isValid(m.quickConnectEnabledTask)
-    m.quickConnectEnabledTask.control = "STOP"
-    m.quickConnectEnabledTask.unobserveFieldScoped("responseCode")
-    m.quickConnectEnabledTask.callFunc("empty")
-    m.quickConnectEnabledTask = invalid
-  end if
+  ' The branding-config + Quick Connect probes are now render-thread promises
+  ' (fetchAsync); any in-flight request is cancelled by the abandonApiPromises()
+  ' call the auto-abandon BSC plugin injects as the first statement of onDestroy.
 
   ' Clear node references
   m.quickConnectButton = invalid

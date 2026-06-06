@@ -255,6 +255,7 @@ JavaScript
 jellyfin
 Jellyfin
 jellyfin-roku
+Jellyfin-pool
 Jellyfin's
 jellyfin-server-versioning
 jellyrock
@@ -316,6 +317,7 @@ opencode
 orchestrator
 Orchestrator
 orchestrators
+orchestrator's
 Orchestrators
 OSD
 OSS
@@ -323,6 +325,7 @@ OSS-eventual
 OSS-readability
 outro
 PARA
+parallelize
 params
 PascalCase
 PD-textlogo
@@ -330,6 +333,7 @@ PDF
 PDFs
 per-dev
 per-worktree
+perf
 PGS
 PII
 PKM

@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<component name="BrandingConfigTask" extends="Task">
-  <interface>
-    <field id="responseCode" type="integer" />
-    <field id="failureReason" type="string" value="" />
-    <function name="empty" />
-  </interface>
-</component>
