@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - tests/source/unit/api/apiPromise.spec.bs
-last-reviewed: 2026-06-05
+last-reviewed: 2026-06-06
 ---
 
 # Promises How-To & Style Guide
@@ -88,6 +88,11 @@ AA with `ok: false`, `statusCode: 0`, and a `reason` (`"timeout"` / `"pool-unava
   router invoking `group.callFunc("toggleFavorite")` (see Canonical examples below). Do **not** wire
   `setMessagePort`/`wait2` into the `main.bs` loop for this — delegation is simpler and keeps the
   one async vocabulary.
+  - **The delegated method MUST be declared in the component's `<interface>`** as
+    `<function name="toggleFavorite" />` — `callFunc` only dispatches to exposed functions, and a
+    missing declaration is a **silent no-op** the transpiler won't catch (it shipped a dead watched
+    toggle once). The `callfunc-interface` BSC plugin now makes this a build error; see
+    [`build-and-tooling.md`](../architecture/build-and-tooling.md).
 
 ## Parallel requests
 

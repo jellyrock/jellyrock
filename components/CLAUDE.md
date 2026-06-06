@@ -42,6 +42,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - **`alwaysNotify="true"`** on interface fields to force observers to fire even when the value didn't change.
 - **Set-then-clear single-shot pattern** (`field = node; field = invalid`): use to fire the same value twice in a row. Canonical explanation: [docs/architecture/user-journey.md](../docs/architecture/user-journey.md).
 - **Custom subtype inheritance:** XML `extends="JRScreen"`. Inherits all parent interface fields and component children.
+- **`callFunc` requires an interface declaration.** To invoke a component method via `node.callFunc("methodName")` (e.g. main-thread → render-thread delegation, as in `main.bs`'s button router), the method MUST be exposed in the component's XML `<interface>` as `<function name="methodName" />`. Without it the call is a **silent no-op** — no compile error, no runtime error, the method simply never runs. The transpiler will not flag a missing declaration; the `callfunc-interface` BSC plugin does (build **error**). Canonical: `ItemDetails.toggleFavorite` / `toggleWatched` and their `<function>` lines in `ItemDetails.xml`.
 
 ## `RowList` / grid item components (focus-indicator layout)
 

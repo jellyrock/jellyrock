@@ -486,6 +486,8 @@ transpile-mutating
 Transpile-mutating
 transpile-time
 Transpile-time
+transpiler
+Transpiler
 triaging
 trickplay
 Trickplay
