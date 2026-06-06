@@ -201,6 +201,15 @@ if [ -n "$HAS_DICTIONARY" ]; then
   npm run lint:dictionary
 fi
 
+# Promise-ratchet — advisory at pre-push; BLOCKING in CI (it's in `npm run lint`).
+# Flags net-new observer-spaghetti (a raw `observeField("isDone", ...)` on a
+# submitApiRequest result) introduced against the committed baseline, as part of
+# the #551 promises adoption. Advisory here so a local push isn't blocked; CI's
+# `npm run lint` enforces it. Scoped to .bs changes.
+if [ -n "$HAS_BS" ]; then
+  npm run lint:promise-ratchet || true
+fi
+
 # Decision-shape commit nudge — advisory only, never blocks the push.
 # Detects commits whose messages look like decisions (decided/switched-from/
 # instead-of/etc.) but didn't touch docs/decisions.md; reminds the user to
