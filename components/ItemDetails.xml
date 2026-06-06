@@ -150,5 +150,8 @@
     <field id="refreshExtrasData" type="bool" alwaysNotify="true" onChange="onRefreshExtrasData" />
     <field id="nextUpEpisode" type="node" onChange="onNextUpEpisodeChanged" />
     <field id="refreshResumeData" type="boolean" value="false" alwaysNotify="true" onChange="onRefreshResumeData" />
+    <!-- Invoked by main.bs's button router (main thread → render thread via callFunc), so the
+         favorite toggle's fetchAsync().then() runs on this component's render thread. -->
+    <function name="toggleFavorite" />
   </interface>
 </component>

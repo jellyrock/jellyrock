@@ -6,6 +6,7 @@
   "dependencies": {
     "@rokucommunity/bslib": "0.1.1",
     "log": "npm:roku-log@0.11.1",
+    "promises": "npm:@rokucommunity/promises@0.7.0",
     "rr": "npm:roku-requests@1.2.0"
   },
   "devDependencies": {
@@ -81,7 +82,7 @@
     "format": "npm run format:bs && npm run format:js",
     "format:bs": "npx bsfmt --write",
     "format:js": "npx prettier --write .",
-    "lint": "npm run check-formatting && npm run lint:bs && npm run validate && npm run lint:json && npm run lint:js && npm run lint:markdown && npm run lint:spelling && npm run lint:dictionary && npm run lint:translations && npm run lint:language-coverage && npm run lint:docs && npm run lint:issue-templates && npm run lint:endpoint-availability && npm run lint:floor-coverage && npm run lint:apiversion-consistency && npm run docs:dev-index:check && npm run docs:api-manifest:check && npm run lint:ci-workflow-sync",
+    "lint": "npm run check-formatting && npm run lint:bs && npm run validate && npm run lint:json && npm run lint:js && npm run lint:markdown && npm run lint:spelling && npm run lint:dictionary && npm run lint:translations && npm run lint:language-coverage && npm run lint:docs && npm run lint:issue-templates && npm run lint:endpoint-availability && npm run lint:floor-coverage && npm run lint:apiversion-consistency && npm run lint:promise-ratchet && npm run docs:dev-index:check && npm run docs:api-manifest:check && npm run lint:ci-workflow-sync",
     "lint:apiversion-consistency": "node scripts/lint/apiversion-consistency-check.js",
     "lint:bs": "bslint",
     "lint:dictionary": "node scripts/lint/dictionary-audit.cjs",
@@ -94,6 +95,7 @@
     "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,build-analysis,out,locale,tests/scripts,.vscode,docs/architecture/spec-fingerprints,eslint.config.js,vitest.config.js ./",
     "lint:language-coverage": "node scripts/lint/language-coverage.cjs",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"!**/CLAUDE.md\" \"!**/AGENTS.md\" \"!out/\" \"!build/\" \"!build-analysis/\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!tasks/\" \"!.opencode/**/*.md\"",
+    "lint:promise-ratchet": "node scripts/lint/promise-ratchet.cjs",
     "lint:spelling": "spellchecker -d dictionary.txt -p spell indefinite-article repeated-words syntax-mentions syntax-urls frontmatter --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!docs/user/app-settings.md\" \"!CHANGELOG.md\" \"!**/CLAUDE.md\" \"!**/AGENTS.md\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
     "lint:translations": "node scripts/lint/update-translations.cjs",
     "postinstall": "npm run ropm && npm run patches:apply",

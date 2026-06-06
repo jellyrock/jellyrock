@@ -1,0 +1,203 @@
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/roku_modules/promises/promises.brs"
+import "pkg:/source/utils/misc.bs"
+
+' ============================================================================
+' apiPromise.bs — the pool → @rokucommunity/promises adapter
+' ============================================================================
+'
+' The bridge between the EXISTING task-pool engine (see apiPool.bs) and the
+' promises library. The pool is untouched; this layer only changes the calling
+' convention from "observe an ApiResultNode" to "consume a Promise".
+'
+' `fetchAsync(req, requestId)` is the single generic entry point. It wraps
+' `submitApiRequest()` (non-blocking pool submit, returns an ApiResultNode that
+' fires `isDone` on the render thread) and returns a promises_Promise node the
+' caller chains with `promises.chain(p).then(...).catch(...).finally(...)`.
+'
+' ── Error contract (decision #5 — `fetch()` convention) ────────────────────
+'   • Any HTTP response (incl. 4xx / 5xx) → the promise RESOLVES with the
+'     response AA { requestId, ok, statusCode, json, text }. Callers inspect
+'     `res.ok` / `res.statusCode`. Expected 404s flow as data, not errors.
+'   • Transport failure (statusCode <= 0 — no HTTP response reached us) and
+'     pool timeout → the promise REJECTS with an error AA. This keeps `.catch`
+'     meaningful (it fires only when the request never completed).
+'
+' ── m-context model (the no-closure observer → promise bridge) ──────────────
+' Render-thread `observeField(field, "<global handler>")` has no closure, and
+' the handler runs in the `m` of the component that CALLED observeField — i.e.
+' the same component that called `fetchAsync`. So the pending-request registry
+' lives on that component's `m` (`m.__apiPromisePending`), keyed by requestId.
+' `fetchAsync`, the two completion handlers, and `abandonApiPromises()` all run
+' in that one `m`, so they share the registry without any global state.
+'
+' ── Cancellation (decision #6) ─────────────────────────────────────────────
+' A pending promise must never fire a callback into a destroyed node. Each
+' owning component's teardown calls `abandonApiPromises()`, which unobserves
+' every pending request + stops its timeout timer and drops the registry, so a
+' late pool response resolves nothing. See abandonApiPromises() for the wiring.
+' ============================================================================
+
+' Submits an API request to the pool and returns a Promise for its completion.
+'
+' Must be called from the render thread of the owning component (it registers a
+' render-thread observer whose handler runs in that component's `m`). The pool
+' itself does the I/O on a Task thread — the render thread never blocks.
+'
+' @param req       - request AA from a Build*Request() method
+' @param requestId - unique string identifying this request (registry key)
+' @return a promises_Promise node; resolves with the response AA on any HTTP
+'         response, rejects with an error AA on transport failure / timeout.
+function fetchAsync(req as dynamic, requestId as string) as object
+  promise = promises.create()
+
+  ' Pool submit (non-blocking). Returns invalid if req is invalid or the pool
+  ' is not ready — both are transport-class failures, so reject immediately.
+  resultNode = submitApiRequest(req, requestId)
+  if not isValid(resultNode)
+    return promises.reject(buildApiPromiseError(requestId, "pool-unavailable"), promise)
+  end if
+
+  ' Tag the result node with the requestId so the render-thread isDone handler
+  ' can recover the registry key via roSGNodeEvent.getNode(). submitApiRequest()
+  ' leaves id unset (""), which would collide across concurrent requests.
+  resultNode.id = requestId
+
+  ' Timeout: submitApiRequest has NO deadline (unlike fetchRes's API_WAIT_MS).
+  ' Without this a never-answered pool slot would hang the promise forever.
+  ' Unparented Timer, kept alive via the registry entry (same approach the
+  ' promises library uses for its next-tick delays).
+  timer = createObject("roSGNode", "Timer")
+  timer.id = requestId
+  timer.duration = timeouts.API_WAIT_MS / 1000
+  timer.repeat = false
+
+  if not isValid(m.__apiPromisePending) then m.__apiPromisePending = {}
+  m.__apiPromisePending[requestId] = {
+    promise: promise,
+    resultNode: resultNode,
+    timer: timer
+  }
+
+  resultNode.observeField("isDone", "__onApiPromiseDone")
+  timer.observeField("fire", "__onApiPromiseTimeout")
+  timer.control = "start"
+
+  return promise
+end function
+
+' Render-thread handler — pool response arrived (isDone fired on the result
+' node). Runs in the owning component's `m`. event.getNode() = the result
+' node's id = the requestId we tagged in fetchAsync.
+sub __onApiPromiseDone(event as object)
+  settleApiPromiseIn(m.__apiPromisePending, event.getNode())
+end sub
+
+' Render-thread handler — the timeout timer fired before a response arrived.
+' Runs in the owning component's `m`. event.getNode() = the timer's id =
+' the requestId.
+sub __onApiPromiseTimeout(event as object)
+  settleApiPromiseIn(m.__apiPromisePending, event.getNode())
+end sub
+
+' Settles (resolve OR reject) the pending request identified by `requestId`,
+' then tears down its observers + timer and drops the registry entry. Idempotent
+' by design: the entry is removed first, so a second call (e.g. the timeout
+' firing just after isDone) is a no-op.
+'
+' `pending` is passed explicitly (rather than read from `m`) so the resolve /
+' reject contract is unit-testable without relying on `m` propagation — bare
+' calls from a Rooibos class method don't share the instance `m`, but production
+' observer handlers (above) always pass their component's `m.__apiPromisePending`.
+sub settleApiPromiseIn(pending as object, requestId as string)
+  if not isValid(pending) then return
+  entry = pending[requestId]
+  if not isValid(entry) then return ' already settled / abandoned
+
+  ' Remove first so the sibling handler (timeout vs done) becomes a no-op.
+  pending.delete(requestId)
+
+  resultNode = entry.resultNode
+  timer = entry.timer
+  promise = entry.promise
+
+  if isValid(resultNode) then resultNode.unobserveField("isDone")
+  if isValid(timer)
+    timer.unobserveField("fire")
+    timer.control = "stop"
+  end if
+
+  res = invalid
+  if isValid(resultNode) then res = resultNode.result
+
+  if apiPromiseShouldResolve(res)
+    promises.resolve(res, promise)
+  else if isValid(res)
+    ' A response object exists but it's a transport failure (statusCode <= 0):
+    ' reject with the response itself so the caller can inspect it.
+    promises.reject(res, promise)
+  else
+    ' No response at all → timeout / abandoned slot.
+    promises.reject(buildApiPromiseError(requestId, "timeout"), promise)
+  end if
+end sub
+
+' Pure decision for the error contract (decision #5): does this pool result
+' represent an HTTP response we should RESOLVE with?
+'
+'   • invalid        → false (no response — timeout / abandoned slot)
+'   • statusCode <= 0 → false (transport failure — roku-requests reports a
+'                       non-positive response code when no HTTP reply arrived)
+'   • statusCode > 0  → true  (any HTTP status, incl. 4xx / 5xx)
+'
+' @param res - the ApiResultNode.result AA, or invalid
+' @return true to resolve, false to reject
+function apiPromiseShouldResolve(res as dynamic) as boolean
+  if not isValid(res) then return false
+  if not isValid(res.statusCode) then return false
+  return res.statusCode > 0
+end function
+
+' Builds the rejection error AA for the failure cases that don't carry an HTTP
+' response (pool unavailable, timeout). Mirrors the response AA shape enough
+' that `.catch` handlers can branch on `err.reason` / `err.statusCode`.
+function buildApiPromiseError(requestId as string, reason as string) as object
+  return {
+    requestId: requestId,
+    ok: false,
+    statusCode: 0,
+    reason: reason
+  }
+end function
+
+' Abandons every pending request owned by the current `m`: unobserves each
+' result node's isDone, stops + unobserves each timeout timer, and clears the
+' registry. After this, a late pool response settles nothing — the promise is
+' left pending forever (its callbacks never fire into the now-dead component).
+'
+' Call from the owning component's teardown (onDestroy). Safe to call when no
+' requests are pending (no-op). Idempotent.
+sub abandonApiPromises()
+  abandonApiPromisesIn(m.__apiPromisePending)
+end sub
+
+' Core abandon over an explicit registry — see settleApiPromiseIn for why the
+' registry is a parameter. Clears `pending` IN PLACE (Clear(), not reassignment)
+' so the caller's reference is emptied without depending on `m`.
+sub abandonApiPromisesIn(pending as object)
+  if not isValid(pending) then return
+
+  for each requestId in pending
+    entry = pending[requestId]
+    if isValid(entry)
+      if isValid(entry.resultNode) then entry.resultNode.unobserveField("isDone")
+      if isValid(entry.timer)
+        entry.timer.unobserveField("fire")
+        entry.timer.control = "stop"
+      end if
+    end if
+  end for
+
+  pending.clear()
+end sub

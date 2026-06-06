@@ -12,7 +12,7 @@ related-files:
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
-last-reviewed: 2026-05-06
+last-reviewed: 2026-06-05
 ---
 
 # Video & Audio Playback
@@ -51,8 +51,9 @@ components/ItemGrid/
   └── LoadVideoContentTask.bs                  ← computes transcode params, builds video URL
                                                  (called by VideoPlayerView before playback starts)
 components/GetPlaybackInfoTask.bs/.xml         ← fetches PlaybackInfo from Jellyfin
-components/GetNextEpisodeTask.bs/.xml          ← for next-episode overlay
 components/GetShuffleItemsTask.bs/.xml         ← fetches items when shuffle is enabled
+(next-episode availability is not a Task — VideoPlayerView.fetchNextEpisode()
+ is a render-thread fetchAsync() promise; issue #551 Phase-3a collapse)
 ```
 
 ## QueueManager — `components/manager/QueueManager.bs`

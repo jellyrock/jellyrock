@@ -79,6 +79,7 @@ BrighterScript's
 BrightScript
 BSC
 bsconfig
+bsc-plugins
 BSC-plugin-generated
 BSC's
 bsfmt
@@ -314,6 +315,8 @@ OpenAPI
 opencode
 orchestrator
 Orchestrator
+orchestrators
+Orchestrators
 OSD
 OSS
 OSS-eventual
@@ -477,6 +480,8 @@ transpiled
 Transpiled
 transpile-mutating
 Transpile-mutating
+transpile-time
+Transpile-time
 triaging
 trickplay
 Trickplay

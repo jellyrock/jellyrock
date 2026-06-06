@@ -1,0 +1,15 @@
+import "pkg:/source/api/apiPromise.bs"
+
+' Base codebehind for JRGroup — the parent of every sub-panel / dialog (and,
+' transitively, every JRScreen). Kept intentionally minimal: it exists only to
+' provide the onDestroy() floor below.
+'
+' Floor for JRGroup subclasses (panels/dialogs) that DON'T override onDestroy():
+' abandon any pending fetchAsync promises so a late pool response can't fire a
+' callback into the destroyed node. Subclasses that DO override onDestroy() get
+' this via the auto-abandon-promises BSC plugin (which injects
+' abandonApiPromises() into their own onDestroy) — SG component onDestroy does
+' not chain to this base, so the call can't rely on inheritance alone.
+sub onDestroy()
+  abandonApiPromises()
+end sub

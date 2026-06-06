@@ -52,7 +52,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### scripts
 
-(none)
+- Build promises anti-backslide ratchet (`scripts/lint/promise-ratchet.cjs` + committed baseline; fail CI when render-thread `submitApiRequest`+`observeField` count rises; grep-zero hard guard at 0). Part of #551 — see decision `promise-native-interface-fetchres-exception`.
 
 ### components
 
@@ -60,7 +60,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### source
 
-(none)
+- Migrate the watched toggle (`main.bs`) to the `3c` `callFunc`→`fetchAsync` pattern (mirror `ItemDetails.toggleFavorite`). Extra surface vs favorite: Series "mark all" confirmation-dialog path (2nd entry ~`main.bs:927`), resume-button loading state, `pendingWatched*` bookkeeping. Completes removal of the `isDone` branch + `handleWatchedToggleDone` + `m.watchedResultNode`. #551 Phase 4 settings/misc render-thread batch.
 
 ### tests
 

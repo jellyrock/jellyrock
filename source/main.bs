@@ -192,9 +192,7 @@ sub Main (args as dynamic) as void
       end if
     else if isNodeEvent(msg, "isDone")
       resultNode = msg.getRoSGNode()
-      if isValid(resultNode) and resultNode.isSameNode(m.favoriteResultNode)
-        handleFavoriteToggleDone()
-      else if isValid(resultNode) and resultNode.isSameNode(m.watchedResultNode)
+      if isValid(resultNode) and resultNode.isSameNode(m.watchedResultNode)
         handleWatchedToggleDone()
       end if
     else if isNodeEvent(msg, "selectedItem")
@@ -593,30 +591,11 @@ sub Main (args as dynamic) as void
             end if
           end if
         else if btn.id = "favoriteButton"
-          item = group.itemContent
-          favoriteButton = group.findNode("favoriteButton")
-          if isValid(item) and isValidAndNotEmpty(item.id) and isValid(favoriteButton)
-            if favoriteButton.isLoading then continue while ' Already in-flight
-            ' Read current state from button — writing to itemContent triggers a full rebuild
-            newState = not favoriteButton.isButtonSelected
-            if newState
-              req = GetApi().BuildMarkFavoriteRequest(item.id)
-            else
-              req = GetApi().BuildUnmarkFavoriteRequest(item.id)
-            end if
-            favoriteButton.isLoading = true
-            resultNode = submitApiRequest(req, "favoriteToggle")
-            if isValid(resultNode)
-              m.favoriteResultNode = resultNode
-              m.pendingFavoriteButton = favoriteButton
-              m.pendingFavoriteNewState = newState
-              m.favoriteResultNode.observeField("isDone", m.port)
-            else
-              ' Pool not ready — fall back to fire-and-forget
-              SubmitSideEffect(req)
-              favoriteButton.isButtonSelected = newState
-              favoriteButton.isLoading = false
-            end if
+          ' Delegate to the active screen's render-thread method (callFunc rendezvouses
+          ' to the render thread), where the favorite toggle runs as a promise. This keeps
+          ' the async work off main.bs's god-loop. See ItemDetails.toggleFavorite().
+          if isValid(group)
+            group.callFunc("toggleFavorite")
           end if
         else if btn.id = "refreshButton"
           ' Trigger data refresh for the current screen
@@ -1162,37 +1141,6 @@ sub handleQuickPlayOutput(task as object)
       stopLoadingSpinner()
     end if
   end if
-end sub
-
-sub handleFavoriteToggleDone()
-  res = m.favoriteResultNode.result
-  m.favoriteResultNode.unobserveField("isDone")
-  m.favoriteResultNode = invalid
-
-  ' Debug error injection — compiled out in production (bs_const=debug=false)
-  #if debug
-    if isValid(m.global.debug) and m.global.debug.shouldForceFavoriteFail
-      res = { ok: false }
-    end if
-  #end if
-
-  if isValid(res) and res.ok
-    if isValid(m.pendingFavoriteButton)
-      m.pendingFavoriteButton.isButtonSelected = m.pendingFavoriteNewState
-    end if
-  else
-    ' Revert button to original state on failure
-    if isValid(m.pendingFavoriteButton)
-      m.pendingFavoriteButton.isButtonSelected = not m.pendingFavoriteNewState
-    end if
-    displayToast(translate(translationKeys.ErrorFailedToUpdateFavorite), "error")
-  end if
-
-  if isValid(m.pendingFavoriteButton)
-    m.pendingFavoriteButton.isLoading = false
-  end if
-  m.pendingFavoriteButton = invalid
-  m.pendingFavoriteNewState = invalid
 end sub
 
 sub handleWatchedToggleDone()

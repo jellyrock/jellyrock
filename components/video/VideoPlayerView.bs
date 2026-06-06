@@ -1,6 +1,7 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
@@ -134,8 +135,6 @@ sub init()
   m.channelListLoaded = isLiveTvPlayback() and m.global.queueManager.callFunc("getCount") > 1
 
   m.checkedForNextEpisode = false
-  m.getNextEpisodeTask = createObject("roSGNode", "GetNextEpisodeTask")
-  m.getNextEpisodeTask.observeField("nextEpisodeData", "onNextEpisodeDataLoaded")
 
   constants = m.global.constants
 
@@ -921,15 +920,49 @@ sub onContentChange()
   m.top.observeField("position", "onPositionChanged")
 end sub
 
-sub onNextEpisodeDataLoaded()
+' Fetches the current + next episode (Limit 2) to decide whether the Next
+' Episode button should be enabled. Render-thread promise — replaces the former
+' GetNextEpisodeTask, a pure-fetch Task that existed only to move one fetchRes
+' off the render thread (Phase-3a collapse; canonical example in docs/dev/promises.md).
+sub fetchNextEpisode()
+  ' Claim the check up front: "playing" fires on every resume/seek, so this guards
+  ' against a duplicate in-flight request (a reused requestId is a pool-contract bug).
+  ' The catch path clears it again so a transient failure can retry — matching the
+  ' old Task, which left the flag clear whenever the fetch never completed.
   m.checkedForNextEpisode = true
 
-  m.top.observeField("position", "onPositionChanged")
+  req = GetApi().BuildGetEpisodesRequest(m.top.showID, {
+    StartItemId: m.top.id,
+    Limit: 2
+  })
+  promises.chain(fetchAsync(req, "nextEpisode-" + m.top.id)).then(sub(res as object)
+    ' Any HTTP response lands here (incl. 4xx/5xx). Only a 2xx body tells us
+    ' about the next episode; a non-ok response falls through to retry, just
+    ' like the old Task, which only acted when res.ok.
+    if not res.ok
+      onNextEpisodeFetchFailed()
+      return
+    end if
 
-  ' If there is no next episode, disable next episode button
-  if m.getNextEpisodeTask.nextEpisodeData.Items.count() <> 2
-    m.nextupbuttonseconds = 0
-  end if
+    m.top.observeField("position", "onPositionChanged")
+
+    ' BuildGetEpisodesRequest(Limit 2) returns [current, next]; a count other
+    ' than 2 means there is no next episode, so disable the Next Episode button.
+    if not (isValid(res.json) and isValid(res.json.Items) and res.json.Items.count() = 2)
+      m.nextupbuttonseconds = 0
+    end if
+  end sub).catch(sub(err as object)
+    ' Transport failure / timeout (see the error contract) — never completed,
+    ' so allow a retry on the next "playing" transition.
+    onNextEpisodeFetchFailed()
+    m.log.warn("next-episode fetch failed", err.reason)
+  end sub)
+end sub
+
+' Re-arms the next-episode check after a fetch that never produced a usable
+' response, so a later "playing" transition retries it.
+sub onNextEpisodeFetchFailed()
+  m.checkedForNextEpisode = false
 end sub
 
 ' Check if a VideoNotification is visually present (including during fade-out animation)
@@ -1402,12 +1435,8 @@ sub onState()
   else if m.top.state = "playing"
     stopLoadingSpinner()
     ' Check if next episode is available
-    if isValid(m.top.showID)
-      if m.top.showID <> "" and not m.checkedForNextEpisode and m.top.content.contenttype = 4
-        m.getNextEpisodeTask.showID = m.top.showID
-        m.getNextEpisodeTask.videoID = m.top.id
-        m.getNextEpisodeTask.control = "RUN"
-      end if
+    if isValid(m.top.showID) and m.top.showID <> "" and not m.checkedForNextEpisode and m.top.content.contenttype = 4
+      fetchNextEpisode()
     end if
 
     if m.isPlayReported = false
@@ -1818,12 +1847,6 @@ sub onDestroy()
     m.LoadMetaDataTask.control = "STOP"
     m.LoadMetaDataTask.unobserveField("content")
     m.LoadMetaDataTask = invalid
-  end if
-
-  if isValid(m.getNextEpisodeTask)
-    m.getNextEpisodeTask.control = "STOP"
-    m.getNextEpisodeTask.unobserveField("nextEpisodeData")
-    m.getNextEpisodeTask = invalid
   end if
 
   if isValid(m.liveTvRefreshTask)
