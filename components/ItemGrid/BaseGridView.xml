@@ -90,5 +90,6 @@
     <field id="gridTitles" type="string" />
     <field id="currentView" type="string" value="" />
     <function name="getItemFlatIndex" />
+    <function name="loadFilters" />
   </interface>
 </component>
