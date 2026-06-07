@@ -98,6 +98,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `components/ItemDetails.bs`, `source/main.bs`
 - **issue**: Single-shot event idiom — unfamiliar to first-time readers. See `user-journey.md` for the canonical explanation.
 
+#### `quickplay-action-vocabulary`
+
+- **area**: [`components/tasks/QuickPlayTask.bs`](../../components/tasks/QuickPlayTask.bs) (`executeQuickPlay` dispatch), [`source/main.bs`](../../source/main.bs) (`quickPlayNode` + `playButton` action construction).
+- **issue**: The `QuickPlayTask` action is an ad-hoc magic string overloading operation (`playAll`) + item type, built by call-site concatenation (`"playAll" + itemContent.type`) and `LCase(itemNode.type)`. Both producers emit the raw lowercased Jellyfin type, but the dispatch was hand-keyed in an invented "friendly" vocabulary (`album`/`artist`, `playallalbum`/`playallartist`) that **nothing produces** — Jellyfin has no `Album`/`Artist` type, only `MusicAlbum`/`MusicArtist`. The Play All path matched none of its keys and silently failed (#629, fixed by rekeying the two Play All branches to the canonical `playallmusic*` spelling). The quickplay path still carries the dead `album`/`artist` aliases at `executeQuickPlay` (alongside the live `musicalbum`/`musicartist`), so the divergent vocabulary persists where it's currently harmless.
+- **direction**: Collapse the remaining dead `album`/`artist` aliases to the canonical vocabulary and document the convention — **dispatch key = `LCase(item.type)`; the operation prefix (`playAll`) is a literal**. A `// no bare Album/Artist type exists in Jellyfin` note at the dispatch keeps it from being reinvented. Structured-action (separate `operation` + `itemType` fields with a 2-D lookup) and enum/const keys were **considered and rejected**: the failure mode is producer/consumer vocabulary *mismatch*, not call-site *divergence* (both call sites already agree), so a canonical-vocabulary convention plus the existing unmatched-action runtime guard (`m.log.error` fallthrough) covers it without the coordination machinery — convention over mechanism. Kept out of #629's PR because it touches the working quickplay path.
+
 #### `loginflow-goto-retry`
 
 - **area**: `source/showScenes.bs`

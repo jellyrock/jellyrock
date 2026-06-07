@@ -121,6 +121,7 @@ CommonJS
 config
 Config
 configs
+const
 ContentNode
 coord
 coords
@@ -196,6 +197,7 @@ ESM-native
 fader
 fallbacks
 Fallbacks
+fallthrough
 fast-decay
 ffmpeg
 ffmpeg-tagged
@@ -273,6 +275,7 @@ JSONL
 Keep-a-Changelog
 last-checked
 last-updated
+lowercased
 lifecycle
 lifecycle.
 Lifecycle
@@ -394,6 +397,7 @@ refetching
 regen
 Re-init
 rekey
+rekeying
 remuxing
 renderer
 renderers
