@@ -1,3 +1,7 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
@@ -34,6 +38,12 @@ sub init()
   ' Track which program IDs have been fully loaded to avoid redundant API requests.
   ' Used instead of a .fullyLoaded field on the (immutable) JellyfinBaseItem node.
   m.fullyLoadedProgramIds = {}
+
+  ' Generation guard for the program-details render-thread promise. Bumped whenever the
+  ' grid is rebuilt (filter/search reset) or a newer fetch fires, so a slow earlier result
+  ' can't ReplaceChild a cell the user scrolled past / a grid that's been torn down. Mirrors
+  ' ItemDetails.checkTrailerAvailability's m.trailerCheckSeq (Phase-3b staleness guard).
+  m.programDetailsSeq = 0
 
   ' Guard: onChange handlers must not start tasks before startLoading() configures paging
   m.loadingInitialized = false
@@ -72,9 +82,9 @@ sub channelFilterSet()
   if isValid(m.top.filter) and m.LoadChannelsTask.filter <> m.top.filter
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
-    ' Stop in-flight schedule/program tasks — their data belongs to the old filter
+    ' Stop in-flight schedule task + invalidate program-detail fetch — their data belongs to the old filter
     if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
-    if isValid(m.LoadProgramDetailsTask) and m.LoadProgramDetailsTask.state = "run" then m.LoadProgramDetailsTask.control = "stop"
+    m.programDetailsSeq += 1 ' invalidate any in-flight program-detail fetch — it belongs to the old grid
 
     ' Reset all state for fresh filter
     m.LoadChannelsTask.startIndex = 0
@@ -100,9 +110,9 @@ sub channelsearchTermSet()
     m.top.searchTerm = ""
     m.LoadChannelsTask.searchTerm = ""
 
-    ' Stop in-flight schedule/program tasks — their data belongs to the old search
+    ' Stop in-flight schedule task + invalidate program-detail fetch — their data belongs to the old search
     if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
-    if isValid(m.LoadProgramDetailsTask) and m.LoadProgramDetailsTask.state = "run" then m.LoadProgramDetailsTask.control = "stop"
+    m.programDetailsSeq += 1 ' invalidate any in-flight program-detail fetch — it belongs to the old grid
 
     ' Reset all state for fresh search
     m.LoadChannelsTask.startIndex = 0
@@ -117,9 +127,9 @@ sub channelsearchTermSet()
   else if isValid(m.top.searchTerm) and LCase(m.LoadChannelsTask.searchTerm) <> LCase(m.top.searchTerm)
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
-    ' Stop in-flight schedule/program tasks — their data belongs to the old search
+    ' Stop in-flight schedule task + invalidate program-detail fetch — their data belongs to the old search
     if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
-    if isValid(m.LoadProgramDetailsTask) and m.LoadProgramDetailsTask.state = "run" then m.LoadProgramDetailsTask.control = "stop"
+    m.programDetailsSeq += 1 ' invalidate any in-flight program-detail fetch — it belongs to the old grid
 
     ' Reset all state for fresh search
     m.LoadChannelsTask.startIndex = 0
@@ -167,12 +177,11 @@ sub onChannelsLoaded()
     m.scheduleGrid.showLoadingDataFeedback = false
     stopLoadingSpinner()
 
-    ' Create task instances only once — filter/search resets reuse them
+    ' Create task instances only once — filter/search resets reuse them.
+    ' Program details are loaded via a render-thread promise (loadProgramDetails), not a Task.
     if not isValid(m.LoadScheduleTask)
       m.LoadScheduleTask = createObject("roSGNode", "LoadScheduleTask")
       m.LoadScheduleTask.observeField("schedule", "onScheduleLoaded")
-      m.LoadProgramDetailsTask = createObject("roSGNode", "LoadProgramDetailsTask")
-      m.LoadProgramDetailsTask.observeField("programDetails", "onProgramDetailsLoaded")
     end if
 
     m.scheduleGrid.setFocus(true)
@@ -264,33 +273,64 @@ sub onProgramFocused()
   prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
 
   if isValid(prog) and not isValid(m.fullyLoadedProgramIds[prog.id])
-    m.LoadProgramDetailsTask.programId = prog.id
-    m.LoadProgramDetailsTask.channelIndex = m.scheduleGrid.programFocusedDetails.focusChannelIndex
-    m.LoadProgramDetailsTask.programIndex = m.scheduleGrid.programFocusedDetails.focusIndex
-    m.LoadProgramDetailsTask.control = "RUN"
+    loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
   end if
 
   m.detailsPane.programDetails = prog
 end sub
 
-' Update the Program Details with full information
-sub onProgramDetailsLoaded()
-  if not isValid(m.LoadProgramDetailsTask.programDetails) then return
+' Fetch full program details for a focused grid cell and swap the lightweight schedule
+' item for the fully-loaded node. Render-thread promise — replaces the former
+' LoadProgramDetailsTask, a pure-fetch Task consumed via createObject + observeField
+' (Phase-3a collapse; canonical in docs/dev/promises.md). The transform here is a SINGLE
+' item (transformBaseItem, not array processing), so it's render-thread-acceptable.
+sub loadProgramDetails(programId as string, channelIndex as integer, programIndex as integer)
+  ' Bump the generation so this fetch's result is the only one allowed to touch the grid.
+  ' A grid rebuild (filter/search reset) also bumps it, dropping any earlier in-flight result.
+  m.programDetailsSeq += 1
 
-  programDetails = m.LoadProgramDetailsTask.programDetails
-  channel = m.scheduleGrid.content.GetChild(programDetails.channelIndex)
+  req = GetApi().BuildGetLiveTvProgramRequest(programId, { UserId: m.global.user.id })
 
-  ' Replace the lightweight schedule item in the TimeGrid with the fully-loaded node
-  channel.ReplaceChild(programDetails.item, programDetails.programIndex)
+  ' Carry the target grid cell + generation through the promise context (no closures in BS) —
+  ' these used to ride as Task fields echoed back in the programDetails wrapper.
+  context = { channelIndex: channelIndex, programIndex: programIndex, seq: m.programDetailsSeq }
+  promises.chain(fetchAsync(req, "liveTvProgram-" + programId), context).then(sub(res as object, ctx as object)
+    if ctx.seq <> m.programDetailsSeq then return ' stale — grid rebuilt or focus moved on
 
-  ' Track this program as fully loaded to prevent redundant API requests on re-focus
-  m.fullyLoadedProgramIds[programDetails.item.id] = true
+    ' Bail on a non-ok response / invalid body (the old Task set programDetails = {} here).
+    if not (res.ok and isValid(res.json))
+      m.scheduleGrid.showLoadingDataFeedback = false
+      return
+    end if
 
-  ' Update the details pane immediately so the user sees full program data
-  m.detailsPane.programDetails = programDetails.item
+    transformer = JellyfinDataTransformer()
+    node = transformer.transformBaseItem(res.json)
 
-  m.LoadProgramDetailsTask.programDetails = invalid
-  m.scheduleGrid.showLoadingDataFeedback = false
+    ' Set hdSmallIconUrl for the TimeGrid recording indicator (ContentNode built-in read by
+    ' Roku TimeGrid). Must be set here because the ReplaceChild below swaps the lightweight
+    ' schedule item for this fully-loaded node, so the indicator must be carried over.
+    if isValidAndNotEmpty(node.timerId)
+      node.hdsmalliconurl = "pkg:/images/red.png"
+    else
+      node.hdsmalliconurl = ""
+    end if
+
+    ' Replace the lightweight schedule item in the TimeGrid with the fully-loaded node
+    channel = m.scheduleGrid.content.GetChild(ctx.channelIndex)
+    channel.ReplaceChild(node, ctx.programIndex)
+
+    ' Track this program as fully loaded to prevent redundant API requests on re-focus
+    m.fullyLoadedProgramIds[node.id] = true
+
+    ' Update the details pane immediately so the user sees full program data
+    m.detailsPane.programDetails = node
+    m.scheduleGrid.showLoadingDataFeedback = false
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.seq <> m.programDetailsSeq then return ' stale — a newer fetch owns the cell now
+    ' Transport failure / timeout (see the error contract) — the request never completed.
+    m.log.warn("program-details fetch failed", err.reason)
+    m.scheduleGrid.showLoadingDataFeedback = false
+  end sub)
 end sub
 
 
@@ -400,10 +440,8 @@ sub onRecordOperationDone()
     ' reload the entire grid...
     channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
     prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
-    m.LoadProgramDetailsTask.programId = prog.id
-    m.LoadProgramDetailsTask.channelIndex = m.scheduleGrid.programFocusedDetails.focusChannelIndex
-    m.LoadProgramDetailsTask.programIndex = m.scheduleGrid.programFocusedDetails.focusIndex
-    m.LoadProgramDetailsTask.control = "RUN"
+    ' Re-fetch unconditionally — the program's recording state just changed.
+    loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
   end if
 end sub
 
@@ -451,11 +489,8 @@ sub onDestroy()
     m.LoadScheduleTask = invalid
   end if
 
-  if isValid(m.LoadProgramDetailsTask)
-    m.LoadProgramDetailsTask.unobserveField("programDetails")
-    m.LoadProgramDetailsTask.control = "STOP"
-    m.LoadProgramDetailsTask = invalid
-  end if
+  ' Program details now load via a render-thread promise; the auto-abandon BSC plugin injects
+  ' abandonApiPromises() here, so a late fetch can't fire into this destroyed component.
 
   if isValid(m.RecordProgramTask)
     m.RecordProgramTask.unobserveField("recordOperationDone")
