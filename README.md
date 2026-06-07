@@ -9,7 +9,7 @@
 [![API docs](https://img.shields.io/badge/API%20docs-purple "API docs")](https://jellyrock.github.io/api-docs/)
 <!-- [![Translation Status](https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-roku/svg-badge.svg "Translation Status")](https://translate.jellyfin.org/projects/jellyfin/jellyfin-roku/?utm_source=widget) -->
 
-JellyRock is a Jellyfin client for Roku devices with a focus on stability and UX. Originally forked from jellyfin-roku [v2.2.5](https://github.com/jellyfin-archive/jellyfin-roku-legacy/releases/tag/v2.2.5).
+JellyRock is a fast, fluid Jellyfin client for Roku, focused on stability, performance, and a polished UX. Direct Play in original quality, a redesigned playback OSD, deep theming with custom hex colors, and 99 built-in language translations. Free and open-source, no ads, no tracking. Bring your own Jellyfin server.
 
 ## Changelog
 
@@ -50,6 +50,14 @@ All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.m
   <a href="docs/screenshots/trickplay.png" target="_blank" title="Trickplay">
     <img src="docs/screenshots/trickplay.png" width="400" alt="Trickplay" />
   </a>
+
+## History
+
+From 2019 to 2025, I worked on the original Jellyfin client for Roku as a member of the Jellyfin team, and was its sole maintainer for part of that time.
+
+That client is now archived as [jellyfin-roku-legacy](https://github.com/jellyfin-archive/jellyfin-roku-legacy). For its [v3 release](https://github.com/jellyfin/jellyfin-roku/releases/tag/3.0.0), the [official client](https://github.com/jellyfin/jellyfin-roku) adopted a different fork as its new base, one that had branched from the original back at v2.1.4.
+
+JellyRock continues the original's own line. I forked it at [v2.2.5](https://github.com/jellyfin-archive/jellyfin-roku-legacy/releases/tag/v2.2.5), the last release I'd personally vetted as stable, and have rebuilt and refined it independently ever since, cherry-picking select fixes from later commits along the way.
 
 ## Sideload / Beta Test
 
