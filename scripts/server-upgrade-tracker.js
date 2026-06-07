@@ -46,10 +46,12 @@
 // CLI:
 //   node scripts/server-upgrade-tracker.js [--root <dir>] [--signals <path>]
 //        [--latest <version>] [--floor <version>] [--to-file <spec.json>]
-//        [--body-out <file>]
-//     --latest   override the live upstream fetch (workflow_dispatch / tests)
-//     --to-file  build the `to` fingerprint from a local spec (offline; tests)
-//     --body-out write the rendered issue body markdown to this path
+//        [--tracker-issues <file.json>] [--body-out <file>]
+//     --latest         override the live upstream fetch (workflow_dispatch / tests)
+//     --to-file        build the `to` fingerprint from a local spec (offline; tests)
+//     --tracker-issues gh JSON ([{title,state}]) of the per-version digests; used
+//                      to derive "mechanically cleared through" for the body header
+//     --body-out       write the rendered issue body markdown to this path
 //   → prints decision JSON: { action, version, acknowledged, floor,
 //                             needsInvestigation, title, degraded, error }
 //     action ∈ { none | clean | triage }
@@ -68,7 +70,13 @@ import {
   readAvailability,
 } from './generate/findings-candidates.js';
 import { buildFingerprint } from './generate/spec-fingerprint.js';
-import { digestTitle, renderDigestBody, DIGEST_LABEL, TRIAGING_LABEL } from './server-upgrade.js';
+import {
+  digestTitle,
+  renderDigestBody,
+  clearedThroughFrom,
+  DIGEST_LABEL,
+  TRIAGING_LABEL,
+} from './server-upgrade.js';
 
 const require = createRequire(import.meta.url);
 const { fetchSpec } = require('./lib/spec-fetch.cjs');
@@ -220,8 +228,28 @@ async function main() {
 
   const action = decideDigestAction(versionState, report);
   const title = digestTitle(latestStable);
+  // How far prior releases have been resolved (clean auto-close or human triage),
+  // derived from the per-version digest issues the workflow lists and passes in.
+  // The CI surface never writes the journals, so the `acknowledged` anchor trails
+  // the newest release; `clearedThrough` is what lets the digest report that
+  // honestly ("cleared through X") instead of reading as a stale baseline.
+  let trackerIssues = [];
+  if (flags['tracker-issues']) {
+    try {
+      trackerIssues = JSON.parse(readFileSync(flags['tracker-issues'], 'utf8'));
+    } catch (err) {
+      console.error(`server-upgrade-tracker: could not read --tracker-issues — ${err.message}`);
+    }
+  }
+  const clearedThrough = clearedThroughFrom(trackerIssues, latestStable);
   // Render the per-version digest body (mechanical checklist, or the clean record).
-  const body = renderDigestBody({ version: latestStable, acknowledged, floor, report });
+  const body = renderDigestBody({
+    version: latestStable,
+    acknowledged,
+    floor,
+    report,
+    clearedThrough,
+  });
   if (flags['body-out']) {
     writeFileSync(flags['body-out'], body);
     console.error(`server-upgrade-tracker: digest body → ${flags['body-out']}`);
@@ -230,6 +258,7 @@ async function main() {
     action,
     version: latestStable,
     acknowledged,
+    clearedThrough,
     floor,
     needsInvestigation: report ? (report.counts?.needsInvestigation ?? 0) : null,
     title,

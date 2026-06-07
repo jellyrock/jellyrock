@@ -83,13 +83,29 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
+      # List every per-version digest ONCE (any state). Feeds two consumers:
+      #   1) the render step below (--tracker-issues) → the "Mechanically cleared
+      #      through" header line, so a trailing diff anchor reads as "cleared up
+      #      to here" rather than a stale baseline.
+      #   2) the dedup step further down (jq title-match) → THIS version's digest.
+      # Net gh calls are unchanged vs. the old per-step list — just hoisted earlier
+      # and shared. Runs after the label-ensure step so the label always exists.
+      - name: List tracker digests
+        run: |
+          set -euo pipefail
+          gh issue list --label server-upgrade:tracker --state all \
+            --json number,title,state,labels --limit 100 > /tmp/digests.json
+          echo "Listed $(jq length /tmp/digests.json) tracker digest(s)."
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Detect release + render digest body
         id: detect
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
           set -euo pipefail
-          ARGS=(--body-out /tmp/digest-body.md)
+          ARGS=(--body-out /tmp/digest-body.md --tracker-issues /tmp/digests.json)
           if [ -n "$VERSION" ]; then
             ARGS+=(--latest "$VERSION")
           fi
@@ -108,11 +124,11 @@ jobs:
         if: steps.detect.outputs.action != 'none'
         run: |
           set -euo pipefail
-          # List all tracker-labelled digests and match the title EXACTLY in jq —
-          # the title carries brackets + an em-dash that gh's --search would mangle.
-          MATCH=$(gh issue list --label server-upgrade:tracker --state all \
-            --json number,title,state,labels --limit 100 \
-            | jq -c --arg t "$TITLE" 'map(select(.title == $t)) | .[0] // {}')
+          # Match the title EXACTLY in jq against the shared /tmp/digests.json from
+          # the "List tracker digests" step — the title carries brackets + an
+          # em-dash that gh's --search would mangle, and reusing the file avoids a
+          # second list call.
+          MATCH=$(jq -c --arg t "$TITLE" 'map(select(.title == $t)) | .[0] // {}' /tmp/digests.json)
           NUM=$(echo "$MATCH" | jq -r '.number // ""')
           STATE=$(echo "$MATCH" | jq -r '.state // ""')
           TRIAGED=$(echo "$MATCH" | jq -r '[.labels[]?.name] | index("server-upgrade:triaging") != null')
@@ -121,7 +137,7 @@ jobs:
           echo "triaged=$TRIAGED" >> "$GITHUB_OUTPUT"
           echo "Digest for this version: ${NUM:-none} (state=${STATE:-n/a}, triaged=$TRIAGED)"
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # No gh call here anymore (reads the shared /tmp/digests.json); only TITLE needed.
           TITLE: ${{ steps.detect.outputs.title }}
 
       # triage: open or refresh the digest until it's been triaged, then hand off.

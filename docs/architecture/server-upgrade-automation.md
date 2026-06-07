@@ -26,7 +26,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-06-02
+last-reviewed: 2026-06-07
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -260,6 +260,36 @@ reproducibility without repo bloat.
   legacy-endpoint allowlist that would drift.
 - **AST extraction, not grep**, for the manifest — durable against formatting and
   ~95% complete vs grep's ~80%.
+- **Diff anchor vs. resolved-through are decoupled** (the `latest_acknowledged`
+  baseline-gap fix; [issue #632](https://github.com/jellyrock/jellyrock/issues/632)).
+  `latest_acknowledged` is two things that diverge once releases auto-resolve
+  clean: (1) the **diff anchor** — the `from` version `computeReport` diffs
+  against, which must have a committed fingerprint and is *safer* the wider it is
+  (the diff is point-to-point, so a trailing anchor costs nothing); and (2) the
+  **review cursor** that should drive the "needs attention" nag. A mechanically-
+  clean release auto-closes its digest **without** bumping `latest_acknowledged`
+  (CI never writes the journals — the only journal writer is the post-merge
+  `journal-sync.yml`), so the anchor legitimately trails the newest release. We
+  keep the anchor frozen at the last *deep* review (a real `/server-upgrade`
+  triage, which commits a fresh fingerprint + bumps the row) and **derive**
+  "resolved-through" from the digest issues rather than persisting it:
+  - The CI tracker passes the digest list to the renderer (`--tracker-issues`),
+    which computes `clearedThroughFrom()` and adds a **"Mechanically cleared
+    through `<X>`"** header line — so a trailing anchor reads as progress, not
+    staleness. The "Acknowledged baseline" header row was renamed **"Diff
+    baseline (last full review)"** to match.
+  - The `/catchup` aggregator's staleness for the `jellyfin-server-stable` row
+    is now **"is there an OPEN tracker digest?"** (`signalStaleness()` in
+    [`scripts/lib/signal-staleness.cjs`](../../scripts/lib/signal-staleness.cjs),
+    fed by a one-shot `gh` query; offline → falls back to the string compare).
+    Clean releases close their digest, so they no longer false-nag; only a
+    candidate-bearing release leaves an open digest, and the `/catchup` + `/focus`
+    banners route it to `/server-upgrade #N`. Rejected: having CI commit the
+    machine-built fingerprint + bump the row (full auto-acknowledge) — it adds a
+    *silent, self-perpetuating* baseline-corruption path (a transient partial
+    spec fetch → false "clean" → bad fingerprint baked in as the trusted anchor),
+    crosses the "CI never writes journals" + "committed fingerprint = a human
+    reviewed it" invariants, and buys only a cosmetically-tidier file value.
 
 ## Pre-release channels (RC + unstable/master)
 

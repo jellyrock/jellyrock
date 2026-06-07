@@ -51,6 +51,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normalizeSpecPath } from './lib/spec-path.cjs';
+import { compareSemverBase } from './lib/signals-fetch.cjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -581,14 +582,44 @@ export function digestCandidateLine(candidate) {
   return `- [ ] **${titleIdentity(candidate)}**${detail}${siteNote(candidate.appUsage?.sites)}`;
 }
 
-function digestHeader(version, acknowledged, floor) {
-  return [
+// The highest version among CLOSED tracker digests strictly BELOW `version` —
+// i.e. how far the mechanical pass has cleared (or a human has triaged) past the
+// diff anchor. A clean release auto-closes its digest WITHOUT bumping the
+// `latest_acknowledged` anchor (CI never writes the journals), so the anchor
+// legitimately trails the newest release; this is what lets the digest say
+// "cleared through X" instead of reading as stale. `issues` is the gh JSON
+// (`[{ title, state }]`); titles that don't carry a version token are ignored.
+export function clearedThroughFrom(issues, version) {
+  if (!Array.isArray(issues) || !version) return null;
+  let best = null;
+  for (const iss of issues) {
+    const state = String(iss?.state ?? '').toUpperCase();
+    if (state !== 'CLOSED') continue;
+    const m = typeof iss?.title === 'string' && iss.title.match(/Jellyfin (\d+\.\d+\.\d+)/);
+    if (!m) continue;
+    const v = m[1];
+    if (compareSemverBase(v, version) >= 0) continue; // at/after the current release
+    if (best === null || compareSemverBase(v, best) > 0) best = v;
+  }
+  return best;
+}
+
+function digestHeader(version, acknowledged, floor, clearedThrough) {
+  const rows = [
     '| | Version |',
     '| --- | --- |',
     `| This release | \`${version}\` |`,
-    `| Acknowledged baseline | \`${acknowledged ?? 'unknown'}\` |`,
-    `| Supported floor | \`${floor ?? 'unknown'}\` |`,
-  ].join('\n');
+    `| Diff baseline (last full review) | \`${acknowledged ?? 'unknown'}\` |`,
+  ];
+  // Only surface "cleared through" when it's meaningfully ahead of the anchor —
+  // otherwise it just restates the baseline. This is the line that makes a
+  // trailing anchor read as "we've mechanically cleared up to here" rather than
+  // "we're behind".
+  if (clearedThrough && clearedThrough !== acknowledged) {
+    rows.push(`| Mechanically cleared through | \`${clearedThrough}\` |`);
+  }
+  rows.push(`| Supported floor | \`${floor ?? 'unknown'}\` |`);
+  return rows.join('\n');
 }
 
 // The digest counts mix THREE different axes, which a single line conflates into
@@ -662,11 +693,11 @@ function digestLegend() {
 // The MECHANICAL digest body the CI tracker opens with (zero judgment). A clean
 // report (0 needsInvestigation) renders the "nothing touches us" record — the
 // open-then-close audit trail. Otherwise renders the candidate checklist.
-export function renderDigestBody({ version, acknowledged, floor, report }) {
+export function renderDigestBody({ version, acknowledged, floor, report, clearedThrough }) {
   const counts = report?.counts ?? null;
   const candidates = investigationCandidates(report ?? {});
   const lines = [];
-  lines.push(digestHeader(version, acknowledged, floor));
+  lines.push(digestHeader(version, acknowledged, floor, clearedThrough));
   lines.push('');
 
   if (!counts) {
@@ -740,12 +771,12 @@ export function renderDigestBody({ version, acknowledged, floor, report }) {
 // candidate checked off with its disposition + sub-issue link (file) or inline
 // rationale (skip/monitor). `results` is executePlan's per-action result list.
 export function renderDigestVerdicts(
-  { version, acknowledged, floor },
+  { version, acknowledged, floor, clearedThrough },
   results,
   { triagedOn } = {},
 ) {
   const lines = [];
-  lines.push(digestHeader(version, acknowledged, floor));
+  lines.push(digestHeader(version, acknowledged, floor, clearedThrough));
   lines.push('');
   lines.push(
     `**Triaged by \`/server-upgrade\`${triagedOn ? ` on ${triagedOn}` : ''}** (${acknowledged} → ${version}).`,

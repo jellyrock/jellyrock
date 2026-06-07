@@ -40,7 +40,23 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { readFrontmatter, getLastUpdated } = require('./lib/frontmatter.cjs');
-const { fetchJellyfinVersions, fetchRokuOs } = require('./lib/signals-fetch.cjs');
+const {
+  fetchJellyfinVersions,
+  fetchRokuOs,
+  compareSemverBase,
+} = require('./lib/signals-fetch.cjs');
+const { signalStaleness, STABLE_SLUG } = require('./lib/signal-staleness.cjs');
+
+// The server-upgrade per-version digest labels. Single-sourced in
+// scripts/server-upgrade.js (DIGEST_LABEL / TRIAGING_LABEL); duplicated here as
+// string literals to avoid importing that whole module into the aggregator.
+const STABLE_DIGEST_LABEL = 'server-upgrade:tracker';
+const STABLE_TRIAGING_LABEL = 'server-upgrade:triaging';
+
+// The stable row's open-digest context, queried once in run('signals') and reused
+// by maintainSignals()'s post-fetch staleness recompute. { stableDigest } where
+// stableDigest is an object (open) / null (none) / undefined (offline → fallback).
+let stableDigestCtx = {};
 
 // Resolve sibling script paths relative to THIS script's location, not cwd.
 // Lets the aggregator be invoked from any working directory (real repo, test
@@ -386,17 +402,37 @@ run('progress', () => {
   };
 });
 
-// Stale = upstream moved past the version the user has acknowledged.
-// `current` is static prose about JellyRock's posture, NOT a version pin —
-// the close-loop counterpart to `latest_upstream` is `latest_acknowledged`,
-// bumped via `/done <slug>`. A row is banner-worthy when:
-// - status is `watching` (action_pending = already triaged; completed = done).
-// - latest_upstream != latest_acknowledged (raw string compare; placeholder
-//   strings like "(no RC in flight)" are equal to themselves and don't fire).
-function isSignalStale(row) {
-  if (row.status !== 'watching') return false;
-  if (!row.latest_upstream || !row.latest_acknowledged) return false;
-  return row.latest_upstream !== row.latest_acknowledged;
+// Query the live open server-upgrade digest (if any) for the stable row's
+// staleness. Returns { number, triaging } for the newest-versioned open digest,
+// null when none are open, or undefined when gh is unavailable (so staleness
+// falls back to the string compare). Never throws.
+function fetchStableDigest() {
+  if (NO_GH) return undefined;
+  try {
+    const out = exec(
+      `gh issue list --label ${STABLE_DIGEST_LABEL} --state open ` +
+        `--json number,title,labels --limit 20`,
+    );
+    const open = JSON.parse(out);
+    if (!Array.isArray(open) || open.length === 0) return null;
+    // ≤1 open digest is the norm; if several, pick the newest by title version.
+    const versioned = open
+      .map((iss) => {
+        const m = typeof iss.title === 'string' && iss.title.match(/Jellyfin (\d+\.\d+\.\d+)/);
+        return m ? { iss, version: m[1] } : { iss, version: null };
+      })
+      .sort((a, b) => {
+        if (a.version && b.version) return compareSemverBase(b.version, a.version);
+        return a.version ? -1 : 1;
+      });
+    const top = versioned[0].iss;
+    return {
+      number: top.number,
+      triaging: (top.labels ?? []).some((l) => l.name === STABLE_TRIAGING_LABEL),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 run('signals', () => {
@@ -444,8 +480,17 @@ run('signals', () => {
   }
   finalize();
 
+  // Query the stable row's open digest ONCE; reused here and in the post-fetch
+  // recompute inside maintainSignals(). Stored module-scoped so both passes agree.
+  stableDigestCtx = { stableDigest: fetchStableDigest() };
+
   for (const row of rows) {
-    row.stale = isSignalStale(row);
+    row.stale = signalStaleness(row, stableDigestCtx);
+    // Surface the open digest on the stable row so /catchup + /focus can route to
+    // `/server-upgrade #N` instead of `/done`.
+    if (row.slug === STABLE_SLUG && stableDigestCtx.stableDigest) {
+      row.digest = stableDigestCtx.stableDigest;
+    }
   }
   const stale_count = rows.filter((r) => r.stale).length;
   const action_pending_count = rows.filter((r) => r.status === 'action_pending').length;
@@ -627,8 +672,8 @@ async function maintainSignals() {
     if (updated !== content) writeFileSync(SIGNALS_PATH, updated);
   }
 
-  // Recompute stale + counts after updates.
-  for (const row of state.signals.rows) row.stale = isSignalStale(row);
+  // Recompute stale + counts after updates (reusing the digest ctx from run('signals')).
+  for (const row of state.signals.rows) row.stale = signalStaleness(row, stableDigestCtx);
   state.signals.stale_count = state.signals.rows.filter((r) => r.stale).length;
 
   if (Object.keys(fetchErrors).length > 0) {

@@ -38,7 +38,7 @@ Build the candidate list from the JSON. Higher tier wins on tie; ties within a t
 | 1. Resume | Pending handoff | `handoffs.pending[]` (already sorted recent-first) | 2 | "Investigation paused mid-flight — resume from `.claude/handoffs/<name>` (<age_days>d ago)" |
 | 2. Blocked | Failed CI on this branch | `ci.current_branch_runs[]` where `conclusion != 'success'` | 1 | "CI run `<name>` <conclusion> (<relative createdAt>)" |
 | 2. Blocked | PR review requested | `prs.review_requested[]` | 1 | "#<N> waiting on your review since <relative updatedAt>" |
-| 3. Drift | Stale signal | `signals.rows[]` where `stale=true` | 1 | "`<slug>`: upstream moved <latest_acknowledged> → <latest_upstream>" |
+| 3. Drift | Stale signal | `signals.rows[]` where `stale=true` | 1 | row with `digest` set (stable, open triage digest): "`<slug>`: open release-triage digest #<digest.number>"; else "`<slug>`: upstream moved <latest_acknowledged> → <latest_upstream>" |
 | 3. Drift | Stale progress.md | `progress.days_since > 7 && progress.commits_since > 0` | 1 | "Cursor is <days_since>d stale, <commits_since> commit(s) since" |
 | 3. Drift | Schema-broken journal | `_errors.progress` / `_errors.signals` (non-null) | 1 | "Parser error in <file>: <msg>" |
 | 4. Hot | High-engagement bug | `issues.high_engagement_bugs[]` (top 1 by comments) | 1 | "#<N> — <title> (<comments> comments, last touched <relative>)" |
@@ -106,13 +106,21 @@ The downstream triage skill runs in the **same conversation**, so the preamble i
 
 ### Capture-shaped pick (Stale signal / Stale progress / Schema-broken journal)
 
-Give the exact `/done <slug>` or `/log followup` invocation with prefilled args. One line of context (why this matters now), then hand back. Example for "#4, the stale jellyfin-server-stable signal":
+Give the exact invocation with prefilled args. One line of context (why this matters now), then hand back. Routing depends on the row:
+
+- **`jellyfin-server-stable` with `row.digest` set** — a candidate-bearing release left an open triage digest (clean releases auto-close theirs and never reach this tier). Route to `/server-upgrade`; that triage is what advances the anchor. Example:
 
 ```markdown
-Upstream moved 10.11.8 → 10.11.9. Review the release notes first (https://github.com/jellyfin/jellyfin/releases/tag/v10.11.9), then:
+Release-triage digest #<row.digest.number> is open — the server-upgrade tracker found changes that intersect code we ship. Run `/server-upgrade` to investigate each candidate against real app usage (it edits the digest with verdicts and files sub-issues). Note: a mechanically-clean release would have auto-closed its digest, so this one genuinely needs eyes.
+```
 
-- If no JellyRock change needed: `/done jellyfin-server-stable` (bumps `latest_acknowledged` and clears the stale flag).
-- If a JellyRock change is needed: `/log signal jellyfin-server-stable` to flip `status` to `action_pending` first.
+- **Any other stale row** (RC, roku-os) — the close-loop string compare fired. Example:
+
+```markdown
+Upstream moved <latest_acknowledged> → <latest_upstream>. Review the release notes first, then:
+
+- If no JellyRock change needed: `/done <slug>` (bumps `latest_acknowledged` and clears the stale flag).
+- If a JellyRock change is needed: `/log signal <slug>` to flip `status` to `action_pending` first.
 ```
 
 ### Tech-debt momentum pick
