@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (server-upgrade) decouple diff anchor from resolved-through ([#634](https://github.com/jellyrock/jellyrock/pull/634))
 - (quickplay) key Play All dispatch on canonical Jellyfin item type ([#630](https://github.com/jellyrock/jellyrock/pull/630))
 - (playback) restore ts-first transcode container order in `getTranscodingProfiles` ([#620](https://github.com/jellyrock/jellyrock/pull/620))
 
