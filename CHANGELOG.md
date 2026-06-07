@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (promises) collapse LoadProgramDetailsTask to a render-thread promise (#551) ([#627](https://github.com/jellyrock/jellyrock/pull/627))
+- (promises) collapse the watched toggle to a render-thread promise ([#626](https://github.com/jellyrock/jellyrock/pull/626))
+- (login) collapse Branding + QuickConnect Tasks to render-thread promises ([#625](https://github.com/jellyrock/jellyrock/pull/625))
+
+### Changed
+
+- Adopt `@rokucommunity/promises` foundation + 3 reference migrations ([#624](https://github.com/jellyrock/jellyrock/pull/624))
+
 ### Fixed
 
 - (playback) restore ts-first transcode container order in `getTranscodingProfiles` ([#620](https://github.com/jellyrock/jellyrock/pull/620))
