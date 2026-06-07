@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- (quickplay) collapse dead album/artist dispatch aliases to canonical type ([#631](https://github.com/jellyrock/jellyrock/pull/631))
 - Adopt `@rokucommunity/promises` foundation + 3 reference migrations ([#624](https://github.com/jellyrock/jellyrock/pull/624))
 
 ### Fixed
