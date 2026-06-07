@@ -258,6 +258,7 @@ JavaScript
 jellyfin
 Jellyfin
 jellyfin-roku
+jellyfin-roku-legacy
 Jellyfin-pool
 Jellyfin's
 jellyfin-server-versioning
