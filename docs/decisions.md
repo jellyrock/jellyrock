@@ -187,6 +187,16 @@ When `optimizeAudioCodecListForSource` would strip every codec from a video tran
 
 The fallback is clamped to `{eac3, ac3}`. `dts` is excluded even though the setting offers it: the Jellyfin server emits no audio stream for a `dts` transcode target (its ffmpeg encoder is experimental — verified via `/Items/{id}/PlaybackInfo` probes against 10.11), so a `dts` fallback would itself re-trigger the empty-`AudioCodec` → `m3u8` server fallback that is issue #573. Both `eac3` and `ac3` are valid HLS audio targets in every video transcoding container (ts and mp4), so no per-container clamp is needed. Ruled out: the `aac` fallback (preserves no surround); honoring `dts` literally (unencodeable, re-triggers the bug).
 
+## decision-id: non-pool-http-stays-task-blocking
+
+**date**: 2026-06-06
+**status**: accepted
+**related-files**: components/tasks/FontDownloadTask.bs, components/captionTask.bs, components/config/ServerDiscoveryTask.bs, source/api/apiPromise.bs
+
+Resolves item **(c)** of the `two-async-model-split` tech-debt slug (the closed #551 promises umbrella): the three non-pool HTTP consumers — `FontDownloadTask` (fallback-font download), `captionTask` (VTT fetch), `ServerDiscoveryTask` (SSDP/client-discovery) — **stay as blocking Tasks**; JellyRock will **not** build a generic `roUrlTransfer`→promise wrapper distinct from the Jellyfin-pool `fetchAsync`. This is decided **now and independently** of the async/await trigger that governs the rest of the slug: items (a)/(b) are about render-thread/Task convergence over the pool, but these three are Task-thread datagram/binary/time-budgeted flows that `await fetchAsync` over the pool never touches, so they don't ride that re-open.
+
+Three reasons the wrapper has no payload. **(1) Wrong layer.** All three run on Task threads; `fetchAsync` is render-thread-only by design (its named-function `observeField` bridge only dispatches on the render thread), and Option A (`promise-native-interface-fetchres-exception`) deliberately keeps Task threads on blocking I/O. A wrapper would be a *second* async vocabulary — the rarely-needed `setMessagePort`/`wait2` dialect — exactly the fragmentation #551 set out to remove. **(2) Regression risk.** `captionTask` deliberately uses raw `roUrlTransfer` + `port.WaitMessage()` *specifically to avoid touching the shared `m` AA (unsynchronized across threads)* — `rr_Requests`' busy-poll raced the render thread's 100 ms caption timer and caused the `&hf3` crash. A promise wrapper reintroduces the registry-on-`m` + observer machinery that fix removed. **(3) Nothing to share.** The shapes don't rhyme: fonts = linear blocking probes + a binary `GetToFile` to disk the pool can't model; captions = single fetch + ContentNode bridge delivery; SSDP = `roDatagramSocket` multicast + a time-budgeted parallel `roUrlTransfer` fan-out. And none fit the auto-abandon plugin, which keys off `fetchAsync` in render-thread `onDestroy`. A wrapper would be either too thin to matter or a forced mold over three dissimilar flows, shipping a second async surface with no cancellation story for zero DX gain. Ruled out: a shared wrapper (above); per-consumer wrappers (strictly worse — three new surfaces, same crash risk, max vocabulary sprawl).
+
 ## decision-id: promise-native-interface-fetchres-exception
 
 **date**: 2026-06-05

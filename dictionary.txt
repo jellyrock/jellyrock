@@ -132,6 +132,7 @@ crowdsourced
 CSV
 CSVs
 Daniele
+datagram
 decision-shape
 decrypting
 dedup
@@ -292,6 +293,7 @@ markdownlint
 mixin
 Mixin
 MKV
+multicast
 multiline
 musicvideo
 namespace
