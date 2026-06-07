@@ -52,13 +52,13 @@ Both pass 1 and pass 2 use the `<lower>` SHA resolved in "Detect existing PR" ab
 
 ### Pass 1 — Tech-debt scan
 
-Invoke [`/tech-debt-scan`](../tech-debt-scan/SKILL.md) as a sub-agent (not inline) to keep its candidate-walk from polluting the /pr skill's context. Pass (substitute the resolved SHA for `<lower>`):
+Invoke [`/tech-debt-scan`](../tech-debt-scan/SKILL.md) as a sub-agent (not inline) to keep its candidate-walk from polluting the /pr skill's context. Spawn it with an explicit `model: sonnet` (matching `tech-debt-scan`'s own frontmatter pin) — a sub-agent with no model override inherits the *session* model, and if that session is a 1M-context model the spawn hits the "usage credits required for 1M context" gate and the pass fails. The tech-debt walk is a structured area-match + diff-propose task that sonnet handles correctly, so the explicit pin is the intended model, not a downgrade. Pass (substitute the resolved SHA for `<lower>`):
 
 ```
 Read .claude/skills/tech-debt-scan/SKILL.md and follow the steps; scope the changed-files set to `git diff <lower>..HEAD --name-only` so only file areas that became relevant since the last /pr render are considered; surface candidate slugs + ask about new debt but do NOT apply edits — return the proposed diff for the parent to confirm.
 ```
 
-**Anti-pattern: do not narrate "running the tech-debt scan sub-agent" while reading [`docs/architecture/tech-debt.md`](../../../docs/architecture/tech-debt.md) inline via `Read`.** That inline read IS the context-pollution this step is designed to prevent. If you find yourself about to call `Read` on `tech-debt.md` from inside `/pr`, stop and call `Task` with `subagent_type: general-purpose` instead. The sub-agent's job is to walk the entry list and return a diff; the parent's job is to surface that diff to the user. Never conflate the two — and never claim sub-agent invocation in narration when the JSONL will show a `Read` instead of a `Task` tool_use.
+**Anti-pattern: do not narrate "running the tech-debt scan sub-agent" while reading [`docs/architecture/tech-debt.md`](../../../docs/architecture/tech-debt.md) inline via `Read`.** That inline read IS the context-pollution this step is designed to prevent. If you find yourself about to call `Read` on `tech-debt.md` from inside `/pr`, stop and call `Task` with `subagent_type: general-purpose` AND `model: sonnet` instead. The sub-agent's job is to walk the entry list and return a diff; the parent's job is to surface that diff to the user. Never conflate the two — and never claim sub-agent invocation in narration when the JSONL will show a `Read` instead of a `Task` tool_use.
 
 If the sub-agent returns proposed diffs (existing slugs to remove, new slugs to add), surface them to the user one at a time with `apply / skip / edit` per candidate. Apply via `Edit` only on user accept.
 
