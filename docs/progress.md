@@ -28,6 +28,7 @@ Investigating issue #573 (surround audio fails to play; the server emits a bad f
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-07 — fix(quickplay): key `Play All` dispatch on canonical Jellyfin item type
 - 2026-06-07 — Collapse `LoadProgramDetailsTask` to a render-thread promise
 - 2026-06-06 — feat(promises): collapse the watched toggle to a render-thread promise
 - 2026-06-06 — Collapse `BrandingConfigTask` + `QuickConnectEnabledTask` to render-thread promises
