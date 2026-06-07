@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-05-30
+last-updated: 2026-06-07
 ---
 
 # Signals backlog
@@ -28,15 +28,17 @@ Each row is an `H3` block:
 
 Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A row is "stale" — and surfaces as a banner in `/catchup` — when `latest_upstream != latest_acknowledged` AND `status == watching`. Run `/done <slug>` to acknowledge the new upstream (sets `latest_acknowledged = latest_upstream`).
 
+**Exception — `jellyfin-server-stable`:** its staleness is **not** the version-string compare. The [server-upgrade tracker](../.github/workflows/server-upgrade-tracker.yml) auto-closes the per-release digest for a mechanically-clean release **without** bumping `latest_acknowledged` (CI never writes the journals), so the string compare would false-fire forever after every clean release. For this row `/catchup` treats it as stale only when an **open** `server-upgrade:tracker` digest exists (a candidate-bearing release that needs `/server-upgrade` triage); clean releases close their own digest and never nag. `latest_acknowledged` here is the **diff anchor / last deep review** and advances only on a real `/server-upgrade` triage — it intentionally trails the newest clean release. See [server-upgrade-automation.md](architecture/server-upgrade-automation.md#decisions).
+
 ## Watching
 
 ### jellyfin-server-stable: Jellyfin server stable channel
 
 - **watching**: latest stable release on api.jellyfin.org/openapi/stable/
 - **current**: 10.7.0 minimum supported; latest tested per [user/jellyfin-server-feature-matrix.md](user/jellyfin-server-feature-matrix.md)
-- **latest_upstream**: 10.11.10
+- **latest_upstream**: 10.11.11
 - **latest_acknowledged**: 10.11.8
-- **last_checked**: 2026-05-30
+- **last_checked**: 2026-06-07
 - **action_when_moves**: run [`/server-upgrade`](../.claude/skills/server-upgrade/SKILL.md) to triage the release (mechanical report → agent investigation → human-gated issue filing); the proactive tracker issue maintained by [.github/workflows/server-upgrade-tracker.yml](../.github/workflows/server-upgrade-tracker.yml) nudges this with candidate counts. If a new minor introduces a breaking endpoint shape, the triage adds a v3 dispatcher per [dev/jellyfin-server-versioning.md](dev/jellyfin-server-versioning.md)'s "Adding Support for New Server Versions" section
 - **status**: watching
 
@@ -46,7 +48,7 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **current**: n/a (we don't pre-test against RCs by default)
 - **latest_upstream**: (no RC in flight)
 - **latest_acknowledged**: (no RC in flight)
-- **last_checked**: 2026-05-30
+- **last_checked**: 2026-06-07
 - **action_when_moves**: spin up the RC against a test library; file findings as GitHub issues if breakage is detected before the stable release
 - **status**: watching
 
@@ -56,6 +58,6 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **current**: not pinned in source; we run on whatever Roku OS the device ships — review when the latest jumps a major
 - **latest_upstream**: 15.2
 - **latest_acknowledged**: 15.2
-- **last_checked**: 2026-05-30
+- **last_checked**: 2026-06-07
 - **action_when_moves**: review video pipeline + scene graph capability changes; update [architecture/playback.md](architecture/playback.md) if a codec / DRM / OSD change affects JellyRock
 - **status**: watching

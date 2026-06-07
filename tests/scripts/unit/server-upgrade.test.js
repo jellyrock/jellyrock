@@ -36,6 +36,7 @@ import {
   TITLE_PREFIX,
   digestTitle,
   issueIsDigestFor,
+  clearedThroughFrom,
   renderDigestBody,
   renderDigestVerdicts,
   attachSubIssue,
@@ -709,6 +710,10 @@ describe('digest identity + render', () => {
     expect(body).toContain('Mechanically clean');
     expect(body).toContain('CI closes this issue');
     expect(body).not.toContain('### Candidates to triage');
+    // Header relabel: the anchor is the diff baseline / last full review, not a
+    // version we're "behind" on.
+    expect(body).toContain('| Diff baseline (last full review) | `10.11.8` |');
+    expect(body).not.toContain('Acknowledged baseline');
     // Two-axis split, subset framing: the 4+1 ARE the 5 handled, 0 to investigate.
     expect(body).toContain("**This release's changes**");
     expect(body).toContain('🔴 **0** breaking');
@@ -759,6 +764,69 @@ describe('digest identity + render', () => {
     expect(body).toContain('FILED**: endpoint removed: GET /Items/{itemId} → #851');
     expect(body).toContain('SKIP**: floor coverage gap: /x/{} — guarded by V1 sibling');
     expect(body).toContain('MONITOR**: coverage symmetry: /y — later');
+  });
+
+  it('renderDigestBody adds the cleared-through line when it is ahead of the anchor', () => {
+    const report = {
+      counts: { breaking: 0, opportunity: 0, needsInvestigation: 0 },
+      candidates: [],
+    };
+    const body = renderDigestBody({
+      version: '10.11.11',
+      acknowledged: '10.11.8',
+      floor: '10.7.0',
+      report,
+      clearedThrough: '10.11.10',
+    });
+    expect(body).toContain('| Mechanically cleared through | `10.11.10` |');
+  });
+
+  it('renderDigestBody omits the cleared-through line when null or equal to the anchor', () => {
+    const report = {
+      counts: { breaking: 0, opportunity: 0, needsInvestigation: 0 },
+      candidates: [],
+    };
+    const base = { version: '10.11.11', acknowledged: '10.11.8', floor: '10.7.0', report };
+    expect(renderDigestBody({ ...base })).not.toContain('Mechanically cleared through');
+    expect(renderDigestBody({ ...base, clearedThrough: null })).not.toContain(
+      'Mechanically cleared through',
+    );
+    expect(renderDigestBody({ ...base, clearedThrough: '10.11.8' })).not.toContain(
+      'Mechanically cleared through',
+    );
+  });
+});
+
+describe('clearedThroughFrom — resolved-through derived from the digest issues', () => {
+  const issues = [
+    { title: '[server-upgrade] Jellyfin 10.11.9 — release triage', state: 'CLOSED' },
+    { title: '[server-upgrade] Jellyfin 10.11.10 — release triage', state: 'CLOSED' },
+    { title: '[server-upgrade] Jellyfin 10.11.11 — release triage', state: 'OPEN' },
+    { title: 'some unrelated issue', state: 'CLOSED' },
+  ];
+
+  it('returns the highest CLOSED digest version strictly below the current release', () => {
+    expect(clearedThroughFrom(issues, '10.11.11')).toBe('10.11.10');
+  });
+
+  it('ignores OPEN digests, the current version, and titles without a version token', () => {
+    // 10.11.10 is OPEN here → excluded; falls back to the next closed-below (10.11.9).
+    const withOpen10 = [
+      { title: '[server-upgrade] Jellyfin 10.11.9 — release triage', state: 'CLOSED' },
+      { title: '[server-upgrade] Jellyfin 10.11.10 — release triage', state: 'OPEN' },
+    ];
+    expect(clearedThroughFrom(withOpen10, '10.11.11')).toBe('10.11.9');
+    // Nothing strictly below 10.11.9 → null.
+    expect(clearedThroughFrom(withOpen10, '10.11.9')).toBe(null);
+  });
+
+  it('is case-insensitive on state and null-safe on bad input', () => {
+    expect(clearedThroughFrom([{ title: 'Jellyfin 10.11.10', state: 'closed' }], '10.11.11')).toBe(
+      '10.11.10',
+    );
+    expect(clearedThroughFrom([], '10.11.11')).toBe(null);
+    expect(clearedThroughFrom(null, '10.11.11')).toBe(null);
+    expect(clearedThroughFrom(issues, null)).toBe(null);
   });
 });
 

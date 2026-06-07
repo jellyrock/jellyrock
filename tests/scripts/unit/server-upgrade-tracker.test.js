@@ -9,7 +9,7 @@
 // network, no GitHub writes.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
@@ -235,6 +235,39 @@ describe('computeReport + CLI (offline, injected toSpec)', () => {
     const decision = JSON.parse(res.stdout);
     expect(decision.action).toBe('clean');
     expect(decision.needsInvestigation).toBe(0);
+  });
+
+  it('CLI --tracker-issues feeds clearedThrough into the decision + the rendered body', () => {
+    scaffoldRepo();
+    const bodyOut = join(dir, 'body.md');
+    const toFile = join(dir, 'to-spec.json');
+    writeFileSync(toFile, JSON.stringify(TO_SPEC_CLEAN));
+    const issuesFile = join(dir, 'digests.json');
+    writeFileSync(
+      issuesFile,
+      JSON.stringify([
+        { title: '[server-upgrade] Jellyfin 10.11.9 — release triage', state: 'CLOSED' },
+        { title: '[server-upgrade] Jellyfin 10.11.10 — release triage', state: 'CLOSED' },
+      ]),
+    );
+    const res = spawnScript(SCRIPT, [
+      '--root',
+      dir,
+      '--latest',
+      '10.11.11',
+      '--to-file',
+      toFile,
+      '--tracker-issues',
+      issuesFile,
+      '--body-out',
+      bodyOut,
+    ]);
+    expect(res.exitCode).toBe(0);
+    const decision = JSON.parse(res.stdout);
+    expect(decision.clearedThrough).toBe('10.11.10');
+    expect(readFileSync(bodyOut, 'utf8')).toContain(
+      '| Mechanically cleared through | `10.11.10` |',
+    );
   });
 
   it("CLI emits 'none' when --latest equals acknowledged (caught up; no work)", () => {

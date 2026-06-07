@@ -35,7 +35,7 @@ Every banner check is a deterministic compare against the aggregator JSON. **Ban
 Banners (top of briefing, before the template):
 
 - **Stale `progress.md`**: when `state.progress.days_since > 7 && state.progress.commits_since > 0` → `⚠ progress.md stale — last updated <progress.last_updated>, <progress.commits_since> commit(s) since. Bump it via /log followup or /done.`
-- **Stale signal rows**: when `state.signals.stale_count > 0` → `⚠ signals-backlog: <stale_count> upstream(s) ahead of `latest_acknowledged` (<list slugs from rows where stale=true>). Run /done <slug> after reviewing each — that bumps latest_acknowledged and clears the stale flag.`
+- **Stale signal rows**: when `state.signals.stale_count > 0` → `⚠ signals-backlog: <stale_count> row(s) need attention (<list slugs from rows where stale=true>).` Then, per stale row, give the right action: a row carrying `row.digest` (only `jellyfin-server-stable` does — it means an OPEN server-upgrade triage digest exists) → `<slug>: open release-triage digest #<row.digest.number> — run /server-upgrade`; any other stale row → `<slug>: upstream ahead of latest_acknowledged — run /done <slug> after reviewing (bumps latest_acknowledged, clears the flag).` Note: a mechanically-clean stable release is NOT stale (its digest auto-closed), so it never appears here — only a candidate-bearing release does.
 - **Action-pending signals**: when `state.signals.action_pending_count > 0` → `📌 <count> signal(s) in action_pending status (<slugs>). These need a JellyRock change.`
 - **Failed CI on this branch**: for each run in `state.ci.current_branch_runs` where `conclusion != 'success'` → `⚠ CI run "<name>" <conclusion> (<createdAt>). Suggested next: /ci-triage.`
 - **Pending review-requested PRs**: when `state.prs.review_requested.length > 0` → `📥 <count> PR(s) awaiting your review: <list #N — title>.`
@@ -61,8 +61,8 @@ Format short. Banners (if any) at top, then this template — sections collapse 
   (If 0: "(none)")
 
 **Signals watchlist** (from signals-backlog.md; `latest_upstream` auto-fetched on each /catchup):
-- <signals.rows.length> watching, <stale_count> with upstream ahead of latest_acknowledged, <action_pending_count> action_pending
-  (For each row in rows: "  <slug> [status] — latest=<latest_upstream>, ack=<latest_acknowledged>" + " ← REVIEW NEEDED" suffix when row.stale)
+- <signals.rows.length> watching, <stale_count> needing attention, <action_pending_count> action_pending
+  (For each row in rows: "  <slug> [status] — latest=<latest_upstream>, ack=<latest_acknowledged>" + " ← REVIEW NEEDED" suffix when row.stale; for the stable row append "(open digest #<row.digest.number>)" when row.digest is set)
 
 **Recent decisions** (last 3 from decisions.md):
 - <YYYY-MM-DD> <slug> [<status>]
@@ -101,7 +101,7 @@ If nothing has changed since your last session AND the working tree is clean, su
 Read the JSON. If something looks like an alert or a decision point, name the right next-skill in the **Suggested next** line:
 
 - **Stale progress.md banner** → "bump it: `/log followup` to add the next deferred item, or `/done <slug-or-keyword>` to close one that shipped"
-- **Stale signal rows** → "review the upstream change, then `/done <slug>` to bump `latest_acknowledged`. If the change requires JellyRock work, flip `status` to `action_pending` first via `/log signal <slug>` (the action_pending banner will keep it visible until you ship)."
+- **Stale signal rows** → for a row with `row.digest` (the `jellyfin-server-stable` row when an open server-upgrade digest exists) → "`/server-upgrade` to triage release digest #<row.digest.number>" (this is the only thing that bumps the stable anchor — clean releases auto-resolve and never appear here). For any other stale row → "review the upstream change, then `/done <slug>` to bump `latest_acknowledged`. If the change requires JellyRock work, flip `status` to `action_pending` first via `/log signal <slug>` (the action_pending banner will keep it visible until you ship)."
 - **Pending handoff for an in-flight triage** → `Read .claude/handoffs/<path>.md` and follow the sibling `INVESTIGATION.md` for that skill (resume from where you parked)
 - **High-engagement bug** → `/issue-triage <N>` (a label:bug issue with comment traction is the strongest "focus here next" signal)
 - **Recent bug report you haven't read yet** → `/issue-triage <N>`
