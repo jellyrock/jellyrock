@@ -12,7 +12,7 @@ related-files:
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
-last-reviewed: 2026-06-05
+last-reviewed: 2026-06-06
 ---
 
 # Video & Audio Playback
@@ -234,7 +234,7 @@ The OSD adapts when the current item is a live TV channel or a DVR recording (vs
 - **Logo/metadata refresh** — channel switches reset stale logo and metadata before the new channel's data arrives, so the OSD doesn't briefly show the previous channel's branding.
 - **Recording playback** — short MPEG-TS recordings stay on HLS so the trickplay scrub bar can scrub them; longer recordings remain progressive (the MPEG-TS → progressive MKV transcode path was tried and reverted as not worth the complexity).
 
-`components/video/RefreshLiveTvMetadataTask.bs` and `LoadChannelListForQueueTask.bs` support these flows. The channel list is reused across channel switches in the queue to avoid refetching.
+`components/video/RefreshLiveTvMetadataTask.bs` supports the metadata-refresh flow. The channel queue is populated by `VideoPlayerView.loadChannelListForQueue()` — a render-thread `fetchAsync().then()` promise (collapsed from the former `LoadChannelListForQueueTask`; see [`docs/dev/promises.md`](../dev/promises.md)) that fetches the channel list once per playback and installs it into the queue via `buildChannelQueueList()` (`source/utils/liveTv.bs`). The channel list is reused across channel switches in the queue to avoid refetching.
 
 ## TrickplayCarousel — `components/video/TrickplayCarousel.bs/.xml`
 

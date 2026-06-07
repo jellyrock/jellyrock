@@ -131,7 +131,6 @@ sub init()
   ' TvChannel, so count=1 means this is the first playback and we need to fetch the list.
   ' count>1 means a prior VideoPlayerView already populated the queue — skip the refetch
   ' and reuse it. Staleness is bounded by the app lifecycle (Roku cold-boots each session).
-  m.loadChannelListTask = invalid
   m.channelListLoaded = isLiveTvPlayback() and m.global.queueManager.callFunc("getCount") > 1
 
   m.checkedForNextEpisode = false
@@ -1619,34 +1618,52 @@ sub onLiveTvMetadataRefreshed()
   m.liveTvNextFallbackRefreshAt = 0
 end sub
 
+' Collapsed from LoadChannelListForQueueTask, a pure-fetch Task that existed only to
+' move one fetchRes off the render thread (Phase-4 collapse; see docs/dev/promises.md).
+' Fire-once per playback (guarded by m.channelListLoaded), so no seq guard is needed —
+' a single .then can't race itself the way a hot re-fire would.
 sub loadChannelListForQueue()
-  if not isValid(m.loadChannelListTask)
-    m.loadChannelListTask = CreateObject("roSGNode", "LoadChannelListForQueueTask")
-    m.loadChannelListTask.observeField("channelList", "onChannelListLoaded")
-  end if
+  currentChannelId = m.top.id
+  if not isValidAndNotEmpty(currentChannelId) then return
 
-  m.loadChannelListTask.currentChannelId = m.top.id
-  m.loadChannelListTask.control = "RUN"
-  m.log.info("Loading channel list for navigation", m.top.id)
-end sub
+  req = GetApi().BuildGetLiveTVChannelsRequest({
+    SortBy: "Number",
+    SortOrder: "Ascending",
+    UserId: m.global.user.id,
+    enableImages: false,
+    addCurrentProgram: false,
+    enableUserData: false
+  })
+  m.log.info("Loading channel list for navigation", currentChannelId)
 
-sub onChannelListLoaded()
-  m.loadChannelListTask.control = "STOP"
+  ' Carry currentChannelId through the promise context (no closures in BS).
+  promises.chain(fetchAsync(req, "channelList-" + m.top.id), { currentChannelId: currentChannelId }).then(sub(res as object, ctx as object)
+    ' Any HTTP response lands here (incl. 4xx/5xx). Replicates the old Task's
+    ' loadChannelList(): bail on a bad payload, otherwise build + install the queue.
+    if not res.ok or not isValid(res.json) or not isValid(res.json.Items)
+      m.log.warn("Failed to load channel list")
+      return
+    end if
 
-  channelList = m.loadChannelListTask.channelList
-  currentIndex = m.loadChannelListTask.currentChannelIndex
+    ' buildChannelQueueList is a light array→array transform (source/utils/liveTv.bs) —
+    ' render-thread-safe (no node creation), which is why this Task was a collapse candidate.
+    built = buildChannelQueueList(res.json.Items, ctx.currentChannelId)
 
-  if not isValidAndNotEmpty(channelList) or currentIndex < 0
-    m.log.warn("Channel list empty or current channel not found, skipping queue update")
-    return
-  end if
+    if not isValidAndNotEmpty(built.items) or built.currentIndex < 0
+      m.log.warn("Channel list empty or current channel not found, skipping queue update")
+      return
+    end if
 
-  queueManager = m.global.queueManager
-  queueManager.callFunc("set", channelList)
-  queueManager.callFunc("setPosition", currentIndex)
-  m.channelListLoaded = true
+    queueManager = m.global.queueManager
+    queueManager.callFunc("set", built.items)
+    queueManager.callFunc("setPosition", built.currentIndex)
+    m.channelListLoaded = true
 
-  m.log.info("Channel list loaded into queue", "count", channelList.count(), "position", currentIndex)
+    m.log.info("Channel list loaded into queue", "count", built.items.count(), "position", built.currentIndex)
+  end sub).catch(sub(err as object)
+    ' Transport failure / timeout (see the error contract) — never completed.
+    m.log.warn("Failed to load channel list", err.reason)
+  end sub)
 end sub
 
 ' stateAllowsOSD: Check if current video state allows showing the OSD
@@ -1855,12 +1872,6 @@ sub onDestroy()
     m.liveTvRefreshTask = invalid
   end if
   m.liveTvProgramEndTime = 0
-
-  if isValid(m.loadChannelListTask)
-    m.loadChannelListTask.control = "STOP"
-    m.loadChannelListTask.unobserveField("channelList")
-    m.loadChannelListTask = invalid
-  end if
 
   if isValid(m.captionTask)
     m.captionTask.control = "STOP"

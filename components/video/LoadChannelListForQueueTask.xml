@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<component name="LoadChannelListForQueueTask" extends="Task">
-  <interface>
-    <field id="currentChannelId" type="string" />
-    <field id="channelList" type="array" />
-    <field id="currentChannelIndex" type="integer" value="-1" />
-  </interface>
-</component>

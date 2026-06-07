@@ -3,6 +3,8 @@
 ' Uses presenter pattern for media-type-specific behavior.
 ' Combines common functionality from ItemGrid, MovieLibraryView, and MusicLibraryView.
 
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
@@ -588,12 +590,43 @@ sub onPresenterLogoLoaded(event as object)
   end if
 end sub
 
-' Bridge callback for presenter filters loading - forwards to presenter.onFiltersLoaded()
-' This is needed because Roku observers look for functions at component scope,
-' not on class instances. Presenters should observe with "onPresenterFiltersLoaded".
-sub onPresenterFiltersLoaded(event as object)
+' Render-thread filter load, collapsed from GetFiltersTask (Phase-4 pure-fetch Task
+' collapse; see docs/dev/promises.md). Invoked by the presenter via callFunc so the
+' body runs in component-m context, where fetchAsync + auto-abandon work — the presenter
+' is a class, and the auto-abandon plugin only injects into components with onDestroy
+' (which BaseGridView has). The presenter still owns m.apiFilters + the toast; this just
+' fetches and hands the result back via deliverFilters().
+sub loadFilters(params as object)
+  ' Debug error injection — compiled out in production (mirrors ItemDetails.toggleFavorite).
+  #if debug
+    if isValid(m.global.debug) and m.global.debug.shouldForceFiltersFail
+      deliverFilters({}, "[DEBUG] Forced filter failure")
+      return
+    end if
+  #end if
+
+  req = GetApi().BuildGetFiltersRequest(params)
+  promises.chain(fetchAsync(req, "filters-" + params.parentid)).then(sub(res as object)
+    ' Any HTTP response lands here (incl. 4xx/5xx). Mirrors the old Task's contract:
+    ' res.ok → deliver the filters; otherwise deliver {} + the error message.
+    if res.ok
+      deliverFilters(res.json, "")
+    else
+      deliverFilters({}, "Unable to load filter options")
+    end if
+  end sub).catch(sub(err as object)
+    ' Transport failure / timeout (see the error contract) — never completed.
+    m.log.warn("filter load failed", err.reason)
+    deliverFilters({}, "Unable to load filter options")
+  end sub)
+end sub
+
+' Hand the filter result back to the presenter, which owns m.apiFilters + the toast.
+' This is needed because Roku promise callbacks run at component scope, not on the
+' presenter class instance.
+sub deliverFilters(filters as object, errorMsg as string)
   if isValid(m.presenter)
-    m.presenter.onFiltersLoaded(event)
+    m.presenter.onFiltersLoaded(filters, errorMsg)
   end if
 end sub
 
