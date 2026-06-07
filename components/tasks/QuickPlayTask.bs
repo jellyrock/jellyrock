@@ -7,7 +7,7 @@ import "pkg:/source/utils/misc.bs"
 ' Trailer, and Photo Album flows that require API calls.
 '
 ' Input AA fields:
-'   action (string)       - dispatch key (e.g. "album", "playAllSeries", "instantMix", etc.)
+'   action (string)       - dispatch key (e.g. "musicalbum", "playAllSeries", "instantMix", etc.)
 '   id (string)           - primary item ID
 '   seriesId (string)     - optional, for season/episode context
 '   collectionType (string) - optional, for collection/userView dispatch
@@ -38,9 +38,15 @@ sub executeQuickPlay()
   outputAction = "queue"
   firstItemStartingPoint = 0& ' LongInteger
 
-  if action = "musicalbum" or action = "album"
+  ' Dispatch convention: the action key is the lowercased Jellyfin item type
+  ' (e.g. "musicalbum", "boxset"), optionally with a literal operation prefix
+  ' ("playall..."). Producers build it from the raw type (main.bs: LCase(type)
+  ' and "playAll" + type), so keys must match Jellyfin's BaseItemKind exactly —
+  ' there is no bare "album"/"artist" type, only "MusicAlbum"/"MusicArtist".
+  ' The else branch below logs any unmatched action so drift can't fail silently.
+  if action = "musicalbum"
     doAlbum(input, items)
-  else if action = "musicartist" or action = "artist"
+  else if action = "musicartist"
     doArtist(input, items)
     shouldShuffle = true
   else if action = "boxset"
