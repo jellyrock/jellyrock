@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (promises) collapse GetFiltersTask + LoadChannelListForQueueTask to render-thread promises (#551) ([#628](https://github.com/jellyrock/jellyrock/pull/628))
 - (promises) collapse LoadProgramDetailsTask to a render-thread promise (#551) ([#627](https://github.com/jellyrock/jellyrock/pull/627))
 - (promises) collapse the watched toggle to a render-thread promise ([#626](https://github.com/jellyrock/jellyrock/pull/626))
 - (login) collapse Branding + QuickConnect Tasks to render-thread promises ([#625](https://github.com/jellyrock/jellyrock/pull/625))
