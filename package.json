@@ -93,7 +93,7 @@
     "lint:ci-workflow-sync": "node scripts/lint/validate-deps-workflow-sync.cjs",
     "lint:issue-templates": "node scripts/lint/issue-templates-check.cjs",
     "lint:js": "eslint .",
-    "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,build-analysis,out,locale,tests/scripts,.vscode,docs/architecture/spec-fingerprints,eslint.config.js,vitest.config.js ./",
+    "lint:json": "jshint --extra-ext .json --verbose --exclude node_modules,scripts,tasks,build,build-analysis,out,locale,tests/scripts,tests/rta,.vscode,docs/architecture/spec-fingerprints,eslint.config.js,vitest.config.js,vitest.rta.config.js ./",
     "lint:language-coverage": "node scripts/lint/language-coverage.cjs",
     "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"!**/CLAUDE.md\" \"!**/AGENTS.md\" \"!out/\" \"!build/\" \"!build-analysis/\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!tasks/\" \"!.opencode/**/*.md\"",
     "lint:promise-ratchet": "node scripts/lint/promise-ratchet.cjs",
