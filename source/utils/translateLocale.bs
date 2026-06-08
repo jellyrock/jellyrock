@@ -4,7 +4,7 @@
 ' from source/ context (Main.bs, session.bs) where config.bs is auto-scoped.
 
 ' Determine which locale to load using the fallback cascade.
-' Pre-login (isPostLogin=false): device locale -> en_US
+' Pre-login (isPostLogin=false): global sign-in language -> device locale -> en_US
 ' Post-login (isPostLogin=true): user setting -> server language -> device locale -> en_US
 ' @param {boolean} isPostLogin - Whether a user is authenticated
 ' @param {string} serverLanguage - Language from server CustomPrefs.language (empty if unavailable)
@@ -22,13 +22,24 @@ function resolveTranslationLocale(isPostLogin = false as boolean, serverLanguage
     return normalizeLocaleCode(serverLanguage)
   end if
 
-  ' Priority 3: Roku device locale
+  ' Priority 3: Global device-wide sign-in language — PRE-LOGIN ONLY.
+  ' Localizes the server-select / user-select screens, where no user context
+  ' exists yet. Read via getSetting (NOT getUserSetting) so it resolves with no
+  ' signed-in user. Deliberately skipped post-login: a signed-in user's session
+  ' is governed entirely by their own setting / server pref / device locale, so a
+  ' user's home screen never inherits the device-wide sign-in default.
+  if not isPostLogin
+    globalLocale = getSetting("globalTranslationLocale")
+    if isValidAndNotEmpty(globalLocale) then return globalLocale
+  end if
+
+  ' Priority 4: Roku device locale
   deviceLocale = m.global.device.locale
   if isValidAndNotEmpty(deviceLocale)
     return mapRokuLocaleToTranslationLocale(deviceLocale)
   end if
 
-  ' Priority 4: Hardcoded default
+  ' Priority 5: Hardcoded default
   return "en_US"
 end function
 

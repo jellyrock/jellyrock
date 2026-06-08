@@ -740,8 +740,18 @@ sub onLanguagePickerSelected()
   newLocale = m.languagePicker.selectedCode
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
 
-  ' Save to user registry (empty string = automatic)
+  ' Save to registry (empty string = automatic). The auto-sync observer routes
+  ' global* settings to the device-wide section and per-user settings to the
+  ' user's section.
   user.settings.Save(selectedSetting.settingName, newLocale)
+
+  ' globalTranslationLocale is the device-wide sign-in-screen language, consumed
+  ' ONLY pre-login (see resolveTranslationLocale). It must NOT live-reload the
+  ' current post-login session — that would re-theme the home screen the user is
+  ' looking at to the device default, overriding their own language. It takes
+  ' effect the next time the sign-in screens render (Sign Out / Change User),
+  ' which re-resolve the pre-login locale at the appStart login-flow entry.
+  if selectedSetting.settingName = "globalTranslationLocale" then return
 
   ' Resolve and load the new locale
   if newLocale = ""

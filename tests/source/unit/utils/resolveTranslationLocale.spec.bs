@@ -6,7 +6,13 @@ namespace tests
   class ResolveTranslationLocaleTests extends tests.BaseTestSuite
 
     protected override function setup()
+      ' resolveTranslationLocale() now reads getSetting("globalTranslationLocale")
+      ' (Priority 3), which keys off a test- user id to route to the isolated
+      ' test-global section. needsRegistrySetup clears test-* between tests so the
+      ' global setting never leaks between cases (or into the real registry).
+      m.needsRegistrySetup = true
       super.setup()
+      m.global.user.id = "test-resolve-locale"
       ' Set a known device locale for baseline
       m.global.device.locale = "en_US"
     end function
@@ -85,6 +91,54 @@ namespace tests
       m.global.device.locale = ""
       result = resolveTranslationLocale(true, "")
       m.assertEqual(result, "en_US")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Global sign-in language (globalTranslationLocale)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("pre-login: global sign-in language overrides device locale")
+    function _()
+      m.global.device.locale = "en_US"
+      setSetting("globalTranslationLocale", "fr")
+      result = resolveTranslationLocale(false)
+      m.assertEqual(result, "fr")
+    end function
+
+    @it("pre-login: falls back to device locale when global is empty")
+    function _()
+      m.global.device.locale = "de_DE"
+      result = resolveTranslationLocale(false)
+      m.assertEqual(result, "de_DE")
+    end function
+
+    @it("post-login: global sign-in language is IGNORED; device locale used (home never inherits the sign-in default)")
+    function _()
+      ' Regression guard: the device-wide sign-in language must NOT leak into a
+      ' signed-in user's session. With no per-user/server pref, post-login falls
+      ' through to the device locale, NOT globalTranslationLocale.
+      m.global.device.locale = "es_MX"
+      setSetting("globalTranslationLocale", "fr")
+      result = resolveTranslationLocale(true, "")
+      m.assertEqual(result, "es_MX")
+    end function
+
+    @it("post-login: server language used; global sign-in language is ignored")
+    function _()
+      m.global.device.locale = "en_US"
+      setSetting("globalTranslationLocale", "fr")
+      result = resolveTranslationLocale(true, "de")
+      m.assertEqual(result, "de")
+    end function
+
+    @it("post-login: per-user override wins; global sign-in language is ignored")
+    function _()
+      m.global.device.locale = "en_US"
+      setSetting("globalTranslationLocale", "fr")
+      ' Write the per-user override directly to the user's (test-) registry section
+      registryWrite("translationLocale", "de", m.global.user.id)
+      result = resolveTranslationLocale(true, "")
+      m.assertEqual(result, "de")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

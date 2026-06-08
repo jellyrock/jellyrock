@@ -35,6 +35,13 @@ sub Main (args as dynamic) as void
 
   appStart:
   m.global.sceneManager.callFunc("clearScenes")
+  ' Re-resolve the pre-login locale on every entry to the login flow. We reach
+  ' here both at cold start AND on re-entry from Change Server / Change User /
+  ' Sign Out (which `goto appStart`). Without this re-resolve, a changed global
+  ' sign-in language would only apply after a full app restart, and the sign-in
+  ' screens would render in the just-signed-out user's language rather than the
+  ' device-wide default. isPostLogin defaults to false here → pre-login cascade.
+  loadTranslations(resolveTranslationLocale())
   ' First thing to do is validate the ability to use the API
   if not LoginFlow() then return
 
