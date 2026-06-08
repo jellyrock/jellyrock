@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-07
+last-updated: 2026-06-08
 ---
 
 # Progress
@@ -71,7 +71,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### tests
 
-(none)
+- Add approval-gated `device-rta-tests.yml` CI workflow running `npm run test:rta` on the self-hosted `roku-device` runner (mirror `device-unit-tests.yml`; register with `lint:ci-workflow-sync`).
 
 ### docs
 
