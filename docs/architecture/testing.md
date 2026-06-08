@@ -6,7 +6,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-05-01
+last-reviewed: 2026-06-08
 ---
 
 # Testing
@@ -32,10 +32,15 @@ tests/source/
 ├── integration/             ← component interactions, real I/O allowed
 │   ├── registry/            ← exercises the actual Roku registry (under "test-*" sections)
 │   └── migration/           ← exercises each migration end-to-end
-├── e2e/                     ← UI automation (planned, RTA framework — sparsely populated today)
 ├── mocks/                   ← mock data and stubs (api responses, registry sections, users, devices)
 └── shared/                  ← shared test helpers
 ```
+
+Two **Node/Vitest** test trees sit alongside `tests/source/` (different framework
+and runtime — not Rooibos, not compiled into the app):
+
+- `tests/scripts/` — unit tests for the Node-side build/lint tooling (see [scripts-development.md](../dev/scripts-development.md)).
+- `tests/rta/` — **RTA functional tests** (`roku-test-automation`): drive a real device from outside (ECP + ODC) and assert each screen loads; the same screen registry backs the store-screenshot generator. See [rta-tests.md](../dev/rta-tests.md).
 
 ### Test pattern
 

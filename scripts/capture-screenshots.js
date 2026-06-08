@@ -1,103 +1,72 @@
 /**
- * scripts/capture-screenshots.js — RTA-driven per-language screenshot capture (#621).
+ * scripts/capture-screenshots.js — store-screenshot generator (#621).
  *
- * Drives a Roku device through roku-test-automation (RTA): authenticates against
- * the Jellyfin demo server, seeds the app's registry to land deterministically on
- * each target screen in each language, and captures a PNG per screen.
+ * The reusable RTA layer (device driver, nav/wait steps, registry seeds, the
+ * Jellyfin demo helpers, and the screen registry) lives under tests/rta/ and is
+ * shared with the RTA functional tests. THIS script is the store-specific
+ * orchestrator on top of it: it captures the full per-language matrix, composites
+ * the real in-film frame behind the OSD (the video plane can't be screenshotted),
+ * and emits the website manifest.
  *
- * Every locale folder is self-contained — it holds ALL screens, so the website
- * just reads docs/screenshots/<locale>/ with no fallback logic:
+ * Output — every locale folder is self-contained (all screens), so the website
+ * reads docs/screenshots/<locale>/ with no fallback logic:
  *   docs/screenshots/<locale>/<screen>.png   one PNG per screen, per language
  *   docs/screenshots/screenshots.json        manifest: locales + screen order
- * Language-agnostic screens (see SCREENS `scope: 'shared'`) are captured ONCE on
- * the device then copied into every locale folder (saves device time, keeps the
- * folders uniform).
+ * Language-agnostic screens (capture.scope === 'shared') are captured ONCE then
+ * copied into every locale folder.
  *
- * Requires a screenshot-enabled build on the device (run once with DEPLOY=1, which
- * sideloads build/ with ENABLE_RTA flipped on so the on-device component runs).
+ * Store screenshots are captured from the PROD build (release branding, what
+ * ships). RTA's deploy flips the manifest ENABLE_RTA on regardless of build
+ * flavor, so prod works fine. Device creds: .env (ROKU_IP / ROKU_PASSWORD). The
+ * device captures JPEG; we convert to PNG.
  *
- *   npm run build && DEPLOY=1 node scripts/capture-screenshots.js   # deploy + capture
- *   node scripts/capture-screenshots.js                              # capture (already deployed)
- *   node scripts/capture-screenshots.js --languages=fr --screens=home   # subset
- *
- * Device creds: .env (ROKU_IP / ROKU_PASSWORD). The device captures JPEG; we
- * convert to PNG with sharp.
+ *   npm run screenshots:capture            # build:prod + deploy + capture (store default)
+ *   npm run screenshots:capture:dev        # dev build instead of prod
+ *   npm run screenshots:capture:fast       # no build/deploy — re-capture against the deployed build
+ *   node scripts/capture-screenshots.js --languages=fr --screens=home   # subset (add DEPLOY=1 to deploy first)
  *
  * ============================ MAINTENANCE ============================
- * To point at a different demo server, edit CONFIG.server.url (+ username/password)
- * below. To change which languages or screens are captured, edit CONFIG.languages /
- * CONFIG.screens. Nothing else needs to change.
+ * Demo server / hero movie / seek position / locales live in tests/rta/config.js
+ * (RTA_CONFIG), shared with the functional tests. The screen list lives in
+ * tests/rta/screens.js. This file only owns the store layer (matrix, backdrop,
+ * manifest). To capture a new screen, add it to tests/rta/screens.js.
  * ====================================================================
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import http from 'node:http';
-import https from 'node:https';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import dotenv from 'dotenv';
 import sharp from 'sharp';
-import { ecp, odc, device, utils } from 'roku-test-automation';
+
+import { RTA_CONFIG } from '../tests/rta/config.js';
+import {
+  ecp,
+  odc,
+  device,
+  setupRtaEnv,
+  deployRtaBuild,
+  relaunch,
+} from '../tests/rta/lib/driver.js';
+import { sleep, waitFor } from '../tests/rta/lib/steps.js';
+import { authenticate, getHero, getBuffer } from '../tests/rta/lib/jellyfin.js';
+import {
+  seedHome,
+  seedUserSelect,
+  snapshotSession,
+  restoreSession,
+} from '../tests/rta/lib/seed.js';
+import { SCREENS } from '../tests/rta/screens.js';
 
 const execFileAsync = promisify(execFile);
-
-dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
 
-// ============================== CONFIG ==============================
+// Store-specific config = the shared RTA config + the output location.
 const CONFIG = {
-  // The demo server screenshots are captured from. License-clear content only —
-  // these images go into a public store listing. Easy to repoint: change url here.
-  server: {
-    url: 'https://demo.jellyfin.org/stable',
-    username: 'demo',
-    password: '',
-  },
-  // Folder name == the exact translationLocale value, so folder<->setting is 1:1.
-  languages: ['en_US', 'fr', 'de', 'pt', 'es'],
+  ...RTA_CONFIG,
   outDir: path.join(repoRoot, 'docs', 'screenshots'),
-  bootMs: 10000, // time to let the app boot + RTA on-device component come up
-  // The movie used for movieDetails / osd / trickplay. License-clear, has a
-  // backdrop, and visually distinctive. Reached in the Movies grid by its
-  // SortName position (looked up at runtime), so this is the only knob to change.
-  heroMovie: 'Dracula',
-  // Playback position (seconds) for the osd screen — the osd is paused here so it
-  // shows this exact timestamp + frame (matches the original Dracula reference at
-  // 28:44). The trickplay strip lands on the nearest 10s thumbnail (~28:40); its
-  // coarse chunking means it won't pixel-match the osd frame, which is expected.
-  seekSeconds: 1724, // 28:44
 };
-
-/*
- * Each screen declares how to reach it:
- *  - state: 'home' (logged in) | 'userSelect' (signed out, server known)
- *  - nav:   optional async (ctx) => {} that drives keypresses from the landed state
- * The two seed-to-land states are deterministic (registry seed + relaunch); deeper
- * screens add in-app navigation on top of 'home'.
- */
-// `scope` controls how a screen is captured (output is the same shape either
-// way — every locale folder ends up with every screen):
-//  - 'localized' (default): shows translated UI text, so it is captured once per
-//     language into docs/screenshots/<locale>/<name>.png.
-//  - 'shared': has NO translatable text (e.g. trickplay = thumbnails + numeric
-//     times), so it is captured ONCE on the device and the resulting PNG is
-//     copied into every locale folder. Identical bytes everywhere, but each
-//     locale folder stays self-contained so the website needs no fallback logic.
-const SCREENS = [
-  { name: 'userSelect', state: 'userSelect' },
-  { name: 'home', state: 'home' },
-  // Deeper screens navigate from 'home' via ecp keypresses + odc node-waits.
-  // movieDetails / osd / trickplay anchor on CONFIG.heroMovie, reached in the
-  // Movies grid by its SortName tile index (looked up at runtime) — deterministic
-  // regardless of the demo server's hourly-resetting Continue Watching row.
-  { name: 'libraryGrid', state: 'home', nav: navLibraryGrid },
-  { name: 'movieDetails', state: 'home', nav: navMovieDetails },
-  { name: 'osd', state: 'home', nav: navOsd },
-  { name: 'trickplay', state: 'home', nav: navTrickplay, scope: 'shared' },
-];
-// ===================================================================
 
 function parseArgs() {
   const args = Object.fromEntries(
@@ -110,115 +79,6 @@ function parseArgs() {
     languages: args.languages ? String(args.languages).split(',') : CONFIG.languages,
     screens: args.screens ? String(args.screens).split(',') : SCREENS.map((s) => s.name),
     deploy: process.env.DEPLOY === '1',
-  };
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/** Minimal JSON POST over node http/https (picks the module by URL scheme). */
-function postJson(urlStr, headers, bodyObj) {
-  const url = new URL(urlStr);
-  const mod = url.protocol === 'http:' ? http : https;
-  const body = JSON.stringify(bodyObj);
-  return new Promise((resolve, reject) => {
-    const req = mod.request(
-      url,
-      { method: 'POST', headers: { ...headers, 'Content-Length': Buffer.byteLength(body) } },
-      (res) => {
-        let data = '';
-        res.on('data', (c) => (data += c));
-        res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(data));
-          else reject(new Error(`POST ${urlStr} -> ${res.statusCode} ${res.statusMessage}`));
-        });
-      },
-    );
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-/** Minimal JSON GET over node http/https (picks the module by URL scheme). */
-function getJson(urlStr, headers) {
-  const url = new URL(urlStr);
-  const mod = url.protocol === 'http:' ? http : https;
-  return new Promise((resolve, reject) => {
-    const req = mod.request(url, { method: 'GET', headers }, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(data));
-        else reject(new Error(`GET ${urlStr} -> ${res.statusCode} ${res.statusMessage}`));
-      });
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-/** GET raw bytes (e.g. an image) as a Buffer. */
-function getBuffer(urlStr, headers) {
-  const url = new URL(urlStr);
-  const mod = url.protocol === 'http:' ? http : https;
-  return new Promise((resolve, reject) => {
-    const req = mod.request(url, { method: 'GET', headers }, (res) => {
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        res.resume();
-        return reject(new Error(`GET ${urlStr} -> ${res.statusCode} ${res.statusMessage}`));
-      }
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-/** Authenticate against the demo Jellyfin server -> session used to seed registry. */
-async function authenticate(server) {
-  const auth =
-    'MediaBrowser Client="JellyRock-screenshots", Device="ci", DeviceId="jellyrock-screenshots", Version="1.0.0"';
-  const d = await postJson(
-    `${server.url}/Users/AuthenticateByName`,
-    { 'Content-Type': 'application/json', 'X-Emby-Authorization': auth },
-    { Username: server.username, Pw: server.password },
-  );
-  return {
-    serverUrl: server.url,
-    userId: d.User.Id,
-    username: d.User.Name,
-    token: d.AccessToken,
-    serverId: d.ServerId,
-    primaryImageTag: d.User?.PrimaryImageTag || '',
-  };
-}
-
-/**
- * Locate CONFIG.heroMovie within the Movies grid. The grid is sorted by SortName
- * ascending (verified to match the app's grid order), so the item's index in
- * this list IS its grid tile index — the number of Right presses from the first
- * tile to focus it.
- *
- * Returns { index, id, backdropUrl } ({0, '', ''} if the movie isn't found).
- * backdropUrl is the promo still (fallback only — see prepareBackdrop).
- */
-async function getHero(session) {
-  const url =
-    `${session.serverUrl}/Items?UserId=${session.userId}` +
-    `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
-  const data = await getJson(url, { 'X-Emby-Token': session.token }).catch(() => null);
-  const items = data?.Items || [];
-  const index = items.findIndex((i) => i.Name === CONFIG.heroMovie);
-  if (index < 0) return { index: 0, id: '', backdropUrl: '' };
-  const item = items[index];
-  const hasBackdrop = Array.isArray(item.BackdropImageTags) && item.BackdropImageTags.length > 0;
-  const kind = hasBackdrop ? 'Backdrop/0' : 'Primary';
-  return {
-    index,
-    id: item.Id,
-    backdropUrl: `${session.serverUrl}/Items/${item.Id}/Images/${kind}?maxWidth=1920`,
   };
 }
 
@@ -272,147 +132,6 @@ async function prepareBackdrop(session, hero) {
   return null;
 }
 
-const GLOBAL = 'JellyRock';
-
-/** Seed registry to land logged-in on Home as the demo user, in `locale`. */
-async function seedHome(session, locale) {
-  await odc.writeRegistry({
-    values: {
-      [GLOBAL]: {
-        server: session.serverUrl,
-        active_user: session.userId,
-        globalRememberMe: 'true',
-        globalTranslationLocale: locale,
-      },
-      [session.userId]: {
-        authToken: session.token,
-        serverId: session.serverId,
-        username: session.username,
-        primaryImageTag: session.primaryImageTag,
-        translationLocale: locale,
-      },
-    },
-  });
-}
-
-/** Seed registry to land on the user-select screen (server known, no active user). */
-async function seedUserSelect(session, locale) {
-  // Delete just active_user (null = delete that key) so LoginFlow stops at
-  // user-select; set the pre-login language. Non-destructive: saved_servers /
-  // available_users are preserved. globalTranslationLocale is the ONLY lever that
-  // localizes this pre-login screen (the Part-1 feature this work depends on).
-  await odc.writeRegistry({
-    values: {
-      [GLOBAL]: {
-        server: session.serverUrl,
-        active_user: null,
-        globalRememberMe: 'false',
-        globalTranslationLocale: locale,
-      },
-    },
-  });
-}
-
-async function relaunch() {
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
-  await sleep(CONFIG.bootMs);
-}
-
-// ========================== NAVIGATION =============================
-// The two seed-to-land states (home / userSelect) are reached by registry
-// seed + relaunch. The four deeper screens drive the app from 'home' with
-// remote keypresses, waiting on Scene Graph node state (NOT fixed sleeps) so
-// each step proceeds the moment the UI is actually ready. Node lookups use
-// RTA's `#id` keyPath (a recursive findNode from the scene root).
-
-const press = (key) => ecp.sendKeypress(key);
-
-/** Read a scene-rooted keyPath; returns the value or undefined if not present. */
-async function getVal(keyPath) {
-  const res = await odc.getValue({ base: 'scene', keyPath }).catch(() => ({ found: false }));
-  return res.found ? res.value : undefined;
-}
-
-/**
- * Poll `keyPath` until `predicate(value)` is true, optionally re-issuing
- * `action` (e.g. a keypress) each tick. Throws on timeout so a broken nav
- * fails loudly instead of capturing the wrong screen.
- */
-async function waitFor(
-  keyPath,
-  predicate,
-  { timeout = 30000, interval = 500, action, label } = {},
-) {
-  const start = Date.now();
-  let last;
-  while (Date.now() - start < timeout) {
-    if (action) await action().catch(() => {});
-    last = await getVal(keyPath);
-    if (predicate(last)) return last;
-    await sleep(interval);
-  }
-  throw new Error(`nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})`);
-}
-
-const hasChildren = (n) => typeof n === 'number' && n > 0;
-
-/** Poll the focused node until `predicate({node, keyPath})` is true; throws on timeout. */
-async function waitFocused(predicate, { timeout = 15000, interval = 500, label } = {}) {
-  const start = Date.now();
-  let last;
-  while (Date.now() - start < timeout) {
-    const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-    last = `${f?.node?.subtype}@${f?.keyPath}`;
-    if (f && predicate(f)) return f;
-    await sleep(interval);
-  }
-  throw new Error(`nav timed out waiting for focus (${label || 'predicate'}); last=${last}`);
-}
-
-/** Home is ready once HomeRows has rendered its content. */
-async function waitHome() {
-  await waitFor('#homeRows.content.getChildCount()', hasChildren, {
-    label: 'home rows',
-    timeout: 20000,
-  });
-}
-
-/** home -> OK on focused "Movies" tile -> Movies library grid. */
-async function navLibraryGrid() {
-  await waitHome();
-  await press(ecp.Key.Ok);
-  await waitFor('#itemGrid.content.getChildCount()', hasChildren, {
-    label: 'movies grid',
-    timeout: 20000,
-  });
-  await sleep(1200); // let posters paint before capture
-}
-
-/** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
-async function navMovieDetails(ctx) {
-  await navLibraryGrid();
-  const target = ctx?.heroIndex || 0;
-  if (target > 0) {
-    // Press Right until the grid reports the hero tile focused (robust to a
-    // dropped keypress — only presses while focus is still short of the target).
-    await waitFor('#itemGrid.itemFocused', (v) => v === target, {
-      timeout: 15000,
-      interval: 500,
-      action: async () => {
-        const cur = await getVal('#itemGrid.itemFocused');
-        if (typeof cur === 'number' && cur < target) await press(ecp.Key.Right);
-      },
-      label: `grid focus -> tile ${target}`,
-    });
-  }
-  await press(ecp.Key.Ok);
-  await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
-    label: 'details title',
-    timeout: 20000,
-  });
-  await sleep(1500); // let backdrop + logo paint
-}
-
 /**
  * Stand in for the (un-capturable) video frame on the osd screen.
  *
@@ -453,97 +172,6 @@ async function injectBackdrop(buf) {
     label: 'backdrop image load',
   }).catch(() => {});
 }
-
-/** details -> OK on default Play/Resume button -> playback begins. */
-async function startPlayback(ctx) {
-  await navMovieDetails(ctx);
-  // The title label renders before the button row is interactive; wait until
-  // focus actually lands inside the details button group (Play or Resume,
-  // depending on watch state) before pressing OK, else the press lands too
-  // early and playback never starts.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#buttons'), {
-    label: 'details play/resume button',
-  });
-  await press(ecp.Key.Ok);
-}
-
-/**
- * Playback -> show the OSD overlay. OSD only appears once the player reaches a
- * playable state (`stateAllowsOSD`), so we retry Up until it shows, then bump
- * its inactivity timeout so it can't auto-hide before the screenshot.
- */
-async function navOsd(ctx) {
-  await startPlayback(ctx);
-  // Confirm the player reached a playable state (OSD only shows when it has).
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 90000,
-    interval: 2000,
-    action: () => press(ecp.Key.Up),
-    label: 'osd visible',
-  });
-  // Hide the OSD (focus -> player), then Play to PAUSE + re-show the OSD. Pausing
-  // matches the original reference (play-button state) and, crucially, freezes the
-  // position: a paused OSD never auto-hides and we can seek to the exact frame.
-  await press(ecp.Key.Back);
-  await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
-  await press(ecp.Key.Play); // pause + show OSD
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 15000,
-    interval: 500,
-    label: 'osd visible (paused)',
-  });
-  // Seek the player (found by its id == the item id) to the exact target while
-  // paused, so the OSD shows that exact timestamp with no playback drift.
-  if (ctx?.heroId) {
-    await odc
-      .setValue({ base: 'scene', keyPath: `#${ctx.heroId}.seek`, value: CONFIG.seekSeconds })
-      .catch(() => {});
-  }
-  await sleep(2500); // let the (paused) seek settle + frame render
-  // Fill the black video plane with the real in-film frame at this position.
-  await injectBackdrop(ctx?.backdropBuf);
-  await sleep(1000);
-}
-
-/**
- * Playback -> trickplay seek strip. We use the OSD as the "playback ready"
- * gate (it only shows when playable), hide it (Back; OSD consumes it as a
- * hide, it does NOT stop playback), then Left/Right surfaces the carousel
- * (VideoPlayerView only shows it while the OSD is hidden).
- */
-async function navTrickplay(ctx) {
-  await startPlayback(ctx);
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 90000,
-    interval: 2000,
-    action: () => press(ecp.Key.Up),
-    label: 'playback ready (osd)',
-  });
-  // Hide the OSD (focus returns to the player), then position the trickplay scrub
-  // on CONFIG.seekSeconds so the strip's CENTER frame matches the osd frame.
-  // Opening trickplay (the Right press below) jumps forward one thumbnail, so we
-  // seek one trickplay interval (10s) BEFORE the target — the open then lands the
-  // scrub exactly on seekSeconds.
-  await press(ecp.Key.Back);
-  await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
-  await odc
-    .setValue({ base: 'focusedNode', keyPath: 'seek', value: CONFIG.seekSeconds - 10 })
-    .catch(() => {});
-  await sleep(3000); // let the seek settle
-  // No backdrop injection here: the trickplay strip and Roku's native seek/time
-  // bar (start/end timestamps) are graphics-plane and capture fine. A backdrop
-  // would render in front of the native seek bar and hide the timestamps, which
-  // reads as a broken screen. Roku dims the video during scrubbing anyway, so a
-  // dark background here is the real, expected look.
-  await press(ecp.Key.Right); // open trickplay; jumps ~one thumbnail forward to the target
-  await waitFor('#trickplayCarousel.isVisible', (v) => v === true, {
-    timeout: 15000,
-    interval: 500,
-    label: 'trickplay visible',
-  });
-  await sleep(2500); // let trickplay thumbnails load
-}
-// ===================================================================
 
 /** Capture the current screen to docs/screenshots/<folder>/<name>.png (JPEG -> PNG). */
 async function capture(name, folder) {
@@ -589,56 +217,43 @@ function writeManifest() {
 
 async function main() {
   const { languages, screens, deploy } = parseArgs();
-  const host = process.env.ROKU_IP;
-  const password = process.env.ROKU_PASSWORD;
-  if (!host || !password) {
-    console.error('Missing ROKU_IP / ROKU_PASSWORD (set them in .env)');
-    process.exit(1);
-  }
-
-  utils.setupEnvironmentFromConfig({
-    RokuDevice: { devices: [{ host, password, screenshotFormat: 'png' }] },
-    ECP: { default: { launchChannelId: 'dev' } },
-    OnDeviceComponent: { logLevel: 'info' },
-  });
+  setupRtaEnv(); // reads ROKU_IP / ROKU_PASSWORD from .env (throws if missing)
 
   if (deploy) {
     console.log('Deploying screenshot build (ENABLE_RTA) ...');
-    await device.deploy({ rootDir: 'build', injectTestingFiles: true });
-    await sleep(CONFIG.bootMs);
+    await deployRtaBuild();
   }
 
   // Good citizen: snapshot the device's current session so we can restore it after
   // (capturing logs the device into the demo server; we put it back the way we found it).
-  const before = (await odc.readRegistry())?.values?.[GLOBAL] || {};
-  const savedSession = {
-    server: before.server ?? null,
-    active_user: before.active_user ?? null,
-    globalTranslationLocale: before.globalTranslationLocale ?? null,
-  };
+  const savedSession = await snapshotSession();
 
   console.log(`Authenticating ${CONFIG.server.username}@${CONFIG.server.url} ...`);
   const session = await authenticate(CONFIG.server);
   console.log(`  userId=${session.userId} token=${session.token.length}c`);
 
-  // Locate the hero movie (CONFIG.heroMovie) in the grid (tile index = Right
-  // presses to reach it) and build the osd backdrop image (the real in-film
-  // frame at the seek position; see prepareBackdrop).
+  // Locate the hero movie in the grid (tile index = Right presses to reach it)
+  // and build the osd backdrop (the real in-film frame at the seek position).
   const hero = await getHero(session);
-  const heroIndex = hero.index;
+  const ctx = { heroIndex: hero.index, heroId: hero.id };
   const backdropBuf = await prepareBackdrop(session, hero);
   console.log(
-    `  hero=${CONFIG.heroMovie} tile#${heroIndex} backdrop=${backdropBuf ? `${backdropBuf.length}b frame` : '(none)'}`,
+    `  hero=${CONFIG.heroMovie} tile#${hero.index} backdrop=${backdropBuf ? `${backdropBuf.length}b frame` : '(none)'}`,
   );
 
   const wanted = SCREENS.filter((s) => screens.includes(s.name));
-  const localizedScreens = wanted.filter((s) => s.scope !== 'shared');
-  const sharedScreens = wanted.filter((s) => s.scope === 'shared');
+  const localizedScreens = wanted.filter((s) => s.capture?.scope !== 'shared');
+  const sharedScreens = wanted.filter((s) => s.capture?.scope === 'shared');
   const seedAndNav = async (screen, locale, folder) => {
     if (screen.state === 'home') await seedHome(session, locale);
     else if (screen.state === 'userSelect') await seedUserSelect(session, locale);
     await relaunch();
-    if (screen.nav) await screen.nav({ ecp, odc, device, backdropBuf, heroIndex, heroId: hero.id });
+    if (screen.nav) await screen.nav(ctx);
+    // Store-only polish: fill the black video plane with the real in-film frame.
+    if (screen.capture?.backdrop) {
+      await injectBackdrop(backdropBuf);
+      await sleep(1000);
+    }
     await capture(screen.name, folder);
   };
   // Each screen reseeds + relaunches from scratch, so a transient hiccup (a
@@ -682,7 +297,7 @@ async function main() {
     }
   } finally {
     console.log('\nRestoring original device session ...');
-    await odc.writeRegistry({ values: { [GLOBAL]: savedSession } }).catch(() => {});
+    await restoreSession(savedSession);
     await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
   }
 

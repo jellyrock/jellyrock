@@ -61,6 +61,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 ### Medium
 
+#### `weblate-branch-stale-sync`
+
+- **area**: Weblate integration (`locale/custom/*.json`, the Weblate branch/config).
+- **issue**: The Weblate branch does not stay in sync with `main`. New `en_US` keys added on `main` don't reach Weblate for translators, and completed translations on the Weblate side don't flow back. Translation work drifts. NOTE: this is hygiene only — it is NOT the cause of the 216 untranslated keys in #641 (those strings exist in no source, Weblate included; syncing won't backfill them). See #641.
+- **direction**: Restore bidirectional Weblate ↔ `main` sync (the Weblate GitHub integration / a scheduled merge) so new keys flow out and translations flow back automatically.
+
 #### `showscenes-mixes-concerns`
 
 - **area**: `source/showScenes.bs`
@@ -245,11 +251,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: ~36 raw `print` statements in places that *could* use `m.log.*` (component methods + class methods). Production builds can't strip them, so they reach the device log unconditionally.
 - **direction**: For each file, add `import "pkg:/source/roku_modules/log/LogMixin.brs"` + `m.log = new log.Logger("…")` in `init()` (or the class constructor) and convert each `print` to the appropriate `m.log.{warn,error,info,debug}` level. Files are currently flagged with a `' bsc-disable-file print-locations` header that points back here.
 - **enforced**: `scripts/bsc-plugins/print-locations.cjs` flags every new `print` outside `source/main.bs` / `globals.bs` debug-block, with smart skipping for free functions in `source/` (no `m` context available there). Existing legacy sites are opted out; the plugin still catches new violations in clean files.
-
-#### `e2e-folder-empty`
-
-- **area**: `tests/source/e2e/`
-- **issue**: RTA-based UI automation was planned, hasn't materialized. Real coverage today is unit + integration only.
 
 #### `tokenize-stopwords-duplicated`
 

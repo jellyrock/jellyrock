@@ -6,10 +6,10 @@ rooibos test framework with `@suite` / `@describe` / `@it` decorators. See [docs
 
 - `tests/source/unit/` — isolated unit tests, no I/O.
 - `tests/source/integration/` — component interactions, real I/O allowed; subfolders for `registry/` and `migration/`.
-- `tests/source/e2e/` — UI automation (RTA-based; sparsely populated today).
 - `tests/source/mocks/` — mock data and stubs.
 - `tests/source/shared/` — shared test helpers.
 - `tests/scripts/unit/` — **Vitest** unit tests for the Node-side build/lint tooling under [`scripts/`](../scripts/). Different framework (Vitest, not Rooibos) and runtime (Node, not Roku). Rules below DO NOT apply — see [`docs/dev/scripts-development.md`](../docs/dev/scripts-development.md) for that layout.
+- `tests/rta/` — **RTA functional tests** (roku-test-automation): Node/ESM under Vitest that drives a real device from outside (ECP + ODC) and asserts each screen loads. NOT Rooibos, NOT under `tests/source/**`. Rules below DO NOT apply — has its own [`tests/rta/CLAUDE.md`](rta/CLAUDE.md); how-to in [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md).
 
 ## Test pattern
 
@@ -36,8 +36,9 @@ Agents *can* and *should* run tests to verify fixes — do NOT commit changes ba
 | `npm run test:integration` | All integration tests |
 | `npm run test:all` | Everything |
 | `npm run test:complete` | Complete coverage suite |
+| `npm run test:rta` | **RTA functional tests** (Vitest, drives a real device) — build + deploy + assert each screen loads. See [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md). |
 
-The runner (`scripts/run-roku-tests.js`) zips the build, sideloads to the Roku at `ROKU_IP`, and tails the debug console for `[Rooibos Result]: PASS|FAIL`.
+The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, sideloads to the Roku at `ROKU_IP`, and tails the debug console for `[Rooibos Result]: PASS|FAIL`. The RTA tests instead run under Vitest (`vitest.rta.config.js`) and assert in Node.
 
 ### Credentials
 
