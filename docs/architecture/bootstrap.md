@@ -5,7 +5,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-06-06
+last-reviewed: 2026-06-07
 ---
 
 # Bootstrap & Lifecycle
@@ -26,7 +26,7 @@ sub Main (args as dynamic) as void
   m.global = m.screen.getGlobalNode()
   setGlobals()                              ' Phase 1: non-node globals
 
-  loadTranslations(resolveTranslationLocale())
+  loadTranslations(resolveTranslationLocale())   ' Pre-login locale (bootstrap, before first render)
   user.settings.SaveDefaults()
   m.global.user.settings.callFunc("enableAutoSync")
 
@@ -43,6 +43,7 @@ sub Main (args as dynamic) as void
 
   appStart:
   m.global.sceneManager.callFunc("clearScenes")
+  loadTranslations(resolveTranslationLocale())  ' Re-resolve pre-login locale on every login-flow (re-)entry
   if not LoginFlow() then return            ' Server pick → user pick → auth (in source/showScenes.bs)
 
   m.global.sceneManager.callFunc("clearScenes")

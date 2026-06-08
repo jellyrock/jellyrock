@@ -8,7 +8,7 @@ related-files:
   - scripts/lint/language-coverage.cjs
   - locale/custom/en_US.json
   - locale/languages.json
-last-reviewed: 2026-05-01
+last-reviewed: 2026-06-07
 ---
 
 # Translations (i18n)
@@ -171,10 +171,11 @@ The layering means a Hong Kong user gets HK-specific translations where availabl
 
 1. **User setting** (post-login only) — `getUserSetting("translationLocale")`. If the user picked a language explicitly, use it.
 2. **Server language** (post-login only) — Jellyfin server `CustomPrefs.language`. Normalized via `normalizeLocaleCode()` because Jellyfin may send `zh-CN`, `pt-BR` (dashes), etc.
-3. **Roku device locale** — `m.global.device.locale`. Mapped by `mapRokuLocaleToTranslationLocale()` which special-cases Chinese (Roku sends `zh_CN` → we use `zh_Hans`).
-4. **Hardcoded fallback** — `"en_US"`.
+3. **Global sign-in language** (pre-login only) — `getSetting("globalTranslationLocale")`, the device-wide twin of the per-user `translationLocale` (a `global*` setting, so it lives in the `JellyRock` registry section). Read via `getSetting` (not `getUserSetting`) so it resolves **with no signed-in user** — this is what localizes the pre-login server-select / user-select screens. **Deliberately skipped post-login:** a signed-in user's session is governed by their own setting / server pref / device locale, so a home screen never inherits the device-wide sign-in default.
+4. **Roku device locale** — `m.global.device.locale`. Mapped by `mapRokuLocaleToTranslationLocale()` which special-cases Chinese (Roku sends `zh_CN` → we use `zh_Hans`).
+5. **Hardcoded fallback** — `"en_US"`.
 
-Pre-login, only steps 3 and 4 run. Post-login, the user setting takes priority.
+Pre-login, only steps 3–5 run (no user context, so 1–2 are skipped) — `globalTranslationLocale` is the only lever that localizes the sign-in screens. Post-login, steps 1, 2, 4, 5 run and step 3 is skipped, so post-login resolution is **identical to the behavior before `globalTranslationLocale` existed** (the global sign-in default never reaches a signed-in session). The pre-login locale is resolved at the `appStart` login-flow entry in `main.bs` — reached both at cold start AND on re-entry from Sign Out / Change Server / Change User (which `goto appStart`) — so a changed `globalTranslationLocale` takes effect on the next sign-in **without an app restart**; a single resolution covers both the server-select and user-select screens, and the next reload is at `user.Login()`.
 
 ## Track language name resolution — `source/utils/languages.bs`
 

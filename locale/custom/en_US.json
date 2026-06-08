@@ -543,6 +543,8 @@
   "MessageYouCanSearchForTitlesPeople": "You can search for Titles, People, Live TV Channels and more",
   "MessageYourCustomColorsWillBeReplaced": "Your custom colors will be replaced by the selected theme. Continue?",
   "SettingDescDisplayLanguage": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language. Changes take effect after leaving Settings.",
+  "SettingDescSigninScreenLanguage": "Language for the sign-in screens, shown before anyone logs in. 'Automatic' uses the Roku device language. Takes effect next time you sign in.",
   "SettingDisplayLanguage": "Display Language",
-  "SettingResetAllSettingsToTheirDefault": "Reset all settings to their default values. Your login session will not be affected."
+  "SettingResetAllSettingsToTheirDefault": "Reset all settings to their default values. Your login session will not be affected.",
+  "SettingSigninScreenLanguage": "Sign-in Screen Language"
 }

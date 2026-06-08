@@ -22,6 +22,7 @@ Global settings that affect everyone that uses this Roku device.
 
 - [Remember Me?](#globalRememberMe)
 - [Splash Screen Image](#globalSplashScreen)
+- [Sign-in Screen Language](#globalTranslationLocale)
 
 <h3 id="globalRememberMe">Remember Me?</h3>
 
@@ -47,6 +48,18 @@ Control whether the server's splash screen image is displayed on the User Select
 | Type | `radio` |
 | Default | `enabled` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Enabled</td><td><code>enabled</code></td></tr><tr><td>Disabled</td><td><code>disabled</code></td></tr></tbody></table> |
+
+<h3 id="globalTranslationLocale">Sign-in Screen Language</h3>
+
+<a href="#global">Global</a> › <a href="#globalTranslationLocale">Sign-in Screen Language</a>
+
+Language for the sign-in screens, shown before anyone logs in. 'Automatic' uses the Roku device language. Takes effect next time you sign in.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `globalTranslationLocale` |
+| Type | `languagePicker` |
+| Default | `` |
 
 <p><a href="#top">⬆️ Back to top</a></p>
 

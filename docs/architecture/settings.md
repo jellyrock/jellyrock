@@ -7,7 +7,7 @@ related-files:
   - source/data/SessionDataTransformer.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-06-07
 ---
 
 # Settings
@@ -18,7 +18,7 @@ How `settings/settings.json` is the source of truth, how settings flow into `m.g
 
 JellyRock distinguishes three categories of "settings":
 
-1. **Global settings** — device-wide, shared across all users on this Roku. Stored in the registry section `"JellyRock"`. Examples: `globalRememberMe`, `globalSplashScreen`.
+1. **Global settings** — device-wide, shared across all users on this Roku. Stored in the registry section `"JellyRock"`. Examples: `globalRememberMe`, `globalSplashScreen`, `globalTranslationLocale`. Most are consumed post-login, but `globalTranslationLocale` (the device-wide sign-in-screen language, twin of the per-user `translationLocale`) is read at **bootstrap, pre-login** by the locale cascade — `getSetting` works with no signed-in user, which is what lets it localize the server-select / user-select screens (see `translations.md`).
 2. **User settings** — per-user, stored in a registry section keyed by the Jellyfin user ID. Examples: theme colors, playback bitrate limit, subtitle preferences.
 3. **Server config** — server-authoritative, fetched from Jellyfin on login, never written back to the registry. Lives in `m.global.user.config` and `m.global.user.policy`. **Home section ordering** (`homeSection0` through `homeSection6`) is also server-authoritative — populated from `Jellyfin`'s `DisplayPreferences` API, not the local registry. (See `migrations.md` for the cleanup migration that removes any stale per-user `homeSection*` entries left over from earlier versions.)
 

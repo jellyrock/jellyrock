@@ -32,6 +32,15 @@
         ],
         "titleKey": "LabelSplashScreenImage",
         "descriptionKey": "MessageControlWhetherTheServerSSplash"
+      },
+      {
+        "title": "Sign-in Screen Language",
+        "description": "Language for the sign-in screens, shown before anyone logs in. 'Automatic' uses the Roku device language. Takes effect next time you sign in.",
+        "settingName": "globalTranslationLocale",
+        "type": "languagePicker",
+        "default": "",
+        "titleKey": "SettingSigninScreenLanguage",
+        "descriptionKey": "SettingDescSigninScreenLanguage"
       }
     ],
     "titleKey": "LabelGlobal",
