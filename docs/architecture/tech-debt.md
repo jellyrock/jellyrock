@@ -81,6 +81,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 ### Low
 
+#### `screenshot-osd-frame-quality`
+
+- **area**: [`scripts/capture-screenshots.js`](../../scripts/capture-screenshots.js) (`prepareBackdrop` / `injectBackdrop` + the OSD navigation).
+- **issue**: The OSD store screenshot is noticeably softer than the original HDMI-captured reference. Roku's developer screenshot (`/plugin_inspect`, used by `roku-test-automation`) only captures the SceneGraph UI plane as a **fixed-quality JPEG** — this device refuses PNG — and the decoded video plane is never captured at all (documented Roku limitation). So the real in-film frame we inject behind the OSD (full-res, extracted from the direct stream via `ffmpeg` HTTP fast-seek) picks up JPEG softening on the on-device round-trip. Mitigated with a mild `unsharp mask`; acceptable for a marketing asset but not as crisp as the original.
+- **direction**: Composite offline so the frame never round-trips through the device — capture the paused (static) OSD UI twice (over white and over black injected backdrops), solve per-pixel for the UI layer's color + alpha via two-background alpha matting (recovers even the semi-transparent bottom gradient), then composite that UI over the full-res `ffmpeg` frame locally. Caveat: JPEG edge artifacts on the two UI captures may leave minor halos around text/icons, so a clean result isn't guaranteed — weigh before building. Surfaced in #621.
+
 #### `grid-titles-ignores-hidealways`
 
 - **area**: [`components/ItemGrid/GridItem.bs`](../../components/ItemGrid/GridItem.bs) (`m.gridTitles` read + visibility logic), [`components/ItemGrid/BaseGridView.bs`](../../components/ItemGrid/BaseGridView.bs) (`gridTitles` vs `showItemTitles` fields).
