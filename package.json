@@ -113,7 +113,8 @@
     "test:complete": "npm run build:tests-complete && node scripts/run-roku-tests.js",
     "test:scripts": "vitest run",
     "test:scripts:tdd": "vitest",
-    "prepare": "husky"
+    "prepare": "husky",
+    "screenshots:capture": "node scripts/capture-screenshots.js"
   },
   "repository": {
     "type": "git",

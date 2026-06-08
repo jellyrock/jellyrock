@@ -30,6 +30,16 @@ sub Main (args as dynamic) as void
   m.screen.show() ' vscode_rale_tracker_entry
   'vscode_rdb_on_device_component_entry
 
+  ' Screenshot-automation hook: start roku-test-automation's on-device component
+  ' so the capture driver (scripts/capture-screenshots.js) can seed the registry
+  ' (server / active_user / authToken / globalTranslationLocale / translationLocale)
+  ' and query the node tree. ENABLE_RTA is false in the committed manifest and is
+  ' flipped to true ONLY by the RTA screenshot deploy, so prod / store builds
+  ' compile this out at device load (it never ships enabled).
+  #if ENABLE_RTA
+    m.rtaOnDeviceComponent = createObject("roSGNode", "RTA_OnDeviceComponent")
+  #end if
+
   ' setup global nodes now that the screen has been shown
   setGlobalNodes()
 
