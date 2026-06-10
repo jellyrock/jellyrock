@@ -12,12 +12,16 @@ export const RTA_CONFIG = {
     username: 'demo',
     password: '',
   },
-  // The movie used for movieDetails / osd / trickplay. Reached in the Movies
-  // grid by its SortName tile index, looked up at runtime (see getHero), so this
-  // name is the only knob to change.
+  // The movie used for movieDetails + osd. Reached in the Movies grid by its
+  // SortName tile index, looked up at runtime (see findMovie), so this name is
+  // the only knob to change.
   heroMovie: 'Dracula',
-  // Playback position (seconds) for osd (paused) + trickplay scrub — 28:44.
+  // Playback position (seconds) for the osd paused frame — 28:44.
   seekSeconds: 1724,
+  // trickplay uses its OWN film + position so the store frame matches the
+  // long-standing reference screenshot. Change movie/timestamp here.
+  trickplayMovie: 'The Boy in the Plastic Bubble',
+  trickplaySeekSeconds: 1940, // 32:20
   // Time to let the app boot + the RTA on-device component come up after a
   // relaunch or a fresh deploy.
   bootMs: 10000,

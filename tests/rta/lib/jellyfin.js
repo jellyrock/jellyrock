@@ -87,21 +87,21 @@ export async function authenticate(server) {
 }
 
 /**
- * Locate RTA_CONFIG.heroMovie within the Movies grid. The grid is sorted by
- * SortName ascending (verified to match the app's grid order), so the item's
- * index in this list IS its grid tile index — the number of Right presses from
- * the first tile to focus it.
+ * Locate a movie by Name within the Movies grid. The grid is sorted by SortName
+ * ascending (verified to match the app's grid order), so the item's index in this
+ * list IS its grid tile index — the number of Right presses from the first tile to
+ * focus it.
  *
  * Returns { index, id, backdropUrl } ({0, '', ''} if the movie isn't found).
  * backdropUrl is the promo still (a fallback only — see prepareBackdrop).
  */
-export async function getHero(session) {
+export async function findMovie(session, movieName) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
   const data = await getJson(url, { 'X-Emby-Token': session.token }).catch(() => null);
   const items = data?.Items || [];
-  const index = items.findIndex((i) => i.Name === RTA_CONFIG.heroMovie);
+  const index = items.findIndex((i) => i.Name === movieName);
   if (index < 0) return { index: 0, id: '', backdropUrl: '' };
   const item = items[index];
   const hasBackdrop = Array.isArray(item.BackdropImageTags) && item.BackdropImageTags.length > 0;
@@ -112,3 +112,6 @@ export async function getHero(session) {
     backdropUrl: `${session.serverUrl}/Items/${item.Id}/Images/${kind}?maxWidth=1920`,
   };
 }
+
+/** The movie used by movieDetails + osd (RTA_CONFIG.heroMovie). */
+export const getHero = (session) => findMovie(session, RTA_CONFIG.heroMovie);

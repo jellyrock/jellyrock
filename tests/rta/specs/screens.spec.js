@@ -29,7 +29,9 @@ beforeAll(async () => {
   saved = await snapshotSession(); // restore the device's prior session afterward
   session = await authenticate(RTA_CONFIG.server);
   const hero = await getHero(session);
-  ctx = { heroIndex: hero.index, heroId: hero.id };
+  // Functional tests assert each screen LOADS; the hero movie exercises every nav
+  // (incl. trickplay). The trickplay-specific film is a store-screenshot concern.
+  ctx = { heroIndex: hero.index, heroId: hero.id, seekSeconds: RTA_CONFIG.seekSeconds };
 });
 
 afterAll(async () => {

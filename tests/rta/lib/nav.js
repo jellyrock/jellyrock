@@ -10,7 +10,6 @@
  * ffmpeg/backdrop logic.
  */
 import { ecp, odc } from 'roku-test-automation';
-import { RTA_CONFIG } from '../config.js';
 import { press, getVal, waitFor, waitFocused, waitHome, hasChildren, sleep } from './steps.js';
 
 /** home -> OK on focused "Movies" tile -> Movies library grid. */
@@ -92,18 +91,20 @@ export async function navOsd(ctx) {
   // paused, so the OSD shows that exact timestamp with no playback drift.
   if (ctx?.heroId) {
     await odc
-      .setValue({ base: 'scene', keyPath: `#${ctx.heroId}.seek`, value: RTA_CONFIG.seekSeconds })
+      .setValue({ base: 'scene', keyPath: `#${ctx.heroId}.seek`, value: ctx.seekSeconds })
       .catch(() => {});
   }
   await sleep(2500); // let the (paused) seek settle + frame render
 }
 
 /**
- * Playback -> trickplay seek strip positioned on the target. Use the OSD as the
- * "playback ready" gate, hide it (Back; OSD consumes it as a hide, does NOT
- * stop playback), seek one trickplay interval (10s) BEFORE the target, then
- * Right to open trickplay — which jumps forward one thumbnail, landing the
- * scrub on seekSeconds.
+ * Playback -> trickplay seek strip on the target. The scrubber + position/remaining
+ * times are Roku's built-in trickPlayBar (shown during a scrub), NOT the JellyRock
+ * OSD — so we HIDE the OSD (Back) so the player, not the OSD, receives Right; seek
+ * one trickplay interval (10s) before the target; then Right scrubs forward one
+ * thumbnail onto the target, revealing the carousel + trickPlayBar. No in-film
+ * backdrop is injected for this shot (it would render OVER Roku's built-in bar),
+ * so the video plane reads black — the bar + filmstrip are what the shot shows.
  */
 export async function navTrickplay(ctx) {
   await startPlayback(ctx);
@@ -113,17 +114,17 @@ export async function navTrickplay(ctx) {
     action: () => press(ecp.Key.Up),
     label: 'playback ready (osd)',
   });
-  await press(ecp.Key.Back);
+  await press(ecp.Key.Back); // hide OSD so the player (not the OSD) receives Right
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
   await odc
-    .setValue({ base: 'focusedNode', keyPath: 'seek', value: RTA_CONFIG.seekSeconds - 10 })
+    .setValue({ base: 'focusedNode', keyPath: 'seek', value: ctx.seekSeconds - 10 })
     .catch(() => {});
   await sleep(3000); // let the seek settle
-  await press(ecp.Key.Right); // open trickplay; jumps ~one thumbnail forward to the target
+  await press(ecp.Key.Right); // scrub +10s -> target; reveals the carousel + trickPlayBar
   await waitFor('#trickplayCarousel.isVisible', (v) => v === true, {
     timeout: 15000,
     interval: 500,
     label: 'trickplay visible',
   });
-  await sleep(2500); // let trickplay thumbnails load
+  await sleep(2000); // let the filmstrip thumbnails load while the trickPlayBar is still up
 }

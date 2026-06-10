@@ -42,6 +42,12 @@ export const SCREENS = [
     name: 'trickplay',
     state: 'home',
     nav: navTrickplay,
+    // No backdrop injection: Roku's built-in trickPlayBar (the scrubber + position/
+    // remaining times) renders BEHIND the Video node's children, so an injected
+    // in-film frame would cover it. We accept the un-capturable video plane reading
+    // black (realistic for an immediate scrub) and keep the REAL scrubber + times +
+    // filmstrip. Movie + scrub position come from RTA_CONFIG (trickplayMovie /
+    // trickplaySeekSeconds) so the bar's film + time match the reference.
     capture: { eligible: true, scope: 'shared' },
   },
 ];

@@ -49,7 +49,7 @@ import {
   relaunch,
 } from '../tests/rta/lib/driver.js';
 import { sleep, waitFor } from '../tests/rta/lib/steps.js';
-import { authenticate, getHero, getBuffer } from '../tests/rta/lib/jellyfin.js';
+import { authenticate, findMovie, getBuffer } from '../tests/rta/lib/jellyfin.js';
 import {
   seedHome,
   seedUserSelect,
@@ -91,11 +91,11 @@ function parseArgs() {
  * upscale cleanly. Falls back to the promo backdrop if ffmpeg/extraction fails.
  * Returns a JPEG Buffer (or null).
  */
-async function prepareBackdrop(session, hero) {
+async function prepareBackdrop(session, target) {
   const streamUrl =
-    `${session.serverUrl}/Videos/${hero.id}/stream` +
-    `?static=true&mediaSourceId=${hero.id}&api_key=${session.token}`;
-  const out = path.join('/tmp/rta-shots', `frame-${hero.id}-${CONFIG.seekSeconds}.jpg`);
+    `${session.serverUrl}/Videos/${target.heroId}/stream` +
+    `?static=true&mediaSourceId=${target.heroId}&api_key=${session.token}`;
+  const out = path.join('/tmp/rta-shots', `frame-${target.heroId}-${target.seekSeconds}.jpg`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   try {
     await execFileAsync(
@@ -105,7 +105,7 @@ async function prepareBackdrop(session, hero) {
         '-loglevel',
         'error',
         '-ss',
-        String(CONFIG.seekSeconds),
+        String(target.seekSeconds),
         '-i',
         streamUrl,
         '-frames:v',
@@ -128,7 +128,7 @@ async function prepareBackdrop(session, hero) {
       `  ffmpeg frame extraction failed (${String(e.message).split('\n')[0]}); using promo backdrop`,
     );
   }
-  if (hero.backdropUrl) return await getBuffer(hero.backdropUrl, {}).catch(() => null);
+  if (target.backdropUrl) return await getBuffer(target.backdropUrl, {}).catch(() => null);
   return null;
 }
 
@@ -232,26 +232,55 @@ async function main() {
   const session = await authenticate(CONFIG.server);
   console.log(`  userId=${session.userId} token=${session.token.length}c`);
 
-  // Locate the hero movie in the grid (tile index = Right presses to reach it)
-  // and build the osd backdrop (the real in-film frame at the seek position).
-  const hero = await getHero(session);
-  const ctx = { heroIndex: hero.index, heroId: hero.id };
-  const backdropBuf = await prepareBackdrop(session, hero);
+  // Resolve a target movie (grid tile index + item id + seek position) per screen.
+  // movieDetails/osd use heroMovie; trickplay uses its own film so its store frame
+  // matches the long-standing reference. ctx for nav = { heroIndex, heroId, seekSeconds }.
+  const mkTarget = (found, seekSeconds) => ({
+    heroIndex: found.index,
+    heroId: found.id,
+    seekSeconds,
+    backdropUrl: found.backdropUrl,
+  });
+  const heroTarget = mkTarget(await findMovie(session, CONFIG.heroMovie), CONFIG.seekSeconds);
+  const trickTarget = mkTarget(
+    await findMovie(session, CONFIG.trickplayMovie),
+    CONFIG.trickplaySeekSeconds,
+  );
+  const targetFor = (screen) => (screen.name === 'trickplay' ? trickTarget : heroTarget);
   console.log(
-    `  hero=${CONFIG.heroMovie} tile#${hero.index} backdrop=${backdropBuf ? `${backdropBuf.length}b frame` : '(none)'}`,
+    `  hero=${CONFIG.heroMovie} tile#${heroTarget.heroIndex}; ` +
+      `trickplay=${CONFIG.trickplayMovie} tile#${trickTarget.heroIndex}`,
   );
 
   const wanted = SCREENS.filter((s) => screens.includes(s.name));
+  // Build each distinct in-film backdrop frame ONCE (osd + trickplay may differ),
+  // cached by movie+position so a per-language screen doesn't re-extract per locale.
+  const backdrops = {};
+  const backdropKey = (t) => `${t.heroId}@${t.seekSeconds}`;
+  for (const screen of wanted) {
+    if (!screen.capture?.backdrop) continue;
+    const key = backdropKey(targetFor(screen));
+    if (!(key in backdrops)) {
+      backdrops[key] = await prepareBackdrop(session, targetFor(screen));
+      console.log(
+        `  backdrop[${key}] = ${backdrops[key] ? `${backdrops[key].length}b frame` : '(none)'}`,
+      );
+    }
+  }
+
   const localizedScreens = wanted.filter((s) => s.capture?.scope !== 'shared');
   const sharedScreens = wanted.filter((s) => s.capture?.scope === 'shared');
   const seedAndNav = async (screen, locale, folder) => {
+    const ctx = targetFor(screen);
     if (screen.state === 'home') await seedHome(session, locale);
     else if (screen.state === 'userSelect') await seedUserSelect(session, locale);
     await relaunch();
     if (screen.nav) await screen.nav(ctx);
-    // Store-only polish: fill the black video plane with the real in-film frame.
+    // Store-only polish: fill the un-capturable black video plane with the real
+    // in-film frame (osd's paused frame). trickplay deliberately has no backdrop —
+    // it would cover Roku's built-in trickPlayBar — so its video plane stays black.
     if (screen.capture?.backdrop) {
-      await injectBackdrop(backdropBuf);
+      await injectBackdrop(backdrops[backdropKey(ctx)]);
       await sleep(1000);
     }
     await capture(screen.name, folder);
