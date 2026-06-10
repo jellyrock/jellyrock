@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - (i18n) add global sign-in screen language setting ([#638](https://github.com/jellyrock/jellyrock/pull/638))
 
+### Changed
+
+- Per-language store screenshots + RTA functional-test layer ([#642](https://github.com/jellyrock/jellyrock/pull/642))
+
 ### Dependencies
 
 - Update ropm from v0.11.8 to v0.11.9 ([#645](https://github.com/jellyrock/jellyrock/pull/645))
