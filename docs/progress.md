@@ -28,6 +28,7 @@ Investigating issue #573 (surround audio fails to play; the server emits a bad f
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-10 — Per-language store screenshots + RTA functional-test layer
 - 2026-06-07 — fix(server-upgrade): decouple diff anchor from resolved-through so clean releases stop nagging
 - 2026-06-07 — refactor(quickplay): drop dead `album`/`artist` dispatch aliases
 - 2026-06-07 — fix(quickplay): key `Play All` dispatch on canonical Jellyfin item type
