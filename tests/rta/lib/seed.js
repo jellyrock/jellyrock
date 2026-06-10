@@ -13,6 +13,27 @@ import { odc } from 'roku-test-automation';
 
 export const GLOBAL = 'JellyRock';
 
+/**
+ * Clear all sticky per-library view settings (`display.<libraryId>.*` keys in the
+ * user's registry section) so a screen starts from the presenter DEFAULT view.
+ * Library views are sticky (set by the grid options dialog, persisted to registry),
+ * so without this a view seeded for one screen leaks into the next — e.g. a
+ * Genres-view screen would leave the Movies library in Genres (which renders into
+ * #genreList, no #itemGrid), breaking the next movie-grid nav. Reset-then-seed
+ * makes every capture deterministic regardless of run order or prior device state.
+ */
+async function clearDisplaySettings(session) {
+  const reg = await odc.readRegistry().catch(() => null);
+  const userSection = reg?.values?.[session.userId] || {};
+  const nulls = {};
+  for (const key of Object.keys(userSection)) {
+    if (key.startsWith('display.')) nulls[key] = null; // null = delete the key
+  }
+  if (Object.keys(nulls).length) {
+    await odc.writeRegistry({ values: { [session.userId]: nulls } });
+  }
+}
+
 /** Seed registry to land logged-in on Home as the demo user, in `locale`. */
 export async function seedHome(session, locale) {
   await odc.writeRegistry({
@@ -32,6 +53,8 @@ export async function seedHome(session, locale) {
       },
     },
   });
+  // Reset sticky library views to defaults; view-dependent screens re-seed after.
+  await clearDisplaySettings(session);
 }
 
 /**

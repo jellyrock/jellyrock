@@ -10,7 +10,7 @@
  * ffmpeg/backdrop logic.
  */
 import { ecp, odc } from 'roku-test-automation';
-import { press, getVal, waitFor, waitFocused, waitHome, sleep } from './steps.js';
+import { press, getVal, waitFor, waitFocused, waitHome, hasChildren, sleep } from './steps.js';
 
 /**
  * home -> overhang settings icon -> Settings screen. Up moves focus from the home
@@ -187,6 +187,65 @@ export async function navMusicDetail() {
 export async function navPlaylistDetails() {
   await navPlaylistsLibrary();
   await openFirstGridTileDetail('playlist');
+}
+
+/**
+ * Movies grid -> open the grid OPTIONS dialog (View / Sort / Filter). The `*`
+ * button (ECP "Info" -> BrightScript "options") toggles the `#options`
+ * ItemGridOptions overlay; we wait on its `visible` field.
+ */
+export async function navLibraryOptions() {
+  await navLibraryGrid();
+  await press(ecp.Key.Option); // '*' opens the grid options dialog
+  await waitFor('#options.visible', (v) => v === true, {
+    label: 'grid options dialog',
+    timeout: 8000,
+  });
+  await sleep(800); // let the dialog's menus paint
+}
+
+/**
+ * Movie detail -> open the extras panel (Down) -> Cast & Crew row -> OK the first
+ * person -> Person detail. The hero movie (RTA_CONFIG.heroMovie) has a rich cast,
+ * and the Cast & Crew row is the first extras row, so the first tile is a person.
+ * The cast row loads asynchronously, so we wait for `#extrasGrid` content before
+ * selecting. Person detail uses the same `#videoTitle` node as every other type.
+ */
+export async function navPersonDetails(ctx) {
+  await navMovieDetails(ctx);
+  await press(ecp.Key.Down); // open extras panel; focus lands on the Cast & Crew row
+  await waitFor('#extrasGrid.content.getChildCount()', hasChildren, {
+    label: 'extras cast/crew row',
+    timeout: 20000,
+  });
+  await sleep(1200); // let the cast tiles paint before selecting
+  await press(ecp.Key.Ok); // open the focused person -> Person detail
+  // The Person detail loads async behind the scene's global #spinner. `#videoTitle`
+  // is NOT a reliable gate: while the new detail loads, the previous (movie)
+  // ItemDetails is still in the scene tree, so the recursive `#videoTitle` lookup
+  // resolves to the MOVIE's title and a non-empty check passes prematurely. Instead
+  // gate on the scene spinner. It can blink twice (the person item, then their
+  // filmography), so: wait for it to come ON, then settle OFF and STAY off.
+  await waitFor('#spinner.visible', (v) => v === true, {
+    label: 'person load started',
+    timeout: 8000,
+    interval: 150,
+  }).catch(() => {}); // tolerate a load fast enough that we miss the ON edge
+  await waitSpinnerSettled();
+  await sleep(1500); // let backdrop + biography paint
+}
+
+/** Wait until the scene spinner has been OFF for a few consecutive polls (stable). */
+async function waitSpinnerSettled(timeout = 25000) {
+  const start = Date.now();
+  let offStreak = 0;
+  while (Date.now() - start < timeout) {
+    const visible = await getVal('#spinner.visible');
+    offStreak = visible === false ? offStreak + 1 : 0;
+    if (offStreak >= 3) return; // ~3 polls off in a row => load settled
+    await sleep(500);
+  }
+  throw new Error('nav timed out waiting for scene spinner to settle off');
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */

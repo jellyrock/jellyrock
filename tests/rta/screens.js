@@ -34,6 +34,7 @@ import {
   navSeriesDetails,
   navMusicDetail,
   navPlaylistDetails,
+  navLibraryOptions,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -137,4 +138,9 @@ export const SCREENS = [
   vw('musicAlbumDetails', navMusicDetail, 'music', 'Albums'),
   vw('musicArtistDetails', navMusicDetail, 'music', 'ArtistsGrid'),
   vw('playlistDetails', navPlaylistDetails, 'playlists', 'default'),
+  // Grid options dialog (View / Sort / Filter). Chains through the movie grid nav.
+  // NOTE: personDetails (movie -> Cast & Crew row -> Person) is built in nav.js
+  // (navPersonDetails) but deferred — the demo server's Person detail hangs on a
+  // perpetual loading spinner, so it can't be captured reliably yet.
+  { name: 'libraryOptions', state: 'home', nav: navLibraryOptions, capture: { eligible: true } },
 ];

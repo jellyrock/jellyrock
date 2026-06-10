@@ -25,7 +25,8 @@
     "seriesDetails",
     "musicAlbumDetails",
     "musicArtistDetails",
-    "playlistDetails"
+    "playlistDetails",
+    "libraryOptions"
   ],
   "storeScreens": ["userSelect", "home", "libraryGrid", "movieDetails", "osd", "trickplay"]
 }

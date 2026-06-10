@@ -73,7 +73,8 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 ### tests
 
 - Add approval-gated `device-rta-tests.yml` CI workflow running `npm run test:rta` on the self-hosted `roku-device` runner (mirror `device-unit-tests.yml`; register with `lint:ci-workflow-sync`).
-- Expand RTA functional-test screen coverage beyond the current 6 (`userSelect`/`home`/`libraryGrid`/`movieDetails`/`osd`/`trickplay`) to more screens, and make screenshot capture the default for RTA runs (currently `RTA_CAPTURE=1` opt-in) so every covered screen yields a store image. From #642.
+- Expand RTA functional-test screen coverage beyond the current 6 (`userSelect`/`home`/`libraryGrid`/`movieDetails`/`osd`/`trickplay`) to more screens, and make screenshot capture the default for RTA runs (currently `RTA_CAPTURE=1` opt-in) so every covered screen yields a store image. From #642. *(Largely addressed by #621: coverage grew 6→23 website-gallery screens; the "every screen → store image" clause is superseded by `rta-screenshot-store-website-split`.)*
+- Finish remaining RTA gallery screens (after #621): `personDetails` — `navPersonDetails` is built in `tests/rta/lib/nav.js` but deferred because the demo server's Person detail hangs on a perpetual loading spinner (needs a reliable load gate or the richer custom server); `seasonDetails`/`episodeDetails` (Series→Seasons→Episodes nav) and `audioDetails` (`MusicAlbum`→Songs→song) not yet built. Content-blocked on the richer custom server (zero demo content): `BoxSet`, `Photo`/`PhotoAlbum`, `MusicVideo`, Live TV, OSD per-button dialogs, non-cast extras rows (trailers/special features/similar).
 
 ### docs
 
