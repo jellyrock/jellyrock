@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update promises from v0.7.0 to v0.7.1 ([#646](https://github.com/jellyrock/jellyrock/pull/646))
 - Update ropm from v0.11.8 to v0.11.9 ([#645](https://github.com/jellyrock/jellyrock/pull/645))
 - Update brighterscript from v1.0.0 to v1.7.27 ([#644](https://github.com/jellyrock/jellyrock/pull/644))
 - Update linting to v3.8.4 ([#643](https://github.com/jellyrock/jellyrock/pull/643))
