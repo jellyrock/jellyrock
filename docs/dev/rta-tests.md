@@ -67,6 +67,14 @@ Add one entry to [`tests/rta/screens.js`](../../tests/rta/screens.js):
   that drives key presses and `waitFor`s the screen's loaded signal. The waits are the
   assertion.
 - `assert`: optional — for seed-to-land screens with no `nav`, or extra checks.
+- `view`: optional `{ collectionType, landing }` for a library-dependent screen. Library
+  views are **sticky** in the registry (`display.<libraryId>.landing`, set by the grid options
+  dialog), so a screen that depends on a specific view must seed it deterministically rather
+  than inherit whatever is persisted. The `vw(name, nav, collectionType, landing)` helper in
+  `screens.js` builds these entries; `seedLibraryLanding` (called by the spec + orchestrator)
+  resolves the library id at RUNTIME from the stable `collectionType` (never a hardcoded id,
+  which would die if the library is recreated) and seeds the landing view. `seedHome` clears all sticky `display.*` keys first, so views
+  can't leak between screens.
 - `capture`: screenshot metadata (store generator + `RTA_CAPTURE` only):
   `eligible` to capture, `store: true` to ALSO include in the curated Roku-store / homepage
   set (see split below), `backdrop: true` to composite the in-film frame behind the OSD,
