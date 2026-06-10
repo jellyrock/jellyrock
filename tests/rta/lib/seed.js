@@ -34,6 +34,45 @@ export async function seedHome(session, locale) {
   });
 }
 
+/**
+ * Seed registry to land on the SERVER-select screen with exactly one saved server:
+ * the demo server, saved under the bare scheme-less URL "demo.jellyfin.org/stable"
+ * so the picker entry demonstrates the URL parser / http->https redirect we follow
+ * on submit. LoginFlow shows server-select interactively whenever `server` is unset
+ * (showScenes.bs), so we delete `server` (and `active_user`) and populate
+ * `saved_servers`. The remote demo server isn't SSDP-discoverable, so it surfaces
+ * via SetServerScreen's "Pass 2" saved-server injection. `id` matches the session's
+ * serverId so that pass dedups correctly and marks the entry deletable.
+ */
+export async function seedServerSelect(session, locale) {
+  const savedServers = {
+    serverList: [
+      {
+        name: session.serverName,
+        id: session.serverId,
+        baseUrl: session.serverUrl, // canonical (https) URL the app connects to
+        originalUrl: 'demo.jellyfin.org/stable', // bare URL shown in the picker
+        // Match SaveServerList()'s persisted shape (showScenes.bs) so the picker
+        // renders the Jellyfin branding icon next to the entry, not a blank slot.
+        iconUrl: 'pkg:/images/branding/logo-icon120.jpg',
+        iconWidth: 120,
+        iconHeight: 120,
+      },
+    ],
+  };
+  await odc.writeRegistry({
+    values: {
+      [GLOBAL]: {
+        server: null, // delete -> LoginFlow shows server-select interactively
+        active_user: null,
+        globalRememberMe: 'false',
+        globalTranslationLocale: locale,
+        saved_servers: JSON.stringify(savedServers),
+      },
+    },
+  });
+}
+
 /** Seed registry to land on the user-select screen (server known, no active user). */
 export async function seedUserSelect(session, locale) {
   // Delete just active_user (null = delete that key) so LoginFlow stops at
@@ -59,6 +98,9 @@ export async function snapshotSession() {
     server: before.server ?? null,
     active_user: before.active_user ?? null,
     globalTranslationLocale: before.globalTranslationLocale ?? null,
+    // seedServerSelect writes saved_servers, so it must be snapshotted+restored too,
+    // else the seeded one-server list leaks onto the device (null restore deletes it).
+    saved_servers: before.saved_servers ?? null,
   };
 }
 

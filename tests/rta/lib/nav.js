@@ -12,6 +12,34 @@
 import { ecp, odc } from 'roku-test-automation';
 import { press, getVal, waitFor, waitFocused, waitHome, hasChildren, sleep } from './steps.js';
 
+/**
+ * home -> overhang settings icon -> Settings screen. Up moves focus from the home
+ * content into the overhang; the overhang focus chain is TabBar -> Search ->
+ * Settings (left to right, see JROverhang.bs), with a variable tab count, so we
+ * walk Right until the settings icon (id "settingsIcon") is focused. The action is
+ * guarded to only press while NOT yet on the icon, so it can't overshoot onto the
+ * user dropdown. The version label (settings.bs: "v" + app.version) is the load gate.
+ */
+export async function navSettings() {
+  await waitHome();
+  await press(ecp.Key.Up); // home content -> overhang
+  await waitFocused((f) => f?.node?.id === 'settingsIcon', {
+    timeout: 15000,
+    interval: 400,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      if (f?.node?.id !== 'settingsIcon') await press(ecp.Key.Right);
+    },
+    label: 'overhang settings icon',
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
+    label: 'settings version label',
+    timeout: 20000,
+  });
+  await sleep(1000); // let the settings menu + panels paint before capture
+}
+
 /** home -> OK on focused "Movies" tile -> Movies library grid. */
 export async function navLibraryGrid() {
   await waitHome();

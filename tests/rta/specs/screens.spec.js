@@ -13,7 +13,13 @@
 import { beforeAll, afterAll, it } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero } from '../lib/jellyfin.js';
-import { seedHome, seedUserSelect, snapshotSession, restoreSession } from '../lib/seed.js';
+import {
+  seedHome,
+  seedUserSelect,
+  seedServerSelect,
+  snapshotSession,
+  restoreSession,
+} from '../lib/seed.js';
 import { relaunch, ecp } from '../lib/driver.js';
 import { SCREENS } from '../screens.js';
 import { captureRawUI } from '../capture.js';
@@ -42,6 +48,7 @@ afterAll(async () => {
 it.each(SCREENS)('screen "$name" loads', async (screen) => {
   if (screen.state === 'home') await seedHome(session, LOCALE);
   else if (screen.state === 'userSelect') await seedUserSelect(session, LOCALE);
+  else if (screen.state === 'serverSelect') await seedServerSelect(session, LOCALE);
   await relaunch();
   if (screen.nav) await screen.nav(ctx); // nav's waitFor gates assert "loaded"
   if (screen.assert) await screen.assert(ctx); // explicit assert for seed-to-land screens

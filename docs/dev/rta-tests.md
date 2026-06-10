@@ -7,7 +7,7 @@ related-files:
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
-last-reviewed: 2026-06-08
+last-reviewed: 2026-06-10
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -60,18 +60,36 @@ Add one entry to [`tests/rta/screens.js`](../../tests/rta/screens.js):
 { name: 'myScreen', state: 'home', nav: navMyScreen, capture: { eligible: true } }
 ```
 
-- `state`: `'home'` | `'userSelect'` (the seed-to-land state).
+- `state`: `'home'` | `'userSelect'` | `'serverSelect'` (the seed-to-land state, via the
+  matching `seed*` in [`tests/rta/lib/seed.js`](../../tests/rta/lib/seed.js); add a branch in
+  BOTH `specs/screens.spec.js` and `scripts/capture-screenshots.js` for a new state).
 - `nav`: an async `(ctx) => {}` in [`tests/rta/lib/nav.js`](../../tests/rta/lib/nav.js)
   that drives key presses and `waitFor`s the screen's loaded signal. The waits are the
   assertion.
 - `assert`: optional — for seed-to-land screens with no `nav`, or extra checks.
 - `capture`: screenshot metadata (store generator + `RTA_CAPTURE` only):
-  `eligible` to capture, `backdrop: true` to composite the in-film frame behind the
-  OSD, `scope: 'shared'` for language-agnostic screens (captured once, copied to all
-  locales).
+  `eligible` to capture, `store: true` to ALSO include in the curated Roku-store / homepage
+  set (see split below), `backdrop: true` to composite the in-film frame behind the OSD,
+  `scope: 'shared'` for language-agnostic screens (captured once, copied to all locales).
 
 The new screen is automatically a functional test (`it.each(SCREENS)`) and, if
-`capture.eligible`, a store screenshot.
+`capture.eligible`, a captured screenshot.
+
+## Store set vs website gallery (the `store` flag)
+
+The Roku store caps a listing at **6 screenshots**, but the captured set is larger — the
+extra screens feed the website's screenshot *gallery* (a UX preview) and may graduate to the
+store later. So `capture` has two levers:
+
+- `eligible` — captured at all: written to `docs/screenshots/<locale>/` (website gallery) and
+  dumped by `RTA_CAPTURE`.
+- `store` — ALSO part of the frozen Roku-store / homepage 6. Only these are bundled by
+  `npm run screenshots:store`, and the website homepage renders them (in registry order)
+  while the gallery page renders every `eligible` screen.
+
+The manifest (`docs/screenshots/screenshots.json`) emits both lists: `screens` (full gallery)
+and `storeScreens` (the curated 6). Keep `store: true` on exactly the 6 that ship — adding a
+7th store screen is a Developer-Portal decision, not a code default.
 
 ## Two capture tiers
 
@@ -87,6 +105,25 @@ Store screenshots default to the **prod** build (`npm run screenshots:capture` �
 `build:prod`), so they match what ships. `screenshots:capture:dev` and
 `screenshots:capture:fast` are the alternates. See
 [`scripts/capture-screenshots.js`](../../scripts/capture-screenshots.js).
+
+## Incremental capture — only the new screens
+
+When you add screens, you do NOT need to regenerate the existing set — both axes subset:
+
+```bash
+# Functional test, only the new screens (skip redeploy after the first full run):
+RTA_NO_DEPLOY=1 vitest run --config vitest.rta.config.js -t 'serverSelect|settings'
+
+# Capture ONLY the new screens, full locale matrix (leaves the other PNGs untouched).
+# DEPLOY=1 on the first run to push the build; drop it on re-captures.
+DEPLOY=1 node scripts/capture-screenshots.js --screens=serverSelect,settings
+```
+
+`capture` writes one PNG per (screen × locale), so `--screens=` only overwrites those files —
+the existing store screens are never touched. `screenshots.json` + the README index are
+regenerated each run but are derived from the config, so they always reflect the full
+intended set regardless of the subset captured. `--languages=` narrows the locale set the
+same way.
 
 ## Store languages
 

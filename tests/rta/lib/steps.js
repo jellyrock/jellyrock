@@ -41,11 +41,20 @@ export async function waitFor(
   throw new Error(`nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})`);
 }
 
-/** Poll the focused node until `predicate({node, keyPath})` is true; throws on timeout. */
-export async function waitFocused(predicate, { timeout = 15000, interval = 500, label } = {}) {
+/**
+ * Poll the focused node until `predicate({node, keyPath})` is true, optionally
+ * re-issuing `action` (e.g. a keypress) each tick to walk focus toward a target.
+ * Mirrors `waitFor`'s action hook; throws on timeout. Guard the action against
+ * overshoot (only press while not yet on target) since focus has no index to clamp.
+ */
+export async function waitFocused(
+  predicate,
+  { timeout = 15000, interval = 500, action, label } = {},
+) {
   const start = Date.now();
   let last;
   while (Date.now() - start < timeout) {
+    if (action) await action().catch(() => {});
     const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     last = `${f?.node?.subtype}@${f?.keyPath}`;
     if (f && predicate(f)) return f;

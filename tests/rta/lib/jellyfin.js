@@ -76,12 +76,18 @@ export async function authenticate(server) {
     { 'Content-Type': 'application/json', 'X-Emby-Authorization': auth },
     { Username: server.username, Pw: server.password },
   );
+  // AuthenticateByName carries no server NAME (only ServerId); the human-readable
+  // name lives on the unauthenticated public-info endpoint. seedServerSelect needs
+  // it for the saved-server picker entry, so fetch it once here. Best-effort: a
+  // missing name just renders an empty label, not a failed run.
+  const info = await getJson(`${server.url}/System/Info/Public`, {}).catch(() => null);
   return {
     serverUrl: server.url,
     userId: d.User.Id,
     username: d.User.Name,
     token: d.AccessToken,
     serverId: d.ServerId,
+    serverName: info?.ServerName || '',
     primaryImageTag: d.User?.PrimaryImageTag || '',
   };
 }
