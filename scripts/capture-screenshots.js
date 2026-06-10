@@ -57,6 +57,7 @@ import {
   restoreSession,
 } from '../tests/rta/lib/seed.js';
 import { SCREENS } from '../tests/rta/screens.js';
+import { generateIndex } from './screenshots-index.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -333,6 +334,7 @@ async function main() {
   }
 
   writeManifest();
+  generateIndex(); // regenerate docs/screenshots/README.md (the by-language index)
   console.log('Done.');
   process.exit(0); // RTA keeps the port-9000 socket open; exit explicitly
 }
