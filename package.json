@@ -32,7 +32,7 @@
     "rimraf": "6.1.3",
     "roku-deploy": "3.17.6",
     "rooibos-roku": "6.0.0-alpha.52",
-    "ropm": "0.11.8",
+    "ropm": "0.11.9",
     "sharp": "0.34.5",
     "source-map": "0.7.6",
     "spellchecker-cli": "7.0.3",
