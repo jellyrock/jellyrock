@@ -302,6 +302,7 @@ multiline
 musicvideo
 namespace
 namespaced
+nav
 namespaces
 Namespaces
 nullable
@@ -318,6 +319,7 @@ NTSC
 Nygard
 Nygard's
 onboarding
+ODC
 OpenAPI
 opencode
 orchestrator
@@ -424,6 +426,7 @@ rooibos
 Rooibos
 rooibos-roku
 ropm
+rta
 RTA
 RTA-based
 RTL
@@ -440,6 +443,7 @@ SHA-1
 ship-today
 sideload
 Sideload
+sideloaded
 sideloads
 signals-schema-invalid
 slow-decay

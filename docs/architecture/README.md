@@ -93,6 +93,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/new-user-setting.md`](../dev/new-user-setting.md) | Adding User Settings Guide |
 | [`docs/dev/promises.md`](../dev/promises.md) | Promises How-To & Style Guide |
 | [`docs/dev/registry-migrations.md`](../dev/registry-migrations.md) | Registry Migrations Guide |
+| [`docs/dev/rta-tests.md`](../dev/rta-tests.md) | RTA functional tests (`tests/rta/`) |
 | [`docs/dev/scripts-development.md`](../dev/scripts-development.md) | Working in `scripts/` |
 | [`docs/dev/translations.md`](../dev/translations.md) | Translations |
 | [`docs/dev/unit-tests-tdd.md`](../dev/unit-tests-tdd.md) | Test-Driven Development (TDD) Workflow |
