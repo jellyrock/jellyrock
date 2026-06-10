@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-08
+last-updated: 2026-06-10
 ---
 
 # Progress
@@ -59,7 +59,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### scripts
 
-(none)
+- Expand automated store screenshots from the 5 marketing languages to ALL ~99 locale files, to surface the default Roku OS font's blast radius — boxes/tofu for scripts the system font doesn't cover are EXPECTED and the point of capturing them. From #642.
 
 ### components
 
@@ -72,6 +72,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 ### tests
 
 - Add approval-gated `device-rta-tests.yml` CI workflow running `npm run test:rta` on the self-hosted `roku-device` runner (mirror `device-unit-tests.yml`; register with `lint:ci-workflow-sync`).
+- Expand RTA functional-test screen coverage beyond the current 6 (`userSelect`/`home`/`libraryGrid`/`movieDetails`/`osd`/`trickplay`) to more screens, and make screenshot capture the default for RTA runs (currently `RTA_CAPTURE=1` opt-in) so every covered screen yields a store image. From #642.
 
 ### docs
 
