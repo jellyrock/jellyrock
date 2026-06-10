@@ -25,8 +25,15 @@ export const RTA_CONFIG = {
   // Time to let the app boot + the RTA on-device component come up after a
   // relaunch or a fresh deploy.
   bootMs: 10000,
-  // Canonical locale set (folder name == the exact translationLocale value).
+  // Full capture matrix — folder name == the exact translationLocale value.
   // Functional tests exercise the first entry (en_US); the store orchestrator
-  // captures the full matrix.
+  // captures every entry. (Planned to grow to ALL locale files to map the
+  // default-font blast radius — see the docs/progress.md followup.)
   languages: ['en_US', 'fr', 'de', 'pt', 'es'],
+  // The curated subset that actually ships in the Roku store listing — the ONE
+  // hand-maintained "what's in the store" list (a subset of `languages`). Adding
+  // a store language = add it here. `npm run screenshots:store` bundles just
+  // these locales into out/store/<lang>/ for Developer Portal upload, so you
+  // never hunt through the full capture set.
+  storeLanguages: ['en_US', 'fr', 'de', 'pt', 'es'],
 };

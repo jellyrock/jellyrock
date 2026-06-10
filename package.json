@@ -120,7 +120,8 @@
     "prepare": "husky",
     "screenshots:capture": "npm run build:prod && DEPLOY=1 node scripts/capture-screenshots.js",
     "screenshots:capture:dev": "npm run build && DEPLOY=1 node scripts/capture-screenshots.js",
-    "screenshots:capture:fast": "node scripts/capture-screenshots.js"
+    "screenshots:capture:fast": "node scripts/capture-screenshots.js",
+    "screenshots:store": "node scripts/screenshots-store.js"
   },
   "repository": {
     "type": "git",

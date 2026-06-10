@@ -88,6 +88,24 @@ Store screenshots default to the **prod** build (`npm run screenshots:capture` �
 `screenshots:capture:fast` are the alternates. See
 [`scripts/capture-screenshots.js`](../../scripts/capture-screenshots.js).
 
+## Store languages
+
+`screenshots:capture` writes every locale in `RTA_CONFIG.languages` (the full capture
+matrix — planned to grow to all locale files, to map the default-font blast radius). Only
+a curated subset actually **ships** in the Roku store listing: `RTA_CONFIG.storeLanguages`
+— the ONE hand-maintained "what's in the store" list (a subset of `languages`). To gather
+just those for upload:
+
+```bash
+npm run screenshots:store
+```
+
+It copies `docs/screenshots/<lang>/` for each `storeLanguages` entry into
+`out/store/<lang>/` (gitignored), ready to upload to the Roku Developer Portal — no hunting
+through the full locale set. Adding a store language = add it to `storeLanguages` and
+re-run. `storeLocales` is also emitted into `screenshots.json` so the website can tell the
+store set from the full capture set.
+
 ## Notes
 
 - Seeds write the **real** `JellyRock` registry (not a `test-*` section) because the
