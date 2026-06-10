@@ -10,7 +10,7 @@
  * ffmpeg/backdrop logic.
  */
 import { ecp, odc } from 'roku-test-automation';
-import { press, getVal, waitFor, waitFocused, waitHome, hasChildren, sleep } from './steps.js';
+import { press, getVal, waitFor, waitFocused, waitHome, sleep } from './steps.js';
 
 /**
  * home -> overhang settings icon -> Settings screen. Up moves focus from the home
@@ -40,15 +40,153 @@ export async function navSettings() {
   await sleep(1000); // let the settings menu + panels paint before capture
 }
 
-/** home -> OK on focused "Movies" tile -> Movies library grid. */
-export async function navLibraryGrid() {
+/**
+ * Locate a library tile on the Home screen by its Jellyfin collectionType
+ * ("movies" | "tvshows" | "music" | "playlists" | ...). The Home layout is
+ * server-side user-configurable (the "My Media" row's position AND its tile order
+ * can be changed from any Jellyfin web client on the demo account), so we resolve
+ * the tile by CONTENT, never by a fixed index: find the row whose sectionId is
+ * "library", then the tile whose collectionType matches. Returns { row, col }.
+ */
+async function findHomeLibraryTile(collectionType) {
+  const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
+  for (let r = 0; r < rowCount; r++) {
+    const sectionId = await getVal(`#homeRows.content.${r}.sectionId`);
+    if (sectionId !== 'library') continue;
+    const tiles = (await getVal(`#homeRows.content.${r}.getChildCount()`)) || 0;
+    for (let c = 0; c < tiles; c++) {
+      const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
+      if (ct === collectionType) return { row: r, col: c };
+    }
+  }
+  throw new Error(`home library tile collectionType="${collectionType}" not found`);
+}
+
+/**
+ * home -> focus the library tile of `collectionType` -> OK -> its library grid.
+ * Drives the HomeRows RowList focus to the resolved [row, col] by reading
+ * `rowItemFocused` and stepping Down/Up then Right/Left (guarded so it can't
+ * overshoot), independent of how the demo account has arranged its Home screen.
+ */
+export async function navLibraryByType(collectionType) {
   await waitHome();
+  const { row, col } = await findHomeLibraryTile(collectionType);
+  // Vertical: step to the library row.
+  await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
+    timeout: 12000,
+    interval: 350,
+    action: async () => {
+      const v = await getVal('#homeRows.rowItemFocused');
+      if (!Array.isArray(v)) return;
+      if (v[0] < row) await press(ecp.Key.Down);
+      else if (v[0] > row) await press(ecp.Key.Up);
+    },
+    label: `home library row ${row} (${collectionType})`,
+  });
+  // Horizontal: step to the target tile within that row.
+  await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[1] === col, {
+    timeout: 12000,
+    interval: 350,
+    action: async () => {
+      const v = await getVal('#homeRows.rowItemFocused');
+      if (!Array.isArray(v)) return;
+      if (v[1] < col) await press(ecp.Key.Right);
+      else if (v[1] > col) await press(ecp.Key.Left);
+    },
+    label: `home library tile col ${col} (${collectionType})`,
+  });
   await press(ecp.Key.Ok);
-  await waitFor('#itemGrid.content.getChildCount()', hasChildren, {
-    label: 'movies grid',
+  await waitGridLoaded(`${collectionType} grid`);
+  await sleep(1200); // let posters paint before capture
+}
+
+/**
+ * A library grid is "loaded" once its load task has SETTLED — which means one of:
+ *  - `#itemGrid` has items (most views), OR
+ *  - `#genreList` has items (the GENRES view renders genre folders here, with
+ *    `#itemGrid` hidden), OR
+ *  - `#emptyText.visible` is true (the load finished with zero items and the
+ *    "No Items" empty-state is shown — a real, capture-worthy screen, e.g. the
+ *    Networks view on a server whose shows have no network).
+ * Accepting the empty-state lets the same nav capture empty views instead of
+ * timing out on them.
+ */
+async function waitGridLoaded(label, timeout = 20000) {
+  const start = Date.now();
+  let last;
+  while (Date.now() - start < timeout) {
+    const grid = await getVal('#itemGrid.content.getChildCount()');
+    const genres = await getVal('#genreList.content.getChildCount()');
+    const empty = await getVal('#emptyText.visible');
+    last = `grid=${grid} genreList=${genres} empty=${empty}`;
+    if (
+      (typeof grid === 'number' && grid > 0) ||
+      (typeof genres === 'number' && genres > 0) ||
+      empty === true
+    ) {
+      return;
+    }
+    await sleep(500);
+  }
+  throw new Error(`nav timed out waiting for ${label} (last ${last})`);
+}
+
+/** home -> Movies library grid (hardened against Home-layout changes). */
+export async function navLibraryGrid() {
+  await navLibraryByType('movies');
+}
+
+/** TV / Shows library grid. */
+export async function navTvLibrary() {
+  await navLibraryByType('tvshows');
+}
+
+/** Music library grid (default view). */
+export async function navMusicLibrary() {
+  await navLibraryByType('music');
+}
+
+/** Playlists library grid. */
+export async function navPlaylistsLibrary() {
+  await navLibraryByType('playlists');
+}
+
+/**
+ * Open the first tile of the currently-loaded grid and wait for its detail
+ * screen. The grid focuses tile 0 on load, so a single OK opens a representative
+ * item of that library's type (`#videoTitle` is the shared detail title node for
+ * every item type). Used by the per-type detail screens that just need ONE example.
+ */
+async function openFirstGridTileDetail(label) {
+  await press(ecp.Key.Ok);
+  await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
+    label: `${label} detail title`,
     timeout: 20000,
   });
-  await sleep(1200); // let posters paint before capture
+  await sleep(1500); // let backdrop + logo paint
+}
+
+/** Shows library -> first tile -> Series detail. */
+export async function navSeriesDetails() {
+  await navTvLibrary();
+  await openFirstGridTileDetail('series');
+}
+
+/**
+ * Music library -> first tile -> its detail. WHICH detail (MusicAlbum vs
+ * MusicArtist) is decided by the seeded landing view: an Albums-view first tile
+ * opens a MusicAlbum; an Artists/AlbumArtists-view first tile opens a MusicArtist.
+ * Both share this nav; the screen entry's `view` selects the type.
+ */
+export async function navMusicDetail() {
+  await navMusicLibrary();
+  await openFirstGridTileDetail('music');
+}
+
+/** Playlists library -> first tile -> Playlist detail. */
+export async function navPlaylistDetails() {
+  await navPlaylistsLibrary();
+  await openFirstGridTileDetail('playlist');
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */

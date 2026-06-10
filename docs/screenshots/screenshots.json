@@ -10,7 +10,22 @@
     "osd",
     "trickplay",
     "serverSelect",
-    "settings"
+    "settings",
+    "moviesLibraryGrid",
+    "moviesLibraryStudios",
+    "moviesLibraryGenres",
+    "tvLibraryShows",
+    "tvLibraryNetworks",
+    "tvLibraryGenres",
+    "musicLibraryAlbumArtists",
+    "musicLibraryAlbums",
+    "musicLibraryArtists",
+    "musicLibraryGenres",
+    "playlistsLibrary",
+    "seriesDetails",
+    "musicAlbumDetails",
+    "musicArtistDetails",
+    "playlistDetails"
   ],
   "storeScreens": ["userSelect", "home", "libraryGrid", "movieDetails", "osd", "trickplay"]
 }

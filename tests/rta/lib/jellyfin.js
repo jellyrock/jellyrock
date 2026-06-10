@@ -121,3 +121,27 @@ export async function findMovie(session, movieName) {
 
 /** The movie used by movieDetails + osd (RTA_CONFIG.heroMovie). */
 export const getHero = (session) => findMovie(session, RTA_CONFIG.heroMovie);
+
+/**
+ * Fetch the user's libraries, resolved at RUNTIME so we never hardcode a library
+ * GUID (those are minted when a library is created and die if it's recreated /
+ * the server is rebuilt). Returns [{ name, collectionType, id }]; callers key off
+ * the STABLE collectionType ("movies" | "tvshows" | "music" | "playlists" | ...)
+ * and read the current id from here. Used to seed a deterministic landing view
+ * (display.<id>.landing) per library.
+ */
+export async function getLibraries(session) {
+  const url = `${session.serverUrl}/Users/${session.userId}/Views`;
+  const data = await getJson(url, { 'X-Emby-Token': session.token }).catch(() => null);
+  return (data?.Items || []).map((i) => ({
+    name: i.Name,
+    collectionType: i.CollectionType,
+    id: i.Id,
+  }));
+}
+
+/** Resolve a stable collectionType to the current library id (or null). */
+export function libraryIdFor(libraries, collectionType) {
+  const lib = (libraries || []).find((l) => l.collectionType === collectionType);
+  return lib ? lib.id : null;
+}

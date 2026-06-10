@@ -91,6 +91,21 @@ export async function seedUserSelect(session, locale) {
   });
 }
 
+/**
+ * Seed a deterministic LANDING VIEW for a library so a capture doesn't depend on
+ * whatever view is stickily persisted on the device. Views are sticky per library
+ * in the user's registry under `display.<libraryId>.landing` (set by the grid's
+ * options dialog; read at login by SessionDataTransformer). `libraryId` is resolved
+ * at runtime (libraryIdFor) — never hardcoded. Call AFTER seedHome and before
+ * relaunch; the per-key write merges into the user section seedHome wrote.
+ */
+export async function seedLibraryLanding(session, libraryId, view) {
+  if (!libraryId || !view) return;
+  await odc.writeRegistry({
+    values: { [session.userId]: { [`display.${libraryId}.landing`]: view } },
+  });
+}
+
 /** Snapshot the device's current top-level session so it can be restored after. */
 export async function snapshotSession() {
   const before = (await odc.readRegistry())?.values?.[GLOBAL] || {};

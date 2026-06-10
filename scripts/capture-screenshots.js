@@ -49,11 +49,18 @@ import {
   relaunch,
 } from '../tests/rta/lib/driver.js';
 import { sleep, waitFor } from '../tests/rta/lib/steps.js';
-import { authenticate, findMovie, getBuffer } from '../tests/rta/lib/jellyfin.js';
+import {
+  authenticate,
+  findMovie,
+  getBuffer,
+  getLibraries,
+  libraryIdFor,
+} from '../tests/rta/lib/jellyfin.js';
 import {
   seedHome,
   seedUserSelect,
   seedServerSelect,
+  seedLibraryLanding,
   snapshotSession,
   restoreSession,
 } from '../tests/rta/lib/seed.js';
@@ -239,6 +246,9 @@ async function main() {
   const session = await authenticate(CONFIG.server);
   console.log(`  userId=${session.userId} token=${session.token.length}c`);
 
+  // Runtime library map (collectionType -> current id) for deterministic view seeding.
+  const libraries = await getLibraries(session);
+
   // Resolve a target movie (grid tile index + item id + seek position) per screen.
   // movieDetails/osd use heroMovie; trickplay uses its own film so its store frame
   // matches the long-standing reference. ctx for nav = { heroIndex, heroId, seekSeconds }.
@@ -282,6 +292,14 @@ async function main() {
     if (screen.state === 'home') await seedHome(session, locale);
     else if (screen.state === 'userSelect') await seedUserSelect(session, locale);
     else if (screen.state === 'serverSelect') await seedServerSelect(session, locale);
+    // Deterministic landing view for library-dependent screens (resolve id at runtime).
+    if (screen.view) {
+      await seedLibraryLanding(
+        session,
+        libraryIdFor(libraries, screen.view.collectionType),
+        screen.view.landing,
+      );
+    }
     await relaunch();
     if (screen.nav) await screen.nav(ctx);
     // Store-only polish: fill the un-capturable black video plane with the real

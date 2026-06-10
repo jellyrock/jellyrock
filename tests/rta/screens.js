@@ -22,7 +22,19 @@
  *      - scope: 'shared' => language-agnostic; captured once, copied to all locales
  */
 import { waitFor, waitHome, hasChildren } from './lib/steps.js';
-import { navLibraryGrid, navMovieDetails, navOsd, navTrickplay, navSettings } from './lib/nav.js';
+import {
+  navLibraryGrid,
+  navMovieDetails,
+  navOsd,
+  navTrickplay,
+  navSettings,
+  navTvLibrary,
+  navMusicLibrary,
+  navPlaylistsLibrary,
+  navSeriesDetails,
+  navMusicDetail,
+  navPlaylistDetails,
+} from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
 async function assertUserSelect() {
@@ -39,6 +51,19 @@ async function assertServerSelect() {
     timeout: 20000,
   });
 }
+
+/**
+ * Build a view-seeded, home-state, website-gallery screen entry. `collectionType`
+ * + `landing` are seeded as the library's deterministic landing view before launch
+ * (see seedLibraryLanding); the library id is resolved at runtime, never hardcoded.
+ */
+const vw = (name, nav, collectionType, landing) => ({
+  name,
+  state: 'home',
+  nav,
+  view: { collectionType, landing },
+  capture: { eligible: true },
+});
 
 export const SCREENS = [
   {
@@ -86,4 +111,30 @@ export const SCREENS = [
     capture: { eligible: true },
   },
   { name: 'settings', state: 'home', nav: navSettings, capture: { eligible: true } },
+
+  // --- Library grids: one screen per VIEW per library type --------------------
+  // The landing view is seeded deterministically (display.<id>.landing) so the
+  // capture never depends on whatever view is stickily persisted on the device.
+  // `view.collectionType` is stable; the library id is resolved at runtime.
+  // (Movies "Presentation" view == the store `libraryGrid`, so it isn't duplicated.)
+  vw('moviesLibraryGrid', navLibraryGrid, 'movies', 'MoviesGrid'),
+  vw('moviesLibraryStudios', navLibraryGrid, 'movies', 'Studios'),
+  vw('moviesLibraryGenres', navLibraryGrid, 'movies', 'Genres'),
+  vw('tvLibraryShows', navTvLibrary, 'tvshows', 'Shows'),
+  // Networks view is empty on the demo (its single series has no network), but the
+  // empty-state ("No Items") is itself a valid, capture-worthy screen.
+  vw('tvLibraryNetworks', navTvLibrary, 'tvshows', 'Networks'),
+  vw('tvLibraryGenres', navTvLibrary, 'tvshows', 'Genres'),
+  vw('musicLibraryAlbumArtists', navMusicLibrary, 'music', 'AlbumArtistsGrid'),
+  vw('musicLibraryAlbums', navMusicLibrary, 'music', 'Albums'),
+  vw('musicLibraryArtists', navMusicLibrary, 'music', 'ArtistsGrid'),
+  vw('musicLibraryGenres', navMusicLibrary, 'music', 'Genres'),
+  vw('playlistsLibrary', navPlaylistsLibrary, 'playlists', 'default'),
+
+  // --- Per-item-type detail screens (Movie detail is `movieDetails`, above) ----
+  // Each opens the first tile of its (view-seeded) library as a representative.
+  vw('seriesDetails', navSeriesDetails, 'tvshows', 'Shows'),
+  vw('musicAlbumDetails', navMusicDetail, 'music', 'Albums'),
+  vw('musicArtistDetails', navMusicDetail, 'music', 'ArtistsGrid'),
+  vw('playlistDetails', navPlaylistDetails, 'playlists', 'default'),
 ];
