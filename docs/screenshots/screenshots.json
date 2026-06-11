@@ -23,9 +23,13 @@
     "musicLibraryGenres",
     "playlistsLibrary",
     "seriesDetails",
+    "seasonDetails",
+    "episodeDetails",
     "musicAlbumDetails",
     "musicArtistDetails",
+    "audioDetails",
     "playlistDetails",
+    "personDetails",
     "libraryOptions"
   ],
   "storeScreens": ["userSelect", "home", "libraryGrid", "movieDetails", "osd", "trickplay"]

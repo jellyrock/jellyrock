@@ -35,6 +35,10 @@ import {
   navMusicDetail,
   navPlaylistDetails,
   navLibraryOptions,
+  navPersonDetails,
+  navSeasonDetails,
+  navEpisodeDetails,
+  navAudioDetails,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -135,12 +139,14 @@ export const SCREENS = [
   // --- Per-item-type detail screens (Movie detail is `movieDetails`, above) ----
   // Each opens the first tile of its (view-seeded) library as a representative.
   vw('seriesDetails', navSeriesDetails, 'tvshows', 'Shows'),
+  vw('seasonDetails', navSeasonDetails, 'tvshows', 'Shows'),
+  vw('episodeDetails', navEpisodeDetails, 'tvshows', 'Shows'),
   vw('musicAlbumDetails', navMusicDetail, 'music', 'Albums'),
   vw('musicArtistDetails', navMusicDetail, 'music', 'ArtistsGrid'),
+  vw('audioDetails', navAudioDetails, 'music', 'Albums'),
   vw('playlistDetails', navPlaylistDetails, 'playlists', 'default'),
-  // Grid options dialog (View / Sort / Filter). Chains through the movie grid nav.
-  // NOTE: personDetails (movie -> Cast & Crew row -> Person) is built in nav.js
-  // (navPersonDetails) but deferred — the demo server's Person detail hangs on a
-  // perpetual loading spinner, so it can't be captured reliably yet.
+  // Person detail (movie -> Cast & Crew extras row -> first person) + the grid
+  // options dialog (View / Sort / Filter). Both chain through the movie/grid navs.
+  { name: 'personDetails', state: 'home', nav: navPersonDetails, capture: { eligible: true } },
   { name: 'libraryOptions', state: 'home', nav: navLibraryOptions, capture: { eligible: true } },
 ];

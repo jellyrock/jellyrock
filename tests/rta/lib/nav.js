@@ -205,47 +205,79 @@ export async function navLibraryOptions() {
 }
 
 /**
- * Movie detail -> open the extras panel (Down) -> Cast & Crew row -> OK the first
- * person -> Person detail. The hero movie (RTA_CONFIG.heroMovie) has a rich cast,
- * and the Cast & Crew row is the first extras row, so the first tile is a person.
- * The cast row loads asynchronously, so we wait for `#extrasGrid` content before
- * selecting. Person detail uses the same `#videoTitle` node as every other type.
+ * From an ItemDetails screen, open the first tile of the detail row whose tiles are
+ * of `tileType` (e.g. "Person" for Cast & Crew, "Season", "Episode", "Audio") ->
+ * that child's ItemDetails.
+ *
+ * The detail rows (`#extrasGrid`) are NOT in a fixed order (Movie's first row is
+ * often "Chapters") and can change, so — like the Home "My Media" row — we resolve
+ * the target row by CONTENT (tile type), never by index. Moving between rows runs a
+ * panel-slide animation; an OK pressed mid-animation is swallowed, so we settle
+ * after each Down. Loaded gate: focus landing on the child detail's button row.
+ * (`#videoTitle` is NOT used — with the parent ItemDetails still in the scene tree,
+ * the recursive lookup can resolve to the PARENT's title; selecting a child instead
+ * moves focus from the parent's `#extrasGrid` into the child's `#buttons`, which is
+ * unambiguous.) Assumes the rows panel is already focusable (call straight after a
+ * nav* that lands on the parent detail's buttons).
  */
-export async function navPersonDetails(ctx) {
-  await navMovieDetails(ctx);
-  await press(ecp.Key.Down); // open extras panel; focus lands on the Cast & Crew row
+async function openChildDetailByRowType(tileType) {
+  await press(ecp.Key.Down); // buttons -> rows panel (lands on the first row)
   await waitFor('#extrasGrid.content.getChildCount()', hasChildren, {
-    label: 'extras cast/crew row',
+    label: 'detail rows',
     timeout: 20000,
   });
-  await sleep(1200); // let the cast tiles paint before selecting
-  await press(ecp.Key.Ok); // open the focused person -> Person detail
-  // The Person detail loads async behind the scene's global #spinner. `#videoTitle`
-  // is NOT a reliable gate: while the new detail loads, the previous (movie)
-  // ItemDetails is still in the scene tree, so the recursive `#videoTitle` lookup
-  // resolves to the MOVIE's title and a non-empty check passes prematurely. Instead
-  // gate on the scene spinner. It can blink twice (the person item, then their
-  // filmography), so: wait for it to come ON, then settle OFF and STAY off.
-  await waitFor('#spinner.visible', (v) => v === true, {
-    label: 'person load started',
-    timeout: 8000,
-    interval: 150,
-  }).catch(() => {}); // tolerate a load fast enough that we miss the ON edge
-  await waitSpinnerSettled();
-  await sleep(1500); // let backdrop + biography paint
+  await sleep(1200); // let the rows load
+  const rowCount = (await getVal('#extrasGrid.content.getChildCount()')) || 0;
+  let targetRow = -1;
+  for (let r = 0; r < rowCount; r++) {
+    if ((await getVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
+      targetRow = r;
+      break;
+    }
+  }
+  if (targetRow < 0) throw new Error(`detail row with tile type "${tileType}" not found`);
+  // Walk down to the target row; confirm focus moved, then let the slide animation
+  // settle so the OK isn't swallowed.
+  for (let r = 0; r < targetRow; r++) {
+    await press(ecp.Key.Down);
+    await waitFor('#extrasGrid.rowItemFocused', (v) => Array.isArray(v) && v[0] === r + 1, {
+      timeout: 8000,
+      interval: 300,
+      label: `detail row ${r + 1}`,
+    });
+    await sleep(1500); // panel slide animation
+  }
+  await press(ecp.Key.Ok); // Select the first tile -> child ItemDetails
+  // Focus moves from the parent's #extrasGrid into the CHILD detail's #buttons.
+  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#buttons'), {
+    label: `${tileType} detail buttons`,
+    timeout: 20000,
+  });
+  await sleep(1500); // let the child detail's backdrop + content paint
 }
 
-/** Wait until the scene spinner has been OFF for a few consecutive polls (stable). */
-async function waitSpinnerSettled(timeout = 25000) {
-  const start = Date.now();
-  let offStreak = 0;
-  while (Date.now() - start < timeout) {
-    const visible = await getVal('#spinner.visible');
-    offStreak = visible === false ? offStreak + 1 : 0;
-    if (offStreak >= 3) return; // ~3 polls off in a row => load settled
-    await sleep(500);
-  }
-  throw new Error('nav timed out waiting for scene spinner to settle off');
+/** Movie detail -> Cast & Crew extras row -> first person -> Person detail. */
+export async function navPersonDetails(ctx) {
+  await navMovieDetails(ctx);
+  await openChildDetailByRowType('Person');
+}
+
+/** Series detail -> Seasons row -> first season -> Season detail. */
+export async function navSeasonDetails() {
+  await navSeriesDetails();
+  await openChildDetailByRowType('Season');
+}
+
+/** Series -> Season -> Episodes row -> first episode -> Episode detail. */
+export async function navEpisodeDetails() {
+  await navSeasonDetails();
+  await openChildDetailByRowType('Episode');
+}
+
+/** MusicAlbum detail -> Songs row -> first song -> Audio detail. */
+export async function navAudioDetails() {
+  await navMusicDetail();
+  await openChildDetailByRowType('Audio');
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
