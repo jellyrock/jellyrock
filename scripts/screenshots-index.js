@@ -26,7 +26,7 @@ const manifestJson = path.join(shotsDir, 'screenshots.json');
 // any captured screen not listed here falls into a trailing "More" section, so new
 // screens still appear (just regroup them here when convenient).
 const SECTIONS = [
-  { title: 'Getting started', names: ['serverSelect', 'userSelect', 'home', 'settings'] },
+  { title: 'Getting started', names: ['serverSelect', 'userSelect', 'home', 'settings', 'search'] },
   {
     title: 'Libraries & views',
     names: [

@@ -15,7 +15,7 @@ A preview of the app, captured on a real Roku in 5 languages. Each language link
 | &nbsp; | &nbsp; | &nbsp; |
 |:--:|:--:|:--:|
 | <a href="en_US/serverSelect.png"><img src="en_US/serverSelect.png" width="260" alt="Server Select"></a><br>Server Select | <a href="en_US/userSelect.png"><img src="en_US/userSelect.png" width="260" alt="User Select"></a><br>User Select | <a href="en_US/home.png"><img src="en_US/home.png" width="260" alt="Home"></a><br>Home |
-| <a href="en_US/settings.png"><img src="en_US/settings.png" width="260" alt="Settings"></a><br>Settings |  |  |
+| <a href="en_US/settings.png"><img src="en_US/settings.png" width="260" alt="Settings"></a><br>Settings | <a href="en_US/search.png"><img src="en_US/search.png" width="260" alt="Search"></a><br>Search |  |
 
 ## Libraries & views
 

@@ -10,34 +10,74 @@
  * ffmpeg/backdrop logic.
  */
 import { ecp, odc } from 'roku-test-automation';
+import { RTA_CONFIG } from '../config.js';
 import { press, getVal, waitFor, waitFocused, waitHome, hasChildren, sleep } from './steps.js';
 
 /**
- * home -> overhang settings icon -> Settings screen. Up moves focus from the home
- * content into the overhang; the overhang focus chain is TabBar -> Search ->
- * Settings (left to right, see JROverhang.bs), with a variable tab count, so we
- * walk Right until the settings icon (id "settingsIcon") is focused. The action is
- * guarded to only press while NOT yet on the icon, so it can't overshoot onto the
- * user dropdown. The version label (settings.bs: "v" + app.version) is the load gate.
+ * From Home, move focus into the overhang and onto the icon with id `iconId`. Up
+ * moves focus from the home content into the overhang; the overhang focus chain is
+ * TabBar -> Search -> Settings (left to right, see JROverhang.bs), with a variable
+ * tab count, so we walk Right until the icon is focused. The action is guarded to
+ * only press while NOT yet on the icon, so it can't overshoot onto the user dropdown.
  */
-export async function navSettings() {
+async function focusOverhangIcon(iconId) {
   await waitHome();
   await press(ecp.Key.Up); // home content -> overhang
-  await waitFocused((f) => f?.node?.id === 'settingsIcon', {
+  await waitFocused((f) => f?.node?.id === iconId, {
     timeout: 15000,
     interval: 400,
     action: async () => {
       const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (f?.node?.id !== 'settingsIcon') await press(ecp.Key.Right);
+      if (f?.node?.id !== iconId) await press(ecp.Key.Right);
     },
-    label: 'overhang settings icon',
+    label: `overhang ${iconId}`,
   });
+}
+
+/** home -> overhang settings icon -> Settings screen (version label is the gate). */
+export async function navSettings() {
+  await focusOverhangIcon('settingsIcon');
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
     label: 'settings version label',
     timeout: 20000,
   });
   await sleep(1000); // let the settings menu + panels paint before capture
+}
+
+/**
+ * home -> overhang search icon -> SearchResults -> type RTA_CONFIG.searchQuery.
+ * The screen opens with the keyboard (#searchKey) focused + active (main.bs), so an
+ * ECP text input both fills the visible search box AND triggers the search (the
+ * keyboard's text change fans out to SearchTask). The grouped result rows render
+ * into #searchSelect; its child count is the load gate. The query is tuned in config
+ * to surface the richest spread of result-type rows on the demo server.
+ */
+export async function navSearch() {
+  await focusOverhangIcon('searchIcon');
+  await press(ecp.Key.Ok);
+  await sleep(1500); // let SearchResults push + the keyboard take focus
+  await ecp.sendText(RTA_CONFIG.searchQuery); // types into the focused search box
+  await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
+    label: `search results for "${RTA_CONFIG.searchQuery}"`,
+    timeout: 20000,
+  });
+  // Walk focus ALL THE WAY off the keyboard onto the result rows (#searchSelect):
+  // this highlights the first result AND clears the voice-search / "scan QR to use
+  // your phone keyboard" overlays, which appear intermittently while the search text
+  // box is focused. The keyboard is a 6-column grid, so Right steps through its keys
+  // then crosses to the results; the guard stops the instant focus reaches them (so
+  // it lands on the first tile without over-scrolling the row).
+  await waitFocused((f) => f?.node?.id === 'searchSelect', {
+    timeout: 12000,
+    interval: 350,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      if (f?.node?.id !== 'searchSelect') await press(ecp.Key.Right);
+    },
+    label: 'search results (off keyboard)',
+  });
+  await sleep(1500); // let the focus settle + result posters paint before capture
 }
 
 /**

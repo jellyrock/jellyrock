@@ -39,6 +39,7 @@ import {
   navSeasonDetails,
   navEpisodeDetails,
   navAudioDetails,
+  navSearch,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -116,6 +117,7 @@ export const SCREENS = [
     capture: { eligible: true },
   },
   { name: 'settings', state: 'home', nav: navSettings, capture: { eligible: true } },
+  { name: 'search', state: 'home', nav: navSearch, capture: { eligible: true } },
 
   // --- Library grids: one screen per VIEW per library type --------------------
   // The landing view is seeded deterministically (display.<id>.landing) so the
