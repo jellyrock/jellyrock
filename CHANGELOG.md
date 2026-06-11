@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add library + item-type gallery screenshots + store/website split ([#648](https://github.com/jellyrock/jellyrock/pull/648))
 - (i18n) add global sign-in screen language setting ([#638](https://github.com/jellyrock/jellyrock/pull/638))
 
 ### Changed
