@@ -51,7 +51,7 @@ All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.m
     <img src="docs/screenshots/en_US/trickplay.png" width="400" alt="Trickplay" />
   </a>
 
-**🌐 [Screenshots in other languages →](docs/screenshots/)**
+**🖼️ [View all screenshots →](docs/screenshots/)**
 
 ## History
 

@@ -27,6 +27,8 @@ const manifestJson = path.join(shotsDir, 'screenshots.json');
 // screens still appear (just regroup them here when convenient).
 const SECTIONS = [
   { title: 'Getting started', names: ['serverSelect', 'userSelect', 'home', 'settings', 'search'] },
+  // Playback sits high up — the OSD is a highlight, not something to bury at the bottom.
+  { title: 'Playback', names: ['osd', 'trickplay'] },
   {
     title: 'Libraries & views',
     names: [
@@ -59,7 +61,6 @@ const SECTIONS = [
       'personDetails',
     ],
   },
-  { title: 'Playback', names: ['osd', 'trickplay'] },
 ];
 
 const GALLERY_COLS = 3;
@@ -118,13 +119,19 @@ export function generateIndex() {
   const cell = (name) =>
     `<a href="${galleryLang}/${name}.png"><img src="${galleryLang}/${name}.png" width="260" alt="${humanize(name)}"></a><br>${humanize(name)}`;
 
+  // Raw HTML <table> (not a markdown table): markdown tables force a header row,
+  // which renders as an empty band above each section. HTML needs no header, so the
+  // grid is just rows of thumbnails with the caption beneath each.
   const galleryTable = (names) => {
-    let out = `|${' &nbsp; |'.repeat(GALLERY_COLS)}\n|${':--:|'.repeat(GALLERY_COLS)}\n`;
+    let out = '<table>\n';
     for (let i = 0; i < names.length; i += GALLERY_COLS) {
-      const row = names.slice(i, i + GALLERY_COLS);
-      while (row.length < GALLERY_COLS) row.push(null);
-      out += '| ' + row.map((n) => (n ? cell(n) : '')).join(' | ') + ' |\n';
+      out += '  <tr>\n';
+      for (const n of names.slice(i, i + GALLERY_COLS)) {
+        out += `    <td align="center" valign="top">${cell(n)}</td>\n`;
+      }
+      out += '  </tr>\n';
     }
+    out += '</table>\n';
     return out;
   };
 

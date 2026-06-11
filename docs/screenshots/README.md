@@ -12,32 +12,72 @@ A preview of the app, captured on a real Roku in 5 languages. Each language link
 
 ## Getting started
 
-| &nbsp; | &nbsp; | &nbsp; |
-|:--:|:--:|:--:|
-| <a href="en_US/serverSelect.png"><img src="en_US/serverSelect.png" width="260" alt="Server Select"></a><br>Server Select | <a href="en_US/userSelect.png"><img src="en_US/userSelect.png" width="260" alt="User Select"></a><br>User Select | <a href="en_US/home.png"><img src="en_US/home.png" width="260" alt="Home"></a><br>Home |
-| <a href="en_US/settings.png"><img src="en_US/settings.png" width="260" alt="Settings"></a><br>Settings | <a href="en_US/search.png"><img src="en_US/search.png" width="260" alt="Search"></a><br>Search |  |
-
-## Libraries & views
-
-| &nbsp; | &nbsp; | &nbsp; |
-|:--:|:--:|:--:|
-| <a href="en_US/libraryGrid.png"><img src="en_US/libraryGrid.png" width="260" alt="Library Grid"></a><br>Library Grid | <a href="en_US/moviesLibraryGrid.png"><img src="en_US/moviesLibraryGrid.png" width="260" alt="Movies Library Grid"></a><br>Movies Library Grid | <a href="en_US/moviesLibraryStudios.png"><img src="en_US/moviesLibraryStudios.png" width="260" alt="Movies Library Studios"></a><br>Movies Library Studios |
-| <a href="en_US/moviesLibraryGenres.png"><img src="en_US/moviesLibraryGenres.png" width="260" alt="Movies Library Genres"></a><br>Movies Library Genres | <a href="en_US/tvLibraryShows.png"><img src="en_US/tvLibraryShows.png" width="260" alt="TV Library Shows"></a><br>TV Library Shows | <a href="en_US/tvLibraryNetworks.png"><img src="en_US/tvLibraryNetworks.png" width="260" alt="TV Library Networks"></a><br>TV Library Networks |
-| <a href="en_US/tvLibraryGenres.png"><img src="en_US/tvLibraryGenres.png" width="260" alt="TV Library Genres"></a><br>TV Library Genres | <a href="en_US/musicLibraryAlbumArtists.png"><img src="en_US/musicLibraryAlbumArtists.png" width="260" alt="Music Library Album Artists"></a><br>Music Library Album Artists | <a href="en_US/musicLibraryAlbums.png"><img src="en_US/musicLibraryAlbums.png" width="260" alt="Music Library Albums"></a><br>Music Library Albums |
-| <a href="en_US/musicLibraryArtists.png"><img src="en_US/musicLibraryArtists.png" width="260" alt="Music Library Artists"></a><br>Music Library Artists | <a href="en_US/musicLibraryGenres.png"><img src="en_US/musicLibraryGenres.png" width="260" alt="Music Library Genres"></a><br>Music Library Genres | <a href="en_US/playlistsLibrary.png"><img src="en_US/playlistsLibrary.png" width="260" alt="Playlists Library"></a><br>Playlists Library |
-| <a href="en_US/libraryOptions.png"><img src="en_US/libraryOptions.png" width="260" alt="Library Options"></a><br>Library Options |  |  |
-
-## Item details
-
-| &nbsp; | &nbsp; | &nbsp; |
-|:--:|:--:|:--:|
-| <a href="en_US/movieDetails.png"><img src="en_US/movieDetails.png" width="260" alt="Movie Details"></a><br>Movie Details | <a href="en_US/seriesDetails.png"><img src="en_US/seriesDetails.png" width="260" alt="Series Details"></a><br>Series Details | <a href="en_US/seasonDetails.png"><img src="en_US/seasonDetails.png" width="260" alt="Season Details"></a><br>Season Details |
-| <a href="en_US/episodeDetails.png"><img src="en_US/episodeDetails.png" width="260" alt="Episode Details"></a><br>Episode Details | <a href="en_US/musicAlbumDetails.png"><img src="en_US/musicAlbumDetails.png" width="260" alt="Music Album Details"></a><br>Music Album Details | <a href="en_US/musicArtistDetails.png"><img src="en_US/musicArtistDetails.png" width="260" alt="Music Artist Details"></a><br>Music Artist Details |
-| <a href="en_US/audioDetails.png"><img src="en_US/audioDetails.png" width="260" alt="Audio Details"></a><br>Audio Details | <a href="en_US/playlistDetails.png"><img src="en_US/playlistDetails.png" width="260" alt="Playlist Details"></a><br>Playlist Details | <a href="en_US/personDetails.png"><img src="en_US/personDetails.png" width="260" alt="Person Details"></a><br>Person Details |
+<table>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/serverSelect.png"><img src="en_US/serverSelect.png" width="260" alt="Server Select"></a><br>Server Select</td>
+    <td align="center" valign="top"><a href="en_US/userSelect.png"><img src="en_US/userSelect.png" width="260" alt="User Select"></a><br>User Select</td>
+    <td align="center" valign="top"><a href="en_US/home.png"><img src="en_US/home.png" width="260" alt="Home"></a><br>Home</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/settings.png"><img src="en_US/settings.png" width="260" alt="Settings"></a><br>Settings</td>
+    <td align="center" valign="top"><a href="en_US/search.png"><img src="en_US/search.png" width="260" alt="Search"></a><br>Search</td>
+  </tr>
+</table>
 
 ## Playback
 
-| &nbsp; | &nbsp; | &nbsp; |
-|:--:|:--:|:--:|
-| <a href="en_US/osd.png"><img src="en_US/osd.png" width="260" alt="OSD"></a><br>OSD | <a href="en_US/trickplay.png"><img src="en_US/trickplay.png" width="260" alt="Trickplay"></a><br>Trickplay |  |
+<table>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/osd.png"><img src="en_US/osd.png" width="260" alt="OSD"></a><br>OSD</td>
+    <td align="center" valign="top"><a href="en_US/trickplay.png"><img src="en_US/trickplay.png" width="260" alt="Trickplay"></a><br>Trickplay</td>
+  </tr>
+</table>
+
+## Libraries & views
+
+<table>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/libraryGrid.png"><img src="en_US/libraryGrid.png" width="260" alt="Library Grid"></a><br>Library Grid</td>
+    <td align="center" valign="top"><a href="en_US/moviesLibraryGrid.png"><img src="en_US/moviesLibraryGrid.png" width="260" alt="Movies Library Grid"></a><br>Movies Library Grid</td>
+    <td align="center" valign="top"><a href="en_US/moviesLibraryStudios.png"><img src="en_US/moviesLibraryStudios.png" width="260" alt="Movies Library Studios"></a><br>Movies Library Studios</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/moviesLibraryGenres.png"><img src="en_US/moviesLibraryGenres.png" width="260" alt="Movies Library Genres"></a><br>Movies Library Genres</td>
+    <td align="center" valign="top"><a href="en_US/tvLibraryShows.png"><img src="en_US/tvLibraryShows.png" width="260" alt="TV Library Shows"></a><br>TV Library Shows</td>
+    <td align="center" valign="top"><a href="en_US/tvLibraryNetworks.png"><img src="en_US/tvLibraryNetworks.png" width="260" alt="TV Library Networks"></a><br>TV Library Networks</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/tvLibraryGenres.png"><img src="en_US/tvLibraryGenres.png" width="260" alt="TV Library Genres"></a><br>TV Library Genres</td>
+    <td align="center" valign="top"><a href="en_US/musicLibraryAlbumArtists.png"><img src="en_US/musicLibraryAlbumArtists.png" width="260" alt="Music Library Album Artists"></a><br>Music Library Album Artists</td>
+    <td align="center" valign="top"><a href="en_US/musicLibraryAlbums.png"><img src="en_US/musicLibraryAlbums.png" width="260" alt="Music Library Albums"></a><br>Music Library Albums</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/musicLibraryArtists.png"><img src="en_US/musicLibraryArtists.png" width="260" alt="Music Library Artists"></a><br>Music Library Artists</td>
+    <td align="center" valign="top"><a href="en_US/musicLibraryGenres.png"><img src="en_US/musicLibraryGenres.png" width="260" alt="Music Library Genres"></a><br>Music Library Genres</td>
+    <td align="center" valign="top"><a href="en_US/playlistsLibrary.png"><img src="en_US/playlistsLibrary.png" width="260" alt="Playlists Library"></a><br>Playlists Library</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/libraryOptions.png"><img src="en_US/libraryOptions.png" width="260" alt="Library Options"></a><br>Library Options</td>
+  </tr>
+</table>
+
+## Item details
+
+<table>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/movieDetails.png"><img src="en_US/movieDetails.png" width="260" alt="Movie Details"></a><br>Movie Details</td>
+    <td align="center" valign="top"><a href="en_US/seriesDetails.png"><img src="en_US/seriesDetails.png" width="260" alt="Series Details"></a><br>Series Details</td>
+    <td align="center" valign="top"><a href="en_US/seasonDetails.png"><img src="en_US/seasonDetails.png" width="260" alt="Season Details"></a><br>Season Details</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/episodeDetails.png"><img src="en_US/episodeDetails.png" width="260" alt="Episode Details"></a><br>Episode Details</td>
+    <td align="center" valign="top"><a href="en_US/musicAlbumDetails.png"><img src="en_US/musicAlbumDetails.png" width="260" alt="Music Album Details"></a><br>Music Album Details</td>
+    <td align="center" valign="top"><a href="en_US/musicArtistDetails.png"><img src="en_US/musicArtistDetails.png" width="260" alt="Music Artist Details"></a><br>Music Artist Details</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/audioDetails.png"><img src="en_US/audioDetails.png" width="260" alt="Audio Details"></a><br>Audio Details</td>
+    <td align="center" valign="top"><a href="en_US/playlistDetails.png"><img src="en_US/playlistDetails.png" width="260" alt="Playlist Details"></a><br>Playlist Details</td>
+    <td align="center" valign="top"><a href="en_US/personDetails.png"><img src="en_US/personDetails.png" width="260" alt="Person Details"></a><br>Person Details</td>
+  </tr>
+</table>
 
