@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Per-language store screenshots + RTA functional-test layer ([#642](https://github.com/jellyrock/jellyrock/pull/642))
 
+### Fixed
+
+- (search) localize search result-row headers ([#649](https://github.com/jellyrock/jellyrock/pull/649))
+
 ### Dependencies
 
 - Update promises from v0.7.0 to v0.7.1 ([#646](https://github.com/jellyrock/jellyrock/pull/646))
