@@ -32,23 +32,23 @@ All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.m
 
 ## Screenshots
 
-  <a href="docs/screenshots/en_US/userSelect.png" target="_blank" title="User Select">
-    <img src="docs/screenshots/en_US/userSelect.png" width="400" alt="User Select" />
+  <a href="docs/screenshots/en_US/userSelect.webp" target="_blank" title="User Select">
+    <img src="docs/screenshots/en_US/userSelect.webp" width="400" alt="User Select" />
   </a>
-  <a href="docs/screenshots/en_US/home.png" target="_blank" title="Home">
-    <img src="docs/screenshots/en_US/home.png" width="400" alt="Home" />
+  <a href="docs/screenshots/en_US/home.webp" target="_blank" title="Home">
+    <img src="docs/screenshots/en_US/home.webp" width="400" alt="Home" />
   </a>
-  <a href="docs/screenshots/en_US/libraryGrid.png" target="_blank" title="Library grid">
-    <img src="docs/screenshots/en_US/libraryGrid.png" width="400" alt="Library grid" />
+  <a href="docs/screenshots/en_US/libraryGrid.webp" target="_blank" title="Library grid">
+    <img src="docs/screenshots/en_US/libraryGrid.webp" width="400" alt="Library grid" />
   </a>
-  <a href="docs/screenshots/en_US/movieDetails.png" target="_blank" title="Movie Details">
-    <img src="docs/screenshots/en_US/movieDetails.png" width="400" alt="Movie Details" />
+  <a href="docs/screenshots/en_US/movieDetails.webp" target="_blank" title="Movie Details">
+    <img src="docs/screenshots/en_US/movieDetails.webp" width="400" alt="Movie Details" />
   </a>
-  <a href="docs/screenshots/en_US/osd.png" target="_blank" title="On-Screen Display(OSD)">
-    <img src="docs/screenshots/en_US/osd.png" width="400" alt="On-Screen Display(OSD)" />
+  <a href="docs/screenshots/en_US/osd.webp" target="_blank" title="On-Screen Display(OSD)">
+    <img src="docs/screenshots/en_US/osd.webp" width="400" alt="On-Screen Display(OSD)" />
   </a>
-  <a href="docs/screenshots/en_US/trickplay.png" target="_blank" title="Trickplay">
-    <img src="docs/screenshots/en_US/trickplay.png" width="400" alt="Trickplay" />
+  <a href="docs/screenshots/en_US/trickplay.webp" target="_blank" title="Trickplay">
+    <img src="docs/screenshots/en_US/trickplay.webp" width="400" alt="Trickplay" />
   </a>
 
 **🖼️ [View all screenshots →](docs/screenshots/)**

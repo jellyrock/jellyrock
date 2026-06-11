@@ -9,14 +9,15 @@
  *    are bundled — the locale folders also hold website-gallery-only screens, which
  *    must NOT end up in the store upload.
  *
- * Copies just those (locale x screen) PNGs from docs/screenshots/<lang>/ into
- * out/store/<lang>/ (gitignored), ready to upload to the Roku Developer Portal —
- * you never hunt through the full capture set. Adding a store language = add it to
- * storeLanguages and re-run `npm run screenshots:store`.
+ * The committed gallery images are WebP (small), but the Roku Developer Portal wants
+ * PNG, so this DECODES each store-flagged WebP back to PNG into out/store/<lang>/
+ * (gitignored), ready to upload — you never hunt through the full capture set. Adding
+ * a store language = add it to storeLanguages and re-run `npm run screenshots:store`.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import { SCREENS } from '../tests/rta/screens.js';
 
@@ -25,9 +26,9 @@ const srcDir = path.join(repoRoot, 'docs', 'screenshots');
 const outDir = path.join(repoRoot, 'out', 'store');
 
 // The frozen Roku-store screen set (<= 6) — only these ship, even though the locale
-// folders also hold website-gallery-only screens.
+// folders also hold website-gallery-only screens. Names only; committed as .webp.
 const storeScreens = SCREENS.filter((s) => s.capture?.eligible && s.capture?.store).map(
-  (s) => `${s.name}.png`,
+  (s) => s.name,
 );
 
 // Guard: a store language must also be in the capture matrix, else it's never
@@ -45,18 +46,22 @@ let total = 0;
 const missing = [];
 for (const lang of RTA_CONFIG.storeLanguages) {
   const from = path.join(srcDir, lang);
-  // Only the store-flagged screens — NOT every PNG in the folder (the folder also
-  // holds website-gallery-only screens that must stay out of the store upload).
-  const pngs = storeScreens.filter((png) => fs.existsSync(path.join(from, png)));
-  if (!pngs.length) {
+  // Only the store-flagged screens that exist as .webp in this locale folder.
+  const names = storeScreens.filter((n) => fs.existsSync(path.join(from, `${n}.webp`)));
+  if (!names.length) {
     missing.push(lang);
     continue;
   }
   const to = path.join(outDir, lang);
   fs.mkdirSync(to, { recursive: true });
-  for (const png of pngs) fs.copyFileSync(path.join(from, png), path.join(to, png));
-  console.log(`  ${lang}: ${pngs.length} screens`);
-  total += pngs.length;
+  // Decode WebP -> PNG for the Roku upload.
+  for (const n of names) {
+    await sharp(path.join(from, `${n}.webp`))
+      .png()
+      .toFile(path.join(to, `${n}.png`));
+  }
+  console.log(`  ${lang}: ${names.length} screens`);
+  total += names.length;
 }
 
 console.log(
