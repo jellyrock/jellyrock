@@ -596,3 +596,5 @@ unencodeable
 2ch
 6ch
 8ch
+WebP
+webp

@@ -7,7 +7,7 @@ related-files:
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
-last-reviewed: 2026-06-10
+last-reviewed: 2026-06-11
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -99,11 +99,26 @@ The manifest (`docs/screenshots/screenshots.json`) emits both lists: `screens` (
 and `storeScreens` (the curated 6). Keep `store: true` on exactly the 6 that ship — adding a
 7th store screen is a Developer-Portal decision, not a code default.
 
+## Image format & footprint
+
+Committed images are **lossless WebP**. The device only outputs a fixed-quality **JPEG** (that's
+the quality ceiling regardless), so lossless adds nothing over the source while keeping every
+screen pixel-perfect — and it's still ~3× smaller than PNG, which after pruning got the committed
+set from ~160 MB to ~36 MB. (Lossless everywhere is deliberately simpler than mixing lossy +
+lossless — there's no per-screen "is this one lossy?" to reason about.)
+
+To keep the repo lean, only the **`galleryLocale`** (en_US) folder holds the full screen set;
+every other store locale holds **only the store screens** — a full per-language gallery isn't
+worth the weight. The manifest records `format` + `galleryLocale` so the website can resolve
+`<locale>/<screen>.<format>` and know which locale carries the full gallery. The Roku Developer
+Portal wants PNG, so `npm run screenshots:store` **decodes** each store WebP back to PNG into
+`out/store/<lang>/` (no extra loss) — WebP never reaches the store listing.
+
 ## Two capture tiers
 
 | | `RTA_CAPTURE=1` (test runner) | `screenshots:capture` (store) |
 |---|---|---|
-| Output | `out/rta-captures/<screen>.png` (gitignored) | `docs/screenshots/<locale>/<screen>.png` + `screenshots.json` |
+| Output | `out/rta-captures/<screen>.png` (gitignored) | `docs/screenshots/<locale>/<screen>.webp` + `screenshots.json` |
 | Locales | en_US only | full matrix |
 | Build | dev | **prod** (release branding) |
 | OSD background | black (the video plane can't be captured — fine for GUI viewing) | real in-film frame composited via ffmpeg |
@@ -122,12 +137,12 @@ When you add screens, you do NOT need to regenerate the existing set — both ax
 # Functional test, only the new screens (skip redeploy after the first full run):
 RTA_NO_DEPLOY=1 vitest run --config vitest.rta.config.js -t 'serverSelect|settings'
 
-# Capture ONLY the new screens, full locale matrix (leaves the other PNGs untouched).
+# Capture ONLY the new screens, full locale matrix (leaves the other images untouched).
 # DEPLOY=1 on the first run to push the build; drop it on re-captures.
 DEPLOY=1 node scripts/capture-screenshots.js --screens=serverSelect,settings
 ```
 
-`capture` writes one PNG per (screen × locale), so `--screens=` only overwrites those files —
+`capture` writes one WebP per (screen × locale), so `--screens=` only overwrites those files —
 the existing store screens are never touched. `screenshots.json` + the README index are
 regenerated each run but are derived from the config, so they always reflect the full
 intended set regardless of the subset captured. `--languages=` narrows the locale set the
