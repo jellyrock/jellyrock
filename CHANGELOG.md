@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- (screenshots) lossless WebP + prune non-store languages ([#652](https://github.com/jellyrock/jellyrock/pull/652))
 - Per-language store screenshots + RTA functional-test layer ([#642](https://github.com/jellyrock/jellyrock/pull/642))
 
 ### Fixed
