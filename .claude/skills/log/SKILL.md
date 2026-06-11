@@ -1,6 +1,6 @@
 ---
 name: log
-description: Append/update an entry in one of the project journals — `decision` (`docs/decisions.md`, ADR-grade rationale that closes off alternatives or has a constraint behind it), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped), `signal` (`docs/signals-backlog.md`, an external version-watch row), or `running` (`docs/progress.md` `## Currently running` paragraph; replaces the in-flight cursor). Routes by first $ARGUMENTS token. Diff-and-wait — drafts the entry and surfaces the proposed diff; NEVER writes without user confirmation. The sole sanctioned capture path for these three journals; raw markdown edits are not permitted (per CLAUDE.md capture-discipline rule).
+description: Append/update an entry in one of the project journals — `decision` (`docs/decisions.md`, ADR-grade rationale that closes off alternatives or has a constraint behind it), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped), `signal` (`docs/signals-backlog.md`, an external version-watch row), or `running` (`docs/progress.md` `## Currently running` paragraph; replaces the in-flight cursor). Routes by first $ARGUMENTS token. Mechanical types (followup, signal, running) apply directly via Edit — no per-invocation confirmation prompt; the decision type drafts the entry, checks significance, and surfaces a diff to confirm. The sole sanctioned capture path for these three journals; raw markdown edits are not permitted (per AGENTS.md capture-discipline rule).
 model: sonnet
 ---
 
@@ -16,7 +16,7 @@ If `$ARGUMENTS` is empty or `<type>` isn't recognized: list the four valid types
 
 ## The capture rule
 
-This skill is the ONLY sanctioned write path for `docs/decisions.md`, `docs/progress.md`, and `docs/signals-backlog.md`. Per the root [`CLAUDE.md`](../../../CLAUDE.md) capture-discipline rule: agents do NOT use `Write` or `Edit` directly on those three files. If a journal entry is wanted, this skill drafts it; the user reviews the diff; the user (or this skill, after confirmation) applies. A hallucinated entry written without confirmation is silent corruption of load-bearing project state.
+This skill is the ONLY sanctioned write path for `docs/decisions.md`, `docs/progress.md`, and `docs/signals-backlog.md`. Per the root [`AGENTS.md`](../../../AGENTS.md) capture-discipline rule: agents do NOT use raw `Write` or `Edit` on those three files — captures flow through `/log`, closures through `/done`. Mechanical captures (`followup`, `signal`, `running`) apply directly — no per-invocation confirmation prompt; trust the skill, and fix systematic wrongness via `/audit-skill log` (a per-session diff-confirm is the wrong corrective loop, and `git reset --soft HEAD~1` recovers a rare bad capture). The `decision` type is the exception — it surfaces a diff-and-confirm because the gate is confirming a *significance + routing judgment*, not a mechanical append. (A sub-agent invoking `/log` always surfaces and never auto-applies — its context dies at exit; see Sub-agent invocation.)
 
 ## Step 1 — Route by type
 
@@ -118,7 +118,7 @@ If the target area doesn't exist as a subsection, propose adding `### <area>\n\n
 
 ### Surface, apply, verify
 
-Same diff-and-wait shape as decision. After apply, run `npm run lint:docs` to confirm the staleness gate passes (it will — `last-updated:` was just bumped to today).
+Apply directly via `Edit` — no confirmation prompt for this mechanical capture (trust the skill; `/audit-skill log` is the corrective loop for systematic issues). After apply, run `npm run lint:docs` to confirm the staleness gate passes (it will — `last-updated:` was just bumped to today).
 
 ## Step 2-S — Signal
 
@@ -159,7 +159,7 @@ Elicit (or derive from `$ARGUMENTS`):
 
 ### Surface, apply, verify
 
-Insert the new H3 block at the bottom of the `## Watching` section (newest at end). Bump `last-updated:` frontmatter. Surface diff, wait, apply.
+Insert the new H3 block at the bottom of the `## Watching` section (newest at end). Bump `last-updated:` frontmatter. Apply directly via `Edit` — no confirmation prompt for this mechanical capture.
 
 `npm run lint:docs` runs the schema validator — every required bullet present, valid `status` enum, valid ISO `last_checked`, valid positive-int `staleness_days`. Catches typos at write time.
 
@@ -182,7 +182,7 @@ If `<text>` is missing AND `--clear` isn't passed, ask: "What's currently in fli
 
 ### Surface, apply, verify
 
-Diff-and-wait shape (same as decision / followup). After apply, run `npm run lint:docs` to confirm the staleness gate passes.
+Apply directly via `Edit` — no confirmation prompt for this mechanical capture. After apply, run `npm run lint:docs` to confirm the staleness gate passes.
 
 The Currently-running paragraph itself isn't schema-validated — it's free-form prose — so `lint:docs` only catches the frontmatter staleness signal here.
 

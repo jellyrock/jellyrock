@@ -1,19 +1,53 @@
 ---
 name: catchup
-description: Session-start briefing — "where did I leave off, what's currently happening, what needs attention?" Single-call aggregator at scripts/catchup-state.js returns one JSON document with git state, open PRs, high-engagement bugs, recent bug reports, active discussion, current-branch CI runs, pending handoffs, the four journals (progress.md state cursor, signals-backlog watchlist age, recent decisions, tech-debt focus), and architecture-doc staleness. Banner detection is deterministic JSON compares (no agent text-parsing). Surfaces ship-today candidates from open followups + signals; flags stale progress.md and stale signal rows. Outputs a "Suggested next" line that hands off to /log / /done / /issue-triage / /runtime-triage / /ci-triage. Mandated by CLAUDE.md's catchup-discipline rule — invoke at the start of any genuine new session, after a multi-day gap, or whenever you ask "what's the state of the world?"
+description: Session-start briefing — "where did I leave off, what's currently happening, what needs attention?" Single-call aggregator at scripts/catchup-state.js returns one JSON document with git state, open PRs, high-engagement bugs, recent bug reports, active discussion, current-branch CI runs, pending handoffs, the four journals (progress.md state cursor, signals-backlog watchlist age, recent decisions, tech-debt focus), and architecture-doc staleness. Banner detection is deterministic JSON compares (no agent text-parsing). Surfaces ship-today candidates from open followups + signals; flags stale progress.md and stale signal rows. Outputs a "Suggested next" line that hands off to /log / /done / /issue-triage / /runtime-triage / /ci-triage. Mandated by AGENTS.md's catchup-discipline rule — invoke at the start of any genuine new session, after a multi-day gap, or whenever you ask "what's the state of the world?"
 model: sonnet
+effort: low
+audit-span: read-only
 ---
 
 # /catchup — start-of-session brief
 
-Quick state-load skill. Goal: in <30 seconds, surface what you were working on last, what's open against the repo, what's running on CI, what's accumulating in the journals, and what needs a decision.
+## Contract
 
-Distinct from siblings:
+**Goal.** Turn a cold session-start into ~30 seconds of "I know where I left off, what's running, what's open against the repo, and what to do next." This is the **daily-ritual entry point** — the thing you type first when you sit down. It exists so nothing important rots between sessions: a paused in-flight cursor, a deferred followup, a failed CI run, a stale upstream-version signal, or a high-engagement bug that the prior session never got to all surface in one read instead of being discovered piecemeal. The reasoning load is bounded — banner-checks are deterministic JSON compares against the `scripts/catchup-state.js` aggregator, and the triage half is "pick which surfaced item is the highest signal" — so this skill ships at the Sonnet tier; reserve the judgment-grade tier for what comes after (a `/focus` triage, or a direct dive into the work).
 
-- `/ramp <area>` (sonnet) — area-scoped briefing, same aggregator with `--area=<name>`. Use after >2 weeks away from a specific subsystem.
-- `/focus` (opus) — session-start triage + routing, not a state-only briefing. Ranks 3–5 next-move candidates with a "Recommended" call and hands the user pick off to the right downstream skill. Use `/focus` when multiple things look actionable and you want help picking; use `/catchup` for the pure state load.
+**Inputs.** None. `$ARGUMENTS` is ignored — the whole point is that the briefing comes from observed state rather than from your direction. If you already know what you want to look at, ask the targeted question directly; don't pay the briefing cost. The skill expects the repo's state surfaces to exist: the `scripts/catchup-state.js` aggregator (one JSON document over git/PRs/issues/CI/handoffs/journals/doc-staleness), plus `docs/progress.md` (state cursor + open followups), `docs/signals-backlog.md` (upstream-version watchlist), and `docs/decisions.md`. If the aggregator errors a section, that section comes back `null` and surfaces as a banner rather than being silently dropped.
 
-## Step 1 — Pull state in one call
+**Outputs.**
+
+- A single structured briefing rendered to conversation, with any urgent banners (failed CI, stale journals, stale signals, action-pending signals, review-requested PRs, schema-broken journals) at the top and the routine session-state block below.
+- A short `Suggested next` line at the end naming exactly one concrete move, with the jr sibling skill that's the right next step (e.g., `/issue-triage <N>`, `/ci-triage <run-id>`, `/server-upgrade`, `/pr-review <N>`, `/log followup`, `/done <slug>`).
+- A `Captures for /log` tail (only when a sub-agent invokes it, or when a journal-worthy item surfaced during the read that wasn't already captured). Omit the tail if nothing surfaced; do not pad.
+
+**Success criteria.**
+
+- The briefing is single-pass and read-only — no write actions kicked off, no journal updates applied, no fixes attempted inline.
+- Every banner check is deterministic against the aggregator JSON — never "I think this might be broken" from prose interpretation; always "this counter exceeds this threshold" against a concrete state read.
+- The `Suggested next` line names jr sibling skills by their actual command names, not generic verbs. The reader should be able to copy-paste the suggestion.
+- Stale or missing state surfaces (a `progress.md` older than the staleness threshold with commits since, an aggregator section that errored to `null`, a stale signal row) surface as their own banner rather than being silently dropped.
+- The total wall-clock cost stays bounded (target: well under a minute on cached state). Live-recompute paths are opt-in via explicit flag, never the default.
+
+**Failure modes to avoid.**
+
+- **Drilling instead of briefing.** A banner like "CI run X failed" gets copied into the briefing and a "Suggested next: `/ci-triage <run-id>`" line — NOT a multi-tool investigation of why X failed. Drilling here turns a 30-second briefing into a 30-minute investigation; that's what the triage sibling skills are for. Even when the fix is obvious, surface it as a suggestion and let the user pick.
+- **Improvising raw fetches when the aggregator's data is missing.** If a banner-check needs data `catchup-state.js` doesn't expose, the fix is structural — extend the aggregator and ship that in the same change. Reaching for raw `gh` / `git` / shell calls to fetch the missing piece inline produces guessed paths, brittle one-offs, and a briefing slower than the original (the aggregator exists precisely to replace ~13 parallel calls with one).
+- **Auto-invoking write actions.** No `/log`, no `/done`, no `/issue-triage`, no fix-attempts, no commits. /catchup is read-only by contract. The "Suggested next" line names the right write skill; the user invokes it.
+- **Asserting state from training knowledge instead of reading it.** If the briefing claims a signal is up to date, a PR is in review, a CI run passed, etc., those claims MUST come from the aggregator read this invocation performed — not from "I remember from last session." Sessions get compacted; "I remember" is hallucination dressed up as confidence.
+- **Silently dropping a missing or errored state section.** If `_errors[<section>]` is populated (the section is `null`), or `progress.md` is older than the staleness threshold, that's a banner. Skipping it because "nothing to show" produces a briefing that looks clean while hiding the real signal.
+- **Briefing on micro-resumes.** If the user typed `/catchup` two minutes ago and the only delta is one commit, respond with the one-line delta (`still here, last commit X`) — don't re-run the full briefing every time.
+
+**When NOT to use.**
+
+- You're mid-task and have a specific question — answer the question directly; don't dump a global briefing.
+- You just typed `/catchup` after a 2-minute coffee break — respond "still here, last commit `<sha>`" and stop. State hasn't moved; the full briefing is noise.
+- You just context-switched into a specific area (`components/video`, `source/api`, etc.) after >2 weeks — use `/ramp <area>` instead. `/catchup` is global breadth across all surfaces in one read; `/ramp` is scoped (same aggregator with `--area=`).
+- You want the next move *picked and routed* for you, not just a state dump — that's `/focus` (ranks 3–5 candidates with a "Recommended" call and hands off to the right downstream skill). `/catchup` briefs; it doesn't decide.
+- The user has already triaged the next move and just wants to start working. Skip the ritual; go.
+
+## Implementation
+
+### Step 1 — Pull state in one call
 
 The aggregator at [`scripts/catchup-state.js`](../../../scripts/catchup-state.js) returns a single JSON document with every dynamic-state input the briefing needs. One Bash call replaces the previous ~13 parallel calls — deterministic, no agent text-parsing of mixed gh/git output, no permission-prompt-per-fetch.
 
@@ -28,7 +62,7 @@ Optional Read calls for full-text context (parallel; only when the JSON's summar
 - `Read docs/progress.md` (~50 lines) — the "where you left off" sentence already comes from `progress.currently_running_summary` in the JSON; only Read if you need to see specific open followups verbatim
 - `Read docs/decisions.md` last ~80 lines — the JSON gives slug + date + status for the most-recent 3; Read for the body if a recent decision looks relevant to a banner
 
-## Step 2 — Detect drift and elevate to banners
+### Step 2 — Detect drift and elevate to banners
 
 Every banner check is a deterministic compare against the aggregator JSON. **Banner-check is mandatory** — never skip silently. If a section is `null` due to `_errors`, surface that as its own banner (`⚠ catchup-state: <section> failed — <error>`) rather than letting it vanish.
 
@@ -42,7 +76,7 @@ Banners (top of briefing, before the template):
 - **Stale architecture docs**: when `state.docs_stale.architecture.length > 0` → `📅 <count> architecture doc(s) stale: <list file (Nd)>.` (Informational only — the blocking gate fires only when a stale doc's territory is touched.)
 - **Schema-broken journals**: from `_errors` for `progress` or `signals` → name the file + parser error.
 
-## Step 3 — Compose the briefing
+### Step 3 — Compose the briefing
 
 Format short. Banners (if any) at top, then this template — sections collapse to "(none)" when empty so the shape is consistent:
 
@@ -96,7 +130,7 @@ Format short. Banners (if any) at top, then this template — sections collapse 
 
 If nothing has changed since your last session AND the working tree is clean, surface that explicitly: "Clean tree, nothing new since `<sha>`. Probably a coffee-break resume — pick up where you left off."
 
-## Step 4 — Hand-off to the right next-skill
+### Step 4 — Hand-off to the right next-skill
 
 Read the JSON. If something looks like an alert or a decision point, name the right next-skill in the **Suggested next** line:
 
@@ -113,17 +147,11 @@ Read the JSON. If something looks like an alert or a decision point, name the ri
 
 Pick at most ONE suggestion. Two means you couldn't decide; better to surface the highest-leverage item.
 
-## Step 5 — Don't apply, just brief
+### Step 5 — Don't apply, just brief
 
 This is a READ-ONLY skill. Even if a fix is obvious, surface it as the **Suggested next** line — don't kick off `/log`, `/done`, `/issue-triage`, `/runtime-triage`, or any write actions from inside `/catchup`. The user picks the next move.
 
 If a sub-agent invokes /catchup and surfaces a capture-shaped finding (a decision was made mid-session, an idea worth tracking, a followup to defer), that sub-agent does NOT write to journals directly — it ends its report with a "Captures for /log" section so the parent can invoke `/log` for each.
-
-## When NOT to use
-
-- You're mid-task and asking a specific question → answer directly, don't dump a full briefing.
-- You just typed `/catchup` after a 2-minute coffee break → respond "still here, last commit `<sha>`" and stop. Save the full state load for genuine session-start moments.
-- You just context-switched into a specific area (`components/video`, `source/api`, etc.) after >2 weeks → use `/ramp <area>` instead. `/catchup` is global; `/ramp` is scoped (uses the same aggregator with `--area=`).
 
 ## Sub-agent invocation
 
