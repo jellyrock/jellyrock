@@ -13,6 +13,27 @@ import { odc } from 'roku-test-automation';
 
 export const GLOBAL = 'JellyRock';
 
+/**
+ * Clear all sticky per-library view settings (`display.<libraryId>.*` keys in the
+ * user's registry section) so a screen starts from the presenter DEFAULT view.
+ * Library views are sticky (set by the grid options dialog, persisted to registry),
+ * so without this a view seeded for one screen leaks into the next — e.g. a
+ * Genres-view screen would leave the Movies library in Genres (which renders into
+ * #genreList, no #itemGrid), breaking the next movie-grid nav. Reset-then-seed
+ * makes every capture deterministic regardless of run order or prior device state.
+ */
+async function clearDisplaySettings(session) {
+  const reg = await odc.readRegistry().catch(() => null);
+  const userSection = reg?.values?.[session.userId] || {};
+  const nulls = {};
+  for (const key of Object.keys(userSection)) {
+    if (key.startsWith('display.')) nulls[key] = null; // null = delete the key
+  }
+  if (Object.keys(nulls).length) {
+    await odc.writeRegistry({ values: { [session.userId]: nulls } });
+  }
+}
+
 /** Seed registry to land logged-in on Home as the demo user, in `locale`. */
 export async function seedHome(session, locale) {
   await odc.writeRegistry({
@@ -29,6 +50,47 @@ export async function seedHome(session, locale) {
         username: session.username,
         primaryImageTag: session.primaryImageTag,
         translationLocale: locale,
+      },
+    },
+  });
+  // Reset sticky library views to defaults; view-dependent screens re-seed after.
+  await clearDisplaySettings(session);
+}
+
+/**
+ * Seed registry to land on the SERVER-select screen with exactly one saved server:
+ * the demo server, saved under the bare scheme-less URL "demo.jellyfin.org/stable"
+ * so the picker entry demonstrates the URL parser / http->https redirect we follow
+ * on submit. LoginFlow shows server-select interactively whenever `server` is unset
+ * (showScenes.bs), so we delete `server` (and `active_user`) and populate
+ * `saved_servers`. The remote demo server isn't SSDP-discoverable, so it surfaces
+ * via SetServerScreen's "Pass 2" saved-server injection. `id` matches the session's
+ * serverId so that pass dedups correctly and marks the entry deletable.
+ */
+export async function seedServerSelect(session, locale) {
+  const savedServers = {
+    serverList: [
+      {
+        name: session.serverName,
+        id: session.serverId,
+        baseUrl: session.serverUrl, // canonical (https) URL the app connects to
+        originalUrl: 'demo.jellyfin.org/stable', // bare URL shown in the picker
+        // Match SaveServerList()'s persisted shape (showScenes.bs) so the picker
+        // renders the Jellyfin branding icon next to the entry, not a blank slot.
+        iconUrl: 'pkg:/images/branding/logo-icon120.jpg',
+        iconWidth: 120,
+        iconHeight: 120,
+      },
+    ],
+  };
+  await odc.writeRegistry({
+    values: {
+      [GLOBAL]: {
+        server: null, // delete -> LoginFlow shows server-select interactively
+        active_user: null,
+        globalRememberMe: 'false',
+        globalTranslationLocale: locale,
+        saved_servers: JSON.stringify(savedServers),
       },
     },
   });
@@ -52,6 +114,21 @@ export async function seedUserSelect(session, locale) {
   });
 }
 
+/**
+ * Seed a deterministic LANDING VIEW for a library so a capture doesn't depend on
+ * whatever view is stickily persisted on the device. Views are sticky per library
+ * in the user's registry under `display.<libraryId>.landing` (set by the grid's
+ * options dialog; read at login by SessionDataTransformer). `libraryId` is resolved
+ * at runtime (libraryIdFor) — never hardcoded. Call AFTER seedHome and before
+ * relaunch; the per-key write merges into the user section seedHome wrote.
+ */
+export async function seedLibraryLanding(session, libraryId, view) {
+  if (!libraryId || !view) return;
+  await odc.writeRegistry({
+    values: { [session.userId]: { [`display.${libraryId}.landing`]: view } },
+  });
+}
+
 /** Snapshot the device's current top-level session so it can be restored after. */
 export async function snapshotSession() {
   const before = (await odc.readRegistry())?.values?.[GLOBAL] || {};
@@ -59,6 +136,9 @@ export async function snapshotSession() {
     server: before.server ?? null,
     active_user: before.active_user ?? null,
     globalTranslationLocale: before.globalTranslationLocale ?? null,
+    // seedServerSelect writes saved_servers, so it must be snapshotted+restored too,
+    // else the seeded one-server list leaks onto the device (null restore deletes it).
+    saved_servers: before.saved_servers ?? null,
   };
 }
 

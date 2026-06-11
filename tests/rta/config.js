@@ -22,6 +22,11 @@ export const RTA_CONFIG = {
   // long-standing reference screenshot. Change movie/timestamp here.
   trickplayMovie: 'The Boy in the Plastic Bubble',
   trickplaySeekSeconds: 1940, // 32:20
+  // The search-screen query, typed into the search keyboard to populate results.
+  // Chosen to surface the RICHEST spread of result-type rows on the demo server —
+  // "a" returns 7 grouped rows (Movies / Episodes / People / Playlists / Artists /
+  // Albums / Songs); see the probe in #621. Change to retune the shot.
+  searchQuery: 'a',
   // Time to let the app boot + the RTA on-device component come up after a
   // relaunch or a fresh deploy.
   bootMs: 10000,
