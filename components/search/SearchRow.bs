@@ -10,6 +10,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.top.itemComponentName = "BrowseRowItem"
@@ -43,23 +44,25 @@ function getData()
   ' Ordering follows itemTypeOrder.SEARCH (web-client section sort order).
   ' AssocArrays have no guaranteed order, so a separate array drives row creation.
   typeArray = itemTypeOrder.SEARCH
+  ' Row-header labels are translated (translationKeys already exist for every type);
+  ' previously these were hardcoded English and showed untranslated in every locale.
   contentTypes = {
-    "Movie": { "label": "Movies", "count": 0 },
-    "Series": { "label": "Shows", "count": 0 },
-    "Episode": { "label": "Episodes", "count": 0 },
-    "Person": { "label": "People", "count": 0 },
-    "Playlist": { "label": "Playlists", "count": 0 },
-    "MusicArtist": { "label": "Artists", "count": 0 },
-    "MusicAlbum": { "label": "Albums", "count": 0 },
-    "Audio": { "label": "Songs", "count": 0 },
-    "Video": { "label": "Videos", "count": 0 },
-    "MusicVideo": { "label": "Music Videos", "count": 0 },
-    "Program": { "label": "Programs", "count": 0 },
-    "TvChannel": { "label": "Channels", "count": 0 },
-    "Recording": { "label": "Recordings", "count": 0 },
-    "PhotoAlbum": { "label": "Photo Albums", "count": 0 },
-    "Photo": { "label": "Photos", "count": 0 },
-    "BoxSet": { "label": "Collections", "count": 0 }
+    "Movie": { "label": translate(translationKeys.LabelMovies), "count": 0 },
+    "Series": { "label": translate(translationKeys.LabelShows), "count": 0 },
+    "Episode": { "label": translate(translationKeys.LabelEpisodes), "count": 0 },
+    "Person": { "label": translate(translationKeys.LabelPeople), "count": 0 },
+    "Playlist": { "label": translate(translationKeys.LabelPlaylists), "count": 0 },
+    "MusicArtist": { "label": translate(translationKeys.LabelArtists), "count": 0 },
+    "MusicAlbum": { "label": translate(translationKeys.LabelAlbums), "count": 0 },
+    "Audio": { "label": translate(translationKeys.LabelSongs), "count": 0 },
+    "Video": { "label": translate(translationKeys.LabelVideos), "count": 0 },
+    "MusicVideo": { "label": translate(translationKeys.LabelMusicVideos), "count": 0 },
+    "Program": { "label": translate(translationKeys.LabelPrograms), "count": 0 },
+    "TvChannel": { "label": translate(translationKeys.LabelChannels), "count": 0 },
+    "Recording": { "label": translate(translationKeys.LabelRecordings), "count": 0 },
+    "PhotoAlbum": { "label": translate(translationKeys.LabelPhotoAlbums), "count": 0 },
+    "Photo": { "label": translate(translationKeys.LabelPhotos), "count": 0 },
+    "BoxSet": { "label": translate(translationKeys.LabelCollections), "count": 0 }
   }
 
   for each item in itemData.Items
