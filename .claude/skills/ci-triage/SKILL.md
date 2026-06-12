@@ -2,6 +2,7 @@
 name: ci-triage
 description: Triage a JellyRock CI failure (failed GitHub Actions workflow run) end-to-end. Fetches the run via gh, identifies which job/step failed, extracts the failure tail, classifies the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), assembles initial file context, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Dedup-first: a recent unchanged triage on the same run-id (cited files unchanged) short-circuits to the existing handoff. Use when a CI workflow failed on a PR or on main.
 model: opus
+effort: high
 user-invocable: true
 allowed-tools: Bash(gh run view:*), Bash(gh run list:*), Bash(git log:*), Bash(git diff:*), Bash(git ls-files:*), Bash(git status:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Read, Write, Grep
 ---
@@ -10,13 +11,48 @@ allowed-tools: Bash(gh run view:*), Bash(gh run list:*), Bash(git log:*), Bash(g
 
 Single-file workflow: prep + investigation, end-to-end on opus, in main thread, no Task delegation. The mechanical prep (Steps 1-6) produces a handoff packet that's written to `.claude/handoffs/` for cross-session resume + compaction recovery + `/catchup` discovery. The investigation contract is in sibling [`INVESTIGATION.md`](INVESTIGATION.md) and is followed in main thread once Step 6 completes.
 
-## Inputs
+## Contract
+
+**Goal.** Take a failing CI run and drive it from "red" to root-caused end-to-end, in one main-thread session. The mechanical prep — fetch the run, find the failed job/step, extract the failure tail, classify the category (lint-fail / build-fail / device-test-fail / docs-stale-blocking / language-coverage-fail), and assemble initial file context — feeds the investigation contract in sibling `INVESTIGATION.md`. It runs on Opus because classifying an unfamiliar failure tail and mapping it to the right code area is genuine diagnostic judgment over real build/test output, not template fill — a misclassified failure sends the fix the wrong way. It is dedup-first: a CI run-id is immutable, so a recent unchanged triage on the same run-id (cited files untouched) short-circuits to the existing handoff. Reach for it when a CI workflow failed on a PR or on `main`.
+
+**Inputs.** `$ARGUMENTS` is the required run ID or URL (e.g., `1234567890` or a full `/actions/runs/<id>` URL — extract the run-id from `/runs/(\d+)`); if empty, prompt or list recent failures with `gh run list --status failure --branch <current> --limit 5`. The skill reads the run and its failed-step logs via `gh run view`, the codebase and recent diffs via `git`, and any prior handoff at `.claude/handoffs/ci-<run-id>-*.md` for the dedup check.
+
+**Outputs.** A handoff packet written to `.claude/handoffs/ci-<run-id>-<timestamp>.md` with YAML frontmatter (`created`, `target`, `branch`, `sha`, `cited-files`) and a body carrying the classification, failed step, 2-5 cited initial-context files, and the failure tail (last 50-100 lines of the failed step) — durable for cross-session resume, compaction recovery, and `/catchup` discovery; a one-line confirmation of the saved path, classification, failed step, and file count; and then the in-thread investigation per `INVESTIGATION.md`. On a clean dedup hit, no new file is written — the prior handoff is surfaced with resume/re-triage/cancel options.
+
+**Success criteria.**
+
+- The dedup check runs first and short-circuits correctly: both signals clean (cited files untouched, working tree clean for them) → surface the prior handoff and STOP for the user's pick; any signal changed → proceed.
+- The failed job and step are correctly identified (walk `.jobs[]`/`.steps[]` for `conclusion == "failure"`); in-progress runs and succeeded runs are surfaced and stopped on, not triaged.
+- The failure is classified by step name first, then by failure-tail content when the step name doesn't match a known shape; genuinely unmatched failures classified `unknown` for the investigator.
+- The failure tail keeps the diagnostic region (last ~50-100 lines plus extra context above a stack trace) and drops the setup boilerplate.
+- The handoff is written with valid frontmatter, then the skill continues immediately into `INVESTIGATION.md` as one motion.
+
+**Failure modes to avoid.**
+
+- **Re-prepping over a clean dedup hit.** If both signals are clean, do not write a new file — surface the prior handoff and wait for the user's pick.
+- **Triaging an in-progress or succeeded run.** Wait for completion; `/ci-triage` is for failures only.
+- **Capturing the wrong log region.** Drop the workflow-setup/checkout/npm-install boilerplate; keep the diagnostic tail (and 5-10 lines above a named error or stack trace).
+- **Forcing a classification.** When neither the step name nor the tail content matches a known shape, classify `unknown` rather than guessing wrong.
+- **Triaging transient infra failures.** If the failure is a GitHub Actions outage / runner-unavailable, re-run first; only triage code if it repeats.
+- **Stopping after the handoff.** Step 7 is "save the handoff AND continue into investigation" as one motion; don't write the file and wait.
+
+**When NOT to use.**
+
+- The run is in-progress — wait for it to complete.
+- The run succeeded — there's nothing to triage.
+- The failure is a transient infra issue (Actions outage, runner unavailable) — re-run first; triage code only if it repeats.
+- The pasted text is a Roku runtime log, not a CI log — use `/runtime-triage`.
+- The failure is a docs-stale-blocking whose fix is purely mechanical (bump `last-reviewed`, no shape change) — fix directly without the investigation contract.
+
+## Implementation
+
+### Inputs
 
 `$ARGUMENTS`: required run ID or URL (e.g., `1234567890` or `https://github.com/jellyrock/jellyrock/actions/runs/1234567890`). If empty, prompt or list recent failures: `gh run list --status failure --branch <current> --limit 5`.
 
 If the input is a URL, extract the run-id (`/runs/(\d+)`).
 
-## Step 0 — Check for prior triage (dedup)
+### Step 0 — Check for prior triage (dedup)
 
 Before any prep, look for a recent handoff on this run-id:
 
@@ -40,7 +76,7 @@ Then **STOP**. Wait for the user's pick before proceeding.
 
 If any signal shows change (or no prior handoff exists), proceed to Step 1.
 
-## Step 1 — Fetch the run
+### Step 1 — Fetch the run
 
 ```bash
 gh run view <run-id> --json status,conclusion,name,event,headBranch,jobs,createdAt,htmlUrl
@@ -50,7 +86,7 @@ If the run is still in-progress, surface that and stop — there's nothing to tr
 
 Find the failed job(s) by walking `.jobs[]` and filtering `conclusion == "failure"`. Each job has `.steps[]` — find the failed step (also `conclusion == "failure"`).
 
-## Step 2 — Extract the failure tail
+### Step 2 — Extract the failure tail
 
 ```bash
 gh run view <run-id> --log-failed --job <job-id>
@@ -60,7 +96,7 @@ This streams the failed step's log. Capture the last ~50-100 lines — that's wh
 
 If the failure shows a stack trace or named diagnostic, capture 5-10 extra lines of context above the error line.
 
-## Step 3 — Classify
+### Step 3 — Classify
 
 Match the failed step's name + the failure tail to a category:
 
@@ -82,7 +118,7 @@ If the step name doesn't match a known shape, use the failure-tail content to cl
 
 If still ambiguous, classify as `unknown` — the investigator will sort it out.
 
-## Step 4 — Identify probable area
+### Step 4 — Identify probable area
 
 The failed step often points at the area:
 
@@ -91,7 +127,7 @@ The failed step often points at the area:
 - `device-test-fail`: the Rooibos output names the test file (`tests/source/unit/<area>/...`).
 - `docs-stale-blocking`: names the stale architecture doc.
 
-## Step 5 — Assemble initial file context
+### Step 5 — Assemble initial file context
 
 For the probable area, surface 2-5 files:
 
@@ -106,7 +142,7 @@ git diff main...HEAD -- <file-or-area>
 
 For test failures, include the test file + the SUT it tests.
 
-## Step 6 — Build the handoff packet
+### Step 6 — Build the handoff packet
 
 Construct the packet with a YAML frontmatter (so future Step-0 dedup checks can read it) plus the prep body:
 
@@ -138,7 +174,7 @@ Failure tail (last 50-100 lines of the failed step):
   <log excerpt>
 ```
 
-## Step 7 — Write the handoff and continue into investigation
+### Step 7 — Write the handoff and continue into investigation
 
 1. Compute the timestamp: `date +%Y%m%d-%H%M%S` (filename) and `date -u +%Y-%m-%dT%H:%M:%SZ` (frontmatter).
 
@@ -150,14 +186,6 @@ Failure tail (last 50-100 lines of the failed step):
 
 4. Then **continue immediately** into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). Don't stop or wait.
 
-## When NOT to use
-
-- The run is in-progress — wait for it to complete.
-- The run succeeded — there's nothing to triage.
-- The failure is a transient infra issue (GitHub Actions outage, runner unavailable) — re-run the workflow first; only triage code if the failure repeats.
-- The pasted text is a Roku log, not a CI log → use `/runtime-triage`.
-- The failure is a docs-stale-blocking and the fix is mechanical (just bump `last-reviewed` because no shape change occurred) → fix directly without invoking the investigation contract.
-
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/ci-triage/SKILL.md and follow Steps 0-7 for $ARGUMENTS=<run-id>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive).
+To invoke from a parent sub-agent (rare): parent passes `Read .claude/skills/ci-triage/SKILL.md and follow Steps 0-7 for $ARGUMENTS=<run-id>; write the handoff file but stop before INVESTIGATION.md — surface the handoff path so the parent can decide next` in the Task prompt. Sub-agents only run the prep; they don't follow INVESTIGATION.md (which is interactive). If you discover any decisions or followups during this work, surface them at the end of your report as a `Captures for /log` section. I'll invoke /log for each. Do not write to docs/ directly.
