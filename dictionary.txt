@@ -598,3 +598,11 @@ unencodeable
 8ch
 WebP
 webp
+PDIF
+TrueHD
+DTS-HD
+EAC3
+AV1
+mkv
+Bitstream
+sideloading

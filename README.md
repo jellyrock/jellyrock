@@ -87,6 +87,7 @@ npm run build # OR npm run build:prod
 
 - [App Settings](docs/user/app-settings.md)
 - [Jellyfin Server Feature Matrix](docs/user/jellyfin-server-feature-matrix.md)
+- [Playback Troubleshooting](docs/user/playback-troubleshooting.md)
 
 ## Dev Docs
 
