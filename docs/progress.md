@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-11
+last-updated: 2026-06-12
 ---
 
 # Progress
@@ -84,4 +84,4 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### claude
 
-(none)
+- Exercise `/dep-major` end-to-end on the next real Renovate major PR — validate the changelog→call-site mapping and the on-device `test:unit`+`test:rta` gate run inside the skill flow (mechanics validated at build time, but the full orchestration on a real major bump is not yet exercised).
