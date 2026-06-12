@@ -2,6 +2,7 @@
 name: new-setting
 description: Guided workflow for adding a new user setting or global setting to JellyRock. Walks the canonical recipe from docs/dev/new-user-setting.md (pick the bucket, add to settings/settings.json, wire JellyfinUserSettings, surface in the settings UI, write a registry migration if the schema changes, write tests, regenerate the settings docs). Stops at each step to verify and gives the user the relevant file paths. Use when adding a new toggle / dropdown / numeric setting that the user can change in the JellyRock Settings screen.
 model: sonnet
+effort: low
 ---
 
 # /new-setting — guided workflow

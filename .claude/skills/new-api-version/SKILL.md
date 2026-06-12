@@ -2,6 +2,7 @@
 name: new-api-version
 description: Guided workflow for standing up a NEW Jellyfin apiVersion tier (V3, V4, …) in JellyRock when an upstream release restructures the API enough to need a new `if m.getApiVersion() >= N` dispatch level. Wraps the "Adding Support for New Server Versions" recipe in docs/dev/jellyfin-server-versioning.md and walks every surface that must move together — the boundary map (YAML), its BrightScript twin `resolveApiVersion()`, the `sdkVN.bs` endpoints, the dispatch branches, the device profile, the manifest tier-clamp, and the validators — stopping at each step so the tier split can't land half-built. Use when proactive RC/master triage (via `/server-upgrade <rc-or-unstable>`) shows a breaking API shift that a per-method `>= N` branch must cover. NOT for routine endpoint additions inside an existing tier (those use the existing `>= 2` shape directly).
 model: sonnet
+effort: low
 user-invocable: true
 allowed-tools: Read, Edit, Write, Grep, Glob, Bash(npm run docs:api-manifest:*), Bash(npm run lint:apiversion-consistency:*), Bash(npm run lint:endpoint-availability:*), Bash(npm run lint:docs:*), Bash(npm run test:scripts:*), Bash(grep:*), Bash(rg:*), Bash(date:*)
 ---
