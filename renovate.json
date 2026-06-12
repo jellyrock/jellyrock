@@ -59,6 +59,29 @@
         "xml2js"
       ],
       "addLabels": ["javascript"]
+    },
+    {
+      "description": "Soak window before patch/digest automerge — catches yanked or hotfixed releases before they land unattended. Mirrors the org preset (github>jellyrock/.github//renovate/default); kept here too so JellyRock is covered immediately without waiting on preset propagation. Remove once the canonical preset is live everywhere (see docs/progress.md followup).",
+      "matchUpdateTypes": ["patch", "digest"],
+      "minimumReleaseAge": "2 days"
+    },
+    {
+      "description": "Minor updates soak 5 days; stay human-reviewed (no automerge). Mirror of org preset — remove once canonical propagates.",
+      "matchUpdateTypes": ["minor"],
+      "minimumReleaseAge": "5 days"
+    },
+    {
+      "description": "Major updates soak 7 days and NEVER automerge — always human-reviewed. Mirror of org preset — remove once canonical propagates.",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "7 days",
+      "automerge": false
+    },
+    {
+      "description": "sgRouter is pre-1.0 and is JellyRock's entire navigation layer — a breaking bump takes down all nav. Never automerge; soak 5 days; label for manual review. Repo-local by nature (only JellyRock depends on sgRouter), so this rule stays here permanently, not in the org preset.",
+      "matchPackageNames": ["@rokucommunity/sgrouter", "sgRouter"],
+      "minimumReleaseAge": "5 days",
+      "automerge": false,
+      "addLabels": ["sgrouter"]
     }
   ]
 }
