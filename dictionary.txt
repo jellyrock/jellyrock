@@ -439,6 +439,8 @@ schema-validated
 sdk
 SDK
 selectable
+sgRouter
+sgrouter
 SHA-1
 ship-today
 sideload
