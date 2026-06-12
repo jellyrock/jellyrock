@@ -41,3 +41,74 @@ sub onDestroy()
   abandonApiPromises()
 end sub
 
+' ---------------------------------------------------------------------------
+' sgRouter view-lifecycle bridge (#550)
+'
+' sgRouter drives the views it mounts in its outlet through a promise-native
+' lifecycle (onViewOpen / onViewSuspend / onViewResume / beforeViewClose) and
+' asks them to take focus via handleFocus(). JellyRock screens instead
+' implement onScreenShown / onScreenHidden / onDestroy and rely on
+' SceneManager for focus restoration. These overrides bridge the two contracts
+' so every existing screen works under the router with NO per-screen changes.
+'
+' DORMANT until the router is wired (Phase 2): while SceneManager still owns
+' navigation it calls onScreenShown/onScreenHidden/onDestroy directly and the
+' router never invokes the methods below, so defining them here is inert.
+'
+' These names override sgrouter_View's no-op defaults; the interface
+' declarations are inherited from sgrouter_View (via JRGroup), so no <function>
+' entries are needed in JRScreen.xml.
+' ---------------------------------------------------------------------------
+
+' Router: this view has just become active for the first time.
+function onViewOpen(_params = {} as object) as dynamic
+  onScreenShown()
+  return promises.resolve(invalid)
+end function
+
+' Router: a previously-suspended view has returned to the top of the stack.
+function onViewResume(_params = {} as object) as dynamic
+  onScreenShown()
+  return promises.resolve(invalid)
+end function
+
+' Router: a new view is being pushed on top of this one (still alive).
+' Save focus the same way SceneManager.pushScene does so it can be restored.
+function onViewSuspend(_params = {} as object) as dynamic
+  saveLastFocus()
+  onScreenHidden()
+  return promises.resolve(invalid)
+end function
+
+' Router: this view is about to be permanently destroyed.
+function beforeViewClose(_params = {} as object) as dynamic
+  onScreenHidden()
+  onDestroy()
+  return promises.resolve(invalid)
+end function
+
+' Router: take remote focus. Mirrors onScreenShown's focus rule (restore the
+' saved descendant, else focus the view root).
+function handleFocus(_data = {} as object) as boolean
+  if isValid(m.top.lastFocus)
+    m.top.lastFocus.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
+  return true
+end function
+
+' Walk the focus chain to the deepest focused descendant and remember it in
+' m.top.lastFocus. Lifted from SceneManager.pushScene's focus-save loop.
+sub saveLastFocus()
+  if isValid(m.top.focusedChild)
+    focused = m.top.focusedChild
+    while isValid(focused) and focused.hasFocus() = false
+      focused = focused.focusedChild
+    end while
+    if isValid(focused)
+      m.top.lastFocus = focused
+    end if
+  end if
+end sub
+
