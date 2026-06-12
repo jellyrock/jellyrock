@@ -39,6 +39,73 @@ sub init()
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")
+
+  ' #550 sgRouter: Home is now mounted by the router, so it self-wires what the old
+  ' showScenes.CreateHomeGroup() factory used to set up — its overhang title and the
+  ' options side-panel menu.
+  m.top.overhangTitle = translate(translationKeys.LabelHome)
+  buildOptionsMenu()
+end sub
+
+' #550 sgRouter: build the options side-panel (search / settings / change user /
+' change server / sign out), lifted from showScenes.CreateHomeGroup(). The buttons
+' are observed by Home itself now (not main.bs's m.port); onSidePanelOption routes
+' them — navigation actions go through the router, session actions up to main.bs.
+sub buildOptionsMenu()
+  sidepanel = m.top.findNode("options")
+  if not isValid(sidepanel) then return
+  m.optionsPanel = sidepanel
+  sidepanel.observeField("closeSidePanel", "onCloseSidePanel")
+
+  menu = [
+    { title: translate(translationKeys.ButtonSearch), id: HomeAction.OPEN_SEARCH },
+    { title: translate(translationKeys.LabelSettings), id: HomeAction.OPEN_SETTINGS },
+    { title: translate(translationKeys.LabelChangeUser), id: HomeAction.CHANGE_USER },
+    { title: translate(translationKeys.LabelChangeServer), id: HomeAction.CHANGE_SERVER },
+    { title: translate(translationKeys.ButtonSignOut), id: HomeAction.SIGN_OUT }
+  ]
+  options = []
+  for each entry in menu
+    o = CreateObject("roSGNode", "OptionsButton")
+    o.title = entry.title
+    o.id = entry.id
+    o.observeField("optionSelected", "onSidePanelOption")
+    options.push(o)
+  end for
+  m.optionButtons = options
+  sidepanel.options = options
+end sub
+
+' Route a Home menu action. Navigation actions resolve through the router on the
+' render thread; session-ending actions (change user/server, sign out) are emitted
+' as userMenuAction for main.bs (which owns the LoginFlow re-entry via goto appStart).
+sub handleHomeMenuAction(actionId as string)
+  if actionId = HomeAction.OPEN_SEARCH
+    sgrouter.navigateTo("/search")
+  else if actionId = HomeAction.OPEN_SETTINGS
+    sgrouter.navigateTo("/settings")
+  else
+    m.top.userMenuAction = actionId
+  end if
+end sub
+
+' Options side-panel button pressed — close the panel, then route the action.
+sub onSidePanelOption(msg)
+  button = msg.getRoSGNode()
+  panel = m.top.findNode("options")
+  if isValid(panel) then panel.visible = false
+  handleHomeMenuAction(button.id)
+end sub
+
+' Options side-panel closed without a selection — restore focus to content.
+sub onCloseSidePanel()
+  if isValid(m.top.lastFocus)
+    m.top.lastFocus.setFocus(true)
+  else if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
 end sub
 
 sub refresh()
@@ -147,11 +214,12 @@ sub onScreenShown()
     m.top.setFocus(true)
   end if
 
-  ' First run: post device capabilities to the server via fire-and-forget side effect.
-  ' No response handling needed — Main.bs already called loadLibraries() before
-  ' pushing this screen, so data is already in flight.
+  ' First run: load libraries (the router mounts Home now, so this is no longer
+  ' triggered externally by main.bs) and post device capabilities to the server via
+  ' fire-and-forget side effect.
   if m.isFirstRun
     m.isFirstRun = false
+    loadLibraries()
     SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
   else
     ' Subsequent visits: refresh the active tab's data in place
@@ -223,7 +291,14 @@ sub onVoiceSearch()
   ' Reset for next voice search
   m.voiceBox.text = ""
 
+  ' Record the captured query on Home's interface. Pre-#550 main.bs observed this
+  ' field to open search; now Home navigates directly (below), but the field is kept
+  ' as the last-captured-query record (and is what the unit suite asserts).
   m.top.voiceQuery = voiceText
+
+  ' #550 sgRouter: open the search route with the spoken query as context (the
+  ' SearchResults view reads route.context.query in onViewOpen / applyRouteQuery).
+  sgrouter.navigateTo("/search", { context: { query: voiceText } })
 end sub
 
 ' ============================================
@@ -292,9 +367,20 @@ function getActiveRows() as object
   return m.activeContent
 end function
 
-' Proxy selectedItem from whichever row list fires it
+' #550 sgRouter: a row item was selected — navigate to its route, passing the rich
+' content node as context (so details/library self-load without a re-fetch). Items
+' that aren't view navigation (e.g. Chapter) fall through to the playback path via
+' quickPlayNode (still relayed to main.bs).
 sub onRowItemSelected(msg)
-  m.top.selectedItem = msg.getData()
+  item = msg.getData()
+  if not isValid(item) then return
+
+  route = routeForItem(item)
+  if isValid(route)
+    sgrouter.navigateTo(route, { context: { item: item } })
+  else
+    m.top.quickPlayNode = item
+  end if
 end sub
 
 ' Proxy quickPlayNode from whichever row list fires it.
@@ -360,12 +446,12 @@ sub onUserMenuAction()
   if isValid(m.userDropdown)
     m.lastOverhangFocus = m.userDropdown
 
-    ' Move focus to Home group (not activeContent — that would visibly highlight
-    ' a row item before the screen transition). m.top is in Home's tree, which
-    ' satisfies SceneManager.pushScene() without any visible focus jump.
+    ' Move focus into Home's tree before navigating so back-from-route restores it.
     m.top.setFocus(true)
 
-    m.top.userMenuAction = m.userDropdown.selectedAction
+    ' #550 sgRouter: route the action (search/settings navigate; session actions
+    ' emit userMenuAction up to main.bs).
+    handleHomeMenuAction(m.userDropdown.selectedAction)
   end if
 end sub
 
@@ -389,7 +475,8 @@ sub onOverhangIconAction()
     ' Move focus to Home group — not activeContent (avoids visible row highlight)
     m.top.setFocus(true)
 
-    m.top.userMenuAction = m.overhang.iconAction
+    ' #550 sgRouter: search/settings icons navigate through the router.
+    handleHomeMenuAction(m.overhang.iconAction)
   end if
 end sub
 
@@ -419,6 +506,18 @@ sub onDestroy()
   m.log.verbose("onDestroy")
 
   m.top.unobserveField("selectedTabId")
+
+  ' Release the options side-panel observers wired in buildOptionsMenu (#550)
+  if isValid(m.optionsPanel)
+    m.optionsPanel.unobserveField("closeSidePanel")
+    m.optionsPanel = invalid
+  end if
+  if isValid(m.optionButtons)
+    for each o in m.optionButtons
+      o.unobserveField("optionSelected")
+    end for
+    m.optionButtons = invalid
+  end if
 
   ' Release voice box — match BaseGridView: never set voiceEnabled=false,
   ' just unobserve and release the reference.

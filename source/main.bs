@@ -43,6 +43,13 @@ sub Main (args as dynamic) as void
   ' setup global nodes now that the screen has been shown
   setGlobalNodes()
 
+  ' #550 sgRouter: observe the router-active content view so we can (re)attach the
+  ' playback-event observers (quickPlayNode / userMenuAction / ItemDetails buttons)
+  ' whenever the router mounts or switches views — see attachRoutedViewObservers().
+  ' Registered once here (before any navigation), survives goto appStart re-entry.
+  m.global.observeField("activeRoutedView", m.port)
+  m.scene.observeField("exit", m.port)
+
   appStart:
   m.global.sceneManager.callFunc("clearScenes")
   ' Re-resolve the pre-login locale on every entry to the login flow. We reach
@@ -103,8 +110,14 @@ sub Main (args as dynamic) as void
       return
     else if isNodeEvent(msg, "exit")
       return
+    else if isNodeEvent(msg, "activeRoutedView")
+      ' #550 sgRouter: the router mounted/switched a content view. Re-point our
+      ' playback-event observers (quickPlayNode / userMenuAction / ItemDetails
+      ' buttons) at it so the playback + menu branches below keep working unchanged
+      ' for router-created views. Pure relay — no playback logic moves.
+      attachRoutedViewObservers(m.global.activeRoutedView)
     else if isNodeEvent(msg, "closeSidePanel")
-      group = m.global.sceneManager.callFunc("getActiveScene")
+      group = getActiveView()
       if isValid(group.lastFocus)
         group.lastFocus.setFocus(true)
       else
@@ -177,26 +190,6 @@ sub Main (args as dynamic) as void
           end if
         end if
       end if
-    else if isNodeEvent(msg, "voiceQuery")
-      ' Voice search from Home screen — open SearchResults with spoken query pre-populated
-      voiceQuery = msg.getData()
-      if isValidAndNotEmpty(voiceQuery)
-        ' Guard: skip if a SearchResults is already the active scene (prevents duplicate pushes
-        ' when voice system fires multiple text changes for a single input)
-        activeScene = m.global.sceneManager.callFunc("getActiveScene")
-        if isValid(activeScene) and activeScene.subtype() = "SearchResults"
-          searchKey = activeScene.findNode("SearchBox").findNode("searchKey")
-          searchKey.text = voiceQuery
-          searchKey.textEditBox.setFocus(true)
-        else
-          group = CreateSearchPage()
-          group.shouldSkipInitialFocus = true
-          m.global.sceneManager.callFunc("pushScene", group)
-          searchKey = group.findNode("SearchBox").findNode("searchKey")
-          searchKey.text = voiceQuery
-          searchKey.textEditBox.setFocus(true)
-        end if
-      end if
     else if isNodeEvent(msg, "output")
       task = msg.getRoSGNode()
       if isValid(task) and task.subtype() = "QuickPlayTask"
@@ -207,97 +200,6 @@ sub Main (args as dynamic) as void
       if isValid(task) and task.subtype() = "RecordProgramTask"
         handleRecordResult(task)
       end if
-    else if isNodeEvent(msg, "selectedItem")
-      ' If you select a library from ANYWHERE, follow this flow
-      selectedItem = msg.getData()
-      if isValid(selectedItem)
-        startLoadingSpinner()
-        selectedItemType = selectedItem.type
-
-        ' Normalize alias types to their canonical forms
-        if selectedItemType = "LiveTvChannel" then selectedItemType = "TvChannel"
-        if selectedItemType = "LiveTvProgram" or selectedItemType = "TvProgram" then selectedItemType = "Program"
-
-        if selectedItemType = "CollectionFolder"
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Genre" or selectedItemType = "MusicGenre" or (selectedItemType = "Folder" and (selectedItem.folderType = "Genre" or selectedItem.folderType = "MusicGenre"))
-          ' User clicked on a genre/music-genre — open scoped library view
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Studio"
-          ' Studio items from /Studios endpoint have IsFolder=false so type="Studio" directly.
-          ' Route to a library view scoped to that studio (presenter inferred via collectionType).
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "UserView" or selectedItemType = "Folder" or selectedItemType = "Channel"
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "BoxSet"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Episode" or LCase(selectedItemType) = "recording"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Series"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Season"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Movie"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Person"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Video"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "TvChannel" or selectedItemType = "Program"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Photo"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "PhotoAlbum"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "MusicArtist"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "MusicAlbum"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Audio"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "MusicVideo"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Playlist"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Chapter"
-          ' Chapter: start playback of parent video at chapter position
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("resetShuffle")
-          queueItem = nodeHelpers.createQueueItem(selectedItem)
-          if isValid(queueItem)
-            queueItem.type = selectedItem.parentType
-            queueItem.startingPoint = selectedItem.playbackPositionTicks
-            m.global.queueManager.callFunc("push", queueItem)
-            m.global.queueManager.callFunc("playQueue")
-          end if
-        else
-          ' TODO - switch on more node types
-          stopLoadingSpinner()
-          messageDialog(translate(translationKeys.ErrorTypeNotYetSupported, [selectedItemType]))
-        end if
-      end if
-    else if isNodeEvent(msg, "movieSelected")
-      ' If you select a movie from ANYWHERE, follow this flow
-      startLoadingSpinner()
-      node = getMsgPicker(msg, "picker")
-      group = CreateItemDetailsGroup(node)
-    else if isNodeEvent(msg, "seriesSelected")
-      ' If you select a TV Series from ANYWHERE, follow this flow
-      startLoadingSpinner()
-      node = getMsgPicker(msg, "picker")
-      group = CreateItemDetailsGroup(node)
     else if isNodeEvent(msg, "playItem")
       ' User has selected audio they want us to play
       startLoadingSpinner()
@@ -345,49 +247,6 @@ sub Main (args as dynamic) as void
         searchOptions.query = m.searchQuery
       end if
       m.searchGroup = invalid
-    else if isNodeEvent(msg, "itemSelected")
-      ' Search item selected
-      startLoadingSpinner()
-      node = getMsgPicker(msg)
-
-      ' Normalize alias types to their canonical forms
-      nodeType = node.type
-      if nodeType = "LiveTvChannel" then nodeType = "TvChannel"
-      if nodeType = "LiveTvProgram" or nodeType = "TvProgram" then nodeType = "Program"
-
-      if nodeType = "Series"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Movie"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "MusicArtist"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "MusicAlbum"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Audio"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "MusicVideo"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Person"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "BoxSet"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "TvChannel" or nodeType = "Program"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Episode"
-        group = CreateItemDetailsGroup(node)
-      else if LCase(nodeType) = "recording"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Playlist"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Photo" or nodeType = "PhotoAlbum"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Video"
-        group = CreateItemDetailsGroup(node)
-      else
-        ' TODO - switch on more node types
-        stopLoadingSpinner()
-        messageDialog(translate(translationKeys.ErrorTypeNotYetSupported, [nodeType]))
-      end if
     else if isNodeEvent(msg, "buttonSelected")
       ' If a button is selected, we have some determining to do
       btn = getButton(msg)
@@ -396,7 +255,7 @@ sub Main (args as dynamic) as void
       ' Guard: skip if spinner is active — isRemoteDisabled prevents FUTURE key events
       ' but cannot clear events already queued in m.port from rapid presses.
       if isValid(btn) and not m.scene.isLoading
-        group = m.global.sceneManager.callFunc("getActiveScene")
+        group = getActiveView()
 
         if btn.id = "playButton"
           if not isValid(group) then return
@@ -621,38 +480,11 @@ sub Main (args as dynamic) as void
             m.activeQuickPlayTask.observeField("output", m.port)
             m.activeQuickPlayTask.control = "RUN"
           end if
-        else if btn.id = "goToSeriesButton"
-          ' Navigate to the parent series detail screen
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.seriesId)
-            CreateItemDetailsGroup({ id: group.itemContent.seriesId, type: "Series" })
-          end if
-        else if btn.id = "goToAlbumButton"
-          ' Navigate to the album detail screen for the current Audio item
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.albumId)
-            CreateItemDetailsGroup({ id: group.itemContent.albumId, type: "MusicAlbum" })
-          end if
-        else if btn.id = "goToArtistButton"
-          ' Navigate to the artist detail screen for the current MusicAlbum.
-          ' Prefers albumArtists (primary album artist); falls back to artistItems when only one artist.
-          if isValid(group) and isValid(group.itemContent)
-            item = group.itemContent
-            artistId = ""
-            if isValid(item.albumArtists) and item.albumArtists.count() > 0
-              firstAlbumArtist = item.albumArtists[0]
-              if isValid(firstAlbumArtist) and isValidAndNotEmpty(firstAlbumArtist.Id)
-                artistId = firstAlbumArtist.Id
-              end if
-            end if
-            if artistId = "" and isValid(item.artistItems) and item.artistItems.count() = 1
-              firstArtistItem = item.artistItems[0]
-              if isValid(firstArtistItem) and isValidAndNotEmpty(firstArtistItem.Id)
-                artistId = firstArtistItem.Id
-              end if
-            end if
-            if isValidAndNotEmpty(artistId)
-              CreateItemDetailsGroup({ id: artistId, type: "MusicArtist" })
-            end if
-          end if
+        else if btn.id = "goToSeriesButton" or btn.id = "goToAlbumButton" or btn.id = "goToArtistButton"
+          ' #550 sgRouter: detail→detail navigation now lives in ItemDetails, which
+          ' observes its own buttons and calls navigateTo("/details/...") with the
+          ' resolved target id+type. No-op here so this shared buttonSelected event
+          ' (also observed by main) doesn't fall through to the "unhandled" error.
         else if btn.id = "viewPhotoButton"
           ' Open Photo in the PhotoDetails viewer
           if isValid(group) and isValid(group.itemContent)
@@ -683,10 +515,7 @@ sub Main (args as dynamic) as void
             m.global.queueManager.callFunc("playQueue")
           end if
         else if btn.id = "goToChannelButton"
-          ' Navigate to the TvChannel detail screen for this Program
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.channelId)
-            CreateItemDetailsGroup({ id: group.itemContent.channelId, type: "TvChannel" })
-          end if
+          ' #550 sgRouter: handled by ItemDetails via navigateTo (see goToSeries note above).
         else if btn.id = "recordButton"
           item = group.itemContent
           recordButton = group.findNode("recordButton")
@@ -726,7 +555,7 @@ sub Main (args as dynamic) as void
       end if ' isValid(btn) and not m.scene.isLoading
     else if isNodeEvent(msg, "optionSelected")
       button = msg.getRoSGNode()
-      group = m.global.sceneManager.callFunc("getActiveScene")
+      group = getActiveView()
       actionId = button.id
 
       ' Close the side panel before handling the action
@@ -752,7 +581,7 @@ sub Main (args as dynamic) as void
 
       if event.exitedScreensaver = true
         m.global.sceneManager.callFunc("resetTime")
-        group = m.global.sceneManager.callFunc("getActiveScene")
+        group = getActiveView()
         if isValid(group)
           ' refresh the current view
           if group.isSubType("JRScreen")
@@ -814,7 +643,7 @@ sub Main (args as dynamic) as void
           ' "Nothing is playing" rather than the default "Command not available".
           ' roAppManager calls happen here (MAIN thread) — it can't be created on the
           ' render thread where the player's callFunc executes.
-          activeScene = m.global.sceneManager.callFunc("getActiveScene")
+          activeScene = getActiveView()
           transportStatus = "error.no-media"
           transportNowPlaying = invalid
           if isValid(activeScene)
@@ -862,7 +691,8 @@ sub Main (args as dynamic) as void
             ' User confirmed deletion
             SubmitSideEffect(GetApi().BuildDeleteItemRequest(m.pendingDeleteItemId))
             m.pendingDeleteItemId = invalid
-            m.global.sceneManager.callFunc("popScene")
+            ' #550 sgRouter: leave the now-deleted routed detail via the router.
+            m.scene.callFunc("routerGoBack")
           else
             ' User cancelled or dialog closed
             m.pendingDeleteItemId = invalid
@@ -875,7 +705,7 @@ sub Main (args as dynamic) as void
             ' render-thread method (callFunc rendezvouses there, where it runs as a promise).
             ' toggleWatched() re-reads the button state to pick mark vs unmark, so no fetch state
             ' needs threading through the dialog.
-            activeGroup = m.global.sceneManager.callFunc("getActiveScene")
+            activeGroup = getActiveView()
             if isValid(activeGroup)
               activeGroup.callFunc("toggleWatched")
             end if
@@ -928,9 +758,10 @@ sub Main (args as dynamic) as void
         stopLoadingSpinner()
       end if
     else if isNodeEvent(msg, "reloadHomeRequested")
-      ' Theme colors changed - reload home screen with fresh state
-      m.global.sceneManager.callFunc("clearScenes")
-      createAndShowHomeGroup()
+      ' #550 sgRouter: theme/locale changed — re-navigate the router to "/" for a
+      ' fresh Home (picks up new theme constants / reloaded translations). Replaces
+      ' the old clearScenes + createAndShowHomeGroup.
+      m.scene.callFunc("reloadRoutedHome")
     else
       print "Unhandled " type(msg)
       print msg
@@ -982,12 +813,13 @@ end sub
 
 ' Create and show the home group
 sub createAndShowHomeGroup()
-  group = CreateHomeGroup()
-  group.callFunc("loadLibraries")
-  m.global.sceneManager.callFunc("pushScene", group)
+  ' #550 sgRouter: Home is now mounted by the router (in JRScene's outlet) rather
+  ' than pushed via SceneManager. JRScene.startRouter initializes the router,
+  ' registers the post-login routes, and navigates to "/"; Home self-loads its
+  ' libraries in its own onViewOpen. (exit + activeRoutedView are observed once
+  ' during bootstrap, not here.)
+  m.scene.callFunc("startRouter")
   stopLoadingSpinner()
-
-  m.scene.observeField("exit", m.port)
 
   ' update lastRunVersion but only on prod
   if not m.global.app.isDev
@@ -1139,16 +971,14 @@ end sub
 
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
 ' Returns true if the caller should goto appStart (session-ending actions).
+' #550 sgRouter: OPEN_SEARCH / OPEN_SETTINGS are no longer handled here — Home
+' navigates to those routes directly (navigateTo runs on the render thread, which
+' main.bs is not). Only the session-ending actions remain; each tears down the
+' routed view (resetRouter) before re-entering LoginFlow via `goto appStart`.
 function handleMenuAction(actionId as string) as boolean
-  if actionId = HomeAction.OPEN_SEARCH
-    group = CreateSearchPage()
-    m.global.sceneManager.callFunc("pushScene", group)
-    group.findNode("SearchBox").findNode("searchKey").setFocus(true)
-    group.findNode("SearchBox").findNode("searchKey").active = true
-  else if actionId = HomeAction.OPEN_SETTINGS
-    m.global.sceneManager.callFunc("settings")
-  else if actionId = HomeAction.CHANGE_SERVER
+  if actionId = HomeAction.CHANGE_SERVER
     startLoadingSpinner()
+    m.scene.callFunc("resetRouter")
     unsetSetting("server")
     server.Delete()
     SignOut(false)
@@ -1156,11 +986,13 @@ function handleMenuAction(actionId as string) as boolean
     return true
   else if actionId = HomeAction.CHANGE_USER
     startLoadingSpinner()
+    m.scene.callFunc("resetRouter")
     SignOut(false)
     m.global.sceneManager.callFunc("clearScenes")
     return true
   else if actionId = HomeAction.SIGN_OUT
     startLoadingSpinner()
+    m.scene.callFunc("resetRouter")
     SignOut()
     m.global.sceneManager.callFunc("clearScenes")
     return true
@@ -1168,3 +1000,28 @@ function handleMenuAction(actionId as string) as boolean
 
   return false
 end function
+
+' #550 sgRouter relay: (re)attach the main loop's observers to the router-active
+' content view's own emit-fields, so the existing playback / menu god-loop branches
+' fire for router-created views with no change to their shape. Idempotent
+' (unobserve-then-observe) so keepAlive views re-bound on resume don't double-fire.
+' Transitional — removed in Phase 4 when playback itself becomes routed.
+sub attachRoutedViewObservers(view as object)
+  if not isValid(view) then return
+
+  view.unobserveField("quickPlayNode")
+  view.observeField("quickPlayNode", m.port)
+
+  view.unobserveField("userMenuAction")
+  view.observeField("userMenuAction", m.port)
+
+  ' Only ItemDetails surfaces playback action buttons (play / resume / trailer /
+  ' shuffle / record / delete / ...) up to this loop via its "buttons" node.
+  if view.subtype() = "ItemDetails"
+    buttons = view.findNode("buttons")
+    if isValid(buttons)
+      buttons.unobserveField("buttonSelected")
+      buttons.observeField("buttonSelected", m.port)
+    end if
+  end if
+end sub

@@ -60,14 +60,21 @@ end sub
 ' entries are needed in JRScreen.xml.
 ' ---------------------------------------------------------------------------
 
-' Router: this view has just become active for the first time.
+' Router: this view has just become active for the first time. Publish it as the
+' active routed view BEFORE onScreenShown so JRScene's overhang controller and
+' main.bs's playback-event observer-attach react to the right node. Screens that
+' need route data read m.top.route (routeParams / queryParams / context) inside
+' their own onScreenShown / onRouteUpdate overrides.
 function onViewOpen(_params = {} as object) as dynamic
+  m.global.activeRoutedView = m.top
   onScreenShown()
   return promises.resolve(invalid)
 end function
 
-' Router: a previously-suspended view has returned to the top of the stack.
+' Router: a previously-suspended (keepAlive) view has returned to the top of the
+' stack. Re-publish it as the active routed view, then restore via onScreenShown.
 function onViewResume(_params = {} as object) as dynamic
+  m.global.activeRoutedView = m.top
   onScreenShown()
   return promises.resolve(invalid)
 end function

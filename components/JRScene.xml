@@ -2,6 +2,11 @@
 <component name="JRScene" extends="Scene">
   <children>
     <BackdropFader id="imageFader" translation="[0, 0]" />
+    <!-- #550 sgRouter outlet: hosts post-login content views (Home/details/library/
+         search/settings). Declared BELOW `content` so SceneManager-pushed screens
+         (pre-login flow, playback) render ABOVE the routed views during the migration.
+         `content` is retired in Phases 5/6 once those paths move off SceneManager. -->
+    <sgrouter_Outlet id="routerOutlet" />
     <Group id="content" />
     <JROverhang id="overhang" />
     <!-- Container for OptionsSlider when open, rendered above overhang for correct z-order -->
@@ -23,6 +28,12 @@
     <function name="setBackgroundImage" />
     <function name="refreshBackdropSetting" />
     <function name="showToast" />
+    <!-- #550 sgRouter host hooks (called from main.bs on the main thread) -->
+    <function name="startRouter" />
+    <function name="reloadRoutedHome" />
+    <function name="resetRouter" />
+    <function name="restoreRoutedOverhang" />
+    <function name="routerGoBack" />
     <!-- DEBUG: Set from BrightScript console to test toasts. Format: "type|message"
          Example: m.top.getScene().testToast = "error|Something went wrong" -->
     <field id="testToast" type="string" value="" alwaysNotify="true" />

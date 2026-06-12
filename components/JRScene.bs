@@ -1,6 +1,17 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+' #550 sgRouter: JRScene is a Scene (not a sgrouter_View), so it does NOT inherit
+' the router scripts from sgrouter_View.xml. Import them here so JRScene.bs can call
+' the sgrouter.* / promises.* namespaces directly (mirrors sgrouter_View.xml's script set).
+import "pkg:/source/roku_modules/promises/promises.brs"
+import "pkg:/source/roku_modules/sgrouter/bslib.brs"
+import "pkg:/source/roku_modules/sgrouter/interfaces.brs"
+import "pkg:/source/roku_modules/sgrouter/router.brs"
+import "pkg:/source/roku_modules/sgrouter/RouterState.brs"
+import "pkg:/source/roku_modules/tkss_rodash_v0/rodash.brs"
 
 sub init()
   m.log = new log.Logger("JRScene")
@@ -11,6 +22,13 @@ sub init()
   m.imageFader = m.top.findNode("imageFader")
   m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
+
+  ' #550 sgRouter overhang controller state (wired in startRouter, after login).
+  ' init() runs at CreateScene — BEFORE setGlobalNodes adds m.global.activeRoutedView —
+  ' so the observer is registered in startRouter(), not here. The overhang node itself
+  ' already exists as a child, so cache it now.
+  m.overhang = m.top.findNode("overhang")
+  m.previousRoutedView = invalid
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -208,10 +226,19 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if m.top.isRemoteDisabled then return true
 
   if key = "back"
-    m.global.sceneManager.callFunc("popScene")
+    ' #550 back arbiter. A SceneManager-pushed screen (pre-login flow / playback)
+    ' sits in `content`, ABOVE the router outlet, and bubbles back straight to JRScene
+    ' — it owns its own pop. A routed view's back is intercepted by the outlet first
+    ' (sgRouter.goBack); it only reaches here when goBack is a no-op at the router root
+    ' (history depth <= 1), which is our cue to confirm exit.
+    if isValid(m.global.sceneManager.callFunc("getActiveScene"))
+      m.global.sceneManager.callFunc("popScene")
+    else
+      showExitConfirmation()
+    end if
     return true
   else if key = "options"
-    group = m.global.sceneManager.callFunc("getActiveScene")
+    group = getActiveView()
     if isValid(group) and isValid(group.isOptionsAvailable) and group.isOptionsAvailable
       group.lastFocus = group.focusedChild
       panel = group.findNode("options")
@@ -223,3 +250,163 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   return false
 end function
+
+' ===========================================================================
+' #550 sgRouter host
+'
+' JRScene owns the router: it initializes it over the outlet, registers the
+' post-login content routes, drives the overhang from whichever view the router
+' has mounted (m.global.activeRoutedView), and confirms app exit when back
+' reaches the router root. SceneManager still owns the pre-login flow and
+' playback (pushed into `content` above the outlet) until Phases 5/6.
+' ===========================================================================
+
+' Initialize the router and navigate to Home. Called from main.bs (main thread)
+' after LoginFlow succeeds and the SceneManager stack is cleared. Re-callable
+' after resetRouter() (sign-out → re-login): sgRouter.initialize creates a fresh
+' router when none exists on the scene.
+sub startRouter()
+  ' Register the overhang controller now that m.global.activeRoutedView exists
+  ' (added in setGlobalNodes, which runs after init()). Guard against a double
+  ' registration on re-login.
+  m.global.unobserveField("activeRoutedView")
+  m.global.observeField("activeRoutedView", "onActiveRoutedViewChanged")
+
+  sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
+  sgrouter.addRoutes([
+    { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true }
+    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", allowReuse: true }
+    { pattern: "/library/:id", name: "library", component: "BaseGridView", keepAlive: { enabled: true } }
+    { pattern: "/search", name: "search", component: "SearchResults", keepAlive: { enabled: true } }
+    { pattern: "/settings", name: "settings", component: "Settings" }
+  ])
+
+  ' Navigate to Home, then hand it remote focus once it is mounted + visible.
+  promises.chain(sgrouter.navigateTo("/")).then(sub(_result as object)
+    sgrouter.setFocus({ focus: true })
+  end sub)
+end sub
+
+' Render-thread sgRouter.goBack() wrapper for main.bs, which runs on the main thread
+' and can't call the sgrouter namespace directly (it resolves the router via m.top's
+' scene). Used after a delete confirmation to leave the now-deleted routed detail.
+sub routerGoBack()
+  sgrouter.goBack()
+end sub
+
+' Theme/locale change: force a fresh Home render through the router. Called from
+' main.bs's reloadHomeRequested handler (replaces the old clearScenes +
+' createAndShowHomeGroup). Navigating to "/" from Settings (the active routed view)
+' is a component change, so clearStackOnResolve rebuilds Home from scratch — it
+' picks up the new theme constants / reloaded translations.
+sub reloadRoutedHome()
+  sgrouter.navigateTo("/")
+end sub
+
+' Sign-out / change-user / change-server: tear down the routed Home before main.bs
+' re-enters LoginFlow (which pushes pre-login screens via SceneManager). Without
+' this the routed Home would linger under the login screens and leak. startRouter()
+' re-initializes a fresh router on the next successful login.
+sub resetRouter()
+  if isValid(m.previousRoutedView)
+    unregisterOverhangData(m.previousRoutedView)
+    m.previousRoutedView = invalid
+  end if
+  m.global.unobserveField("activeRoutedView")
+  sgrouter.destroy()
+  m.global.activeRoutedView = invalid
+  if isValid(m.overhang) then m.overhang.visible = false
+end sub
+
+' The router mounted (or switched to) a different content view. Re-point the
+' overhang controller: tear down the binding to the previous view, bind the new
+' one. (Lifted from SceneManager's register/unregister pair — same contract.)
+sub onActiveRoutedViewChanged()
+  newView = m.global.activeRoutedView
+
+  if isValid(m.previousRoutedView) and not m.previousRoutedView.isSameNode(newView)
+    unregisterOverhangData(m.previousRoutedView)
+  end if
+
+  if isValid(newView) and newView.isSubType("JRGroup")
+    registerOverhangData(newView)
+  end if
+
+  m.previousRoutedView = newView
+end sub
+
+' Confirm app exit. Reuses SceneManager's confirmation dialog + the existing
+' isPendingExitConfirmation contract that main.bs's isDataReturned handler reads
+' to set m.scene.exit on confirm — unchanged from the old popScene stack<=1 branch.
+sub showExitConfirmation()
+  sceneManager = m.global.sceneManager
+  sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelExitJellyrock), [translate(translationKeys.MessageAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonExit)])
+  sceneManager.isPendingExitConfirmation = true
+end sub
+
+' ---------------------------------------------------------------------------
+' Overhang controller — lifted verbatim from SceneManager (#550). Drives the
+' shared overhang from the router-active view's overhang fields, preserving the
+' tabs-before-title ordering (prevents a title→tab render flash) and the
+' bidirectional selectedTabId write-back (overhang tab tap → view.selectedTabId).
+' ---------------------------------------------------------------------------
+sub registerOverhangData(group)
+  if group.isSubType("JRGroup")
+    if group.isOverhangVisible
+      m.overhang.visible = true
+    else
+      m.overhang.visible = false
+    end if
+    group.observeField("isOverhangVisible", "updateOverhangVisible")
+
+    ' Set tabs BEFORE the title so onTabsChanged can hide the title before it
+    ' renders with text — prevents a visible title→tab transition flash.
+    m.overhang.selectedTabId = group.selectedTabId
+    m.overhang.tabs = group.overhangTabs
+    group.observeField("overhangTabs", "updateOverhangTabs")
+    m.overhang.observeField("selectedTabId", "onOverhangTabSelected")
+
+    if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
+    group.observeField("overhangTitle", "updateOverhangTitle")
+  end if
+end sub
+
+sub unregisterOverhangData(group)
+  group.unobserveField("overhangTitle")
+  group.unobserveField("overhangTabs")
+  group.unobserveField("isOverhangVisible")
+  m.overhang.unobserveField("selectedTabId")
+end sub
+
+sub updateOverhangTitle(msg)
+  m.overhang.title = msg.getData()
+end sub
+
+sub updateOverhangVisible(msg)
+  m.overhang.visible = msg.getData()
+end sub
+
+sub updateOverhangTabs(msg)
+  m.overhang.tabs = msg.getData()
+end sub
+
+' Proxy overhang tab selection back to the active routed view's selectedTabId.
+sub onOverhangTabSelected()
+  group = m.global.activeRoutedView
+  if isValid(group) and group.isSubType("JRGroup")
+    group.selectedTabId = m.overhang.selectedTabId
+  end if
+end sub
+
+' Re-bind the active routed view's overhang. Called by SceneManager.popScene when
+' its stack empties: a playback screen pushed over the routed view hid/overwrote
+' the shared overhang, and the routed view's binding must be refreshed to restore
+' its tabs/title/visibility. Unregister-then-register avoids stacking a duplicate
+' observer on the (unchanged) active view.
+sub restoreRoutedOverhang()
+  view = m.global.activeRoutedView
+  if isValid(view) and view.isSubType("JRGroup")
+    unregisterOverhangData(view)
+    registerOverhangData(view)
+  end if
+end sub

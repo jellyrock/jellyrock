@@ -188,6 +188,14 @@ sub init()
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
 
+  ' #550 sgRouter: ItemDetails owns its own in-screen navigation now (the factory
+  ' that used to wire these to main.bs's m.port is gone). Extras-grid selections
+  ' (cast / related items) navigate to their route; the goTo* buttons navigate to
+  ' the linked item. Playback buttons (play/resume/...) still bubble to main.bs via
+  ' the buttons node, which main re-observes on mount — see attachRoutedViewObservers.
+  m.buttonGrp.observeField("buttonSelected", "onDetailNavButton")
+  m.extrasGrid.observeField("selectedItem", "onExtrasItemSelected")
+
   ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
   m.extrasGrid.observeField("personHasMedia", "onPersonHasMediaChanged")
 
@@ -218,6 +226,13 @@ end sub
 
 ' onScreenShown: Callback when view is presented on screen
 sub onScreenShown()
+  ' #550 sgRouter: on first mount, self-load from the route params (/details/:type/:id).
+  ' The router creates this view, so there is no factory to set itemId — we read it
+  ' from m.top.route here. Detail→detail (allowReuse) goes through onRouteUpdate.
+  if not isValidAndNotEmpty(m.top.itemId)
+    loadFromRoute(m.top.route)
+  end if
+
   ' Restore texture management — reactivate and restore buffer range so cells reload.
   if isValid(m.extrasGrid) and isValid(m.extrasGrid.content)
     updateTextureBufferRange(m.extrasGrid.content, m.extrasGrid.rowItemFocused[0], m.extrasGrid.rowItemFocused[1], m.extrasGrid.numRows)
@@ -259,7 +274,90 @@ sub onScreenHidden()
   hideTextureManager(m.extrasGrid.content)
 end sub
 
-' Triggered when CreateItemDetailsGroup sets itemId — kicks off async data load
+' #550 sgRouter: set itemType + itemId from a route's params. Setting itemId fires
+' onItemIdChanged (the async loader). itemType is set first since the loader reads it.
+sub loadFromRoute(route as object)
+  if not isValid(route) or not isValid(route.routeParams) then return
+  params = route.routeParams
+  if not isValidAndNotEmpty(params.id) then return
+
+  if isValid(params.type)
+    m.top.itemType = params.type
+  end if
+  m.top.itemId = params.id
+end sub
+
+' Router: detail→detail navigation (allowReuse) reuses this view with new params
+' instead of creating a fresh one — reload from the new route. The reuse path does
+' NOT call onScreenShown/handleFocus (focus would stay on the extras row the user
+' selected from), so flag a pending focus move that onItemContentChanged applies once
+' the new item's buttons are rebuilt.
+function onRouteUpdate(event = {} as object) as dynamic
+  if isValid(event) and isValid(event.newRoute)
+    m.pendingRouteFocus = true
+    loadFromRoute(event.newRoute)
+  end if
+  return promises.resolve(invalid)
+end function
+
+' Extras grid (cast / related / next-up) selection → navigate to its route, passing
+' the rich node as context. Non-navigable items fall through to playback (quickPlayNode).
+sub onExtrasItemSelected(msg)
+  item = msg.getData()
+  if not isValid(item) then return
+
+  route = routeForItem(item)
+  if isValid(route)
+    sgrouter.navigateTo(route, { context: { item: item } })
+  else
+    m.top.quickPlayNode = item
+  end if
+end sub
+
+' Detail→detail nav buttons (goToSeries / goToAlbum / goToArtist / goToChannel).
+' Playback / dialog buttons on the same node are handled by main.bs (which also
+' observes this buttons node); this handler ignores them.
+sub onDetailNavButton(msg)
+  buttons = msg.getRoSGNode()
+  btn = buttons.getChild(msg.getData())
+  if not isValid(btn) or not isValid(m.top.itemContent) then return
+  item = m.top.itemContent
+
+  if btn.id = "goToSeriesButton"
+    if isValidAndNotEmpty(item.seriesId)
+      sgrouter.navigateTo({ name: "details", params: { type: "Series", id: item.seriesId } })
+    end if
+  else if btn.id = "goToAlbumButton"
+    if isValidAndNotEmpty(item.albumId)
+      sgrouter.navigateTo({ name: "details", params: { type: "MusicAlbum", id: item.albumId } })
+    end if
+  else if btn.id = "goToArtistButton"
+    artistId = resolveGoToArtistId(item)
+    if isValidAndNotEmpty(artistId)
+      sgrouter.navigateTo({ name: "details", params: { type: "MusicArtist", id: artistId } })
+    end if
+  else if btn.id = "goToChannelButton"
+    if isValidAndNotEmpty(item.channelId)
+      sgrouter.navigateTo({ name: "details", params: { type: "TvChannel", id: item.channelId } })
+    end if
+  end if
+end sub
+
+' Resolve the artist id for goToArtist: prefer the primary album artist, fall back
+' to the single artist item. (Lifted from main.bs's old goToArtistButton branch.)
+function resolveGoToArtistId(item as object) as string
+  if isValid(item.albumArtists) and item.albumArtists.count() > 0
+    first = item.albumArtists[0]
+    if isValid(first) and isValidAndNotEmpty(first.Id) then return first.Id
+  end if
+  if isValid(item.artistItems) and item.artistItems.count() = 1
+    first = item.artistItems[0]
+    if isValid(first) and isValidAndNotEmpty(first.Id) then return first.Id
+  end if
+  return ""
+end function
+
+' Triggered when itemId is set (route load) — kicks off async data load
 sub onItemIdChanged()
   itemId = m.top.itemId
   if not isValidAndNotEmpty(itemId) then return
@@ -501,9 +599,11 @@ sub onRefreshDetailsLoaded()
     end if
   end if
 
-  ' Stop spinner only when this screen is the active scene (watched/refresh button flow).
+  ' Stop spinner only when this screen is the active view (watched/refresh button flow).
   ' If a video player or other scene is on top, the spinner belongs to that flow — don't touch it.
-  activeScene = m.global.sceneManager.callFunc("getActiveScene")
+  ' #550 sgRouter: getActiveView() resolves the routed detail (SceneManager.getActiveScene
+  ' would be invalid for it), so the isSameNode guard still holds.
+  activeScene = getActiveView()
   if isValid(activeScene) and activeScene.isSameNode(m.top)
     stopLoadingSpinner()
   end if
@@ -1912,6 +2012,14 @@ sub onItemContentChanged()
     setDateAdded(item)
 
     setupButtons(item)
+
+    ' #550 sgRouter: a detail→detail route update reused this view; now that the new
+    ' item's buttons exist, move focus onto them (the reuse path skipped onScreenShown).
+    if m.pendingRouteFocus = true
+      m.pendingRouteFocus = false
+      m.top.lastFocus = invalid
+      m.buttonGrp.setFocus(true)
+    end if
 
     ' Person Shuffle: on refresh (extras already loaded), the extras chain won't re-fire
     ' because only refreshItemDetailsData was toggled. Resolve the loading placeholder

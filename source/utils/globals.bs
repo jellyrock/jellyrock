@@ -108,6 +108,12 @@ sub setGlobalNodes()
   sceneManager.observeField("reloadHomeRequested", m.port)
   m.global.addFields({ sceneManager: sceneManager })
 
+  ' #550 sgRouter migration: the full-screen view the router currently has mounted
+  ' in JRScene's outlet (post-login content screens). JRScene maintains this on every
+  ' router mount; getActiveView() (source/utils/misc.bs) reads it as the fallback when
+  ' SceneManager's stack is empty. Typed addField so it can hold a node (invalid init).
+  m.global.addField("activeRoutedView", "node", false)
+
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
 

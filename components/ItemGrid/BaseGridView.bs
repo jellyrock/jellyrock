@@ -14,6 +14,7 @@ import "pkg:/source/GridView/MoviePresenter.bs"
 import "pkg:/source/GridView/MusicPresenter.bs"
 import "pkg:/source/GridView/PhotoPresenter.bs"
 import "pkg:/source/GridView/TVShowPresenter.bs"
+import "pkg:/source/libraryViewFactory.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
@@ -56,6 +57,11 @@ sub init()
 
   m.itemGrid.observeField("itemFocused", "onItemFocused")
   m.itemGrid.observeField("itemSelected", "onItemSelected")
+
+  ' #550 sgRouter: the library view is router-created now, so it owns its own
+  ' navigation. The grid/genre/watch-channel handlers set m.top.selectedItem as
+  ' before; we observe it here and route, instead of main.bs's god-loop observing it.
+  m.top.observeField("selectedItem", "onLibrarySelection")
 
   ' Voice filter setup
   m.voiceBox.opacity = 0.0001
@@ -140,6 +146,15 @@ end sub
 ' ============================================================================
 
 sub onScreenShown()
+  ' #550 sgRouter: on first mount, self-load from the route (/library/:id). In-app
+  ' navigation passes the rich library node as route.context.item (instant, no
+  ' re-fetch); presenterType MUST be set before parentItem (parentItem triggers
+  ' loadInitialItems, which reads presenterType). keepAlive views skip this on resume
+  ' (parentItem already set). Deep-link-by-id (no context) is Phase 6.
+  if not isValid(m.top.parentItem)
+    loadLibraryFromRoute(m.top.route)
+  end if
+
   ' Clear global backdrop - we handle our own backdrops
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
@@ -159,6 +174,36 @@ sub onScreenShown()
     m.top.lastFocus.setFocus(true)
   else
     m.top.setFocus(true)
+  end if
+end sub
+
+' #550 sgRouter: configure the library view from its route. Prefers the rich node
+' passed as context (in-app nav); deep-link-by-id is deferred to Phase 6.
+sub loadLibraryFromRoute(route as object)
+  if not isValid(route) then return
+
+  item = invalid
+  if isValid(route.context) then item = route.context.item
+
+  if isValid(item)
+    m.top.presenterType = DeterminePresenterType(item)
+    m.top.parentItem = item ' triggers loadInitialItems
+  else
+    m.log.warn("library route has no context item — deep-link library load lands in Phase 6", route.routeParams)
+  end if
+end sub
+
+' #550 sgRouter: a grid / genre / channel item was selected — navigate to its route
+' (rich node as context). Non-navigable selections fall through to playback.
+sub onLibrarySelection(msg)
+  item = msg.getData()
+  if not isValid(item) then return
+
+  route = routeForItem(item)
+  if isValid(route)
+    sgrouter.navigateTo(route, { context: { item: item } })
+  else
+    m.top.quickPlayNode = item
   end if
 end sub
 
@@ -1028,7 +1073,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
       optionsClosed()
       return true
     else
-      m.global.sceneManager.callfunc("popScene")
+      ' #550 sgRouter: the library view is router-owned now — pop it via the router
+      ' (back to Home / the previous routed view), not SceneManager's (empty) stack.
+      sgRouter.goBack()
       return true
     end if
   else if key = "play"
@@ -1179,6 +1226,7 @@ sub onDestroy()
   destroyTextureManager(m.data)
 
   ' Unobserve child node observers
+  m.top.unobserveField("selectedItem") ' #550 sgRouter self-navigation observer
   m.genreList.unobserveField("rowItemFocused")
   m.genreList.unobserveField("itemSelected")
   m.itemGrid.unobserveField("itemFocused")

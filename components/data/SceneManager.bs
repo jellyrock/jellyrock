@@ -70,62 +70,69 @@ sub pushScene(newGroup)
 
 end sub
 
-' Remove the current group and load the last group from the stack
+' Remove the current group and load the last group from the stack.
+'
+' #550 sgRouter: SceneManager's stack now holds only the pre-login flow and
+' playback views, pushed into `content` ABOVE the router outlet. The old
+' "stack <= 1 → exit dialog" branch is gone — exit is owned by JRScene's back
+' arbiter. When the stack empties here, the router-owned view in the outlet is
+' revealed underneath: remove the popped node from `content`, restore that view's
+' overhang (the popped playback screen hid/overwrote it) and hand it focus, rather
+' than exiting the app.
 sub popScene()
-  ' If this is the last scene on the stack, show exit confirmation instead of immediately exiting
-  if m.groups.count() <= 1
-    showConfirmationDialog(translate(translationKeys.LabelExitJellyrock), [translate(translationKeys.MessageAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonExit)])
-    m.top.isPendingExitConfirmation = true
-    return
-  end if
-
-  group = m.groups.pop()
-  if isValid(group)
-    if group.isSubType("JRGroup")
-      unregisterOverhangData(group)
-    else if group.isSubType("Video")
+  poppedGroup = m.groups.pop()
+  if isValid(poppedGroup)
+    if poppedGroup.isSubType("JRGroup")
+      unregisterOverhangData(poppedGroup)
+    else if poppedGroup.isSubType("Video")
       ' Stop video to make sure app communicates stop playstate to server
-      group.control = "stop"
+      poppedGroup.control = "stop"
     end if
 
-    group.visible = false
+    poppedGroup.visible = false
 
-    if group.isSubType("JRScreen")
-      group.callFunc("onScreenHidden")
-      group.callFunc("onDestroy")
-    else if group.isSubType("Video")
-      group.callFunc("onDestroy")
+    if poppedGroup.isSubType("JRScreen")
+      poppedGroup.callFunc("onScreenHidden")
+      poppedGroup.callFunc("onDestroy")
+    else if poppedGroup.isSubType("Video")
+      poppedGroup.callFunc("onDestroy")
     end if
-  else
-    ' Exit app if for some reason we don't have anything on the stack
-    m.scene.exit = true
   end if
 
-  group = m.groups.peek()
-  if isValid(group)
-    registerOverhangData(group)
+  previousGroup = m.groups.peek()
+  if isValid(previousGroup)
+    registerOverhangData(previousGroup)
 
-    group.visible = true
+    previousGroup.visible = true
 
-    m.content.replaceChild(group, 0)
+    m.content.replaceChild(previousGroup, 0)
 
-    if group.isSubType("JRScreen")
-      group.callFunc("onScreenShown")
+    if previousGroup.isSubType("JRScreen")
+      previousGroup.callFunc("onScreenShown")
     else
       ' Restore focus
-      if isValid(group.lastFocus)
-        group.lastFocus.setFocus(true)
+      if isValid(previousGroup.lastFocus)
+        previousGroup.lastFocus.setFocus(true)
       else
-        if isValid(group.focusedChild)
-          group.focusedChild.setFocus(true)
+        if isValid(previousGroup.focusedChild)
+          previousGroup.focusedChild.setFocus(true)
         else
-          group.setFocus(true)
+          previousGroup.setFocus(true)
         end if
       end if
     end if
   else
-    ' Exit app if the stack is empty after removing group
-    m.scene.exit = true
+    ' Stack empty — reveal the router-owned view in the outlet underneath.
+    if isValid(poppedGroup) and isValid(m.content) then m.content.removeChild(poppedGroup)
+    if isValid(m.scene) then m.scene.callFunc("restoreRoutedOverhang")
+    routedView = m.global.activeRoutedView
+    if isValid(routedView)
+      if isValid(routedView.lastFocus)
+        routedView.lastFocus.setFocus(true)
+      else
+        routedView.setFocus(true)
+      end if
+    end if
   end if
 end sub
 
