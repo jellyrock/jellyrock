@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-11
+last-updated: 2026-06-12
 ---
 
 # Progress
@@ -63,6 +63,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 ### scripts
 
 - Expand automated store screenshots from the 5 marketing languages to ALL ~99 locale files, to surface the default Roku OS font's blast radius — boxes/tofu for scripts the system font doesn't cover are EXPECTED and the point of capturing them. From #642.
+- Remove the duplicated generic Renovate soak tiers (patch/minor/major) from `renovate.json` once the canonical org preset (jellyrock/.github#6) is live + propagated — keep only the repo-scoped `sgRouter` carve-out.
 
 ### components
 
