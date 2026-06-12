@@ -3,6 +3,7 @@
   "extends": ["github>jellyrock/.github//renovate/default"],
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
+  "internalChecksFilter": "none",
   "packageRules": [
     {
       "description": "BrighterScript compiler/lint/format stack — coordinated rokucommunity releases",
@@ -61,14 +62,16 @@
       "addLabels": ["javascript"]
     },
     {
-      "description": "Soak window before patch/digest automerge — catches yanked or hotfixed releases before they land unattended. Mirrors the org preset (github>jellyrock/.github//renovate/default); kept here too so JellyRock is covered immediately without waiting on preset propagation. Remove once the canonical preset is live everywhere (see docs/progress.md followup).",
+      "description": "Soak window before patch/digest automerge — catches yanked or hotfixed releases before they land unattended. PRs are created immediately while soaking (internalChecksFilter:none above) so a hotfix can be merged manually early; the soak only gates automerge. Mirrors the org preset (github>jellyrock/.github//renovate/default); kept here too so JellyRock is covered immediately without waiting on preset propagation. Remove once the canonical preset is live everywhere (see docs/progress.md followup).",
       "matchUpdateTypes": ["patch", "digest"],
-      "minimumReleaseAge": "2 days"
+      "minimumReleaseAge": "2 days",
+      "automerge": true
     },
     {
-      "description": "Minor updates soak 5 days; stay human-reviewed (no automerge). Mirror of org preset — remove once canonical propagates.",
+      "description": "Minor updates automerge after a 5-day soak + green CI. JellyRock's CI exercises runtime behavior (on-device BS unit tests + RTA functional pass), which clears the raised bar for minor automerge. Mirror of org preset — remove once canonical propagates.",
       "matchUpdateTypes": ["minor"],
-      "minimumReleaseAge": "5 days"
+      "minimumReleaseAge": "5 days",
+      "automerge": true
     },
     {
       "description": "Major updates soak 7 days and NEVER automerge — always human-reviewed. Mirror of org preset — remove once canonical propagates.",
