@@ -42,13 +42,10 @@ skills load automatically. The ones you'll reach for most:
 You're welcome to contribute by hand too. The skills are a convenience, not a
 requirement.
 
-## AI-assistance disclosure
+## AI assistance
 
-This project welcomes AI-assisted contributions, with three expectations:
+This project welcomes AI-assisted contributions, with two expectations:
 
-- **Disclose it.** If you used an AI assistant (Claude Code or otherwise) to
-  help write a change, say so in the pull-request description. A one-line note
-  is enough.
 - **A human reviews before submitting.** You — a person — must have read the
   change, understand what it does, and be able to explain and defend it in
   review. Don't open a PR you couldn't walk through yourself.
@@ -56,8 +53,8 @@ This project welcomes AI-assisted contributions, with three expectations:
   responsibility: the same correctness, licensing, and quality bar applies as
   for hand-written code.
 
-This mirrors the disclosure norms used by other major open-source projects — the
-goal is transparency and human accountability, not to discourage tooling.
+The bar isn't AI vs. human — it's owned, reviewed work vs. unreviewed slop. Use
+whatever tools you like; just stand behind the result.
 
 ## Pull requests
 
@@ -67,12 +64,6 @@ goal is transparency and human accountability, not to discourage tooling.
   GitHub Actions build and lint checks must be green.
 - If your change is user-facing, add an entry to [CHANGELOG.md](CHANGELOG.md).
 - New strings should be translatable — see [Translations](docs/dev/translations.md).
-
-## Code of conduct
-
-This project follows a [Code of Conduct](CODE_OF_CONDUCT.md) (adapted from the
-Contributor Covenant). By participating, you're expected to uphold it. Please
-report unacceptable behavior as described there.
 
 ## Security
 

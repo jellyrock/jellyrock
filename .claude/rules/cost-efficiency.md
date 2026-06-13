@@ -16,7 +16,7 @@ Extract to a script when the mechanics are **genuinely deterministic** AND eithe
 
 ## This is not the "mechanism" that convention-over-mechanism warns against
 
-"Convention over mechanism" rejected elaborate *runtime-sharing / coordination* machinery (symlinks, fetch hooks, unattended CI). It does **not** mean "prefer model-prose to a deterministic script." A script doing mechanical work at zero token cost is the cost-efficient default, not over-engineering. Don't invoke convention-over-mechanism to justify making the model redo deterministic work.
+Preferring convention over heavy machinery rejects elaborate coordination layers (a bespoke plugin framework, a code-generation pipeline, a custom build orchestrator where a simple config or Makefile target would do). It does **not** mean "prefer model-prose to a deterministic script." A script doing mechanical work at zero token cost is the cost-efficient default, not over-engineering. Don't invoke that preference to justify making the model redo deterministic work.
 
 ## How to apply
 

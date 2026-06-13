@@ -8,11 +8,11 @@ When you change a tool (a `.claude/skills/<name>/SKILL.md`, a `scripts/<name>.sh
 
 **How to apply:**
 
-- **When you revise a SKILL.md**: the next action that the skill would handle gets the skill invocation, not a manual equivalent. Revised `/log`? The next followup-capture is via `/log`, not a manual append + commit. Revised `/done`? The next closure is via `/done`, not a direct Edit on the journal.
-- **When you add or revise a script** (e.g. a `scripts/<name>.sh` deployed to `~/bin/`): the next time you'd run something the script handles, run the script — even if it's slower than the manual sequence you'd otherwise type.
+- **When you revise a SKILL.md**: the next action that skill would handle gets the skill invocation, not a manual equivalent. Revised the skill that opens a PR? The next PR goes through the skill, not a hand-assembled one. Revised the skill that captures a note for later? The next note goes through it, not a manual file edit.
+- **When you add or revise a script** (e.g. a `scripts/<name>.sh`): the next time you'd run something the script handles, run the script — even if it's slower than the manual sequence you'd otherwise type.
 - **When you revise a hook** (e.g. a SessionStart hook, a pre-commit hook): the next trigger of that hook event should exercise the new shape — if you can't trigger it naturally, force a synthetic invocation (start a new session, make a trivial commit) to verify it fires + behaves.
 - **Exception — destructive or irreversible operations**: if the dogfood would commit to an irreversible action (delete data, push to production, send external messages), keep the safety gates AND dogfood in a non-production scope first (a worktree, a staging service, a dry-run flag). Don't skip the dogfood; redirect it to a safe target.
-- **Exception — physical dependencies**: if the tool depends on something the current environment can't satisfy (a service that's down, hardware that's elsewhere), defer the dogfood with an explicit followup captured via `/log followup` — never silently skip and claim the change works.
+- **Exception — physical dependencies**: if the tool depends on something the current environment can't satisfy (a service that's down, hardware that's elsewhere), defer the dogfood with an explicit tracked followup — never silently skip and claim the change works.
 
 **Anti-pattern signals.** If you catch yourself thinking:
 - "I'll just do it manually since I already know what the output should be" → STOP. That's the failure mode.
