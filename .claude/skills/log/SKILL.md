@@ -98,7 +98,7 @@ Then classify the blast radius — the negative filter ("if every decision is ar
 #### 3. Route on the verdict
 
 - **ADR-grade** → draft a new numbered ADR at `docs/adr/NNNN-<slug>.md` (next number in sequence; `ls docs/adr/*.md` to find it) in JellyRock's house style: `# ADR NNNN: <title>`, then `**Status:** Accepted` / `**Date:** <today>` (use `date +%Y-%m-%d`) / optional `**related-files**:` line, then 1-2 tight prose paragraphs (why; what was considered; what was ruled out; constraints). ALSO add the row to the `docs/adr/README.md` index table. If it supersedes an existing ADR, write it as a new ADR that flips the older one's `**Status:**` to `Superseded` and adds a `>` pointer banner — the old record stays in place (ADRs are superseded, not edited).
-- **Sub-architectural** → append a slug-based note to [`docs/decisions.md`](../../../docs/decisions.md) using the schema below. Insert after the last note's closing blank line; the file is append-only — never insert mid-file or rewrite older notes.
+- **Sub-architectural** → append a slug-based note to [`docs/decisions.md`](../../../docs/decisions.md) using the schema below. Insert after the last `## decision-id:` note's closing blank line — which may NOT be the file's last section: a trailing `## Migrated to ADRs` table sits at the end, so append after the last *note*, never after that table. The file is append-only for notes — never insert mid-file or rewrite older notes.
 - **Trivia** → decline in one line ("below the decision bar; not recorded"). Write nothing.
 
 The sub-ADR note schema (`docs/decisions.md`):
