@@ -1,6 +1,6 @@
 # issue-triage — audit log
 
-Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`](../audit-skill/SKILL.md). Captures each `/audit-skill issue-triage` run's friction findings + applied fixes. Architectural-grade decisions also surface in [`docs/decisions.md`](../../../docs/decisions.md).
+Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`](../audit-skill/SKILL.md). Captures each `/audit-skill issue-triage` run's friction findings + applied fixes. Architectural-grade decisions also surface as numbered ADRs in [`docs/adr/`](../../../docs/adr/README.md) (sub-architectural ones as [`docs/decisions.md`](../../../docs/decisions.md) notes).
 
 ## 2026-05-06 — opus single-file refactor + handoff infrastructure (session `07074348`)
 

@@ -1,6 +1,6 @@
 # server-upgrade — audit log
 
-Running history of `/audit-skill server-upgrade` runs. Newest first. Architectural-grade conclusions also live in `docs/decisions.md`; routine notes stay here.
+Running history of `/audit-skill server-upgrade` runs. Newest first. Architectural-grade conclusions also live as numbered ADRs in `docs/adr/` (sub-architectural ones as `docs/decisions.md` notes); routine notes stay here.
 
 ## 2026-06-02 — Investigation-depth regression on identical input; added a citation floor (session 89737734)
 

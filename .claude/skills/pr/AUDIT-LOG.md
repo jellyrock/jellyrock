@@ -1,6 +1,6 @@
 # pr — audit log
 
-Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`](../audit-skill/SKILL.md). Captures both `/audit-skill pr` runs (mechanical friction findings + applied fixes) and user-driven enhancements that surface a real gap and warrant capture so the rationale isn't lost. Architectural-grade decisions also surface in [`docs/decisions.md`](../../../docs/decisions.md).
+Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`](../audit-skill/SKILL.md). Captures both `/audit-skill pr` runs (mechanical friction findings + applied fixes) and user-driven enhancements that surface a real gap and warrant capture so the rationale isn't lost. Architectural-grade decisions also surface as numbered ADRs in [`docs/adr/`](../../../docs/adr/README.md) (sub-architectural ones as [`docs/decisions.md`](../../../docs/decisions.md) notes).
 
 ## 2026-05-08 — sub-agent contract violation in Pass 1 (session c46ed4c5)
 

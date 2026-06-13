@@ -71,13 +71,27 @@ describe('decision-shape-nudge', () => {
     expect(stdout).toMatch(/going with/);
   });
 
-  it('exits 0 silently when range includes docs/decisions.md (already captured)', () => {
+  it('exits 0 silently when range includes docs/decisions.md (sub-ADR note already captured)', () => {
     fix = createGitFixture();
     mkdirSync(join(fix.dir, 'docs'), { recursive: true });
     fix.commit('initial seed');
     const baseline = fix.git('rev-parse', 'HEAD').trim();
     fix.commit('docs(decisions): record the decision', {
       'docs/decisions.md': '## decision-id: test\n\n**date**: 2026-05-06\n',
+    });
+    fix.commit('refactor: decided to do the thing');
+    const { exitCode, stdout } = run(fix.dir, `${baseline}..HEAD`);
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe('');
+  });
+
+  it('exits 0 silently when range includes a docs/adr/ file (ADR-grade already captured)', () => {
+    fix = createGitFixture();
+    mkdirSync(join(fix.dir, 'docs', 'adr'), { recursive: true });
+    fix.commit('initial seed');
+    const baseline = fix.git('rev-parse', 'HEAD').trim();
+    fix.commit('docs(adr): record the decision', {
+      'docs/adr/0001-test.md': '# ADR 0001: Test\n\n**Status:** Accepted\n',
     });
     fix.commit('refactor: decided to do the thing');
     const { exitCode, stdout } = run(fix.dir, `${baseline}..HEAD`);
