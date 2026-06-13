@@ -24,6 +24,19 @@
     <field id="loadingText" type="string" value="" alwaysNotify="true" onchange="onLoadingTextChanged" />
     <field id="isLoading" type="boolean" alwaysNotify="true" value="true" onchange="onIsLoadingChanged" />
     <field id="exit" type="boolean" alwaysNotify="true" />
+    <!-- #550 sgRouter (Phase 4): session-reset bridge. Routed views (Home) set this to a
+         HomeAction id; main.bs observes it on the main thread (m.global field + port does
+         NOT deliver — the relay defect — but a scene field + port does, like `exit`) and
+         re-enters LoginFlow via `goto appStart`. Replaces the deleted activeRoutedView relay. -->
+    <field id="userMenuAction" type="string" value="" alwaysNotify="true" />
+    <!-- #550 sgRouter (Phase 4): content-freshness token. Bumped when a view mutates
+         server content that browse grids display (currently: an item delete in
+         ItemDetails). keepAlive grids (BaseGridView) record the value they last loaded
+         at and re-fetch on resume when it differs — so a deleted item can't linger in a
+         suspended-but-cached library. Plain field: grids read it synchronously on resume,
+         no observer needed. (reloadHomeRequested is the sibling Home-reload signal still on
+         SceneManager; consolidating both here is a Phase-6 followup.) -->
+    <field id="contentVersion" type="integer" value="0" />
     <field id="backgroundImageUri" type="string" value="" alwaysNotify="true" onchange="onBackgroundImageUriChanged" />
     <function name="setBackgroundImage" />
     <function name="refreshBackdropSetting" />

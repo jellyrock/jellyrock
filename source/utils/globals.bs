@@ -114,6 +114,12 @@ sub setGlobalNodes()
   ' SceneManager's stack is empty. Typed addField so it can hold a node (invalid init).
   m.global.addField("activeRoutedView", "node", false)
 
+  ' #550 sgRouter (Phase 4): video playback launch signal. QueueManager.playQueue has
+  ' no router chain so it can't navigate; it sets this AA ({ type, id }) and JRScene's
+  ' onPlaybackLaunchRequested turns it into a navigateTo("/details/:type/:id/play").
+  ' alwaysNotify so re-launching the same item (e.g. replay) re-fires the observer.
+  m.global.addField("playbackLaunchRequest", "assocarray", true)
+
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
 

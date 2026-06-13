@@ -272,10 +272,23 @@ sub startRouter()
   m.global.unobserveField("activeRoutedView")
   m.global.observeField("activeRoutedView", "onActiveRoutedViewChanged")
 
+  ' #550 sgRouter (Phase 4): QueueManager.playQueue can't navigate (it has no router
+  ' chain), so it sets m.global.playbackLaunchRequest and we turn that into a route
+  ' here. The host (PlayerHostView) reads the already-built queue on mount.
+  m.global.unobserveField("playbackLaunchRequest")
+  m.global.observeField("playbackLaunchRequest", "onPlaybackLaunchRequested")
+
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
   sgrouter.addRoutes([
     { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true }
-    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", allowReuse: true }
+    { pattern: "/details/:type/:id/play", name: "play", component: "PlayerHostView" }
+    ' NO allowReuse: JellyRock has always created a FRESH ItemDetails per navigation (the
+    ' old SceneManager world pushScene'd a new one every time, including detail->detail).
+    ' allowReuse would force in-place onRouteUpdate reuse the component was never built for.
+    ' keepAlive so navigating detail -> /play SUSPENDS the detail (keeps its node) rather than
+    ' destroying it -- the router equivalent of the detail staying beneath the pushed player --
+    ' so goBack restores the launching detail instead of bubbling a spurious Exit dialog.
+    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", keepAlive: { enabled: true } }
     { pattern: "/library/:id", name: "library", component: "BaseGridView", keepAlive: { enabled: true } }
     { pattern: "/search", name: "search", component: "SearchResults", keepAlive: { enabled: true } }
     { pattern: "/settings", name: "settings", component: "Settings" }
@@ -285,6 +298,18 @@ sub startRouter()
   promises.chain(sgrouter.navigateTo("/")).then(sub(_result as object)
     sgrouter.setFocus({ focus: true })
   end sub)
+end sub
+
+' #550 sgRouter (Phase 4): QueueManager.playQueue signalled a video playback launch.
+' The queue is already populated, so navigate to the play route — PlayerHostView mounts
+' the player for the current queue item. :type/:id give the route a deep-link identity;
+' the queue is the source of truth for what actually plays.
+sub onPlaybackLaunchRequested()
+  req = m.global.playbackLaunchRequest
+  if not isValid(req) or not isValidAndNotEmpty(req.id) then return
+  itemType = req.type
+  if not isValidAndNotEmpty(itemType) then itemType = "video"
+  sgrouter.navigateTo("/details/" + itemType + "/" + req.id + "/play")
 end sub
 
 ' Render-thread sgRouter.goBack() wrapper for main.bs, which runs on the main thread
@@ -313,6 +338,7 @@ sub resetRouter()
     m.previousRoutedView = invalid
   end if
   m.global.unobserveField("activeRoutedView")
+  m.global.unobserveField("playbackLaunchRequest")
   sgrouter.destroy()
   m.global.activeRoutedView = invalid
   if isValid(m.overhang) then m.overhang.visible = false

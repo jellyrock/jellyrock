@@ -10,6 +10,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -188,13 +189,21 @@ sub init()
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
 
-  ' #550 sgRouter: ItemDetails owns its own in-screen navigation now (the factory
-  ' that used to wire these to main.bs's m.port is gone). Extras-grid selections
-  ' (cast / related items) navigate to their route; the goTo* buttons navigate to
-  ' the linked item. Playback buttons (play/resume/...) still bubble to main.bs via
-  ' the buttons node, which main re-observes on mount — see attachRoutedViewObservers.
+  ' #550 sgRouter: ItemDetails owns its own in-screen navigation AND its own action
+  ' buttons now (the factory that used to wire these to main.bs's m.port is gone, and
+  ' Phase 4 removed the transitional relay). Extras-grid selections (cast / related
+  ' items) navigate to their route; goTo* buttons navigate to the linked item;
+  ' play/resume/watched/favorite/delete/record/watchChannel/refresh are all handled in
+  ' onDetailNavButton. The remaining task-based playback launches (trailer / shuffle /
+  ' instant-mix) are relocated to the QueueManager launch path in the next Phase-4 step;
+  ' until then their buttons are inert (the relay that fed main.bs's god-loop is gone).
   m.buttonGrp.observeField("buttonSelected", "onDetailNavButton")
   m.extrasGrid.observeField("selectedItem", "onExtrasItemSelected")
+
+  ' #550 sgRouter (Phase 4): a non-navigable extras selection (e.g. a Chapter, a next-up
+  ' episode) sets m.top.quickPlayNode; forward it to the QueueManager launcher (the main.bs
+  ' relay that used to read this is gone). onDestroy already unobserves quickPlayNode.
+  m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
   ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
   m.extrasGrid.observeField("personHasMedia", "onPersonHasMediaChanged")
@@ -314,6 +323,12 @@ sub onExtrasItemSelected(msg)
   end if
 end sub
 
+' #550 sgRouter (Phase 4): forward a non-navigable extras selection to the playback launcher.
+sub onQuickPlayLaunch(msg)
+  node = msg.getData()
+  if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
+end sub
+
 ' Detail→detail nav buttons (goToSeries / goToAlbum / goToArtist / goToChannel).
 ' Playback / dialog buttons on the same node are handled by main.bs (which also
 ' observes this buttons node); this handler ignores them.
@@ -340,7 +355,230 @@ sub onDetailNavButton(msg)
     if isValidAndNotEmpty(item.channelId)
       sgrouter.navigateTo({ name: "details", params: { type: "TvChannel", id: item.channelId } })
     end if
+  else if btn.id = "playButton"
+    ' #550 sgRouter (Phase 4): route playback from the view itself. Play always
+    ' starts from the beginning (Resume handles resume). Multi-item playAll types
+    ' (Series/Season/BoxSet/...) still go through the god-loop QuickPlayTask path.
+    if not isPlayAllType(item.type)
+      startPlayFromDetail(0)
+    end if
+  else if btn.id = "resumeButton"
+    if not isPlayAllType(item.type)
+      resumeTicks = 0&
+      if isValid(item.playbackPositionTicks) and item.playbackPositionTicks > 0
+        resumeTicks = item.playbackPositionTicks
+      end if
+      startPlayFromDetail(resumeTicks)
+    end if
+  else if btn.id = "favoriteButton"
+    ' #550 sgRouter (Phase 4): the favorite toggle is a render-thread method already on
+    ' this screen — call it directly (was a main.bs god-loop callFunc through the relay).
+    toggleFavorite()
+  else if btn.id = "watchedButton"
+    onWatchedButtonPressed(item)
+  else if btn.id = "deleteButton"
+    onDeleteButtonPressed(item)
+  else if btn.id = "recordButton"
+    onRecordButtonPressed(item)
+  else if btn.id = "watchChannelButton"
+    onWatchChannelButtonPressed(item)
+  else if btn.id = "refreshButton"
+    ' #550 sgRouter (Phase 4): refresh this screen's data (was god-loop).
+    startLoadingSpinner()
+    m.top.refreshExtrasData = not m.top.refreshExtrasData
+    m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
   end if
+end sub
+
+' #550 sgRouter (Phase 4): Watched button. Movie/Episode toggle immediately; a Series
+' confirms first (marking all episodes can affect hundreds). The confirmation result
+' is read off the SceneManager via a SCOPED isDataReturned observer (the proven
+' settings.bs pattern), so it never collides with main.bs's global observer. On confirm
+' we call toggleWatched(), which re-reads the button state to pick mark vs unmark.
+sub onWatchedButtonPressed(item as object)
+  if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
+
+  if item.type = "Series"
+    watchedButton = m.top.findNode("watchedButton")
+    ' Read current state from the button — writing itemContent triggers a full rebuild.
+    isCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
+    if isCurrentlyWatched
+      confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries)
+      confirmBtn = translate(translationKeys.ButtonMarkUnwatched)
+    else
+      confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries2)
+      confirmBtn = translate(translationKeys.ButtonMarkWatched)
+    end if
+    m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelWatched), [confirmMsg], [translate(translationKeys.ButtonCancel), confirmBtn])
+    m.global.sceneManager.observeFieldScoped("isDataReturned", "onWatchedConfirmResponse")
+  else
+    toggleWatched()
+  end if
+end sub
+
+' Series mark-all-watched confirmation result.
+sub onWatchedConfirmResponse()
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
+  returnData = m.global.sceneManager.returnData
+  if isValid(returnData) and returnData.indexSelected = 1
+    toggleWatched()
+  end if
+end sub
+
+' #550 sgRouter (Phase 4): Delete button. Confirm, then delete and leave the now-gone
+' routed detail via the router. Scoped isDataReturned observer (see onWatchedButtonPressed).
+sub onDeleteButtonPressed(item as object)
+  if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
+  m.pendingDeleteItemId = item.id
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.ButtonDelete), [translate(translationKeys.ErrorAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonDelete)])
+  m.global.sceneManager.observeFieldScoped("isDataReturned", "onDeleteConfirmResponse")
+end sub
+
+sub onDeleteConfirmResponse()
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
+  returnData = m.global.sceneManager.returnData
+  deleteId = m.pendingDeleteItemId
+  m.pendingDeleteItemId = invalid
+  if not isValid(returnData) or not isValidAndNotEmpty(deleteId) then return
+  if returnData.indexSelected = 1 and returnData.buttonSelected = translate(translationKeys.ButtonDelete)
+    SubmitSideEffect(GetApi().BuildDeleteItemRequest(deleteId))
+    ' #550 sgRouter (Phase 4): the item is gone server-side, but a keepAlive library that
+    ' contained it is suspended with stale content. Bump the scene's content-freshness
+    ' token so that library (and any other kept-alive grid) re-fetches on its next resume —
+    ' otherwise the deleted item lingers as a selectable ghost until logout.
+    scene = m.top.getScene()
+    if isValid(scene) then scene.contentVersion = scene.contentVersion + 1
+    ' Leave the deleted detail; the router resumes the view beneath (the prior screen).
+    sgrouter.goBack()
+  end if
+end sub
+
+' #550 sgRouter (Phase 4): Record / cancel-record a Live TV program. Owns the
+' RecordProgramTask on this render thread (was god-loop + handleRecordResult).
+sub onRecordButtonPressed(item as object)
+  if not isValid(item) then return
+  recordButton = m.top.findNode("recordButton")
+  if isValid(recordButton) and recordButton.isLoading then return ' already in-flight
+
+  programToRecord = invalid
+  if item.type = "TvChannel" and isValid(item.currentProgram)
+    programToRecord = item.currentProgram
+  else if item.type = "Program"
+    programToRecord = item
+  end if
+  if not isValid(programToRecord) then return
+
+  if isValid(recordButton) then recordButton.isLoading = true
+  m.pendingRecordButton = recordButton
+  m.pendingRecordIsCancel = isValidAndNotEmpty(programToRecord.timerId)
+  m.recordTask = CreateObject("roSGNode", "RecordProgramTask")
+  m.recordTask.programDetails = programToRecord
+  m.recordTask.observeField("result", "onRecordResult")
+  m.recordTask.control = "RUN"
+end sub
+
+sub onRecordResult()
+  res = m.recordTask.result
+  m.recordTask.unobserveField("result")
+  m.recordTask.control = "STOP"
+  m.recordTask = invalid
+
+  if isValid(res) and res.ok
+    ' Toggle button label and icon color to reflect new state
+    if isValid(m.pendingRecordButton)
+      if m.pendingRecordIsCancel
+        m.pendingRecordButton.text = translate(translationKeys.ButtonRecord)
+        m.pendingRecordButton.iconBackground = m.global.constants.colorTextPrimary
+        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorTextPrimary
+      else
+        m.pendingRecordButton.text = translate(translationKeys.LabelCancelRecording)
+        m.pendingRecordButton.iconBackground = m.global.constants.colorError
+        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorError
+      end if
+    end if
+    if res.action = "record"
+      displayToast(translate(translationKeys.LabelRecordingScheduled), "success")
+    else
+      displayToast(translate(translationKeys.LabelRecordingCancelled), "success")
+    end if
+  else
+    ' Failed — button label stays as-is (no state change)
+    if isValid(res) and res.action = "record"
+      displayToast(translate(translationKeys.ErrorFailedToScheduleRecording), "error")
+    else
+      displayToast(translate(translationKeys.ErrorFailedToCancelRecording), "error")
+    end if
+  end if
+
+  if isValid(m.pendingRecordButton) then m.pendingRecordButton.isLoading = false
+  m.pendingRecordButton = invalid
+  m.pendingRecordIsCancel = invalid
+end sub
+
+' #550 sgRouter (Phase 4): Watch a Live TV channel (TvChannel detail, or the channel a
+' Program airs on) — single-item launch via the play route (was god-loop).
+sub onWatchChannelButtonPressed(item as object)
+  if not isValid(item) then return
+  queueItem = nodeHelpers.createQueueItem(item)
+  if not isValid(queueItem) then return
+
+  routeType = m.top.itemType
+  routeId = item.id
+  ' Program: play the channel the program is on.
+  if item.type = "Program" and isValidAndNotEmpty(item.channelId)
+    queueItem.id = item.channelId
+    queueItem.type = "TvChannel"
+    routeType = "TvChannel"
+    routeId = item.channelId
+  end if
+  launchQueueItemToPlay(queueItem, routeType, routeId)
+end sub
+
+' #550 sgRouter (Phase 4): true for item types whose Play builds a multi-item queue
+' via an API call (handled by QuickPlayTask, not the single-item path below).
+function isPlayAllType(itemType as dynamic) as boolean
+  if not isValidAndNotEmpty(itemType) then return false
+  return itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
+end function
+
+' #550 sgRouter (Phase 4): build the single-item play queue from this detail's own
+' state and navigate to the play route. The router is idle (the user pressed a button
+' on this settled view), so navigateTo won't hit the in-progress guard, and the
+' PlayerHostView reads this queue on mount. Replaces the main.bs god-loop
+' playButton/resumeButton branches for single-item video.
+sub startPlayFromDetail(startingPoint as longinteger)
+  item = m.top.itemContent
+  if not isValid(item) or not isValidAndNotEmpty(item.id) then return
+
+  queueItem = nodeHelpers.createQueueItem(item)
+  if not isValid(queueItem) then return
+
+  audioStreamIdx = 0
+  if isValid(m.top.selectedAudioStreamIndex) then audioStreamIdx = m.top.selectedAudioStreamIndex
+  queueItem.selectedAudioStreamIndex = audioStreamIdx
+  if isValid(m.top.selectedSubtitleStreamIndex)
+    queueItem.selectedSubtitleStreamIndex = m.top.selectedSubtitleStreamIndex
+  end if
+  ' selectedVideoStreamId is the user-chosen MediaSource — land it in mediaSourceId
+  ' (not id), which LoadVideoContentTask reads.
+  if isValidAndNotEmpty(m.top.selectedVideoStreamId)
+    queueItem.mediaSourceId = m.top.selectedVideoStreamId
+  end if
+  queueItem.startingPoint = startingPoint
+
+  launchQueueItemToPlay(queueItem, m.top.itemType, item.id)
+end sub
+
+' #550 sgRouter (Phase 4): seed the queue with a single item and navigate to the play
+' route. The router is idle (the user pressed a button on this settled view), so
+' navigateTo won't hit the in-progress guard; PlayerHostView reads this queue on mount.
+' :type/:id give the route a deep-link identity; the queue is the source of truth for
+' what actually plays.
+sub launchQueueItemToPlay(queueItem as object, routeType as string, routeId as string)
+  startLoadingSpinner()
+  m.global.queueManager.callFunc("clear")
+  m.global.queueManager.callFunc("push", queueItem)
+  sgrouter.navigateTo("/details/" + routeType + "/" + routeId + "/play")
 end sub
 
 ' Resolve the artist id for goToArtist: prefer the primary album artist, fall back
@@ -2006,8 +2244,11 @@ sub onItemContentChanged()
   end if
 
   if isValid(item) and isValidAndNotEmpty(item.id)
-    m.top.id = item.id
-
+    ' #550 sgRouter: do NOT overwrite m.top.id with the item id. The router assigns this
+    ' view's node id and tracks it in its history stack; reassigning it here desyncs that
+    ' history so sgRouter.goBack() can't find this (keepAlive-suspended) view on the way
+    ' back from the player -> back wrongly bubbles to the scene's Exit dialog. Consumers that
+    ' need the item id read m.top.itemId (the route param) or m.top.itemContent.id instead.
     setItemLogo(item)
     setDateAdded(item)
 
@@ -3835,6 +4076,17 @@ sub onDestroy()
   m.loadDetailsTask.unobserveField("content")
   m.loadDetailsTask.control = "STOP"
   m.loadDetailsTask = invalid
+
+  ' #550 sgRouter (Phase 4): tear down the record task + drop any pending confirmation
+  ' observer this screen owns (record/delete/series-watched moved off main.bs's god-loop).
+  if isValid(m.recordTask)
+    m.recordTask.unobserveField("result")
+    m.recordTask.control = "STOP"
+    m.recordTask = invalid
+  end if
+  if isValid(m.global.sceneManager)
+    m.global.sceneManager.unobserveFieldScoped("isDataReturned")
+  end if
 
   ' Clear node references
   m.extrasGrp = invalid

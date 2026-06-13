@@ -63,6 +63,11 @@ sub init()
   ' before; we observe it here and route, instead of main.bs's god-loop observing it.
   m.top.observeField("selectedItem", "onLibrarySelection")
 
+  ' #550 sgRouter (Phase 4): a non-navigable selection (plays directly — e.g. an episode,
+  ' a Live TV channel) sets m.top.quickPlayNode; this self-observer forwards it to the
+  ' QueueManager launcher (was the deleted main.bs relay).
+  m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
+
   ' Voice filter setup
   m.voiceBox.opacity = 0.0001
   m.voiceBox.voiceEnabled = true
@@ -153,6 +158,15 @@ sub onScreenShown()
   ' (parentItem already set). Deep-link-by-id (no context) is Phase 6.
   if not isValid(m.top.parentItem)
     loadLibraryFromRoute(m.top.route)
+  else
+    ' #550 sgRouter (Phase 4): keepAlive resume. If a mutation elsewhere (e.g. an item
+    ' delete in ItemDetails) bumped the scene's content-freshness token since we last
+    ' loaded, our cached grid is stale — re-fetch so deleted items don't linger as
+    ' selectable ghosts. Unchanged token = no reload (keepAlive's perf win is preserved).
+    scene = m.top.getScene()
+    if isValid(scene) and scene.contentVersion <> m.lastContentVersion
+      reloadGridItems()
+    end if
   end if
 
   ' Clear global backdrop - we handle our own backdrops
@@ -205,6 +219,12 @@ sub onLibrarySelection(msg)
   else
     m.top.quickPlayNode = item
   end if
+end sub
+
+' #550 sgRouter (Phase 4): forward a non-navigable selection to the playback launcher.
+sub onQuickPlayLaunch(msg)
+  node = msg.getData()
+  if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
 end sub
 
 sub onScreenHidden()
@@ -288,8 +308,25 @@ sub prepareDataLoad(disableRemote = false as boolean)
   m.emptyText.visible = false
 end sub
 
+' #550 sgRouter (Phase 4): full reset + reload of the grid. Used by optionsClosed
+' (sort/filter/view change) and by the resume-time content-freshness check in
+' onScreenShown (a delete elsewhere invalidated our cached content).
+sub reloadGridItems()
+  m.loadedRows = 0
+  m.loadedItems = 0
+  m.data = CreateObject("roSGNode", "ContentNode")
+  m.itemGrid.content = m.data
+  m.flatIndexMap = {}
+  initTextureManager(m.data, invalid, invalid, invalid)
+  loadInitialItems()
+end sub
+
 sub loadInitialItems()
   m.log.debug("start loadInitialItems()")
+  ' #550 sgRouter (Phase 4): record the content-freshness token we're loading at, so a
+  ' resume after a mutation elsewhere (e.g. a delete) can detect staleness and re-fetch.
+  scene = m.top.getScene()
+  if isValid(scene) then m.lastContentVersion = scene.contentVersion
   prepareDataLoad(false)
 
   if m.top.parentItem.type = "CollectionFolder"
@@ -877,13 +914,7 @@ sub optionsClosed()
   end if
 
   if reload
-    m.loadedRows = 0
-    m.loadedItems = 0
-    m.data = CreateObject("roSGNode", "ContentNode")
-    m.itemGrid.content = m.data
-    m.flatIndexMap = {}
-    initTextureManager(m.data, invalid, invalid, invalid)
-    loadInitialItems()
+    reloadGridItems()
   end if
 
   ' Restore focus to the correct view after options close
@@ -1227,6 +1258,7 @@ sub onDestroy()
 
   ' Unobserve child node observers
   m.top.unobserveField("selectedItem") ' #550 sgRouter self-navigation observer
+  m.top.unobserveField("quickPlayNode") ' #550 sgRouter Phase 4 playback launcher
   m.genreList.unobserveField("rowItemFocused")
   m.genreList.unobserveField("itemSelected")
   m.itemGrid.unobserveField("itemFocused")

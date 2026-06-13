@@ -7,6 +7,8 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/quickplay.bs"
 import "ViewCreator.bs"
 
 sub init()
@@ -20,6 +22,10 @@ sub init()
   m.isPrerollActive = m.global.user.settings.playbackCinemaMode
   m.position = 0
   m.shuffleEnabled = false
+  ' #550 sgRouter (Phase 4): PhotoAlbum shuffle launches a random slideshow; the shuffle
+  ' button sets this before launchQuickPlayAction so onQuickPlayTaskOutput's photo branch
+  ' knows to randomize. Defaults false (a plain photoalbum item-tap is sequential).
+  m.photoAlbumShuffleMode = false
 end sub
 
 ' Clear all content from play queue
@@ -115,7 +121,15 @@ function peek()
   return m.queue.peek()
 end function
 
-' Play items in queue
+' Play items in queue.
+'
+' #550 sgRouter (Phase 4): audio still uses the SceneManager-pushed AudioPlayerView
+' factory (routed in a later step). Every video-family type now launches the routed
+' PlayerHostView: QueueManager has no router chain, so it can't navigateTo — it sets
+' m.global.playbackLaunchRequest and JRScene.onPlaybackLaunchRequested turns that into
+' navigateTo("/details/:type/:id/play"). The host reads this same queue on mount.
+' In-host queue advancement (next-item / Live TV restart / channel switch) does NOT
+' come back through here — it remounts the player child directly (PlayerHostView).
 sub playQueue()
   m.isPlaying = true
   nextItem = getCurrentItem()
@@ -124,59 +138,138 @@ sub playQueue()
   nextItemMediaType = getItemType(nextItem)
   if nextItemMediaType = "" then return
 
-  if nextItemMediaType = "audio"
+  if nextItemMediaType = "audio" or nextItemMediaType = "audiobook"
     CreateAudioPlayerView()
     return
   end if
 
-  if nextItemMediaType = "audiobook"
-    CreateAudioPlayerView()
+  videoTypes = {
+    "musicvideo": true,
+    "video": true,
+    "movie": true,
+    "episode": true,
+    "recording": true,
+    "chapter": true,
+    "trailer": true,
+    "program": true,
+    "tvchannel": true
+  }
+  if videoTypes.DoesExist(nextItemMediaType)
+    m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id }
+  end if
+end sub
+
+' #550 sgRouter (Phase 4): single-tap playback launcher. Routed views (Home rows /
+' library grids / search / details extras) call this directly instead of bubbling a
+' quickPlayNode field up to main.bs's god-loop. Synchronous types build the queue inline
+' via the quickplay.* helpers + playQueue (which routes to PlayerHostView); async types
+' (need an API call to expand into a queue) go through QuickPlayTask. Ported verbatim from
+' main.bs's old quickPlayNode dispatch.
+sub launchItem(itemNode as object)
+  if not isValid(itemNode) or not isValidAndNotEmpty(itemNode.id) then return
+  itemType = ""
+  if isValidAndNotEmpty(itemNode.type) then itemType = LCase(itemNode.type)
+  if itemType = "" then return
+
+  startLoadingSpinner()
+  clear()
+  resetShuffle()
+
+  ' Synchronous types (no API calls) — build the queue inline.
+  if itemType = "chapter"
+    ' Chapter: start playback of the parent video at the chapter position.
+    queueItem = nodeHelpers.createQueueItem(itemNode)
+    if isValid(queueItem)
+      queueItem.type = itemNode.parentType
+      queueItem.startingPoint = itemNode.playbackPositionTicks
+      push(queueItem)
+      playQueue()
+    end if
+  else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
+    quickplay.video(itemNode)
+    playQueue()
+  else if itemType = "audio"
+    quickplay.audio(itemNode)
+    playQueue()
+  else if itemType = "musicvideo"
+    quickplay.musicVideo(itemNode)
+    playQueue()
+  else if itemType = "photo"
+    quickplay.photo(itemNode)
+  else if itemType = "tvchannel"
+    quickplay.tvChannel(itemNode)
+    playQueue()
+  else if itemType = "program"
+    quickplay.program(itemNode)
+    playQueue()
+  else
+    ' All other types need API calls — delegate to QuickPlayTask.
+    launchQuickPlayAction({
+      action: itemType,
+      id: itemNode.id,
+      seriesId: itemNode.seriesId,
+      collectionType: itemNode.collectionType,
+      folderType: itemNode.folderType,
+      movieCount: itemNode.movieCount,
+      seriesCount: itemNode.seriesCount,
+      channelId: itemNode.channelId
+    })
+  end if
+end sub
+
+' #550 sgRouter (Phase 4): run a QuickPlayTask for an async playback action and route its
+' output to the queue. Used by launchItem's async branch (item taps that expand into a
+' queue) and, in the next step, by the ItemDetails playAll/trailer/instant-mix buttons.
+' Owns the task on this node's render thread (was main.bs's m.activeQuickPlayTask).
+sub launchQuickPlayAction(input as object)
+  m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
+  m.activeQuickPlayTask.input = input
+  m.activeQuickPlayTask.observeField("output", "onQuickPlayTaskOutput")
+  m.activeQuickPlayTask.control = "RUN"
+end sub
+
+' QuickPlayTask finished — build the queue from its output and play (ported from main.bs's
+' handleQuickPlayOutput). Photo output still pushes a PhotoDetails scene; that moves to the
+' /photo route in a later step.
+sub onQuickPlayTaskOutput()
+  task = m.activeQuickPlayTask
+  output = task.output
+  task.unobserveField("output")
+  task.control = "STOP"
+  m.activeQuickPlayTask = invalid
+
+  if not isValid(output) or not isValidAndNotEmpty(output.items)
+    stopLoadingSpinner()
     return
   end if
 
-  if nextItemMediaType = "musicvideo"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "video"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "movie"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "episode"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "recording"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "chapter"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "trailer"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "program"
-    CreateVideoPlayerView()
-    return
-  end if
-
-  if nextItemMediaType = "tvchannel"
-    CreateVideoPlayerView()
-    return
+  if output.action = "queue"
+    quickplay.pushToQueue(output.items)
+    if output.firstItemStartingPoint > 0
+      setCurrentStartingPoint(output.firstItemStartingPoint)
+    end if
+    if output.shuffle and getCount() > 1
+      toggleShuffle()
+    end if
+    playQueue()
+  else if output.action = "photo"
+    photoPlayer = CreateObject("roSgNode", "PhotoDetails")
+    photoPlayer.isSlideshow = true
+    ' PhotoAlbum shuffle sets isRandom=true for a random slideshow.
+    photoPlayer.isRandom = m.photoAlbumShuffleMode = true
+    m.photoAlbumShuffleMode = false
+    photoPlayer.itemsArray = output.items
+    photoPlayer.itemIndex = 0
+    m.global.sceneManager.callfunc("pushScene", photoPlayer)
+    stopLoadingSpinner()
+  else if output.action = "trailer"
+    if isValid(output.items[0]) and isValidAndNotEmpty(output.items[0].id)
+      clear()
+      set(output.items)
+      playQueue()
+    else
+      stopLoadingSpinner()
+    end if
   end if
 end sub
 

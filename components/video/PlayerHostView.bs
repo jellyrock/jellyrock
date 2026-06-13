@@ -1,0 +1,440 @@
+import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/translate.bs"
+
+' #550 sgRouter: routed host for video playback. See PlayerHostView.xml header.
+'
+' This file is the new home for what was ViewCreator's video half: the player
+' factory (CreateVideoPlayerView -> mountPlayer), the end-of-playback / queue
+' advancement state machine (onStateChange -> onPlayerStateChange, now host-internal),
+' and the playback-time track-selection dialog handlers (onSelect*/process*). The
+' player is a runtime child of this host rather than a SceneManager-pushed scene, so
+' advancement destroys + remounts the child instead of pop/push.
+
+sub init()
+  m.log = new log.Logger("PlayerHostView")
+  ' The player is fullscreen — keep the shared overhang hidden while this view is the
+  ' router-active view (JRScene's overhang controller reads isOverhangVisible on mount).
+  m.top.isOverhangVisible = false
+end sub
+
+' Router lifecycle (via JRScreen's onViewOpen bridge): mount the player for the
+' current queue item. The launching code (QueueManager.playQueue -> JRScene) has
+' already built the queue, so the host just reads getCurrentItem. Guard against a
+' redundant call (e.g. screensaver-exit re-fires onScreenShown).
+sub onScreenShown()
+  if not isValid(m.view)
+    mountPlayer()
+  end if
+end sub
+
+sub onScreenHidden()
+end sub
+
+' Router: take remote focus. Hand it to the player child if mounted; the player also
+' grabs focus itself once content loads (VideoPlayerView.onVideoContentLoaded).
+function handleFocus(_data = {} as object) as boolean
+  if isValid(m.view)
+    m.view.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
+  return true
+end function
+
+' Build + mount the VideoPlayerView as a child of this host. Ported from
+' ViewCreator.CreateVideoPlayerView; the only behavioral change is appendChild to
+' the host instead of SceneManager.pushScene.
+sub mountPlayer()
+  m.playbackData = {}
+  m.selectedSubtitle = {}
+
+  m.view = CreateObject("roSGNode", "VideoPlayerView")
+  ' Keep video player invisible during loading to prevent black background from covering backdrop
+  m.view.visible = false
+  m.view.observeField("state", "onPlayerStateChange")
+  m.view.observeField("selectPlaybackInfoPressed", "onSelectPlaybackInfoPressed")
+  m.view.observeField("selectSubtitlePressed", "onSelectSubtitlePressed")
+  m.view.observeField("selectAudioPressed", "onSelectAudioPressed")
+  m.view.observeField("selectVideoSourcePressed", "onSelectVideoSourcePressed")
+
+  mediaSourceId = m.global.queueManager.callFunc("getCurrentItem").mediaSourceId
+
+  if not isValid(mediaSourceId) or mediaSourceId = ""
+    mediaSourceId = m.global.queueManager.callFunc("getCurrentItem").id
+  end if
+
+  m.getPlaybackInfoTask = createObject("roSGNode", "GetPlaybackInfoTask")
+  m.getPlaybackInfoTask.videoID = mediaSourceId
+  m.getPlaybackInfoTask.observeField("data", "onPlaybackInfoLoaded")
+
+  ' Update backdrop for current queue item (handles first item, shuffle, library play, etc.)
+  updateQueueBackdrop()
+
+  m.top.appendChild(m.view)
+end sub
+
+' Tear down the current player child (stop -> report stop to Jellyfin -> onDestroy -> remove).
+sub destroyPlayer()
+  if isValid(m.view)
+    m.view.unobserveField("state")
+    m.view.unobserveField("selectPlaybackInfoPressed")
+    m.view.unobserveField("selectSubtitlePressed")
+    m.view.unobserveField("selectAudioPressed")
+    m.view.unobserveField("selectVideoSourcePressed")
+    ' Stop so the player reports a stop playstate to Jellyfin (Video.onDestroy alone
+    ' does not). Unobserving state first means the stop won't re-enter onPlayerStateChange.
+    m.view.control = "stop"
+    m.view.callFunc("onDestroy")
+    m.top.removeChild(m.view)
+    m.view = invalid
+  end if
+
+  if isValid(m.getPlaybackInfoTask)
+    m.getPlaybackInfoTask.control = "STOP"
+    m.getPlaybackInfoTask.unobserveField("data")
+    m.getPlaybackInfoTask = invalid
+  end if
+end sub
+
+' Host-internal advancement: remount the player for the CURRENT queue position.
+' Callers (onPlayerStateChange next-item / Live TV restart; VideoPlayerView channel
+' switch) set the position + backdrop first. Replaces ViewCreator's
+' clearPreviousScene + playQueue (which created a new pushed scene).
+sub playCurrentQueueItem()
+  destroyPlayer()
+  mountPlayer()
+end sub
+
+' Leave the play route: pops this host off the router history (beforeViewClose ->
+' onScreenHidden + onDestroy tear the player down) and resumes the view beneath
+' (the item's details, or Home). Called on queue-exhaustion, playback error, and
+' voice "stop". Replaces ViewCreator/VideoPlayerView's SceneManager.popScene.
+sub exitPlayback()
+  sgrouter.goBack()
+end sub
+
+' Router: this view is being destroyed (goBack / sign-out resetRouter). Tear down the
+' player child. abandonApiPromises() is injected here by the auto-abandon-promises BSC
+' plugin (JRScreen.onDestroy's floor doesn't chain to SG-component overrides).
+sub onDestroy()
+  if isValid(m.global.sceneManager)
+    m.global.sceneManager.unobserveField("returnData")
+  end if
+  destroyPlayer()
+end sub
+
+' ===========================================================================
+' End-of-playback / queue advancement state machine.
+' Ported from ViewCreator.onStateChange; the pop/push has become host-internal
+' destroy/remount, and the queue-exhausted pop has become exitPlayback (goBack).
+' ===========================================================================
+sub onPlayerStateChange()
+  if LCase(m.view.state) <> "finished" then return
+
+  ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
+  if isValid(m.view.isRetrying) and m.view.isRetrying then return
+
+  sceneManager = m.global.sceneManager
+  queueManager = m.global.queueManager
+
+  ' Close any open dialogs
+  if sceneManager.callFunc("isDialogOpen")
+    sceneManager.callFunc("dismissDialog")
+  end if
+
+  ' Live TV channel that finished -> restart the same channel (same queue position)
+  currentItem = queueManager.callFunc("getCurrentItem")
+  if isValid(currentItem)
+    currentItemType = queueManager.callFunc("getItemType", currentItem)
+    if currentItemType = "tvchannel"
+      playCurrentQueueItem()
+      return
+    end if
+  end if
+
+  ' More items in the queue -> advance and play the next one
+  if queueManager.callFunc("getPosition") < queueManager.callFunc("getCount") - 1
+    queueManager.callFunc("moveForward")
+    updateQueueBackdrop()
+    playCurrentQueueItem()
+    return
+  end if
+
+  ' Queue exhausted -> leave the player and return to the launching view
+  m.global.audioPlayer.loopMode = ""
+  exitPlayback()
+end sub
+
+' handleTransport: voice transport delegate. main.bs forwards transport commands
+' here (the router-active view is this host, not the inner player); forward to the
+' child player's own handler.
+function handleTransport(evt as object) as object
+  if isValid(m.view) then return m.view.callFunc("handleTransport", evt)
+  return { status: "error.no-media" }
+end function
+
+' ===========================================================================
+' Playback-time track / source / info selection dialogs.
+' Ported verbatim from ViewCreator (they read the child player via m.view and show
+' dialogs through SceneManager, both unchanged under the host).
+' ===========================================================================
+
+' onSelectAudioPressed: Display audio selection dialog
+sub onSelectAudioPressed()
+  audioData = {
+    data: []
+  }
+
+  m.log.debug("onSelectAudioPressed", "currentAudioIndex", m.view.audioIndex, "trackCount", m.view.fullAudioData.Count())
+
+  for each item in m.view.fullAudioData
+
+    audioStreamItem = {
+      "index": item.index,
+      "isExternal": item.isExternal,
+      "track": {
+        "description": formatAudioDisplayTitle(item)
+      },
+      "type": "audioselection"
+    }
+
+    isSelected = m.view.audioIndex = item.index
+    if isSelected
+      audioStreamItem.selected = true
+    end if
+    m.log.debug("Audio track item", "jellyfinIndex", item.index, "isSelected", isSelected, "title", formatAudioDisplayTitle(item))
+
+    audioData.data.push(audioStreamItem)
+  end for
+  sceneManager = m.global.sceneManager
+  sceneManager.callFunc("radioDialog", translate(translationKeys.LabelSelectAudio), audioData)
+  sceneManager.observeField("returnData", "onSelectionMade")
+end sub
+
+' User requested subtitle selection popup
+sub onSelectSubtitlePressed()
+  subtitleData = {
+    data: []
+  }
+
+  for each item in m.view.fullSubtitleData
+    item.type = "subtitleselection"
+
+    if m.view.selectedSubtitle <> SubtitleSelection.NONE
+      ' Subtitle is a track within the file
+      if item.index = m.view.selectedSubtitle
+        item.selected = true
+      end if
+    else
+      ' Subtitle is from an external source
+      availableSubtitleTrackIndex = availSubtitleTrackIdx(item.track.TrackName)
+      if availableSubtitleTrackIndex <> SubtitleSelection.NONE
+
+        ' Convert Jellyfin subtitle track name to Roku track name
+        subtitleFullTrackName = m.view.availableSubtitleTracks[availableSubtitleTrackIndex].TrackName
+
+        if subtitleFullTrackName = m.view.subtitleTrack
+          item.selected = true
+        end if
+
+      end if
+    end if
+
+    ' Put the selected item at the top of the option list
+    if isValid(item.selected) and item.selected
+      subtitleData.data.Unshift(item)
+    else
+      subtitleData.data.push(item)
+    end if
+  end for
+
+  ' Manually create the None option and place at top
+  subtitleData.data.Unshift({
+    "Index": SubtitleSelection.NONE,
+    "IsExternal": false,
+    "Track": {
+      "description": "None"
+    },
+    "Type": "subtitleselection"
+  })
+
+  sceneManager = m.global.sceneManager
+  sceneManager.callFunc("radioDialog", translate(translationKeys.LabelSelectSubtitles), subtitleData)
+  sceneManager.observeField("returnData", "onSelectionMade")
+end sub
+
+' onSelectVideoSourcePressed: Display video source selection dialog
+sub onSelectVideoSourcePressed()
+  videoSourceData = {
+    data: []
+  }
+
+  if not isValid(m.view.fullVideoSourceData) then return
+
+  hasMultipleSources = m.view.fullVideoSourceData.Count() > 1
+
+  for each source in m.view.fullVideoSourceData
+    sourceItem = {
+      "Index": source.Id,
+      "IsExternal": false,
+      "Track": {
+        "description": formatVideoSourceTitle(source, hasMultipleSources)
+      },
+      "Type": "videosourceselection"
+    }
+
+    if m.view.mediaSourceId = source.Id
+      sourceItem.selected = true
+    end if
+
+    videoSourceData.data.push(sourceItem)
+  end for
+
+  sceneManager = m.global.sceneManager
+  sceneManager.callFunc("radioDialog", translate(translationKeys.LabelSelectVideoSource), videoSourceData)
+  sceneManager.observeField("returnData", "onSelectionMade")
+end sub
+
+' User has selected something from the radioDialog popup
+sub onSelectionMade()
+  sceneManager = m.global.sceneManager
+  sceneManager.unobserveField("returnData")
+
+  if not isValid(sceneManager.returnData) then return
+  if not isValid(sceneManager.returnData.type) then return
+
+  if LCase(sceneManager.returnData.type) = "subtitleselection"
+    processSubtitleSelection()
+    return
+  end if
+
+  if LCase(sceneManager.returnData.type) = "audioselection"
+    processAudioSelection()
+    return
+  end if
+
+  if LCase(sceneManager.returnData.type) = "videosourceselection"
+    processVideoSourceSelection()
+    return
+  end if
+end sub
+
+' processAudioSelection: Audio track selection handler
+sub processAudioSelection()
+  selectedAudioTrack = m.global.sceneManager.returnData
+
+  if isValid(selectedAudioTrack)
+    if isValid(selectedAudioTrack.index)
+      m.log.info("processAudioSelection", "selectedJellyfinIndex", selectedAudioTrack.index, "previousAudioIndex", m.view.audioIndex)
+      m.view.audioIndex = selectedAudioTrack.index
+    else
+      m.log.warn("processAudioSelection: selectedAudioTrack.index is invalid", selectedAudioTrack)
+    end if
+  end if
+end sub
+
+' processVideoSourceSelection: Video source selection handler
+' Triggers video reload with the new MediaSource ID
+sub processVideoSourceSelection()
+  selectedSource = m.global.sceneManager.returnData
+
+  if isValid(selectedSource) and isValid(selectedSource.index)
+    ' Only trigger reload if source actually changed
+    if selectedSource.index <> m.view.mediaSourceId
+      m.view.mediaSourceId = selectedSource.index
+    end if
+  end if
+end sub
+
+sub processSubtitleSelection()
+  m.selectedSubtitle = m.global.sceneManager.returnData
+
+  ' The selected encoded subtitle did not change.
+  if m.view.selectedSubtitle <> SubtitleSelection.NONE or m.selectedSubtitle.index <> SubtitleSelection.NONE
+    if m.view.selectedSubtitle = m.selectedSubtitle.index then return
+  end if
+
+  ' The playbackData is now outdated and must be refreshed
+  m.playbackData = invalid
+
+  ' Find previously selected subtitle and identify if it was encoded
+  for each item in m.view.fullSubtitleData
+    if item.index = m.view.selectedSubtitle
+      m.view.isPreviousSubtitleEncoded = item.IsEncoded
+      exit for
+    end if
+  end for
+
+  if LCase(m.selectedSubtitle.track.description) = "none"
+    m.view.globalCaptionMode = "Off"
+    m.view.subtitleTrack = ""
+
+    if m.view.selectedSubtitle <> SubtitleSelection.NONE
+      m.view.selectedSubtitle = SubtitleSelection.NONE
+    end if
+
+    return
+  end if
+
+  if m.selectedSubtitle.IsEncoded
+    ' Roku can not natively display these subtitles, so turn off the caption mode on the device
+    m.view.globalCaptionMode = "Off"
+  else
+    ' Roku can natively display these subtitles, ensure the caption mode on the device is on
+    m.view.globalCaptionMode = "On"
+
+    ' Roku may rearrange subtitle tracks. Look up track based on name to ensure we get the correct index
+    availableSubtitleTrackIndex = availSubtitleTrackIdx(m.selectedSubtitle.Track.TrackName)
+    if availableSubtitleTrackIndex = SubtitleSelection.NONE then return
+
+    m.view.subtitleTrack = m.view.availableSubtitleTracks[availableSubtitleTrackIndex].TrackName
+  end if
+
+  m.view.selectedSubtitle = m.selectedSubtitle.Index
+end sub
+
+' User requested playback info
+sub onSelectPlaybackInfoPressed()
+  ' Check if we already have playback info and show it in a popup
+  if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
+    m.global.sceneManager.callFunc("standardDialog", translate(translationKeys.LabelPlaybackInfo), m.playbackData.playbackinfo)
+    return
+  end if
+
+  ' Set cached playback info right before running (when it's actually available)
+  m.getPlaybackInfoTask.cachedPlaybackInfo = m.view.cachedPlaybackInfo
+  m.getPlaybackInfoTask.control = "RUN"
+end sub
+
+' The playback info task has returned data
+sub onPlaybackInfoLoaded()
+  m.playbackData = m.getPlaybackInfoTask.data
+
+  ' Check if we have playback info and show it in a popup
+  if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
+    m.global.sceneManager.callFunc("standardDialog", translate(translationKeys.LabelPlaybackInfo), m.playbackData.playbackinfo)
+  end if
+end sub
+
+' Roku translates the info provided in subtitleTracks into availableSubtitleTracks
+' Including ignoring tracks, if they are not understood, thus making indexing unpredictable.
+' This function translates between our internel selected subtitle index
+' and the corresponding index in availableSubtitleTracks.
+function availSubtitleTrackIdx(tracknameToFind as string) as integer
+  idx = 0
+  for each availTrack in m.view.availableSubtitleTracks
+    ' The TrackName must contain the URL we supplied originally, though
+    ' Roku mangles the name a bit, so we check if the URL is a substring, rather
+    ' than strict equality
+    if inStr(1, availTrack.TrackName, tracknameToFind)
+      return idx
+    end if
+    idx = idx + 1
+  end for
+  return SubtitleSelection.NONE
+end function

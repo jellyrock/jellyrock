@@ -39,6 +39,10 @@ sub init()
   ' itemSelected to main.bs's m.port is gone) — a selected result navigates to its route.
   m.searchSelect.observeField("itemSelected", "onSearchItemSelected")
 
+  ' #550 sgRouter (Phase 4): a non-navigable result (plays directly) sets m.top.quickPlayNode;
+  ' this self-observer forwards it to the QueueManager launcher (was the main.bs relay).
+  m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
+
   ' Set initial focus for scene navigation
   m.top.lastFocus = searchBox
   ' #550 sgRouter: first show focuses the keyboard to type immediately; later shows
@@ -119,6 +123,12 @@ sub onSearchItemSelected(msg)
   else
     m.top.quickPlayNode = item
   end if
+end sub
+
+' #550 sgRouter (Phase 4): forward a non-navigable result to the playback launcher.
+sub onQuickPlayLaunch(msg)
+  node = msg.getData()
+  if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
 end sub
 
 ' onKeyboardFocusChange: Fires when focus changes within the keyboard subtree (including entry/exit).
@@ -250,6 +260,7 @@ sub onDestroy()
   if isValid(m.searchAlphabox) then m.searchAlphabox.unobserveField("focusedChild")
   m.searchSelect.unobserveField("rowItemFocused")
   m.searchSelect.unobserveField("itemSelected") ' #550 sgRouter self-navigation observer
+  m.top.unobserveField("quickPlayNode") ' #550 sgRouter Phase 4 playback launcher
 
   ' Stop and release task node (observer may already be cleared by loadResults())
   m.searchTask.unobserveField("results")

@@ -43,11 +43,12 @@ sub Main (args as dynamic) as void
   ' setup global nodes now that the screen has been shown
   setGlobalNodes()
 
-  ' #550 sgRouter: observe the router-active content view so we can (re)attach the
-  ' playback-event observers (quickPlayNode / userMenuAction / ItemDetails buttons)
-  ' whenever the router mounts or switches views — see attachRoutedViewObservers().
-  ' Registered once here (before any navigation), survives goto appStart re-entry.
-  m.global.observeField("activeRoutedView", m.port)
+  ' #550 sgRouter (Phase 4): session-reset bridge. Routed Home sets m.scene.userMenuAction
+  ' (change user / change server / sign out); we observe it here on the main thread and
+  ' re-enter LoginFlow via `goto appStart`. A scene field + port delivers (unlike an
+  ' m.global field + port — the delivery defect the deleted attachRoutedViewObservers relay
+  ' relied on). Registered once here (before any navigation), survives goto appStart re-entry.
+  m.scene.observeField("userMenuAction", m.port)
   m.scene.observeField("exit", m.port)
 
   appStart:
@@ -110,12 +111,6 @@ sub Main (args as dynamic) as void
       return
     else if isNodeEvent(msg, "exit")
       return
-    else if isNodeEvent(msg, "activeRoutedView")
-      ' #550 sgRouter: the router mounted/switched a content view. Re-point our
-      ' playback-event observers (quickPlayNode / userMenuAction / ItemDetails
-      ' buttons) at it so the playback + menu branches below keep working unchanged
-      ' for router-created views. Pure relay — no playback logic moves.
-      attachRoutedViewObservers(m.global.activeRoutedView)
     else if isNodeEvent(msg, "closeSidePanel")
       group = getActiveView()
       if isValid(group.lastFocus)
@@ -128,67 +123,6 @@ sub Main (args as dynamic) as void
       fontDownloadTask = msg.getRoSGNode()
       if isValid(fontDownloadTask)
         handleFontDownloadCompletion(fontDownloadTask)
-      end if
-    else if isNodeEvent(msg, "quickPlayNode")
-      ' Read from msg.getData() — the value at event-queue time — not from
-      ' the current field value which may already be cleared to invalid by
-      ' the set-then-clear pattern that prevents stale re-fires.
-      itemNode = msg.getData()
-      if isValid(itemNode) and isValid(itemNode.id) and itemNode.id <> ""
-        itemType = invalid
-        if isValid(itemNode.type) and itemNode.type <> ""
-          itemType = Lcase(itemNode.type)
-        end if
-
-        if isValid(itemType)
-          startLoadingSpinner()
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("resetShuffle")
-
-          ' Synchronous types (no API calls) — handle inline
-          if itemType = "chapter"
-            ' Chapter: start playback of parent video at chapter position
-            queueItem = nodeHelpers.createQueueItem(itemNode)
-            if isValid(queueItem)
-              queueItem.type = itemNode.parentType
-              queueItem.startingPoint = itemNode.playbackPositionTicks
-              m.global.queueManager.callFunc("push", queueItem)
-              m.global.queueManager.callFunc("playQueue")
-            end if
-          else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
-            quickplay.video(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "audio"
-            quickplay.audio(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "musicvideo"
-            quickplay.musicVideo(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "photo"
-            quickplay.photo(itemNode)
-          else if itemType = "tvchannel"
-            quickplay.tvChannel(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "program"
-            quickplay.program(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else
-            ' All other types need API calls — delegate to QuickPlayTask
-            m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-            m.activeQuickPlayTask.input = {
-              action: itemType,
-              id: itemNode.id,
-              seriesId: itemNode.seriesId,
-              collectionType: itemNode.collectionType,
-              folderType: itemNode.folderType,
-              movieCount: itemNode.movieCount,
-              seriesCount: itemNode.seriesCount,
-              channelId: itemNode.channelId
-            }
-            m.activeQuickPlayTask.observeField("output", m.port)
-            m.activeQuickPlayTask.control = "RUN"
-          end if
-        end if
       end if
     else if isNodeEvent(msg, "output")
       task = msg.getRoSGNode()
@@ -648,7 +582,9 @@ sub Main (args as dynamic) as void
           transportNowPlaying = invalid
           if isValid(activeScene)
             sceneType = activeScene.subtype()
-            if sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
+            ' #550 sgRouter (Phase 4): routed video playback's active view is the
+            ' PlayerHostView wrapper; it forwards handleTransport to the child player.
+            if sceneType = "PlayerHostView" or sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
               transportRet = activeScene.callFunc("handleTransport", info)
               if isValid(transportRet) and isValid(transportRet.status)
                 transportStatus = transportRet.status
@@ -1001,27 +937,3 @@ function handleMenuAction(actionId as string) as boolean
   return false
 end function
 
-' #550 sgRouter relay: (re)attach the main loop's observers to the router-active
-' content view's own emit-fields, so the existing playback / menu god-loop branches
-' fire for router-created views with no change to their shape. Idempotent
-' (unobserve-then-observe) so keepAlive views re-bound on resume don't double-fire.
-' Transitional — removed in Phase 4 when playback itself becomes routed.
-sub attachRoutedViewObservers(view as object)
-  if not isValid(view) then return
-
-  view.unobserveField("quickPlayNode")
-  view.observeField("quickPlayNode", m.port)
-
-  view.unobserveField("userMenuAction")
-  view.observeField("userMenuAction", m.port)
-
-  ' Only ItemDetails surfaces playback action buttons (play / resume / trailer /
-  ' shuffle / record / delete / ...) up to this loop via its "buttons" node.
-  if view.subtype() = "ItemDetails"
-    buttons = view.findNode("buttons")
-    if isValid(buttons)
-      buttons.unobserveField("buttonSelected")
-      buttons.observeField("buttonSelected", m.port)
-    end if
-  end if
-end sub

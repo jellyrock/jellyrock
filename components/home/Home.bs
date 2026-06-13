@@ -27,6 +27,12 @@ sub init()
   m.homeRows.observeField("selectedItem", "onRowItemSelected")
   m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
 
+  ' #550 sgRouter (Phase 4): item taps that fall through to playback launch via
+  ' QueueManager now (the main.bs relay that used to read quickPlayNode is gone).
+  ' onRowItemSelected / onQuickPlayNode set m.top.quickPlayNode; this self-observer
+  ' forwards the node to the launcher.
+  m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
+
   ' Voice search setup — matches BaseGridView's pattern:
   ' Set voiceEnabled once in init(), never set it to false.
   ' Only toggle active on screen show/hide.
@@ -85,7 +91,11 @@ sub handleHomeMenuAction(actionId as string)
   else if actionId = HomeAction.OPEN_SETTINGS
     sgrouter.navigateTo("/settings")
   else
-    m.top.userMenuAction = actionId
+    ' #550 sgRouter (Phase 4): session-reset (change user/server, sign out) needs main.bs's
+    ' LoginFlow re-entry (`goto appStart`). Set it on the SCENE, which main.bs observes via
+    ' its message port — observing a routed view's field via port never delivered (the relay
+    ' defect), but a scene field does (same channel as `exit`).
+    m.top.getScene().userMenuAction = actionId
   end if
 end sub
 
@@ -390,6 +400,12 @@ sub onQuickPlayNode(msg)
   m.top.quickPlayNode = msg.getData()
 end sub
 
+' #550 sgRouter (Phase 4): forward a fallen-through item tap to the playback launcher.
+sub onQuickPlayLaunch(msg)
+  node = msg.getData()
+  if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
+end sub
+
 ' ============================================
 ' FOCUS MANAGEMENT
 ' ============================================
@@ -506,6 +522,7 @@ sub onDestroy()
   m.log.verbose("onDestroy")
 
   m.top.unobserveField("selectedTabId")
+  m.top.unobserveField("quickPlayNode")
 
   ' Release the options side-panel observers wired in buildOptionsMenu (#550)
   if isValid(m.optionsPanel)
