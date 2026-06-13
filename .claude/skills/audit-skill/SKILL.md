@@ -163,7 +163,7 @@ Every audit (regardless of size) gets one section in `.claude/skills/<audited-sk
 **Source transcript:** `~/.claude/projects/.../<session>.jsonl`
 ```
 
-This stays out of [`docs/decisions.md`](../../../docs/decisions.md). Future agents reading the audited skill can grep `.claude/skills/<name>/AUDIT-LOG.md` for the running history without diluting the architectural-decision log.
+This stays out of the formal decision record ([`docs/adr/`](../../../docs/adr/README.md) for ADR-grade, [`docs/decisions.md`](../../../docs/decisions.md) for sub-ADR notes). Future agents reading the audited skill can grep `.claude/skills/<name>/AUDIT-LOG.md` for the running history without diluting that record.
 
 #### 6b — Conditionally: invoke /log decision for architectural-grade audits
 

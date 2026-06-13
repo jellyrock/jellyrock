@@ -16,8 +16,9 @@
 // What it checks:
 //   - Every `related-files:` path in docs/architecture/*.md frontmatter
 //     resolves to an existing file (or directory) in the repo.
-//   - Every relative markdown link in docs/architecture/*.md and
-//     docs/decisions.md resolves (skipping http(s):, mailto:, anchor-only).
+//   - Every relative markdown link in docs/architecture/*.md, docs/dev/*.md,
+//     docs/adr/*.md, and docs/decisions.md resolves (skipping http(s):,
+//     mailto:, anchor-only).
 //   - Every tech-debt anchor reference (anywhere in scanned files) of
 //     the form `tech-debt.md#<anchor>` resolves to a real heading
 //     anchor in docs/architecture/tech-debt.md. This is the canonical
@@ -61,6 +62,7 @@ const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/f
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
+const ADR_DIR = path.join(ROOT_DIR, 'docs/adr');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
 const SIGNALS_PATH = path.join(ROOT_DIR, 'docs/signals-backlog.md');
@@ -419,6 +421,10 @@ checkDirOfMds(ARCH_DIR);
 
 // Dev how-to guides
 checkDirOfMds(DEV_DIR);
+
+// Architecture Decision Records (body links + tech-debt anchors; ADRs carry no
+// YAML frontmatter, so related-files validation is a no-op for them)
+checkDirOfMds(ADR_DIR);
 
 // Decisions log (no frontmatter; just check body links + slug refs)
 if (fs.existsSync(DECISIONS_PATH)) {

@@ -12,7 +12,7 @@ audit-span: read-only
 
 **Goal.** Turn a cold session-start into ~30 seconds of "I know where I left off, what's running, what's open against the repo, and what to do next." This is the **daily-ritual entry point** — the thing you type first when you sit down. It exists so nothing important rots between sessions: a paused in-flight cursor, a deferred followup, a failed CI run, a stale upstream-version signal, or a high-engagement bug that the prior session never got to all surface in one read instead of being discovered piecemeal. The reasoning load is bounded — banner-checks are deterministic JSON compares against the `scripts/catchup-state.js` aggregator, and the triage half is "pick which surfaced item is the highest signal" — so this skill ships at the Sonnet tier; reserve the judgment-grade tier for what comes after (a `/focus` triage, or a direct dive into the work).
 
-**Inputs.** None. `$ARGUMENTS` is ignored — the whole point is that the briefing comes from observed state rather than from your direction. If you already know what you want to look at, ask the targeted question directly; don't pay the briefing cost. The skill expects the repo's state surfaces to exist: the `scripts/catchup-state.js` aggregator (one JSON document over git/PRs/issues/CI/handoffs/journals/doc-staleness), plus `docs/progress.md` (state cursor + open followups), `docs/signals-backlog.md` (upstream-version watchlist), and `docs/decisions.md`. If the aggregator errors a section, that section comes back `null` and surfaces as a banner rather than being silently dropped.
+**Inputs.** None. `$ARGUMENTS` is ignored — the whole point is that the briefing comes from observed state rather than from your direction. If you already know what you want to look at, ask the targeted question directly; don't pay the briefing cost. The skill expects the repo's state surfaces to exist: the `scripts/catchup-state.js` aggregator (one JSON document over git/PRs/issues/CI/handoffs/journals/doc-staleness), plus `docs/progress.md` (state cursor + open followups), `docs/signals-backlog.md` (upstream-version watchlist), and `docs/adr/` (recent ADRs). If the aggregator errors a section, that section comes back `null` and surfaces as a banner rather than being silently dropped.
 
 **Outputs.**
 
@@ -60,7 +60,7 @@ Top-level keys returned: `meta`, `git`, `prs`, `issues`, `ci`, `handoffs`, `prog
 Optional Read calls for full-text context (parallel; only when the JSON's summary isn't enough):
 
 - `Read docs/progress.md` (~50 lines) — the "where you left off" sentence already comes from `progress.currently_running_summary` in the JSON; only Read if you need to see specific open followups verbatim
-- `Read docs/decisions.md` last ~80 lines — the JSON gives slug + date + status for the most-recent 3; Read for the body if a recent decision looks relevant to a banner
+- `Read docs/adr/<NNNN>-*.md` for a recent ADR's body — the JSON gives adr number + title + date + status for the most-recent 3 (highest number = newest); Read the body if a recent decision looks relevant to a banner
 
 ### Step 2 — Detect drift and elevate to banners
 
@@ -98,8 +98,8 @@ Format short. Banners (if any) at top, then this template — sections collapse 
 - <signals.rows.length> watching, <stale_count> needing attention, <action_pending_count> action_pending
   (For each row in rows: "  <slug> [status] — latest=<latest_upstream>, ack=<latest_acknowledged>" + " ← REVIEW NEEDED" suffix when row.stale; for the stable row append "(open digest #<row.digest.number>)" when row.digest is set)
 
-**Recent decisions** (last 3 from decisions.md):
-- <YYYY-MM-DD> <slug> [<status>]
+**Recent decisions** (last 3 ADRs from docs/adr/):
+- <YYYY-MM-DD> ADR <NNNN> <title> [<status>]
 
 **Your open PRs:**
 - #<N> — <title> (<draft? | review state>)

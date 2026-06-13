@@ -2,7 +2,7 @@
 name: start-project
 model: opus
 effort: low
-description: This skill should be used ONLY when the user explicitly types "/start-project" (optionally with a slug). It begins a new tracked JellyRock project under docs/projects/ — running scaffold-project.sh to create PLAN.md from docs/projects/_TEMPLATE.md and index it in the projects README, then walking the user through the Charter. For multi-session work that crosses a phase boundary or carries a decision worth recording in docs/decisions.md. Do NOT auto-invoke on vague phrases like "let's start something"; for a single-session fix just do the work and capture any tail via /log followup.
+description: This skill should be used ONLY when the user explicitly types "/start-project" (optionally with a slug). It begins a new tracked JellyRock project under docs/projects/ — running scaffold-project.sh to create PLAN.md from docs/projects/_TEMPLATE.md and index it in the projects README, then walking the user through the Charter. For multi-session work that crosses a phase boundary or carries a decision worth recording as an ADR in docs/adr/. Do NOT auto-invoke on vague phrases like "let's start something"; for a single-session fix just do the work and capture any tail via /log followup.
 ---
 
 # Start Project
@@ -43,7 +43,7 @@ description: This skill should be used ONLY when the user explicitly types "/sta
 - The work fits in one session, doesn't cross a phase boundary, and carries no decision worth recording. Just do it; capture any deferred tail via `/log followup`.
 - The project already exists under `docs/projects/`. Use `/resume-project <slug>` to pick it up — `/start-project` refuses duplicates by design.
 - You want to triage what to work on next rather than commit to a new tracked effort. That's `/focus` (or `/catchup` for a state briefing) — `/start-project` assumes the decision to start is already made.
-- The "project" is really a decision that needs deliberation, not multi-session execution. An architectural decision lands as a `docs/decisions.md` entry via `/log decision`; only wrap it in a project if the *execution* spans sessions.
+- The "project" is really a decision that needs deliberation, not multi-session execution. An architectural decision lands as a numbered ADR in `docs/adr/` via `/log decision`; only wrap it in a project if the *execution* spans sessions.
 
 ## Implementation
 

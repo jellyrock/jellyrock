@@ -4,6 +4,7 @@ related-files:
   - CLAUDE.md
   - docs/progress.md
   - docs/signals-backlog.md
+  - docs/adr/README.md
   - docs/decisions.md
   - docs/architecture/tech-debt.md
   - .claude/skills/log/SKILL.md
@@ -47,12 +48,13 @@ Static project knowledge lives under [`docs/`](../) in four buckets borrowed loo
 
 This is **Diátaxis-lite**, not strict Diátaxis: there's no `docs/tutorial/` bucket because [`DEVGUIDE.md`](../dev/DEVGUIDE.md) already serves that role and splitting `docs/dev/` by Diátaxis type would force users to know which bucket they want before they can navigate. The cost of strict purity is higher than the value at JellyRock's current scale.
 
-### 2. Four journals for project state
+### 2. Five surfaces for project state
 
 | File | Job | Decay rate | Update via |
 |---|---|---|---|
 | [`docs/progress.md`](../progress.md) | Live state cursor — currently running, recently shipped, open followups | Hours / days | `/log followup` (auto-bumps), `/done` (auto-prepends shipped) |
-| [`docs/decisions.md`](../decisions.md) | Append-only ADR log (Context / Decision / Consequences / Status) | Never (forward-only) | `/log decision` |
+| [`docs/adr/`](../adr/README.md) | Numbered, immutable Architecture Decision Records — architectural / hard-to-reverse / cross-component decisions (Context / Decision / Consequences / Status) | Never (superseded, not edited) | `/log decision` (ADR-grade) |
+| [`docs/decisions.md`](../decisions.md) | Append-only **sub-ADR notes** — narrow / single-component / implementation-level decisions below the ADR bar | Never (forward-only) | `/log decision` (sub-threshold) |
 | [`docs/signals-backlog.md`](../signals-backlog.md) | External version-watching (Jellyfin, Roku OS, BrighterScript, deps) — slow-decay, one row per upstream | Slow | `/log signal`, `/done <slug>` |
 | [`docs/architecture/tech-debt.md`](tech-debt.md) | Internal refactor candidates (severity-classified, slug-based) | Slow | [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md) (handles both add + remove) |
 
@@ -92,7 +94,7 @@ Specifically for the journal layer:
 
 - `progress.md` staleness gate — `docs-check.cjs` FAILs when `last-updated` is >7 days old AND there are commits since (the territory-touched logic is implicit: any commit means the cursor moved). The post-merge auto-sync layer is what keeps this gate quiet — without it, `last-updated:` only moves when the user remembers to invoke `/log` or `/done`.
 - `signals-backlog.md` schema validator — `docs-check.cjs` FAILs on missing required bullets, invalid `status` enum, malformed `last_checked` ISO date, or non-positive `staleness_days`.
-- `decisions.md` doesn't get a staleness gate (it's append-only — staleness is meaningless), but its body links + tech-debt anchors are validated.
+- `docs/adr/` and `decisions.md` don't get a staleness gate (immutable / append-only — staleness is meaningless), but their body links + tech-debt anchors are validated by `docs-check.cjs`.
 
 ## The principles
 

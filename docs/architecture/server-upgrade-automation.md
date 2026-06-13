@@ -408,9 +408,8 @@ still change, so re-run `/server-upgrade` against the FINAL stable when it ships
   validation lint): a validated disposition ledger that resolves the recurring
   floor findings at the source (the `V1`/`V2` tier model can't express sub-tier
   introduction versions). Revised Phase 3 (filer output) + Phase 4 (tracker
-  lifecycle). See the Phase 6 build record below + the `server-upgrade-phase6`
-  decision in [`decisions.md`](../decisions.md) (supersedes the per-finding-default
-  part of `server-upgrade-issue-filing`).
+  lifecycle). See the Phase 6 build record below + [ADR 0011](../adr/0011-server-upgrade-phase6.md)
+  (supersedes the per-finding-default part of [ADR 0008](../adr/0008-server-upgrade-issue-filing.md)).
 
 ## Phase 1 — implementation notes (built; kept as the build record)
 

@@ -26,6 +26,6 @@ Architecturally-significant files (tend to need doc updates):
 - [ ] **Architecture doc** updated if a system's *shape* or *why* changed → `docs/architecture/<topic>.md`
 - [ ] **`docs/dev/` how-to** updated if a workflow / recipe changed (adding a setting, writing a migration, etc.)
 - [ ] **Subdir `CLAUDE.md`** updated if a per-area rule / convention changed
-- [ ] **`docs/decisions.md`** entry added if a non-obvious design choice was made
+- [ ] **`docs/adr/`** ADR added if an architectural / hard-to-reverse / cross-component decision was made (sub-architectural choice → **`docs/decisions.md`** note)
 - [ ] **`docs/architecture/tech-debt.md`** entry removed if this PR fixes a listed item, or added if this PR introduces new debt or defers a follow-up
 - [ ] None — this PR doesn't change any of the above

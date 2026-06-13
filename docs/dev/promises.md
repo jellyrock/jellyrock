@@ -18,8 +18,7 @@ model (and how it layers over the task pool), see [`async.md`](../architecture/a
 
 > **The one-sentence rule:** on the **render thread**, prefer `fetchAsync(...).then(...)`; in a
 > **Task thread**, keep using blocking `fetchRes` / `fetchJson` for linear/branching control flow.
-> The full rationale is decision `promise-native-interface-fetchres-exception` in
-> [`docs/decisions.md`](../decisions.md).
+> The full rationale is [ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md).
 
 ## The canonical call shape
 
