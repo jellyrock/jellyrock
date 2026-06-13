@@ -70,6 +70,11 @@ goal is transparency and human accountability, not to discourage tooling.
 
 ## Code of conduct
 
-Be respectful and constructive. Harassment, personal attacks, and discriminatory
-language are not welcome here. Maintainers may remove comments, commits, or
-contributions that don't meet this standard, and may ban repeat offenders.
+This project follows a [Code of Conduct](CODE_OF_CONDUCT.md) (adapted from the
+Contributor Covenant). By participating, you're expected to uphold it. Please
+report unacceptable behavior as described there.
+
+## Security
+
+Found a vulnerability? Please don't open a public issue — follow the
+[Security Policy](SECURITY.md) to report it privately.

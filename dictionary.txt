@@ -447,6 +447,7 @@ sideloaded
 sideloads
 signals-schema-invalid
 slow-decay
+socio-economic
 solo-ish
 sortable
 splashscreen
