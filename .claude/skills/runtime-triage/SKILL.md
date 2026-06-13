@@ -51,7 +51,7 @@ If multiple match, pick the most specific. State the category once, briefly. If 
 
 ## Step 3 — Identify probable area
 
-Map the failure path or symbol to a JellyRock area. Use the same area map as `/issue-triage` (Step 4 of [`issue-triage/SKILL.md`](../issue-triage/SKILL.md)):
+Map the failure path or symbol to a JellyRock area. Use the same area map as `/issue-triage`'s "Identify probable area" step ([`issue-triage/SKILL.md`](../issue-triage/SKILL.md)):
 
 | Keywords / paths in the log | Probable area |
 |---|---|

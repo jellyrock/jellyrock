@@ -122,7 +122,7 @@ If still ambiguous, classify as `unknown` — the investigator will sort it out.
 
 The failed step often points at the area:
 
-- `lint:bs` / `validate` / `build` failures: the BSC error names file:line. The file path → area mapping is the same as `/runtime-triage`'s Step 3 (uses `pkg:/components/...` or `pkg:/source/...`).
+- `lint:bs` / `validate` / `build` failures: the BSC error names file:line. The file path → area mapping is the same as `/runtime-triage`'s "Identify probable area" step (uses `pkg:/components/...` or `pkg:/source/...`).
 - `lint:docs` failures: the validator's stdout names the broken doc + path.
 - `device-test-fail`: the Rooibos output names the test file (`tests/source/unit/<area>/...`).
 - `docs-stale-blocking`: names the stale architecture doc.
