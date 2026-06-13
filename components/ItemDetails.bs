@@ -191,12 +191,12 @@ sub init()
 
   ' #550 sgRouter: ItemDetails owns its own in-screen navigation AND its own action
   ' buttons now (the factory that used to wire these to main.bs's m.port is gone, and
-  ' Phase 4 removed the transitional relay). Extras-grid selections (cast / related
-  ' items) navigate to their route; goTo* buttons navigate to the linked item;
-  ' play/resume/watched/favorite/delete/record/watchChannel/refresh are all handled in
-  ' onDetailNavButton. The remaining task-based playback launches (trailer / shuffle /
-  ' instant-mix) are relocated to the QueueManager launch path in the next Phase-4 step;
-  ' until then their buttons are inert (the relay that fed main.bs's god-loop is gone).
+  ' Phase 4 removed the transitional relay + the god-loop button branches). Extras-grid
+  ' selections (cast / related items) navigate to their route; goTo* buttons navigate to
+  ' the linked item; every action button — play/resume (single + playAll), trailer /
+  ' shuffle / instant-mix / slideshow / view-photo, watched / favorite / delete / record /
+  ' watchChannel / refresh — is handled in onDetailNavButton (task-based launches dispatch
+  ' through the QueueManager launch path).
   m.buttonGrp.observeField("buttonSelected", "onDetailNavButton")
   m.extrasGrid.observeField("selectedItem", "onExtrasItemSelected")
 
@@ -236,8 +236,9 @@ end sub
 ' onScreenShown: Callback when view is presented on screen
 sub onScreenShown()
   ' #550 sgRouter: on first mount, self-load from the route params (/details/:type/:id).
-  ' The router creates this view, so there is no factory to set itemId — we read it
-  ' from m.top.route here. Detail→detail (allowReuse) goes through onRouteUpdate.
+  ' The router creates this view, so there is no factory to set itemId — we read it from
+  ' m.top.route here. The details route is keepAlive with NO allowReuse, so every
+  ' detail→detail navigation creates a fresh ItemDetails (there is no in-place reuse path).
   if not isValidAndNotEmpty(m.top.itemId)
     loadFromRoute(m.top.route)
   end if
@@ -296,19 +297,6 @@ sub loadFromRoute(route as object)
   m.top.itemId = params.id
 end sub
 
-' Router: detail→detail navigation (allowReuse) reuses this view with new params
-' instead of creating a fresh one — reload from the new route. The reuse path does
-' NOT call onScreenShown/handleFocus (focus would stay on the extras row the user
-' selected from), so flag a pending focus move that onItemContentChanged applies once
-' the new item's buttons are rebuilt.
-function onRouteUpdate(event = {} as object) as dynamic
-  if isValid(event) and isValid(event.newRoute)
-    m.pendingRouteFocus = true
-    loadFromRoute(event.newRoute)
-  end if
-  return promises.resolve(invalid)
-end function
-
 ' Extras grid (cast / related / next-up) selection → navigate to its route, passing
 ' the rich node as context. Non-navigable items fall through to playback (quickPlayNode).
 sub onExtrasItemSelected(msg)
@@ -329,9 +317,10 @@ sub onQuickPlayLaunch(msg)
   if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
 end sub
 
-' Detail→detail nav buttons (goToSeries / goToAlbum / goToArtist / goToChannel).
-' Playback / dialog buttons on the same node are handled by main.bs (which also
-' observes this buttons node); this handler ignores them.
+' #550 sgRouter (Phase 4): single handler for every button on this detail's button group.
+' Detail→detail nav (goToSeries / goToAlbum / goToArtist / goToChannel) navigates the router;
+' playback buttons launch through the QueueManager / the play route; the rest run their
+' render-thread action directly. (Was split between this handler and the main.bs god-loop.)
 sub onDetailNavButton(msg)
   buttons = msg.getRoSGNode()
   btn = buttons.getChild(msg.getData())
@@ -356,19 +345,52 @@ sub onDetailNavButton(msg)
       sgrouter.navigateTo({ name: "details", params: { type: "TvChannel", id: item.channelId } })
     end if
   else if btn.id = "playButton"
-    ' #550 sgRouter (Phase 4): route playback from the view itself. Play always
-    ' starts from the beginning (Resume handles resume). Multi-item playAll types
-    ' (Series/Season/BoxSet/...) still go through the god-loop QuickPlayTask path.
-    if not isPlayAllType(item.type)
+    ' #550 sgRouter (Phase 4): route playback from the view itself. Play always starts
+    ' from the beginning (Resume handles resume). Multi-item playAll types
+    ' (Series/Season/BoxSet/MusicArtist/MusicAlbum/Playlist) expand into a queue via a
+    ' QuickPlayTask owned by the QueueManager (which then routes to the play view); single
+    ' items build their queue inline.
+    if isPlayAllType(item.type)
+      startLoadingSpinner()
+      m.global.queueManager.callFunc("launchQuickPlayAction", { action: "playAll" + item.type, id: item.id, seriesId: item.seriesId })
+    else
       startPlayFromDetail(0)
     end if
   else if btn.id = "resumeButton"
-    if not isPlayAllType(item.type)
+    ' Series resume = the next-up episode (a single item). Other resumable types resume
+    ' the item itself from its saved position. (Non-Series playAll types have no resume
+    ' button, so they're intentionally unhandled here.)
+    if item.type = "Series"
+      resumeSeriesNextUp()
+    else if not isPlayAllType(item.type)
       resumeTicks = 0&
       if isValid(item.playbackPositionTicks) and item.playbackPositionTicks > 0
         resumeTicks = item.playbackPositionTicks
       end if
       startPlayFromDetail(resumeTicks)
+    end if
+  else if btn.id = "trailerButton"
+    ' #550 sgRouter (Phase 4): play this item's trailer(s) via the QueueManager task path
+    ' (was god-loop, which passed the screen node id by mistake — use itemContent.id).
+    startLoadingSpinner()
+    m.global.queueManager.callFunc("launchQuickPlayAction", { action: "loadTrailers", id: item.id })
+  else if btn.id = "instantMixButton"
+    ' #550 sgRouter (Phase 4): build an instant mix queue from this item (was god-loop).
+    if isValidAndNotEmpty(item.id)
+      startLoadingSpinner()
+      m.global.queueManager.callFunc("launchQuickPlayAction", { action: "instantMix", id: item.id })
+    end if
+  else if btn.id = "shuffleButton"
+    onShuffleButtonPressed(item)
+  else if btn.id = "viewPhotoButton"
+    ' #550 sgRouter (Phase 4): open a single Photo in the viewer (was god-loop). launchItem
+    ' routes the "photo" type to quickplay.photo; PhotoDetails stops the spinner on mount.
+    m.global.queueManager.callFunc("launchItem", item)
+  else if btn.id = "slideshowButton"
+    ' #550 sgRouter (Phase 4): sequential PhotoAlbum slideshow (was god-loop).
+    if isValidAndNotEmpty(item.id)
+      startLoadingSpinner()
+      m.global.queueManager.callFunc("launchPhotoAlbum", false, item.id)
     end if
   else if btn.id = "favoriteButton"
     ' #550 sgRouter (Phase 4): the favorite toggle is a render-thread method already on
@@ -532,6 +554,30 @@ sub onWatchChannelButtonPressed(item as object)
     routeId = item.channelId
   end if
   launchQueueItemToPlay(queueItem, routeType, routeId)
+end sub
+
+' #550 sgRouter (Phase 4): Shuffle button. Routes by item type so new types can be added.
+' PhotoAlbum launches a random slideshow; everything else resolves a randomized item set via
+' GetShuffleItemsTask on the QueueManager (was god-loop + the main.bs shuffleItems handler).
+sub onShuffleButtonPressed(item as object)
+  if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
+  startLoadingSpinner()
+  if item.type = "PhotoAlbum"
+    m.global.queueManager.callFunc("launchPhotoAlbum", true, item.id)
+  else
+    m.global.queueManager.callFunc("launchShuffle", { type: item.type, id: item.id, seriesId: item.seriesId })
+  end if
+end sub
+
+' #550 sgRouter (Phase 4): Series Resume plays the next-up episode (a single item) from its
+' saved position, via the play route (was god-loop's resumeButton Series branch).
+sub resumeSeriesNextUp()
+  nextEp = m.top.nextUpEpisode
+  if not (isValid(nextEp) and isValidAndNotEmpty(nextEp.id)) then return
+  queueItem = nodeHelpers.createQueueItem(nextEp)
+  if not isValid(queueItem) then return
+  queueItem.startingPoint = nextEp.playbackPositionTicks
+  launchQueueItemToPlay(queueItem, "Episode", nextEp.id)
 end sub
 
 ' #550 sgRouter (Phase 4): true for item types whose Play builds a multi-item queue
@@ -2253,14 +2299,6 @@ sub onItemContentChanged()
     setDateAdded(item)
 
     setupButtons(item)
-
-    ' #550 sgRouter: a detail→detail route update reused this view; now that the new
-    ' item's buttons exist, move focus onto them (the reuse path skipped onScreenShown).
-    if m.pendingRouteFocus = true
-      m.pendingRouteFocus = false
-      m.top.lastFocus = invalid
-      m.buttonGrp.setFocus(true)
-    end if
 
     ' Person Shuffle: on refresh (extras already loaded), the extras chain won't re-fire
     ' because only refreshItemDetailsData was toggled. Resolve the loading placeholder

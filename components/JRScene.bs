@@ -278,6 +278,11 @@ sub startRouter()
   m.global.unobserveField("playbackLaunchRequest")
   m.global.observeField("playbackLaunchRequest", "onPlaybackLaunchRequested")
 
+  ' #550 sgRouter (Phase 4): photo viewer launch signal (same no-router-chain reason as
+  ' playbackLaunchRequest above). PhotoDetails reads the AA as route context on mount.
+  m.global.unobserveField("photoLaunchRequest")
+  m.global.observeField("photoLaunchRequest", "onPhotoLaunchRequested")
+
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
   sgrouter.addRoutes([
     { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true }
@@ -292,6 +297,12 @@ sub startRouter()
     { pattern: "/library/:id", name: "library", component: "BaseGridView", keepAlive: { enabled: true } }
     { pattern: "/search", name: "search", component: "SearchResults", keepAlive: { enabled: true } }
     { pattern: "/settings", name: "settings", component: "Settings" }
+    ' Photo viewer / slideshow. NO keepAlive: a fresh PhotoDetails per launch (the launch
+    ' data arrives as route context), destroyed on goBack — the router equivalent of the old
+    ' SceneManager pushScene/popScene. It sets isOverhangVisible=false, so the overhang hides
+    ' while it's the active routed view, and the keepAlive library/detail beneath it suspends
+    ' (focus saved) and resumes (focus restored) on back, exactly like the video player.
+    { pattern: "/photo", name: "photo", component: "PhotoDetails" }
   ])
 
   ' Navigate to Home, then hand it remote focus once it is mounted + visible.
@@ -310,6 +321,15 @@ sub onPlaybackLaunchRequested()
   itemType = req.type
   if not isValidAndNotEmpty(itemType) then itemType = "video"
   sgrouter.navigateTo("/details/" + itemType + "/" + req.id + "/play")
+end sub
+
+' #550 sgRouter (Phase 4): a photo launcher (quickplay.photo / QueueManager slideshow output)
+' signalled a photo-viewer launch. Carry the launch AA through as route context — PhotoDetails
+' reads itemsNode/itemsArray + slideshow flags + start index from it on mount.
+sub onPhotoLaunchRequested()
+  req = m.global.photoLaunchRequest
+  if not isValid(req) then return
+  sgrouter.navigateTo("/photo", { context: req })
 end sub
 
 ' Render-thread sgRouter.goBack() wrapper for main.bs, which runs on the main thread
@@ -339,6 +359,7 @@ sub resetRouter()
   end if
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
+  m.global.unobserveField("photoLaunchRequest")
   sgrouter.destroy()
   m.global.activeRoutedView = invalid
   if isValid(m.overhang) then m.overhang.visible = false

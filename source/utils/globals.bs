@@ -120,6 +120,13 @@ sub setGlobalNodes()
   ' alwaysNotify so re-launching the same item (e.g. replay) re-fires the observer.
   m.global.addField("playbackLaunchRequest", "assocarray", true)
 
+  ' #550 sgRouter (Phase 4): photo viewer launch signal. The photo launchers (quickplay.photo
+  ' for a single photo, QueueManager.onQuickPlayTaskOutput for a slideshow) run with no router
+  ' chain, so they set this AA ({ itemsNode | itemsArray, itemIndex, isSlideshow, isRandom })
+  ' and JRScene.onPhotoLaunchRequested turns it into a navigateTo("/photo") with the AA as
+  ' route context. alwaysNotify so re-launching the same photo re-fires the observer.
+  m.global.addField("photoLaunchRequest", "assocarray", true)
+
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
 
