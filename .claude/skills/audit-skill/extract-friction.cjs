@@ -13,7 +13,7 @@
 //   1. Behavioral / action-trace (`behavioralTrace`) — the ordered sequence of
 //      effects the run produced (tool calls, edits, sub-agent spawns, in
 //      transcript order) + a per-path file-touch summary + tool/bash-verb
-//      histograms. The backbone of /verify-skill's two-version differential.
+//      histograms (dimension 1 of skill-evaluation.md).
 //   2. Friction findings (the detectors below)
 //   3. Performance — clock time, token usage per model, cache-hit ratio,
 //      cost estimate
@@ -28,7 +28,7 @@
 // action-trace into skill-specific concepts (gates / routing / stop-points):
 // the extractor emits the raw trace, the model interprets it.
 //
-// Detectors (all repo-agnostic in this portable core):
+// Detectors (all repo-agnostic):
 //     repeated-command       same Bash command in two consecutive tool_use
 //                            calls
 //     failed-recovery        is_error: true tool_result followed within 3
@@ -42,12 +42,11 @@
 //                            trust your own repo files — they shouldn't fire a
 //                            permission prompt mid-skill.
 //
-// Consumer rule detectors (the per-consumer layer that maps your repo's
-// CLAUDE.md / AGENTS.md hard rules to mechanical findings) plug into the
-// CONSUMER_RULE_DETECTORS seam near the bottom of this file. The portable
-// core ships with that array EMPTY — a consumer with no repo-specific rule
-// detectors runs the friction + perf + model-fit + accuracy audit alone.
-// See the audit-skill SKILL.md (Step 3e) and rules/skill-design.md.
+// Repo-specific rule detectors (mapping this repo's CLAUDE.md / AGENTS.md
+// hard rules to mechanical findings) plug into the CONSUMER_RULE_DETECTORS
+// seam near the bottom of this file. That array ships EMPTY — with no
+// repo-specific rule detectors the friction + perf + model-fit + accuracy
+// audit runs alone.
 //
 // Exit codes:
 //     0  findings produced (zero is valid)
@@ -181,7 +180,7 @@ function defaultTranscriptsDir() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Consumer (JellyRock) bash/edit pattern matchers — feed the repo-specific
+// JellyRock-specific bash/edit pattern matchers — feed the repo-specific
 // rule detectors registered in CONSUMER_RULE_DETECTORS below.
 // ──────────────────────────────────────────────────────────────────────
 
@@ -532,7 +531,7 @@ const READONLY_LOAD_TURN_CEILING = 35;
 // a read-only skill's own steps. `git commit` / `git push` is the universal
 // portable signal; read-only subcommands (git log/status/diff) are excluded so
 // a read-only skill's own state-check bash never triggers a spurious cut.
-// CONSUMER SEAM: if your repo's skills deploy/apply infrastructure, add those
+// If this repo's skills deploy/apply infrastructure, add those
 // mutating patterns here (e.g. a deploy wrapper, `ansible-playbook`,
 // `docker[-\\s]compose (up|down|…)`, `systemctl (start|stop|…)`, `docker run`)
 // so the first-run cut lands at the right point — read-only state-checks
@@ -1005,8 +1004,8 @@ function humanDuration(sec) {
 
 // Repo-internal path prefixes — paths starting with these (or `./` +
 // these) are project-owned and should never trigger a permission prompt.
-// The defaults below are near-universal source dirs; CONSUMER SEAM: add your
-// repo's own top-level dirs (e.g. `ansible/`, `compose/`, `src/`, `lib/`).
+// The defaults below are near-universal source dirs; add this repo's own
+// top-level dirs (e.g. `ansible/`, `compose/`, `src/`, `lib/`).
 const REPO_INTERNAL_PREFIXES = [
   '.claude/',
   'scripts/',
@@ -1133,11 +1132,11 @@ function detectPermissionGap(turns, range, allowlist) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Consumer rule detectors (per-consumer seam)
+// Repo-specific rule detectors
 //
-// The portable detectors above flag *process* friction (repeated-command,
+// The repo-agnostic detectors above flag *process* friction (repeated-command,
 // failed-recovery, confusion-marker, permission-gap). THIS section is the
-// per-consumer layer: one detector per hard rule in your repo's CLAUDE.md /
+// repo-specific layer: one detector per hard rule in this repo's CLAUDE.md /
 // AGENTS.md that you want mechanically caught. Each detector is a function
 //   (turns, range, cwd) => findings[]
 // where every finding carries a populated `ruleViolated` { anchor, summary }
@@ -1145,11 +1144,10 @@ function detectPermissionGap(turns, range, allowlist) {
 // broke a documented rule" (the auditor still confirms; a grep'd or quoted
 // string is not an invocation, so tune detectors to favour recall).
 //
-// Register your detectors in CONSUMER_RULE_DETECTORS below. The array is EMPTY
-// in this portable template: a consumer with no repo-specific rule detectors
-// runs the portable friction + perf + model-fit + accuracy audit alone, and
-// the extractor is fully runnable as-is. See the audit-skill SKILL.md
-// (Step 3e) and rules/skill-design.md for how to author one.
+// Register detectors in CONSUMER_RULE_DETECTORS below. The array is EMPTY by
+// default: with no repo-specific rule detectors the extractor runs the
+// repo-agnostic friction + perf + model-fit + accuracy audit alone, and is
+// fully runnable as-is.
 //
 // Example shape (copy, rename, adapt — maps one CLAUDE.md hard rule to a
 // finding; this is the same shape a reference consumer uses for its raw-IP /
@@ -1574,8 +1572,8 @@ function profileSummary({
 // Emits the MECHANICAL backbone of "what the run actually did": the ordered
 // sequence of effects (tool calls, edits, sub-agent spawns, in transcript
 // order), a per-path file-touch summary, and histograms of tools + bash verbs.
-// This is the dimension /verify-skill diffs across two versions of a skill to
-// answer "did behavior drift outside the intended change?".
+// This is dimension 1 of skill-evaluation.md — the answer to "what did the
+// run actually do?".
 //
 // What this DELIBERATELY does NOT do: label the trace into skill-specific
 // concepts — "this step is a gate", "this is the routing branch it took",
@@ -1896,7 +1894,7 @@ function main(argv) {
       const recoverFindings = detectFailedRecovery(turns, effRange);
       const confuseFindings = detectConfusion(turns, effRange, args.confusionMinDensity);
       const permGapFindings = detectPermissionGap(turns, effRange, allowlist);
-      // Consumer rule detectors (per-consumer seam; empty in the portable core)
+      // Repo-specific rule detectors (empty by default)
       const consumerRuleFindings = CONSUMER_RULE_DETECTORS.flatMap((detector) =>
         detector(turns, effRange, cwd),
       );

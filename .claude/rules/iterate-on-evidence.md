@@ -6,7 +6,7 @@ Changes to the workflow — SKILL.md bodies, the Contract+Implementation convent
 
 ## Why
 
-The workflow is a living artifact that touches every session across multiple repos. Drift in any direction (over-engineered, under-specified, mechanism where convention would do, convention where mechanism is needed) compounds across hundreds of invocations. The only signal that survives selection-bias is **evidence**: what actually happened, in what session, with what cost. (The canonical case — ADR 0008 replacing a cohesive-on-paper symlink/hook design once a per-component pass showed the mechanism didn't justify its cost — is recorded in that ADR.)
+The workflow is a living artifact that touches every session across multiple repos. Drift in any direction (over-engineered, under-specified, mechanism where convention would do, convention where mechanism is needed) compounds across hundreds of invocations. The only signal that survives selection-bias is **evidence**: what actually happened, in what session, with what cost.
 
 ## How to apply
 
@@ -31,5 +31,3 @@ Not every proactive change is speculative. A change that serves a *standing, alw
 The recurring misfire — the **defer-clause inversion** — is citing "no friction story yet" to block a fix for a *known-shaped, predictable* error class. **The test:** if you can describe the failure's shape and roughly when it will hit (an 80%-knowable edge case, not a vague "someday"), the prediction **is** the evidence — act on it. **The tell:** you find yourself *naming* the likely failure and then shrugging it off — that's the minimalism brake wearing a discipline costume. Default to *anticipate-and-act* on a clearly-shaped failure; reserve "defer until friction" for genuinely speculative features.
 
 **The inversion also fires in the *present tense* — and this is the form that slips the net most easily.** The test above reads future ("when it *will* hit"), which tempts the rationalization "but nothing's broken *yet*." That rationalization is false when the defect is **already on disk**: copy-pasted boilerplate across N files that will drift, a duplication you can point at right now, a known bug sitting in the tree. An already-materialized defect needs **no future friction story — it *is* the friction.** If you can point at it in the code, the defect is the evidence; fix it now, right-sized per [`isolate-the-fix.md`](isolate-the-fix.md). "Wait for a divergence event" applied to duplication that already exists is the inversion wearing its most convincing costume.
-
-This rule is dogfooded by `/audit-workflow` — its "promote forward, fork, or ignore?" prompt is structured around evidence, not preference.
