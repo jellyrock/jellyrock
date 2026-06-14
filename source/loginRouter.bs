@@ -1,0 +1,403 @@
+import "pkg:/source/api/ApiClient.bs"
+
+' ===========================================================================
+' #550 sgRouter (Phase 5) — pre-login coordinator
+'
+' Replaces the goto-label state machine + three blocking wait() loops that used to
+' live in showScenes.bs's LoginFlow(). The pre-login screens (SetServerScreen /
+' UserSelect / LoginScene) are now self-contained ROUTED views: they own their UI
+' and emit a high-level INTENT (m.scene.preLoginIntent = "<action>") with the payload
+' on their own top fields. main.bs observes preLoginIntent on the main thread and
+' dispatches here.
+'
+' This coordinator is MAIN-THREAD code (it shares Main()'s `m`, the established
+' source/ pattern). The bootstrap API calls it makes (server connect, AboutMe,
+' getToken, GetPublicUsers) are SYNCHRONOUS and block the main thread — which is
+' permitted (sgRouter runs on the render thread, which may not block). Each call is
+' isolated behind one step so a future Phase-7 sync->async swap is mechanical.
+'
+' It drives navigation by callFunc'ing JRScene's render-thread routerNavigate; it
+' never touches the sgrouter namespace directly (that resolves on the render thread).
+' ===========================================================================
+
+' Cold-start (and session-reset) fast path. Runs the saved-server resolution + saved-
+' token validation WITHOUT showing any interactive UI, and returns a decision telling
+' main.bs which route to bring the router up on (or that we are already logged in).
+' Mirrors LoginFlow()'s startLogin: server block + the saved-active-user branch.
+function beginLogin() as object
+  ' === Server resolution (was LoginFlow startLogin:) ===
+  serverUrl = getSetting("server")
+  startOver = true
+  if isValid(serverUrl)
+    print "Previous server connection saved to registry"
+    ' Pass originalUrl to preserve the user's input for re-discovery on each connection.
+    startOver = not server.UpdateURL(serverUrl, serverUrl)
+    if startOver then print "Could not connect to previously saved server."
+  else
+    print "No previous server connection saved to registry"
+  end if
+
+  invalidServer = true
+  if not startOver
+    m.scene.isLoading = true
+    invalidServer = ServerInfo().Error
+    m.scene.isLoading = false
+  end if
+
+  if startOver or invalidServer
+    ' Need to pick a server interactively.
+    return { status: "server", route: "/server" }
+  end if
+
+  ' Server is valid — resolve the user.
+  return resolveUser()
+end function
+
+' Decide the user step given a valid server. Returns one of:
+'   { status: "success" }                              — already authenticated (fast path)
+'   { status: "users", route: "/users", users: [...] } — show the user picker
+'   { status: "login", route: "/login", username: "" } — go straight to manual sign-in
+' Mirrors LoginFlow()'s user section (active-user branch + no-active-user branch).
+function resolveUser() as object
+  localUser = m.global.user
+  activeUser = getSetting("active_user")
+
+  if not isValid(activeUser)
+    ' No active user — build the public + saved user list and decide.
+    print "No active user found in registry"
+    users = buildPublicUserList()
+    m.loginCtx = { hasPublicUsers: users.count() > 0 }
+    if users.count() > 0
+      return { status: "users", route: "/users", users: users }
+    end if
+    ' No users to pick — go straight to manual sign-in.
+    return { status: "login", route: "/login", username: "" }
+  end if
+
+  ' Active user present — try the saved token, then a no-password login. All sync.
+  print "Active user found in registry"
+  localUser.id = activeUser
+  myUsername = getUserSetting("username")
+  myAuthToken = getUserSetting("authToken")
+  myPrimaryImageTag = getUserSetting("primaryImageTag")
+
+  if isValid(myAuthToken) and isValid(myUsername)
+    print "Auth token found in registry"
+    localUser.authToken = myAuthToken
+    localUser.name = myUsername
+    if isValidAndNotEmpty(myPrimaryImageTag) then localUser.primaryImageTag = myPrimaryImageTag
+
+    print "Attempting to use API with auth token"
+    currentUser = AboutMe()
+    if not isValid(currentUser)
+      print "Auth token is no longer valid - attempting no-password login"
+      userData = getToken(myUsername, "")
+      if isValid(userData)
+        print "login success!"
+        user.Login(userData, true)
+        return { status: "success" }
+      end if
+      print "Auth failed. Deleting token and restarting user resolution"
+      unsetUserSetting("authToken")
+      unsetUserSetting("username")
+      if isValid(myPrimaryImageTag) then unsetUserSetting("primaryImageTag")
+      unsetSetting("active_user")
+      user.Logout()
+      ' active_user is now unset → recursion lands in the user-picker branch (no re-loop).
+      return resolveUser()
+    else
+      print "Success! Auth token is still valid"
+      user.Login(currentUser, true)
+    end if
+  else
+    print "No auth token found in registry"
+  end if
+
+  ' Final guard (was LoginFlow 223-228): if we still have no usable session, restart.
+  if not isValid(localUser.id) or not isValid(localUser.authToken)
+    print "Login incomplete, restarting user resolution"
+    unsetSetting("active_user")
+    user.Logout()
+    return resolveUser()
+  end if
+
+  return { status: "success" }
+end function
+
+' Build the public + saved user list for the picker. Public users from the server,
+' plus saved users for this server id not already in the public list. Mirrors
+' LoginFlow 60-104. Returns an array of PublicUserData nodes.
+function buildPublicUserList() as object
+  publicUsers = GetPublicUsers()
+  numPubUsers = 0
+  if isValid(publicUsers) then numPubUsers = publicUsers.count()
+
+  savedUsers = getSavedUsers()
+  numSavedUsers = savedUsers.count()
+
+  publicUsersNodes = []
+  publicUserIds = []
+
+  if numPubUsers > 0
+    for each item in publicUsers
+      userData = CreateObject("roSGNode", "PublicUserData")
+      userData.id = item.Id
+      userData.name = item.Name
+      if isValidAndNotEmpty(item.PrimaryImageTag)
+        userData.ImageURL = UserImageURL(userData.id, { "tag": item.PrimaryImageTag })
+      end if
+      publicUsersNodes.push(userData)
+      publicUserIds.push(userData.id)
+    end for
+  end if
+
+  if numSavedUsers > 0
+    for each savedUser in savedUsers
+      if isValid(savedUser.serverId) and savedUser.serverId = m.global.server.id
+        ' only show unique userids on screen
+        if not arrayHasValue(publicUserIds, savedUser.Id)
+          userData = CreateObject("roSGNode", "PublicUserData")
+          userData.id = savedUser.Id
+          if isValid(savedUser.username) then userData.name = savedUser.username
+          if isValidAndNotEmpty(savedUser.primaryImageTag)
+            userData.ImageURL = UserImageURL(userData.id, { "tag": savedUser.primaryImageTag })
+          end if
+          publicUsersNodes.push(userData)
+        end if
+      end if
+    end for
+  end if
+
+  return publicUsersNodes
+end function
+
+' Enter (or re-enter) the login flow. Called at cold start AND on every session reset
+' (Change Server / User / Sign Out). Re-resolves the pre-login locale first — without
+' this, a changed global sign-in language would only apply after a full app restart, and
+' the sign-in screens would render in the just-signed-out user's language rather than the
+' device-wide default (isPostLogin defaults false → pre-login cascade).
+sub reenterLogin()
+  loadTranslations(resolveTranslationLocale())
+  enterDecision(beginLogin())
+end sub
+
+' Bring the router up on (or navigate it to) the route the decision names. Shared by
+' cold start, session reset, and the post-server-connect step.
+sub enterDecision(decision as object)
+  if decision.status = "success"
+    finishLogin()
+  else if decision.status = "server"
+    routerNav("/server", {})
+  else if decision.status = "users"
+    routerNav("/users", { users: decision.users })
+  else if decision.status = "login"
+    routerNav("/login", { username: decision.username })
+  end if
+end sub
+
+' ---------------------------------------------------------------------------
+' Intent dispatch — called from main.bs's event loop when a pre-login view sets
+' m.scene.preLoginIntent. The payload is read off the active routed view.
+' ---------------------------------------------------------------------------
+sub handlePreLoginIntent(action as string)
+  if action = "serverSubmitted"
+    onServerSubmitted()
+  else if action = "userSelected"
+    onUserSelected()
+  else if action = "manualLogin"
+    routerNav("/login", { username: "" })
+  else if action = "userBack"
+    onUserBack()
+  else if action = "quickConnectRequested"
+    onQuickConnectRequested()
+  else if action = "quickConnectComplete"
+    ' Quick Connect completed the sign-in in-flow (user state already on m.global.user).
+    onQuickConnectDialogClosed()
+    finishLogin()
+  else if action = "credentialsSubmitted"
+    onCredentialsSubmitted()
+  else if action = "loginBack"
+    onLoginBack()
+  end if
+end sub
+
+' Server URL submitted from SetServerScreen. Mirrors CreateServerGroup's submit handler.
+sub onServerSubmitted()
+  view = getActiveView()
+  if not isValid(view) then return
+  originalUrl = view.enteredUrl
+
+  ' previousServerUrl: the canonical URL before this connect attempt, used to detect a
+  ' server change and reset stale username/password (CreateServerGroup line 333/398).
+  previousServerUrl = m.global.server.serverUrl
+
+  m.scene.isLoading = true
+  serverUrl = inferServerUrl(originalUrl)
+  isConnected = server.UpdateURL(serverUrl, originalUrl)
+  serverInfoResult = invalid
+  if isConnected
+    serverInfoResult = ServerInfo()
+    canonicalUrl = m.global.server.serverUrl
+    if previousServerUrl <> canonicalUrl
+      setSetting("username", "")
+      setSetting("password", "")
+    end if
+  end if
+  m.scene.isLoading = false
+
+  if isConnected = false or not isValid(serverInfoResult) or (isValid(serverInfoResult.Error) and serverInfoResult.Error)
+    print "Server not found, is it online?"
+    view.errorMessage = translate(translationKeys.MessageServerNotFoundIsItOnline)
+    SignOut(false)
+    return
+  end if
+
+  ' Connected — persist to the picker list, then resolve the user step and navigate.
+  SaveServerList()
+  enterDecision(resolveUser())
+end sub
+
+' A public/saved user was picked in UserSelect. Mirrors LoginFlow 120-163.
+sub onUserSelected()
+  view = getActiveView()
+  if not isValid(view) then return
+  userSelected = view.selectedUserName
+  userId = view.selectedUserId
+  if not isValidAndNotEmpty(userSelected) then return
+
+  startLoadingSpinner()
+  localUser = m.global.user
+  localUser.name = userSelected
+  localUser.id = userId
+
+  ' Try a saved auth token for this user.
+  myToken = getUserSetting("authToken")
+  if isValid(myToken)
+    print "Auth token found in registry for selected user"
+    localUser.authToken = myToken
+    currentUser = AboutMe()
+    if not isValid(currentUser)
+      print "Auth token is no longer valid - deleting token"
+      unsetUserSetting("authToken")
+      unsetUserSetting("username")
+      unsetUserSetting("primaryImageTag")
+    else
+      print "Success! Auth token is still valid"
+      user.Login(currentUser, true)
+      finishLogin()
+      return
+    end if
+  else
+    print "No auth token found in registry for selected user"
+  end if
+
+  ' Try a no-password login.
+  print "Attempting to login with no password"
+  userData = getToken(userSelected, "")
+  if isValid(userData)
+    print "login success!"
+    user.Login(userData, true)
+    finishLogin()
+    return
+  end if
+
+  ' Password required — go to manual sign-in with the username prefilled.
+  print "Auth failed. Password required"
+  stopLoadingSpinner()
+  routerNav("/login", { username: userSelected })
+end sub
+
+' Back from UserSelect → change server. Mirrors LoginFlow 114-119.
+sub onUserBack()
+  server.Delete()
+  unsetSetting("server")
+  routerNav("/server", {})
+end sub
+
+' Quick Connect button pressed in UserSelect. initQuickConnect() is sync HTTP, so it
+' runs here on the main thread (not in the render-thread view). On success, create the
+' self-contained QuickConnectDialog (it polls + authenticates + prompts to save creds
+' on the render thread) and show it; it sets isAuthenticated=true on success, which the
+' main loop turns into the quickConnectComplete intent. Mirrors CreateUserSelectGroup
+' 471-491.
+sub onQuickConnectRequested()
+  json = initQuickConnect()
+  if not isValid(json)
+    m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ButtonQuickConnect), translate(translationKeys.LabelQuickConnectNotAvailable))
+    return
+  end if
+  m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
+  m.quickConnectDialog.quickConnectJson = json
+  m.quickConnectDialog.title = translate(translationKeys.ButtonQuickConnect)
+  m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code])]
+  m.quickConnectDialog.buttons = [translate(translationKeys.ButtonCancel)]
+  ' isAuthenticated only ever fires =true (after the post-auth save-credentials prompt).
+  ' main.bs observes it and dispatches the quickConnectComplete intent.
+  m.quickConnectDialog.observeField("isAuthenticated", m.port)
+  m.scene.dialog = m.quickConnectDialog
+end sub
+
+' Release the Quick Connect dialog observer once it has signalled success (or been torn
+' down). The dialog closed itself (close=true); we just drop our reference + observer.
+sub onQuickConnectDialogClosed()
+  if isValid(m.quickConnectDialog)
+    m.quickConnectDialog.unobserveField("isAuthenticated")
+    m.quickConnectDialog = invalid
+  end if
+end sub
+
+' Credentials submitted from LoginScene. Mirrors CreateSigninGroup's submit handler.
+sub onCredentialsSubmitted()
+  view = getActiveView()
+  if not isValid(view) then return
+  username = view.enteredUsername
+  password = view.enteredPassword
+  saveCreds = view.saveCredentials
+
+  startLoadingSpinner()
+  activeUser = getToken(username, password)
+  if isValid(activeUser)
+    if saveCreds = true
+      user.Login(activeUser, true)
+      setUserSetting("authToken", activeUser.token)
+      setUserSetting("username", username)
+      if isValidAndNotEmpty(activeUser.json.PrimaryImageTag)
+        setUserSetting("primaryImageTag", activeUser.json.PrimaryImageTag)
+      end if
+    else
+      user.Login(activeUser)
+    end if
+    finishLogin()
+    return
+  end if
+
+  stopLoadingSpinner()
+  print "Login attempt failed..."
+  view.alert = translate(translationKeys.ErrorLoginAttemptFailed)
+end sub
+
+' Back from LoginScene. Mirrors CreateSigninGroup back (showScenes 170-178): return to
+' the user picker if there were public users, otherwise drop back to server select.
+sub onLoginBack()
+  hasUsers = isValid(m.loginCtx) and m.loginCtx.hasPublicUsers = true
+  if hasUsers
+    routerNav("/users", { users: buildPublicUserList() })
+  else
+    server.Delete()
+    unsetSetting("server")
+    routerNav("/server", {})
+  end if
+end sub
+
+' Login complete — run the post-login bootstrap (per-user font processing) and bring up
+' Home. loadHomeScreen()/createAndShowHomeGroup() (main.bs) navigate the router to "/",
+' deferring until font download completes when UI fallback fonts are enabled.
+sub finishLogin()
+  initializeFallbackFont()
+  loadHomeScreen()
+end sub
+
+' Thin main-thread → render-thread navigation bridge.
+sub routerNav(routePath as string, context as object)
+  m.scene.callFunc("routerNavigate", routePath, context)
+end sub

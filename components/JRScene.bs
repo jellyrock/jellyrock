@@ -261,11 +261,21 @@ end function
 ' playback (pushed into `content` above the outlet) until Phases 5/6.
 ' ===========================================================================
 
-' Initialize the router and navigate to Home. Called from main.bs (main thread)
-' after LoginFlow succeeds and the SceneManager stack is cleared. Re-callable
-' after resetRouter() (sign-out → re-login): sgRouter.initialize creates a fresh
-' router when none exists on the scene.
-sub startRouter()
+' Initialize the router (outlet + routes + observers) WITHOUT navigating. Idempotent:
+' a no-op if a router already exists on the scene. Called lazily by routerNavigate
+' (main thread) so the very first navigation — pre-login OR Home — brings the router up.
+' Re-callable after resetRouter() (sign-out → re-login): sgRouter.initialize creates a
+' fresh router when none exists on the scene.
+'
+' #550 sgRouter (Phase 5): the router now hosts the FULL app — the pre-login flow
+' (/server, /users, /login) as well as the post-login content/playback routes. The
+' pre-login routes carry no canActivate guards (the redirect target /login is only
+' meaningful once it exists; AuthManager guards arrive in Phase 6). Pre-login back
+' transitions are coordinator-driven (loginRouter), not router-history-driven, because
+' cold start can enter directly at /users with no /server in history.
+sub initRouter()
+  if isValid(sgrouter.getRouter()) then return
+
   ' Register the overhang controller now that m.global.activeRoutedView exists
   ' (added in setGlobalNodes, which runs after init()). Guard against a double
   ' registration on re-login.
@@ -286,6 +296,11 @@ sub startRouter()
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
   sgrouter.addRoutes([
     { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true }
+    ' #550 sgRouter (Phase 5): pre-login flow. No flags — back is coordinator-driven and
+    ' the cleanup of these views falls out of Home's clearStackOnResolve when login completes.
+    { pattern: "/server", name: "server", component: "SetServerScreen" }
+    { pattern: "/users", name: "users", component: "UserSelect" }
+    { pattern: "/login", name: "login", component: "LoginScene" }
     { pattern: "/details/:type/:id/play", name: "play", component: "PlayerHostView" }
     ' NO allowReuse: JellyRock has always created a FRESH ItemDetails per navigation (the
     ' old SceneManager world pushScene'd a new one every time, including detail->detail).
@@ -308,9 +323,17 @@ sub startRouter()
     ' restored on back) instead of rendering over it — the same behavior as the video player.
     { pattern: "/audio", name: "audio", component: "AudioPlayerView" }
   ])
+end sub
 
-  ' Navigate to Home, then hand it remote focus once it is mounted + visible.
-  promises.chain(sgrouter.navigateTo("/")).then(sub(_result as object)
+' Navigate the router to a route, bringing the router up first if needed, then hand
+' the mounted view remote focus. Called from main.bs / loginRouter (main thread) to drive
+' BOTH the pre-login flow (/server, /users, /login) and the transition to Home ("/").
+' context is forwarded as route context (e.g. a prefilled username for /login).
+sub routerNavigate(routePath as string, context = {} as object)
+  initRouter()
+  options = {}
+  if isValidAndNotEmpty(context) then options = { context: context }
+  promises.chain(sgrouter.navigateTo(routePath, options)).then(sub(_result as object)
     sgrouter.setFocus({ focus: true })
   end sub)
 end sub

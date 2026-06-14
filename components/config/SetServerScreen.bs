@@ -1,3 +1,4 @@
+import "pkg:/source/enums/ServerAction.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
@@ -6,7 +7,10 @@ import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = new log.Logger("SetServerScreen")
-  m.top.setFocus(true)
+  ' #550 sgRouter (Phase 5): this is a routed view; the router hands it focus via the
+  ' JRScreen lifecycle bridge (handleFocus). onScanForServersComplete sets the precise
+  ' focus target (picker vs. textbox) once the SSDP scan returns.
+  m.top.isOptionsAvailable = true
 
   m.top.findNode("prompt").text = translate(translationKeys.LabelConnectToServer)
   m.top.findNode("serverPickerHint").text = translate(translationKeys.LabelPickAJellyfinServerFromThe)
@@ -21,9 +25,66 @@ sub init()
   m.buttons = m.top.findNode("buttons")
   m.buttons.callFunc("center")
 
+  ' Prefill the previously-entered server URL (was CreateServerGroup line 340-342).
+  if isValid(m.global.server.serverUrl)
+    m.top.serverUrl = m.global.server.serverUrl
+  end if
+
   m.top.observeField("serverUrl", "clearErrorMessage")
 
+  ' #550 sgRouter (Phase 5): absorbs CreateServerGroup's wiring. Submit drives the
+  ' connect via the loginRouter coordinator (serverSubmitted intent); the options
+  ' sidepanel offers "Delete Saved" for saved picker entries.
+  m.buttons.observeField("buttonSelected", "onButtonSelected")
+  setupDeleteSavedOption()
+
   ScanForServers()
+end sub
+
+' Build the "Delete Saved" options sidepanel entry (was CreateServerGroup 346-355).
+sub setupDeleteSavedOption()
+  sidepanel = m.top.findNode("options")
+  opt = CreateObject("roSGNode", "OptionsButton")
+  opt.title = translate(translationKeys.LabelDeleteSaved)
+  opt.id = ServerAction.DELETE_SAVED
+  opt.observeField("optionSelected", "onDeleteSaved")
+  sidepanel.options = [opt]
+  sidepanel.observeField("closeSidePanel", "onCloseSidePanel")
+end sub
+
+' Submit pressed → publish the entered URL and emit the serverSubmitted intent.
+' The coordinator (loginRouter.onServerSubmitted) runs the blocking connect.
+sub onButtonSelected(event as object)
+  buttonGroup = event.getRoSGNode()
+  buttonSelected = buttonGroup.getChild(event.getData())
+  if buttonSelected.id = "submit"
+    m.top.enteredUrl = m.top.serverUrl
+    m.top.getScene().preLoginIntent = "serverSubmitted"
+  end if
+end sub
+
+' Delete the focused saved server from the picker + registry (was CreateServerGroup 420-435).
+sub onDeleteSaved()
+  itemToDelete = m.serverPicker.content.getChild(m.serverPicker.itemFocused)
+  if not isValid(itemToDelete) then return
+  ' Prefer id for deletion — robust when the picker item's baseUrl differs from the
+  ' saved entry's baseUrl (e.g. SSDP HTTP item merged from an HTTPS saved entry).
+  idOrUrl = itemToDelete.id
+  if not isValidAndNotEmpty(idOrUrl)
+    idOrUrl = itemToDelete.baseUrl
+  end if
+  if isValidAndNotEmpty(idOrUrl)
+    DeleteFromServerList(idOrUrl)
+    m.serverPicker.content.removeChild(itemToDelete)
+    m.top.findNode("options").visible = false
+    m.serverPicker.setFocus(true)
+  end if
+end sub
+
+' Sidepanel closed without a selection (was CreateServerGroup 366-369).
+sub onCloseSidePanel()
+  m.top.setFocus(true)
+  m.serverPicker.setFocus(true)
 end sub
 
 sub ScanForServers()
@@ -230,6 +291,16 @@ sub onDestroy()
 
   ' Unobserve m.top observer
   m.top.unobserveField("serverUrl")
+
+  ' #550 sgRouter (Phase 5): release the submit + options sidepanel observers
+  if isValid(m.buttons) then m.buttons.unobserveField("buttonSelected")
+  sidepanel = m.top.findNode("options")
+  if isValid(sidepanel)
+    sidepanel.unobserveField("closeSidePanel")
+    for each opt in sidepanel.options
+      opt.unobserveField("optionSelected")
+    end for
+  end if
 
   ' Dialog may or may not be open — unobserve and release if present
   if isValid(m.dialog)

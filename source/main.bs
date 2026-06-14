@@ -43,36 +43,25 @@ sub Main (args as dynamic) as void
   ' setup global nodes now that the screen has been shown
   setGlobalNodes()
 
-  ' #550 sgRouter (Phase 4): session-reset bridge. Routed Home sets m.scene.userMenuAction
-  ' (change user / change server / sign out); we observe it here on the main thread and
-  ' re-enter LoginFlow via `goto appStart`. A scene field + port delivers (unlike an
-  ' m.global field + port — the delivery defect the deleted attachRoutedViewObservers relay
-  ' relied on). Registered once here (before any navigation), survives goto appStart re-entry.
+  ' #550 sgRouter: session-reset bridge. Routed Home sets m.scene.userMenuAction (change
+  ' user / change server / sign out); we observe it here on the main thread and re-enter
+  ' the login flow in place via handleMenuAction → reenterLogin (Phase 5). A scene field +
+  ' port delivers (unlike an m.global field + port — the delivery defect the deleted
+  ' attachRoutedViewObservers relay relied on). Registered once here, before any navigation.
   m.scene.observeField("userMenuAction", m.port)
   m.scene.observeField("exit", m.port)
+  ' #550 sgRouter (Phase 5): pre-login views (SetServerScreen / UserSelect / LoginScene)
+  ' set this to an intent action string; we dispatch it to the loginRouter coordinator,
+  ' which runs the blocking bootstrap API calls and drives the next navigation. Replaces
+  ' LoginFlow()'s blocking wait() loops + goto-label state machine. Registered once here.
+  m.scene.observeField("preLoginIntent", m.port)
 
-  appStart:
-  m.global.sceneManager.callFunc("clearScenes")
-  ' Re-resolve the pre-login locale on every entry to the login flow. We reach
-  ' here both at cold start AND on re-entry from Change Server / Change User /
-  ' Sign Out (which `goto appStart`). Without this re-resolve, a changed global
-  ' sign-in language would only apply after a full app restart, and the sign-in
-  ' screens would render in the just-signed-out user's language rather than the
-  ' device-wide default. isPostLogin defaults to false here → pre-login cascade.
-  loadTranslations(resolveTranslationLocale())
-  ' First thing to do is validate the ability to use the API
-  if not LoginFlow() then return
+  ' #550 sgRouter (Phase 5): stash the launch args for the cold-start deep link below.
+  m.launchArgs = args
 
-  ' remove login scenes from the stack
-  m.global.sceneManager.callFunc("clearScenes")
-
-  ' Initialize fallback font processing
-  initializeFallbackFont()
-
-  ' load home page - this may be delayed if UI fallback fonts are enabled
-  loadHomeScreen()
-
-  ' Handle input messages
+  ' Handle input messages. Set up ONCE — these survive session resets (Change Server /
+  ' User / Sign Out re-enter the login flow via handleMenuAction, NOT by restarting the
+  ' app loop), so roInput/roDeviceInfo are no longer recreated per login.
   input = CreateObject("roInput")
   input.SetMessagePort(m.port)
   ' Receive Roku voice transport commands (play/pause/seek/next/startover/skip/etc.)
@@ -89,11 +78,21 @@ sub Main (args as dynamic) as void
   device.EnableCodecCapChangedEvent(true)
   device.EnableAudioGuideChangedEvent(true)
 
-  ' Check if we were sent content to play with the startup command (Deep Link)
-  if isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
+  ' #550 sgRouter (Phase 5): enter the login flow. reenterLogin() re-resolves the pre-login
+  ' locale, then beginLogin() runs the saved-server + saved-token fast path (sync, no UI).
+  ' On success it brings up Home; otherwise it routes to the right pre-login screen
+  ' (/server, /users, /login), whose views drive the rest through preLoginIntent events
+  ' handled in the loop below. Replaces the blocking `if not LoginFlow() then return` gate.
+  reenterLogin()
 
-    m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: args.contentId, type: "video" }))
-    m.global.queueManager.callFunc("playQueue")
+  ' Check if we were sent content to play with the startup command (Deep Link).
+  ' Phase 5 only handles the already-authenticated case (the fast path logged us in);
+  ' the deferred no-token → login → replay path is Phase 6.
+  if isValid(m.launchArgs) and isValidAndNotEmpty(m.launchArgs.mediaType) and isValidAndNotEmpty(m.launchArgs.contentId)
+    if isValidAndNotEmpty(m.global.user.authToken)
+      m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: m.launchArgs.contentId, type: "video" }))
+      m.global.queueManager.callFunc("playQueue")
+    end if
   end if
 
   ' This is the core logic loop. Mostly for transitioning between scenes
@@ -108,6 +107,14 @@ sub Main (args as dynamic) as void
       return
     else if isNodeEvent(msg, "exit")
       return
+    else if isNodeEvent(msg, "preLoginIntent")
+      ' #550 sgRouter (Phase 5): a routed pre-login view emitted an intent. The coordinator
+      ' runs the blocking bootstrap API call(s) and drives the next navigation.
+      handlePreLoginIntent(msg.getData())
+    else if isNodeEvent(msg, "isAuthenticated")
+      ' #550 sgRouter (Phase 5): the QuickConnectDialog (started by the coordinator)
+      ' signalled a successful in-flow sign-in. Complete the login.
+      handlePreLoginIntent("quickConnectComplete")
     else if isNodeEvent(msg, "closeSidePanel")
       group = getActiveView()
       if isValid(group.lastFocus)
@@ -187,10 +194,10 @@ sub Main (args as dynamic) as void
         end if
       end if
 
-      if handleMenuAction(actionId) then goto appStart
+      handleMenuAction(actionId)
     else if isNodeEvent(msg, "userMenuAction")
       actionId = msg.getData()
-      if handleMenuAction(actionId) then goto appStart
+      handleMenuAction(actionId)
     else if type(msg) = "roDeviceInfoEvent"
       event = msg.GetInfo()
 
@@ -391,11 +398,11 @@ end sub
 ' Create and show the home group
 sub createAndShowHomeGroup()
   ' #550 sgRouter: Home is now mounted by the router (in JRScene's outlet) rather
-  ' than pushed via SceneManager. JRScene.startRouter initializes the router,
-  ' registers the post-login routes, and navigates to "/"; Home self-loads its
-  ' libraries in its own onViewOpen. (exit + activeRoutedView are observed once
-  ' during bootstrap, not here.)
-  m.scene.callFunc("startRouter")
+  ' than pushed via SceneManager. routerNavigate brings the router up (if it isn't
+  ' already, e.g. fast-path cold start) and navigates to "/"; Home self-loads its
+  ' libraries in its own onViewOpen. (exit + activeRoutedView + the pre-login intent
+  ' bridge are observed once during bootstrap, not here.)
+  m.scene.callFunc("routerNavigate", "/")
   stopLoadingSpinner()
 
   ' update lastRunVersion but only on prod
@@ -464,34 +471,29 @@ sub calculateFontScaleFactor()
 end sub
 
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
-' Returns true if the caller should goto appStart (session-ending actions).
-' #550 sgRouter: OPEN_SEARCH / OPEN_SETTINGS are no longer handled here — Home
-' navigates to those routes directly (navigateTo runs on the render thread, which
-' main.bs is not). Only the session-ending actions remain; each tears down the
-' routed view (resetRouter) before re-entering LoginFlow via `goto appStart`.
-function handleMenuAction(actionId as string) as boolean
+' #550 sgRouter: OPEN_SEARCH / OPEN_SETTINGS are no longer handled here — Home navigates
+' to those routes directly (navigateTo runs on the render thread, which main.bs is not).
+' Only the session-ending actions remain. Each tears down the routed Home (resetRouter)
+' and re-enters the login flow IN PLACE (reenterLogin) — no `goto appStart`, since the
+' pre-login flow is now routed and driven by the same unified event loop.
+sub handleMenuAction(actionId as string)
   if actionId = HomeAction.CHANGE_SERVER
     startLoadingSpinner()
     m.scene.callFunc("resetRouter")
     unsetSetting("server")
     server.Delete()
     SignOut(false)
-    m.global.sceneManager.callFunc("clearScenes")
-    return true
+    reenterLogin()
   else if actionId = HomeAction.CHANGE_USER
     startLoadingSpinner()
     m.scene.callFunc("resetRouter")
     SignOut(false)
-    m.global.sceneManager.callFunc("clearScenes")
-    return true
+    reenterLogin()
   else if actionId = HomeAction.SIGN_OUT
     startLoadingSpinner()
     m.scene.callFunc("resetRouter")
     SignOut()
-    m.global.sceneManager.callFunc("clearScenes")
-    return true
+    reenterLogin()
   end if
-
-  return false
-end function
+end sub
 

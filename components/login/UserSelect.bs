@@ -14,6 +14,12 @@ sub init()
   m.top.findNode("selectUserLabel").text = translate(translationKeys.LabelSelectAUser)
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
   m.buttons = m.top.findNode("buttons")
+  m.userRow = m.top.findNode("userRow")
+
+  ' #550 sgRouter (Phase 5): absorbs CreateUserSelectGroup's wiring. A picked user / the
+  ' manual-login + quick-connect buttons emit intents the loginRouter coordinator handles.
+  m.userRow.observeField("userSelected", "onUserSelected")
+  m.buttons.observeField("buttonSelected", "onButtonSelected")
 
   ' Quick Connect is supported on every Jellyfin version JellyRock targets
   ' (>= 10.7.0). Endpoint and request-shape differences are handled inside
@@ -95,6 +101,36 @@ sub onItemContentChanged()
   redraw()
 end sub
 
+' A user tile was picked. Resolve its id from the rendered list (UserRow fires the
+' username), publish both, and emit the userSelected intent (was CreateUserSelectGroup
+' returning the username to LoginFlow's public-user branch).
+sub onUserSelected(event as object)
+  name = event.getData()
+  if not isValidAndNotEmpty(name) then return
+  userId = ""
+  for each u in m.top.itemContent
+    if u.name = name
+      userId = u.id
+      exit for
+    end if
+  end for
+  m.top.selectedUserName = name
+  m.top.selectedUserId = userId
+  m.top.getScene().preLoginIntent = "userSelected"
+end sub
+
+' Manual-login / Quick Connect buttons → intents the loginRouter coordinator handles.
+sub onButtonSelected(event as object)
+  buttonGroup = event.getRoSGNode()
+  btn = buttonGroup.getChild(event.getData())
+  if not isValid(btn) then return
+  if btn.id = "manualLoginButton"
+    m.top.getScene().preLoginIntent = "manualLogin"
+  else if btn.id = "quickConnect"
+    m.top.getScene().preLoginIntent = "quickConnectRequested"
+  end if
+end sub
+
 sub redraw()
   userCount = m.top.itemContent.Count()
   topBorder = 360
@@ -112,6 +148,16 @@ end sub
 ' JRScreen hook called when the screen is displayed by the screen manager
 sub onScreenShown()
   m.log.info("UserSelect screen shown")
+
+  ' #550 sgRouter (Phase 5): the loginRouter coordinator builds the public+saved user
+  ' list (sync GetPublicUsers on the main thread) and passes it as route context. Render
+  ' it once on mount. (CreateUserSelectGroup used to set group.itemContent directly.)
+  if not isValidAndNotEmpty(m.top.itemContent)
+    route = m.top.route
+    if isValid(route) and isValid(route.context) and isValid(route.context.users)
+      m.top.itemContent = route.context.users
+    end if
+  end if
 
   scene = m.top.getScene()
   overhang = scene.findNode("overhang")
@@ -217,7 +263,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
   if key = "back"
-    m.top.backPressed = true
+    ' #550 sgRouter (Phase 5): back → change server (coordinator deletes the server and
+    ' navigates to /server). Was CreateUserSelectGroup returning "backPressed".
+    m.top.getScene().preLoginIntent = "userBack"
     return true
   else if key = "up"
     if m.top.focusedChild.isSubType("JRButtonGroup")
@@ -243,7 +291,12 @@ sub onDestroy()
   ' (fetchAsync); any in-flight request is cancelled by the abandonApiPromises()
   ' call the auto-abandon BSC plugin injects as the first statement of onDestroy.
 
+  ' #550 sgRouter (Phase 5): release the selection + button observers.
+  if isValid(m.userRow) then m.userRow.unobserveField("userSelected")
+  if isValid(m.buttons) then m.buttons.unobserveField("buttonSelected")
+
   ' Clear node references
+  m.userRow = invalid
   m.quickConnectButton = invalid
   m.buttons = invalid
 end sub

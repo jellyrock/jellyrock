@@ -37,12 +37,21 @@
          no observer needed. (reloadHomeRequested is the sibling Home-reload signal still on
          SceneManager; consolidating both here is a Phase-6 followup.) -->
     <field id="contentVersion" type="integer" value="0" />
+    <!-- #550 sgRouter (Phase 5): pre-login intent bridge. The routed pre-login views
+         (SetServerScreen / UserSelect / LoginScene) set this to an intent action string;
+         main.bs observes it on the main thread (scene field + port delivers, unlike an
+         m.global field) and routes it to the loginRouter coordinator, which runs the
+         blocking bootstrap API calls and drives the next navigation. The payload for each
+         intent is read off the active routed view's own fields (enteredUrl / selectedUserId
+         / enteredUsername …) via getActiveView(), the same relay pattern Home/ItemDetails use. -->
+    <field id="preLoginIntent" type="string" value="" alwaysNotify="true" />
     <field id="backgroundImageUri" type="string" value="" alwaysNotify="true" onchange="onBackgroundImageUriChanged" />
     <function name="setBackgroundImage" />
     <function name="refreshBackdropSetting" />
     <function name="showToast" />
-    <!-- #550 sgRouter host hooks (called from main.bs on the main thread) -->
-    <function name="startRouter" />
+    <!-- #550 sgRouter host hooks (called from main.bs / loginRouter on the main thread) -->
+    <function name="initRouter" />
+    <function name="routerNavigate" />
     <function name="reloadRoutedHome" />
     <function name="resetRouter" />
     <function name="restoreRoutedOverhang" />
