@@ -123,13 +123,12 @@ end function
 
 ' Play items in queue.
 '
-' #550 sgRouter (Phase 4): audio still uses the SceneManager-pushed AudioPlayerView
-' factory (routed in a later step). Every video-family type now launches the routed
-' PlayerHostView: QueueManager has no router chain, so it can't navigateTo — it sets
-' m.global.playbackLaunchRequest and JRScene.onPlaybackLaunchRequested turns that into
-' navigateTo("/details/:type/:id/play"). The host reads this same queue on mount.
-' In-host queue advancement (next-item / Live TV restart / channel switch) does NOT
-' come back through here — it remounts the player child directly (PlayerHostView).
+' #550 sgRouter (Phase 4): QueueManager has no router chain, so it can't navigateTo — it
+' sets m.global.playbackLaunchRequest and JRScene.onPlaybackLaunchRequested turns that into
+' the route: audio -> /audio (AudioPlayerView), every video-family type -> the play route
+' (/details/:type/:id/play, PlayerHostView). The view reads this same queue on mount.
+' In-view queue advancement (next-item / Live TV restart / channel switch) does NOT come
+' back through here — the video host remounts its child; the audio view reloads in place.
 sub playQueue()
   m.isPlaying = true
   nextItem = getCurrentItem()
@@ -139,7 +138,7 @@ sub playQueue()
   if nextItemMediaType = "" then return
 
   if nextItemMediaType = "audio" or nextItemMediaType = "audiobook"
-    CreateAudioPlayerView()
+    m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id, media: "audio" }
     return
   end if
 

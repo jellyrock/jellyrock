@@ -289,7 +289,9 @@ sub audioStateChanged()
     end if
 
     if m.queueManager.callFunc("getPosition") < m.queueManager.callFunc("getCount") - 1
-      m.top.state = "finished"
+      ' #550 sgRouter (Phase 4): advance in-place (was: signal main.bs's god-loop via
+      ' m.top.state = "finished" to clearPreviousScene + playQueue a new pushed scene).
+      advanceToNextItem()
     else
       ' We are at the end of the song queue
 
@@ -300,10 +302,42 @@ sub audioStateChanged()
         return
       end if
 
-      ' Return to previous screen
-      m.top.state = "finished"
+      ' #550 sgRouter (Phase 4): queue exhausted — leave the routed /audio view (was a
+      ' SceneManager popScene driven off m.top.state = "finished").
+      exitAudioPlayback()
     end if
   end if
+end sub
+
+' #550 sgRouter (Phase 4): advance to the next queue item on auto-finish. Audio stays in
+' this routed /audio view (reload the stream in place via LoadNextSong). A non-audio next
+' item in a mixed queue leaves /audio for the player route — playQueue routes it to /play,
+' and /audio (not keepAlive) is destroyed. Replaces the old clearPreviousScene + playQueue.
+sub advanceToNextItem()
+  nextPosition = m.queueManager.callFunc("getPosition") + 1
+  if nextPosition > m.queueManager.callFunc("getCount") - 1 then return
+
+  if m.playlistTypeCount > 1
+    nextItem = m.queueManager.callFunc("getItemByIndex", nextPosition)
+    if m.queueManager.callFunc("getItemType", nextItem) <> "audio"
+      m.audioPlayer.control = "stop"
+      m.queueManager.callFunc("moveForward")
+      m.queueManager.callFunc("playQueue")
+      return
+    end if
+  end if
+
+  LoadNextSong()
+end sub
+
+' #550 sgRouter (Phase 4): leave the routed /audio view, returning to the launching detail
+' (the router resumes the view beneath). Stops playback + clears loop first. Replaces the
+' old SceneManager popScene. The physical back key already stops audio in onKeyEvent and
+' bubbles to the outlet's goBack, so it does not route through here.
+sub exitAudioPlayback()
+  m.audioPlayer.control = "stop"
+  m.audioPlayer.loopMode = ""
+  sgrouter.goBack()
 end sub
 
 function playAction() as boolean
@@ -337,9 +371,10 @@ function previousClicked() as boolean
     previousItemType = m.queueManager.callFunc("getItemType", previousItem)
 
     if previousItemType <> "audio"
+      ' #550 sgRouter (Phase 4): a non-audio previous item leaves /audio for the player
+      ' route (playQueue -> /play; /audio is not keepAlive so it is destroyed). Was a
+      ' SceneManager clearPreviousScene + playQueue.
       m.audioPlayer.control = "stop"
-
-      m.global.sceneManager.callFunc("clearPreviousScene")
       m.queueManager.callFunc("moveBack")
       m.queueManager.callFunc("playQueue")
       return true
@@ -405,9 +440,10 @@ function nextClicked() as boolean
     nextItemType = m.queueManager.callFunc("getItemType", nextItem)
 
     if nextItemType <> "audio"
+      ' #550 sgRouter (Phase 4): a non-audio next item leaves /audio for the player route
+      ' (playQueue -> /play; /audio is not keepAlive so it is destroyed). Was a SceneManager
+      ' clearPreviousScene + playQueue.
       m.audioPlayer.control = "stop"
-
-      m.global.sceneManager.callFunc("clearPreviousScene")
       m.queueManager.callFunc("moveForward")
       m.queueManager.callFunc("playQueue")
       return true
@@ -935,13 +971,10 @@ function handleTransport(evt as object) as object
   end if
 
   if cmd = "stop"
-    ' Mirror back-key behavior: stop playback, clear loop mode, and pop the scene.
-    ' Audio's onStateChange only pops on "finished"; the physical back key gets
-    ' the scene pop for free via Roku's OS-default back handling, but voice
-    ' transport doesn't, so we pop explicitly.
-    m.audioPlayer.control = "stop"
-    m.audioPlayer.loopMode = ""
-    m.global.sceneManager.callFunc("popScene")
+    ' #550 sgRouter (Phase 4): mirror back-key behavior — stop playback, clear loop, and
+    ' leave the routed /audio view. The physical back key bubbles to the outlet's goBack;
+    ' voice transport doesn't, so we exit explicitly (was a SceneManager popScene).
+    exitAudioPlayback()
     return { status: "success" }
   end if
 

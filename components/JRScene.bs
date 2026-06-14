@@ -303,6 +303,10 @@ sub startRouter()
     ' while it's the active routed view, and the keepAlive library/detail beneath it suspends
     ' (focus saved) and resumes (focus restored) on back, exactly like the video player.
     { pattern: "/photo", name: "photo", component: "PhotoDetails" }
+    ' Music player. NO keepAlive: a fresh AudioPlayerView per launch (it self-loads from the
+    ' queue), destroyed on goBack. It suspends the keepAlive detail beneath (focus saved /
+    ' restored on back) instead of rendering over it — the same behavior as the video player.
+    { pattern: "/audio", name: "audio", component: "AudioPlayerView" }
   ])
 
   ' Navigate to Home, then hand it remote focus once it is mounted + visible.
@@ -318,6 +322,12 @@ end sub
 sub onPlaybackLaunchRequested()
   req = m.global.playbackLaunchRequest
   if not isValid(req) or not isValidAndNotEmpty(req.id) then return
+  ' Audio launches the routed AudioPlayerView (the queue is the source of truth, so the
+  ' route takes no params). Every video-family type launches the play host.
+  if isValid(req.media) and req.media = "audio"
+    sgrouter.navigateTo("/audio")
+    return
+  end if
   itemType = req.type
   if not isValidAndNotEmpty(itemType) then itemType = "video"
   sgrouter.navigateTo("/details/" + itemType + "/" + req.id + "/play")
