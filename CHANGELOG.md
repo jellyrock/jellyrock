@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update GitHub Actions to v1.6.1 ([#663](https://github.com/jellyrock/jellyrock/pull/663))
 - Update linting to v18.1.0 ([#658](https://github.com/jellyrock/jellyrock/pull/658))
 - Update sharp from v0.34.5 to v0.35.1 ([#657](https://github.com/jellyrock/jellyrock/pull/657))
 
