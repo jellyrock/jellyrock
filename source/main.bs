@@ -56,8 +56,25 @@ sub Main (args as dynamic) as void
   ' LoginFlow()'s blocking wait() loops + goto-label state machine. Registered once here.
   m.scene.observeField("preLoginIntent", m.port)
 
-  ' #550 sgRouter (Phase 5): stash the launch args for the cold-start deep link below.
+  ' #550 sgRouter: cold-start deep link. Stash it (structured intent on
+  ' m.global.AuthManager.stashedDeepLink) BEFORE entering the login flow so it replays
+  ' uniformly — the fast path lands straight on the deep-linked content, while a deferred
+  ' (no-token) launch replays once the user finishes signing in. replayAfterLogin (invoked
+  ' from createAndShowHomeGroup) reads the stash; an absent deep link leaves it empty and
+  ' replay is just Home. The deep link routes through ItemDetails, which validates the id and
+  ' auto-launches with the real type + resume position (or errors to Home if it doesn't exist).
   m.launchArgs = args
+  if isValid(m.launchArgs) and isValidAndNotEmpty(m.launchArgs.contentId)
+    ' mediaType is optional (a cast from another Jellyfin client may send only an id +
+    ' server) — ItemDetails infers play-vs-springboard from the resolved item, not the hint.
+    mediaTypeHint = ""
+    if isValidAndNotEmpty(m.launchArgs.mediaType) then mediaTypeHint = m.launchArgs.mediaType
+    itemNameHint = ""
+    if isValidAndNotEmpty(m.launchArgs.itemName) then itemNameHint = m.launchArgs.itemName
+    stashDeepLink(m.launchArgs.contentId, mediaTypeHint, itemNameHint)
+    ' If the link names a saved server, point login at it before the fast path runs.
+    steerColdStartDeepLinkServer()
+  end if
 
   ' Handle input messages. Set up ONCE — these survive session resets (Change Server /
   ' User / Sign Out re-enter the login flow via handleMenuAction, NOT by restarting the
@@ -85,14 +102,10 @@ sub Main (args as dynamic) as void
   ' handled in the loop below. Replaces the blocking `if not LoginFlow() then return` gate.
   reenterLogin()
 
-  ' Check if we were sent content to play with the startup command (Deep Link).
-  ' Phase 5 only handles the already-authenticated case (the fast path logged us in);
-  ' the deferred no-token → login → replay path is Phase 6.
-  if isValid(m.launchArgs) and isValidAndNotEmpty(m.launchArgs.mediaType) and isValidAndNotEmpty(m.launchArgs.contentId)
-    if isValidAndNotEmpty(m.global.user.authToken)
-      m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: m.launchArgs.contentId, type: "video" }))
-      m.global.queueManager.callFunc("playQueue")
-    end if
+  ' #550 deep link: if a cold-start deep link couldn't run yet because login is required,
+  ' tell the user it'll open after they sign in (replay fires from createAndShowHomeGroup).
+  if not isValidAndNotEmpty(m.global.user.authToken)
+    notifyDeepLinkDeferred()
   end if
 
   ' This is the core logic loop. Mostly for transitioning between scenes
@@ -254,11 +267,18 @@ sub Main (args as dynamic) as void
     else if type(msg) = "roInputEvent"
       if msg.IsInput()
         info = msg.GetInfo()
-        if info.DoesExist("mediatype") and info.DoesExist("contentid")
-          ' Deep-link launch: another app handed us content to play.
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: info.contentId, type: "video" }))
-          m.global.queueManager.callFunc("playQueue")
+        if info.DoesExist("contentid")
+          ' #550 sgRouter: runtime deep link — another Jellyfin client casting to this device
+          ' (or any sender) handed us content. mediaType is optional (ItemDetails infers the
+          ' launch from the resolved item). Stash the intent, then resolve its server: replay
+          ' now if it's the active server (or none), prompt to switch if it's another saved
+          ' server, or toast if unknown. When signed out, the stash rides until login.
+          mediaTypeHint = ""
+          if info.DoesExist("mediatype") then mediaTypeHint = info.mediaType
+          itemNameHint = ""
+          if info.DoesExist("itemname") then itemNameHint = info.itemName
+          stashDeepLink(info.contentId, mediaTypeHint, itemNameHint)
+          onRuntimeDeepLink()
         else if isValid(info.type) and info.type = "transport"
           ' Voice transport command (play, pause, seek, next, startover, skip, ...).
           ' Dispatch to the active player; otherwise ack as no-media so Roku OS shows
@@ -302,8 +322,19 @@ sub Main (args as dynamic) as void
       stopLoadingSpinner()
       if isValid(popupNode) and isValid(popupNode.returnData)
         print "popupNode.returnData = ", popupNode.returnData
-        ' Handle exit confirmation dialog
-        if m.global.sceneManager.isPendingExitConfirmation = true
+        ' #550 sgRouter: deep-link server-switch confirmation. On "Switch", run the
+        ' pre-flighted switch (performServerSwitch); on cancel, discard the stashed deep link.
+        if m.global.sceneManager.isPendingServerSwitch = true
+          m.global.sceneManager.isPendingServerSwitch = false
+          if popupNode.returnData.buttonSelected = translate(translationKeys.ButtonSwitch)
+            performServerSwitch(m.pendingSwitchServer)
+          else
+            m.pendingSwitchServer = invalid
+            m.global.AuthManager.stashedDeepLink = invalid
+            displayToast(translate(translationKeys.MessageCastCanceled), "info")
+          end if
+          ' Handle exit confirmation dialog
+        else if m.global.sceneManager.isPendingExitConfirmation = true
           m.global.sceneManager.isPendingExitConfirmation = false
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate(translationKeys.ButtonExit)
             ' User confirmed exit
@@ -397,12 +428,13 @@ end sub
 
 ' Create and show the home group
 sub createAndShowHomeGroup()
-  ' #550 sgRouter: Home is now mounted by the router (in JRScene's outlet) rather
-  ' than pushed via SceneManager. routerNavigate brings the router up (if it isn't
-  ' already, e.g. fast-path cold start) and navigates to "/"; Home self-loads its
-  ' libraries in its own onViewOpen. (exit + activeRoutedView + the pre-login intent
-  ' bridge are observed once during bootstrap, not here.)
-  m.scene.callFunc("routerNavigate", "/")
+  ' #550 sgRouter: Home is now mounted by the router (in JRScene's outlet) rather than
+  ' pushed via SceneManager. replayAfterLogin (source/replayRoute.bs) brings the router up
+  ' and replays any stashed deep link as an ordered route chain — Home alone when there is
+  ' none, or Home -> Details -> Player for a deferred/cold-start play deep link (decision #3).
+  ' Home self-loads its libraries in its own onViewOpen. (exit + activeRoutedView + the
+  ' pre-login intent bridge are observed once during bootstrap, not here.)
+  replayAfterLogin()
   stopLoadingSpinner()
 
   ' update lastRunVersion but only on prod

@@ -108,10 +108,23 @@ sub setGlobalNodes()
   sceneManager.observeField("reloadHomeRequested", m.port)
   m.global.addFields({ sceneManager: sceneManager })
 
+  ' #550 sgRouter (Phase 6): auth guard. Created here, BEFORE the router's addRoutes (which
+  ' runs lazily in JRScene.initRouter on the first navigation), and registered by node
+  ' reference as the canActivate guard on every post-login route. Living on m.global lets the
+  ' main-thread replay helper read the path it stashes on a signed-out redirect. See
+  ' components/auth/AuthManager.bs.
+  m.global.addFields({ AuthManager: CreateObject("roSGNode", "AuthManager") })
+
+  ' #550 deep link: title to toast ("Opening <title>") when the player mounts for a deep-link
+  ' launch. Set by ItemDetails.autoLaunchFromDeepLink (it has the resolved item name); read +
+  ' cleared by PlayerHostView on mount — a stable point that renders reliably through the
+  ' details->player transition (firing it from ItemDetails mid-transition was unreliable).
+  m.global.addField("deepLinkOpeningTitle", "string", false)
+
   ' #550 sgRouter migration: the full-screen view the router currently has mounted
   ' in JRScene's outlet (post-login content screens). JRScene maintains this on every
-  ' router mount; getActiveView() (source/utils/misc.bs) reads it as the fallback when
-  ' SceneManager's stack is empty. Typed addField so it can hold a node (invalid init).
+  ' router mount; getActiveView() (source/utils/misc.bs) reads it. Typed addField so it
+  ' can hold a node (invalid init).
   m.global.addField("activeRoutedView", "node", false)
 
   ' #550 sgRouter (Phase 4): video playback launch signal. QueueManager.playQueue has

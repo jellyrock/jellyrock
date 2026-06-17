@@ -210,19 +210,12 @@ function lastFocusedChild(obj as object) as object
   end if
 end function
 
-' Returns the full-screen view currently on top. A SceneManager-pushed screen
-' (pre-login flow / playback) when its stack is non-empty; otherwise the
-' router-mounted content view tracked on m.global.activeRoutedView.
-'
-' Transitional arbiter for the #550 sgRouter migration: post-login content
-' screens are router-owned (in the outlet), while pre-login and playback are
-' still pushed onto SceneManager's stack ON TOP of the outlet. This resolves
-' "what's on screen" for the playback/dialog/device code that still lives in
-' main.bs. Collapses to "always activeRoutedView" once SceneManager's stack is
-' retired (Phase 6).
+' Returns the full-screen view currently on top — the router-mounted view tracked on
+' m.global.activeRoutedView. The whole app is routed (#550 Phase 6): pre-login, content,
+' and playback are all router views in JRScene's outlet, so there is no longer a
+' SceneManager stack to consult. Used by main.bs's playback/dialog/device code and by
+' JRScene's options key to resolve "what's on screen".
 function getActiveView() as object
-  top = m.global.sceneManager.callFunc("getActiveScene")
-  if isValid(top) then return top
   return m.global.activeRoutedView
 end function
 

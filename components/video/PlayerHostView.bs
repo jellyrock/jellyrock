@@ -76,6 +76,14 @@ sub mountPlayer()
   updateQueueBackdrop()
 
   m.top.appendChild(m.view)
+
+  ' #550 deep link: toast "Opening <title>" for a deep-link launch. Fired here (player mount =
+  ' stable final destination, nothing churns after) rather than from ItemDetails mid-transition,
+  ' which was unreliable after a heavy server switch. One-shot: clear the global after showing.
+  if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
+    displayToast(Substitute(translate(translationKeys.MessageOpeningContent), m.global.deepLinkOpeningTitle), "info")
+    m.global.deepLinkOpeningTitle = ""
+  end if
 end sub
 
 ' Tear down the current player child (stop -> report stop to Jellyfin -> onDestroy -> remove).
@@ -108,6 +116,14 @@ end sub
 sub playCurrentQueueItem()
   destroyPlayer()
   mountPlayer()
+end sub
+
+' #550 deep link: a deep link arrived while this player is active. Tear the player down NOW
+' (stop + report to the server) WITHOUT navigating — the caller (JRScene.replayDeepLinkReplacingPlayer)
+' then resets through Home, which removes this now-empty host. Synchronous so the old player is
+' fully stopped before the new content mounts (otherwise two decoders -> playback errors).
+sub teardownForDeepLink()
+  onDestroy()
 end sub
 
 ' Leave the play route: pops this host off the router history (beforeViewClose ->

@@ -121,5 +121,6 @@
   <interface>
     <field id="state" type="string" />
     <function name="handleTransport" />
+    <function name="teardownForDeepLink" />
   </interface>
 </component>

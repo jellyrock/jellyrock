@@ -1055,8 +1055,8 @@ sub checkTimeToDisplayNextEpisode()
 end sub
 
 ' Forces playback to finished state for proper watched-status and auto-play.
-' Triggers synchronous teardown (onState -> ViewCreator -> popScene -> onDestroy),
-' invalidating all m. references. Callers MUST return immediately after calling.
+' Triggers synchronous teardown (onState -> PlayerHostView.onPlayerStateChange -> destroy/
+' goBack -> onDestroy), invalidating all m. references. Callers MUST return immediately after.
 sub forceFinishPlayback()
   ' Explicitly mark as watched via dedicated API endpoint.
   ' Uses the API pool (not SideEffectTask) so it can't be overwritten
@@ -1358,7 +1358,7 @@ end sub
 ' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
 sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
-  ' Prevents ViewCreator popping the scene when stop causes Roku to fire "finished".
+  ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
   m.LoadMetaDataTask.shouldBypassDoviPreservation = bypassDovi

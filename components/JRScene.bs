@@ -30,6 +30,12 @@ sub init()
   m.overhang = m.top.findNode("overhang")
   m.previousRoutedView = invalid
 
+  ' #550 deep link: retry-poll timer for the pop-player-then-navigate path (replayDeepLinkReplacingPlayer).
+  m.deepLinkRetryTimer = m.top.findNode("deepLinkRetryTimer")
+  m.deepLinkRetryTimer.observeField("fire", "onDeepLinkReplayRetry")
+  m.replacePlayerRoute = ""
+  m.replacePlayerPending = false
+
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
 
@@ -167,7 +173,7 @@ end sub
 ' Triggered when the isLoading boolean component field is changed
 sub onIsLoadingChanged()
   ' toggle visibility of active view/group
-  group = m.global.sceneManager.callFunc("getActiveScene")
+  group = m.global.activeRoutedView
   if isValid(group)
     group.visible = not m.top.isRemoteDisabled
   end if
@@ -226,16 +232,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if m.top.isRemoteDisabled then return true
 
   if key = "back"
-    ' #550 back arbiter. A SceneManager-pushed screen (pre-login flow / playback)
-    ' sits in `content`, ABOVE the router outlet, and bubbles back straight to JRScene
-    ' — it owns its own pop. A routed view's back is intercepted by the outlet first
-    ' (sgRouter.goBack); it only reaches here when goBack is a no-op at the router root
-    ' (history depth <= 1), which is our cue to confirm exit.
-    if isValid(m.global.sceneManager.callFunc("getActiveScene"))
-      m.global.sceneManager.callFunc("popScene")
-    else
-      showExitConfirmation()
-    end if
+    ' #550 back arbiter. The whole app is routed now: a routed view's back is intercepted
+    ' by the outlet first (sgRouter.goBack), so a back key only bubbles up to JRScene when
+    ' goBack is a no-op at the router root (history depth <= 1) — our cue to confirm exit.
+    showExitConfirmation()
     return true
   else if key = "options"
     group = getActiveView()
@@ -293,35 +293,42 @@ sub initRouter()
   m.global.unobserveField("photoLaunchRequest")
   m.global.observeField("photoLaunchRequest", "onPhotoLaunchRequested")
 
+  ' #550 sgRouter (Phase 6): the auth guard. The SAME node we put on m.global in
+  ' setGlobalNodes, registered by NODE REFERENCE so the path it stashes on a signed-out
+  ' redirect is readable by the main-thread replay helper after login. Added to every
+  ' POST-login route below; the pre-login routes carry no guard (their redirect target,
+  ' /login, is one of them).
+  guard = [m.global.AuthManager]
+
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
   sgrouter.addRoutes([
-    { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true }
-    ' #550 sgRouter (Phase 5): pre-login flow. No flags — back is coordinator-driven and
-    ' the cleanup of these views falls out of Home's clearStackOnResolve when login completes.
+    { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true, canActivate: guard }
+    ' #550 sgRouter (Phase 5): pre-login flow. No flags, NO guard — back is coordinator-driven
+    ' and the cleanup of these views falls out of Home's clearStackOnResolve when login completes.
     { pattern: "/server", name: "server", component: "SetServerScreen" }
     { pattern: "/users", name: "users", component: "UserSelect" }
     { pattern: "/login", name: "login", component: "LoginScene" }
-    { pattern: "/details/:type/:id/play", name: "play", component: "PlayerHostView" }
+    { pattern: "/details/:type/:id/play", name: "play", component: "PlayerHostView", canActivate: guard }
     ' NO allowReuse: JellyRock has always created a FRESH ItemDetails per navigation (the
     ' old SceneManager world pushScene'd a new one every time, including detail->detail).
     ' allowReuse would force in-place onRouteUpdate reuse the component was never built for.
     ' keepAlive so navigating detail -> /play SUSPENDS the detail (keeps its node) rather than
     ' destroying it -- the router equivalent of the detail staying beneath the pushed player --
     ' so goBack restores the launching detail instead of bubbling a spurious Exit dialog.
-    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", keepAlive: { enabled: true } }
-    { pattern: "/library/:id", name: "library", component: "BaseGridView", keepAlive: { enabled: true } }
-    { pattern: "/search", name: "search", component: "SearchResults", keepAlive: { enabled: true } }
-    { pattern: "/settings", name: "settings", component: "Settings" }
+    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", keepAlive: { enabled: true }, canActivate: guard }
+    { pattern: "/library/:id", name: "library", component: "BaseGridView", keepAlive: { enabled: true }, canActivate: guard }
+    { pattern: "/search", name: "search", component: "SearchResults", keepAlive: { enabled: true }, canActivate: guard }
+    { pattern: "/settings", name: "settings", component: "Settings", canActivate: guard }
     ' Photo viewer / slideshow. NO keepAlive: a fresh PhotoDetails per launch (the launch
     ' data arrives as route context), destroyed on goBack — the router equivalent of the old
     ' SceneManager pushScene/popScene. It sets isOverhangVisible=false, so the overhang hides
     ' while it's the active routed view, and the keepAlive library/detail beneath it suspends
     ' (focus saved) and resumes (focus restored) on back, exactly like the video player.
-    { pattern: "/photo", name: "photo", component: "PhotoDetails" }
+    { pattern: "/photo", name: "photo", component: "PhotoDetails", canActivate: guard }
     ' Music player. NO keepAlive: a fresh AudioPlayerView per launch (it self-loads from the
     ' queue), destroyed on goBack. It suspends the keepAlive detail beneath (focus saved /
     ' restored on back) instead of rendering over it — the same behavior as the video player.
-    { pattern: "/audio", name: "audio", component: "AudioPlayerView" }
+    { pattern: "/audio", name: "audio", component: "AudioPlayerView", canActivate: guard }
   ])
 end sub
 
@@ -335,6 +342,86 @@ sub routerNavigate(routePath as string, context = {} as object)
   if isValidAndNotEmpty(context) then options = { context: context }
   promises.chain(sgrouter.navigateTo(routePath, options)).then(sub(_result as object)
     sgrouter.setFocus({ focus: true })
+  end sub)
+end sub
+
+' #550 sgRouter (Phase 6): replay a (deferred) deep link after login by navigating a
+' SEQUENCE of routes, each step waiting for the previous to settle. Called from the
+' main-thread replay helper (source/replayRoute.bs) via callFunc; `routes` is an ordered
+' array of path strings. Used both for the no-deep-link case (["/"], a plain Home nav that
+' replaces the old createAndShowHomeGroup navigateTo) and the deep-link case
+' (["/", "/details/:type/:id", "/details/:type/:id/play"]) so back lands Player -> Details
+' -> Home (decision #3). The queue for a /play step is populated by the stash producer
+' (replayRoute / the deep-link handlers) BEFORE this runs; PlayerHostView reads it on mount.
+sub replayRoutedDeepLink(routes as object)
+  initRouter()
+  if not isValidAndNotEmpty(routes) then routes = ["/"]
+  navigateChainStep(routes, 0)
+end sub
+
+' Navigate routes[index], then chain to the next step once it settles (sgRouter's
+' navigateTo promise resolves at NavigationEnd, so each .then() defers until the previous
+' route is fully mounted). The final step takes remote focus. Context carries routes/index
+' (BrightScript closures can't capture locals).
+sub navigateChainStep(routes as object, index as integer)
+  promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
+    nextIndex = ctx.index + 1
+    if nextIndex < ctx.routes.count()
+      navigateChainStep(ctx.routes, nextIndex)
+    else
+      sgrouter.setFocus({ focus: true })
+    end if
+  end sub)
+end sub
+
+' #550 deep link: a deep link arrived while a media player is active. Three steps:
+'   1) tear the player down synchronously (stop + report to the server) so nothing keeps decoding;
+'   2) goBack to POP the now-empty player host so it's removed from the back-stack (view AND
+'      history) — forward-navigating away would only hide it, leaving a dead view that resurfaces
+'      on back and replays the queue;
+'   3) navigate to the new content. goBack is async (and routerState coalesces, so catching its
+'      NavigationEnd is unreliable), so we RETRY navigateTo until the router accepts it. The
+'      target lands either as a fresh/keepAlive mount or, if it's the item goBack just revealed,
+'      via ItemDetails.onRouteUpdate — both auto-launch.
+sub replayDeepLinkReplacingPlayer(targetRoute as string)
+  initRouter()
+  view = m.global.activeRoutedView
+  if isValid(view) then view.callFunc("teardownForDeepLink")
+  sgrouter.goBack()
+  m.replacePlayerRoute = targetRoute
+  m.replacePlayerPending = false
+  m.replacePlayerAttempts = 0
+  m.deepLinkRetryTimer.control = "start"
+  tryReplacePlayerNavigate()
+end sub
+
+sub onDeepLinkReplayRetry()
+  tryReplacePlayerNavigate()
+end sub
+
+' Navigate to the post-pop target; a busy router (goBack still settling) rejects, so the timer
+' retries until it's accepted, then stops.
+sub tryReplacePlayerNavigate()
+  if m.replacePlayerPending then return
+  if not isValidAndNotEmpty(m.replacePlayerRoute)
+    m.deepLinkRetryTimer.control = "stop"
+    return
+  end if
+  m.replacePlayerAttempts++
+  if m.replacePlayerAttempts > 40 ' ~6s cap, then give up rather than poll forever
+    m.deepLinkRetryTimer.control = "stop"
+    m.replacePlayerRoute = ""
+    return
+  end if
+
+  m.replacePlayerPending = true
+  promises.chain(sgrouter.navigateTo(m.replacePlayerRoute)).then(sub(_result as object)
+    m.deepLinkRetryTimer.control = "stop"
+    m.replacePlayerRoute = ""
+    m.replacePlayerPending = false
+    sgrouter.setFocus({ focus: true })
+  end sub).catch(sub(_err as object)
+    m.replacePlayerPending = false ' router still busy — next timer tick retries
   end sub)
 end sub
 
@@ -393,6 +480,10 @@ sub resetRouter()
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
+  ' Cancel a pending replace-player navigate retry (router is being destroyed under it).
+  if isValid(m.deepLinkRetryTimer) then m.deepLinkRetryTimer.control = "stop"
+  m.replacePlayerRoute = ""
+  m.replacePlayerPending = false
   sgrouter.destroy()
   m.global.activeRoutedView = invalid
   if isValid(m.overhang) then m.overhang.visible = false
@@ -475,18 +566,5 @@ sub onOverhangTabSelected()
   group = m.global.activeRoutedView
   if isValid(group) and group.isSubType("JRGroup")
     group.selectedTabId = m.overhang.selectedTabId
-  end if
-end sub
-
-' Re-bind the active routed view's overhang. Called by SceneManager.popScene when
-' its stack empties: a playback screen pushed over the routed view hid/overwrote
-' the shared overhang, and the routed view's binding must be refreshed to restore
-' its tabs/title/visibility. Unregister-then-register avoids stacking a duplicate
-' observer on the (unchanged) active view.
-sub restoreRoutedOverhang()
-  view = m.global.activeRoutedView
-  if isValid(view) and view.isSubType("JRGroup")
-    unregisterOverhangData(view)
-    registerOverhangData(view)
   end if
 end sub

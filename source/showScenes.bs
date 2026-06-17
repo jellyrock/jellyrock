@@ -1,12 +1,10 @@
 import "pkg:/source/api/ApiClient.bs"
 
-' #550 sgRouter (Phase 5): LoginFlow() + the three pre-login factories (CreateServerGroup /
-' CreateUserSelectGroup / CreateSigninGroup) have been removed — the pre-login flow is now
-' routed (SetServerScreen / UserSelect / LoginScene self-contained views) and orchestrated by
-' source/loginRouter.bs. SaveServerList / DeleteFromServerList moved to source/utils/config.bs.
-' The Create{Home,ItemDetails,Search}Group factories below are dead-for-nav (Home/ItemDetails/
-' SearchResults self-wire under the router) and are removed in Phase 6 with the SceneManager
-' teardown + navigation-doc rewrite.
+' #550 sgRouter: LoginFlow() + every Create*Group scene factory have been removed — the whole
+' app is routed now (pre-login SetServerScreen / UserSelect / LoginScene via loginRouter; Home /
+' ItemDetails / SearchResults self-wire under the router). SaveServerList / DeleteFromServerList
+' moved to source/utils/config.bs. What remains here are two router-agnostic helpers that don't
+' belong to any one view: a performance beacon and the resume/start-over playback dialog.
 
 ' Roku Performance monitoring
 sub SendPerformanceBeacon(signalName as string)
@@ -14,99 +12,6 @@ sub SendPerformanceBeacon(signalName as string)
     m.scene.signalBeacon(signalName)
   end if
 end sub
-
-function CreateHomeGroup()
-  ' Main screen after logging in. Shows the user's libraries
-  group = CreateObject("roSGNode", "Home")
-  group.overhangTitle = translate(translationKeys.LabelHome)
-  group.isOptionsAvailable = true
-
-  group.observeField("selectedItem", m.port)
-  group.observeField("quickPlayNode", m.port)
-  group.observeField("voiceQuery", m.port)
-  group.observeField("userMenuAction", m.port)
-
-  sidepanel = group.findNode("options")
-  sidepanel.observeField("closeSidePanel", m.port)
-  newOptions = []
-
-  o = CreateObject("roSGNode", "OptionsButton")
-  o.title = translate(translationKeys.ButtonSearch)
-  o.id = HomeAction.OPEN_SEARCH
-  o.observeField("optionSelected", m.port)
-  newOptions.push(o)
-  o = invalid
-
-  ' Add settings option to menu
-  o = CreateObject("roSGNode", "OptionsButton")
-  o.title = translate(translationKeys.LabelSettings)
-  o.id = HomeAction.OPEN_SETTINGS
-  o.observeField("optionSelected", m.port)
-  newOptions.push(o)
-  o = invalid
-
-  o = CreateObject("roSGNode", "OptionsButton")
-  o.title = translate(translationKeys.LabelChangeUser)
-  o.id = HomeAction.CHANGE_USER
-  o.observeField("optionSelected", m.port)
-  newOptions.push(o)
-  o = invalid
-
-  o = CreateObject("roSGNode", "OptionsButton")
-  o.title = translate(translationKeys.LabelChangeServer)
-  o.id = HomeAction.CHANGE_SERVER
-  o.observeField("optionSelected", m.port)
-  newOptions.push(o)
-  o = invalid
-
-  o = CreateObject("roSGNode", "OptionsButton")
-  o.title = translate(translationKeys.ButtonSignOut)
-  o.id = HomeAction.SIGN_OUT
-  o.observeField("optionSelected", m.port)
-  newOptions.push(o)
-
-  sidepanel.options = newOptions
-
-  return group
-end function
-
-function CreateItemDetailsGroup(item as object) as dynamic
-  if not isValid(item) or not isValid(item.id) then return invalid
-
-  startLoadingSpinner()
-
-  group = CreateObject("roSGNode", "ItemDetails")
-  group.observeField("quickPlayNode", m.port)
-  group.overhangTitle = ""
-  group.isOptionsAvailable = false
-
-  ' Push scene asap to prevent extra button presses while fetching data
-  m.global.sceneManager.callFunc("pushScene", group)
-
-  ' Tell the component to load itself (triggers onItemIdChanged)
-  group.itemType = isValid(item.type) ? item.type : ""
-  group.itemId = item.id
-
-  ' Watch for button presses
-  buttons = group.findNode("buttons")
-  buttons.observeField("buttonSelected", m.port)
-
-  ' Set up extras observer
-  extras = group.findNode("extrasGrid")
-  extras.observeField("selectedItem", m.port)
-
-  return group
-end function
-
-function CreateSearchPage()
-  ' Search + Results Page
-  group = CreateObject("roSGNode", "SearchResults")
-  group.observeField("quickPlayNode", m.port)
-  options = group.findNode("searchSelect")
-  options.observeField("itemSelected", m.port)
-
-  return group
-end function
 
 'Opens dialog asking user if they want to resume video or start playback over only on the home screen
 sub playbackOptionDialog(time as longinteger)

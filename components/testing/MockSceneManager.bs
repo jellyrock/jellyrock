@@ -8,25 +8,6 @@ end sub
 
 ' Stub implementations - do nothing but exist so callFunc doesn't crash
 
-sub pushScene(_newGroup)
-end sub
-
-sub popScene()
-end sub
-
-sub settings()
-end sub
-
-function getActiveScene() as object
-  return invalid
-end function
-
-sub clearScenes()
-end sub
-
-sub clearPreviousScene()
-end sub
-
 sub reloadHome()
 end sub
 

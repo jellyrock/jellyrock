@@ -15,5 +15,8 @@
     <function name="exitPlayback" />
     <!-- Voice transport: main.bs forwards here, this host forwards to the child player. -->
     <function name="handleTransport" />
+    <!-- #550 deep link: stop + tear down the player without navigating (a deep link arrived
+         while playing; the caller then reroutes to the new content). -->
+    <function name="teardownForDeepLink" />
   </interface>
 </component>

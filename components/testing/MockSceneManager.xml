@@ -10,12 +10,6 @@
 -->
 <component name="MockSceneManager" extends="ContentNode">
   <interface>
-    <function name="pushScene" />
-    <function name="popScene" />
-    <function name="settings" />
-    <function name="getActiveScene" />
-    <function name="clearScenes" />
-    <function name="clearPreviousScene" />
     <function name="reloadHome" />
     <function name="refreshThemeColors" />
     <field id="reloadHomeRequested" type="boolean" alwaysNotify="true" />
@@ -31,5 +25,6 @@
     <field id="returnData" type="assocarray" />
     <field id="isDataReturned" type="boolean" />
     <field id="isPendingExitConfirmation" type="boolean" value="false" />
+    <field id="isPendingServerSwitch" type="boolean" value="false" />
   </interface>
 </component>

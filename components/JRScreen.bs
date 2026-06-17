@@ -47,13 +47,14 @@ end sub
 ' sgRouter drives the views it mounts in its outlet through a promise-native
 ' lifecycle (onViewOpen / onViewSuspend / onViewResume / beforeViewClose) and
 ' asks them to take focus via handleFocus(). JellyRock screens instead
-' implement onScreenShown / onScreenHidden / onDestroy and rely on
-' SceneManager for focus restoration. These overrides bridge the two contracts
-' so every existing screen works under the router with NO per-screen changes.
+' implement onScreenShown / onScreenHidden / onDestroy and own their focus
+' restoration via lastFocus. These overrides bridge the two contracts so every
+' existing screen works under the router with NO per-screen changes.
 '
-' DORMANT until the router is wired (Phase 2): while SceneManager still owns
-' navigation it calls onScreenShown/onScreenHidden/onDestroy directly and the
-' router never invokes the methods below, so defining them here is inert.
+' This is the LIVE navigation mechanism (#550 Phase 6): the router is the only
+' thing that mounts/suspends/resumes/destroys screens — the old SceneManager
+' scene stack that used to call onScreenShown/onScreenHidden/onDestroy directly
+' was removed. focus save/restore (saveLastFocus) was lifted from it verbatim.
 '
 ' These names override sgrouter_View's no-op defaults; the interface
 ' declarations are inherited from sgrouter_View (via JRGroup), so no <function>

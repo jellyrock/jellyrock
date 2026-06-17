@@ -2,18 +2,19 @@
 <component name="JRScene" extends="Scene">
   <children>
     <BackdropFader id="imageFader" translation="[0, 0]" />
-    <!-- #550 sgRouter outlet: hosts post-login content views (Home/details/library/
-         search/settings). Declared BELOW `content` so SceneManager-pushed screens
-         (pre-login flow, playback) render ABOVE the routed views during the migration.
-         `content` is retired in Phases 5/6 once those paths move off SceneManager. -->
+    <!-- #550 sgRouter outlet: hosts ALL routed views (pre-login flow, content, playback).
+         The whole app navigates through the router now; the old `content` slot that
+         SceneManager swapped screens into was removed with the scene stack. -->
     <sgrouter_Outlet id="routerOutlet" />
-    <Group id="content" />
     <JROverhang id="overhang" />
     <!-- Container for OptionsSlider when open, rendered above overhang for correct z-order -->
     <Group id="optionsPanelOverlay" />
     <LabelPrimaryLarge id="loadingText" height="225" width="1266" horizAlign="center" vertAlign="bottom" wrap="true" translation="[327, 210]" visible="false" />
     <Spinner id="spinner" translation="[897, 477]" />
     <Toast id="toast" visible="false" />
+    <!-- #550 deep link: retry-poll for navigating after popping an active player on a deep link
+         (goBack is async + routerState coalesces, so we retry navigateTo until the router is free). -->
+    <Timer id="deepLinkRetryTimer" repeat="true" duration="0.15" />
     <!-- Used to calculate m.global.user.fontScaleFactor -->
     <Label id="defaultFont" text="" visible="false" />
     <Label id="fallbackFont" text="" visible="false" />
@@ -52,9 +53,10 @@
     <!-- #550 sgRouter host hooks (called from main.bs / loginRouter on the main thread) -->
     <function name="initRouter" />
     <function name="routerNavigate" />
+    <function name="replayRoutedDeepLink" />
+    <function name="replayDeepLinkReplacingPlayer" />
     <function name="reloadRoutedHome" />
     <function name="resetRouter" />
-    <function name="restoreRoutedOverhang" />
     <function name="routerGoBack" />
     <!-- DEBUG: Set from BrightScript console to test toasts. Format: "type|message"
          Example: m.top.getScene().testToast = "error|Something went wrong" -->

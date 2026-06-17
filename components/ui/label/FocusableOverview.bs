@@ -169,8 +169,10 @@ sub onFocusChanged()
   updateFocusBorderLayout()
 end sub
 
-' Opens an OverviewDialog pushed onto the scene stack
-' Passes tagline separately so the dialog can style it distinctly
+' Opens an OverviewDialog as a full-screen overlay on the scene.
+' Passes tagline separately so the dialog can style it distinctly.
+' #550 sgRouter (Phase 6): appended directly to the scene (was a SceneManager pushScene); the
+' dialog restores focus to us on close via returnFocusTo. Mirrors misc.bs showDialog's pattern.
 sub openOverviewDialog()
   dialog = createObject("roSGNode", "OverviewDialog")
 
@@ -183,7 +185,9 @@ sub openOverviewDialog()
   end if
 
   dialog.overview = m.label.text
-  m.global.sceneManager.callFunc("pushScene", dialog)
+  dialog.returnFocusTo = m.top
+  m.top.getScene().appendChild(dialog)
+  dialog.setFocus(true)
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

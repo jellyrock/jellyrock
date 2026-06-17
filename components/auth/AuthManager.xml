@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #550 sgRouter (Phase 6): auth guard for post-login routes. Created on m.global in
+     setGlobalNodes BEFORE the router's addRoutes, and registered by NODE REFERENCE as the
+     canActivate guard on every post-login route (/, details, library, search, settings,
+     play, photo, audio). Registering the same instance that lives on m.global is the whole
+     point: the path it stashes on a redirect (stashedRoute) is then readable by the
+     main-thread replay helper (source/replayRoute.bs) after the user signs in. -->
+<component name="AuthManager" extends="Node">
+  <interface>
+    <!-- Path of the guarded route a signed-out navigation was redirected away from.
+         Written by canActivate (render thread); read + cleared by replayRoute (main thread)
+         after /login auth succeeds. Empty string when there is nothing to replay. -->
+    <field id="stashedRoute" type="string" value="" />
+    <!-- #550 (deep-link hardening): a deferred deep link's resolved intent, set by the
+         main-thread deep-link handler ({ itemId, mediaType, serverGuid }) and read + cleared
+         by replayAfterLogin. Distinct from stashedRoute (the guard's plain-path redirect):
+         a deep link routes through ItemDetails (validate + auto-launch), so it needs the
+         structured intent, not just a path. invalid when there is no pending deep link. -->
+    <field id="stashedDeepLink" type="assocarray" />
+    <function name="canActivate" />
+  </interface>
+</component>

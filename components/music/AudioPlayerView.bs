@@ -876,6 +876,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
+' #550 deep link: stop + tear down without navigating (a deep link arrived while audio plays;
+' the caller reroutes to the new content). Mirrors PlayerHostView.teardownForDeepLink.
+sub teardownForDeepLink()
+  onDestroy()
+end sub
+
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically by SceneManager.popScene() / clearScenes()
 sub onDestroy()

@@ -6,7 +6,7 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 
 - There is **exactly one** video player component: `VideoPlayerView`. The legacy `JRVideo` was removed (see `docs/architecture/tech-debt.md`'s "Recently removed"); don't reintroduce a parallel player.
 - `VideoPlayerView` extends Roku's native `Video` node. Inherits the full media-playback state machine; do NOT replicate state-machine logic.
-- Pre-playback track selection happens in `ItemDetails`'s inline `TrackDropdown` cluster. **Playback-time** track selection happens via `ViewCreator` dialog handlers (`onSelectAudioPressed` / `onSelectSubtitlePressed` / `onSelectVideoSourcePressed`). Both write to the same `VideoPlayerView` fields — they're parallel entry points, not duplicates.
+- Pre-playback track selection happens in `ItemDetails`'s inline `TrackDropdown` cluster. **Playback-time** track selection happens via `PlayerHostView` dialog handlers (`onSelectAudioPressed` / `onSelectSubtitlePressed` / `onSelectVideoSourcePressed`). Both write to the same `VideoPlayerView` fields — they're parallel entry points, not duplicates.
 
 ## OSD
 
@@ -38,5 +38,5 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 ## What NOT to do
 
 - Transcode *decisions* (Direct Play / Direct Stream / Transcode, codec capability checks, URL building) live in `LoadVideoContentTask.bs`. `VideoPlayerView.bs` *consumes* the result and *reacts* to it (DoVi `buffer:loop:` retry, audio-track-change reload for transcoded streams). Don't move decision logic into the player; don't move reaction logic into the loader.
-- Don't bypass the queue: a play press should always go through `QueueManager.playQueue()` so the right player factory in `ViewCreator` is invoked.
-- Don't observe `state` directly from outside the player — use `ViewCreator.onStateChange` as the canonical end-of-playback handler.
+- Don't bypass the queue: a play press should populate the queue and reach the `/details/:type/:id/play` route (via `QueueManager.playQueue()`'s `playbackLaunchRequest` signal, or `ItemDetails`'s direct `navigateTo`) so `PlayerHostView` mounts the player from the current queue item.
+- Don't observe `state` directly from outside the player — `PlayerHostView.onPlayerStateChange` is the canonical end-of-playback / queue-advancement handler (the routed host owns the player as a child).

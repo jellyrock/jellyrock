@@ -2,10 +2,12 @@
 topic: bootstrap
 related-files:
   - source/main.bs
+  - source/loginRouter.bs
+  - source/replayRoute.bs
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-06-07
+last-reviewed: 2026-06-14
 ---
 
 # Bootstrap & Lifecycle
@@ -36,26 +38,40 @@ sub Main (args as dynamic) as void
     setSetting("LastRunVersion", m.global.app.version)
   end if
 
-  m.scene = m.screen.CreateScene("JRScene") ' Persistent root scene
+  m.scene = m.screen.CreateScene("JRScene") ' Persistent root scene (the sgRouter host)
   m.screen.show()
 
   setGlobalNodes()                          ' Phase 2: node-based globals (require active screen)
 
-  appStart:
-  m.global.sceneManager.callFunc("clearScenes")
-  loadTranslations(resolveTranslationLocale())  ' Re-resolve pre-login locale on every login-flow (re-)entry
-  if not LoginFlow() then return            ' Server pick → user pick → auth (in source/showScenes.bs)
+  ' #550 sgRouter: scene-field bridges observed ONCE on the main thread (m.global field +
+  ' port does NOT deliver — the relay defect — but a scene field + port does, like `exit`).
+  m.scene.observeField("userMenuAction", m.port)   ' routed Home: change user/server / sign out
+  m.scene.observeField("exit", m.port)
+  m.scene.observeField("preLoginIntent", m.port)   ' routed pre-login views emit intents
 
-  m.global.sceneManager.callFunc("clearScenes")
-  initializeFallbackFont()                  ' Optional: download fallback font for non-Latin scripts
-  loadHomeScreen()
-  ...
+  ' #550 sgRouter: cold-start deep link — stash BEFORE entering login so it replays uniformly.
+  if isValid(args) and isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
+    stashDeepLinkPlay(args.contentId, args.mediaType)
+  end if
+
+  ' Input + device events set up ONCE — they survive session resets (no app-loop restart).
+  input = CreateObject("roInput")
+  input.SetMessagePort(m.port)
+  input.EnableTransportEvents()             ' Roku voice transport (play/pause/seek/next/...)
+  device = CreateObject("roDeviceInfo")
+  device.setMessagePort(m.port)
+  ' ... device.Enable*Event(true) (see App lifecycle events) ...
+
+  reenterLogin()                            ' Routed pre-login flow (source/loginRouter.bs)
+
   while true
-    msg = wait(0, m.port)                   ' Main event loop
+    msg = wait(0, m.port)                   ' ONE unified event loop, pre- AND post-login
     ...
   end while
 end sub
 ```
+
+There is **no `LoginFlow()` gate and no `clearScenes`** anymore. The whole app — pre-login and post-login — is routed through sgRouter (#550); `Main()` brings up `roInput` / `roDeviceInfo` once, stashes any cold-start deep link, then calls `reenterLogin()` and drops into a **single** event loop that serves both phases. Session resets (Change Server / User / Sign Out) re-enter the login flow *in place* via `reenterLogin()`, so `roInput`/`roDeviceInfo` are no longer recreated per login and there is no `appStart:` / `goto` restart.
 
 ## The two-phase global setup
 
@@ -85,21 +101,24 @@ Defined in `source/utils/globals.bs` (`setGlobalNodes` function). Creates and st
 - `m.global.apiPool0`, `apiPool1`, `apiPool2` — three `ApiTask` Task nodes, each `control = "RUN"` to enter their infinite work loop
 - `m.global.apiQueue` — `ApiQueueTask`, the FIFO coordinator that dispatches into the pool
 - `m.global.sideEffectTask` — `SideEffectTask` for fire-and-forget POST/DELETE
-- `m.global.sceneManager` — observed by `main.bs` for `isDataReturned` and `reloadHomeRequested` events
+- `m.global.sceneManager` — now a shared **service node** (dialogs, backdrop, theme, overhang passthrough fields — the scene-stack was removed in #550, see `navigation.md`); observed by `main.bs` for `isDataReturned` and `reloadHomeRequested` events
+- `m.global.AuthManager` — the sgRouter `canActivate` auth guard, created **before** the router's `addRoutes` and registered by node reference on every post-login route (see `navigation.md`)
+- `m.global.activeRoutedView` — node field (default invalid); the currently-mounted router view. Published by `JRScreen`'s lifecycle bridge; read by `getActiveView()`, the overhang controller, and the playback/options/device branches of the event loop
+- `m.global.playbackLaunchRequest` / `m.global.photoLaunchRequest` — `assocarray` fields the queue/photo launchers set to request a route (`JRScene` observes them and navigates — see `playback.md` / `user-journey.md`)
 - `m.global.queueManager` — `QueueManager` node
 - `m.global.audioPlayer` — `AudioPlayer` node (extends `Video`, used as the audio playback engine)
 - `m.global.debug` — `DebugFlags` node, **only in `#if debug` builds** (compiled out in prod)
 
-Why split? The Tier-1 API pool and `SceneManager` need to be live nodes attached to the running scene graph; trying to wire their observers before `screen.show()` produces undefined behavior on some firmware. The split is enforced by ordering, not by any abstraction.
+Why split? The Tier-1 API pool and the service/manager nodes need to be live nodes attached to the running scene graph; trying to wire their observers before `screen.show()` produces undefined behavior on some firmware. The split is enforced by ordering, not by any abstraction.
 
-## The persistent root scene — `JRScene`
+## The persistent root scene — `JRScene` (the sgRouter host)
 
-JellyRock has **one** scene for the entire lifetime of the channel. It is `components/JRScene.xml`, extending `Scene`. The XML structure:
+JellyRock has **one** scene for the entire lifetime of the channel. It is `components/JRScene.xml`, extending `Scene`, and it is the **router host** (#550): it initializes sgRouter over its outlet, registers the route table, drives the overhang from the router-active view, and confirms app exit. The XML structure:
 
 ```xml
 <JRScene extends="Scene">
   <BackdropFader id="imageFader" />          <!-- behind everything: backdrop image with crossfade -->
-  <Group id="content" />                     <!-- where the active screen lives (swapped by SceneManager) -->
+  <sgrouter_Outlet id="routerOutlet" />      <!-- the live nav surface: every routed view mounts here -->
   <JROverhang id="overhang" />               <!-- top bar: logo, user, search, settings, tabs -->
   <Group id="optionsPanelOverlay" />         <!-- options slider (renders above overhang for z-order) -->
   <LabelPrimaryLarge id="loadingText" />
@@ -109,29 +128,37 @@ JellyRock has **one** scene for the entire lifetime of the channel. It is `compo
 </JRScene>
 ```
 
+`<sgrouter_Outlet id="routerOutlet">` is the live navigation surface — every routed view (pre-login, content, playback) mounts here. The old `<Group id="content"/>` slot that `SceneManager` swapped screens into was removed along with the scene stack.
+
 Interface fields exposed for global control:
 
 | Field | Type | Purpose |
 |---|---|---|
-| `isLoading` | bool | Show/hide the central spinner + dim active group |
+| `isLoading` | bool | Show/hide the central spinner + dim the active routed view |
 | `isRemoteDisabled` | bool | Block all remote input while loading |
 | `loadingText` | string | Text shown beneath the spinner |
 | `backgroundImageUri` | string | Backdrop image URL — `BackdropFader` does the crossfade |
 | `shouldShowBackdrop` | bool | Lazily resolved from user settings on first backdrop request |
 | `exit` | bool | Setting this true exits the channel |
+| `userMenuAction` | string | Routed Home sets this (change user/server / sign out); `main.bs` observes it → `handleMenuAction` |
+| `preLoginIntent` | string | Routed pre-login views emit an intent string; `main.bs` observes it → `handlePreLoginIntent` |
+| `contentVersion` | int | Content-freshness token bumped on a content mutation (e.g. item delete); `keepAlive` grids re-fetch on resume when it differs |
 | `testToast` | string | Debug-only test trigger (see `debug-tools.md`) |
+
+`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `initRouter`, `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`.
 
 `components/JRScene.bs` adds the controller logic:
 
-- Initializes the loading spinner, toast, backdrop fader references
+- Initializes the loading spinner, toast, backdrop fader, and overhang references
 - Lazily resolves the user's "show backdrop" setting on first backdrop request (so the very first backdrop assignment after login picks up the user preference)
 - Implements `setBackgroundImage(uri, isAnimated, forceBackdrop)` with `forceBackdrop=true` used during the login splashscreen
-- Handles the `back` key by calling `sceneManager.popScene()` and the `options` key by showing the options panel of the active group
+- **Owns the router**: `initRouter` (idempotent bring-up + route table + overhang/playback/photo observers), `routerNavigate` / `replayRoutedDeepLink` (navigation), `resetRouter` (`sgrouter.destroy` on session reset), and the overhang controller (`onActiveRoutedViewChanged` + `register/unregisterOverhangData`). Full detail in `navigation.md`
+- Handles the `back` key via the **router back arbiter**: a routed view's back is intercepted by the outlet first (`sgrouter.goBack`); a back key only reaches `JRScene.onKeyEvent` when `goBack` is a no-op at the router root (history depth ≤ 1), where it calls `showExitConfirmation()`. The `options` key opens the active routed view's options panel
 - Implements the up-up-down-down debug cheat code that cycles through toast types in `#if debug` builds
 
 ## The main event loop
 
-After login + home screen load, `main.bs` enters its event loop:
+`Main()` drops into **one unified event loop** that serves both the pre-login flow and the post-login session (#550 — there is no separate login loop anymore):
 
 ```brightscript
 while true
@@ -140,25 +167,31 @@ while true
     return
   else if isNodeEvent(msg, "exit")
     return
-  else if isNodeEvent(msg, "closeSidePanel")           ' Options panel closed → restore focus
-  else if isNodeEvent(msg, "isFontDownloadCompleted")  ' Fallback font finished downloading
-  else if isNodeEvent(msg, "quickPlayNode")            ' Any Play button pressed anywhere
-  else if isNodeEvent(msg, "voiceQuery")               ' Voice search from home screen
-  else if isNodeEvent(msg, "output")                   ' QuickPlayTask returned a queue
-  else if isNodeEvent(msg, "result")                   ' RecordProgramTask returned
-  else if isNodeEvent(msg, "selectedItem")             ' Library / row item selected → push detail
-  ' ...many more event branches
+  else if isNodeEvent(msg, "preLoginIntent")           ' routed pre-login view emitted an intent
+  else if isNodeEvent(msg, "isAuthenticated")          ' QuickConnectDialog signalled success
+  else if isNodeEvent(msg, "closeSidePanel")           ' options panel closed → restore focus
+  else if isNodeEvent(msg, "isFontDownloadCompleted")  ' fallback font finished downloading
+  else if isNodeEvent(msg, "playItem")                 ' AlbumTrackList row → play audio
+  else if isNodeEvent(msg, "searchValue") / "results"  ' search box → SearchTask
+  else if isNodeEvent(msg, "optionSelected")           ' OptionsSlider action → handleMenuAction
+  else if isNodeEvent(msg, "userMenuAction")           ' routed Home user dropdown → handleMenuAction
+  else if type(msg) = "roDeviceInfoEvent"              ' app lifecycle (see below)
+  else if type(msg) = "roInputEvent"                   ' deep link OR voice transport
+  else if isNodeEvent(msg, "isDataReturned")           ' dialog result (exit confirm, resume prompt)
+  else if isNodeEvent(msg, "reloadHomeRequested")      ' theme/locale change → reloadRoutedHome
+  ' ...
 end while
 ```
 
-The event loop is the central hub for cross-screen actions. Most events are wired by `setGlobalNodes()` (e.g., `sceneManager.observeField("isDataReturned", m.port)`) or by other code paths observing a node on the same port. (Both the favorite and watched toggles were migrated off this loop in issue #551 — `main.bs`'s button router now calls `group.callFunc("toggleFavorite")` / `group.callFunc("toggleWatched")`, which run as render-thread `fetchAsync()` promises in `ItemDetails`. The Series "mark all watched" confirmation dialog still routes through this loop's `isDataReturned` branch, which re-invokes `toggleWatched` on confirm; only the fetch + result handling moved to the render thread. With the watched toggle migrated, no raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is now a hard grep-zero guard.)
+The loop is the central hub for cross-screen, main-thread-only actions (things the render thread can't do: blocking bootstrap API calls, `roInput`/`roAppManager`, the `sgrouter`-namespace bridge). Events are wired by `setGlobalNodes()` (e.g. `sceneManager.observeField("isDataReturned", m.port)`), by the once-only scene-field observers set up in `Main()` (`preLoginIntent` / `userMenuAction` / `exit`), or by other code paths observing a node on the same port.
 
-The dominant event is **`quickPlayNode`** — the universal "play this item" signal. Any UI that wants to start playback sets a node on its `quickPlayNode` field; `main.bs` reads that node, classifies it by `type` (movie / episode / audio / musicvideo / photo / chapter / tvchannel / program / etc.), and either:
+What is **no longer here** (moved to per-view render-thread handlers in #550):
 
-- Calls a synchronous `quickplay.<type>()` helper (e.g. `quickplay.video(itemNode)`) which pushes the item into `QueueManager`, then calls `playQueue()`
-- Or, for types that need additional API calls first (e.g. "play whole season"), spawns a `QuickPlayTask` and waits for its `output` event
+- **`quickPlayNode`** — Play presses are no longer relayed through `main.bs`. Each routed view (`Home` / `BaseGridView` / `SearchResults` / `ItemDetails`) observes its *own* `quickPlayNode` and forwards it to `QueueManager.launchItem`; single-item plays navigate `/details/:type/:id/play` directly (see `user-journey.md`).
+- **`selectedItem`** — library/item selection is handled by each view's own `selectedItem` observer, which navigates the router via `routeForItem(item)` — not relayed to `main.bs`.
+- The favorite/watched toggles were migrated off this loop in #551 (`group.callFunc("toggleFavorite")` / `toggleWatched` run as render-thread `fetchAsync()` promises in `ItemDetails`). The Series "mark all watched" confirmation now routes through `ItemDetails`'s own scoped `isDataReturned` observer; the only confirmations `main.bs` still handles here are the **exit** dialog and the **resume/start-over** prompt. No raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is a hard grep-zero guard.
 
-This funnel means there's exactly one "this got pressed → start playback" code path, regardless of which screen issued it.
+Session-ending actions converge on `handleMenuAction(actionId)`: each tears down the routed Home (`m.scene.callFunc("resetRouter")` → `sgrouter.destroy`) and re-enters the login flow **in place** via `reenterLogin()` — no `goto appStart` (that path is gone).
 
 ## App lifecycle events
 
@@ -186,23 +219,27 @@ The event loop branches on each of these. Notable handling:
 There is no explicit "shutdown" function. The app exits when:
 
 1. The event loop sees `roSGScreenEvent` with `isScreenClosed()` returning true, **or**
-2. Any code sets `m.scene.exit = true` (the `JRScene` interface field), **or**
-3. `popScene()` is called when the stack has exactly one entry (this triggers an exit-confirmation dialog instead of immediate exit; see `navigation.md`)
+2. Any code sets `m.scene.exit = true` (the `JRScene` interface field)
 
-The Roku OS handles the actual process teardown after `Main` returns.
+The second path is reached via the **router back arbiter**: when a back key reaches `JRScene` at the router root (history depth ≤ 1, i.e. `sgrouter.goBack` had nothing to pop), `showExitConfirmation()` shows the confirm dialog; on confirm, `main.bs`'s `isDataReturned` branch sets `m.scene.exit = true` (see `navigation.md`). The Roku OS handles the actual process teardown after `Main` returns.
 
 ## Deep links
 
-`Main(args)` accepts an `args` AA from Roku. If launched via deep link, it contains `mediaType` and `contentId`:
+`Main(args)` accepts an `args` AA from Roku. If launched via deep link it contains `mediaType` and `contentId`. The deep link is **stashed before the login flow runs** so it replays uniformly whether the user is already authenticated or has to sign in first:
 
 ```brightscript
-if isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
-  m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: args.contentId, type: "video" }))
-  m.global.queueManager.callFunc("playQueue")
+if isValid(args) and isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
+  stashDeepLinkPlay(args.contentId, args.mediaType)   ' seed queue + record play path on AuthManager.stashedRoute
 end if
+reenterLogin()
 ```
 
-This runs **after** the home screen is loaded (so the user lands on home if they back out of playback). All other deep-link types (audio, photo, etc.) fall through to the regular event loop.
+`stashDeepLinkPlay` (`source/replayRoute.bs`) seeds the queue with the `contentId` and records a `/details/:type/:id/play` path on `m.global.AuthManager.stashedRoute`. After login, `createAndShowHomeGroup` → `replayAfterLogin()` reads + clears the stash and navigates the route chain via `JRScene.replayRoutedDeepLink`:
+
+- no deep link → `["/"]` (plain Home)
+- a play deep link → `["/", details, play]` so back unwinds **Player → Details → Home** (locked decision #3) — the user lands on Home if they back out of playback
+
+A **runtime** deep link (another app hands JellyRock content while it's already running) arrives as an `roInputEvent` with `info.mediatype` / `info.contentid`. The `roInputEvent` branch calls `stashDeepLinkPlay` the same way, then — if already signed in — `replayAfterLogin()` immediately; otherwise the stash rides along until login completes. The voice-transport `roInputEvent` branch (`info.type = "transport"`) shares the same dispatcher; it sources the active view via `getActiveView()` and forwards `handleTransport` to `PlayerHostView` / `VideoPlayerView` / `AudioPlayerView` (see `playback.md`).
 
 ## Known cruft
 

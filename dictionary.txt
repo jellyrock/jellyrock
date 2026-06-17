@@ -229,6 +229,7 @@ Globals
 glyphs
 GTD
 GTD-flavored
+GUID
 handoff
 handoffs
 Hant
@@ -391,6 +392,7 @@ RCs
 README
 READMEs
 read-only
+reachability
 rebase
 recurse
 Reddit
