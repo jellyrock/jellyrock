@@ -24,3 +24,6 @@ node_modules/
 # Committed fingerprints (docs/architecture/spec-fingerprints/) and the
 # committed suppression config (.api-watch/suppressions.yml) are NOT ignored.
 .api-watch/cache/
+# Project PLANs are local agent-continuity (like .claude/handoffs, .claude/plans);
+# public repo keeps them out of git. Lifecycle skills still run locally.
+docs/projects/

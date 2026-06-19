@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
-# start-project scaffolder — the deterministic mechanics behind /start-project.
-# Lives next to the skill so the SKILL.md prose can stay focused on the judgment
-# half (co-designing the Charter); this script does only the parts a model would
-# otherwise re-improvise every run.
+# start-project scaffolder — the CANONICAL REFERENCE for /start-project's
+# deterministic mechanics. A consumer adapts this rather than hand-writing one
+# (CONVERSION.md step 4); it is co-located per-consumer `## Implementation`, not
+# audited for Contract drift, but the audit-workflow-drift.sh completeness lint
+# checks it EXISTS (a SKILL.md that names a co-located script absent from its
+# dir ships broken).
 #
 # Does ONLY the parts with exactly one correct output given (slug, goal):
 # collision-check, mkdir, copy the PLAN template, fill dated frontmatter (real
@@ -16,19 +18,23 @@
 # Zero token cost, deterministic, regression-testable, runs for humans + bots.
 # Cost-rule dogfood: see .claude/rules/cost-efficiency.md.
 #
-# Derives all paths from `git rev-parse`. Assumes the two project-lifecycle
-# conventions this repo adopts:
-#   1. a project template at  docs/projects/_TEMPLATE.md
-#   2. a projects index at    docs/projects/README.md  with an `## Active projects` table
-# If those move, adjust PROJECTS/TEMPLATE/README below.
+# PORTABLE AS-IS — derives all paths from `git rev-parse`, no consumer-fill
+# slots. It assumes only the two project-lifecycle conventions every consumer
+# already adopts via /onboard-repo:
+#   1. a project template at  docs/projects/_TEMPLATE.md  (from canonical templates/PLAN.md)
+#   2. a projects index at    docs/projects/README.md     with an `## Active projects` table
+# If a consumer parks those elsewhere, adjust PROJECTS/TEMPLATE/README below —
+# that is the only adaptation a consumer ever needs.
 #
 # Usage: bash .claude/skills/start-project/scaffold-project.sh <slug> <goal-oneliner>
 #   slug:  kebab-case project slug (no date prefix — the script adds YYYY-MM-)
 #   goal:  one-line goal for the README row (the full Charter is filled by the skill)
 #
-# Exit 1 (no mutation) on: missing args, missing template/README, or a slug
-# collision (an existing *-<slug>/ dir, active OR archived) — so the skill can
-# never scaffold over a real project's history.
+# Exit 1 (no mutation) on: missing args or a slug collision (an existing
+# *-<slug>/ dir, active OR archived) — so the skill can never scaffold over a
+# real project's history. A missing template/README is NOT fatal: the script
+# self-bootstraps minimal defaults (for a public consumer whose project tree is
+# gitignored — see below).
 
 set -euo pipefail
 
@@ -45,8 +51,49 @@ PROJECTS="$ROOT/docs/projects"
 TEMPLATE="$PROJECTS/_TEMPLATE.md"
 README="$PROJECTS/README.md"
 
-[ -f "$TEMPLATE" ] || die "missing template: $TEMPLATE"
-[ -f "$README" ]   || die "missing README: $README"
+# Self-bootstrap the lifecycle infra if absent. On a public consumer the project
+# tree is gitignored (PLANs are local agent-continuity, like .claude/handoffs),
+# so a fresh clone won't carry these — create minimal defaults instead of
+# failing. On a private consumer they're committed + present, so this never fires
+# and the committed template/README are used unchanged.
+mkdir -p "$PROJECTS"
+if [ ! -f "$TEMPLATE" ]; then
+  cat > "$TEMPLATE" <<'TEMPLATE_EOF'
+---
+project: <slug>
+status: draft   # draft | active | completed | abandoned
+created: <YYYY-MM-DD>
+last-updated: <YYYY-MM-DD>
+---
+
+# <Project title>
+
+## ⛰ Charter
+
+- **Goal**:
+- **Success criteria**:
+- **Out of scope**:
+- **Phases**:
+
+## 📊 Status
+
+## 🚀 Next-session kickoff (rewritten by /end-session each time)
+
+## 📜 Session log (append-only)
+TEMPLATE_EOF
+fi
+if [ ! -f "$README" ]; then
+  cat > "$README" <<'README_EOF'
+# Projects
+
+Multi-session tracked work. Each project is a `YYYY-MM-<slug>/PLAN.md`.
+
+## Active projects
+
+| Project | Status | Goal |
+|---|---|---|
+README_EOF
+fi
 
 MONTH="$(date +%Y-%m)"
 TODAY="$(date +%Y-%m-%d)"
