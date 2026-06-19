@@ -13,7 +13,7 @@
 //   1. Behavioral / action-trace (`behavioralTrace`) — the ordered sequence of
 //      effects the run produced (tool calls, edits, sub-agent spawns, in
 //      transcript order) + a per-path file-touch summary + tool/bash-verb
-//      histograms (dimension 1 of skill-evaluation.md).
+//      histograms. The backbone of /verify-skill's two-version differential.
 //   2. Friction findings (the detectors below)
 //   3. Performance — clock time, token usage per model, cache-hit ratio,
 //      cost estimate
@@ -42,11 +42,13 @@
 //                            trust your own repo files — they shouldn't fire a
 //                            permission prompt mid-skill.
 //
-// Repo-specific rule detectors (mapping this repo's CLAUDE.md / AGENTS.md
-// hard rules to mechanical findings) plug into the CONSUMER_RULE_DETECTORS
-// seam near the bottom of this file. That array ships EMPTY — with no
-// repo-specific rule detectors the friction + perf + model-fit + accuracy
-// audit runs alone.
+// All repo-specific configuration lives in the co-located
+// `extract-friction.config.cjs` (the only per-repo file): rule detectors that
+// map this repo's CLAUDE.md / AGENTS.md hard rules to findings, plus any extra
+// deploy/apply verbs, repo-internal dirs, and subcommand tools. This core file
+// is repo-agnostic and synced verbatim. With no config (or an empty one) the
+// core runs the friction + perf + model-fit + accuracy audit on its own. See
+// the audit-skill SKILL.md for how to author a rule detector.
 //
 // Exit codes:
 //     0  findings produced (zero is valid)
@@ -59,6 +61,29 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+
+// Pure shared helpers (also used by consumer rule detectors via the config).
+const { preview, findResultByToolUseId } = require('./extract-friction.util.cjs');
+
+// Per-repo configuration — the only repo-specific surface. The core below is
+// repo-agnostic; everything repo-specific (rule detectors, extra deploy verbs,
+// internal dirs, subcommand tools) lives in the co-located
+// `extract-friction.config.cjs`, which is created once per repo and never
+// overwritten by a re-sync. Absent or partial config falls back to empty, so
+// the core runs repo-agnostically on its own.
+let consumerConfig = {
+  ruleDetectors: [],
+  mutationBashPatterns: [],
+  internalPrefixes: [],
+  subcommandTools: [],
+};
+try {
+  // Resolved relative to this module (not cwd), so it loads regardless of where
+  // the extractor is invoked from.
+  consumerConfig = { ...consumerConfig, ...require('./extract-friction.config.cjs') };
+} catch {
+  /* no consumer config present — run the repo-agnostic core alone */
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // Argv parsing — minimal, no deps. Supported:
@@ -180,39 +205,6 @@ function defaultTranscriptsDir() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// JellyRock-specific bash/edit pattern matchers — feed the repo-specific
-// rule detectors registered in CONSUMER_RULE_DETECTORS below.
-// ──────────────────────────────────────────────────────────────────────
-
-// Lint/validate/build/format invocations whose repetition triggers lint-spam
-const LINT_SHAPE = [
-  /^\s*npm\s+run\s+lint(:|\s|$)/,
-  /^\s*npm\s+run\s+validate(\s|$)/,
-  /^\s*npm\s+run\s+build(:|\s|$)/,
-  /^\s*npm\s+run\s+check-formatting(:|\s|$)/,
-  /^\s*npm\s+run\s+format(:|\s|$)/,
-  /(?:^|\s|;|&&|\|)bsfmt\b/,
-  /(?:^|\s|;|&&|\|)bsc\b/,
-];
-
-// Test invocations — used to satisfy `test-claim-without-evidence`
-const TEST_SHAPE = [/\bnpm\s+run\s+test(:|\s|$)/, /\bnpm\s+test(\s|$)/, /\bnpx\s+vitest\b/];
-
-// Test-claim phrases — case-insensitive, word-bounded
-const TEST_CLAIM =
-  /\b(tested|verified|tests?\s+pass(?:ing|ed)?|passing\s+tests?|all\s+tests?\s+pass)\b/i;
-
-// CHANGELOG path detection — matches the file at the repo root or any
-// nested location (defensive — JellyRock's is at root, but a copy in a
-// subdir would still violate the rule)
-const CHANGELOG_PATH = /(?:^|\/)CHANGELOG\.md$/i;
-
-// tasks/ leakage detection — narrow to `tasks/<word>` to skip mentions
-// of the literal word "tasks" in prose ("the tasks at hand"). Requires
-// at least one path segment after `tasks/` to qualify as a path.
-const TASKS_LEAKAGE = /\btasks\/[A-Za-z0-9._-]/;
-
-// ──────────────────────────────────────────────────────────────────────
 // Confusion markers — cluster detection
 // ──────────────────────────────────────────────────────────────────────
 
@@ -308,8 +300,8 @@ function projectTurn(obj, lineNo) {
           editTargets.push({
             tool: name,
             filePath,
-            // Content captured so consumer rule detectors (e.g. a raw-IP or
-            // immutable-doc-edit detector) can inspect the *text* being
+            // Content captured so consumer rule detectors (e.g. a secret-string
+            // or protected-file-edit detector) can inspect the *text* being
             // introduced/removed, not just the
             // path. `newContent` = text written into the file; `oldContent` = text
             // removed (Edit/MultiEdit only). Shapes differ per tool:
@@ -370,12 +362,6 @@ function projectTurn(obj, lineNo) {
     otherToolUses,
     actions,
   };
-}
-
-function preview(text, limit = 200) {
-  if (typeof text !== 'string') return '';
-  if (text.length <= limit) return text;
-  return text.slice(0, limit) + '…';
 }
 
 function editContent(tool, inp) {
@@ -531,14 +517,13 @@ const READONLY_LOAD_TURN_CEILING = 35;
 // a read-only skill's own steps. `git commit` / `git push` is the universal
 // portable signal; read-only subcommands (git log/status/diff) are excluded so
 // a read-only skill's own state-check bash never triggers a spurious cut.
-// If this repo's skills deploy/apply infrastructure, add those
-// mutating patterns here (e.g. a deploy wrapper, `ansible-playbook`,
-// `docker[-\\s]compose (up|down|…)`, `systemctl (start|stop|…)`, `docker run`)
-// so the first-run cut lands at the right point — read-only state-checks
-// (docker ps, compose ps) must stay excluded.
+// If this repo's skills deploy/apply infrastructure, add those mutating verbs
+// via `mutationBashPatterns` in extract-friction.config.cjs (a deploy/publish
+// wrapper, or an apply/up/restart-style orchestration command) so the first-run
+// cut lands at the right point — read-only state-checks (status / list / ps)
+// must stay excluded.
 const MUTATION_DEPLOY_BASH = new RegExp(
-  '\\bgit\\s+(?:commit|push)\\b',
-  // + '|\\bansible-playbook\\b|\\bsystemctl\\s+(?:start|stop|restart)\\b|...'
+  ['\\bgit\\s+(?:commit|push)\\b', ...consumerConfig.mutationBashPatterns].join('|'),
   'i',
 );
 
@@ -862,19 +847,6 @@ function detectConfusion(turns, range, minDensity) {
   return findings;
 }
 
-function findResultByToolUseId(turns, fromIdx, toolUseId, _range) {
-  // tool_results often land in the user turn just past range[1]. Walk
-  // ahead in the full turn list.
-  if (!toolUseId) return null;
-  const limit = Math.min(fromIdx + 10, turns.length);
-  for (let j = fromIdx; j < limit; j++) {
-    for (const tr of turns[j].toolResults) {
-      if (tr.toolUseId === toolUseId) return tr;
-    }
-  }
-  return null;
-}
-
 // ──────────────────────────────────────────────────────────────────────
 // Performance — clock time, token usage, cost estimate
 //
@@ -1004,17 +976,15 @@ function humanDuration(sec) {
 
 // Repo-internal path prefixes — paths starting with these (or `./` +
 // these) are project-owned and should never trigger a permission prompt.
-// The defaults below are near-universal source dirs; add this repo's own
-// top-level dirs (e.g. `ansible/`, `compose/`, `src/`, `lib/`).
+// The core defaults below are near-universal; a repo adds its own top-level
+// dirs (e.g. `src/`, `lib/`, `app/`, `pkg/`) via `internalPrefixes` in
+// extract-friction.config.cjs.
 const REPO_INTERNAL_PREFIXES = [
   '.claude/',
   'scripts/',
   'tests/',
   'hooks/',
-  // consumer (JellyRock): top-level source dirs
-  'source/',
-  'components/',
-  'locale/',
+  ...consumerConfig.internalPrefixes,
 ];
 
 function loadAllowlist(cwd) {
@@ -1135,23 +1105,24 @@ function detectPermissionGap(turns, range, allowlist) {
 // Repo-specific rule detectors
 //
 // The repo-agnostic detectors above flag *process* friction (repeated-command,
-// failed-recovery, confusion-marker, permission-gap). THIS section is the
-// repo-specific layer: one detector per hard rule in this repo's CLAUDE.md /
-// AGENTS.md that you want mechanically caught. Each detector is a function
+// failed-recovery, confusion-marker, permission-gap). THIS is the repo-specific
+// layer: one detector per hard rule in this repo's CLAUDE.md / AGENTS.md that
+// you want mechanically caught. Each detector is a function
 //   (turns, range, cwd) => findings[]
 // where every finding carries a populated `ruleViolated` { anchor, summary }
 // and `suggestedFix.kind: 'rule-violation'` — the default reading is "this
 // broke a documented rule" (the auditor still confirms; a grep'd or quoted
 // string is not an invocation, so tune detectors to favour recall).
 //
-// Register detectors in CONSUMER_RULE_DETECTORS below. The array is EMPTY by
-// default: with no repo-specific rule detectors the extractor runs the
-// repo-agnostic friction + perf + model-fit + accuracy audit alone, and is
-// fully runnable as-is.
+// Register your detectors in the `ruleDetectors` array of
+// extract-friction.config.cjs (this repo's only per-repo file). With none, the
+// core runs the friction + perf + model-fit + accuracy audit alone and is fully
+// runnable as-is. See the audit-skill SKILL.md for how to author one.
 //
-// Example shape (copy, rename, adapt — maps one CLAUDE.md hard rule to a
-// finding; this is the same shape a reference consumer uses for its raw-IP /
-// compose-wrapper / immutable-doc / failed-deploy-claim detectors):
+// Example shape (copy into the config file, rename, adapt — maps one CLAUDE.md
+// hard rule to a finding; the same shape any consumer uses for its own
+// detectors, e.g. a secret-string, protected-file-edit, or
+// claim-without-evidence detector):
 //
 //   function detectExampleRuleViolation(turns, range, _cwd) {
 //     const findings = [];
@@ -1186,312 +1157,8 @@ function detectPermissionGap(turns, range, allowlist) {
 //   }
 //
 // Each registered entry is invoked as `detector(turns, effRange, cwd)` and its
-// returned findings are merged with the portable friction findings.
-
-// ── JellyRock repo-specific rule detectors ─────────────────────────────
-// Each maps one CLAUDE.md hard rule to a finding (with `ruleViolated` +
-// `suggestedFix`). They run on the same projected turns as the portable
-// detectors; `findResultByToolUseId` / `preview` are the shared helpers above.
-
-function detectLintSpam(turns, range, windowSize) {
-  // Walk assistant turns. Track lint-shape commands and whether the
-  // immediately-prior lint command produced a successful tool_result.
-  // If a second lint-shape command fires within `windowSize` turns AND
-  // the prior one succeeded (no failure to fix between them), flag.
-  const findings = [];
-  let counter = 0;
-  const lintEvents = []; // {idx, lineNo, uuid, timestamp, command, toolUseId}
-  for (let i = range[0]; i <= range[1]; i++) {
-    const t = turns[i];
-    if (t.role !== 'assistant') continue;
-    for (const bc of t.bashCommands) {
-      if (LINT_SHAPE.some((re) => re.test(bc.command))) {
-        lintEvents.push({
-          idx: i,
-          lineNo: t.lineNo,
-          uuid: t.uuid,
-          timestamp: t.timestamp,
-          command: bc.command,
-          toolUseId: bc.toolUseId,
-        });
-      }
-    }
-  }
-  for (let k = 1; k < lintEvents.length; k++) {
-    const prev = lintEvents[k - 1];
-    const curr = lintEvents[k];
-    // Check window distance — count assistant turns between prev.idx and curr.idx
-    let assistantTurnsBetween = 0;
-    for (let i = prev.idx + 1; i < curr.idx; i++) {
-      if (turns[i].role === 'assistant') assistantTurnsBetween += 1;
-    }
-    if (assistantTurnsBetween >= windowSize) continue;
-    // Check whether prev lint command succeeded — find its tool_result
-    const prevResult = findResultByToolUseId(turns, prev.idx, prev.toolUseId, range);
-    const prevSucceeded = prevResult ? !prevResult.isError : true; // missing result = treat as silent success (couldn't fail-recover)
-    if (!prevSucceeded) continue; // Re-running after a real failure is justified
-    counter += 1;
-    findings.push({
-      id: `lint-spam-${String(counter).padStart(3, '0')}`,
-      category: 'lint-spam',
-      severity: 'med',
-      evidence: {
-        transcriptLine: curr.lineNo,
-        uuid: curr.uuid,
-        timestamp: curr.timestamp,
-        priorCommand: prev.command,
-        priorLine: prev.lineNo,
-        priorSucceeded: prevSucceeded,
-        currentCommand: curr.command,
-        assistantTurnsBetween,
-      },
-      ruleViolated: {
-        anchor: 'CLAUDE.md#dont-compulsively-re-run-lint',
-        summary:
-          "Don't compulsively re-run lint / build / format mid-work. " +
-          'These are already run by pre-commit / pre-push hooks and CI; ' +
-          'editors surface BSC diagnostics live.',
-      },
-      suggestedFix: {
-        kind: 'judgment-required',
-        text:
-          'Agent ran a lint/validate/build command after a prior one ' +
-          'already succeeded — a pattern the load-bearing rule explicitly ' +
-          'forbids. Either add a callout to the SKILL.md naming the ' +
-          'anti-pattern, or examine whether the workflow legitimately ' +
-          'needs the second invocation (then narrow the rule).',
-      },
-    });
-  }
-  return findings;
-}
-
-function detectChangelogEditAttempt(turns, range) {
-  const findings = [];
-  let counter = 0;
-  for (let i = range[0]; i <= range[1]; i++) {
-    const t = turns[i];
-    for (const et of t.editTargets) {
-      if (CHANGELOG_PATH.test(et.filePath)) {
-        counter += 1;
-        findings.push({
-          id: `changelog-${String(counter).padStart(3, '0')}`,
-          category: 'changelog-edit-attempt',
-          severity: 'high',
-          evidence: {
-            transcriptLine: t.lineNo,
-            uuid: t.uuid,
-            timestamp: t.timestamp,
-            tool: et.tool,
-            filePath: et.filePath,
-          },
-          ruleViolated: {
-            anchor: 'CLAUDE.md#cannot-modify-changelog',
-            summary: 'CHANGELOG.md is CI-controlled — agents must not edit it.',
-          },
-          suggestedFix: {
-            kind: 'mechanical',
-            text:
-              'Agent attempted to Edit/Write CHANGELOG.md, which is forbidden ' +
-              'by the load-bearing rule (CHANGELOG is CI-managed). The skill ' +
-              'should never produce this; if it did, the SKILL.md may be missing ' +
-              'a clear callout naming this rule.',
-          },
-        });
-      }
-    }
-  }
-  return findings;
-}
-
-function detectTasksLeakage(turns, range) {
-  const findings = [];
-  let counter = 0;
-  for (let i = range[0]; i <= range[1]; i++) {
-    const t = turns[i];
-    for (const bc of t.bashCommands) {
-      // We care about commands that produce shared artifacts: git commit,
-      // gh pr create, gh issue create. Match on the body argument.
-      const isShareCmd =
-        /\bgit\s+commit\b/.test(bc.command) ||
-        /\bgh\s+pr\s+create\b/.test(bc.command) ||
-        /\bgh\s+issue\s+create\b/.test(bc.command);
-      if (!isShareCmd) continue;
-      if (TASKS_LEAKAGE.test(bc.command)) {
-        counter += 1;
-        findings.push({
-          id: `tasks-leak-${String(counter).padStart(3, '0')}`,
-          category: 'tasks-leakage',
-          severity: 'high',
-          evidence: {
-            transcriptLine: t.lineNo,
-            uuid: t.uuid,
-            timestamp: t.timestamp,
-            command: bc.command,
-          },
-          ruleViolated: {
-            anchor: 'CLAUDE.md#dont-reference-tasks-paths',
-            summary:
-              "tasks/ is gitignored; reviewers can't navigate there. Keep " +
-              'it out of commit messages, PR bodies, and shared docs.',
-          },
-          suggestedFix: {
-            kind: 'mechanical',
-            text:
-              'Agent referenced a tasks/ path inside a commit / PR / issue ' +
-              'body. Strip the reference (tasks/ is local-only) and re-create ' +
-              'the artifact. The SKILL.md should explicitly forbid this in ' +
-              'its body-construction step.',
-          },
-        });
-      }
-    }
-  }
-  return findings;
-}
-
-function detectTestClaimWithoutEvidence(turns, range) {
-  const findings = [];
-  let counter = 0;
-  // Sweep assistant text turns for test-claim phrases. For each match,
-  // check whether ANY test command appears in the same invocation range.
-  // The check is range-wide rather than turn-local because evidence may
-  // come from a turn before the claim (the agent ran tests, then later
-  // asserted "tests pass").
-  const testCommandsInRange = [];
-  for (let i = range[0]; i <= range[1]; i++) {
-    for (const bc of turns[i].bashCommands) {
-      if (TEST_SHAPE.some((re) => re.test(bc.command))) {
-        testCommandsInRange.push({
-          idx: i,
-          lineNo: turns[i].lineNo,
-          command: bc.command,
-          toolUseId: bc.toolUseId,
-        });
-      }
-    }
-  }
-  for (let i = range[0]; i <= range[1]; i++) {
-    const t = turns[i];
-    if (t.role !== 'assistant' || !t.textContent) continue;
-    if (!TEST_CLAIM.test(t.textContent)) continue;
-    // The claim is suspect if no test command exists in the range AT ALL
-    if (testCommandsInRange.length === 0) {
-      counter += 1;
-      findings.push({
-        id: `test-claim-${String(counter).padStart(3, '0')}`,
-        category: 'test-claim-without-evidence',
-        severity: 'high',
-        evidence: {
-          transcriptLine: t.lineNo,
-          uuid: t.uuid,
-          timestamp: t.timestamp,
-          textPreview: preview(t.textContent, 300),
-          testCommandsInRange: 0,
-        },
-        ruleViolated: {
-          anchor: 'CLAUDE.md#run-tests-to-verify-fixes',
-          summary:
-            "Run tests to verify fixes — don't commit based on reasoning " +
-            "alone. test:tdd / test:unit / test:scripts aren't auto-run " +
-            'anywhere before commit.',
-        },
-        suggestedFix: {
-          kind: 'judgment-required',
-          text:
-            'Assistant claimed a fix was tested / verified but no ' +
-            'npm run test:* command appears in the invocation range. ' +
-            'Either the test was actually skipped (skill should add a ' +
-            'guard step), or the claim is overly confident phrasing — ' +
-            'advise the SKILL.md to require evidence before stating ' +
-            'outcomes.',
-        },
-      });
-    }
-  }
-  return findings;
-}
-
-function detectHardwareClaimMismatch(turns, range) {
-  const findings = [];
-  let counter = 0;
-  for (let i = range[0]; i <= range[1]; i++) {
-    const t = turns[i];
-    if (t.role !== 'assistant' || !t.textContent) continue;
-    if (!TEST_CLAIM.test(t.textContent)) continue;
-    // Find the most-recent test command before this turn (within range)
-    let lastTestIdx = -1;
-    let lastTestId = null;
-    for (let j = i; j >= range[0]; j--) {
-      for (const bc of turns[j].bashCommands) {
-        if (TEST_SHAPE.some((re) => re.test(bc.command))) {
-          lastTestIdx = j;
-          lastTestId = bc.toolUseId;
-          break;
-        }
-      }
-      if (lastTestIdx !== -1) break;
-    }
-    if (lastTestIdx === -1) continue; // Handled by detectTestClaimWithoutEvidence
-    const lastTestResult = findResultByToolUseId(turns, lastTestIdx, lastTestId, range);
-    if (!lastTestResult || !lastTestResult.isError) continue; // Test passed: no mismatch
-    // Check whether a follow-up successful test ran between lastTestIdx and i
-    let recovered = false;
-    for (let j = lastTestIdx + 1; j <= i; j++) {
-      for (const bc of turns[j].bashCommands) {
-        if (TEST_SHAPE.some((re) => re.test(bc.command))) {
-          const followupResult = findResultByToolUseId(turns, j, bc.toolUseId, range);
-          if (followupResult && !followupResult.isError) {
-            recovered = true;
-            break;
-          }
-        }
-      }
-      if (recovered) break;
-    }
-    if (recovered) continue;
-    counter += 1;
-    findings.push({
-      id: `hw-claim-${String(counter).padStart(3, '0')}`,
-      category: 'hardware-claim-mismatch',
-      severity: 'high',
-      evidence: {
-        transcriptLine: t.lineNo,
-        uuid: t.uuid,
-        timestamp: t.timestamp,
-        textPreview: preview(t.textContent, 300),
-        failedTestCommand: turns[lastTestIdx].bashCommands.find((bc) => bc.toolUseId === lastTestId)
-          ?.command,
-        failedTestLine: turns[lastTestIdx].lineNo,
-        stderrPreview: lastTestResult.stderrPreview || lastTestResult.stdoutPreview,
-      },
-      ruleViolated: {
-        anchor: 'CLAUDE.md#hardware-not-reachable',
-        summary:
-          "When hardware isn't reachable, say so explicitly — don't claim " +
-          'a fix was tested when only the build was verified.',
-      },
-      suggestedFix: {
-        kind: 'judgment-required',
-        text:
-          'Assistant claimed tested but the most-recent npm run test:* ' +
-          'invocation in the range failed (is_error: true) without a ' +
-          'follow-up successful run. The SKILL.md should require explicit ' +
-          'acknowledgment of hardware unavailability rather than letting ' +
-          'the failure be papered over by a confident claim.',
-      },
-    });
-  }
-  return findings;
-}
-
-const CONSUMER_RULE_DETECTORS = [
-  (turns, range) => detectLintSpam(turns, range, 10),
-  detectChangelogEditAttempt,
-  detectTasksLeakage,
-  detectTestClaimWithoutEvidence,
-  detectHardwareClaimMismatch,
-];
+// returned findings are merged with the core's repo-agnostic friction findings.
+// The detectors come from consumerConfig.ruleDetectors (extract-friction.config.cjs).
 
 // ──────────────────────────────────────────────────────────────────────
 // Model-fit profile
@@ -1572,8 +1239,8 @@ function profileSummary({
 // Emits the MECHANICAL backbone of "what the run actually did": the ordered
 // sequence of effects (tool calls, edits, sub-agent spawns, in transcript
 // order), a per-path file-touch summary, and histograms of tools + bash verbs.
-// This is dimension 1 of skill-evaluation.md — the answer to "what did the
-// run actually do?".
+// This is the dimension /verify-skill diffs across two versions of a skill to
+// answer "did behavior drift outside the intended change?".
 //
 // What this DELIBERATELY does NOT do: label the trace into skill-specific
 // concepts — "this step is a gate", "this is the routing branch it took",
@@ -1588,6 +1255,9 @@ function profileSummary({
 // normalized head so the trace distinguishes `git status` from `git commit`
 // (a real behavioral difference) without drowning in full command strings
 // (which vary run-to-run and would make every differential look "changed").
+// Core = universal language / VCS / package / container verbs. Repo-specific
+// ops-orchestration verbs come from `subcommandTools` in
+// extract-friction.config.cjs.
 const SUBCOMMAND_TOOLS = new Set([
   'git',
   'docker',
@@ -1597,21 +1267,18 @@ const SUBCOMMAND_TOOLS = new Set([
   'yarn',
   'gh',
   'cargo',
-  'kubectl',
-  'systemctl',
-  'ansible-playbook',
-  'ansible',
   'pip',
   'pip3',
   'apt',
   'apt-get',
   'make',
+  ...consumerConfig.subcommandTools,
 ]);
 
 function bashCommandHead(command) {
   // Normalize a bash command to a stable "verb" for the action trace:
   //   "git status --short"            → "git status"
-  //   "FOO=1 ~/bin/deploy.sh --now"   → "deploy.sh"
+  //   "FOO=1 ./scripts/build.sh --now" → "build.sh"
   //   "node scripts/x.cjs audit"      → "node"
   // Strips leading VAR=val env assignments and any path prefix on the binary.
   const firstLine = String(command || '')
@@ -1744,7 +1411,7 @@ function buildAggregate(perfList, fitList, findingsList, invMeta) {
   const costs = perfList.map((p) => p.costEstimateUSD);
   const outTokens = perfList.map((p) => p.totalOutputTokens);
   const cacheRatios = perfList.map((p) => p.cacheHitRatio);
-  const avgPerTurn = fitList.length ? perfList.map((p) => p.avgOutputTokensPerTurn) : [];
+  const avgPerTurn = perfList.length ? perfList.map((p) => p.avgOutputTokensPerTurn) : [];
 
   // Recurring-friction tally: category → how many distinct SESSIONS it appears
   // in. >=2 sessions = recurring (a real pattern worth a SKILL.md fix); 1 = a
@@ -1894,8 +1561,8 @@ function main(argv) {
       const recoverFindings = detectFailedRecovery(turns, effRange);
       const confuseFindings = detectConfusion(turns, effRange, args.confusionMinDensity);
       const permGapFindings = detectPermissionGap(turns, effRange, allowlist);
-      // Repo-specific rule detectors (empty by default)
-      const consumerRuleFindings = CONSUMER_RULE_DETECTORS.flatMap((detector) =>
+      // Repo-specific rule detectors (from extract-friction.config.cjs; empty by default)
+      const consumerRuleFindings = consumerConfig.ruleDetectors.flatMap((detector) =>
         detector(turns, effRange, cwd),
       );
       const rngFindings = [
@@ -2007,12 +1674,8 @@ module.exports = {
   detectFailedRecovery,
   detectConfusion,
   detectPermissionGap,
-  // JellyRock repo-specific rule detectors
-  detectLintSpam,
-  detectChangelogEditAttempt,
-  detectTasksLeakage,
-  detectTestClaimWithoutEvidence,
-  detectHardwareClaimMismatch,
+  // Repo-specific rule detectors live in extract-friction.config.cjs; a
+  // consumer's tests import them from there.
   buildModelFit,
   buildPerformance,
   buildAggregate,
@@ -2043,11 +1706,6 @@ module.exports = {
     REPO_INTERNAL_PREFIXES,
     MUTATION_DEPLOY_BASH,
     READONLY_LOAD_TURN_CEILING,
-    // JellyRock detector patterns
-    LINT_SHAPE,
-    TEST_SHAPE,
-    TEST_CLAIM,
-    CHANGELOG_PATH,
-    TASKS_LEAKAGE,
+    // consumer: also export your detector patterns here for testing.
   },
 };
