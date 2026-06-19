@@ -71,6 +71,8 @@ This file holds only cross-cutting / repo-wide rules. Per-area rules live in sco
 | `locale/` | [`locale/CLAUDE.md`](locale/CLAUDE.md) |
 | `scripts/` (any subfolder) | [`scripts/CLAUDE.md`](scripts/CLAUDE.md) |
 
+**Cross-cutting authoring norms** — the working principles that apply to *any* change, regardless of subsystem — live in [`.claude/rules/`](.claude/rules/): `cost-efficiency`, `dogfood-changes`, `intent-based-naming`, `isolate-the-fix`, `iterate-on-evidence`, `prove-dont-dismiss`, `reuse-existing-tooling`, `verify-dont-assume`. They are **load-bearing** and auto-load into Claude Code every session; read them before any non-trivial change. (Agents or tools that don't auto-load `.claude/rules/` should read them from that directory — the filenames say what each covers.)
+
 For the *why* and *shape* of each subsystem, load the relevant doc from [`docs/architecture/`](docs/architecture/) (start with [`docs/architecture/README.md`](docs/architecture/README.md)'s topic map). For *how to do X* (writing tests, adding settings, migrations), see [`docs/dev/`](docs/dev/).
 
 Quick task pointers:
