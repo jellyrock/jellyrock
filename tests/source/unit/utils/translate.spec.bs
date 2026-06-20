@@ -115,8 +115,8 @@ namespace tests
     @it("substitutes placeholders in fallback string")
     function _()
       ' MessageFallbackTest only exists in fallback (set up in setup())
-      result = translate("MessageFallbackTest", ["Charlie", "JellyRock"])
-      m.assertEqual(result, "Hello Charlie, welcome to JellyRock")
+      result = translate("MessageFallbackTest", ["Sam", "JellyRock"])
+      m.assertEqual(result, "Hello Sam, welcome to JellyRock")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -16,8 +16,9 @@
 // What it checks:
 //   - Every `related-files:` path in docs/architecture/*.md frontmatter
 //     resolves to an existing file (or directory) in the repo.
-//   - Every relative markdown link in docs/architecture/*.md and
-//     docs/decisions.md resolves (skipping http(s):, mailto:, anchor-only).
+//   - Every relative markdown link in docs/architecture/*.md, docs/dev/*.md,
+//     docs/adr/*.md, and docs/decisions.md resolves (skipping http(s):,
+//     mailto:, anchor-only).
 //   - Every tech-debt anchor reference (anywhere in scanned files) of
 //     the form `tech-debt.md#<anchor>` resolves to a real heading
 //     anchor in docs/architecture/tech-debt.md. This is the canonical
@@ -61,6 +62,7 @@ const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/f
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
 const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
+const ADR_DIR = path.join(ROOT_DIR, 'docs/adr');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
 const SIGNALS_PATH = path.join(ROOT_DIR, 'docs/signals-backlog.md');
@@ -269,17 +271,31 @@ function checkProgressStaleness() {
   const days = daysBetween(lastUpdated, today);
   if (days <= PROGRESS_STALE_DAYS) return;
 
-  // Stale by date alone; only block if commits have happened since.
-  // Skips silently on git failure (test fixtures without a git repo, etc.) —
-  // the goal is to gate real CI runs, not flake on tempdirs.
+  // Stale by date alone; only block if FEATURE-shaped commits have happened
+  // since. Routine maintenance — dependency bumps, docs/ci/chore/build commits,
+  // releases, merges, and bot commits — does NOT reset the staleness clock: it's
+  // the same set the post-merge journal-sync skips, and a state cursor doesn't go
+  // stale because Renovate bumped a dependency. Without this filter the gate
+  // false-fails every dependency/docs PR. Skips silently on git failure (test
+  // fixtures without a git repo, etc.) — gate real CI runs, don't flake on tempdirs.
   let commitsSince;
   try {
-    const out = execSync(`git rev-list --count --since="${lastUpdated}T00:00:00" HEAD`, {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      cwd: ROOT_DIR,
-    });
-    commitsSince = parseInt(out.trim(), 10) || 0;
+    const out = execSync(
+      `git log --no-merges --since="${lastUpdated}T00:00:00" --format=%an%x09%s HEAD`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT_DIR },
+    );
+    const BOT_AUTHOR = /(renovate|dependabot|github-actions|\[bot\])/i;
+    const MAINTENANCE =
+      /^(chore|docs|ci|build|test|style|refactor|perf)[(:]|^Update (dependency|.+ to v?\d)|^Merge /i;
+    commitsSince = out
+      .split('\n')
+      .filter(Boolean)
+      .filter((line) => {
+        const tab = line.indexOf('\t');
+        const author = tab >= 0 ? line.slice(0, tab) : '';
+        const subject = tab >= 0 ? line.slice(tab + 1) : line;
+        return !BOT_AUTHOR.test(author) && !MAINTENANCE.test(subject);
+      }).length;
   } catch {
     return;
   }
@@ -419,6 +435,10 @@ checkDirOfMds(ARCH_DIR);
 
 // Dev how-to guides
 checkDirOfMds(DEV_DIR);
+
+// Architecture Decision Records (body links + tech-debt anchors; ADRs carry no
+// YAML frontmatter, so related-files validation is a no-op for them)
+checkDirOfMds(ADR_DIR);
 
 // Decisions log (no frontmatter; just check body links + slug refs)
 if (fs.existsSync(DECISIONS_PATH)) {

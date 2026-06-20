@@ -6,7 +6,7 @@
 # expand subdir CLAUDE.md coverage.
 #
 # Why per-user, not per-worktree: contributors who keep multiple worktrees
-# (jellyrock, jellyrock2, jellyrock3, …) for parallel feature work would
+# (one per in-flight feature) for parallel work would
 # otherwise have to consolidate per-worktree logs by hand before running
 # the aggregator. A single user-home path makes "what have my agents been
 # touching" a single npm command from any worktree.

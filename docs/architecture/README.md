@@ -69,7 +69,8 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 |---|---|
 | `docs/dev/` | Task-oriented how-to guides (writing tests, adding settings, migrations, debugging) |
 | `docs/user/` | User-facing reference (`app-settings.md` is auto-generated from `settings.json`) |
-| `docs/decisions.md` | Append-only "why we chose X" log for non-obvious design decisions |
+| `docs/adr/` | Numbered, immutable Architecture Decision Records — architectural / hard-to-reverse / cross-component decisions |
+| `docs/decisions.md` | Append-only **sub-ADR notes** — "why we chose X" for narrow / single-component decisions below the ADR bar |
 | `CLAUDE.md` (root + subdirs) | Always-loaded rules for AI agents working in the repo |
 | `CHANGELOG.md` | CI-controlled — do not edit by hand |
 

@@ -23,4 +23,4 @@
 - Heredoc-vs-Write tool nit (Proposal 3) folded into the Step 1 trim above — Step 1 now explicitly says "use the `Write` tool" for inline paste.
 - `/log decision` not invoked — the change modifies an existing helper rather than adding a new one, no model change, no hook change, no load-bearing-rule change. Stays in this AUDIT-LOG.md per Step 6a.
 
-**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock3/7c918dec-b9b4-4407-9f6c-c56b542fa146.jsonl`
+**Source transcript:** `~/.claude/projects/<project>/7c918dec-b9b4-4407-9f6c-c56b542fa146.jsonl`

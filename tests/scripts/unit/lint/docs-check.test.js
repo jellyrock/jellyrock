@@ -197,6 +197,20 @@ describe('docs-check — progress.md staleness', () => {
     expect(stale[0].message).toMatch(/commit\(s\) since/);
   });
 
+  it('does NOT fail on stale date when the only commits since are maintenance/deps', () => {
+    fixture = withDocsDir(createGitFixture());
+    fixture.commit('chore: seed progress.md from 2020', {
+      'docs/progress.md': makeProgress('2020-01-01'),
+    });
+    fixture.commit('chore(deps): update dependency sharp to v0.35.1');
+    fixture.commit('docs(user): add playback troubleshooting guide');
+    fixture.commit('Update vitest monorepo to v4.1.9');
+    const { exitCode, stdout } = spawnScript(SCRIPT, [fixture.dir, '--json']);
+    const stale = JSON.parse(stdout).errors.filter((e) => e.category === 'progress-stale');
+    expect(stale.length).toBe(0);
+    expect(exitCode).toBe(0);
+  });
+
   it('FAILs when frontmatter is missing or malformed', () => {
     fixture = withDocsDir(createGitFixture());
     fixture.commit('seed', { 'docs/progress.md': '# Progress\n\nno frontmatter\n' });

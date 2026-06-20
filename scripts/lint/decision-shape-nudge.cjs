@@ -2,8 +2,9 @@
 //
 // Pattern-matches commit messages in the push range for "decision-shaped"
 // language ("decided", "switched from", "use X instead of Y", "deprecate",
-// "we now use", "replace with", etc.). If any commit matches AND
-// docs/decisions.md is NOT in the diff, print a friendly nudge pointing at
+// "we now use", "replace with", etc.). If any commit matches AND no
+// decision-record surface (docs/adr/ for ADR-grade, docs/decisions.md for
+// sub-architectural notes) is in the diff, print a friendly nudge pointing at
 // /log decision.
 //
 // **Always exits 0.** This is advisory — the agent-facing CLAUDE.md
@@ -87,15 +88,19 @@ function main() {
     process.exit(0);
   }
 
-  // Did the range touch docs/decisions.md?
+  // Did the range touch a decision-record surface? ADR-grade decisions land in
+  // docs/adr/, sub-architectural notes in docs/decisions.md — either counts as
+  // "already captured".
   const changed = safeExec(`git diff --name-only ${range}`).split('\n').filter(Boolean);
-  if (changed.includes('docs/decisions.md')) {
+  if (changed.some((f) => f === 'docs/decisions.md' || f.startsWith('docs/adr/'))) {
     process.exit(0); // already captured
   }
 
   // Print a friendly advisory.
   console.log('');
-  console.log('💭 Decision-shape commit detected without a docs/decisions.md change:');
+  console.log(
+    '💭 Decision-shape commit detected without a decision-record change (docs/adr/ or docs/decisions.md):',
+  );
   console.log('');
   for (const m of matched.slice(0, 5)) {
     console.log(`   • "${m.msg}"  (matched: /${m.pattern}/)`);
@@ -104,9 +109,10 @@ function main() {
     console.log(`   • ... + ${matched.length - 5} more`);
   }
   console.log('');
-  console.log('   If this represents an ADR-grade decision (closes off alternatives, has');
+  console.log('   If this represents a decision worth keeping (closes off alternatives, has');
   console.log('   a non-obvious rationale, or a constraint worth re-evaluating), invoke');
-  console.log("   `/log decision <slug>` so the rationale isn't lost.");
+  console.log('   `/log decision <slug>` — the agent routes it to an ADR or a sub-ADR note');
+  console.log("   so the rationale isn't lost.");
   console.log('');
   console.log('   This nudge is advisory only — the push is not blocked.');
   console.log('');

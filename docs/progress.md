@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-11
+last-updated: 2026-06-19
 ---
 
 # Progress
@@ -16,7 +16,7 @@ This file is updated through skills, not raw markdown edits:
 
 - `/log followup "<text>" --area=<name>` to add an open followup
 - `/done <slug-or-keyword>` to flip a followup → recently-shipped
-- `/log decision` for ADR-grade decisions (lands in [decisions.md](decisions.md), not here)
+- `/log decision` for decisions (ADR-grade lands in [`docs/adr/`](adr/README.md); sub-architectural in [decisions.md](decisions.md)) — not here
 
 Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 days old AND there are commits since.
 
