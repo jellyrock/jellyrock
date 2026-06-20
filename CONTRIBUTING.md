@@ -30,8 +30,14 @@ skills load automatically. The ones you'll reach for most:
 
 - **`/focus`** — works out what to tackle next and routes it.
 - **The project lifecycle** (`/start-project`, `/resume-project`,
-  `/end-session`) — for any change that spans more than one sitting; project
-  state is committed in-repo, so anyone can pick up where you left off.
+  `/end-session`) — for any change that spans more than one sitting. The
+  in-flight `PLAN.md` it tracks is local agent-continuity (gitignored, like
+  `.claude/handoffs/`), but the durable project state it feeds *is* committed
+  in-repo — decisions as [ADRs](docs/adr/README.md), progress in
+  [`docs/progress.md`](docs/progress.md), deferred work in
+  [tech-debt](docs/architecture/tech-debt.md) and
+  [signals](docs/signals-backlog.md) — so the next contributor inherits the
+  context even though the scratchpad PLAN stays local.
 - **Forge workflow** (`/create-issue`, `/pr`, `/pr-review`, `/issue-triage`,
   `/ci-triage`) — for filing issues, opening and reviewing pull requests, and
   triaging issues and failing CI runs.

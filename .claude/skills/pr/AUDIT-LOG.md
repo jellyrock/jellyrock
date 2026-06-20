@@ -21,7 +21,7 @@ Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`
 
 **Deferred / dropped:** none.
 
-**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock/c46ed4c5-2adf-4a60-89ff-5ff26407e6b4.jsonl`
+**Source transcript:** `~/.claude/projects/<project>/c46ed4c5-2adf-4a60-89ff-5ff26407e6b4.jsonl`
 
 ## 2026-05-08 — existing-PR detection + update path (user-driven)
 

@@ -141,7 +141,7 @@ If forced to label the union in one phrase: **"agent-collaborative engineering j
 
 ## Audience tuning
 
-This shape is optimized for **one developer + AI agents** (Charlie + Claude Code + sub-agents). The compressed jargon, the heavy CLAUDE.md tree, the lack of a strict tutorial bucket — all of these would be wrong for an open-source project with multiple active contributors. They're right here because the audience is one human and his AI collaborators, not a public team.
+This shape is optimized for **one developer + AI agents** (the maintainer + Claude Code + sub-agents). The compressed jargon, the heavy CLAUDE.md tree, the lack of a strict tutorial bucket — all of these would be wrong for an open-source project with multiple active contributors. They're right here because the audience is one human and their AI collaborators, not a public team.
 
 JellyRock IS public OSS, but the contributor flow is currently low. If outside-contributor pressure shows up, the right move is **add an onboarding surface on top, don't replace the internals**: a more contributor-friendly `CONTRIBUTING.md`, at least one strict-tutorial walkthrough taking a stranger from `git clone` → first successful build → first PR, and possibly a public-facing `CHANGELOG.md` distinct from the internal "Recently shipped" prose. Internals stay solo+AI optimized.
 

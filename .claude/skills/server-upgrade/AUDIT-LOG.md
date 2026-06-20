@@ -25,7 +25,7 @@ Third pre-release audit of the day, same `10.11.10 → master` window, same reso
 
 **Lessons for the auditor (two this run):** (1) before proposing a fix for a surface anomaly (duplicate artifacts, repeated invocations), check whether the *session's own purpose* explains it — a skill audited 3× in a day on identical input is a flashing audit-fodder signal. (2) Dimension-4 isn't "did it complete + were verdicts right" — the run had *literally narrated its own quality regression* and the first audit pass still rubber-stamped accuracy. Read what the run says about itself.
 
-**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock2/89737734-0abc-47ac-b651-5d9e4e49a593.jsonl`
+**Source transcript:** `~/.claude/projects/<project>/89737734-0abc-47ac-b651-5d9e4e49a593.jsonl`
 
 ## 2026-06-02 — Step 2.8's own example was the counterexample: genuine-removal ≠ behavior-change (session 3f597901)
 
@@ -46,7 +46,7 @@ First run to actually exercise the freshly-added Step 2.8 `renameCandidates` gui
 
 **Deferred / dropped:** cost-pricing gap is now resolved (extractor priced `claude-opus-4-8` this run, `pricingVerifiedDate: 2026-06-02`). High inherited-context cost is intrinsic to running mid-session, not actionable on `server-upgrade`.
 
-**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock2/3f597901-8891-4474-95cd-3458271a3d6f.jsonl`
+**Source transcript:** `~/.claude/projects/<project>/3f597901-8891-4474-95cd-3458271a3d6f.jsonl`
 
 ## 2026-06-02 — Meta-audit (second pass): the audit under-called dimension 4
 
@@ -79,4 +79,4 @@ Reviewed the run **and** the audit below. The mechanical extraction was right (0
 
 **Deferred / dropped:** cost-pricing gap deferred to the auditor's own tooling (bump `extract-friction.cjs` pricing table for `claude-opus-4-8`, or audit `audit-skill` itself) — out of scope for editing `server-upgrade`.
 
-**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock2/a1375d0d-6bbf-4b78-95d5-8dfe43f1a827.jsonl`
+**Source transcript:** `~/.claude/projects/<project>/a1375d0d-6bbf-4b78-95d5-8dfe43f1a827.jsonl`

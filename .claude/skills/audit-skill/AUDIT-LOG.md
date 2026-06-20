@@ -24,4 +24,4 @@ Triggered by user feedback during a `/audit-skill pr` invocation: *"these audits
 - Output-accuracy detector — dropped intentionally. No clean mechanical proxy exists; user-correction heuristics are too noisy. SKILL.md Step 3d makes the judgment seam explicit instead.
 - `/log decision` — deferred per user (this is per-skill audit-log only; not architectural-grade by Step 6b's bar despite being scope-broadening, since no new helper script / model change / hook / load-bearing-rule change occurred).
 
-**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock/<session>.jsonl` (the meta-audit transcript itself)
+**Source transcript:** `~/.claude/projects/<project>/<session>.jsonl` (the meta-audit transcript itself)
