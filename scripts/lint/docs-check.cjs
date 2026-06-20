@@ -271,17 +271,31 @@ function checkProgressStaleness() {
   const days = daysBetween(lastUpdated, today);
   if (days <= PROGRESS_STALE_DAYS) return;
 
-  // Stale by date alone; only block if commits have happened since.
-  // Skips silently on git failure (test fixtures without a git repo, etc.) —
-  // the goal is to gate real CI runs, not flake on tempdirs.
+  // Stale by date alone; only block if FEATURE-shaped commits have happened
+  // since. Routine maintenance — dependency bumps, docs/ci/chore/build commits,
+  // releases, merges, and bot commits — does NOT reset the staleness clock: it's
+  // the same set the post-merge journal-sync skips, and a state cursor doesn't go
+  // stale because Renovate bumped a dependency. Without this filter the gate
+  // false-fails every dependency/docs PR. Skips silently on git failure (test
+  // fixtures without a git repo, etc.) — gate real CI runs, don't flake on tempdirs.
   let commitsSince;
   try {
-    const out = execSync(`git rev-list --count --since="${lastUpdated}T00:00:00" HEAD`, {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      cwd: ROOT_DIR,
-    });
-    commitsSince = parseInt(out.trim(), 10) || 0;
+    const out = execSync(
+      `git log --no-merges --since="${lastUpdated}T00:00:00" --format=%an%x09%s HEAD`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT_DIR },
+    );
+    const BOT_AUTHOR = /(renovate|dependabot|github-actions|\[bot\])/i;
+    const MAINTENANCE =
+      /^(chore|docs|ci|build|test|style|refactor|perf)[(:]|^Update (dependency|.+ to v?\d)|^Merge /i;
+    commitsSince = out
+      .split('\n')
+      .filter(Boolean)
+      .filter((line) => {
+        const tab = line.indexOf('\t');
+        const author = tab >= 0 ? line.slice(0, tab) : '';
+        const subject = tab >= 0 ? line.slice(tab + 1) : line;
+        return !BOT_AUTHOR.test(author) && !MAINTENANCE.test(subject);
+      }).length;
   } catch {
     return;
   }
