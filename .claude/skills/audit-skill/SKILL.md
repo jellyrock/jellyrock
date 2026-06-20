@@ -158,8 +158,10 @@ Every audit (regardless of size) gets one section in `.claude/skills/<audited-sk
 
 **Deferred / dropped:** <one-line per item, with brief reason>
 
-**Source transcript:** `~/.claude/projects/.../<session>.jsonl`
+**Source transcript:** `~/.claude/projects/<project>/<session>.jsonl`
 ```
+
+**Write the Source-transcript line PII-safe — do NOT paste the literal transcript directory.** The real dir is the cwd-derived name `~/.claude/projects/-home-<user>-PROJECTS-<repo>-<repo>/…`, which leaks the maintainer's home path + local layout into this public repo on every audit. Record `<project>` (or the bare repo name) for the directory and keep the **`<session>` id** — that's the durable, non-PII pointer; the next agent re-derives the real dir from its own cwd.
 
 This stays out of the formal decision record ([`docs/adr/`](../../../docs/adr/README.md) for ADR-grade, [`docs/decisions.md`](../../../docs/decisions.md) for sub-ADR notes). Future agents reading the audited skill can grep `.claude/skills/<name>/AUDIT-LOG.md` for the running history without diluting that record.
 
