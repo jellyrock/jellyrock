@@ -13,7 +13,7 @@
 //   1. Behavioral / action-trace (`behavioralTrace`) — the ordered sequence of
 //      effects the run produced (tool calls, edits, sub-agent spawns, in
 //      transcript order) + a per-path file-touch summary + tool/bash-verb
-//      histograms. The backbone of /verify-skill's two-version differential.
+//      histograms (dimension 1 of skill-evaluation.md).
 //   2. Friction findings (the detectors below)
 //   3. Performance — clock time, token usage per model, cache-hit ratio,
 //      cost estimate
@@ -1239,8 +1239,8 @@ function profileSummary({
 // Emits the MECHANICAL backbone of "what the run actually did": the ordered
 // sequence of effects (tool calls, edits, sub-agent spawns, in transcript
 // order), a per-path file-touch summary, and histograms of tools + bash verbs.
-// This is the dimension /verify-skill diffs across two versions of a skill to
-// answer "did behavior drift outside the intended change?".
+// This is dimension 1 of skill-evaluation.md — the answer to "what did the
+// run actually do?".
 //
 // What this DELIBERATELY does NOT do: label the trace into skill-specific
 // concepts — "this step is a gate", "this is the routing branch it took",
