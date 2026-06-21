@@ -46,6 +46,13 @@ sub init()
   setLoopButtonImage()
   ' Set lastFocus for JRScreen lifecycle management
   m.top.lastFocus = m.buttons
+
+  ' #550 deep link: show "Playing <title>" for an audio cast — the launcher set the title before
+  ' navigating here; this mount is the stable point (nothing churns after). One-shot: clear it.
+  if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
+    displayToast(Substitute(translate(translationKeys.MessagePlayingContent), m.global.deepLinkOpeningTitle), "info")
+    m.global.deepLinkOpeningTitle = ""
+  end if
 end sub
 
 sub applyTheme()
@@ -877,9 +884,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 ' #550 deep link: stop + tear down without navigating (a deep link arrived while audio plays;
-' the caller reroutes to the new content). Mirrors PlayerHostView.teardownForDeepLink.
+' the caller reroutes to the new content). Stops the audio the same way the back key does
+' (onKeyEvent "back" -> control "stop") — the caller's goBack is programmatic, so it bypasses
+' that key handler. NOT a full onDestroy: the caller's goBack triggers onDestroy for cleanup,
+' and running onDestroy twice (it nulls m.audioPlayer) crashes the second pass.
 sub teardownForDeepLink()
-  onDestroy()
+  if isValid(m.audioPlayer) then m.audioPlayer.control = "stop"
 end sub
 
 ' onDestroy: Full teardown releasing all resources before component removal

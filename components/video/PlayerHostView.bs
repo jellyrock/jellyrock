@@ -77,11 +77,11 @@ sub mountPlayer()
 
   m.top.appendChild(m.view)
 
-  ' #550 deep link: toast "Opening <title>" for a deep-link launch. Fired here (player mount =
+  ' #550 deep link: toast "Playing <title>" for a deep-link launch. Fired here (player mount =
   ' stable final destination, nothing churns after) rather than from ItemDetails mid-transition,
   ' which was unreliable after a heavy server switch. One-shot: clear the global after showing.
   if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
-    displayToast(Substitute(translate(translationKeys.MessageOpeningContent), m.global.deepLinkOpeningTitle), "info")
+    displayToast(Substitute(translate(translationKeys.MessagePlayingContent), m.global.deepLinkOpeningTitle), "info")
     m.global.deepLinkOpeningTitle = ""
   end if
 end sub
@@ -118,12 +118,13 @@ sub playCurrentQueueItem()
   mountPlayer()
 end sub
 
-' #550 deep link: a deep link arrived while this player is active. Tear the player down NOW
-' (stop + report to the server) WITHOUT navigating — the caller (JRScene.replayDeepLinkReplacingPlayer)
-' then resets through Home, which removes this now-empty host. Synchronous so the old player is
-' fully stopped before the new content mounts (otherwise two decoders -> playback errors).
+' #550 deep link: a deep link arrived while this player is active. Stop + report the player NOW
+' (synchronously) WITHOUT navigating — the caller (JRScene.replayDeepLinkReplacingPlayer) then
+' goBacks, whose beforeViewClose -> onDestroy does the full teardown. destroyPlayer is idempotent
+' (guards m.view), so that second teardown is a safe no-op — NOT a full onDestroy here, which
+' would run twice and double-tear-down.
 sub teardownForDeepLink()
-  onDestroy()
+  destroyPlayer()
 end sub
 
 ' Leave the play route: pops this host off the router history (beforeViewClose ->

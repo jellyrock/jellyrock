@@ -186,6 +186,7 @@ sub init()
   m.isFirstRun = true
   m.isDeepLinkLaunch = false
   m.lastDeepLinkRouteId = ""
+  m.deepLinkAction = "open"
 
   m.directorGenreGroup = m.top.findNode("directorGenreGroup")
   m.infoDividerCount = 0
@@ -314,17 +315,20 @@ sub loadFromRoute(route as object)
   m.top.itemId = params.id
 end sub
 
-' #550 deep link: see the call site in onScreenShown. A deep-link route carries ?deeplink=1;
-' we auto-launch once per distinct navigation (route.id), so a repeat cast of an item whose
-' ItemDetails is cached (keepAlive) still launches, while an ordinary back-from-player resume
-' (which keeps the same route.id) does not re-launch. Fresh/loading -> flag for onDetailsLoaded
-' (which also handles an invalid id -> error + Home); already-loaded resume -> launch now.
+' #550 deep link: see the call site in onScreenShown. A deep-link route carries
+' ?deeplink=<action> (open | play | shuffle | trailer). We handle it once per distinct
+' navigation (route.id), so a repeat cast of an item whose ItemDetails is cached (keepAlive)
+' still fires, while an ordinary back-from-player resume (which keeps the same route.id) does
+' not re-fire. The ACTION (the sender's explicit intent — never inferred from the resolved item)
+' is dispatched in dispatchDeepLinkAction. Fresh/loading -> flag for onDetailsLoaded (which also
+' handles an invalid id -> error + Home); already-loaded resume -> dispatch once the router idles.
 sub checkDeepLinkLaunch()
   route = m.top.route
   if not isValid(route) then return
-  if not (isValid(route.queryParams) and route.queryParams.deeplink = "1") then return
+  if not (isValid(route.queryParams) and isValidAndNotEmpty(route.queryParams.deeplink)) then return
   if route.id = m.lastDeepLinkRouteId then return
   m.lastDeepLinkRouteId = route.id
+  m.deepLinkAction = route.queryParams.deeplink
 
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id) and m.top.itemContent.id = m.top.itemId
     deferDeepLinkLaunchUntilIdle()
@@ -342,7 +346,7 @@ sub deferDeepLinkLaunchUntilIdle()
   router = invalid
   if isValid(m.top.route) then router = m.top.route.router
   if not isValid(router)
-    autoLaunchFromDeepLink()
+    dispatchDeepLinkAction()
     return
   end if
   m.deepLinkRouterNode = router
@@ -356,7 +360,7 @@ sub onDeepLinkRouterIdle()
   if not isValid(state) or state.type <> "NavigationEnd" then return
   m.deepLinkRouterNode.unobserveField("routerState")
   m.deepLinkRouterNode = invalid
-  autoLaunchFromDeepLink()
+  dispatchDeepLinkAction()
 end sub
 
 ' Extras grid (cast / related / next-up) selection → navigate to its route, passing
@@ -726,78 +730,90 @@ sub onDetailsLoaded()
   if isValidAndNotEmpty(content) and isValid(content[0])
     m.top.itemContent = content[0]
   else
+    ' Content failed to load. Deep links are pre-validated by JRScene.resolveDeepLink (an invalid
+    ' id never navigates here), so this is the ordinary non-deep-link path — just stop the spinner.
+    ' Clear the deep-link flag defensively in case one ever slips through; never navigate away
+    ' (an invalid id must not disrupt the session).
     stopLoadingSpinner()
-    ' #550 deep link: an invalid/missing id resolves to nothing. A deep link must fall back to
-    ' the home screen (never a broken Details), so toast + goBack rather than sitting on an
-    ' empty screen. Non-deep-link nav keeps the prior (silent) behavior.
-    if m.isDeepLinkLaunch
-      m.isDeepLinkLaunch = false
+    m.isDeepLinkLaunch = false
+    return
+  end if
+
+  stopLoadingSpinner()
+
+  ' #550 deep link: id validated — now do what the route's action says (open/play/shuffle/trailer).
+  if m.isDeepLinkLaunch
+    m.isDeepLinkLaunch = false
+    dispatchDeepLinkAction()
+  end if
+end sub
+
+' #550 deep link: do exactly what the route's action asked, on the validated item. The action
+' is the SENDER'S explicit intent — never inferred from the resolved item:
+'   open (and any unknown action)  -> stay on the springboard (this view). A library/folder has
+'                                     no springboard yet, so fall back to Home gracefully until
+'                                     deep-link grid render lands (follow-up).
+'   play                           -> QueueManager.launchItem (the DRY per-type play engine:
+'                                     video resumes its bookmark, Series smart-resumes, containers
+'                                     play, live watches, audio -> audio player, photo -> viewer).
+'   shuffle                        -> the same path the Shuffle button uses (onShuffleButtonPressed).
+'   trailer                        -> play this item's trailer(s).
+sub dispatchDeepLinkAction()
+  item = m.top.itemContent
+  if not isValid(item) or not isValidAndNotEmpty(item.type) then return
+
+  if not isDeepLinkPlaybackAction(m.deepLinkAction)
+    ' open / unknown -> springboard. Library/folder types route to a grid we can't yet build
+    ' from a bare id, so toast + Home rather than show a broken folder springboard.
+    if isDeepLinkLibraryType(item.type)
       displayToast(translate(translationKeys.MessageContentUnavailable), "error")
       sgrouter.goBack()
     end if
     return
   end if
 
-  stopLoadingSpinner()
+  ' Playback actions. Commit this item's backdrop BEFORE launching (so backing out of playback
+  ' shows the detail's backdrop, not a Home/stale flash) and hand the player the resolved title to
+  ' toast on mount. Photo / PhotoAlbum open a viewer, not a media player, so skip both.
+  if item.type <> "Photo" and item.type <> "PhotoAlbum"
+    device = m.global.device
+    m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(item, { width: device.uiResolution[0], height: device.uiResolution[1] }), false)
+    if isValidAndNotEmpty(item.name) then m.global.deepLinkOpeningTitle = item.name
+  end if
 
-  ' #550 deep link: validated — auto-launch (decision inferred from the resolved item).
-  if m.isDeepLinkLaunch
-    m.isDeepLinkLaunch = false
-    autoLaunchFromDeepLink()
+  if m.deepLinkAction = "shuffle"
+    onShuffleButtonPressed(item)
+  else if m.deepLinkAction = "trailer"
+    m.global.queueManager.callFunc("launchQuickPlayAction", { action: "loadTrailers", id: item.id })
+  else
+    m.global.queueManager.callFunc("launchItem", item) ' play
   end if
 end sub
 
-' #550 deep link: auto-launch the validated item. The decision is inferred from the RESOLVED
-' item's TYPE (the sender's mediaType is irrelevant, and item.mediaType isn't reliably
-' populated on the details fetch): a single, directly-playable VIDEO item auto-plays, resuming
-' at its Jellyfin bookmark (no resume/start-over dialog). Containers (Series / Season / BoxSet
-' / album / playlist) and types with their own non-video action (Photo / PhotoAlbum / TvChannel
-' / Program / Person / Audio) land on the Details springboard, where Play / Resume / View are
-' ready — a safe, never-broken result. (Series smart-bookmark + audio/live auto-play: follow-up.)
-sub autoLaunchFromDeepLink()
-  item = m.top.itemContent
-  if not isValid(item) then return
-  if not isDeepLinkAutoPlayable(item.type) then return
-
-  ' Commit this item's backdrop BEFORE launching the player so backing out of playback shows
-  ' the detail's backdrop immediately — the rapid Home->Details->Player chain would otherwise
-  ' leave the Home/stale backdrop underneath (Details' own backdrop never gets to paint), which
-  ' flashes on resume. Non-animated so it snaps in rather than animating from the stale one.
-  device = m.global.device
-  m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(item, { width: device.uiResolution[0], height: device.uiResolution[1] }), false)
-
-  ' Hand the REAL resolved title to the player to toast on mount (a stable point that survives
-  ' the details->player transition; toasting here, right before the nav churn, was unreliable
-  ' after a heavy server switch). PlayerHostView reads + clears this.
-  if isValidAndNotEmpty(item.name)
-    m.global.deepLinkOpeningTitle = item.name
-  end if
-
-  resumeTicks = 0&
-  if isValid(item.playbackPositionTicks) and item.playbackPositionTicks > 0
-    resumeTicks = item.playbackPositionTicks
-  end if
-  startPlayFromDetail(resumeTicks)
-end sub
-
-' #550 deep link: play this already-loaded item in response to a runtime cast that landed while
-' the user is ALREADY on its details (replayRoute.replayDeepLinkRuntime) — no navigation, so no
-' Home flash and no re-mount. The router is idle here, so autoLaunchFromDeepLink's navigateTo
-' succeeds directly (no NavigationEnd defer needed).
-sub playFromDeepLink()
-  autoLaunchFromDeepLink()
-end sub
-
-' #550 deep link: true for item types that auto-play as a single video via startPlayFromDetail.
-' Mirrors the Play-button exclusion set (setupButtons) plus the playAll containers and Audio:
-' Photo/PhotoAlbum (viewer), TvChannel/Program (watch), Person (none), Audio (audio player) all
-' have their own non-video action, so they land on the springboard instead of auto-playing.
-function isDeepLinkAutoPlayable(itemType as dynamic) as boolean
-  if not isValidAndNotEmpty(itemType) then return false
-  if isPlayAllType(itemType) then return false
-  if itemType = "Person" or itemType = "Photo" or itemType = "PhotoAlbum" or itemType = "TvChannel" or itemType = "Program" or itemType = "Audio" then return false
-  return true
+' True for deep-link actions that start playback (vs "open", which only navigates). Mirrors
+' source/replayRoute.bs's predicate (kept local so this render-thread view doesn't import the
+' main-thread replay module); any unknown action is NOT playback -> treated as "open".
+function isDeepLinkPlaybackAction(action as dynamic) as boolean
+  return action = "play" or action = "shuffle" or action = "trailer"
 end function
+
+' Library/grid container types that route to BaseGridView, not an ItemDetails springboard
+' (mirrors the library-tile set in source/utils/placeholderImage.bs).
+function isDeepLinkLibraryType(itemType as dynamic) as boolean
+  t = LCase("" + itemType)
+  return t = "collectionfolder" or t = "userview" or t = "folder"
+end function
+
+' #550 deep link: run the deep-link action on this already-loaded item in response to a runtime
+' cast that landed while the user is ALREADY on its details (replayRoute.replayDeepLinkRuntime) —
+' no navigation, so no Home flash and no re-mount. The router is idle here, so any navigateTo the
+' action triggers succeeds directly (no NavigationEnd defer needed). `action` is the new cast's
+' intent (the cached view's m.deepLinkAction is from its original mount and may be stale).
+sub playFromDeepLink(action = "play" as string)
+  if isValidAndNotEmpty(action) then m.deepLinkAction = action
+  dispatchDeepLinkAction()
+end sub
+
 
 ' Fetches whether the item has local trailers, to add/remove the Trailer button
 ' (onTrailerAvailableChanged reacts to the result). Render-thread promise — replaces

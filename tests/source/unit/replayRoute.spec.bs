@@ -1,0 +1,141 @@
+import "pkg:/source/replayRoute.bs"
+
+namespace tests
+
+  ' #550 deep-link contract: the pure wire-format layer (contentId parsing, the playback-action
+  ' predicate, and the route builder). The contract is "do what the route's action says": the
+  ' sender's explicit action is honored, unknown actions degrade to "open" (forward-compat).
+  @suite("replayRoute deep-link contract")
+  class ReplayRouteTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseDeepLinkContentId() — wire format")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a bare item id (legacy / manual ECP) as an 'open' with no server")
+    function _()
+      r = parseDeepLinkContentId("abc123")
+      m.assertEqual(r.itemId, "abc123")
+      m.assertEqual(r.serverGuid, "")
+      m.assertEqual(r.action, "open")
+    end function
+
+    @it("defaults action to 'open' when only id+server are given")
+    function _()
+      r = parseDeepLinkContentId("id=abc|serverId=guid-1")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.serverGuid, "guid-1")
+      m.assertEqual(r.action, "open")
+    end function
+
+    @it("accepts the 'server' alias for serverId")
+    function _()
+      r = parseDeepLinkContentId("id=abc|server=guid-2")
+      m.assertEqual(r.serverGuid, "guid-2")
+    end function
+
+    @it("parses an explicit action")
+    @params("play", "play")
+    @params("shuffle", "shuffle")
+    @params("trailer", "trailer")
+    @params("open", "open")
+    function _(sent, expected)
+      r = parseDeepLinkContentId("id=abc|action=" + sent)
+      m.assertEqual(r.action, expected)
+    end function
+
+    @it("lower-cases the action (case-insensitive sender)")
+    function _()
+      r = parseDeepLinkContentId("id=abc|action=PLAY")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("parses all three keys together, order-independent")
+    function _()
+      r = parseDeepLinkContentId("action=shuffle|id=abc|serverId=g")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.serverGuid, "g")
+      m.assertEqual(r.action, "shuffle")
+    end function
+
+    @it("ignores unknown keys (forward-compatible)")
+    function _()
+      r = parseDeepLinkContentId("id=abc|startPositionTicks=500|action=play")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("takes a leading bare segment as the id (forgiving: <id>|action=play)")
+    function _()
+      r = parseDeepLinkContentId("abc|action=play")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("takes a bare id segment regardless of order")
+    function _()
+      r = parseDeepLinkContentId("action=play|abc")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("first bare segment wins; an explicit id= still takes precedence when first")
+    function _()
+      r = parseDeepLinkContentId("id=real|stray")
+      m.assertEqual(r.itemId, "real")
+    end function
+
+    @it("returns empty defaults for an empty contentId")
+    function _()
+      r = parseDeepLinkContentId("")
+      m.assertEqual(r.itemId, "")
+      m.assertEqual(r.serverGuid, "")
+      m.assertEqual(r.action, "open")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isDeepLinkPlaybackAction() — open vs playback gate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for playback actions")
+    @params("play")
+    @params("shuffle")
+    @params("trailer")
+    function _(action)
+      m.assertTrue(isDeepLinkPlaybackAction(action))
+    end function
+
+    @it("is false for 'open' and any unknown action (treated as open)")
+    @params("open")
+    @params("browse")
+    @params("delete")
+    @params("")
+    function _(action)
+      m.assertFalse(isDeepLinkPlaybackAction(action))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("deepLinkDetailsRoute() — route + action query")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the details route carrying the action in ?deeplink=")
+    function _()
+      route = deepLinkDetailsRoute({ mediaType: "Movie", itemId: "abc", action: "play" })
+      m.assertEqual(route, "/details/Movie/abc?deeplink=play")
+    end function
+
+    @it("emits ?deeplink=open for an open action")
+    function _()
+      route = deepLinkDetailsRoute({ mediaType: "Series", itemId: "xyz", action: "open" })
+      m.assertEqual(route, "/details/Series/xyz?deeplink=open")
+    end function
+
+    @it("falls back to open when the action is missing/empty")
+    function _()
+      route = deepLinkDetailsRoute({ mediaType: "Video", itemId: "id1", action: "" })
+      m.assertEqual(route, "/details/Video/id1?deeplink=open")
+    end function
+
+  end class
+
+end namespace

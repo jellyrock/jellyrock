@@ -3,9 +3,10 @@ topic: deep-linking
 related-files:
   - source/replayRoute.bs
   - source/main.bs
+  - components/JRScene.bs
   - components/ItemDetails.bs
   - components/auth/AuthManager.bs
-last-reviewed: 2026-06-15
+last-reviewed: 2026-06-20
 ---
 
 # Deep Linking & Casting
@@ -32,31 +33,60 @@ Both funnel the params to `stashDeepLink()` (`source/replayRoute.bs`).
 
 | `Param` | Required | Meaning |
 |---|---|---|
-| `contentId` | **yes** | The item to open. Two accepted forms (parsed by `parseDeepLinkContentId`): a **bare** Jellyfin item id, or **pipe-separated key=value** — `id=<itemId>\|server=<serverGuid>` (mirrors Jellyfin web's `?id=&serverId=`). |
-| `mediaType` | no | Roku's media-type hint. **Ignored for the launch decision** — JellyRock infers play-vs-springboard from the *resolved* item (see below). Accepted for Roku compatibility. |
-| `itemName` | no | A display title for the item. Used **only** to name the item in the server-switch prompt (we can't fetch the title ourselves before switching — it lives on a server we're not yet authenticated to). Omit and the prompt falls back to a server-named message. |
+| `contentId` | **yes** | What to do, encoded as a **bare** Jellyfin item id, or **pipe-separated key=value** — `id=<itemId>\|serverId=<serverGuid>\|action=<verb>` (parsed by `parseDeepLinkContentId`). Key names mirror Jellyfin web's `?id=&serverId=`. |
+| `mediaType` | no | Roku's media-type hint. Used only as the throwaway `:type` segment of the details route (`ItemDetails` resolves the real type from the fetched item). Otherwise ignored. |
+| `itemName` | no | A display title, used **only** to name the item in the server-switch prompt (we can't fetch the title ourselves before switching — it lives on a server we're not yet authenticated to). Omit → the prompt falls back to a server-named message. |
 
-> The `server` value is a Jellyfin **server id (GUID)**, not a URL. JellyRock can only connect to
+### `contentId` keys
+
+| Key | Default | Meaning |
+|---|---|---|
+| `id` | — | The Jellyfin item id. A **bare segment** (no `=`) is taken as the id, so both `<id>` and `<id>\|action=play` work as well as `id=<id>\|action=play`. |
+| `serverId` (alias `server`) | active server | The target server's Jellyfin **id (GUID)**, not a URL. See "Server resolution". |
+| `action` | `open` | What to do with the resolved item — **the sender's explicit intent** (the route decides; behavior is *never* inferred from the resolved item). One of `open` / `play` / `shuffle` / `trailer`. Any **unknown** value degrades to `open`, so the contract is **forward-compatible** — a new verb is additive and safe on older builds. |
+
+> **Why everything rides inside `contentId` (and uses pipes).** `contentId` is the only deep-link
+> field that survives **both** Roku ingress paths: cold-start `/launch` standardizes only
+> `contentId` + `mediaType` (extra top-level params are dropped), while runtime `/input` forwards
+> arbitrary params. Roku also **forbids `&` inside `contentId`** and treats `action` as a reserved
+> top-level launch key — so the contract is nested *inside* `contentId`, pipe-delimited (Roku's own
+> documented convention, e.g. `series=x|Season=1`). Nesting also sidesteps the reserved-`action`
+> collision (ours is a sub-key Roku never reads).
+
+> The `serverId` value is a Jellyfin **server id (GUID)**, not a URL. JellyRock can only connect to
 > servers it already has saved (it maps the GUID → a saved server's URL). A GUID for a server that
 > isn't set up on the device can't be fulfilled (see "Server resolution").
 
 ## Behavior
 
-After login, `replayAfterLogin()` navigates `Home → /details/<type>/<id>?deeplink=1` (Home first so
-it's the back-stack root). `ItemDetails` is the validator/launcher:
-
-- **Validate** — it fetches the item by id. An invalid/missing id → toast
-  *"This content isn't available."* + back to **Home** (never a broken details screen).
-- **Auto-launch decision** — inferred from the **resolved item's type** (`isDeepLinkAutoPlayable`),
-  not the sender's `mediaType`:
-  - a single, directly-playable **video** item (Movie, Episode, Video, …) → **plays**, resuming at
-    its Jellyfin **bookmark** (`UserData.PlaybackPositionTicks`); no resume/start-over dialog.
-  - a **container** (Series / Season / `BoxSet` / `MusicArtist` / `MusicAlbum` / Playlist) or a type with
-    its own non-video action (Photo / `PhotoAlbum` / `TvChannel` / Program / Person / Audio) → lands on
-    the **details springboard**, where Play / Resume / View are ready.
+- **Validate FIRST, then navigate** (`JRScene.resolveDeepLink`) — a deep link is resolved (a
+  metadata fetch, with a spinner) **before** any navigation, so an **invalid id never disturbs the
+  active session**: it just toasts *"This content isn't available."* — no navigation, nothing torn
+  down (a malicious LAN `curl` of junk ids is harmless). A spinner shows during the fetch; a fetch
+  failure toasts the same way. Only a **valid** id navigates on. *(Exception: a **cross-server**
+  link can't be validated until after its user-confirmed switch, so an invalid id there toasts
+  post-switch — see "Server resolution".)*
+- **Then route** to `/details/<type>/<id>?deeplink=<action>` (post-login, Home is shown first so
+  it's the back-stack root; a playback cast arriving over an active player tears that player down
+  first). The `?deeplink=<action>` query carries the **action**; `ItemDetails` loads + dispatches it.
+- **Dispatch the action** (`ItemDetails.dispatchDeepLinkAction`) — **do what the route asked**, on the resolved
+  item. The action is the sender's explicit intent; it is **never** inferred from the item:
+  - **`open`** (and any unknown action) → land on the **details springboard**, no playback. A
+    library/folder type (`CollectionFolder` / `UserView` / `Folder`) has no springboard yet, so it
+    toasts + returns Home as an interim until deep-link **grid** render lands ([follow-up](https://github.com/jellyrock/jellyrock/issues/669)).
+  - **`play`** → `QueueManager.launchItem`, the **same** per-type quickplay engine a normal in-app
+    tap uses (no deep-link-specific play logic): a single **video** resumes its Jellyfin bookmark
+    (no resume/start-over dialog); a **Series** smart-resumes the next-up episode
+    (`QuickPlayTask.doSeries`); a **container** (Season / `BoxSet` / `MusicArtist` / `MusicAlbum` /
+    Playlist) plays; a **Person** shuffles their movies + watched episodes; a **live channel /
+    program** watches; **Audio** → audio player; **Photo** → viewer; `PhotoAlbum` → slideshow.
+  - **`shuffle`** → the same path the **Shuffle** button uses (`onShuffleButtonPressed`).
+  - **`trailer`** → plays this item's trailer(s).
 - **Once per navigation** — `checkDeepLinkLaunch()` keys off the router's per-navigation `route.id`,
-  so a **repeat cast of the same item** (whose `ItemDetails` is cached by `keepAlive`) still
-  launches, while an ordinary **back-from-player** resume (same `route.id`) does **not** re-launch.
+  so a **repeat cast of the same item** (whose `ItemDetails` is cached by `keepAlive`) still fires,
+  while an ordinary **back-from-player** resume (same `route.id`) does **not** re-fire. A runtime
+  recast that lands while already on the item's details dispatches the **new** action in place
+  (`playFromDeepLink(action)`), not the cached mount's stale one.
 
 ## Server resolution
 
@@ -75,9 +105,15 @@ a toast explains *"Sign in to open your content."*, and `replayAfterLogin()` ope
 completes. (The `AuthManager` `canActivate` guard uses the sibling `stashedRoute` for in-app
 signed-out redirects — see [navigation.md](../architecture/navigation.md).)
 
-## Feedback (toasts)
+## Feedback (toasts + spinner)
 
-- **"Opening \<title\>"** when a launch starts (uses the resolved item's name).
+- A **spinner** shows while the id is being validated (`JRScene.resolveDeepLink`'s fetch); it does
+  **not** block the remote, so a runtime cast doesn't freeze what you're doing.
+- **"This content isn't available."** when the id is invalid or the validation fetch fails — and
+  **nothing else happens** (no navigation; the active session is untouched).
+- **"Playing \<title\>"** when a `play`/`shuffle`/`trailer` action's playback actually starts — fired
+  by the player on mount (the end state), using the resolved item's name. An `open` action shows no
+  toast (it just navigates); Photo/`PhotoAlbum` open the viewer with no toast.
 - **"Switching to '\<server\>'…"** when a confirmed server switch begins.
 - **"Sign in to open your content."** when deferred for auth.
 - **"Cast canceled."** when a server-switch prompt is dismissed.
@@ -87,20 +123,30 @@ signed-out redirects — see [navigation.md](../architecture/navigation.md).)
 `<IP>` = the Roku's address. Watch the TV; `curl "http://<IP>:8060/query/media-player"` reports
 playback state/position for scripted checks.
 
+URL-encode the `contentId` value: `=` is `%3D`, `|` is `%7C`.
+
 ```bash
-# Play a movie on the active server (bare id) — runtime
+# Open an item's details (bare id, action defaults to open) — runtime
 curl -d '' "http://<IP>:8060/input?contentId=<itemId>"
 
-# Encoded id + server, with a cast title (note the URL-encoding: = is %3D, | is %7C)
-curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Cserver%3D<serverGuid>&itemName=<Title>"
+# Play it — runtime
+curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dplay"
 
-# Cold start straight into content
-curl -d '' "http://<IP>:8060/launch/dev?contentId=<itemId>"
+# Shuffle / trailer
+curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dshuffle"
+curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dtrailer"
 
-# Invalid id → toast + Home (no stuck details)
+# Play on a specific (saved) server, with a cast title for the switch prompt
+curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7CserverId%3D<serverGuid>%7Caction%3Dplay&itemName=<Title>"
+
+# Cold start straight into playback
+curl -d '' "http://<IP>:8060/launch/dev?contentId=id%3D<itemId>%7Caction%3Dplay"
+
+# Invalid id → toast + Home (no stuck details), for any action
 curl -d '' "http://<IP>:8060/input?contentId=deadbeefdoesnotexist"
 ```
 
-A deep link whose `server` is a *different saved server* triggers the switch prompt; an *unknown*
-server GUID toasts. A repeat of the same command should re-launch (regression net for the
-`keepAlive-resume` bug fixed alongside this doc).
+A deep link whose `serverId` is a *different saved server* triggers the switch prompt; an *unknown*
+server GUID toasts. A repeat of the same `play`/`shuffle`/`trailer` command should re-fire (regression
+net for the `keepAlive-resume` bug fixed alongside this doc); a repeat `open` is a no-op (already
+showing it).

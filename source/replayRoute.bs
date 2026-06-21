@@ -20,12 +20,18 @@
 ' resolves on the render thread); it hands route chains to JRScene via callFunc.
 ' ===========================================================================
 
-' Parse a Roku deep-link contentId into { itemId, serverGuid }. contentId is app-defined
-' (Roku spec: up to 255 chars, may be pipe-separated key=value). We mint it as
-' "id=<itemId>|server=<serverGuid>" (mirroring Jellyfin's own ?id=&serverId= deep links),
-' and still accept a bare itemId (manual ECP tests, legacy). serverGuid is "" when absent.
+' Parse a Roku deep-link contentId into { itemId, serverGuid, action }. contentId is the only
+' deep-link field that survives BOTH Roku ingress paths intact (cold-start /launch standardizes
+' only contentId+mediaType; /input forwards arbitrary params but /launch does not), and Roku
+' forbids "&" inside it — so the whole contract rides inside contentId, pipe-delimited (Roku's
+' own documented convention, e.g. series=x|Season=1). We mint it as
+' "id=<itemId>|serverId=<serverGuid>|action=<verb>" (key names mirror Jellyfin web's ?id=&serverId=),
+' and still accept a bare itemId (manual ECP tests, legacy). serverGuid is "" when absent (=> the
+' active server). action defaults to "open" (land on the page, no autoplay) and is normalized to
+' lower case; the consumer treats any UNKNOWN action as "open" too, so the contract is
+' forward-compatible — a future verb degrades gracefully on an older build.
 function parseDeepLinkContentId(raw as string) as object
-  result = { itemId: "", serverGuid: "" }
+  result = { itemId: "", serverGuid: "", action: "open" }
   if not isValidAndNotEmpty(raw) then return result
 
   if Instr(1, raw, "=") = 0
@@ -43,10 +49,26 @@ function parseDeepLinkContentId(raw as string) as object
         result.itemId = value
       else if key = "server" or key = "serverid"
         result.serverGuid = value
+      else if key = "action"
+        if isValidAndNotEmpty(value) then result.action = LCase(value)
       end if
+    else if kv.count() = 1
+      ' A bare segment (no "=") is taken as the item id when we don't have one yet, so
+      ' "<id>|action=play" works as naturally as "id=<id>|action=play". First bare wins;
+      ' once id is set, later bare segments (typos, stray values) are ignored.
+      bare = kv[0].trim()
+      if result.itemId = "" and bare <> "" then result.itemId = bare
     end if
   end for
   return result
+end function
+
+' True for deep-link actions that START PLAYBACK (vs "open", which only navigates to the
+' springboard). Used to gate the player-replacement path (a playback cast arriving over an
+' active player tears it down first; an "open" cast just navigates) and the autoplay decision
+' in ItemDetails. Any unknown action is NOT a playback action -> treated as "open".
+function isDeepLinkPlaybackAction(action as string) as boolean
+  return action = "play" or action = "shuffle" or action = "trailer"
 end function
 
 ' Stash a deep link (cold-start or runtime) as a structured intent for replayAfterLogin.
@@ -67,7 +89,8 @@ sub stashDeepLink(rawContentId as string, mediaType as string, itemName = "" as 
     itemId: parsed.itemId,
     mediaType: routeMediaType,
     serverGuid: parsed.serverGuid,
-    itemName: itemName
+    itemName: itemName,
+    action: parsed.action
   }
 end sub
 
@@ -78,7 +101,16 @@ sub replayAfterLogin()
   deepLink = m.global.AuthManager.stashedDeepLink
   if isValid(deepLink) and isValidAndNotEmpty(deepLink.itemId)
     m.global.AuthManager.stashedDeepLink = invalid
-    m.scene.callFunc("replayRoutedDeepLink", ["/", deepLinkDetailsRoute(deepLink)])
+    ' homeFirst: land on Home (the back-stack root) THEN validate. An invalid id just toasts on
+    ' Home — good post-login UX. A valid id navigates on from Home.
+    m.scene.callFunc("resolveDeepLink", {
+      itemId: deepLink.itemId,
+      action: deepLink.action,
+      isPlayback: isDeepLinkPlaybackAction(deepLink.action),
+      homeFirst: true,
+      replacePlayer: false,
+      detailsRoute: deepLinkDetailsRoute(deepLink)
+    })
     return
   end if
 
@@ -89,29 +121,36 @@ end sub
 
 ' Runtime replay (app already signed in, deep link for the active server). Unlike the post-login
 ' path above, this does NOT prepend Home — an in-app cast shouldn't flash through the Home screen.
-'   - a player is active -> pop it FIRST so it's destroyed (stops playback + reports to the
-'     server) before the new content mounts, then navigate (JRScene chains goBack -> details).
-'     Otherwise the new player stacks on top of the old one (two decoders -> playback errors).
-'   - already on the target item's details -> just play in place (no navigation at all).
-'   - otherwise -> navigate straight to the details (back still unwinds to wherever you were).
+'   - already on the target item's LOADED details -> launch the action in place (no fetch, no
+'     re-mount); for "open" we're already showing it, so nothing to do. The itemContent guard
+'     matters: a lingering empty details would otherwise swallow the cast.
+'   - otherwise -> hand the intent to JRScene.resolveDeepLink, which VALIDATES the id (a fetch)
+'     BEFORE navigating. An invalid id never disturbs the active session — it just toasts. A valid
+'     id then navigates (replacing an active player for a playback cast, else a plain push).
 sub replayDeepLinkRuntime()
   deepLink = m.global.AuthManager.stashedDeepLink
   if not isValid(deepLink) or not isValidAndNotEmpty(deepLink.itemId) then return
   m.global.AuthManager.stashedDeepLink = invalid
 
+  isPlayback = isDeepLinkPlaybackAction(deepLink.action)
   active = m.global.activeRoutedView
-  if isValid(active) and isDeepLinkPlayerView(active.subtype())
-    m.scene.callFunc("replayDeepLinkReplacingPlayer", deepLinkDetailsRoute(deepLink))
+
+  onLoadedDetails = isValid(active) and active.subtype() = "ItemDetails" and active.itemId = deepLink.itemId and isValid(active.itemContent) and isValidAndNotEmpty(active.itemContent.id)
+  if onLoadedDetails
+    ' Already on this item's loaded details — no need to re-validate. Launch in place; "open" no-op.
+    if isPlayback then active.callFunc("playFromDeepLink", deepLink.action)
     return
   end if
 
-  if isValid(active) and active.subtype() = "ItemDetails" and active.itemId = deepLink.itemId
-    ' Already here — play without navigating (no Home flash, no re-mount).
-    active.callFunc("playFromDeepLink")
-    return
-  end if
-
-  m.scene.callFunc("replayRoutedDeepLink", [deepLinkDetailsRoute(deepLink)])
+  replacePlayer = isPlayback and isValid(active) and isDeepLinkPlayerView(active.subtype())
+  m.scene.callFunc("resolveDeepLink", {
+    itemId: deepLink.itemId,
+    action: deepLink.action,
+    isPlayback: isPlayback,
+    homeFirst: false,
+    replacePlayer: replacePlayer,
+    detailsRoute: deepLinkDetailsRoute(deepLink)
+  })
 end sub
 
 ' Active routed views that ARE a media player (a deep link arriving over one must tear it down
@@ -121,15 +160,18 @@ function isDeepLinkPlayerView(subtype as string) as boolean
 end function
 
 ' Build the /details route for a deep link. The :type is just a display hint (ItemDetails
-' resolves the REAL type from the fetched item); ?deeplink=1 marks this as an untrusted
-' deep-link entry so ItemDetails validates + auto-launches on load. The launch decision
-' (play vs springboard) is inferred from the RESOLVED item, not the sender's mediaType — a
-' cast only needs to send an id (+ server), so mediaType is an optional, ignored-if-present hint.
-' The "Opening <title>" toast is fired by PlayerHostView on mount using the REAL resolved title
+' resolves the REAL type from the fetched item). The ?deeplink=<action> query does double duty:
+' it marks this as an untrusted deep-link entry (so ItemDetails validates the id, sending an
+' invalid one back to Home per cert), AND it carries the intent — "open" lands on the springboard;
+' "play"/"shuffle"/"trailer" auto-launch the matching action once the item resolves. The intent is
+' the SENDER'S explicit choice (the route decides), never inferred from the resolved item.
+' The "Playing <title>" toast is fired by the player on mount using the REAL resolved title
 ' (ItemDetails sets m.global.deepLinkOpeningTitle) — not the sender's param, which may be a
 ' placeholder. So nothing is toasted here.
 function deepLinkDetailsRoute(deepLink as object) as string
-  return "/details/" + deepLink.mediaType + "/" + deepLink.itemId + "?deeplink=1"
+  base = "/details/" + deepLink.mediaType + "/" + deepLink.itemId + "?deeplink="
+  if isValidAndNotEmpty(deepLink.action) then return base + deepLink.action
+  return base + "open"
 end function
 
 ' Toast shown when a deep link arrives but the user must authenticate first — it explains why

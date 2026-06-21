@@ -55,6 +55,7 @@
     <function name="routerNavigate" />
     <function name="replayRoutedDeepLink" />
     <function name="replayDeepLinkReplacingPlayer" />
+    <function name="resolveDeepLink" />
     <function name="reloadRoutedHome" />
     <function name="resetRouter" />
     <function name="routerGoBack" />

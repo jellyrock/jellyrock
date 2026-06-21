@@ -425,6 +425,59 @@ sub tryReplacePlayerNavigate()
   end sub)
 end sub
 
+' #550 deep link: VALIDATE a deep-link id (a metadata fetch) BEFORE navigating, so an invalid id
+' never disturbs the active session — it just toasts. `args` = { itemId, action, isPlayback,
+' homeFirst, replacePlayer, detailsRoute } from source/replayRoute.bs.
+'   homeFirst (post-login/cold): land on Home first so an invalid id toasts on Home (good UX).
+'   On a valid id, onDeepLinkResolved navigates (replacing an active player for a playback cast).
+sub resolveDeepLink(args)
+  if not isValid(args) or not isValidAndNotEmpty(args.itemId) then return
+  initRouter()
+  if args.homeFirst then sgrouter.navigateTo("/")
+
+  m.deepLinkResolveArgs = args
+  ' Spinner = feedback during the fetch; don't block the remote (a runtime cast shouldn't freeze
+  ' what the user is doing). Cleared in onDeepLinkResolved.
+  m.top.isRemoteDisabled = false
+  m.top.isLoading = true
+
+  if isValid(m.deepLinkResolveTask) then m.deepLinkResolveTask.control = "stop"
+  m.deepLinkResolveTask = CreateObject("roSGNode", "LoadItemsTask")
+  m.deepLinkResolveTask.itemsToLoad = "metaDataDetails"
+  m.deepLinkResolveTask.itemId = args.itemId
+  m.deepLinkResolveTask.observeField("content", "onDeepLinkResolved")
+  m.deepLinkResolveTask.control = "RUN"
+end sub
+
+sub onDeepLinkResolved()
+  if not isValid(m.deepLinkResolveTask) then return
+  m.deepLinkResolveTask.unobserveField("content")
+  content = m.deepLinkResolveTask.content
+  m.deepLinkResolveTask.control = "stop"
+  m.deepLinkResolveTask = invalid
+  m.top.isLoading = false
+
+  args = m.deepLinkResolveArgs
+  m.deepLinkResolveArgs = invalid
+  if not isValid(args) then return
+
+  if not (isValidAndNotEmpty(content) and isValid(content[0]))
+    ' Invalid id or fetch failure -> toast only, NO navigation. The session is undisturbed
+    ' (post-login we're already on Home; runtime we stay on whatever was playing/showing).
+    showToast(translate(translationKeys.MessageContentUnavailable), "error")
+    return
+  end if
+
+  ' Valid. Navigate to the details route (ItemDetails loads + dispatches the action on mount).
+  if args.replacePlayer
+    replayDeepLinkReplacingPlayer(args.detailsRoute)
+  else
+    promises.chain(sgrouter.navigateTo(args.detailsRoute)).then(sub(_result as object)
+      sgrouter.setFocus({ focus: true })
+    end sub)
+  end if
+end sub
+
 ' #550 sgRouter (Phase 4): QueueManager.playQueue signalled a video playback launch.
 ' The queue is already populated, so navigate to the play route — PlayerHostView mounts
 ' the player for the current queue item. :type/:id give the route a deep-link identity;
@@ -480,8 +533,14 @@ sub resetRouter()
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
-  ' Cancel a pending replace-player navigate retry (router is being destroyed under it).
+  ' Cancel a pending replace-player navigate retry + any in-flight deep-link resolve (router is
+  ' being destroyed under them).
   if isValid(m.deepLinkRetryTimer) then m.deepLinkRetryTimer.control = "stop"
+  if isValid(m.deepLinkResolveTask)
+    m.deepLinkResolveTask.control = "stop"
+    m.deepLinkResolveTask = invalid
+  end if
+  m.deepLinkResolveArgs = invalid
   m.replacePlayerRoute = ""
   m.replacePlayerPending = false
   sgrouter.destroy()
