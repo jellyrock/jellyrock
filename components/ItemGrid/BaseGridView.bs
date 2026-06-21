@@ -151,11 +151,12 @@ end sub
 ' ============================================================================
 
 sub onScreenShown()
-  ' #550 sgRouter: on first mount, self-load from the route (/library/:id). In-app
-  ' navigation passes the rich library node as route.context.item (instant, no
-  ' re-fetch); presenterType MUST be set before parentItem (parentItem triggers
-  ' loadInitialItems, which reads presenterType). keepAlive views skip this on resume
-  ' (parentItem already set). Deep-link-by-id (no context) is Phase 6.
+  ' #550 sgRouter: on first mount, self-load from the route (/library/:id). Both in-app
+  ' navigation AND a deep link / cast pass the rich library node as route.context.item
+  ' (in-app: the selected node; deep link: the node JRScene.resolveDeepLink already
+  ' validated) — instant, no re-fetch. presenterType MUST be set before parentItem
+  ' (parentItem triggers loadInitialItems, which reads presenterType). keepAlive views
+  ' skip this on resume (parentItem already set).
   if not isValid(m.top.parentItem)
     loadLibraryFromRoute(m.top.route)
   else
@@ -191,8 +192,10 @@ sub onScreenShown()
   end if
 end sub
 
-' #550 sgRouter: configure the library view from its route. Prefers the rich node
-' passed as context (in-app nav); deep-link-by-id is deferred to Phase 6.
+' #550 sgRouter: configure the library view from its route. Both in-app navigation and a deep
+' link / cast supply the rich library node as route.context.item (the resolver passes the node
+' it already validated), so there is no fetch here. A missing context node is therefore an
+' unexpected route shape, not a deferred feature — warn rather than silently render nothing.
 sub loadLibraryFromRoute(route as object)
   if not isValid(route) then return
 
@@ -203,7 +206,7 @@ sub loadLibraryFromRoute(route as object)
     m.top.presenterType = DeterminePresenterType(item)
     m.top.parentItem = item ' triggers loadInitialItems
   else
-    m.log.warn("library route has no context item — deep-link library load lands in Phase 6", route.routeParams)
+    m.log.warn("library route has no context item", route.routeParams)
   end if
 end sub
 

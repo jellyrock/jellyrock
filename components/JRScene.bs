@@ -468,6 +468,22 @@ sub onDeepLinkResolved()
     return
   end if
 
+  ' #550 deep link (Phase 2): a grid-container target (library / folder / genre / studio /
+  ' channel) has no springboard — open its grid directly instead of mounting ItemDetails on a
+  ' bare folder. routeForItem maps the resolved node to the same library route in-app navigation
+  ' uses, and we hand it the node we just fetched as route context so BaseGridView renders
+  ' without a second fetch (and Back lands on Home, not a stub springboard). Only the non-playback
+  ' "open" path diverts: a playback action never targets a container, and replacePlayer is
+  ' playback-only, so both fall through to the details route below.
+  item = content[0]
+  itemRoute = routeForItem(item)
+  if not args.isPlayback and isValid(itemRoute) and itemRoute.name = "library"
+    promises.chain(sgrouter.navigateTo(itemRoute, { context: { item: item } })).then(sub(_result as object)
+      sgrouter.setFocus({ focus: true })
+    end sub)
+    return
+  end if
+
   ' Valid. Navigate to the details route (ItemDetails loads + dispatches the action on mount).
   if args.replacePlayer
     replayDeepLinkReplacingPlayer(args.detailsRoute)

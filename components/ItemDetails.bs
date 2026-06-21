@@ -763,12 +763,9 @@ sub dispatchDeepLinkAction()
   if not isValid(item) or not isValidAndNotEmpty(item.type) then return
 
   if not isDeepLinkPlaybackAction(m.deepLinkAction)
-    ' open / unknown -> springboard. Library/folder types route to a grid we can't yet build
-    ' from a bare id, so toast + Home rather than show a broken folder springboard.
-    if isDeepLinkLibraryType(item.type)
-      displayToast(translate(translationKeys.MessageContentUnavailable), "error")
-      sgrouter.goBack()
-    end if
+    ' open / unknown -> stay on this springboard (already shown). Grid-container targets
+    ' (library / folder / genre / studio / channel) never reach here: JRScene.onDeepLinkResolved
+    ' diverts them straight to their /library grid instead of mounting ItemDetails.
     return
   end if
 
@@ -795,13 +792,6 @@ end sub
 ' main-thread replay module); any unknown action is NOT playback -> treated as "open".
 function isDeepLinkPlaybackAction(action as dynamic) as boolean
   return action = "play" or action = "shuffle" or action = "trailer"
-end function
-
-' Library/grid container types that route to BaseGridView, not an ItemDetails springboard
-' (mirrors the library-tile set in source/utils/placeholderImage.bs).
-function isDeepLinkLibraryType(itemType as dynamic) as boolean
-  t = LCase("" + itemType)
-  return t = "collectionfolder" or t = "userview" or t = "folder"
 end function
 
 ' #550 deep link: run the deep-link action on this already-loaded item in response to a runtime
