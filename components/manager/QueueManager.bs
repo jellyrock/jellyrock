@@ -21,8 +21,8 @@ sub init()
   m.isPrerollActive = m.global.user.settings.playbackCinemaMode
   m.position = 0
   m.shuffleEnabled = false
-  ' #550 sgRouter (Phase 4): PhotoAlbum shuffle launches a random slideshow; the shuffle
-  ' button sets this before launchQuickPlayAction so onQuickPlayTaskOutput's photo branch
+  ' PhotoAlbum shuffle launches a random slideshow; the shuffle button sets this before
+  ' launchQuickPlayAction so onQuickPlayTaskOutput's photo branch
   ' knows to randomize. Defaults false (a plain photoalbum item-tap is sequential).
   m.photoAlbumShuffleMode = false
 end sub
@@ -122,8 +122,8 @@ end function
 
 ' Play items in queue.
 '
-' #550 sgRouter (Phase 4): QueueManager has no router chain, so it can't navigateTo — it
-' sets m.global.playbackLaunchRequest and JRScene.onPlaybackLaunchRequested turns that into
+' QueueManager has no router chain, so it can't navigateTo — it sets
+' m.global.playbackLaunchRequest and JRScene.onPlaybackLaunchRequested turns that into
 ' the route: audio -> /audio (AudioPlayerView), every video-family type -> the play route
 ' (/details/:type/:id/play, PlayerHostView). The view reads this same queue on mount.
 ' In-view queue advancement (next-item / Live TV restart / channel switch) does NOT come
@@ -157,12 +157,10 @@ sub playQueue()
   end if
 end sub
 
-' #550 sgRouter (Phase 4): single-tap playback launcher. Routed views (Home rows /
-' library grids / search / details extras) call this directly instead of bubbling a
-' quickPlayNode field up to main.bs's god-loop. Synchronous types build the queue inline
-' via the quickplay.* helpers + playQueue (which routes to PlayerHostView); async types
-' (need an API call to expand into a queue) go through QuickPlayTask. Ported verbatim from
-' main.bs's old quickPlayNode dispatch.
+' Single-tap playback launcher. Routed views (Home rows / library grids / search / details
+' extras) call this directly. Synchronous types build the queue inline via the quickplay.*
+' helpers + playQueue (which routes to PlayerHostView); async types (need an API call to
+' expand into a queue) go through QuickPlayTask.
 sub launchItem(itemNode as object)
   if not isValid(itemNode) or not isValidAndNotEmpty(itemNode.id) then return
   itemType = ""
@@ -215,12 +213,11 @@ sub launchItem(itemNode as object)
   end if
 end sub
 
-' #550 sgRouter (Phase 4): run a QuickPlayTask for an async playback action and route its
-' output to the queue. Used by launchItem's async branch (item taps that expand into a
-' queue) and by the ItemDetails playAll / trailer / instant-mix / slideshow buttons.
-' Owns the task on this node's render thread (was main.bs's m.activeQuickPlayTask).
-' Clears the queue up front so the QuickPlayTask output (which appends via pushToQueue /
-' set) starts from empty — every god-loop caller did clear + resetShuffle before the task.
+' Run a QuickPlayTask for an async playback action and route its output to the queue. Used by
+' launchItem's async branch (item taps that expand into a queue) and by the ItemDetails
+' playAll / trailer / instant-mix / slideshow buttons. Owns the task on this node's render
+' thread. Clears the queue up front so the QuickPlayTask output (which appends via
+' pushToQueue / set) starts from empty.
 sub launchQuickPlayAction(input as object)
   clear()
   resetShuffle()
@@ -255,8 +252,8 @@ sub onQuickPlayTaskOutput()
     end if
     playQueue()
   else if output.action = "photo"
-    ' #550 sgRouter (Phase 4): route the slideshow to the /photo view instead of pushing a
-    ' PhotoDetails scene. QueueManager has no router chain, so signal via m.global.photoLaunchRequest
+    ' Route the slideshow to the /photo view. QueueManager has no router chain, so signal via
+    ' m.global.photoLaunchRequest
     ' (JRScene navigates with this AA as route context). isRandom comes from the shuffle-mode flag
     ' launchPhotoAlbum set; reset it after use.
     m.global.photoLaunchRequest = {
@@ -278,10 +275,9 @@ sub onQuickPlayTaskOutput()
   end if
 end sub
 
-' #550 sgRouter (Phase 4): shuffle-play a Series / Season / Person via GetShuffleItemsTask
-' (the API resolves the randomized item set off the render thread). Owns the task on this
-' node (was main.bs's m.shuffleTask). PhotoAlbum shuffle does NOT come here — it launches a
-' random slideshow through launchPhotoAlbum instead.
+' Shuffle-play a Series / Season / Person via GetShuffleItemsTask (the API resolves the
+' randomized item set off the render thread). Owns the task on this node. PhotoAlbum shuffle
+' does NOT come here — it launches a random slideshow through launchPhotoAlbum instead.
 sub launchShuffle(input as object)
   m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
   m.shuffleTask.shuffleInput = input
@@ -289,9 +285,9 @@ sub launchShuffle(input as object)
   m.shuffleTask.control = "RUN"
 end sub
 
-' GetShuffleItemsTask finished — set the resolved items as the queue and play (ported from
-' main.bs's shuffleItems handler). The task already randomizes server-side; toggleShuffle
-' applies the Fisher-Yates client shuffle on top when there's more than one item.
+' GetShuffleItemsTask finished — set the resolved items as the queue and play. The task
+' already randomizes server-side; toggleShuffle applies the Fisher-Yates client shuffle on
+' top when there's more than one item.
 sub onShuffleItemsLoaded()
   shuffleItems = m.shuffleTask.shuffleItems
   m.shuffleTask.unobserveField("shuffleItems")
@@ -311,8 +307,8 @@ sub onShuffleItemsLoaded()
   end if
 end sub
 
-' #550 sgRouter (Phase 4): launch a PhotoAlbum slideshow. isRandom = true is the Shuffle
-' button (random slideshow); false is the Slideshow button (sequential). Sets the shuffle
+' Launch a PhotoAlbum slideshow. isRandom = true is the Shuffle button (random slideshow);
+' false is the Slideshow button (sequential). Sets the shuffle
 ' mode the onQuickPlayTaskOutput photo branch reads, then runs the loadPhotoAlbum task.
 sub launchPhotoAlbum(isRandom as boolean, id as string)
   m.photoAlbumShuffleMode = isRandom

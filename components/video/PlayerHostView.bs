@@ -6,14 +6,13 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/translate.bs"
 
-' #550 sgRouter: routed host for video playback. See PlayerHostView.xml header.
+' Routed host for video playback. See PlayerHostView.xml header.
 '
-' This file is the new home for what was ViewCreator's video half: the player
-' factory (CreateVideoPlayerView -> mountPlayer), the end-of-playback / queue
-' advancement state machine (onStateChange -> onPlayerStateChange, now host-internal),
-' and the playback-time track-selection dialog handlers (onSelect*/process*). The
-' player is a runtime child of this host rather than a SceneManager-pushed scene, so
-' advancement destroys + remounts the child instead of pop/push.
+' This file owns the video half of playback: the player factory
+' (CreateVideoPlayerView -> mountPlayer), the end-of-playback / queue advancement state
+' machine (onPlayerStateChange, host-internal), and the playback-time track-selection dialog
+' handlers (onSelect*/process*). The player is a runtime child of this host, so advancement
+' destroys + remounts the child.
 
 sub init()
   m.log = new log.Logger("PlayerHostView")
@@ -77,9 +76,9 @@ sub mountPlayer()
 
   m.top.appendChild(m.view)
 
-  ' #550 deep link: toast "Playing <title>" for a deep-link launch. Fired here (player mount =
-  ' stable final destination, nothing churns after) rather than from ItemDetails mid-transition,
-  ' which was unreliable after a heavy server switch. One-shot: clear the global after showing.
+  ' Toast "Playing <title>" for a deep-link launch. Fired here (player mount = stable final
+  ' destination, nothing churns after) rather than from ItemDetails mid-transition, which was
+  ' unreliable after a heavy server switch. One-shot: clear the global after showing.
   if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
     displayToast(Substitute(translate(translationKeys.MessagePlayingContent), m.global.deepLinkOpeningTitle), "info")
     m.global.deepLinkOpeningTitle = ""
@@ -118,8 +117,8 @@ sub playCurrentQueueItem()
   mountPlayer()
 end sub
 
-' #550 deep link: a deep link arrived while this player is active. Stop + report the player NOW
-' (synchronously) WITHOUT navigating — the caller (JRScene.replayDeepLinkReplacingPlayer) then
+' A deep link arrived while this player is active. Stop + report the player NOW (synchronously)
+' WITHOUT navigating — the caller (JRScene.replayDeepLinkReplacingPlayer) then
 ' goBacks, whose beforeViewClose -> onDestroy does the full teardown. destroyPlayer is idempotent
 ' (guards m.view), so that second teardown is a safe no-op — NOT a full onDestroy here, which
 ' would run twice and double-tear-down.

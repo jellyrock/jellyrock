@@ -1,7 +1,7 @@
 import "pkg:/source/utils/misc.bs"
 
-' #550 sgRouter (Phase 6): canActivate guard — see AuthManager.xml header. Invoked by the
-' router on the render thread during navigateTo, once per guarded route. A cheap SYNCHRONOUS
+' canActivate guard — see AuthManager.xml header. Invoked by the router on the render thread
+' during navigateTo, once per guarded route. A cheap SYNCHRONOUS
 ' token check only — no network (launch-time AboutMe re-validation stays in the login flow).
 '
 ' currentRequest is the route object the router is resolving; currentRequest.path is the

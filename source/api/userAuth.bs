@@ -36,8 +36,8 @@ sub SignOut(deleteSavedEntry = true as boolean)
   unsetSetting("active_user")
   user.Logout()
   m.global.sceneManager.currentUser = ""
-  ' #550 sgRouter: getActiveView() resolves the routed view too; guard isValid because
-  ' sign-out via the Home menu tears the router down first (resetRouter → no active view).
+  ' getActiveView() resolves the routed view; guard isValid because sign-out via the Home menu
+  ' tears the router down first (resetRouter → no active view).
   group = getActiveView()
   if isValid(group) then group.isOptionsAvailable = false
 end sub

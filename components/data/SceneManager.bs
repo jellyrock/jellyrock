@@ -9,11 +9,9 @@ sub init()
   m.overhang = m.scene.findNode("overhang")
 end sub
 
-' #550 sgRouter (Phase 6): the scene-stack methods (pushScene / popScene / getActiveScene /
-' clearScenes / clearPreviousScene / deleteSceneAtIndex / settings) and their overhang-sync
-' helpers were removed once the whole app moved onto the router. SceneManager is now purely a
-' shared SERVICE node — dialogs, toast/spinner, backdrop, theme, and the overhang user/clock
-' passthroughs below. The router host (JRScene) owns navigation and its own overhang controller.
+' SceneManager is purely a shared SERVICE node — dialogs, toast/spinner, backdrop, theme, and
+' the overhang user/clock passthroughs below. The router host (JRScene) owns navigation and its
+' own overhang controller; there is no scene stack (pushScene / popScene / getActiveScene etc.).
 
 ' Signal that home screen should be reloaded (used after theme color changes)
 ' Main.bs observes reloadHomeRequested field and handles the actual reload

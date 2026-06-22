@@ -97,8 +97,8 @@ namespace quickplay
 
   ' A single photo.
   '
-  ' #550 sgRouter (Phase 4): route to the /photo view instead of pushing a PhotoDetails scene.
-  ' This runs on the QueueManager render thread (no router chain), so it signals the launch via
+  ' Route to the /photo view. This runs on the QueueManager render thread (no router chain), so
+  ' it signals the launch via
   ' m.global.photoLaunchRequest; JRScene turns that into navigateTo("/photo") with the AA as
   ' route context. itemsNode IS the single photo node; PhotoDetails reads it on mount.
   sub photo(itemNode as object)

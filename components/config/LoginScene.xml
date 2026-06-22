@@ -10,8 +10,8 @@
     <LabelErrorMedium text="" id="alert" wrap="true" width="1620" translation="[150, 680]" />
   </children>
   <interface>
-    <!-- #550 sgRouter (Phase 5): submit payload read by the loginRouter coordinator
-         (via getActiveView) when this view emits the "credentialsSubmitted" intent. -->
+    <!-- Submit payload read by the loginRouter coordinator (via getActiveView) when this view
+         emits the "credentialsSubmitted" intent. -->
     <field id="enteredUsername" type="string" />
     <field id="enteredPassword" type="string" />
     <field id="saveCredentials" type="boolean" value="false" />

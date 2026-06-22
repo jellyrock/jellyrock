@@ -211,25 +211,23 @@ function lastFocusedChild(obj as object) as object
 end function
 
 ' Returns the full-screen view currently on top — the router-mounted view tracked on
-' m.global.activeRoutedView. The whole app is routed (#550 Phase 6): pre-login, content,
-' and playback are all router views in JRScene's outlet, so there is no longer a
-' SceneManager stack to consult. Used by main.bs's playback/dialog/device code and by
+' m.global.activeRoutedView. The whole app is routed: pre-login, content, and playback are all
+' router views in JRScene's outlet. Used by main.bs's playback/dialog/device code and by
 ' JRScene's options key to resolve "what's on screen".
 function getActiveView() as object
   return m.global.activeRoutedView
 end function
 
-' #550 sgRouter: maps a selected content item to its route — a named-route arg
-' { name, params } for sgRouter.navigateTo. Pure (no router call) so it can live
-' here in commonly-imported misc.bs; the routed view that owns the selection calls
-' navigateTo itself (passing the rich node as `context` to avoid a re-fetch).
-' Returns invalid for items that are NOT view navigation (Chapter → playback);
-' the caller handles those via the playback path (quickPlayNode).
+' Maps a selected content item to its route — a named-route arg { name, params } for
+' sgRouter.navigateTo. Pure (no router call) so it can live here in commonly-imported misc.bs;
+' the routed view that owns the selection calls navigateTo itself (passing the rich node as
+' `context` to avoid a re-fetch). Returns invalid for items that are NOT view navigation
+' (Chapter → playback); the caller handles those via the playback path (quickPlayNode).
 function routeForItem(item as object) as object
   if not isValid(item) or not isValidAndNotEmpty(item.type) or not isValidAndNotEmpty(item.id) then return invalid
 
   itemType = item.type
-  ' Normalize Live TV aliases to their canonical forms (mirrors main.bs's old god-loop)
+  ' Normalize Live TV aliases to their canonical forms
   if itemType = "LiveTvChannel" then itemType = "TvChannel"
   if itemType = "LiveTvProgram" or itemType = "TvProgram" then itemType = "Program"
 

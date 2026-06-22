@@ -27,10 +27,9 @@ sub init()
   m.homeRows.observeField("selectedItem", "onRowItemSelected")
   m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
 
-  ' #550 sgRouter (Phase 4): item taps that fall through to playback launch via
-  ' QueueManager now (the main.bs relay that used to read quickPlayNode is gone).
-  ' onRowItemSelected / onQuickPlayNode set m.top.quickPlayNode; this self-observer
-  ' forwards the node to the launcher.
+  ' Item taps that fall through to playback launch via QueueManager. onRowItemSelected /
+  ' onQuickPlayNode set m.top.quickPlayNode; this self-observer forwards the node to the
+  ' launcher.
   m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
   ' Voice search setup — matches BaseGridView's pattern:
@@ -46,17 +45,15 @@ sub init()
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")
 
-  ' #550 sgRouter: Home is now mounted by the router, so it self-wires what the old
-  ' showScenes.CreateHomeGroup() factory used to set up — its overhang title and the
-  ' options side-panel menu.
+  ' Home is mounted by the router, so it self-wires its overhang title and the options
+  ' side-panel menu.
   m.top.overhangTitle = translate(translationKeys.LabelHome)
   buildOptionsMenu()
 end sub
 
-' #550 sgRouter: build the options side-panel (search / settings / change user /
-' change server / sign out), lifted from showScenes.CreateHomeGroup(). The buttons
-' are observed by Home itself now (not main.bs's m.port); onSidePanelOption routes
-' them — navigation actions go through the router, session actions up to main.bs.
+' Build the options side-panel (search / settings / change user / change server / sign out).
+' The buttons are observed by Home itself; onSidePanelOption routes them — navigation actions
+' go through the router, session actions up to main.bs.
 sub buildOptionsMenu()
   sidepanel = m.top.findNode("options")
   if not isValid(sidepanel) then return
@@ -91,10 +88,10 @@ sub handleHomeMenuAction(actionId as string)
   else if actionId = HomeAction.OPEN_SETTINGS
     sgrouter.navigateTo("/settings")
   else
-    ' #550 sgRouter (Phase 4): session-reset (change user/server, sign out) needs main.bs's
-    ' LoginFlow re-entry (`goto appStart`). Set it on the SCENE, which main.bs observes via
-    ' its message port — observing a routed view's field via port never delivered (the relay
-    ' defect), but a scene field does (same channel as `exit`).
+    ' Session-reset (change user/server, sign out) needs main.bs to re-enter the login flow.
+    ' Set it on the SCENE, which main.bs observes via its message port — observing a routed
+    ' view's field via port never delivered (the relay defect), but a scene field does (same
+    ' channel as `exit`).
     m.top.getScene().userMenuAction = actionId
   end if
 end sub
@@ -301,13 +298,12 @@ sub onVoiceSearch()
   ' Reset for next voice search
   m.voiceBox.text = ""
 
-  ' Record the captured query on Home's interface. Pre-#550 main.bs observed this
-  ' field to open search; now Home navigates directly (below), but the field is kept
-  ' as the last-captured-query record (and is what the unit suite asserts).
+  ' Record the captured query on Home's interface. Home navigates directly (below), but the
+  ' field is kept as the last-captured-query record (and is what the unit suite asserts).
   m.top.voiceQuery = voiceText
 
-  ' #550 sgRouter: open the search route with the spoken query as context (the
-  ' SearchResults view reads route.context.query in onViewOpen / applyRouteQuery).
+  ' Open the search route with the spoken query as context (the SearchResults view reads
+  ' route.context.query in onViewOpen / applyRouteQuery).
   sgrouter.navigateTo("/search", { context: { query: voiceText } })
 end sub
 
@@ -377,10 +373,9 @@ function getActiveRows() as object
   return m.activeContent
 end function
 
-' #550 sgRouter: a row item was selected — navigate to its route, passing the rich
-' content node as context (so details/library self-load without a re-fetch). Items
-' that aren't view navigation (e.g. Chapter) fall through to the playback path via
-' quickPlayNode (still relayed to main.bs).
+' A row item was selected — navigate to its route, passing the rich content node as context
+' (so details/library self-load without a re-fetch). Items that aren't view navigation (e.g.
+' Chapter) fall through to the playback path via quickPlayNode.
 sub onRowItemSelected(msg)
   item = msg.getData()
   if not isValid(item) then return
@@ -400,7 +395,7 @@ sub onQuickPlayNode(msg)
   m.top.quickPlayNode = msg.getData()
 end sub
 
-' #550 sgRouter (Phase 4): forward a fallen-through item tap to the playback launcher.
+' Forward a fallen-through item tap to the playback launcher.
 sub onQuickPlayLaunch(msg)
   node = msg.getData()
   if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
@@ -465,8 +460,8 @@ sub onUserMenuAction()
     ' Move focus into Home's tree before navigating so back-from-route restores it.
     m.top.setFocus(true)
 
-    ' #550 sgRouter: route the action (search/settings navigate; session actions
-    ' emit userMenuAction up to main.bs).
+    ' Route the action (search/settings navigate; session actions emit userMenuAction up to
+    ' main.bs).
     handleHomeMenuAction(m.userDropdown.selectedAction)
   end if
 end sub
@@ -491,7 +486,7 @@ sub onOverhangIconAction()
     ' Move focus to Home group — not activeContent (avoids visible row highlight)
     m.top.setFocus(true)
 
-    ' #550 sgRouter: search/settings icons navigate through the router.
+    ' Search/settings icons navigate through the router.
     handleHomeMenuAction(m.overhang.iconAction)
   end if
 end sub
@@ -524,7 +519,7 @@ sub onDestroy()
   m.top.unobserveField("selectedTabId")
   m.top.unobserveField("quickPlayNode")
 
-  ' Release the options side-panel observers wired in buildOptionsMenu (#550)
+  ' Release the options side-panel observers wired in buildOptionsMenu
   if isValid(m.optionsPanel)
     m.optionsPanel.unobserveField("closeSidePanel")
     m.optionsPanel = invalid

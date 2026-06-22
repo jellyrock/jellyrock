@@ -1,5 +1,5 @@
 ' ===========================================================================
-' #550 sgRouter — deep-link resolution + deferred replay
+' Deep-link resolution + deferred replay
 '
 ' Two stash sources, both replayed after login by replayAfterLogin():
 '

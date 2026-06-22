@@ -226,11 +226,9 @@ function getSavedUsers() as object
   return savedServerUsers
 end function
 
-' #550 sgRouter (Phase 5): saved-server list persistence. Moved here from showScenes.bs
-' (the pre-login flow now lives in routed components + the loginRouter coordinator).
-' These are pure registry operations on the saved_servers key — config.bs's domain,
-' alongside getSavedUsers — and are called from both SetServerScreen (render thread,
-' delete) and the loginRouter coordinator (main thread, save).
+' Saved-server list persistence. Pure registry operations on the saved_servers key —
+' config.bs's domain, alongside getSavedUsers — called from both SetServerScreen (render
+' thread, delete) and the loginRouter coordinator (main thread, save).
 sub SaveServerList()
   ' Save this server to the list of previously-used servers shown in the server picker.
   ' baseUrl: canonical URL (lowercase) — used for deduplication against SSDP-discovered servers.

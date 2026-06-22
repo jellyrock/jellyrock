@@ -58,14 +58,12 @@ sub init()
   m.itemGrid.observeField("itemFocused", "onItemFocused")
   m.itemGrid.observeField("itemSelected", "onItemSelected")
 
-  ' #550 sgRouter: the library view is router-created now, so it owns its own
-  ' navigation. The grid/genre/watch-channel handlers set m.top.selectedItem as
-  ' before; we observe it here and route, instead of main.bs's god-loop observing it.
+  ' The library view is router-created, so it owns its own navigation. The
+  ' grid/genre/watch-channel handlers set m.top.selectedItem; we observe it here and route.
   m.top.observeField("selectedItem", "onLibrarySelection")
 
-  ' #550 sgRouter (Phase 4): a non-navigable selection (plays directly — e.g. an episode,
-  ' a Live TV channel) sets m.top.quickPlayNode; this self-observer forwards it to the
-  ' QueueManager launcher (was the deleted main.bs relay).
+  ' A non-navigable selection (plays directly — e.g. an episode, a Live TV channel) sets
+  ' m.top.quickPlayNode; this self-observer forwards it to the QueueManager launcher.
   m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
   ' Voice filter setup
@@ -151,17 +149,17 @@ end sub
 ' ============================================================================
 
 sub onScreenShown()
-  ' #550 sgRouter: on first mount, self-load from the route (/library/:id). Both in-app
-  ' navigation AND a deep link / cast pass the rich library node as route.context.item
-  ' (in-app: the selected node; deep link: the node JRScene.resolveDeepLink already
-  ' validated) — instant, no re-fetch. presenterType MUST be set before parentItem
-  ' (parentItem triggers loadInitialItems, which reads presenterType). keepAlive views
-  ' skip this on resume (parentItem already set).
+  ' On first mount, self-load from the route (/library/:id). Both in-app navigation AND a
+  ' deep link / cast pass the rich library node as route.context.item (in-app: the selected
+  ' node; deep link: the node JRScene.resolveDeepLink already validated) — instant, no
+  ' re-fetch. presenterType MUST be set before parentItem (parentItem triggers
+  ' loadInitialItems, which reads presenterType). keepAlive views skip this on resume
+  ' (parentItem already set).
   if not isValid(m.top.parentItem)
     loadLibraryFromRoute(m.top.route)
   else
-    ' #550 sgRouter (Phase 4): keepAlive resume. If a mutation elsewhere (e.g. an item
-    ' delete in ItemDetails) bumped the scene's content-freshness token since we last
+    ' keepAlive resume. If a mutation elsewhere (e.g. an item delete in ItemDetails) bumped
+    ' the scene's content-freshness token since we last
     ' loaded, our cached grid is stale — re-fetch so deleted items don't linger as
     ' selectable ghosts. Unchanged token = no reload (keepAlive's perf win is preserved).
     scene = m.top.getScene()
@@ -192,8 +190,8 @@ sub onScreenShown()
   end if
 end sub
 
-' #550 sgRouter: configure the library view from its route. Both in-app navigation and a deep
-' link / cast supply the rich library node as route.context.item (the resolver passes the node
+' Configure the library view from its route. Both in-app navigation and a deep link / cast
+' supply the rich library node as route.context.item (the resolver passes the node
 ' it already validated), so there is no fetch here. A missing context node is therefore an
 ' unexpected route shape, not a deferred feature — warn rather than silently render nothing.
 sub loadLibraryFromRoute(route as object)
@@ -210,8 +208,8 @@ sub loadLibraryFromRoute(route as object)
   end if
 end sub
 
-' #550 sgRouter: a grid / genre / channel item was selected — navigate to its route
-' (rich node as context). Non-navigable selections fall through to playback.
+' A grid / genre / channel item was selected — navigate to its route (rich node as context).
+' Non-navigable selections fall through to playback.
 sub onLibrarySelection(msg)
   item = msg.getData()
   if not isValid(item) then return
@@ -224,7 +222,7 @@ sub onLibrarySelection(msg)
   end if
 end sub
 
-' #550 sgRouter (Phase 4): forward a non-navigable selection to the playback launcher.
+' Forward a non-navigable selection to the playback launcher.
 sub onQuickPlayLaunch(msg)
   node = msg.getData()
   if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
@@ -311,8 +309,8 @@ sub prepareDataLoad(disableRemote = false as boolean)
   m.emptyText.visible = false
 end sub
 
-' #550 sgRouter (Phase 4): full reset + reload of the grid. Used by optionsClosed
-' (sort/filter/view change) and by the resume-time content-freshness check in
+' Full reset + reload of the grid. Used by optionsClosed (sort/filter/view change) and by
+' the resume-time content-freshness check in
 ' onScreenShown (a delete elsewhere invalidated our cached content).
 sub reloadGridItems()
   m.loadedRows = 0
@@ -326,8 +324,8 @@ end sub
 
 sub loadInitialItems()
   m.log.debug("start loadInitialItems()")
-  ' #550 sgRouter (Phase 4): record the content-freshness token we're loading at, so a
-  ' resume after a mutation elsewhere (e.g. a delete) can detect staleness and re-fetch.
+  ' Record the content-freshness token we're loading at, so a resume after a mutation
+  ' elsewhere (e.g. a delete) can detect staleness and re-fetch.
   scene = m.top.getScene()
   if isValid(scene) then m.lastContentVersion = scene.contentVersion
   prepareDataLoad(false)
@@ -1107,8 +1105,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
       optionsClosed()
       return true
     else
-      ' #550 sgRouter: the library view is router-owned now — pop it via the router
-      ' (back to Home / the previous routed view), not SceneManager's (empty) stack.
+      ' The library view is router-owned — pop it via the router (back to Home / the
+      ' previous routed view).
       sgRouter.goBack()
       return true
     end if
@@ -1260,8 +1258,8 @@ sub onDestroy()
   destroyTextureManager(m.data)
 
   ' Unobserve child node observers
-  m.top.unobserveField("selectedItem") ' #550 sgRouter self-navigation observer
-  m.top.unobserveField("quickPlayNode") ' #550 sgRouter Phase 4 playback launcher
+  m.top.unobserveField("selectedItem") ' self-navigation observer
+  m.top.unobserveField("quickPlayNode") ' playback launcher
   m.genreList.unobserveField("rowItemFocused")
   m.genreList.unobserveField("itemSelected")
   m.itemGrid.unobserveField("itemFocused")

@@ -9,9 +9,8 @@ sub init()
   m.top.setFocus(true)
   m.top.isOptionsAvailable = false
 
-  ' #550 sgRouter (Phase 5): this is the sign-in screen (was reached via CreateSigninGroup,
-  ' which overrode the prompt to "Sign In"). Build the username/password config + the
-  ' save-credentials checkbox here; submit/back emit intents the loginRouter handles.
+  ' The sign-in screen. Build the username/password config + the save-credentials checkbox
+  ' here; submit/back emit intents the loginRouter handles.
   m.top.findNode("prompt").text = translate(translationKeys.ButtonSignIn)
   m.list = m.top.findNode("configOptions")
   m.checkbox = m.top.findNode("onOff")
@@ -64,9 +63,9 @@ end sub
 
 ' JRScreen hook.
 sub onScreenShown()
-  ' #550 sgRouter (Phase 5): build the sign-in config the first time the view is shown
-  ' (m.top.route is set by the router before this fires), so the prefilled username is in
-  ' place before ConfigList snapshots configItems.
+  ' Build the sign-in config the first time the view is shown (m.top.route is set by the
+  ' router before this fires), so the prefilled username is in place before ConfigList
+  ' snapshots configItems.
   if m.configBuilt <> true
     buildConfig()
     m.configBuilt = true
@@ -102,8 +101,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
   if key = "back"
-    ' #550 sgRouter (Phase 5): back → coordinator decides (user picker if there were
-    ' public users, else server select). Consume so the outlet's goBack doesn't also fire.
+    ' Back → coordinator decides (user picker if there were public users, else server select).
+    ' Consume so the outlet's goBack doesn't also fire.
     m.top.getScene().preLoginIntent = "loginBack"
     return true
   else if key = "down" and not isValid(m.checkbox.focusedChild) and not isValid(m.buttons.focusedChild)
@@ -132,7 +131,7 @@ end function
 sub onDestroy()
   m.log.verbose("onDestroy")
 
-  ' #550 sgRouter (Phase 5): release the submit observer.
+  ' Release the submit observer.
   if isValid(m.buttons) then m.buttons.unobserveField("buttonSelected")
 
   ' Clear node references

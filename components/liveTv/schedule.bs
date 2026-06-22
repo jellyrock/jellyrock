@@ -457,8 +457,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
     gridGrp.setFocus(true)
     return true
   else if key = "back"
-    ' #550 sgRouter: the TV guide lives inside the router-owned library view — leave it
-    ' via the router (back to Home / the previous routed view), not SceneManager's stack.
+    ' The TV guide lives inside the router-owned library view — leave it via the router (back
+    ' to Home / the previous routed view).
     sgRouter.goBack()
     return true
   end if

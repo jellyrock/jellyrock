@@ -7,9 +7,9 @@ import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = new log.Logger("SetServerScreen")
-  ' #550 sgRouter (Phase 5): this is a routed view; the router hands it focus via the
-  ' JRScreen lifecycle bridge (handleFocus). onScanForServersComplete sets the precise
-  ' focus target (picker vs. textbox) once the SSDP scan returns.
+  ' The router hands this view focus via the JRScreen lifecycle bridge (handleFocus).
+  ' onScanForServersComplete sets the precise focus target (picker vs. textbox) once the SSDP
+  ' scan returns.
   m.top.isOptionsAvailable = true
 
   m.top.findNode("prompt").text = translate(translationKeys.LabelConnectToServer)
@@ -25,16 +25,15 @@ sub init()
   m.buttons = m.top.findNode("buttons")
   m.buttons.callFunc("center")
 
-  ' Prefill the previously-entered server URL (was CreateServerGroup line 340-342).
+  ' Prefill the previously-entered server URL.
   if isValid(m.global.server.serverUrl)
     m.top.serverUrl = m.global.server.serverUrl
   end if
 
   m.top.observeField("serverUrl", "clearErrorMessage")
 
-  ' #550 sgRouter (Phase 5): absorbs CreateServerGroup's wiring. Submit drives the
-  ' connect via the loginRouter coordinator (serverSubmitted intent); the options
-  ' sidepanel offers "Delete Saved" for saved picker entries.
+  ' Submit drives the connect via the loginRouter coordinator (serverSubmitted intent); the
+  ' options sidepanel offers "Delete Saved" for saved picker entries.
   m.buttons.observeField("buttonSelected", "onButtonSelected")
   setupDeleteSavedOption()
 
@@ -292,7 +291,7 @@ sub onDestroy()
   ' Unobserve m.top observer
   m.top.unobserveField("serverUrl")
 
-  ' #550 sgRouter (Phase 5): release the submit + options sidepanel observers
+  ' Release the submit + options sidepanel observers
   if isValid(m.buttons) then m.buttons.unobserveField("buttonSelected")
   sidepanel = m.top.findNode("options")
   if isValid(sidepanel)

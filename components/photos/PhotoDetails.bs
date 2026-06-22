@@ -24,8 +24,8 @@ sub init()
   onItemContentChanged()
 end sub
 
-' #550 sgRouter (Phase 4): the router creates this view; its launch data arrives as
-' route.context (set by JRScene.onPhotoLaunchRequested). Apply it on first mount, setting
+' The router creates this view; its launch data arrives as route.context (set by
+' JRScene.onPhotoLaunchRequested). Apply it on first mount, setting
 ' itemIndex LAST so onItemContentChanged fires with itemsNode/itemsArray + slideshow flags
 ' already in place. itemIndex defaults to -1, so this runs once (subsequent shows are no-ops).
 sub onScreenShown()

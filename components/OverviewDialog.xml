@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- OverviewDialog: Custom full-screen overlay for reading long overview text.
-     #550 sgRouter (Phase 6): appended directly to the scene by FocusableOverview (was a
-     SceneManager pushScene); dismisses itself via removeChild + returnFocusTo. Supports
-     vertical scrolling. -->
+     Appended directly to the scene by FocusableOverview; dismisses itself via removeChild +
+     returnFocusTo. Supports vertical scrolling. -->
 <component name="OverviewDialog" extends="JRGroup" focusable="true">
   <children>
     <!-- Dimmed background overlay -->
@@ -36,8 +35,8 @@
     <field id="title" type="string" onChange="onTitleChanged" />
     <field id="tagline" type="string" onChange="onTaglineChanged" />
     <field id="overview" type="string" onChange="onOverviewChanged" />
-    <!-- #550 sgRouter (Phase 6): node to restore remote focus to when this overlay closes
-         (the FocusableOverview that opened it). Set by the opener before appendChild. -->
+    <!-- Node to restore remote focus to when this overlay closes (the FocusableOverview that
+         opened it). Set by the opener before appendChild. -->
     <field id="returnFocusTo" type="node" />
   </interface>
 </component>

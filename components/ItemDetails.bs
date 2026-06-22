@@ -192,9 +192,7 @@ sub init()
   m.infoDividerCount = 0
   m.directorGenreDividerCount = 0
 
-  ' #550 sgRouter: ItemDetails owns its own in-screen navigation AND its own action
-  ' buttons now (the factory that used to wire these to main.bs's m.port is gone, and
-  ' Phase 4 removed the transitional relay + the god-loop button branches). Extras-grid
+  ' ItemDetails owns its own in-screen navigation AND its own action buttons. Extras-grid
   ' selections (cast / related items) navigate to their route; goTo* buttons navigate to
   ' the linked item; every action button — play/resume (single + playAll), trailer /
   ' shuffle / instant-mix / slideshow / view-photo, watched / favorite / delete / record /
@@ -203,9 +201,9 @@ sub init()
   m.buttonGrp.observeField("buttonSelected", "onDetailNavButton")
   m.extrasGrid.observeField("selectedItem", "onExtrasItemSelected")
 
-  ' #550 sgRouter (Phase 4): a non-navigable extras selection (e.g. a Chapter, a next-up
-  ' episode) sets m.top.quickPlayNode; forward it to the QueueManager launcher (the main.bs
-  ' relay that used to read this is gone). onDestroy already unobserves quickPlayNode.
+  ' A non-navigable extras selection (e.g. a Chapter, a next-up episode) sets
+  ' m.top.quickPlayNode; forward it to the QueueManager launcher. onDestroy already
+  ' unobserves quickPlayNode.
   m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
   ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
@@ -238,18 +236,18 @@ end sub
 
 ' onScreenShown: Callback when view is presented on screen
 sub onScreenShown()
-  ' #550 sgRouter: on first mount, self-load from the route params (/details/:type/:id).
-  ' The router creates this view, so there is no factory to set itemId — we read it from
-  ' m.top.route here. The details route is keepAlive with NO allowReuse, so every
-  ' detail→detail navigation creates a fresh ItemDetails (there is no in-place reuse path).
+  ' On first mount, self-load from the route params (/details/:type/:id). The router creates
+  ' this view, so there is no factory to set itemId — we read it from m.top.route here. The
+  ' details route is keepAlive with NO allowReuse, so every detail→detail navigation creates
+  ' a fresh ItemDetails (there is no in-place reuse path).
   if not isValidAndNotEmpty(m.top.itemId)
     loadFromRoute(m.top.route)
   end if
 
-  ' #550 deep link: fire the validate + auto-launch exactly once per deep-link NAVIGATION,
-  ' whether this view is freshly mounted OR resumed from the keepAlive cache (a repeat cast of
-  ' the same item resumes the cached ItemDetails — onScreenShown runs but the fresh-mount
-  ' loadFromRoute above does not). Keyed off the router's per-navigation route.id.
+  ' Fire the validate + auto-launch exactly once per deep-link NAVIGATION, whether this view
+  ' is freshly mounted OR resumed from the keepAlive cache (a repeat cast of the same item
+  ' resumes the cached ItemDetails — onScreenShown runs but the fresh-mount loadFromRoute
+  ' above does not). Keyed off the router's per-navigation route.id.
   checkDeepLinkLaunch()
 
   ' Restore texture management — reactivate and restore buffer range so cells reload.
@@ -293,17 +291,17 @@ sub onScreenHidden()
   hideTextureManager(m.extrasGrid.content)
 end sub
 
-' #550 deep link: the router reuses this view (no remount) when navigating to the SAME details
-' path it's already showing — e.g. a cast of the item you're already on, after a player above it
-' was popped. m.top.route is the new route by now, so re-run the deep-link check (its route.id
+' The router reuses this view (no remount) when navigating to the SAME details path it's
+' already showing — e.g. a cast of the item you're already on, after a player above it was
+' popped. m.top.route is the new route by now, so re-run the deep-link check (its route.id
 ' dedup makes it a one-shot per navigation). Non-deep-link same-path updates are no-ops.
 function onRouteUpdate(_event = {} as object) as dynamic
   checkDeepLinkLaunch()
   return promises.resolve(invalid)
 end function
 
-' #550 sgRouter: set itemType + itemId from a route's params. Setting itemId fires
-' onItemIdChanged (the async loader). itemType is set first since the loader reads it.
+' Set itemType + itemId from a route's params. Setting itemId fires onItemIdChanged (the
+' async loader). itemType is set first since the loader reads it.
 sub loadFromRoute(route as object)
   if not isValid(route) or not isValid(route.routeParams) then return
   params = route.routeParams
@@ -313,11 +311,11 @@ sub loadFromRoute(route as object)
     m.top.itemType = params.type
   end if
 
-  ' [P5] no resolve double-fetch: the deep-link resolver already fetched the FULL metaDataDetails
-  ' node to validate the id and hands it forward as a complete context. Adopt it as itemContent
-  ' (which renders the springboard via onItemContentChanged) BEFORE setting itemId, so onItemIdChanged
-  ' sees the content already loaded and skips the redundant fetch. Only an explicitly-complete context
-  ' is trusted — in-app nav may pass a lighter list node, which must still go through the fetch.
+  ' The deep-link resolver already fetched the FULL metaDataDetails node to validate the id and
+  ' hands it forward as a complete context. Adopt it as itemContent (which renders the springboard
+  ' via onItemContentChanged) BEFORE setting itemId, so onItemIdChanged sees the content already
+  ' loaded and skips the redundant fetch. Only an explicitly-complete context is trusted — in-app
+  ' nav may pass a lighter list node, which must still go through the fetch.
   ctx = route.context
   if isValid(ctx) and isValid(ctx.itemIsComplete) and ctx.itemIsComplete and isValid(ctx.item) and isValidAndNotEmpty(ctx.item.id) and ctx.item.id = params.id
     m.top.itemContent = ctx.item
@@ -326,12 +324,12 @@ sub loadFromRoute(route as object)
   m.top.itemId = params.id
 end sub
 
-' #550 deep link: see the call site in onScreenShown. A deep-link route carries
-' ?deeplink=<action> (open | play | shuffle | trailer | instantmix). We handle it once per distinct
-' navigation (route.id), so a repeat cast of an item whose ItemDetails is cached (keepAlive)
-' still fires, while an ordinary back-from-player resume (which keeps the same route.id) does
-' not re-fire. The ACTION (the sender's explicit intent — never inferred from the resolved item)
-' is dispatched in dispatchDeepLinkAction. Fresh/loading -> flag for onDetailsLoaded (which also
+' See the call site in onScreenShown. A deep-link route carries ?deeplink=<action>
+' (open | play | shuffle | trailer | instantmix). We handle it once per distinct navigation
+' (route.id), so a repeat cast of an item whose ItemDetails is cached (keepAlive) still fires,
+' while an ordinary back-from-player resume (which keeps the same route.id) does not re-fire.
+' The ACTION (the sender's explicit intent — never inferred from the resolved item) is
+' dispatched in dispatchDeepLinkAction. Fresh/loading -> flag for onDetailsLoaded (which also
 ' handles an invalid id -> error + Home); already-loaded resume -> dispatch once the router idles.
 sub checkDeepLinkLaunch()
   route = m.top.route
@@ -388,16 +386,16 @@ sub onExtrasItemSelected(msg)
   end if
 end sub
 
-' #550 sgRouter (Phase 4): forward a non-navigable extras selection to the playback launcher.
+' Forward a non-navigable extras selection to the playback launcher.
 sub onQuickPlayLaunch(msg)
   node = msg.getData()
   if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
 end sub
 
-' #550 sgRouter (Phase 4): single handler for every button on this detail's button group.
+' Single handler for every button on this detail's button group.
 ' Detail→detail nav (goToSeries / goToAlbum / goToArtist / goToChannel) navigates the router;
 ' playback buttons launch through the QueueManager / the play route; the rest run their
-' render-thread action directly. (Was split between this handler and the main.bs god-loop.)
+' render-thread action directly.
 sub onDetailNavButton(msg)
   buttons = msg.getRoSGNode()
   btn = buttons.getChild(msg.getData())
@@ -422,7 +420,7 @@ sub onDetailNavButton(msg)
       sgrouter.navigateTo({ name: "details", params: { type: "TvChannel", id: item.channelId } })
     end if
   else if btn.id = "playButton"
-    ' #550 sgRouter (Phase 4): route playback from the view itself. Play always starts
+    ' Route playback from the view itself. Play always starts
     ' from the beginning (Resume handles resume). Multi-item playAll types
     ' (Series/Season/BoxSet/MusicArtist/MusicAlbum/Playlist) expand into a queue via a
     ' QuickPlayTask owned by the QueueManager (which then routes to the play view); single
@@ -447,12 +445,12 @@ sub onDetailNavButton(msg)
       startPlayFromDetail(resumeTicks)
     end if
   else if btn.id = "trailerButton"
-    ' #550 sgRouter (Phase 4): play this item's trailer(s) via the QueueManager task path
-    ' (was god-loop, which passed the screen node id by mistake — use itemContent.id).
+    ' Play this item's trailer(s) via the QueueManager task path. Use itemContent.id (the
+    ' item), not the screen node id.
     startLoadingSpinner()
     m.global.queueManager.callFunc("launchQuickPlayAction", { action: "loadTrailers", id: item.id })
   else if btn.id = "instantMixButton"
-    ' #550 sgRouter (Phase 4): build an instant mix queue from this item (was god-loop).
+    ' Build an instant mix queue from this item.
     if isValidAndNotEmpty(item.id)
       startLoadingSpinner()
       m.global.queueManager.callFunc("launchQuickPlayAction", { action: "instantMix", id: item.id })
@@ -460,18 +458,17 @@ sub onDetailNavButton(msg)
   else if btn.id = "shuffleButton"
     onShuffleButtonPressed(item)
   else if btn.id = "viewPhotoButton"
-    ' #550 sgRouter (Phase 4): open a single Photo in the viewer (was god-loop). launchItem
-    ' routes the "photo" type to quickplay.photo; PhotoDetails stops the spinner on mount.
+    ' Open a single Photo in the viewer. launchItem routes the "photo" type to
+    ' quickplay.photo; PhotoDetails stops the spinner on mount.
     m.global.queueManager.callFunc("launchItem", item)
   else if btn.id = "slideshowButton"
-    ' #550 sgRouter (Phase 4): sequential PhotoAlbum slideshow (was god-loop).
+    ' Sequential PhotoAlbum slideshow.
     if isValidAndNotEmpty(item.id)
       startLoadingSpinner()
       m.global.queueManager.callFunc("launchPhotoAlbum", false, item.id)
     end if
   else if btn.id = "favoriteButton"
-    ' #550 sgRouter (Phase 4): the favorite toggle is a render-thread method already on
-    ' this screen — call it directly (was a main.bs god-loop callFunc through the relay).
+    ' The favorite toggle is a render-thread method already on this screen — call it directly.
     toggleFavorite()
   else if btn.id = "watchedButton"
     onWatchedButtonPressed(item)
@@ -482,18 +479,17 @@ sub onDetailNavButton(msg)
   else if btn.id = "watchChannelButton"
     onWatchChannelButtonPressed(item)
   else if btn.id = "refreshButton"
-    ' #550 sgRouter (Phase 4): refresh this screen's data (was god-loop).
+    ' Refresh this screen's data.
     startLoadingSpinner()
     m.top.refreshExtrasData = not m.top.refreshExtrasData
     m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
   end if
 end sub
 
-' #550 sgRouter (Phase 4): Watched button. Movie/Episode toggle immediately; a Series
-' confirms first (marking all episodes can affect hundreds). The confirmation result
-' is read off the SceneManager via a SCOPED isDataReturned observer (the proven
-' settings.bs pattern), so it never collides with main.bs's global observer. On confirm
-' we call toggleWatched(), which re-reads the button state to pick mark vs unmark.
+' Watched button. Movie/Episode toggle immediately; a Series confirms first (marking all
+' episodes can affect hundreds). The confirmation result is read off the SceneManager via a
+' SCOPED isDataReturned observer (the proven settings.bs pattern). On confirm we call
+' toggleWatched(), which re-reads the button state to pick mark vs unmark.
 sub onWatchedButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
 
@@ -524,8 +520,8 @@ sub onWatchedConfirmResponse()
   end if
 end sub
 
-' #550 sgRouter (Phase 4): Delete button. Confirm, then delete and leave the now-gone
-' routed detail via the router. Scoped isDataReturned observer (see onWatchedButtonPressed).
+' Delete button. Confirm, then delete and leave the now-gone routed detail via the router.
+' Scoped isDataReturned observer (see onWatchedButtonPressed).
 sub onDeleteButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
   m.pendingDeleteItemId = item.id
@@ -541,8 +537,8 @@ sub onDeleteConfirmResponse()
   if not isValid(returnData) or not isValidAndNotEmpty(deleteId) then return
   if returnData.indexSelected = 1 and returnData.buttonSelected = translate(translationKeys.ButtonDelete)
     SubmitSideEffect(GetApi().BuildDeleteItemRequest(deleteId))
-    ' #550 sgRouter (Phase 4): the item is gone server-side, but a keepAlive library that
-    ' contained it is suspended with stale content. Bump the scene's content-freshness
+    ' The item is gone server-side, but a keepAlive library that contained it is suspended
+    ' with stale content. Bump the scene's content-freshness
     ' token so that library (and any other kept-alive grid) re-fetches on its next resume —
     ' otherwise the deleted item lingers as a selectable ghost until logout.
     scene = m.top.getScene()
@@ -552,8 +548,7 @@ sub onDeleteConfirmResponse()
   end if
 end sub
 
-' #550 sgRouter (Phase 4): Record / cancel-record a Live TV program. Owns the
-' RecordProgramTask on this render thread (was god-loop + handleRecordResult).
+' Record / cancel-record a Live TV program. Owns the RecordProgramTask on this render thread.
 sub onRecordButtonPressed(item as object)
   if not isValid(item) then return
   recordButton = m.top.findNode("recordButton")
@@ -614,8 +609,8 @@ sub onRecordResult()
   m.pendingRecordIsCancel = invalid
 end sub
 
-' #550 sgRouter (Phase 4): Watch a Live TV channel (TvChannel detail, or the channel a
-' Program airs on) — single-item launch via the play route (was god-loop).
+' Watch a Live TV channel (TvChannel detail, or the channel a Program airs on) — single-item
+' launch via the play route.
 sub onWatchChannelButtonPressed(item as object)
   if not isValid(item) then return
   queueItem = nodeHelpers.createQueueItem(item)
@@ -633,9 +628,9 @@ sub onWatchChannelButtonPressed(item as object)
   launchQueueItemToPlay(queueItem, routeType, routeId)
 end sub
 
-' #550 sgRouter (Phase 4): Shuffle button. Routes by item type so new types can be added.
-' PhotoAlbum launches a random slideshow; everything else resolves a randomized item set via
-' GetShuffleItemsTask on the QueueManager (was god-loop + the main.bs shuffleItems handler).
+' Shuffle button. Routes by item type so new types can be added. PhotoAlbum launches a random
+' slideshow; everything else resolves a randomized item set via GetShuffleItemsTask on the
+' QueueManager.
 sub onShuffleButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
   startLoadingSpinner()
@@ -646,8 +641,8 @@ sub onShuffleButtonPressed(item as object)
   end if
 end sub
 
-' #550 sgRouter (Phase 4): Series Resume plays the next-up episode (a single item) from its
-' saved position, via the play route (was god-loop's resumeButton Series branch).
+' Series Resume plays the next-up episode (a single item) from its saved position, via the
+' play route.
 sub resumeSeriesNextUp()
   nextEp = m.top.nextUpEpisode
   if not (isValid(nextEp) and isValidAndNotEmpty(nextEp.id)) then return
@@ -657,18 +652,16 @@ sub resumeSeriesNextUp()
   launchQueueItemToPlay(queueItem, "Episode", nextEp.id)
 end sub
 
-' #550 sgRouter (Phase 4): true for item types whose Play builds a multi-item queue
-' via an API call (handled by QuickPlayTask, not the single-item path below).
+' True for item types whose Play builds a multi-item queue via an API call (handled by
+' QuickPlayTask, not the single-item path below).
 function isPlayAllType(itemType as dynamic) as boolean
   if not isValidAndNotEmpty(itemType) then return false
   return itemType = "Series" or itemType = "Season" or itemType = "BoxSet" or itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Playlist"
 end function
 
-' #550 sgRouter (Phase 4): build the single-item play queue from this detail's own
-' state and navigate to the play route. The router is idle (the user pressed a button
-' on this settled view), so navigateTo won't hit the in-progress guard, and the
-' PlayerHostView reads this queue on mount. Replaces the main.bs god-loop
-' playButton/resumeButton branches for single-item video.
+' Build the single-item play queue from this detail's own state and navigate to the play
+' route. The router is idle (the user pressed a button on this settled view), so navigateTo
+' won't hit the in-progress guard, and the PlayerHostView reads this queue on mount.
 sub startPlayFromDetail(startingPoint as longinteger)
   item = m.top.itemContent
   if not isValid(item) or not isValidAndNotEmpty(item.id) then return
@@ -692,11 +685,10 @@ sub startPlayFromDetail(startingPoint as longinteger)
   launchQueueItemToPlay(queueItem, m.top.itemType, item.id)
 end sub
 
-' #550 sgRouter (Phase 4): seed the queue with a single item and navigate to the play
-' route. The router is idle (the user pressed a button on this settled view), so
-' navigateTo won't hit the in-progress guard; PlayerHostView reads this queue on mount.
-' :type/:id give the route a deep-link identity; the queue is the source of truth for
-' what actually plays.
+' Seed the queue with a single item and navigate to the play route. The router is idle (the
+' user pressed a button on this settled view), so navigateTo won't hit the in-progress guard;
+' PlayerHostView reads this queue on mount. :type/:id give the route a deep-link identity; the
+' queue is the source of truth for what actually plays.
 sub launchQueueItemToPlay(queueItem as object, routeType as string, routeId as string)
   startLoadingSpinner()
   m.global.queueManager.callFunc("clear")
@@ -705,7 +697,7 @@ sub launchQueueItemToPlay(queueItem as object, routeType as string, routeId as s
 end sub
 
 ' Resolve the artist id for goToArtist: prefer the primary album artist, fall back
-' to the single artist item. (Lifted from main.bs's old goToArtistButton branch.)
+' to the single artist item.
 function resolveGoToArtistId(item as object) as string
   if isValid(item.albumArtists) and item.albumArtists.count() > 0
     first = item.albumArtists[0]
@@ -723,10 +715,10 @@ sub onItemIdChanged()
   itemId = m.top.itemId
   if not isValidAndNotEmpty(itemId) then return
 
-  ' [P5] no resolve double-fetch: a complete route context already populated itemContent for this
-  ' exact id (loadFromRoute adopted the resolver's metaDataDetails node), so the springboard has
-  ' rendered via onItemContentChanged — skip the redundant metadata fetch. The deep-link action
-  ' (if any) dispatches from checkDeepLinkLaunch's already-loaded branch, not onDetailsLoaded.
+  ' A complete route context already populated itemContent for this exact id (loadFromRoute
+  ' adopted the resolver's metaDataDetails node), so the springboard has rendered via
+  ' onItemContentChanged — skip the redundant metadata fetch. The deep-link action (if any)
+  ' dispatches from checkDeepLinkLaunch's already-loaded branch, not onDetailsLoaded.
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id) and m.top.itemContent.id = itemId
     return
   end if
@@ -760,18 +752,18 @@ sub onDetailsLoaded()
 
   stopLoadingSpinner()
 
-  ' #550 deep link: id validated — now do what the route's action says (open/play/shuffle/trailer/instantmix).
+  ' Id validated — now do what the route's action says (open/play/shuffle/trailer/instantmix).
   if m.isDeepLinkLaunch
     m.isDeepLinkLaunch = false
     dispatchDeepLinkAction()
   end if
 end sub
 
-' #550 deep link: do exactly what the route's action asked, on the validated item. The action
-' is the SENDER'S explicit intent — never inferred from the resolved item:
-'   open (and any unknown action)  -> stay on the springboard (this view). A library/folder has
-'                                     no springboard yet, so fall back to Home gracefully until
-'                                     deep-link grid render lands (follow-up).
+' Do exactly what the route's action asked, on the validated item. The action is the SENDER'S
+' explicit intent — never inferred from the resolved item:
+'   open (and any unknown action)  -> stay on the springboard (this view). Grid-container
+'                                     targets (library/folder/genre/studio/channel) never reach
+'                                     here — JRScene.onDeepLinkResolved diverts them to their grid.
 '   play                           -> QueueManager.launchItem (the DRY per-type play engine:
 '                                     video resumes its bookmark, Series smart-resumes, containers
 '                                     play, live watches, audio -> audio player, photo -> viewer).
@@ -818,8 +810,8 @@ function isDeepLinkPlaybackAction(action as dynamic) as boolean
   return action = "play" or action = "shuffle" or action = "trailer" or action = "instantmix"
 end function
 
-' #550 deep link: run the deep-link action on this already-loaded item in response to a runtime
-' cast that landed while the user is ALREADY on its details (replayRoute.replayDeepLinkRuntime) —
+' Run the deep-link action on this already-loaded item in response to a runtime cast that
+' landed while the user is ALREADY on its details (replayRoute.replayDeepLinkRuntime) —
 ' no navigation, so no Home flash and no re-mount. The router is idle here, so any navigateTo the
 ' action triggers succeeds directly (no NavigationEnd defer needed). `action` is the new cast's
 ' intent (the cached view's m.deepLinkAction is from its original mount and may be stale).
@@ -1043,8 +1035,8 @@ sub onRefreshDetailsLoaded()
 
   ' Stop spinner only when this screen is the active view (watched/refresh button flow).
   ' If a video player or other scene is on top, the spinner belongs to that flow — don't touch it.
-  ' #550 sgRouter: getActiveView() resolves the routed detail (SceneManager.getActiveScene
-  ' would be invalid for it), so the isSameNode guard still holds.
+  ' getActiveView() resolves the routed detail (SceneManager.getActiveScene would be invalid
+  ' for it), so the isSameNode guard still holds.
   activeScene = getActiveView()
   if isValid(activeScene) and activeScene.isSameNode(m.top)
     stopLoadingSpinner()
@@ -2448,7 +2440,7 @@ sub onItemContentChanged()
   end if
 
   if isValid(item) and isValidAndNotEmpty(item.id)
-    ' #550 sgRouter: do NOT overwrite m.top.id with the item id. The router assigns this
+    ' Do NOT overwrite m.top.id with the item id. The router assigns this
     ' view's node id and tracks it in its history stack; reassigning it here desyncs that
     ' history so sgRouter.goBack() can't find this (keepAlive-suspended) view on the way
     ' back from the player -> back wrongly bubbles to the scene's Exit dialog. Consumers that
@@ -4200,7 +4192,7 @@ sub onDestroy()
   m.buttonGrp.unobserveField("buttonSelected")
   m.buttonGrp.unobserveField("renderTracking")
 
-  ' #550 deep link: drop the router routerState observer if a deferred resume-launch is pending.
+  ' Drop the router routerState observer if a deferred resume-launch is pending.
   if isValid(m.deepLinkRouterNode)
     m.deepLinkRouterNode.unobserveField("routerState")
     m.deepLinkRouterNode = invalid
@@ -4279,8 +4271,8 @@ sub onDestroy()
   m.loadDetailsTask.control = "STOP"
   m.loadDetailsTask = invalid
 
-  ' #550 sgRouter (Phase 4): tear down the record task + drop any pending confirmation
-  ' observer this screen owns (record/delete/series-watched moved off main.bs's god-loop).
+  ' Tear down the record task + drop any pending confirmation observer this screen owns
+  ' (record / delete / series-watched).
   if isValid(m.recordTask)
     m.recordTask.unobserveField("result")
     m.recordTask.control = "STOP"

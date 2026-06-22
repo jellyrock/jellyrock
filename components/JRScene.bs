@@ -3,9 +3,9 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
-' #550 sgRouter: JRScene is a Scene (not a sgrouter_View), so it does NOT inherit
-' the router scripts from sgrouter_View.xml. Import them here so JRScene.bs can call
-' the sgrouter.* / promises.* namespaces directly (mirrors sgrouter_View.xml's script set).
+' JRScene is a Scene (not a sgrouter_View), so it does NOT inherit the router scripts from
+' sgrouter_View.xml. Import them here so JRScene.bs can call the sgrouter.* / promises.*
+' namespaces directly (mirrors sgrouter_View.xml's script set).
 import "pkg:/source/roku_modules/promises/promises.brs"
 import "pkg:/source/roku_modules/sgrouter/bslib.brs"
 import "pkg:/source/roku_modules/sgrouter/interfaces.brs"
@@ -23,14 +23,14 @@ sub init()
   m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
 
-  ' #550 sgRouter overhang controller state (wired in startRouter, after login).
+  ' Overhang controller state (wired in startRouter, after login).
   ' init() runs at CreateScene — BEFORE setGlobalNodes adds m.global.activeRoutedView —
   ' so the observer is registered in startRouter(), not here. The overhang node itself
   ' already exists as a child, so cache it now.
   m.overhang = m.top.findNode("overhang")
   m.previousRoutedView = invalid
 
-  ' #550 deep link: retry-poll timer for the pop-player-then-navigate path (replayDeepLinkReplacingPlayer).
+  ' Retry-poll timer for the pop-player-then-navigate path (replayDeepLinkReplacingPlayer).
   m.deepLinkRetryTimer = m.top.findNode("deepLinkRetryTimer")
   m.deepLinkRetryTimer.observeField("fire", "onDeepLinkReplayRetry")
   m.replacePlayerRoute = ""
@@ -232,7 +232,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if m.top.isRemoteDisabled then return true
 
   if key = "back"
-    ' #550 back arbiter. The whole app is routed now: a routed view's back is intercepted
+    ' Back arbiter. The whole app is routed: a routed view's back is intercepted
     ' by the outlet first (sgRouter.goBack), so a back key only bubbles up to JRScene when
     ' goBack is a no-op at the router root (history depth <= 1) — our cue to confirm exit.
     showExitConfirmation()
@@ -252,13 +252,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 ' ===========================================================================
-' #550 sgRouter host
+' sgRouter host
 '
 ' JRScene owns the router: it initializes it over the outlet, registers the
-' post-login content routes, drives the overhang from whichever view the router
-' has mounted (m.global.activeRoutedView), and confirms app exit when back
-' reaches the router root. SceneManager still owns the pre-login flow and
-' playback (pushed into `content` above the outlet) until Phases 5/6.
+' pre-login and post-login routes, drives the overhang from whichever view the
+' router has mounted (m.global.activeRoutedView), and confirms app exit when
+' back reaches the router root.
 ' ===========================================================================
 
 ' Initialize the router (outlet + routes + observers) WITHOUT navigating. Idempotent:
@@ -267,12 +266,12 @@ end function
 ' Re-callable after resetRouter() (sign-out → re-login): sgRouter.initialize creates a
 ' fresh router when none exists on the scene.
 '
-' #550 sgRouter (Phase 5): the router now hosts the FULL app — the pre-login flow
-' (/server, /users, /login) as well as the post-login content/playback routes. The
-' pre-login routes carry no canActivate guards (the redirect target /login is only
-' meaningful once it exists; AuthManager guards arrive in Phase 6). Pre-login back
-' transitions are coordinator-driven (loginRouter), not router-history-driven, because
-' cold start can enter directly at /users with no /server in history.
+' The router hosts the FULL app — the pre-login flow (/server, /users, /login) as well as
+' the post-login content/playback routes. The pre-login routes carry no canActivate guards
+' (the redirect target /login is one of them); the post-login routes carry the AuthManager
+' guard. Pre-login back transitions are coordinator-driven (loginRouter), not
+' router-history-driven, because cold start can enter directly at /users with no /server in
+' history.
 sub initRouter()
   if isValid(sgrouter.getRouter()) then return
 
@@ -282,29 +281,28 @@ sub initRouter()
   m.global.unobserveField("activeRoutedView")
   m.global.observeField("activeRoutedView", "onActiveRoutedViewChanged")
 
-  ' #550 sgRouter (Phase 4): QueueManager.playQueue can't navigate (it has no router
-  ' chain), so it sets m.global.playbackLaunchRequest and we turn that into a route
-  ' here. The host (PlayerHostView) reads the already-built queue on mount.
+  ' QueueManager.playQueue can't navigate (it has no router chain), so it sets
+  ' m.global.playbackLaunchRequest and we turn that into a route here. The host
+  ' (PlayerHostView) reads the already-built queue on mount.
   m.global.unobserveField("playbackLaunchRequest")
   m.global.observeField("playbackLaunchRequest", "onPlaybackLaunchRequested")
 
-  ' #550 sgRouter (Phase 4): photo viewer launch signal (same no-router-chain reason as
-  ' playbackLaunchRequest above). PhotoDetails reads the AA as route context on mount.
+  ' Photo viewer launch signal (same no-router-chain reason as playbackLaunchRequest above).
+  ' PhotoDetails reads the AA as route context on mount.
   m.global.unobserveField("photoLaunchRequest")
   m.global.observeField("photoLaunchRequest", "onPhotoLaunchRequested")
 
-  ' #550 sgRouter (Phase 6): the auth guard. The SAME node we put on m.global in
-  ' setGlobalNodes, registered by NODE REFERENCE so the path it stashes on a signed-out
-  ' redirect is readable by the main-thread replay helper after login. Added to every
-  ' POST-login route below; the pre-login routes carry no guard (their redirect target,
-  ' /login, is one of them).
+  ' The auth guard. The SAME node we put on m.global in setGlobalNodes, registered by NODE
+  ' REFERENCE so the path it stashes on a signed-out redirect is readable by the main-thread
+  ' replay helper after login. Added to every POST-login route below; the pre-login routes
+  ' carry no guard (their redirect target, /login, is one of them).
   guard = [m.global.AuthManager]
 
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })
   sgrouter.addRoutes([
     { pattern: "/", name: "home", component: "Home", clearStackOnResolve: true, allowReuse: true, canActivate: guard }
-    ' #550 sgRouter (Phase 5): pre-login flow. No flags, NO guard — back is coordinator-driven
-    ' and the cleanup of these views falls out of Home's clearStackOnResolve when login completes.
+    ' Pre-login flow. No flags, NO guard — back is coordinator-driven and the cleanup of these
+    ' views falls out of Home's clearStackOnResolve when login completes.
     { pattern: "/server", name: "server", component: "SetServerScreen" }
     { pattern: "/users", name: "users", component: "UserSelect" }
     { pattern: "/login", name: "login", component: "LoginScene" }
@@ -345,11 +343,10 @@ sub routerNavigate(routePath as string, context = {} as object)
   end sub)
 end sub
 
-' #550 sgRouter (Phase 6): replay a (deferred) deep link after login by navigating a
-' SEQUENCE of routes, each step waiting for the previous to settle. Called from the
-' main-thread replay helper (source/replayRoute.bs) via callFunc; `routes` is an ordered
-' array of path strings. Used both for the no-deep-link case (["/"], a plain Home nav that
-' replaces the old createAndShowHomeGroup navigateTo) and the deep-link case
+' Replay a (deferred) deep link after login by navigating a SEQUENCE of routes, each step
+' waiting for the previous to settle. Called from the main-thread replay helper
+' (source/replayRoute.bs) via callFunc; `routes` is an ordered array of path strings. Used
+' both for the no-deep-link case (["/"], a plain Home nav) and the deep-link case
 ' (["/", "/details/:type/:id", "/details/:type/:id/play"]) so back lands Player -> Details
 ' -> Home (decision #3). The queue for a /play step is populated by the stash producer
 ' (replayRoute / the deep-link handlers) BEFORE this runs; PlayerHostView reads it on mount.
@@ -374,7 +371,7 @@ sub navigateChainStep(routes as object, index as integer)
   end sub)
 end sub
 
-' #550 deep link: a deep link arrived while a media player is active. Three steps:
+' A deep link arrived while a media player is active. Three steps:
 '   1) tear the player down synchronously (stop + report to the server) so nothing keeps decoding;
 '   2) goBack to POP the now-empty player host so it's removed from the back-stack (view AND
 '      history) — forward-navigating away would only hide it, leaving a dead view that resurfaces
@@ -425,8 +422,8 @@ sub tryReplacePlayerNavigate()
   end sub)
 end sub
 
-' #550 deep link: VALIDATE a deep-link id (a metadata fetch) BEFORE navigating, so an invalid id
-' never disturbs the active session — it just toasts. `args` = { itemId, action, isPlayback,
+' VALIDATE a deep-link id (a metadata fetch) BEFORE navigating, so an invalid id never disturbs
+' the active session — it just toasts. `args` = { itemId, action, isPlayback,
 ' homeFirst, replacePlayer, detailsRoute } from source/replayRoute.bs.
 '   homeFirst (post-login/cold): land on Home first so an invalid id toasts on Home (good UX).
 '   On a valid id, onDeepLinkResolved navigates (replacing an active player for a playback cast).
@@ -468,8 +465,8 @@ sub onDeepLinkResolved()
     return
   end if
 
-  ' #550 deep link (Phase 2): a grid-container target (library / folder / genre / studio /
-  ' channel) has no springboard — open its grid directly instead of mounting ItemDetails on a
+  ' A grid-container target (library / folder / genre / studio / channel) has no springboard —
+  ' open its grid directly instead of mounting ItemDetails on a
   ' bare folder. routeForItem maps the resolved node to the same library route in-app navigation
   ' uses, and we hand it the node we just fetched as route context so BaseGridView renders
   ' without a second fetch (and Back lands on Home, not a stub springboard). Only the non-playback
@@ -490,8 +487,8 @@ sub onDeepLinkResolved()
     ' way to the player, so it keeps the simpler string-route + retry-timer flow (no context).
     replayDeepLinkReplacingPlayer(args.detailsRoute)
   else
-    ' [P5] no resolve double-fetch: we already fetched the FULL metaDataDetails node to validate the
-    ' id — hand that exact node forward (itemIsComplete) so ItemDetails renders the springboard from
+    ' We already fetched the FULL metaDataDetails node to validate the id — hand that exact node
+    ' forward (itemIsComplete) so ItemDetails renders the springboard from
     ' it instead of re-fetching the same metadata. ItemDetails' loadDetailsTask uses the SAME
     ' "metaDataDetails" shape, so the node is a complete substitute. Only this explicitly-complete
     ' context skips the fetch; in-app nav (which may pass a lighter list node) still fetches.
@@ -501,8 +498,8 @@ sub onDeepLinkResolved()
   end if
 end sub
 
-' #550 sgRouter (Phase 4): QueueManager.playQueue signalled a video playback launch.
-' The queue is already populated, so navigate to the play route — PlayerHostView mounts
+' QueueManager.playQueue signalled a video playback launch. The queue is already populated,
+' so navigate to the play route — PlayerHostView mounts
 ' the player for the current queue item. :type/:id give the route a deep-link identity;
 ' the queue is the source of truth for what actually plays.
 sub onPlaybackLaunchRequested()
@@ -519,8 +516,8 @@ sub onPlaybackLaunchRequested()
   sgrouter.navigateTo("/details/" + itemType + "/" + req.id + "/play")
 end sub
 
-' #550 sgRouter (Phase 4): a photo launcher (quickplay.photo / QueueManager slideshow output)
-' signalled a photo-viewer launch. Carry the launch AA through as route context — PhotoDetails
+' A photo launcher (quickplay.photo / QueueManager slideshow output) signalled a photo-viewer
+' launch. Carry the launch AA through as route context — PhotoDetails
 ' reads itemsNode/itemsArray + slideshow flags + start index from it on mount.
 sub onPhotoLaunchRequested()
   req = m.global.photoLaunchRequest
@@ -598,8 +595,8 @@ sub showExitConfirmation()
 end sub
 
 ' ---------------------------------------------------------------------------
-' Overhang controller — lifted verbatim from SceneManager (#550). Drives the
-' shared overhang from the router-active view's overhang fields, preserving the
+' Overhang controller. Drives the shared overhang from the router-active view's overhang
+' fields, preserving the
 ' tabs-before-title ordering (prevents a title→tab render flash) and the
 ' bidirectional selectedTabId write-back (overhang tab tap → view.selectedTabId).
 ' ---------------------------------------------------------------------------

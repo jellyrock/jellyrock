@@ -270,9 +270,8 @@ sub switchToQueueItem(queueManager as object, targetPosition as integer)
   m.top.control = "stop"
   queueManager.callFunc("setPosition", targetPosition)
   updateQueueBackdrop()
-  ' #550 sgRouter (Phase 4): the player is a child of PlayerHostView — remount it for
-  ' the new queue position (was SceneManager clearPreviousScene + playQueue, which
-  ' pushed a fresh scene). The host destroys this player + mounts the next.
+  ' The player is a child of PlayerHostView — remount it for the new queue position. The host
+  ' destroys this player + mounts the next.
   host = m.top.getParent()
   if isValid(host) then host.callFunc("playCurrentQueueItem")
 end sub
@@ -678,7 +677,7 @@ sub onPlaybackErrorDialogClosed(msg)
   sourceNode.unobserveField("buttonSelected")
   sourceNode.unobserveField("wasClosed")
 
-  ' #550 sgRouter (Phase 4): leave the play route via the host (was popScene).
+  ' Leave the play route via the host.
   host = m.top.getParent()
   if isValid(host) then host.callFunc("exitPlayback")
 end sub
@@ -1963,7 +1962,6 @@ function handleTransport(evt as object) as object
     ' Mirror back-key behavior: stop playback AND leave the play route. onState reports
     ' the stop to Jellyfin; the physical back key leaves the route for free (bubbles to
     ' the outlet -> goBack), but voice transport doesn't, so exit explicitly via the host.
-    ' #550 sgRouter (Phase 4): was SceneManager.popScene.
     m.top.control = "stop"
     host = m.top.getParent()
     if isValid(host) then host.callFunc("exitPlayback")

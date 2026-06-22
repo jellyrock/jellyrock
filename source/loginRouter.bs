@@ -1,20 +1,18 @@
 import "pkg:/source/api/ApiClient.bs"
 
 ' ===========================================================================
-' #550 sgRouter (Phase 5) — pre-login coordinator
+' Pre-login coordinator
 '
-' Replaces the goto-label state machine + three blocking wait() loops that used to
-' live in showScenes.bs's LoginFlow(). The pre-login screens (SetServerScreen /
-' UserSelect / LoginScene) are now self-contained ROUTED views: they own their UI
-' and emit a high-level INTENT (m.scene.preLoginIntent = "<action>") with the payload
-' on their own top fields. main.bs observes preLoginIntent on the main thread and
-' dispatches here.
+' The pre-login screens (SetServerScreen / UserSelect / LoginScene) are self-contained
+' ROUTED views: they own their UI and emit a high-level INTENT
+' (m.scene.preLoginIntent = "<action>") with the payload on their own top fields. main.bs
+' observes preLoginIntent on the main thread and dispatches here.
 '
 ' This coordinator is MAIN-THREAD code (it shares Main()'s `m`, the established
 ' source/ pattern). The bootstrap API calls it makes (server connect, AboutMe,
 ' getToken, GetPublicUsers) are SYNCHRONOUS and block the main thread — which is
 ' permitted (sgRouter runs on the render thread, which may not block). Each call is
-' isolated behind one step so a future Phase-7 sync->async swap is mechanical.
+' isolated behind one step so a future sync->async swap is mechanical.
 '
 ' It drives navigation by callFunc'ing JRScene's render-thread routerNavigate; it
 ' never touches the sgrouter namespace directly (that resolves on the render thread).

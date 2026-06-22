@@ -773,11 +773,11 @@ sub performSettingsExit()
       applyThemeColorOverrides(m.global.user.settings)
       m.global.sceneManager.callFunc("refreshThemeColors")
     end if
-    ' #550 sgRouter: reloadHome signals main.bs to re-navigate the router to "/" for
-    ' a fresh, re-themed/re-translated Home (see JRScene.reloadRoutedHome).
+    ' reloadHome signals main.bs to re-navigate the router to "/" for a fresh,
+    ' re-themed/re-translated Home (see JRScene.reloadRoutedHome).
     m.global.sceneManager.callFunc("reloadHome")
   else
-    ' #550 sgRouter: Settings is a routed view — pop it via the router (back to Home).
+    ' Settings is a routed view — pop it via the router (back to Home).
     sgrouter.goBack()
   end if
 end sub

@@ -213,9 +213,9 @@ sub updateScrollbarFocus(isFocused as boolean)
   end if
 end sub
 
-' #550 sgRouter (Phase 6): dismiss this overlay. It is appended directly to the scene by
-' FocusableOverview (was a SceneManager pushScene), so closing is a removeChild from our
-' parent + restoring focus to the element that opened us (returnFocusTo).
+' Dismiss this overlay. It is appended directly to the scene by FocusableOverview, so closing
+' is a removeChild from our parent + restoring focus to the element that opened us
+' (returnFocusTo).
 sub closeDialog()
   returnFocusTo = m.top.returnFocusTo
   parent = m.top.getParent()

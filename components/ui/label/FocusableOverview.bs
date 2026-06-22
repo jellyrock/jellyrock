@@ -171,8 +171,8 @@ end sub
 
 ' Opens an OverviewDialog as a full-screen overlay on the scene.
 ' Passes tagline separately so the dialog can style it distinctly.
-' #550 sgRouter (Phase 6): appended directly to the scene (was a SceneManager pushScene); the
-' dialog restores focus to us on close via returnFocusTo. Mirrors misc.bs showDialog's pattern.
+' Appended directly to the scene; the dialog restores focus to us on close via returnFocusTo.
+' Mirrors misc.bs showDialog's pattern.
 sub openOverviewDialog()
   dialog = createObject("roSGNode", "OverviewDialog")
 

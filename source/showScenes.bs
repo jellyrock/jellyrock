@@ -1,10 +1,10 @@
 import "pkg:/source/api/ApiClient.bs"
 
-' #550 sgRouter: LoginFlow() + every Create*Group scene factory have been removed — the whole
-' app is routed now (pre-login SetServerScreen / UserSelect / LoginScene via loginRouter; Home /
-' ItemDetails / SearchResults self-wire under the router). SaveServerList / DeleteFromServerList
-' moved to source/utils/config.bs. What remains here are two router-agnostic helpers that don't
-' belong to any one view: a performance beacon and the resume/start-over playback dialog.
+' The whole app is routed (pre-login SetServerScreen / UserSelect / LoginScene via loginRouter;
+' Home / ItemDetails / SearchResults self-wire under the router). What remains here are two
+' router-agnostic helpers that don't belong to any one view: a performance beacon and the
+' resume/start-over playback dialog. (SaveServerList / DeleteFromServerList live in
+' source/utils/config.bs.)
 
 ' Roku Performance monitoring
 sub SendPerformanceBeacon(signalName as string)

@@ -4,7 +4,7 @@
   and non-routed sub-panels / dialogs (ExtrasSlider, JRMessageDialog, section,
   sectionScroller, OverviewDialog, ProgramDetails).
 
-  It extends sgrouter_View (#550) so JRScreen-derived screens are routable by
+  It extends sgrouter_View so JRScreen-derived screens are routable by
   sgRouter without per-screen changes and without duplicating the overhang
   field surface onto JRScreen (components/CLAUDE.md: "don't duplicate that
   field list anywhere else"). Non-routed sub-panels inherit the sgRouter view

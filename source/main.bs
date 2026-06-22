@@ -43,20 +43,18 @@ sub Main (args as dynamic) as void
   ' setup global nodes now that the screen has been shown
   setGlobalNodes()
 
-  ' #550 sgRouter: session-reset bridge. Routed Home sets m.scene.userMenuAction (change
-  ' user / change server / sign out); we observe it here on the main thread and re-enter
-  ' the login flow in place via handleMenuAction → reenterLogin (Phase 5). A scene field +
-  ' port delivers (unlike an m.global field + port — the delivery defect the deleted
-  ' attachRoutedViewObservers relay relied on). Registered once here, before any navigation.
+  ' Session-reset bridge. Routed Home sets m.scene.userMenuAction (change user / change server /
+  ' sign out); we observe it here on the main thread and re-enter the login flow in place via
+  ' handleMenuAction → reenterLogin. A scene field + port delivers (unlike an m.global field +
+  ' port, which does not — the delivery defect). Registered once here, before any navigation.
   m.scene.observeField("userMenuAction", m.port)
   m.scene.observeField("exit", m.port)
-  ' #550 sgRouter (Phase 5): pre-login views (SetServerScreen / UserSelect / LoginScene)
-  ' set this to an intent action string; we dispatch it to the loginRouter coordinator,
-  ' which runs the blocking bootstrap API calls and drives the next navigation. Replaces
-  ' LoginFlow()'s blocking wait() loops + goto-label state machine. Registered once here.
+  ' Pre-login views (SetServerScreen / UserSelect / LoginScene) set this to an intent action
+  ' string; we dispatch it to the loginRouter coordinator, which runs the blocking bootstrap
+  ' API calls and drives the next navigation. Registered once here.
   m.scene.observeField("preLoginIntent", m.port)
 
-  ' #550 sgRouter: cold-start deep link. Stash it (structured intent on
+  ' Cold-start deep link. Stash it (structured intent on
   ' m.global.AuthManager.stashedDeepLink) BEFORE entering the login flow so it replays
   ' uniformly — the fast path lands straight on the deep-linked content, while a deferred
   ' (no-token) launch replays once the user finishes signing in. replayAfterLogin (invoked
@@ -95,14 +93,13 @@ sub Main (args as dynamic) as void
   device.EnableCodecCapChangedEvent(true)
   device.EnableAudioGuideChangedEvent(true)
 
-  ' #550 sgRouter (Phase 5): enter the login flow. reenterLogin() re-resolves the pre-login
-  ' locale, then beginLogin() runs the saved-server + saved-token fast path (sync, no UI).
-  ' On success it brings up Home; otherwise it routes to the right pre-login screen
-  ' (/server, /users, /login), whose views drive the rest through preLoginIntent events
-  ' handled in the loop below. Replaces the blocking `if not LoginFlow() then return` gate.
+  ' Enter the login flow. reenterLogin() re-resolves the pre-login locale, then beginLogin()
+  ' runs the saved-server + saved-token fast path (sync, no UI). On success it brings up Home;
+  ' otherwise it routes to the right pre-login screen (/server, /users, /login), whose views
+  ' drive the rest through preLoginIntent events handled in the loop below.
   reenterLogin()
 
-  ' #550 deep link: if a cold-start deep link couldn't run yet because login is required,
+  ' If a cold-start deep link couldn't run yet because login is required,
   ' tell the user it'll open after they sign in (replay fires from createAndShowHomeGroup).
   if not isValidAndNotEmpty(m.global.user.authToken)
     notifyDeepLinkDeferred()
@@ -121,12 +118,12 @@ sub Main (args as dynamic) as void
     else if isNodeEvent(msg, "exit")
       return
     else if isNodeEvent(msg, "preLoginIntent")
-      ' #550 sgRouter (Phase 5): a routed pre-login view emitted an intent. The coordinator
-      ' runs the blocking bootstrap API call(s) and drives the next navigation.
+      ' A routed pre-login view emitted an intent. The coordinator runs the blocking
+      ' bootstrap API call(s) and drives the next navigation.
       handlePreLoginIntent(msg.getData())
     else if isNodeEvent(msg, "isAuthenticated")
-      ' #550 sgRouter (Phase 5): the QuickConnectDialog (started by the coordinator)
-      ' signalled a successful in-flow sign-in. Complete the login.
+      ' The QuickConnectDialog (started by the coordinator) signalled a successful in-flow
+      ' sign-in. Complete the login.
       handlePreLoginIntent("quickConnectComplete")
     else if isNodeEvent(msg, "closeSidePanel")
       group = getActiveView()
@@ -268,8 +265,8 @@ sub Main (args as dynamic) as void
       if msg.IsInput()
         info = msg.GetInfo()
         if info.DoesExist("contentid")
-          ' #550 sgRouter: runtime deep link — another Jellyfin client casting to this device
-          ' (or any sender) handed us content. mediaType is optional (ItemDetails infers the
+          ' Runtime deep link — another Jellyfin client casting to this device (or any sender)
+          ' handed us content. mediaType is optional (ItemDetails infers the
           ' launch from the resolved item). Stash the intent, then resolve its server: replay
           ' now if it's the active server (or none), prompt to switch if it's another saved
           ' server, or toast if unknown. When signed out, the stash rides until login.
@@ -290,8 +287,8 @@ sub Main (args as dynamic) as void
           transportNowPlaying = invalid
           if isValid(activeScene)
             sceneType = activeScene.subtype()
-            ' #550 sgRouter (Phase 4): routed video playback's active view is the
-            ' PlayerHostView wrapper; it forwards handleTransport to the child player.
+            ' Routed video playback's active view is the PlayerHostView wrapper; it forwards
+            ' handleTransport to the child player.
             if sceneType = "PlayerHostView" or sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
               transportRet = activeScene.callFunc("handleTransport", info)
               if isValid(transportRet) and isValid(transportRet.status)
@@ -322,8 +319,8 @@ sub Main (args as dynamic) as void
       stopLoadingSpinner()
       if isValid(popupNode) and isValid(popupNode.returnData)
         print "popupNode.returnData = ", popupNode.returnData
-        ' #550 sgRouter: deep-link server-switch confirmation. On "Switch", run the
-        ' pre-flighted switch (performServerSwitch); on cancel, discard the stashed deep link.
+        ' Deep-link server-switch confirmation. On "Switch", run the pre-flighted switch
+        ' (performServerSwitch); on cancel, discard the stashed deep link.
         if m.global.sceneManager.isPendingServerSwitch = true
           m.global.sceneManager.isPendingServerSwitch = false
           if popupNode.returnData.buttonSelected = translate(translationKeys.ButtonSwitch)
@@ -340,9 +337,9 @@ sub Main (args as dynamic) as void
             ' User confirmed exit
             m.scene.exit = true
           end if
-          ' #550 sgRouter (Phase 4): the delete + Series-watched confirmation dialogs are now
-          ' owned by ItemDetails (scoped isDataReturned observers); the only confirmations main.bs
-          ' still handles here are the exit dialog (above) and the resume/start-over prompt (below).
+          ' The delete + Series-watched confirmation dialogs are owned by ItemDetails (scoped
+          ' isDataReturned observers); the only confirmations main.bs handles here are the exit
+          ' dialog (above) and the resume/start-over prompt (below).
         else
           selectedItem = m.global.queueManager.callFunc("getHold")
           m.global.queueManager.callFunc("clearHold")
@@ -373,9 +370,8 @@ sub Main (args as dynamic) as void
         end if
       end if
     else if isNodeEvent(msg, "reloadHomeRequested")
-      ' #550 sgRouter: theme/locale changed — re-navigate the router to "/" for a
-      ' fresh Home (picks up new theme constants / reloaded translations). Replaces
-      ' the old clearScenes + createAndShowHomeGroup.
+      ' Theme/locale changed — re-navigate the router to "/" for a fresh Home (picks up new
+      ' theme constants / reloaded translations).
       m.scene.callFunc("reloadRoutedHome")
     else
       print "Unhandled " type(msg)
@@ -428,12 +424,12 @@ end sub
 
 ' Create and show the home group
 sub createAndShowHomeGroup()
-  ' #550 sgRouter: Home is now mounted by the router (in JRScene's outlet) rather than
-  ' pushed via SceneManager. replayAfterLogin (source/replayRoute.bs) brings the router up
-  ' and replays any stashed deep link as an ordered route chain — Home alone when there is
-  ' none, or Home -> Details -> Player for a deferred/cold-start play deep link (decision #3).
-  ' Home self-loads its libraries in its own onViewOpen. (exit + activeRoutedView + the
-  ' pre-login intent bridge are observed once during bootstrap, not here.)
+  ' Home is mounted by the router (in JRScene's outlet). replayAfterLogin
+  ' (source/replayRoute.bs) brings the router up and replays any stashed deep link as an
+  ' ordered route chain — Home alone when there is none, or Home -> Details -> Player for a
+  ' deferred/cold-start play deep link (decision #3). Home self-loads its libraries in its own
+  ' onViewOpen. (exit + activeRoutedView + the pre-login intent bridge are observed once during
+  ' bootstrap, not here.)
   replayAfterLogin()
   stopLoadingSpinner()
 
@@ -503,11 +499,11 @@ sub calculateFontScaleFactor()
 end sub
 
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
-' #550 sgRouter: OPEN_SEARCH / OPEN_SETTINGS are no longer handled here — Home navigates
-' to those routes directly (navigateTo runs on the render thread, which main.bs is not).
-' Only the session-ending actions remain. Each tears down the routed Home (resetRouter)
-' and re-enters the login flow IN PLACE (reenterLogin) — no `goto appStart`, since the
-' pre-login flow is now routed and driven by the same unified event loop.
+' OPEN_SEARCH / OPEN_SETTINGS are not handled here — Home navigates to those routes directly
+' (navigateTo runs on the render thread, which main.bs is not). Only the session-ending
+' actions remain. Each tears down the routed Home (resetRouter) and re-enters the login flow
+' IN PLACE (reenterLogin) — no `goto appStart`, since the pre-login flow is routed and driven
+' by the same unified event loop.
 sub handleMenuAction(actionId as string)
   if actionId = HomeAction.CHANGE_SERVER
     startLoadingSpinner()

@@ -47,8 +47,8 @@ sub init()
   ' Set lastFocus for JRScreen lifecycle management
   m.top.lastFocus = m.buttons
 
-  ' #550 deep link: show "Playing <title>" for an audio cast — the launcher set the title before
-  ' navigating here; this mount is the stable point (nothing churns after). One-shot: clear it.
+  ' Show "Playing <title>" for an audio cast — the launcher set the title before navigating
+  ' here; this mount is the stable point (nothing churns after). One-shot: clear it.
   if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
     displayToast(Substitute(translate(translationKeys.MessagePlayingContent), m.global.deepLinkOpeningTitle), "info")
     m.global.deepLinkOpeningTitle = ""
@@ -296,8 +296,7 @@ sub audioStateChanged()
     end if
 
     if m.queueManager.callFunc("getPosition") < m.queueManager.callFunc("getCount") - 1
-      ' #550 sgRouter (Phase 4): advance in-place (was: signal main.bs's god-loop via
-      ' m.top.state = "finished" to clearPreviousScene + playQueue a new pushed scene).
+      ' Advance in-place.
       advanceToNextItem()
     else
       ' We are at the end of the song queue
@@ -309,17 +308,16 @@ sub audioStateChanged()
         return
       end if
 
-      ' #550 sgRouter (Phase 4): queue exhausted — leave the routed /audio view (was a
-      ' SceneManager popScene driven off m.top.state = "finished").
+      ' Queue exhausted — leave the routed /audio view.
       exitAudioPlayback()
     end if
   end if
 end sub
 
-' #550 sgRouter (Phase 4): advance to the next queue item on auto-finish. Audio stays in
-' this routed /audio view (reload the stream in place via LoadNextSong). A non-audio next
-' item in a mixed queue leaves /audio for the player route — playQueue routes it to /play,
-' and /audio (not keepAlive) is destroyed. Replaces the old clearPreviousScene + playQueue.
+' Advance to the next queue item on auto-finish. Audio stays in this routed /audio view
+' (reload the stream in place via LoadNextSong). A non-audio next item in a mixed queue leaves
+' /audio for the player route — playQueue routes it to /play, and /audio (not keepAlive) is
+' destroyed.
 sub advanceToNextItem()
   nextPosition = m.queueManager.callFunc("getPosition") + 1
   if nextPosition > m.queueManager.callFunc("getCount") - 1 then return
@@ -337,10 +335,9 @@ sub advanceToNextItem()
   LoadNextSong()
 end sub
 
-' #550 sgRouter (Phase 4): leave the routed /audio view, returning to the launching detail
-' (the router resumes the view beneath). Stops playback + clears loop first. Replaces the
-' old SceneManager popScene. The physical back key already stops audio in onKeyEvent and
-' bubbles to the outlet's goBack, so it does not route through here.
+' Leave the routed /audio view, returning to the launching detail (the router resumes the view
+' beneath). Stops playback + clears loop first. The physical back key already stops audio in
+' onKeyEvent and bubbles to the outlet's goBack, so it does not route through here.
 sub exitAudioPlayback()
   m.audioPlayer.control = "stop"
   m.audioPlayer.loopMode = ""
@@ -378,9 +375,8 @@ function previousClicked() as boolean
     previousItemType = m.queueManager.callFunc("getItemType", previousItem)
 
     if previousItemType <> "audio"
-      ' #550 sgRouter (Phase 4): a non-audio previous item leaves /audio for the player
-      ' route (playQueue -> /play; /audio is not keepAlive so it is destroyed). Was a
-      ' SceneManager clearPreviousScene + playQueue.
+      ' A non-audio previous item leaves /audio for the player route (playQueue -> /play;
+      ' /audio is not keepAlive so it is destroyed).
       m.audioPlayer.control = "stop"
       m.queueManager.callFunc("moveBack")
       m.queueManager.callFunc("playQueue")
@@ -447,9 +443,8 @@ function nextClicked() as boolean
     nextItemType = m.queueManager.callFunc("getItemType", nextItem)
 
     if nextItemType <> "audio"
-      ' #550 sgRouter (Phase 4): a non-audio next item leaves /audio for the player route
-      ' (playQueue -> /play; /audio is not keepAlive so it is destroyed). Was a SceneManager
-      ' clearPreviousScene + playQueue.
+      ' A non-audio next item leaves /audio for the player route (playQueue -> /play; /audio
+      ' is not keepAlive so it is destroyed).
       m.audioPlayer.control = "stop"
       m.queueManager.callFunc("moveForward")
       m.queueManager.callFunc("playQueue")
@@ -883,8 +878,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-' #550 deep link: stop + tear down without navigating (a deep link arrived while audio plays;
-' the caller reroutes to the new content). Stops the audio the same way the back key does
+' Stop + tear down without navigating (a deep link arrived while audio plays; the caller
+' reroutes to the new content). Stops the audio the same way the back key does
 ' (onKeyEvent "back" -> control "stop") — the caller's goBack is programmatic, so it bypasses
 ' that key handler. NOT a full onDestroy: the caller's goBack triggers onDestroy for cleanup,
 ' and running onDestroy twice (it nulls m.audioPlayer) crashes the second pass.
@@ -987,9 +982,9 @@ function handleTransport(evt as object) as object
   end if
 
   if cmd = "stop"
-    ' #550 sgRouter (Phase 4): mirror back-key behavior — stop playback, clear loop, and
-    ' leave the routed /audio view. The physical back key bubbles to the outlet's goBack;
-    ' voice transport doesn't, so we exit explicitly (was a SceneManager popScene).
+    ' Mirror back-key behavior — stop playback, clear loop, and leave the routed /audio view.
+    ' The physical back key bubbles to the outlet's goBack; voice transport doesn't, so we exit
+    ' explicitly.
     exitAudioPlayback()
     return { status: "success" }
   end if
