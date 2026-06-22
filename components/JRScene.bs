@@ -486,9 +486,16 @@ sub onDeepLinkResolved()
 
   ' Valid. Navigate to the details route (ItemDetails loads + dispatches the action on mount).
   if args.replacePlayer
+    ' Playback-only path (a cast replacing an active player): the springboard is transient on the
+    ' way to the player, so it keeps the simpler string-route + retry-timer flow (no context).
     replayDeepLinkReplacingPlayer(args.detailsRoute)
   else
-    promises.chain(sgrouter.navigateTo(args.detailsRoute)).then(sub(_result as object)
+    ' [P5] no resolve double-fetch: we already fetched the FULL metaDataDetails node to validate the
+    ' id — hand that exact node forward (itemIsComplete) so ItemDetails renders the springboard from
+    ' it instead of re-fetching the same metadata. ItemDetails' loadDetailsTask uses the SAME
+    ' "metaDataDetails" shape, so the node is a complete substitute. Only this explicitly-complete
+    ' context skips the fetch; in-app nav (which may pass a lighter list node) still fetches.
+    promises.chain(sgrouter.navigateTo(args.detailsRoute, { context: { item: item, itemIsComplete: true } })).then(sub(_result as object)
       sgrouter.setFocus({ focus: true })
     end sub)
   end if

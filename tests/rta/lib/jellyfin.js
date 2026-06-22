@@ -145,3 +145,16 @@ export function libraryIdFor(libraries, collectionType) {
   const lib = (libraries || []).find((l) => l.collectionType === collectionType);
   return lib ? lib.id : null;
 }
+
+/**
+ * First item id of a given Jellyfin type (Recursive, SortName), or '' if none.
+ * Used by the deep-link specs to cast a real id resolved at runtime (never
+ * hardcoded), e.g. an 'Audio' item to exercise the instantmix action.
+ */
+export async function firstItemId(session, includeItemTypes) {
+  const url =
+    `${session.serverUrl}/Items?UserId=${session.userId}` +
+    `&IncludeItemTypes=${includeItemTypes}&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1`;
+  const data = await getJson(url, { 'X-Emby-Token': session.token }).catch(() => null);
+  return data?.Items?.[0]?.Id || '';
+}

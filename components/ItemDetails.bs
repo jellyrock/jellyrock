@@ -312,11 +312,22 @@ sub loadFromRoute(route as object)
   if isValid(params.type)
     m.top.itemType = params.type
   end if
+
+  ' [P5] no resolve double-fetch: the deep-link resolver already fetched the FULL metaDataDetails
+  ' node to validate the id and hands it forward as a complete context. Adopt it as itemContent
+  ' (which renders the springboard via onItemContentChanged) BEFORE setting itemId, so onItemIdChanged
+  ' sees the content already loaded and skips the redundant fetch. Only an explicitly-complete context
+  ' is trusted — in-app nav may pass a lighter list node, which must still go through the fetch.
+  ctx = route.context
+  if isValid(ctx) and isValid(ctx.itemIsComplete) and ctx.itemIsComplete and isValid(ctx.item) and isValidAndNotEmpty(ctx.item.id) and ctx.item.id = params.id
+    m.top.itemContent = ctx.item
+  end if
+
   m.top.itemId = params.id
 end sub
 
 ' #550 deep link: see the call site in onScreenShown. A deep-link route carries
-' ?deeplink=<action> (open | play | shuffle | trailer). We handle it once per distinct
+' ?deeplink=<action> (open | play | shuffle | trailer | instantmix). We handle it once per distinct
 ' navigation (route.id), so a repeat cast of an item whose ItemDetails is cached (keepAlive)
 ' still fires, while an ordinary back-from-player resume (which keeps the same route.id) does
 ' not re-fire. The ACTION (the sender's explicit intent — never inferred from the resolved item)
@@ -712,6 +723,14 @@ sub onItemIdChanged()
   itemId = m.top.itemId
   if not isValidAndNotEmpty(itemId) then return
 
+  ' [P5] no resolve double-fetch: a complete route context already populated itemContent for this
+  ' exact id (loadFromRoute adopted the resolver's metaDataDetails node), so the springboard has
+  ' rendered via onItemContentChanged — skip the redundant metadata fetch. The deep-link action
+  ' (if any) dispatches from checkDeepLinkLaunch's already-loaded branch, not onDetailsLoaded.
+  if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id) and m.top.itemContent.id = itemId
+    return
+  end if
+
   m.loadDetailsTask.unobserveField("content")
   m.loadDetailsTask.control = "STOP"
 
@@ -741,7 +760,7 @@ sub onDetailsLoaded()
 
   stopLoadingSpinner()
 
-  ' #550 deep link: id validated — now do what the route's action says (open/play/shuffle/trailer).
+  ' #550 deep link: id validated — now do what the route's action says (open/play/shuffle/trailer/instantmix).
   if m.isDeepLinkLaunch
     m.isDeepLinkLaunch = false
     dispatchDeepLinkAction()
@@ -758,6 +777,7 @@ end sub
 '                                     play, live watches, audio -> audio player, photo -> viewer).
 '   shuffle                        -> the same path the Shuffle button uses (onShuffleButtonPressed).
 '   trailer                        -> play this item's trailer(s).
+'   instantmix                     -> build an instant mix from the item (mirrors the instantMixButton).
 sub dispatchDeepLinkAction()
   item = m.top.itemContent
   if not isValid(item) or not isValidAndNotEmpty(item.type) then return
@@ -782,6 +802,10 @@ sub dispatchDeepLinkAction()
     onShuffleButtonPressed(item)
   else if m.deepLinkAction = "trailer"
     m.global.queueManager.callFunc("launchQuickPlayAction", { action: "loadTrailers", id: item.id })
+  else if m.deepLinkAction = "instantmix"
+    ' Mirrors the instantMixButton handler. The engine LCases the action and degrades
+    ' gracefully on an empty result (e.g. a non-music target), so no type gating is needed.
+    m.global.queueManager.callFunc("launchQuickPlayAction", { action: "instantMix", id: item.id })
   else
     m.global.queueManager.callFunc("launchItem", item) ' play
   end if
@@ -791,7 +815,7 @@ end sub
 ' source/replayRoute.bs's predicate (kept local so this render-thread view doesn't import the
 ' main-thread replay module); any unknown action is NOT playback -> treated as "open".
 function isDeepLinkPlaybackAction(action as dynamic) as boolean
-  return action = "play" or action = "shuffle" or action = "trailer"
+  return action = "play" or action = "shuffle" or action = "trailer" or action = "instantmix"
 end function
 
 ' #550 deep link: run the deep-link action on this already-loaded item in response to a runtime

@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.bs
   - components/ItemDetails.bs
   - components/auth/AuthManager.bs
-last-reviewed: 2026-06-20
+last-reviewed: 2026-06-21
 ---
 
 # Deep Linking & Casting
@@ -43,7 +43,7 @@ Both funnel the params to `stashDeepLink()` (`source/replayRoute.bs`).
 |---|---|---|
 | `id` | — | The Jellyfin item id. A **bare segment** (no `=`) is taken as the id, so both `<id>` and `<id>\|action=play` work as well as `id=<id>\|action=play`. |
 | `serverId` (alias `server`) | active server | The target server's Jellyfin **id (GUID)**, not a URL. See "Server resolution". |
-| `action` | `open` | What to do with the resolved item — **the sender's explicit intent** (the route decides; behavior is *never* inferred from the resolved item). One of `open` / `play` / `shuffle` / `trailer`. Any **unknown** value degrades to `open`, so the contract is **forward-compatible** — a new verb is additive and safe on older builds. |
+| `action` | `open` | What to do with the resolved item — **the sender's explicit intent** (the route decides; behavior is *never* inferred from the resolved item). One of `open` / `play` / `shuffle` / `trailer` / `instantmix`. Any **unknown** value degrades to `open`, so the contract is **forward-compatible** — a new verb is additive and safe on older builds. |
 
 > **Why everything rides inside `contentId` (and uses pipes).** `contentId` is the only deep-link
 > field that survives **both** Roku ingress paths: cold-start `/launch` standardizes only
@@ -82,6 +82,8 @@ Both funnel the params to `stashDeepLink()` (`source/replayRoute.bs`).
     program** watches; **Audio** → audio player; **Photo** → viewer; `PhotoAlbum` → slideshow.
   - **`shuffle`** → the same path the **Shuffle** button uses (`onShuffleButtonPressed`).
   - **`trailer`** → plays this item's trailer(s).
+  - **`instantmix`** → builds an **instant mix** from the item (mirrors the `instantMixButton`; the
+    quickplay engine lower-cases the verb and no-ops gracefully on a target that yields no mix).
 - **Once per navigation** — `checkDeepLinkLaunch()` keys off the router's per-navigation `route.id`,
   so a **repeat cast of the same item** (whose `ItemDetails` is cached by `keepAlive`) still fires,
   while an ordinary **back-from-player** resume (same `route.id`) does **not** re-fire. A runtime
@@ -111,7 +113,7 @@ signed-out redirects — see [navigation.md](../architecture/navigation.md).)
   **not** block the remote, so a runtime cast doesn't freeze what you're doing.
 - **"This content isn't available."** when the id is invalid or the validation fetch fails — and
   **nothing else happens** (no navigation; the active session is untouched).
-- **"Playing \<title\>"** when a `play`/`shuffle`/`trailer` action's playback actually starts — fired
+- **"Playing \<title\>"** when a `play`/`shuffle`/`trailer`/`instantmix` action's playback actually starts — fired
   by the player on mount (the end state), using the resolved item's name. An `open` action shows no
   toast (it just navigates); Photo/`PhotoAlbum` open the viewer with no toast.
 - **"Switching to '\<server\>'…"** when a confirmed server switch begins.
@@ -132,9 +134,10 @@ curl -d '' "http://<IP>:8060/input?contentId=<itemId>"
 # Play it — runtime
 curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dplay"
 
-# Shuffle / trailer
+# Shuffle / trailer / instant mix (instantmix targets music: MusicArtist / MusicAlbum / Audio)
 curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dshuffle"
 curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dtrailer"
+curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dinstantmix"
 
 # Play on a specific (saved) server, with a cast title for the switch prompt
 curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7CserverId%3D<serverGuid>%7Caction%3Dplay&itemName=<Title>"

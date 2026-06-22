@@ -38,6 +38,7 @@ namespace tests
     @params("play", "play")
     @params("shuffle", "shuffle")
     @params("trailer", "trailer")
+    @params("instantmix", "instantmix")
     @params("open", "open")
     function _(sent, expected)
       r = parseDeepLinkContentId("id=abc|action=" + sent)
@@ -101,6 +102,7 @@ namespace tests
     @params("play")
     @params("shuffle")
     @params("trailer")
+    @params("instantmix")
     function _(action)
       m.assertTrue(isDeepLinkPlaybackAction(action))
     end function

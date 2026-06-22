@@ -68,7 +68,7 @@ end function
 ' active player tears it down first; an "open" cast just navigates) and the autoplay decision
 ' in ItemDetails. Any unknown action is NOT a playback action -> treated as "open".
 function isDeepLinkPlaybackAction(action as string) as boolean
-  return action = "play" or action = "shuffle" or action = "trailer"
+  return action = "play" or action = "shuffle" or action = "trailer" or action = "instantmix"
 end function
 
 ' Stash a deep link (cold-start or runtime) as a structured intent for replayAfterLogin.
