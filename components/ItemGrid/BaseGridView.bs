@@ -172,7 +172,8 @@ sub onScreenShown()
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
   ' Re-activate voice capture — the voiceBox loses its active connection to the
-  ' Roku firmware when this screen is removed from the scene tree during pushScene.
+  ' Roku firmware while this screen is suspended (keepAlive keeps the node in the
+  ' tree but inactive) and another view is on top.
   if isValid(m.voiceBox)
     m.voiceBox.active = true
   end if
@@ -1250,7 +1251,7 @@ function getItemFlatIndex(itemId as string) as integer
 end function
 
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically by SceneManager.popScene() / clearScenes()
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
 

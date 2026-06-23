@@ -15,11 +15,7 @@ end sub
 ' It is expected that screens override this function to handle focus
 ' managmenet and any other actions required on screen shown
 sub onScreenShown()
-  if isValid(m.top.lastFocus)
-    m.top.lastFocus.setFocus(true)
-  else
-    m.top.setFocus(true)
-  end if
+  restoreFocus(m.top)
 end sub
 
 ' Function called when the screen is hidden by the screen manager
@@ -96,11 +92,7 @@ end function
 ' Router: take remote focus. Mirrors onScreenShown's focus rule (restore the
 ' saved descendant, else focus the view root).
 function handleFocus(_data = {} as object) as boolean
-  if isValid(m.top.lastFocus)
-    m.top.lastFocus.setFocus(true)
-  else
-    m.top.setFocus(true)
-  end if
+  restoreFocus(m.top)
   return true
 end function
 

@@ -888,7 +888,7 @@ sub teardownForDeepLink()
 end sub
 
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically by SceneManager.popScene() / clearScenes()
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
 

@@ -150,6 +150,11 @@ export function libraryIdFor(libraries, collectionType) {
  * First item id of a given Jellyfin type (Recursive, SortName), or '' if none.
  * Used by the deep-link specs to cast a real id resolved at runtime (never
  * hardcoded), e.g. an 'Audio' item to exercise the instantmix action.
+ *
+ * NOTE — the instantmix spec ASSUMES the demo server's library is large enough that
+ * `/Items/<this id>/InstantMix` returns a NON-empty mix. The beforeAll guard only checks the
+ * id resolved (not that it yields a mix), so on a too-small demo audio library the instantmix
+ * test fails as a generic `waitMediaPlaying` timeout, not an obvious "demo can't build a mix".
  */
 export async function firstItemId(session, includeItemTypes) {
   const url =

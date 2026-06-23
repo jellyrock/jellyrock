@@ -94,6 +94,57 @@ namespace tests
       m.assertEqual(r.action, "open")
     end function
 
+    @it("duplicate keys are last-wins")
+    function _()
+      r = parseDeepLinkContentId("id=a|id=b|action=play|action=open")
+      m.assertEqual(r.itemId, "b")
+      m.assertEqual(r.action, "open")
+    end function
+
+    @it("preserves a value containing '=' (splits on the first '=' only)")
+    function _()
+      r = parseDeepLinkContentId("id=ab=cd|action=play")
+      m.assertEqual(r.itemId, "ab=cd")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("lower-cases the serverGuid (a mis-cased sender still matches a saved server)")
+    function _()
+      r = parseDeepLinkContentId("id=abc|serverId=ABCD-1234")
+      m.assertEqual(r.serverGuid, "abcd-1234")
+    end function
+
+    @it("ignores empty segments from stray pipes")
+    function _()
+      r = parseDeepLinkContentId("id=abc||action=play|")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isPlausibleDeepLinkItemId() — URL-injection guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts ids real Jellyfin servers emit (hex GUID, dashed GUID)")
+    @params("f137a2dd21bbc1b99aa5c0f6bf02a805")
+    @params("f137a2dd-21bb-c1b9-9aa5-c0f6bf02a805")
+    @params("abc123")
+    function _(id)
+      m.assertTrue(isPlausibleDeepLinkItemId(id))
+    end function
+
+    @it("rejects an empty id or one carrying URL-structural characters")
+    @params("")
+    @params("abc/Images/Primary")
+    @params("abc?x=1")
+    @params("abc|action=play")
+    @params("abc#frag")
+    @params("abc%2F")
+    @params("a b")
+    function _(id)
+      m.assertFalse(isPlausibleDeepLinkItemId(id))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("isDeepLinkPlaybackAction() — open vs playback gate")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -136,6 +187,68 @@ namespace tests
     function _()
       route = deepLinkDetailsRoute({ mediaType: "Video", itemId: "id1", action: "" })
       m.assertEqual(route, "/details/Video/id1?deeplink=open")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildReplayRoutes() — guard-path replay chain")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("empty/invalid stash replays plain Home")
+    @params("")
+    @params(invalid)
+    function _(stashed)
+      m.assertEqual(buildReplayRoutes(stashed), ["/"])
+    end function
+
+    @it("a plain route replays Home then the destination")
+    function _()
+      m.assertEqual(buildReplayRoutes("/settings"), ["/", "/settings"])
+    end function
+
+    @it("a /play route inserts its Details screen between Home and the player")
+    function _()
+      m.assertEqual(buildReplayRoutes("/details/Movie/abc/play"), ["/", "/details/Movie/abc", "/details/Movie/abc/play"])
+    end function
+
+    @it("a /play route with a query strips the query for the Details step but keeps the full play route")
+    function _()
+      m.assertEqual(buildReplayRoutes("/details/Movie/abc/play?deeplink=play"), ["/", "/details/Movie/abc", "/details/Movie/abc/play?deeplink=play"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("findServerInList() — saved-server GUID match")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches a saved server by GUID, case-insensitively")
+    function _()
+      json = FormatJson({ serverList: [{ id: "aaaa", name: "Home" }, { id: "bbbb", name: "Cabin" }] })
+      entry = findServerInList(json, "BBBB")
+      m.assertEqual(entry.name, "Cabin")
+    end function
+
+    @it("returns invalid for an unknown GUID")
+    function _()
+      json = FormatJson({ serverList: [{ id: "aaaa", name: "Home" }] })
+      m.assertInvalid(findServerInList(json, "zzzz"))
+    end function
+
+    @it("returns invalid for an empty guid even when the list has servers")
+    function _()
+      json = FormatJson({ serverList: [{ id: "aaaa" }] })
+      m.assertInvalid(findServerInList(json, ""))
+    end function
+
+    @it("returns invalid for invalid / non-JSON input")
+    @params(invalid)
+    @params("not json")
+    function _(json)
+      m.assertInvalid(findServerInList(json, "aaaa"))
+    end function
+
+    @it("returns invalid when the JSON has no serverList")
+    function _()
+      json = FormatJson({ noList: true })
+      m.assertInvalid(findServerInList(json, "aaaa"))
     end function
 
   end class

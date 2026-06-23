@@ -338,7 +338,15 @@ sub routerNavigate(routePath as string, context = {} as object)
   initRouter()
   options = {}
   if isValidAndNotEmpty(context) then options = { context: context }
-  promises.chain(sgrouter.navigateTo(routePath, options)).then(sub(_result as object)
+  ' routePath is threaded through chain context (BrightScript closures can't capture locals).
+  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath }).then(sub(_result as object, _ctx as object)
+    sgrouter.setFocus({ focus: true })
+  end sub).catch(sub(err as object, ctx as object)
+    ' navigateTo rejects when a navigation is already in progress (transient — e.g. rapid
+    ' pre-login intents) or the route isn't registered (a programming error). Re-assert focus
+    ' on the active view so a rejected nav can't strand the remote, and surface the reason
+    ' instead of dropping the rejection silently.
+    m.log.warn("routerNavigate failed; re-asserting focus", ctx.routePath, err.message)
     sgrouter.setFocus({ focus: true })
   end sub)
 end sub
@@ -368,6 +376,11 @@ sub navigateChainStep(routes as object, index as integer)
     else
       sgrouter.setFocus({ focus: true })
     end if
+  end sub).catch(sub(err as object, ctx as object)
+    ' A step rejected: stop chaining (a later step would build on a route that never mounted)
+    ' and take focus on whatever IS mounted, so a failed deep-link replay can't strand the remote.
+    m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err.message)
+    sgrouter.setFocus({ focus: true })
   end sub)
 end sub
 
@@ -508,12 +521,18 @@ sub onPlaybackLaunchRequested()
   ' Audio launches the routed AudioPlayerView (the queue is the source of truth, so the
   ' route takes no params). Every video-family type launches the play host.
   if isValid(req.media) and req.media = "audio"
-    sgrouter.navigateTo("/audio")
-    return
+    playPath = "/audio"
+  else
+    itemType = req.type
+    if not isValidAndNotEmpty(itemType) then itemType = "video"
+    playPath = "/details/" + itemType + "/" + req.id + "/play"
   end if
-  itemType = req.type
-  if not isValidAndNotEmpty(itemType) then itemType = "video"
-  sgrouter.navigateTo("/details/" + itemType + "/" + req.id + "/play")
+  ' No explicit setFocus: the mounted player self-focuses via its onScreenShown (the JRScreen
+  ' onViewOpen bridge). The .catch is the point — a rejected nav (router busy / unknown route)
+  ' would otherwise leave the populated queue with no player and nothing playing, silently.
+  promises.chain(sgrouter.navigateTo(playPath), { playPath: playPath }).catch(sub(err as object, ctx as object)
+    m.log.warn("playback launch navigation failed", ctx.playPath, err.message)
+  end sub)
 end sub
 
 ' A photo launcher (quickplay.photo / QueueManager slideshow output) signalled a photo-viewer
@@ -522,7 +541,11 @@ end sub
 sub onPhotoLaunchRequested()
   req = m.global.photoLaunchRequest
   if not isValid(req) then return
-  sgrouter.navigateTo("/photo", { context: req })
+  ' PhotoDetails self-focuses on mount (onScreenShown); the .catch surfaces a rejected nav so a
+  ' failed photo launch isn't silent.
+  promises.chain(sgrouter.navigateTo("/photo", { context: req })).catch(sub(err as object)
+    m.log.warn("photo launch navigation failed", err.message)
+  end sub)
 end sub
 
 ' Render-thread sgRouter.goBack() wrapper for main.bs, which runs on the main thread
@@ -541,10 +564,9 @@ sub reloadRoutedHome()
   sgrouter.navigateTo("/")
 end sub
 
-' Sign-out / change-user / change-server: tear down the routed Home before main.bs
-' re-enters LoginFlow (which pushes pre-login screens via SceneManager). Without
-' this the routed Home would linger under the login screens and leak. startRouter()
-' re-initializes a fresh router on the next successful login.
+' Sign-out / change-user / change-server: tear down the whole routed stack before main.bs
+' re-enters the routed pre-login flow (loginRouter). Without this the routed views would
+' linger and leak. initRouter() re-initializes a fresh router on the next successful login.
 sub resetRouter()
   if isValid(m.previousRoutedView)
     unregisterOverhangData(m.previousRoutedView)
@@ -563,9 +585,37 @@ sub resetRouter()
   m.deepLinkResolveArgs = invalid
   m.replacePlayerRoute = ""
   m.replacePlayerPending = false
+  ' sgrouter.destroy() removes the active + suspended keepAlive view NODES but never runs their
+  ' beforeViewClose lifecycle (verified: Router _destroy only removeNodeChildren). Drive teardown
+  ' ourselves FIRST so each view's onScreenHidden + onDestroy run — onDestroy abandons in-flight
+  ' API promises and releases the view's observers/Tasks. Without this, a library/detail suspended
+  ' beneath a player at sign-out leaks its Task and a late pool response could fire into a
+  ' half-torn-down node.
+  teardownRoutedViews()
   sgrouter.destroy()
   m.global.activeRoutedView = invalid
   if isValid(m.overhang) then m.overhang.visible = false
+end sub
+
+' Run beforeViewClose (→ onScreenHidden + onDestroy) on every mounted routed view — the active
+' one in viewTarget and every suspended keepAlive view in keepAliveViewTarget — before the router
+' is destroyed under them. The target Groups live inside the outlet and survive destroy(); only
+' their children (the views) are torn down here. beforeViewClose is the same permanent-close entry
+' sgRouter drives on a normal close, so re-running onScreenHidden on an already-suspended keepAlive
+' view matches the existing contract (suspend already fired it once; it must be idempotent).
+sub teardownRoutedViews()
+  outlet = m.top.findNode("routerOutlet")
+  if not isValid(outlet) then return
+  for each targetId in ["viewTarget", "keepAliveViewTarget"]
+    target = outlet.findNode(targetId)
+    if isValid(target)
+      for each view in target.getChildren(-1, 0)
+        if isValid(view) and view.isSubType("JRScreen")
+          view.callFunc("beforeViewClose", {})
+        end if
+      end for
+    end if
+  end for
 end sub
 
 ' The router mounted (or switched to) a different content view. Re-point the

@@ -44,7 +44,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### components
 
-(none)
+- Consolidate the `SceneManager` `reloadHomeRequested` Home-reload signal onto `JRScene` (alongside `contentVersion`), so both view-refresh signals live on the router host instead of split across `SceneManager`. Surfaced while cleaning up a stale `JRScene.xml` comment during the #550 sgRouter PR-hardening pass.
 
 ### source
 
@@ -55,6 +55,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - Add approval-gated `device-rta-tests.yml` CI workflow running `npm run test:rta` on the self-hosted `roku-device` runner (mirror `device-unit-tests.yml`; register with `lint:ci-workflow-sync`).
 - Expand RTA functional-test screen coverage beyond the current 6 (`userSelect`/`home`/`libraryGrid`/`movieDetails`/`osd`/`trickplay`) to more screens, and make screenshot capture the default for RTA runs (currently `RTA_CAPTURE=1` opt-in) so every covered screen yields a store image. From #642. *(Largely addressed by #621: coverage grew 6→23 website-gallery screens; the "every screen → store image" clause is superseded by `rta-screenshot-store-website-split`.)*
 - Remaining RTA gallery screens after #621 (`personDetails`/`seasonDetails`/`episodeDetails`/`audioDetails` are now done via the `openChildDetailByRowType` content-based row helper). Content-blocked on the richer custom server (zero demo content): `BoxSet`, `Photo`/`PhotoAlbum`, `MusicVideo`, Live TV, OSD per-button dialogs, the non-cast extras rows (trailers/special features/similar), and the `Networks` TV view (the demo's single series has no network — captured as its empty "No Items" state for now).
+- RTA screens `playlistsLibrary` + `playlistDetails` are content-FLAKY: the demo server (`demo.jellyfin.org/stable`) resets hourly and its playlists may be absent/changed, so `findHomeLibraryTile('playlists')` can time out (only `movies`/`tvshows`/`music` guaranteed). Guard/skip these two when no playlists library is present (or seed a playlist), like the other demo-content-dependent screens. Surfaced by the #550 sgRouter PR-hardening RTA run.
 
 ### docs
 

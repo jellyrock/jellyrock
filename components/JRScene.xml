@@ -33,8 +33,7 @@
          display (currently: an item delete in ItemDetails). keepAlive grids (BaseGridView)
          record the value they last loaded at and re-fetch on resume when it differs — so a
          deleted item can't linger in a suspended-but-cached library. Plain field: grids read
-         it synchronously on resume, no observer needed. (reloadHomeRequested is the sibling
-         Home-reload signal still on SceneManager; the two could be consolidated here.) -->
+         it synchronously on resume, no observer needed. -->
     <field id="contentVersion" type="integer" value="0" />
     <!-- Pre-login intent bridge. The routed pre-login views
          (SetServerScreen / UserSelect / LoginScene) set this to an intent action string;

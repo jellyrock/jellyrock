@@ -11,7 +11,7 @@ related-files:
   - components/data/SceneManager.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-06-14
+last-reviewed: 2026-06-22
 ---
 
 # Navigation (sgRouter)
@@ -175,7 +175,7 @@ On a present token it returns `true` (allow). On absence it **stashes the reques
 | `onPhotoLaunchRequested()` | Reads `m.global.photoLaunchRequest`; navigates `/photo` carrying the launch AA through as route context (`PhotoDetails` reads it on mount). |
 | `reloadRoutedHome()` | `sgrouter.navigateTo("/")` — a fresh Home render after theme/locale change (Home's `clearStackOnResolve` rebuilds it, picking up new theme constants / translations). |
 | `routerGoBack()` | Main-thread wrapper for `sgrouter.goBack()` (e.g. after a delete confirmation leaves the now-deleted detail). |
-| `resetRouter()` | Removes the overhang/playback/photo observers, `sgrouter.destroy()`, clears `m.global.activeRoutedView`, hides the overhang. Called on sign-out / change-user / change-server before `reenterLogin`. |
+| `resetRouter()` | Removes the overhang/playback/photo observers, **drives `beforeViewClose` (→ `onScreenHidden` + `onDestroy`) on every mounted routed view** (`teardownRoutedViews` — both the active view and the suspended `keepAlive` views), then `sgrouter.destroy()`, clears `m.global.activeRoutedView`, hides the overhang. Called on sign-out / change-user / change-server before `reenterLogin`. The explicit teardown is required because `sgrouter.destroy()` removes the view *nodes* without running their lifecycle — without it a `keepAlive` view suspended at sign-out leaks its Tasks/observers and never abandons in-flight API promises. |
 
 ## The back arbiter & exit confirmation
 

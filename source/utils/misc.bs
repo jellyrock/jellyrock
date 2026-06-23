@@ -218,6 +218,18 @@ function getActiveView() as object
   return m.global.activeRoutedView
 end function
 
+' Restore focus to a view's saved descendant (lastFocus) if it's still valid, else focus the
+' view root. The canonical focus-restore rule shared by the JRScreen lifecycle bridge
+' (onScreenShown / handleFocus) and main.bs's side-panel handlers. No-op on an invalid view.
+sub restoreFocus(view as object)
+  if not isValid(view) then return
+  if isValid(view.lastFocus)
+    view.lastFocus.setFocus(true)
+  else
+    view.setFocus(true)
+  end if
+end sub
+
 ' Maps a selected content item to its route — a named-route arg { name, params } for
 ' sgRouter.navigateTo. Pure (no router call) so it can live here in commonly-imported misc.bs;
 ' the routed view that owns the selection calls navigateTo itself (passing the rich node as

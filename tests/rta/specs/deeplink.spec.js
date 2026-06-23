@@ -20,6 +20,11 @@ import { press, waitFor, getActiveVal, waitHome, sleep, hasChildren } from '../l
 
 const LOCALE = RTA_CONFIG.languages[0];
 const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-player active states
+// Upper bound on the validate-before-navigate metadata fetch (+ toast). The invalid-id test
+// asserts a NON-event (no navigation), so it must out-wait the fetch; this is a generous ceiling
+// on a LAN fetch to the demo, not a tuned value. If the production fetch ever gains an explicit
+// timeout constant, prefer deriving this from it.
+const VALIDATION_FETCH_BUDGET_MS = 6000;
 
 let saved;
 let session;
@@ -84,7 +89,7 @@ async function stopPlayback() {
 // stays put (ADR 0018). Assert we never leave Home (a non-event → a bounded wait).
 it('invalid id leaves the session undisturbed (stays Home)', async () => {
   await castFromHome('deadbeefdeadbeefdeadbeefdeadbeef');
-  await sleep(6000); // let the (failed) validation fetch resolve — it must NOT navigate
+  await sleep(VALIDATION_FETCH_BUDGET_MS); // let the (failed) validation fetch resolve — it must NOT navigate
   expect(await getActiveVal('#homeRows.content.getChildCount()')).toBeGreaterThan(0);
 }, 60000);
 
@@ -104,6 +109,37 @@ it('action=play starts playback', async () => {
   await waitMediaPlaying('play');
   await stopPlayback(); // leave a clean slate for the next spec
 }, 120000);
+
+// The once-per-navigation dedup keys off the router's per-navigation route.id
+// (ItemDetails.checkDeepLinkLaunch / replayDeepLinkRuntime). TWO OPPOSING requirements ride on
+// that one field, and castFromHome relaunches every time so the specs above never exercise either:
+//   - a back-from-player resume (SAME route.id) must NOT re-fire (else an infinite relaunch loop);
+//   - a repeat cast of the SAME item (its keepAlive ItemDetails still mounted) must RE-fire.
+// This is the regression net docs/dev/deep-linking.md advertises for the keepAlive-resume bug.
+it('back-from-player does not re-fire; a repeat play cast does', async () => {
+  // First play cast → the movie plays (Home → Details(?deeplink=play) → Player back-stack).
+  await castFromHome(`id=${heroId}|action=play`);
+  await waitMediaPlaying('first play');
+
+  // Back from the player resumes the launching details (keepAlive). Same route.id, so
+  // checkDeepLinkLaunch must NOT re-fire — playback must stay stopped.
+  await press(ecp.Key.Back);
+  await waitFor('itemId', (id) => id === heroId, {
+    read: getActiveVal,
+    label: 'back-from-player -> ItemDetails(heroId)',
+    timeout: 15000,
+  });
+  // Assert the non-event: a broken dedup would relaunch within ~1-2s. Bounded wait, then check.
+  await sleep(5000);
+  const afterBack = await ecp.getMediaPlayer().catch(() => null);
+  expect(PLAYING_STATES.includes(afterBack?.state)).toBe(false);
+
+  // Repeat cast of the SAME item, NO relaunch — we're on its loaded keepAlive details. A fresh
+  // navigation route.id (the in-place playFromDeepLink path) must RE-fire playback.
+  await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
+  await waitMediaPlaying('repeat cast play');
+  await stopPlayback();
+}, 150000);
 
 // A library/container id diverts to its grid (Phase 2 resolver-level divert).
 it('library/container id lands on its grid', async () => {

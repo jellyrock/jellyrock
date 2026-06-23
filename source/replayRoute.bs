@@ -30,37 +30,49 @@
 ' active server). action defaults to "open" (land on the page, no autoplay) and is normalized to
 ' lower case; the consumer treats any UNKNOWN action as "open" too, so the contract is
 ' forward-compatible — a future verb degrades gracefully on an older build.
+' Duplicate keys are LAST-WINS ("id=a|id=b" => "b") — an emergent property of the loop, pinned
+' by a spec so a refactor can't silently change it. A value may itself contain "=" (we split each
+' pair on the FIRST "=" only), so a key=value whose value carries an "=" is preserved, not dropped.
 function parseDeepLinkContentId(raw as string) as object
   result = { itemId: "", serverGuid: "", action: "open" }
   if not isValidAndNotEmpty(raw) then return result
 
-  if Instr(1, raw, "=") = 0
-    ' Bare itemId — no key=value pairs.
-    result.itemId = raw.trim()
-    return result
-  end if
-
   for each pair in raw.split("|")
-    kv = pair.split("=")
-    if kv.count() = 2
-      key = LCase(kv[0].trim())
-      value = kv[1].trim()
-      if key = "id"
-        result.itemId = value
-      else if key = "server" or key = "serverid"
-        result.serverGuid = value
-      else if key = "action"
-        if isValidAndNotEmpty(value) then result.action = LCase(value)
-      end if
-    else if kv.count() = 1
+    pair = pair.trim()
+    if pair = "" then continue for
+    eq = Instr(1, pair, "=")
+    if eq = 0
       ' A bare segment (no "=") is taken as the item id when we don't have one yet, so
       ' "<id>|action=play" works as naturally as "id=<id>|action=play". First bare wins;
       ' once id is set, later bare segments (typos, stray values) are ignored.
-      bare = kv[0].trim()
-      if result.itemId = "" and bare <> "" then result.itemId = bare
+      if result.itemId = "" then result.itemId = pair
+    else
+      ' Split on the FIRST "=" only so a value containing "=" survives (Left=key, Mid=value).
+      key = LCase(Left(pair, eq - 1).trim())
+      value = Mid(pair, eq + 1).trim()
+      if key = "id"
+        result.itemId = value
+      else if key = "server" or key = "serverid"
+        ' Jellyfin server GUIDs are canonical lower-case hex; normalize so a sender that
+        ' upper-cases the GUID still matches a saved server (the compare sites are also folded).
+        result.serverGuid = LCase(value)
+      else if key = "action"
+        if isValidAndNotEmpty(value) then result.action = LCase(value)
+      end if
     end if
   end for
   return result
+end function
+
+' A deep-link itemId is concatenated raw into the details route AND the metadata-fetch URL
+' ("/Items/<id>"), neither of which is URL-encoded. Reject an id carrying URL-structural
+' characters (/ ? # & = | % or whitespace) so a crafted contentId can't reshape either — a
+' whitelist of the characters real Jellyfin ids (GUIDs, hex +/- dashes) actually use. Deliberately
+' NOT a strict GUID match: the goal is to block injection, not to assume an exact id format.
+function isPlausibleDeepLinkItemId(id as string) as boolean
+  if not isValidAndNotEmpty(id) then return false
+  re = CreateObject("roRegex", "^[A-Za-z0-9_\-]{1,128}$", "")
+  return re.isMatch(id)
 end function
 
 ' True for deep-link actions that START PLAYBACK (vs "open", which only navigates to the
@@ -80,7 +92,9 @@ end function
 ' switch (it lives on a server we're not yet authed to). Empty for bare/unknown senders.
 sub stashDeepLink(rawContentId as string, mediaType as string, itemName = "" as string)
   parsed = parseDeepLinkContentId(rawContentId)
-  if not isValidAndNotEmpty(parsed.itemId) then return
+  ' Drop a missing or structurally-implausible id BEFORE it reaches a route/URL — the same
+  ' silent no-stash the empty-id case already used (a junk id is garbage, not a deferrable link).
+  if not isPlausibleDeepLinkItemId(parsed.itemId) then return
 
   routeMediaType = mediaType
   if not isValidAndNotEmpty(routeMediaType) then routeMediaType = "Video"
@@ -212,13 +226,20 @@ end function
 ' Look up a saved server entry by its Jellyfin server id (GUID). Returns the entry
 ' ({ name, id, baseUrl, originalUrl, ... }) or invalid. Mirrors config.bs's saved_servers shape.
 function findSavedServerByGuid(guid as string) as object
-  if not isValidAndNotEmpty(guid) then return invalid
-  saved = getSetting("saved_servers")
-  if not isValid(saved) then return invalid
-  parsed = ParseJson(saved)
+  return findServerInList(getSetting("saved_servers"), guid)
+end function
+
+' Pure: match the saved_servers JSON against a server GUID, case-insensitively (Jellyfin GUIDs
+' are canonical lower-case hex, but fold both sides so a mis-cased sender still matches). Split
+' out from findSavedServerByGuid so the match logic is unit-testable without touching the
+' registry (getSetting reads the real "JellyRock" section, which tests must not write).
+function findServerInList(savedJson as dynamic, guid as string) as object
+  if not isValidAndNotEmpty(guid) or not isValid(savedJson) then return invalid
+  parsed = ParseJson(savedJson)
   if not isValid(parsed) or not isValid(parsed.serverList) then return invalid
+  target = LCase(guid)
   for each entry in parsed.serverList
-    if isValidAndNotEmpty(entry.id) and entry.id = guid then return entry
+    if isValidAndNotEmpty(entry.id) and LCase(entry.id) = target then return entry
   end for
   return invalid
 end function
@@ -275,7 +296,7 @@ sub onRuntimeDeepLink()
   guid = ""
   if isValid(dl) then guid = dl.serverGuid
 
-  if not isValidAndNotEmpty(guid) or guid = m.global.server.id
+  if not isValidAndNotEmpty(guid) or guid = LCase(m.global.server.id)
     replayDeepLinkRuntime()
     return
   end if

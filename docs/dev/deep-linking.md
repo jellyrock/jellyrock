@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.bs
   - components/ItemDetails.bs
   - components/auth/AuthManager.bs
-last-reviewed: 2026-06-21
+last-reviewed: 2026-06-22
 ---
 
 # Deep Linking & Casting
@@ -44,6 +44,19 @@ Both funnel the params to `stashDeepLink()` (`source/replayRoute.bs`).
 | `id` | — | The Jellyfin item id. A **bare segment** (no `=`) is taken as the id, so both `<id>` and `<id>\|action=play` work as well as `id=<id>\|action=play`. |
 | `serverId` (alias `server`) | active server | The target server's Jellyfin **id (GUID)**, not a URL. See "Server resolution". |
 | `action` | `open` | What to do with the resolved item — **the sender's explicit intent** (the route decides; behavior is *never* inferred from the resolved item). One of `open` / `play` / `shuffle` / `trailer` / `instantmix`. Any **unknown** value degrades to `open`, so the contract is **forward-compatible** — a new verb is additive and safe on older builds. |
+
+**Parsing rules** (`parseDeepLinkContentId`):
+
+- **Split on the first `=` only** — a value may itself contain `=` (it's preserved, not dropped).
+- **Duplicate keys are last-wins** — `id=a|id=b` resolves to `b`. Empty segments (stray `|`) are ignored.
+- **Keys are case-insensitive**; the `action` value and the `serverId` GUID are normalized to lower
+  case (a Jellyfin server GUID is canonical lower-case hex, and the saved-server match folds both
+  sides), so a wrongly-cased sender still resolves.
+- **The `id` is validated as URL-safe before use** (`isPlausibleDeepLinkItemId`: hex/alphanumeric +
+  dashes/underscores, no `/ ? # & = | %` or whitespace). An id carrying URL-structural characters
+  is dropped at stash time — it's concatenated raw into the details route and the `/Items/<id>`
+  fetch URL, so this stops a crafted `contentId` from reshaping either. (A real Jellyfin id is a
+  GUID, so this never rejects a legitimate link; it is an injection guard, not a strict GUID check.)
 
 > **Why everything rides inside `contentId` (and uses pipes).** `contentId` is the only deep-link
 > field that survives **both** Roku ingress paths: cold-start `/launch` standardizes only
