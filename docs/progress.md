@@ -49,6 +49,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 ### source
 
 - Migrate the watched toggle (`main.bs`) to the `3c` `callFunc`→`fetchAsync` pattern (mirror `ItemDetails.toggleFavorite`). Extra surface vs favorite: Series "mark all" confirmation-dialog path (2nd entry ~`main.bs:927`), resume-button loading state, `pendingWatched*` bookkeeping. Completes removal of the `isDone` branch + `handleWatchedToggleDone` + `m.watchedResultNode`. #551 Phase 4 settings/misc render-thread batch.
+- `inferServerUrl` (`source/utils/misc.bs:302`, called on the render thread from `loginRouter.bs:233` `onServerSubmitted`) runs a synchronous `roUrlTransfer` probe loop up to 15 seconds during server connect — same render-thread-blocking class as #550 `A2` (fixed for the deep-link server-switch probe via `ServerReachableTask`). Out of scope for the current navigation-hardening project (migration cleanup not surfaced by the #550 review). Fix: move the probe to a Task like `ServerReachableTask`.
 
 ### tests
 
