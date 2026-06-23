@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-19
+last-updated: 2026-06-23
 ---
 
 # Progress
@@ -28,33 +28,10 @@ Investigating issue #573 (surround audio fails to play; the server emits a bad f
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-06-23 — chore(lint): make `markdownlint` respect `.gitignore`
 - 2026-06-11 — perf(screenshots): lossless WebP + prune non-store languages
 - 2026-06-11 — Add library + item-type gallery screenshots + store/website split
 - 2026-06-10 — Per-language store screenshots + RTA functional-test layer
-- 2026-06-07 — fix(server-upgrade): decouple diff anchor from resolved-through so clean releases stop nagging
-- 2026-06-07 — refactor(quickplay): drop dead `album`/`artist` dispatch aliases
-- 2026-06-07 — fix(quickplay): key `Play All` dispatch on canonical Jellyfin item type
-- 2026-06-07 — Collapse `LoadProgramDetailsTask` to a render-thread promise
-- 2026-06-06 — feat(promises): collapse the watched toggle to a render-thread promise
-- 2026-06-06 — Collapse `BrandingConfigTask` + `QuickConnectEnabledTask` to render-thread promises
-- 2026-06-06 — Build promises anti-backslide ratchet (`scripts/lint/promise-ratchet.cjs` + committed baseline; fail CI when render-thread `submitApiRequest`+`observeField` count rises; grep-zero hard guard at 0). Part of #551 — see decision `promise-native-interface-fetchres-exception`.
-- 2026-06-06 — Adopt `@rokucommunity/promises` foundation + 3 reference migrations
-- 2026-06-05 — ci: notify jellyrock.app to redeploy on screenshot changes
-- 2026-06-05 — fix(playback): restore ts-first transcode container order in `getTranscodingProfiles`
-- 2026-06-03 — fix(playback): preserve surround on multichannel transcode fallback
-- 2026-06-03 — Skip Roku device tests when only Node tests change
-- 2026-06-03 — Auto-prune the shipped log and backtick code identifiers in PR titles
-- 2026-06-03 — Unify `GridItem`/`GridItemSmall` and fix genre grid rendering
-- 2026-06-03 — Fix photo selection opening the viewer behind `ItemDetails`
-- 2026-06-02 — Support RC + unstable/master channels in server-upgrade automation
-- 2026-06-01 — Add proactive PR-time floor-coverage lint
-- 2026-06-01 — Proactive PR-time floor-coverage lint: run the server-upgrade floor check (backward + symmetry, minus the endpoint-availability ledger) on PRs so a NEW floor gap introduced by our own code surfaces immediately, instead of waiting for the next Jellyfin release to open a digest. (Phase 6 followup — the digest model only surfaces floor findings on release-triggered runs.)
-- 2026-06-01 — Version-guard the Lyrics request on Jellyfin 10.9+
-- 2026-05-31 — chore(ci): harden journal-sync workflow against PR-title injection
-- 2026-05-31 — Fix server-upgrade digest counts + harden CI command injection
-- 2026-05-31 — Fix server-upgrade tracker issue writes (REST) + digest legend & nudge
-- 2026-05-30 — Server-upgrade automation, Phases 0–6 built + committed on `feat/server-upgrade-automation` — **no PR yet, by design: the whole initiative ships as ONE PR at the very end.** Phase 6 (just built) replaced the per-finding issue burst + single rolling tracker with the **per-version release-triage digest** model (one auto-opened digest per release; CI opens-then-closes a mechanically-clean release as a persistent audit record; `/server-upgrade` edits the digest with verdicts + files per-finding **sub-issues**; never CI-closed once it bears a candidate) and added the **endpoint-availability registry** ([`jellyfin-endpoint-availability.yml`](dev/jellyfin-endpoint-availability.yml) + `.cjs` loader + `lint:endpoint-availability`) — a validated disposition ledger that resolves the 5 recurring floor findings (`MediaSegments`/Lyrics/`QuickConnect`/`GET /items`) at the source so they stop reappearing every release. All offline/tooling-tier; `npm run test:scripts` green (675 tests); see the `server-upgrade-phase6` decision. **Next: open the single PR for Phases 0–6 via `/pr`.**
-- 2026-05-29 — Expand placeholder coverage to grids, audio player, and item details
 
 ## Open followups
 
