@@ -9,5 +9,5 @@
   // Tracked-but-intentionally-unlinted files (CLAUDE.md / AGENTS.md / copilot-instructions.md /
   // .claude) are NOT gitignored, so their exclusions stay in the lint:markdown glob in package.json.
   // Rule config continues to live in .markdownlint.yml (cli2 loads both files).
-  "gitignore": true
+  "gitignore": true,
 }
