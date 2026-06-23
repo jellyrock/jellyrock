@@ -30,11 +30,10 @@ sub init()
   m.overhang = m.top.findNode("overhang")
   m.previousRoutedView = invalid
 
-  ' Retry-poll timer for the pop-player-then-navigate path (replayDeepLinkReplacingPlayer).
-  m.deepLinkRetryTimer = m.top.findNode("deepLinkRetryTimer")
-  m.deepLinkRetryTimer.observeField("fire", "onDeepLinkReplayRetry")
-  m.replacePlayerRoute = ""
-  m.replacePlayerPending = false
+  ' Navigate-after-settle queue (ADR-0020). Actions armed via runAfterRouterSettle drain when the
+  ' router next reaches idle (a terminal routerState event). Replaces the old deepLinkRetryTimer
+  ' busy-wait poll for the pop-player-then-navigate path (replayDeepLinkReplacingPlayer).
+  m.pendingSettleRoutes = []
 
   ' Back-arbiter state. Mirrors the router's navigation-in-progress status (wired in initRouter
   ' from the public routerState events) so a back pressed mid-transition isn't mistaken for a
@@ -349,8 +348,16 @@ sub initRouter()
   sgrouter.getRouter().observeField("routerState", "onRouterStateChanged")
 end sub
 
-' Back-arbiter helper: mirror sgRouter's in-flight navigation state. Set busy when a navigation
-' starts; clear on every terminal event so the flag can never stick true and wedge back→exit.
+' Back-arbiter helper + navigate-after-settle driver (ADR-0020). Mirrors sgRouter's in-flight
+' navigation state — busy on NavigationStart, idle on every terminal event so the flag can never
+' stick true and wedge back→exit — AND drains the settle queue when the router reaches idle.
+'
+' We drive off the TERMINAL EVENT AS STEADY STATE rather than catching a specific transition's
+' NavigationEnd EDGE: routerState is a single SG field whose observer coalesces (rapid writes
+' collapse to the last value), so an edge can be missed — but NavigationEnd is always the terminal
+' write of a navigation, so observing a terminal type is a sound "router is now idle" signal even
+' when intermediate edges were lost. Because the router's own busy flag is already cleared by the
+' time we observe a terminal event, a navigateTo drained here cannot reject (no poll/retry needed).
 sub onRouterStateChanged()
   router = sgrouter.getRouter()
   if not isValid(router) or not isValid(router.routerState) then return
@@ -359,7 +366,47 @@ sub onRouterStateChanged()
     m.routerNavInProgress = true
   else if stateType = "NavigationEnd" or stateType = "NavigationError" or stateType = "NavigationCancel"
     m.routerNavInProgress = false
+    drainSettleRoutes()
   end if
+end sub
+
+' Navigate-after-settle primitive. Arm a route to navigate once the router NEXT reaches idle.
+' Callers arm BEFORE triggering the transition they're waiting on (e.g. a goBack), so that
+' transition's terminal event can't precede the arm. See replayDeepLinkReplacingPlayer.
+sub runAfterRouterSettle(routePath as string)
+  if not isValidAndNotEmpty(routePath) then return
+  m.pendingSettleRoutes.push(routePath)
+end sub
+
+' Drain the settle queue: navigate each armed route (with focus + catch via navigateThenFocus).
+' Called when the router goes idle (onRouterStateChanged) or immediately by a caller whose
+' triggering goBack was a no-op (so no terminal event is coming).
+sub drainSettleRoutes()
+  if m.pendingSettleRoutes.count() = 0 then return
+  routes = m.pendingSettleRoutes
+  m.pendingSettleRoutes = []
+  for each routePath in routes
+    navigateThenFocus(routePath)
+  end for
+end sub
+
+' Navigate + take focus on settle + surface a rejected nav — the shared tail centralizing the
+' navigate/focus/catch trio that was hand-copied across routerNavigate, navigateChainStep, and the
+' settle drain (folds in finding A4: a rejected nav must re-assert focus, never strand the remote).
+' routePath is dynamic: a string path for most calls, or a named-route AA ({ name, ... }) from
+' routeForItem on the deep-link container path. sgRouter.navigateTo accepts both.
+sub navigateThenFocus(routePath as dynamic, context = {} as object)
+  options = {}
+  if isValidAndNotEmpty(context) then options = { context: context }
+  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath }).then(sub(_result as object, _ctx as object)
+    sgrouter.setFocus({ focus: true })
+  end sub).catch(sub(err as object, ctx as object)
+    ' navigateTo rejects when a nav is already in progress (transient) or the route isn't
+    ' registered (a programming error). Re-assert focus so a rejected nav can't strand the remote,
+    ' and surface the reason instead of dropping it silently.
+    m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err.message)
+    sgrouter.setFocus({ focus: true })
+  end sub)
 end sub
 
 ' Navigate the router to a route, bringing the router up first if needed, then hand
@@ -368,19 +415,7 @@ end sub
 ' context is forwarded as route context (e.g. a prefilled username for /login).
 sub routerNavigate(routePath as string, context = {} as object)
   initRouter()
-  options = {}
-  if isValidAndNotEmpty(context) then options = { context: context }
-  ' routePath is threaded through chain context (BrightScript closures can't capture locals).
-  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath }).then(sub(_result as object, _ctx as object)
-    sgrouter.setFocus({ focus: true })
-  end sub).catch(sub(err as object, ctx as object)
-    ' navigateTo rejects when a navigation is already in progress (transient — e.g. rapid
-    ' pre-login intents) or the route isn't registered (a programming error). Re-assert focus
-    ' on the active view so a rejected nav can't strand the remote, and surface the reason
-    ' instead of dropping the rejection silently.
-    m.log.warn("routerNavigate failed; re-asserting focus", ctx.routePath, err.message)
-    sgrouter.setFocus({ focus: true })
-  end sub)
+  navigateThenFocus(routePath, context)
 end sub
 
 ' Replay a (deferred) deep link after login by navigating a SEQUENCE of routes, each step
@@ -401,16 +436,18 @@ end sub
 ' route is fully mounted). The final step takes remote focus. Context carries routes/index
 ' (BrightScript closures can't capture locals).
 sub navigateChainStep(routes as object, index as integer)
+  if index >= routes.count() then return
+  ' Final step: navigate + take focus + catch is exactly the shared settle tail.
+  if index = routes.count() - 1
+    navigateThenFocus(routes[index])
+    return
+  end if
+  ' Intermediate step: navigate, then chain to the next once it settles. A rejection stops the
+  ' chain (a later step would build on a route that never mounted) and takes focus on whatever IS
+  ' mounted, so a failed deep-link replay can't strand the remote.
   promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
-    nextIndex = ctx.index + 1
-    if nextIndex < ctx.routes.count()
-      navigateChainStep(ctx.routes, nextIndex)
-    else
-      sgrouter.setFocus({ focus: true })
-    end if
+    navigateChainStep(ctx.routes, ctx.index + 1)
   end sub).catch(sub(err as object, ctx as object)
-    ' A step rejected: stop chaining (a later step would build on a route that never mounted)
-    ' and take focus on whatever IS mounted, so a failed deep-link replay can't strand the remote.
     m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err.message)
     sgrouter.setFocus({ focus: true })
   end sub)
@@ -421,50 +458,18 @@ end sub
 '   2) goBack to POP the now-empty player host so it's removed from the back-stack (view AND
 '      history) — forward-navigating away would only hide it, leaving a dead view that resurfaces
 '      on back and replays the queue;
-'   3) navigate to the new content. goBack is async (and routerState coalesces, so catching its
-'      NavigationEnd is unreliable), so we RETRY navigateTo until the router accepts it. The
-'      target lands either as a fresh/keepAlive mount or, if it's the item goBack just revealed,
-'      via ItemDetails.onRouteUpdate — both auto-launch.
+'   3) navigate to the new content once the pop settles, via the settle primitive (ADR-0020). We
+'      ARM the target BEFORE goBack so the pop's terminal routerState event can't precede the arm;
+'      the drain navigates when the router reaches idle. If goBack is a no-op (returns false — at
+'      root / nothing to pop), no terminal event is coming, so drain immediately (router is idle).
+'   The target lands either as a fresh/keepAlive mount or, if it's the item goBack just revealed,
+'   via ItemDetails.onRouteUpdate — both auto-launch.
 sub replayDeepLinkReplacingPlayer(targetRoute as string)
   initRouter()
   view = m.global.activeRoutedView
   if isValid(view) then view.callFunc("teardownForDeepLink")
-  sgrouter.goBack()
-  m.replacePlayerRoute = targetRoute
-  m.replacePlayerPending = false
-  m.replacePlayerAttempts = 0
-  m.deepLinkRetryTimer.control = "start"
-  tryReplacePlayerNavigate()
-end sub
-
-sub onDeepLinkReplayRetry()
-  tryReplacePlayerNavigate()
-end sub
-
-' Navigate to the post-pop target; a busy router (goBack still settling) rejects, so the timer
-' retries until it's accepted, then stops.
-sub tryReplacePlayerNavigate()
-  if m.replacePlayerPending then return
-  if not isValidAndNotEmpty(m.replacePlayerRoute)
-    m.deepLinkRetryTimer.control = "stop"
-    return
-  end if
-  m.replacePlayerAttempts++
-  if m.replacePlayerAttempts > 40 ' ~6s cap, then give up rather than poll forever
-    m.deepLinkRetryTimer.control = "stop"
-    m.replacePlayerRoute = ""
-    return
-  end if
-
-  m.replacePlayerPending = true
-  promises.chain(sgrouter.navigateTo(m.replacePlayerRoute)).then(sub(_result as object)
-    m.deepLinkRetryTimer.control = "stop"
-    m.replacePlayerRoute = ""
-    m.replacePlayerPending = false
-    sgrouter.setFocus({ focus: true })
-  end sub).catch(sub(_err as object)
-    m.replacePlayerPending = false ' router still busy — next timer tick retries
-  end sub)
+  runAfterRouterSettle(targetRoute)
+  if not sgrouter.goBack() then drainSettleRoutes()
 end sub
 
 ' VALIDATE a deep-link id (a metadata fetch) BEFORE navigating, so an invalid id never disturbs
@@ -520,16 +525,15 @@ sub onDeepLinkResolved()
   item = content[0]
   itemRoute = routeForItem(item)
   if not args.isPlayback and isValid(itemRoute) and itemRoute.name = "library"
-    promises.chain(sgrouter.navigateTo(itemRoute, { context: { item: item } })).then(sub(_result as object)
-      sgrouter.setFocus({ focus: true })
-    end sub)
+    navigateThenFocus(itemRoute, { item: item })
     return
   end if
 
   ' Valid. Navigate to the details route (ItemDetails loads + dispatches the action on mount).
   if args.replacePlayer
     ' Playback-only path (a cast replacing an active player): the springboard is transient on the
-    ' way to the player, so it keeps the simpler string-route + retry-timer flow (no context).
+    ' way to the player, so it pops the player then navigates the string route via the settle
+    ' primitive (no context — ItemDetails re-fetches by id from the route).
     replayDeepLinkReplacingPlayer(args.detailsRoute)
   else
     ' We already fetched the FULL metaDataDetails node to validate the id — hand that exact node
@@ -537,9 +541,7 @@ sub onDeepLinkResolved()
     ' it instead of re-fetching the same metadata. ItemDetails' loadDetailsTask uses the SAME
     ' "metaDataDetails" shape, so the node is a complete substitute. Only this explicitly-complete
     ' context skips the fetch; in-app nav (which may pass a lighter list node) still fetches.
-    promises.chain(sgrouter.navigateTo(args.detailsRoute, { context: { item: item, itemIsComplete: true } })).then(sub(_result as object)
-      sgrouter.setFocus({ focus: true })
-    end sub)
+    navigateThenFocus(args.detailsRoute, { item: item, itemIsComplete: true })
   end if
 end sub
 
@@ -607,16 +609,14 @@ sub resetRouter()
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
-  ' Cancel a pending replace-player navigate retry + any in-flight deep-link resolve (router is
-  ' being destroyed under them).
-  if isValid(m.deepLinkRetryTimer) then m.deepLinkRetryTimer.control = "stop"
+  ' Drop any armed settle-navigate + cancel an in-flight deep-link resolve (router is being
+  ' destroyed under them).
+  m.pendingSettleRoutes = []
   if isValid(m.deepLinkResolveTask)
     m.deepLinkResolveTask.control = "stop"
     m.deepLinkResolveTask = invalid
   end if
   m.deepLinkResolveArgs = invalid
-  m.replacePlayerRoute = ""
-  m.replacePlayerPending = false
   ' sgrouter.destroy() removes the active + suspended keepAlive view NODES but never runs their
   ' beforeViewClose lifecycle (verified: Router _destroy only removeNodeChildren). Drive teardown
   ' ourselves FIRST so each view's onScreenHidden + onDestroy run — onDestroy abandons in-flight

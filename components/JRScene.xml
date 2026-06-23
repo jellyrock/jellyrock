@@ -11,9 +11,6 @@
     <LabelPrimaryLarge id="loadingText" height="225" width="1266" horizAlign="center" vertAlign="bottom" wrap="true" translation="[327, 210]" visible="false" />
     <Spinner id="spinner" translation="[897, 477]" />
     <Toast id="toast" visible="false" />
-    <!-- Retry-poll for navigating after popping an active player on a deep link
-         (goBack is async + routerState coalesces, so we retry navigateTo until the router is free). -->
-    <Timer id="deepLinkRetryTimer" repeat="true" duration="0.15" />
     <!-- Used to calculate m.global.user.fontScaleFactor -->
     <Label id="defaultFont" text="" visible="false" />
     <Label id="fallbackFont" text="" visible="false" />
