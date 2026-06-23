@@ -1,0 +1,13 @@
+{
+  // Respect .gitignore when linting markdown. Gitignored trees are local-only agent-continuity or
+  // build artifacts (docs/projects/ PLANs, tasks/, build/, out/, build-analysis/, node_modules/) —
+  // never committed, so a style nit in one must NOT fail an unrelated push or CI run. This is the
+  // durable fix for "a sibling project's PLAN.md broke my push": any gitignored .md is now skipped
+  // automatically, so the manual exclude list in the lint:markdown glob can't drift behind a new
+  // gitignored directory again.
+  //
+  // Tracked-but-intentionally-unlinted files (CLAUDE.md / AGENTS.md / copilot-instructions.md /
+  // .claude) are NOT gitignored, so their exclusions stay in the lint:markdown glob in package.json.
+  // Rule config continues to live in .markdownlint.yml (cli2 loads both files).
+  "gitignore": true
+}
