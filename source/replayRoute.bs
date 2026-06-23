@@ -75,6 +75,19 @@ function isPlausibleDeepLinkItemId(id as string) as boolean
   return re.isMatch(id)
 end function
 
+' Safe-token check for deep-link fields that ride UNENCODED into the details route — mediaType
+' in the PATH ("/details/<mediaType>/...") and action in the QUERY ("?deeplink=<action>"). Both
+' come from sender-controlled launch params. Blocks the URL-structural characters (/ ? # & = | %
+' and whitespace) a crafted value would use to inject extra path/query segments, while still
+' allowing clean-but-unknown values through — a future Jellyfin item type or a forward-compat
+' action verb degrades gracefully downstream (ItemDetails resolves the real type; an unknown
+' action is treated as "open"). Mirrors isPlausibleDeepLinkItemId's whitelist approach.
+function isPlausibleDeepLinkToken(value as string) as boolean
+  if not isValidAndNotEmpty(value) then return false
+  re = CreateObject("roRegex", "^[A-Za-z0-9_\-]{1,64}$", "")
+  return re.isMatch(value)
+end function
+
 ' True for deep-link actions that START PLAYBACK (vs "open", which only navigates to the
 ' springboard). Used to gate the player-replacement path (a playback cast arriving over an
 ' active player tears it down first; an "open" cast just navigates) and the autoplay decision
@@ -96,15 +109,24 @@ sub stashDeepLink(rawContentId as string, mediaType as string, itemName = "" as 
   ' silent no-stash the empty-id case already used (a junk id is garbage, not a deferrable link).
   if not isPlausibleDeepLinkItemId(parsed.itemId) then return
 
+  ' mediaType is only a display hint (ItemDetails resolves the REAL type from the fetched item),
+  ' but it lands raw in the route PATH — so an empty OR injection-bearing value falls back to the
+  ' safe default rather than reshaping the route.
   routeMediaType = mediaType
-  if not isValidAndNotEmpty(routeMediaType) then routeMediaType = "Video"
+  if not isPlausibleDeepLinkToken(routeMediaType) then routeMediaType = "Video"
+
+  ' action rides into the route QUERY (?deeplink=). parseDeepLinkContentId already defaulted it to
+  ' "open"; here we additionally scrub an injection-bearing action back to "open" (which is also
+  ' how an unknown action is interpreted downstream, so this only tightens the wire contract).
+  routeAction = parsed.action
+  if not isPlausibleDeepLinkToken(routeAction) then routeAction = "open"
 
   m.global.AuthManager.stashedDeepLink = {
     itemId: parsed.itemId,
     mediaType: routeMediaType,
     serverGuid: parsed.serverGuid,
     itemName: itemName,
-    action: parsed.action
+    action: routeAction
   }
 end sub
 

@@ -219,6 +219,11 @@ end sub
 ' thread. Clears the queue up front so the QuickPlayTask output (which appends via
 ' pushToQueue / set) starts from empty.
 sub launchQuickPlayAction(input as object)
+  ' A previous QuickPlayTask may still be in flight if the user re-pressed a play button before
+  ' it resolved (the spinner is up, but nothing blocks a second launch). Tear it down before
+  ' starting a new one so we never run two concurrent queue builds against the shared queue —
+  ' which would orphan the first task and double-seed the queue. Last press wins.
+  cancelActiveQuickPlayTask()
   clear()
   resetShuffle()
   m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
@@ -227,15 +232,23 @@ sub launchQuickPlayAction(input as object)
   m.activeQuickPlayTask.control = "RUN"
 end sub
 
+' Stop, unobserve, and drop the in-flight QuickPlayTask if one exists. Safe to call when none is
+' active. The single teardown path for m.activeQuickPlayTask (reused by onQuickPlayTaskOutput).
+sub cancelActiveQuickPlayTask()
+  if isValid(m.activeQuickPlayTask)
+    m.activeQuickPlayTask.unobserveField("output")
+    m.activeQuickPlayTask.control = "STOP"
+    m.activeQuickPlayTask = invalid
+  end if
+end sub
+
 ' QuickPlayTask finished — build the queue from its output and play (ported from main.bs's
 ' handleQuickPlayOutput). Photo output still pushes a PhotoDetails scene; that moves to the
 ' /photo route in a later step.
 sub onQuickPlayTaskOutput()
   task = m.activeQuickPlayTask
   output = task.output
-  task.unobserveField("output")
-  task.control = "STOP"
-  m.activeQuickPlayTask = invalid
+  cancelActiveQuickPlayTask()
 
   if not isValid(output) or not isValidAndNotEmpty(output.items)
     stopLoadingSpinner()

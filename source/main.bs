@@ -309,13 +309,20 @@ sub Main (args as dynamic) as void
       end if
     else if isNodeEvent(msg, "isDataReturned")
       popupNode = msg.getRoSGNode()
-      stopLoadingSpinner()
-      if isValid(popupNode) and isValid(popupNode.returnData)
+      sm = m.global.sceneManager
+      ' main.bs owns exactly three confirmation dialogs, each claimed by a pending flag set when
+      ' it is shown: the deep-link server-switch prompt, the exit prompt, and the resume/start-over
+      ' prompt. The isDataReturned field is shared — routed views (ItemDetails delete / mark-watched)
+      ' observe the same field scoped. Without the flag gate this handler would also fire for THEIR
+      ' dialogs, cancelling the spinner they just started and replaying a stale queue hold. So we act
+      ' only when one of our flags is set, and leave routed-view-owned confirmations untouched.
+      if isValid(popupNode) and isValid(popupNode.returnData) and (sm.isPendingServerSwitch or sm.isPendingExitConfirmation or sm.isPendingPlaybackOptions)
         print "popupNode.returnData = ", popupNode.returnData
+        stopLoadingSpinner()
         ' Deep-link server-switch confirmation. On "Switch", run the pre-flighted switch
         ' (performServerSwitch); on cancel, discard the stashed deep link.
-        if m.global.sceneManager.isPendingServerSwitch = true
-          m.global.sceneManager.isPendingServerSwitch = false
+        if sm.isPendingServerSwitch = true
+          sm.isPendingServerSwitch = false
           if popupNode.returnData.buttonSelected = translate(translationKeys.ButtonSwitch)
             performServerSwitch(m.pendingSwitchServer)
           else
@@ -323,17 +330,16 @@ sub Main (args as dynamic) as void
             m.global.AuthManager.stashedDeepLink = invalid
             displayToast(translate(translationKeys.MessageCastCanceled), "info")
           end if
-          ' Handle exit confirmation dialog
-        else if m.global.sceneManager.isPendingExitConfirmation = true
-          m.global.sceneManager.isPendingExitConfirmation = false
+          ' Exit confirmation dialog
+        else if sm.isPendingExitConfirmation = true
+          sm.isPendingExitConfirmation = false
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate(translationKeys.ButtonExit)
             ' User confirmed exit
             m.scene.exit = true
           end if
-          ' The delete + Series-watched confirmation dialogs are owned by ItemDetails (scoped
-          ' isDataReturned observers); the only confirmations main.bs handles here are the exit
-          ' dialog (above) and the resume/start-over prompt (below).
-        else
+          ' Resume / start-over playback prompt (shown by playbackOptionDialog)
+        else if sm.isPendingPlaybackOptions = true
+          sm.isPendingPlaybackOptions = false
           selectedItem = m.global.queueManager.callFunc("getHold")
           m.global.queueManager.callFunc("clearHold")
 

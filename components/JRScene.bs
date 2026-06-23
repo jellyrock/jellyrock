@@ -36,6 +36,11 @@ sub init()
   m.replacePlayerRoute = ""
   m.replacePlayerPending = false
 
+  ' Back-arbiter state. Mirrors the router's navigation-in-progress status (wired in initRouter
+  ' from the public routerState events) so a back pressed mid-transition isn't mistaken for a
+  ' back at the router root. See onKeyEvent's back branch and onRouterStateChanged.
+  m.routerNavInProgress = false
+
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
 
@@ -232,9 +237,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if m.top.isRemoteDisabled then return true
 
   if key = "back"
-    ' Back arbiter. The whole app is routed: a routed view's back is intercepted
-    ' by the outlet first (sgRouter.goBack), so a back key only bubbles up to JRScene when
-    ' goBack is a no-op at the router root (history depth <= 1) — our cue to confirm exit.
+    ' Back arbiter. The whole app is routed: a routed view's back is intercepted by the outlet
+    ' first (sgRouter.goBack), so a back key only bubbles up to JRScene when goBack returned
+    ' false. goBack returns false BOTH at the history root (our cue to confirm exit) AND while a
+    ' navigation is in flight (sgRouter rejects goBack mid-transition). Without the guard below,
+    ' a back pressed during a transition surfaces a spurious Exit dialog mid-stack. The settling
+    ' navigation owns that back, so swallow it; only confirm exit when the router is idle.
+    if m.routerNavInProgress then return true
     showExitConfirmation()
     return true
   else if key = "options"
@@ -328,6 +337,29 @@ sub initRouter()
     ' restored on back) instead of rendering over it — the same behavior as the video player.
     { pattern: "/audio", name: "audio", component: "AudioPlayerView", canActivate: guard }
   ])
+
+  ' Mirror the router's navigation-in-progress status from its public routerState events so the
+  ' back arbiter (onKeyEvent) can tell the two reasons a back bubbles up to JRScene apart.
+  ' sgRouter.goBack returns false — and the back key bubbles past the outlet to us — both when
+  ' the history is at its root (our cue to confirm exit) AND when a navigation is still in
+  ' flight (sgRouter rejects goBack mid-transition). routerState carries no history depth, so we
+  ' track the in-flight window and treat only the idle case as "at root". The rarer
+  ' stale-keepAlive-nodeId goBack miss is not covered here; it needs an upstream history-depth /
+  ' canGoBack() API (see signals-backlog: sgrouter-can-go-back).
+  sgrouter.getRouter().observeField("routerState", "onRouterStateChanged")
+end sub
+
+' Back-arbiter helper: mirror sgRouter's in-flight navigation state. Set busy when a navigation
+' starts; clear on every terminal event so the flag can never stick true and wedge back→exit.
+sub onRouterStateChanged()
+  router = sgrouter.getRouter()
+  if not isValid(router) or not isValid(router.routerState) then return
+  stateType = router.routerState.type
+  if stateType = "NavigationStart"
+    m.routerNavInProgress = true
+  else if stateType = "NavigationEnd" or stateType = "NavigationError" or stateType = "NavigationCancel"
+    m.routerNavInProgress = false
+  end if
 end sub
 
 ' Navigate the router to a route, bringing the router up first if needed, then hand

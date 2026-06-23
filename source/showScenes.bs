@@ -22,5 +22,10 @@ sub playbackOptionDialog(time as longinteger)
   ]
 
   stopLoadingSpinner()
+  ' Claim this dialog for main.bs's isDataReturned handler. The shared isDataReturned field
+  ' is also used by routed views (ItemDetails delete / mark-watched) via scoped observers;
+  ' the pending flag is how main.bs tells "my resume/start-over dialog" apart from theirs so
+  ' it doesn't cancel their spinner or replay a stale queue hold.
+  m.global.sceneManager.isPendingPlaybackOptions = true
   m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelPlaybackOptions), [], resumeData)
 end sub
