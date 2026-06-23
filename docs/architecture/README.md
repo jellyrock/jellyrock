@@ -89,6 +89,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/code-style.md`](../dev/code-style.md) | Code Style Guide |
 | [`docs/dev/crash-reports.md`](../dev/crash-reports.md) | Weekly Roku crash-report workflow |
 | [`docs/dev/debug-flags.md`](../dev/debug-flags.md) | Debug Flags & Toast Testing |
+| [`docs/dev/deep-linking.md`](../dev/deep-linking.md) | Deep Linking & Casting |
 | [`docs/dev/developer-mode.md`](../dev/developer-mode.md) | Developer Mode for Roku Devices |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | JellyRock Versioning Systems Overview |
 | [`docs/dev/logging.md`](../dev/logging.md) | Logging Guide (roku-log) |
