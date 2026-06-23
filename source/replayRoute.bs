@@ -266,29 +266,6 @@ function findServerInList(savedJson as dynamic, guid as string) as object
   return invalid
 end function
 
-' Non-destructive reachability probe used BEFORE a switch tears down the current session, so
-' an offline target can never strand the user. A raw GET to the saved canonical URL's public
-' system-info endpoint — does NOT touch m.global.server (unlike server.UpdateURL). Main thread.
-function probeServerReachable(baseUrl as string) as boolean
-  if not isValidAndNotEmpty(baseUrl) then return false
-  req = CreateObject("roUrlTransfer")
-  port = CreateObject("roMessagePort")
-  req.setMessagePort(port)
-  req.setUrl(baseUrl + "/System/Info/Public")
-  if LCase(baseUrl).left(8) = "https://" then req.setCertificatesFile("common:/certs/ca-bundle.crt")
-  if not req.AsyncGetToString() then return false
-
-  timeout = CreateObject("roTimespan")
-  timeout.mark()
-  while timeout.totalSeconds() < 8
-    resp = wait(1000, port)
-    if type(resp) = "roUrlEvent"
-      return resp.getResponseCode() = 200 and isJellyfinServer(resp.getString())
-    end if
-  end while
-  return false
-end function
-
 ' COLD start: if the stashed deep link names a saved server, point the login at it BEFORE
 ' beginLogin runs (no prompt — there is no active session to disrupt). An unknown/absent
 ' GUID is left alone: login proceeds normally and the deep link validates on whatever server
@@ -355,15 +332,34 @@ sub promptServerSwitch(entry as object)
 end sub
 
 ' Perform the confirmed switch. Pre-flight the target FIRST (non-destructive) so an offline
-' server never strands the user; only then reuse the Change-Server machinery (resetRouter ->
-' point at the new server -> SignOut -> reenterLogin). The stashed deep link survives the
-' teardown and replays once the new server's login completes.
+' server never strands the user. The probe runs on a Task thread (ServerReachableTask) so the
+' up-to-8s reachability check can't freeze remote input; the switch itself continues in
+' onServerProbeDone once the verdict lands back on the main loop.
 sub performServerSwitch(entry as object)
   m.pendingSwitchServer = invalid
   if not isValid(entry) then return
 
   startLoadingSpinner()
-  if not probeServerReachable(entry.baseUrl)
+  ' Hold the entry for the async callback — the probe outcome decides whether we tear down the
+  ' session, and the result arrives later via the main loop's "reachable" handler.
+  m.serverSwitchEntry = entry
+  task = CreateObject("roSGNode", "ServerReachableTask")
+  task.baseUrl = entry.baseUrl
+  task.observeField("reachable", m.port)
+  m.serverReachableTask = task
+  task.control = "RUN"
+end sub
+
+' Continuation of performServerSwitch once the off-thread reachability probe returns. On an
+' unreachable target, surface the error and discard the deep link. On success, reuse the
+' Change-Server machinery (resetRouter -> point at the new server -> SignOut -> reenterLogin);
+' the stashed deep link survives the teardown and replays once the new server's login completes.
+sub onServerProbeDone(reachable as boolean)
+  entry = m.serverSwitchEntry
+  m.serverSwitchEntry = invalid
+  if not isValid(entry) then return
+
+  if not reachable
     stopLoadingSpinner()
     m.global.AuthManager.stashedDeepLink = invalid
     displayToast(Substitute(translate(translationKeys.MessageCouldNotReachServer), entry.name), "error")

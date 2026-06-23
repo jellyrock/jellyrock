@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="ServerReachableTask" extends="Task">
+  <interface>
+    <!-- Canonical base URL of the saved server to probe (e.g. "https://host:8920"). -->
+    <field id="baseUrl" type="string" />
+    <!-- Probe verdict. alwaysNotify so the observer fires even when the result is
+         false and matches the default — a single-shot write at the end of the probe. -->
+    <field id="reachable" type="boolean" value="false" alwaysNotify="true" />
+  </interface>
+</component>
