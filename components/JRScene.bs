@@ -30,16 +30,6 @@ sub init()
   m.overhang = m.top.findNode("overhang")
   m.previousRoutedView = invalid
 
-  ' Navigate-after-settle queue (ADR-0020). Actions armed via runAfterRouterSettle drain when the
-  ' router next reaches idle (a terminal routerState event). Replaces the old deepLinkRetryTimer
-  ' busy-wait poll for the pop-player-then-navigate path (replayDeepLinkReplacingPlayer).
-  m.pendingSettleRoutes = []
-
-  ' Back-arbiter state. Mirrors the router's navigation-in-progress status (wired in initRouter
-  ' from the public routerState events) so a back pressed mid-transition isn't mistaken for a
-  ' back at the router root. See onKeyEvent's back branch and onRouterStateChanged.
-  m.routerNavInProgress = false
-
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
 
@@ -242,7 +232,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' navigation is in flight (sgRouter rejects goBack mid-transition). Without the guard below,
     ' a back pressed during a transition surfaces a spurious Exit dialog mid-stack. The settling
     ' navigation owns that back, so swallow it; only confirm exit when the router is idle.
-    if m.routerNavInProgress then return true
+    '
+    ' We read routerState.type DIRECTLY here rather than mirroring it via an observer: the
+    ' routerState SG field observer COALESCES rapid writes and reliably drops the terminal
+    ' NavigationEnd (proven on device — a mirrored "navInProgress" flag wedged true and ate
+    ' back→exit). A field READ never coalesces, so the field always holds the true latest state:
+    ' a terminal type means idle (confirm exit); any non-terminal type means a nav is in flight.
+    if isRouterNavigating() then return true
     showExitConfirmation()
     return true
   else if key = "options"
@@ -336,59 +332,23 @@ sub initRouter()
     ' restored on back) instead of rendering over it — the same behavior as the video player.
     { pattern: "/audio", name: "audio", component: "AudioPlayerView", canActivate: guard }
   ])
-
-  ' Mirror the router's navigation-in-progress status from its public routerState events so the
-  ' back arbiter (onKeyEvent) can tell the two reasons a back bubbles up to JRScene apart.
-  ' sgRouter.goBack returns false — and the back key bubbles past the outlet to us — both when
-  ' the history is at its root (our cue to confirm exit) AND when a navigation is still in
-  ' flight (sgRouter rejects goBack mid-transition). routerState carries no history depth, so we
-  ' track the in-flight window and treat only the idle case as "at root". The rarer
-  ' stale-keepAlive-nodeId goBack miss is not covered here; it needs an upstream history-depth /
-  ' canGoBack() API (see signals-backlog: sgrouter-can-go-back).
-  sgrouter.getRouter().observeField("routerState", "onRouterStateChanged")
 end sub
 
-' Back-arbiter helper + navigate-after-settle driver (ADR-0020). Mirrors sgRouter's in-flight
-' navigation state — busy on NavigationStart, idle on every terminal event so the flag can never
-' stick true and wedge back→exit — AND drains the settle queue when the router reaches idle.
-'
-' We drive off the TERMINAL EVENT AS STEADY STATE rather than catching a specific transition's
-' NavigationEnd EDGE: routerState is a single SG field whose observer coalesces (rapid writes
-' collapse to the last value), so an edge can be missed — but NavigationEnd is always the terminal
-' write of a navigation, so observing a terminal type is a sound "router is now idle" signal even
-' when intermediate edges were lost. Because the router's own busy flag is already cleared by the
-' time we observe a terminal event, a navigateTo drained here cannot reject (no poll/retry needed).
-sub onRouterStateChanged()
+' Back-arbiter helper: is the router mid-navigation right now? Reads the public routerState
+' field DIRECTLY (no observer). The routerState observer coalesces rapid writes and reliably
+' drops the terminal NavigationEnd (proven on device), so a mirrored flag wedges true; a field
+' READ never coalesces, so the field always holds the true latest state. A navigation runs
+' through NavigationStart → … → NavigationEnd; any non-terminal type means a nav is in flight,
+' a terminal type (or no router/state yet) means idle.
+function isRouterNavigating() as boolean
   router = sgrouter.getRouter()
-  if not isValid(router) or not isValid(router.routerState) then return
+  if not isValid(router) or not isValid(router.routerState) then return false
   stateType = router.routerState.type
-  if stateType = "NavigationStart"
-    m.routerNavInProgress = true
-  else if stateType = "NavigationEnd" or stateType = "NavigationError" or stateType = "NavigationCancel"
-    m.routerNavInProgress = false
-    drainSettleRoutes()
+  if stateType = "" or stateType = "NavigationEnd" or stateType = "NavigationError" or stateType = "NavigationCancel"
+    return false
   end if
-end sub
-
-' Navigate-after-settle primitive. Arm a route to navigate once the router NEXT reaches idle.
-' Callers arm BEFORE triggering the transition they're waiting on (e.g. a goBack), so that
-' transition's terminal event can't precede the arm. See replayDeepLinkReplacingPlayer.
-sub runAfterRouterSettle(routePath as string)
-  if not isValidAndNotEmpty(routePath) then return
-  m.pendingSettleRoutes.push(routePath)
-end sub
-
-' Drain the settle queue: navigate each armed route (with focus + catch via navigateThenFocus).
-' Called when the router goes idle (onRouterStateChanged) or immediately by a caller whose
-' triggering goBack was a no-op (so no terminal event is coming).
-sub drainSettleRoutes()
-  if m.pendingSettleRoutes.count() = 0 then return
-  routes = m.pendingSettleRoutes
-  m.pendingSettleRoutes = []
-  for each routePath in routes
-    navigateThenFocus(routePath)
-  end for
-end sub
+  return true
+end function
 
 ' Navigate + take focus on settle + surface a rejected nav — the shared tail centralizing the
 ' navigate/focus/catch trio that was hand-copied across routerNavigate, navigateChainStep, and the
@@ -453,23 +413,25 @@ sub navigateChainStep(routes as object, index as integer)
   end sub)
 end sub
 
-' A deep link arrived while a media player is active. Three steps:
+' A deep link arrived while a media player is active. Two steps:
 '   1) tear the player down synchronously (stop + report to the server) so nothing keeps decoding;
-'   2) goBack to POP the now-empty player host so it's removed from the back-stack (view AND
-'      history) — forward-navigating away would only hide it, leaving a dead view that resurfaces
-'      on back and replays the queue;
-'   3) navigate to the new content once the pop settles, via the settle primitive (ADR-0020). We
-'      ARM the target BEFORE goBack so the pop's terminal routerState event can't precede the arm;
-'      the drain navigates when the router reaches idle. If goBack is a no-op (returns false — at
-'      root / nothing to pop), no terminal event is coming, so drain immediately (router is idle).
-'   The target lands either as a fresh/keepAlive mount or, if it's the item goBack just revealed,
-'   via ItemDetails.onRouteUpdate — both auto-launch.
+'   2) navigate Home, then to the new content, via the reliable navigateTo PROMISE chain
+'      (navigateChainStep). Navigating "/" tears the player host down (Home is clearStackOnResolve,
+'      so the stack — player host included — is cleared and Home re-mounts) and resolves at its
+'      NavigationEnd; the chain then mounts the target, which auto-launches. Back lands
+'      Player → Details → Home, the intended deep-link shape, with no stale prior item left behind.
+'
+' We do NOT pop via goBack + a routerState-observer settle wait here (the old ADR-0020 primitive):
+' goBack returns a bare Boolean (no promise to chain), and the routerState observer coalesces and
+' reliably drops the terminal NavigationEnd, so the settle drain never fired and the cast stranded
+' (proven on device). navigateChainStep rides navigateTo's promise — which resolves reliably via
+' the router's internal chain, NOT the coalescing field observer — exactly as post-login deep-link
+' replay already does.
 sub replayDeepLinkReplacingPlayer(targetRoute as string)
   initRouter()
   view = m.global.activeRoutedView
   if isValid(view) then view.callFunc("teardownForDeepLink")
-  runAfterRouterSettle(targetRoute)
-  if not sgrouter.goBack() then drainSettleRoutes()
+  navigateChainStep(["/", targetRoute], 0)
 end sub
 
 ' VALIDATE a deep-link id (a metadata fetch) BEFORE navigating, so an invalid id never disturbs
@@ -609,9 +571,7 @@ sub resetRouter()
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
-  ' Drop any armed settle-navigate + cancel an in-flight deep-link resolve (router is being
-  ' destroyed under them).
-  m.pendingSettleRoutes = []
+  ' Cancel an in-flight deep-link resolve (router is being destroyed under it).
   if isValid(m.deepLinkResolveTask)
     m.deepLinkResolveTask.control = "stop"
     m.deepLinkResolveTask = invalid

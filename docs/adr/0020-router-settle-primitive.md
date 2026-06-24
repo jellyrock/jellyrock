@@ -1,102 +1,97 @@
-# ADR 0020: Router "navigate-after-settle" off steady state, not the `NavigationEnd` edge
+# ADR 0020: Replace an active player off `navigateTo`'s promise, not a `routerState` settle observer
 
-**Status:** Accepted
-**Date:** 2026-06-23
+**Status:** Accepted (supersedes its own first draft — see "Postmortem")
+**Date:** 2026-06-23 (revised 2026-06-24)
 
 **related-files**: components/JRScene.bs, docs/architecture/navigation.md
 
 Some deep-link flows must run a navigation only *after* the router finishes its current
 transition. The motivating case is a playback cast arriving over an active player
-(`replayDeepLinkReplacingPlayer`): tear the player down, `goBack()` to pop the now-empty
-player host, then navigate to the new content — but `goBack` is async, so the target
-`navigateTo` rejects (`m.__router_navigationInProgress` is still true) until the pop settles.
-
-The #550 migration solved this with a **busy-wait poll**: a 0.15s repeating `Timer`
-(`deepLinkRetryTimer`) re-fired `navigateTo` up to 40 times (a ~6-second cap) until the router
-accepted it. It worked but was a stopgap — a per-call-site retry loop with its own state
-(`m.replacePlayerRoute` / `m.replacePlayerPending` / `m.replacePlayerAttempts`) and an
-arbitrary attempt cap.
-
-The obvious clean replacement — "catch the `goBack`'s `NavigationEnd` event, then navigate" —
-was tried during the migration and abandoned as **unreliable**. This ADR records *why* the edge
-approach fails and why driving off **steady state** is correct, so a future contributor doesn't
-re-attempt the edge version.
-
-## The mechanism (verified against the vendored router)
-
-`components/roku_modules/sgrouter/Router.brs`:
-
-- `m.__router_navigationInProgress` is the router's authoritative busy flag — set `true`
-  synchronously when any `NavigationStart` is dispatched, `false` on
-  `NavigationEnd`/`NavigationError` (`sgrouter_dispatchRouterState`). It is **private** node
-  scope: **not** an interface field, and there is **no public `isNavigating()`** to read it.
-- `navigateTo` rejects immediately while that flag is true; `goBack` returns `false`
-  synchronously (no transition started) at history root or while a navigation is already running,
-  otherwise dispatches `NavigationStart` synchronously and finishes async, ending in a
-  `NavigationEnd`.
-- Each dispatch writes the single Scene Graph field `m.top.routerState`. Scene Graph field
-  observers fire asynchronously and **coalesce** — several writes in one tick collapse to the
-  *last* value the
-  observer reads.
-
-**Edge detection breaks under coalescing; steady state does not.** A fast `goBack`
-(`NavigationStart` → … → `NavigationEnd`) can collapse to a single observer fire showing only
-the last value. An observer waiting to see a specific transition's `NavigationEnd` *edge* can
-therefore miss it entirely — exactly the "unreliable" the migration hit. But `NavigationEnd` is
-**always the terminal write of a navigation**, so the value the observer converges to when the
-router goes idle is reliable: observing a terminal `routerState.type` is a sound "the router is
-now idle" signal even when intermediate edges were lost.
+(`replayDeepLinkReplacingPlayer`): the old content must tear down and the new content launch.
 
 ## Decision
 
-Add a router-level **navigate-after-settle** primitive on `JRScene`, driven off the **terminal
-event as steady state**, reusing the `routerState` observer `A3` already installed
-(`onRouterStateChanged`, the back-arbiter's navigation-in-progress mirror, which feeds the
-`sgrouter-can-go-back` signal):
+`replayDeepLinkReplacingPlayer` does two things:
 
-- `runAfterRouterSettle(route)` arms an action on a pending queue.
-- `onRouterStateChanged` **drains** the queue when it observes a terminal type
-  (`NavigationEnd`/`NavigationError`/`NavigationCancel`). Because the router's own busy flag is
-  already `false` by then, the drained `navigateTo` cannot reject — **no retry, no timer, no cap.**
-- The caller **arms before** triggering the transition, so the transition's `NavigationEnd`
-  cannot precede the arm. If the trigger is a `goBack()` that returns `false` (no-op → no
-  `NavigationEnd` will come), the caller drains immediately — the router is already idle.
+1. `teardownForDeepLink()` on the active view — stop decoding + report to the server
+   synchronously, so nothing keeps playing during the transition.
+2. `navigateChainStep(["/", targetRoute], 0)` — navigate **Home first**, then the target.
+   Navigating `"/"` tears the player host down (Home is `clearStackOnResolve`, so the whole
+   history stack — player host included — clears and Home re-mounts) and its `navigateTo`
+   promise resolves at `NavigationEnd`; the chain then mounts the target, which auto-launches.
+   Back lands Player → Details → Home — the intended deep-link shape — with no stale prior item.
 
-This deletes `deepLinkRetryTimer` (+ its XML node), `onDeepLinkReplayRetry`,
-`tryReplacePlayerNavigate`, and the `m.replacePlayer*` state. `replayDeepLinkReplacingPlayer`
-becomes arm-then-`goBack`.
+This rides `navigateTo`'s **promise** via the shared `navigateChainStep` — the exact mechanism
+post-login deep-link replay already uses. The promise resolves through the router's **internal
+promise chain**, which is reliable, as opposed to the `routerState` Scene Graph field observer,
+which is not (below).
 
-A companion helper, `navigateThenFocus(route)`, centralizes the navigate + `setFocus` + `.catch`
-strand-guard that was hand-copied across `routerNavigate`, `navigateChainStep`, and the new drain
-(folding in finding `A4` — the post-login deep-link nav that previously lacked a `.catch`). The
-drain calls through it.
+The back-arbiter's companion need — "is a navigation in flight right now?" — is answered by
+`isRouterNavigating()`, which **reads** `router.routerState.type` directly (a non-terminal type ⇒
+in flight). A field *read* never coalesces.
 
-## Wrapper-only, by the same constraint `A3` hit
+## Postmortem: why the first draft of this ADR was wrong
 
-`source/roku_modules/sgrouter` is gitignored and regenerated by `ropm copy`, so the vendored
-router can't be durably patched. A first-class `isNavigating()` / settle callback would be the
-clean upstream API; absent it, the public `routerState` event surface is the only durable
-substrate — the same wrapper-only path the `A3` back-arbiter took. The primitive lives entirely in
-`JRScene`; the router is untouched. If a settle primitive ever *provably* needs a router-package
-change, that is a recorded decision, not a silent fork (Charter "Out of scope").
+This ADR originally introduced a **navigate-after-settle primitive**: arm a target route, call
+`goBack()` to pop the player, and let a `routerState` **observer** (`onRouterStateChanged`) drain
+the armed route when it observed a **terminal event** (`NavigationEnd`). It argued that observing
+the *terminal event as steady state* was reliable even though the field observer coalesces,
+because "`NavigationEnd` is always the terminal write."
 
-## Scope note
+**Device testing (#550 Phase 5) proved that wrong.** Captured `routerState` traces over a real
+cast-over-player showed the observer firing for the intermediate states
+(`NavigationStart → RoutesRecognized → … → ResolveEnd`) but **`NavigationEnd` observed 0 times**
+across an entire multi-navigation session. Consequences, both reproduced on hardware:
 
-The Charter framed `B9` as replacing the busy-wait poll *"AND the per-component deep-link
-one-shots."* Reading the code, the only genuine busy-wait is `tryReplacePlayerNavigate`; the
-"per-component one-shots" are mount-time set-then-clear triggers (`ItemDetails`' `?deeplink=`
-auto-launch, `PlayerHostView` reading the queue), which are not navigation-settle waits and a
-settle primitive does not touch. `navigateChainStep` is already settle-correct — it sequences via
-the `navigateTo` promise that resolves at `NavigationEnd` — so it keeps its chain logic and only
-adopts the shared `navigateThenFocus` tail. Rewriting it onto the primitive would churn correct
-code for no correctness gain (`isolate-the-fix`).
+- The settle drain (triggered only by an *observed* terminal event) never fired → the cast popped
+  the player but never navigated to the new content. The player just closed.
+- The back-arbiter's mirrored `m.routerNavInProgress` flag (set `true` on `NavigationStart`,
+  cleared only on an *observed* terminal event) **wedged true** → every back at the router root was
+  swallowed, so the Exit dialog never appeared.
+
+The flaw in the original reasoning: **observing the terminal *event* is itself an edge-catch.** It
+needs the observer to fire *and* read the terminal value. Scene Graph field-observer coalescing —
+worse under the render-thread load of tearing a video player down — collapses the burst of
+`routerState` writes and drops exactly the terminal one the drain waited on. "Steady state" was a
+distinction without a difference; both depend on the observer delivering a specific value, which it
+doesn't.
+
+Two signals *are* reliable, and the fix uses both:
+
+- **The `navigateTo` promise** — resolved by the router's internal `showView` promise chain, not by
+  the field observer. The whole app already navigates on it; it never strands.
+- **A direct field read** of `routerState.type` — reads don't coalesce, so the field always holds
+  the true latest state.
+
+`goBack()` offers neither — it returns a bare Boolean (no promise) and its completion is only
+visible through the coalescing observer — which is why the fix drops `goBack` from this path in
+favor of the `clearStackOnResolve` Home navigation, whose promise resolves reliably.
+
+## What this deleted
+
+From the #550 migration's original busy-wait: `deepLinkRetryTimer` (+ its XML node),
+`onDeepLinkReplayRetry`, `tryReplacePlayerNavigate`, and the `m.replacePlayer*` state (removed by
+this record's first draft, still gone). From this record's first draft: the settle primitive itself —
+`runAfterRouterSettle`, `drainSettleRoutes`, `m.pendingSettleRoutes`, the `onRouterStateChanged`
+observer, and the mirrored `m.routerNavInProgress` flag.
+
+The `navigateThenFocus(route)` helper (navigate + `setFocus` + `.catch` strand-guard, folding in
+finding `A4`) stays — it's the shared tail of `routerNavigate` and `navigateChainStep`.
+
+## Wrapper-only, still
+
+`source/roku_modules/sgrouter` is gitignored and regenerated by `ropm copy`, so the vendored router
+isn't patched. The fix is entirely in `JRScene`, reusing the router's **public** `navigateTo`
+promise and `routerState` field — no fork. A first-class `isNavigating()` / settle callback would
+be the clean upstream API; absent it, `navigateTo`'s promise + a direct field read are the durable
+public substrate.
 
 ## Ruled out
 
-- **Edge-triggered "catch `NavigationEnd`"** — unreliable under `routerState` coalescing (above).
-- **Mirroring then reading `m.routerNavInProgress` to decide "idle now"** — the mirror lags one
-  message-loop tick behind the router's real flag (it's observer-driven), so right after
-  `goBack()` it reads stale `false`; the arm-before-trigger + drain-on-terminal ordering avoids
-  depending on a synchronous idle read.
+- **Settle off the `routerState` observer's terminal event** — proven unreliable on device
+  (postmortem above). This is the approach this ADR originally took.
+- **Reverting to the `deepLinkRetryTimer` busy-wait poll** — a field *read* poll would work
+  (reads don't coalesce), but the `navigateTo` promise gives the same reliability with no timer,
+  no attempt cap, and reuses existing code (`navigateChainStep`).
 - **Patching the vendored router for an `isNavigating()`/settle hook** — gitignored + regenerated;
-  only a fragile `ropm-hook.cjs` text-injection could persist it (same rejection as `A3`).
+  only a fragile `ropm-hook.cjs` text-injection could persist it.

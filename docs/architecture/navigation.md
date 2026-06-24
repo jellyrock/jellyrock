@@ -11,7 +11,7 @@ related-files:
   - components/data/SceneManager.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-06-23
+last-reviewed: 2026-06-24
 ---
 
 # Navigation (sgRouter)
@@ -169,7 +169,7 @@ On a present token it returns `true` (allow). On absence it **stashes the reques
 | Function | What it does |
 |---|---|
 | `routerNavigate(path, context)` | `initRouter()` then `navigateThenFocus(path, context)`. The main-thread entry point for single navigation calls (pre-login flow + transition to Home). `context` carries route data (e.g. a populated username for `/login`). |
-| `navigateThenFocus(path, context)` | The shared navigate tail: `sgrouter.navigateTo` → on settle, `sgrouter.setFocus` → on reject, warn + re-assert focus (never strand the remote). Centralizes the navigate/focus/catch trio reused by `routerNavigate`, the final step of `navigateChainStep`, the settle drain, and the deep-link resolve calls. `path` is a string or a named-route AA. |
+| `navigateThenFocus(path, context)` | The shared navigate tail: `sgrouter.navigateTo` → on settle, `sgrouter.setFocus` → on reject, warn + re-assert focus (never strand the remote). Centralizes the navigate/focus/catch trio reused by `routerNavigate`, the final step of `navigateChainStep`, and the deep-link resolve calls. `path` is a string or a named-route AA. |
 | `replayRoutedDeepLink(routes)` | `initRouter()` then `navigateChainStep(routes, 0)` — a *sequential* route chain for deep-link replay (each step waits for the previous to settle). Defaults to `["/"]`. |
 | `navigateChainStep(routes, index)` | Navigates `routes[index]`, then chains to the next once it settles (`navigateTo`'s promise resolves at `NavigationEnd`). The final step takes remote focus. |
 | `onPlaybackLaunchRequested()` | Reads `m.global.playbackLaunchRequest`; audio → `/audio`, every video-family type → `/details/<type>/<id>/play`. The queue is the source of truth for what plays. |
@@ -190,21 +190,18 @@ if key = "back"
 
 `showExitConfirmation()` (`JRScene.bs:451`) reuses `SceneManager`'s `showConfirmationDialog` and sets `sceneManager.isPendingExitConfirmation = true`. `main.bs`'s `isDataReturned` handler reads that flag and sets `m.scene.exit = true` on confirm — unchanged from the old stack≤1 branch.
 
-The `m.routerNavInProgress` flag the back arbiter reads is mirrored from the router's public `routerState` events by `onRouterStateChanged` (registered in `initRouter`): busy on `NavigationStart`, idle on every terminal event. That same observer also drives the navigate-after-settle primitive (below).
+To distinguish the two reasons a back bubbles up — at history root (confirm exit) vs. a navigation still in flight (the settling nav owns the back) — the arbiter calls `isRouterNavigating()`, which reads the router's public `routerState.type` field **directly**. A non-terminal type means a nav is in flight (swallow the back); a terminal type (`NavigationEnd`/`NavigationError`/`NavigationCancel`), or no router yet, means idle (confirm exit). The field is **read**, never observed: a `routerState` observer *coalesces* rapid writes and reliably drops the terminal `NavigationEnd` (proven on device — a mirrored `navInProgress` flag wedged true and ate back→exit), but a field *read* never coalesces, so the field always holds the true latest state.
 
 The `options` key (`JRScene.bs:234-242`) opens the active routed view's options panel: it resolves the view via `getActiveView()`, checks `isOptionsAvailable`, saves `lastFocus`, and focuses the panel's list.
 
-## Navigate-after-settle (ADR-0020)
+## Replacing an active player (cast-over-player)
 
-Some flows must navigate only once the router finishes its current transition — the motivating case is a playback cast arriving over an active player (`replayDeepLinkReplacingPlayer`): tear the player down, `goBack()` to pop the now-empty player host, then navigate to the new content. `goBack` is async, so the target `navigateTo` would reject until the pop settles.
+A playback cast can arrive while a media player is already active (`replayDeepLinkReplacingPlayer`): the old content must tear down and the new content launch. The flow is two steps:
 
-The primitive drives off the router reaching **idle as a steady state**, not a transition's `NavigationEnd` *edge*: `routerState` is a single Scene Graph field whose observer coalesces (rapid writes collapse to the last value), so an edge can be missed — but `NavigationEnd` is always the terminal write of a navigation, so observing a terminal type is a reliable "router is now idle" signal.
+1. `teardownForDeepLink()` on the active view — stop decoding + report to the server synchronously, so nothing keeps playing during the transition.
+2. `navigateChainStep(["/", targetRoute], 0)` — navigate **Home first**, then the target. Navigating `"/"` tears the player host down (Home is `clearStackOnResolve`, so the whole stack — player host included — clears and Home re-mounts) and its `navigateTo` promise resolves at `NavigationEnd`; the chain then mounts the target, which auto-launches. Back lands Player → Details → Home — the intended deep-link shape — with no stale prior item left behind.
 
-- `runAfterRouterSettle(path)` arms a route on a pending queue (`m.pendingSettleRoutes`).
-- `onRouterStateChanged` **drains** the queue (via `navigateThenFocus`) on a terminal event. The router's own busy flag is already cleared by then, so the drained `navigateTo` can't reject — **no poll, no retry, no timer.**
-- Callers arm **before** triggering the transition (so its terminal event can't precede the arm); if the trigger is a `goBack()` that returns `false` (no-op → no terminal event coming), the caller drains immediately.
-
-This replaced the #550 busy-wait `deepLinkRetryTimer` poll (a 0.15s repeating timer re-firing `navigateTo` up to 40×). Wrapper-only by the same constraint the back arbiter hit — the vendored router exposes no `isNavigating()`/settle hook, so the public `routerState` surface is the substrate. Full rationale + the ruled-out edge approach: [ADR-0020](../adr/0020-router-settle-primitive.md).
+This rides `navigateTo`'s **promise** (via the shared `navigateChainStep`, exactly as post-login deep-link replay does). The promise resolves reliably through the router's internal chain — **not** the coalescing `routerState` field observer — so the navigation can't strand. An earlier design (ADR 0020) instead `goBack()`-popped the player and waited for a `routerState`-observer "settle" event before navigating; that was proven on device to strand every cast, because the observer coalesces and drops the terminal `NavigationEnd` it waited on (`goBack` also returns a bare Boolean, with no promise to chain). See [ADR 0020](../adr/0020-router-settle-primitive.md) for the full postmortem.
 
 ## Focus management
 
