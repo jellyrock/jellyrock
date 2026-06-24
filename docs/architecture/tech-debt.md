@@ -208,6 +208,8 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `components/data/SceneManager.bs`
 - **issue**: All dialogs write to the same `returnData` field. Risk of cross-dialog observers firing on stale data.
+- **mitigation (partial, #550)**: `main.bs`'s `returnData` handler is now gated on the `isPendingServerSwitch` / `isPendingExitConfirmation` / `isPendingPlaybackOptions` flags, so it no longer cross-fires on dialogs owned by routed views. The structural risk (a single shared field) remains.
+- **direction**: Make every `returnData` observer check a dialog-identity discriminator before acting (`PlayerHostView` already does via `returnData.type` — make it universal), or give each dialog its own return field. Touches `SceneManager` + ~6 consumers (`PlayerHostView`, `ItemDetails`, `settings`, `RadioDialog`, `main.bs`, `replayRoute`). A focused follow-up PR, not folded into nav work.
 
 #### `bsconfig-files-duplicated`
 
