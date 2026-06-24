@@ -317,3 +317,19 @@ sub DeleteFromServerList(idOrUrl as string)
   end for
   setSetting("saved_servers", FormatJson(newServers))
 end sub
+
+' Pure: match the saved_servers JSON against a server GUID, case-insensitively (Jellyfin GUIDs
+' are canonical lower-case hex, but fold both sides so a mis-cased sender still matches). Split
+' out from the registry read (findSavedServerByGuid in replayRoute.bs) so the match logic is
+' unit-testable without touching the registry (getSetting reads the real "JellyRock" section,
+' which tests must not write). Lives here alongside the saved_servers shape it matches.
+function findServerInList(savedJson as dynamic, guid as string) as object
+  if not isValidAndNotEmpty(guid) or not isValid(savedJson) then return invalid
+  parsed = ParseJson(savedJson)
+  if not isValid(parsed) or not isValid(parsed.serverList) then return invalid
+  target = LCase(guid)
+  for each entry in parsed.serverList
+    if isValidAndNotEmpty(entry.id) and LCase(entry.id) = target then return entry
+  end for
+  return invalid
+end function

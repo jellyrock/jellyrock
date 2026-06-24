@@ -44,17 +44,35 @@ function beginLogin() as object
 
   if startOver or invalidServer
     ' Need to pick a server interactively.
-    return { status: "server", route: "/server" }
+    return { status: "server" }
   end if
 
   ' Server is valid — resolve the user.
   return resolveUser()
 end function
 
+' Validate a saved auth token: set it on the local user and verify it with AboutMe().
+' On success, logs the user in (user.Login) and returns true. On failure returns false —
+' the caller owns the cleanup/fallback, which diverges between the two call sites (cold
+' start unsets active_user + recurses; the user picker falls through to a no-password login).
+' Shared by resolveUser (cold start) and onUserSelected (user picker).
+function validateSavedToken(localUser as object, token as string) as boolean
+  localUser.authToken = token
+  print "Attempting to use API with auth token"
+  currentUser = AboutMe()
+  if isValid(currentUser)
+    print "Success! Auth token is still valid"
+    user.Login(currentUser, true)
+    return true
+  end if
+  return false
+end function
+
 ' Decide the user step given a valid server. Returns one of:
-'   { status: "success" }                              — already authenticated (fast path)
-'   { status: "users", route: "/users", users: [...] } — show the user picker
-'   { status: "login", route: "/login", username: "" } — go straight to manual sign-in
+'   { status: "success" }                — already authenticated (fast path)
+'   { status: "users", users: [...] }    — show the user picker
+'   { status: "login", username: "" }    — go straight to manual sign-in
+' enterDecision maps each status to its route; the decision carries only payload.
 ' Mirrors LoginFlow()'s user section (active-user branch + no-active-user branch).
 function resolveUser() as object
   localUser = m.global.user
@@ -66,10 +84,10 @@ function resolveUser() as object
     users = buildPublicUserList()
     m.loginCtx = { hasPublicUsers: users.count() > 0 }
     if users.count() > 0
-      return { status: "users", route: "/users", users: users }
+      return { status: "users", users: users }
     end if
     ' No users to pick — go straight to manual sign-in.
-    return { status: "login", route: "/login", username: "" }
+    return { status: "login", username: "" }
   end if
 
   ' Active user present — try the saved token, then a no-password login. All sync.
@@ -81,13 +99,10 @@ function resolveUser() as object
 
   if isValid(myAuthToken) and isValid(myUsername)
     print "Auth token found in registry"
-    localUser.authToken = myAuthToken
     localUser.name = myUsername
     if isValidAndNotEmpty(myPrimaryImageTag) then localUser.primaryImageTag = myPrimaryImageTag
 
-    print "Attempting to use API with auth token"
-    currentUser = AboutMe()
-    if not isValid(currentUser)
+    if not validateSavedToken(localUser, myAuthToken)
       print "Auth token is no longer valid - attempting no-password login"
       userData = getToken(myUsername, "")
       if isValid(userData)
@@ -103,9 +118,6 @@ function resolveUser() as object
       user.Logout()
       ' active_user is now unset → recursion lands in the user-picker branch (no re-loop).
       return resolveUser()
-    else
-      print "Success! Auth token is still valid"
-      user.Login(currentUser, true)
     end if
   else
     print "No auth token found in registry"
@@ -272,19 +284,14 @@ sub onUserSelected()
   myToken = getUserSetting("authToken")
   if isValid(myToken)
     print "Auth token found in registry for selected user"
-    localUser.authToken = myToken
-    currentUser = AboutMe()
-    if not isValid(currentUser)
-      print "Auth token is no longer valid - deleting token"
-      unsetUserSetting("authToken")
-      unsetUserSetting("username")
-      unsetUserSetting("primaryImageTag")
-    else
-      print "Success! Auth token is still valid"
-      user.Login(currentUser, true)
+    if validateSavedToken(localUser, myToken)
       finishLogin()
       return
     end if
+    print "Auth token is no longer valid - deleting token"
+    unsetUserSetting("authToken")
+    unsetUserSetting("username")
+    unsetUserSetting("primaryImageTag")
   else
     print "No auth token found in registry for selected user"
   end if

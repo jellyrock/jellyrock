@@ -88,13 +88,8 @@ function isPlausibleDeepLinkToken(value as string) as boolean
   return re.isMatch(value)
 end function
 
-' True for deep-link actions that START PLAYBACK (vs "open", which only navigates to the
-' springboard). Used to gate the player-replacement path (a playback cast arriving over an
-' active player tears it down first; an "open" cast just navigates) and the autoplay decision
-' in ItemDetails. Any unknown action is NOT a playback action -> treated as "open".
-function isDeepLinkPlaybackAction(action as string) as boolean
-  return action = "play" or action = "shuffle" or action = "trailer" or action = "instantmix"
-end function
+' isDeepLinkPlaybackAction lives in source/deepLink.bs (a leaf module shared with the
+' render-thread ItemDetails view); called here via source/ auto-scope.
 
 ' Stash a deep link (cold-start or runtime) as a structured intent for replayAfterLogin.
 ' Parses the contentId; records itemId + mediaType (+ serverGuid for the server resolver).
@@ -246,24 +241,10 @@ end function
 ' ---------------------------------------------------------------------------
 
 ' Look up a saved server entry by its Jellyfin server id (GUID). Returns the entry
-' ({ name, id, baseUrl, originalUrl, ... }) or invalid. Mirrors config.bs's saved_servers shape.
+' ({ name, id, baseUrl, originalUrl, ... }) or invalid. The pure match logic lives in
+' config.bs (findServerInList) next to the saved_servers shape it matches.
 function findSavedServerByGuid(guid as string) as object
   return findServerInList(getSetting("saved_servers"), guid)
-end function
-
-' Pure: match the saved_servers JSON against a server GUID, case-insensitively (Jellyfin GUIDs
-' are canonical lower-case hex, but fold both sides so a mis-cased sender still matches). Split
-' out from findSavedServerByGuid so the match logic is unit-testable without touching the
-' registry (getSetting reads the real "JellyRock" section, which tests must not write).
-function findServerInList(savedJson as dynamic, guid as string) as object
-  if not isValidAndNotEmpty(guid) or not isValid(savedJson) then return invalid
-  parsed = ParseJson(savedJson)
-  if not isValid(parsed) or not isValid(parsed.serverList) then return invalid
-  target = LCase(guid)
-  for each entry in parsed.serverList
-    if isValidAndNotEmpty(entry.id) and LCase(entry.id) = target then return entry
-  end for
-  return invalid
 end function
 
 ' COLD start: if the stashed deep link names a saved server, point the login at it BEFORE

@@ -146,6 +146,42 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isPlausibleDeepLinkToken() — mediaType/action URL-injection guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts known media types and actions")
+    @params("Movie")
+    @params("Series")
+    @params("Episode")
+    @params("MusicAlbum")
+    @params("play")
+    @params("instantmix")
+    function _(token)
+      m.assertTrue(isPlausibleDeepLinkToken(token))
+    end function
+
+    @it("accepts a clean-but-unknown value (forward-compat: a future type / verb degrades downstream)")
+    @params("MusicVideo")
+    @params("some_future-type")
+    function _(token)
+      m.assertTrue(isPlausibleDeepLinkToken(token))
+    end function
+
+    @it("rejects an empty token or one carrying URL-structural characters")
+    @params("")
+    @params("Movie/abc")
+    @params("Movie?x=1")
+    @params("Movie#frag")
+    @params("Movie&y=2")
+    @params("a=b")
+    @params("Movie|action=play")
+    @params("Movie%2F")
+    @params("a b")
+    function _(token)
+      m.assertFalse(isPlausibleDeepLinkToken(token))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("isDeepLinkPlaybackAction() — open vs playback gate")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

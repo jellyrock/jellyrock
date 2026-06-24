@@ -4,6 +4,7 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
+import "pkg:/source/deepLink.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
@@ -802,13 +803,6 @@ sub dispatchDeepLinkAction()
     m.global.queueManager.callFunc("launchItem", item) ' play
   end if
 end sub
-
-' True for deep-link actions that start playback (vs "open", which only navigates). Mirrors
-' source/replayRoute.bs's predicate (kept local so this render-thread view doesn't import the
-' main-thread replay module); any unknown action is NOT playback -> treated as "open".
-function isDeepLinkPlaybackAction(action as dynamic) as boolean
-  return action = "play" or action = "shuffle" or action = "trailer" or action = "instantmix"
-end function
 
 ' Run the deep-link action on this already-loaded item in response to a runtime cast that
 ' landed while the user is ALREADY on its details (replayRoute.replayDeepLinkRuntime) —
