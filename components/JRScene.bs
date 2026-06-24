@@ -238,6 +238,15 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' NavigationEnd (proven on device — a mirrored "navInProgress" flag wedged true and ate
     ' back→exit). A field READ never coalesces, so the field always holds the true latest state:
     ' a terminal type means idle (confirm exit); any non-terminal type means a nav is in flight.
+    '
+    ' A deep-link/cast resolve in flight is a DISTINCT case the router doesn't know about yet: the
+    ' metadata fetch runs BEFORE any navigation starts, so the router is still idle on the current
+    ' view (the spinner is up but the remote is intentionally live — see resolveDeepLink). A back
+    ' here means "abort that pending cast", not "exit the app" — cancel the resolve and swallow.
+    if isValid(m.deepLinkResolveTask)
+      cancelDeepLinkResolve()
+      return true
+    end if
     if isRouterNavigating() then return true
     showExitConfirmation()
     return true
@@ -458,6 +467,20 @@ sub resolveDeepLink(args)
   m.deepLinkResolveTask.control = "RUN"
 end sub
 
+' Abort an in-flight deep-link/cast resolve (the metadata fetch that runs BEFORE navigation):
+' unobserve + stop + drop the task, clear its args, hide the spinner. Safe to call when none is
+' pending. Reused by the back arbiter (a back during the resolve aborts the cast) and resetRouter
+' (sign-out tears the resolve down with the router).
+sub cancelDeepLinkResolve()
+  if isValid(m.deepLinkResolveTask)
+    m.deepLinkResolveTask.unobserveField("content")
+    m.deepLinkResolveTask.control = "stop"
+    m.deepLinkResolveTask = invalid
+  end if
+  m.deepLinkResolveArgs = invalid
+  m.top.isLoading = false
+end sub
+
 sub onDeepLinkResolved()
   if not isValid(m.deepLinkResolveTask) then return
   m.deepLinkResolveTask.unobserveField("content")
@@ -572,11 +595,7 @@ sub resetRouter()
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
   ' Cancel an in-flight deep-link resolve (router is being destroyed under it).
-  if isValid(m.deepLinkResolveTask)
-    m.deepLinkResolveTask.control = "stop"
-    m.deepLinkResolveTask = invalid
-  end if
-  m.deepLinkResolveArgs = invalid
+  cancelDeepLinkResolve()
   ' sgrouter.destroy() removes the active + suspended keepAlive view NODES but never runs their
   ' beforeViewClose lifecycle (verified: Router _destroy only removeNodeChildren). Drive teardown
   ' ourselves FIRST so each view's onScreenHidden + onDestroy run — onDestroy abandons in-flight
