@@ -1,6 +1,23 @@
 sub init()
   m.top.keyGrid.keyDefinitionUri = "pkg:/components/keyboards/IntegerKeyboardKDF.json"
   m.top.keyGrid.mode = "numeric"
+  enableVoiceWithVisibility()
+end sub
+
+' Voice follows visibility. Roku allows only ONE voice-enabled VoiceTextEditBox on screen at a
+' time. sgRouter mounts a view hidden then reveals it (visible=false->true); revealing >1
+' voice-enabled box at once faults Roku's native voice arbiter (the Settings-open crash, since
+' Settings mounts several keyboards). Keeping voice enabled only while THIS keyboard is shown
+' means at most one is ever voice-enabled — no contention — while preserving voice dictation
+' when the keyboard is actually on screen. (SceneManager mounted views already-visible, so the
+' boxes registered incrementally and never tripped this; the router's bulk reveal exposed it.)
+sub enableVoiceWithVisibility()
+  m.top.textEditBox.voiceEnabled = m.top.visible
+  m.top.observeField("visible", "onVoiceVisibilityChanged")
+end sub
+
+sub onVoiceVisibilityChanged()
+  m.top.textEditBox.voiceEnabled = m.top.visible
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

@@ -14,6 +14,16 @@ sub init()
 
   m.top.keyGrid.enableRenderTracking = true
   m.top.keyGrid.observeField("renderTracking", "onKeyGridRendered")
+
+  ' Voice follows visibility — only the shown keyboard is voice-enabled, so the router's
+  ' hidden-then-reveal mount can't expose >1 voice box to Roku's single-voice arbiter at once.
+  ' See IntegerKeyboard.enableVoiceWithVisibility for the full rationale.
+  m.top.textEditBox.voiceEnabled = m.top.visible
+  m.top.observeField("visible", "onVoiceVisibilityChanged")
+end sub
+
+sub onVoiceVisibilityChanged()
+  m.top.textEditBox.voiceEnabled = m.top.visible
 end sub
 
 ' Position reset button below the keyboard grid, aligned to right edge
