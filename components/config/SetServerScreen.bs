@@ -11,6 +11,8 @@ sub init()
   ' onScanForServersComplete sets the precise focus target (picker vs. textbox) once the SSDP
   ' scan returns.
   m.top.isOptionsAvailable = true
+  ' Overhang config — declarative field projected onto the overhang by JRScene (registerOverhangData).
+  m.top.isLogoVisible = true
 
   m.top.findNode("prompt").text = translate(translationKeys.LabelConnectToServer)
   m.top.findNode("serverPickerHint").text = translate(translationKeys.LabelPickAJellyfinServerFromThe)
@@ -212,14 +214,6 @@ end sub
 sub onScreenShown()
   ' Clear backdrop on config screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
-
-  scene = m.top.getScene()
-  overhang = scene.findNode("overhang")
-  if isValid(overhang)
-    overhang.isLogoVisible = true
-    overhang.currentUser = ""
-    overhang.title = ""
-  end if
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

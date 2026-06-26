@@ -48,6 +48,12 @@ sub init()
   ' Home is mounted by the router, so it self-wires its overhang title and the options
   ' side-panel menu.
   m.top.overhangTitle = translate(translationKeys.LabelHome)
+
+  ' Overhang config — declarative fields projected onto the overhang by JRScene (registerOverhangData).
+  m.top.isLogoVisible = true
+  m.top.shouldShowIcons = true
+  m.top.shouldShowUserDropdown = true
+
   buildOptionsMenu()
 end sub
 
@@ -146,8 +152,6 @@ sub onScreenShown()
 
   overhang = scene.findNode("overhang")
   if isValid(overhang)
-    overhang.isLogoVisible = true
-    overhang.currentUser = globalUser.name
     m.overhang = overhang
 
     ' Cache overhang element references and observe their events ONCE.
@@ -171,8 +175,7 @@ sub onScreenShown()
       end if
     end if
 
-    ' Enable overhang icons (search + settings) and observe their events once
-    overhang.shouldShowIcons = true
+    ' Cache the search/settings icon refs + observe their events once (re-observing stacks).
     if not isValid(m.searchIcon)
       overhang.observeField("iconAction", "onOverhangIconAction")
 
@@ -280,13 +283,7 @@ sub onScreenHidden()
     m.voiceBox.active = false
   end if
 
-  scene = m.top.getScene()
-  overhang = scene.findNode("overhang")
-  if isValid(overhang)
-    overhang.isLogoVisible = false
-    overhang.shouldShowIcons = false
-    overhang.currentUser = ""
-  end if
+  ' Overhang state is reset by the controller on view-change — intentionally not cleared here.
 end sub
 
 ' ============================================

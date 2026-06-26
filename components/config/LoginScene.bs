@@ -8,6 +8,8 @@ sub init()
   m.log = new log.Logger("LoginScene")
   m.top.setFocus(true)
   m.top.isOptionsAvailable = false
+  ' Overhang config — declarative field projected onto the overhang by JRScene (registerOverhangData).
+  m.top.isLogoVisible = true
 
   ' The sign-in screen. Build the username/password config + the save-credentials checkbox
   ' here; submit/back emit intents the loginRouter handles.
@@ -73,13 +75,6 @@ sub onScreenShown()
 
   ' Clear backdrop on login screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
-
-  scene = m.top.getScene()
-  overhang = scene.findNode("overhang")
-  if isValid(overhang)
-    overhang.isLogoVisible = true
-    overhang.currentUser = ""
-  end if
 end sub
 
 ' Submit pressed → publish the entered credentials + save flag, emit the intent.

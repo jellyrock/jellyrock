@@ -11,7 +11,7 @@ related-files:
   - components/data/SceneManager.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-06-24
+last-reviewed: 2026-06-26
 ---
 
 # Navigation (sgRouter)
@@ -60,6 +60,9 @@ Pure interface declaration. No BrighterScript backing file. Adds these fields to
 | `overhangTabs` | array | Tab definitions for the top bar |
 | `selectedTabId` | string (alwaysNotify) | Currently selected tab |
 | `isOverhangVisible` | bool (default: true) | Hide the top bar (e.g., during video playback) |
+| `isLogoVisible` | bool (default: false) | Show the JellyRock logo in the overhang |
+| `shouldShowIcons` | bool (default: false) | Show the search + settings icons (gated also on a current user) |
+| `shouldShowUserDropdown` | bool (default: false) | Show the current-user dropdown (controller derives the name from the global user) |
 | `isOptionsAvailable` | bool (default: true) | Whether the options key opens a panel for this group |
 
 `JRScene`'s overhang controller reads these fields when the router mounts/switches the active view (see "Overhang controller" below). `JRGroup` is still the base for sub-panels and dialogs, and still carries the overhang interface surface.
@@ -215,7 +218,7 @@ Preserving the *deepest* focused element (not just `focusedChild`) matters for n
 
 ## Overhang controller
 
-`JROverhang` is the persistent top bar (logo, current user info, search icon, settings icon, library tabs, clock). It lives in `JRScene` and is **not** part of any individual view. Each view *describes* what it wants in the overhang via its `JRGroup` fields (`isOverhangVisible`, `overhangTitle`, `overhangTabs`, `selectedTabId`).
+`JROverhang` is the persistent top bar (logo, current user info, search icon, settings icon, library tabs, clock). It lives in `JRScene` and is **not** part of any individual view. Each view *describes* what it wants in the overhang via its `JRGroup` fields (`isOverhangVisible`, `overhangTitle`, `overhangTabs`, `selectedTabId`, `isLogoVisible`, `shouldShowIcons`, `shouldShowUserDropdown`) — the controller projects them onto the shared `JROverhang` atomically on view-change, so the whole top bar updates in one frame (no transition flicker). Views **declare** these (typically in `init()`); they never poke the `JROverhang` node directly.
 
 The controller **now lives on `JRScene`** (lifted verbatim from the deleted `SceneManager` register/`unregister` pair) and is driven by the router's active view rather than a stack. When the router mounts or switches the active view, `m.global.activeRoutedView` changes and `onActiveRoutedViewChanged()` (`JRScene.bs:434`) re-points the binding:
 
@@ -236,6 +239,7 @@ end sub
 
 - **Tabs before title** — `m.overhang.tabs` is set *before* `m.overhang.title` so `onTabsChanged` can hide the title before it renders with text, preventing a visible title→tab transition flash.
 - **Bidirectional `selectedTabId`** — when the user changes tabs in the overhang, `onOverhangTabSelected` (`JRScene.bs:504`) writes back into the active routed view's `selectedTabId`, which the view observes to swap content. Home uses this for the home/favorites tab swap.
+- **Logo / icons / dropdown projection** — `isLogoVisible`, `shouldShowIcons` and `shouldShowUserDropdown` are projected (and observed) alongside tabs/title so the whole overhang settles in one frame. `shouldShowUserDropdown` is intentionally a boolean: the controller derives the displayed name from the global user (`applyOverhangUserDropdown`), so a view only declares *whether* the dropdown shows, not the name. This replaced the older pattern where each post-login screen poked `isLogoVisible` / `currentUser` / `shouldShowIcons` imperatively in `onScreenShown` (across multiple frames → a visible overhang flicker on Home↔detail transitions).
 
 ## `SceneManager` is now a service node
 

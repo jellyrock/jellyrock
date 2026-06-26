@@ -14,6 +14,10 @@ sub init()
   m.top.overhangTitle = translate(translationKeys.LabelSettings)
   m.top.isOptionsAvailable = false
 
+  ' Overhang config — declarative fields projected onto the overhang by JRScene (registerOverhangData).
+  m.top.isLogoVisible = true
+  m.top.shouldShowUserDropdown = true
+
   m.userLocation = []
   m.themeColorsChanged = false
   m.languageChanged = false
@@ -668,12 +672,6 @@ end sub
 sub onScreenShown()
   ' Clear backdrop on settings screens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
-
-  overhang = m.top.getScene().findNode("overhang")
-  if not isValid(overhang) then return
-
-  overhang.isLogoVisible = true
-  overhang.currentUser = m.global.user.name
 
   ' Ensure settings menu has focus every time this screen is shown.
   ' init() calls setFocus before the node is in the scene graph (silently fails),

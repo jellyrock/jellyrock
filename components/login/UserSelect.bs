@@ -11,6 +11,8 @@ sub init()
   m.log.verbose("Initializing UserSelect component")
 
   m.top.isOptionsAvailable = false
+  ' Overhang config — declarative field projected onto the overhang by JRScene (registerOverhangData).
+  m.top.isLogoVisible = true
   m.top.findNode("selectUserLabel").text = translate(translationKeys.LabelSelectAUser)
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
   m.buttons = m.top.findNode("buttons")
@@ -156,14 +158,6 @@ sub onScreenShown()
     if isValid(route) and isValid(route.context) and isValid(route.context.users)
       m.top.itemContent = route.context.users
     end if
-  end if
-
-  scene = m.top.getScene()
-  overhang = scene.findNode("overhang")
-  if isValid(overhang)
-    overhang.isLogoVisible = true
-    overhang.currentUser = ""
-    m.log.debug("Configured overhang for UserSelect")
   end if
 
   ' Load splashscreen (handles race condition)

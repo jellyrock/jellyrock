@@ -685,6 +685,19 @@ sub registerOverhangData(group)
 
     if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
     group.observeField("overhangTitle", "updateOverhangTitle")
+
+    ' Logo / icons / user-dropdown — projected from the view's declared fields so they update in
+    ' the SAME frame as tabs/title (no transition flicker). Screens declare these; they never poke
+    ' the overhang node directly. currentUser is derived from the global user so screens only say
+    ' whether the dropdown shows.
+    m.overhang.isLogoVisible = group.isLogoVisible
+    group.observeField("isLogoVisible", "updateOverhangLogo")
+
+    m.overhang.shouldShowIcons = group.shouldShowIcons
+    group.observeField("shouldShowIcons", "updateOverhangIcons")
+
+    applyOverhangUserDropdown(group.shouldShowUserDropdown)
+    group.observeField("shouldShowUserDropdown", "updateOverhangUserDropdown")
   end if
 end sub
 
@@ -695,12 +708,38 @@ sub unregisterOverhangData(group)
     group.unobserveField("overhangTitle")
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
+    group.unobserveField("isLogoVisible")
+    group.unobserveField("shouldShowIcons")
+    group.unobserveField("shouldShowUserDropdown")
     m.overhang.unobserveField("selectedTabId")
   end if
 end sub
 
 sub updateOverhangTitle(msg)
   m.overhang.title = msg.getData()
+end sub
+
+sub updateOverhangLogo(msg)
+  m.overhang.isLogoVisible = msg.getData()
+end sub
+
+sub updateOverhangIcons(msg)
+  m.overhang.shouldShowIcons = msg.getData()
+end sub
+
+sub updateOverhangUserDropdown(msg)
+  applyOverhangUserDropdown(msg.getData())
+end sub
+
+' Show the logged-in user in the overhang dropdown, or clear it to hide the dropdown. The name
+' comes from the global user (the same value every post-login screen used to set imperatively),
+' so a view only declares WHETHER the dropdown shows via shouldShowUserDropdown.
+sub applyOverhangUserDropdown(showDropdown as boolean)
+  if showDropdown and isValid(m.global.user)
+    m.overhang.currentUser = m.global.user.name
+  else
+    m.overhang.currentUser = ""
+  end if
 end sub
 
 sub updateOverhangVisible(msg)
