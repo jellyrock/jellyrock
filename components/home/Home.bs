@@ -201,25 +201,14 @@ sub onScreenShown()
     m.voiceBox.active = true
   end if
 
-  ' Restore focus. Priority:
-  ' 1. Overhang element that triggered the last navigation (icon/dropdown action)
-  '    — these are children of the overhang, not Home, so SceneManager's
-  '    lastFocus walk can't find them.
-  ' 2. SceneManager's lastFocus (normal in-group focus restoration).
-  ' 3. Active content (fallback).
   ' Reset overhang element tracking so the next UP defaults to the active tab
   m.lastOverhangElement = invalid
 
-  if isValid(m.lastOverhangFocus)
-    m.lastOverhangFocus.setFocus(true)
-    m.lastOverhangFocus = invalid
-  else if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
-    m.top.lastFocus.setFocus(true)
-  else if isValid(m.activeContent)
-    m.activeContent.setFocus(true)
-  else
-    m.top.setFocus(true)
-  end if
+  ' Restore focus (overhang-icon-aware — see restoreHomeFocus). NOTE: do NOT clear
+  ' m.lastOverhangFocus here. The router calls handleFocus() immediately AFTER onScreenShown,
+  ' and its default restoreFocus(m.top) would override the overhang-icon focus with a Home row;
+  ' Home's handleFocus re-runs restoreHomeFocus and clears the one-shot target once consumed.
+  restoreHomeFocus()
 
   ' First run: load libraries (the router mounts Home now, so this is no longer
   ' triggered externally by main.bs) and post device capabilities to the server via
@@ -242,6 +231,39 @@ sub onScreenShown()
   ' Re-evaluate backdrop setting visibility (updates when user changes setting from Settings screen)
   scene.callFunc("refreshBackdropSetting")
 end sub
+
+' Restore Home's focus, OVERHANG-ICON-AWARE. Priority:
+'   1. The overhang element that triggered the last navigation (gear / search / dropdown). These
+'      live in the persistent overhang — a child of JRScene, NOT of Home — so they can't be reached
+'      via m.top.lastFocus.
+'   2. Home's own lastFocus (normal in-group restoration), skipping the hidden voice box.
+'   3. Active content, then the Home group.
+' Called by BOTH onScreenShown and handleFocus: the router invokes handleFocus right after
+' onScreenShown, and its base restoreFocus(m.top) would otherwise override the overhang-icon focus
+' with a Home row (the "gear focus removed on return to Home" regression). Does NOT clear the
+' one-shot m.lastOverhangFocus — handleFocus clears it once the resume's focus restore is complete.
+sub restoreHomeFocus()
+  if isValid(m.lastOverhangFocus)
+    m.lastOverhangFocus.setFocus(true)
+  else if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
+    m.top.lastFocus.setFocus(true)
+  else if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
+end sub
+
+' Router focus hook (overrides JRScreen.handleFocus). The router asks the resuming view to take
+' focus right after onViewResume -> onScreenShown. The base implementation uses restoreFocus(m.top),
+' which focuses a Home row and clobbers the overhang-icon (gear/search) focus onScreenShown just set.
+' Re-run Home's overhang-aware restore so the gear stays focused on return (matching prod), then
+' consume the one-shot overhang target.
+function handleFocus(_data = {} as object) as boolean
+  restoreHomeFocus()
+  m.lastOverhangFocus = invalid
+  return true
+end function
 
 ' JRScreen hook called when the screen is hidden by the screen manager
 sub onScreenHidden()
