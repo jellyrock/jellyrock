@@ -218,7 +218,7 @@ function getSavedUsers() as object
       userArray["primaryImageTag"] = primaryImageTag
     end if
 
-    if isValid(username) and isValid(token) and isValid(serverId) and serverId = m.global.server.id
+    if isValid(username) and isValid(token) and serverIdsMatch(serverId, m.global.server.id)
       savedServerUsers.push(userArray)
     end if
   end for
@@ -262,7 +262,7 @@ sub SaveServerList()
     item = savedServers.serverList[i]
     isMatch = false
     if isValidAndNotEmpty(serverId) and isValidAndNotEmpty(item.id)
-      isMatch = (item.id = serverId)
+      isMatch = serverIdsMatch(item.id, serverId)
     else if LCase(item.baseUrl) = serverUrl
       isMatch = true
     end if
@@ -306,7 +306,7 @@ sub DeleteFromServerList(idOrUrl as string)
   normalizedInput = LCase(idOrUrl) ' for URL fallback comparison (baseUrls are always lowercase)
   for each item in savedServers.serverList
     keepEntry = true
-    if isValidAndNotEmpty(item.id) and item.id = idOrUrl
+    if serverIdsMatch(item.id, idOrUrl)
       keepEntry = false ' ID match — remove this entry
     else if item.baseUrl = normalizedInput
       keepEntry = false ' URL fallback — remove this entry
@@ -318,18 +318,24 @@ sub DeleteFromServerList(idOrUrl as string)
   setSetting("saved_servers", FormatJson(newServers))
 end sub
 
-' Pure: match the saved_servers JSON against a server GUID, case-insensitively (Jellyfin GUIDs
-' are canonical lower-case hex, but fold both sides so a mis-cased sender still matches). Split
-' out from the registry read (findSavedServerByGuid in replayRoute.bs) so the match logic is
-' unit-testable without touching the registry (getSetting reads the real "JellyRock" section,
-' which tests must not write). Lives here alongside the saved_servers shape it matches.
+' True when two Jellyfin server ids refer to the same server. Jellyfin GUIDs are canonical
+' lower-case hex, but fold both sides so a mis-cased id (e.g. from an external deep-link/cast
+' sender) still matches. The single source of truth for "same server?" across the saved-server
+' list and the saved-user filter — keeps every id comparison consistent.
+function serverIdsMatch(a as dynamic, b as dynamic) as boolean
+  return isValidAndNotEmpty(a) and isValidAndNotEmpty(b) and LCase(a) = LCase(b)
+end function
+
+' Pure: match the saved_servers JSON against a server GUID, case-insensitively (via
+' serverIdsMatch). Split out from the registry read (findSavedServerByGuid in replayRoute.bs)
+' so the match logic is unit-testable without touching the registry (getSetting reads the real
+' "JellyRock" section, which tests must not write). Lives here alongside the saved_servers shape.
 function findServerInList(savedJson as dynamic, guid as string) as object
   if not isValidAndNotEmpty(guid) or not isValid(savedJson) then return invalid
   parsed = ParseJson(savedJson)
   if not isValid(parsed) or not isValid(parsed.serverList) then return invalid
-  target = LCase(guid)
   for each entry in parsed.serverList
-    if isValidAndNotEmpty(entry.id) and LCase(entry.id) = target then return entry
+    if serverIdsMatch(entry.id, guid) then return entry
   end for
   return invalid
 end function

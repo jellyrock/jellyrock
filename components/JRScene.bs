@@ -459,7 +459,7 @@ sub resolveDeepLink(args)
   m.top.isRemoteDisabled = false
   m.top.isLoading = true
 
-  if isValid(m.deepLinkResolveTask) then m.deepLinkResolveTask.control = "stop"
+  stopDeepLinkResolveTask()
   m.deepLinkResolveTask = CreateObject("roSGNode", "LoadItemsTask")
   m.deepLinkResolveTask.itemsToLoad = "metaDataDetails"
   m.deepLinkResolveTask.itemId = args.itemId
@@ -472,21 +472,27 @@ end sub
 ' pending. Reused by the back arbiter (a back during the resolve aborts the cast) and resetRouter
 ' (sign-out tears the resolve down with the router).
 sub cancelDeepLinkResolve()
+  stopDeepLinkResolveTask()
+  m.deepLinkResolveArgs = invalid
+  m.top.isLoading = false
+end sub
+
+' Release the in-flight deep-link/cast resolve task: drop its observer, stop it, clear the
+' ref. Safe to call when none is pending. Centralizes the unobserve->stop->invalid sequence
+' so every teardown path (resolveDeepLink replace, cancelDeepLinkResolve, onDeepLinkResolved)
+' stays consistent — a stop without a preceding unobserve can leave a stale observer firing.
+sub stopDeepLinkResolveTask()
   if isValid(m.deepLinkResolveTask)
     m.deepLinkResolveTask.unobserveField("content")
     m.deepLinkResolveTask.control = "stop"
     m.deepLinkResolveTask = invalid
   end if
-  m.deepLinkResolveArgs = invalid
-  m.top.isLoading = false
 end sub
 
 sub onDeepLinkResolved()
   if not isValid(m.deepLinkResolveTask) then return
-  m.deepLinkResolveTask.unobserveField("content")
   content = m.deepLinkResolveTask.content
-  m.deepLinkResolveTask.control = "stop"
-  m.deepLinkResolveTask = invalid
+  stopDeepLinkResolveTask()
   m.top.isLoading = false
 
   args = m.deepLinkResolveArgs
@@ -683,10 +689,14 @@ sub registerOverhangData(group)
 end sub
 
 sub unregisterOverhangData(group)
-  group.unobserveField("overhangTitle")
-  group.unobserveField("overhangTabs")
-  group.unobserveField("isOverhangVisible")
-  m.overhang.unobserveField("selectedTabId")
+  ' Mirror registerOverhangData's guard: these fields are only observed for JRGroup views,
+  ' so only unobserve for those (keeps register/unregister symmetric).
+  if isValid(group) and group.isSubType("JRGroup")
+    group.unobserveField("overhangTitle")
+    group.unobserveField("overhangTabs")
+    group.unobserveField("isOverhangVisible")
+    m.overhang.unobserveField("selectedTabId")
+  end if
 end sub
 
 sub updateOverhangTitle(msg)

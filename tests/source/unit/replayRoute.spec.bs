@@ -287,6 +287,38 @@ namespace tests
       m.assertInvalid(findServerInList(json, "aaaa"))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("serverIdsMatch() — case-insensitive server-id equality")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches identical ids")
+    function _()
+      m.assertTrue(serverIdsMatch("abcd-1234", "abcd-1234"))
+    end function
+
+    @it("matches the same id in different case (Jellyfin GUIDs are case-insensitive hex)")
+    @params("ABCD-1234", "abcd-1234")
+    @params("abcd-1234", "ABCD-1234")
+    @params("AbCd-1234", "aBcD-1234")
+    function _(a, b)
+      m.assertTrue(serverIdsMatch(a, b))
+    end function
+
+    @it("does not match different ids")
+    function _()
+      m.assertFalse(serverIdsMatch("abcd-1234", "wxyz-9999"))
+    end function
+
+    @it("returns false when either side is empty or invalid")
+    @params("", "abcd")
+    @params("abcd", "")
+    @params(invalid, "abcd")
+    @params("abcd", invalid)
+    @params(invalid, invalid)
+    function _(a, b)
+      m.assertFalse(serverIdsMatch(a, b))
+    end function
+
   end class
 
 end namespace

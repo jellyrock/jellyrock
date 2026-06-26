@@ -163,7 +163,7 @@ function buildPublicUserList() as object
 
   if numSavedUsers > 0
     for each savedUser in savedUsers
-      if isValid(savedUser.serverId) and savedUser.serverId = m.global.server.id
+      if serverIdsMatch(savedUser.serverId, m.global.server.id)
         ' only show unique userids on screen
         if not arrayHasValue(publicUserIds, savedUser.Id)
           userData = CreateObject("roSGNode", "PublicUserData")
