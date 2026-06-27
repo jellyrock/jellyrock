@@ -4,5 +4,6 @@
  * folder and adding one line here; no new npm script (run.mjs is the only entry point).
  */
 import castPlay from './cast-play.js';
+import serverSwitch from './server-switch.js';
 
-export const TAKES = [castPlay];
+export const TAKES = [castPlay, serverSwitch];

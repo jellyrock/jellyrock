@@ -16,10 +16,23 @@
  * `npm run test:rta` once, or any deploy with injectTestingFiles). The runner only drives.
  */
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, getHero } from '../lib/jellyfin.js';
-import { seedHome, snapshotSession, restoreSession } from '../lib/seed.js';
-import { setupRtaEnv, relaunch, ecp } from '../lib/driver.js';
-import { press, waitHome, sleep } from '../lib/steps.js';
+import { authenticate, getHero, firstMovie } from '../lib/jellyfin.js';
+import {
+  seedHome,
+  seedHomeWithSavedServers,
+  snapshotSession,
+  restoreSession,
+} from '../lib/seed.js';
+import { setupRtaEnv, relaunch, ecp, odc } from '../lib/driver.js';
+import {
+  press,
+  waitHome,
+  waitFor,
+  waitFocused,
+  getVal,
+  getActiveVal,
+  sleep,
+} from '../lib/steps.js';
 import { TAKES } from './takes/index.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
@@ -31,7 +44,23 @@ const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-pla
 const DEMO_HOST = 'demo.jellyfin.org';
 const DEMO_SERVERS = {
   stable: RTA_CONFIG.server, // https://demo.jellyfin.org/stable
-  // unstable: { url: 'https://demo.jellyfin.org/unstable', username: 'demo', password: '' }, // add when a take needs it
+  unstable: {
+    url: 'https://demo.jellyfin.org/unstable',
+    username: 'demo',
+    password: '',
+    // CLONE WORKAROUND (infra fact, not a take concern). The public demo servers are clones of one
+    // image, so BOTH report the same Jellyfin server GUID. JellyRock (correctly) keys server identity
+    // on that GUID — that's what unifies one server reached via several URLs (LAN / reverse-proxy /
+    // VPN) — so it cannot distinguish these two clones, and a cast-to-another-server switch never
+    // fires. The servers ARE genuinely different (names / URLs / versions 10.11 vs 12.0); only their
+    // internal id got duplicated by sloppy cloning. We give the server a stable, distinct synthetic
+    // id so multi-server features behave exactly as they would against two real distinct servers.
+    // The id is never shown in any UI (verified by grep) — it only steers a cast's switch target.
+    // Scope: this is the identity a server presents when it's a cast TARGET (its saved-list entry +
+    // the cast's serverId). A take that LOGS INTO this server would also inherit it as its user
+    // binding — fine as long as overridden servers are used as switch targets, which is their purpose.
+    syntheticServerId: 'de504c0011114a0d8b1de13c1a9d0b71',
+  },
 };
 
 function resolveServer(name) {
@@ -90,20 +119,45 @@ async function stopPlayback() {
   }
 }
 
-/** The choreography toolkit handed to each take's run(). The take touches ONLY this. */
-function makeContext(session, server) {
+/**
+ * The choreography toolkit handed to each take's run(). The take touches ONLY this. Exposes the
+ * primary demo session plus low-level primitives (press/waitFor/getActiveVal/odc) so a take can
+ * drive its own UI beats (dialogs, pickers) without the runner growing a helper per feature.
+ */
+function makeContext(sessions, serversByName, primaryName) {
+  const session = sessions[primaryName];
+  const server = serversByName[primaryName];
   return {
-    session,
+    session, // primary demo session (the one the take lands on)
     server,
+    sessions, // every authenticated demo session, keyed by name ('stable' | 'unstable' | ...)
     ecp,
+    odc,
     press,
+    sleep,
+    waitFor,
+    waitFocused,
+    getVal,
+    getActiveVal,
     getHero: () => getHero(session),
+    firstMovieOn: (name) => firstMovie(sessions[name]), // a real movie + title on a named server
+    sessionFor: (name) => sessions[name],
 
     /** Seed + relaunch + wait for the named opening screen (the frame the operator records first). */
     async land(screen) {
       if (screen !== 'home')
         throw new Error(`land(): unsupported screen "${screen}" (add a seed for it)`);
       await seedHome(session, LOCALE); // demo server only — the home server is never written
+      await relaunch();
+      await waitHome();
+    },
+
+    /**
+     * Land logged into the primary demo server with EVERY take server saved — the state a
+     * cast-to-another-server take needs (signed into one, another saved to switch to).
+     */
+    async landWithSavedServers() {
+      await seedHomeWithSavedServers(session, Object.values(sessions), LOCALE);
       await relaunch();
       await waitHome();
     },
@@ -118,10 +172,13 @@ function makeContext(session, server) {
       await sleep(ms);
     },
 
-    /** Fire a runtime cast — the same ECP wire a Jellyfin sender mints. */
-    async cast(contentId) {
+    /**
+     * Fire a runtime cast — the same ECP wire a Jellyfin sender mints. `extraParams` carries the
+     * sibling ECP params a real sender adds (e.g. `itemName` for the server-switch prompt title).
+     */
+    async cast(contentId, extraParams = {}) {
       console.log(`· casting ${contentId} ...`);
-      await ecp.sendInput({ params: { contentId } });
+      await ecp.sendInput({ params: { contentId, ...extraParams } });
     },
 
     waitPlaying: (timeout) => waitMediaPlaying(timeout),
@@ -147,7 +204,11 @@ async function main() {
     process.exit(1);
   }
 
-  const server = resolveServer(take.server); // throws before touching the device if not a demo host
+  // A take targets one server (`server: 'stable'`) or several (`servers: ['stable','unstable']`);
+  // the first is primary (the one it lands on). Privacy-check ALL before touching the device.
+  const serverNames = take.servers ?? [take.server];
+  const serversByName = {};
+  for (const name of serverNames) serversByName[name] = resolveServer(name); // throws early if not a demo host
   setupRtaEnv();
   // Wake the device + bring the RTA channel (and its ODC component) up BEFORE the first registry
   // call — snapshotSession is an ODC call and would fail on a suspended/relaunched device.
@@ -155,15 +216,28 @@ async function main() {
   const saved = await snapshotSession(); // restore the real session afterward, no matter what
   let cleanlyRestored = false;
   try {
-    const session = await authenticate(server);
+    const sessions = {};
+    for (const name of serverNames) {
+      const cfg = serversByName[name];
+      const session = await authenticate(cfg);
+      // Apply a declared synthetic id (clone workaround — see DEMO_SERVERS) so takes can read
+      // session.serverId transparently without knowing the demo servers share a real GUID. Pure
+      // identity data layered on an immutable copy; the real url / token / name are untouched.
+      sessions[name] = cfg.syntheticServerId
+        ? { ...session, serverId: cfg.syntheticServerId }
+        : session;
+    }
+    const primaryName = serverNames[0];
     console.log('\n──────────────────────────────────────────────');
     console.log(`  Take    : ${take.name}`);
     console.log(`  ${take.description}`);
-    console.log(`  Server  : ${server.url}`);
-    console.log(`  User    : ${session.username}`);
+    console.log(
+      `  Server  : ${serverNames.map((n) => `${n} (${serversByName[n].url})`).join('  +  ')}`,
+    );
+    console.log(`  User    : ${sessions[primaryName].username}`);
     console.log('──────────────────────────────────────────────');
 
-    await take.run(makeContext(session, server));
+    await take.run(makeContext(sessions, serversByName, primaryName));
     console.log('✓ take complete.');
 
     // Stop gate guarantees recording is stopped BEFORE we touch the session, so it's now safe to
