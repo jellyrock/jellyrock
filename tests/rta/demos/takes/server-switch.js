@@ -26,6 +26,10 @@ async function confirmServerSwitch(ctx) {
   while (Date.now() - start < 15000 && !(await dialogUp())) await ctx.sleep(500);
   if (!(await dialogUp())) throw new Error('server-switch: change-server dialog never appeared');
 
+  // Hold on the dialog so a viewer can actually READ it ("Change Server? Switch to play '…'?")
+  // before the take answers — without this the prompt flashes by faster than a human can follow.
+  await ctx.hold(4500, 'Change Server? dialog (read)');
+
   // Buttons are [Cancel, Switch] (Switch = the last/affirmative). Clamp onto it — Down for a
   // vertical button stack, Right for a horizontal one; each is a harmless no-op in the other
   // orientation, and a 2-button list clamps at its end — then select.
@@ -63,7 +67,7 @@ async function selectDemoUser(ctx) {
     label: 'user picker (#userRow)',
     timeout: 30000,
   });
-  await ctx.hold(2500, 'user picker (unstable)');
+  await ctx.hold(3500, 'user picker (unstable) — orient to the new server'); // it's a screen change; give a beat to register
   await ctx.press(ctx.ecp.Key.Ok); // the single no-password demo user is focused by default
 }
 
