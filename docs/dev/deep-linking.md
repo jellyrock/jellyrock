@@ -82,11 +82,16 @@ Both funnel the params to `stashDeepLink()` (`source/replayRoute.bs`).
 - **Then route** to `/details/<type>/<id>?deeplink=<action>` (post-login, Home is shown first so
   it's the back-stack root; a playback cast arriving over an active player tears that player down
   first). The `?deeplink=<action>` query carries the **action**; `ItemDetails` loads + dispatches it.
+  *(Exception: a grid-container target on `open` diverts to the library grid before `ItemDetails` —
+  see the `open` action below.)*
 - **Dispatch the action** (`ItemDetails.dispatchDeepLinkAction`) — **do what the route asked**, on the resolved
   item. The action is the sender's explicit intent; it is **never** inferred from the item:
   - **`open`** (and any unknown action) → land on the **details springboard**, no playback. A
-    library/folder type (`CollectionFolder` / `UserView` / `Folder`) has no springboard yet, so it
-    toasts + returns Home as an interim until deep-link **grid** render lands ([follow-up](https://github.com/jellyrock/jellyrock/issues/669)).
+    **grid-container** type (`CollectionFolder` / `UserView` / `Folder` / `Channel` / `Genre` /
+    `MusicGenre` / `Studio`) has no springboard, so `JRScene.resolveDeepLink` diverts it **before**
+    `ItemDetails` straight to the scoped library **grid** (`routeForItem` → the same `/library/:id`
+    route an in-app tap uses, handed the already-fetched node as route context; Back lands on Home).
+    Only the non-playback `open` path diverts — a playback action never targets a container.
   - **`play`** → `QueueManager.launchItem`, the **same** per-type quickplay engine a normal in-app
     tap uses (no deep-link-specific play logic): a single **video** resumes its Jellyfin bookmark
     (no resume/start-over dialog); a **Series** smart-resumes the next-up episode
