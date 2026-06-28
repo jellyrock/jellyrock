@@ -53,7 +53,7 @@ jobs:
       # branch's copy of the action — PR-controlled action code never runs
       # with the elevated token, which is the same security posture as the
       # rest of this workflow.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Check if push is from PR merge
         id: merge_check
@@ -120,7 +120,7 @@ jobs:
       # GITHUB_TOKEN into .git/config; combined with the workflow-level
       # `permissions: contents: read` above, this means PR code can't harvest
       # a write-capable token from the workspace.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
