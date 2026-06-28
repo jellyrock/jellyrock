@@ -2,6 +2,7 @@
 name: docs-lint
 description: Run JellyRock's docs governance checks (broken markdown links, broken related-files frontmatter paths, stale tech-debt anchor references, stale-doc detection) and surface a structured fix list grouped by category. Consumes the --json output of scripts/lint/docs-check.cjs and the human-readable output of scripts/lint/docs-stale.cjs. Use when a commit hits the docs-lint pre-push hook, before pushing a PR that touched docs/ or any CLAUDE.md, or when you want a one-shot pass over doc references.
 model: sonnet
+effort: low
 ---
 
 # /docs-lint — programmatic docs governance gate

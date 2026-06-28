@@ -108,6 +108,36 @@ sub setGlobalNodes()
   sceneManager.observeField("reloadHomeRequested", m.port)
   m.global.addFields({ sceneManager: sceneManager })
 
+  ' Auth guard. Created here, BEFORE the router's addRoutes (which runs lazily in
+  ' JRScene.initRouter on the first navigation), and registered by node reference as the
+  ' canActivate guard on every post-login route. Living on m.global lets the main-thread replay
+  ' helper read the path it stashes on a signed-out redirect. See components/auth/AuthManager.bs.
+  m.global.addFields({ AuthManager: CreateObject("roSGNode", "AuthManager") })
+
+  ' Title to toast ("Opening <title>") when the player mounts for a deep-link launch. Set by
+  ' ItemDetails.autoLaunchFromDeepLink (it has the resolved item name); read + cleared by
+  ' PlayerHostView on mount — a stable point that renders reliably through the details->player
+  ' transition (firing it from ItemDetails mid-transition was unreliable).
+  m.global.addField("deepLinkOpeningTitle", "string", false)
+
+  ' The full-screen view the router currently has mounted in JRScene's outlet (post-login
+  ' content screens). JRScene maintains this on every router mount; getActiveView()
+  ' (source/utils/misc.bs) reads it. Typed addField so it can hold a node (invalid init).
+  m.global.addField("activeRoutedView", "node", false)
+
+  ' Video playback launch signal. QueueManager.playQueue has no router chain so it can't
+  ' navigate; it sets this AA ({ type, id }) and JRScene's onPlaybackLaunchRequested turns it
+  ' into a navigateTo("/details/:type/:id/play"). alwaysNotify so re-launching the same item
+  ' (e.g. replay) re-fires the observer.
+  m.global.addField("playbackLaunchRequest", "assocarray", true)
+
+  ' Photo viewer launch signal. The photo launchers (quickplay.photo for a single photo,
+  ' QueueManager.onQuickPlayTaskOutput for a slideshow) run with no router
+  ' chain, so they set this AA ({ itemsNode | itemsArray, itemIndex, isSlideshow, isRandom })
+  ' and JRScene.onPhotoLaunchRequested turns it into a navigateTo("/photo") with the AA as
+  ' route context. alwaysNotify so re-launching the same photo re-fires the observer.
+  m.global.addField("photoLaunchRequest", "assocarray", true)
+
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
 

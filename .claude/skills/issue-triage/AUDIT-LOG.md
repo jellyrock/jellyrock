@@ -1,6 +1,6 @@
 # issue-triage — audit log
 
-Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`](../audit-skill/SKILL.md). Captures each `/audit-skill issue-triage` run's friction findings + applied fixes. Architectural-grade decisions also surface in [`docs/decisions.md`](../../../docs/decisions.md).
+Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`](../audit-skill/SKILL.md). Captures each `/audit-skill issue-triage` run's friction findings + applied fixes. Architectural-grade decisions also surface as numbered ADRs in [`docs/adr/`](../../../docs/adr/README.md) (sub-architectural ones as [`docs/decisions.md`](../../../docs/decisions.md) notes).
 
 ## 2026-05-06 — opus single-file refactor + handoff infrastructure (session `07074348`)
 
@@ -28,6 +28,6 @@ Per-skill audit log per the convention in [`.claude/skills/audit-skill/SKILL.md`
 - A CLAUDE.md rule codifying "no Task delegation for triage" was considered and dropped — structural enforcement (no agent files exist to invoke) is sufficient.
 - A SessionStart hook that surfaces pending handoffs was discussed as mitigation for "must run `/catchup` to discover handoffs" — deferred; can be added later if discoverability proves a real problem.
 
-**Source transcript:** `~/.claude/projects/-home-charlie-PROJECTS-JellyRock-jellyrock/07074348-9877-4142-b097-1e4cf6a70a55.jsonl`
+**Source transcript:** `~/.claude/projects/<project>/07074348-9877-4142-b097-1e4cf6a70a55.jsonl`
 
 **Related architectural decision:** captured separately in `docs/decisions.md` (slug TBD via `/log decision`).

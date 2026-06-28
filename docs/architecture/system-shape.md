@@ -4,6 +4,7 @@ related-files:
   - CLAUDE.md
   - docs/progress.md
   - docs/signals-backlog.md
+  - docs/adr/README.md
   - docs/decisions.md
   - docs/architecture/tech-debt.md
   - .claude/skills/log/SKILL.md
@@ -47,12 +48,13 @@ Static project knowledge lives under [`docs/`](../) in four buckets borrowed loo
 
 This is **Diátaxis-lite**, not strict Diátaxis: there's no `docs/tutorial/` bucket because [`DEVGUIDE.md`](../dev/DEVGUIDE.md) already serves that role and splitting `docs/dev/` by Diátaxis type would force users to know which bucket they want before they can navigate. The cost of strict purity is higher than the value at JellyRock's current scale.
 
-### 2. Four journals for project state
+### 2. Five surfaces for project state
 
 | File | Job | Decay rate | Update via |
 |---|---|---|---|
 | [`docs/progress.md`](../progress.md) | Live state cursor — currently running, recently shipped, open followups | Hours / days | `/log followup` (auto-bumps), `/done` (auto-prepends shipped) |
-| [`docs/decisions.md`](../decisions.md) | Append-only ADR log (Context / Decision / Consequences / Status) | Never (forward-only) | `/log decision` |
+| [`docs/adr/`](../adr/README.md) | Numbered, immutable Architecture Decision Records — architectural / hard-to-reverse / cross-component decisions (Context / Decision / Consequences / Status) | Never (superseded, not edited) | `/log decision` (ADR-grade) |
+| [`docs/decisions.md`](../decisions.md) | Append-only **sub-ADR notes** — narrow / single-component / implementation-level decisions below the ADR bar | Never (forward-only) | `/log decision` (sub-threshold) |
 | [`docs/signals-backlog.md`](../signals-backlog.md) | External version-watching (Jellyfin, Roku OS, BrighterScript, deps) — slow-decay, one row per upstream | Slow | `/log signal`, `/done <slug>` |
 | [`docs/architecture/tech-debt.md`](tech-debt.md) | Internal refactor candidates (severity-classified, slug-based) | Slow | [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md) (handles both add + remove) |
 
@@ -84,7 +86,7 @@ Five layers, fastest feedback first:
 
 - **Session-start (`SessionStart` hook)**: [`session-start-nudge.sh`](../../.claude/hooks/session-start-nudge.sh) (calls [`scripts/lint/session-start-nudge.cjs`](../../scripts/lint/session-start-nudge.cjs)) prints a single advisory line at session start when local state is actionable (pending handoffs, stale `progress.md`, schema-broken journals); silent on clean state. Local-only — no network calls so it stays cheap and offline-tolerant. Surfaces the catchup-discipline rule at the one moment it applies.
 - **Edit-time (Stop hook)**: three sibling hooks fire at end-of-turn — [`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) (architecture-doc reminder), [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) (file-scoped lint surface), and [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh) (stale `progress.md` + Currently-running cursor that overlaps with shipped commits). All three are advisory; never block.
-- **Pre-push (husky)**: [`.husky/pre-push`](../../.husky/pre-push) runs the full validate / lint suite scoped to the push range PLUS two advisory nudges — [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (decision-shape commits without a `decisions.md` change) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the Stop hook). Check steps abort the push; nudges never do.
+- **Pre-push (husky)**: [`.husky/pre-push`](../../.husky/pre-push) runs the full validate / lint suite scoped to the push range PLUS two advisory nudges — [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (decision-shape commits without a `docs/adr/` or `decisions.md` change) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the Stop hook). Check steps abort the push; nudges never do.
 - **Post-merge (GitHub Action)**: [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) fires on PR merge to main and runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) — the *mechanical* close-loop side. Prepends a Recently shipped bullet, conditionally clears the Currently-running cursor (token-overlap heuristic), bumps `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate/Dependabot/bot authors. This layer is what turns the four-pillar pattern from "remember to invoke `/done running`" into automatic — judgment-bearing entries (decisions, tech-debt, followups) still flow through `/pr` → `/log`.
 - **CI**: [`.github/workflows/lint-docs.yml`](../../.github/workflows/_lint-docs.yml) re-runs [`docs-check.cjs`](../../scripts/lint/docs-check.cjs) (broken refs + `progress-stale` + `signals-schema-invalid`) and [`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) (architecture-doc territory gate). Hard pressure at PR time.
 
@@ -92,7 +94,7 @@ Specifically for the journal layer:
 
 - `progress.md` staleness gate — `docs-check.cjs` FAILs when `last-updated` is >7 days old AND there are commits since (the territory-touched logic is implicit: any commit means the cursor moved). The post-merge auto-sync layer is what keeps this gate quiet — without it, `last-updated:` only moves when the user remembers to invoke `/log` or `/done`.
 - `signals-backlog.md` schema validator — `docs-check.cjs` FAILs on missing required bullets, invalid `status` enum, malformed `last_checked` ISO date, or non-positive `staleness_days`.
-- `decisions.md` doesn't get a staleness gate (it's append-only — staleness is meaningless), but its body links + tech-debt anchors are validated.
+- `docs/adr/` and `decisions.md` don't get a staleness gate (immutable / append-only — staleness is meaningless), but their body links + tech-debt anchors are validated by `docs-check.cjs`.
 
 ## The principles
 
@@ -139,7 +141,7 @@ If forced to label the union in one phrase: **"agent-collaborative engineering j
 
 ## Audience tuning
 
-This shape is optimized for **one developer + AI agents** (Charlie + Claude Code + sub-agents). The compressed jargon, the heavy CLAUDE.md tree, the lack of a strict tutorial bucket — all of these would be wrong for an open-source project with multiple active contributors. They're right here because the audience is one human and his AI collaborators, not a public team.
+This shape is optimized for **one developer + AI agents** (the maintainer + Claude Code + sub-agents). The compressed jargon, the heavy CLAUDE.md tree, the lack of a strict tutorial bucket — all of these would be wrong for an open-source project with multiple active contributors. They're right here because the audience is one human and their AI collaborators, not a public team.
 
 JellyRock IS public OSS, but the contributor flow is currently low. If outside-contributor pressure shows up, the right move is **add an onboarding surface on top, don't replace the internals**: a more contributor-friendly `CONTRIBUTING.md`, at least one strict-tutorial walkthrough taking a stranger from `git clone` → first successful build → first PR, and possibly a public-facing `CHANGELOG.md` distinct from the internal "Recently shipped" prose. Internals stay solo+AI optimized.
 

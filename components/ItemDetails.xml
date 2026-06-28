@@ -155,5 +155,6 @@
          toggleWatched is also re-invoked from the Series "mark all" confirmation dialog. -->
     <function name="toggleFavorite" />
     <function name="toggleWatched" />
+    <function name="playFromDeepLink" />
   </interface>
 </component>

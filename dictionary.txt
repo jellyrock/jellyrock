@@ -229,6 +229,7 @@ Globals
 glyphs
 GTD
 GTD-flavored
+GUID
 handoff
 handoffs
 Hant
@@ -391,6 +392,7 @@ RCs
 README
 READMEs
 read-only
+reachability
 rebase
 recurse
 Reddit
@@ -439,6 +441,8 @@ schema-validated
 sdk
 SDK
 selectable
+sgRouter
+sgrouter
 SHA-1
 ship-today
 sideload
@@ -447,6 +451,7 @@ sideloaded
 sideloads
 signals-schema-invalid
 slow-decay
+socio-economic
 solo-ish
 sortable
 splashscreen
@@ -455,6 +460,7 @@ SSDP
 stateful
 Stateful
 stopword
+sub-ADR
 sub-agent
 sub-agents
 subclasses
@@ -512,6 +518,7 @@ unit-tests-tdd
 unlinked
 unobserve
 unprefixed
+unreviewed
 un-shuffle
 unshuffled
 unsynchronized
@@ -598,3 +605,11 @@ unencodeable
 8ch
 WebP
 webp
+PDIF
+TrueHD
+DTS-HD
+EAC3
+AV1
+mkv
+Bitstream
+sideloading

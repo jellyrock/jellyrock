@@ -2,7 +2,8 @@
 topic: playback
 related-files:
   - components/manager/QueueManager.bs
-  - components/manager/ViewCreator.bs
+  - components/video/PlayerHostView.bs
+  - components/video/PlayerHostView.xml
   - components/video/VideoPlayerView.bs
   - components/video/VideoPlayerView.xml
   - components/video/OSD.bs
@@ -12,7 +13,7 @@ related-files:
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
-last-reviewed: 2026-06-06
+last-reviewed: 2026-06-14
 ---
 
 # Video & Audio Playback
@@ -25,12 +26,11 @@ The playback subsystem: queue management, the canonical video player, the audio 
 m.global.queueManager                         ← QueueManager.bs (clean, well-bounded; the exemplar)
 m.global.audioPlayer                          ← AudioPlayer.bs (small; extends Video, the audio engine)
                                                 always present, plays whether the AudioPlayerView is shown or not
-components/manager/ViewCreator.bs             ← factory + dialog handlers (no .xml — pure module)
-  ├── CreateVideoPlayerView()                 ← instantiates VideoPlayerView, pushes scene
-  ├── CreateAudioPlayerView()                 ← instantiates AudioPlayerView, pushes scene
-  └── onSelectSubtitle/Audio/VideoSourcePressed  ← shows radio dialogs, handles selection
 
 components/video/                             ← VIDEO playback UI
+  ├── PlayerHostView.bs/.xml                  ← the routed host for video (extends JRScreen, route
+  │                                             /details/:type/:id/play); owns VideoPlayerView as a
+  │                                             runtime child + the playback-time dialog handlers
   ├── VideoPlayerView.bs/.xml                 ← the canonical video player; extends Video
   ├── OSD.bs/.xml                              ← title, time, progress; auto-hides after 5s
   ├── TrickplayCarousel.bs/.xml                ← scrub-thumbnail carousel
@@ -112,27 +112,28 @@ Preroll:
 
 The big one:
 
-- **`playQueue()`** — looks at the current item's type and dispatches to either `CreateAudioPlayerView()` or `CreateVideoPlayerView()`. The dispatch is a long if/else chain — perfectly readable, no need for a fancier dispatch.
+- **`playQueue()`** — looks at the current item's type and sets `m.global.playbackLaunchRequest = { type, id[, media: "audio"] }`. It does **not** instantiate a player or navigate (a Task/data node has no router chain). `JRScene.onPlaybackLaunchRequested` observes that field and turns it into a route: audio → `/audio` (the routed `AudioPlayerView`), every video-family type → `/details/<type>/<id>/play` (the `PlayerHostView`). The queue is the source of truth for what actually plays; the route `:type`/`:id` just give the launch a deep-link identity.
 
 The whole file is well-commented and reads cleanly. It's frequently held up internally as the gold standard for "what good BrighterScript looks like" — worth reading end-to-end before doing any refactor that touches queue mechanics.
 
-## ViewCreator — `components/manager/ViewCreator.bs`
+## PlayerHostView — `components/video/PlayerHostView.bs/.xml`
 
-A `.bs` module (no `.xml` — it's not a component, just a function library). Its job is two-fold:
+The **routed host** for video playback (route `/details/:type/:id/play`). `VideoPlayerView` extends Roku's native `Video` node, so it can't itself be a `sgrouter_View`; this thin `JRScreen` wrapper is the routed view and owns the player as a **runtime child** (`m.top.appendChild(m.view)`), not a separate pushed scene. It is the new home for what was `ViewCreator`'s video half (the deleted `components/manager/ViewCreator.bs`). Its job is three-fold:
 
-1. **Player factory**: `CreateVideoPlayerView()` / `CreateAudioPlayerView()` instantiate the player node, wire observers, kick off metadata loading, and push the player into the scene stack.
-2. **Playback-time track selection**: when the user opens the `OSD`'s track selection menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `ViewCreator` catches via observers and shows a `radioDialog`. (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
+1. **Player mount**: `onScreenShown` → `mountPlayer()` instantiates `VideoPlayerView`, wires observers, kicks off `GetPlaybackInfoTask`, updates the backdrop, and appends the player as a child (player `visible=false` during loading to avoid a black flash over the backdrop). The queue is already populated *before* navigation (the launcher cleared + pushed, then navigated to `/play`), so the host just reads `getCurrentItem` — **the queue is the source of truth**.
+2. **Queue advancement** (host-internal): next-episode / Live TV restart / channel switch destroy + remount the player child (`playCurrentQueueItem()` = `destroyPlayer()` + `mountPlayer()`), rather than pop/push of scenes.
+3. **Playback-time track selection**: when the user opens the `OSD`'s track menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `PlayerHostView` catches via observers and shows a `radioDialog` (these handlers were ported verbatim from `ViewCreator`). (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
 
 The dialog flow:
 
 ```brightscript
 User presses "audio tracks" on OSD
   → VideoPlayerView sets selectAudioPressed = true
-  → ViewCreator.onSelectAudioPressed() builds an array of {index, isExternal, track, type, selected?}
+  → PlayerHostView.onSelectAudioPressed() builds an array of {index, isExternal, track, type, selected?}
   → m.global.sceneManager.callFunc("radioDialog", "Select Audio", audioData)
   → SceneManager presents the dialog
   → user picks → SceneManager.returnData = chosen item
-  → ViewCreator.onSelectionMade() reads returnData, dispatches by .type
+  → PlayerHostView.onSelectionMade() reads returnData, dispatches by .type
     ├── "subtitleselection" → processSubtitleSelection()
     ├── "audioselection" → processAudioSelection()  → m.view.audioIndex = chosen.index
     └── "videosourceselection" → processVideoSourceSelection()
@@ -140,12 +141,14 @@ User presses "audio tracks" on OSD
 
 The processing functions write back into `VideoPlayerView`'s fields (`audioIndex`, `selectedSubtitle`, `mediaSourceId`), which the player observes and reacts to (e.g., changing `audioIndex` triggers an audio stream switch on the underlying `Video` node).
 
-`onStateChange` handles end-of-playback:
+`onPlayerStateChange` (ported from `ViewCreator.onStateChange`) handles end-of-playback:
 
-- **`finished` state** but `isRetrying = true` → don't pop (`mid-DoVi-fallback` retry)
-- **Live TV channel that finished** → restart the same channel
-- **More items in queue** → pop player, advance position, push player for next item
-- **Queue exhausted** → pop scene back to whatever launched playback
+- **`finished` state** but `isRetrying = true` → don't advance (`mid-DoVi-fallback` retry)
+- **Live TV channel that finished** → `playCurrentQueueItem()` (restart the same channel, host-internal remount)
+- **More items in queue** → `moveForward` + `playCurrentQueueItem()` (destroy + remount for the next item)
+- **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the `keepAlive` view beneath — the launching detail, or Home — resumes)
+
+The player reports its stop playstate to Jellyfin in `destroyPlayer()`: it removes the observer on `state`, then sets `m.view.control = "stop"` (the `Video` node's own `onDestroy` does not report a stop), before `callFunc("onDestroy")` and `removeChild`. So whether the user backs out (`goBack` → `beforeViewClose` → `onDestroy` → `destroyPlayer`) or the queue exhausts, Jellyfin records the stop.
 
 ## VideoPlayerView — `components/video/VideoPlayerView.bs/.xml`
 
@@ -198,14 +201,14 @@ Note: the `OSD`'s `inactiveTimeout` is **5 seconds**, not 10 as some sources may
 
 ### Playback lifecycle
 
-1. **Push** — `ViewCreator.CreateVideoPlayerView()` instantiates the player, observes state + UI press fields, kicks off `GetPlaybackInfoTask`, pushes the scene (player is `visible=false` during loading to avoid a black flash over the backdrop).
+1. **Mount** — `PlayerHostView.mountPlayer()` instantiates the player, observes state + UI press fields, kicks off `GetPlaybackInfoTask`, and appends it as a child of the host (player is `visible=false` during loading to avoid a black flash over the backdrop).
 2. **Metadata loaded** — `onPlaybackInfoLoaded()` populates `playbackData`. The player begins resolving the actual video URL (direct play vs. transcode — see "Transcoding decisions" below).
 3. **Underlying `Video` node starts** — the inherited `state` field transitions to `buffering` → `playing`. The player observes its own state and:
    - Shows the OSD briefly
    - Starts the `playbackTimer` (10-second repeat) → `reportPlayback("update")` to Jellyfin
    - Becomes `visible = true`
 4. **Steady state** — `playbackTimer.fire` → `reportPlayback("update")` every 10 seconds with current position. User interactions (pause, seek, OSD open) are all handled by `onKeyEvent` and the inherited `Video` machinery.
-5. **End / transition** — `state = "finished"` (or user backs out) → ViewCreator.onStateChange handles next-item / pop logic. Final `reportPlayback("stop")` is sent.
+5. **End / transition** — `state = "finished"` → `PlayerHostView.onPlayerStateChange` handles next-item / restart / exit logic (host-internal remount or `goBack`). If the user backs out, the router closes the host (`beforeViewClose` → `onDestroy` → `destroyPlayer`). Either way the stop is reported to Jellyfin via `m.view.control = "stop"` in `destroyPlayer()`.
 
 ### `reportPlayback` — server-side reporting
 
@@ -318,7 +321,7 @@ Multichannel audio handling lives in `source/api/items.bs` and `source/utils/dev
 Special case: **Dolby Vision (DoVi)**. JellyRock has dedicated DoVi handling because `Jellyfin`'s transcoder can sometimes produce HLS segments that overflow Roku's video buffer:
 
 - If `playbackPreserveDovi` is enabled and item is DoVi, attempt a `DoVi-preserving` transcode first.
-- If that produces a `buffer:loop:` source error mid-playback, the player retries with `shouldBypassDoviPreservation = true` (the `isRetrying` flag prevents `ViewCreator.onStateChange` from popping the scene during this in-flight retry).
+- If that produces a `buffer:loop:` source error mid-playback, the player retries with `shouldBypassDoviPreservation = true` (the `isRetrying` flag prevents `PlayerHostView.onPlayerStateChange` from advancing/exiting during this in-flight retry).
 - The retry typically succeeds with direct play (since the device supports DoVi natively, just not the way Jellyfin transcoded it).
 
 Live TV channels always use the HLS transcode wrapper.
@@ -333,7 +336,7 @@ Three "kinds" of subtitles:
 - **Native (Roku-rendered)** — text-format tracks (SRT, VTT) that Roku can display directly. `globalCaptionMode = "On"`, `subtitleTrack = <Roku-mangled track name>`.
 - **Encoded (Jellyfin-burned)** — tracks burned into the video stream by the transcoder (e.g., bitmap subtitles like PGS). `globalCaptionMode = "Off"` (Roku captions hidden because they're already in the picture).
 
-Annoyance addressed in code: Roku **reorders** subtitle tracks unpredictably between what JellyRock provides and what `availableSubtitleTracks` returns. The function `availSubtitleTrackIdx(trackName)` in `ViewCreator.bs` handles this by matching on substring of the track URL rather than expecting index parity.
+Annoyance addressed in code: Roku **reorders** subtitle tracks unpredictably between what JellyRock provides and what `availableSubtitleTracks` returns. The function `availSubtitleTrackIdx(trackName)` in `PlayerHostView.bs` handles this by matching on substring of the track URL rather than expecting index parity.
 
 The current selection persists in user settings (`globalCaptionMode`) so it's remembered across sessions.
 
@@ -344,8 +347,8 @@ Track *language names* (the labels shown in the `TrackDropdown` and OSD menus) a
 Roku voice transport commands (`play`, `pause`, `seek`, `next`, `startover`, `replay`, `skip`, `nowplaying`, `shuffle`, `loop`, `like`, `dislike`, …) arrive on a **separate API surface** from `onKeyEvent` — they're delivered as `roInputEvent` with `info.type = "transport"`. Three pieces wire this up:
 
 1. **Manifest gates** (in `manifest`): `supports_voice_roinput=1`, `supports_etc_seek=1`, `supports_etc_next=1`. Without these, Roku OS shows a "command not available" HUD even if the app would have handled it.
-2. **Main-loop dispatch** (`source/main.bs`): `input.EnableTransportEvents()` opts in. The existing `roInputEvent` branch checks `info.type = "transport"` and dispatches to the active scene's `handleTransport(info)` `callFunc` when that scene is `VideoPlayerView` or `AudioPlayerView`. The return value's `status` is fed back via `input.EventResponse({id, status})` — the status code controls Roku's HUD message (`success` / `success.seek-start` / `success.seek-end` / `error.live` / `error.no-media` / `error.redundant` / `error.generic` / `unhandled`).
-3. **Per-player handlers** — `VideoPlayerView.handleTransport()` and `AudioPlayerView.handleTransport()`, each owning its own command map. Pure logic (setting fallback for instant-replay duration, voice `seek` payload parsing, bounds-checked seek math) lives in `source/utils/voiceTransport.bs` so it's unit-testable without instantiating a player.
+2. **Main-loop dispatch** (`source/main.bs`): `input.EnableTransportEvents()` opts in. The `roInputEvent` branch checks `info.type = "transport"` and resolves the active view via `getActiveView()` (= `m.global.activeRoutedView`). It dispatches `handleTransport(info)` via `callFunc` when that view is `PlayerHostView`, `VideoPlayerView`, or `AudioPlayerView`. For routed video the active view is the `PlayerHostView` wrapper, which forwards `handleTransport` to its child `VideoPlayerView`. The return value's `status` is fed back via `input.EventResponse({id, status})` — the status code controls Roku's HUD message (`success` / `success.seek-start` / `success.seek-end` / `error.live` / `error.no-media` / `error.redundant` / `error.generic` / `unhandled`).
+3. **Per-player handlers** — `VideoPlayerView.handleTransport()` and `AudioPlayerView.handleTransport()`, each owning its own command map (`PlayerHostView.handleTransport` is a thin forwarder to the child player). Pure logic (setting fallback for instant-replay duration, voice `seek` payload parsing, bounds-checked seek math) lives in `source/utils/voiceTransport.bs` so it's unit-testable without instantiating a player.
 
 One deliberate per-player UX deviation from the Roku-doc default:
 
@@ -361,7 +364,7 @@ curl -d '' "http://<roku-ip>:8060/input/dev?id=1&type=transport&command=seek&dir
 
 This is how the Rooibos specs verify status-code logic, and it's the recommended manual smoke-test path.
 
-The deep-link launch branch (`info.DoesExist("mediatype")`) shares the same `roInputEvent` dispatcher — both ingress paths come through the same `roInput` object created at startup.
+The runtime deep-link launch branch (`info.DoesExist("mediatype")`) shares the same `roInputEvent` dispatcher — both ingress paths come through the same `roInput` object created at startup. It is now **route-aware**: it stashes the play path + seeds the queue via `stashDeepLinkPlay`, then (when signed in) `replayAfterLogin()` replays the route chain so back unwinds Player → Details → Home (decision #3). See `bootstrap.md` for the full deep-link flow.
 
 ## A historical note: the legacy video player
 

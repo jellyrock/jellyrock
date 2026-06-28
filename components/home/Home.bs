@@ -27,6 +27,11 @@ sub init()
   m.homeRows.observeField("selectedItem", "onRowItemSelected")
   m.homeRows.observeField("quickPlayNode", "onQuickPlayNode")
 
+  ' Item taps that fall through to playback launch via QueueManager. onRowItemSelected /
+  ' onQuickPlayNode set m.top.quickPlayNode; this self-observer forwards the node to the
+  ' launcher.
+  m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
+
   ' Voice search setup — matches BaseGridView's pattern:
   ' Set voiceEnabled once in init(), never set it to false.
   ' Only toggle active on screen show/hide.
@@ -39,6 +44,81 @@ sub init()
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")
+
+  ' Home is mounted by the router, so it self-wires its overhang title and the options
+  ' side-panel menu.
+  m.top.overhangTitle = translate(translationKeys.LabelHome)
+
+  ' Overhang config — declarative fields projected onto the overhang by JRScene (registerOverhangData).
+  m.top.isLogoVisible = true
+  m.top.shouldShowIcons = true
+  m.top.shouldShowUserDropdown = true
+
+  buildOptionsMenu()
+end sub
+
+' Build the options side-panel (search / settings / change user / change server / sign out).
+' The buttons are observed by Home itself; onSidePanelOption routes them — navigation actions
+' go through the router, session actions up to main.bs.
+sub buildOptionsMenu()
+  sidepanel = m.top.findNode("options")
+  if not isValid(sidepanel) then return
+  m.optionsPanel = sidepanel
+  sidepanel.observeField("closeSidePanel", "onCloseSidePanel")
+
+  menu = [
+    { title: translate(translationKeys.ButtonSearch), id: HomeAction.OPEN_SEARCH },
+    { title: translate(translationKeys.LabelSettings), id: HomeAction.OPEN_SETTINGS },
+    { title: translate(translationKeys.LabelChangeUser), id: HomeAction.CHANGE_USER },
+    { title: translate(translationKeys.LabelChangeServer), id: HomeAction.CHANGE_SERVER },
+    { title: translate(translationKeys.ButtonSignOut), id: HomeAction.SIGN_OUT }
+  ]
+  options = []
+  for each entry in menu
+    o = CreateObject("roSGNode", "OptionsButton")
+    o.title = entry.title
+    o.id = entry.id
+    o.observeField("optionSelected", "onSidePanelOption")
+    options.push(o)
+  end for
+  m.optionButtons = options
+  sidepanel.options = options
+end sub
+
+' Route a Home menu action. Navigation actions resolve through the router on the
+' render thread; session-ending actions (change user/server, sign out) are emitted
+' as userMenuAction for main.bs (which owns the LoginFlow re-entry via goto appStart).
+sub handleHomeMenuAction(actionId as string)
+  if actionId = HomeAction.OPEN_SEARCH
+    sgrouter.navigateTo("/search")
+  else if actionId = HomeAction.OPEN_SETTINGS
+    sgrouter.navigateTo("/settings")
+  else
+    ' Session-reset (change user/server, sign out) needs main.bs to re-enter the login flow.
+    ' Set it on the SCENE, which main.bs observes via its message port — observing a routed
+    ' view's field via port never delivered (the relay defect), but a scene field does (same
+    ' channel as `exit`).
+    m.top.getScene().userMenuAction = actionId
+  end if
+end sub
+
+' Options side-panel button pressed — close the panel, then route the action.
+sub onSidePanelOption(msg)
+  button = msg.getRoSGNode()
+  panel = m.top.findNode("options")
+  if isValid(panel) then panel.visible = false
+  handleHomeMenuAction(button.id)
+end sub
+
+' Options side-panel closed without a selection — restore focus to content.
+sub onCloseSidePanel()
+  if isValid(m.top.lastFocus)
+    m.top.lastFocus.setFocus(true)
+  else if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
 end sub
 
 sub refresh()
@@ -51,8 +131,8 @@ sub refresh()
   end if
 end sub
 
-' Entry point called by Main.bs createAndShowHomeGroup() BEFORE pushScene().
-' Starting data loads before the screen transition completes improves perceived performance.
+' Kicks off the home-row library load. Called from onScreenShown on first run (the
+' router mounts Home, so this is no longer triggered externally by main.bs).
 sub loadLibraries()
   if not isValid(m.homeRows)
     m.log.error("Cannot load libraries - homeRows is invalid")
@@ -72,8 +152,6 @@ sub onScreenShown()
 
   overhang = scene.findNode("overhang")
   if isValid(overhang)
-    overhang.isLogoVisible = true
-    overhang.currentUser = globalUser.name
     m.overhang = overhang
 
     ' Cache overhang element references and observe their events ONCE.
@@ -97,8 +175,7 @@ sub onScreenShown()
       end if
     end if
 
-    ' Enable overhang icons (search + settings) and observe their events once
-    overhang.shouldShowIcons = true
+    ' Cache the search/settings icon refs + observe their events once (re-observing stacks).
     if not isValid(m.searchIcon)
       overhang.observeField("iconAction", "onOverhangIconAction")
 
@@ -127,31 +204,21 @@ sub onScreenShown()
     m.voiceBox.active = true
   end if
 
-  ' Restore focus. Priority:
-  ' 1. Overhang element that triggered the last navigation (icon/dropdown action)
-  '    — these are children of the overhang, not Home, so SceneManager's
-  '    lastFocus walk can't find them.
-  ' 2. SceneManager's lastFocus (normal in-group focus restoration).
-  ' 3. Active content (fallback).
   ' Reset overhang element tracking so the next UP defaults to the active tab
   m.lastOverhangElement = invalid
 
-  if isValid(m.lastOverhangFocus)
-    m.lastOverhangFocus.setFocus(true)
-    m.lastOverhangFocus = invalid
-  else if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
-    m.top.lastFocus.setFocus(true)
-  else if isValid(m.activeContent)
-    m.activeContent.setFocus(true)
-  else
-    m.top.setFocus(true)
-  end if
+  ' Restore focus (overhang-icon-aware — see restoreHomeFocus). NOTE: do NOT clear
+  ' m.lastOverhangFocus here. The router calls handleFocus() immediately AFTER onScreenShown,
+  ' and its default restoreFocus(m.top) would override the overhang-icon focus with a Home row;
+  ' Home's handleFocus re-runs restoreHomeFocus and clears the one-shot target once consumed.
+  restoreHomeFocus()
 
-  ' First run: post device capabilities to the server via fire-and-forget side effect.
-  ' No response handling needed — Main.bs already called loadLibraries() before
-  ' pushing this screen, so data is already in flight.
+  ' First run: load libraries (the router mounts Home now, so this is no longer
+  ' triggered externally by main.bs) and post device capabilities to the server via
+  ' fire-and-forget side effect.
   if m.isFirstRun
     m.isFirstRun = false
+    loadLibraries()
     SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
   else
     ' Subsequent visits: refresh the active tab's data in place
@@ -168,6 +235,39 @@ sub onScreenShown()
   scene.callFunc("refreshBackdropSetting")
 end sub
 
+' Restore Home's focus, OVERHANG-ICON-AWARE. Priority:
+'   1. The overhang element that triggered the last navigation (gear / search / dropdown). These
+'      live in the persistent overhang — a child of JRScene, NOT of Home — so they can't be reached
+'      via m.top.lastFocus.
+'   2. Home's own lastFocus (normal in-group restoration), skipping the hidden voice box.
+'   3. Active content, then the Home group.
+' Called by BOTH onScreenShown and handleFocus: the router invokes handleFocus right after
+' onScreenShown, and its base restoreFocus(m.top) would otherwise override the overhang-icon focus
+' with a Home row (the "gear focus removed on return to Home" regression). Does NOT clear the
+' one-shot m.lastOverhangFocus — handleFocus clears it once the resume's focus restore is complete.
+sub restoreHomeFocus()
+  if isValid(m.lastOverhangFocus)
+    m.lastOverhangFocus.setFocus(true)
+  else if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
+    m.top.lastFocus.setFocus(true)
+  else if isValid(m.activeContent)
+    m.activeContent.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
+end sub
+
+' Router focus hook (overrides JRScreen.handleFocus). The router asks the resuming view to take
+' focus right after onViewResume -> onScreenShown. The base implementation uses restoreFocus(m.top),
+' which focuses a Home row and clobbers the overhang-icon (gear/search) focus onScreenShown just set.
+' Re-run Home's overhang-aware restore so the gear stays focused on return (matching prod), then
+' consume the one-shot overhang target.
+function handleFocus(_data = {} as object) as boolean
+  restoreHomeFocus()
+  m.lastOverhangFocus = invalid
+  return true
+end function
+
 ' JRScreen hook called when the screen is hidden by the screen manager
 sub onScreenHidden()
   m.log.info("onScreenHidden")
@@ -183,13 +283,7 @@ sub onScreenHidden()
     m.voiceBox.active = false
   end if
 
-  scene = m.top.getScene()
-  overhang = scene.findNode("overhang")
-  if isValid(overhang)
-    overhang.isLogoVisible = false
-    overhang.shouldShowIcons = false
-    overhang.currentUser = ""
-  end if
+  ' Overhang state is reset by the controller on view-change — intentionally not cleared here.
 end sub
 
 ' ============================================
@@ -223,14 +317,21 @@ sub onVoiceSearch()
   ' Reset for next voice search
   m.voiceBox.text = ""
 
+  ' Record the captured query on Home's interface. Home navigates directly (below), but the
+  ' field is kept as the last-captured-query record (and is what the unit suite asserts).
   m.top.voiceQuery = voiceText
+
+  ' Open the search route with the spoken query as context (the SearchResults view reads
+  ' route.context.query in onViewOpen / applyRouteQuery).
+  sgrouter.navigateTo("/search", { context: { query: voiceText } })
 end sub
 
 ' ============================================
 ' TAB HANDLING
 ' ============================================
 
-' Called when selectedTabId changes (via SceneManager proxy from overhang tab bar).
+' Called when selectedTabId changes (proxied back from the overhang tab bar by JRScene's
+' overhang controller).
 ' Destroys the old tab's content and creates the new tab's content.
 sub onTabChanged()
   tabId = m.top.selectedTabId
@@ -292,9 +393,19 @@ function getActiveRows() as object
   return m.activeContent
 end function
 
-' Proxy selectedItem from whichever row list fires it
+' A row item was selected — navigate to its route, passing the rich content node as context
+' (so details/library self-load without a re-fetch). Items that aren't view navigation (e.g.
+' Chapter) fall through to the playback path via quickPlayNode.
 sub onRowItemSelected(msg)
-  m.top.selectedItem = msg.getData()
+  item = msg.getData()
+  if not isValid(item) then return
+
+  route = routeForItem(item)
+  if isValid(route)
+    sgrouter.navigateTo(route, { context: { item: item } })
+  else
+    m.top.quickPlayNode = item
+  end if
 end sub
 
 ' Proxy quickPlayNode from whichever row list fires it.
@@ -302,6 +413,12 @@ end sub
 ' a stale value that re-fires the m.port observer on screen restoration.
 sub onQuickPlayNode(msg)
   m.top.quickPlayNode = msg.getData()
+end sub
+
+' Forward a fallen-through item tap to the playback launcher.
+sub onQuickPlayLaunch(msg)
+  node = msg.getData()
+  if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
 end sub
 
 ' ============================================
@@ -325,8 +442,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
       end if
 
       ' First visit — default to the tab bar (active tab)
-      ' Lazy-init: tab bar may not exist during first onScreenShown (pushScene
-      ' calls onScreenShown before registerOverhangData creates the tab bar)
+      ' Lazy-init: the tab bar is created by the shared overhang (from JRScene's
+      ' registerOverhangData), not by Home, so m.tabBar may still be uncached here —
+      ' grab it from the overhang on first use.
       if not isValid(m.tabBar) and isValid(m.overhang)
         tabBar = m.overhang.callFunc("getTabBar")
         if isValid(tabBar)
@@ -355,24 +473,25 @@ end sub
 
 ' User dropdown menu item was selected — proxy to Home's interface for Main.bs.
 ' Saves the dropdown so onScreenShown can restore focus when the user returns,
-' then moves focus into Home's tree so pushScene can properly manage focus transfer.
+' then moves focus into Home's tree so the router's suspend saves a focus that
+' back-from-route can restore.
 sub onUserMenuAction()
   if isValid(m.userDropdown)
     m.lastOverhangFocus = m.userDropdown
 
-    ' Move focus to Home group (not activeContent — that would visibly highlight
-    ' a row item before the screen transition). m.top is in Home's tree, which
-    ' satisfies SceneManager.pushScene() without any visible focus jump.
+    ' Move focus into Home's tree before navigating so back-from-route restores it.
     m.top.setFocus(true)
 
-    m.top.userMenuAction = m.userDropdown.selectedAction
+    ' Route the action (search/settings navigate; session actions emit userMenuAction up to
+    ' main.bs).
+    handleHomeMenuAction(m.userDropdown.selectedAction)
   end if
 end sub
 
 ' Overhang icon (search/settings) was pressed — proxy to Home's interface for Main.bs.
 ' Saves the focused icon for focus restoration on return, then moves focus to
-' Home group BEFORE firing the action. This ensures SceneManager.pushScene()
-' can find focus in Home's tree. We focus m.top (not activeContent) to avoid
+' Home group BEFORE firing the action. This ensures the router's suspend saves a
+' focus inside Home's tree. We focus m.top (not activeContent) to avoid
 ' a visible focus jump to the row list before the screen transition.
 sub onOverhangIconAction()
   if isValid(m.overhang)
@@ -389,7 +508,8 @@ sub onOverhangIconAction()
     ' Move focus to Home group — not activeContent (avoids visible row highlight)
     m.top.setFocus(true)
 
-    m.top.userMenuAction = m.overhang.iconAction
+    ' Search/settings icons navigate through the router.
+    handleHomeMenuAction(m.overhang.iconAction)
   end if
 end sub
 
@@ -414,11 +534,24 @@ end sub
 ' ============================================
 
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically by SceneManager.popScene() / clearScenes()
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
 
   m.top.unobserveField("selectedTabId")
+  m.top.unobserveField("quickPlayNode")
+
+  ' Release the options side-panel observers wired in buildOptionsMenu
+  if isValid(m.optionsPanel)
+    m.optionsPanel.unobserveField("closeSidePanel")
+    m.optionsPanel = invalid
+  end if
+  if isValid(m.optionButtons)
+    for each o in m.optionButtons
+      o.unobserveField("optionSelected")
+    end for
+    m.optionButtons = invalid
+  end if
 
   ' Release voice box — match BaseGridView: never set voiceEnabled=false,
   ' just unobserve and release the reference.

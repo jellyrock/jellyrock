@@ -1,0 +1,15 @@
+' Pure, dependency-free deep-link predicates safe to use from BOTH the main thread
+' (replayRoute.bs, via source/ auto-scope) and a render-thread component (via
+' `import "pkg:/source/deepLink.bs"`). Keep this module a LEAF — no router, API-pool,
+' or AuthManager references — so importing it into a render-thread view stays cheap and
+' can't drag main-thread-only code across the thread boundary. That boundary is exactly
+' why isDeepLinkPlaybackAction used to be duplicated in replayRoute.bs and ItemDetails.bs.
+
+' True for deep-link actions that START PLAYBACK (vs "open", which only navigates to the
+' springboard). Gates the player-replacement path (a playback cast arriving over an active
+' player tears it down first; an "open" cast just navigates) and the autoplay decision in
+' ItemDetails. Any unknown action is NOT a playback action -> treated as "open". The verb
+' set is the ADR-0018 contract ({play, shuffle, trailer, instantmix}); keep it in sync there.
+function isDeepLinkPlaybackAction(action as dynamic) as boolean
+  return action = "play" or action = "shuffle" or action = "trailer" or action = "instantmix"
+end function

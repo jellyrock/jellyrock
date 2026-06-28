@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- Add a structured agent + contributor workflow ([#670](https://github.com/jellyrock/jellyrock/pull/670))
+
+### Changed
+
+- Route navigation through `sgRouter`; add deep-link/cast contract ([#677](https://github.com/jellyrock/jellyrock/pull/677))
+
+### Fixed
+
+- (settings) point keyboard submit-key KDFs at the icon assets that exist ([#682](https://github.com/jellyrock/jellyrock/pull/682))
+
+### Dependencies
+
+- Update prettier from v3.8.4 to v3.8.5 ([#680](https://github.com/jellyrock/jellyrock/pull/680))
+- Update GitHub Actions from v1.6.1 to v5.3.0 ([#663](https://github.com/jellyrock/jellyrock/pull/663), [#673](https://github.com/jellyrock/jellyrock/pull/673), [#674](https://github.com/jellyrock/jellyrock/pull/674))
+- Update sharp from v0.34.5 to v0.35.2 ([#657](https://github.com/jellyrock/jellyrock/pull/657), [#665](https://github.com/jellyrock/jellyrock/pull/665))
+- Update linting from v10.5.0 to v18.1.0 ([#661](https://github.com/jellyrock/jellyrock/pull/661), [#658](https://github.com/jellyrock/jellyrock/pull/658))
+- Update vitest monorepo to v4.1.9 ([#664](https://github.com/jellyrock/jellyrock/pull/664))
+- Git hooks ([#671](https://github.com/jellyrock/jellyrock/pull/671))
+
 ## [2.21.0](https://github.com/jellyrock/jellyrock/compare/v2.20.0...v2.21.0) - 2026-06-12
 
 ### Added

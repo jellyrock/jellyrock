@@ -1,0 +1,25 @@
+import "pkg:/source/utils/misc.bs"
+
+' canActivate guard — see AuthManager.xml header. Invoked by the router on the render thread
+' during navigateTo, once per guarded route. A cheap SYNCHRONOUS
+' token check only — no network (launch-time AboutMe re-validation stays in the login flow).
+'
+' currentRequest is the route object the router is resolving; currentRequest.path is the
+' full requested path (incl. any query string), which is exactly what we stash so the
+' post-login replay can resume the original destination.
+'
+' Returns:
+'   true               — token present: allow the navigation.
+'   { path: "/login" } — no token: stash the requested path for post-login replay and
+'                        redirect to /login. The router treats any AA with a non-empty
+'                        `path` as a redirect command (Router.brs sgrouter_runGuardChecks) —
+'                        the same shape sgrouter.createRedirectCommand("/login") produces,
+'                        without pulling the whole router namespace into this guard node.
+function canActivate(currentRequest as object) as dynamic
+  if isValidAndNotEmpty(m.global.user.authToken) then return true
+
+  if isValid(currentRequest) and isValidAndNotEmpty(currentRequest.path)
+    m.top.stashedRoute = currentRequest.path
+  end if
+  return { path: "/login" }
+end function

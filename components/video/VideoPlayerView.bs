@@ -268,10 +268,12 @@ sub switchToQueueItem(queueManager as object, targetPosition as integer)
 
   m.isSwitchingChannel = true
   m.top.control = "stop"
-  m.global.sceneManager.callFunc("clearPreviousScene")
   queueManager.callFunc("setPosition", targetPosition)
   updateQueueBackdrop()
-  queueManager.callFunc("playQueue")
+  ' The player is a child of PlayerHostView — remount it for the new queue position. The host
+  ' destroys this player + mounts the next.
+  host = m.top.getParent()
+  if isValid(host) then host.callFunc("playCurrentQueueItem")
 end sub
 
 sub showChannelSwitchSpinner(nextItem as object)
@@ -675,7 +677,9 @@ sub onPlaybackErrorDialogClosed(msg)
   sourceNode.unobserveField("buttonSelected")
   sourceNode.unobserveField("wasClosed")
 
-  m.global.sceneManager.callFunc("popScene")
+  ' Leave the play route via the host.
+  host = m.top.getParent()
+  if isValid(host) then host.callFunc("exitPlayback")
 end sub
 
 sub onPlaybackErrorButtonSelected(msg)
@@ -1050,8 +1054,8 @@ sub checkTimeToDisplayNextEpisode()
 end sub
 
 ' Forces playback to finished state for proper watched-status and auto-play.
-' Triggers synchronous teardown (onState -> ViewCreator -> popScene -> onDestroy),
-' invalidating all m. references. Callers MUST return immediately after calling.
+' Triggers synchronous teardown (onState -> PlayerHostView.onPlayerStateChange -> destroy/
+' goBack -> onDestroy), invalidating all m. references. Callers MUST return immediately after.
 sub forceFinishPlayback()
   ' Explicitly mark as watched via dedicated API endpoint.
   ' Uses the API pool (not SideEffectTask) so it can't be overwritten
@@ -1353,7 +1357,7 @@ end sub
 ' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
 sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
-  ' Prevents ViewCreator popping the scene when stop causes Roku to fire "finished".
+  ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
   m.LoadMetaDataTask.shouldBypassDoviPreservation = bypassDovi
@@ -1955,12 +1959,12 @@ function handleTransport(evt as object) as object
   end if
 
   if cmd = "stop"
-    ' Mirror back-key behavior: stop playback AND pop the scene. ViewCreator's
-    ' onStateChange only pops on state="finished", not "stopped"; the physical
-    ' back key gets the pop for free via Roku's OS-default back handling, but
-    ' voice transport doesn't, so we pop explicitly.
+    ' Mirror back-key behavior: stop playback AND leave the play route. onState reports
+    ' the stop to Jellyfin; the physical back key leaves the route for free (bubbles to
+    ' the outlet -> goBack), but voice transport doesn't, so exit explicitly via the host.
     m.top.control = "stop"
-    m.global.sceneManager.callFunc("popScene")
+    host = m.top.getParent()
+    if isValid(host) then host.callFunc("exitPlayback")
     return { status: "success" }
   end if
 

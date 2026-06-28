@@ -2,6 +2,7 @@
 name: ramp
 description: Area-scoped deep-dive briefing for context-switching into a JellyRock subsystem. Loads the scoped CLAUDE.md, the matching architecture topic doc, area-relevant tech-debt slugs, recent commits scoped to the area, and skills/agents that mention the area. Use when switching into `components`, `components/video`, `components/data`, `source`, `source/api`, `source/utils`, `tests`, `locale`, or `scripts` after >2 weeks not touching it, or when a sub-agent needs scoped briefing before research. Complements /catchup (which is global).
 model: sonnet
+effort: low
 ---
 
 # /ramp `<area>` — area-scoped deep-dive briefing

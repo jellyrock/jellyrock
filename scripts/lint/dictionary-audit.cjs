@@ -32,6 +32,7 @@ const ALLOWLIST = new Set([
   // Product / brand names
   'BrighterScript',
   'BrightScript',
+  'sgRouter',
   'JavaScript',
   'TypeScript',
   'GitHub',

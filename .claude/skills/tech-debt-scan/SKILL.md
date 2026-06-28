@@ -2,6 +2,7 @@
 name: tech-debt-scan
 description: At the end of a feature or fix, scan docs/architecture/tech-debt.md for entries whose area matches the files this branch touched. Surfaces each candidate with three options — resolved (remove the entry), still applies (no change), or add new (file a new entry for deferred work the PR introduces). Walks the user through each, applies the diffs, and re-runs npm run lint:docs to confirm anchor refs still resolve. Mandated by CLAUDE.md's "PR follow-ups land in tech-debt.md" rule. Use before opening a PR for any non-trivial change.
 model: sonnet
+effort: low
 ---
 
 # /tech-debt-scan — pre-PR debt sweep

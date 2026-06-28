@@ -16,6 +16,7 @@ here.
 - `lib/` — `driver` (env + deploy + relaunch), `steps` (press/getVal/waitFor/waitFocused), `seed` (registry seeds + snapshot/restore), `jellyfin` (demo REST), `nav` (per-screen navigation).
 - `specs/` — the Vitest specs (`it.each(SCREENS)`).
 - `capture.js`, `setup/` — the `RTA_CAPTURE` raw-capture helper and Vitest global/per-worker setup.
+- `demos/` — hands-free **video-capture** takes (`npm run demo`). `run.mjs` owns the privacy-safe lifecycle (snapshot → record gates → restore + relaunch); each `takes/*.js` declares only its choreography. NOT tests — these drive the device for marketing/PR demos against the public demo server only (the runner refuses any non-demo host).
 
 ## Rules
 

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Routed host for video playback. VideoPlayerView extends Roku's native Video node and so
+     can't itself be a sgrouter_View; this thin JRScreen wrapper is the routed view (mounted
+     in JRScene's outlet at /details/:type/:id/play) and owns the player as a runtime child.
+     Queue advancement (next-in-queue, Live TV restart, channel switch) is host-internal — it
+     destroys + remounts the player child. Audio/photo route to their own JRScreen views
+     directly. -->
+<component name="PlayerHostView" extends="JRScreen">
+  <interface>
+    <!-- Host-internal advancement, called by the child VideoPlayerView (channel
+         up/down) and by this host's own onPlayerStateChange (finished -> next). -->
+    <function name="playCurrentQueueItem" />
+    <!-- Leave the play route (queue exhausted / playback error / voice "stop"). -->
+    <function name="exitPlayback" />
+    <!-- Voice transport: main.bs forwards here, this host forwards to the child player. -->
+    <function name="handleTransport" />
+    <!-- Stop + tear down the player without navigating (a deep link arrived while playing;
+         the caller then reroutes to the new content). -->
+    <function name="teardownForDeepLink" />
+  </interface>
+</component>

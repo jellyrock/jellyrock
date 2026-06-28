@@ -2,6 +2,7 @@
 name: new-migration
 description: Guided workflow for writing a registry migration in JellyRock when a setting key is renamed, removed, or its data shape changes. Walks docs/dev/registry-migrations.md (pick next version, write migration in source/migrations.bs for the right scope, register the runner, write a real-registry integration test, run on hardware to verify). Use when an existing setting changes shape; brand-new settings don't need migrations and should use /new-setting instead.
 model: sonnet
+effort: low
 ---
 
 # /new-migration — guided workflow

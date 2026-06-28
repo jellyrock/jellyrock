@@ -11,7 +11,16 @@
  */
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { press, getVal, waitFor, waitFocused, waitHome, hasChildren, sleep } from './steps.js';
+import {
+  press,
+  getVal,
+  getActiveVal,
+  waitFor,
+  waitFocused,
+  waitHome,
+  hasChildren,
+  sleep,
+} from './steps.js';
 
 /**
  * From Home, move focus into the overhang and onto the icon with id `iconId`. Up
@@ -237,7 +246,12 @@ export async function navPlaylistDetails() {
 export async function navLibraryOptions() {
   await navLibraryGrid();
   await press(ecp.Key.Option); // '*' opens the grid options dialog
-  await waitFor('#options.visible', (v) => v === true, {
+  // The dialog is shown AND focused on open, so assert focus ENTERS it rather than
+  // reading `#options.visible`: sgRouter keepAlive leaves a suspended Home in the tree
+  // whose own `#options` (an OptionsSlider, hidden) would win a recursive id lookup and
+  // read visible=false. Focus is unambiguous (one focused node), so it's the robust
+  // signal that the active grid's options dialog opened.
+  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#options'), {
     label: 'grid options dialog',
     timeout: 8000,
   });
@@ -262,15 +276,20 @@ export async function navLibraryOptions() {
  */
 async function openChildDetailByRowType(tileType) {
   await press(ecp.Key.Down); // buttons -> rows panel (lands on the first row)
+  // Scope `#extrasGrid` reads to the active routed view: a detail->detail drill leaves
+  // the PARENT detail suspended (keepAlive) in the scene tree, and every ItemDetails has
+  // an `#extrasGrid`, so a recursive scene-root lookup would read the suspended parent's
+  // grid instead of the active child's. getActiveVal anchors to m.global.activeRoutedView.
   await waitFor('#extrasGrid.content.getChildCount()', hasChildren, {
     label: 'detail rows',
     timeout: 20000,
+    read: getActiveVal,
   });
   await sleep(1200); // let the rows load
-  const rowCount = (await getVal('#extrasGrid.content.getChildCount()')) || 0;
+  const rowCount = (await getActiveVal('#extrasGrid.content.getChildCount()')) || 0;
   let targetRow = -1;
   for (let r = 0; r < rowCount; r++) {
-    if ((await getVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
+    if ((await getActiveVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
       targetRow = r;
       break;
     }
@@ -284,6 +303,7 @@ async function openChildDetailByRowType(tileType) {
       timeout: 8000,
       interval: 300,
       label: `detail row ${r + 1}`,
+      read: getActiveVal,
     });
     await sleep(1500); // panel slide animation
   }

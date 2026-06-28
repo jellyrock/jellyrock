@@ -25,8 +25,8 @@ and you unobserve on teardown — repeated across a 1,300-line `main.bs` god-loo
 bespoke one-fetch Task components. A `Promise` replaces that calling convention with one async
 vocabulary: `fetchAsync(req, id).then(...).catch(...)`.
 
-The key architectural decision (`promise-native-interface-fetchres-exception` in
-[`../decisions.md`](../decisions.md)) is that the promise is **only the interface**. The pool
+The key architectural decision ([ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md))
+is that the promise is **only the interface**. The pool
 engine — the `ApiQueueTask` coordinator, the children-as-vehicles coalescing dodge, the
 ready-cascade, the three-slot `ApiTask` pool — is the cleverest, most regression-sensitive code in
 the app and is **orthogonal** to promises. It is *not* rewritten. Promises sit on top.
@@ -99,8 +99,8 @@ JellyRock deliberately runs **two** async models at once:
 
 This is **Option A** (not "promises everywhere"). The split is a tracked, deliberate trade-off —
 re-open it when BrighterScript **async/await** ships, at which point `await fetchAsync(...)` makes
-the single-model convergence the right call. Both the interface decision and the abandon-mechanism
-decision live in [`../decisions.md`](../decisions.md).
+the single-model convergence the right call. Both the interface decision ([ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md))
+and the abandon-mechanism decision ([ADR 0013](../adr/0013-auto-abandon-promises-bsc-plugin.md)) live in [`../adr/`](../adr/README.md).
 
 ### Where `fetchAsync` can be called from — render thread only
 

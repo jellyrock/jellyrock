@@ -499,26 +499,29 @@ run('signals', () => {
 });
 
 run('decisions', () => {
-  const path = 'docs/decisions.md';
-  if (!existsSync(path)) return { recent_3: [] };
-  const content = readFileSync(path, 'utf8');
+  // ADR-grade decisions live as numbered, immutable records in docs/adr/.
+  // Sub-ADR notes (docs/decisions.md) are deliberately NOT surfaced here —
+  // they're below the architectural bar and would dilute the briefing.
+  const dir = 'docs/adr';
+  if (!existsSync(dir)) return { recent_3: [] };
 
-  // Strip code-fenced blocks before slug-matching — the file's preamble
-  // contains a schema example (`## decision-id: switched-from-foo-to-bar`)
-  // that would otherwise be parsed as a real entry.
-  const stripped = content.replace(/```[\s\S]*?```/g, '');
-
-  const blocks = stripped.match(/##\s+decision-id:\s+[\s\S]*?(?=\n##\s+decision-id:|$)/g) || [];
-  // Newest entries are appended at the bottom (per decisions.md preamble).
-  const last3 = blocks.slice(-3);
-  const recent_3 = last3.map((block) => {
-    const slugMatch = block.match(/##\s+decision-id:\s+(\S+)/);
-    const dateMatch = block.match(/\*\*date\*\*:\s*(\d{4}-\d{2}-\d{2})/);
-    const statusMatch = block.match(/\*\*status\*\*:\s*([a-z]+)/);
+  // ADRs are `NNNN-<slug>.md`; the highest number is the newest. README.md
+  // indexes the set and is not an ADR, so the four-digit prefix filters it out.
+  const files = readdirSync(dir)
+    .filter((f) => /^\d{4}-.*\.md$/.test(f))
+    .sort()
+    .reverse();
+  const recent_3 = files.slice(0, 3).map((file) => {
+    const content = readFileSync(join(dir, file), 'utf8');
+    const numMatch = file.match(/^(\d{4})-/);
+    const titleMatch = content.match(/^#\s+ADR\s+\d{4}:\s*(.+)$/m);
+    const dateMatch = content.match(/\*\*Date:\*\*\s*(\d{4}-\d{2}-\d{2})/);
+    const statusMatch = content.match(/\*\*Status:\*\*\s*(\w+)/);
     return {
-      slug: slugMatch ? slugMatch[1] : null,
+      adr: numMatch ? numMatch[1] : null,
+      title: titleMatch ? titleMatch[1].trim() : null,
       date: dateMatch ? dateMatch[1] : null,
-      status: statusMatch ? statusMatch[1] : null,
+      status: statusMatch ? statusMatch[1].toLowerCase() : null,
     };
   });
   return { recent_3 };

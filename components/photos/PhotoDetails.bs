@@ -24,6 +24,30 @@ sub init()
   onItemContentChanged()
 end sub
 
+' The router creates this view; its launch data arrives as route.context (set by
+' JRScene.onPhotoLaunchRequested). Apply it on first mount, setting
+' itemIndex LAST so onItemContentChanged fires with itemsNode/itemsArray + slideshow flags
+' already in place. itemIndex defaults to -1, so this runs once (subsequent shows are no-ops).
+sub onScreenShown()
+  if m.top.itemIndex = -1 and isValid(m.top.route) and isValid(m.top.route.context)
+    ctx = m.top.route.context
+    if isValid(ctx.itemsNode) then m.top.itemsNode = ctx.itemsNode
+    if isValid(ctx.itemsArray) then m.top.itemsArray = ctx.itemsArray
+    if isValid(ctx.isSlideshow) then m.top.isSlideshow = ctx.isSlideshow
+    if isValid(ctx.isRandom) then m.top.isRandom = ctx.isRandom
+    startIndex = 0
+    if isValid(ctx.itemIndex) then startIndex = ctx.itemIndex
+    m.top.itemIndex = startIndex
+  end if
+
+  ' Mirror JRScreen.onScreenShown's focus rule (this override replaces the base).
+  if isValid(m.top.lastFocus)
+    m.top.lastFocus.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
+end sub
+
 sub onItemContentChanged()
   if isValidToContinue(m.top.itemIndex)
     m.LoadLibrariesTask = createObject("roSGNode", "LoadPhotoTask")
@@ -167,7 +191,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically by SceneManager.popScene() / clearScenes()
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
 

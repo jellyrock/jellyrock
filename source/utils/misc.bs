@@ -210,6 +210,51 @@ function lastFocusedChild(obj as object) as object
   end if
 end function
 
+' Returns the full-screen view currently on top — the router-mounted view tracked on
+' m.global.activeRoutedView. The whole app is routed: pre-login, content, and playback are all
+' router views in JRScene's outlet. Used by main.bs's playback/dialog/device code and by
+' JRScene's options key to resolve "what's on screen".
+function getActiveView() as object
+  return m.global.activeRoutedView
+end function
+
+' Restore focus to a view's saved descendant (lastFocus) if it's still valid, else focus the
+' view root. The canonical focus-restore rule shared by the JRScreen lifecycle bridge
+' (onScreenShown / handleFocus) and main.bs's side-panel handlers. No-op on an invalid view.
+sub restoreFocus(view as object)
+  if not isValid(view) then return
+  if isValid(view.lastFocus)
+    view.lastFocus.setFocus(true)
+  else
+    view.setFocus(true)
+  end if
+end sub
+
+' Maps a selected content item to its route — a named-route arg { name, params } for
+' sgRouter.navigateTo. Pure (no router call) so it can live here in commonly-imported misc.bs;
+' the routed view that owns the selection calls navigateTo itself (passing the rich node as
+' `context` to avoid a re-fetch). Returns invalid for items that are NOT view navigation
+' (Chapter → playback); the caller handles those via the playback path (quickPlayNode).
+function routeForItem(item as object) as object
+  if not isValid(item) or not isValidAndNotEmpty(item.type) or not isValidAndNotEmpty(item.id) then return invalid
+
+  itemType = item.type
+  ' Normalize Live TV aliases to their canonical forms
+  if itemType = "LiveTvChannel" then itemType = "TvChannel"
+  if itemType = "LiveTvProgram" or itemType = "TvProgram" then itemType = "Program"
+
+  ' Chapter is playback (jump to a position in the parent video), not navigation
+  if itemType = "Chapter" then return invalid
+
+  ' Library / grid container types open the scoped grid view
+  if itemType = "CollectionFolder" or itemType = "UserView" or itemType = "Folder" or itemType = "Channel" or itemType = "Genre" or itemType = "MusicGenre" or itemType = "Studio"
+    return { name: "library", params: { id: item.id } }
+  end if
+
+  ' Everything else routes to the type-agnostic details screen
+  return { name: "details", params: { type: itemType, id: item.id } }
+end function
+
 function showDialog(message as string, options = [], defaultSelection = 0) as integer
   lastFocus = lastFocusedChild(m.scene)
 

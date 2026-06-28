@@ -6,6 +6,14 @@ import http from 'node:http';
 import https from 'node:https';
 import { RTA_CONFIG } from '../config.js';
 
+/**
+ * Modern Jellyfin auth header for an authenticated request. Newer servers (e.g. the v12 unstable
+ * demo) REJECT the legacy `X-Emby-Token` (401) and `X-Emby-Authorization` (400) headers; the
+ * `Authorization: MediaBrowser ...` form is what current Jellyfin and JellyRock itself send, and
+ * 10.x accepts it too — so this one header works across every demo server.
+ */
+const tokenHeader = (token) => ({ Authorization: `MediaBrowser Token="${token}"` });
+
 /** JSON POST over node http/https (picks the module by URL scheme). */
 export function postJson(urlStr, headers, bodyObj) {
   const url = new URL(urlStr);
@@ -73,7 +81,7 @@ export async function authenticate(server) {
     'MediaBrowser Client="JellyRock-screenshots", Device="ci", DeviceId="jellyrock-screenshots", Version="1.0.0"';
   const d = await postJson(
     `${server.url}/Users/AuthenticateByName`,
-    { 'Content-Type': 'application/json', 'X-Emby-Authorization': auth },
+    { 'Content-Type': 'application/json', Authorization: auth },
     { Username: server.username, Pw: server.password },
   );
   // AuthenticateByName carries no server NAME (only ServerId); the human-readable
@@ -105,7 +113,7 @@ export async function findMovie(session, movieName) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
-  const data = await getJson(url, { 'X-Emby-Token': session.token }).catch(() => null);
+  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
   const items = data?.Items || [];
   const index = items.findIndex((i) => i.Name === movieName);
   if (index < 0) return { index: 0, id: '', backdropUrl: '' };
@@ -123,6 +131,21 @@ export async function findMovie(session, movieName) {
 export const getHero = (session) => findMovie(session, RTA_CONFIG.heroMovie);
 
 /**
+ * First movie (by SortName) on a server, with its title — `{ id, name }` (or `{ '', '' }`).
+ * Resolved at runtime so a take never assumes a specific title exists on a given demo server
+ * (e.g. the cast-to-another-server take needs a real movie + name on the TARGET server, which
+ * may differ from RTA_CONFIG.heroMovie). The name feeds the cast's `itemName` switch-prompt arg.
+ */
+export async function firstMovie(session) {
+  const url =
+    `${session.serverUrl}/Items?UserId=${session.userId}` +
+    `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1`;
+  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
+  const item = data?.Items?.[0];
+  return item ? { id: item.Id, name: item.Name } : { id: '', name: '' };
+}
+
+/**
  * Fetch the user's libraries, resolved at RUNTIME so we never hardcode a library
  * GUID (those are minted when a library is created and die if it's recreated /
  * the server is rebuilt). Returns [{ name, collectionType, id }]; callers key off
@@ -132,7 +155,7 @@ export const getHero = (session) => findMovie(session, RTA_CONFIG.heroMovie);
  */
 export async function getLibraries(session) {
   const url = `${session.serverUrl}/Users/${session.userId}/Views`;
-  const data = await getJson(url, { 'X-Emby-Token': session.token }).catch(() => null);
+  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
   return (data?.Items || []).map((i) => ({
     name: i.Name,
     collectionType: i.CollectionType,
@@ -144,4 +167,22 @@ export async function getLibraries(session) {
 export function libraryIdFor(libraries, collectionType) {
   const lib = (libraries || []).find((l) => l.collectionType === collectionType);
   return lib ? lib.id : null;
+}
+
+/**
+ * First item id of a given Jellyfin type (Recursive, SortName), or '' if none.
+ * Used by the deep-link specs to cast a real id resolved at runtime (never
+ * hardcoded), e.g. an 'Audio' item to exercise the instantmix action.
+ *
+ * NOTE — the instantmix spec ASSUMES the demo server's library is large enough that
+ * `/Items/<this id>/InstantMix` returns a NON-empty mix. The beforeAll guard only checks the
+ * id resolved (not that it yields a mix), so on a too-small demo audio library the instantmix
+ * test fails as a generic `waitMediaPlaying` timeout, not an obvious "demo can't build a mix".
+ */
+export async function firstItemId(session, includeItemTypes) {
+  const url =
+    `${session.serverUrl}/Items?UserId=${session.userId}` +
+    `&IncludeItemTypes=${includeItemTypes}&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1`;
+  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
+  return data?.Items?.[0]?.Id || '';
 }

@@ -46,6 +46,13 @@ sub init()
   setLoopButtonImage()
   ' Set lastFocus for JRScreen lifecycle management
   m.top.lastFocus = m.buttons
+
+  ' Show "Playing <title>" for an audio cast — the launcher set the title before navigating
+  ' here; this mount is the stable point (nothing churns after). One-shot: clear it.
+  if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
+    displayToast(Substitute(translate(translationKeys.MessagePlayingContent), m.global.deepLinkOpeningTitle), "info")
+    m.global.deepLinkOpeningTitle = ""
+  end if
 end sub
 
 sub applyTheme()
@@ -289,7 +296,8 @@ sub audioStateChanged()
     end if
 
     if m.queueManager.callFunc("getPosition") < m.queueManager.callFunc("getCount") - 1
-      m.top.state = "finished"
+      ' Advance in-place.
+      advanceToNextItem()
     else
       ' We are at the end of the song queue
 
@@ -300,10 +308,40 @@ sub audioStateChanged()
         return
       end if
 
-      ' Return to previous screen
-      m.top.state = "finished"
+      ' Queue exhausted — leave the routed /audio view.
+      exitAudioPlayback()
     end if
   end if
+end sub
+
+' Advance to the next queue item on auto-finish. Audio stays in this routed /audio view
+' (reload the stream in place via LoadNextSong). A non-audio next item in a mixed queue leaves
+' /audio for the player route — playQueue routes it to /play, and /audio (not keepAlive) is
+' destroyed.
+sub advanceToNextItem()
+  nextPosition = m.queueManager.callFunc("getPosition") + 1
+  if nextPosition > m.queueManager.callFunc("getCount") - 1 then return
+
+  if m.playlistTypeCount > 1
+    nextItem = m.queueManager.callFunc("getItemByIndex", nextPosition)
+    if m.queueManager.callFunc("getItemType", nextItem) <> "audio"
+      m.audioPlayer.control = "stop"
+      m.queueManager.callFunc("moveForward")
+      m.queueManager.callFunc("playQueue")
+      return
+    end if
+  end if
+
+  LoadNextSong()
+end sub
+
+' Leave the routed /audio view, returning to the launching detail (the router resumes the view
+' beneath). Stops playback + clears loop first. The physical back key already stops audio in
+' onKeyEvent and bubbles to the outlet's goBack, so it does not route through here.
+sub exitAudioPlayback()
+  m.audioPlayer.control = "stop"
+  m.audioPlayer.loopMode = ""
+  sgrouter.goBack()
 end sub
 
 function playAction() as boolean
@@ -337,9 +375,9 @@ function previousClicked() as boolean
     previousItemType = m.queueManager.callFunc("getItemType", previousItem)
 
     if previousItemType <> "audio"
+      ' A non-audio previous item leaves /audio for the player route (playQueue -> /play;
+      ' /audio is not keepAlive so it is destroyed).
       m.audioPlayer.control = "stop"
-
-      m.global.sceneManager.callFunc("clearPreviousScene")
       m.queueManager.callFunc("moveBack")
       m.queueManager.callFunc("playQueue")
       return true
@@ -405,9 +443,9 @@ function nextClicked() as boolean
     nextItemType = m.queueManager.callFunc("getItemType", nextItem)
 
     if nextItemType <> "audio"
+      ' A non-audio next item leaves /audio for the player route (playQueue -> /play; /audio
+      ' is not keepAlive so it is destroyed).
       m.audioPlayer.control = "stop"
-
-      m.global.sceneManager.callFunc("clearPreviousScene")
       m.queueManager.callFunc("moveForward")
       m.queueManager.callFunc("playQueue")
       return true
@@ -500,6 +538,11 @@ sub pageContentChanged()
 
   currentItem = m.queueManager.callFunc("getCurrentItem")
 
+  ' Update the queue-derived display NOW (same tick as the position-bar/timestamp reset the
+  ' caller just did) so the title + "Track X of Y" don't lag behind until the async stream task
+  ' returns. onAudioStreamLoaded/onMetaDataLoaded re-apply once the fuller item resolves.
+  applyTrackInfo(currentItem)
+
   m.LoadAudioStreamTask.itemId = currentItem.id
   m.LoadAudioStreamTask.observeField("content", "onAudioStreamLoaded")
   m.LoadAudioStreamTask.control = "RUN"
@@ -575,12 +618,7 @@ sub onAudioStreamLoaded()
         setPosterImage("")
       end if
 
-      setScreenTitle(currentItem)
-      setOnScreenTextValues(currentItem)
-      m.songDuration = currentItem.runTimeTicks / 10000000.0
-
-      ' Update displayed total audio length
-      m.totalLengthTimestamp.text = ticksToHuman(currentItem.runTimeTicks)
+      applyTrackInfo(currentItem)
     end if
 
     m.audioPlayer.content = data
@@ -617,15 +655,7 @@ sub onMetaDataLoaded()
     setPosterImage("")
   end if
 
-  setScreenTitle(data)
-  setOnScreenTextValues(data)
-
-  if data.runTimeTicks > 0
-    m.songDuration = data.runTimeTicks / 10000000.0
-
-    ' Update displayed total audio length
-    m.totalLengthTimestamp.text = ticksToHuman(data.runTimeTicks)
-  end if
+  applyTrackInfo(data)
 end sub
 
 ' Set poster image on screen. Empty string clears the URI on both the main album cover
@@ -660,9 +690,9 @@ end sub
 ' just song name if no album artist, or empty string to reset the title.
 sub setScreenTitle(item as object)
   newTitle = ""
-  if item.albumArtist <> "" and item.name <> ""
+  if isValidAndNotEmpty(item.albumArtist) and isValidAndNotEmpty(item.name)
     newTitle = item.albumArtist + " / " + item.name
-  else if item.name <> ""
+  else if isValidAndNotEmpty(item.name)
     newTitle = item.name
   end if
 
@@ -679,11 +709,30 @@ sub setOnScreenTextValues(item as object)
   end if
 
   artistName = ""
-  if item.artists.count() > 0
+  if isValid(item.artists) and item.artists.count() > 0
     artistName = item.artists[0]
   end if
   setFieldTextValue("artist", artistName)
   setFieldTextValue("song", item.name)
+end sub
+
+' Apply the queue-derived now-playing display (track number, title, artist, song, total length)
+' from the current item. Called SYNCHRONOUSLY on a track change (pageContentChanged) so these
+' update on the same tick as the position-bar/timestamp reset instead of lagging until the async
+' stream load returns, and re-applied from the async stream/metadata callbacks once a fuller item
+' resolves (idempotent — setFieldTextValue/setScreenTitle no-op when unchanged or invalid). The
+' poster/backdrop stay in the async path: image loads are inherently async.
+sub applyTrackInfo(item as object)
+  if not isValid(item) then return
+
+  setScreenTitle(item)
+  setOnScreenTextValues(item)
+
+  if isValid(item.runTimeTicks) and item.runTimeTicks > 0
+    m.songDuration = item.runTimeTicks / 10000000.0
+    ' Update displayed total audio length
+    m.totalLengthTimestamp.text = ticksToHuman(item.runTimeTicks)
+  end if
 end sub
 
 ' processScrubAction: Handles +/- seeking for the audio trickplay bar
@@ -840,8 +889,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
+' Stop + tear down without navigating (a deep link arrived while audio plays; the caller
+' reroutes to the new content). Stops the audio the same way the back key does
+' (onKeyEvent "back" -> control "stop") — the caller's goBack is programmatic, so it bypasses
+' that key handler. NOT a full onDestroy: the caller's goBack triggers onDestroy for cleanup,
+' and running onDestroy twice (it nulls m.audioPlayer) crashes the second pass.
+sub teardownForDeepLink()
+  if isValid(m.audioPlayer) then m.audioPlayer.control = "stop"
+end sub
+
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically by SceneManager.popScene() / clearScenes()
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
 
@@ -935,13 +993,10 @@ function handleTransport(evt as object) as object
   end if
 
   if cmd = "stop"
-    ' Mirror back-key behavior: stop playback, clear loop mode, and pop the scene.
-    ' Audio's onStateChange only pops on "finished"; the physical back key gets
-    ' the scene pop for free via Roku's OS-default back handling, but voice
-    ' transport doesn't, so we pop explicitly.
-    m.audioPlayer.control = "stop"
-    m.audioPlayer.loopMode = ""
-    m.global.sceneManager.callFunc("popScene")
+    ' Mirror back-key behavior — stop playback, clear loop, and leave the routed /audio view.
+    ' The physical back key bubbles to the outlet's goBack; voice transport doesn't, so we exit
+    ' explicitly.
+    exitAudioPlayback()
     return { status: "success" }
   end if
 

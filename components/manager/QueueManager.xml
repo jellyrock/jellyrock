@@ -17,6 +17,10 @@
     <function name="getUnshuffledQueue" />
     <function name="hold" />
     <function name="isPrerollActive" />
+    <function name="launchItem" />
+    <function name="launchPhotoAlbum" />
+    <function name="launchQuickPlayAction" />
+    <function name="launchShuffle" />
     <function name="moveBack" />
     <function name="moveForward" />
     <function name="peek" />

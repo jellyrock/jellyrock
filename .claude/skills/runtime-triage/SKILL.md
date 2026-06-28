@@ -2,6 +2,7 @@
 name: runtime-triage
 description: Triage a JellyRock runtime failure (crash, freeze, unexpected behavior) from a pasted Roku log / crash report end-to-end. Parses the log, classifies the failure category (render-thread-crash / task-crash / api-error / registry-corruption / nav-error / unknown), maps to the probable code area, writes a handoff packet to `.claude/handoffs/`, and continues into the investigation contract at sibling [`INVESTIGATION.md`](INVESTIGATION.md). No dedup check — each runtime log is unique. Use when you have a Roku BrightScript log, debug-console output, or a crash report.
 model: opus
+effort: xhigh
 user-invocable: true
 allowed-tools: Bash(git log:*), Bash(git ls-files:*), Bash(git rev-parse:*), Bash(grep:*), Bash(date:*), Read, Write, Grep
 ---
@@ -50,7 +51,7 @@ If multiple match, pick the most specific. State the category once, briefly. If 
 
 ## Step 3 — Identify probable area
 
-Map the failure path or symbol to a JellyRock area. Use the same area map as `/issue-triage` (Step 4 of [`issue-triage/SKILL.md`](../issue-triage/SKILL.md)):
+Map the failure path or symbol to a JellyRock area. Use the same area map as `/issue-triage`'s "Identify probable area" step ([`issue-triage/SKILL.md`](../issue-triage/SKILL.md)):
 
 | Keywords / paths in the log | Probable area |
 |---|---|

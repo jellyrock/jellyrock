@@ -1,26 +1,61 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Play Audio
-sub CreateAudioPlayerView()
-  m.view = CreateObject("roSGNode", "AudioPlayerView")
-  m.view.observeField("state", "onStateChange")
-  m.global.sceneManager.callFunc("pushScene", m.view)
+' Routed host for video playback. See PlayerHostView.xml header.
+'
+' This file owns the video half of playback: the player factory
+' (CreateVideoPlayerView -> mountPlayer), the end-of-playback / queue advancement state
+' machine (onPlayerStateChange, host-internal), and the playback-time track-selection dialog
+' handlers (onSelect*/process*). The player is a runtime child of this host, so advancement
+' destroys + remounts the child.
+
+sub init()
+  m.log = new log.Logger("PlayerHostView")
+  ' The player is fullscreen — keep the shared overhang hidden while this view is the
+  ' router-active view (JRScene's overhang controller reads isOverhangVisible on mount).
+  m.top.isOverhangVisible = false
 end sub
 
-' Play Video
-sub CreateVideoPlayerView()
+' Router lifecycle (via JRScreen's onViewOpen bridge): mount the player for the
+' current queue item. The launching code (QueueManager.playQueue -> JRScene) has
+' already built the queue, so the host just reads getCurrentItem. Guard against a
+' redundant call (e.g. screensaver-exit re-fires onScreenShown).
+sub onScreenShown()
+  if not isValid(m.view)
+    mountPlayer()
+  end if
+end sub
+
+sub onScreenHidden()
+end sub
+
+' Router: take remote focus. Hand it to the player child if mounted; the player also
+' grabs focus itself once content loads (VideoPlayerView.onVideoContentLoaded).
+function handleFocus(_data = {} as object) as boolean
+  if isValid(m.view)
+    m.view.setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
+  return true
+end function
+
+' Build + mount the VideoPlayerView as a child of this host. Ported from
+' ViewCreator.CreateVideoPlayerView; the only behavioral change is appendChild to
+' the host instead of SceneManager.pushScene.
+sub mountPlayer()
   m.playbackData = {}
   m.selectedSubtitle = {}
 
   m.view = CreateObject("roSGNode", "VideoPlayerView")
   ' Keep video player invisible during loading to prevent black background from covering backdrop
   m.view.visible = false
-  m.view.observeField("state", "onStateChange")
+  m.view.observeField("state", "onPlayerStateChange")
   m.view.observeField("selectPlaybackInfoPressed", "onSelectPlaybackInfoPressed")
   m.view.observeField("selectSubtitlePressed", "onSelectSubtitlePressed")
   m.view.observeField("selectAudioPressed", "onSelectAudioPressed")
@@ -39,16 +74,133 @@ sub CreateVideoPlayerView()
   ' Update backdrop for current queue item (handles first item, shuffle, library play, etc.)
   updateQueueBackdrop()
 
-  m.global.sceneManager.callFunc("pushScene", m.view)
+  m.top.appendChild(m.view)
+
+  ' Toast "Playing <title>" for a deep-link launch. Fired here (player mount = stable final
+  ' destination, nothing churns after) rather than from ItemDetails mid-transition, which was
+  ' unreliable after a heavy server switch. One-shot: clear the global after showing.
+  if isValidAndNotEmpty(m.global.deepLinkOpeningTitle)
+    displayToast(Substitute(translate(translationKeys.MessagePlayingContent), m.global.deepLinkOpeningTitle), "info")
+    m.global.deepLinkOpeningTitle = ""
+  end if
 end sub
 
-' -----------------
-' Event Handlers
-' -----------------
+' Tear down the current player child (stop -> report stop to Jellyfin -> onDestroy -> remove).
+sub destroyPlayer()
+  if isValid(m.view)
+    m.view.unobserveField("state")
+    m.view.unobserveField("selectPlaybackInfoPressed")
+    m.view.unobserveField("selectSubtitlePressed")
+    m.view.unobserveField("selectAudioPressed")
+    m.view.unobserveField("selectVideoSourcePressed")
+    ' Stop so the player reports a stop playstate to Jellyfin (Video.onDestroy alone
+    ' does not). Unobserving state first means the stop won't re-enter onPlayerStateChange.
+    m.view.control = "stop"
+    m.view.callFunc("onDestroy")
+    m.top.removeChild(m.view)
+    m.view = invalid
+  end if
 
+  if isValid(m.getPlaybackInfoTask)
+    m.getPlaybackInfoTask.control = "STOP"
+    m.getPlaybackInfoTask.unobserveField("data")
+    m.getPlaybackInfoTask = invalid
+  end if
+end sub
+
+' Host-internal advancement: remount the player for the CURRENT queue position.
+' Callers (onPlayerStateChange next-item / Live TV restart; VideoPlayerView channel
+' switch) set the position + backdrop first. Replaces ViewCreator's
+' clearPreviousScene + playQueue (which created a new pushed scene).
+sub playCurrentQueueItem()
+  destroyPlayer()
+  mountPlayer()
+end sub
+
+' A deep link arrived while this player is active. Stop + report the player NOW (synchronously)
+' WITHOUT navigating — the caller (JRScene.replayDeepLinkReplacingPlayer) then
+' goBacks, whose beforeViewClose -> onDestroy does the full teardown. destroyPlayer is idempotent
+' (guards m.view), so that second teardown is a safe no-op — NOT a full onDestroy here, which
+' would run twice and double-tear-down.
+sub teardownForDeepLink()
+  destroyPlayer()
+end sub
+
+' Leave the play route: pops this host off the router history (beforeViewClose ->
+' onScreenHidden + onDestroy tear the player down) and resumes the view beneath
+' (the item's details, or Home). Called on queue-exhaustion, playback error, and
+' voice "stop". Replaces ViewCreator/VideoPlayerView's SceneManager.popScene.
+sub exitPlayback()
+  sgrouter.goBack()
+end sub
+
+' Router: this view is being destroyed (goBack / sign-out resetRouter). Tear down the
+' player child. abandonApiPromises() is injected here by the auto-abandon-promises BSC
+' plugin (JRScreen.onDestroy's floor doesn't chain to SG-component overrides).
+sub onDestroy()
+  if isValid(m.global.sceneManager)
+    m.global.sceneManager.unobserveField("returnData")
+  end if
+  destroyPlayer()
+end sub
+
+' ===========================================================================
+' End-of-playback / queue advancement state machine.
+' Ported from ViewCreator.onStateChange; the pop/push has become host-internal
+' destroy/remount, and the queue-exhausted pop has become exitPlayback (goBack).
+' ===========================================================================
+sub onPlayerStateChange()
+  if LCase(m.view.state) <> "finished" then return
+
+  ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
+  if isValid(m.view.isRetrying) and m.view.isRetrying then return
+
+  sceneManager = m.global.sceneManager
+  queueManager = m.global.queueManager
+
+  ' Close any open dialogs
+  if sceneManager.callFunc("isDialogOpen")
+    sceneManager.callFunc("dismissDialog")
+  end if
+
+  ' Live TV channel that finished -> restart the same channel (same queue position)
+  currentItem = queueManager.callFunc("getCurrentItem")
+  if isValid(currentItem)
+    currentItemType = queueManager.callFunc("getItemType", currentItem)
+    if currentItemType = "tvchannel"
+      playCurrentQueueItem()
+      return
+    end if
+  end if
+
+  ' More items in the queue -> advance and play the next one
+  if queueManager.callFunc("getPosition") < queueManager.callFunc("getCount") - 1
+    queueManager.callFunc("moveForward")
+    updateQueueBackdrop()
+    playCurrentQueueItem()
+    return
+  end if
+
+  ' Queue exhausted -> leave the player and return to the launching view
+  m.global.audioPlayer.loopMode = ""
+  exitPlayback()
+end sub
+
+' handleTransport: voice transport delegate. main.bs forwards transport commands
+' here (the router-active view is this host, not the inner player); forward to the
+' child player's own handler.
+function handleTransport(evt as object) as object
+  if isValid(m.view) then return m.view.callFunc("handleTransport", evt)
+  return { status: "error.no-media" }
+end function
+
+' ===========================================================================
+' Playback-time track / source / info selection dialogs.
+' Ported verbatim from ViewCreator (they read the child player via m.view and show
+' dialogs through SceneManager, both unchanged under the host).
+' ===========================================================================
 
 ' onSelectAudioPressed: Display audio selection dialog
-'
 sub onSelectAudioPressed()
   audioData = {
     data: []
@@ -133,7 +285,6 @@ sub onSelectSubtitlePressed()
 end sub
 
 ' onSelectVideoSourcePressed: Display video source selection dialog
-'
 sub onSelectVideoSourcePressed()
   videoSourceData = {
     data: []
@@ -189,9 +340,7 @@ sub onSelectionMade()
   end if
 end sub
 
-
 ' processAudioSelection: Audio track selection handler
-'
 sub processAudioSelection()
   selectedAudioTrack = m.global.sceneManager.returnData
 
@@ -285,46 +434,6 @@ sub onPlaybackInfoLoaded()
   ' Check if we have playback info and show it in a popup
   if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
     m.global.sceneManager.callFunc("standardDialog", translate(translationKeys.LabelPlaybackInfo), m.playbackData.playbackinfo)
-  end if
-end sub
-
-' Playback state change event handlers
-sub onStateChange()
-  if LCase(m.view.state) = "finished"
-    ' Don't pop the scene mid-retry; the DoVi fallback calls stop which can fire "finished".
-    if isValid(m.view.isRetrying) and m.view.isRetrying then return
-    sceneManager = m.global.sceneManager
-    queueManager = m.global.queueManager
-
-    ' Close any open dialogs
-    if sceneManager.callFunc("isDialogOpen")
-      sceneManager.callFunc("dismissDialog")
-    end if
-
-    ' Check if this is a Live TV channel that should auto-restart
-    currentItem = queueManager.callFunc("getCurrentItem")
-    if isValid(currentItem)
-      currentItemType = queueManager.callFunc("getItemType", currentItem)
-      if currentItemType = "tvchannel"
-        ' Restart the same channel
-        sceneManager.callFunc("clearPreviousScene")
-        queueManager.callFunc("playQueue")
-        return
-      end if
-    end if
-
-    ' If there is something next in the queue, play it
-    if queueManager.callFunc("getPosition") < queueManager.callFunc("getCount") - 1
-      sceneManager.callFunc("clearPreviousScene")
-      queueManager.callFunc("moveForward")
-      updateQueueBackdrop()
-      queueManager.callFunc("playQueue")
-      return
-    end if
-
-    ' Playback completed, return user to previous screen
-    sceneManager.callFunc("popScene")
-    m.global.audioPlayer.loopMode = ""
   end if
 end sub
 

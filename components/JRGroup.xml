@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="JRGroup" extends="Group">
+<!--
+  JRGroup is the common base for BOTH full-screen routed views (via JRScreen)
+  and non-routed sub-panels / dialogs (ExtrasSlider, JRMessageDialog, section,
+  sectionScroller, OverviewDialog, ProgramDetails).
+
+  It extends sgrouter_View so JRScreen-derived screens are routable by
+  sgRouter without per-screen changes and without duplicating the overhang
+  field surface onto JRScreen (components/CLAUDE.md: "don't duplicate that
+  field list anywhere else"). Non-routed sub-panels inherit the sgRouter view
+  interface too, but it stays INERT for them: the router only drives the
+  lifecycle of views it mounts in its outlet via navigateTo — never dialogs
+  shown through m.scene.dialog, nor child panels nested inside a screen.
+-->
+<component name="JRGroup" extends="sgrouter_View">
   <interface>
     <field id="backPressed" type="boolean" alwaysNotify="true" />
     <field id="lastFocus" type="node" />
@@ -8,5 +21,12 @@
     <field id="isOverhangVisible" value="true" type="boolean" />
     <field id="overhangTabs" type="array" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
+    <!-- Declarative overhang config — the JRScene overhang controller projects these onto the
+         shared overhang atomically on view-change (see registerOverhangData), so the whole
+         overhang updates in one frame. Screens DECLARE these (typically in init); they never
+         poke the overhang node directly. Defaults give a bare overhang (detail/grid screens). -->
+    <field id="isLogoVisible" type="boolean" value="false" />
+    <field id="shouldShowIcons" type="boolean" value="false" />
+    <field id="shouldShowUserDropdown" type="boolean" value="false" />
   </interface>
 </component>

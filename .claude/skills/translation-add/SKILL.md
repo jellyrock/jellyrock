@@ -2,6 +2,7 @@
 name: translation-add
 description: Add a new translation key to JellyRock's custom JSON i18n system. Walks locale/CLAUDE.md (pick the right key prefix, add to locale/custom/en_US.json alphabetically, handle plurals via Zero/One/Many suffixes, handle placeholders via indexed {0} {1}, add ISO-639-2 aliases for track-language keys, run npm run lint:translations + lint:language-coverage). Use when adding a new user-visible string. The BSC plugin watches en_US.json and regenerates the translationKeys constants live, so the BS-side reference becomes available without a manual codegen step.
 model: sonnet
+effort: low
 ---
 
 # /translation-add — guided workflow
@@ -55,10 +56,10 @@ In BS, call `translatePlural(translationKeys.LabelEpisodeCount, count, [stri(cou
 Use indexed placeholders: `{0}`, `{1}`, `{2}`. Every locale file MUST preserve the same placeholder set as `en_US.json` — placeholder parity is enforced by `npm run lint:translations`.
 
 ```json
-"ErrorTypeNotYetSupported": "Type {0} is not yet supported on this device",
+"MessageCouldNotReachServer": "Couldn't reach '{0}'.",
 ```
 
-In BS: `translate(translationKeys.ErrorTypeNotYetSupported, [itemType])`.
+In BS: `translate(translationKeys.MessageCouldNotReachServer, [serverUrl])`.
 
 ## Step 5 — Track-language keys (Language* prefix only)
 

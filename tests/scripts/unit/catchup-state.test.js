@@ -17,6 +17,7 @@ function setupFixture() {
   const fix = createGitFixture();
   mkdirSync(join(fix.dir, 'docs'), { recursive: true });
   mkdirSync(join(fix.dir, 'docs/architecture'), { recursive: true });
+  mkdirSync(join(fix.dir, 'docs/adr'), { recursive: true });
   mkdirSync(join(fix.dir, 'scripts/lib'), { recursive: true });
   // Copy the frontmatter helper so the aggregator's createRequire works.
   // The aggregator does `require('./lib/frontmatter.cjs')` relative to its
@@ -134,17 +135,28 @@ describe('catchup-state', () => {
     expect(parsed.signals.action_pending_count).toBe(1);
   });
 
-  it('decisions section ignores schema examples inside code fences', () => {
+  it('decisions section surfaces the newest 3 ADRs (highest number first), skipping README', () => {
     fix = setupFixture();
-    const exampleFence = '```markdown\n## decision-id: example-fake\n**date**: 2099-01-01\n```';
+    const adr = (n, title, date, status) =>
+      `# ADR ${n}: ${title}\n\n**Status:** ${status}\n**Date:** ${date}\n\nbody.\n`;
     fix.commit('seed', {
-      'docs/decisions.md': `# Decisions\n\nIntro.\n\n${exampleFence}\n\n## decision-id: real-decision\n\n**date**: 2026-05-06\n**status**: accepted\n\nbody.\n`,
+      'docs/adr/README.md': '# Architecture Decision Records\n\nIndex — not an ADR.\n',
+      'docs/adr/0001-first.md': adr('0001', 'First decision', '2026-05-06', 'Accepted'),
+      'docs/adr/0002-second.md': adr('0002', 'Second decision', '2026-05-07', 'Accepted'),
+      'docs/adr/0003-third.md': adr('0003', 'Third decision', '2026-05-08', 'Superseded'),
+      'docs/adr/0004-fourth.md': adr('0004', 'Fourth decision', '2026-05-09', 'Accepted'),
     });
     const { stdout } = runAggregator(fix.dir);
     const parsed = JSON.parse(stdout);
-    expect(parsed.decisions.recent_3).toHaveLength(1);
-    expect(parsed.decisions.recent_3[0].slug).toBe('real-decision');
-    expect(parsed.decisions.recent_3[0].status).toBe('accepted');
+    expect(parsed.decisions.recent_3).toHaveLength(3);
+    expect(parsed.decisions.recent_3.map((d) => d.adr)).toEqual(['0004', '0003', '0002']);
+    expect(parsed.decisions.recent_3[0]).toMatchObject({
+      adr: '0004',
+      title: 'Fourth decision',
+      date: '2026-05-09',
+      status: 'accepted',
+    });
+    expect(parsed.decisions.recent_3[1].status).toBe('superseded');
   });
 
   it('tech_debt section counts items + surfaces top-3 cross-severity', () => {
@@ -232,10 +244,10 @@ describe('catchup-state', () => {
 
   it('per-section errors land in _errors when a fetcher throws', () => {
     fix = setupFixture();
-    // Corrupt decisions.md so the parser has to handle weirdness gracefully.
-    // Decisions parser doesn't actually throw on weird input — it returns
-    // empty. So we instead corrupt tech-debt.md to ensure it can be the
-    // origin of an _errors entry if something does throw. As of v1, none
+    // The decisions parser reads docs/adr/ and returns empty (not a throw) on
+    // a missing dir or weird input, so it can't be the origin of an _errors
+    // entry. This test mainly documents that the per-section catch is wired
+    // (no _errors expected on a healthy fixture). As of v1, none
     // of the parsers throw on real-world input shapes; this test mainly
     // documents that the catch is wired (no _errors expected on a healthy
     // fixture).

@@ -112,7 +112,7 @@ Usage:
 
 ```brightscript
 translate(translationKeys.ButtonPlay)
-translate(translationKeys.ErrorTypeNotYetSupported, [itemType])
+translate(translationKeys.MessageCouldNotReachServer, [serverUrl])
 translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])
 ```
 
@@ -125,7 +125,7 @@ Keys are PascalCase with a category prefix:
 | `Button*` | Button labels (`ButtonPlay`, `ButtonResume`) |
 | `Label*` | UI labels and headings (`LabelEpisodeCount`, `LabelSelectAudio`) |
 | `Message*` | Longer descriptive text (`MessageVideoStartsIn`, `MessageAreYouSureYouWantTo`) |
-| `Error*` | Error messages (`ErrorTypeNotYetSupported`) |
+| `Error*` | Error messages (`ErrorImageTypeNotSupported`) |
 | `Setting*` | Setting titles and descriptions |
 | `Tab*` | Tab labels |
 | `Header*` | Section headers |
