@@ -1108,7 +1108,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     else
       ' The library view is router-owned — pop it via the router (back to Home / the
       ' previous routed view).
-      sgRouter.goBack()
+      sgrouter.goBack()
       return true
     end if
   else if key = "play"

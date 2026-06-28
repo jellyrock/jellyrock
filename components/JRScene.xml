@@ -24,7 +24,8 @@
     <!-- Session-reset bridge. Routed views (Home) set this to a HomeAction id; main.bs
          observes it on the main thread (m.global field + port does NOT deliver — the relay
          defect — but a scene field + port does, like `exit`) and re-enters the login flow
-         via `goto appStart`. -->
+         IN PLACE via handleMenuAction -> resetRouter + reenterLogin (no `goto appStart`; the
+         pre-login flow is routed and driven by the same unified event loop). -->
     <field id="userMenuAction" type="string" value="" alwaysNotify="true" />
     <!-- Content-freshness token. Bumped when a view mutates server content that browse grids
          display (currently: an item delete in ItemDetails). keepAlive grids (BaseGridView)

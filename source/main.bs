@@ -125,63 +125,18 @@ sub Main (args as dynamic) as void
       ' The QuickConnectDialog (started by the coordinator) signalled a successful in-flow
       ' sign-in. Complete the login.
       handlePreLoginIntent("quickConnectComplete")
-    else if isNodeEvent(msg, "closeSidePanel")
-      ' restoreFocus no-ops on an invalid view — getActiveView() is invalid before the first
-      ' mount, during resetRouter, and in the suspend->open gap.
-      restoreFocus(getActiveView())
+    else if isNodeEvent(msg, "close")
+      ' The QuickConnectDialog closed. On SUCCESS this fires right after isAuthenticated (the
+      ' branch above already drove quickConnectComplete -> onQuickConnectDialogClosed, so this is
+      ' a guarded no-op); on CANCEL it is the only signal, and releases the observer + node ref
+      ' that would otherwise leak. Only the QuickConnectDialog is observed for "close" on m.port.
+      onQuickConnectDialogClosed()
     else if isNodeEvent(msg, "isFontDownloadCompleted")
       ' Handle font download completion
       fontDownloadTask = msg.getRoSGNode()
       if isValid(fontDownloadTask)
         handleFontDownloadCompletion(fontDownloadTask)
       end if
-    else if isNodeEvent(msg, "playItem")
-      ' User has selected audio they want us to play
-      startLoadingSpinner()
-      selectedIndex = msg.getData()
-      screenContent = msg.getRoSGNode()
-
-      m.global.queueManager.callFunc("resetShuffle")
-      m.global.queueManager.callFunc("set", screenContent.albumData.items)
-      m.global.queueManager.callFunc("setPosition", selectedIndex)
-      m.global.queueManager.callFunc("playQueue")
-    else if isNodeEvent(msg, "searchValue")
-      query = msg.getRoSGNode().searchValue
-      group.findNode("SearchBox").visible = false
-      options = group.findNode("SearchSelect")
-      options.visible = true
-      options.setFocus(true)
-
-      m.searchDialog = createObject("roSGNode", "ProgressDialog")
-      m.searchDialog.title = translate(translationKeys.LabelLoadingSearchData)
-      m.scene.dialog = m.searchDialog
-
-      m.searchGroup = group
-      m.searchQuery = query
-
-      m.searchTask = CreateObject("roSGNode", "SearchTask")
-      m.searchTask.query = query
-      m.searchTask.observeField("results", m.port)
-      m.searchTask.control = "RUN"
-    else if isNodeEvent(msg, "results")
-      ' Search results arrived from SearchTask
-      task = msg.getRoSGNode()
-      task.unobserveField("results")
-      results = task.results
-      task.control = "STOP"
-      m.searchTask = invalid
-
-      if isValid(m.searchDialog)
-        m.searchDialog.close = true
-        m.searchDialog = invalid
-      end if
-
-      if isValid(m.searchGroup) and isValid(results)
-        searchOptions = m.searchGroup.findNode("SearchSelect")
-        searchOptions.itemData = results
-        searchOptions.query = m.searchQuery
-      end if
-      m.searchGroup = invalid
     else if isNodeEvent(msg, "reachable")
       ' Off-thread deep-link server-switch pre-flight (ServerReachableTask) returned. Tear down
       ' the probe and hand the verdict to performServerSwitch's continuation.
@@ -190,22 +145,6 @@ sub Main (args as dynamic) as void
       task.control = "STOP"
       m.serverReachableTask = invalid
       onServerProbeDone(task.reachable)
-    else if isNodeEvent(msg, "optionSelected")
-      button = msg.getRoSGNode()
-      group = getActiveView()
-      actionId = button.id
-
-      ' Close the side panel before handling the action
-      ' Search from scene — panel may be reparented to optionsPanelOverlay while open
-      if isValid(group)
-        panel = m.scene.findNode("options")
-        if isValid(panel)
-          panel.visible = false
-        end if
-        restoreFocus(group)
-      end if
-
-      handleMenuAction(actionId)
     else if isNodeEvent(msg, "userMenuAction")
       actionId = msg.getData()
       handleMenuAction(actionId)

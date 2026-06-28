@@ -448,7 +448,7 @@ end sub
 ' homeFirst, replacePlayer, detailsRoute } from source/replayRoute.bs.
 '   homeFirst (post-login/cold): land on Home first so an invalid id toasts on Home (good UX).
 '   On a valid id, onDeepLinkResolved navigates (replacing an active player for a playback cast).
-sub resolveDeepLink(args)
+sub resolveDeepLink(args as object)
   if not isValid(args) or not isValidAndNotEmpty(args.itemId) then return
   initRouter()
   if args.homeFirst then sgrouter.navigateTo("/")
@@ -523,8 +523,9 @@ sub onDeepLinkResolved()
   ' Valid. Navigate to the details route (ItemDetails loads + dispatches the action on mount).
   if args.replacePlayer
     ' Playback-only path (a cast replacing an active player): the springboard is transient on the
-    ' way to the player, so it pops the player then navigates the string route via the settle
-    ' primitive (no context — ItemDetails re-fetches by id from the route).
+    ' way to the player, so it tears the active player down then navigates the route chain via
+    ' navigateChainStep — off navigateTo's promise, NOT the removed settle primitive (see ADR
+    ' 0020). No context — ItemDetails re-fetches by id from the route.
     replayDeepLinkReplacingPlayer(args.detailsRoute)
   else
     ' We already fetched the FULL metaDataDetails node to validate the id — hand that exact node
@@ -667,7 +668,7 @@ end sub
 ' tabs-before-title ordering (prevents a title→tab render flash) and the
 ' bidirectional selectedTabId write-back (overhang tab tap → view.selectedTabId).
 ' ---------------------------------------------------------------------------
-sub registerOverhangData(group)
+sub registerOverhangData(group as object)
   if group.isSubType("JRGroup")
     if group.isOverhangVisible
       m.overhang.visible = true
@@ -701,7 +702,7 @@ sub registerOverhangData(group)
   end if
 end sub
 
-sub unregisterOverhangData(group)
+sub unregisterOverhangData(group as object)
   ' Mirror registerOverhangData's guard: these fields are only observed for JRGroup views,
   ' so only unobserve for those (keeps register/unregister symmetric).
   if isValid(group) and group.isSubType("JRGroup")

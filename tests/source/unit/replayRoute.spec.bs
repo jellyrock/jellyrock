@@ -319,6 +319,62 @@ namespace tests
       m.assertFalse(serverIdsMatch(a, b))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("stashDeepLink() — security-boundary composition")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' stashDeepLink composes the (separately-tested) parser + plausibility predicates into the
+    ' stash that actually reshapes the route PATH/QUERY. These cases lock that composition: a junk
+    ' id never stashes, and an injection-bearing mediaType/action is scrubbed to its safe default
+    ' before it can land in a route — the predicates being green in isolation does not prove the
+    ' wiring here is.
+
+    @it("does not stash a structurally-implausible id (junk never reaches a route)")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("bad id with spaces", "Video")
+      m.assertInvalid(m.global.AuthManager.stashedDeepLink)
+    end function
+
+    @it("scrubs an injection-bearing mediaType to the safe 'Video' default")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("validId123", "Movie/../../etc")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.itemId, "validId123")
+      m.assertEqual(stashed.mediaType, "Video")
+    end function
+
+    @it("scrubs an injection-bearing action back to 'open'")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("validId123|action=play=evil/1", "Audio")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.action, "open")
+      m.assertEqual(stashed.mediaType, "Audio")
+    end function
+
+    @it("stashes the fully-composed intent for a valid cross-server link (server + action folded)")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("abc123|serverId=GUID-1|action=Shuffle", "Series", "My Show")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.itemId, "abc123")
+      m.assertEqual(stashed.mediaType, "Series")
+      m.assertEqual(stashed.serverGuid, "guid-1")
+      m.assertEqual(stashed.action, "shuffle")
+      m.assertEqual(stashed.itemName, "My Show")
+    end function
+
+    ' Give m.global a fresh AuthManager with a cleared stash before each stashDeepLink case.
+    ' stashDeepLink writes m.global.AuthManager.stashedDeepLink (the cross-thread replay seam),
+    ' so the test must stand that node up the way setGlobalNodes does in production.
+    sub resetStashedDeepLink()
+      if not isValid(m.global.AuthManager)
+        m.global.addFields({ AuthManager: createObject("roSGNode", "AuthManager") })
+      end if
+      m.global.AuthManager.stashedDeepLink = invalid
+    end sub
+
   end class
 
 end namespace

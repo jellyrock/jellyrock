@@ -339,14 +339,18 @@ sub onQuickConnectRequested()
   ' isAuthenticated only ever fires =true (after the post-auth save-credentials prompt).
   ' main.bs observes it and dispatches the quickConnectComplete intent.
   m.quickConnectDialog.observeField("isAuthenticated", m.port)
+  ' close fires on BOTH success and cancel; main.bs routes it to onQuickConnectDialogClosed so a
+  ' user cancel (which never sets isAuthenticated) still releases the observer + ref.
+  m.quickConnectDialog.observeField("close", m.port)
   m.scene.dialog = m.quickConnectDialog
 end sub
 
-' Release the Quick Connect dialog observer once it has signalled success (or been torn
-' down). The dialog closed itself (close=true); we just drop our reference + observer.
+' Release the Quick Connect dialog observer once it has signalled success or been cancelled.
+' The dialog closed itself (close=true); we just drop our reference + observers.
 sub onQuickConnectDialogClosed()
   if isValid(m.quickConnectDialog)
     m.quickConnectDialog.unobserveField("isAuthenticated")
+    m.quickConnectDialog.unobserveField("close")
     m.quickConnectDialog = invalid
   end if
 end sub

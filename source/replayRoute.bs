@@ -51,7 +51,9 @@ function parseDeepLinkContentId(raw as string) as object
       key = LCase(Left(pair, eq - 1).trim())
       value = Mid(pair, eq + 1).trim()
       if key = "id"
-        result.itemId = value
+        ' Guard like action/server below: an explicit empty "id=" must not clobber a value an
+        ' earlier bare segment already supplied (e.g. "abc|id=").
+        if isValidAndNotEmpty(value) then result.itemId = value
       else if key = "server" or key = "serverid"
         ' Jellyfin server GUIDs are canonical lower-case hex; normalize so a sender that
         ' upper-cases the GUID still matches a saved server (the compare sites are also folded).

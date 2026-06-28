@@ -84,7 +84,7 @@ end sub
 
 ' Sidepanel closed without a selection (was CreateServerGroup 366-369).
 sub onCloseSidePanel()
-  m.top.setFocus(true)
+  ' setFocus on the child focuses up the chain, so focusing m.top first is redundant.
   m.serverPicker.setFocus(true)
 end sub
 

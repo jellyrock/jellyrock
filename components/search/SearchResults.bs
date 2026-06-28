@@ -47,6 +47,9 @@ sub init()
   ' First show focuses the keyboard to type immediately; later shows (keepAlive resume, e.g.
   ' back from a result detail) restore the prior focus.
   m.isFirstShow = true
+  ' Last voice query applied via applyRouteQuery — guards against re-applying (and re-grabbing
+  ' focus) on a keepAlive back-resume that replays the same route context.
+  m.lastAppliedQuery = ""
 
 end sub
 
@@ -90,13 +93,22 @@ end sub
 ' If the route carries a voice query in its context, pre-populate the search box (which
 ' triggers the search via the searchAlpha alias) and focus the text entry. Returns true when
 ' a query was applied so onScreenShown can skip normal focus.
+'
+' onScreenShown fires on first open AND on keepAlive resume, and the router replays the
+' ORIGINAL route (with its query context) on a back-resume (Router.brs reuses view.route) — so
+' applying unconditionally would re-grab focus to the text box every time the user backs out of
+' a result. Guard on the last-applied value: a back-resume carries the same query we already
+' applied (skip), while a genuinely new voice search carries a different query (apply). The box
+' already holds the prior term in the keepAlive case, so skipping a repeat is also the right UX.
 function applyRouteQuery() as boolean
   route = m.top.route
   if not isValid(route) or not isValid(route.context) then return false
 
   query = route.context.query
   if not isValidAndNotEmpty(query) then return false
+  if query = m.lastAppliedQuery then return false
 
+  m.lastAppliedQuery = query
   m.searchAlphabox.text = query
   m.searchAlphabox.textEditBox.setFocus(true)
   return true
