@@ -73,8 +73,8 @@
                   "strOut": "backspace"
                 },
                 {
-                  "icon": "pkg:/images/icons/check-white.png",
-                  "focusIcon": "pkg:/images/icons/check-black.png",
+                  "icon": "pkg:/images/icons/check-white_$$RES$$.png",
+                  "focusIcon": "pkg:/images/icons/check-black_$$RES$$.png",
                   "strOut": "submit"
                 }
               ]
