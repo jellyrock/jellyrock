@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Add a structured agent + contributor workflow ([#670](https://github.com/jellyrock/jellyrock/pull/670))
 
+### Changed
+
+- Route navigation through `sgRouter`; add deep-link/cast contract ([#677](https://github.com/jellyrock/jellyrock/pull/677))
+
 ### Fixed
 
 - (settings) point keyboard submit-key KDFs at the icon assets that exist ([#682](https://github.com/jellyrock/jellyrock/pull/682))
