@@ -457,7 +457,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
     gridGrp.setFocus(true)
     return true
   else if key = "back"
-    m.global.sceneManager.callFunc("popScene")
+    ' The TV guide lives inside the router-owned library view — leave it via the router (back
+    ' to Home / the previous routed view).
+    sgRouter.goBack()
     return true
   end if
 
@@ -465,7 +467,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically by SceneManager.popScene() / clearScenes()
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
 

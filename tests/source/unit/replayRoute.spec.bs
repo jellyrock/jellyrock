@@ -1,0 +1,380 @@
+import "pkg:/source/replayRoute.bs"
+
+namespace tests
+
+  ' #550 deep-link contract: the pure wire-format layer (contentId parsing, the playback-action
+  ' predicate, and the route builder). The contract is "do what the route's action says": the
+  ' sender's explicit action is honored, unknown actions degrade to "open" (forward-compat).
+  @suite("replayRoute deep-link contract")
+  class ReplayRouteTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseDeepLinkContentId() — wire format")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a bare item id (legacy / manual ECP) as an 'open' with no server")
+    function _()
+      r = parseDeepLinkContentId("abc123")
+      m.assertEqual(r.itemId, "abc123")
+      m.assertEqual(r.serverGuid, "")
+      m.assertEqual(r.action, "open")
+    end function
+
+    @it("defaults action to 'open' when only id+server are given")
+    function _()
+      r = parseDeepLinkContentId("id=abc|serverId=guid-1")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.serverGuid, "guid-1")
+      m.assertEqual(r.action, "open")
+    end function
+
+    @it("accepts the 'server' alias for serverId")
+    function _()
+      r = parseDeepLinkContentId("id=abc|server=guid-2")
+      m.assertEqual(r.serverGuid, "guid-2")
+    end function
+
+    @it("parses an explicit action")
+    @params("play", "play")
+    @params("shuffle", "shuffle")
+    @params("trailer", "trailer")
+    @params("instantmix", "instantmix")
+    @params("open", "open")
+    function _(sent, expected)
+      r = parseDeepLinkContentId("id=abc|action=" + sent)
+      m.assertEqual(r.action, expected)
+    end function
+
+    @it("lower-cases the action (case-insensitive sender)")
+    function _()
+      r = parseDeepLinkContentId("id=abc|action=PLAY")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("parses all three keys together, order-independent")
+    function _()
+      r = parseDeepLinkContentId("action=shuffle|id=abc|serverId=g")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.serverGuid, "g")
+      m.assertEqual(r.action, "shuffle")
+    end function
+
+    @it("ignores unknown keys (forward-compatible)")
+    function _()
+      r = parseDeepLinkContentId("id=abc|startPositionTicks=500|action=play")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("takes a leading bare segment as the id (forgiving: <id>|action=play)")
+    function _()
+      r = parseDeepLinkContentId("abc|action=play")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("takes a bare id segment regardless of order")
+    function _()
+      r = parseDeepLinkContentId("action=play|abc")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("first bare segment wins; an explicit id= still takes precedence when first")
+    function _()
+      r = parseDeepLinkContentId("id=real|stray")
+      m.assertEqual(r.itemId, "real")
+    end function
+
+    @it("returns empty defaults for an empty contentId")
+    function _()
+      r = parseDeepLinkContentId("")
+      m.assertEqual(r.itemId, "")
+      m.assertEqual(r.serverGuid, "")
+      m.assertEqual(r.action, "open")
+    end function
+
+    @it("duplicate keys are last-wins")
+    function _()
+      r = parseDeepLinkContentId("id=a|id=b|action=play|action=open")
+      m.assertEqual(r.itemId, "b")
+      m.assertEqual(r.action, "open")
+    end function
+
+    @it("preserves a value containing '=' (splits on the first '=' only)")
+    function _()
+      r = parseDeepLinkContentId("id=ab=cd|action=play")
+      m.assertEqual(r.itemId, "ab=cd")
+      m.assertEqual(r.action, "play")
+    end function
+
+    @it("lower-cases the serverGuid (a mis-cased sender still matches a saved server)")
+    function _()
+      r = parseDeepLinkContentId("id=abc|serverId=ABCD-1234")
+      m.assertEqual(r.serverGuid, "abcd-1234")
+    end function
+
+    @it("ignores empty segments from stray pipes")
+    function _()
+      r = parseDeepLinkContentId("id=abc||action=play|")
+      m.assertEqual(r.itemId, "abc")
+      m.assertEqual(r.action, "play")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isPlausibleDeepLinkItemId() — URL-injection guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts ids real Jellyfin servers emit (hex GUID, dashed GUID)")
+    @params("f137a2dd21bbc1b99aa5c0f6bf02a805")
+    @params("f137a2dd-21bb-c1b9-9aa5-c0f6bf02a805")
+    @params("abc123")
+    function _(id)
+      m.assertTrue(isPlausibleDeepLinkItemId(id))
+    end function
+
+    @it("rejects an empty id or one carrying URL-structural characters")
+    @params("")
+    @params("abc/Images/Primary")
+    @params("abc?x=1")
+    @params("abc|action=play")
+    @params("abc#frag")
+    @params("abc%2F")
+    @params("a b")
+    function _(id)
+      m.assertFalse(isPlausibleDeepLinkItemId(id))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isPlausibleDeepLinkToken() — mediaType/action URL-injection guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts known media types and actions")
+    @params("Movie")
+    @params("Series")
+    @params("Episode")
+    @params("MusicAlbum")
+    @params("play")
+    @params("instantmix")
+    function _(token)
+      m.assertTrue(isPlausibleDeepLinkToken(token))
+    end function
+
+    @it("accepts a clean-but-unknown value (forward-compat: a future type / verb degrades downstream)")
+    @params("MusicVideo")
+    @params("some_future-type")
+    function _(token)
+      m.assertTrue(isPlausibleDeepLinkToken(token))
+    end function
+
+    @it("rejects an empty token or one carrying URL-structural characters")
+    @params("")
+    @params("Movie/abc")
+    @params("Movie?x=1")
+    @params("Movie#frag")
+    @params("Movie&y=2")
+    @params("a=b")
+    @params("Movie|action=play")
+    @params("Movie%2F")
+    @params("a b")
+    function _(token)
+      m.assertFalse(isPlausibleDeepLinkToken(token))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isDeepLinkPlaybackAction() — open vs playback gate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for playback actions")
+    @params("play")
+    @params("shuffle")
+    @params("trailer")
+    @params("instantmix")
+    function _(action)
+      m.assertTrue(isDeepLinkPlaybackAction(action))
+    end function
+
+    @it("is false for 'open' and any unknown action (treated as open)")
+    @params("open")
+    @params("browse")
+    @params("delete")
+    @params("")
+    function _(action)
+      m.assertFalse(isDeepLinkPlaybackAction(action))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("deepLinkDetailsRoute() — route + action query")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the details route carrying the action in ?deeplink=")
+    function _()
+      route = deepLinkDetailsRoute({ mediaType: "Movie", itemId: "abc", action: "play" })
+      m.assertEqual(route, "/details/Movie/abc?deeplink=play")
+    end function
+
+    @it("emits ?deeplink=open for an open action")
+    function _()
+      route = deepLinkDetailsRoute({ mediaType: "Series", itemId: "xyz", action: "open" })
+      m.assertEqual(route, "/details/Series/xyz?deeplink=open")
+    end function
+
+    @it("falls back to open when the action is missing/empty")
+    function _()
+      route = deepLinkDetailsRoute({ mediaType: "Video", itemId: "id1", action: "" })
+      m.assertEqual(route, "/details/Video/id1?deeplink=open")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildReplayRoutes() — guard-path replay chain")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("empty/invalid stash replays plain Home")
+    @params("")
+    @params(invalid)
+    function _(stashed)
+      m.assertEqual(buildReplayRoutes(stashed), ["/"])
+    end function
+
+    @it("a plain route replays Home then the destination")
+    function _()
+      m.assertEqual(buildReplayRoutes("/settings"), ["/", "/settings"])
+    end function
+
+    @it("a /play route inserts its Details screen between Home and the player")
+    function _()
+      m.assertEqual(buildReplayRoutes("/details/Movie/abc/play"), ["/", "/details/Movie/abc", "/details/Movie/abc/play"])
+    end function
+
+    @it("a /play route with a query strips the query for the Details step but keeps the full play route")
+    function _()
+      m.assertEqual(buildReplayRoutes("/details/Movie/abc/play?deeplink=play"), ["/", "/details/Movie/abc", "/details/Movie/abc/play?deeplink=play"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("findServerInList() — saved-server GUID match")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches a saved server by GUID, case-insensitively")
+    function _()
+      json = FormatJson({ serverList: [{ id: "aaaa", name: "Home" }, { id: "bbbb", name: "Cabin" }] })
+      entry = findServerInList(json, "BBBB")
+      m.assertEqual(entry.name, "Cabin")
+    end function
+
+    @it("returns invalid for an unknown GUID")
+    function _()
+      json = FormatJson({ serverList: [{ id: "aaaa", name: "Home" }] })
+      m.assertInvalid(findServerInList(json, "zzzz"))
+    end function
+
+    @it("returns invalid for an empty guid even when the list has servers")
+    function _()
+      json = FormatJson({ serverList: [{ id: "aaaa" }] })
+      m.assertInvalid(findServerInList(json, ""))
+    end function
+
+    @it("returns invalid for invalid / non-JSON input")
+    @params(invalid)
+    @params("not json")
+    function _(json)
+      m.assertInvalid(findServerInList(json, "aaaa"))
+    end function
+
+    @it("returns invalid when the JSON has no serverList")
+    function _()
+      json = FormatJson({ noList: true })
+      m.assertInvalid(findServerInList(json, "aaaa"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("serverIdsMatch() — case-insensitive server-id equality")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches identical ids")
+    function _()
+      m.assertTrue(serverIdsMatch("abcd-1234", "abcd-1234"))
+    end function
+
+    @it("matches the same id in different case (Jellyfin GUIDs are case-insensitive hex)")
+    @params("ABCD-1234", "abcd-1234")
+    @params("abcd-1234", "ABCD-1234")
+    @params("AbCd-1234", "aBcD-1234")
+    function _(a, b)
+      m.assertTrue(serverIdsMatch(a, b))
+    end function
+
+    @it("does not match different ids")
+    function _()
+      m.assertFalse(serverIdsMatch("abcd-1234", "wxyz-9999"))
+    end function
+
+    @it("returns false when either side is empty or invalid")
+    @params("", "abcd")
+    @params("abcd", "")
+    @params(invalid, "abcd")
+    @params("abcd", invalid)
+    @params(invalid, invalid)
+    function _(a, b)
+      m.assertFalse(serverIdsMatch(a, b))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("stashDeepLink() — security-boundary composition")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' stashDeepLink composes the (separately-tested) parser + plausibility predicates into the
+    ' stash that actually reshapes the route PATH/QUERY. These cases lock that composition: a junk
+    ' id never stashes, and an injection-bearing mediaType/action is scrubbed to its safe default
+    ' before it can land in a route — the predicates being green in isolation does not prove the
+    ' wiring here is.
+
+    @it("does not stash a structurally-implausible id (junk never reaches a route)")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("bad id with spaces", "Video")
+      m.assertInvalid(m.global.AuthManager.stashedDeepLink)
+    end function
+
+    @it("scrubs an injection-bearing mediaType to the safe 'Video' default")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("validId123", "Movie/../../etc")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.itemId, "validId123")
+      m.assertEqual(stashed.mediaType, "Video")
+    end function
+
+    @it("scrubs an injection-bearing action back to 'open'")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("validId123|action=play=evil/1", "Audio")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.action, "open")
+      m.assertEqual(stashed.mediaType, "Audio")
+    end function
+
+    @it("stashes the fully-composed intent for a valid cross-server link (server + action folded)")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("abc123|serverId=GUID-1|action=Shuffle", "Series", "My Show")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.itemId, "abc123")
+      m.assertEqual(stashed.mediaType, "Series")
+      m.assertEqual(stashed.serverGuid, "guid-1")
+      m.assertEqual(stashed.action, "shuffle")
+      m.assertEqual(stashed.itemName, "My Show")
+    end function
+
+    ' Give m.global a fresh AuthManager with a cleared stash before each stashDeepLink case.
+    ' stashDeepLink writes m.global.AuthManager.stashedDeepLink (the cross-thread replay seam),
+    ' so the test must stand that node up the way setGlobalNodes does in production.
+    sub resetStashedDeepLink()
+      if not isValid(m.global.AuthManager)
+        m.global.addFields({ AuthManager: createObject("roSGNode", "AuthManager") })
+      end if
+      m.global.AuthManager.stashedDeepLink = invalid
+    end sub
+
+  end class
+
+end namespace

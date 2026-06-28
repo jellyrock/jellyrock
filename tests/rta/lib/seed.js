@@ -57,6 +57,49 @@ export async function seedHome(session, locale) {
   await clearDisplaySettings(session);
 }
 
+/** A `saved_servers` list entry built from an authenticated session (mirrors SaveServerList's shape). */
+export function savedServerEntry(session) {
+  return {
+    name: session.serverName,
+    id: session.serverId, // GUID — what a cast's serverId is matched against (findServerInList)
+    baseUrl: session.serverUrl, // canonical https URL; the reachability pre-flight probes this
+    originalUrl: session.serverUrl, // becomes the `server` setting on switch (canonical = no redirect step)
+    iconUrl: 'pkg:/images/branding/logo-icon120.jpg',
+    iconWidth: 120,
+    iconHeight: 120,
+  };
+}
+
+/**
+ * Seed registry to land logged-in on Home as `primary`'s user, with `saved_servers` listing
+ * EVERY passed session. This is the state a cast-to-another-server demo needs: signed into one
+ * demo server while another is saved, so a cast naming the other server's GUID resolves to a
+ * saved entry and prompts the switch (replayRoute.findSavedServerByGuid). All sessions are demo
+ * servers (privacy). Composes seedHome's logged-in keys with the SaveServerList saved_servers shape.
+ */
+export async function seedHomeWithSavedServers(primary, sessions, locale) {
+  const savedServers = { serverList: sessions.map(savedServerEntry) };
+  await odc.writeRegistry({
+    values: {
+      [GLOBAL]: {
+        server: primary.serverUrl,
+        active_user: primary.userId,
+        globalRememberMe: 'true',
+        globalTranslationLocale: locale,
+        saved_servers: JSON.stringify(savedServers),
+      },
+      [primary.userId]: {
+        authToken: primary.token,
+        serverId: primary.serverId,
+        username: primary.username,
+        primaryImageTag: primary.primaryImageTag,
+        translationLocale: locale,
+      },
+    },
+  });
+  await clearDisplaySettings(primary);
+}
+
 /**
  * Seed registry to land on the SERVER-select screen with exactly one saved server:
  * the demo server, saved under the bare scheme-less URL "demo.jellyfin.org/stable"

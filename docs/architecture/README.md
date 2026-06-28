@@ -51,9 +51,10 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 - **JRScene** — the persistent root scene; see [bootstrap.md](./bootstrap.md). Defined in `components/JRScene.xml`.
 - **JRScreen** — base class for full-screen scenes (`extends="JRScreen"` in XML). Provides `onScreenShown`, `onScreenHidden`, `onDestroy` virtuals + `lastFocus` field. Defined in `components/JRScreen.bs/.xml`.
 - **JRGroup** — base class for sub-panels and dialogs (`extends="JRGroup"`). Interface declared in `components/JRGroup.xml`; a minimal `components/JRGroup.bs` provides only the `onDestroy()` auto-abandon floor (see [async.md](./async.md#cancellation--auto-abandon)). Adds common interface fields used for navigation, focus preservation, and overhang wiring — see [navigation.md](./navigation.md) for the full field table. `JRScreen` extends `JRGroup`.
-- **SceneManager** — global stack-based navigator at `m.global.sceneManager`. The only thing that swaps groups in/out of `JRScene`'s `content` slot.
+- **sgRouter** — the navigation system (`@rokucommunity/sgrouter`). The whole app is routed; `JRScene` hosts the router over a `<sgrouter_Outlet>` and owns the route table, the `AuthManager` guard, the overhang controller, and the exit-confirmation back arbiter. See [navigation.md](./navigation.md).
+- **`SceneManager`** — global SERVICE node at `m.global.sceneManager` (the scene-stack navigator was removed in the #550 sgRouter migration). Now just dialogs, toast/spinner, backdrop, theme refresh, and overhang user/clock passthrough fields.
 - **QueueManager** — global play queue at `m.global.queueManager`. Holds the list of items to play, current position, shuffle state.
-- **ViewCreator** — a `.bs` module (not a component) at `components/manager/ViewCreator.bs`. Factory for `VideoPlayerView` and `AudioPlayerView`, plus playback-time dialog handlers (subtitle/audio/source selection).
+- **PlayerHostView** — routed host (`components/video/PlayerHostView.bs/.xml`) that wraps `VideoPlayerView` (a `Video` subtype can't be a router view). Reads the queue on mount, owns queue advancement, and hosts the playback-time track/source/info selection dialogs.
 - **ApiClient** — the singleton Jellyfin API wrapper at `source/api/ApiClient.bs`. Auto-dispatches between v1 (Jellyfin 10.7–10.8) and v2 (10.9+) endpoints. Builds request AAs that are submitted to the task pool.
 - **API task pool** — a small set of persistent `ApiTask` Task nodes that execute HTTP requests off the render thread. A separate `ApiQueueTask` is the FIFO coordinator that dispatches into the pool. Per-request `ApiResultNode` is the data vehicle (immune to SceneGraph event coalescing).
 - **roku-log** — the logging library. Per-component pattern: `m.log = new log.Logger("ComponentName")`. Levels: error, warn, info, verbose, debug.
@@ -88,6 +89,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/code-style.md`](../dev/code-style.md) | Code Style Guide |
 | [`docs/dev/crash-reports.md`](../dev/crash-reports.md) | Weekly Roku crash-report workflow |
 | [`docs/dev/debug-flags.md`](../dev/debug-flags.md) | Debug Flags & Toast Testing |
+| [`docs/dev/deep-linking.md`](../dev/deep-linking.md) | Deep Linking & Casting |
 | [`docs/dev/developer-mode.md`](../dev/developer-mode.md) | Developer Mode for Roku Devices |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | JellyRock Versioning Systems Overview |
 | [`docs/dev/logging.md`](../dev/logging.md) | Logging Guide (roku-log) |

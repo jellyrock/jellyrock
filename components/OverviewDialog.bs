@@ -213,17 +213,27 @@ sub updateScrollbarFocus(isFocused as boolean)
   end if
 end sub
 
+' Dismiss this overlay. It is appended directly to the scene by FocusableOverview, so closing
+' is a removeChild from our parent + restoring focus to the element that opened us
+' (returnFocusTo).
+sub closeDialog()
+  returnFocusTo = m.top.returnFocusTo
+  parent = m.top.getParent()
+  if isValid(parent) then parent.removeChild(m.top)
+  if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+end sub
+
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
   if key = "back"
-    m.global.sceneManager.callfunc("popScene")
+    closeDialog()
     return true
   end if
 
   if key = "OK"
     if m.okButton.hasFocus()
-      m.global.sceneManager.callfunc("popScene")
+      closeDialog()
       return true
     end if
     m.okButton.setFocus(true)

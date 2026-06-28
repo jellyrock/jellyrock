@@ -248,6 +248,30 @@ namespace tests
       m.assertArrayCount(parsed.serverList, 0)
     end function
 
+    @it("deletes entry by ID case-insensitively (caller id cased differently from saved id)")
+    function _()
+      ' GIVEN: saved server whose id is canonical lower-case hex
+      list = FormatJson({
+        serverList: [{
+          id: "abcd1234ef",
+          name: "Test Server",
+          baseUrl: "https://test.jellyfin.local",
+          iconUrl: "pkg:/images/branding/logo-icon120.jpg",
+          iconWidth: 120,
+          iconHeight: 120
+        }]
+      })
+      setSetting("saved_servers", list)
+
+      ' WHEN: delete is triggered with the same id in a different case (e.g. mis-cased sender)
+      DeleteFromServerList("ABCD1234EF")
+
+      ' THEN: entry is removed — id match folds case (would not match pre-fix)
+      saved = getSetting("saved_servers")
+      parsed = ParseJson(saved)
+      m.assertArrayCount(parsed.serverList, 0)
+    end function
+
     @it("deletes entry by baseUrl when no id present (legacy backward compat)")
     function _()
       ' GIVEN: old-style entry without an id field

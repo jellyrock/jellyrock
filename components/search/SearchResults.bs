@@ -35,23 +35,44 @@ sub init()
   ' Observe row item focus for backdrop updates
   m.searchSelect.observeField("rowItemFocused", "onSearchItemFocused")
 
+  ' SearchResults owns its own navigation — a selected result navigates to its route.
+  m.searchSelect.observeField("itemSelected", "onSearchItemSelected")
+
+  ' A non-navigable result (plays directly) sets m.top.quickPlayNode; this self-observer
+  ' forwards it to the QueueManager launcher.
+  m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
+
   ' Set initial focus for scene navigation
   m.top.lastFocus = searchBox
+  ' First show focuses the keyboard to type immediately; later shows (keepAlive resume, e.g.
+  ' back from a result detail) restore the prior focus.
+  m.isFirstShow = true
+  ' Last voice query applied via applyRouteQuery — guards against re-applying (and re-grabbing
+  ' focus) on a keepAlive back-resume that replays the same route context.
+  m.lastAppliedQuery = ""
 
 end sub
 
 sub onScreenShown()
-  if m.top.shouldSkipInitialFocus
-    m.top.shouldSkipInitialFocus = false
-    ' Caller will set focus after pushScene — skip here to avoid a double-focus
-    ' race on the DynamicMiniKeyboard that prevents the voice prompt overlay.
-    return
-  end if
+  ' Voice search arrives as route.context.query — pre-populate the search box and focus its
+  ' text entry, skipping normal focus restoration.
+  if applyRouteQuery() then return
 
   ' Restore texture management — reactivate and restore buffer range so cells reload.
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
     activateTextureManager(m.searchSelect.content)
+  end if
+
+  ' On first open, focus + activate the keyboard so the user can type immediately (the router
+  ' mounts this view). Subsequent shows (keepAlive resume) restore the prior focus.
+  if m.isFirstShow
+    m.isFirstShow = false
+    if isValid(m.searchAlphabox)
+      m.searchAlphabox.setFocus(true)
+      m.searchAlphabox.active = true
+      return
+    end if
   end if
 
   ' Restore focus for scene navigation
@@ -67,6 +88,50 @@ sub onScreenHidden()
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     hideTextureManager(m.searchSelect.content)
   end if
+end sub
+
+' If the route carries a voice query in its context, pre-populate the search box (which
+' triggers the search via the searchAlpha alias) and focus the text entry. Returns true when
+' a query was applied so onScreenShown can skip normal focus.
+'
+' onScreenShown fires on first open AND on keepAlive resume, and the router replays the
+' ORIGINAL route (with its query context) on a back-resume (Router.brs reuses view.route) — so
+' applying unconditionally would re-grab focus to the text box every time the user backs out of
+' a result. Guard on the last-applied value: a back-resume carries the same query we already
+' applied (skip), while a genuinely new voice search carries a different query (apply). The box
+' already holds the prior term in the keepAlive case, so skipping a repeat is also the right UX.
+function applyRouteQuery() as boolean
+  route = m.top.route
+  if not isValid(route) or not isValid(route.context) then return false
+
+  query = route.context.query
+  if not isValidAndNotEmpty(query) then return false
+  if query = m.lastAppliedQuery then return false
+
+  m.lastAppliedQuery = query
+  m.searchAlphabox.text = query
+  m.searchAlphabox.textEditBox.setFocus(true)
+  return true
+end function
+
+' A search result was selected — navigate to its route (rich node as context). Non-navigable
+' results fall through to playback.
+sub onSearchItemSelected(msg)
+  item = getMsgPicker(msg)
+  if not isValid(item) then return
+
+  route = routeForItem(item)
+  if isValid(route)
+    sgrouter.navigateTo(route, { context: { item: item } })
+  else
+    m.top.quickPlayNode = item
+  end if
+end sub
+
+' Forward a non-navigable result to the playback launcher.
+sub onQuickPlayLaunch(msg)
+  node = msg.getData()
+  if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
 end sub
 
 ' onKeyboardFocusChange: Fires when focus changes within the keyboard subtree (including entry/exit).
@@ -179,7 +244,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 
 ' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically by SceneManager.popScene() / clearScenes()
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
   destroyTextureManager(m.searchSelect.content)
@@ -197,6 +262,8 @@ sub onDestroy()
   ' Unobserve child node observers
   if isValid(m.searchAlphabox) then m.searchAlphabox.unobserveField("focusedChild")
   m.searchSelect.unobserveField("rowItemFocused")
+  m.searchSelect.unobserveField("itemSelected") ' self-navigation observer
+  m.top.unobserveField("quickPlayNode") ' playback launcher
 
   ' Stop and release task node (observer may already be cleared by loadResults())
   m.searchTask.unobserveField("results")

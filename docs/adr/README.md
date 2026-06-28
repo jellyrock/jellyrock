@@ -29,3 +29,5 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0015](0015-server-upgrade-anchor-vs-resolved-decoupling.md) | Decouple the server-upgrade diff anchor from the review cursor | Accepted | 2026-06-07 |
 | [0016](0016-global-signin-language.md) | Separate device-wide sign-in language setting, pre-login only | Accepted | 2026-06-07 |
 | [0017](0017-rta-functional-tests-vitest.md) | RTA functional tests in Node/Vitest, not Rooibos | Accepted | 2026-06-08 |
+| [0018](0018-deep-link-cast-contract.md) | Deep-link / cast contract + validate-before-navigate resolution | Accepted | 2026-06-20 |
+| [0019](0019-jrscreen-lifecycle-bridge.md) | Keep the `JRScreen` lifecycle bridge, not raw `sgRouter` View overrides | Accepted | 2026-06-23 |

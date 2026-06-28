@@ -56,8 +56,8 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `mainbs-event-loop-fan-out`
 
 - **area**: `source/main.bs`
-- **issue**: 1,315-line file. `Main()` is ~970 lines containing both bootstrap (~80 lines: Phase 1 globals → migrations → theme → login → Phase 2 globals) and the main event loop (20+ `isNodeEvent` dispatch branches: playback, favorites/watched toggles, voice search, quickplay, font download completion, screen lifecycle / exit / `goto appStart`, search, item selection, button + option events, dialog return data, recording, shuffle, theme reload cascade). Some heavy work is already extracted into `handle*` helpers (font, quickplay, favorite, watched, record); the dispatch and most branch logic still live inline.
-- **direction**: Continue the handler-extraction pattern — each `isNodeEvent` branch routes to a per-concern module (`source/handlers/playback.bs`, `search.bs`, `selection.bs`, `dialogs.bs`, etc.). The main loop becomes a thin dispatcher. Bootstrap extracts to `source/bootstrap.bs` so `Main()` is just `bootstrap()` + the dispatch loop.
+- **issue**: 473-line file (down from 1,315 as of #677 — the #550 sgRouter migration removed the search, audio `playItem`, `optionSelected`, and `closeSidePanel` branches plus their inline logic). `Main()` spans the whole file (~328 lines, lines 1–328): bootstrap (~110 lines: Phase 1 globals → migrations → theme → login → Phase 2 globals) then the main event loop (12 dispatch branches: `roSGScreenEvent` screen-closed, `exit`, `preLoginIntent`, `isAuthenticated` + `close` quick-connect, `isFontDownloadCompleted`, `reachable` server-probe, `userMenuAction`, `roDeviceInfoEvent`, `roInputEvent` deep-link, `isDataReturned` dialog-return, `reloadHomeRequested`). Some heavy work is extracted into `handle*` helpers (font, menu, login); the `isDataReturned` branch still fans out three confirmation-dialog flows (server-switch / exit / resume-options, ~60 lines) inline.
+- **direction**: Continue the handler-extraction pattern — the `isDataReturned` branch is the largest remaining inline block and the clearest extraction candidate (`source/handlers/dialogs.bs`). Bootstrap extracts to `source/bootstrap.bs` so `Main()` becomes `bootstrap()` + a thin dispatch loop.
 
 ### Medium
 
@@ -208,6 +208,8 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `components/data/SceneManager.bs`
 - **issue**: All dialogs write to the same `returnData` field. Risk of cross-dialog observers firing on stale data.
+- **mitigation (partial, #550)**: `main.bs`'s `returnData` handler is now gated on the `isPendingServerSwitch` / `isPendingExitConfirmation` / `isPendingPlaybackOptions` flags, so it no longer cross-fires on dialogs owned by routed views. The structural risk (a single shared field) remains.
+- **direction**: Make every `returnData` observer check a dialog-identity discriminator before acting (`PlayerHostView` already does via `returnData.type` — make it universal), or give each dialog its own return field. Touches `SceneManager` + ~6 consumers (`PlayerHostView`, `ItemDetails`, `settings`, `RadioDialog`, `main.bs`, `replayRoute`). A focused follow-up PR, not folded into nav work.
 
 #### `bsconfig-files-duplicated`
 
@@ -279,6 +281,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 ## Recently removed — don't go searching for these
 
 - **`components/JRVideo.xml/.bs`** and **`source/VideoPlayer.bs`** — the legacy video player. Removed in commit `17cc374f` ("chore: remove legacy video player code"). Replaced by `components/video/VideoPlayerView.xml/.bs`. There is exactly one video player today.
-- **`CreateVideoPlayerGroup()`** function from `source/showScenes.bs` — removed alongside the legacy player. The modern equivalent is `ViewCreator.CreateVideoPlayerView()`.
+- **`CreateVideoPlayerGroup()`** function from `source/showScenes.bs` — removed alongside the legacy player. The modern equivalent is `PlayerHostView.mountPlayer()` (the routed playback host; the intermediate `ViewCreator.CreateVideoPlayerView()` factory was itself removed in the #550 sgRouter migration).
 - **Various legacy subtitle helper functions** (`setupSubtitle`, `getSubtitleSelIdxFromSubIdx`) — removed in followup cleanup commits (e.g. `58500a99`).
 - **`components/ItemOptions.xml/.bs`** and **`components/movies/{Audio,Video}TrackList{Data,Item}`** — the modal Video/Audio tab popup the inline `TrackDropdown` cluster has now replaced. Removed in commit `f4ac1069` ("chore: remove obsolete `ItemOptions` popup and movies track-list components"). The empty `components/movies/` folder was removed along with them.

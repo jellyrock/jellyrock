@@ -56,10 +56,10 @@ In BS, call `translatePlural(translationKeys.LabelEpisodeCount, count, [stri(cou
 Use indexed placeholders: `{0}`, `{1}`, `{2}`. Every locale file MUST preserve the same placeholder set as `en_US.json` — placeholder parity is enforced by `npm run lint:translations`.
 
 ```json
-"ErrorTypeNotYetSupported": "Type {0} is not yet supported on this device",
+"MessageCouldNotReachServer": "Couldn't reach '{0}'.",
 ```
 
-In BS: `translate(translationKeys.ErrorTypeNotYetSupported, [itemType])`.
+In BS: `translate(translationKeys.MessageCouldNotReachServer, [serverUrl])`.
 
 ## Step 5 — Track-language keys (Language* prefix only)
 

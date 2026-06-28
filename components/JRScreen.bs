@@ -15,11 +15,7 @@ end sub
 ' It is expected that screens override this function to handle focus
 ' managmenet and any other actions required on screen shown
 sub onScreenShown()
-  if isValid(m.top.lastFocus)
-    m.top.lastFocus.setFocus(true)
-  else
-    m.top.setFocus(true)
-  end if
+  restoreFocus(m.top)
 end sub
 
 ' Function called when the screen is hidden by the screen manager
@@ -39,5 +35,78 @@ end sub
 ' component onDestroy does not chain to this base.
 sub onDestroy()
   abandonApiPromises()
+end sub
+
+' ---------------------------------------------------------------------------
+' sgRouter view-lifecycle bridge
+'
+' sgRouter drives the views it mounts in its outlet through a promise-native
+' lifecycle (onViewOpen / onViewSuspend / onViewResume / beforeViewClose) and
+' asks them to take focus via handleFocus(). JellyRock screens instead
+' implement onScreenShown / onScreenHidden / onDestroy and own their focus
+' restoration via lastFocus. These overrides bridge the two contracts so every
+' screen works under the router with NO per-screen changes.
+'
+' The router is the only thing that mounts/suspends/resumes/destroys screens —
+' there is no scene stack.
+'
+' These names override sgrouter_View's no-op defaults; the interface
+' declarations are inherited from sgrouter_View (via JRGroup), so no <function>
+' entries are needed in JRScreen.xml.
+' ---------------------------------------------------------------------------
+
+' Router: this view has just become active for the first time. Publish it as the
+' active routed view BEFORE onScreenShown so JRScene's overhang controller and
+' main.bs's playback-event observer-attach react to the right node. Screens that
+' need route data read m.top.route (routeParams / queryParams / context) inside
+' their own onScreenShown / onRouteUpdate overrides.
+function onViewOpen(_params = {} as object) as dynamic
+  m.global.activeRoutedView = m.top
+  onScreenShown()
+  return promises.resolve(invalid)
+end function
+
+' Router: a previously-suspended (keepAlive) view has returned to the top of the
+' stack. Re-publish it as the active routed view, then restore via onScreenShown.
+function onViewResume(_params = {} as object) as dynamic
+  m.global.activeRoutedView = m.top
+  onScreenShown()
+  return promises.resolve(invalid)
+end function
+
+' Router: a new view is being pushed on top of this one (still alive).
+' Save focus the same way SceneManager.pushScene does so it can be restored.
+function onViewSuspend(_params = {} as object) as dynamic
+  saveLastFocus()
+  onScreenHidden()
+  return promises.resolve(invalid)
+end function
+
+' Router: this view is about to be permanently destroyed.
+function beforeViewClose(_params = {} as object) as dynamic
+  onScreenHidden()
+  onDestroy()
+  return promises.resolve(invalid)
+end function
+
+' Router: take remote focus. Mirrors onScreenShown's focus rule (restore the
+' saved descendant, else focus the view root).
+function handleFocus(_data = {} as object) as boolean
+  restoreFocus(m.top)
+  return true
+end function
+
+' Walk the focus chain to the deepest focused descendant and remember it in
+' m.top.lastFocus. Lifted from SceneManager.pushScene's focus-save loop.
+sub saveLastFocus()
+  if isValid(m.top.focusedChild)
+    focused = m.top.focusedChild
+    while isValid(focused) and focused.hasFocus() = false
+      focused = focused.focusedChild
+    end while
+    if isValid(focused)
+      m.top.lastFocus = focused
+    end if
+  end if
 end sub
 

@@ -1,11 +1,59 @@
 ' Node utility functions for creating and copying SGNodes
 namespace nodeHelpers
 
+  ' Compile-time contract for a queue item AA (the return shape of createQueueItem below).
+  ' BrighterScript interfaces ARE build-enforced wherever a value is TYPED as the interface
+  ' (verified on this toolchain: a QueueItem-typed value raises `cannot-find-name` on an
+  ' undeclared member and `return-type-mismatch` on a missing required member). createQueueItem
+  ' itself returns `as object`, not `as QueueItem` — its result is used as a real
+  ' roAssociativeArray (callers/tests call DoesExist/Count) and an interface return type strips
+  ' those AA methods (see the return-type note on the function below). So the ENFORCED gate on the
+  ' returned shape is the createQueueItem spec at tests/source/unit/utils/nodeHelpers.spec.bs; this
+  ' interface is the single explicit source of truth for the shape, IDE autocomplete, and a
+  ' build-checked contract for any local you DO type `as nodeHelpers.QueueItem`. Most members are
+  ' `optional`: createQueueItem only copies them when the source carries them, so a bare/lean
+  ' source yields a minimal item.
+  interface QueueItem
+    ' Always present — callers may .Count() the backdrop arrays without an isValid() guard.
+    backdropImageTags as object
+    parentBackdropImageTags as object
+    parentBackdropItemId as string
+    ' Identity + playback
+    optional id as string
+    optional type as string
+    optional title as string
+    optional mediaSourceId as string
+    optional runTimeTicks as longinteger
+    ' Now-playing display contract — audio plays IN PLACE, so AudioPlayerView reads these straight
+    ' off the queue item (video re-fetches on mount and doesn't need them).
+    optional name as string
+    optional artists as object
+    optional albumArtist as string
+    optional albumName as string
+    optional albumId as string
+    optional albumPrimaryImageTag as string
+    optional primaryImageTag as string
+    ' Episode navigation (resume dialog)
+    optional seriesId as string
+    optional seasonId as string
+    optional playbackPositionTicks as longinteger
+    ' Live TV
+    optional channelNumber as string
+    ' Set by callers after creation (quickplay / ItemDetails) — playback selection + resume point
+    optional startingPoint as longinteger
+    optional selectedAudioStreamIndex as integer
+    optional selectedSubtitleStreamIndex as integer
+  end interface
+
   ' createQueueItem: Create a queue item AA from a source item.
   '
-  ' The queue item is a thin AA containing only what VideoPlayerView and QueueManager need.
-  ' LoadVideoContentTask re-fetches all metadata server-side via ItemMetaData(), so the
-  ' queue item does NOT need to carry full data — eliminating the deep-copy perf problem.
+  ' The queue item is a thin AA — it carries only what the queue infrastructure and the players
+  ' need, NOT a full deep copy (that was the original perf win). Video items stay minimal:
+  ' LoadVideoContentTask re-fetches all metadata server-side via ItemMetaData() on mount. AUDIO
+  ' is different — the audio player advances IN PLACE and AudioPlayerView renders the now-playing
+  ' text/poster directly off the queue item, so the display fields (name/artists/albumArtist/
+  ' albumName/albumId/image tags) MUST be carried; without them every track change paid a
+  ' redundant per-track metadata fetch whose latency popped the artist/album in late.
   '
   ' Accepts either a JellyfinBaseItem node (typed camelCase fields) or a raw Jellyfin API
   ' response AA (PascalCase fields). BrightScript AA lookup is case-insensitive, so field
@@ -26,12 +74,18 @@ namespace nodeHelpers
   '   - title: Display title
   '   - mediaSourceId: Media source hint
   '   - runTimeTicks: Runtime duration
+  '   - name / artists / albumArtist / albumName / albumId / albumPrimaryImageTag /
+  '     primaryImageTag: now-playing display fields (audio plays in place — see header)
   '   - seriesId: Series ID for episode navigation in resume dialog
   '   - seasonId: Season ID for episode navigation in resume dialog
   '   - playbackPositionTicks: Saved resume position
   '
   ' Callers set startingPoint and selectedAudioStreamIndex on the returned AA after creation.
   '
+  ' Returns `object`, not `QueueItem`: the queue item is used as a real roAssociativeArray
+  ' (callers/tests use DoesExist/Count), and typing it as the interface would strip those AA
+  ' methods. The QueueItem interface is the documented, opt-in shape (type a local `as
+  ' nodeHelpers.QueueItem` for autocomplete); the createQueueItem spec is the enforced gate.
   function createQueueItem(sourceNode as object) as object
     if not isValid(sourceNode)
       print "[nodeHelpers.createQueueItem] ERROR: sourceNode is invalid"
@@ -48,6 +102,23 @@ namespace nodeHelpers
     if isValid(sourceNode.runTimeTicks) and sourceNode.runTimeTicks > 0
       queueItem.runTimeTicks = sourceNode.runTimeTicks
     end if
+
+    ' Now-playing display contract (audio) — carried only when present. Queue sources are
+    ' mixed-shape: album/playlist/instant-mix queues hold RAW Jellyfin items (PascalCase: Album,
+    ' ImageTags.Primary) while single-song taps hold TRANSFORMED items (camelCase: albumName,
+    ' primaryImageTag). The rest share a case-insensitive key across both shapes; the two that
+    ' diverge read a raw fallback so both source shapes populate the same queue-item contract.
+    if isValidAndNotEmpty(sourceNode.name) then queueItem.name = sourceNode.name
+    if isValidAndNotEmpty(sourceNode.albumArtist) then queueItem.albumArtist = sourceNode.albumArtist
+    if isValid(sourceNode.artists) and sourceNode.artists.count() > 0 then queueItem.artists = sourceNode.artists
+    albumName = sourceNode.albumName
+    if not isValidAndNotEmpty(albumName) then albumName = sourceNode.album
+    if isValidAndNotEmpty(albumName) then queueItem.albumName = albumName
+    if isValidAndNotEmpty(sourceNode.albumId) then queueItem.albumId = sourceNode.albumId
+    if isValidAndNotEmpty(sourceNode.albumPrimaryImageTag) then queueItem.albumPrimaryImageTag = sourceNode.albumPrimaryImageTag
+    primaryImageTag = sourceNode.primaryImageTag
+    if not isValidAndNotEmpty(primaryImageTag) and isValid(sourceNode.imageTags) then primaryImageTag = sourceNode.imageTags.primary
+    if isValidAndNotEmpty(primaryImageTag) then queueItem.primaryImageTag = primaryImageTag
 
     ' Episode navigation fields used by the resume dialog handler
     if isValidAndNotEmpty(sourceNode.seriesId) then queueItem.seriesId = sourceNode.seriesId

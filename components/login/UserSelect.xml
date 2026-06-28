@@ -13,5 +13,9 @@
   <interface>
     <field id="itemSelected" type="string" alwaysNotify="true" />
     <field id="itemContent" type="array" onChange="onItemContentChanged" />
+    <!-- Selection payload read by the loginRouter coordinator (via getActiveView) when this
+         view emits the "userSelected" intent. -->
+    <field id="selectedUserId" type="string" />
+    <field id="selectedUserName" type="string" />
   </interface>
 </component>

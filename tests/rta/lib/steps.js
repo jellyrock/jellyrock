@@ -21,20 +21,37 @@ export async function getVal(keyPath) {
 }
 
 /**
+ * Like getVal, but scoped to the ACTIVE routed view (`m.global.activeRoutedView`)
+ * rather than a recursive scene-root find. sgRouter keepAlive leaves SUSPENDED views
+ * in the scene tree, so a recursive `#id` lookup (getVal) can resolve to a suspended
+ * view's node when ids aren't unique — e.g. every ItemDetails has `#extrasGrid`, and
+ * several components declare `#options`. Anchoring to activeRoutedView (the app's own
+ * "view the user is on", set on open/resume by the JRScreen lifecycle) reads the node
+ * on the active screen. Use this for value reads of ids that recur across views.
+ */
+export async function getActiveVal(keyPath) {
+  const res = await odc
+    .getValue({ base: 'global', keyPath: `activeRoutedView.${keyPath}` })
+    .catch(() => ({ found: false }));
+  return res.found ? res.value : undefined;
+}
+
+/**
  * Poll `keyPath` until `predicate(value)` is true, optionally re-issuing
  * `action` (e.g. a keypress) each tick. Throws on timeout so a broken nav/test
- * fails loudly instead of silently proceeding.
+ * fails loudly instead of silently proceeding. `read` selects the reader (default
+ * scene-rooted getVal); pass getActiveVal to scope the poll to the active routed view.
  */
 export async function waitFor(
   keyPath,
   predicate,
-  { timeout = 30000, interval = 500, action, label } = {},
+  { timeout = 30000, interval = 500, action, label, read = getVal } = {},
 ) {
   const start = Date.now();
   let last;
   while (Date.now() - start < timeout) {
     if (action) await action().catch(() => {});
-    last = await getVal(keyPath);
+    last = await read(keyPath);
     if (predicate(last)) return last;
     await sleep(interval);
   }

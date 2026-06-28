@@ -7,7 +7,7 @@ related-files:
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
-last-reviewed: 2026-06-11
+last-reviewed: 2026-06-21
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -51,6 +51,16 @@ Rooibos device tests). If no device is reachable, **say so** — don't claim a p
 - **Assertions**: the `waitFor` / `waitFocused` steps poll real node state and THROW
   on timeout — that throw IS the test failure (a descriptive message). Don't wrap them
   in `expect`; use `expect` only for value checks (title text, focus subtype).
+- **Scoping `#id` reads under sgRouter `keepAlive`**: `getVal` resolves `#id` by a
+  recursive `findNode` **from the scene root**, but `id` is not unique across components
+  (every `ItemDetails` has `#extrasGrid`; several declare `#options`). sgRouter
+  `keepAlive` routes (`/library`, `/details`) leave the SUSPENDED parent view in the
+  scene tree, so a recursive read can resolve to the wrong (suspended) view's node — e.g.
+  a detail→detail drill reading the parent's `#extrasGrid` instead of the active child's.
+  For value reads of such recurring ids, use `getActiveVal` (or `waitFor(..., { read:
+  getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
+  user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there
+  is only one focused node — so prefer them when "did this open/land?" is the question.
 
 ## Adding a screen
 

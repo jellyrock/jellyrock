@@ -453,7 +453,7 @@ grep -r "oldRelatedCode" source/ components/
 - `components/ItemDetails.bs` — the universal item-details component (handles every item type: movies, episodes, series, audio, photos, live TV, …)
 - `source/utils/quickplay.bs` — quick-play dispatch
 - `components/ItemGrid/LoadVideoContentTask.bs` — background metadata + transcode-decision task
-- `components/manager/QueueManager.bs` / `ViewCreator.bs` — playback queue + player factory
+- `components/manager/QueueManager.bs` / `components/video/PlayerHostView.bs` — playback queue + routed player host
 
 **Pattern:**
 

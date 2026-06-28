@@ -1,0 +1,44 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+'
+' Off-thread reachability probe for a SAVED server we are about to switch to.
+'
+' A deep-link server switch tears down the current session before re-authing against the
+' target. If the target is offline, that would strand the user — so we pre-flight it with a
+' non-destructive GET to its public system-info endpoint BEFORE any teardown. This runs on a
+' Task thread (raw roUrlTransfer, no Jellyfin auth) rather than the API pool because the probe
+' targets a DIFFERENT server than the active session: the pool would leak the current session's
+' auth token cross-server and assumes m.global.server. See docs/architecture/api.md (Pattern 4)
+' and docs/architecture/navigation.md ("Deep links").
+'
+sub init()
+  m.top.functionName = "probe"
+end sub
+
+sub probe()
+  m.top.reachable = isServerReachable(m.top.baseUrl)
+end sub
+
+' Non-destructive: a raw GET to the saved canonical URL's public system-info endpoint. Does NOT
+' touch m.global.server (unlike server.UpdateURL). Returns true only on HTTP 200 + a genuine
+' Jellyfin server response, false on any error or an 8s timeout.
+function isServerReachable(baseUrl as string) as boolean
+  if not isValidAndNotEmpty(baseUrl) then return false
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.setMessagePort(port)
+  req.setUrl(baseUrl + "/system/info/public")
+  if LCase(baseUrl).left(8) = "https://" then req.setCertificatesFile("common:/certs/ca-bundle.crt")
+  if not req.AsyncGetToString() then return false
+
+  timeout = CreateObject("roTimespan")
+  timeout.mark()
+  while timeout.totalSeconds() < 8
+    resp = wait(1000, port)
+    if type(resp) = "roUrlEvent"
+      return resp.getResponseCode() = 200 and isJellyfinServer(resp.getString())
+    end if
+  end while
+  return false
+end function

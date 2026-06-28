@@ -23,7 +23,7 @@ JellyRock uses a custom JSON based translation system that replaces Roku's built
 translate(translationKeys.ButtonPlay)
 
 ' With placeholders
-translate(translationKeys.ErrorTypeNotYetSupported, [itemType])
+translate(translationKeys.MessageCouldNotReachServer, [serverUrl])
 
 ' Plurals (zero/one/many)
 translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])
@@ -83,8 +83,8 @@ translatePlural(translationKeys.LabelEpisodeCount, item.childCount, [stri(item.c
 Use indexed `{0}`, `{1}`, etc. in translation values. Pass replacements as a string array:
 
 ```brightscript
-' en_US.json: "ErrorTypeNotYetSupported": "This type is not yet supported: {0}."
-translate(translationKeys.ErrorTypeNotYetSupported, [selectedItemType])
+' en_US.json: "MessageCouldNotReachServer": "Couldn't reach '{0}'."
+translate(translationKeys.MessageCouldNotReachServer, [serverUrl])
 ```
 
 ## Component Imports

@@ -43,31 +43,40 @@ sub Main (args as dynamic) as void
   ' setup global nodes now that the screen has been shown
   setGlobalNodes()
 
-  appStart:
-  m.global.sceneManager.callFunc("clearScenes")
-  ' Re-resolve the pre-login locale on every entry to the login flow. We reach
-  ' here both at cold start AND on re-entry from Change Server / Change User /
-  ' Sign Out (which `goto appStart`). Without this re-resolve, a changed global
-  ' sign-in language would only apply after a full app restart, and the sign-in
-  ' screens would render in the just-signed-out user's language rather than the
-  ' device-wide default. isPostLogin defaults to false here → pre-login cascade.
-  loadTranslations(resolveTranslationLocale())
-  ' First thing to do is validate the ability to use the API
-  if not LoginFlow() then return
+  ' Session-reset bridge. Routed Home sets m.scene.userMenuAction (change user / change server /
+  ' sign out); we observe it here on the main thread and re-enter the login flow in place via
+  ' handleMenuAction → reenterLogin. A scene field + port delivers (unlike an m.global field +
+  ' port, which does not — the delivery defect). Registered once here, before any navigation.
+  m.scene.observeField("userMenuAction", m.port)
+  m.scene.observeField("exit", m.port)
+  ' Pre-login views (SetServerScreen / UserSelect / LoginScene) set this to an intent action
+  ' string; we dispatch it to the loginRouter coordinator, which runs the blocking bootstrap
+  ' API calls and drives the next navigation. Registered once here.
+  m.scene.observeField("preLoginIntent", m.port)
 
-  ' remove login scenes from the stack
-  m.global.sceneManager.callFunc("clearScenes")
+  ' Cold-start deep link. Stash it (structured intent on
+  ' m.global.AuthManager.stashedDeepLink) BEFORE entering the login flow so it replays
+  ' uniformly — the fast path lands straight on the deep-linked content, while a deferred
+  ' (no-token) launch replays once the user finishes signing in. replayAfterLogin (invoked
+  ' from createAndShowHomeGroup) reads the stash; an absent deep link leaves it empty and
+  ' replay is just Home. The deep link routes through ItemDetails, which validates the id and
+  ' auto-launches with the real type + resume position (or errors to Home if it doesn't exist).
+  m.launchArgs = args
+  if isValid(m.launchArgs) and isValidAndNotEmpty(m.launchArgs.contentId)
+    ' mediaType is optional (a cast from another Jellyfin client may send only an id +
+    ' server) — ItemDetails infers play-vs-springboard from the resolved item, not the hint.
+    mediaTypeHint = ""
+    if isValidAndNotEmpty(m.launchArgs.mediaType) then mediaTypeHint = m.launchArgs.mediaType
+    itemNameHint = ""
+    if isValidAndNotEmpty(m.launchArgs.itemName) then itemNameHint = m.launchArgs.itemName
+    stashDeepLink(m.launchArgs.contentId, mediaTypeHint, itemNameHint)
+    ' If the link names a saved server, point login at it before the fast path runs.
+    steerColdStartDeepLinkServer()
+  end if
 
-  ' Initialize fallback font processing
-  initializeFallbackFont()
-
-  ' load home page - this may be delayed if UI fallback fonts are enabled
-  loadHomeScreen()
-
-  ' Reset transient state used by button handlers across scene transitions
-  m.photoAlbumShuffleMode = false
-
-  ' Handle input messages
+  ' Handle input messages. Set up ONCE — these survive session resets (Change Server /
+  ' User / Sign Out re-enter the login flow via handleMenuAction, NOT by restarting the
+  ' app loop), so roInput/roDeviceInfo are no longer recreated per login.
   input = CreateObject("roInput")
   input.SetMessagePort(m.port)
   ' Receive Roku voice transport commands (play/pause/seek/next/startover/skip/etc.)
@@ -84,11 +93,16 @@ sub Main (args as dynamic) as void
   device.EnableCodecCapChangedEvent(true)
   device.EnableAudioGuideChangedEvent(true)
 
-  ' Check if we were sent content to play with the startup command (Deep Link)
-  if isValidAndNotEmpty(args.mediaType) and isValidAndNotEmpty(args.contentId)
+  ' Enter the login flow. reenterLogin() re-resolves the pre-login locale, then beginLogin()
+  ' runs the saved-server + saved-token fast path (sync, no UI). On success it brings up Home;
+  ' otherwise it routes to the right pre-login screen (/server, /users, /login), whose views
+  ' drive the rest through preLoginIntent events handled in the loop below.
+  reenterLogin()
 
-    m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: args.contentId, type: "video" }))
-    m.global.queueManager.callFunc("playQueue")
+  ' If a cold-start deep link couldn't run yet because login is required,
+  ' tell the user it'll open after they sign in (replay fires from createAndShowHomeGroup).
+  if not isValidAndNotEmpty(m.global.user.authToken)
+    notifyDeepLinkDeferred()
   end if
 
   ' This is the core logic loop. Mostly for transitioning between scenes
@@ -103,656 +117,43 @@ sub Main (args as dynamic) as void
       return
     else if isNodeEvent(msg, "exit")
       return
-    else if isNodeEvent(msg, "closeSidePanel")
-      group = m.global.sceneManager.callFunc("getActiveScene")
-      if isValid(group.lastFocus)
-        group.lastFocus.setFocus(true)
-      else
-        group.setFocus(true)
-      end if
+    else if isNodeEvent(msg, "preLoginIntent")
+      ' A routed pre-login view emitted an intent. The coordinator runs the blocking
+      ' bootstrap API call(s) and drives the next navigation.
+      handlePreLoginIntent(msg.getData())
+    else if isNodeEvent(msg, "isAuthenticated")
+      ' The QuickConnectDialog (started by the coordinator) signalled a successful in-flow
+      ' sign-in. Complete the login.
+      handlePreLoginIntent("quickConnectComplete")
+    else if isNodeEvent(msg, "close")
+      ' The QuickConnectDialog closed. On SUCCESS this fires right after isAuthenticated (the
+      ' branch above already drove quickConnectComplete -> onQuickConnectDialogClosed, so this is
+      ' a guarded no-op); on CANCEL it is the only signal, and releases the observer + node ref
+      ' that would otherwise leak. Only the QuickConnectDialog is observed for "close" on m.port.
+      onQuickConnectDialogClosed()
     else if isNodeEvent(msg, "isFontDownloadCompleted")
       ' Handle font download completion
       fontDownloadTask = msg.getRoSGNode()
       if isValid(fontDownloadTask)
         handleFontDownloadCompletion(fontDownloadTask)
       end if
-    else if isNodeEvent(msg, "quickPlayNode")
-      ' Read from msg.getData() — the value at event-queue time — not from
-      ' the current field value which may already be cleared to invalid by
-      ' the set-then-clear pattern that prevents stale re-fires.
-      itemNode = msg.getData()
-      if isValid(itemNode) and isValid(itemNode.id) and itemNode.id <> ""
-        itemType = invalid
-        if isValid(itemNode.type) and itemNode.type <> ""
-          itemType = Lcase(itemNode.type)
-        end if
-
-        if isValid(itemType)
-          startLoadingSpinner()
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("resetShuffle")
-
-          ' Synchronous types (no API calls) — handle inline
-          if itemType = "chapter"
-            ' Chapter: start playback of parent video at chapter position
-            queueItem = nodeHelpers.createQueueItem(itemNode)
-            if isValid(queueItem)
-              queueItem.type = itemNode.parentType
-              queueItem.startingPoint = itemNode.playbackPositionTicks
-              m.global.queueManager.callFunc("push", queueItem)
-              m.global.queueManager.callFunc("playQueue")
-            end if
-          else if itemType = "episode" or itemType = "recording" or itemType = "movie" or itemType = "video"
-            quickplay.video(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "audio"
-            quickplay.audio(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "musicvideo"
-            quickplay.musicVideo(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "photo"
-            quickplay.photo(itemNode)
-          else if itemType = "tvchannel"
-            quickplay.tvChannel(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else if itemType = "program"
-            quickplay.program(itemNode)
-            m.global.queueManager.callFunc("playQueue")
-          else
-            ' All other types need API calls — delegate to QuickPlayTask
-            m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-            m.activeQuickPlayTask.input = {
-              action: itemType,
-              id: itemNode.id,
-              seriesId: itemNode.seriesId,
-              collectionType: itemNode.collectionType,
-              folderType: itemNode.folderType,
-              movieCount: itemNode.movieCount,
-              seriesCount: itemNode.seriesCount,
-              channelId: itemNode.channelId
-            }
-            m.activeQuickPlayTask.observeField("output", m.port)
-            m.activeQuickPlayTask.control = "RUN"
-          end if
-        end if
-      end if
-    else if isNodeEvent(msg, "voiceQuery")
-      ' Voice search from Home screen — open SearchResults with spoken query pre-populated
-      voiceQuery = msg.getData()
-      if isValidAndNotEmpty(voiceQuery)
-        ' Guard: skip if a SearchResults is already the active scene (prevents duplicate pushes
-        ' when voice system fires multiple text changes for a single input)
-        activeScene = m.global.sceneManager.callFunc("getActiveScene")
-        if isValid(activeScene) and activeScene.subtype() = "SearchResults"
-          searchKey = activeScene.findNode("SearchBox").findNode("searchKey")
-          searchKey.text = voiceQuery
-          searchKey.textEditBox.setFocus(true)
-        else
-          group = CreateSearchPage()
-          group.shouldSkipInitialFocus = true
-          m.global.sceneManager.callFunc("pushScene", group)
-          searchKey = group.findNode("SearchBox").findNode("searchKey")
-          searchKey.text = voiceQuery
-          searchKey.textEditBox.setFocus(true)
-        end if
-      end if
-    else if isNodeEvent(msg, "output")
+    else if isNodeEvent(msg, "reachable")
+      ' Off-thread deep-link server-switch pre-flight (ServerReachableTask) returned. Tear down
+      ' the probe and hand the verdict to performServerSwitch's continuation.
       task = msg.getRoSGNode()
-      if isValid(task) and task.subtype() = "QuickPlayTask"
-        handleQuickPlayOutput(task)
-      end if
-    else if isNodeEvent(msg, "result")
-      task = msg.getRoSGNode()
-      if isValid(task) and task.subtype() = "RecordProgramTask"
-        handleRecordResult(task)
-      end if
-    else if isNodeEvent(msg, "selectedItem")
-      ' If you select a library from ANYWHERE, follow this flow
-      selectedItem = msg.getData()
-      if isValid(selectedItem)
-        startLoadingSpinner()
-        selectedItemType = selectedItem.type
-
-        ' Normalize alias types to their canonical forms
-        if selectedItemType = "LiveTvChannel" then selectedItemType = "TvChannel"
-        if selectedItemType = "LiveTvProgram" or selectedItemType = "TvProgram" then selectedItemType = "Program"
-
-        if selectedItemType = "CollectionFolder"
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Genre" or selectedItemType = "MusicGenre" or (selectedItemType = "Folder" and (selectedItem.folderType = "Genre" or selectedItem.folderType = "MusicGenre"))
-          ' User clicked on a genre/music-genre — open scoped library view
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "Studio"
-          ' Studio items from /Studios endpoint have IsFolder=false so type="Studio" directly.
-          ' Route to a library view scoped to that studio (presenter inferred via collectionType).
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "UserView" or selectedItemType = "Folder" or selectedItemType = "Channel"
-          group = CreateLibraryView(selectedItem)
-          group.observeField("selectedItem", m.port)
-          group.observeField("quickPlayNode", m.port)
-          m.global.sceneManager.callFunc("pushScene", group)
-        else if selectedItemType = "BoxSet"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Episode" or LCase(selectedItemType) = "recording"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Series"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Season"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Movie"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Person"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Video"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "TvChannel" or selectedItemType = "Program"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Photo"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "PhotoAlbum"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "MusicArtist"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "MusicAlbum"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Audio"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "MusicVideo"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Playlist"
-          group = CreateItemDetailsGroup(selectedItem)
-        else if selectedItemType = "Chapter"
-          ' Chapter: start playback of parent video at chapter position
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("resetShuffle")
-          queueItem = nodeHelpers.createQueueItem(selectedItem)
-          if isValid(queueItem)
-            queueItem.type = selectedItem.parentType
-            queueItem.startingPoint = selectedItem.playbackPositionTicks
-            m.global.queueManager.callFunc("push", queueItem)
-            m.global.queueManager.callFunc("playQueue")
-          end if
-        else
-          ' TODO - switch on more node types
-          stopLoadingSpinner()
-          messageDialog(translate(translationKeys.ErrorTypeNotYetSupported, [selectedItemType]))
-        end if
-      end if
-    else if isNodeEvent(msg, "movieSelected")
-      ' If you select a movie from ANYWHERE, follow this flow
-      startLoadingSpinner()
-      node = getMsgPicker(msg, "picker")
-      group = CreateItemDetailsGroup(node)
-    else if isNodeEvent(msg, "seriesSelected")
-      ' If you select a TV Series from ANYWHERE, follow this flow
-      startLoadingSpinner()
-      node = getMsgPicker(msg, "picker")
-      group = CreateItemDetailsGroup(node)
-    else if isNodeEvent(msg, "playItem")
-      ' User has selected audio they want us to play
-      startLoadingSpinner()
-      selectedIndex = msg.getData()
-      screenContent = msg.getRoSGNode()
-
-      m.global.queueManager.callFunc("resetShuffle")
-      m.global.queueManager.callFunc("set", screenContent.albumData.items)
-      m.global.queueManager.callFunc("setPosition", selectedIndex)
-      m.global.queueManager.callFunc("playQueue")
-    else if isNodeEvent(msg, "searchValue")
-      query = msg.getRoSGNode().searchValue
-      group.findNode("SearchBox").visible = false
-      options = group.findNode("SearchSelect")
-      options.visible = true
-      options.setFocus(true)
-
-      m.searchDialog = createObject("roSGNode", "ProgressDialog")
-      m.searchDialog.title = translate(translationKeys.LabelLoadingSearchData)
-      m.scene.dialog = m.searchDialog
-
-      m.searchGroup = group
-      m.searchQuery = query
-
-      m.searchTask = CreateObject("roSGNode", "SearchTask")
-      m.searchTask.query = query
-      m.searchTask.observeField("results", m.port)
-      m.searchTask.control = "RUN"
-    else if isNodeEvent(msg, "results")
-      ' Search results arrived from SearchTask
-      task = msg.getRoSGNode()
-      task.unobserveField("results")
-      results = task.results
+      task.unobserveField("reachable")
       task.control = "STOP"
-      m.searchTask = invalid
-
-      if isValid(m.searchDialog)
-        m.searchDialog.close = true
-        m.searchDialog = invalid
-      end if
-
-      if isValid(m.searchGroup) and isValid(results)
-        searchOptions = m.searchGroup.findNode("SearchSelect")
-        searchOptions.itemData = results
-        searchOptions.query = m.searchQuery
-      end if
-      m.searchGroup = invalid
-    else if isNodeEvent(msg, "itemSelected")
-      ' Search item selected
-      startLoadingSpinner()
-      node = getMsgPicker(msg)
-
-      ' Normalize alias types to their canonical forms
-      nodeType = node.type
-      if nodeType = "LiveTvChannel" then nodeType = "TvChannel"
-      if nodeType = "LiveTvProgram" or nodeType = "TvProgram" then nodeType = "Program"
-
-      if nodeType = "Series"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Movie"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "MusicArtist"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "MusicAlbum"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Audio"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "MusicVideo"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Person"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "BoxSet"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "TvChannel" or nodeType = "Program"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Episode"
-        group = CreateItemDetailsGroup(node)
-      else if LCase(nodeType) = "recording"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Playlist"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Photo" or nodeType = "PhotoAlbum"
-        group = CreateItemDetailsGroup(node)
-      else if nodeType = "Video"
-        group = CreateItemDetailsGroup(node)
-      else
-        ' TODO - switch on more node types
-        stopLoadingSpinner()
-        messageDialog(translate(translationKeys.ErrorTypeNotYetSupported, [nodeType]))
-      end if
-    else if isNodeEvent(msg, "buttonSelected")
-      ' If a button is selected, we have some determining to do
-      btn = getButton(msg)
-      if not isValid(btn) then print "No button found in buttonSelected event"
-
-      ' Guard: skip if spinner is active — isRemoteDisabled prevents FUTURE key events
-      ' but cannot clear events already queued in m.port from rapid presses.
-      if isValid(btn) and not m.scene.isLoading
-        group = m.global.sceneManager.callFunc("getActiveScene")
-
-        if btn.id = "playButton"
-          if not isValid(group) then return
-
-          ' User chose Play button from movie detail view
-          startLoadingSpinner()
-          ' Check if a specific Audio Stream was selected
-          audioStreamIdx = 0
-          if isValid(group.selectedAudioStreamIndex)
-            audioStreamIdx = group.selectedAudioStreamIndex
-          end if
-          ' Subtitle dropdown override (-1 = SubtitleSelection.NONE). Only forwarded for
-          ' ItemDetails screens since that's the only place selectedSubtitleStreamIndex
-          ' is surfaced pre-playback.
-          subtitleStreamIdx = invalid
-          if isValid(group.selectedSubtitleStreamIndex)
-            subtitleStreamIdx = group.selectedSubtitleStreamIndex
-          end if
-
-          if isValid(group.itemContent)
-            ' Types requiring API calls — delegate to QuickPlayTask
-            itemContentType = group.itemContent.type
-            if group.subtype() = "ItemDetails" and (itemContentType = "Series" or itemContentType = "Season" or itemContentType = "BoxSet" or itemContentType = "MusicArtist" or itemContentType = "MusicAlbum" or itemContentType = "Playlist")
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("resetShuffle")
-              m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-              m.activeQuickPlayTask.input = {
-                action: "playAll" + itemContentType,
-                id: group.itemContent.id,
-                seriesId: group.itemContent.seriesId
-              }
-              m.activeQuickPlayTask.observeField("output", m.port)
-              m.activeQuickPlayTask.control = "RUN"
-            else
-              queueItem = nodeHelpers.createQueueItem(group.itemContent)
-              if not isValid(queueItem) then return
-              queueItem.selectedAudioStreamIndex = audioStreamIdx
-              if isValid(subtitleStreamIdx)
-                queueItem.selectedSubtitleStreamIndex = subtitleStreamIdx
-              end if
-              ' selectedVideoStreamId is the user-chosen MediaSource (alternate version).
-              ' This is a separate identifier from the Jellyfin item id — it must land in
-              ' queueItem.mediaSourceId, which VideoPlayerView.init passes to
-              ' LoadMetaDataTask.mediaSourceId. Overwriting queueItem.id here would
-              ' replace the Jellyfin item id and break metadata lookup entirely.
-              if isValidAndNotEmpty(group.selectedVideoStreamId)
-                queueItem.mediaSourceId = group.selectedVideoStreamId
-              end if
-
-              ' ItemDetails: Play button always starts from beginning (Resume button handles resume)
-              if group.subtype() = "ItemDetails"
-                queueItem.startingPoint = 0
-                m.global.queueManager.callFunc("clear")
-                m.global.queueManager.callFunc("push", queueItem)
-                m.global.queueManager.callFunc("playQueue")
-              end if
-            end if
-          end if
-
-          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "mainGroup"
-            buttons = group.findNode("buttons")
-            if isValid(buttons)
-              group.lastFocus = group.findNode("buttons")
-            end if
-          end if
-
-          if isValid(group.lastFocus)
-            group.lastFocus.setFocus(true)
-          end if
-
-        else if btn.id = "resumeButton"
-          if not isValid(group) then return
-
-          ' User chose Resume button from detail view
-          startLoadingSpinner()
-          ' Check if a specific Audio Stream was selected
-          audioStreamIdx = 0
-          if isValid(group.selectedAudioStreamIndex)
-            audioStreamIdx = group.selectedAudioStreamIndex
-          end if
-          ' Subtitle dropdown override (see playButton path above)
-          subtitleStreamIdx = invalid
-          if isValid(group.selectedSubtitleStreamIndex)
-            subtitleStreamIdx = group.selectedSubtitleStreamIndex
-          end if
-
-          if isValid(group.itemContent)
-            ' Series on ItemDetails: resume the next-up episode stored on the component
-            if group.subtype() = "ItemDetails" and group.itemContent.type = "Series"
-              nextEp = group.nextUpEpisode
-              if isValid(nextEp) and isValidAndNotEmpty(nextEp.id)
-                queueItem = nodeHelpers.createQueueItem(nextEp)
-                if not isValid(queueItem)
-                  stopLoadingSpinner()
-                  return
-                end if
-                queueItem.startingPoint = nextEp.playbackPositionTicks
-                m.global.queueManager.callFunc("clear")
-                m.global.queueManager.callFunc("push", queueItem)
-                m.global.queueManager.callFunc("playQueue")
-              else
-                stopLoadingSpinner()
-              end if
-            else
-              queueItem = nodeHelpers.createQueueItem(group.itemContent)
-              if not isValid(queueItem) then return
-              queueItem.selectedAudioStreamIndex = audioStreamIdx
-              if isValid(subtitleStreamIdx)
-                queueItem.selectedSubtitleStreamIndex = subtitleStreamIdx
-              end if
-              ' selectedVideoStreamId is the user-chosen MediaSource (alternate version).
-              ' Land it in mediaSourceId (not id) — see playButton handler comment above
-              ' for the rationale.
-              if isValidAndNotEmpty(group.selectedVideoStreamId)
-                queueItem.mediaSourceId = group.selectedVideoStreamId
-              end if
-
-              ' Set starting point to saved position
-              if group.itemContent.playbackPositionTicks > 0
-                queueItem.startingPoint = group.itemContent.playbackPositionTicks
-              else
-                queueItem.startingPoint = 0
-              end if
-
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("push", queueItem)
-              m.global.queueManager.callFunc("playQueue")
-            end if
-          end if
-
-          if isValid(group.lastFocus) and isValid(group.lastFocus.id) and group.lastFocus.id = "mainGroup"
-            buttons = group.findNode("buttons")
-            if isValid(buttons)
-              group.lastFocus = group.findNode("buttons")
-            end if
-          end if
-
-          if isValid(group.lastFocus)
-            group.lastFocus.setFocus(true)
-          end if
-
-        else if btn.id = "trailerButton"
-          ' User chose to play a trailer — delegate to QuickPlayTask
-          startLoadingSpinner()
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("resetShuffle")
-          m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-          m.activeQuickPlayTask.input = { action: "loadTrailers", id: group.id }
-          m.activeQuickPlayTask.observeField("output", m.port)
-          m.activeQuickPlayTask.control = "RUN"
-        else if btn.id = "watchedButton"
-          item = group.itemContent
-          if isValid(item) and isValidAndNotEmpty(item.id)
-            ' Series: confirm before marking all episodes watched/unwatched (can affect hundreds of
-            ' episodes). The dialog routing stays here (#550 sgRouter territory); the fetch itself is
-            ' delegated to ItemDetails.toggleWatched() on confirm (see the isDataReturned handler).
-            if item.type = "Series"
-              watchedButton = group.findNode("watchedButton")
-              ' Read current state from button — writing to itemContent triggers a full rebuild
-              isCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
-              if isCurrentlyWatched
-                confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries)
-                confirmBtn = translate(translationKeys.ButtonMarkUnwatched)
-              else
-                confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries2)
-                confirmBtn = translate(translationKeys.ButtonMarkWatched)
-              end if
-              m.pendingWatchedConfirmation = true
-              m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelWatched), [confirmMsg], [translate(translationKeys.ButtonCancel), confirmBtn])
-            else
-              ' Movie/Episode: toggle immediately on the active screen's render-thread method
-              ' (callFunc rendezvouses there, where the toggle runs as a promise). The in-flight
-              ' guard, optimistic state, stale-resume removal, and error contract all live in
-              ' ItemDetails.toggleWatched().
-              if isValid(group)
-                group.callFunc("toggleWatched")
-              end if
-            end if
-          end if
-        else if btn.id = "favoriteButton"
-          ' Delegate to the active screen's render-thread method (callFunc rendezvouses
-          ' to the render thread), where the favorite toggle runs as a promise. This keeps
-          ' the async work off main.bs's god-loop. See ItemDetails.toggleFavorite().
-          if isValid(group)
-            group.callFunc("toggleFavorite")
-          end if
-        else if btn.id = "refreshButton"
-          ' Trigger data refresh for the current screen
-          if isValid(group)
-            startLoadingSpinner()
-            group.refreshExtrasData = not group.refreshExtrasData
-            group.refreshItemDetailsData = not group.refreshItemDetailsData
-          end if
-        else if btn.id = "shuffleButton"
-          ' Shuffle: routes by item type so new types (Season, Artist, Person, etc.) can be added.
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
-            startLoadingSpinner()
-            item = group.itemContent
-            if item.type = "PhotoAlbum"
-              ' PhotoAlbum shuffle: launch random slideshow
-              m.photoAlbumShuffleMode = true
-              m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-              m.activeQuickPlayTask.input = { action: "loadPhotoAlbum", id: item.id }
-              m.activeQuickPlayTask.observeField("output", m.port)
-              m.activeQuickPlayTask.control = "RUN"
-            else
-              ' API calls run off the render thread via GetShuffleItemsTask; result handled by "shuffleItems" event.
-              m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
-              m.shuffleTask.shuffleInput = { type: item.type, id: item.id, seriesId: item.seriesId }
-              m.shuffleTask.observeField("shuffleItems", m.port)
-              m.shuffleTask.control = "RUN"
-            end if
-          end if
-        else if btn.id = "instantMixButton"
-          ' Instant Mix — delegate to QuickPlayTask
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
-            startLoadingSpinner()
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("resetShuffle")
-            m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-            m.activeQuickPlayTask.input = { action: "instantMix", id: group.itemContent.id }
-            m.activeQuickPlayTask.observeField("output", m.port)
-            m.activeQuickPlayTask.control = "RUN"
-          end if
-        else if btn.id = "goToSeriesButton"
-          ' Navigate to the parent series detail screen
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.seriesId)
-            CreateItemDetailsGroup({ id: group.itemContent.seriesId, type: "Series" })
-          end if
-        else if btn.id = "goToAlbumButton"
-          ' Navigate to the album detail screen for the current Audio item
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.albumId)
-            CreateItemDetailsGroup({ id: group.itemContent.albumId, type: "MusicAlbum" })
-          end if
-        else if btn.id = "goToArtistButton"
-          ' Navigate to the artist detail screen for the current MusicAlbum.
-          ' Prefers albumArtists (primary album artist); falls back to artistItems when only one artist.
-          if isValid(group) and isValid(group.itemContent)
-            item = group.itemContent
-            artistId = ""
-            if isValid(item.albumArtists) and item.albumArtists.count() > 0
-              firstAlbumArtist = item.albumArtists[0]
-              if isValid(firstAlbumArtist) and isValidAndNotEmpty(firstAlbumArtist.Id)
-                artistId = firstAlbumArtist.Id
-              end if
-            end if
-            if artistId = "" and isValid(item.artistItems) and item.artistItems.count() = 1
-              firstArtistItem = item.artistItems[0]
-              if isValid(firstArtistItem) and isValidAndNotEmpty(firstArtistItem.Id)
-                artistId = firstArtistItem.Id
-              end if
-            end if
-            if isValidAndNotEmpty(artistId)
-              CreateItemDetailsGroup({ id: artistId, type: "MusicArtist" })
-            end if
-          end if
-        else if btn.id = "viewPhotoButton"
-          ' Open Photo in the PhotoDetails viewer
-          if isValid(group) and isValid(group.itemContent)
-            quickplay.photo(group.itemContent)
-          end if
-        else if btn.id = "slideshowButton"
-          ' Launch sequential slideshow for PhotoAlbum
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
-            startLoadingSpinner()
-            m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
-            m.activeQuickPlayTask.input = { action: "loadPhotoAlbum", id: group.itemContent.id }
-            m.activeQuickPlayTask.observeField("output", m.port)
-            m.activeQuickPlayTask.control = "RUN"
-          end if
-        else if btn.id = "watchChannelButton"
-          ' Play a Live TV channel (TvChannel or Program's channel)
-          if isValid(group) and isValid(group.itemContent)
-            startLoadingSpinner()
-            item = group.itemContent
-            queueItem = nodeHelpers.createQueueItem(item)
-            ' Program: play the channel the program is on
-            if item.type = "Program" and isValidAndNotEmpty(item.channelId)
-              queueItem.id = item.channelId
-              queueItem.type = "TvChannel"
-            end if
-            m.global.queueManager.callFunc("clear")
-            m.global.queueManager.callFunc("push", queueItem)
-            m.global.queueManager.callFunc("playQueue")
-          end if
-        else if btn.id = "goToChannelButton"
-          ' Navigate to the TvChannel detail screen for this Program
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.channelId)
-            CreateItemDetailsGroup({ id: group.itemContent.channelId, type: "TvChannel" })
-          end if
-        else if btn.id = "recordButton"
-          item = group.itemContent
-          recordButton = group.findNode("recordButton")
-          if isValid(recordButton) and recordButton.isLoading then continue while ' Already in-flight
-          programToRecord = invalid
-          if item.type = "TvChannel" and isValid(item.currentProgram)
-            programToRecord = item.currentProgram
-          else if item.type = "Program"
-            programToRecord = item
-          end if
-          if isValid(programToRecord)
-            if isValid(recordButton) then recordButton.isLoading = true
-            m.pendingRecordButton = recordButton
-            m.pendingRecordIsCancel = isValidAndNotEmpty(programToRecord.timerId)
-            recordTask = CreateObject("roSGNode", "RecordProgramTask")
-            recordTask.programDetails = programToRecord
-            recordTask.observeField("result", m.port)
-            recordTask.control = "RUN"
-          end if
-        else if btn.id = "deleteButton"
-          print "deleteButton pressed"
-          if isValid(group) and isValid(group.itemContent) and isValidAndNotEmpty(group.itemContent.id)
-            m.pendingDeleteItemId = group.itemContent.id
-            m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.ButtonDelete), [translate(translationKeys.ErrorAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonDelete)])
-          end if
-        else
-          ' If there are no other button matches, check if this is a simple "OK" Dialog & Close if so
-          dialog = msg.getRoSGNode()
-          if dialog.id = "OKDialog"
-            dialog.unobserveField("buttonSelected")
-            dialog.close = true
-            return
-          end if
-
-          print "ERROR: Unhandled button id: " + btn.id
-        end if
-      end if ' isValid(btn) and not m.scene.isLoading
-    else if isNodeEvent(msg, "optionSelected")
-      button = msg.getRoSGNode()
-      group = m.global.sceneManager.callFunc("getActiveScene")
-      actionId = button.id
-
-      ' Close the side panel before handling the action
-      ' Search from scene — panel may be reparented to optionsPanelOverlay while open
-      if isValid(group)
-        panel = m.scene.findNode("options")
-        if isValid(panel)
-          panel.visible = false
-        end if
-        if isValid(group.lastFocus)
-          group.lastFocus.setFocus(true)
-        else
-          group.setFocus(true)
-        end if
-      end if
-
-      if handleMenuAction(actionId) then goto appStart
+      m.serverReachableTask = invalid
+      onServerProbeDone(task.reachable)
     else if isNodeEvent(msg, "userMenuAction")
       actionId = msg.getData()
-      if handleMenuAction(actionId) then goto appStart
+      handleMenuAction(actionId)
     else if type(msg) = "roDeviceInfoEvent"
       event = msg.GetInfo()
 
       if event.exitedScreensaver = true
         m.global.sceneManager.callFunc("resetTime")
-        group = m.global.sceneManager.callFunc("getActiveScene")
+        group = getActiveView()
         if isValid(group)
           ' refresh the current view
           if group.isSubType("JRScreen")
@@ -803,23 +204,32 @@ sub Main (args as dynamic) as void
     else if type(msg) = "roInputEvent"
       if msg.IsInput()
         info = msg.GetInfo()
-        if info.DoesExist("mediatype") and info.DoesExist("contentid")
-          ' Deep-link launch: another app handed us content to play.
-          m.global.queueManager.callFunc("clear")
-          m.global.queueManager.callFunc("push", nodeHelpers.createQueueItem({ id: info.contentId, type: "video" }))
-          m.global.queueManager.callFunc("playQueue")
+        if info.DoesExist("contentid")
+          ' Runtime deep link — another Jellyfin client casting to this device (or any sender)
+          ' handed us content. mediaType is optional (ItemDetails infers the
+          ' launch from the resolved item). Stash the intent, then resolve its server: replay
+          ' now if it's the active server (or none), prompt to switch if it's another saved
+          ' server, or toast if unknown. When signed out, the stash rides until login.
+          mediaTypeHint = ""
+          if info.DoesExist("mediatype") then mediaTypeHint = info.mediaType
+          itemNameHint = ""
+          if info.DoesExist("itemname") then itemNameHint = info.itemName
+          stashDeepLink(info.contentId, mediaTypeHint, itemNameHint)
+          onRuntimeDeepLink()
         else if isValid(info.type) and info.type = "transport"
           ' Voice transport command (play, pause, seek, next, startover, skip, ...).
           ' Dispatch to the active player; otherwise ack as no-media so Roku OS shows
           ' "Nothing is playing" rather than the default "Command not available".
           ' roAppManager calls happen here (MAIN thread) — it can't be created on the
           ' render thread where the player's callFunc executes.
-          activeScene = m.global.sceneManager.callFunc("getActiveScene")
+          activeScene = getActiveView()
           transportStatus = "error.no-media"
           transportNowPlaying = invalid
           if isValid(activeScene)
             sceneType = activeScene.subtype()
-            if sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
+            ' Routed video playback's active view is the PlayerHostView wrapper; it forwards
+            ' handleTransport to the child player.
+            if sceneType = "PlayerHostView" or sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
               transportRet = activeScene.callFunc("handleTransport", info)
               if isValid(transportRet) and isValid(transportRet.status)
                 transportStatus = transportRet.status
@@ -846,41 +256,37 @@ sub Main (args as dynamic) as void
       end if
     else if isNodeEvent(msg, "isDataReturned")
       popupNode = msg.getRoSGNode()
-      stopLoadingSpinner()
-      if isValid(popupNode) and isValid(popupNode.returnData)
+      sm = m.global.sceneManager
+      ' main.bs owns exactly three confirmation dialogs, each claimed by a pending flag set when
+      ' it is shown: the deep-link server-switch prompt, the exit prompt, and the resume/start-over
+      ' prompt. The isDataReturned field is shared — routed views (ItemDetails delete / mark-watched)
+      ' observe the same field scoped. Without the flag gate this handler would also fire for THEIR
+      ' dialogs, cancelling the spinner they just started and replaying a stale queue hold. So we act
+      ' only when one of our flags is set, and leave routed-view-owned confirmations untouched.
+      if isValid(popupNode) and isValid(popupNode.returnData) and (sm.isPendingServerSwitch or sm.isPendingExitConfirmation or sm.isPendingPlaybackOptions)
         print "popupNode.returnData = ", popupNode.returnData
-        ' Handle exit confirmation dialog
-        if m.global.sceneManager.isPendingExitConfirmation = true
-          m.global.sceneManager.isPendingExitConfirmation = false
+        stopLoadingSpinner()
+        ' Deep-link server-switch confirmation. On "Switch", run the pre-flighted switch
+        ' (performServerSwitch); on cancel, discard the stashed deep link.
+        if sm.isPendingServerSwitch = true
+          sm.isPendingServerSwitch = false
+          if popupNode.returnData.buttonSelected = translate(translationKeys.ButtonSwitch)
+            performServerSwitch(m.pendingSwitchServer)
+          else
+            m.pendingSwitchServer = invalid
+            m.global.AuthManager.stashedDeepLink = invalid
+            displayToast(translate(translationKeys.MessageCastCanceled), "info")
+          end if
+          ' Exit confirmation dialog
+        else if sm.isPendingExitConfirmation = true
+          sm.isPendingExitConfirmation = false
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate(translationKeys.ButtonExit)
             ' User confirmed exit
             m.scene.exit = true
           end if
-          ' Handle delete confirmation dialog
-        else if isValid(m.pendingDeleteItemId)
-          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate(translationKeys.ButtonDelete)
-            ' User confirmed deletion
-            SubmitSideEffect(GetApi().BuildDeleteItemRequest(m.pendingDeleteItemId))
-            m.pendingDeleteItemId = invalid
-            m.global.sceneManager.callFunc("popScene")
-          else
-            ' User cancelled or dialog closed
-            m.pendingDeleteItemId = invalid
-          end if
-          ' Handle watched confirmation dialog (Series only)
-        else if m.pendingWatchedConfirmation = true
-          m.pendingWatchedConfirmation = false
-          if popupNode.returnData.indexSelected = 1
-            ' User confirmed — delegate the mark/unmark of all episodes to the active screen's
-            ' render-thread method (callFunc rendezvouses there, where it runs as a promise).
-            ' toggleWatched() re-reads the button state to pick mark vs unmark, so no fetch state
-            ' needs threading through the dialog.
-            activeGroup = m.global.sceneManager.callFunc("getActiveScene")
-            if isValid(activeGroup)
-              activeGroup.callFunc("toggleWatched")
-            end if
-          end if
-        else
+          ' Resume / start-over playback prompt (shown by playbackOptionDialog)
+        else if sm.isPendingPlaybackOptions = true
+          sm.isPendingPlaybackOptions = false
           selectedItem = m.global.queueManager.callFunc("getHold")
           m.global.queueManager.callFunc("clearHold")
 
@@ -909,28 +315,10 @@ sub Main (args as dynamic) as void
           end if
         end if
       end if
-    else if isNodeEvent(msg, "shuffleItems")
-      ' GetShuffleItemsTask completed — queue and play the results
-      shuffleTask = msg.getRoSGNode()
-      shuffleItems = shuffleTask.shuffleItems
-      shuffleTask.unobserveField("shuffleItems")
-      shuffleTask.control = "STOP"
-      m.shuffleTask = invalid
-      if isValid(shuffleItems) and shuffleItems.count() > 0
-        m.global.queueManager.callFunc("clear")
-        m.global.queueManager.callFunc("resetShuffle")
-        m.global.queueManager.callFunc("set", shuffleItems)
-        if shuffleItems.count() > 1
-          m.global.queueManager.callFunc("toggleShuffle") ' Fisher-Yates client-side shuffle
-        end if
-        m.global.queueManager.callFunc("playQueue")
-      else
-        stopLoadingSpinner()
-      end if
     else if isNodeEvent(msg, "reloadHomeRequested")
-      ' Theme colors changed - reload home screen with fresh state
-      m.global.sceneManager.callFunc("clearScenes")
-      createAndShowHomeGroup()
+      ' Theme/locale changed — re-navigate the router to "/" for a fresh Home (picks up new
+      ' theme constants / reloaded translations).
+      m.scene.callFunc("reloadRoutedHome")
     else
       print "Unhandled " type(msg)
       print msg
@@ -982,12 +370,14 @@ end sub
 
 ' Create and show the home group
 sub createAndShowHomeGroup()
-  group = CreateHomeGroup()
-  group.callFunc("loadLibraries")
-  m.global.sceneManager.callFunc("pushScene", group)
+  ' Home is mounted by the router (in JRScene's outlet). replayAfterLogin
+  ' (source/replayRoute.bs) brings the router up and replays any stashed deep link as an
+  ' ordered route chain — Home alone when there is none, or Home -> Details -> Player for a
+  ' deferred/cold-start play deep link (decision #3). Home self-loads its libraries in its own
+  ' onViewOpen. (exit + activeRoutedView + the pre-login intent bridge are observed once during
+  ' bootstrap, not here.)
+  replayAfterLogin()
   stopLoadingSpinner()
-
-  m.scene.observeField("exit", m.port)
 
   ' update lastRunVersion but only on prod
   if not m.global.app.isDev
@@ -1054,117 +444,30 @@ sub calculateFontScaleFactor()
 
 end sub
 
-' Handles the output from QuickPlayTask — queues items, opens photo player, or plays trailers.
-sub handleQuickPlayOutput(task as object)
-  output = task.output
-  task.unobserveField("output")
-  task.control = "STOP"
-  m.activeQuickPlayTask = invalid
-
-  if not isValid(output) or not isValidAndNotEmpty(output.items)
-    stopLoadingSpinner()
-    return
-  end if
-
-  if output.action = "queue"
-    quickplay.pushToQueue(output.items)
-    if output.firstItemStartingPoint > 0
-      m.global.queueManager.callFunc("setCurrentStartingPoint", output.firstItemStartingPoint)
-    end if
-    if output.shuffle and m.global.queueManager.callFunc("getCount") > 1
-      m.global.queueManager.callFunc("toggleShuffle")
-    end if
-    m.global.queueManager.callFunc("playQueue")
-  else if output.action = "photo"
-    photoPlayer = CreateObject("roSgNode", "PhotoDetails")
-    photoPlayer.isSlideshow = true
-    ' PhotoAlbum shuffle sets isRandom=true for random slideshow
-    photoPlayer.isRandom = m.photoAlbumShuffleMode = true
-    m.photoAlbumShuffleMode = false
-    photoPlayer.itemsArray = output.items
-    photoPlayer.itemIndex = 0
-    m.global.sceneManager.callfunc("pushScene", photoPlayer)
-    stopLoadingSpinner()
-  else if output.action = "trailer"
-    if isValid(output.items[0]) and isValidAndNotEmpty(output.items[0].id)
-      m.global.queueManager.callFunc("clear")
-      m.global.queueManager.callFunc("set", output.items)
-      m.global.queueManager.callFunc("playQueue")
-    else
-      stopLoadingSpinner()
-    end if
-  end if
-end sub
-
-sub handleRecordResult(task as object)
-  res = task.result
-  task.unobserveField("result")
-  task.control = "STOP"
-
-  if isValid(res) and res.ok
-    ' Toggle button label and icon color to reflect new state
-    if isValid(m.pendingRecordButton)
-      if m.pendingRecordIsCancel
-        m.pendingRecordButton.text = translate(translationKeys.ButtonRecord)
-        ' Revert to default icon color (white)
-        m.pendingRecordButton.iconBackground = m.global.constants.colorTextPrimary
-        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorTextPrimary
-      else
-        m.pendingRecordButton.text = translate(translationKeys.LabelCancelRecording)
-        ' Active recording — red icon
-        m.pendingRecordButton.iconBackground = m.global.constants.colorError
-        m.pendingRecordButton.iconFocusBackground = m.global.constants.colorError
-      end if
-    end if
-    if res.action = "record"
-      displayToast(translate(translationKeys.LabelRecordingScheduled), "success")
-    else
-      displayToast(translate(translationKeys.LabelRecordingCancelled), "success")
-    end if
-  else
-    ' Failed — button label stays as-is (no state change)
-    if isValid(res) and res.action = "record"
-      displayToast(translate(translationKeys.ErrorFailedToScheduleRecording), "error")
-    else
-      displayToast(translate(translationKeys.ErrorFailedToCancelRecording), "error")
-    end if
-  end if
-
-  if isValid(m.pendingRecordButton)
-    m.pendingRecordButton.isLoading = false
-  end if
-  m.pendingRecordButton = invalid
-  m.pendingRecordIsCancel = invalid
-end sub
-
 ' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
-' Returns true if the caller should goto appStart (session-ending actions).
-function handleMenuAction(actionId as string) as boolean
-  if actionId = HomeAction.OPEN_SEARCH
-    group = CreateSearchPage()
-    m.global.sceneManager.callFunc("pushScene", group)
-    group.findNode("SearchBox").findNode("searchKey").setFocus(true)
-    group.findNode("SearchBox").findNode("searchKey").active = true
-  else if actionId = HomeAction.OPEN_SETTINGS
-    m.global.sceneManager.callFunc("settings")
-  else if actionId = HomeAction.CHANGE_SERVER
+' OPEN_SEARCH / OPEN_SETTINGS are not handled here — Home navigates to those routes directly
+' (navigateTo runs on the render thread, which main.bs is not). Only the session-ending
+' actions remain. Each tears down the routed Home (resetRouter) and re-enters the login flow
+' IN PLACE (reenterLogin) — no `goto appStart`, since the pre-login flow is routed and driven
+' by the same unified event loop.
+sub handleMenuAction(actionId as string)
+  if actionId = HomeAction.CHANGE_SERVER
     startLoadingSpinner()
+    m.scene.callFunc("resetRouter")
     unsetSetting("server")
     server.Delete()
     SignOut(false)
-    m.global.sceneManager.callFunc("clearScenes")
-    return true
+    reenterLogin()
   else if actionId = HomeAction.CHANGE_USER
     startLoadingSpinner()
+    m.scene.callFunc("resetRouter")
     SignOut(false)
-    m.global.sceneManager.callFunc("clearScenes")
-    return true
+    reenterLogin()
   else if actionId = HomeAction.SIGN_OUT
     startLoadingSpinner()
+    m.scene.callFunc("resetRouter")
     SignOut()
-    m.global.sceneManager.callFunc("clearScenes")
-    return true
+    reenterLogin()
   end if
+end sub
 
-  return false
-end function
