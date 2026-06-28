@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add the `/dep-major` skill for major dependency bumps ([#656](https://github.com/jellyrock/jellyrock/pull/656))
 - Add a structured agent + contributor workflow ([#670](https://github.com/jellyrock/jellyrock/pull/670))
 
 ### Changed
