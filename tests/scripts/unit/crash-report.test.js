@@ -1185,6 +1185,20 @@ describe('loadNoiseConfig', () => {
     }
   });
 
+  it('returns empty patterns when the config file is present but empty', () => {
+    // js-yaml v5 throws "the input is empty" on a blank document (v4 returned
+    // undefined); loadNoiseConfig guards the empty case to the no-patterns fallback.
+    const root = mkdtempSync(join(tmpdir(), 'crash-noise-blank-'));
+    try {
+      const cfgDir = join(root, '.crash-report');
+      mkdirSync(cfgDir);
+      writeFileSync(join(cfgDir, 'known-noise.yml'), '   \n');
+      expect(loadNoiseConfig(root)).toEqual({ patterns: [] });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('parses a valid config and defaults spike_multiplier', () => {
     const root = mkdtempSync(join(tmpdir(), 'crash-noise-valid-'));
     try {
