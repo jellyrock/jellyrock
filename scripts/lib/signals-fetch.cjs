@@ -77,7 +77,7 @@ function parseJellyfinIndex(html) {
   const re = /jellyfin-openapi-(\d+\.\d+\.\d+)(?:-(rc\d+|beta\d+|alpha\d+))?\.json/g;
   const seen = new Set();
   const versions = [];
-  for (let m; (m = re.exec(html)); ) {
+  for (let m; (m = re.exec(html));) {
     const key = m[1] + (m[2] ? '-' + m[2] : '');
     if (seen.has(key)) continue;
     seen.add(key);
@@ -132,7 +132,7 @@ async function fetchJellyfinVersions({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 function parseUnstableIndex(html) {
   const re = /jellyfin-openapi-(\d{8}(?:\d{6}|\.\d+)?)\.json/g;
   const stamps = new Set();
-  for (let m; (m = re.exec(html)); ) stamps.add(m[1]);
+  for (let m; (m = re.exec(html));) stamps.add(m[1]);
   if (stamps.size === 0) {
     throw new Error('no jellyfin-openapi-<datestamp>.json filenames matched in unstable/ index');
   }

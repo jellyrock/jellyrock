@@ -33,9 +33,7 @@ describe('translation-keys plugin (Tier 2)', () => {
   });
 
   it('emits an empty namespace with WARNING comment when locale file is missing', () => {
-    const { source } = harness.setup({
-      /* no localeJson */
-    });
+    const { source } = harness.setup({/* no localeJson */});
     expect(source).toMatch(/WARNING: Could not read base translation file/);
     expect(source).toMatch(/namespace translationKeys\s*\nend namespace/);
   });
