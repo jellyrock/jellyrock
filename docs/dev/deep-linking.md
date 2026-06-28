@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.bs
   - components/ItemDetails.bs
   - components/auth/AuthManager.bs
-last-reviewed: 2026-06-22
+last-reviewed: 2026-06-28
 ---
 
 # Deep Linking & Casting
@@ -143,25 +143,31 @@ signed-out redirects — see [navigation.md](../architecture/navigation.md).)
 `<IP>` = the Roku's address. Watch the TV; `curl "http://<IP>:8060/query/media-player"` reports
 playback state/position for scripted checks.
 
-URL-encode the `contentId` value: `=` is `%3D`, `|` is `%7C`.
+**Encoding (verified on-device):** the ONLY character that must be encoded is the `=` inside a
+`key=value` pair — write it `%3D`. A **literal `=` in the query value makes Roku's ECP return
+`404`** (e.g. `?contentId=id=x` → 404; `?contentId=id%3Dx` → 200). The `|` separators do **not**
+need encoding — a literal `|` is accepted (200) — and a bare-id `contentId` (no `=`) needs none at
+all. So drop the `id=` prefix (a leading bare segment is the id) and keep the pipes literal: the
+readable `<itemId>|action%3D<verb>` is the minimal correct form. `/input` and `/launch` are **POST**
+(`-d ''`); a `GET` returns 404.
 
 ```bash
 # Open an item's details (bare id, action defaults to open) — runtime
 curl -d '' "http://<IP>:8060/input?contentId=<itemId>"
 
 # Play it — runtime
-curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dplay"
+curl -d '' "http://<IP>:8060/input?contentId=<itemId>|action%3Dplay"
 
 # Shuffle / trailer / instant mix (instantmix targets music: MusicArtist / MusicAlbum / Audio)
-curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dshuffle"
-curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dtrailer"
-curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7Caction%3Dinstantmix"
+curl -d '' "http://<IP>:8060/input?contentId=<itemId>|action%3Dshuffle"
+curl -d '' "http://<IP>:8060/input?contentId=<itemId>|action%3Dtrailer"
+curl -d '' "http://<IP>:8060/input?contentId=<itemId>|action%3Dinstantmix"
 
 # Play on a specific (saved) server, with a cast title for the switch prompt
-curl -d '' "http://<IP>:8060/input?contentId=id%3D<itemId>%7CserverId%3D<serverGuid>%7Caction%3Dplay&itemName=<Title>"
+curl -d '' "http://<IP>:8060/input?contentId=<itemId>|serverId%3D<serverGuid>|action%3Dplay&itemName=<Title>"
 
 # Cold start straight into playback
-curl -d '' "http://<IP>:8060/launch/dev?contentId=id%3D<itemId>%7Caction%3Dplay"
+curl -d '' "http://<IP>:8060/launch/dev?contentId=<itemId>|action%3Dplay"
 
 # Invalid id → toast + Home (no stuck details), for any action
 curl -d '' "http://<IP>:8060/input?contentId=deadbeefdoesnotexist"
