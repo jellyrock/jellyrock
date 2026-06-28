@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-23
+last-updated: 2026-06-28
 ---
 
 # Signals backlog
@@ -70,4 +70,14 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **latest_acknowledged**: 0.1.3
 - **last_checked**: 2026-06-23
 - **action_when_moves**: if an official history-depth / `canGoBack()` API lands, bump the pin and gate the `JRScene` Exit confirmation on it to close the stale `nodeId` edge cleanly (replaces the navigation-in-progress mirror). Consider contributing the API upstream as a PR
+- **status**: watching
+
+### bsfmt-multiline-indent-regression: `brighterscript-formatter` multi-line-AA indent regression
+
+- **watching**: `brighterscript-formatter` releases after 1.7.28 that fix the [#140](https://github.com/rokucommunity/brighterscript-formatter/pull/140) "Multi-line Function parameters" indent regression
+- **current**: pinned to 1.7.27. 1.7.28 over-indents every statement after a multi-line associative-array call argument (e.g. `fn("...", {\n ... \n})`) — the indent level is never popped, so the over-indent cascades past `end sub`/`end function` into the next top-level declaration. Cosmetic only (BrightScript blocks are keyword-delimited, so it still compiles) but `bsfmt --check` enforces the corruption. Renovate re-proposes 1.7.28 as a patch (no version hold in `renovate.json` by choice); close that PR without merging until a fixed release ships
+- **latest_upstream**: 1.7.28
+- **latest_acknowledged**: 1.7.28
+- **last_checked**: 2026-06-28
+- **action_when_moves**: when a release after 1.7.28 ships, format the multi-line-AA reproduction snippet under it (`npx bsfmt --write` on a `fn("x", { k: v })`-across-lines snippet followed by a top-level function); if indentation is correct, merge the Renovate bump and drop the 1.7.27 pin in `package.json`. Link the upstream issue once filed
 - **status**: watching

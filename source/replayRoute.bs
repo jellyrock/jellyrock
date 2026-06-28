@@ -137,224 +137,224 @@ sub replayAfterLogin()
     ' homeFirst: land on Home (the back-stack root) THEN validate. An invalid id just toasts on
     ' Home — good post-login UX. A valid id navigates on from Home.
     m.scene.callFunc("resolveDeepLink", {
-        itemId: deepLink.itemId,
-        action: deepLink.action,
-        isPlayback: isDeepLinkPlaybackAction(deepLink.action),
-        homeFirst: true,
-        replacePlayer: false,
-        detailsRoute: deepLinkDetailsRoute(deepLink)
-      })
-      return
-    end if
+      itemId: deepLink.itemId,
+      action: deepLink.action,
+      isPlayback: isDeepLinkPlaybackAction(deepLink.action),
+      homeFirst: true,
+      replacePlayer: false,
+      detailsRoute: deepLinkDetailsRoute(deepLink)
+    })
+    return
+  end if
 
-    stashed = m.global.AuthManager.stashedRoute
-    m.global.AuthManager.stashedRoute = ""
-    m.scene.callFunc("replayRoutedDeepLink", buildReplayRoutes(stashed))
-  end sub
+  stashed = m.global.AuthManager.stashedRoute
+  m.global.AuthManager.stashedRoute = ""
+  m.scene.callFunc("replayRoutedDeepLink", buildReplayRoutes(stashed))
+end sub
 
-  ' Runtime replay (app already signed in, deep link for the active server). Unlike the post-login
-  ' path above, this does NOT prepend Home — an in-app cast shouldn't flash through the Home screen.
-  '   - already on the target item's LOADED details -> launch the action in place (no fetch, no
-  '     re-mount); for "open" we're already showing it, so nothing to do. The itemContent guard
-  '     matters: a lingering empty details would otherwise swallow the cast.
-  '   - otherwise -> hand the intent to JRScene.resolveDeepLink, which VALIDATES the id (a fetch)
-  '     BEFORE navigating. An invalid id never disturbs the active session — it just toasts. A valid
-  '     id then navigates (replacing an active player for a playback cast, else a plain push).
-  sub replayDeepLinkRuntime()
-    deepLink = m.global.AuthManager.stashedDeepLink
-    if not isValid(deepLink) or not isValidAndNotEmpty(deepLink.itemId) then return
+' Runtime replay (app already signed in, deep link for the active server). Unlike the post-login
+' path above, this does NOT prepend Home — an in-app cast shouldn't flash through the Home screen.
+'   - already on the target item's LOADED details -> launch the action in place (no fetch, no
+'     re-mount); for "open" we're already showing it, so nothing to do. The itemContent guard
+'     matters: a lingering empty details would otherwise swallow the cast.
+'   - otherwise -> hand the intent to JRScene.resolveDeepLink, which VALIDATES the id (a fetch)
+'     BEFORE navigating. An invalid id never disturbs the active session — it just toasts. A valid
+'     id then navigates (replacing an active player for a playback cast, else a plain push).
+sub replayDeepLinkRuntime()
+  deepLink = m.global.AuthManager.stashedDeepLink
+  if not isValid(deepLink) or not isValidAndNotEmpty(deepLink.itemId) then return
+  m.global.AuthManager.stashedDeepLink = invalid
+
+  isPlayback = isDeepLinkPlaybackAction(deepLink.action)
+  active = m.global.activeRoutedView
+
+  onLoadedDetails = isValid(active) and active.subtype() = "ItemDetails" and active.itemId = deepLink.itemId and isValid(active.itemContent) and isValidAndNotEmpty(active.itemContent.id)
+  if onLoadedDetails
+    ' Already on this item's loaded details — no need to re-validate. Launch in place; "open" no-op.
+    if isPlayback then active.callFunc("playFromDeepLink", deepLink.action)
+    return
+  end if
+
+  replacePlayer = isPlayback and isValid(active) and isDeepLinkPlayerView(active.subtype())
+  m.scene.callFunc("resolveDeepLink", {
+    itemId: deepLink.itemId,
+    action: deepLink.action,
+    isPlayback: isPlayback,
+    homeFirst: false,
+    replacePlayer: replacePlayer,
+    detailsRoute: deepLinkDetailsRoute(deepLink)
+  })
+end sub
+
+' Active routed views that ARE a media player (a deep link arriving over one must tear it down
+' before launching the next, not stack on top).
+function isDeepLinkPlayerView(subtype as string) as boolean
+  return subtype = "PlayerHostView" or subtype = "AudioPlayerView" or subtype = "VideoPlayerView"
+end function
+
+' Build the /details route for a deep link. The :type is just a display hint (ItemDetails
+' resolves the REAL type from the fetched item). The ?deeplink=<action> query does double duty:
+' it marks this as an untrusted deep-link entry (so ItemDetails validates the id, sending an
+' invalid one back to Home per cert), AND it carries the intent — "open" lands on the springboard;
+' "play"/"shuffle"/"trailer" auto-launch the matching action once the item resolves. The intent is
+' the SENDER'S explicit choice (the route decides), never inferred from the resolved item.
+' The "Playing <title>" toast is fired by the player on mount using the REAL resolved title
+' (ItemDetails sets m.global.deepLinkOpeningTitle) — not the sender's param, which may be a
+' placeholder. So nothing is toasted here.
+function deepLinkDetailsRoute(deepLink as object) as string
+  base = "/details/" + deepLink.mediaType + "/" + deepLink.itemId + "?deeplink="
+  if isValidAndNotEmpty(deepLink.action) then return base + deepLink.action
+  return base + "open"
+end function
+
+' Toast shown when a deep link arrives but the user must authenticate first — it explains why
+' nothing happened yet and that the content will open after sign-in. No-op if nothing stashed.
+sub notifyDeepLinkDeferred()
+  dl = m.global.AuthManager.stashedDeepLink
+  if isValid(dl) and isValidAndNotEmpty(dl.itemId)
+    displayToast(translate(translationKeys.MessageDeepLinkAfterSignIn), "info")
+  end if
+end sub
+
+' Pure: turn a guard-stashed path into the ordered route chain to replay. Home is always
+' first (back-stack root); a /play path additionally inserts its Details screen between Home
+' and the player (the details path is the play path minus the trailing "/play").
+function buildReplayRoutes(stashed as dynamic) as object
+  if not isValidAndNotEmpty(stashed) then return ["/"]
+
+  ' Separate the base path from any query string.
+  basePath = stashed
+  q = Instr(1, stashed, "?")
+  if q > 0 then basePath = Left(stashed, q - 1)
+
+  if basePath.endsWith("/play")
+    detailsPath = Left(basePath, Len(basePath) - Len("/play"))
+    return ["/", detailsPath, stashed]
+  end if
+
+  return ["/", stashed]
+end function
+
+' ---------------------------------------------------------------------------
+' Server resolution — a deep link's contentId may name a serverId (GUID). The whole app
+' is one-server-at-a-time, so a link for a DIFFERENT server means switching (a full re-auth,
+' like Change Server). We only have URLs for SAVED servers, so an unknown GUID can't be
+' fulfilled. See docs/architecture/navigation.md ("Deep links").
+' ---------------------------------------------------------------------------
+
+' Look up a saved server entry by its Jellyfin server id (GUID). Returns the entry
+' ({ name, id, baseUrl, originalUrl, ... }) or invalid. The pure match logic lives in
+' config.bs (findServerInList) next to the saved_servers shape it matches.
+function findSavedServerByGuid(guid as string) as object
+  return findServerInList(getSetting("saved_servers"), guid)
+end function
+
+' COLD start: if the stashed deep link names a saved server, point the login at it BEFORE
+' beginLogin runs (no prompt — there is no active session to disrupt). An unknown/absent
+' GUID is left alone: login proceeds normally and the deep link validates on whatever server
+' we land on (graceful error -> Home if the item isn't there).
+sub steerColdStartDeepLinkServer()
+  dl = m.global.AuthManager.stashedDeepLink
+  if not isValid(dl) or not isValidAndNotEmpty(dl.serverGuid) then return
+  entry = findSavedServerByGuid(dl.serverGuid)
+  if isValid(entry) and isValidAndNotEmpty(entry.originalUrl)
+    setSetting("server", entry.originalUrl)
+  end if
+end sub
+
+' RUNTIME (app already signed in): resolve the stashed deep link's server and act.
+'   - no/absent server, or it's the active one -> replay now.
+'   - a different SAVED server -> prompt to switch.
+'   - an unknown server -> can't connect; toast + discard.
+' When NOT signed in (user at pre-login), do nothing: the stash rides until login and
+' validates on whatever server they sign into.
+sub onRuntimeDeepLink()
+  if not isValidAndNotEmpty(m.global.user.authToken)
+    notifyDeepLinkDeferred()
+    return
+  end if
+
+  dl = m.global.AuthManager.stashedDeepLink
+  guid = ""
+  if isValid(dl) then guid = dl.serverGuid
+
+  if not isValidAndNotEmpty(guid) or guid = LCase(m.global.server.id)
+    replayDeepLinkRuntime()
+    return
+  end if
+
+  entry = findSavedServerByGuid(guid)
+  if isValid(entry)
+    promptServerSwitch(entry)
+    return
+  end if
+
+  m.global.AuthManager.stashedDeepLink = invalid
+  displayToast(translate(translationKeys.MessageContentOnUnknownServer), "error")
+end sub
+
+' Ask before switching servers (it signs the user out of the current one). The choice comes
+' back through SceneManager.returnData -> main.bs's isDataReturned handler (the same bridge
+' the exit dialog uses), which calls performServerSwitch on confirm.
+sub promptServerSwitch(entry as object)
+  m.pendingSwitchServer = entry
+  m.global.sceneManager.isPendingServerSwitch = true
+
+  ' Name what's being cast when the sender provided a title, so the user can tell a real cast
+  ' from a stray/accidental one; fall back to a server-named, provenance-aware message otherwise.
+  dl = m.global.AuthManager.stashedDeepLink
+  itemName = ""
+  if isValid(dl) and isValidAndNotEmpty(dl.itemName) then itemName = dl.itemName
+  if isValidAndNotEmpty(itemName)
+    message = Substitute(translate(translationKeys.MessageSwitchServerToPlayTitled), itemName, entry.name)
+  else
+    message = Substitute(translate(translationKeys.MessageSwitchServerToPlay), entry.name)
+  end if
+
+  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelChangeServer), [message], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonSwitch)])
+end sub
+
+' Perform the confirmed switch. Pre-flight the target FIRST (non-destructive) so an offline
+' server never strands the user. The probe runs on a Task thread (ServerReachableTask) so the
+' up-to-8s reachability check can't freeze remote input; the switch itself continues in
+' onServerProbeDone once the verdict lands back on the main loop.
+sub performServerSwitch(entry as object)
+  m.pendingSwitchServer = invalid
+  if not isValid(entry) then return
+
+  startLoadingSpinner()
+  ' Hold the entry for the async callback — the probe outcome decides whether we tear down the
+  ' session, and the result arrives later via the main loop's "reachable" handler.
+  m.serverSwitchEntry = entry
+  task = CreateObject("roSGNode", "ServerReachableTask")
+  task.baseUrl = entry.baseUrl
+  task.observeField("reachable", m.port)
+  m.serverReachableTask = task
+  task.control = "RUN"
+end sub
+
+' Continuation of performServerSwitch once the off-thread reachability probe returns. On an
+' unreachable target, surface the error and discard the deep link. On success, reuse the
+' Change-Server machinery (resetRouter -> point at the new server -> SignOut -> reenterLogin);
+' the stashed deep link survives the teardown and replays once the new server's login completes.
+sub onServerProbeDone(reachable as boolean)
+  entry = m.serverSwitchEntry
+  m.serverSwitchEntry = invalid
+  if not isValid(entry) then return
+
+  if not reachable
+    stopLoadingSpinner()
     m.global.AuthManager.stashedDeepLink = invalid
+    displayToast(Substitute(translate(translationKeys.MessageCouldNotReachServer), entry.name), "error")
+    return
+  end if
 
-    isPlayback = isDeepLinkPlaybackAction(deepLink.action)
-    active = m.global.activeRoutedView
+  ' Tell the user what's happening — the switch tears down the session and re-logs into the
+  ' new server, so Home re-loading from scratch (the "everything's changing" moment) has context.
+  displayToast(Substitute(translate(translationKeys.MessageSwitchingToServer), entry.name), "info")
 
-    onLoadedDetails = isValid(active) and active.subtype() = "ItemDetails" and active.itemId = deepLink.itemId and isValid(active.itemContent) and isValidAndNotEmpty(active.itemContent.id)
-    if onLoadedDetails
-      ' Already on this item's loaded details — no need to re-validate. Launch in place; "open" no-op.
-      if isPlayback then active.callFunc("playFromDeepLink", deepLink.action)
-      return
-    end if
-
-    replacePlayer = isPlayback and isValid(active) and isDeepLinkPlayerView(active.subtype())
-    m.scene.callFunc("resolveDeepLink", {
-        itemId: deepLink.itemId,
-        action: deepLink.action,
-        isPlayback: isPlayback,
-        homeFirst: false,
-        replacePlayer: replacePlayer,
-        detailsRoute: deepLinkDetailsRoute(deepLink)
-      })
-    end sub
-
-    ' Active routed views that ARE a media player (a deep link arriving over one must tear it down
-    ' before launching the next, not stack on top).
-    function isDeepLinkPlayerView(subtype as string) as boolean
-      return subtype = "PlayerHostView" or subtype = "AudioPlayerView" or subtype = "VideoPlayerView"
-    end function
-
-    ' Build the /details route for a deep link. The :type is just a display hint (ItemDetails
-    ' resolves the REAL type from the fetched item). The ?deeplink=<action> query does double duty:
-    ' it marks this as an untrusted deep-link entry (so ItemDetails validates the id, sending an
-    ' invalid one back to Home per cert), AND it carries the intent — "open" lands on the springboard;
-    ' "play"/"shuffle"/"trailer" auto-launch the matching action once the item resolves. The intent is
-    ' the SENDER'S explicit choice (the route decides), never inferred from the resolved item.
-    ' The "Playing <title>" toast is fired by the player on mount using the REAL resolved title
-    ' (ItemDetails sets m.global.deepLinkOpeningTitle) — not the sender's param, which may be a
-    ' placeholder. So nothing is toasted here.
-    function deepLinkDetailsRoute(deepLink as object) as string
-      base = "/details/" + deepLink.mediaType + "/" + deepLink.itemId + "?deeplink="
-      if isValidAndNotEmpty(deepLink.action) then return base + deepLink.action
-      return base + "open"
-    end function
-
-    ' Toast shown when a deep link arrives but the user must authenticate first — it explains why
-    ' nothing happened yet and that the content will open after sign-in. No-op if nothing stashed.
-    sub notifyDeepLinkDeferred()
-      dl = m.global.AuthManager.stashedDeepLink
-      if isValid(dl) and isValidAndNotEmpty(dl.itemId)
-        displayToast(translate(translationKeys.MessageDeepLinkAfterSignIn), "info")
-      end if
-    end sub
-
-    ' Pure: turn a guard-stashed path into the ordered route chain to replay. Home is always
-    ' first (back-stack root); a /play path additionally inserts its Details screen between Home
-    ' and the player (the details path is the play path minus the trailing "/play").
-    function buildReplayRoutes(stashed as dynamic) as object
-      if not isValidAndNotEmpty(stashed) then return ["/"]
-
-      ' Separate the base path from any query string.
-      basePath = stashed
-      q = Instr(1, stashed, "?")
-      if q > 0 then basePath = Left(stashed, q - 1)
-
-      if basePath.endsWith("/play")
-        detailsPath = Left(basePath, Len(basePath) - Len("/play"))
-        return ["/", detailsPath, stashed]
-      end if
-
-      return ["/", stashed]
-    end function
-
-    ' ---------------------------------------------------------------------------
-    ' Server resolution — a deep link's contentId may name a serverId (GUID). The whole app
-    ' is one-server-at-a-time, so a link for a DIFFERENT server means switching (a full re-auth,
-    ' like Change Server). We only have URLs for SAVED servers, so an unknown GUID can't be
-    ' fulfilled. See docs/architecture/navigation.md ("Deep links").
-    ' ---------------------------------------------------------------------------
-
-    ' Look up a saved server entry by its Jellyfin server id (GUID). Returns the entry
-    ' ({ name, id, baseUrl, originalUrl, ... }) or invalid. The pure match logic lives in
-    ' config.bs (findServerInList) next to the saved_servers shape it matches.
-    function findSavedServerByGuid(guid as string) as object
-      return findServerInList(getSetting("saved_servers"), guid)
-    end function
-
-    ' COLD start: if the stashed deep link names a saved server, point the login at it BEFORE
-    ' beginLogin runs (no prompt — there is no active session to disrupt). An unknown/absent
-    ' GUID is left alone: login proceeds normally and the deep link validates on whatever server
-    ' we land on (graceful error -> Home if the item isn't there).
-    sub steerColdStartDeepLinkServer()
-      dl = m.global.AuthManager.stashedDeepLink
-      if not isValid(dl) or not isValidAndNotEmpty(dl.serverGuid) then return
-      entry = findSavedServerByGuid(dl.serverGuid)
-      if isValid(entry) and isValidAndNotEmpty(entry.originalUrl)
-        setSetting("server", entry.originalUrl)
-      end if
-    end sub
-
-    ' RUNTIME (app already signed in): resolve the stashed deep link's server and act.
-    '   - no/absent server, or it's the active one -> replay now.
-    '   - a different SAVED server -> prompt to switch.
-    '   - an unknown server -> can't connect; toast + discard.
-    ' When NOT signed in (user at pre-login), do nothing: the stash rides until login and
-    ' validates on whatever server they sign into.
-    sub onRuntimeDeepLink()
-      if not isValidAndNotEmpty(m.global.user.authToken)
-        notifyDeepLinkDeferred()
-        return
-      end if
-
-      dl = m.global.AuthManager.stashedDeepLink
-      guid = ""
-      if isValid(dl) then guid = dl.serverGuid
-
-      if not isValidAndNotEmpty(guid) or guid = LCase(m.global.server.id)
-        replayDeepLinkRuntime()
-        return
-      end if
-
-      entry = findSavedServerByGuid(guid)
-      if isValid(entry)
-        promptServerSwitch(entry)
-        return
-      end if
-
-      m.global.AuthManager.stashedDeepLink = invalid
-      displayToast(translate(translationKeys.MessageContentOnUnknownServer), "error")
-    end sub
-
-    ' Ask before switching servers (it signs the user out of the current one). The choice comes
-    ' back through SceneManager.returnData -> main.bs's isDataReturned handler (the same bridge
-    ' the exit dialog uses), which calls performServerSwitch on confirm.
-    sub promptServerSwitch(entry as object)
-      m.pendingSwitchServer = entry
-      m.global.sceneManager.isPendingServerSwitch = true
-
-      ' Name what's being cast when the sender provided a title, so the user can tell a real cast
-      ' from a stray/accidental one; fall back to a server-named, provenance-aware message otherwise.
-      dl = m.global.AuthManager.stashedDeepLink
-      itemName = ""
-      if isValid(dl) and isValidAndNotEmpty(dl.itemName) then itemName = dl.itemName
-      if isValidAndNotEmpty(itemName)
-        message = Substitute(translate(translationKeys.MessageSwitchServerToPlayTitled), itemName, entry.name)
-      else
-        message = Substitute(translate(translationKeys.MessageSwitchServerToPlay), entry.name)
-      end if
-
-      m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelChangeServer), [message], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonSwitch)])
-    end sub
-
-    ' Perform the confirmed switch. Pre-flight the target FIRST (non-destructive) so an offline
-    ' server never strands the user. The probe runs on a Task thread (ServerReachableTask) so the
-    ' up-to-8s reachability check can't freeze remote input; the switch itself continues in
-    ' onServerProbeDone once the verdict lands back on the main loop.
-    sub performServerSwitch(entry as object)
-      m.pendingSwitchServer = invalid
-      if not isValid(entry) then return
-
-      startLoadingSpinner()
-      ' Hold the entry for the async callback — the probe outcome decides whether we tear down the
-      ' session, and the result arrives later via the main loop's "reachable" handler.
-      m.serverSwitchEntry = entry
-      task = CreateObject("roSGNode", "ServerReachableTask")
-      task.baseUrl = entry.baseUrl
-      task.observeField("reachable", m.port)
-      m.serverReachableTask = task
-      task.control = "RUN"
-    end sub
-
-    ' Continuation of performServerSwitch once the off-thread reachability probe returns. On an
-    ' unreachable target, surface the error and discard the deep link. On success, reuse the
-    ' Change-Server machinery (resetRouter -> point at the new server -> SignOut -> reenterLogin);
-    ' the stashed deep link survives the teardown and replays once the new server's login completes.
-    sub onServerProbeDone(reachable as boolean)
-      entry = m.serverSwitchEntry
-      m.serverSwitchEntry = invalid
-      if not isValid(entry) then return
-
-      if not reachable
-        stopLoadingSpinner()
-        m.global.AuthManager.stashedDeepLink = invalid
-        displayToast(Substitute(translate(translationKeys.MessageCouldNotReachServer), entry.name), "error")
-        return
-      end if
-
-      ' Tell the user what's happening — the switch tears down the session and re-logs into the
-      ' new server, so Home re-loading from scratch (the "everything's changing" moment) has context.
-      displayToast(Substitute(translate(translationKeys.MessageSwitchingToServer), entry.name), "info")
-
-      m.scene.callFunc("resetRouter")
-      setSetting("server", entry.originalUrl)
-      SignOut(false)
-      reenterLogin()
-    end sub
+  m.scene.callFunc("resetRouter")
+  setSetting("server", entry.originalUrl)
+  SignOut(false)
+  reenterLogin()
+end sub
