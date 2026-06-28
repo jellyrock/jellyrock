@@ -498,7 +498,9 @@ export function loadNoiseConfig(repoRoot = REPO_ROOT) {
   if (!existsSync(path)) return { patterns: [] };
   const yaml = require('js-yaml');
   const raw = readFileSync(path, 'utf8');
-  const parsed = yaml.load(raw) ?? {};
+  // js-yaml v5 throws "the input is empty" on a blank document (v4 returned
+  // undefined), so guard the empty case to preserve the "no patterns" fallback.
+  const parsed = (raw.trim() ? yaml.load(raw) : undefined) ?? {};
   const patterns = Array.isArray(parsed.patterns) ? parsed.patterns : [];
   for (const p of patterns) {
     if (!p || typeof p !== 'object') {
