@@ -538,6 +538,11 @@ sub pageContentChanged()
 
   currentItem = m.queueManager.callFunc("getCurrentItem")
 
+  ' Update the queue-derived display NOW (same tick as the position-bar/timestamp reset the
+  ' caller just did) so the title + "Track X of Y" don't lag behind until the async stream task
+  ' returns. onAudioStreamLoaded/onMetaDataLoaded re-apply once the fuller item resolves.
+  applyTrackInfo(currentItem)
+
   m.LoadAudioStreamTask.itemId = currentItem.id
   m.LoadAudioStreamTask.observeField("content", "onAudioStreamLoaded")
   m.LoadAudioStreamTask.control = "RUN"
@@ -613,12 +618,7 @@ sub onAudioStreamLoaded()
         setPosterImage("")
       end if
 
-      setScreenTitle(currentItem)
-      setOnScreenTextValues(currentItem)
-      m.songDuration = currentItem.runTimeTicks / 10000000.0
-
-      ' Update displayed total audio length
-      m.totalLengthTimestamp.text = ticksToHuman(currentItem.runTimeTicks)
+      applyTrackInfo(currentItem)
     end if
 
     m.audioPlayer.content = data
@@ -655,15 +655,7 @@ sub onMetaDataLoaded()
     setPosterImage("")
   end if
 
-  setScreenTitle(data)
-  setOnScreenTextValues(data)
-
-  if data.runTimeTicks > 0
-    m.songDuration = data.runTimeTicks / 10000000.0
-
-    ' Update displayed total audio length
-    m.totalLengthTimestamp.text = ticksToHuman(data.runTimeTicks)
-  end if
+  applyTrackInfo(data)
 end sub
 
 ' Set poster image on screen. Empty string clears the URI on both the main album cover
@@ -698,9 +690,9 @@ end sub
 ' just song name if no album artist, or empty string to reset the title.
 sub setScreenTitle(item as object)
   newTitle = ""
-  if item.albumArtist <> "" and item.name <> ""
+  if isValidAndNotEmpty(item.albumArtist) and isValidAndNotEmpty(item.name)
     newTitle = item.albumArtist + " / " + item.name
-  else if item.name <> ""
+  else if isValidAndNotEmpty(item.name)
     newTitle = item.name
   end if
 
@@ -717,11 +709,30 @@ sub setOnScreenTextValues(item as object)
   end if
 
   artistName = ""
-  if item.artists.count() > 0
+  if isValid(item.artists) and item.artists.count() > 0
     artistName = item.artists[0]
   end if
   setFieldTextValue("artist", artistName)
   setFieldTextValue("song", item.name)
+end sub
+
+' Apply the queue-derived now-playing display (track number, title, artist, song, total length)
+' from the current item. Called SYNCHRONOUSLY on a track change (pageContentChanged) so these
+' update on the same tick as the position-bar/timestamp reset instead of lagging until the async
+' stream load returns, and re-applied from the async stream/metadata callbacks once a fuller item
+' resolves (idempotent — setFieldTextValue/setScreenTitle no-op when unchanged or invalid). The
+' poster/backdrop stay in the async path: image loads are inherently async.
+sub applyTrackInfo(item as object)
+  if not isValid(item) then return
+
+  setScreenTitle(item)
+  setOnScreenTextValues(item)
+
+  if isValid(item.runTimeTicks) and item.runTimeTicks > 0
+    m.songDuration = item.runTimeTicks / 10000000.0
+    ' Update displayed total audio length
+    m.totalLengthTimestamp.text = ticksToHuman(item.runTimeTicks)
+  end if
 end sub
 
 ' processScrubAction: Handles +/- seeking for the audio trickplay bar

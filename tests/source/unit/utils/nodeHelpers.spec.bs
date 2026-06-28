@@ -514,6 +514,91 @@ namespace tests
       m.assertFalse(queueItem.DoesExist("playbackPositionTicks"))
     end function
 
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("createQueueItem(sourceNode) - now-playing display contract (audio)")
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' Audio plays IN PLACE, so AudioPlayerView renders the now-playing text/poster directly off
+    ' the queue item — these fields MUST survive the projection or the artist/album pop in late
+    ' (a redundant per-track metadata fetch). This is the enforced gate behind the QueueItem
+    ' interface contract: trimming any of these from createQueueItem fails here.
+
+    @it("carries the audio display fields from a TRANSFORMED source (camelCase keys)")
+    function _()
+      sourceNode = {
+        id: "song-1",
+        type: "Audio",
+        name: "Song One",
+        artists: ["Artist A", "Artist B"],
+        albumArtist: "Artist A",
+        albumName: "Album X",
+        albumId: "album-99",
+        albumPrimaryImageTag: "alb-tag",
+        primaryImageTag: "prim-tag"
+      }
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertEqual(queueItem.name, "Song One")
+      m.assertEqual(queueItem.artists, ["Artist A", "Artist B"])
+      m.assertEqual(queueItem.albumArtist, "Artist A")
+      m.assertEqual(queueItem.albumName, "Album X")
+      m.assertEqual(queueItem.albumId, "album-99")
+      m.assertEqual(queueItem.albumPrimaryImageTag, "alb-tag")
+      m.assertEqual(queueItem.primaryImageTag, "prim-tag")
+    end function
+
+    @it("carries the audio display fields from a RAW API source (PascalCase + nested ImageTags)")
+    function _()
+      ' album / playlist / instant-mix queues hold raw items: Album (not albumName) and
+      ' ImageTags.Primary (not primaryImageTag) — createQueueItem's fallbacks bridge both shapes
+      ' onto the one QueueItem contract.
+      rawApiItem = {
+        Id: "song-2",
+        Type: "Audio",
+        Name: "Song Two",
+        Artists: ["Artist C"],
+        AlbumArtist: "Artist C",
+        Album: "Album Y",
+        AlbumId: "album-77",
+        AlbumPrimaryImageTag: "alb-raw-tag",
+        ImageTags: { Primary: "prim-raw-tag" }
+      }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertEqual(queueItem.name, "Song Two")
+      m.assertEqual(queueItem.artists, ["Artist C"])
+      m.assertEqual(queueItem.albumArtist, "Artist C")
+      m.assertEqual(queueItem.albumName, "Album Y")
+      m.assertEqual(queueItem.albumId, "album-77")
+      m.assertEqual(queueItem.albumPrimaryImageTag, "alb-raw-tag")
+      m.assertEqual(queueItem.primaryImageTag, "prim-raw-tag")
+    end function
+
+    @it("omits audio display fields when the source lacks them (bare item)")
+    function _()
+      rawApiItem = { Id: "song-3", Type: "Audio" }
+
+      queueItem = nodeHelpers.createQueueItem(rawApiItem)
+
+      m.assertFalse(queueItem.DoesExist("name"))
+      m.assertFalse(queueItem.DoesExist("artists"))
+      m.assertFalse(queueItem.DoesExist("albumArtist"))
+      m.assertFalse(queueItem.DoesExist("albumName"))
+      m.assertFalse(queueItem.DoesExist("albumId"))
+      m.assertFalse(queueItem.DoesExist("albumPrimaryImageTag"))
+      m.assertFalse(queueItem.DoesExist("primaryImageTag"))
+    end function
+
+    @it("omits artists when the source array is empty")
+    function _()
+      sourceNode = { id: "song-4", type: "Audio", artists: [] }
+
+      queueItem = nodeHelpers.createQueueItem(sourceNode)
+
+      m.assertFalse(queueItem.DoesExist("artists"))
+    end function
+
   end class
 
 end namespace
