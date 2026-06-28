@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Update sharp from v0.34.5 to v0.35.2 ([#657](https://github.com/jellyrock/jellyrock/pull/657), [#665](https://github.com/jellyrock/jellyrock/pull/665))
 - Update linting from v10.5.0 to v18.1.0 ([#661](https://github.com/jellyrock/jellyrock/pull/661), [#658](https://github.com/jellyrock/jellyrock/pull/658))
 - Update vitest monorepo to v4.1.9 ([#664](https://github.com/jellyrock/jellyrock/pull/664))
+- Linting (eslint 10.6.0, eslint-plugin-n 18.2.1, prettier 3.9.1) ([#679](https://github.com/jellyrock/jellyrock/pull/679))
 - Git hooks ([#671](https://github.com/jellyrock/jellyrock/pull/671))
 
 ## [2.21.0](https://github.com/jellyrock/jellyrock/compare/v2.20.0...v2.21.0) - 2026-06-12
