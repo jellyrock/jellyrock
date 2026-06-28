@@ -25,11 +25,11 @@ function searchMedia(query as string)
   ' Regular library items — Person and MusicArtist are fetched via dedicated endpoints below.
   ' LiveTvProgram is excluded here because /Items EPG search is incomplete; /LiveTv/Programs is used instead.
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "searchTerm": query,
-    "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
-    "EnableTotalRecordCount": false,
-    "Recursive": true,
-    "limit": 100
+      "searchTerm": query,
+      "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
+      "EnableTotalRecordCount": false,
+      "Recursive": true,
+      "limit": 100
   }), "searchItems")
   if isValid(data) and isValid(data.Items)
     for each item in data.Items
@@ -45,9 +45,9 @@ function searchMedia(query as string)
 
   ' People — /Items does not return Person type; /Persons endpoint required.
   personData = fetchJson(GetApi().BuildGetPersonsRequest({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
+      "searchTerm": query,
+      "Limit": 20,
+      "EnableTotalRecordCount": false
   }), "searchPersons")
   if isValid(personData) and isValid(personData.Items)
     for each item in personData.Items
@@ -57,9 +57,9 @@ function searchMedia(query as string)
 
   ' Artists — /Items does not return MusicArtist type; /Artists endpoint required.
   artistData = fetchJson(GetApi().BuildGetArtistsRequest({
-    "searchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
+      "searchTerm": query,
+      "Limit": 20,
+      "EnableTotalRecordCount": false
   }), "searchArtists")
   if isValid(artistData) and isValid(artistData.Items)
     for each item in artistData.Items
@@ -69,9 +69,9 @@ function searchMedia(query as string)
 
   ' Live TV Programs — /LiveTv/Programs searches the full EPG; /Items only covers recordings.
   programData = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
-    "SearchTerm": query,
-    "Limit": 20,
-    "EnableTotalRecordCount": false
+      "SearchTerm": query,
+      "Limit": 20,
+      "EnableTotalRecordCount": false
   }), "searchPrograms")
   if isValid(programData) and isValid(programData.Items)
     for each item in programData.Items

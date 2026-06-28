@@ -136,10 +136,10 @@ sub loadItems()
 
     ' People — favorited persons are not returned by /Items; requires /Persons endpoint.
     personData = fetchJson(GetApi().BuildGetPersonsRequest({
-      "IsFavorite": true,
-      "SortBy": "SortName",
-      "SortOrder": "Ascending",
-      "EnableTotalRecordCount": false
+        "IsFavorite": true,
+        "SortBy": "SortName",
+        "SortOrder": "Ascending",
+        "EnableTotalRecordCount": false
     }), "favoritePeople")
     if isValid(personData) and isValid(personData.Items)
       for each item in personData.Items
@@ -241,189 +241,189 @@ sub loadItems()
       return
     end if
     data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, {
-      SeasonId: m.top.metadata.seasonId,
-      Fields: "PrimaryImageAspectRatio,Overview",
-      EnableImages: true
-    }), "seasonEpisodes")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "seriesFirstEpisode"
-    data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, { Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" }), "seriesFirstEpisode")
-    if isValid(data) and isValid(data.Items) and data.Items.count() > 0
-      node = m.transformer.transformBaseItem(data.Items[0])
-      if isValid(node) then results.push(node)
-    end if
-  else if m.top.itemsToLoad = "seriesResume"
-    ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
-    ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
-    resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
-      ParentId: m.top.itemId,
-      Filters: "IsResumable",
-      SortBy: "DatePlayed",
-      SortOrder: "Descending",
-      Limit: 1,
-      recursive: true,
-      Fields: "PrimaryImageAspectRatio",
-      EnableTotalRecordCount: false
-    }), "seriesResume")
-    if isValid(resumeData) and isValid(resumeData.Items) and resumeData.Items.Count() > 0
-      node = m.transformer.transformBaseItem(resumeData.Items[0])
-      if isValid(node) then results.push(node)
-    else
-      ' No resumable episode — fall back to next unstarted episode.
-      ' DisableFirstEpisode: true so a Resume button never appears for a completely unwatched series.
-      nextUpData = fetchJson(GetApi().BuildGetNextUpRequest({ SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" }), "seriesNextUp")
-      if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
-        node = m.transformer.transformBaseItem(nextUpData.Items[0])
+          SeasonId: m.top.metadata.seasonId,
+          Fields: "PrimaryImageAspectRatio,Overview",
+          EnableImages: true
+      }), "seasonEpisodes")
+      if isValid(data) and isValid(data.Items)
+        for each item in data.Items
+          node = m.transformer.transformBaseItem(item)
+          if isValid(node) then results.push(node)
+        end for
+      end if
+    else if m.top.itemsToLoad = "seriesFirstEpisode"
+      data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, { Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" }), "seriesFirstEpisode")
+      if isValid(data) and isValid(data.Items) and data.Items.count() > 0
+        node = m.transformer.transformBaseItem(data.Items[0])
         if isValid(node) then results.push(node)
       end if
-    end if
-  else if m.top.itemsToLoad = "metaData"
-    results.push(ItemMetaData(m.top.itemId))
-  else if m.top.itemsToLoad = "metaDataDetails"
-    results.push(ItemDetailsMetaData(m.top.itemId, m.top.shouldForceRefresh))
-  else if m.top.itemsToLoad = "audioStream"
-    results.push(AudioStream(m.top.itemId))
-  else if m.top.itemsToLoad = "backdropImage"
-    results.push(BackdropImage(m.top.itemId))
-  else if m.top.itemsToLoad = "boxsetitems"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "ParentId": m.top.itemId,
-      "SortBy": "PremiereDate,ProductionYear,SortName",
-      "SortOrder": "Ascending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
-      "EnableTotalRecordCount": false
-    }), "boxsetitems")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
+    else if m.top.itemsToLoad = "seriesResume"
+      ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
+      ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
+      resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
+          ParentId: m.top.itemId,
+          Filters: "IsResumable",
+          SortBy: "DatePlayed",
+          SortOrder: "Descending",
+          Limit: 1,
+          recursive: true,
+          Fields: "PrimaryImageAspectRatio",
+          EnableTotalRecordCount: false
+      }), "seriesResume")
+      if isValid(resumeData) and isValid(resumeData.Items) and resumeData.Items.Count() > 0
+        node = m.transformer.transformBaseItem(resumeData.Items[0])
         if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "artistAlbums"
-    ' Albums where this artist is the album artist (AlbumArtistIds), sorted by year descending
-    data = MusicAlbumList(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
-  else if m.top.itemsToLoad = "artistAppearsOn"
-    ' Albums where this artist contributes (ContributingArtistIds) but is not the album artist
-    data = AppearsOnList(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
-  else if m.top.itemsToLoad = "albumSongs"
-    ' All Audio tracks under a MusicAlbum, sorted by track number
-    data = MusicSongList(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
-  else if m.top.itemsToLoad = "lyrics"
-    ' Fetch lyrics for an Audio item and join lines into a single string.
-    ' Returns a one-element array containing the lyrics string, or empty on failure.
-    lyricsData = GetItemLyrics(m.top.itemId)
-    if isValid(lyricsData) and isValid(lyricsData.Lyrics)
-      lines = []
-      for each lyric in lyricsData.Lyrics
-        if isValid(lyric.Text) and lyric.Text <> ""
-          lines.push(lyric.Text)
+      else
+        ' No resumable episode — fall back to next unstarted episode.
+        ' DisableFirstEpisode: true so a Resume button never appears for a completely unwatched series.
+        nextUpData = fetchJson(GetApi().BuildGetNextUpRequest({ SeriesId: m.top.itemId, Limit: 1, DisableFirstEpisode: true, Fields: "PrimaryImageAspectRatio" }), "seriesNextUp")
+        if isValid(nextUpData) and isValid(nextUpData.Items) and nextUpData.Items.Count() > 0
+          node = m.transformer.transformBaseItem(nextUpData.Items[0])
+          if isValid(node) then results.push(node)
         end if
-      end for
-      if lines.count() > 0
-        results.push(lines.join(Chr(10)))
       end if
-    end if
-  else if m.top.itemsToLoad = "artistSimilar"
-    ' Similar artists via the artist-specific endpoint (more reliable than Items/{id}/Similar for MusicArtist)
-    params = { "userId": globalUser.id, "limit": 16 }
-    data = fetchJson(GetApi().BuildGetArtistSimilarRequest(m.top.itemId, params), "artistSimilar")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "artistSongs"
-    ' All Audio tracks by this artist (ArtistIds = any capacity: album artist OR contributing).
-    ' Sorted by album then track number so songs group naturally even without album rows.
-    ' Limit 100 to avoid overwhelming the row for prolific artists.
-    data = GetSongsByArtistBroad(m.top.itemId)
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        results.push(item)
-      end for
-    end if
-  else if m.top.itemsToLoad = "playlistItems"
-    ' All items in a Playlist, sorted newest-added first.
-    data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(m.top.itemId, {
-      "SortBy": "DateCreated",
-      "SortOrder": "Descending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
-      "EnableTotalRecordCount": false
-    }), "playlistItems")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "photoAlbumItems"
-    ' All photos in a PhotoAlbum, sorted by name.
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "ParentId": m.top.itemId,
-      "IncludeItemTypes": "Photo",
-      "SortBy": "SortName",
-      "SortOrder": "Ascending",
-      "Fields": "PrimaryImageAspectRatio",
-      "EnableTotalRecordCount": false
-    }), "photoAlbumItems")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  else if m.top.itemsToLoad = "channelPrograms"
-    ' Upcoming (not yet aired) programs on a Live TV channel, sorted by start time.
-    ' ChannelInfo required for subtitle display (channel name) in JRRowItem.
-    data = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
-      "ChannelIds": m.top.itemId,
-      "HasAired": false,
-      "SortBy": "StartDate",
-      "SortOrder": "Ascending",
-      "Limit": 20,
-      "Fields": "ChannelInfo,PrimaryImageAspectRatio,Overview",
-      "EnableTotalRecordCount": false
-    }), "channelPrograms")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
-        node = m.transformer.transformBaseItem(item)
-        if isValid(node) then results.push(node)
-      end for
-    end if
-  end if
+    else if m.top.itemsToLoad = "metaData"
+      results.push(ItemMetaData(m.top.itemId))
+    else if m.top.itemsToLoad = "metaDataDetails"
+      results.push(ItemDetailsMetaData(m.top.itemId, m.top.shouldForceRefresh))
+    else if m.top.itemsToLoad = "audioStream"
+      results.push(AudioStream(m.top.itemId))
+    else if m.top.itemsToLoad = "backdropImage"
+      results.push(BackdropImage(m.top.itemId))
+    else if m.top.itemsToLoad = "boxsetitems"
+      data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+          "ParentId": m.top.itemId,
+          "SortBy": "PremiereDate,ProductionYear,SortName",
+          "SortOrder": "Ascending",
+          "Fields": "PrimaryImageAspectRatio,Overview",
+          "EnableTotalRecordCount": false
+      }), "boxsetitems")
+      if isValid(data) and isValid(data.Items)
+        for each item in data.Items
+          node = m.transformer.transformBaseItem(item)
+          if isValid(node) then results.push(node)
+        end for
+      end if
+    else if m.top.itemsToLoad = "artistAlbums"
+      ' Albums where this artist is the album artist (AlbumArtistIds), sorted by year descending
+      data = MusicAlbumList(m.top.itemId)
+      if isValid(data) and isValid(data.Items)
+        for each item in data.Items
+          results.push(item)
+        end for
+      end if
+    else if m.top.itemsToLoad = "artistAppearsOn"
+      ' Albums where this artist contributes (ContributingArtistIds) but is not the album artist
+      data = AppearsOnList(m.top.itemId)
+      if isValid(data) and isValid(data.Items)
+        for each item in data.Items
+          results.push(item)
+        end for
+      end if
+    else if m.top.itemsToLoad = "albumSongs"
+      ' All Audio tracks under a MusicAlbum, sorted by track number
+      data = MusicSongList(m.top.itemId)
+      if isValid(data) and isValid(data.Items)
+        for each item in data.Items
+          results.push(item)
+        end for
+      end if
+    else if m.top.itemsToLoad = "lyrics"
+      ' Fetch lyrics for an Audio item and join lines into a single string.
+      ' Returns a one-element array containing the lyrics string, or empty on failure.
+      lyricsData = GetItemLyrics(m.top.itemId)
+      if isValid(lyricsData) and isValid(lyricsData.Lyrics)
+        lines = []
+        for each lyric in lyricsData.Lyrics
+          if isValid(lyric.Text) and lyric.Text <> ""
+            lines.push(lyric.Text)
+          end if
+        end for
+        if lines.count() > 0
+          results.push(lines.join(Chr(10)))
+        end if
+      end if
+    else if m.top.itemsToLoad = "artistSimilar"
+      ' Similar artists via the artist-specific endpoint (more reliable than Items/{id}/Similar for MusicArtist)
+      params = { "userId": globalUser.id, "limit": 16 }
+      data = fetchJson(GetApi().BuildGetArtistSimilarRequest(m.top.itemId, params), "artistSimilar")
+      if isValid(data) and isValid(data.Items)
+        for each item in data.Items
+          node = m.transformer.transformBaseItem(item)
+          if isValid(node) then results.push(node)
+        end for
+      end if
+    else if m.top.itemsToLoad = "artistSongs"
+      ' All Audio tracks by this artist (ArtistIds = any capacity: album artist OR contributing).
+      ' Sorted by album then track number so songs group naturally even without album rows.
+      ' Limit 100 to avoid overwhelming the row for prolific artists.
+      data = GetSongsByArtistBroad(m.top.itemId)
+      if isValid(data) and isValid(data.Items)
+        for each item in data.Items
+          results.push(item)
+        end for
+      end if
+    else if m.top.itemsToLoad = "playlistItems"
+      ' All items in a Playlist, sorted newest-added first.
+      data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(m.top.itemId, {
+            "SortBy": "DateCreated",
+            "SortOrder": "Descending",
+            "Fields": "PrimaryImageAspectRatio,Overview",
+            "EnableTotalRecordCount": false
+        }), "playlistItems")
+        if isValid(data) and isValid(data.Items)
+          for each item in data.Items
+            node = m.transformer.transformBaseItem(item)
+            if isValid(node) then results.push(node)
+          end for
+        end if
+      else if m.top.itemsToLoad = "photoAlbumItems"
+        ' All photos in a PhotoAlbum, sorted by name.
+        data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+            "ParentId": m.top.itemId,
+            "IncludeItemTypes": "Photo",
+            "SortBy": "SortName",
+            "SortOrder": "Ascending",
+            "Fields": "PrimaryImageAspectRatio",
+            "EnableTotalRecordCount": false
+        }), "photoAlbumItems")
+        if isValid(data) and isValid(data.Items)
+          for each item in data.Items
+            node = m.transformer.transformBaseItem(item)
+            if isValid(node) then results.push(node)
+          end for
+        end if
+      else if m.top.itemsToLoad = "channelPrograms"
+        ' Upcoming (not yet aired) programs on a Live TV channel, sorted by start time.
+        ' ChannelInfo required for subtitle display (channel name) in JRRowItem.
+        data = fetchJson(GetApi().BuildGetLiveTVProgramsRequest({
+            "ChannelIds": m.top.itemId,
+            "HasAired": false,
+            "SortBy": "StartDate",
+            "SortOrder": "Ascending",
+            "Limit": 20,
+            "Fields": "ChannelInfo,PrimaryImageAspectRatio,Overview",
+            "EnableTotalRecordCount": false
+        }), "channelPrograms")
+        if isValid(data) and isValid(data.Items)
+          for each item in data.Items
+            node = m.transformer.transformBaseItem(item)
+            if isValid(node) then results.push(node)
+          end for
+        end if
+      end if
 
-  m.top.content = results
+      m.top.content = results
 
-end sub
+    end sub
 
-sub getPersonVideos(videoType as string, dest as object)
-  params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "personVideos_" + videoType)
-  if isValid(data) and data.count() > 0
-    for each item in data.items
-      node = m.transformer.transformBaseItem(item)
-      if isValid(node) then dest.push(node)
-    end for
-  end if
-end sub
+    sub getPersonVideos(videoType as string, dest as object)
+      params = { personIds: m.top.itemId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" }
+      data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "personVideos_" + videoType)
+      if isValid(data) and data.count() > 0
+        for each item in data.items
+          node = m.transformer.transformBaseItem(item)
+          if isValid(node) then dest.push(node)
+        end for
+      end if
+    end sub
