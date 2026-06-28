@@ -22,11 +22,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update js-yaml from v4.2.0 to v4.3.0 ([#681](https://github.com/jellyrock/jellyrock/pull/681))
+- Update brighterscript-formatter from v1.7.27 to v1.7.28 ([#678](https://github.com/jellyrock/jellyrock/pull/678))
 - Update prettier from v3.8.4 to v3.8.5 ([#680](https://github.com/jellyrock/jellyrock/pull/680))
 - Update GitHub Actions from v1.6.1 to v5.3.0 ([#663](https://github.com/jellyrock/jellyrock/pull/663), [#673](https://github.com/jellyrock/jellyrock/pull/673), [#674](https://github.com/jellyrock/jellyrock/pull/674))
 - Update sharp from v0.34.5 to v0.35.2 ([#657](https://github.com/jellyrock/jellyrock/pull/657), [#665](https://github.com/jellyrock/jellyrock/pull/665))
 - Update linting from v10.5.0 to v18.1.0 ([#661](https://github.com/jellyrock/jellyrock/pull/661), [#658](https://github.com/jellyrock/jellyrock/pull/658))
 - Update vitest monorepo to v4.1.9 ([#664](https://github.com/jellyrock/jellyrock/pull/664))
+- GitHub Actions (checkout v7, cache v6) + allow-unsafe-pr-checkout opt-in ([#675](https://github.com/jellyrock/jellyrock/pull/675))
 - Linting (eslint 10.6.0, eslint-plugin-n 18.2.1, prettier 3.9.1) ([#679](https://github.com/jellyrock/jellyrock/pull/679))
 - Git hooks ([#671](https://github.com/jellyrock/jellyrock/pull/671))
 
