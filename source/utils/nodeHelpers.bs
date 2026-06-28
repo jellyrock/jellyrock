@@ -2,12 +2,17 @@
 namespace nodeHelpers
 
   ' Compile-time contract for a queue item AA (the return shape of createQueueItem below).
-  ' BrighterScript interfaces are ADVISORY in this toolchain version (they transpile to `object`
-  ' and do NOT gate the build — verified: undeclared-member access and missing required fields
-  ' raise no diagnostic), so the ENFORCED guarantee is the createQueueItem spec at
-  ' tests/source/unit/utils/nodeHelpers.spec.bs. This interface is the single, explicit source of
-  ' truth for the shape (+ IDE autocomplete). Most members are `optional`: createQueueItem only
-  ' copies them when the source carries them, so a bare/lean source yields a minimal item.
+  ' BrighterScript interfaces ARE build-enforced wherever a value is TYPED as the interface
+  ' (verified on this toolchain: a QueueItem-typed value raises `cannot-find-name` on an
+  ' undeclared member and `return-type-mismatch` on a missing required member). createQueueItem
+  ' itself returns `as object`, not `as QueueItem` — its result is used as a real
+  ' roAssociativeArray (callers/tests call DoesExist/Count) and an interface return type strips
+  ' those AA methods (see the return-type note on the function below). So the ENFORCED gate on the
+  ' returned shape is the createQueueItem spec at tests/source/unit/utils/nodeHelpers.spec.bs; this
+  ' interface is the single explicit source of truth for the shape, IDE autocomplete, and a
+  ' build-checked contract for any local you DO type `as nodeHelpers.QueueItem`. Most members are
+  ' `optional`: createQueueItem only copies them when the source carries them, so a bare/lean
+  ' source yields a minimal item.
   interface QueueItem
     ' Always present — callers may .Count() the backdrop arrays without an isValid() guard.
     backdropImageTags as object
