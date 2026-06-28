@@ -935,1200 +935,1200 @@ sub fetchNextEpisode()
   m.checkedForNextEpisode = true
 
   req = GetApi().BuildGetEpisodesRequest(m.top.showID, {
-    StartItemId: m.top.id,
-    Limit: 2
-  })
-  promises.chain(fetchAsync(req, "nextEpisode-" + m.top.id)).then(sub(res as object)
-    ' Any HTTP response lands here (incl. 4xx/5xx). Only a 2xx body tells us
-    ' about the next episode; a non-ok response falls through to retry, just
-    ' like the old Task, which only acted when res.ok.
-    if not res.ok
+      StartItemId: m.top.id,
+      Limit: 2
+    })
+    promises.chain(fetchAsync(req, "nextEpisode-" + m.top.id)).then(sub(res as object)
+      ' Any HTTP response lands here (incl. 4xx/5xx). Only a 2xx body tells us
+      ' about the next episode; a non-ok response falls through to retry, just
+      ' like the old Task, which only acted when res.ok.
+      if not res.ok
+        onNextEpisodeFetchFailed()
+        return
+      end if
+
+      m.top.observeField("position", "onPositionChanged")
+
+      ' BuildGetEpisodesRequest(Limit 2) returns [current, next]; a count other
+      ' than 2 means there is no next episode, so disable the Next Episode button.
+      if not (isValid(res.json) and isValid(res.json.Items) and res.json.Items.count() = 2)
+        m.nextupbuttonseconds = 0
+      end if
+    end sub).catch(sub(err as object)
+      ' Transport failure / timeout (see the error contract) — never completed,
+      ' so allow a retry on the next "playing" transition.
       onNextEpisodeFetchFailed()
-      return
-    end if
+      m.log.warn("next-episode fetch failed", err.reason)
+    end sub)
+  end sub
 
-    m.top.observeField("position", "onPositionChanged")
+  ' Re-arms the next-episode check after a fetch that never produced a usable
+  ' response, so a later "playing" transition retries it.
+  sub onNextEpisodeFetchFailed()
+    m.checkedForNextEpisode = false
+  end sub
 
-    ' BuildGetEpisodesRequest(Limit 2) returns [current, next]; a count other
-    ' than 2 means there is no next episode, so disable the Next Episode button.
-    if not (isValid(res.json) and isValid(res.json.Items) and res.json.Items.count() = 2)
-      m.nextupbuttonseconds = 0
-    end if
-  end sub).catch(sub(err as object)
-    ' Transport failure / timeout (see the error contract) — never completed,
-    ' so allow a retry on the next "playing" transition.
-    onNextEpisodeFetchFailed()
-    m.log.warn("next-episode fetch failed", err.reason)
-  end sub)
-end sub
+  ' Check if a VideoNotification is visually present (including during fade-out animation)
+  function isNotificationVisible(notification as object) as boolean
+    return notification.state = "showing" or notification.state = "dismissing"
+  end function
 
-' Re-arms the next-episode check after a fetch that never produced a usable
-' response, so a later "playing" transition retries it.
-sub onNextEpisodeFetchFailed()
-  m.checkedForNextEpisode = false
-end sub
+  ' Show the Next Episode notification with countdown text
+  sub showNextEpisodeButton()
+    if m.osd.visible then return
+    if m.top.content.contenttype <> 4 then return ' only display when content is type "Episode"
+    if m.nextupbuttonseconds = 0 then return ' is the button disabled?
+    if m.nextEpisodeNotification.state = "showing" then return
 
-' Check if a VideoNotification is visually present (including during fade-out animation)
-function isNotificationVisible(notification as object) as boolean
-  return notification.state = "showing" or notification.state = "dismissing"
-end function
+    ' Don't show Next Episode while segment notification is active (including fade-out)
+    if isNotificationVisible(m.segmentNotification) then return
 
-' Show the Next Episode notification with countdown text
-sub showNextEpisodeButton()
-  if m.osd.visible then return
-  if m.top.content.contenttype <> 4 then return ' only display when content is type "Episode"
-  if m.nextupbuttonseconds = 0 then return ' is the button disabled?
-  if m.nextEpisodeNotification.state = "showing" then return
+    ' Set text before showing
+    updateNextEpisodeCount()
 
-  ' Don't show Next Episode while segment notification is active (including fade-out)
-  if isNotificationVisible(m.segmentNotification) then return
+    m.nextEpisodeNotification.visible = true
+    m.nextEpisodeNotification.callFunc("show")
+  end sub
 
-  ' Set text before showing
-  updateNextEpisodeCount()
-
-  m.nextEpisodeNotification.visible = true
-  m.nextEpisodeNotification.callFunc("show")
-end sub
-
-' Update Next Episode countdown text
-sub updateNextEpisodeCount()
-  nextEpisodeCountdown = Int(m.top.duration - m.top.position)
-  if nextEpisodeCountdown < 0
-    nextEpisodeCountdown = 0
-  end if
-  m.nextEpisodeNotification.text = translate(translationKeys.LabelNextEpisode) + " " + nextEpisodeCountdown.toStr().trim()
-end sub
-
-' Hide the Next Episode notification
-sub hideNextEpisodeButton()
-  if not isValid(m.nextEpisodeNotification) then return
-  m.nextEpisodeNotification.callFunc("dismiss")
-end sub
-
-' Handler for Next Episode notification action
-sub onNextEpisodeNotificationAction()
-  action = m.nextEpisodeNotification.action
-  if action = "activated"
-    forceFinishPlayback()
-    return
-  else if action = "dismissed"
-    ' Only restore video focus if OSD didn't take focus during the dismiss animation
-    if not m.osd.visible
-      m.top.setFocus(true)
-    end if
-  end if
-end sub
-
-' Checks if we need to display the Next Episode button
-sub checkTimeToDisplayNextEpisode()
-  if m.top.content.contenttype <> 4 then return ' only display when content is type "Episode"
-  if m.nextupbuttonseconds = 0 then return ' is the button disabled?
-
-  ' Don't show Next Episode button if trickPlayBar is visible
-  if m.top.trickPlayBar.visible then return
-
-  ' Don't show while segment notification is active (including fade-out) — it takes priority
-  if isNotificationVisible(m.segmentNotification) then return
-
-  if isValid(m.top.duration) and isValid(m.top.position)
+  ' Update Next Episode countdown text
+  sub updateNextEpisodeCount()
     nextEpisodeCountdown = Int(m.top.duration - m.top.position)
-
-    if nextEpisodeCountdown < 0 and isNotificationVisible(m.nextEpisodeNotification)
-      hideNextEpisodeButton()
-      return
-    else if nextEpisodeCountdown > 1 and int(m.top.position) >= (m.top.duration - m.nextupbuttonseconds - 1)
-      if m.nextEpisodeNotification.state <> "showing"
-        showNextEpisodeButton()
-      else
-        ' Notification already showing — just update the countdown text
-        updateNextEpisodeCount()
-      end if
-      return
+    if nextEpisodeCountdown < 0
+      nextEpisodeCountdown = 0
     end if
-  end if
+    m.nextEpisodeNotification.text = translate(translationKeys.LabelNextEpisode) + " " + nextEpisodeCountdown.toStr().trim()
+  end sub
 
-  ' If notification is visible but shouldn't be, hide it
-  if isNotificationVisible(m.nextEpisodeNotification)
-    hideNextEpisodeButton()
-  end if
-end sub
+  ' Hide the Next Episode notification
+  sub hideNextEpisodeButton()
+    if not isValid(m.nextEpisodeNotification) then return
+    m.nextEpisodeNotification.callFunc("dismiss")
+  end sub
 
-' Forces playback to finished state for proper watched-status and auto-play.
-' Triggers synchronous teardown (onState -> PlayerHostView.onPlayerStateChange -> destroy/
-' goBack -> onDestroy), invalidating all m. references. Callers MUST return immediately after.
-sub forceFinishPlayback()
-  ' Explicitly mark as watched via dedicated API endpoint.
-  ' Uses the API pool (not SideEffectTask) so it can't be overwritten
-  ' by the playstate report that fires during teardown.
-  if m.top.id <> ""
-    req = GetApi().BuildMarkPlayedRequest(m.top.id)
-    if isValid(req)
-      resultNode = submitApiRequest(req, "forceFinishMarkPlayed")
-      if isValid(resultNode)
-        m.log.info("Force-finishing playback — marking as watched", m.top.id)
-      else
-        m.log.warn("Force-finishing playback — API pool not ready, mark-played dropped", m.top.id)
+  ' Handler for Next Episode notification action
+  sub onNextEpisodeNotificationAction()
+    action = m.nextEpisodeNotification.action
+    if action = "activated"
+      forceFinishPlayback()
+      return
+    else if action = "dismissed"
+      ' Only restore video focus if OSD didn't take focus during the dismiss animation
+      if not m.osd.visible
+        m.top.setFocus(true)
       end if
-    else
-      m.log.warn("Force-finishing playback — could not build mark-played request", m.top.id)
     end if
-  else
-    m.log.info("Force-finishing playback — no item ID, skipping mark-played")
-  end if
+  end sub
 
-  ' Tell reportPlayback to report position at end of video so the server
-  ' sees a natural completion — matching the mark-played request.
-  m.forceFinished = true
+  ' Checks if we need to display the Next Episode button
+  sub checkTimeToDisplayNextEpisode()
+    if m.top.content.contenttype <> 4 then return ' only display when content is type "Episode"
+    if m.nextupbuttonseconds = 0 then return ' is the button disabled?
 
-  m.top.control = "stop"
-  m.top.state = "finished"
-end sub
+    ' Don't show Next Episode button if trickPlayBar is visible
+    if m.top.trickPlayBar.visible then return
 
-' Check media segments and trigger appropriate actions based on current playback position
-sub checkMediaSegments()
-  if m.mediaSegments.Count() = 0 then return
-  if m.osd.visible then return
-  if m.top.trickPlayBar.visible then return
+    ' Don't show while segment notification is active (including fade-out) — it takes priority
+    if isNotificationVisible(m.segmentNotification) then return
 
-  userSession = m.global.user
-  segment = findActiveSegment(m.mediaSegments, m.top.position)
+    if isValid(m.top.duration) and isValid(m.top.position)
+      nextEpisodeCountdown = Int(m.top.duration - m.top.position)
 
-  if isValid(segment)
-    segmentId = segment.Id ?? ""
-    if segmentId = "" then return
-
-    segmentType = segment.Type ?? ""
-    action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
-    m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
-
-    if action = MediaSegmentAction.SKIP
-      ' Auto-skip only fires once per segment
-      if m.skippedSegments.DoesExist(segmentId) then return
-
-      ' Auto-skip: seek to end of segment immediately
-      seekPosition = segmentTicksToSeconds(segment.EndTicks)
-
-      ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
-        forceFinishPlayback()
+      if nextEpisodeCountdown < 0 and isNotificationVisible(m.nextEpisodeNotification)
+        hideNextEpisodeButton()
         return
-      end if
-
-      ' Dismiss notification from a prior segment (e.g. back-to-back askToSkip → skip)
-      if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
-        m.segmentNotification.callFunc("dismiss")
-      end if
-
-      m.log.info("Auto-skipping segment", segmentType, "to", seekPosition)
-      m.top.seek = seekPosition
-      m.skippedSegments[segmentId] = true
-      m.activeSegmentId = ""
-    else if action = MediaSegmentAction.ASK_TO_SKIP
-      ' Dismissed this visit — don't re-show until user leaves and re-enters the segment
-      if segmentId = m.dismissedSegmentId then return
-
-      ' Re-show notification if it was paused (hidden for OSD)
-      if m.segmentNotification.state = "paused" and m.activeSegmentId = segmentId
-        m.log.verbose("Re-showing paused segment notification", segmentId)
-        m.segmentNotification.visible = true
-        m.segmentNotification.callFunc("show")
-      else if m.activeSegmentId <> segmentId
-        ' Show notification for a new segment
-        m.activeSegmentId = segmentId
-
-        ' Suppress Next Episode notification while segment notification is active
-        if isNotificationVisible(m.nextEpisodeNotification)
-          hideNextEpisodeButton()
-        end if
-
-        ' Commercial and Recap segments stay visible for the entire segment.
-        ' Other types auto-dismiss after 10 seconds.
-        if segmentType = MediaSegmentType.COMMERCIAL or segmentType = MediaSegmentType.RECAP
-          m.segmentNotification.autoDismissSeconds = 0
+      else if nextEpisodeCountdown > 1 and int(m.top.position) >= (m.top.duration - m.nextupbuttonseconds - 1)
+        if m.nextEpisodeNotification.state <> "showing"
+          showNextEpisodeButton()
         else
-          m.segmentNotification.autoDismissSeconds = 10
+          ' Notification already showing — just update the countdown text
+          updateNextEpisodeCount()
         end if
+        return
+      end if
+    end if
 
-        m.log.info("Showing skip notification", segmentType, segmentId)
-        segmentLabel = m.segmentTypeLabels[segmentType]
-        if not isValidAndNotEmpty(segmentLabel) then segmentLabel = segmentType
-        m.segmentNotification.text = translate(translationKeys.ButtonSkip) + " " + segmentLabel
-        m.segmentNotification.visible = true
-        m.segmentNotification.callFunc("show")
+    ' If notification is visible but shouldn't be, hide it
+    if isNotificationVisible(m.nextEpisodeNotification)
+      hideNextEpisodeButton()
+    end if
+  end sub
+
+  ' Forces playback to finished state for proper watched-status and auto-play.
+  ' Triggers synchronous teardown (onState -> PlayerHostView.onPlayerStateChange -> destroy/
+  ' goBack -> onDestroy), invalidating all m. references. Callers MUST return immediately after.
+  sub forceFinishPlayback()
+    ' Explicitly mark as watched via dedicated API endpoint.
+    ' Uses the API pool (not SideEffectTask) so it can't be overwritten
+    ' by the playstate report that fires during teardown.
+    if m.top.id <> ""
+      req = GetApi().BuildMarkPlayedRequest(m.top.id)
+      if isValid(req)
+        resultNode = submitApiRequest(req, "forceFinishMarkPlayed")
+        if isValid(resultNode)
+          m.log.info("Force-finishing playback — marking as watched", m.top.id)
+        else
+          m.log.warn("Force-finishing playback — API pool not ready, mark-played dropped", m.top.id)
+        end if
+      else
+        m.log.warn("Force-finishing playback — could not build mark-played request", m.top.id)
       end if
     else
-      ' MediaSegmentAction.NONE — dismiss stale notification from a prior segment
+      m.log.info("Force-finishing playback — no item ID, skipping mark-played")
+    end if
+
+    ' Tell reportPlayback to report position at end of video so the server
+    ' sees a natural completion — matching the mark-played request.
+    m.forceFinished = true
+
+    m.top.control = "stop"
+    m.top.state = "finished"
+  end sub
+
+  ' Check media segments and trigger appropriate actions based on current playback position
+  sub checkMediaSegments()
+    if m.mediaSegments.Count() = 0 then return
+    if m.osd.visible then return
+    if m.top.trickPlayBar.visible then return
+
+    userSession = m.global.user
+    segment = findActiveSegment(m.mediaSegments, m.top.position)
+
+    if isValid(segment)
+      segmentId = segment.Id ?? ""
+      if segmentId = "" then return
+
+      segmentType = segment.Type ?? ""
+      action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
+      m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
+
+      if action = MediaSegmentAction.SKIP
+        ' Auto-skip only fires once per segment
+        if m.skippedSegments.DoesExist(segmentId) then return
+
+        ' Auto-skip: seek to end of segment immediately
+        seekPosition = segmentTicksToSeconds(segment.EndTicks)
+
+        ' Outro ending near video end: force finish for watched-status and auto-play
+        if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+          forceFinishPlayback()
+          return
+        end if
+
+        ' Dismiss notification from a prior segment (e.g. back-to-back askToSkip → skip)
+        if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
+          m.segmentNotification.callFunc("dismiss")
+        end if
+
+        m.log.info("Auto-skipping segment", segmentType, "to", seekPosition)
+        m.top.seek = seekPosition
+        m.skippedSegments[segmentId] = true
+        m.activeSegmentId = ""
+      else if action = MediaSegmentAction.ASK_TO_SKIP
+        ' Dismissed this visit — don't re-show until user leaves and re-enters the segment
+        if segmentId = m.dismissedSegmentId then return
+
+        ' Re-show notification if it was paused (hidden for OSD)
+        if m.segmentNotification.state = "paused" and m.activeSegmentId = segmentId
+          m.log.verbose("Re-showing paused segment notification", segmentId)
+          m.segmentNotification.visible = true
+          m.segmentNotification.callFunc("show")
+        else if m.activeSegmentId <> segmentId
+          ' Show notification for a new segment
+          m.activeSegmentId = segmentId
+
+          ' Suppress Next Episode notification while segment notification is active
+          if isNotificationVisible(m.nextEpisodeNotification)
+            hideNextEpisodeButton()
+          end if
+
+          ' Commercial and Recap segments stay visible for the entire segment.
+          ' Other types auto-dismiss after 10 seconds.
+          if segmentType = MediaSegmentType.COMMERCIAL or segmentType = MediaSegmentType.RECAP
+            m.segmentNotification.autoDismissSeconds = 0
+          else
+            m.segmentNotification.autoDismissSeconds = 10
+          end if
+
+          m.log.info("Showing skip notification", segmentType, segmentId)
+          segmentLabel = m.segmentTypeLabels[segmentType]
+          if not isValidAndNotEmpty(segmentLabel) then segmentLabel = segmentType
+          m.segmentNotification.text = translate(translationKeys.ButtonSkip) + " " + segmentLabel
+          m.segmentNotification.visible = true
+          m.segmentNotification.callFunc("show")
+        end if
+      else
+        ' MediaSegmentAction.NONE — dismiss stale notification from a prior segment
+        if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
+          m.segmentNotification.callFunc("dismiss")
+        end if
+        m.activeSegmentId = ""
+      end if
+    else
+      ' Not inside any segment — dismiss segment notification if visible or paused
       if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
+        m.log.verbose("Left segment, dismissing notification")
         m.segmentNotification.callFunc("dismiss")
       end if
       m.activeSegmentId = ""
+      m.dismissedSegmentId = ""
     end if
-  else
-    ' Not inside any segment — dismiss segment notification if visible or paused
-    if isNotificationVisible(m.segmentNotification) or m.segmentNotification.state = "paused"
-      m.log.verbose("Left segment, dismissing notification")
-      m.segmentNotification.callFunc("dismiss")
-    end if
-    m.activeSegmentId = ""
-    m.dismissedSegmentId = ""
-  end if
-end sub
+  end sub
 
-' Handler for segment notification action
-sub onSegmentNotificationAction()
-  action = m.segmentNotification.action
-  if action = "activated"
-    if m.activeSegmentId = ""
-      m.log.warn("Segment skip activated with no active segment")
-      return
-    end if
-
-    m.log.info("Segment skip activated by user", m.activeSegmentId)
-    segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
-    if isValid(segment)
-      seekPosition = segmentTicksToSeconds(segment.EndTicks)
-      segmentType = segment.Type ?? ""
-
-      ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
-        forceFinishPlayback()
+  ' Handler for segment notification action
+  sub onSegmentNotificationAction()
+    action = m.segmentNotification.action
+    if action = "activated"
+      if m.activeSegmentId = ""
+        m.log.warn("Segment skip activated with no active segment")
         return
       end if
 
-      m.top.seek = seekPosition
-      m.skippedSegments[m.activeSegmentId] = true
-    else
-      m.log.warn("Active segment not found for skip", m.activeSegmentId)
-    end if
-    m.activeSegmentId = ""
-    m.top.setFocus(true)
-  else if action = "dismissed"
-    m.log.verbose("Segment notification dismissed", m.activeSegmentId)
-    ' Mark as dismissed for this visit — allows re-show if user leaves and re-enters the segment
-    if m.activeSegmentId <> ""
-      m.dismissedSegmentId = m.activeSegmentId
-      m.activeSegmentId = ""
-    end if
-    ' Only restore video focus if OSD didn't take focus during the dismiss animation
-    if not m.osd.visible
-      m.top.setFocus(true)
-    end if
-  end if
-end sub
+      m.log.info("Segment skip activated by user", m.activeSegmentId)
+      segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
+      if isValid(segment)
+        seekPosition = segmentTicksToSeconds(segment.EndTicks)
+        segmentType = segment.Type ?? ""
 
-' Safety net: ensure focus isn't orphaned after notification dismissal animation completes
-sub onNotificationStateChanged()
-  if m.segmentNotification.state = "hidden" or m.nextEpisodeNotification.state = "hidden"
-    if not m.osd.visible and not m.top.hasFocus()
-      m.top.setFocus(true)
-    end if
-  end if
-end sub
+        ' Outro ending near video end: force finish for watched-status and auto-play
+        if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+          forceFinishPlayback()
+          return
+        end if
 
-' When Video Player state changes
-sub onPositionChanged()
-  ' Fall back to content.length (which Jellyfin populates from mediaSource.RunTimeTicks)
-  ' when Roku's own duration probe returns 0. This happens with live-transcoded progressive
-  ' MKV: ffmpeg can't know the final duration while encoding, so it writes 0 into the
-  ' MKV SegmentInfo header, and Roku's probe inherits that. Without this fallback,
-  ' progressPercentage stays pinned at 0, and since the OSD only observes progressPercentage,
-  ' the progress bar never advances and timestamps never refresh.
-  effectiveDuration = m.top.duration
-  if effectiveDuration <= 0 and isValid(m.top.content) and m.top.content.length > 0
-    effectiveDuration = m.top.content.length
-  end if
-
-  if effectiveDuration <= 0
-    m.osd.progressPercentage = 0
-  else
-    m.osd.progressPercentage = m.top.position / effectiveDuration
-  end if
-  m.osd.positionTime = m.top.position
-  m.osd.remainingPositionTime = effectiveDuration - m.top.position
-
-  if isValid(m.captionTask)
-    m.captionTask.currentPos = Int(m.top.position * 1000)
-  end if
-
-  ' Update trickplay carousel's playback position for proactive tile caching
-  ' This runs even when carousel is not visible to keep cache warm
-  if isValid(m.trickplayCarousel)
-    m.trickplayCarousel.playbackPosition = m.top.position
-  end if
-
-  ' Check if dialog is open
-  m.dialog = m.top.getScene().findNode("dialogBackground")
-  if not isValid(m.dialog)
-    ' Do not check segments or next episode for intro videos
-    if not m.LoadMetaDataTask.isIntro
-      checkMediaSegments()
-      checkTimeToDisplayNextEpisode()
-    end if
-  end if
-
-  ' Carousel visibility state machine:
-  ' 1. Normal scrubbing: carousel auto-shows when trickPlayBar visible (not OSD)
-  ' 2. Seek confirmation: when user presses OK, carousel is hidden (line 1146) and
-  '    m.carouselHiddenForSeek flag prevents auto-show until seek completes
-  ' 3. Seek completion: when trickPlayBar closes, flags reset and carousel ready for next scrub
-  ' This prevents the carousel from flashing back on between OK press and trickPlayBar closing
-  if isValid(m.trickplayCarousel) and not m.carouselHiddenForSeek
-    trickPlayBarVisible = m.top.trickPlayBar.visible and not m.osd.visible
-    m.trickplayCarousel.isVisible = trickPlayBarVisible
-
-    ' Reset seek tracking when trickPlayBar closes (user confirmed or cancelled seek)
-    if not trickPlayBarVisible
-      m.isTrackingSeek = false
-      m.carouselHiddenForSeek = false
-      m.lastSentThumbnailIndex = -1 ' Reset so next scrub session sends initial position
-    end if
-  end if
-
-  ' Update trickplay carousel position during normal playback only
-  ' When trickPlayBar is visible, onTrickPlayBarTextChange is the authoritative source
-  if isValid(m.trickplayCarousel) and m.trickplayCarousel.isVisible and not m.top.trickPlayBar.visible
-    updateTrickplayCarousel(m.top.position)
-  end if
-end sub
-
-' Updates trickplay carousel with index calculated from video position
-' Snaps to thumbnail boundaries for cleaner UX
-' @param {Float} position - Video position in seconds
-sub updateTrickplayCarousel(position as float)
-  if not isValid(m.trickplayCarousel) then return
-  if not isValidAndNotEmpty(m.trickplayCarousel.trickplayConfig) then return
-
-  interval = m.trickplayCarousel.trickplayConfig.interval
-
-  ' Calculate thumbnail index from position
-  thumbnailIndex = trickplay.calculateThumbnailIndex(position, interval)
-
-  ' Skip if same index as last sent - prevents double-rendering at tile boundaries
-  ' when both onPositionChanged and onTrickPlayBarTextChange fire with similar positions
-  if thumbnailIndex = m.lastSentThumbnailIndex then return
-  m.lastSentThumbnailIndex = thumbnailIndex
-
-  ' Update carousel with index (triggers shifting logic)
-  m.trickplayCarousel.thumbnailIndex = thumbnailIndex
-end sub
-
-' Called when Roku's trickPlayBar position text changes
-' Parses the time string to get seek position and syncs our carousel
-' This ensures carousel stays in sync with Roku's authoritative seek position
-sub onTrickPlayBarTextChange()
-  if not m.top.trickPlayBar.visible then return
-  if not isValid(m.trickPlayBarPositionText) then return
-
-  timeText = m.trickPlayBarPositionText.text
-  if not isValidAndNotEmpty(timeText) then return
-
-  ' Parse time string "53:50" (MM:SS) or "1:23:45" (H:MM:SS) to seconds
-  seekPosition = timeText.split(":")
-  seekTime = 0
-
-  if seekPosition.count() = 3
-    ' H:MM:SS format
-    seekTime = seekPosition[0].toInt() * 3600 ' hours
-    seekTime = seekTime + seekPosition[1].toInt() * 60 ' minutes
-    seekTime = seekTime + seekPosition[2].toInt() ' seconds
-  else if seekPosition.count() = 2
-    ' MM:SS format
-    seekTime = seekPosition[0].toInt() * 60 ' minutes
-    seekTime = seekTime + seekPosition[1].toInt() ' seconds
-  else
-    ' Unexpected format - use current position as fallback
-    seekTime = m.top.position
-  end if
-
-  m.log.debug("TrickPlayBar text changed", timeText, "parsed to", seekTime, "seconds")
-
-  ' Sync carousel with Roku's authoritative seek position
-  m.isTrackingSeek = true
-
-  ' Update carousel to match
-  if isValid(m.trickplayCarousel) and m.trickplayCarousel.isVisible
-    updateTrickplayCarousel(seekTime)
-  end if
-end sub
-
-' retryPlayback: Re-runs the content loader from the current position with updated task flags.
-' Used by error handlers to retry without exiting the player.
-' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
-' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
-sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
-  ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
-  m.top.isRetrying = true
-  m.top.control = "stop"
-  m.LoadMetaDataTask.shouldBypassDoviPreservation = bypassDovi
-  m.LoadMetaDataTask.shouldForceTranscoding = forceTranscode
-  m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
-  m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
-  m.LoadMetaDataTask.itemId = m.currentItem.id
-  m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  m.LoadMetaDataTask.control = "RUN"
-end sub
-
-'
-' When Video Player state changes
-sub onState()
-  ' On first play, verify audioTrack matches the intended Jellyfin selection using
-  ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
-  ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
-  if m.top.state = "playing" and not m.isPlayReported
-    if isValid(m.top.availableAudioTracks) and isValid(m.top.audioIndex) and not m.top.isTranscoded
-      correctedTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
-      if correctedTrack <> m.top.audioTrack
-        m.log.info("Correcting audioTrack on first play", "was", m.top.audioTrack, "corrected", correctedTrack, "jellyfinIndex", m.top.audioIndex)
-        m.top.audioTrack = correctedTrack
+        m.top.seek = seekPosition
+        m.skippedSegments[m.activeSegmentId] = true
       else
-        m.log.debug("audioTrack verified correct on first play", "audioTrack", m.top.audioTrack, "jellyfinIndex", m.top.audioIndex)
+        m.log.warn("Active segment not found for skip", m.activeSegmentId)
+      end if
+      m.activeSegmentId = ""
+      m.top.setFocus(true)
+    else if action = "dismissed"
+      m.log.verbose("Segment notification dismissed", m.activeSegmentId)
+      ' Mark as dismissed for this visit — allows re-show if user leaves and re-enters the segment
+      if m.activeSegmentId <> ""
+        m.dismissedSegmentId = m.activeSegmentId
+        m.activeSegmentId = ""
+      end if
+      ' Only restore video focus if OSD didn't take focus during the dismiss animation
+      if not m.osd.visible
+        m.top.setFocus(true)
       end if
     end if
-  end if
+  end sub
 
-  if isValid(m.captionTask)
-    m.captionTask.playerState = m.top.state + m.top.globalCaptionMode
-  end if
-
-  ' Pass video state into OSD
-  m.osd.playbackState = m.top.state
-
-  if m.top.state = "buffering"
-    ' When buffering, start timer to monitor buffering process
-    if isValid(m.bufferCheckTimer)
-      m.bufferCheckTimer.control = "start"
-      m.bufferCheckTimer.ObserveField("fire", "bufferCheck")
+  ' Safety net: ensure focus isn't orphaned after notification dismissal animation completes
+  sub onNotificationStateChanged()
+    if m.segmentNotification.state = "hidden" or m.nextEpisodeNotification.state = "hidden"
+      if not m.osd.visible and not m.top.hasFocus()
+        m.top.setFocus(true)
+      end if
     end if
-    ' Show non-blocking spinner for mid-playback buffering (seek, network stall)
-    if m.isPlayReported
-      startLoadingSpinner(false)
+  end sub
+
+  ' When Video Player state changes
+  sub onPositionChanged()
+    ' Fall back to content.length (which Jellyfin populates from mediaSource.RunTimeTicks)
+    ' when Roku's own duration probe returns 0. This happens with live-transcoded progressive
+    ' MKV: ffmpeg can't know the final duration while encoding, so it writes 0 into the
+    ' MKV SegmentInfo header, and Roku's probe inherits that. Without this fallback,
+    ' progressPercentage stays pinned at 0, and since the OSD only observes progressPercentage,
+    ' the progress bar never advances and timestamps never refresh.
+    effectiveDuration = m.top.duration
+    if effectiveDuration <= 0 and isValid(m.top.content) and m.top.content.length > 0
+      effectiveDuration = m.top.content.length
     end if
-  else if m.top.state = "error"
-    m.log.error(m.top.errorCode, m.top.errorMsg, m.top.errorStr, m.isPlayReported, m.top.isTranscodeAvailable)
 
-    print m.top.errorInfo
-
-    ' Detect a Roku video buffer overflow (buffer:loop: source) caused by DoVi transcoding.
-    ' When DoVi preservation forced a transcode and the HLS segments overflow the device buffer,
-    ' retry with direct play by bypassing the DoVi container profile injection.
-    isBufferLoopError = isValid(m.top.errorInfo) and isValid(m.top.errorInfo.source) and m.top.errorInfo.source = "buffer:loop:"
-
-    if isBufferLoopError and m.top.isDoviDirectPlayFallbackAvailable
-      m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
-      m.top.isDoviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
-      retryPlayback(true, false)
-    else if not m.isPlayReported and m.top.isTranscodeAvailable
-      m.log.warn("Direct play failed; falling back to transcode", m.currentItem.id)
-      m.top.isTranscodeAvailable = false ' prevent retry loop if transcode also fails
-      retryPlayback(false, true)
+    if effectiveDuration <= 0
+      m.osd.progressPercentage = 0
     else
-      ' If an error was encountered, stop timers and display dialog
-      m.top.unobserveField("state")
+      m.osd.progressPercentage = m.top.position / effectiveDuration
+    end if
+    m.osd.positionTime = m.top.position
+    m.osd.remainingPositionTime = effectiveDuration - m.top.position
+
+    if isValid(m.captionTask)
+      m.captionTask.currentPos = Int(m.top.position * 1000)
+    end if
+
+    ' Update trickplay carousel's playback position for proactive tile caching
+    ' This runs even when carousel is not visible to keep cache warm
+    if isValid(m.trickplayCarousel)
+      m.trickplayCarousel.playbackPosition = m.top.position
+    end if
+
+    ' Check if dialog is open
+    m.dialog = m.top.getScene().findNode("dialogBackground")
+    if not isValid(m.dialog)
+      ' Do not check segments or next episode for intro videos
+      if not m.LoadMetaDataTask.isIntro
+        checkMediaSegments()
+        checkTimeToDisplayNextEpisode()
+      end if
+    end if
+
+    ' Carousel visibility state machine:
+    ' 1. Normal scrubbing: carousel auto-shows when trickPlayBar visible (not OSD)
+    ' 2. Seek confirmation: when user presses OK, carousel is hidden (line 1146) and
+    '    m.carouselHiddenForSeek flag prevents auto-show until seek completes
+    ' 3. Seek completion: when trickPlayBar closes, flags reset and carousel ready for next scrub
+    ' This prevents the carousel from flashing back on between OK press and trickPlayBar closing
+    if isValid(m.trickplayCarousel) and not m.carouselHiddenForSeek
+      trickPlayBarVisible = m.top.trickPlayBar.visible and not m.osd.visible
+      m.trickplayCarousel.isVisible = trickPlayBarVisible
+
+      ' Reset seek tracking when trickPlayBar closes (user confirmed or cancelled seek)
+      if not trickPlayBarVisible
+        m.isTrackingSeek = false
+        m.carouselHiddenForSeek = false
+        m.lastSentThumbnailIndex = -1 ' Reset so next scrub session sends initial position
+      end if
+    end if
+
+    ' Update trickplay carousel position during normal playback only
+    ' When trickPlayBar is visible, onTrickPlayBarTextChange is the authoritative source
+    if isValid(m.trickplayCarousel) and m.trickplayCarousel.isVisible and not m.top.trickPlayBar.visible
+      updateTrickplayCarousel(m.top.position)
+    end if
+  end sub
+
+  ' Updates trickplay carousel with index calculated from video position
+  ' Snaps to thumbnail boundaries for cleaner UX
+  ' @param {Float} position - Video position in seconds
+  sub updateTrickplayCarousel(position as float)
+    if not isValid(m.trickplayCarousel) then return
+    if not isValidAndNotEmpty(m.trickplayCarousel.trickplayConfig) then return
+
+    interval = m.trickplayCarousel.trickplayConfig.interval
+
+    ' Calculate thumbnail index from position
+    thumbnailIndex = trickplay.calculateThumbnailIndex(position, interval)
+
+    ' Skip if same index as last sent - prevents double-rendering at tile boundaries
+    ' when both onPositionChanged and onTrickPlayBarTextChange fire with similar positions
+    if thumbnailIndex = m.lastSentThumbnailIndex then return
+    m.lastSentThumbnailIndex = thumbnailIndex
+
+    ' Update carousel with index (triggers shifting logic)
+    m.trickplayCarousel.thumbnailIndex = thumbnailIndex
+  end sub
+
+  ' Called when Roku's trickPlayBar position text changes
+  ' Parses the time string to get seek position and syncs our carousel
+  ' This ensures carousel stays in sync with Roku's authoritative seek position
+  sub onTrickPlayBarTextChange()
+    if not m.top.trickPlayBar.visible then return
+    if not isValid(m.trickPlayBarPositionText) then return
+
+    timeText = m.trickPlayBarPositionText.text
+    if not isValidAndNotEmpty(timeText) then return
+
+    ' Parse time string "53:50" (MM:SS) or "1:23:45" (H:MM:SS) to seconds
+    seekPosition = timeText.split(":")
+    seekTime = 0
+
+    if seekPosition.count() = 3
+      ' H:MM:SS format
+      seekTime = seekPosition[0].toInt() * 3600 ' hours
+      seekTime = seekTime + seekPosition[1].toInt() * 60 ' minutes
+      seekTime = seekTime + seekPosition[2].toInt() ' seconds
+    else if seekPosition.count() = 2
+      ' MM:SS format
+      seekTime = seekPosition[0].toInt() * 60 ' minutes
+      seekTime = seekTime + seekPosition[1].toInt() ' seconds
+    else
+      ' Unexpected format - use current position as fallback
+      seekTime = m.top.position
+    end if
+
+    m.log.debug("TrickPlayBar text changed", timeText, "parsed to", seekTime, "seconds")
+
+    ' Sync carousel with Roku's authoritative seek position
+    m.isTrackingSeek = true
+
+    ' Update carousel to match
+    if isValid(m.trickplayCarousel) and m.trickplayCarousel.isVisible
+      updateTrickplayCarousel(seekTime)
+    end if
+  end sub
+
+  ' retryPlayback: Re-runs the content loader from the current position with updated task flags.
+  ' Used by error handlers to retry without exiting the player.
+  ' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
+  ' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
+  sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
+    m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+    ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
+    m.top.isRetrying = true
+    m.top.control = "stop"
+    m.LoadMetaDataTask.shouldBypassDoviPreservation = bypassDovi
+    m.LoadMetaDataTask.shouldForceTranscoding = forceTranscode
+    m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
+    m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
+    m.LoadMetaDataTask.itemId = m.currentItem.id
+    m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+    m.LoadMetaDataTask.control = "RUN"
+  end sub
+
+  '
+  ' When Video Player state changes
+  sub onState()
+    ' On first play, verify audioTrack matches the intended Jellyfin selection using
+    ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
+    ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
+    if m.top.state = "playing" and not m.isPlayReported
+      if isValid(m.top.availableAudioTracks) and isValid(m.top.audioIndex) and not m.top.isTranscoded
+        correctedTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
+        if correctedTrack <> m.top.audioTrack
+          m.log.info("Correcting audioTrack on first play", "was", m.top.audioTrack, "corrected", correctedTrack, "jellyfinIndex", m.top.audioIndex)
+          m.top.audioTrack = correctedTrack
+        else
+          m.log.debug("audioTrack verified correct on first play", "audioTrack", m.top.audioTrack, "jellyfinIndex", m.top.audioIndex)
+        end if
+      end if
+    end if
+
+    if isValid(m.captionTask)
+      m.captionTask.playerState = m.top.state + m.top.globalCaptionMode
+    end if
+
+    ' Pass video state into OSD
+    m.osd.playbackState = m.top.state
+
+    if m.top.state = "buffering"
+      ' When buffering, start timer to monitor buffering process
+      if isValid(m.bufferCheckTimer)
+        m.bufferCheckTimer.control = "start"
+        m.bufferCheckTimer.ObserveField("fire", "bufferCheck")
+      end if
+      ' Show non-blocking spinner for mid-playback buffering (seek, network stall)
+      if m.isPlayReported
+        startLoadingSpinner(false)
+      end if
+    else if m.top.state = "error"
+      m.log.error(m.top.errorCode, m.top.errorMsg, m.top.errorStr, m.isPlayReported, m.top.isTranscodeAvailable)
+
+      print m.top.errorInfo
+
+      ' Detect a Roku video buffer overflow (buffer:loop: source) caused by DoVi transcoding.
+      ' When DoVi preservation forced a transcode and the HLS segments overflow the device buffer,
+      ' retry with direct play by bypassing the DoVi container profile injection.
+      isBufferLoopError = isValid(m.top.errorInfo) and isValid(m.top.errorInfo.source) and m.top.errorInfo.source = "buffer:loop:"
+
+      if isBufferLoopError and m.top.isDoviDirectPlayFallbackAvailable
+        m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
+        m.top.isDoviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
+        retryPlayback(true, false)
+      else if not m.isPlayReported and m.top.isTranscodeAvailable
+        m.log.warn("Direct play failed; falling back to transcode", m.currentItem.id)
+        m.top.isTranscodeAvailable = false ' prevent retry loop if transcode also fails
+        retryPlayback(false, true)
+      else
+        ' If an error was encountered, stop timers and display dialog
+        m.top.unobserveField("state")
+        m.playbackTimer.control = "stop"
+        m.bufferCheckTimer.control = "stop"
+        m.bufferCheckTimer.unobserveField("fire")
+        ' Ensure trickplay carousel is cleaned up on error just like stopped/finished states
+        if isValid(m.trickplayCarousel)
+          m.trickplayCarousel.isVisible = false
+        end if
+        stopLoadingSpinner()
+        showPlaybackErrorDialog(translate(translationKeys.ErrorDuringPlayback))
+      end if
+    else if m.top.state = "playing"
+      stopLoadingSpinner()
+      ' Check if next episode is available
+      if isValid(m.top.showID) and m.top.showID <> "" and not m.checkedForNextEpisode and m.top.content.contenttype = 4
+        fetchNextEpisode()
+      end if
+
+      if m.isPlayReported = false
+        reportPlayback("start")
+        m.isPlayReported = true
+
+        ' Load channel list in background for channel up/down navigation
+        if isLiveTvPlayback() and not m.channelListLoaded
+          loadChannelListForQueue()
+        end if
+      else
+        reportPlayback()
+      end if
+      m.playbackTimer.control = "start"
+    else if m.top.state = "paused"
+      stopLoadingSpinner()
       m.playbackTimer.control = "stop"
+      reportPlayback()
+    else if m.top.state = "stopped"
+      ' Skip during channel switch; the incoming VideoPlayerView will hide the spinner
+      if not (m.isSwitchingChannel = true)
+        stopLoadingSpinner()
+      end if
+      m.playbackTimer.control = "stop"
+      m.playbackTimer.unobserveField("fire")
       m.bufferCheckTimer.control = "stop"
       m.bufferCheckTimer.unobserveField("fire")
-      ' Ensure trickplay carousel is cleaned up on error just like stopped/finished states
+      reportPlayback("stop")
+      m.isPlayReported = false
       if isValid(m.trickplayCarousel)
         m.trickplayCarousel.isVisible = false
+        m.trickplayCarousel.callFunc("reset")
       end if
+    else if m.top.state = "finished"
       stopLoadingSpinner()
-      showPlaybackErrorDialog(translate(translationKeys.ErrorDuringPlayback))
-    end if
-  else if m.top.state = "playing"
-    stopLoadingSpinner()
-    ' Check if next episode is available
-    if isValid(m.top.showID) and m.top.showID <> "" and not m.checkedForNextEpisode and m.top.content.contenttype = 4
-      fetchNextEpisode()
-    end if
-
-    if m.isPlayReported = false
-      reportPlayback("start")
-      m.isPlayReported = true
-
-      ' Load channel list in background for channel up/down navigation
-      if isLiveTvPlayback() and not m.channelListLoaded
-        loadChannelListForQueue()
+      m.playbackTimer.control = "stop"
+      m.playbackTimer.unobserveField("fire")
+      m.bufferCheckTimer.control = "stop"
+      m.bufferCheckTimer.unobserveField("fire")
+      reportPlayback("finished")
+      if isValid(m.trickplayCarousel)
+        m.trickplayCarousel.isVisible = false
+        m.trickplayCarousel.callFunc("reset")
       end if
     else
-      reportPlayback()
+      m.log.warning("Unhandled state", m.top.state, m.isPlayReported, m.playFinished)
     end if
-    m.playbackTimer.control = "start"
-  else if m.top.state = "paused"
-    stopLoadingSpinner()
-    m.playbackTimer.control = "stop"
-    reportPlayback()
-  else if m.top.state = "stopped"
-    ' Skip during channel switch; the incoming VideoPlayerView will hide the spinner
-    if not (m.isSwitchingChannel = true)
-      stopLoadingSpinner()
+    m.log.debug("end onState", m.top.state)
+  end sub
+
+  '
+  ' Report playback to server
+  sub reportPlayback(state = "update" as string)
+    if not isValid(m.top.position) then return
+
+    m.log.debug("start reportPlayback", state, int(m.top.position))
+
+    ' When force-finished, report position at end of video so the server
+    ' sees a natural completion — matching the mark-played request.
+    positionSeconds = m.top.position
+    if m.forceFinished and (state = "stop" or state = "finished")
+      positionSeconds = m.top.duration
     end if
-    m.playbackTimer.control = "stop"
-    m.playbackTimer.unobserveField("fire")
-    m.bufferCheckTimer.control = "stop"
-    m.bufferCheckTimer.unobserveField("fire")
-    reportPlayback("stop")
-    m.isPlayReported = false
-    if isValid(m.trickplayCarousel)
-      m.trickplayCarousel.isVisible = false
-      m.trickplayCarousel.callFunc("reset")
+
+    params = {
+      "ItemId": m.top.id,
+      "PlaySessionId": m.top.PlaySessionId,
+      "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
+      "IsPaused": (m.top.state = "paused")
+    }
+    ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
+    if isLiveTvPlayback() and isValid(m.top.transcodeParams)
+      params.append({
+        "MediaSourceId": m.top.transcodeParams.MediaSourceId,
+        "LiveStreamId": m.top.transcodeParams.LiveStreamId
+      })
+      m.bufferCheckTimer.duration = 30
     end if
-  else if m.top.state = "finished"
-    stopLoadingSpinner()
-    m.playbackTimer.control = "stop"
-    m.playbackTimer.unobserveField("fire")
-    m.bufferCheckTimer.control = "stop"
-    m.bufferCheckTimer.unobserveField("fire")
-    reportPlayback("finished")
-    if isValid(m.trickplayCarousel)
-      m.trickplayCarousel.isVisible = false
-      m.trickplayCarousel.callFunc("reset")
+
+    if (state = "stop" or state = "finished") and isValid(m.originalClosedCaptionState)
+      m.log.debug("reportPlayback setting", m.top.globalCaptionMode, "back to", m.originalClosedCaptionState)
+      m.top.globalCaptionMode = m.originalClosedCaptionState
+      m.originalClosedCaptionState = invalid
     end if
-  else
-    m.log.warning("Unhandled state", m.top.state, m.isPlayReported, m.playFinished)
-  end if
-  m.log.debug("end onState", m.top.state)
-end sub
 
-'
-' Report playback to server
-sub reportPlayback(state = "update" as string)
-  if not isValid(m.top.position) then return
+    ' Report playstate via side-effect task
+    req = GetApi().BuildPlaystateRequest(state, params)
+    SubmitSideEffect(req)
 
-  m.log.debug("start reportPlayback", state, int(m.top.position))
-
-  ' When force-finished, report position at end of video so the server
-  ' sees a natural completion — matching the mark-played request.
-  positionSeconds = m.top.position
-  if m.forceFinished and (state = "stop" or state = "finished")
-    positionSeconds = m.top.duration
-  end if
-
-  params = {
-    "ItemId": m.top.id,
-    "PlaySessionId": m.top.PlaySessionId,
-    "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
-    "IsPaused": (m.top.state = "paused")
-  }
-  ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
-  if isLiveTvPlayback() and isValid(m.top.transcodeParams)
-    params.append({
-      "MediaSourceId": m.top.transcodeParams.MediaSourceId,
-      "LiveStreamId": m.top.transcodeParams.LiveStreamId
-    })
-    m.bufferCheckTimer.duration = 30
-  end if
-
-  if (state = "stop" or state = "finished") and isValid(m.originalClosedCaptionState)
-    m.log.debug("reportPlayback setting", m.top.globalCaptionMode, "back to", m.originalClosedCaptionState)
-    m.top.globalCaptionMode = m.originalClosedCaptionState
-    m.originalClosedCaptionState = invalid
-  end if
-
-  ' Report playstate via side-effect task
-  req = GetApi().BuildPlaystateRequest(state, params)
-  SubmitSideEffect(req)
-
-  ' Refresh live TV metadata at the program boundary, or on 60 s wall-clock fallback
-  ' when endDate is missing. Wall-clock rather than a tick counter so the interval
-  ' stays at 60 s regardless of playbackTimer duration.
-  if state = "update" and isLiveTvPlayback()
-    now = CreateObject("roDateTime").AsSeconds()
-    if m.liveTvProgramEndTime > 0 and now >= m.liveTvProgramEndTime
-      triggerLiveTvMetadataRefresh()
-    else if m.liveTvProgramEndTime = 0
-      if m.liveTvNextFallbackRefreshAt = 0
-        m.liveTvNextFallbackRefreshAt = now + 60
-      else if now >= m.liveTvNextFallbackRefreshAt
-        m.liveTvNextFallbackRefreshAt = now + 60
+    ' Refresh live TV metadata at the program boundary, or on 60 s wall-clock fallback
+    ' when endDate is missing. Wall-clock rather than a tick counter so the interval
+    ' stays at 60 s regardless of playbackTimer duration.
+    if state = "update" and isLiveTvPlayback()
+      now = CreateObject("roDateTime").AsSeconds()
+      if m.liveTvProgramEndTime > 0 and now >= m.liveTvProgramEndTime
         triggerLiveTvMetadataRefresh()
+      else if m.liveTvProgramEndTime = 0
+        if m.liveTvNextFallbackRefreshAt = 0
+          m.liveTvNextFallbackRefreshAt = now + 60
+        else if now >= m.liveTvNextFallbackRefreshAt
+          m.liveTvNextFallbackRefreshAt = now + 60
+          triggerLiveTvMetadataRefresh()
+        end if
       end if
     end if
-  end if
 
-  m.log.debug("end reportPlayback", state, int(m.top.position))
-end sub
+    m.log.debug("end reportPlayback", state, int(m.top.position))
+  end sub
 
-'
-' Check the the buffering has not hung
-sub bufferCheck()
+  '
+  ' Check the the buffering has not hung
+  sub bufferCheck()
 
-  if m.top.state <> "buffering"
-    ' If video is not buffering, stop timer
-    m.bufferCheckTimer.control = "stop"
-    m.bufferCheckTimer.unobserveField("fire")
-    return
-  end if
-  if isValid(m.top.bufferingStatus)
-
-    ' Check that the buffering percentage is increasing
-    if m.top.bufferingStatus["percentage"] > m.bufferPercentage
-      m.bufferPercentage = m.top.bufferingStatus["percentage"]
-    else if isLiveTvPlayback()
-      m.top.callFunc("refresh")
-    else
-      ' If buffering has stopped Display dialog
-      showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
-
-      ' Stop playback and exit player
-      m.top.control = "stop"
-    end if
-  end if
-
-end sub
-
-function isLiveTvPlayback() as boolean
-  return isValid(m.currentItem) and LCase(m.currentItem.type) = "tvchannel"
-end function
-
-sub triggerLiveTvMetadataRefresh()
-  ' Zero the end time first to prevent duplicate refresh triggers
-  m.liveTvProgramEndTime = 0
-
-  if not isValid(m.liveTvRefreshTask)
-    m.liveTvRefreshTask = CreateObject("roSGNode", "RefreshLiveTvMetadataTask")
-    m.liveTvRefreshTask.observeField("refreshedItem", "onLiveTvMetadataRefreshed")
-  end if
-
-  m.liveTvRefreshTask.channelId = m.top.id
-  m.liveTvRefreshTask.control = "RUN"
-end sub
-
-sub onLiveTvMetadataRefreshed()
-  m.liveTvRefreshTask.control = "STOP"
-  meta = m.liveTvRefreshTask.refreshedItem
-  if not isValid(meta) then return
-
-  m.osd.itemData = meta
-
-  ' Logo priority: program logo → program primary → channel icon. Always write the result
-  ' (empty string included) so the prior program's logo doesn't linger when the new one
-  ' has no artwork. Mirrors the initial-load chain in LoadVideoContentTask.
-  newLogoUrl as string = ""
-  if meta.type = "TvChannel"
-    osdLogoSize = imageSize.LOGO_OSD
-    currentProgram = meta.currentProgram
-    if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.logoImageTag)
-      newLogoUrl = ImageURL(currentProgram.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.logoImageTag })
-    else if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.primaryImageTag)
-      newLogoUrl = ImageURL(currentProgram.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.primaryImageTag })
-    else if isValidAndNotEmpty(meta.primaryImageTag)
-      newLogoUrl = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
-    end if
-  end if
-  m.osd.videoLogo = newLogoUrl
-
-  m.liveTvProgramEndTime = parseProgramEndTimeEpoch(meta)
-  m.liveTvNextFallbackRefreshAt = 0
-end sub
-
-' Collapsed from LoadChannelListForQueueTask, a pure-fetch Task that existed only to
-' move one fetchRes off the render thread (Phase-4 collapse; see docs/dev/promises.md).
-' Fire-once per playback (guarded by m.channelListLoaded), so no seq guard is needed —
-' a single .then can't race itself the way a hot re-fire would.
-sub loadChannelListForQueue()
-  currentChannelId = m.top.id
-  if not isValidAndNotEmpty(currentChannelId) then return
-
-  req = GetApi().BuildGetLiveTVChannelsRequest({
-    SortBy: "Number",
-    SortOrder: "Ascending",
-    UserId: m.global.user.id,
-    enableImages: false,
-    addCurrentProgram: false,
-    enableUserData: false
-  })
-  m.log.info("Loading channel list for navigation", currentChannelId)
-
-  ' Carry currentChannelId through the promise context (no closures in BS).
-  promises.chain(fetchAsync(req, "channelList-" + m.top.id), { currentChannelId: currentChannelId }).then(sub(res as object, ctx as object)
-    ' Any HTTP response lands here (incl. 4xx/5xx). Replicates the old Task's
-    ' loadChannelList(): bail on a bad payload, otherwise build + install the queue.
-    if not res.ok or not isValid(res.json) or not isValid(res.json.Items)
-      m.log.warn("Failed to load channel list")
+    if m.top.state <> "buffering"
+      ' If video is not buffering, stop timer
+      m.bufferCheckTimer.control = "stop"
+      m.bufferCheckTimer.unobserveField("fire")
       return
     end if
+    if isValid(m.top.bufferingStatus)
 
-    ' buildChannelQueueList is a light array→array transform (source/utils/liveTv.bs) —
-    ' render-thread-safe (no node creation), which is why this Task was a collapse candidate.
-    built = buildChannelQueueList(res.json.Items, ctx.currentChannelId)
+      ' Check that the buffering percentage is increasing
+      if m.top.bufferingStatus["percentage"] > m.bufferPercentage
+        m.bufferPercentage = m.top.bufferingStatus["percentage"]
+      else if isLiveTvPlayback()
+        m.top.callFunc("refresh")
+      else
+        ' If buffering has stopped Display dialog
+        showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
 
-    if not isValidAndNotEmpty(built.items) or built.currentIndex < 0
-      m.log.warn("Channel list empty or current channel not found, skipping queue update")
-      return
+        ' Stop playback and exit player
+        m.top.control = "stop"
+      end if
     end if
 
-    queueManager = m.global.queueManager
-    queueManager.callFunc("set", built.items)
-    queueManager.callFunc("setPosition", built.currentIndex)
-    m.channelListLoaded = true
+  end sub
 
-    m.log.info("Channel list loaded into queue", "count", built.items.count(), "position", built.currentIndex)
-  end sub).catch(sub(err as object)
-    ' Transport failure / timeout (see the error contract) — never completed.
-    m.log.warn("Failed to load channel list", err.reason)
-  end sub)
-end sub
+  function isLiveTvPlayback() as boolean
+    return isValid(m.currentItem) and LCase(m.currentItem.type) = "tvchannel"
+  end function
 
-' stateAllowsOSD: Check if current video state allows showing the OSD
-'
-' @return {boolean} indicating if video state allows the OSD to show
-function stateAllowsOSD() as boolean
-  validStates = ["playing", "paused", "stopped"]
-  return inArray(validStates, m.top.state)
-end function
+  sub triggerLiveTvMetadataRefresh()
+    ' Zero the end time first to prevent duplicate refresh triggers
+    m.liveTvProgramEndTime = 0
 
-
-' availSubtitleTrackIdx: Returns Roku's index for requested subtitle track
-'
-' @param {string} tracknameToFind - TrackName for subtitle we're looking to match
-' @return {integer} indicating Roku's index for requested subtitle track. Returns SubtitleSelection.NONE if not found
-function availSubtitleTrackIdx(tracknameToFind as string) as integer
-  idx = 0
-  for each availTrack in m.top.availableSubtitleTracks
-    ' The TrackName must contain the URL we supplied originally, though
-    ' Roku mangles the name a bit, so we check if the URL is a substring, rather
-    ' than strict equality
-    if inStr(1, availTrack.TrackName, tracknameToFind)
-      return idx
+    if not isValid(m.liveTvRefreshTask)
+      m.liveTvRefreshTask = CreateObject("roSGNode", "RefreshLiveTvMetadataTask")
+      m.liveTvRefreshTask.observeField("refreshedItem", "onLiveTvMetadataRefreshed")
     end if
-    idx = idx + 1
-  end for
-  return SubtitleSelection.NONE
-end function
 
-function onKeyEvent(key as string, press as boolean) as boolean
+    m.liveTvRefreshTask.channelId = m.top.id
+    m.liveTvRefreshTask.control = "RUN"
+  end sub
 
-  ' Keypress handler while user is inside the chapter menu
-  if m.chapterMenu.hasFocus()
-    if not press then return false
+  sub onLiveTvMetadataRefreshed()
+    m.liveTvRefreshTask.control = "STOP"
+    meta = m.liveTvRefreshTask.refreshedItem
+    if not isValid(meta) then return
 
-    if key = "OK"
-      focusedChapter = m.chapterMenu.itemFocused
-      selectedChapter = m.chapterMenu.content.getChild(focusedChapter)
-      seekTime = selectedChapter.playstart
+    m.osd.itemData = meta
 
-      ' Don't seek if user clicked on No Chapter Data
-      if seekTime = m.playbackEnum.null then return true
+    ' Logo priority: program logo → program primary → channel icon. Always write the result
+    ' (empty string included) so the prior program's logo doesn't linger when the new one
+    ' has no artwork. Mirrors the initial-load chain in LoadVideoContentTask.
+    newLogoUrl as string = ""
+    if meta.type = "TvChannel"
+      osdLogoSize = imageSize.LOGO_OSD
+      currentProgram = meta.currentProgram
+      if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.logoImageTag)
+        newLogoUrl = ImageURL(currentProgram.id, "Logo", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.logoImageTag })
+      else if isValid(currentProgram) and isValidAndNotEmpty(currentProgram.primaryImageTag)
+        newLogoUrl = ImageURL(currentProgram.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: currentProgram.primaryImageTag })
+      else if isValidAndNotEmpty(meta.primaryImageTag)
+        newLogoUrl = ImageURL(meta.id, "Primary", { maxHeight: osdLogoSize.height, maxWidth: osdLogoSize.width, quality: 90, tag: meta.primaryImageTag })
+      end if
+    end if
+    m.osd.videoLogo = newLogoUrl
 
-      m.top.seek = seekTime
+    m.liveTvProgramEndTime = parseProgramEndTimeEpoch(meta)
+    m.liveTvNextFallbackRefreshAt = 0
+  end sub
+
+  ' Collapsed from LoadChannelListForQueueTask, a pure-fetch Task that existed only to
+  ' move one fetchRes off the render thread (Phase-4 collapse; see docs/dev/promises.md).
+  ' Fire-once per playback (guarded by m.channelListLoaded), so no seq guard is needed —
+  ' a single .then can't race itself the way a hot re-fire would.
+  sub loadChannelListForQueue()
+    currentChannelId = m.top.id
+    if not isValidAndNotEmpty(currentChannelId) then return
+
+    req = GetApi().BuildGetLiveTVChannelsRequest({
+      SortBy: "Number",
+      SortOrder: "Ascending",
+      UserId: m.global.user.id,
+      enableImages: false,
+      addCurrentProgram: false,
+      enableUserData: false
+    })
+    m.log.info("Loading channel list for navigation", currentChannelId)
+
+    ' Carry currentChannelId through the promise context (no closures in BS).
+    promises.chain(fetchAsync(req, "channelList-" + m.top.id), { currentChannelId: currentChannelId }).then(sub(res as object, ctx as object)
+      ' Any HTTP response lands here (incl. 4xx/5xx). Replicates the old Task's
+      ' loadChannelList(): bail on a bad payload, otherwise build + install the queue.
+      if not res.ok or not isValid(res.json) or not isValid(res.json.Items)
+        m.log.warn("Failed to load channel list")
+        return
+      end if
+
+      ' buildChannelQueueList is a light array→array transform (source/utils/liveTv.bs) —
+      ' render-thread-safe (no node creation), which is why this Task was a collapse candidate.
+      built = buildChannelQueueList(res.json.Items, ctx.currentChannelId)
+
+      if not isValidAndNotEmpty(built.items) or built.currentIndex < 0
+        m.log.warn("Channel list empty or current channel not found, skipping queue update")
+        return
+      end if
+
+      queueManager = m.global.queueManager
+      queueManager.callFunc("set", built.items)
+      queueManager.callFunc("setPosition", built.currentIndex)
+      m.channelListLoaded = true
+
+      m.log.info("Channel list loaded into queue", "count", built.items.count(), "position", built.currentIndex)
+    end sub).catch(sub(err as object)
+      ' Transport failure / timeout (see the error contract) — never completed.
+      m.log.warn("Failed to load channel list", err.reason)
+    end sub)
+  end sub
+
+  ' stateAllowsOSD: Check if current video state allows showing the OSD
+  '
+  ' @return {boolean} indicating if video state allows the OSD to show
+  function stateAllowsOSD() as boolean
+    validStates = ["playing", "paused", "stopped"]
+    return inArray(validStates, m.top.state)
+  end function
+
+
+  ' availSubtitleTrackIdx: Returns Roku's index for requested subtitle track
+  '
+  ' @param {string} tracknameToFind - TrackName for subtitle we're looking to match
+  ' @return {integer} indicating Roku's index for requested subtitle track. Returns SubtitleSelection.NONE if not found
+  function availSubtitleTrackIdx(tracknameToFind as string) as integer
+    idx = 0
+    for each availTrack in m.top.availableSubtitleTracks
+      ' The TrackName must contain the URL we supplied originally, though
+      ' Roku mangles the name a bit, so we check if the URL is a substring, rather
+      ' than strict equality
+      if inStr(1, availTrack.TrackName, tracknameToFind)
+        return idx
+      end if
+      idx = idx + 1
+    end for
+    return SubtitleSelection.NONE
+  end function
+
+  function onKeyEvent(key as string, press as boolean) as boolean
+
+    ' Keypress handler while user is inside the chapter menu
+    if m.chapterMenu.hasFocus()
+      if not press then return false
+
+      if key = "OK"
+        focusedChapter = m.chapterMenu.itemFocused
+        selectedChapter = m.chapterMenu.content.getChild(focusedChapter)
+        seekTime = selectedChapter.playstart
+
+        ' Don't seek if user clicked on No Chapter Data
+        if seekTime = m.playbackEnum.null then return true
+
+        m.top.seek = seekTime
+        return true
+      end if
+
+      if key = "back" or key = "replay"
+        m.chapterList.visible = false
+        m.osd.shouldShowChapterList = false
+        m.chapterMenu.setFocus(false)
+        m.osd.hasFocus = true
+        m.osd.setFocus(true)
+        return true
+      end if
+
+      if key = "play"
+        handleVideoPlayPauseAction()
+      end if
+
       return true
     end if
 
-    if key = "back" or key = "replay"
-      m.chapterList.visible = false
-      m.osd.shouldShowChapterList = false
-      m.chapterMenu.setFocus(false)
+    ' VideoNotification components handle OK key internally via their onKeyEvent.
+    ' For non-OK keys, hide notifications (paused state) so they can re-show after OSD closes.
+    ' Next Episode is dismissed but will re-appear on subsequent position updates if still in the time window.
+    if isNotificationVisible(m.nextEpisodeNotification) or isNotificationVisible(m.segmentNotification)
+      ' OK is handled by the notification's onKeyEvent — don't intercept here
+      if key <> "OK"
+        if m.segmentNotification.state = "showing"
+          m.segmentNotification.callFunc("hide")
+        end if
+        if m.nextEpisodeNotification.state = "showing"
+          m.nextEpisodeNotification.callFunc("dismiss")
+        end if
+        m.top.setFocus(true)
+      end if
+    end if
+
+    if not press then return false
+
+    if key = "down" and not m.top.trickPlayBar.visible
+      ' Don't allow user to open menu prior to video loading
+      if not stateAllowsOSD() then return true
+
+      m.osd.visible = true
+      m.osd.hasFocus = true
+      m.osd.setFocus(true)
+      return true
+
+    else if key = "up" and not m.top.trickPlayBar.visible
+      ' Don't allow user to open menu prior to video loading
+      if not stateAllowsOSD() then return true
+
+      m.osd.visible = true
+      m.osd.hasFocus = true
+      m.osd.setFocus(true)
+      return true
+
+    else if key = "OK" and not m.top.trickPlayBar.visible
+      ' Don't allow user to open menu prior to video loading
+      if not stateAllowsOSD() then return true
+
+      ' Show OSD, but don't pause video
+      m.osd.visible = true
       m.osd.hasFocus = true
       m.osd.setFocus(true)
       return true
     end if
 
-    if key = "play"
-      handleVideoPlayPauseAction()
-    end if
+    ' Disable OSD for intro videos
+    if key = "play" and not m.top.trickPlayBar.visible
 
-    return true
-  end if
+      ' Don't allow user to open menu prior to video loading
+      if not stateAllowsOSD() then return true
 
-  ' VideoNotification components handle OK key internally via their onKeyEvent.
-  ' For non-OK keys, hide notifications (paused state) so they can re-show after OSD closes.
-  ' Next Episode is dismissed but will re-appear on subsequent position updates if still in the time window.
-  if isNotificationVisible(m.nextEpisodeNotification) or isNotificationVisible(m.segmentNotification)
-    ' OK is handled by the notification's onKeyEvent — don't intercept here
-    if key <> "OK"
-      if m.segmentNotification.state = "showing"
-        m.segmentNotification.callFunc("hide")
+      ' If video is paused, resume it and don't show OSD
+      if m.top.state = "paused"
+        m.top.control = "resume"
+        return true
       end if
-      if m.nextEpisodeNotification.state = "showing"
-        m.nextEpisodeNotification.callFunc("dismiss")
-      end if
-      m.top.setFocus(true)
-    end if
-  end if
 
-  if not press then return false
-
-  if key = "down" and not m.top.trickPlayBar.visible
-    ' Don't allow user to open menu prior to video loading
-    if not stateAllowsOSD() then return true
-
-    m.osd.visible = true
-    m.osd.hasFocus = true
-    m.osd.setFocus(true)
-    return true
-
-  else if key = "up" and not m.top.trickPlayBar.visible
-    ' Don't allow user to open menu prior to video loading
-    if not stateAllowsOSD() then return true
-
-    m.osd.visible = true
-    m.osd.hasFocus = true
-    m.osd.setFocus(true)
-    return true
-
-  else if key = "OK" and not m.top.trickPlayBar.visible
-    ' Don't allow user to open menu prior to video loading
-    if not stateAllowsOSD() then return true
-
-    ' Show OSD, but don't pause video
-    m.osd.visible = true
-    m.osd.hasFocus = true
-    m.osd.setFocus(true)
-    return true
-  end if
-
-  ' Disable OSD for intro videos
-  if key = "play" and not m.top.trickPlayBar.visible
-
-    ' Don't allow user to open menu prior to video loading
-    if not stateAllowsOSD() then return true
-
-    ' If video is paused, resume it and don't show OSD
-    if m.top.state = "paused"
-      m.top.control = "resume"
+      ' Pause video and show OSD
+      m.top.control = "pause"
+      m.osd.playbackState = "paused"
+      m.osd.visible = true
+      m.osd.hasFocus = true
+      m.osd.setFocus(true)
       return true
     end if
 
-    ' Pause video and show OSD
-    m.top.control = "pause"
-    m.osd.playbackState = "paused"
-    m.osd.visible = true
-    m.osd.hasFocus = true
-    m.osd.setFocus(true)
-    return true
-  end if
-
-  if key = "back"
-    m.top.control = "stop"
-  end if
-
-  ' Handle OK/Play key during seek - hide carousel and let Roku seek to its position
-  ' Since we're now synced to Roku's position via the trickPlayBar text observer,
-  ' we don't need to do our own seek - Roku's native seek will match our displayed thumbnail
-  if (key = "OK" or key = "play") and m.top.trickPlayBar.visible
-
-    m.isTrackingSeek = false
-    if isValid(m.trickplayCarousel)
-      ' Hide carousel immediately on seek confirmation
-      m.trickplayCarousel.isVisible = false
-      ' Set flag to prevent auto-show (line 790 guard) until trickPlayBar closes (line 797 reset)
-      ' This prevents carousel flashing back on between OK press and trickPlayBar closing
-      m.carouselHiddenForSeek = true
+    if key = "back"
+      m.top.control = "stop"
     end if
-    ' Return false to let Roku handle the seek and close the trickPlayBar
-    return false
-  end if
 
-  ' Handle left/right/FF/RW keys - show carousel, observer syncs position from trickPlayBar text
-  if not m.osd.visible and (key = "left" or key = "right" or key = "fastforward" or key = "rewind")
-    if isValid(m.trickplayCarousel)
-      m.trickplayCarousel.isVisible = true
+    ' Handle OK/Play key during seek - hide carousel and let Roku seek to its position
+    ' Since we're now synced to Roku's position via the trickPlayBar text observer,
+    ' we don't need to do our own seek - Roku's native seek will match our displayed thumbnail
+    if (key = "OK" or key = "play") and m.top.trickPlayBar.visible
+
+      m.isTrackingSeek = false
+      if isValid(m.trickplayCarousel)
+        ' Hide carousel immediately on seek confirmation
+        m.trickplayCarousel.isVisible = false
+        ' Set flag to prevent auto-show (line 790 guard) until trickPlayBar closes (line 797 reset)
+        ' This prevents carousel flashing back on between OK press and trickPlayBar closing
+        m.carouselHiddenForSeek = true
+      end if
+      ' Return false to let Roku handle the seek and close the trickPlayBar
+      return false
     end if
+
+    ' Handle left/right/FF/RW keys - show carousel, observer syncs position from trickPlayBar text
+    if not m.osd.visible and (key = "left" or key = "right" or key = "fastforward" or key = "rewind")
+      if isValid(m.trickplayCarousel)
+        m.trickplayCarousel.isVisible = true
+      end if
+      return false
+    end if
+
     return false
-  end if
+  end function
 
-  return false
-end function
+  ' onDestroy: Full teardown releasing all resources before component removal
+  ' Called by SceneManager when popping this scene
+  sub onDestroy()
+    ' Unobserve all fields first to prevent callbacks during teardown
+    m.top.unobserveField("state")
+    m.top.unobserveField("content")
+    m.top.unobserveField("selectedSubtitle")
+    m.top.unobserveField("audioIndex")
+    m.top.unobserveField("mediaSourceId")
+    m.top.unobserveField("shouldAllowCaptions")
+    m.top.unobserveField("subtitleTrack")
+    m.top.unobserveField("globalCaptionMode")
+    m.top.unobserveField("position")
 
-' onDestroy: Full teardown releasing all resources before component removal
-' Called by SceneManager when popping this scene
-sub onDestroy()
-  ' Unobserve all fields first to prevent callbacks during teardown
-  m.top.unobserveField("state")
-  m.top.unobserveField("content")
-  m.top.unobserveField("selectedSubtitle")
-  m.top.unobserveField("audioIndex")
-  m.top.unobserveField("mediaSourceId")
-  m.top.unobserveField("shouldAllowCaptions")
-  m.top.unobserveField("subtitleTrack")
-  m.top.unobserveField("globalCaptionMode")
-  m.top.unobserveField("position")
+    if isValid(m.osd)
+      m.osd.unobserveField("action")
+      m.osd.callFunc("onDestroy")
+    end if
 
-  if isValid(m.osd)
-    m.osd.unobserveField("action")
-    m.osd.callFunc("onDestroy")
-  end if
+    ' Stop and release timers
+    if isValid(m.playbackTimer)
+      m.playbackTimer.control = "stop"
+      m.playbackTimer.unobserveField("fire")
+      m.playbackTimer = invalid
+    end if
 
-  ' Stop and release timers
-  if isValid(m.playbackTimer)
-    m.playbackTimer.control = "stop"
-    m.playbackTimer.unobserveField("fire")
-    m.playbackTimer = invalid
-  end if
+    if isValid(m.bufferCheckTimer)
+      m.bufferCheckTimer.control = "stop"
+      m.bufferCheckTimer.unobserveField("fire")
+      m.bufferCheckTimer = invalid
+    end if
 
-  if isValid(m.bufferCheckTimer)
-    m.bufferCheckTimer.control = "stop"
-    m.bufferCheckTimer.unobserveField("fire")
-    m.bufferCheckTimer = invalid
-  end if
+    ' Stop and release task nodes
+    if isValid(m.LoadMetaDataTask)
+      m.LoadMetaDataTask.control = "STOP"
+      m.LoadMetaDataTask.unobserveField("content")
+      m.LoadMetaDataTask = invalid
+    end if
 
-  ' Stop and release task nodes
-  if isValid(m.LoadMetaDataTask)
-    m.LoadMetaDataTask.control = "STOP"
-    m.LoadMetaDataTask.unobserveField("content")
-    m.LoadMetaDataTask = invalid
-  end if
+    if isValid(m.liveTvRefreshTask)
+      m.liveTvRefreshTask.control = "STOP"
+      m.liveTvRefreshTask.unobserveField("refreshedItem")
+      m.liveTvRefreshTask = invalid
+    end if
+    m.liveTvProgramEndTime = 0
 
-  if isValid(m.liveTvRefreshTask)
-    m.liveTvRefreshTask.control = "STOP"
-    m.liveTvRefreshTask.unobserveField("refreshedItem")
-    m.liveTvRefreshTask = invalid
-  end if
-  m.liveTvProgramEndTime = 0
+    if isValid(m.captionTask)
+      m.captionTask.control = "STOP"
+      m.captionTask.unobserveField("currentCaption")
+      m.captionTask.unobserveField("useThis")
+      m.captionTask.callFunc("onDestroy")
+      m.captionTask = invalid
+    end if
 
-  if isValid(m.captionTask)
-    m.captionTask.control = "STOP"
-    m.captionTask.unobserveField("currentCaption")
-    m.captionTask.unobserveField("useThis")
-    m.captionTask.callFunc("onDestroy")
-    m.captionTask = invalid
-  end if
+    ' Unobserve trickPlayBar position text
+    if isValid(m.trickPlayBarPositionText)
+      m.trickPlayBarPositionText.unobserveField("text")
+      m.trickPlayBarPositionText = invalid
+    end if
 
-  ' Unobserve trickPlayBar position text
-  if isValid(m.trickPlayBarPositionText)
-    m.trickPlayBarPositionText.unobserveField("text")
-    m.trickPlayBarPositionText = invalid
-  end if
+    ' Destroy child components that have onDestroy()
+    if isValid(m.trickplayCarousel)
+      m.trickplayCarousel.callFunc("onDestroy")
+      m.trickplayCarousel = invalid
+    end if
 
-  ' Destroy child components that have onDestroy()
-  if isValid(m.trickplayCarousel)
-    m.trickplayCarousel.callFunc("onDestroy")
-    m.trickplayCarousel = invalid
-  end if
+    ' Destroy notification components
+    if isValid(m.segmentNotification)
+      m.segmentNotification.unobserveField("action")
+      m.segmentNotification.unobserveField("state")
+      m.segmentNotification.callFunc("onDestroy")
+      m.segmentNotification = invalid
+    end if
 
-  ' Destroy notification components
-  if isValid(m.segmentNotification)
-    m.segmentNotification.unobserveField("action")
-    m.segmentNotification.unobserveField("state")
-    m.segmentNotification.callFunc("onDestroy")
-    m.segmentNotification = invalid
-  end if
+    if isValid(m.nextEpisodeNotification)
+      m.nextEpisodeNotification.unobserveField("action")
+      m.nextEpisodeNotification.unobserveField("state")
+      m.nextEpisodeNotification.callFunc("onDestroy")
+      m.nextEpisodeNotification = invalid
+    end if
 
-  if isValid(m.nextEpisodeNotification)
-    m.nextEpisodeNotification.unobserveField("action")
-    m.nextEpisodeNotification.unobserveField("state")
-    m.nextEpisodeNotification.callFunc("onDestroy")
-    m.nextEpisodeNotification = invalid
-  end if
+    ' Clear segment state
+    m.mediaSegments = []
+    m.skippedSegments = {}
+    m.dismissedSegmentId = ""
+    m.activeSegmentId = ""
 
-  ' Clear segment state
-  m.mediaSegments = []
-  m.skippedSegments = {}
-  m.dismissedSegmentId = ""
-  m.activeSegmentId = ""
+    ' Clear remaining node references
+    m.osd = invalid
+    m.chapterList = invalid
+    m.chapterMenu = invalid
+    m.chapterContent = invalid
+    m.captionGroup = invalid
+  end sub
 
-  ' Clear remaining node references
-  m.osd = invalid
-  m.chapterList = invalid
-  m.chapterMenu = invalid
-  m.chapterContent = invalid
-  m.captionGroup = invalid
-end sub
+  ' handleTransport: Roku voice transport handler. Called from source/main.bs when an
+  ' roInputEvent with info.type = "transport" arrives and the active scene is this player.
+  '
+  ' Returns { status: "<code>" } per roInput.EventResponse() — Roku OS uses the status
+  ' to render the appropriate HUD message. Codes used here:
+  '   - success / success.seek-start / success.seek-end — op completed (with bounds note)
+  '   - error.redundant — state already matches request (e.g. pause-while-paused)
+  '   - error.generic — op semantically unsupported in this context
+  '   - unhandled — command we don't recognize; lets Roku show "Command not available"
+  '
+  ' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
+  function handleTransport(evt as object) as object
+    if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
+    cmd = lcase(evt.command)
+    m.log.info("voice transport", cmd)
 
-' handleTransport: Roku voice transport handler. Called from source/main.bs when an
-' roInputEvent with info.type = "transport" arrives and the active scene is this player.
-'
-' Returns { status: "<code>" } per roInput.EventResponse() — Roku OS uses the status
-' to render the appropriate HUD message. Codes used here:
-'   - success / success.seek-start / success.seek-end — op completed (with bounds note)
-'   - error.redundant — state already matches request (e.g. pause-while-paused)
-'   - error.generic — op semantically unsupported in this context
-'   - unhandled — command we don't recognize; lets Roku show "Command not available"
-'
-' See https://github.com/rokudev/dev-doc — docs/DEVELOPER/media-playback/voice-controls/transport-controls.md
-function handleTransport(evt as object) as object
-  if not isValid(evt) or not isValid(evt.command) then return { status: "unhandled" }
-  cmd = lcase(evt.command)
-  m.log.info("voice transport", cmd)
-
-  if cmd = "play" or cmd = "resume"
-    if m.top.state = "paused"
-      m.top.control = "resume"
+    if cmd = "play" or cmd = "resume"
+      if m.top.state = "paused"
+        m.top.control = "resume"
+        return { status: "success" }
+      end if
+      if m.top.state = "playing" then return { status: "error.redundant" }
+      m.top.control = "play"
       return { status: "success" }
     end if
-    if m.top.state = "playing" then return { status: "error.redundant" }
-    m.top.control = "play"
+
+    if cmd = "pause"
+      if m.top.state = "paused" then return { status: "error.redundant" }
+      m.top.control = "pause"
+      return { status: "success" }
+    end if
+
+    if cmd = "stop"
+      ' Mirror back-key behavior: stop playback AND leave the play route. onState reports
+      ' the stop to Jellyfin; the physical back key leaves the route for free (bubbles to
+      ' the outlet -> goBack), but voice transport doesn't, so exit explicitly via the host.
+      m.top.control = "stop"
+      host = m.top.getParent()
+      if isValid(host) then host.callFunc("exitPlayback")
+      return { status: "success" }
+    end if
+
+    if cmd = "ok"
+      ' Mirror physical OK in idle video state — open the OSD. If already visible,
+      ' physical OK activates the focused button; voice can't replicate that without
+      ' synthesizing a key event, so treat the second voice-OK as a redundant noop.
+      if not stateAllowsOSD() then return { status: "error.generic" }
+      if isValid(m.osd) and m.osd.visible then return { status: "error.redundant" }
+      m.osd.visible = true
+      m.osd.hasFocus = true
+      m.osd.setFocus(true)
+      return { status: "success" }
+    end if
+
+    if cmd = "forward"
+      m.top.control = "fastforward"
+      return { status: "success" }
+    end if
+
+    if cmd = "rewind"
+      m.top.control = "rewind"
+      return { status: "success" }
+    end if
+
+    if cmd = "replay"
+      return seekRelativeWithBounds(-getInstantReplaySeconds())
+    end if
+
+    if cmd = "startover"
+      return seekToWithBounds(0)
+    end if
+
+    if cmd = "seek"
+      return handleVoiceSeekCommand(evt)
+    end if
+
+    if cmd = "next"
+      return handleVoiceNextItem()
+    end if
+
+    if cmd = "skip"
+      ' Try to skip an active media segment first; fall through to next-item if none.
+      if tryActiveSegmentSkip() then return { status: "success" }
+      return handleVoiceNextItem()
+    end if
+
+    if cmd = "nowplaying"
+      return announceNowPlaying()
+    end if
+
+    if cmd = "shuffle" or cmd = "loop"
+      ' Video player has no shuffle/loop UI. Audio player handles these.
+      return { status: "error.generic" }
+    end if
+
+    if cmd = "like"
+      return setFavorite(true)
+    end if
+
+    if cmd = "dislike"
+      return setFavorite(false)
+    end if
+
+    return { status: "unhandled" }
+  end function
+
+  function getInstantReplaySeconds() as integer
+    return voiceTransport.resolveInstantReplaySeconds(m.global.user.settings.playbackInstantReplaySeconds)
+  end function
+
+  function seekRelativeWithBounds(deltaSeconds as integer) as object
+    if not isValid(m.top.position) then return { status: "error.generic" }
+    return seekToWithBounds(m.top.position + deltaSeconds)
+  end function
+
+  ' 30s end-slack matches the Roku transport-controls reference example for video —
+  ' clamping shy of duration prevents the player from firing end-of-content immediately.
+  function seekToWithBounds(targetSeconds as float) as object
+    result = voiceTransport.computeSeekStatus(targetSeconds, m.top.duration, 30)
+    m.top.seek = result.clamped
+    return { status: result.status }
+  end function
+
+  function handleVoiceSeekCommand(evt as object) as object
+    parsed = voiceTransport.parseSeekDelta(evt)
+    if not parsed.valid then return { status: "error.generic" }
+    return seekRelativeWithBounds(parsed.delta)
+  end function
+
+  ' Skip an active media segment (intro/recap/etc.) if one is currently in-window.
+  ' Returns true if a segment was skipped, false if no active segment.
+  function tryActiveSegmentSkip() as boolean
+    if not isValid(m.activeSegmentId) or m.activeSegmentId = "" then return false
+    if not isValid(m.mediaSegments) or m.mediaSegments.count() = 0 then return false
+    segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
+    if not isValid(segment) then return false
+
+    seekPosition = segmentTicksToSeconds(segment.EndTicks)
+    segmentType = segment.Type ?? ""
+
+    ' Outro near end-of-content: force-finish so watched-state and auto-play fire.
+    if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+      forceFinishPlayback()
+    else
+      m.top.seek = seekPosition
+      m.skippedSegments[m.activeSegmentId] = true
+    end if
+
+    m.activeSegmentId = ""
+    if isValid(m.segmentNotification) and isNotificationVisible(m.segmentNotification)
+      m.segmentNotification.callFunc("dismiss")
+    end if
+    return true
+  end function
+
+  ' Reuse the OSD itemNext code path so Live-TV channel advance, queue advance, and
+  ' Episode→next-Episode all behave identically to pressing the on-screen Next button.
+  function handleVoiceNextItem() as object
+    queueManager = m.global.queueManager
+    if not isValid(queueManager) then return { status: "error.generic" }
+    queueCount = queueManager.callFunc("getCount")
+    queuePosition = queueManager.callFunc("getPosition")
+    isTvChannel = isLiveTvPlayback() and m.channelListLoaded and queueCount > 1
+
+    targetPosition = -1
+    if queuePosition < queueCount - 1
+      targetPosition = queuePosition + 1
+    else if isTvChannel
+      targetPosition = 0
+    end if
+
+    if targetPosition < 0 then return { status: "error.generic" }
+    switchToQueueItem(queueManager, targetPosition)
     return { status: "success" }
-  end if
+  end function
 
-  if cmd = "pause"
-    if m.top.state = "paused" then return { status: "error.redundant" }
-    m.top.control = "pause"
-    return { status: "success" }
-  end if
-
-  if cmd = "stop"
-    ' Mirror back-key behavior: stop playback AND leave the play route. onState reports
-    ' the stop to Jellyfin; the physical back key leaves the route for free (bubbles to
-    ' the outlet -> goBack), but voice transport doesn't, so exit explicitly via the host.
-    m.top.control = "stop"
-    host = m.top.getParent()
-    if isValid(host) then host.callFunc("exitPlayback")
-    return { status: "success" }
-  end if
-
-  if cmd = "ok"
-    ' Mirror physical OK in idle video state — open the OSD. If already visible,
-    ' physical OK activates the focused button; voice can't replicate that without
-    ' synthesizing a key event, so treat the second voice-OK as a redundant noop.
-    if not stateAllowsOSD() then return { status: "error.generic" }
-    if isValid(m.osd) and m.osd.visible then return { status: "error.redundant" }
-    m.osd.visible = true
-    m.osd.hasFocus = true
-    m.osd.setFocus(true)
-    return { status: "success" }
-  end if
-
-  if cmd = "forward"
-    m.top.control = "fastforward"
-    return { status: "success" }
-  end if
-
-  if cmd = "rewind"
-    m.top.control = "rewind"
-    return { status: "success" }
-  end if
-
-  if cmd = "replay"
-    return seekRelativeWithBounds(-getInstantReplaySeconds())
-  end if
-
-  if cmd = "startover"
-    return seekToWithBounds(0)
-  end if
-
-  if cmd = "seek"
-    return handleVoiceSeekCommand(evt)
-  end if
-
-  if cmd = "next"
-    return handleVoiceNextItem()
-  end if
-
-  if cmd = "skip"
-    ' Try to skip an active media segment first; fall through to next-item if none.
-    if tryActiveSegmentSkip() then return { status: "success" }
-    return handleVoiceNextItem()
-  end if
-
-  if cmd = "nowplaying"
-    return announceNowPlaying()
-  end if
-
-  if cmd = "shuffle" or cmd = "loop"
-    ' Video player has no shuffle/loop UI. Audio player handles these.
-    return { status: "error.generic" }
-  end if
-
-  if cmd = "like"
-    return setFavorite(true)
-  end if
-
-  if cmd = "dislike"
-    return setFavorite(false)
-  end if
-
-  return { status: "unhandled" }
-end function
-
-function getInstantReplaySeconds() as integer
-  return voiceTransport.resolveInstantReplaySeconds(m.global.user.settings.playbackInstantReplaySeconds)
-end function
-
-function seekRelativeWithBounds(deltaSeconds as integer) as object
-  if not isValid(m.top.position) then return { status: "error.generic" }
-  return seekToWithBounds(m.top.position + deltaSeconds)
-end function
-
-' 30s end-slack matches the Roku transport-controls reference example for video —
-' clamping shy of duration prevents the player from firing end-of-content immediately.
-function seekToWithBounds(targetSeconds as float) as object
-  result = voiceTransport.computeSeekStatus(targetSeconds, m.top.duration, 30)
-  m.top.seek = result.clamped
-  return { status: result.status }
-end function
-
-function handleVoiceSeekCommand(evt as object) as object
-  parsed = voiceTransport.parseSeekDelta(evt)
-  if not parsed.valid then return { status: "error.generic" }
-  return seekRelativeWithBounds(parsed.delta)
-end function
-
-' Skip an active media segment (intro/recap/etc.) if one is currently in-window.
-' Returns true if a segment was skipped, false if no active segment.
-function tryActiveSegmentSkip() as boolean
-  if not isValid(m.activeSegmentId) or m.activeSegmentId = "" then return false
-  if not isValid(m.mediaSegments) or m.mediaSegments.count() = 0 then return false
-  segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
-  if not isValid(segment) then return false
-
-  seekPosition = segmentTicksToSeconds(segment.EndTicks)
-  segmentType = segment.Type ?? ""
-
-  ' Outro near end-of-content: force-finish so watched-state and auto-play fire.
-  if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
-    forceFinishPlayback()
-  else
-    m.top.seek = seekPosition
-    m.skippedSegments[m.activeSegmentId] = true
-  end if
-
-  m.activeSegmentId = ""
-  if isValid(m.segmentNotification) and isNotificationVisible(m.segmentNotification)
-    m.segmentNotification.callFunc("dismiss")
-  end if
-  return true
-end function
-
-' Reuse the OSD itemNext code path so Live-TV channel advance, queue advance, and
-' Episode→next-Episode all behave identically to pressing the on-screen Next button.
-function handleVoiceNextItem() as object
-  queueManager = m.global.queueManager
-  if not isValid(queueManager) then return { status: "error.generic" }
-  queueCount = queueManager.callFunc("getCount")
-  queuePosition = queueManager.callFunc("getPosition")
-  isTvChannel = isLiveTvPlayback() and m.channelListLoaded and queueCount > 1
-
-  targetPosition = -1
-  if queuePosition < queueCount - 1
-    targetPosition = queuePosition + 1
-  else if isTvChannel
-    targetPosition = 0
-  end if
-
-  if targetPosition < 0 then return { status: "error.generic" }
-  switchToQueueItem(queueManager, targetPosition)
-  return { status: "success" }
-end function
-
-' Returns the metadata in the response — main.bs's transport dispatcher calls
-' roAppManager.SetNowPlayingContentMetaData() on the MAIN thread (roAppManager
-' can't be created on the render thread, where this callFunc executes).
-function announceNowPlaying() as object
-  if not isValid(m.osd) or not isValid(m.osd.itemData) then return { status: "error.generic" }
-  item = m.osd.itemData
-  title = voiceTransport.formatNowPlayingTitle(item)
-  if title = "" then return { status: "error.generic" }
-  return {
-    status: "success",
-    nowPlaying: {
-      title: title,
-      contentType: item.type ?? ""
+  ' Returns the metadata in the response — main.bs's transport dispatcher calls
+  ' roAppManager.SetNowPlayingContentMetaData() on the MAIN thread (roAppManager
+  ' can't be created on the render thread, where this callFunc executes).
+  function announceNowPlaying() as object
+    if not isValid(m.osd) or not isValid(m.osd.itemData) then return { status: "error.generic" }
+    item = m.osd.itemData
+    title = voiceTransport.formatNowPlayingTitle(item)
+    if title = "" then return { status: "error.generic" }
+    return {
+      status: "success",
+      nowPlaying: {
+        title: title,
+        contentType: item.type ?? ""
+      }
     }
-  }
-end function
+  end function
 
-function setFavorite(isLike as boolean) as object
-  if not isValid(m.osd) or not isValid(m.osd.itemData) or not isValid(m.osd.itemData.id)
-    return { status: "error.generic" }
-  end if
-  itemId = m.osd.itemData.id
-  if itemId = "" then return { status: "error.generic" }
-  if isLike
-    SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
-  else
-    SubmitSideEffect(GetApi().BuildUnmarkFavoriteRequest(itemId))
-  end if
-  return { status: "success" }
-end function
+  function setFavorite(isLike as boolean) as object
+    if not isValid(m.osd) or not isValid(m.osd.itemData) or not isValid(m.osd.itemData.id)
+      return { status: "error.generic" }
+    end if
+    itemId = m.osd.itemData.id
+    if itemId = "" then return { status: "error.generic" }
+    if isLike
+      SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
+    else
+      SubmitSideEffect(GetApi().BuildUnmarkFavoriteRequest(itemId))
+    end if
+    return { status: "success" }
+  end function

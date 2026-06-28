@@ -679,14 +679,14 @@ sub addNextEpisodesToQueue(showID)
   end if
 
   data = fetchJson(GetApi().BuildGetEpisodesRequest(showID, {
-    "StartItemId": videoID,
-    "Limit": 50
-  }), "nextEpisodes")
+        "StartItemId": videoID,
+        "Limit": 50
+    }), "nextEpisodes")
 
-  if isValid(data) and data.Items.Count() > 1
-    ' Start at index 1 to skip the current episode
-    for i = 1 to data.Items.Count() - 1
-      queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[i]))
-    end for
-  end if
-end sub
+    if isValid(data) and data.Items.Count() > 1
+      ' Start at index 1 to skip the current episode
+      for i = 1 to data.Items.Count() - 1
+        queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[i]))
+      end for
+    end if
+  end sub

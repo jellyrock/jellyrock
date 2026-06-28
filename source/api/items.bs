@@ -288,11 +288,11 @@ end function
 ' Does NOT include albums the artist merely contributes to — see AppearsOnList().
 function MusicAlbumList(id as string)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "AlbumArtistIds": id,
-    "includeitemtypes": "MusicAlbum",
-    "sortBy": "PremiereDate,ProductionYear,SortName",
-    "SortOrder": "Descending",
-    "Recursive": true
+      "AlbumArtistIds": id,
+      "includeitemtypes": "MusicAlbum",
+      "sortBy": "PremiereDate,ProductionYear,SortName",
+      "SortOrder": "Descending",
+      "Recursive": true
   }), "albumList")
   if not isValid(data) then return invalid
   if not isValid(data.Items) then return invalid
@@ -311,11 +311,11 @@ end function
 ' Sorted by year descending.
 function AppearsOnList(id as string)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "ContributingArtistIds": id,
-    "includeitemtypes": "MusicAlbum",
-    "sortBy": "PremiereDate,ProductionYear,SortName",
-    "SortOrder": "Descending",
-    "Recursive": true
+      "ContributingArtistIds": id,
+      "includeitemtypes": "MusicAlbum",
+      "sortBy": "PremiereDate,ProductionYear,SortName",
+      "SortOrder": "Descending",
+      "Recursive": true
   }), "appearsOn")
   if not isValid(data) then return invalid
   if not isValid(data.Items) then return invalid
@@ -362,12 +362,12 @@ end function
 ' @param {string} id - MusicArtist item ID
 function GetSongsByArtistBroad(id as string) as dynamic
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "ArtistIds": id,
-    "includeitemtypes": "Audio",
-    "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
-    "Recursive": true,
-    "Limit": 100,
-    "EnableTotalRecordCount": false
+      "ArtistIds": id,
+      "includeitemtypes": "Audio",
+      "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
+      "Recursive": true,
+      "Limit": 100,
+      "EnableTotalRecordCount": false
   }), "songsByArtistBroad")
 
   if not isValid(data) then return invalid
@@ -386,9 +386,9 @@ end function
 ' Get Songs that are on an Album
 function MusicSongList(id as string)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "parentId": id,
-    "includeitemtypes": "Audio",
-    "sortBy": "SortName"
+      "parentId": id,
+      "includeitemtypes": "Audio",
+      "sortBy": "SortName"
   }), "songList")
 
   results = []
@@ -408,249 +408,249 @@ end function
 ' Get audio item metadata (raw, no transform)
 function AudioItem(id as string)
   return fetchJson(GetApi().BuildGetItemRawRequest(id, {
-    "includeitemtypes": "Audio",
-    "sortBy": "SortName"
-  }), "audioItem")
-end function
+        "includeitemtypes": "Audio",
+        "sortBy": "SortName"
+    }), "audioItem")
+  end function
 
-' Get Intro Videos for an item
-function GetIntroVideos(id as string)
-  return fetchJson(GetApi().BuildGetIntrosRequest(id), "intros")
-end function
+  ' Get Intro Videos for an item
+  function GetIntroVideos(id as string)
+    return fetchJson(GetApi().BuildGetIntrosRequest(id), "intros")
+  end function
 
-' GetMediaSegments: Fetches media segments for an item (Intro, Outro, Recap, etc.).
-'
-' Only available on Jellyfin 10.10.0+ servers. Returns invalid for older servers.
-'
-' @param {string} id - The item ID
-' @returns {dynamic} - { Items: [MediaSegmentDto], TotalRecordCount } or invalid
-function GetMediaSegments(id as string)
-  if not supportsMediaSegments() then return invalid
-  return fetchJson(GetApi().BuildGetMediaSegmentsRequest(id), "mediaSegments")
-end function
+  ' GetMediaSegments: Fetches media segments for an item (Intro, Outro, Recap, etc.).
+  '
+  ' Only available on Jellyfin 10.10.0+ servers. Returns invalid for older servers.
+  '
+  ' @param {string} id - The item ID
+  ' @returns {dynamic} - { Items: [MediaSegmentDto], TotalRecordCount } or invalid
+  function GetMediaSegments(id as string)
+    if not supportsMediaSegments() then return invalid
+    return fetchJson(GetApi().BuildGetMediaSegmentsRequest(id), "mediaSegments")
+  end function
 
-function AudioStream(id as string)
-  songData = AudioItem(id)
-  if isValid(songData)
-    content = createObject("RoSGNode", "ContentNode")
-    if isValid(songData.title)
-      content.title = songData.title
-    end if
-
-    playbackInfo = ItemPostPlaybackInfo(songData.id, songData.mediaSources[0].id)
-    if isValid(playbackInfo)
-      content.id = playbackInfo.PlaySessionId
-
-      if useTranscodeAudioStream(playbackInfo)
-        ' Transcode the audio
-        audioUrl = buildURL(playbackInfo.mediaSources[0].TranscodingURL)
-        if not isValid(audioUrl) then return invalid
-        content.url = audioUrl
-      else
-        ' Direct Stream the audio
-        params = {
-          "Static": "true",
-          "Container": songData.mediaSources[0].container,
-          "MediaSourceId": songData.mediaSources[0].id
-        }
-        content.streamformat = songData.mediaSources[0].container
-        audioUrl = buildURL(Substitute("Audio/{0}/stream", songData.id), params)
-        if not isValid(audioUrl) then return invalid
-        content.url = audioUrl
+  function AudioStream(id as string)
+    songData = AudioItem(id)
+    if isValid(songData)
+      content = createObject("RoSGNode", "ContentNode")
+      if isValid(songData.title)
+        content.title = songData.title
       end if
+
+      playbackInfo = ItemPostPlaybackInfo(songData.id, songData.mediaSources[0].id)
+      if isValid(playbackInfo)
+        content.id = playbackInfo.PlaySessionId
+
+        if useTranscodeAudioStream(playbackInfo)
+          ' Transcode the audio
+          audioUrl = buildURL(playbackInfo.mediaSources[0].TranscodingURL)
+          if not isValid(audioUrl) then return invalid
+          content.url = audioUrl
+        else
+          ' Direct Stream the audio
+          params = {
+            "Static": "true",
+            "Container": songData.mediaSources[0].container,
+            "MediaSourceId": songData.mediaSources[0].id
+          }
+          content.streamformat = songData.mediaSources[0].container
+          audioUrl = buildURL(Substitute("Audio/{0}/stream", songData.id), params)
+          if not isValid(audioUrl) then return invalid
+          content.url = audioUrl
+        end if
+      else
+        return invalid
+      end if
+
+      return content
     else
       return invalid
     end if
+  end function
 
-    return content
-  else
-    return invalid
-  end if
-end function
+  function useTranscodeAudioStream(playbackInfo)
+    return isValid(playbackInfo.mediaSources[0]) and isValid(playbackInfo.mediaSources[0].TranscodingURL)
+  end function
 
-function useTranscodeAudioStream(playbackInfo)
-  return isValid(playbackInfo.mediaSources[0]) and isValid(playbackInfo.mediaSources[0].TranscodingURL)
-end function
+  ' Get lyrics for an Audio item.
+  ' @param {string} itemId - The Audio item ID
+  ' @returns {dynamic} LyricDto: { Metadata: {...}, Lyrics: [{Start: ticks, Text: string}] }, or invalid
+  function GetItemLyrics(itemId as string) as dynamic
+    if not supportsLyrics() then return invalid
+    return fetchJson(GetApi().BuildGetItemLyricsRequest(itemId), "lyrics")
+  end function
 
-' Get lyrics for an Audio item.
-' @param {string} itemId - The Audio item ID
-' @returns {dynamic} LyricDto: { Metadata: {...}, Lyrics: [{Start: ticks, Text: string}] }, or invalid
-function GetItemLyrics(itemId as string) as dynamic
-  if not supportsLyrics() then return invalid
-  return fetchJson(GetApi().BuildGetItemLyricsRequest(itemId), "lyrics")
-end function
+  ' supportsLyrics: Checks if the connected Jellyfin server supports the Lyrics API.
+  '
+  ' The /Audio/{itemId}/Lyrics endpoint was introduced in Jellyfin 10.9.0.
+  ' Servers below 10.9.0 do not have this endpoint and will return 404. Guarding
+  ' the request mirrors supportsMediaSegments() (source/utils/mediaSegments.bs) and
+  ' lets the endpoint-availability ledger record this as a validated version-guard.
+  '
+  ' @returns {boolean} - true if server supports lyrics
+  function supportsLyrics() as boolean
+    return versionChecker(m.global.server.version, "10.9.0")
+  end function
 
-' supportsLyrics: Checks if the connected Jellyfin server supports the Lyrics API.
-'
-' The /Audio/{itemId}/Lyrics endpoint was introduced in Jellyfin 10.9.0.
-' Servers below 10.9.0 do not have this endpoint and will return 404. Guarding
-' the request mirrors supportsMediaSegments() (source/utils/mediaSegments.bs) and
-' lets the endpoint-availability ledger record this as a validated version-guard.
-'
-' @returns {boolean} - true if server supports lyrics
-function supportsLyrics() as boolean
-  return versionChecker(m.global.server.version, "10.9.0")
-end function
+  function BackdropImage(id as string)
+    ' Use UI resolution for backdrop images
+    localDevice = m.global.device
+    imgParams = { "maxHeight": localDevice.uiResolution[1], "maxWidth": localDevice.uiResolution[0] }
+    return ImageURL(id, "Backdrop", imgParams)
+  end function
 
-function BackdropImage(id as string)
-  ' Use UI resolution for backdrop images
-  localDevice = m.global.device
-  imgParams = { "maxHeight": localDevice.uiResolution[1], "maxWidth": localDevice.uiResolution[0] }
-  return ImageURL(id, "Backdrop", imgParams)
-end function
+  ' Seasons for a TV Show
+  function TVSeasons(id as string) as dynamic
+    data = fetchJson(GetApi().BuildGetSeasonsRequest(id), "seasons")
+    ' validate data
+    if not isValid(data) or not isValid(data.Items) then return invalid
 
-' Seasons for a TV Show
-function TVSeasons(id as string) as dynamic
-  data = fetchJson(GetApi().BuildGetSeasonsRequest(id), "seasons")
-  ' validate data
-  if not isValid(data) or not isValid(data.Items) then return invalid
+    transformer = JellyfinDataTransformer()
+    results = []
+    for each item in data.Items
+      results.push(transformer.transformBaseItem(item))
+    end for
+    data.Items = results
+    return data
+  end function
 
-  transformer = JellyfinDataTransformer()
-  results = []
-  for each item in data.Items
-    results.push(transformer.transformBaseItem(item))
-  end for
-  data.Items = results
-  return data
-end function
+  ' applyLiveTvMinSegments: For HLS transcodes that report no source duration (live channels),
+  ' request ≥8 segments per Roku's recommendation. Gives ~48 s seekable DVR window.
+  sub applyLiveTvMinSegments(postData as object)
+    if not isValid(postData) then return
+    if not isValid(postData.DeviceProfile) then return
+    if not isValid(postData.DeviceProfile.TranscodingProfiles) then return
+    for each profile in postData.DeviceProfile.TranscodingProfiles
+      if isValid(profile.Type) and profile.Type = "Video"
+        profile.MinSegments = 8
+      end if
+    end for
+  end sub
 
-' applyLiveTvMinSegments: For HLS transcodes that report no source duration (live channels),
-' request ≥8 segments per Roku's recommendation. Gives ~48 s seekable DVR window.
-sub applyLiveTvMinSegments(postData as object)
-  if not isValid(postData) then return
-  if not isValid(postData.DeviceProfile) then return
-  if not isValid(postData.DeviceProfile.TranscodingProfiles) then return
-  for each profile in postData.DeviceProfile.TranscodingProfiles
-    if isValid(profile.Type) and profile.Type = "Video"
-      profile.MinSegments = 8
-    end if
-  end for
-end sub
-
-' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
-' Live TV is detected by an empty mediaSourceId. On the first attempt, direct play is not disabled
-' so the server can evaluate compatibility (matching web client behaviour). On retry,
-' forceTranscoding=true sets EnableDirectPlay=false so the server provides a transcode URL instead.
-'
-' @param {object} postData - The request body assoc array to modify
-' @param {string} mediaSourceId - Media source ID, or "" for live TV
-' @param {boolean} forceTranscoding - True when retrying with forced transcoding
-sub applyMediaSourceToPostData(postData as object, mediaSourceId as string, forceTranscoding as boolean)
-  if mediaSourceId <> ""
-    postData.MediaSourceId = mediaSourceId
-  else
-    if forceTranscoding
-      postData.EnableDirectPlay = false
-    end if
-  end if
-end sub
-
-' Tailors a video transcoding profile's AudioCodec list to the current source's channel count
-' so the server (and downstream HLS variant selection) can't fall back to a less-desirable codec.
-'
-' Multichannel source (>2ch):
-'   Strips ALL stereo-output codecs (aac, mp3, flac, alac, pcm, lpcm, wav, vorbis). Without this,
-'   Jellyfin's HLS muxer offers BOTH the surround codec AND a stereo fallback as separate variants
-'   in the master playlist, and Roku's HLS player has been observed (via in-house testing on
-'   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant —
-'   defeating the entire point of having surround passthrough hardware. Caller must already have
-'   verified the device has surround passthrough before invoking with channelCount > 2.
-'
-' Stereo source (≤2ch):
-'   Strips surround passthrough codecs (eac3, ac3, dts) plus aac so transcoding falls through to
-'   mp3. Avoids handing the server a surround target codec for content that's only 2ch anyway.
-'   If filtering empties a previously non-empty list, falls back to "mp3" (the intended target).
-'
-' Multichannel surround target (issue #573):
-'   For a >2ch source, the stripped list MUST lead with a server-encodeable surround codec.
-'   Two failure modes this prevents, both observed on Jellyfin 10.11 via PlaybackInfo probes:
-'     - Empty list: Jellyfin's StreamBuilder omits the audioCodec query param, the server's
-'       InferAudioCodec falls through to the container name ("m3u8"), ffmpeg gets
-'       `-codec:a:0 m3u8` and exits 8. Happens when passthrough is detected only via codecs
-'       not in surroundPriority (truehd/dtshd-only) so no surround codec is in the list.
-'     - On-device-decode leak: a list like "truehd,opus" (truehd un-encodeable for a non-truehd
-'       source; opus on-device-decode only) resolves server-side to opus, silently abandoning
-'       the user's surround/passthrough intent for a decoded stereo-ish path.
-'   Fix: prepend the user's preferred multichannel codec (playbackPreferredMultichannelCodec),
-'   clamped to a reliably-encodeable HLS surround target — eac3 or ac3 (dts is excluded: the
-'   server emits no audio stream for a dts transcode target). This is a no-op for healthy
-'   profiles (their stripped list already leads with eac3/ac3) and only rescues the degenerate
-'   truehd/dtshd-only shape.
-sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as integer, preferredMultichannelCodec = "eac3" as string)
-  ' Validate inputs
-  if not isValid(deviceProfile) then return
-  if not isValid(deviceProfile.TranscodingProfiles) then return
-
-  ' Codecs that, as a server transcode target, can't carry surround channels — strip these for
-  ' multichannel sources so the server is forced to pick a surround codec from the remaining list.
-  ' Note: this list is intentionally distinct from `stereoOutputCodecs` in deviceCapabilities.bs;
-  ' that list represents Roku decode-path behavior (different concept), so the contents differ.
-  stereoOnlyCodecs = ["aac", "mp3", "flac", "alac", "pcm", "lpcm", "wav", "vorbis"]
-  ' Surround passthrough codecs — pointless for stereo sources, strip them.
-  surroundCodecs = ["eac3", "ac3", "dts"]
-
-  for each rule in deviceProfile.TranscodingProfiles
-    if isValid(rule.Type) and rule.Type = "Video"
-      if isValid(rule.AudioCodec)
-        codecList = rule.AudioCodec.split(",")
-        newCodecList = []
-
-        for each codec in codecList
-          skipCodec = false
-
-          if channelCount > 2 and arrayHasValue(stereoOnlyCodecs, codec)
-            skipCodec = true
-          end if
-
-          if channelCount <= 2 and (codec = "aac" or arrayHasValue(surroundCodecs, codec))
-            skipCodec = true
-          end if
-
-          if not skipCodec
-            newCodecList.push(codec)
-          end if
-        end for
-
-        if channelCount > 2 and rule.AudioCodec <> ""
-          ' Multichannel with a real source list: guarantee a user-preferred, server-encodeable
-          ' surround codec leads the list so the server can never resolve to an empty list (→ m3u8)
-          ' or an on-device-decode codec (opus/aac). See block comment above for the server-side
-          ' bugs this prevents. (An originally-empty AudioCodec is left untouched — optimize rescues
-          ' lists it would otherwise empty, it doesn't invent a codec where the profile had none.)
-          surroundTarget = resolveMultichannelSurroundTarget(preferredMultichannelCodec)
-          finalList = [surroundTarget]
-          for each codec in newCodecList
-            if codec <> surroundTarget
-              finalList.push(codec)
-            end if
-          end for
-          rule.AudioCodec = finalList.join(",")
-        else if channelCount <= 2
-          ' Stereo AAC-profile case: if filtering emptied a previously non-empty list, fall back
-          ' to "mp3" (the intended fallthrough target) rather than re-emitting an empty AudioCodec.
-          if newCodecList.count() = 0 and rule.AudioCodec <> ""
-            newCodecList = ["mp3"]
-          end if
-          rule.AudioCodec = newCodecList.join(",")
-        else
-          ' Multichannel but the profile had an originally-empty AudioCodec — leave it empty
-          ' (handled gracefully; optimize does not invent a codec where the profile had none).
-          rule.AudioCodec = newCodecList.join(",")
-        end if
+  ' applyMediaSourceToPostData: Applies the media source ID or live TV retry flags to a postData object.
+  ' Live TV is detected by an empty mediaSourceId. On the first attempt, direct play is not disabled
+  ' so the server can evaluate compatibility (matching web client behaviour). On retry,
+  ' forceTranscoding=true sets EnableDirectPlay=false so the server provides a transcode URL instead.
+  '
+  ' @param {object} postData - The request body assoc array to modify
+  ' @param {string} mediaSourceId - Media source ID, or "" for live TV
+  ' @param {boolean} forceTranscoding - True when retrying with forced transcoding
+  sub applyMediaSourceToPostData(postData as object, mediaSourceId as string, forceTranscoding as boolean)
+    if mediaSourceId <> ""
+      postData.MediaSourceId = mediaSourceId
+    else
+      if forceTranscoding
+        postData.EnableDirectPlay = false
       end if
     end if
-  end for
-end sub
+  end sub
 
-' Resolve the surround transcode target for a multichannel source from the user's preferred
-' multichannel codec setting (playbackPreferredMultichannelCodec). Clamped to the reliably-
-' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded — the
-' Jellyfin server emits no audio stream for a dts transcode target (verified on 10.11), so a dts
-' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid HLS audio
-' targets in every video transcoding container (ts and mp4), so no per-container clamp is needed.
-function resolveMultichannelSurroundTarget(preferredMultichannelCodec as string) as string
-  if isValidAndNotEmpty(preferredMultichannelCodec) and LCase(preferredMultichannelCodec) = "ac3"
-    return "ac3"
-  end if
-  return "eac3"
-end function
+  ' Tailors a video transcoding profile's AudioCodec list to the current source's channel count
+  ' so the server (and downstream HLS variant selection) can't fall back to a less-desirable codec.
+  '
+  ' Multichannel source (>2ch):
+  '   Strips ALL stereo-output codecs (aac, mp3, flac, alac, pcm, lpcm, wav, vorbis). Without this,
+  '   Jellyfin's HLS muxer offers BOTH the surround codec AND a stereo fallback as separate variants
+  '   in the master playlist, and Roku's HLS player has been observed (via in-house testing on
+  '   physical hardware; no upstream tracking issue at time of writing) to pick the stereo variant —
+  '   defeating the entire point of having surround passthrough hardware. Caller must already have
+  '   verified the device has surround passthrough before invoking with channelCount > 2.
+  '
+  ' Stereo source (≤2ch):
+  '   Strips surround passthrough codecs (eac3, ac3, dts) plus aac so transcoding falls through to
+  '   mp3. Avoids handing the server a surround target codec for content that's only 2ch anyway.
+  '   If filtering empties a previously non-empty list, falls back to "mp3" (the intended target).
+  '
+  ' Multichannel surround target (issue #573):
+  '   For a >2ch source, the stripped list MUST lead with a server-encodeable surround codec.
+  '   Two failure modes this prevents, both observed on Jellyfin 10.11 via PlaybackInfo probes:
+  '     - Empty list: Jellyfin's StreamBuilder omits the audioCodec query param, the server's
+  '       InferAudioCodec falls through to the container name ("m3u8"), ffmpeg gets
+  '       `-codec:a:0 m3u8` and exits 8. Happens when passthrough is detected only via codecs
+  '       not in surroundPriority (truehd/dtshd-only) so no surround codec is in the list.
+  '     - On-device-decode leak: a list like "truehd,opus" (truehd un-encodeable for a non-truehd
+  '       source; opus on-device-decode only) resolves server-side to opus, silently abandoning
+  '       the user's surround/passthrough intent for a decoded stereo-ish path.
+  '   Fix: prepend the user's preferred multichannel codec (playbackPreferredMultichannelCodec),
+  '   clamped to a reliably-encodeable HLS surround target — eac3 or ac3 (dts is excluded: the
+  '   server emits no audio stream for a dts transcode target). This is a no-op for healthy
+  '   profiles (their stripped list already leads with eac3/ac3) and only rescues the degenerate
+  '   truehd/dtshd-only shape.
+  sub optimizeAudioCodecListForSource(deviceProfile as object, channelCount as integer, preferredMultichannelCodec = "eac3" as string)
+    ' Validate inputs
+    if not isValid(deviceProfile) then return
+    if not isValid(deviceProfile.TranscodingProfiles) then return
+
+    ' Codecs that, as a server transcode target, can't carry surround channels — strip these for
+    ' multichannel sources so the server is forced to pick a surround codec from the remaining list.
+    ' Note: this list is intentionally distinct from `stereoOutputCodecs` in deviceCapabilities.bs;
+    ' that list represents Roku decode-path behavior (different concept), so the contents differ.
+    stereoOnlyCodecs = ["aac", "mp3", "flac", "alac", "pcm", "lpcm", "wav", "vorbis"]
+    ' Surround passthrough codecs — pointless for stereo sources, strip them.
+    surroundCodecs = ["eac3", "ac3", "dts"]
+
+    for each rule in deviceProfile.TranscodingProfiles
+      if isValid(rule.Type) and rule.Type = "Video"
+        if isValid(rule.AudioCodec)
+          codecList = rule.AudioCodec.split(",")
+          newCodecList = []
+
+          for each codec in codecList
+            skipCodec = false
+
+            if channelCount > 2 and arrayHasValue(stereoOnlyCodecs, codec)
+              skipCodec = true
+            end if
+
+            if channelCount <= 2 and (codec = "aac" or arrayHasValue(surroundCodecs, codec))
+              skipCodec = true
+            end if
+
+            if not skipCodec
+              newCodecList.push(codec)
+            end if
+          end for
+
+          if channelCount > 2 and rule.AudioCodec <> ""
+            ' Multichannel with a real source list: guarantee a user-preferred, server-encodeable
+            ' surround codec leads the list so the server can never resolve to an empty list (→ m3u8)
+            ' or an on-device-decode codec (opus/aac). See block comment above for the server-side
+            ' bugs this prevents. (An originally-empty AudioCodec is left untouched — optimize rescues
+            ' lists it would otherwise empty, it doesn't invent a codec where the profile had none.)
+            surroundTarget = resolveMultichannelSurroundTarget(preferredMultichannelCodec)
+            finalList = [surroundTarget]
+            for each codec in newCodecList
+              if codec <> surroundTarget
+                finalList.push(codec)
+              end if
+            end for
+            rule.AudioCodec = finalList.join(",")
+          else if channelCount <= 2
+            ' Stereo AAC-profile case: if filtering emptied a previously non-empty list, fall back
+            ' to "mp3" (the intended fallthrough target) rather than re-emitting an empty AudioCodec.
+            if newCodecList.count() = 0 and rule.AudioCodec <> ""
+              newCodecList = ["mp3"]
+            end if
+            rule.AudioCodec = newCodecList.join(",")
+          else
+            ' Multichannel but the profile had an originally-empty AudioCodec — leave it empty
+            ' (handled gracefully; optimize does not invent a codec where the profile had none).
+            rule.AudioCodec = newCodecList.join(",")
+          end if
+        end if
+      end if
+    end for
+  end sub
+
+  ' Resolve the surround transcode target for a multichannel source from the user's preferred
+  ' multichannel codec setting (playbackPreferredMultichannelCodec). Clamped to the reliably-
+  ' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded — the
+  ' Jellyfin server emits no audio stream for a dts transcode target (verified on 10.11), so a dts
+  ' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid HLS audio
+  ' targets in every video transcoding container (ts and mp4), so no per-container clamp is needed.
+  function resolveMultichannelSurroundTarget(preferredMultichannelCodec as string) as string
+    if isValidAndNotEmpty(preferredMultichannelCodec) and LCase(preferredMultichannelCodec) = "ac3"
+      return "ac3"
+    end if
+    return "eac3"
+  end function

@@ -24,59 +24,59 @@ sub getShuffleItems()
   else if input.type = "Person"
     ' Movies featuring this person (rewatching is fine)
     moviesData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      personIds: input.id,
-      recursive: true,
-      includeItemTypes: "Movie",
-      Limit: 250
+        personIds: input.id,
+        recursive: true,
+        includeItemTypes: "Movie",
+        Limit: 250
     }), "shufflePersonMovies")
     ' Watched episodes/recordings only — avoids spoiling in-progress shows
     episodesData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      personIds: input.id,
-      recursive: true,
-      includeItemTypes: "Episode,Recording",
-      isPlayed: true,
-      Limit: 250
+        personIds: input.id,
+        recursive: true,
+        includeItemTypes: "Episode,Recording",
+        isPlayed: true,
+        Limit: 250
     }), "shufflePersonEpisodes")
     if isValid(moviesData) and isValid(moviesData.Items) then items.append(moviesData.Items)
     if isValid(episodesData) and isValid(episodesData.Items) then items.append(episodesData.Items)
 
   else if input.type = "BoxSet"
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "ParentId": input.id,
-      "SortBy": "Random",
-      "Limit": 200,
-      "EnableTotalRecordCount": false
+        "ParentId": input.id,
+        "SortBy": "Random",
+        "Limit": 200,
+        "EnableTotalRecordCount": false
     }), "shuffleBoxSet")
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "MusicArtist"
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "ArtistIds": input.id,
-      "includeitemtypes": "Audio",
-      "SortBy": "Random",
-      "Recursive": true,
-      "Limit": 200,
-      "EnableTotalRecordCount": false
+        "ArtistIds": input.id,
+        "includeitemtypes": "Audio",
+        "SortBy": "Random",
+        "Recursive": true,
+        "Limit": 200,
+        "EnableTotalRecordCount": false
     }), "shuffleArtist")
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "MusicAlbum"
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "includeitemtypes": "Audio",
-      "SortBy": "SortName",
-      "Limit": 200,
-      "EnableTotalRecordCount": false
+        "parentId": input.id,
+        "includeitemtypes": "Audio",
+        "SortBy": "SortName",
+        "Limit": 200,
+        "EnableTotalRecordCount": false
     }), "shuffleAlbum")
     if isValid(data) and isValid(data.Items) then items = data.Items
 
   else if input.type = "Playlist"
     data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
-      "Limit": 500,
-      "EnableTotalRecordCount": false
-    }), "shufflePlaylist")
-    if isValid(data) and isValid(data.Items) then items = data.Items
-  end if
+          "Limit": 500,
+          "EnableTotalRecordCount": false
+      }), "shufflePlaylist")
+      if isValid(data) and isValid(data.Items) then items = data.Items
+    end if
 
-  m.top.shuffleItems = items
-end sub
+    m.top.shuffleItems = items
+  end sub

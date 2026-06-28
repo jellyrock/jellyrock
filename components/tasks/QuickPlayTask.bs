@@ -125,12 +125,12 @@ end sub
 
 sub doAlbum(input as object, items as object)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "parentId": input.id,
-    "imageTypeLimit": 1,
-    "sortBy": "SortName",
-    "limit": 500,
-    "enableUserData": false,
-    "EnableTotalRecordCount": false
+      "parentId": input.id,
+      "imageTypeLimit": 1,
+      "sortBy": "SortName",
+      "limit": 500,
+      "enableUserData": false,
+      "EnableTotalRecordCount": false
   }), "qp_album")
   if isValid(data) and isValidAndNotEmpty(data.items)
     items.append(data.items)
@@ -139,14 +139,14 @@ end sub
 
 sub doArtist(input as object, items as object)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "artistIds": input.id,
-    "includeItemTypes": "Audio",
-    "sortBy": "Album",
-    "limit": 500,
-    "imageTypeLimit": 1,
-    "Recursive": true,
-    "enableUserData": false,
-    "EnableTotalRecordCount": false
+      "artistIds": input.id,
+      "includeItemTypes": "Audio",
+      "sortBy": "Album",
+      "limit": 500,
+      "imageTypeLimit": 1,
+      "Recursive": true,
+      "enableUserData": false,
+      "EnableTotalRecordCount": false
   }), "qp_artist")
   if isValid(data) and isValidAndNotEmpty(data.items)
     items.append(data.items)
@@ -155,9 +155,9 @@ end sub
 
 sub doBoxset(input as object, items as object)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "parentid": input.id,
-    "limit": 500,
-    "EnableTotalRecordCount": false
+      "parentid": input.id,
+      "limit": 500,
+      "EnableTotalRecordCount": false
   }), "qp_boxset")
   if isValid(data) and isValidAndNotEmpty(data.Items)
     items.append(data.Items)
@@ -170,14 +170,14 @@ function doSeries(input as object, items as object) as longinteger
 
   ' Check for a resumable (in-progress) episode first
   resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
-    "parentId": input.id,
-    "Filters": "IsResumable",
-    "SortBy": "DatePlayed",
-    "SortOrder": "Descending",
-    "Limit": 1,
-    "recursive": true,
-    "ImageTypeLimit": 1,
-    "EnableTotalRecordCount": false
+      "parentId": input.id,
+      "Filters": "IsResumable",
+      "SortBy": "DatePlayed",
+      "SortOrder": "Descending",
+      "Limit": 1,
+      "recursive": true,
+      "ImageTypeLimit": 1,
+      "EnableTotalRecordCount": false
   }), "qp_seriesResume")
 
   if isValid(resumeData) and isValidAndNotEmpty(resumeData.Items)
@@ -189,12 +189,12 @@ function doSeries(input as object, items as object) as longinteger
   else
     ' Fall back to next unstarted episode
     data = fetchJson(GetApi().BuildGetNextUpRequest({
-      "seriesId": input.id,
-      "Limit": 1,
-      "DisableFirstEpisode": false,
-      "ImageTypeLimit": 1,
-      "EnableRewatching": localUser.settings.uiDetailsEnableRewatchingNextUp,
-      "EnableTotalRecordCount": false
+        "seriesId": input.id,
+        "Limit": 1,
+        "DisableFirstEpisode": false,
+        "ImageTypeLimit": 1,
+        "EnableRewatching": localUser.settings.uiDetailsEnableRewatchingNextUp,
+        "EnableTotalRecordCount": false
     }), "qp_seriesNextUp")
 
     if isValid(data) and isValidAndNotEmpty(data.Items)
@@ -202,494 +202,494 @@ function doSeries(input as object, items as object) as longinteger
     else
       ' All episodes fully watched and rewatching disabled — shuffle the whole series
       allEps = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, {
-        "SortBy": "Random",
-        "limit": 500,
-        "EnableTotalRecordCount": false
-      }), "qp_seriesShuffle")
-      if isValid(allEps) and isValidAndNotEmpty(allEps.Items)
-        items.append(allEps.Items)
-      end if
-    end if
-  end if
-
-  return firstItemStartingPoint
-end function
-
-function doSeason(input as object, items as object) as longinteger
-  firstItemStartingPoint = 0&
-  seriesId = isValidAndNotEmpty(input.seriesId) ? input.seriesId : ""
-  if seriesId = "" then return 0&
-
-  episodesData = fetchJson(GetApi().BuildGetEpisodesRequest(seriesId, {
-    "seasonId": input.id,
-    "limit": 500,
-    "EnableTotalRecordCount": false
-  }), "qp_seasonEps")
-
-  if isValid(episodesData) and isValidAndNotEmpty(episodesData.Items)
-    ' find the first unwatched episode
-    firstUnwatchedIndex = invalid
-    resumePosition = 0&
-    for each item in episodesData.Items
-      if isValid(item.UserData)
-        if isValid(item.UserData.Played) and item.UserData.Played = false
-          firstUnwatchedIndex = isValid(item.IndexNumber) ? item.IndexNumber - 1 : 0
-          if isValid(item.UserData.PlaybackPositionTicks)
-            resumePosition = item.UserData.PlaybackPositionTicks
-          end if
-          exit for
+            "SortBy": "Random",
+            "limit": 500,
+            "EnableTotalRecordCount": false
+        }), "qp_seriesShuffle")
+        if isValid(allEps) and isValidAndNotEmpty(allEps.Items)
+          items.append(allEps.Items)
         end if
       end if
-    end for
+    end if
 
-    if isValid(firstUnwatchedIndex)
-      for i = firstUnwatchedIndex to episodesData.Items.count() - 1
-        items.push(episodesData.Items[i])
-      end for
-      firstItemStartingPoint = resumePosition
-    else
-      ' try to find a "continue watching" episode
-      continueData = fetchJson(GetApi().BuildGetResumeItemsRequest({
-        "parentId": input.id,
-        "SortBy": "DatePlayed",
-        "recursive": true,
-        "SortOrder": "Descending",
-        "Filters": "IsResumable",
-        "EnableTotalRecordCount": false
-      }), "qp_seasonContinue")
+    return firstItemStartingPoint
+  end function
 
-      if isValid(continueData) and isValidAndNotEmpty(continueData.Items)
-        for each item in continueData.Items
-          items.push(item)
+  function doSeason(input as object, items as object) as longinteger
+    firstItemStartingPoint = 0&
+    seriesId = isValidAndNotEmpty(input.seriesId) ? input.seriesId : ""
+    if seriesId = "" then return 0&
+
+    episodesData = fetchJson(GetApi().BuildGetEpisodesRequest(seriesId, {
+          "seasonId": input.id,
+          "limit": 500,
+          "EnableTotalRecordCount": false
+      }), "qp_seasonEps")
+
+      if isValid(episodesData) and isValidAndNotEmpty(episodesData.Items)
+        ' find the first unwatched episode
+        firstUnwatchedIndex = invalid
+        resumePosition = 0&
+        for each item in episodesData.Items
+          if isValid(item.UserData)
+            if isValid(item.UserData.Played) and item.UserData.Played = false
+              firstUnwatchedIndex = isValid(item.IndexNumber) ? item.IndexNumber - 1 : 0
+              if isValid(item.UserData.PlaybackPositionTicks)
+                resumePosition = item.UserData.PlaybackPositionTicks
+              end if
+              exit for
+            end if
+          end if
         end for
-        ' Set starting point for the first resumable episode
-        firstEp = continueData.Items[0]
-        if isValid(firstEp.UserData) and isValid(firstEp.UserData.PlaybackPositionTicks)
-          firstItemStartingPoint = firstEp.UserData.PlaybackPositionTicks
-        end if
-      else
-        ' play the whole season in order
-        items.append(episodesData.Items)
-      end if
-    end if
-  end if
 
-  return firstItemStartingPoint
-end function
-
-sub doPerson(input as object, items as object)
-  ' get movies by the person
-  personMovies = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "personIds": input.id,
-    "includeItemTypes": "Movie",
-    "excludeItemTypes": "Season,Series",
-    "recursive": true,
-    "limit": 500
-  }), "qp_personMovies")
-  if isValid(personMovies) and isValidAndNotEmpty(personMovies.Items)
-    items.append(personMovies.Items)
-  end if
-
-  ' get watched episodes by the person
-  personEpisodes = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "personIds": input.id,
-    "includeItemTypes": "Episode,Recording",
-    "isPlayed": true,
-    "excludeItemTypes": "Season,Series",
-    "recursive": true,
-    "limit": 500
-  }), "qp_personEpisodes")
-  if isValid(personEpisodes) and isValidAndNotEmpty(personEpisodes.Items)
-    items.append(personEpisodes.Items)
-  end if
-end sub
-
-sub doPlaylist(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
-    "limit": 500
-  }), "qp_playlist")
-  if isValid(data) and isValidAndNotEmpty(data.Items)
-    items.append(data.Items)
-  end if
-end sub
-
-sub doPhotoAlbum(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "parentId": input.id,
-    "includeItemTypes": "Photo",
-    "sortBy": "Random",
-    "Recursive": true
-  }), "qp_photoAlbum")
-  if isValid(data) and isValidAndNotEmpty(data.items)
-    items.append(data.items)
-  end if
-end sub
-
-' --- Folder / CollectionFolder / UserView (complex multi-call) ---
-
-function doFolder(input as object) as dynamic
-  items = []
-  shouldShuffle = true
-  outputAction = "queue"
-
-  paramArray = {
-    "includeItemTypes": "Episode,Recording,Movie,Video",
-    "videoTypes": "VideoFile",
-    "sortBy": "Random",
-    "limit": 500,
-    "imageTypeLimit": 1,
-    "Recursive": true,
-    "enableUserData": false,
-    "EnableTotalRecordCount": false
-  }
-
-  folderType = LCase(isValidAndNotEmpty(input.folderType) ? input.folderType : "")
-  seriesCount = isValid(input.seriesCount) ? input.seriesCount : 0
-
-  if folderType = "studio"
-    paramArray["studioIds"] = input.id
-  else if folderType = "genre"
-    paramArray["genreIds"] = input.id
-    if isValid(input.movieCount) and input.movieCount > 0
-      paramArray["includeItemTypes"] = "Movie"
-    end if
-  else if folderType = "musicgenre"
-    paramArray["genreIds"] = input.id
-    paramArray.delete("videoTypes")
-    paramArray["includeItemTypes"] = "Audio"
-  else if folderType = "photoalbum"
-    paramArray["parentId"] = input.id
-    paramArray["includeItemTypes"] = "Photo"
-    paramArray.delete("videoTypes")
-    paramArray.delete("Recursive")
-  else
-    paramArray["parentId"] = input.id
-  end if
-
-  if seriesCount > 0
-    paramArray["includeItemTypes"] = "Series"
-    paramArray.Delete("videoTypes")
-  end if
-
-  folderData = fetchJson(GetApi().BuildGetItemsByQueryRequest(paramArray), "qp_folder")
-
-  if isValid(folderData) and isValidAndNotEmpty(folderData.items)
-    if seriesCount > 0
-      if seriesCount = 1
-        ' Single series — delegate to series quickplay
-        doSeries({ id: folderData.items[0].Id }, items)
-        shouldShuffle = false
-      else
-        doMultipleSeries(folderData.items, items)
-      end if
-    else
-      if folderType = "photoalbum"
-        outputAction = "photo"
-      end if
-      items.append(folderData.items)
-    end if
-  end if
-
-  return { action: outputAction, items: items, shuffle: shouldShuffle }
-end function
-
-function doCollectionFolder(input as object) as dynamic
-  items = []
-  shouldShuffle = true
-  outputAction = "queue"
-
-  collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
-
-  if collectionType = "movies"
-    doVideoContainer(input, items)
-    shouldShuffle = false
-  else if collectionType = "music"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "includeItemTypes": "Audio",
-      "sortBy": "Album",
-      "Recursive": true,
-      "limit": 500,
-      "imageTypeLimit": 1,
-      "enableUserData": false,
-      "EnableTotalRecordCount": false
-    }), "qp_collectionMusic")
-    if isValid(data) and isValidAndNotEmpty(data.items)
-      items.append(data.Items)
-    end if
-  else if collectionType = "boxsets"
-    ' pick a random boxset and play its contents
-    boxsetData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "limit": 500,
-      "imageTypeLimit": 0,
-      "enableUserData": false,
-      "EnableTotalRecordCount": false,
-      "enableImages": false
-    }), "qp_collectionBoxsets")
-    if isValid(boxsetData) and isValidAndNotEmpty(boxsetData.items)
-      arrayIndex = Rnd(boxsetData.items.count()) - 1
-      myBoxset = boxsetData.items[arrayIndex]
-      innerData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-        "parentId": myBoxset.id,
-        "EnableTotalRecordCount": false
-      }), "qp_collectionBoxsetInner")
-      if isValid(innerData) and isValidAndNotEmpty(innerData.items)
-        items.append(innerData.Items)
-      end if
-    end if
-    shouldShuffle = false
-  else if collectionType = "tvshows" or collectionType = "collectionfolder"
-    doVideoContainer(input, items)
-    shouldShuffle = false
-  else if collectionType = "musicvideos"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "includeItemTypes": "MusicVideo",
-      "sortBy": "Random",
-      "Recursive": true,
-      "limit": 500,
-      "imageTypeLimit": 1,
-      "enableUserData": false,
-      "EnableTotalRecordCount": false
-    }), "qp_collectionMusicVideos")
-    if isValid(data) and isValidAndNotEmpty(data.items)
-      items.append(data.Items)
-    end if
-    shouldShuffle = false
-  else if collectionType = "homevideos"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "includeItemTypes": "Photo",
-      "sortBy": "Random",
-      "Recursive": true
-    }), "qp_collectionPhotos")
-    if isValid(data) and isValidAndNotEmpty(data.items)
-      items.append(data.items)
-      outputAction = "photo"
-    end if
-  end if
-
-  return { action: outputAction, items: items, shuffle: shouldShuffle }
-end function
-
-function doUserView(input as object) as dynamic
-  items = []
-  shouldShuffle = true
-  outputAction = "queue"
-
-  collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
-
-  if collectionType = "playlists"
-    ' pick a random playlist and play its contents
-    playlistData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "imageTypeLimit": 0,
-      "enableUserData": false,
-      "EnableTotalRecordCount": false,
-      "enableImages": false
-    }), "qp_userViewPlaylists")
-    if isValid(playlistData) and isValidAndNotEmpty(playlistData.items)
-      arrayIndex = Rnd(playlistData.items.count()) - 1
-      myPlaylist = playlistData.items[arrayIndex]
-      playlistItems = fetchJson(GetApi().BuildGetPlaylistItemsRequest(myPlaylist.id, {
-        "EnableTotalRecordCount": false,
-        "limit": 500
-      }), "qp_userViewPlaylistItems")
-      if isValid(playlistItems) and isValidAndNotEmpty(playlistItems.items)
-        items.append(playlistItems.items)
-      end if
-    end if
-  else if collectionType = "livetv"
-    ' pick a random channel
-    channelData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "includeItemTypes": "TVChannel",
-      "sortBy": "Random",
-      "Recursive": true,
-      "imageTypeLimit": 0,
-      "enableUserData": false,
-      "EnableTotalRecordCount": false,
-      "enableImages": false
-    }), "qp_userViewChannels")
-    if isValid(channelData) and isValidAndNotEmpty(channelData.items)
-      arrayIndex = Rnd(channelData.items.count()) - 1
-      myChannel = channelData.items[arrayIndex]
-      ' Return channel as a queue item with TvChannel type
-      myChannel.Type = "TvChannel"
-      items.push(myChannel)
-    end if
-    shouldShuffle = false
-  else if collectionType = "movies" or collectionType = "tvshows"
-    doVideoContainer(input, items)
-    shouldShuffle = false
-  end if
-
-  return { action: outputAction, items: items, shuffle: shouldShuffle }
-end function
-
-' Helper: video container logic (movies or tvshows collection)
-sub doVideoContainer(input as object, items as object)
-  collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
-
-  if collectionType = "movies"
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "sortBy": "Random",
-      "recursive": true,
-      "includeItemTypes": "Movie,Video",
-      "limit": 500
-    }), "qp_videoContainerMovies")
-    if isValid(data) and isValidAndNotEmpty(data.items)
-      for each item in data.Items
-        ' only add videos we're not currently watching
-        if isValid(item.userdata) and isValid(item.userdata.PlaybackPositionTicks)
-          if item.userdata.PlaybackPositionTicks = 0
-            items.push(item)
-          end if
+        if isValid(firstUnwatchedIndex)
+          for i = firstUnwatchedIndex to episodesData.Items.count() - 1
+            items.push(episodesData.Items[i])
+          end for
+          firstItemStartingPoint = resumePosition
         else
-          items.push(item)
-        end if
-      end for
-    end if
-  else if collectionType = "tvshows" or collectionType = "collectionfolder"
-    tvshowsData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-      "parentId": input.id,
-      "sortBy": "Random",
-      "recursive": true,
-      "excludeItemTypes": "Season",
-      "imageTypeLimit": 0,
-      "enableUserData": false,
-      "EnableTotalRecordCount": false,
-      "enableImages": false
-    }), "qp_videoContainerTvShows")
-    if isValid(tvshowsData) and isValidAndNotEmpty(tvshowsData.items)
-      if tvshowsData.items[0].Type = "Series"
-        doMultipleSeries(tvshowsData.items, items)
-      else
-        items.append(tvshowsData.items)
-      end if
-    end if
-  end if
-end sub
+          ' try to find a "continue watching" episode
+          continueData = fetchJson(GetApi().BuildGetResumeItemsRequest({
+              "parentId": input.id,
+              "SortBy": "DatePlayed",
+              "recursive": true,
+              "SortOrder": "Descending",
+              "Filters": "IsResumable",
+              "EnableTotalRecordCount": false
+          }), "qp_seasonContinue")
 
-' Helper: shuffle play watched episodes from multiple series
-sub doMultipleSeries(tvshows as object, items as object)
-  numTotal = 0
-  numLimit = 500
-  for each tvshow in tvshows
-    showData = fetchJson(GetApi().BuildGetEpisodesRequest(tvshow.id, {
-      "SortBy": "Random",
-      "imageTypeLimit": 0,
-      "EnableTotalRecordCount": false,
-      "enableImages": false
-    }), "qp_multiSeries_" + tvshow.id)
-    if isValid(showData) and isValidAndNotEmpty(showData.items)
-      for each episode in showData.items
-        if isValid(episode.userdata) and isValid(episode.userdata.Played)
-          if episode.userdata.Played
-            items.push(episode)
+          if isValid(continueData) and isValidAndNotEmpty(continueData.Items)
+            for each item in continueData.Items
+              items.push(item)
+            end for
+            ' Set starting point for the first resumable episode
+            firstEp = continueData.Items[0]
+            if isValid(firstEp.UserData) and isValid(firstEp.UserData.PlaybackPositionTicks)
+              firstItemStartingPoint = firstEp.UserData.PlaybackPositionTicks
+            end if
+          else
+            ' play the whole season in order
+            items.append(episodesData.Items)
           end if
         end if
-      end for
-      numTotal = numTotal + showData.items.count()
-      if numTotal >= numLimit then exit for
-    end if
-  end for
-end sub
-
-' --- Play All actions (from Main.bs button handlers) ---
-
-sub doPlayAllSeries(input as object, items as object)
-  allEpData = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, {
-    SortBy: "IndexNumber,SortName",
-    SortOrder: "Ascending"
-  }), "qp_playAllSeries")
-  if isValid(allEpData) and isValid(allEpData.Items)
-    ' Exclude Season 0 (Specials) from Play All
-    for each ep in allEpData.Items
-      if isValid(ep.ParentIndexNumber) and ep.ParentIndexNumber > 0
-        items.push(ep)
       end if
-    end for
-  end if
-end sub
 
-sub doPlayAllSeason(input as object, items as object)
-  allEpData = fetchJson(GetApi().BuildGetEpisodesRequest(input.seriesId, {
-    SeasonId: input.id,
-    SortBy: "IndexNumber,SortName",
-    SortOrder: "Ascending"
-  }), "qp_playAllSeason")
-  if isValid(allEpData) and isValid(allEpData.Items)
-    items.append(allEpData.Items)
-  end if
-end sub
+      return firstItemStartingPoint
+    end function
 
-sub doPlayAllBoxset(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "ParentId": input.id,
-    "SortBy": "PremiereDate,ProductionYear,SortName",
-    "SortOrder": "Ascending",
-    "EnableTotalRecordCount": false
-  }), "qp_playAllBoxset")
-  if isValid(data) and isValid(data.Items)
-    items.append(data.Items)
-  end if
-end sub
+    sub doPerson(input as object, items as object)
+      ' get movies by the person
+      personMovies = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+          "personIds": input.id,
+          "includeItemTypes": "Movie",
+          "excludeItemTypes": "Season,Series",
+          "recursive": true,
+          "limit": 500
+      }), "qp_personMovies")
+      if isValid(personMovies) and isValidAndNotEmpty(personMovies.Items)
+        items.append(personMovies.Items)
+      end if
 
-sub doPlayAllAlbum(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "parentId": input.id,
-    "includeitemtypes": "Audio",
-    "SortBy": "ParentIndexNumber,IndexNumber,SortName",
-    "SortOrder": "Ascending",
-    "EnableTotalRecordCount": false
-  }), "qp_playAllAlbum")
-  if isValid(data) and isValid(data.Items)
-    items.append(data.Items)
-  end if
-end sub
+      ' get watched episodes by the person
+      personEpisodes = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+          "personIds": input.id,
+          "includeItemTypes": "Episode,Recording",
+          "isPlayed": true,
+          "excludeItemTypes": "Season,Series",
+          "recursive": true,
+          "limit": 500
+      }), "qp_personEpisodes")
+      if isValid(personEpisodes) and isValidAndNotEmpty(personEpisodes.Items)
+        items.append(personEpisodes.Items)
+      end if
+    end sub
 
-sub doPlayAllArtist(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
-    "ArtistIds": input.id,
-    "Recursive": "true",
-    "MediaTypes": "Audio",
-    "Filters": "IsNotFolder",
-    "SortBy": "SortName",
-    "Limit": 300,
-    "Fields": "Chapters",
-    "ExcludeLocationTypes": "Virtual",
-    "EnableTotalRecordCount": false,
-    "CollapseBoxSetItems": false
-  }), "qp_playAllArtist")
-  if isValid(data) and isValid(data.Items)
-    items.append(data.Items)
-  end if
-end sub
+    sub doPlaylist(input as object, items as object)
+      data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
+            "limit": 500
+        }), "qp_playlist")
+        if isValid(data) and isValidAndNotEmpty(data.Items)
+          items.append(data.Items)
+        end if
+      end sub
 
-sub doPlayAllPlaylist(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
-    "SortBy": "ListItemOrder",
-    "SortOrder": "Ascending",
-    "EnableTotalRecordCount": false,
-    "limit": 500
-  }), "qp_playAllPlaylist")
-  if isValid(data) and isValid(data.Items)
-    items.append(data.Items)
-  end if
-end sub
+      sub doPhotoAlbum(input as object, items as object)
+        data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+            "parentId": input.id,
+            "includeItemTypes": "Photo",
+            "sortBy": "Random",
+            "Recursive": true
+        }), "qp_photoAlbum")
+        if isValid(data) and isValidAndNotEmpty(data.items)
+          items.append(data.items)
+        end if
+      end sub
 
-sub doInstantMix(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetInstantMixRequest(input.id, { "Limit": 201 }), "qp_instantMix")
-  if isValid(data) and isValid(data.Items)
-    items.append(data.Items)
-  end if
-end sub
+      ' --- Folder / CollectionFolder / UserView (complex multi-call) ---
 
-sub doLoadTrailers(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetLocalTrailersRequest(input.id), "qp_trailers")
-  if isValid(data)
-    items.append(data)
-  end if
-end sub
+      function doFolder(input as object) as dynamic
+        items = []
+        shouldShuffle = true
+        outputAction = "queue"
+
+        paramArray = {
+          "includeItemTypes": "Episode,Recording,Movie,Video",
+          "videoTypes": "VideoFile",
+          "sortBy": "Random",
+          "limit": 500,
+          "imageTypeLimit": 1,
+          "Recursive": true,
+          "enableUserData": false,
+          "EnableTotalRecordCount": false
+        }
+
+        folderType = LCase(isValidAndNotEmpty(input.folderType) ? input.folderType : "")
+        seriesCount = isValid(input.seriesCount) ? input.seriesCount : 0
+
+        if folderType = "studio"
+          paramArray["studioIds"] = input.id
+        else if folderType = "genre"
+          paramArray["genreIds"] = input.id
+          if isValid(input.movieCount) and input.movieCount > 0
+            paramArray["includeItemTypes"] = "Movie"
+          end if
+        else if folderType = "musicgenre"
+          paramArray["genreIds"] = input.id
+          paramArray.delete("videoTypes")
+          paramArray["includeItemTypes"] = "Audio"
+        else if folderType = "photoalbum"
+          paramArray["parentId"] = input.id
+          paramArray["includeItemTypes"] = "Photo"
+          paramArray.delete("videoTypes")
+          paramArray.delete("Recursive")
+        else
+          paramArray["parentId"] = input.id
+        end if
+
+        if seriesCount > 0
+          paramArray["includeItemTypes"] = "Series"
+          paramArray.Delete("videoTypes")
+        end if
+
+        folderData = fetchJson(GetApi().BuildGetItemsByQueryRequest(paramArray), "qp_folder")
+
+        if isValid(folderData) and isValidAndNotEmpty(folderData.items)
+          if seriesCount > 0
+            if seriesCount = 1
+              ' Single series — delegate to series quickplay
+              doSeries({ id: folderData.items[0].Id }, items)
+              shouldShuffle = false
+            else
+              doMultipleSeries(folderData.items, items)
+            end if
+          else
+            if folderType = "photoalbum"
+              outputAction = "photo"
+            end if
+            items.append(folderData.items)
+          end if
+        end if
+
+        return { action: outputAction, items: items, shuffle: shouldShuffle }
+      end function
+
+      function doCollectionFolder(input as object) as dynamic
+        items = []
+        shouldShuffle = true
+        outputAction = "queue"
+
+        collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
+
+        if collectionType = "movies"
+          doVideoContainer(input, items)
+          shouldShuffle = false
+        else if collectionType = "music"
+          data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+              "parentId": input.id,
+              "includeItemTypes": "Audio",
+              "sortBy": "Album",
+              "Recursive": true,
+              "limit": 500,
+              "imageTypeLimit": 1,
+              "enableUserData": false,
+              "EnableTotalRecordCount": false
+          }), "qp_collectionMusic")
+          if isValid(data) and isValidAndNotEmpty(data.items)
+            items.append(data.Items)
+          end if
+        else if collectionType = "boxsets"
+          ' pick a random boxset and play its contents
+          boxsetData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+              "parentId": input.id,
+              "limit": 500,
+              "imageTypeLimit": 0,
+              "enableUserData": false,
+              "EnableTotalRecordCount": false,
+              "enableImages": false
+          }), "qp_collectionBoxsets")
+          if isValid(boxsetData) and isValidAndNotEmpty(boxsetData.items)
+            arrayIndex = Rnd(boxsetData.items.count()) - 1
+            myBoxset = boxsetData.items[arrayIndex]
+            innerData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+                "parentId": myBoxset.id,
+                "EnableTotalRecordCount": false
+            }), "qp_collectionBoxsetInner")
+            if isValid(innerData) and isValidAndNotEmpty(innerData.items)
+              items.append(innerData.Items)
+            end if
+          end if
+          shouldShuffle = false
+        else if collectionType = "tvshows" or collectionType = "collectionfolder"
+          doVideoContainer(input, items)
+          shouldShuffle = false
+        else if collectionType = "musicvideos"
+          data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+              "parentId": input.id,
+              "includeItemTypes": "MusicVideo",
+              "sortBy": "Random",
+              "Recursive": true,
+              "limit": 500,
+              "imageTypeLimit": 1,
+              "enableUserData": false,
+              "EnableTotalRecordCount": false
+          }), "qp_collectionMusicVideos")
+          if isValid(data) and isValidAndNotEmpty(data.items)
+            items.append(data.Items)
+          end if
+          shouldShuffle = false
+        else if collectionType = "homevideos"
+          data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+              "parentId": input.id,
+              "includeItemTypes": "Photo",
+              "sortBy": "Random",
+              "Recursive": true
+          }), "qp_collectionPhotos")
+          if isValid(data) and isValidAndNotEmpty(data.items)
+            items.append(data.items)
+            outputAction = "photo"
+          end if
+        end if
+
+        return { action: outputAction, items: items, shuffle: shouldShuffle }
+      end function
+
+      function doUserView(input as object) as dynamic
+        items = []
+        shouldShuffle = true
+        outputAction = "queue"
+
+        collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
+
+        if collectionType = "playlists"
+          ' pick a random playlist and play its contents
+          playlistData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+              "parentId": input.id,
+              "imageTypeLimit": 0,
+              "enableUserData": false,
+              "EnableTotalRecordCount": false,
+              "enableImages": false
+          }), "qp_userViewPlaylists")
+          if isValid(playlistData) and isValidAndNotEmpty(playlistData.items)
+            arrayIndex = Rnd(playlistData.items.count()) - 1
+            myPlaylist = playlistData.items[arrayIndex]
+            playlistItems = fetchJson(GetApi().BuildGetPlaylistItemsRequest(myPlaylist.id, {
+                  "EnableTotalRecordCount": false,
+                  "limit": 500
+              }), "qp_userViewPlaylistItems")
+              if isValid(playlistItems) and isValidAndNotEmpty(playlistItems.items)
+                items.append(playlistItems.items)
+              end if
+            end if
+          else if collectionType = "livetv"
+            ' pick a random channel
+            channelData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+                "includeItemTypes": "TVChannel",
+                "sortBy": "Random",
+                "Recursive": true,
+                "imageTypeLimit": 0,
+                "enableUserData": false,
+                "EnableTotalRecordCount": false,
+                "enableImages": false
+            }), "qp_userViewChannels")
+            if isValid(channelData) and isValidAndNotEmpty(channelData.items)
+              arrayIndex = Rnd(channelData.items.count()) - 1
+              myChannel = channelData.items[arrayIndex]
+              ' Return channel as a queue item with TvChannel type
+              myChannel.Type = "TvChannel"
+              items.push(myChannel)
+            end if
+            shouldShuffle = false
+          else if collectionType = "movies" or collectionType = "tvshows"
+            doVideoContainer(input, items)
+            shouldShuffle = false
+          end if
+
+          return { action: outputAction, items: items, shuffle: shouldShuffle }
+        end function
+
+        ' Helper: video container logic (movies or tvshows collection)
+        sub doVideoContainer(input as object, items as object)
+          collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
+
+          if collectionType = "movies"
+            data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+                "parentId": input.id,
+                "sortBy": "Random",
+                "recursive": true,
+                "includeItemTypes": "Movie,Video",
+                "limit": 500
+            }), "qp_videoContainerMovies")
+            if isValid(data) and isValidAndNotEmpty(data.items)
+              for each item in data.Items
+                ' only add videos we're not currently watching
+                if isValid(item.userdata) and isValid(item.userdata.PlaybackPositionTicks)
+                  if item.userdata.PlaybackPositionTicks = 0
+                    items.push(item)
+                  end if
+                else
+                  items.push(item)
+                end if
+              end for
+            end if
+          else if collectionType = "tvshows" or collectionType = "collectionfolder"
+            tvshowsData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+                "parentId": input.id,
+                "sortBy": "Random",
+                "recursive": true,
+                "excludeItemTypes": "Season",
+                "imageTypeLimit": 0,
+                "enableUserData": false,
+                "EnableTotalRecordCount": false,
+                "enableImages": false
+            }), "qp_videoContainerTvShows")
+            if isValid(tvshowsData) and isValidAndNotEmpty(tvshowsData.items)
+              if tvshowsData.items[0].Type = "Series"
+                doMultipleSeries(tvshowsData.items, items)
+              else
+                items.append(tvshowsData.items)
+              end if
+            end if
+          end if
+        end sub
+
+        ' Helper: shuffle play watched episodes from multiple series
+        sub doMultipleSeries(tvshows as object, items as object)
+          numTotal = 0
+          numLimit = 500
+          for each tvshow in tvshows
+            showData = fetchJson(GetApi().BuildGetEpisodesRequest(tvshow.id, {
+                  "SortBy": "Random",
+                  "imageTypeLimit": 0,
+                  "EnableTotalRecordCount": false,
+                  "enableImages": false
+              }), "qp_multiSeries_" + tvshow.id)
+              if isValid(showData) and isValidAndNotEmpty(showData.items)
+                for each episode in showData.items
+                  if isValid(episode.userdata) and isValid(episode.userdata.Played)
+                    if episode.userdata.Played
+                      items.push(episode)
+                    end if
+                  end if
+                end for
+                numTotal = numTotal + showData.items.count()
+                if numTotal >= numLimit then exit for
+              end if
+            end for
+          end sub
+
+          ' --- Play All actions (from Main.bs button handlers) ---
+
+          sub doPlayAllSeries(input as object, items as object)
+            allEpData = fetchJson(GetApi().BuildGetEpisodesRequest(input.id, {
+                  SortBy: "IndexNumber,SortName",
+                  SortOrder: "Ascending"
+              }), "qp_playAllSeries")
+              if isValid(allEpData) and isValid(allEpData.Items)
+                ' Exclude Season 0 (Specials) from Play All
+                for each ep in allEpData.Items
+                  if isValid(ep.ParentIndexNumber) and ep.ParentIndexNumber > 0
+                    items.push(ep)
+                  end if
+                end for
+              end if
+            end sub
+
+            sub doPlayAllSeason(input as object, items as object)
+              allEpData = fetchJson(GetApi().BuildGetEpisodesRequest(input.seriesId, {
+                    SeasonId: input.id,
+                    SortBy: "IndexNumber,SortName",
+                    SortOrder: "Ascending"
+                }), "qp_playAllSeason")
+                if isValid(allEpData) and isValid(allEpData.Items)
+                  items.append(allEpData.Items)
+                end if
+              end sub
+
+              sub doPlayAllBoxset(input as object, items as object)
+                data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+                    "ParentId": input.id,
+                    "SortBy": "PremiereDate,ProductionYear,SortName",
+                    "SortOrder": "Ascending",
+                    "EnableTotalRecordCount": false
+                }), "qp_playAllBoxset")
+                if isValid(data) and isValid(data.Items)
+                  items.append(data.Items)
+                end if
+              end sub
+
+              sub doPlayAllAlbum(input as object, items as object)
+                data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+                    "parentId": input.id,
+                    "includeitemtypes": "Audio",
+                    "SortBy": "ParentIndexNumber,IndexNumber,SortName",
+                    "SortOrder": "Ascending",
+                    "EnableTotalRecordCount": false
+                }), "qp_playAllAlbum")
+                if isValid(data) and isValid(data.Items)
+                  items.append(data.Items)
+                end if
+              end sub
+
+              sub doPlayAllArtist(input as object, items as object)
+                data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
+                    "ArtistIds": input.id,
+                    "Recursive": "true",
+                    "MediaTypes": "Audio",
+                    "Filters": "IsNotFolder",
+                    "SortBy": "SortName",
+                    "Limit": 300,
+                    "Fields": "Chapters",
+                    "ExcludeLocationTypes": "Virtual",
+                    "EnableTotalRecordCount": false,
+                    "CollapseBoxSetItems": false
+                }), "qp_playAllArtist")
+                if isValid(data) and isValid(data.Items)
+                  items.append(data.Items)
+                end if
+              end sub
+
+              sub doPlayAllPlaylist(input as object, items as object)
+                data = fetchJson(GetApi().BuildGetPlaylistItemsRequest(input.id, {
+                      "SortBy": "ListItemOrder",
+                      "SortOrder": "Ascending",
+                      "EnableTotalRecordCount": false,
+                      "limit": 500
+                  }), "qp_playAllPlaylist")
+                  if isValid(data) and isValid(data.Items)
+                    items.append(data.Items)
+                  end if
+                end sub
+
+                sub doInstantMix(input as object, items as object)
+                  data = fetchJson(GetApi().BuildGetInstantMixRequest(input.id, { "Limit": 201 }), "qp_instantMix")
+                  if isValid(data) and isValid(data.Items)
+                    items.append(data.Items)
+                  end if
+                end sub
+
+                sub doLoadTrailers(input as object, items as object)
+                  data = fetchJson(GetApi().BuildGetLocalTrailersRequest(input.id), "qp_trailers")
+                  if isValid(data)
+                    items.append(data)
+                  end if
+                end sub
