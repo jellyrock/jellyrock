@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Add a structured agent + contributor workflow ([#670](https://github.com/jellyrock/jellyrock/pull/670))
 
+### Fixed
+
+- (settings) point keyboard submit-key KDFs at the icon assets that exist ([#682](https://github.com/jellyrock/jellyrock/pull/682))
+
 ### Dependencies
 
 - Update prettier from v3.8.4 to v3.8.5 ([#680](https://github.com/jellyrock/jellyrock/pull/680))
