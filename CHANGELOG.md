@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (format) pin `brighterscript-formatter` to 1.7.27 (revert 1.7.28 indent regression) ([#684](https://github.com/jellyrock/jellyrock/pull/684))
 - (settings) point keyboard submit-key KDFs at the icon assets that exist ([#682](https://github.com/jellyrock/jellyrock/pull/682))
 
 ### Dependencies
