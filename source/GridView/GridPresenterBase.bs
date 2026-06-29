@@ -162,51 +162,51 @@ class GridPresenterBase
     if not isValid(m.view) then return
 
     m.view.top.callFunc("loadFilters", {
-        userid: m.view.global.user.id,
-        parentid: parentItem.Id,
-        includeitemtypes: itemType
-      })
-    end sub
+      userid: m.view.global.user.id,
+      parentid: parentItem.Id,
+      includeitemtypes: itemType
+    })
+  end sub
 
-    ' Called when filters are delivered by the host component's promise (BaseGridView.loadFilters).
-    ' Caches the result in m.apiFilters and shows a toast on failure.
-    ' @param {object} filters - The filter options AA (empty {} on failure)
-    ' @param {string} errorMsg - Non-empty on failure; triggers a toast
-    sub onFiltersLoaded(filters as object, errorMsg as string)
-      m.apiFilters = filters
-      if errorMsg <> ""
-        m.showToast(errorMsg)
-      end if
-    end sub
+  ' Called when filters are delivered by the host component's promise (BaseGridView.loadFilters).
+  ' Caches the result in m.apiFilters and shows a toast on failure.
+  ' @param {object} filters - The filter options AA (empty {} on failure)
+  ' @param {string} errorMsg - Non-empty on failure; triggers a toast
+  sub onFiltersLoaded(filters as object, errorMsg as string)
+    m.apiFilters = filters
+    if errorMsg <> ""
+      m.showToast(errorMsg)
+    end if
+  end sub
 
-    ' ============================================================================
-    ' Toast Notifications
-    ' ============================================================================
+  ' ============================================================================
+  ' Toast Notifications
+  ' ============================================================================
 
-    ' Show a toast notification via the scene-level Toast component.
-    ' Safe to call from presenter classes (routes through view's scene reference).
-    ' @param {string} message - The message to display
-    ' @param {string} [toastType="error"] - "error", "success", or "info"
-    sub showToast(message as string, toastType = "error" as string)
-      if not isValid(m.view) then return
-      scene = m.view.top.getScene()
-      if isValid(scene)
-        scene.callFunc("showToast", message, toastType)
-      end if
-    end sub
+  ' Show a toast notification via the scene-level Toast component.
+  ' Safe to call from presenter classes (routes through view's scene reference).
+  ' @param {string} message - The message to display
+  ' @param {string} [toastType="error"] - "error", "success", or "info"
+  sub showToast(message as string, toastType = "error" as string)
+    if not isValid(m.view) then return
+    scene = m.view.top.getScene()
+    if isValid(scene)
+      scene.callFunc("showToast", message, toastType)
+    end if
+  end sub
 
-    ' ============================================================================
-    ' Cleanup
-    ' ============================================================================
+  ' ============================================================================
+  ' Cleanup
+  ' ============================================================================
 
-    ' Called when presenter is being destroyed
-    ' Override to clean up resources, stop tasks, unobserve fields
-    ' Always call super.onDestroy() at the end of overrides
-    sub onDestroy()
-      ' The filter fetch is now a promise on the host component; auto-abandon (injected into
-      ' BaseGridView.onDestroy) cancels any in-flight request, so there's no task/observer here.
-      m.apiFilters = invalid
-      m.view = invalid
-      m.log = invalid
-    end sub
-  end class
+  ' Called when presenter is being destroyed
+  ' Override to clean up resources, stop tasks, unobserve fields
+  ' Always call super.onDestroy() at the end of overrides
+  sub onDestroy()
+    ' The filter fetch is now a promise on the host component; auto-abandon (injected into
+    ' BaseGridView.onDestroy) cancels any in-flight request, so there's no task/observer here.
+    m.apiFilters = invalid
+    m.view = invalid
+    m.log = invalid
+  end sub
+end class
