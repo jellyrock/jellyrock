@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update adm-zip from v0.5.17 to v0.5.18 ([#686](https://github.com/jellyrock/jellyrock/pull/686))
 - Update js-yaml from v4.2.0 to v5 ([#681](https://github.com/jellyrock/jellyrock/pull/681), [#672](https://github.com/jellyrock/jellyrock/pull/672))
 - Update brighterscript-formatter from v1.7.27 to v1.7.28 ([#678](https://github.com/jellyrock/jellyrock/pull/678))
 - Update prettier from v3.8.4 to v3.8.5 ([#680](https://github.com/jellyrock/jellyrock/pull/680))
