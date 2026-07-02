@@ -94,16 +94,16 @@ namespace tests
 
     @it("returns true for valid array of associative arrays")
     @params(
-    [
-      {
-        Title: "The Notebook",
-        releaseDate: "2000"
-      },
-      {
-        Title: "Caddyshack",
-        releaseDate: "1976"
-      }
-    ], true)
+      [
+        {
+          Title: "The Notebook",
+          releaseDate: "2000"
+        },
+        {
+          Title: "Caddyshack",
+          releaseDate: "1976"
+        }
+      ], true)
     function _(value, expectedassertResult)
       m.assertEqual(isValid(value), expectedassertResult)
     end function
@@ -256,28 +256,28 @@ namespace tests
 
     @it("validates all values in array of associative arrays")
     @params(
-    [
-      {
-        Title: "The Notebook",
-        releaseDate: "2000"
-      },
-      {
-        Title: "Caddyshack",
-        releaseDate: "1976"
-      }
-    ], true)
+      [
+        {
+          Title: "The Notebook",
+          releaseDate: "2000"
+        },
+        {
+          Title: "Caddyshack",
+          releaseDate: "1976"
+        }
+      ], true)
     @params(
-    [
-      {
-        Title: "The Notebook",
-        releaseDate: "2000"
-      },
-      {
-        Title: "Caddyshack",
-        releaseDate: "1976"
-      },
-      invalid
-    ], false)
+      [
+        {
+          Title: "The Notebook",
+          releaseDate: "2000"
+        },
+        {
+          Title: "Caddyshack",
+          releaseDate: "1976"
+        },
+        invalid
+      ], false)
     function _(value, expectedassertResult)
       m.assertEqual(isAllValid(value), expectedassertResult)
     end function
