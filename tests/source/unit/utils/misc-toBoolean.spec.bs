@@ -88,9 +88,9 @@ namespace tests
 
       ' Verify it's actually boolean type
       m.assertTrue(Type(result) = "roBoolean" or Type(result) = "Boolean",
-      `toBoolean('${input}') should return boolean type but got ${Type(result)}`)
+        `toBoolean('${input}') should return boolean type but got ${Type(result)}`)
       m.assertEqual(result, expected,
-      `toBoolean('${input}') should return ${expected} but got ${result}`)
+        `toBoolean('${input}') should return ${expected} but got ${result}`)
 
       ' Verify it can be safely compared to boolean without type mismatch crash
       ' This comparison would crash with type mismatch if result was still a string
@@ -130,7 +130,7 @@ namespace tests
 
       ' Should remain a string since they're not exactly "true" or "false"
       m.assertTrue(Type(result) = "roString" or Type(result) = "String",
-      `toBoolean('${value}') should return string type but got ${Type(result)}`)
+        `toBoolean('${value}') should return string type but got ${Type(result)}`)
       m.assertEqual(result, value)
     end function
 
