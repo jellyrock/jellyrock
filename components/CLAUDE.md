@@ -21,6 +21,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - Override `onScreenShown()` — restore focus, refresh data on revisit.
 - Override `onScreenHidden()` — pause Tasks, hide UI, but keep state.
 - Override `onDestroy()` — release Task nodes, unobserve fields, drop large data structures. The base `onDestroy()` is a no-op; missing it leaks observers and tasks across navigation. Two BSC plugins enforce this; opt-out comments are documented in [build-and-tooling.md](../docs/architecture/build-and-tooling.md).
+- **A routed screen owns its own load spinner.** If a screen fetches data on open, it `startLoadingSpinner()`s when the fetch begins and `stopLoadingSpinner()`s when data arrives — callers just navigate. Don't stop a spinner synchronously right after a `navigateTo` to a *different* view: the nav is async (settles at `NavigationEnd`) so `activeRoutedView` is still the outgoing view, and stopping re-shows it for a frame. See [navigation.md → Loading spinners across navigation](../docs/architecture/navigation.md).
 
 ## Render thread protection
 

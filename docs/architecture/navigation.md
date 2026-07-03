@@ -11,7 +11,7 @@ related-files:
   - components/data/SceneManager.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-06-26
+last-reviewed: 2026-07-03
 ---
 
 # Navigation (sgRouter)
@@ -171,15 +171,27 @@ On a present token it returns `true` (allow). On absence it **stashes the reques
 
 | Function | What it does |
 |---|---|
-| `routerNavigate(path, context)` | `initRouter()` then `navigateThenFocus(path, context)`. The main-thread entry point for single navigation calls (pre-login flow + transition to Home). `context` carries route data (e.g. a populated username for `/login`). |
-| `navigateThenFocus(path, context)` | The shared navigate tail: `sgrouter.navigateTo` → on settle, `sgrouter.setFocus` → on reject, warn + re-assert focus (never strand the remote). Centralizes the navigate/focus/catch trio reused by `routerNavigate`, the final step of `navigateChainStep`, and the deep-link resolve calls. `path` is a string or a named-route AA. |
-| `replayRoutedDeepLink(routes)` | `initRouter()` then `navigateChainStep(routes, 0)` — a *sequential* route chain for deep-link replay (each step waits for the previous to settle). Defaults to `["/"]`. |
-| `navigateChainStep(routes, index)` | Navigates `routes[index]`, then chains to the next once it settles (`navigateTo`'s promise resolves at `NavigationEnd`). The final step takes remote focus. |
+| `routerNavigate(path, context, clearSpinner)` | `initRouter()` then `navigateThenFocus(path, context, clearSpinner)`. The main-thread entry point for single navigation calls (pre-login flow + transition to Home). `context` carries route data (e.g. a populated username for `/login`). `clearSpinner` (login paths only) — see "Loading spinners across navigation" below. |
+| `navigateThenFocus(path, context, clearSpinner)` | The shared navigate tail: `sgrouter.navigateTo` → on settle, `sgrouter.setFocus` → on reject, warn + re-assert focus (never strand the remote). Centralizes the navigate/focus/catch trio reused by `routerNavigate`, the final step of `navigateChainStep`, and the deep-link resolve calls. `path` is a string or a named-route AA. When `clearSpinner` is set, it `stopLoadingSpinner()`s at settle (`NavigationEnd`) / on reject — used to carry a blocking login spinner across the async nav (see below). |
+| `replayRoutedDeepLink(routes)` | `initRouter()` then `navigateChainStep(routes, 0, true)` — a *sequential* route chain for post-login replay (each step waits for the previous to settle). Defaults to `["/"]`. Passes `clearLoginSpinnerOnEnd = true` so the blocking login spinner is cleared only when the final route mounts. |
+| `navigateChainStep(routes, index, clearLoginSpinnerOnEnd)` | Navigates `routes[index]`, then chains to the next once it settles (`navigateTo`'s promise resolves at `NavigationEnd`). The final step takes remote focus (and clears the login spinner when `clearLoginSpinnerOnEnd` is set). The runtime-cast caller (`replayDeepLinkReplacingPlayer`) leaves it `false` — no login spinner is up there. |
 | `onPlaybackLaunchRequested()` | Reads `m.global.playbackLaunchRequest`; audio → `/audio`, every video-family type → `/details/<type>/<id>/play`. The queue is the source of truth for what plays. |
 | `onPhotoLaunchRequested()` | Reads `m.global.photoLaunchRequest`; navigates `/photo` carrying the launch AA through as route context (`PhotoDetails` reads it on mount). |
 | `reloadRoutedHome()` | `sgrouter.navigateTo("/")` — a fresh Home render after theme/locale change (Home's `clearStackOnResolve` rebuilds it, picking up new theme constants / translations). |
 | `routerGoBack()` | Main-thread wrapper for `sgrouter.goBack()` (e.g. after a delete confirmation leaves the now-deleted detail). |
 | `resetRouter()` | Removes the overhang/playback/photo observers, **drives `beforeViewClose` (→ `onScreenHidden` + `onDestroy`) on every mounted routed view** (`teardownRoutedViews` — both the active view and the suspended `keepAlive` views), then `sgrouter.destroy()`, clears `m.global.activeRoutedView`, hides the overhang. Called on sign-out / change-user / change-server before `reenterLogin`. The explicit teardown is required because `sgrouter.destroy()` removes the view *nodes* without running their lifecycle — without it a `keepAlive` view suspended at sign-out leaks its Tasks/observers and never abandons in-flight API promises. |
+
+### Loading spinners across navigation
+
+The scene-level loading spinner is toggled by `JRScene.onIsLoadingChanged` (fired by `startLoadingSpinner()` / `stopLoadingSpinner()` in `misc.bs`, which set `isLoading` + `isRemoteDisabled` on the scene). Crucially it also toggles the active view: `activeRoutedView.visible = not isRemoteDisabled`. So a **blocking** spinner (`isRemoteDisabled = true`) hides the current view; stopping it shows the current view again.
+
+**Convention: a routed destination screen owns its own load spinner.** The screen that loads data on open starts the spinner when its fetch begins and stops it when the data arrives; callers just `navigateTo`. This is the pattern the sgRouter migration established, and where a spinner "goes missing" it's almost always a screen that didn't get the memo.
+
+- **Self-starting screens** — `BaseGridView` (`loadInitialItems` → `prepareDataLoad`), `SearchResults` (`searchMedias`), the Live TV schedule: start *and* stop their own spinner.
+- **Launcher-started** — photo / player: `QueueManager.launchItem` (and the play/quickplay paths) start the spinner; the destination (`PhotoDetails` on mount, the player when content loads) stops it.
+- **`ItemDetails`** — starts the spinner in `onItemIdChanged` (right before the metadata fetch task), stops it in `onDetailsLoaded`. Its start used to live in the removed `showScenes.CreateItemDetailsGroup` factory; the migration didn't re-home it, so item opens showed no spinner until this was restored. `itemId`'s `onChange` is a synchronous scoped observer, so the spinner is up before the empty springboard renders a frame; the complete-context (deep-link) early-return shows no spinner for an already-loaded item.
+
+**Login is the one cross-screen exception.** The login coordinator starts a **blocking** spinner on the *outgoing* pre-login view (`onUserSelected` / `onCredentialsSubmitted`), then navigates to a **different** view. Because `navigateTo` is async (it resolves at `NavigationEnd`), `activeRoutedView` is still the outgoing view for the duration of the nav. Stopping the spinner synchronously *before* the nav settles resets `isRemoteDisabled` and re-shows that stale outgoing view for a frame before the destination mounts — the visible "login flash" #677 introduced. The fix is to **keep the spinner up across the nav and clear it at settle** via the `clearSpinner` flag on `navigateThenFocus` (login→Home rides it through `replayRoutedDeepLink` → `navigateChainStep`; the password-required `/login` hop rides it through `routerNavigate`). This mirrors the launcher-started pattern — the destination's mount is what clears the spinner, never a synchronous stop mid-transition.
 
 ## The back arbiter & exit confirmation
 
