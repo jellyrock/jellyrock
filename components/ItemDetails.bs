@@ -727,6 +727,14 @@ sub onItemIdChanged()
   m.loadDetailsTask.unobserveField("content")
   m.loadDetailsTask.control = "STOP"
 
+  ' Show the loading spinner during the metadata fetch (onDetailsLoaded stops it). Restores the
+  ' pre-#677 behavior: the removed showScenes.CreateItemDetailsGroup factory started the spinner
+  ' before pushScene; under the router the bare sgrouter.navigateTo at the call sites (Home / grid /
+  ' search) doesn't, so the spinner has to start here — the one place that owns the fetch. itemId's
+  ' onChange is a synchronous scoped observer (fires inside loadFromRoute during onScreenShown), so
+  ' the spinner is up before the empty springboard renders a frame.
+  startLoadingSpinner()
+
   m.loadDetailsTask.itemId = itemId
   m.loadDetailsTask.shouldForceRefresh = false
   m.loadDetailsTask.observeField("content", "onDetailsLoaded")
