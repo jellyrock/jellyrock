@@ -364,16 +364,25 @@ end function
 ' settle drain (folds in finding A4: a rejected nav must re-assert focus, never strand the remote).
 ' routePath is dynamic: a string path for most calls, or a named-route AA ({ name, ... }) from
 ' routeForItem on the deep-link container path. sgRouter.navigateTo accepts both.
-sub navigateThenFocus(routePath as dynamic, context = {} as object)
+' clearSpinner: set by the login paths only. A blocking login spinner (started by the login
+' coordinator on the OUTGOING pre-login view) is kept up across this async nav and cleared HERE,
+' once the destination view has mounted (navigateTo resolves at NavigationEnd). Clearing it
+' synchronously before the nav settles re-shows the outgoing pre-login view for a frame — the
+' #677 login flash. Mirrors the ItemDetails -> player pattern (spinner stays up across the nav,
+' the destination clears it).
+sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean)
   options = {}
   if isValidAndNotEmpty(context) then options = { context: context }
-  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath }).then(sub(_result as object, _ctx as object)
+  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath, clearSpinner: clearSpinner }).then(sub(_result as object, ctx as object)
+    if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
   end sub).catch(sub(err as object, ctx as object)
     ' navigateTo rejects when a nav is already in progress (transient) or the route isn't
     ' registered (a programming error). Re-assert focus so a rejected nav can't strand the remote,
     ' and surface the reason instead of dropping it silently.
     m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err.message)
+    ' Clear the spinner even on a rejected login nav so a failure can't strand it up.
+    if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
   end sub)
 end sub
@@ -382,9 +391,9 @@ end sub
 ' the mounted view remote focus. Called from main.bs / loginRouter (main thread) to drive
 ' BOTH the pre-login flow (/server, /users, /login) and the transition to Home ("/").
 ' context is forwarded as route context (e.g. a prefilled username for /login).
-sub routerNavigate(routePath as string, context = {} as object)
+sub routerNavigate(routePath as string, context = {} as object, clearSpinner = false as boolean)
   initRouter()
-  navigateThenFocus(routePath, context)
+  navigateThenFocus(routePath, context, clearSpinner)
 end sub
 
 ' Replay a (deferred) deep link after login by navigating a SEQUENCE of routes, each step
@@ -397,27 +406,37 @@ end sub
 sub replayRoutedDeepLink(routes as object)
   initRouter()
   if not isValidAndNotEmpty(routes) then routes = ["/"]
-  navigateChainStep(routes, 0)
+  ' Post-login replay: the blocking login spinner is still up on the outgoing pre-login view.
+  ' Keep it up across the async nav and clear it when the FINAL route settles (clearLoginSpinnerOnEnd
+  ' -> navigateThenFocus clearSpinner). Clearing it synchronously in createAndShowHomeGroup re-showed
+  ' the outgoing view for a frame before Home mounted — the #677 login flash.
+  navigateChainStep(routes, 0, true)
 end sub
 
 ' Navigate routes[index], then chain to the next step once it settles (sgRouter's
 ' navigateTo promise resolves at NavigationEnd, so each .then() defers until the previous
 ' route is fully mounted). The final step takes remote focus. Context carries routes/index
 ' (BrightScript closures can't capture locals).
-sub navigateChainStep(routes as object, index as integer)
+' clearLoginSpinnerOnEnd: threaded through to the FINAL step's navigateThenFocus so the login
+' replay (replayRoutedDeepLink) keeps the blocking spinner up across the whole chain and clears it
+' only once the last route mounts. The runtime-cast caller (replayDeepLinkReplacingPlayer) leaves
+' it false — no login spinner is up there.
+sub navigateChainStep(routes as object, index as integer, clearLoginSpinnerOnEnd = false as boolean)
   if index >= routes.count() then return
   ' Final step: navigate + take focus + catch is exactly the shared settle tail.
   if index = routes.count() - 1
-    navigateThenFocus(routes[index])
+    navigateThenFocus(routes[index], {}, clearLoginSpinnerOnEnd)
     return
   end if
   ' Intermediate step: navigate, then chain to the next once it settles. A rejection stops the
   ' chain (a later step would build on a route that never mounted) and takes focus on whatever IS
   ' mounted, so a failed deep-link replay can't strand the remote.
-  promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
-    navigateChainStep(ctx.routes, ctx.index + 1)
+  promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index, clearSpinner: clearLoginSpinnerOnEnd }).then(sub(_result as object, ctx as object)
+    navigateChainStep(ctx.routes, ctx.index + 1, ctx.clearSpinner)
   end sub).catch(sub(err as object, ctx as object)
     m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err.message)
+    ' If this was the login replay, don't leave the blocking spinner stranded on a failed chain.
+    if ctx.clearSpinner then stopLoadingSpinner()
     sgrouter.setFocus({ focus: true })
   end sub)
 end sub
