@@ -4,7 +4,6 @@ related-files:
   - source/api/apiPromise.bs
   - source/api/apiPool.bs
   - components/JRScreen.bs
-  - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
 last-reviewed: 2026-06-06
@@ -84,9 +83,8 @@ modeled on `roku-log.cjs`'s transpile-time injection:
 - Wired into `bsconfig` / `bsconfig-prod` / `bsconfig-analysis` (the app configs, same as
   `roku-log`; the test configs deliberately exclude transforming plugins).
 
-Base [`JRScreen.bs`](../../components/JRScreen.bs) and the minimal
-[`JRGroup.bs`](../../components/JRGroup.bs) carry `abandonApiPromises()` in their `onDestroy` as a
-readable floor for the rare components that *don't* override `onDestroy` (which inherit the base).
+(Test-only branch note: this JR-specific base-class floor is removed here, per the fix under test
+against issue #689 — see the real fix on `main`/PR #697 for the up-to-date doc treatment.)
 
 ## The two-model split (and when it ends)
 

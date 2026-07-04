@@ -4,7 +4,6 @@ related-files:
   - source/api/apiPromise.bs
   - source/api/apiPool.bs
   - components/JRScreen.bs
-  - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - tests/source/unit/api/apiPromise.spec.bs
 last-reviewed: 2026-06-06
@@ -146,9 +145,9 @@ render thread. Collapse criteria:
 A pending promise must never fire a callback into a destroyed node. You don't wire this by hand:
 the `auto-abandon-promises` BSC plugin injects `abandonApiPromises()` into your component's
 `onDestroy()` at build time (and **errors** if a `fetchAsync`-calling component has no
-`onDestroy`). Base `JRScreen.bs` / `JRGroup.bs` carry it as a floor. Just write your normal
-`onDestroy()`; abandon is added for you. See [`async.md`](../architecture/async.md#cancellation--auto-abandon)
-for the mechanism.
+`onDestroy`). Just write your normal `onDestroy()`; abandon is added for you. (Test-only branch
+note: the JR-specific base-class floor is removed here, per the fix under test against issue #689.)
+See [`async.md`](../architecture/async.md#cancellation--auto-abandon) for the mechanism.
 
 ## Patterns to avoid
 
