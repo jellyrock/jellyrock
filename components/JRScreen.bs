@@ -1,4 +1,3 @@
-import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -31,13 +30,6 @@ end sub
 ' Function called when the screen is being permanently removed by SceneManager
 ' Override this to clean up resources: task nodes, observers, large data structures
 ' Parent components are responsible for calling onDestroy() on children that need it
-'
-' Floor for screens that DON'T override onDestroy(): abandon any pending
-' fetchAsync promises so a late pool response can't fire into the destroyed
-' node. Screens that override onDestroy() get this via the auto-abandon-promises
-' BSC plugin (it injects abandonApiPromises() into their own onDestroy) — SG
-' component onDestroy does not chain to this base.
 sub onDestroy()
-  abandonApiPromises()
 end sub
 
