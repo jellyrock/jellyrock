@@ -81,7 +81,7 @@ The base implementations are minimal:
 
 - `onScreenShown()` restores focus from `lastFocus` (or sets focus on the view itself)
 - `onScreenHidden()` is a no-op
-- `onDestroy()` calls `abandonApiPromises()` so a late pool response can't fire into a destroyed node (this is the floor for screens that *don't* override `onDestroy`; screens that do get `abandonApiPromises()` injected by the `auto-abandon-promises` BSC plugin — `SG-component` `onDestroy` does not chain to this base, so each override must carry its own cleanup)
+- `onDestroy()` is a no-op (ADR 0021 removed the base-class `abandonApiPromises()` floor that lived here — it had zero live consumers). A screen that calls `fetchAsync` directly gets `abandonApiPromises()` injected into its own `onDestroy()` by the `auto-abandon-promises` BSC plugin, which also errors at build time if such a screen has no `onDestroy()` to inject into — `SG-component` `onDestroy` does not chain to a base, so each override must carry its own cleanup
 
 `JRScreen.bs:init()` also initializes the `roku-log` log manager (debug builds: level 5; prod: level 2), so every `JRScreen`-derived component has logging available without each one having to call `initializeLogManager`.
 
