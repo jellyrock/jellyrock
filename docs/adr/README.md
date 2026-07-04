@@ -24,10 +24,12 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0010](0010-server-upgrade-phase5-maturation.md) | Server-upgrade Phase 5 — coverage-symmetry check and graduation semantics | Accepted | 2026-05-30 |
 | [0011](0011-server-upgrade-phase6.md) | Server-upgrade Phase 6 — per-version release-triage digest and endpoint-availability registry | Accepted | 2026-05-30 |
 | [0012](0012-promise-native-interface-fetchres-exception.md) | Promise-native async interface over the existing task pool (Option A), retaining blocking `fetchRes` | Accepted | 2026-06-05 |
-| [0013](0013-auto-abandon-promises-bsc-plugin.md) | Auto-abandon promises via a build-time BSC plugin | Accepted | 2026-06-05 |
+| [0013](0013-auto-abandon-promises-bsc-plugin.md) | Auto-abandon promises via a build-time BSC plugin | Superseded by 0021 | 2026-06-05 |
 | [0014](0014-non-pool-http-stays-task-blocking.md) | Non-pool HTTP consumers stay blocking Tasks; no generic `roUrlTransfer`-to-promise wrapper | Accepted | 2026-06-06 |
 | [0015](0015-server-upgrade-anchor-vs-resolved-decoupling.md) | Decouple the server-upgrade diff anchor from the review cursor | Accepted | 2026-06-07 |
 | [0016](0016-global-signin-language.md) | Separate device-wide sign-in language setting, pre-login only | Accepted | 2026-06-07 |
 | [0017](0017-rta-functional-tests-vitest.md) | RTA functional tests in Node/Vitest, not Rooibos | Accepted | 2026-06-08 |
 | [0018](0018-deep-link-cast-contract.md) | Deep-link / cast contract + validate-before-navigate resolution | Accepted | 2026-06-20 |
 | [0019](0019-jrscreen-lifecycle-bridge.md) | Keep the `JRScreen` lifecycle bridge, not raw `sgRouter` View overrides | Accepted | 2026-06-23 |
+| [0020](0020-router-settle-primitive.md) | Replace an active player off `navigateTo`'s promise, not a `routerState` settle observer | Accepted | 2026-06-23 |
+| [0021](0021-remove-jrgroup-promise-abandon-floor.md) | Remove the `JRGroup`/`JRScreen` promise-abandon floor | Accepted | 2026-07-04 |

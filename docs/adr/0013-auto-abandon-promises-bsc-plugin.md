@@ -1,8 +1,15 @@
 # ADR 0013: Auto-abandon promises via a build-time BSC plugin
 
-**Status:** Accepted
+**Status:** Superseded by ADR 0021
 **Date:** 2026-06-05
 **Related:** ADR 0012 — `promise-native-interface-fetchres-exception` (implements its cancellation half)
+
+> **Superseded 2026-07-04**: the base-class floor in `JRScreen.bs`/`JRGroup.bs`
+> described below (the "readable floor... covers the rare non-overriding
+> components") was found to have zero live consumers and was removed — see
+> [ADR 0021](0021-remove-jrgroup-promise-abandon-floor.md). The plugin
+> mechanism itself (injection + build-time enforcement for direct `fetchAsync`
+> callers) is unaffected and remains in place.
 
 **related-files**: scripts/bsc-plugins/auto-abandon-promises.cjs, source/api/apiPromise.bs, components/JRScreen.bs, components/JRGroup.bs, bsconfig.json, bsconfig-prod.json, bsconfig-analysis.json
 

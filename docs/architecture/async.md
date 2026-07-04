@@ -4,10 +4,9 @@ related-files:
   - source/api/apiPromise.bs
   - source/api/apiPool.bs
   - components/JRScreen.bs
-  - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
-last-reviewed: 2026-06-06
+last-reviewed: 2026-07-04
 ---
 
 # Async & Promises
@@ -84,9 +83,14 @@ modeled on `roku-log.cjs`'s transpile-time injection:
 - Wired into `bsconfig` / `bsconfig-prod` / `bsconfig-analysis` (the app configs, same as
   `roku-log`; the test configs deliberately exclude transforming plugins).
 
-Base [`JRScreen.bs`](../../components/JRScreen.bs) and the minimal
-[`JRGroup.bs`](../../components/JRGroup.bs) carry `abandonApiPromises()` in their `onDestroy` as a
-readable floor for the rare components that *don't* override `onDestroy` (which inherit the base).
+~~Base `JRScreen.bs` and the minimal `JRGroup.bs` carry `abandonApiPromises()` in their `onDestroy`
+as a readable floor for the rare components that don't override `onDestroy`~~ — removed (ADR 0021).
+An audit found zero components relying on it: every real `fetchAsync` caller already defines its
+own `onDestroy` (plugin-injected or hand-written), and nothing reaches `fetchAsync` only through a
+shared helper. The floor's only effect in practice was pulling `promises.brs` into the inherited
+script scope of every `JRGroup`/`JRScreen` descendant — i.e. nearly every screen and panel —
+whether or not it used a promise. The plugin's own direct-call detection + build-time enforcement
+(above) is unaffected and remains the sole abandon-on-destroy guarantee.
 
 ## The two-model split (and when it ends)
 
