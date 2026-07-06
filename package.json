@@ -39,7 +39,7 @@
     "source-map": "0.7.6",
     "spellchecker-cli": "7.0.3",
     "undent": "1.0.1",
-    "vitest": "4.1.9",
+    "vitest": "4.1.10",
     "xml2js": "0.6.2"
   },
   "overrides": {
