@@ -14,10 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Restore navigation loading spinners lost in the `sgRouter` migration ([#696](https://github.com/jellyrock/jellyrock/pull/696))
 - Route navigation through `sgRouter`; add deep-link/cast contract ([#677](https://github.com/jellyrock/jellyrock/pull/677))
 
 ### Fixed
 
+- Fix missing community/critic ratings on `Episode` and other item types ([#702](https://github.com/jellyrock/jellyrock/pull/702))
 - (format) pin `brighterscript-formatter` to 1.7.27 (revert 1.7.28 indent regression) ([#684](https://github.com/jellyrock/jellyrock/pull/684))
 - (settings) point keyboard submit-key KDFs at the icon assets that exist ([#682](https://github.com/jellyrock/jellyrock/pull/682))
 
