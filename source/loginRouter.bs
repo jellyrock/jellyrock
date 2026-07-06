@@ -306,10 +306,12 @@ sub onUserSelected()
     return
   end if
 
-  ' Password required — go to manual sign-in with the username prefilled.
+  ' Password required — go to manual sign-in with the username prefilled. Keep the blocking spinner
+  ' up across the async nav and clear it when LoginScene mounts (clearSpinner=true). Stopping it
+  ' here first re-shows the UserSelect row for a frame before LoginScene mounts — the same #677
+  ' flash class as the login -> Home path.
   print "Auth failed. Password required"
-  stopLoadingSpinner()
-  routerNav("/login", { username: userSelected })
+  routerNav("/login", { username: userSelected }, true)
 end sub
 
 ' Back from UserSelect → change server. Mirrors LoginFlow 114-119.
@@ -406,7 +408,9 @@ sub finishLogin()
   loadHomeScreen()
 end sub
 
-' Thin main-thread → render-thread navigation bridge.
-sub routerNav(routePath as string, context as object)
-  m.scene.callFunc("routerNavigate", routePath, context)
+' Thin main-thread → render-thread navigation bridge. clearSpinner (login paths only) keeps a
+' blocking login spinner up across the async nav and clears it when the destination view mounts —
+' see JRScene.navigateThenFocus.
+sub routerNav(routePath as string, context as object, clearSpinner = false as boolean)
+  m.scene.callFunc("routerNavigate", routePath, context, clearSpinner)
 end sub

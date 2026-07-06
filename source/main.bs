@@ -376,8 +376,14 @@ sub createAndShowHomeGroup()
   ' deferred/cold-start play deep link (decision #3). Home self-loads its libraries in its own
   ' onViewOpen. (exit + activeRoutedView + the pre-login intent bridge are observed once during
   ' bootstrap, not here.)
+  ' The blocking login spinner (started on the outgoing pre-login view) is intentionally NOT
+  ' stopped here. replayAfterLogin() only KICKS OFF the async router nav to Home (sgRouter resolves
+  ' at NavigationEnd), so the outgoing UserSelect/LoginScene is still the active routed view at this
+  ' point — stopping the spinner now resets isRemoteDisabled and re-shows that view for a frame
+  ' before Home mounts (the #677 login flash). The spinner is cleared when the Home nav settles
+  ' (replayRoutedDeepLink -> navigateChainStep clearLoginSpinnerOnEnd). The deep-link branch owns
+  ' its own spinner via resolveDeepLink/onDeepLinkResolved.
   replayAfterLogin()
-  stopLoadingSpinner()
 
   ' update lastRunVersion but only on prod
   if not m.global.app.isDev
