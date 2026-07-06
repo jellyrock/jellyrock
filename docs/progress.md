@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-27
+last-updated: 2026-07-06
 ---
 
 # Progress
@@ -22,12 +22,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Investigating issue #573 (surround audio fails to play; the server emits a bad ffmpeg audio argument). Reworked PR #574 so the playback audio logic prefers the user's chosen surround format setting instead of falling back to stereo — fixing the crash and keeping surround output intact. Verified against a live Jellyfin 10.11 server and on Roku hardware (50 of 50 audio specs); next is the PR description update and asking the reporter to retest.
-
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-07-06 — Investigating issue #573 (surround audio fails to play; the server emits a bad ffmpeg audio argument). Reworked PR #574 so the playback audio logic prefers the user's chosen surround format setting instead of falling back to stereo — fixing the crash and keeping surround output intact. Verified against a live Jellyfin 10.11 server and on Roku hardware (50 of 50 audio specs); next is the PR description update and asking the reporter to retest.
 - 2026-06-23 — chore(lint): make `markdownlint` respect `.gitignore`
 - 2026-06-21 — RTA `screens.spec` `playlistsLibrary`/`episodeDetails`/`playlistDetails`/`libraryOptions` time out loading ("nav timed out waiting for grid options dialog"). PROVEN pre-existing on `feature/550-sgrouter-navigation` (identical 4-fail/26-pass baseline with the deep-link work stashed) — not a deep-link regression; investigate as fallout from the `sgRouter` migration's screen navigation.
 - 2026-06-11 — perf(screenshots): lossless WebP + prune non-store languages
