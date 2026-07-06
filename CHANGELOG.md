@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update markdownlint-cli2 from v0.22.1 to v0.23.0 ([#693](https://github.com/jellyrock/jellyrock/pull/693))
 - Update js-yaml from v4.2.0 to v5.2.1 ([#681](https://github.com/jellyrock/jellyrock/pull/681), [#672](https://github.com/jellyrock/jellyrock/pull/672), [#694](https://github.com/jellyrock/jellyrock/pull/694))
 - Update sharp from v0.34.5 to v0.35.3 ([#657](https://github.com/jellyrock/jellyrock/pull/657), [#665](https://github.com/jellyrock/jellyrock/pull/665), [#692](https://github.com/jellyrock/jellyrock/pull/692))
 - Update sgRouter to v0.1.4 ([#690](https://github.com/jellyrock/jellyrock/pull/690))
