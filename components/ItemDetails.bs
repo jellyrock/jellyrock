@@ -1292,6 +1292,27 @@ sub displayDirectorGenreNode(node as object)
   m.directorGenreGroup.appendChild(node)
 end sub
 
+' displayRatingNodes: Community + critic rating chips shared across every rateable item type's
+' Row 1. Both are gated behind uiMoviesShowRatings and only render when the value is present
+' (> 0), so it's safe to call for any type — types without a rating from the server simply
+' show nothing. Values are passed explicitly (rather than reading item.* directly) so callers
+' that need a parent-series fallback (Season) can resolve the value first.
+sub displayRatingNodes(userSettings as object, communityRating as float, criticRating as float)
+  if userSettings.uiMoviesShowRatings and communityRating > 0
+    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
+    communityRatingNode.id = "communityRating"
+    communityRatingNode.rating = communityRating
+    displayInfoNode(communityRatingNode)
+  end if
+
+  if userSettings.uiMoviesShowRatings and criticRating > 0
+    criticRatingNode = CreateObject("roSGNode", "CriticRating")
+    criticRatingNode.id = "criticRating"
+    criticRatingNode.rating = criticRating
+    displayInfoNode(criticRatingNode)
+  end if
+end sub
+
 ' populateDescriptionGroup: Set FocusableOverview text with tagline and overview
 sub populateDescriptionGroup()
   item = m.top.itemContent
@@ -1517,19 +1538,7 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
     displayInfoNode(ratingNode)
   end if
 
-  if userSettings.uiMoviesShowRatings and item.communityRating > 0
-    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
-    communityRatingNode.id = "communityRating"
-    communityRatingNode.rating = item.communityRating
-    displayInfoNode(communityRatingNode)
-  end if
-
-  if userSettings.uiMoviesShowRatings and item.criticRating > 0
-    criticRatingNode = CreateObject("roSGNode", "CriticRating")
-    criticRatingNode.id = "criticRating"
-    criticRatingNode.rating = item.criticRating
-    displayInfoNode(criticRatingNode)
-  end if
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
@@ -1565,7 +1574,7 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupMusicVideo: Info rows for MusicVideo
-' Row 1: Year · Official Rating · Runtime · Ends At
+' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
 ' Row 2: Genres · Artist(s)
 sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   if item.productionYear > 0
@@ -1579,6 +1588,8 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
     ratingNode.text = item.officialRating
     displayInfoNode(ratingNode)
   end if
+
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
@@ -1618,7 +1629,7 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupEpisode: Info rows for Episode
-' Row 1: Air Date · Official Rating · Runtime · Ends At
+' Row 1: Air Date · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
 ' Row 2: Series name + "S{n}E{n}"
 sub populateInfoGroupEpisode(item as object, userSettings as object)
   if isValidAndNotEmpty(item.premiereDate)
@@ -1634,6 +1645,8 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
     ratingNode.text = item.officialRating
     displayInfoNode(ratingNode)
   end if
+
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
@@ -1674,7 +1687,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupSeries: Info rows for Series
-' Row 1: Year Range · Official Rating · Community Rating · Runtime · Ends At (only when avg episode runtime is available)
+' Row 1: Year Range · Official Rating · Community Rating · Critic Rating · Runtime · Ends At (only when avg episode runtime is available)
 ' Row 2: Genres · Air schedule/Status
 sub populateInfoGroupSeries(item as object, userSettings as object)
   ' Year range: "{productionYear} - {endYear}" or "{productionYear} - Present"
@@ -1699,12 +1712,7 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
     displayInfoNode(ratingNode)
   end if
 
-  if userSettings.uiMoviesShowRatings and item.communityRating > 0
-    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
-    communityRatingNode.id = "communityRating"
-    communityRatingNode.rating = item.communityRating
-    displayInfoNode(communityRatingNode)
-  end if
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
 
   ' Average episode runtime (Jellyfin stores avg episode length in runTimeTicks for Series)
   if item.runTimeTicks > 0
@@ -1735,7 +1743,7 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupBoxSet: Info rows for BoxSet (movie collection)
-' Row 1: Year · Official Rating · Community Rating · N Movies
+' Row 1: Year · Official Rating · Community Rating · Critic Rating · N Movies
 ' Row 2: Genres · Studio
 sub populateInfoGroupBoxSet(item as object, userSettings as object)
   if item.productionYear > 0
@@ -1750,12 +1758,7 @@ sub populateInfoGroupBoxSet(item as object, userSettings as object)
     displayInfoNode(ratingNode)
   end if
 
-  if userSettings.uiMoviesShowRatings and item.communityRating > 0
-    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
-    communityRatingNode.id = "communityRating"
-    communityRatingNode.rating = item.communityRating
-    displayInfoNode(communityRatingNode)
-  end if
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
 
   if item.childCount > 0
     movieCountNode = createInfoLabel("movieCount")
@@ -1777,7 +1780,7 @@ sub populateInfoGroupBoxSet(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupSeason: Info rows for Season
-' Row 1: Year · Official Rating (series) · Avg episode runtime (series) · Ends At
+' Row 1: Year · Official Rating (series) · Community Rating (series) · Critic Rating (series) · Avg episode runtime (series) · Ends At
 ' Row 2: Series name · Episode count · Studio
 sub populateInfoGroupSeason(item as object, userSettings as object)
   if item.productionYear > 0
@@ -1799,6 +1802,17 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
     ratingNode.text = officialRating
     displayInfoNode(ratingNode)
   end if
+
+  ' Community/critic ratings also live on the Series, not the Season — same fallback as above
+  communityRating = item.communityRating
+  if communityRating <= 0 and isValid(seriesData)
+    communityRating = seriesData.communityRating
+  end if
+  criticRating = item.criticRating
+  if criticRating <= 0 and isValid(seriesData)
+    criticRating = seriesData.criticRating
+  end if
+  displayRatingNodes(userSettings, communityRating, criticRating)
 
   if isValid(seriesData) and seriesData.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")
@@ -2095,7 +2109,7 @@ end sub
 
 ' populateInfoGroupTvChannel: Info rows for TvChannel (Live TV)
 ' Displays metadata from the current program (the channel is a vessel for what's airing).
-' Row 1: CH N · OfficialRating · CommunityRating · S#E# · Program Name · Runtime · BroadcastTime · Ends At
+' Row 1: CH N · OfficialRating · CommunityRating · CriticRating · S#E# · Program Name · Runtime · BroadcastTime · Ends At
 ' Row 2: Genres (or category flags)
 sub populateInfoGroupTvChannel(item as object, userSettings as object)
   if isValidAndNotEmpty(item.channelNumber)
@@ -2113,12 +2127,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
       displayInfoNode(ratingNode)
     end if
 
-    if userSettings.uiMoviesShowRatings and prog.communityRating > 0
-      communityRatingNode = CreateObject("roSGNode", "CommunityRating")
-      communityRatingNode.id = "communityRating"
-      communityRatingNode.rating = prog.communityRating
-      displayInfoNode(communityRatingNode)
-    end if
+    displayRatingNodes(userSettings, prog.communityRating, prog.criticRating)
 
     if prog.parentIndexNumber > 0 and prog.indexNumber > 0
       episodeNode = createInfoLabel("episodeInfo")
@@ -2184,7 +2193,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupProgram: Info rows for Program (Live TV EPG entry)
-' Row 1: Year · CH X - ChanName · OfficialRating · CommunityRating · S#E# · Premiere/Repeat · Runtime · BroadcastTime · Ends At
+' Row 1: Year · CH X - ChanName · OfficialRating · CommunityRating · CriticRating · S#E# · Premiere/Repeat · Runtime · BroadcastTime · Ends At
 ' Row 2: Genres (or category flags)
 sub populateInfoGroupProgram(item as object, userSettings as object)
   if item.productionYear > 0
@@ -2209,12 +2218,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     displayInfoNode(ratingNode)
   end if
 
-  if userSettings.uiMoviesShowRatings and item.communityRating > 0
-    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
-    communityRatingNode.id = "communityRating"
-    communityRatingNode.rating = item.communityRating
-    displayInfoNode(communityRatingNode)
-  end if
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
 
   if item.parentIndexNumber > 0 and item.indexNumber > 0
     episodeNode = createInfoLabel("episodeInfo")
@@ -2294,7 +2298,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupRecording: Info rows for Recording (Live TV recorded content)
-' Row 1: PremiereYear · OfficialRating · CommunityRating · S#E# · Runtime · Ends At · CH X - ChanName · Recorded: Date
+' Row 1: PremiereYear · OfficialRating · CommunityRating · CriticRating · S#E# · Runtime · Ends At · CH X - ChanName · Recorded: Date
 ' Row 2: Genres
 sub populateInfoGroupRecording(item as object, userSettings as object)
   ' Premiere year: prefer PremiereDate year, fall back to ProductionYear (which is recording year)
@@ -2319,12 +2323,7 @@ sub populateInfoGroupRecording(item as object, userSettings as object)
     displayInfoNode(ratingNode)
   end if
 
-  if userSettings.uiMoviesShowRatings and item.communityRating > 0
-    communityRatingNode = CreateObject("roSGNode", "CommunityRating")
-    communityRatingNode.id = "communityRating"
-    communityRatingNode.rating = item.communityRating
-    displayInfoNode(communityRatingNode)
-  end if
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
 
   if item.parentIndexNumber > 0 and item.indexNumber > 0
     episodeNode = createInfoLabel("episodeInfo")

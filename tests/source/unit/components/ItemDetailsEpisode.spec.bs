@@ -1,0 +1,101 @@
+namespace tests
+
+  ' Tests for Episode support in ItemDetails: populateInfoGroupEpisode(), specifically the
+  ' community/critic rating rows added by the shared displayRatingNodes() helper (#695 —
+  ' Episode previously showed officialRating only, unlike Movie/Series/BoxSet).
+  @suite("ItemDetails - Episode support")
+  class ItemDetailsEpisodeTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    ' Returns a JellyfinBaseItem node pre-populated as an Episode.
+    ' Callers may override individual fields after calling this.
+    private function makeEpisode() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "episode-001"
+      item.type = "Episode"
+      item.name = "Winter Is Coming"
+      item.seriesName = "Game of Thrones"
+      item.parentIndexNumber = 1
+      item.indexNumber = 1
+      item.officialRating = "TV-MA"
+      item.communityRating = 9.1
+      item.criticRating = 88.0
+      return item
+    end function
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.global.user.settings.uiMoviesShowRatings = true
+    end sub
+
+    protected override sub teardown()
+      super.teardown()
+      m.itemDetails = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("populateInfoGroupEpisode() — community and critic rating")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("populates community rating node when communityRating > 0 and setting is enabled")
+    function _()
+      item = m.makeEpisode()
+      m.itemDetails.itemContent = item
+
+      communityRatingNode = m.itemDetails.findNode("communityRating")
+      m.assertNotInvalid(communityRatingNode)
+      m.assertEqual(communityRatingNode.rating, 9.1)
+    end function
+
+    @it("populates critic rating node when criticRating > 0 and setting is enabled")
+    function _()
+      item = m.makeEpisode()
+      m.itemDetails.itemContent = item
+
+      criticRatingNode = m.itemDetails.findNode("criticRating")
+      m.assertNotInvalid(criticRatingNode)
+      m.assertEqual(criticRatingNode.rating, 88.0)
+    end function
+
+    @it("omits community and critic rating nodes when both values are 0")
+    function _()
+      item = m.makeEpisode()
+      item.communityRating = 0.0
+      item.criticRating = 0.0
+      m.itemDetails.itemContent = item
+
+      m.assertInvalid(m.itemDetails.findNode("communityRating"))
+      m.assertInvalid(m.itemDetails.findNode("criticRating"))
+    end function
+
+    @it("omits community and critic rating nodes when uiMoviesShowRatings is disabled")
+    function _()
+      m.global.user.settings.uiMoviesShowRatings = false
+      item = m.makeEpisode()
+      m.itemDetails.itemContent = item
+
+      m.assertInvalid(m.itemDetails.findNode("communityRating"))
+      m.assertInvalid(m.itemDetails.findNode("criticRating"))
+    end function
+
+    @it("still populates official rating node alongside community/critic rating")
+    function _()
+      item = m.makeEpisode()
+      m.itemDetails.itemContent = item
+
+      ratingNode = m.itemDetails.findNode("officialRating")
+      m.assertNotInvalid(ratingNode)
+      m.assertEqual(ratingNode.text, "TV-MA")
+    end function
+
+  end class
+
+end namespace
