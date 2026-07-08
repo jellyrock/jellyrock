@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update roku-deploy from v3.17.6 to v3.17.7 ([#703](https://github.com/jellyrock/jellyrock/pull/703))
 - Update vitest from v4.1.8 to v4.1.10 ([#700](https://github.com/jellyrock/jellyrock/pull/700))
 - Update awalsh128/cache-apt-pkgs-action action to v1.6.3 ([#699](https://github.com/jellyrock/jellyrock/pull/699))
 - Update actions/setup-java action to v5.4.0 ([#701](https://github.com/jellyrock/jellyrock/pull/701))
