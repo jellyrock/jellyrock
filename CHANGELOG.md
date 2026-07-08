@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update vitest from v4.1.8 to v4.1.10 ([#700](https://github.com/jellyrock/jellyrock/pull/700))
+- Update awalsh128/cache-apt-pkgs-action action to v1.6.3 ([#699](https://github.com/jellyrock/jellyrock/pull/699))
 - Update actions/setup-java action to v5.4.0 ([#701](https://github.com/jellyrock/jellyrock/pull/701))
 - Update markdownlint-cli2 from v0.22.1 to v0.23.0 ([#693](https://github.com/jellyrock/jellyrock/pull/693))
 - Update js-yaml from v4.2.0 to v5.2.1 ([#681](https://github.com/jellyrock/jellyrock/pull/681), [#672](https://github.com/jellyrock/jellyrock/pull/672), [#694](https://github.com/jellyrock/jellyrock/pull/694))
