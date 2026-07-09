@@ -1,0 +1,43 @@
+' Transport-agnostic protocol constants + pure helpers for the remote-control receiver
+' (#666): the http-gate, the session-socket URL builder, reconnect backoff, and the
+' client KeepAlive frame. No socket, no node, no m.global — fully unit-testable.
+namespace remoteProtocol
+
+  ' The http-gate. JellyRock can only open a ws:// socket to an http:// server — Roku can't
+  ' do wss:// (no socket TLS), so an https:// session stays uncontrolled until the #667
+  ' plugin long-poll path. Both the advertised capability (deviceCapabilities) and the
+  ' receiver gate on this, so the two never disagree.
+  function isHttpServer(serverUrl as dynamic) as boolean
+    if not isValidAndNotEmpty(serverUrl) then return false
+    return LCase(Left(serverUrl, 7)) = "http://"
+  end function
+
+  ' Build the Jellyfin session-socket URL from the server URL + session credentials.
+  ' Returns "" when the server isn't http:// (never downgrades an https:// token onto ws://)
+  ' or when a credential is missing. The deviceId MUST match the DeviceId in baseRequest's
+  ' auth header so the socket binds the SAME session the REST API uses.
+  '   http://host:port  ->  ws://host:port/socket?api_key=<token>&deviceId=<id>
+  function buildSocketUrl(serverUrl as dynamic, authToken as dynamic, deviceId as dynamic) as string
+    if not isHttpServer(serverUrl) then return ""
+    if not isValidAndNotEmpty(authToken) or not isValidAndNotEmpty(deviceId) then return ""
+    hostPort = Mid(serverUrl, 8) ' strip the leading "http://"
+    return "ws://" + hostPort + "/socket?api_key=" + authToken + "&deviceId=" + deviceId
+  end function
+
+  ' Exponential reconnect backoff, 0-based attempt: 1s, 2s, 4s, 8s, 16s, then capped at 30s.
+  function nextBackoffMs(attempt as integer) as integer
+    ms = 1000
+    for i = 1 to attempt
+      ms = ms * 2
+      if ms >= 30000 then return 30000
+    end for
+    return ms
+  end function
+
+  ' The client->server KeepAlive frame. Jellyfin's ForceKeepAlive asks the client to send
+  ' these on the requested interval so the session isn't reaped by the inactivity timeout.
+  function keepAliveFrame() as string
+    return FormatJson({ MessageType: "KeepAlive" })
+  end function
+
+end namespace

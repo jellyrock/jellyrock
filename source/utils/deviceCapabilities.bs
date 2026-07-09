@@ -46,6 +46,8 @@ function getDeviceCapabilities() as object
   ' Advertise media control only on http:// servers, where we open the ws:// session
   ' socket (#666). Roku can't wss://, so an https:// session stays uncontrolled until the
   ' plugin long-poll path (#667) — don't advertise control we can't deliver.
+  ' http-gate — mirrors remoteProtocol.isHttpServer (kept inline to avoid pulling the
+  ' remotecontrol namespace into every component scope that reads capabilities).
   supportsMediaControl = false
   globalServer = m.global.server
   if isValid(globalServer) and isValidAndNotEmpty(globalServer.serverUrl)
