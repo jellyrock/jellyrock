@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Remote-control receiver (#666) — VALIDATION SPIKE.
+  Opens the Jellyfin session WebSocket over ws:// and logs inbound frames, to confirm
+  JellyRock registers as a controllable cast target and that Play/Playstate commands
+  actually arrive. Not the final shape: no parse/dispatch/reconnect/keepalive yet —
+  those follow the socket build-vs-buy gate. Paired script auto-imports (same basename).
+-->
+<component name="RemoteControlTask" extends="Task">
+  <interface />
+</component>

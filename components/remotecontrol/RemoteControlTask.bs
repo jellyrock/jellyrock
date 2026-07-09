@@ -1,0 +1,74 @@
+' bsc-disable-file print-locations
+import "pkg:/source/utils/misc.bs"
+
+' Remote-control receiver (#666) — VALIDATION SPIKE (see RemoteControlTask.xml).
+'
+' Goal: prove the Jellyfin cast integration end-to-end before building the real
+' receiver. Opens the session WebSocket and prints every inbound frame so we can
+' confirm on-device that (1) JellyRock shows as a cast target and (2) Play/Playstate
+' frames actually arrive.
+'
+' Uses print (not m.log) ON PURPOSE: roku-log output isn't reaching the 8085 debug
+' console in this build, and the spike needs guaranteed-visible markers ("JRRC>").
+' The real receiver will use m.log. Deliberately minimal — no parse/dispatch/reconnect.
+sub init()
+  m.top.functionName = "runReceiver"
+end sub
+
+sub runReceiver()
+  globalServer = m.global.server
+  if not isValid(globalServer) or not isValidAndNotEmpty(globalServer.serverUrl)
+    print "JRRC> disabled: no server"
+    return
+  end if
+  serverUrl = globalServer.serverUrl
+
+  ' ws:// only — never downgrade an https:// session (Roku can't wss://; that's #667).
+  if LCase(Left(serverUrl, 7)) <> "http://"
+    print "JRRC> disabled: server not http:// -> "; serverUrl
+    return
+  end if
+
+  ' Same token + deviceId the REST auth header uses (baseRequest.buildAuthHeader →
+  ' DeviceId = serverDeviceName), so the socket binds the SAME Jellyfin session.
+  token = m.global.user.authToken
+  deviceId = m.global.device.serverDeviceName
+  if not isValidAndNotEmpty(token)
+    print "JRRC> disabled: no auth token"
+    return
+  end if
+
+  ' http://host:port  ->  ws://host:port/socket?api_key=<token>&deviceId=<id>
+  socketUrl = "ws://" + Mid(serverUrl, 8) + "/socket?api_key=" + token + "&deviceId=" + deviceId
+  ' NOTE: socketUrl carries the auth token — print only the path, never the full url.
+
+  m.port = CreateObject("roMessagePort")
+  m.ws = CreateObject("roSGNode", "WebSocketClient")
+  m.ws.observeField("on_open", m.port)
+  m.ws.observeField("on_message", m.port)
+  m.ws.observeField("on_close", m.port)
+  m.ws.observeField("on_error", m.port)
+  print "JRRC> opening session socket ws://"; Mid(serverUrl, 8); "/socket"
+  m.ws.open = socketUrl
+
+  while true
+    msg = wait(0, m.port)
+    if type(msg) = "roSGNodeEvent"
+      field = msg.getField()
+      data = msg.getData()
+      if field = "on_open"
+        print "JRRC> socket OPEN"
+      else if field = "on_message"
+        if isValid(data) and isValid(data.message)
+          print "JRRC> FRAME "; data.message
+        else
+          print "JRRC> FRAME (empty)"
+        end if
+      else if field = "on_close"
+        print "JRRC> socket CLOSED "; data
+      else if field = "on_error"
+        print "JRRC> socket ERROR"
+      end if
+    end if
+  end while
+end sub

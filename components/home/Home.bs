@@ -220,6 +220,10 @@ sub onScreenShown()
     m.isFirstRun = false
     loadLibraries()
     SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
+    ' #666 validation spike: start the ws:// remote-control receiver post-login.
+    ' (Spike lifetime is tied to Home's m; the real receiver moves to m.global.)
+    m.remoteControlTask = CreateObject("roSGNode", "RemoteControlTask")
+    m.remoteControlTask.control = "RUN"
   else
     ' Subsequent visits: refresh the active tab's data in place
     refresh()

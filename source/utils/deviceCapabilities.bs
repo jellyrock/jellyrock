@@ -43,15 +43,24 @@ end function
 ' Returns the Device Capabilities for Roku.
 ' Also prints out the device profile for debugging
 function getDeviceCapabilities() as object
+  ' Advertise media control only on http:// servers, where we open the ws:// session
+  ' socket (#666). Roku can't wss://, so an https:// session stays uncontrolled until the
+  ' plugin long-poll path (#667) — don't advertise control we can't deliver.
+  supportsMediaControl = false
+  globalServer = m.global.server
+  if isValid(globalServer) and isValidAndNotEmpty(globalServer.serverUrl)
+    supportsMediaControl = LCase(Left(globalServer.serverUrl, 7)) = "http://"
+  end if
+
   deviceProfile = {
     "PlayableMediaTypes": [
       "Audio",
       "Video",
       "Photo"
     ],
-    "SupportedCommands": [],
+    "SupportedCommands": getSupportedRemoteCommands(),
     "SupportsPersistentIdentifier": true,
-    "SupportsMediaControl": false,
+    "SupportsMediaControl": supportsMediaControl,
     "SupportsContentUploading": false,
     "SupportsSync": false,
     "DeviceProfile": getDeviceProfile(),
@@ -59,6 +68,18 @@ function getDeviceCapabilities() as object
   }
 
   return deviceProfile
+end function
+
+' GeneralCommand-type actions JellyRock can enact (#666). This capability is a
+' GeneralCommandType[] and Jellyfin deserializes it STRICTLY — any value outside the
+' GeneralCommandType enum 400s the whole /Sessions/Capabilities/Full POST. So it must
+' NOT contain PlaystateCommands (Pause/Stop/Seek/NextTrack/…) or PlayCommands — those
+' transport verbs are governed by SupportsMediaControl:true, not advertised here.
+' Volume/mute GeneralCommandTypes are omitted — Roku exposes no volume API.
+function getSupportedRemoteCommands() as object
+  return [
+    "DisplayContent"
+  ]
 end function
 
 function getDeviceProfile() as object
