@@ -112,7 +112,7 @@ which the receiver sends a `KeepAlive` so the session isn't reaped.
 | `GeneralCommand{DisplayContent}` | `navigate` | springboard the item (action `open`) via the same deep-link seam |
 | `GeneralCommand{GoHome/GoToSearch/GoToSettings}` | `route` | `routerNavigate(<path>)` (`/`, `/search`, `/settings`); `/`'s `clearStackOnResolve` makes Home the back-stack root |
 | `GeneralCommand{Back}` | `goback` | `routerGoBack` (`sgRouter.goBack`; no-op at root, so it never exits the app) |
-| `GeneralCommand{DisplayMessage}` | `message` | `displayToast(Text ?? Header)` on the TV |
+| `GeneralCommand{DisplayMessage}` | `message` | `TimeoutMs` present → **toast** (`Header` + `Text`); absent → **dialog** (persistent, dismiss with OK) |
 | `Playstate{Pause/Unpause/Stop/NextTrack/PreviousTrack/Seek/Rewind/FastForward/PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
 | `ForceKeepAlive` | `keepalive` | receiver answers with `KeepAlive` on the interval (never reaches the main thread) |
 | `GeneralCommand{volume/directional/SendKey/…}` / `KeepAlive` / `Sessions` / `RefreshProgress` / `UserDataChanged` / unknown | `ignore` | dropped — never an error, so a hostile/future/unrecognized frame can't break the receiver |
@@ -124,6 +124,18 @@ Note on seek: jellyfin web sends an absolute `Seek` from its **±N s jump button
 `seekto`, verified on device — the video jumps), but it sends **nothing** when the progress bar is
 dragged/scrubbed on a remote session. So "scrub-to-seek from the web" is a no-op — a jellyfin web
 behavior, not a JellyRock gap.
+
+Note on `DisplayMessage`: the payload has no priority field, so `TimeoutMs` is the sender's intent
+signal — **present** means "show briefly then dismiss" (a **toast**: `Header` — `Text`), **absent**
+means "leave this up until acknowledged" (a **dialog** the user dismisses with OK). The dialog uses a
+JR-supplied provenance title (`LabelCastMessage` = "Message from another device") with the sender's
+`Header` + `Text` as the body, so a bare message reads as an incoming cast message rather than a JR
+system prompt. `DisplayMessage` is **not** admin-only — the command endpoints require only
+`DefaultAuthorization` (any authenticated user with remote-control permission), so the sender could be
+you, a household member, or an admin; the static title avoids asserting otherwise. Resolving the
+actual sender name (`ControllingUserId` → username) is a followup. This is a trusted-LAN, authenticated
+sender, so a dialog interrupting the screen (e.g. "dinner's ready" from another household member) is
+acceptable; a user opt-out setting is deferred until there's evidence it's wanted.
 
 ## Scope (#666) and deferred work
 

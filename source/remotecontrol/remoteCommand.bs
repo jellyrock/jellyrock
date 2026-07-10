@@ -14,7 +14,7 @@ namespace remoteCommand
   '   navigate  -> itemId, itemType                (GeneralCommand DisplayContent -> item springboard)
   '   route     -> route                           (GeneralCommand GoHome / GoToSearch / GoToSettings)
   '   goback    -> (none)                          (GeneralCommand Back)
-  '   message   -> message                         (GeneralCommand DisplayMessage -> a toast)
+  '   message   -> header, text, hasTimeout        (GeneralCommand DisplayMessage; timeout -> toast, else dialog)
   '   keepalive -> intervalSeconds
   '   ignore    -> KeepAlive / Sessions / volume / directional / unknown — parsed but not enacted
   function parseMessage(envelope as object) as object
@@ -83,10 +83,21 @@ namespace remoteCommand
       return result
     end if
 
-    ' DisplayMessage -> a toast. Arguments (MessageCommand) carry { Header, Text, TimeoutMs }.
+    ' DisplayMessage -> a notification. Arguments (MessageCommand) carry { Header, Text, TimeoutMs }
+    ' (all as strings — GeneralCommand.Arguments is a string map). TimeoutMs is the sender's intent
+    ' signal: present = transient (dispatch shows a toast), absent = persistent (a dialog). Header is
+    ' the title, Text the body.
     if name = "DisplayMessage"
+      args = data.Arguments
       result.kind = "message"
-      result.message = displayMessageText(data.Arguments)
+      result.header = ""
+      result.text = ""
+      result.hasTimeout = false
+      if isValid(args)
+        if isValidAndNotEmpty(args.Header) then result.header = args.Header
+        if isValidAndNotEmpty(args.Text) then result.text = args.Text
+        result.hasTimeout = isValidAndNotEmpty(args.TimeoutMs)
+      end if
       return result
     end if
 
@@ -112,14 +123,6 @@ namespace remoteCommand
     result.kind = "route"
     result.route = route
     return result
-  end function
-
-  ' DisplayMessage text: prefer Text, fall back to the Header; "" when neither is present.
-  function displayMessageText(args as object) as string
-    if not isValid(args) then return ""
-    if isValidAndNotEmpty(args.Text) then return args.Text
-    if isValidAndNotEmpty(args.Header) then return args.Header
-    return ""
   end function
 
   ' --- pure mappings ---

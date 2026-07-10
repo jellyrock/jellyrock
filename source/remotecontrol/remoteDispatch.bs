@@ -26,7 +26,7 @@ namespace remoteDispatch
     else if command.kind = "goback"
       dispatchGoBack()
     else if command.kind = "message"
-      dispatchMessage(command.message)
+      dispatchMessage(command)
     end if
   end sub
 
@@ -46,9 +46,32 @@ namespace remoteDispatch
     m.scene.callFunc("routerGoBack")
   end sub
 
-  ' message (GeneralCommand DisplayMessage) -> surface the sender's text as a toast on the TV.
-  sub dispatchMessage(message as string)
-    if isValidAndNotEmpty(message) then displayToast(message, "info")
+  ' message (GeneralCommand DisplayMessage) -> surface the sender's notification. TimeoutMs is the
+  ' sender's intent: present -> transient (a toast); absent -> persistent (a dialog the user
+  ' dismisses). Header is the title, Text the body — either may be empty. This is a trusted-LAN,
+  ' authenticated sender (see remote-control.md), so interrupting with a dialog is acceptable.
+  sub dispatchMessage(command as object)
+    header = command.header
+    text = command.text
+    if not isValidAndNotEmpty(header) and not isValidAndNotEmpty(text) then return
+
+    if command.hasTimeout
+      ' Transient -> toast. Our toast is single-line, so combine title + body.
+      line = text
+      if isValidAndNotEmpty(header)
+        if isValidAndNotEmpty(text) then line = header + " — " + text else line = header
+      end if
+      displayToast(line, "info")
+    else
+      ' Persistent -> a dialog the user must dismiss. JR supplies a provenance TITLE (LabelCastMessage)
+      ' so the message reads as an incoming cast message, not a JR system prompt — otherwise a bare
+      ' "<header>/<text>" has no context. The sender's Header + Text are the body lines. An unflagged
+      ' dialog is a no-op in main.bs's isDataReturned handler, so the sole OK button just closes it.
+      lines = []
+      if isValidAndNotEmpty(header) then lines.push(header)
+      if isValidAndNotEmpty(text) then lines.push(text)
+      m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelCastMessage), lines, [translate(translationKeys.ButtonOk)])
+    end if
   end sub
 
   ' play -> the deep-link play seam. #666 casts a SINGLE item (itemIds[startIndex]); the socket is

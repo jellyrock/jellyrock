@@ -119,14 +119,20 @@ namespace tests
       m.assertEqual(cmd.kind, "goback")
     end function
 
-    @it("maps DisplayMessage to a message command (Text preferred, Header fallback)")
+    @it("maps DisplayMessage to a message command with header / text / hasTimeout")
     function _()
+      ' No TimeoutMs -> persistent (hasTimeout false)
       cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayMessage", Arguments: { Header: "Hi", Text: "Hello TV" } } })
       m.assertEqual(cmd.kind, "message")
-      m.assertEqual(cmd.message, "Hello TV")
+      m.assertEqual(cmd.header, "Hi")
+      m.assertEqual(cmd.text, "Hello TV")
+      m.assertFalse(cmd.hasTimeout)
 
-      headerOnly = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayMessage", Arguments: { Header: "Just header" } } })
-      m.assertEqual(headerOnly.message, "Just header")
+      ' TimeoutMs present (arrives as a string) -> transient
+      transient = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayMessage", Arguments: { Text: "Quick note", TimeoutMs: "5000" } } })
+      m.assertTrue(transient.hasTimeout)
+      m.assertEqual(transient.text, "Quick note")
+      m.assertEqual(transient.header, "")
     end function
 
     @it("ignores volume / mute / directional / other GeneralCommands (not enactable on Roku today)")
