@@ -12,7 +12,7 @@ related-files:
   - source/utils/globals.bs
   - source/api/userAuth.bs
   - components/home/Home.bs
-last-reviewed: 2026-07-09
+last-reviewed: 2026-07-10
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -112,6 +112,11 @@ which the receiver sends a `KeepAlive` so the session isn't reaped.
 
 `Seek` carries an **absolute** `SeekPositionTicks` → `seekto` (distinct from voice's relative
 `seek`). Both players gained `previous` / `seekto` / `playpause` cases for the cast verbs.
+
+Note on seek: jellyfin web sends an absolute `Seek` from its **±N s jump buttons** (handled here as
+`seekto`, verified on device — the video jumps), but it sends **nothing** when the progress bar is
+dragged/scrubbed on a remote session. So "scrub-to-seek from the web" is a no-op — a jellyfin web
+behavior, not a JellyRock gap.
 
 ## Scope (#666) and deferred work
 
