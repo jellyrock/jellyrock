@@ -33,6 +33,7 @@ Each doc has YAML frontmatter listing the source files it primarily references a
 | `RowList`/grid item layout & the focus indicator (the `rowHeights` trap) | [list-grid-item-layout.md](./list-grid-item-layout.md) |
 | global state — what hangs off `m.global` | [global-state.md](./global-state.md) |
 | video and audio playback | [playback.md](./playback.md) |
+| remote control / "Cast to JellyRock" (`ws://` receiver) | [remote-control.md](./remote-control.md) |
 | the API layer and task pool | [api.md](./api.md) |
 | async work — promises layered over the task pool | [async.md](./async.md) |
 | the app's Jellyfin API footprint (generated manifest) | [api-usage-manifest.md](./api-usage-manifest.md) |

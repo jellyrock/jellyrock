@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-07-06
+last-updated: 2026-07-09
 ---
 
 # Progress
@@ -47,6 +47,8 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 - Migrate the watched toggle (`main.bs`) to the `3c` `callFunc`→`fetchAsync` pattern (mirror `ItemDetails.toggleFavorite`). Extra surface vs favorite: Series "mark all" confirmation-dialog path (2nd entry ~`main.bs:927`), resume-button loading state, `pendingWatched*` bookkeeping. Completes removal of the `isDone` branch + `handleWatchedToggleDone` + `m.watchedResultNode`. #551 Phase 4 settings/misc render-thread batch.
 - `inferServerUrl` (`source/utils/misc.bs:302`, called on the render thread from `loginRouter.bs:233` `onServerSubmitted`) runs a synchronous `roUrlTransfer` probe loop up to 15 seconds during server connect — same render-thread-blocking class as #550 `A2` (fixed for the deep-link server-switch probe via `ServerReachableTask`). Out of scope for the current navigation-hardening project (migration cleanup not surfaced by the #550 review). Fix: move the probe to a Task like `ServerReachableTask`.
+- **Queue-aware multi-item casting** (remote control #666 follow-up): a Jellyfin `Play` carries the full `ItemIds` list + `StartIndex` + `StartPositionTicks` + `PlayCommand`, but #666 casts only the single `itemIds[startIndex]` via the deep-link seam (`remoteDispatch.dispatchPlay`). Consume the whole list to seed the queue, honor `StartPositionTicks`, and implement `PlayNext`/`PlayLast` semantics (`queueMode` is already parsed by `remoteCommand.playCommandToQueueMode` but ignored) — likely `QueueManager.insertNext`/`push` helpers. Fixes casting a music album (currently plays only track 1). Epic #669.
+- **Cast navigation lag (render-thread wake)** (remote control #666): a cast `navigate`/`play` to an *idle*, already-resident screen (e.g. back-to-Home) can stay on the prior screen until the next input, because the command arrives as a node event on the MAIN thread → `remoteDispatch` → `callFunc` into `JRScene`, and nothing wakes the render thread to repaint (Roku has no render-wake idiom; `playbackLaunchRequest` avoids this only by being observed by `JRScene` on the *render* thread — `JRScene.bs:300-306`). Transport during playback is unaffected (video keeps the render thread awake). NEEDS a confirmed reproduction (capture the socket frame log during the exact idle navigation to prove a frame arrives but doesn't render vs. web sending nothing) before a fix; likely fix routes cast play/navigate through a render-thread observer mirroring `playbackLaunchRequest`.
 
 ### tests
 

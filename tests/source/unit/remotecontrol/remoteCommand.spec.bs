@@ -25,11 +25,11 @@ namespace tests
 
     @it("captures a multi-item queue + startIndex + startPositionTicks")
     function _()
-      cmd = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: ["a", "b", "c"], PlayCommand: "PlayNow", StartIndex: 2, StartPositionTicks: 6000000000 } })
+      cmd = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: ["a", "b", "c"], PlayCommand: "PlayNow", StartIndex: 2, StartPositionTicks: 6000000000& } })
       m.assertEqual(cmd.kind, "play")
       m.assertEqual(cmd.itemIds.count(), 3)
       m.assertEqual(cmd.startIndex, 2)
-      m.assertEqual(cmd.startPositionTicks, 6000000000)
+      m.assertEqual(cmd.startPositionTicks, 6000000000&)
     end function
 
     @it("maps PlayCommand to action + queueMode")
@@ -79,10 +79,10 @@ namespace tests
 
     @it("maps Seek to an absolute seekto with positionTicks")
     function _()
-      cmd = remoteCommand.parseMessage({ MessageType: "Playstate", Data: { Command: "Seek", SeekPositionTicks: 3000000000 } })
+      cmd = remoteCommand.parseMessage({ MessageType: "Playstate", Data: { Command: "Seek", SeekPositionTicks: 3000000000& } })
       m.assertEqual(cmd.kind, "transport")
       m.assertEqual(cmd.command, "seekto")
-      m.assertEqual(cmd.positionTicks, 3000000000)
+      m.assertEqual(cmd.positionTicks, 3000000000&)
     end function
 
     @it("ignores an unknown Playstate command")

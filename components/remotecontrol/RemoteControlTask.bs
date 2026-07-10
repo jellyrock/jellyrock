@@ -1,74 +1,120 @@
-' bsc-disable-file print-locations
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/remotecontrol/remoteProtocol.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
-' Remote-control receiver (#666) — VALIDATION SPIKE (see RemoteControlTask.xml).
-'
-' Goal: prove the Jellyfin cast integration end-to-end before building the real
-' receiver. Opens the session WebSocket and prints every inbound frame so we can
-' confirm on-device that (1) JellyRock shows as a cast target and (2) Play/Playstate
-' frames actually arrive.
-'
-' Uses print (not m.log) ON PURPOSE: roku-log output isn't reaching the 8085 debug
-' console in this build, and the spike needs guaranteed-visible markers ("JRRC>").
-' The real receiver will use m.log. Deliberately minimal — no parse/dispatch/reconnect.
+' Remote-control receiver (#666) — the ws:// "Cast to JellyRock" listener. See RemoteControlTask.xml
+' for the lifecycle/threading overview. This task owns the vendored WebSocketClient node and runs the
+' Jellyfin session socket off the render thread: open -> parse frames -> answer keepalive -> marshal
+' commands to the main thread -> reconnect with backoff. It NEVER dispatches (that's remoteDispatch on
+' the main thread) and NEVER logs the socket url (it carries the auth token).
 sub init()
+  m.log = new log.Logger("RemoteControl")
   m.top.functionName = "runReceiver"
 end sub
 
+' Started (control="RUN") post-login from Home.isFirstRun once the session token exists. Builds the
+' session-socket url and runs the connect/reconnect loop until the session ends (token rotated, or
+' SignOut sets control="STOP" which terminates this thread outright).
 sub runReceiver()
-  globalServer = m.global.server
-  if not isValid(globalServer) or not isValidAndNotEmpty(globalServer.serverUrl)
-    print "JRRC> disabled: no server"
-    return
-  end if
-  serverUrl = globalServer.serverUrl
-
-  ' ws:// only — never downgrade an https:// session (Roku can't wss://; that's #667).
-  if LCase(Left(serverUrl, 7)) <> "http://"
-    print "JRRC> disabled: server not http:// -> "; serverUrl
+  url = remoteProtocol.buildSocketUrl(m.global.server.serverUrl, m.global.user.authToken, m.global.device.serverDeviceName)
+  if url = ""
+    ' Non-http server (Roku can't ws:// a secure server) or a missing credential -> stay dark.
+    m.log.info("receiver disabled: non-http server or missing session")
     return
   end if
 
-  ' Same token + deviceId the REST auth header uses (baseRequest.buildAuthHeader →
-  ' DeviceId = serverDeviceName), so the socket binds the SAME Jellyfin session.
-  token = m.global.user.authToken
-  deviceId = m.global.device.serverDeviceName
-  if not isValidAndNotEmpty(token)
-    print "JRRC> disabled: no auth token"
-    return
-  end if
-
-  ' http://host:port  ->  ws://host:port/socket?api_key=<token>&deviceId=<id>
-  socketUrl = "ws://" + Mid(serverUrl, 8) + "/socket?api_key=" + token + "&deviceId=" + deviceId
-  ' NOTE: socketUrl carries the auth token — print only the path, never the full url.
-
+  ' Snapshot the token so a reconnect can detect a server-side rotation and stop cleanly.
+  m.openedWithToken = m.global.user.authToken
   m.port = CreateObject("roMessagePort")
+
+  attempt = 0
+  while true
+    connectAndPump(url)
+
+    ' The socket closed. Reconnect unless the session is gone. SignOut(false) (logout AND server
+    ' switch) sets control="STOP", killing this thread; this guard only catches a token rotation.
+    currentToken = m.global.user.authToken
+    if not isValidAndNotEmpty(currentToken) or currentToken <> m.openedWithToken
+      m.log.info("session ended; receiver stopping")
+      return
+    end if
+
+    attempt++
+    backoffMs = remoteProtocol.nextBackoffMs(attempt)
+    m.log.info("socket closed; reconnecting", "inMs", backoffMs)
+    sleep(backoffMs)
+  end while
+end sub
+
+' Open the socket and pump events until it closes or errors. Sends a KeepAlive whenever the wait
+' times out at the interval Jellyfin's ForceKeepAlive requested (0 = block until an event, before any
+' ForceKeepAlive arrives). Marshals each dispatchable command to the main thread. Returns on close.
+sub connectAndPump(url as string)
   m.ws = CreateObject("roSGNode", "WebSocketClient")
   m.ws.observeField("on_open", m.port)
   m.ws.observeField("on_message", m.port)
   m.ws.observeField("on_close", m.port)
   m.ws.observeField("on_error", m.port)
-  print "JRRC> opening session socket ws://"; Mid(serverUrl, 8); "/socket"
-  m.ws.open = socketUrl
+  m.log.info("opening session socket") ' NEVER log url — it carries the auth token
+  m.ws.open = url
 
+  m.keepAliveIntervalMs = 0 ' set when a ForceKeepAlive arrives; 0 => wait() blocks indefinitely
   while true
-    msg = wait(0, m.port)
+    msg = wait(m.keepAliveIntervalMs, m.port)
     if type(msg) = "roSGNodeEvent"
       field = msg.getField()
-      data = msg.getData()
-      if field = "on_open"
-        print "JRRC> socket OPEN"
-      else if field = "on_message"
-        if isValid(data) and isValid(data.message)
-          print "JRRC> FRAME "; data.message
-        else
-          print "JRRC> FRAME (empty)"
-        end if
-      else if field = "on_close"
-        print "JRRC> socket CLOSED "; data
-      else if field = "on_error"
-        print "JRRC> socket ERROR"
+      if field = "on_message"
+        handleFrame(msg.getData())
+      else if field = "on_open"
+        m.log.info("socket open")
+      else if field = "on_close" or field = "on_error"
+        m.log.info("socket", field)
+        closeSocket()
+        return
       end if
+    else
+      ' wait() timed out -> keepalive tick (only reachable once an interval is set).
+      if m.keepAliveIntervalMs > 0 then m.ws.send = [remoteProtocol.keepAliveFrame()]
     end if
   end while
+end sub
+
+' Parse one inbound frame and either answer a keepalive or marshal a dispatchable command.
+sub handleFrame(data as object)
+  if not isValid(data) or not isValidAndNotEmpty(data.message) then return
+  envelope = parseJson(data.message)
+  if not isValid(envelope) then return
+
+  command = remoteCommand.parseMessage(envelope)
+  kind = command.kind
+
+  if kind = "keepalive"
+    ' Jellyfin asks us to keep the session alive; send one now and poll on HALF the requested
+    ' interval (a safety margin against the server's reap window), floored at 1s.
+    intervalMs = command.intervalSeconds * 1000 / 2
+    if intervalMs < 1000 then intervalMs = 1000
+    m.keepAliveIntervalMs = intervalMs
+    m.ws.send = [remoteProtocol.keepAliveFrame()]
+    return
+  end if
+
+  if kind = "play" or kind = "transport" or kind = "navigate"
+    ' 'raw' is the original Data (a whole ItemIds list for a series/album can be large) — the
+    ' normalized fields carry everything the main thread needs, so drop it before marshalling.
+    command.delete("raw")
+    m.top.dispatchCommand = command
+  end if
+  ' kind = "ignore" -> dropped (KeepAlive echo, Sessions, volume, unknown types).
+end sub
+
+' Best-effort teardown of the socket child + its observers.
+sub closeSocket()
+  if not isValid(m.ws) then return
+  m.ws.unobserveField("on_open")
+  m.ws.unobserveField("on_message")
+  m.ws.unobserveField("on_close")
+  m.ws.unobserveField("on_error")
+  m.ws.close = [1000] ' normal closure
+  m.ws = invalid
 end sub

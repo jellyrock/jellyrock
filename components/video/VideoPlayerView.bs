@@ -2006,6 +2006,31 @@ function handleTransport(evt as object) as object
     return handleVoiceNextItem()
   end if
 
+  ' Remote-control (#666) additions. "previous" mirrors "next" over the queue; "seekto" is an
+  ' ABSOLUTE seek (Jellyfin's Playstate Seek carries an absolute position, unlike voice's relative
+  ' "seek"); "playpause" toggles by current transport state.
+  if cmd = "previous"
+    return handleVideoPreviousItem()
+  end if
+
+  if cmd = "seekto"
+    if not isValid(evt.position) then return { status: "error.generic" }
+    return seekToWithBounds(evt.position)
+  end if
+
+  if cmd = "playpause"
+    if m.top.state = "playing"
+      m.top.control = "pause"
+      return { status: "success" }
+    end if
+    if m.top.state = "paused"
+      m.top.control = "resume"
+    else
+      m.top.control = "play"
+    end if
+    return { status: "success" }
+  end if
+
   if cmd = "skip"
     ' Try to skip an active media segment first; fall through to next-item if none.
     if tryActiveSegmentSkip() then return { status: "success" }
@@ -2099,6 +2124,17 @@ function handleVoiceNextItem() as object
 
   if targetPosition < 0 then return { status: "error.generic" }
   switchToQueueItem(queueManager, targetPosition)
+  return { status: "success" }
+end function
+
+' Remote "PreviousTrack" (#666): step back one queue item, symmetric with handleVoiceNextItem.
+' error.generic at the head of the queue (no previous item) — no chapter-back concept here.
+function handleVideoPreviousItem() as object
+  queueManager = m.global.queueManager
+  if not isValid(queueManager) then return { status: "error.generic" }
+  queuePosition = queueManager.callFunc("getPosition")
+  if queuePosition <= 0 then return { status: "error.generic" }
+  switchToQueueItem(queueManager, queuePosition - 1)
   return { status: "success" }
 end function
 

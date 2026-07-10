@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Remote-control receiver (#666) — VALIDATION SPIKE.
-  Opens the Jellyfin session WebSocket over ws:// and logs inbound frames, to confirm
-  JellyRock registers as a controllable cast target and that Play/Playstate commands
-  actually arrive. Not the final shape: no parse/dispatch/reconnect/keepalive yet —
-  those follow the socket build-vs-buy gate. Paired script auto-imports (same basename).
+  Remote-control receiver (#666) — the ws:// "Cast to JellyRock" listener.
+
+  Owns the vendored WebSocketClient node (a nested Task) and runs the Jellyfin session socket
+  off the render thread: it opens ws://<host>/socket for an HTTP server, parses each inbound
+  {MessageType,Data} frame via remoteCommand.parseMessage, answers ForceKeepAlive with a
+  KeepAlive on the requested interval, and reconnects with exponential backoff. Normalized
+  play/transport/navigate commands are marshalled to the main thread through the dispatchCommand
+  field (a task-node field + port delivers; main.bs observes it and calls remoteDispatch). Secure
+  (https) servers can't use ws:// (Roku has no socket TLS) — that's the #667 plugin long-poll path.
+
+  Lifecycle: the node is created on m.global (setGlobalNodes), started (control="RUN") post-login
+  from Home.isFirstRun once the session token exists, and stopped (control="STOP") in SignOut (the
+  single logout + server-switch chokepoint). Paired script auto-imports (same basename).
 -->
 <component name="RemoteControlTask" extends="Task">
-  <interface />
+  <interface>
+    <!-- Normalized command marshalled to the main thread (remoteCommand.parseMessage output). -->
+    <field id="dispatchCommand" type="assocarray" alwaysNotify="true" />
+  </interface>
 </component>

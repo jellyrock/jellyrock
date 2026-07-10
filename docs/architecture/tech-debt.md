@@ -167,8 +167,8 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `no-active-player-abstraction`
 
-- **area**: `components/video/VideoPlayerView.bs`, `components/music/AudioPlayerView.bs`, `components/mediaPlayers/AudioPlayer.bs`
-- **issue**: Audio (`m.global.audioPlayer`, a persistent global) and video (`VideoPlayerView`, a scene-stack screen) have no shared "active player" interface. Cross-cutting code that wants to control whatever is currently playing has to branch on player type — query `m.global.audioPlayer.state` for audio, or walk the scene stack to find a `VideoPlayerView` for video. Adds friction to features like a universal pause or a "now playing" indicator.
+- **area**: `components/video/VideoPlayerView.bs`, `components/music/AudioPlayerView.bs`, `components/mediaPlayers/AudioPlayer.bs`, `source/remotecontrol/remoteDispatch.bs`
+- **issue**: Audio (`m.global.audioPlayer`, a persistent global) and video (`VideoPlayerView`, a scene-stack screen) have no shared "active player" interface. Cross-cutting code that wants to control whatever is currently playing has to branch on player type — query `m.global.audioPlayer.state` for audio, or walk the scene stack to find a `VideoPlayerView` for video. `remoteDispatch.dispatchTransport` (shared by voice + the #666 cast receiver) is another consumer: it resolves the active view and gates on subtype `{PlayerHostView, VideoPlayerView, AudioPlayerView}` before `callFunc("handleTransport")`. Adds friction to features like a universal pause or a "now playing" indicator.
 - **direction**: Add a thin `m.global.activePlayer` reference (or an `IPlayer` interface) that points to whichever player is active. Both components publish to it on play/destroy; cross-cutting code reads from there instead of branching on type.
 
 #### `api-timeout-single-value`
@@ -213,8 +213,8 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `bsconfig-files-duplicated`
 
-- **area**: repo root (`bsconfig.json`, `bsconfig-prod.json`, `bsconfig-analysis.json`)
-- **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance.
+- **area**: repo root (`bsconfig.json`, `bsconfig-prod.json`, `bsconfig-analysis.json`, `bsconfig-tests.json`, `bsconfig-tests-unit.json`, `bsconfig-tests-integration.json`, `bsconfig-tests-complete.json`, `bsconfig-tdd-sample.json`)
+- **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance. **This has bitten:** the #666 vendoring added the `components/vendor/**` `diagnosticFilter` to `bsconfig.json` only, leaving all five test-runner configs without it — so every `test:*` / `test:tdd` build failed on the vendored `.brs` until the filter was hand-copied into each. A shared base would have propagated it once.
 
 #### `mixed-esm-cjs-scripts`
 
@@ -277,6 +277,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `scripts/**/*.{js,cjs}`; a guard would live in `scripts/lint/`.
 - **issue**: A raw literal NUL (`\x00`) byte used as an in-memory join separator for a sort/group key has been committed into a `scripts/` source file twice — first in [`scripts/generate/findings-candidates.js`](../../scripts/generate/findings-candidates.js) (`opKey`), then in [`scripts/generate/spec-diff.js`](../../scripts/generate/spec-diff.js) (`changeSortKey`, fixed in `a4a92e78`). A raw NUL makes git + `file(1)` classify the source as **binary**, so it lands with no reviewable diff. Both were semantics-preserving (the separator is sort-only, never persisted) and both are now fixed to use the `'\0'` escape, but nothing prevents a third occurrence — no lint rejects control bytes in `scripts/` sources (ESLint's `no-control-regex` is regex-only; Prettier passes a file containing a NUL clean).
 - **direction**: Add a CI-gated lint (e.g. `scripts/lint/no-control-bytes.cjs`) that fails when any `scripts/**/*.{js,cjs}` file contains a NUL or other control byte outside tab/newline; wire it into `npm run lint` + pre-push. The fix it enforces is always the same — use the `'\0'` string escape, never a literal control byte.
+
+#### `remotecontrol-socket-abrupt-teardown`
+
+- **area**: `source/api/userAuth.bs` (`SignOut`), `components/remotecontrol/RemoteControlTask.bs`
+- **issue**: `SignOut` stops the `ws://` remote-control receiver with `m.global.remoteControlTask.control = "STOP"`, which terminates the Task thread outright — the socket is not gracefully closed (no `WebSocket` close handshake) before the thread dies. Functionally harmless: Jellyfin reaps the orphaned session on its inactivity timeout, and the token is invalidated by the same `SignOut`. But it leaves a briefly-dangling socket on every logout / server switch.
+- **direction**: Have the receiver observe a shutdown signal (or check a flag in its loop), send `close = [1000]` on the `WebSocketClient`, then exit — so `SignOut` requests a graceful close instead of an abrupt thread kill. Low priority; only matters if a lingering half-open socket ever proves observable.
 
 ## Recently removed — don't go searching for these
 

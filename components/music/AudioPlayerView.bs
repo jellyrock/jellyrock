@@ -1017,6 +1017,33 @@ function handleTransport(evt as object) as object
 
   if cmd = "next" or cmd = "skip" then return audioNextTrack()
 
+  ' Remote-control (#666) additions. "previous" reuses the on-screen previous-button path;
+  ' "seekto" is an ABSOLUTE seek (Jellyfin Playstate Seek carries an absolute position, unlike
+  ' voice's relative "seek"); "playpause" toggles by current transport state.
+  if cmd = "previous"
+    if not isValid(m.queueManager) then return { status: "error.generic" }
+    if not previousClicked() then return { status: "error.generic" }
+    return { status: "success" }
+  end if
+
+  if cmd = "seekto"
+    if not isValid(evt.position) then return { status: "error.generic" }
+    return audioSeekTo(evt.position)
+  end if
+
+  if cmd = "playpause"
+    if m.audioPlayer.state = "playing"
+      m.audioPlayer.control = "pause"
+      return { status: "success" }
+    end if
+    if m.audioPlayer.state = "paused"
+      m.audioPlayer.control = "resume"
+    else
+      m.audioPlayer.control = "play"
+    end if
+    return { status: "success" }
+  end if
+
   if cmd = "nowplaying" then return announceAudioNowPlaying()
 
   if cmd = "shuffle"

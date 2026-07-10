@@ -29,6 +29,7 @@
   "diagnosticFilters": [
     { "files": "node_modules/**/*" },
     { "files": "**/roku_modules/**/*" },
+    { "files": "components/vendor/**/*" },
     {
       "files": "tests/**/*",
       "codes": ["LINT3008"]

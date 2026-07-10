@@ -141,6 +141,13 @@ sub setGlobalNodes()
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
 
+  ' Remote-control receiver (#666) — the ws:// "Cast to JellyRock" listener. Created here so it's a
+  ' stable m.global node (SignOut stops it), but NOT started: it needs the session token, so it's
+  ' started (control="RUN") post-login from Home.isFirstRun. It marshals normalized commands to its
+  ' own dispatchCommand field, which the main loop observes (a task-node field + port delivers; an
+  ' m.global field + port does not — see main.bs). See components/remotecontrol/RemoteControlTask.xml.
+  m.global.addFields({ remoteControlTask: CreateObject("roSGNode", "RemoteControlTask") })
+
   ' Debug-only error injection flags — compiled out in production (bs_const=debug=false)
   ' See docs/dev/debug-flags.md for the full developer contract.
   #if debug

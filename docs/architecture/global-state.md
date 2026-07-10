@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-05-01
+last-reviewed: 2026-07-09
 ---
 
 # Global State
@@ -74,6 +74,7 @@ m.global  (the global roSGNode)
 ├── sceneManager      SceneManager node                     ← phase 2
 ├── queueManager      QueueManager node                     ← phase 2
 ├── audioPlayer       AudioPlayer node (extends Video)      ← phase 2 — the audio playback engine
+├── remoteControlTask RemoteControlTask node                ← phase 2 (created, NOT started) — ws:// cast receiver, started post-login (see remote-control.md)
 │
 └── debug             DebugFlags node                       ← phase 2, ONLY in #if debug builds
     ├── shouldForceFiltersFail   bool

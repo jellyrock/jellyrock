@@ -1,0 +1,129 @@
+---
+topic: remote-control
+related-files:
+  - components/remotecontrol/RemoteControlTask.bs
+  - components/remotecontrol/RemoteControlTask.xml
+  - components/vendor/BrightWebSocket/WebSocketClient.xml
+  - source/remotecontrol/remoteCommand.bs
+  - source/remotecontrol/remoteProtocol.bs
+  - source/remotecontrol/remoteDispatch.bs
+  - source/utils/deviceCapabilities.bs
+  - source/main.bs
+  - source/utils/globals.bs
+  - source/api/userAuth.bs
+  - components/home/Home.bs
+last-reviewed: 2026-07-09
+---
+
+# Remote control — "Cast to JellyRock"
+
+Lets another Jellyfin client (web / mobile) drive playback on JellyRock via Jellyfin's
+**"Play On"** menu — cast an item, then pause / seek / next / previous / stop from the
+controlling client. This is the receiving half of Jellyfin's session remote-control protocol.
+
+## The two-transport vision
+
+Jellyfin pushes remote-control commands (`Play` / `Playstate` / `GeneralCommand`) to a session
+over a **`WebSocket`** — there is no ECP/SSDP/DLNA path, and with no open socket the command is
+silently dropped server-side. A session shows up as a cast target only when its `Capabilities`
+report `SupportsMediaControl == true` **and** it has an active controller.
+
+That gives two transports, one normalized command stream:
+
+1. **`ws://` (this doc, #666)** — against a plain-**HTTP** server, JellyRock opens Jellyfin's
+   native session socket directly. **No server changes.** This is the shipped half.
+2. **HTTPS long-poll (#667, future)** — Roku has **no socket TLS** (`ifSocketOption` exposes no
+   TLS; there is no `wss://` on Roku), so a secure server can't use transport #1. The plan is a
+   server plugin exposing an HTTP long-poll command channel JellyRock consumes over TLS
+   (`roUrlTransfer`), sidestepping `wss://` entirely. Not built yet.
+
+Because Roku can't `wss://`, the receiver **only** opens a socket when the server base URL is
+`http://` — it never downgrades an `https://` session's token onto cleartext `ws://`. Both the
+advertised capability and the receiver gate on the same predicate (`remoteProtocol.isHttpServer`)
+so they can't disagree.
+
+## Threading — Option B (Task owns the socket, main thread dispatches)
+
+The socket is I/O, so it lives on a **Task thread**; but the seams a command must drive
+(`stashDeepLink`, `onRuntimeDeepLink`, `getActiveView`, `roAppManager`, `m.scene.callFunc`) are
+**main-thread** only. So the flow splits cleanly:
+
+```text
+                RemoteControlTask (Task thread)                     main thread (Main() loop)
+ Jellyfin  ─ws─▶ WebSocketClient ─▶ remoteCommand.parseMessage ─▶ dispatchCommand field ─▶ remoteDispatch
+   server        (vendored)          (pure normalize)              (observed by main.bs)     ├─ play     → stashDeepLink + onRuntimeDeepLink
+                                                                                             ├─ navigate → stashDeepLink + onRuntimeDeepLink
+                                                                                             └─ transport→ getActiveView().handleTransport(evt)
+```
+
+- **`RemoteControlTask`** ([.bs](../../components/remotecontrol/RemoteControlTask.bs)) owns the
+  vendored `WebSocketClient` node (a nested Task — see
+  [`components/vendor/BrightWebSocket/README.md`](../../components/vendor/BrightWebSocket/README.md)),
+  parses each frame, answers keepalive, reconnects with backoff, and marshals normalized commands
+  to the main thread. It **never** dispatches and **never** logs the socket URL (it carries the token).
+- **`remoteCommand.bs`** / **`remoteProtocol.bs`** are pure (no node, no socket, no `m.global`) and
+  unit-tested — the wire-protocol parser and the transport helpers (the HTTP gate, URL builder, backoff,
+  keepalive frame).
+- **`remoteDispatch.bs`** is the main-thread adapter — the single place the deep-link and player
+  seams are called for a remote command. `dispatchTransport` is **shared** with the voice path
+  (`main.bs`'s `roInputEvent` branch calls the same adapter), so voice and cast dispatch transport
+  identically.
+
+**Marshalling detail:** the command rides a field on the **task node** (`dispatchCommand`), observed
+by the main loop — a task-node field + port delivers, but an `m.global` field + port does **not**
+(the delivery defect noted in `main.bs`). That's why the field lives on the task, not on `m.global`.
+
+## Lifecycle
+
+The task node is created on `m.global` in `setGlobalNodes` (Phase 2), but **not** started there —
+it needs the session token. It is:
+
+- **Started** (`control="RUN"`) post-login from `Home.isFirstRun` (alongside the capabilities POST).
+  `isFirstRun` is per-Home-instance, so it restarts on each fresh login (including after a server switch).
+- **Stopped** (`control="STOP"`) in `SignOut` (`source/api/userAuth.bs`) — the single logout +
+  server-switch chokepoint (a server switch runs `SignOut(false)` via `performServerSwitch`), so the
+  socket never survives a session teardown.
+
+Reconnect is exponential backoff (`1s`→`30s` cap); it stops on a token rotation (re-read before each
+reconnect). `ForceKeepAlive` from the server sets a send interval (half the requested seconds), on
+which the receiver sends a `KeepAlive` so the session isn't reaped.
+
+## Capabilities — the gotcha
+
+`deviceCapabilities.bs` advertises the session as controllable:
+
+- **`SupportsMediaControl`** — `true` **only** when the server URL is `http://` (see the HTTP gate
+  above). This is what makes JellyRock appear in "Play On" and is what carries **transport** control
+  (pause / seek / next / …).
+- **`SupportedCommands`** — `getSupportedRemoteCommands()` returns `["DisplayContent"]` and **must**
+  contain only `GeneralCommandType` values. **Putting `Playstate` verbs (Pause/Stop/Seek/…) here makes
+  the whole `POST /Sessions/Capabilities/Full` return 400**, so nothing sticks. Transport rides on
+  `SupportsMediaControl`, not `SupportedCommands`.
+
+## Command mapping (Jellyfin → JellyRock)
+
+| Jellyfin frame | Normalized | JellyRock seam |
+|---|---|---|
+| `Play` (`PlayNow`/Shuffle/`InstantMix`) | `play` | mint `contentId` `<itemIds[startIndex]>\|action=<verb>` → `stashDeepLink` + `onRuntimeDeepLink` (the deep-link play path) |
+| `GeneralCommand{DisplayContent}` | `navigate` | springboard the item (action `open`) via the same deep-link seam |
+| `Playstate{Pause/Unpause/Stop/NextTrack/PreviousTrack/Seek/Rewind/FastForward/PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
+| `ForceKeepAlive` | `keepalive` | receiver answers with `KeepAlive` on the interval (never reaches the main thread) |
+| `KeepAlive` / `Sessions` / volume / `RefreshProgress` / `UserDataChanged` / unknown | `ignore` | dropped — never an error, so a hostile/future frame can't break the receiver |
+
+`Seek` carries an **absolute** `SeekPositionTicks` → `seekto` (distinct from voice's relative
+`seek`). Both players gained `previous` / `seekto` / `playpause` cases for the cast verbs.
+
+## Scope (#666) and deferred work
+
+- **Single item.** A `Play` casts `itemIds[startIndex]` — the one item — through the deep-link seam.
+  The full `ItemIds` list / `StartIndex` / `StartPositionTicks` are parsed but not consumed.
+  Casting an **episode** still gives a navigable queue because the *player* builds its own
+  next-episode queue; casting a music **album** currently plays only the first track. Multi-item
+  queue casting (`PlayNext` / `PlayLast`, start-position) is the **queue-aware casting** followup.
+- **Navigation lag (known).** A cast `navigate`/`play` to an *idle* (already-resident) screen can lag until
+  the next input, because the command arrives as a **node event on the main thread** → `callFunc`
+  into `JRScene`, and nothing wakes the render thread to repaint (Roku has no render-wake idiom;
+  `playbackLaunchRequest` avoids this only by being observed by `JRScene` on the *render* thread).
+  Transport during playback is unaffected (the video keeps the render thread awake). Tracked as a
+  followup; needs a confirmed reproduction before a fix.
+- **HTTPS / remote servers.** Out of scope here — that's the #667 plugin long-poll transport.
