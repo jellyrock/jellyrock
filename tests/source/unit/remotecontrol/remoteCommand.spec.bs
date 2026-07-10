@@ -103,11 +103,39 @@ namespace tests
       m.assertEqual(cmd.itemType, "Series")
     end function
 
-    @it("ignores volume / mute / other GeneralCommands (no Roku volume API)")
+    @it("maps fixed-route navigation commands to a route command")
+    @params("GoHome", "/")
+    @params("GoToSearch", "/search")
+    @params("GoToSettings", "/settings")
+    function _(name, expectedRoute)
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: name } })
+      m.assertEqual(cmd.kind, "route")
+      m.assertEqual(cmd.route, expectedRoute)
+    end function
+
+    @it("maps Back to a goback command")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "Back" } })
+      m.assertEqual(cmd.kind, "goback")
+    end function
+
+    @it("maps DisplayMessage to a message command (Text preferred, Header fallback)")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayMessage", Arguments: { Header: "Hi", Text: "Hello TV" } } })
+      m.assertEqual(cmd.kind, "message")
+      m.assertEqual(cmd.message, "Hello TV")
+
+      headerOnly = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayMessage", Arguments: { Header: "Just header" } } })
+      m.assertEqual(headerOnly.message, "Just header")
+    end function
+
+    @it("ignores volume / mute / directional / other GeneralCommands (not enactable on Roku today)")
     @params("SetVolume")
     @params("VolumeUp")
     @params("Mute")
-    @params("GoHome")
+    @params("MoveUp")
+    @params("Select")
+    @params("SendString")
     function _(name)
       cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: name, Arguments: {} } })
       m.assertEqual(cmd.kind, "ignore")

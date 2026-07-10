@@ -99,7 +99,10 @@ sub handleFrame(data as object)
     return
   end if
 
-  if kind = "play" or kind = "transport" or kind = "navigate"
+  ' Marshal every dispatchable command to the main thread. keepalive already returned above; only
+  ' "ignore" is dropped here — so a new dispatchable kind (route/goback/message/…) is forwarded
+  ' without needing this gate updated again.
+  if kind <> "ignore"
     ' 'raw' is the original Data (a whole ItemIds list for a series/album can be large) — the
     ' normalized fields carry everything the main thread needs, so drop it before marshalling.
     command.delete("raw")

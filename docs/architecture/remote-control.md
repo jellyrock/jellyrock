@@ -95,10 +95,14 @@ which the receiver sends a `KeepAlive` so the session isn't reaped.
 - **`SupportsMediaControl`** — `true` **only** when the server URL is `http://` (see the HTTP gate
   above). This is what makes JellyRock appear in "Play On" and is what carries **transport** control
   (pause / seek / next / …).
-- **`SupportedCommands`** — `getSupportedRemoteCommands()` returns `["DisplayContent"]` and **must**
-  contain only `GeneralCommandType` values. **Putting `Playstate` verbs (Pause/Stop/Seek/…) here makes
-  the whole `POST /Sessions/Capabilities/Full` return 400**, so nothing sticks. Transport rides on
-  `SupportsMediaControl`, not `SupportedCommands`.
+- **`SupportedCommands`** — `getSupportedRemoteCommands()` and **must** contain only
+  `GeneralCommandType` values. **Putting `Playstate` verbs (Pause/Stop/Seek/…) here makes the whole
+  `POST /Sessions/Capabilities/Full` return 400**, so nothing sticks. Transport rides on
+  `SupportsMediaControl`, not `SupportedCommands`. The advertised set is the actionable navigation +
+  messaging commands: `DisplayContent`, `GoHome`, `GoToSearch`, `GoToSettings`, `Back`,
+  `DisplayMessage`. **The web only *sends* a `GeneralCommand` it sees advertised here** — so a
+  command we don't handle is simply never sent. Volume, directional D-pad, `SendKey`/`SendString`,
+  and screenshot are deliberately omitted (not actionable from an app on Roku today — see deferred work).
 
 ## Command mapping (Jellyfin → JellyRock)
 
@@ -106,9 +110,12 @@ which the receiver sends a `KeepAlive` so the session isn't reaped.
 |---|---|---|
 | `Play` (`PlayNow`/Shuffle/`InstantMix`) | `play` | mint `contentId` `<itemIds[startIndex]>\|action=<verb>` → `stashDeepLink` + `onRuntimeDeepLink` (the deep-link play path) |
 | `GeneralCommand{DisplayContent}` | `navigate` | springboard the item (action `open`) via the same deep-link seam |
+| `GeneralCommand{GoHome/GoToSearch/GoToSettings}` | `route` | `routerNavigate(<path>)` (`/`, `/search`, `/settings`); `/`'s `clearStackOnResolve` makes Home the back-stack root |
+| `GeneralCommand{Back}` | `goback` | `routerGoBack` (`sgRouter.goBack`; no-op at root, so it never exits the app) |
+| `GeneralCommand{DisplayMessage}` | `message` | `displayToast(Text ?? Header)` on the TV |
 | `Playstate{Pause/Unpause/Stop/NextTrack/PreviousTrack/Seek/Rewind/FastForward/PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
 | `ForceKeepAlive` | `keepalive` | receiver answers with `KeepAlive` on the interval (never reaches the main thread) |
-| `KeepAlive` / `Sessions` / volume / `RefreshProgress` / `UserDataChanged` / unknown | `ignore` | dropped — never an error, so a hostile/future frame can't break the receiver |
+| `GeneralCommand{volume/directional/SendKey/…}` / `KeepAlive` / `Sessions` / `RefreshProgress` / `UserDataChanged` / unknown | `ignore` | dropped — never an error, so a hostile/future/unrecognized frame can't break the receiver |
 
 `Seek` carries an **absolute** `SeekPositionTicks` → `seekto` (distinct from voice's relative
 `seek`). Both players gained `previous` / `seekto` / `playpause` cases for the cast verbs.
@@ -132,3 +139,15 @@ behavior, not a JellyRock gap.
   Transport during playback is unaffected (the video keeps the render thread awake). Tracked as a
   followup; needs a confirmed reproduction before a fix.
 - **HTTPS / remote servers.** Out of scope here — that's the #667 plugin long-poll transport.
+- **More `GeneralCommand` types (deferred, not impossible).** The advertised set is navigation + messaging.
+  The rest are followups with a concrete mechanism, NOT platform dead-ends:
+  - *Track selection* (`SetAudioStreamIndex` / `SetSubtitleStreamIndex`) — feasible via the player's
+    existing track-switch APIs; needs player integration.
+  - *Live TV* (`ChannelUp` / `ChannelDown`; `Guide` has no route yet) — Live-TV-specific.
+  - *Queue modes* (`PlayNext` / `PlayLast` / `SetShuffleQueue` / `SetRepeatMode`) — folds into the
+    queue-aware casting followup.
+  - *Volume* (`SetVolume` / `VolumeUp/Down` / `Mute`) — a streaming player can't set system volume,
+    but a **Roku TV** exposes more OS API; worth a platform check before writing it off.
+  - *Directional D-pad + `SendKey` / `SendString` / `TakeScreenshot`* — not injectable into the
+    SceneGraph focus from inside the app, but doable via **ECP** (the transport the RTA tests use),
+    which would ride the planned #667 server plugin. Deferred to that effort.

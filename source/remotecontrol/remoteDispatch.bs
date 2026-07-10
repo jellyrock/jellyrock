@@ -21,7 +21,34 @@ namespace remoteDispatch
       dispatchNavigate(command)
     else if command.kind = "transport"
       dispatchTransport(toTransportEvt(command))
+    else if command.kind = "route"
+      dispatchRoute(command.route)
+    else if command.kind = "goback"
+      dispatchGoBack()
+    else if command.kind = "message"
+      dispatchMessage(command.message)
     end if
+  end sub
+
+  ' route (GeneralCommand GoHome / GoToSearch / GoToSettings) -> navigate the router to a fixed path.
+  ' GoHome's "/" clears the stack (clearStackOnResolve) so Home is the back-stack root. An active
+  ' player is torn down by routing away (its onDestroy stops playback); from an idle screen this
+  ' shares the render-thread-wake caveat noted in remote-control.md, but going home from playback
+  ' wakes the render thread as the player unmounts.
+  sub dispatchRoute(route as string)
+    if not isValidAndNotEmpty(route) then return
+    m.scene.callFunc("routerNavigate", route)
+  end sub
+
+  ' goback (GeneralCommand Back) -> pop the router one step. sgRouter.goBack is a no-op at the
+  ' history root, so a remote Back never triggers the exit-confirmation / app exit.
+  sub dispatchGoBack()
+    m.scene.callFunc("routerGoBack")
+  end sub
+
+  ' message (GeneralCommand DisplayMessage) -> surface the sender's text as a toast on the TV.
+  sub dispatchMessage(message as string)
+    if isValidAndNotEmpty(message) then displayToast(message, "info")
   end sub
 
   ' play -> the deep-link play seam. #666 casts a SINGLE item (itemIds[startIndex]); the socket is

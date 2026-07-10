@@ -7,13 +7,16 @@
 namespace remoteCommand
 
   ' Parse a message envelope ({ MessageType, Data }) into a normalized command:
-  '   { kind: "play"|"transport"|"navigate"|"keepalive"|"ignore", raw: <Data>, ... }
+  '   { kind: "play"|"transport"|"navigate"|"route"|"goback"|"message"|"keepalive"|"ignore", raw: <Data>, ... }
   ' Per-kind fields:
   '   play      -> itemIds[], startIndex, startPositionTicks, action, queueMode
   '   transport -> command (a handleTransport verb), positionTicks (absolute; "seekto" only)
-  '   navigate  -> itemId, itemType
+  '   navigate  -> itemId, itemType                (GeneralCommand DisplayContent -> item springboard)
+  '   route     -> route                           (GeneralCommand GoHome / GoToSearch / GoToSettings)
+  '   goback    -> (none)                          (GeneralCommand Back)
+  '   message   -> message                         (GeneralCommand DisplayMessage -> a toast)
   '   keepalive -> intervalSeconds
-  '   ignore    -> KeepAlive / Sessions / volume / unknown — parsed but not enacted
+  '   ignore    -> KeepAlive / Sessions / volume / directional / unknown — parsed but not enacted
   function parseMessage(envelope as object) as object
     result = { kind: "ignore", raw: invalid }
     if not isValid(envelope) or not isValidAndNotEmpty(envelope.MessageType) then return result
@@ -66,14 +69,57 @@ namespace remoteCommand
   ' ignore. DisplayContent.Arguments carries { ItemId, ItemType, ItemName }.
   function parseGeneralCommand(data as object, result as object) as object
     if not isValid(data) or not isValidAndNotEmpty(data.Name) then return result
-    if data.Name <> "DisplayContent" then return result
-    args = data.Arguments
-    if not isValid(args) or not isValidAndNotEmpty(args.ItemId) then return result
-    result.kind = "navigate"
-    result.itemId = args.ItemId
-    result.itemType = ""
-    if isValidAndNotEmpty(args.ItemType) then result.itemType = args.ItemType
+    name = data.Name
+
+    ' Fixed-route navigation. GoHome rides the same seam as the others; the "/" route's
+    ' clearStackOnResolve makes Home the back-stack root (see remote-control.md).
+    if name = "GoHome" then return routeCommand(result, "/")
+    if name = "GoToSearch" then return routeCommand(result, "/search")
+    if name = "GoToSettings" then return routeCommand(result, "/settings")
+
+    ' Back -> pop the router one step (no-op at the history root, so it never exits the app).
+    if name = "Back"
+      result.kind = "goback"
+      return result
+    end if
+
+    ' DisplayMessage -> a toast. Arguments (MessageCommand) carry { Header, Text, TimeoutMs }.
+    if name = "DisplayMessage"
+      result.kind = "message"
+      result.message = displayMessageText(data.Arguments)
+      return result
+    end if
+
+    ' DisplayContent -> navigate to the item's springboard. Arguments carry { ItemId, ItemType, ItemName }.
+    if name = "DisplayContent"
+      args = data.Arguments
+      if not isValid(args) or not isValidAndNotEmpty(args.ItemId) then return result
+      result.kind = "navigate"
+      result.itemId = args.ItemId
+      result.itemType = ""
+      if isValidAndNotEmpty(args.ItemType) then result.itemType = args.ItemType
+      return result
+    end if
+
+    ' Volume (no Roku app volume API), directional D-pad (no in-app key injection — an ECP/plugin
+    ' job), SendKey/SendString/screenshot, and the Toggle*/bitrate niceties all fall through to
+    ' ignore. See remote-control.md for which are deferred vs platform-limited.
     return result
+  end function
+
+  ' A fixed-route navigation command ({ kind: "route", route: "<path>" }).
+  function routeCommand(result as object, route as string) as object
+    result.kind = "route"
+    result.route = route
+    return result
+  end function
+
+  ' DisplayMessage text: prefer Text, fall back to the Header; "" when neither is present.
+  function displayMessageText(args as object) as string
+    if not isValid(args) then return ""
+    if isValidAndNotEmpty(args.Text) then return args.Text
+    if isValidAndNotEmpty(args.Header) then return args.Header
+    return ""
   end function
 
   ' --- pure mappings ---
