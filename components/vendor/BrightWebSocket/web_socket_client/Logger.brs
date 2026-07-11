@@ -19,12 +19,13 @@ function Logger() as object
   ' Log a message
   ' @param level log level string or integer
   ' @param msg message to print
-  log.printl = function(level as object, msg as object) as void
+  log.printl = sub(level as object, msg as object)
     if m._parse_level(level) > m.log_level
       return
     end if
+    ' bsc-disable-next-line print-locations
     print "[" + m._level_to_string(level) + "] " + msg
-  end function
+  end sub
 
   ' Parse level to a string
   ' @param level string or integer level
@@ -45,6 +46,8 @@ function Logger() as object
     else if level = 3
       return "VERBOSE"
     end if
+    ' JellyRock: explicit fallback so every path returns a string (was an implicit invalid return).
+    return "?"
   end function
 
   ' Parse level to an integer
@@ -69,9 +72,9 @@ function Logger() as object
   end function
 
   ' Set the log level
-  log.set_log_level = function(level as string) as void
+  log.set_log_level = sub(level as string)
     m.log_level = m._parse_level(level)
-  end function
+  end sub
 
   ' JellyRock modification: default the log level to INFO instead of reading an optional
   ' pkg:/bright_web_socket.json config (JellyRock doesn't ship one — the upstream read

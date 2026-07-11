@@ -18,11 +18,26 @@ been dormant since 2021, so JellyRock is the de-facto maintainer.
 
 ## Local modifications
 
-**None to the sources** — the `web_socket_client/*.brs` files are byte-for-byte
-upstream. The only change is in `WebSocketClient.xml`: the `<script>` uris are
-repointed from `pkg:/components/web_socket_client/…` to this vendored path.
+The sources are **not** byte-for-byte upstream — trimmed + hardened when vendored (commit
+`dcac8b52`) and lightly touched since. Deltas vs the pinned SHA:
 
-Diff against upstream with the pinned SHA above.
+- `WebSocketClient.xml` — `<script>` uris repointed to this vendored path; dropped the `secure`
+  field + the `TlsUtil.brs` script.
+- **TLS removed** — Roku can't do socket TLS, so the unimplemented `wss://` skeleton (`TlsUtil.brs`,
+  `rsa_encrypt`, `m._secure`/`_tls`) was deleted (`ws://` only; ~710 dead lines).
+- **OOM guard** — the frame decoder now caps the server-declared inbound `payload_size`
+  (`WebSocketClient.brs` `_read_socket_data`) — the must-fix from the review below.
+- **100ms poll** — the task loop polls every 100ms instead of the upstream 1ms busy-loop.
+- **Logger silenced** — the missing-config Logger noise was quieted.
+- **`run` → `runSocketLoop`** (`WebSocketClientTask.brs`) — the top-level task worker was renamed off
+  the reserved `run` (collides with the global `Run()`). It only ever worked because the Task
+  dispatches it by the `functionName` string, never a scope call; renamed so we don't rely on that.
+- **Linted + formatted as owned code** — since upstream is dead, the sources were brought up to the
+  project's BrighterScript lint: `function`→`sub` for void functions, an explicit all-paths return in
+  `Logger._level_to_string`, and removal of the dead `mask`/`scheme` locals — plus Prettier formatting.
+  The `components/vendor/**` diagnostic filter was dropped from every bsconfig (see "Build/lint").
+
+Diff against upstream with the pinned SHA above for the exact line-level deltas.
 
 ## Security review (2026-07, pre-vendor)
 
@@ -46,6 +61,13 @@ hardened for shipping to untrusted servers):
 
 ## Build/lint
 
-Excluded from BrighterScript diagnostics via a `components/vendor/**` filter in
-`bsconfig.json` (mirrors how `roku_modules` is excluded), so third-party style
-does not trip the project's linters/plugins.
+Because upstream is unmaintained (there is no one to merge divergence back to — the fork's last
+commit is our pinned SHA, and the original `rolandoislas/BrightWebSocket` is archived), JellyRock
+**owns and lints** this code like the rest of the project — it is **not** excluded from
+BrighterScript diagnostics or Prettier.
+
+When first vendored it was lint-exempt via a `components/vendor/**` diagnostic filter (mirroring
+`roku_modules`). That filter was **removed from every `bsconfig*.json`** once the sources were brought
+up to the project's lint (`function`→`sub` where void, all-paths-return, dead-code removal) and
+formatting. New edits are linted + formatted normally, so real issues surface instead of being hidden.
+(The attribution `README.md` + `LICENSE` stay out of prose/spell lint as third-party docs.)

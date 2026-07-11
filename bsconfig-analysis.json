@@ -27,9 +27,12 @@
     "removeComments": true
   },
   "diagnosticFilters": [
-    { "files": "node_modules/**/*" },
-    { "files": "**/roku_modules/**/*" },
-    { "files": "components/vendor/**/*" }
+    {
+      "files": "node_modules/**/*"
+    },
+    {
+      "files": "**/roku_modules/**/*"
+    }
   ],
   "sourceMap": true,
   "autoImportComponentScript": true,

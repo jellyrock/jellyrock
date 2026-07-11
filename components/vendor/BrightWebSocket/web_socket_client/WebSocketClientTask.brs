@@ -8,14 +8,18 @@
 ' handling (ws:// only — upstream TLS was unimplemented and Roku can't do socket TLS).
 
 ' Entry point
-function init() as void
+sub init()
   ' Task init
-  m.top.functionName = "run"
+  m.top.functionName = "runSocketLoop"
   m.top.control = "RUN"
-end function
+end sub
 
-' Main task loop
-function run() as void
+' Main task loop.
+' JellyRock modification: renamed from `run` — a top-level `run()` collides with the built-in
+' global `Run()` (BSC: cannot-use-reserved-word / native-function-collision). It worked upstream
+' only because the Task dispatches it by the `functionName` STRING, never a scope call; renamed so
+' we don't rely on that and the diagnostic is genuinely resolved, not just suppressed.
+sub runSocketLoop()
   m.ws = WebSocketClient()
   m.port = createObject("roMessagePort")
   m.ws.set_message_port(m.port)
@@ -91,4 +95,4 @@ function run() as void
     end if
     m.ws.run()
   end while
-end function
+end sub

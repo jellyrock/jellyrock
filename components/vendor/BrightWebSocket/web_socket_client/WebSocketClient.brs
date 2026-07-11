@@ -95,24 +95,24 @@ function WebSocketClient() as object
   ' Set the web socket protocols to request from the web socket server
   ' @param self WebSocketClient
   ' @param roArray of protocol strings
-  ws.set_protocols = function(protocols as object) as void
+  ws.set_protocols = sub(protocols as object)
     m._protocols = protocols
     m._post_message("protocols", m._protocols)
-  end function
+  end sub
 
   ' Set the headers to send on the initial HTTP request for a web socket
   ' @param self WebSocketClient
   ' @param roArray of header strings - The even indices should be the header
   '        keys and the odd are the header values
-  ws.set_headers = function(headers as object) as void
+  ws.set_headers = sub(headers as object)
     m._headers = headers
     m._post_message("headers", m._headers)
-  end function
+  end sub
 
   ' Set the buffer size for web socket data
   ' @param self WebSocketClient
   ' @param size integer max size of buffer in bytes
-  ws.set_buffer_size = function(size as integer) as void
+  ws.set_buffer_size = sub(size as integer)
     if m._ready_state <> m.STATE.CLOSED
       m._logger.printl(m.WARN, "WebSocketClient: Cannot resize buffer on a socket that is not closed")
       return
@@ -125,26 +125,26 @@ function WebSocketClient() as object
     m._buffer[m._buffer_size] = 0
     m._data_size = 0
     m._post_message("buffer_size", m._buffer_size)
-  end function
+  end sub
 
   ' Set the message port that should be used to relay web socket events and
   ' field change updates
   ' @param self WebSocketClient
   ' @param port roMessagePort
-  ws.set_message_port = function(port as object) as void
+  ws.set_message_port = sub(port as object)
     m._message_port = port
-  end function
+  end sub
 
   ' Set the log level
-  ws.set_log_level = function(log_level as string) as void
+  ws.set_log_level = sub(log_level as string)
     m._logger.set_log_level(log_level)
-  end function
+  end sub
 
   ' ========== Main ==========
 
   ' Parses one websocket frame or HTTP message, if one is available
   ' @param self WebSocketClient
-  ws.run = function() as void
+  ws.run = sub()
     msg = wait(200, m._ws_port)
     ' Socket event
     if type(msg) = "roSocketEvent"
@@ -152,16 +152,16 @@ function WebSocketClient() as object
       m._read_socket_data()
     end if
     m._try_force_close()
-  end function
+  end sub
 
   ' Force close a connection after the close frame has been sent and no
   ' response was given, after a timeout
   ' @param self WebSocketClient
-  ws._try_force_close = function() as void
+  ws._try_force_close = sub()
     if m._ready_state = m.STATE.CLOSING and uptime(0) - m._started_closing >= m._CLOSING_DELAY
       m._close()
     end if
-  end function
+  end sub
 
   ' Sends data through the socket
   ' @param self WebSocketClient
@@ -303,7 +303,7 @@ function WebSocketClient() as object
 
   ' Send the initial websocket handshake if it has not been sent
   ' @param self WebSocketClient
-  ws._send_handshake = function() as void
+  ws._send_handshake = sub()
     if m._socket = invalid or not m._socket.isWritable() or m._sent_handshake or m._handshake = invalid
       return
     end if
@@ -316,11 +316,11 @@ function WebSocketClient() as object
       return
     end if
     m._sent_handshake = true
-  end function
+  end sub
 
   ' Read socket data
   ' @param self WebSocketClient
-  ws._read_socket_data = function() as void
+  ws._read_socket_data = sub()
     if m._socket = invalid or m._ready_state = m.STATE.CLOSED
       return
     end if
@@ -355,7 +355,6 @@ function WebSocketClient() as object
       payload_size_7 = m._data[1] and &h7f
       payload_size = payload_size_7
       payload_index = 2
-      mask = 0
       if payload_size_7 = 126
         ' Wait for the 16-bit payload size
         if m._data_size < 4
@@ -384,7 +383,8 @@ function WebSocketClient() as object
         if m._data_size < payload_index
           return
         end if
-        mask = bytes_to_int(m._data[payload_index], m._data[payload_index + 1], m._data[payload_index + 2], m._data[payload_index + 3])
+        ' JellyRock: skip the 4 mask-key bytes. Server->client frames are never masked (RFC 6455),
+        ' so we don't unmask — upstream read the key into a variable it never used (removed).
         payload_index += 4
       end if
       ' Wait for payload
@@ -442,12 +442,12 @@ function WebSocketClient() as object
     end if
     m._data_size = m._data.count()
     m._data[m._buffer_size] = 0
-  end function
+  end sub
 
   ' Handle the handshake message or die trying
   ' @param self WebSocketClient
   ' @param string http response header
-  ws._handle_handshake_response = function(message as string) as void
+  ws._handle_handshake_response = sub(message as string)
     lines = message.split(m._NL)
     if lines.count() = 0
       m._close()
@@ -526,26 +526,26 @@ function WebSocketClient() as object
     m._post_message("on_open", {
       protocol: protocol
     })
-  end function
+  end sub
 
   ' Post a message to the message port
   ' @param self WebSocketClient
   ' @param id string message event id
   ' @param data dynamic message data
-  ws._post_message = function(id as string, data as dynamic) as void
+  ws._post_message = sub(id as string, data as dynamic)
     if m._message_port <> invalid
       m._message_port.postMessage({
         id: id,
         data: data
       })
     end if
-  end function
+  end sub
 
   ' Handle a web socket frame
   ' @param self WebSocketClient
   ' @param opcode int opcode
   ' @param payload roByteArray payload data
-  ws._handle_frame = function(opcode as integer, payload as object) as void
+  ws._handle_frame = sub(opcode as integer, payload as object)
     if opcode <> m.OPCODE.PONG
       frame_print = "WebSocketClient: " + "Received frame:" + m._NL
       frame_print += "  Opcode: " + opcode.toStr() + m._NL
@@ -579,7 +579,7 @@ function WebSocketClient() as object
       })
       return
     end if
-  end function
+  end sub
 
   ' Generate a 16 character [A-Za-z0-9] random string and base64 encode it
   ' @link https://tools.ietf.org/html/rfc6455#section-4.1
@@ -605,7 +605,7 @@ function WebSocketClient() as object
   '                   Format: ws://example.org:80/
   '                   If the port is not specified the port will be assumed
   '                   from the protocol (ws: 80, wss: 443).
-  ws.open = function(url as string) as void
+  ws.open = sub(url as string)
     if m._ready_state <> m.STATE.CLOSED
       m._logger.printl(m._logger.DEBUG, "WebSocketClient: Tried to open a web socket that was already open")
       return
@@ -635,8 +635,6 @@ function WebSocketClient() as object
       if path = ""
         path = "/"
       end if
-      ' WS(S) to HTTP(S)
-      scheme = ws_type.replace("ws", "http")
       ' Construct handshake
       m._sec_ws_key = m._generate_sec_ws_key()
       protocols = ""
@@ -691,7 +689,7 @@ function WebSocketClient() as object
       m._close()
       m._error(1, "Invalid URL specified")
     end if
-  end function
+  end sub
 
   ' Parse header array and return a string of headers delimited by CRLF
   ' @param self WebSocketClient
@@ -711,29 +709,29 @@ function WebSocketClient() as object
   ' Set ready state
   ' @param self WebSocketClient
   ' @param state
-  ws._state = function(_state as integer) as void
+  ws._state = sub(_state as integer)
     m._ready_state = _state
     m._post_message("ready_state", _state)
-  end function
+  end sub
 
   ' Send an error event
   ' Posts an on_error message to the message port
   ' @param self WebSocketClient
   ' @param code integer error code
   ' @param message string error message
-  ws._error = function(code as integer, message as string) as void
+  ws._error = sub(code as integer, message as string)
     m._logger.printl(m._logger.EXTRA, "WebSocketClient: Error: " + message)
     m._post_message("on_error", {
       code: code,
       message: message
     })
-  end function
+  end sub
 
   ' Close the socket
   ' @param WebSocketClient
   ' @param code integer -  status code
   ' @param reason roByteArray - reason
-  ws._close = function(code = 1000 as integer, reason = invalid as object) as void
+  ws._close = sub(code = 1000 as integer, reason = invalid as object)
     if m._socket <> invalid
       ' Send the closing frame
       if m._ready_state = m.STATE.OPEN
@@ -748,13 +746,13 @@ function WebSocketClient() as object
     else if m._ready_state <> m.STATE.CLOSED
       m._state(m.STATE.CLOSED)
     end if
-  end function
+  end sub
 
   ' Send a close frame to the server to initiate a close
   ' @param self WebSocketClient
   ' @param code integer -  status code
   ' @param reason roByteArray - reason
-  ws._send_close_frame = function(code as integer, reason as dynamic) as void
+  ws._send_close_frame = sub(code as integer, reason as dynamic)
     message = createObject("roByteArray")
     message.push(code >> 8)
     message.push(code)
@@ -762,12 +760,12 @@ function WebSocketClient() as object
       message.append(reason)
     end if
     m.send(message, m.OPCODE.CLOSE, true, false)
-  end function
+  end sub
 
   ' Close the socket
   ' @self WebSocketClient
   ' @param reason array - array [code as integer, message as roString]
-  ws.close = function(params as object) as void
+  ws.close = sub(params as object)
     code = 1000
     reason = createObject("roByteArray")
     if params.count() > 0
@@ -785,7 +783,7 @@ function WebSocketClient() as object
       end if
     end if
     m._close(code, reason)
-  end function
+  end sub
 
   ' Return constructed instance
   return ws
