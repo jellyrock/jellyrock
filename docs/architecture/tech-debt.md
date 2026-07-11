@@ -214,7 +214,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `bsconfig-files-duplicated`
 
 - **area**: repo root (`bsconfig.json`, `bsconfig-prod.json`, `bsconfig-analysis.json`, `bsconfig-tests.json`, `bsconfig-tests-unit.json`, `bsconfig-tests-integration.json`, `bsconfig-tests-complete.json`, `bsconfig-tdd-sample.json`)
-- **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance. **This has bitten:** the #666 vendoring added the `components/vendor/**` `diagnosticFilter` to `bsconfig.json` only, leaving all five test-runner configs without it — so every `test:*` / `test:tdd` build failed on the vendored `.brs` until the filter was hand-copied into each. A shared base would have propagated it once.
+- **issue**: Multiple `bsconfig*.json` files mostly copy each other with a few overrides. A common base + overlay would be cleaner, but `BSC`'s config schema doesn't support inheritance. **This has bitten twice in one feature:** the #666 vendoring added the `components/vendor/**` `diagnosticFilter` to `bsconfig.json` only, leaving the other **seven** configs (`-prod`, `-analysis`, and the five test-runner configs) without it. First the missing filter broke every `test:*` / `test:tdd` build on the vendored `.brs`; that fix copied it into the test configs but missed `-prod`/`-analysis`, so CI's `build:prod` then failed the same way. Both waves were hand-copies into each file. A shared base would have propagated it once.
 
 #### `mixed-esm-cjs-scripts`
 
