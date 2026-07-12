@@ -1,4 +1,4 @@
-' Main-thread dispatch adapter for the remote-control receiver (#666). THE single place any
+' Main-thread dispatch adapter for the remote-control receiver. THE single place any
 ' deep-link / player seam is called for a normalized remote-control command — whether it arrives
 ' from the Roku voice roInput path (main.bs) or the ws:// receiver (RemoteControlTask). Runs on the
 ' MAIN thread (shares Main()'s m): stashDeepLink / onRuntimeDeepLink / getActiveView / callFunc all
@@ -74,10 +74,9 @@ namespace remoteDispatch
     end if
   end sub
 
-  ' play -> the deep-link play seam. #666 casts a SINGLE item (itemIds[startIndex]); the socket is
-  ' already bound to the active server's session, so no serverId is minted (an empty guid resolves
-  ' to the active server in onRuntimeDeepLink -> replayDeepLinkRuntime). Multi-item queue casting is
-  ' the deferred "queue-aware casting" follow-up.
+  ' play -> the deep-link play seam. Casts a SINGLE item (itemIds[startIndex]); the socket is already
+  ' bound to the active server's session, so no serverId is minted (an empty guid resolves to the active
+  ' server in onRuntimeDeepLink -> replayDeepLinkRuntime). Multi-item queue casting is a deferred follow-up.
   sub dispatchPlay(command as object)
     contentId = playContentId(command)
     if contentId = "" then return

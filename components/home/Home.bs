@@ -220,9 +220,8 @@ sub onScreenShown()
     m.isFirstRun = false
     loadLibraries()
     SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
-    ' #666: start the ws:// remote-control receiver now that we're authed (it needs the session
-    ' token). The node lives on m.global (created in setGlobalNodes); SignOut stops it. This runs on
-    ' each fresh post-login Home (isFirstRun is per Home instance), so it restarts after a switch.
+    ' Start the ws:// remote-control receiver now that we're authed (it needs the session token).
+    ' isFirstRun is per Home instance, so this restarts the receiver after a server switch too.
     m.global.remoteControlTask.control = "RUN"
   else
     ' Subsequent visits: refresh the active tab's data in place

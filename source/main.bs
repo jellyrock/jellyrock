@@ -54,11 +54,10 @@ sub Main (args as dynamic) as void
   ' API calls and drives the next navigation. Registered once here.
   m.scene.observeField("preLoginIntent", m.port)
 
-  ' Remote-control receiver (#666): observe the ws:// listener's marshalled commands. RemoteControlTask
-  ' (created on m.global in setGlobalNodes, started post-login) parses socket frames off-thread and
-  ' writes a normalized command to its dispatchCommand field; we dispatch it on the MAIN thread via
-  ' remoteDispatch, alongside the voice path. A task-node field + port delivers (an m.global field +
-  ' port does not — the delivery defect noted above). Wired once; survives session resets.
+  ' Observe the ws:// receiver's marshalled commands; dispatched on the MAIN thread via remoteDispatch
+  ' (shared with the voice path). The field lives on the task node, not m.global — a task-node field +
+  ' port delivers, an m.global field + port does not (the delivery defect noted above). See
+  ' remote-control.md.
   m.global.remoteControlTask.observeField("dispatchCommand", m.port)
 
   ' Cold-start deep link. Stash it (structured intent on
@@ -308,8 +307,8 @@ sub Main (args as dynamic) as void
         end if
       end if
     else if isNodeEvent(msg, "dispatchCommand")
-      ' A ws:// remote-control command (#666) marshalled from RemoteControlTask. Dispatch it on the
-      ' MAIN thread — remoteDispatch reuses the deep-link (play/navigate) and shared transport seams.
+      ' A ws:// remote-control command marshalled from RemoteControlTask. Dispatch on the MAIN thread —
+      ' remoteDispatch reuses the deep-link (play/navigate) and shared transport seams.
       remoteDispatch.dispatch(msg.getData())
     else if isNodeEvent(msg, "reloadHomeRequested")
       ' Theme/locale changed — re-navigate the router to "/" for a fresh Home (picks up new

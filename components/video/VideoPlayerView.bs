@@ -2006,9 +2006,9 @@ function handleTransport(evt as object) as object
     return handleVoiceNextItem()
   end if
 
-  ' Remote-control (#666) additions. "previous" mirrors "next" over the queue; "seekto" is an
-  ' ABSOLUTE seek (Jellyfin's Playstate Seek carries an absolute position, unlike voice's relative
-  ' "seek"); "playpause" toggles by current transport state.
+  ' Remote-control additions. "previous" mirrors "next" over the queue; "seekto" is an ABSOLUTE seek
+  ' (Jellyfin's Playstate Seek carries an absolute position, unlike voice's relative "seek");
+  ' "playpause" toggles by current transport state.
   if cmd = "previous"
     return handleVideoPreviousItem()
   end if
@@ -2127,7 +2127,7 @@ function handleVoiceNextItem() as object
   return { status: "success" }
 end function
 
-' Remote "PreviousTrack" (#666): step back one queue item, symmetric with handleVoiceNextItem.
+' Remote "PreviousTrack": step back one queue item, symmetric with handleVoiceNextItem.
 ' error.generic at the head of the queue (no previous item) — no chapter-back concept here.
 function handleVideoPreviousItem() as object
   queueManager = m.global.queueManager

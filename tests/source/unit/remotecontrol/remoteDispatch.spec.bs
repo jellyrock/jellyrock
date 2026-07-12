@@ -2,7 +2,7 @@ import "pkg:/source/remotecontrol/remoteDispatch.bs"
 
 namespace tests
 
-  ' Remote-control receiver (#666): the main-thread dispatch adapter's PURE marshalling layer —
+  ' Remote-control receiver: the main-thread dispatch adapter's PURE marshalling layer —
   ' the contentId minted for a play cast and the evt handed to a player's handleTransport. The
   ' node-touching wrappers (dispatchPlay/dispatchNavigate ride the deep-link seam; dispatchTransport
   ' reads getActiveView + callFunc a player) are exercised on device in the E2E cast pass, matching

@@ -1,12 +1,11 @@
-' Transport-agnostic protocol constants + pure helpers for the remote-control receiver
-' (#666): the http-gate, the session-socket URL builder, reconnect backoff, and the
-' client KeepAlive frame. No socket, no node, no m.global — fully unit-testable.
+' Transport-agnostic protocol constants + pure helpers for the remote-control receiver: the
+' http-gate, the session-socket URL builder, reconnect backoff, and the client KeepAlive frame.
+' No socket, no node, no m.global — fully unit-testable.
 namespace remoteProtocol
 
-  ' The http-gate. JellyRock can only open a ws:// socket to an http:// server — Roku can't
-  ' do wss:// (no socket TLS), so an https:// session stays uncontrolled until the #667
-  ' plugin long-poll path. Both the advertised capability (deviceCapabilities) and the
-  ' receiver gate on this, so the two never disagree.
+  ' The http-gate. JellyRock can only open a ws:// socket to an http:// server — Roku can't do wss://
+  ' (no socket TLS), so an https:// session stays uncontrolled (the future plugin long-poll path). Both
+  ' the advertised capability (deviceCapabilities) and the receiver gate on this, so they never disagree.
   function isHttpServer(serverUrl as dynamic) as boolean
     if not isValidAndNotEmpty(serverUrl) then return false
     return LCase(Left(serverUrl, 7)) = "http://"

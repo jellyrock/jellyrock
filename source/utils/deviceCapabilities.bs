@@ -43,11 +43,10 @@ end function
 ' Returns the Device Capabilities for Roku.
 ' Also prints out the device profile for debugging
 function getDeviceCapabilities() as object
-  ' Advertise media control only on http:// servers, where we open the ws:// session
-  ' socket (#666). Roku can't wss://, so an https:// session stays uncontrolled until the
-  ' plugin long-poll path (#667) — don't advertise control we can't deliver.
-  ' http-gate — mirrors remoteProtocol.isHttpServer (kept inline to avoid pulling the
-  ' remotecontrol namespace into every component scope that reads capabilities).
+  ' Advertise media control only on http:// servers, where we can open the ws:// session socket —
+  ' Roku can't wss://, so don't advertise control we can't deliver. Mirrors remoteProtocol.isHttpServer
+  ' (kept inline to avoid pulling the remotecontrol namespace into every capabilities reader). See
+  ' remote-control.md.
   supportsMediaControl = false
   globalServer = m.global.server
   if isValid(globalServer) and isValidAndNotEmpty(globalServer.serverUrl)
@@ -72,17 +71,14 @@ function getDeviceCapabilities() as object
   return deviceProfile
 end function
 
-' GeneralCommand-type actions JellyRock can enact (#666). This capability is a
-' GeneralCommandType[] and Jellyfin deserializes it STRICTLY — any value outside the
-' GeneralCommandType enum 400s the whole /Sessions/Capabilities/Full POST. So it must
-' NOT contain PlaystateCommands (Pause/Stop/Seek/NextTrack/…) or PlayCommands — those
-' transport verbs are governed by SupportsMediaControl:true, not advertised here.
-' Volume/mute GeneralCommandTypes are omitted — Roku exposes no volume API.
+' GeneralCommand-type actions JellyRock can enact. This capability is a GeneralCommandType[] and
+' Jellyfin deserializes it STRICTLY — any value outside the GeneralCommandType enum 400s the whole
+' /Sessions/Capabilities/Full POST. So it must NOT contain PlaystateCommands (Pause/Stop/Seek/…) or
+' PlayCommands: those transport verbs are governed by SupportsMediaControl:true, not advertised here.
 function getSupportedRemoteCommands() as object
-  ' MUST be GeneralCommandType values ONLY (see remote-control.md) — a Playstate verb here 400s the
-  ' whole capabilities POST. The web only SENDS a GeneralCommand it sees advertised here, so this is
-  ' the enactable navigation + messaging set. Volume, directional D-pad, SendKey/String, screenshot
-  ' etc. are deliberately NOT advertised (not enactable from an app on Roku today — see remote-control.md).
+  ' The web only SENDS a GeneralCommand it sees advertised here, so this is the enactable navigation +
+  ' messaging set. Volume, directional D-pad, SendKey/String, and screenshot are deliberately omitted
+  ' (not enactable from an app on Roku today — see remote-control.md).
   return [
     "DisplayContent", ' springboard an item
     "GoHome", ' return to Home

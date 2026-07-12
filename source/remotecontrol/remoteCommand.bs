@@ -1,9 +1,8 @@
-' Pure wire-protocol parser for the remote-control receiver (#666). Turns a Jellyfin
-' session-socket message envelope ({ MessageType, Data }) into a normalized command that
-' the main-thread dispatcher (remoteDispatch) enacts. No socket, no node, no m.global — so
-' it is fully unit-testable. The envelope + Data shapes below were captured from a live
-' Jellyfin server (see docs/architecture/remote-control.md). Analog of the voice-control
-' pure layer, source/utils/voiceTransport.bs.
+' Pure wire-protocol parser for the remote-control receiver. Turns a Jellyfin session-socket message
+' envelope ({ MessageType, Data }) into a normalized command that the main-thread dispatcher
+' (remoteDispatch) enacts. No socket, no node, no m.global — fully unit-testable. The envelope + Data
+' shapes below were captured from a live Jellyfin server. Analog of the voice pure layer,
+' source/utils/voiceTransport.bs. See docs/architecture/remote-control.md.
 namespace remoteCommand
 
   ' Parse a message envelope ({ MessageType, Data }) into a normalized command:
@@ -35,10 +34,9 @@ namespace remoteCommand
     return result ' KeepAlive, Sessions, and everything else -> ignore
   end function
 
-  ' Play message -> a "play" command. Jellyfin sends an ItemIds array (a whole series or
-  ' album can be hundreds of ids), a PlayCommand, and optional StartIndex/StartPositionTicks.
-  ' #666 plays a single item (itemIds[startIndex]); the full list/index/position are captured
-  ' for the future queue-aware casting follow-up.
+  ' Play message -> a "play" command. Jellyfin sends an ItemIds array (a whole series or album can be
+  ' hundreds of ids), a PlayCommand, and optional StartIndex/StartPositionTicks. We play a single item
+  ' (itemIds[startIndex]); the full list/index/position are captured for the queue-aware casting follow-up.
   function parsePlay(data as object, result as object) as object
     if not isValid(data) or not isValid(data.ItemIds) or data.ItemIds.count() = 0 then return result
     result.kind = "play"
@@ -134,7 +132,7 @@ namespace remoteCommand
     return "play" ' PlayNow / PlayNext / PlayLast
   end function
 
-  ' PlayCommand -> queue placement. #666 plays now regardless; captured for the follow-up.
+  ' PlayCommand -> queue placement. We play now regardless; captured for the queue-aware casting follow-up.
   function playCommandToQueueMode(playCommand as string) as string
     if playCommand = "PlayNext" then return "next"
     if playCommand = "PlayLast" then return "last"

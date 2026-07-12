@@ -2,7 +2,7 @@ import "pkg:/source/remotecontrol/remoteCommand.bs"
 
 namespace tests
 
-  ' Remote-control receiver (#666): the pure wire-protocol parser. Envelope + Data shapes
+  ' Remote-control receiver: the pure wire-protocol parser. Envelope + Data shapes
   ' are the ones captured from a live Jellyfin server. The contract: a valid enactable
   ' message becomes a typed normalized command; everything unknown/unsupported degrades to
   ' "ignore" (never an error), so a hostile or future-version frame can't break the receiver.

@@ -2,7 +2,7 @@ import "pkg:/source/remotecontrol/remoteProtocol.bs"
 
 namespace tests
 
-  ' Remote-control receiver (#666): the transport-agnostic protocol helpers — the http-gate,
+  ' Remote-control receiver: the transport-agnostic protocol helpers — the http-gate,
   ' the session-socket URL builder (must bind the same session as the REST API), reconnect
   ' backoff, and the client KeepAlive frame.
   @suite("remoteProtocol — protocol helpers")

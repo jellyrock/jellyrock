@@ -12,7 +12,7 @@ related-files:
   - source/utils/globals.bs
   - source/api/userAuth.bs
   - components/home/Home.bs
-last-reviewed: 2026-07-10
+last-reviewed: 2026-07-12
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -144,12 +144,11 @@ acceptable; a user opt-out setting is deferred until there's evidence it's wante
   Casting an **episode** still gives a navigable queue because the *player* builds its own
   next-episode queue; casting a music **album** currently plays only the first track. Multi-item
   queue casting (`PlayNext` / `PlayLast`, start-position) is the **queue-aware casting** followup.
-- **Navigation lag (known).** A cast `navigate`/`play` to an *idle* (already-resident) screen can lag until
-  the next input, because the command arrives as a **node event on the main thread** → `callFunc`
-  into `JRScene`, and nothing wakes the render thread to repaint (Roku has no render-wake idiom;
-  `playbackLaunchRequest` avoids this only by being observed by `JRScene` on the *render* thread).
-  Transport during playback is unaffected (the video keeps the render thread awake). Tracked as a
-  followup; needs a confirmed reproduction before a fix.
+- **Navigation to an idle screen — verified working.** A cast `navigate`/`play` bottoms out in
+  `m.scene.callFunc("resolveDeepLink"/"routerNavigate", …)`, which runs on the render thread — the same
+  path Roku's own runtime deep links use. Device-checked (2026-07-12): with JellyRock sitting idle on
+  Home, a web-client cast to a movie opens it immediately, with no delay and no dropped first action. An
+  earlier hypothesis about a render-thread-wake lag on idle screens did **not** reproduce.
 - **HTTPS / remote servers.** Out of scope here — that's the #667 plugin long-poll transport.
 - **More `GeneralCommand` types (deferred, not impossible).** The advertised set is navigation + messaging.
   The rest are followups with a concrete mechanism, NOT platform dead-ends:
