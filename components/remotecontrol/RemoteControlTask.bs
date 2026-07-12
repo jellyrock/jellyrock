@@ -30,7 +30,7 @@ sub runReceiver()
 
   attempt = 0
   while true
-    connectAndPump(url)
+    wasStable = connectAndPump(url)
 
     ' The socket closed. Reconnect unless the session is gone. SignOut(false) (logout AND server
     ' switch) sets control="STOP", killing this thread; this guard only catches a token rotation.
@@ -40,17 +40,31 @@ sub runReceiver()
       return
     end if
 
-    attempt++
+    ' Backoff progression. A connection that was ESTABLISHED and STABLE (connectAndPump returned true:
+    ' it opened and stayed up past the stable threshold) then dropped resets the counter so we
+    ' reconnect promptly — a real session that blips shouldn't wait out a stale 30s backoff. A
+    ' never-opened or quickly-flapping connection leaves the counter climbing, so the exponential
+    ' backoff (1s, 2s, 4s, ... capped 30s) is UNCHANGED for a persistently-down/flapping server —
+    ' that path never resets, so it can't hot-loop. increment AFTER the sleep so the 0th tier (1s) is
+    ' actually used rather than skipped straight to 2s.
+    if wasStable then attempt = 0
     backoffMs = remoteProtocol.nextBackoffMs(attempt)
     m.log.info("socket closed; reconnecting", "inMs", backoffMs)
     sleep(backoffMs)
+    attempt++
   end while
 end sub
 
 ' Open the socket and pump events until it closes or errors. Sends a KeepAlive whenever the wait
 ' times out at the interval Jellyfin's ForceKeepAlive requested (0 = block until an event, before any
 ' ForceKeepAlive arrives). Marshals each dispatchable command to the main thread. Returns on close.
-sub connectAndPump(url as string)
+' Returns TRUE when the connection was ESTABLISHED and STABLE — it opened AND stayed up at least
+' STABLE_SESSION_MS — so runReceiver can reset its reconnect backoff. A never-opened socket, or one
+' that opened but dropped sooner than that (a flap), returns FALSE so the backoff keeps climbing.
+' Threshold = the backoff cap (30s): a session that outlived the max backoff interval was clearly real.
+function connectAndPump(url as string) as boolean
+  STABLE_SESSION_MS = 30000
+
   m.ws = CreateObject("roSGNode", "WebSocketClient")
   m.ws.observeField("on_open", m.port)
   m.ws.observeField("on_message", m.port)
@@ -59,6 +73,7 @@ sub connectAndPump(url as string)
   m.log.info("opening session socket") ' NEVER log url — it carries the auth token
   m.ws.open = url
 
+  sessionTimer = invalid ' marks when the socket opened; invalid => never opened (an unstable attempt)
   m.keepAliveIntervalMs = 0 ' set when a ForceKeepAlive arrives; 0 => wait() blocks indefinitely
   while true
     msg = wait(m.keepAliveIntervalMs, m.port)
@@ -68,17 +83,19 @@ sub connectAndPump(url as string)
         handleFrame(msg.getData())
       else if field = "on_open"
         m.log.info("socket open")
+        sessionTimer = CreateObject("roTimespan")
       else if field = "on_close" or field = "on_error"
         m.log.info("socket", field)
         closeSocket()
-        return
+        return isValid(sessionTimer) and sessionTimer.TotalMilliseconds() >= STABLE_SESSION_MS
       end if
     else
       ' wait() timed out -> keepalive tick (only reachable once an interval is set).
       if m.keepAliveIntervalMs > 0 then m.ws.send = [remoteProtocol.keepAliveFrame()]
     end if
   end while
-end sub
+  return false ' unreachable (the loop only exits via the on_close/on_error return) — satisfies the analyzer
+end function
 
 ' Parse one inbound frame and either answer a keepalive or marshal a dispatchable command.
 sub handleFrame(data as object)
