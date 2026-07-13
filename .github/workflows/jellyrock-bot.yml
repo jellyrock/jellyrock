@@ -29,8 +29,15 @@ jobs:
   # Sorts en_US.json alphabetically and syncs languages.json with locale files.
   # Missing keys are caught at build time by the BSC translation-keys plugin.
   # ============================================================================
+  # NO actor guard here (unlike the weblate job below). This job is an
+  # idempotent recompute gated by `git diff` before it commits, so a
+  # bot-triggered run either finds nothing to do (no push, no loop) or
+  # completes sync work a superseded run would otherwise have dropped.
+  # An `actor != jellyrock[bot]` skip here silently loses translation/
+  # changelog syncs when a bot commit (e.g. journal-sync) supersedes the
+  # real-PR run in the shared jellyrock-bot-main concurrency group. Do not
+  # re-add it. See git history / docs/decisions.md for the full trace.
   update-translation-source:
-    if: github.actor != 'jellyrock[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -167,8 +174,9 @@ jobs:
   # Job 3: Settings Documentation Update
   # Only runs when settings/settings.json is modified
   # ============================================================================
+  # NO actor guard — see update-translation-source above. Idempotent recompute,
+  # gated by `git diff` before commit; skipping bot runs drops real-PR syncs.
   update-settings-docs:
-    if: github.actor != 'jellyrock[bot]'
     needs: update-translation-source
     runs-on: ubuntu-latest
     steps:
@@ -251,8 +259,9 @@ jobs:
   # ============================================================================
   # Job 4: Changelog Sync
   # ============================================================================
+  # NO actor guard — see update-translation-source above. Idempotent recompute,
+  # gated by `git diff` before commit; skipping bot runs drops real-PR syncs.
   sync-changelog:
-    if: github.actor != 'jellyrock[bot]'
     needs: update-settings-docs
     runs-on: ubuntu-latest
     steps:
