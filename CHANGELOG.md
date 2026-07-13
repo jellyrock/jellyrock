@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Add native `ws://` remote-control receiver (Cast to JellyRock) ([#707](https://github.com/jellyrock/jellyrock/pull/707))
+
 ### Dependencies
 
 - Update eslint-plugin-n from v18.2.1 to v18.2.2 ([#710](https://github.com/jellyrock/jellyrock/pull/710))
