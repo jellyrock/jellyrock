@@ -613,3 +613,11 @@ AV1
 mkv
 Bitstream
 sideloading
+TLS
+backoff
+keepalive
+cleartext
+marshalling
+Marshalling
+chokepoint
+vendoring

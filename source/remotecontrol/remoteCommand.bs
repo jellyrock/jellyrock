@@ -1,0 +1,175 @@
+' Pure wire-protocol parser for the remote-control receiver. Turns a Jellyfin session-socket message
+' envelope ({ MessageType, Data }) into a normalized command that the main-thread dispatcher
+' (remoteDispatch) enacts. No socket, no node, no m.global — fully unit-testable. The envelope + Data
+' shapes below were captured from a live Jellyfin server. Analog of the voice pure layer,
+' source/utils/voiceTransport.bs. See docs/architecture/remote-control.md.
+namespace remoteCommand
+
+  ' Parse a message envelope ({ MessageType, Data }) into a normalized command:
+  '   { kind: "play"|"transport"|"navigate"|"route"|"goback"|"message"|"keepalive"|"ignore", raw: <Data>, ... }
+  ' Per-kind fields:
+  '   play      -> itemIds[], startIndex, startPositionTicks, action, queueMode
+  '   transport -> command (a handleTransport verb), positionTicks (absolute; "seekto" only)
+  '   navigate  -> itemId, itemType                (GeneralCommand DisplayContent -> item springboard)
+  '   route     -> route                           (GeneralCommand GoHome / GoToSearch / GoToSettings)
+  '   goback    -> (none)                          (GeneralCommand Back)
+  '   message   -> header, text, hasTimeout        (GeneralCommand DisplayMessage; timeout -> toast, else dialog)
+  '   keepalive -> intervalSeconds
+  '   ignore    -> KeepAlive / Sessions / volume / directional / unknown — parsed but not enacted
+  function parseMessage(envelope as object) as object
+    result = { kind: "ignore", raw: invalid }
+    if not isValid(envelope) or not isValidAndNotEmpty(envelope.MessageType) then return result
+    result.raw = envelope.Data
+
+    messageType = envelope.MessageType
+    if messageType = "Play" then return parsePlay(envelope.Data, result)
+    if messageType = "Playstate" then return parsePlaystate(envelope.Data, result)
+    if messageType = "GeneralCommand" then return parseGeneralCommand(envelope.Data, result)
+    if messageType = "ForceKeepAlive"
+      ' Data is the interval in seconds; the receiver answers with a KeepAlive.
+      result.kind = "keepalive"
+      result.intervalSeconds = asInt(envelope.Data, 60)
+      return result
+    end if
+    return result ' KeepAlive, Sessions, and everything else -> ignore
+  end function
+
+  ' Play message -> a "play" command. Jellyfin sends an ItemIds array (a whole series or album can be
+  ' hundreds of ids), a PlayCommand, and optional StartIndex/StartPositionTicks. We play a single item
+  ' (itemIds[startIndex]); the full list/index/position are captured for the queue-aware casting follow-up.
+  function parsePlay(data as object, result as object) as object
+    if not isValid(data) or not isValid(data.ItemIds) or data.ItemIds.count() = 0 then return result
+    result.kind = "play"
+    result.itemIds = data.ItemIds
+    result.startIndex = asInt(data.StartIndex, 0)
+    result.startPositionTicks = asLong(data.StartPositionTicks, 0)
+    playCommand = data.PlayCommand
+    if not isValidAndNotEmpty(playCommand) then playCommand = "PlayNow"
+    result.action = playCommandToAction(playCommand)
+    result.queueMode = playCommandToQueueMode(playCommand)
+    return result
+  end function
+
+  ' Playstate message -> a "transport" command mapped to the players' handleTransport verbs.
+  function parsePlaystate(data as object, result as object) as object
+    if not isValid(data) or not isValidAndNotEmpty(data.Command) then return result
+    verb = playstateVerb(data.Command)
+    if verb = "" then return result ' unknown Playstate command -> ignore
+    result.kind = "transport"
+    result.command = verb
+    ' Jellyfin "Seek" carries an ABSOLUTE SeekPositionTicks -> "seekto", distinct from the
+    ' voice path's relative "seek".
+    if verb = "seekto" then result.positionTicks = asLong(data.SeekPositionTicks, 0)
+    return result
+  end function
+
+  ' GeneralCommand -> a "navigate" command for DisplayContent; all others (volume, mute, …)
+  ' ignore. DisplayContent.Arguments carries { ItemId, ItemType, ItemName }.
+  function parseGeneralCommand(data as object, result as object) as object
+    if not isValid(data) or not isValidAndNotEmpty(data.Name) then return result
+    name = data.Name
+
+    ' Fixed-route navigation. GoHome rides the same seam as the others; the "/" route's
+    ' clearStackOnResolve makes Home the back-stack root (see remote-control.md).
+    if name = "GoHome" then return routeCommand(result, "/")
+    if name = "GoToSearch" then return routeCommand(result, "/search")
+    if name = "GoToSettings" then return routeCommand(result, "/settings")
+
+    ' Back -> pop the router one step (no-op at the history root, so it never exits the app).
+    if name = "Back"
+      result.kind = "goback"
+      return result
+    end if
+
+    ' DisplayMessage -> a notification. Arguments (MessageCommand) carry { Header, Text, TimeoutMs }
+    ' (all as strings — GeneralCommand.Arguments is a string map). TimeoutMs is the sender's intent
+    ' signal: present = transient (dispatch shows a toast), absent = persistent (a dialog). Header is
+    ' the title, Text the body.
+    if name = "DisplayMessage"
+      args = data.Arguments
+      result.kind = "message"
+      result.header = ""
+      result.text = ""
+      result.hasTimeout = false
+      if isValid(args)
+        if isValidAndNotEmpty(args.Header) then result.header = args.Header
+        if isValidAndNotEmpty(args.Text) then result.text = args.Text
+        result.hasTimeout = isValidAndNotEmpty(args.TimeoutMs)
+      end if
+      return result
+    end if
+
+    ' DisplayContent -> navigate to the item's springboard. Arguments carry { ItemId, ItemType, ItemName }.
+    if name = "DisplayContent"
+      args = data.Arguments
+      if not isValid(args) or not isValidAndNotEmpty(args.ItemId) then return result
+      result.kind = "navigate"
+      result.itemId = args.ItemId
+      result.itemType = ""
+      if isValidAndNotEmpty(args.ItemType) then result.itemType = args.ItemType
+      return result
+    end if
+
+    ' Volume (no Roku app volume API), directional D-pad (no in-app key injection — an ECP/plugin
+    ' job), SendKey/SendString/screenshot, and the Toggle*/bitrate niceties all fall through to
+    ' ignore. See remote-control.md for which are deferred vs platform-limited.
+    return result
+  end function
+
+  ' A fixed-route navigation command ({ kind: "route", route: "<path>" }).
+  function routeCommand(result as object, route as string) as object
+    result.kind = "route"
+    result.route = route
+    return result
+  end function
+
+  ' --- pure mappings ---
+
+  ' PlayCommand -> playback action (the deep-link / quickplay verb).
+  function playCommandToAction(playCommand as string) as string
+    if playCommand = "PlayShuffle" then return "shuffle"
+    if playCommand = "PlayInstantMix" then return "instantmix"
+    return "play" ' PlayNow / PlayNext / PlayLast
+  end function
+
+  ' PlayCommand -> queue placement. We play now regardless; captured for the queue-aware casting follow-up.
+  function playCommandToQueueMode(playCommand as string) as string
+    if playCommand = "PlayNext" then return "next"
+    if playCommand = "PlayLast" then return "last"
+    return "now"
+  end function
+
+  ' Playstate.Command -> the players' handleTransport verb ("" = unhandled/ignore).
+  function playstateVerb(command as string) as string
+    verbs = {
+      Pause: "pause",
+      Unpause: "play",
+      Stop: "stop",
+      NextTrack: "next",
+      PreviousTrack: "previous",
+      Seek: "seekto",
+      Rewind: "rewind",
+      FastForward: "forward",
+      PlayPause: "playpause"
+    }
+    if verbs.doesExist(command) then return verbs[command]
+    return ""
+  end function
+
+  ' Jellyfin ticks (100ns units) -> whole seconds, for the players' absolute-seek API.
+  function ticksToSeconds(ticks as longinteger) as integer
+    return int(ticks / 10000000)
+  end function
+
+  ' --- small coercion helpers (defensive against missing / oddly-typed JSON fields) ---
+  function asInt(value as dynamic, default as integer) as integer
+    if isValid(value) then return cint(value)
+    return default
+  end function
+
+  function asLong(value as dynamic, default as longinteger) as longinteger
+    if isValid(value) then return value
+    return default
+  end function
+
+end namespace

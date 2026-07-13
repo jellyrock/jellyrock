@@ -1,0 +1,74 @@
+import "pkg:/source/remotecontrol/remoteProtocol.bs"
+
+namespace tests
+
+  ' Remote-control receiver: the transport-agnostic protocol helpers — the http-gate,
+  ' the session-socket URL builder (must bind the same session as the REST API), reconnect
+  ' backoff, and the client KeepAlive frame.
+  @suite("remoteProtocol — protocol helpers")
+  class RemoteProtocolTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isHttpServer() — the http-gate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts http:// (any case) and rejects everything else")
+    @params("http://192.168.1.2:8098", true)
+    @params("HTTP://192.168.1.2:8098", true)
+    @params("https://jellyfin.example.com", false)
+    @params("wss://x", false)
+    @params("", false)
+    @params(invalid, false)
+    function _(serverUrl, expected)
+      m.assertEqual(remoteProtocol.isHttpServer(serverUrl), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildSocketUrl()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the ws:// session-socket URL for an http server")
+    function _()
+      url = remoteProtocol.buildSocketUrl("http://192.168.1.2:8098", "tok123", "dev-abc")
+      m.assertEqual(url, "ws://192.168.1.2:8098/socket?api_key=tok123&deviceId=dev-abc")
+    end function
+
+    @it("returns empty for an https server (never downgrades the token onto ws://)")
+    function _()
+      m.assertEqual(remoteProtocol.buildSocketUrl("https://jellyfin.example.com", "tok", "dev"), "")
+    end function
+
+    @it("returns empty when a credential is missing")
+    function _()
+      m.assertEqual(remoteProtocol.buildSocketUrl("http://x:8098", "", "dev"), "")
+      m.assertEqual(remoteProtocol.buildSocketUrl("http://x:8098", "tok", ""), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextBackoffMs() — exponential, capped at 30s")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("doubles per attempt then caps at 30000ms")
+    @params(0, 1000)
+    @params(1, 2000)
+    @params(2, 4000)
+    @params(3, 8000)
+    @params(4, 16000)
+    @params(5, 30000)
+    @params(10, 30000)
+    function _(attempt, expectedMs)
+      m.assertEqual(remoteProtocol.nextBackoffMs(attempt), expectedMs)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("keepAliveFrame()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is a KeepAlive message the server can parse")
+    function _()
+      parsed = ParseJson(remoteProtocol.keepAliveFrame())
+      m.assertEqual(parsed.MessageType, "KeepAlive")
+    end function
+
+  end class
+end namespace

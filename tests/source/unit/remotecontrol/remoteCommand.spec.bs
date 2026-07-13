@@ -1,0 +1,198 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+
+namespace tests
+
+  ' Remote-control receiver: the pure wire-protocol parser. Envelope + Data shapes
+  ' are the ones captured from a live Jellyfin server. The contract: a valid enactable
+  ' message becomes a typed normalized command; everything unknown/unsupported degrades to
+  ' "ignore" (never an error), so a hostile or future-version frame can't break the receiver.
+  @suite("remoteCommand — wire-protocol parser")
+  class RemoteCommandTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseMessage() — Play")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a single-item PlayNow")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: ["abc123"], PlayCommand: "PlayNow" } })
+      m.assertEqual(cmd.kind, "play")
+      m.assertEqual(cmd.itemIds, ["abc123"])
+      m.assertEqual(cmd.startIndex, 0)
+      m.assertEqual(cmd.action, "play")
+      m.assertEqual(cmd.queueMode, "now")
+    end function
+
+    @it("captures a multi-item queue + startIndex + startPositionTicks")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: ["a", "b", "c"], PlayCommand: "PlayNow", StartIndex: 2, StartPositionTicks: 6000000000& } })
+      m.assertEqual(cmd.kind, "play")
+      m.assertEqual(cmd.itemIds.count(), 3)
+      m.assertEqual(cmd.startIndex, 2)
+      m.assertEqual(cmd.startPositionTicks, 6000000000&)
+    end function
+
+    @it("maps PlayCommand to action + queueMode")
+    @params("PlayNow", "play", "now")
+    @params("PlayNext", "play", "next")
+    @params("PlayLast", "play", "last")
+    @params("PlayShuffle", "shuffle", "now")
+    @params("PlayInstantMix", "instantmix", "now")
+    function _(playCommand, expectedAction, expectedQueueMode)
+      cmd = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: ["x"], PlayCommand: playCommand } })
+      m.assertEqual(cmd.kind, "play")
+      m.assertEqual(cmd.action, expectedAction)
+      m.assertEqual(cmd.queueMode, expectedQueueMode)
+    end function
+
+    @it("defaults a missing PlayCommand to PlayNow")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: ["x"] } })
+      m.assertEqual(cmd.action, "play")
+      m.assertEqual(cmd.queueMode, "now")
+    end function
+
+    @it("ignores a Play with no items")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: [], PlayCommand: "PlayNow" } })
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseMessage() — Playstate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps each Playstate command to the handleTransport verb")
+    @params("Pause", "pause")
+    @params("Unpause", "play")
+    @params("Stop", "stop")
+    @params("NextTrack", "next")
+    @params("PreviousTrack", "previous")
+    @params("Rewind", "rewind")
+    @params("FastForward", "forward")
+    @params("PlayPause", "playpause")
+    function _(command, expectedVerb)
+      cmd = remoteCommand.parseMessage({ MessageType: "Playstate", Data: { Command: command } })
+      m.assertEqual(cmd.kind, "transport")
+      m.assertEqual(cmd.command, expectedVerb)
+    end function
+
+    @it("maps Seek to an absolute seekto with positionTicks")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "Playstate", Data: { Command: "Seek", SeekPositionTicks: 3000000000& } })
+      m.assertEqual(cmd.kind, "transport")
+      m.assertEqual(cmd.command, "seekto")
+      m.assertEqual(cmd.positionTicks, 3000000000&)
+    end function
+
+    @it("ignores an unknown Playstate command")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "Playstate", Data: { Command: "SetPlaybackRate" } })
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseMessage() — GeneralCommand")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps DisplayContent to a navigate command")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayContent", Arguments: { ItemId: "45e118", ItemType: "Series", ItemName: "Taskmaster" } } })
+      m.assertEqual(cmd.kind, "navigate")
+      m.assertEqual(cmd.itemId, "45e118")
+      m.assertEqual(cmd.itemType, "Series")
+    end function
+
+    @it("maps fixed-route navigation commands to a route command")
+    @params("GoHome", "/")
+    @params("GoToSearch", "/search")
+    @params("GoToSettings", "/settings")
+    function _(name, expectedRoute)
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: name } })
+      m.assertEqual(cmd.kind, "route")
+      m.assertEqual(cmd.route, expectedRoute)
+    end function
+
+    @it("maps Back to a goback command")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "Back" } })
+      m.assertEqual(cmd.kind, "goback")
+    end function
+
+    @it("maps DisplayMessage to a message command with header / text / hasTimeout")
+    function _()
+      ' No TimeoutMs -> persistent (hasTimeout false)
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayMessage", Arguments: { Header: "Hi", Text: "Hello TV" } } })
+      m.assertEqual(cmd.kind, "message")
+      m.assertEqual(cmd.header, "Hi")
+      m.assertEqual(cmd.text, "Hello TV")
+      m.assertFalse(cmd.hasTimeout)
+
+      ' TimeoutMs present (arrives as a string) -> transient
+      transient = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayMessage", Arguments: { Text: "Quick note", TimeoutMs: "5000" } } })
+      m.assertTrue(transient.hasTimeout)
+      m.assertEqual(transient.text, "Quick note")
+      m.assertEqual(transient.header, "")
+    end function
+
+    @it("ignores volume / mute / directional / other GeneralCommands (not enactable on Roku today)")
+    @params("SetVolume")
+    @params("VolumeUp")
+    @params("Mute")
+    @params("MoveUp")
+    @params("Select")
+    @params("SendString")
+    function _(name)
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: name, Arguments: {} } })
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    @it("ignores a DisplayContent missing its ItemId")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "DisplayContent", Arguments: {} } })
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseMessage() — housekeeping + robustness")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps ForceKeepAlive to a keepalive with the interval")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "ForceKeepAlive", Data: 60 })
+      m.assertEqual(cmd.kind, "keepalive")
+      m.assertEqual(cmd.intervalSeconds, 60)
+    end function
+
+    @it("ignores KeepAlive / Sessions / unknown message types")
+    @params("KeepAlive")
+    @params("Sessions")
+    @params("UserDataChanged")
+    @params("SomeFutureMessage")
+    function _(messageType)
+      cmd = remoteCommand.parseMessage({ MessageType: messageType, Data: {} })
+      m.assertEqual(cmd.kind, "ignore")
+    end function
+
+    @it("ignores a malformed envelope (invalid / missing MessageType)")
+    function _()
+      m.assertEqual(remoteCommand.parseMessage(invalid).kind, "ignore")
+      m.assertEqual(remoteCommand.parseMessage({}).kind, "ignore")
+      m.assertEqual(remoteCommand.parseMessage({ Data: { ItemIds: ["x"] } }).kind, "ignore")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ticksToSeconds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("converts Jellyfin 100ns ticks to whole seconds")
+    @params(0, 0)
+    @params(10000000, 1)
+    @params(6000000000, 600)
+    @params(15000000, 1)
+    function _(ticks, expectedSeconds)
+      m.assertEqual(remoteCommand.ticksToSeconds(ticks), expectedSeconds)
+    end function
+
+  end class
+end namespace

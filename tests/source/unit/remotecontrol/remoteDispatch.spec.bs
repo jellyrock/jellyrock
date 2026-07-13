@@ -1,0 +1,119 @@
+import "pkg:/source/remotecontrol/remoteDispatch.bs"
+
+namespace tests
+
+  ' Remote-control receiver: the main-thread dispatch adapter's PURE marshalling layer —
+  ' the contentId minted for a play cast and the evt handed to a player's handleTransport. The
+  ' node-touching wrappers (dispatchPlay/dispatchNavigate ride the deep-link seam; dispatchTransport
+  ' reads getActiveView + callFunc a player) are exercised on device in the E2E cast pass, matching
+  ' the replayRoute precedent of unit-testing the wire-format layer and leaving the seam calls to
+  ' integration. dispatchTransport's no-forward branches (invalid / non-player active view) ARE
+  ' covered here with real nodes, since they guard the extraction from main.bs.
+  @suite("remoteDispatch — command marshalling")
+  class RemoteDispatchTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playContentId() — deep-link contentId minting")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("mints a bare '<id>|action=<action>' for a single-item play")
+    function _()
+      contentId = remoteDispatch.playContentId({ itemIds: ["abc123"], startIndex: 0, action: "play" })
+      m.assertEqual(contentId, "abc123|action=play")
+    end function
+
+    @it("carries the sender's action verb through")
+    @params("play", "abc|action=play")
+    @params("shuffle", "abc|action=shuffle")
+    @params("instantmix", "abc|action=instantmix")
+    function _(action, expected)
+      contentId = remoteDispatch.playContentId({ itemIds: ["abc"], startIndex: 0, action: action })
+      m.assertEqual(contentId, expected)
+    end function
+
+    @it("selects itemIds[startIndex] — the single cast item")
+    function _()
+      contentId = remoteDispatch.playContentId({ itemIds: ["a", "b", "c"], startIndex: 2, action: "play" })
+      m.assertEqual(contentId, "c|action=play")
+    end function
+
+    @it("falls back to index 0 when startIndex is out of range")
+    function _()
+      contentId = remoteDispatch.playContentId({ itemIds: ["a", "b"], startIndex: 9, action: "play" })
+      m.assertEqual(contentId, "a|action=play")
+    end function
+
+    @it("defaults a missing action to 'play'")
+    function _()
+      contentId = remoteDispatch.playContentId({ itemIds: ["a"], startIndex: 0 })
+      m.assertEqual(contentId, "a|action=play")
+    end function
+
+    @it("returns empty when there are no items")
+    function _()
+      m.assertEqual(remoteDispatch.playContentId({ itemIds: [], startIndex: 0, action: "play" }), "")
+    end function
+
+    @it("returns empty for an invalid command")
+    function _()
+      m.assertEqual(remoteDispatch.playContentId(invalid), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("toTransportEvt() — player handleTransport evt")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("passes a plain verb through as { command }")
+    @params("pause")
+    @params("play")
+    @params("stop")
+    @params("next")
+    @params("previous")
+    @params("rewind")
+    @params("forward")
+    @params("playpause")
+    function _(verb)
+      evt = remoteDispatch.toTransportEvt({ command: verb })
+      m.assertEqual(evt.command, verb)
+      m.assertInvalid(evt.position)
+    end function
+
+    @it("converts seekto ticks to an absolute-seconds position")
+    function _()
+      ' 6000000000 ticks (100ns units) = 600 seconds
+      evt = remoteDispatch.toTransportEvt({ command: "seekto", positionTicks: 6000000000 })
+      m.assertEqual(evt.command, "seekto")
+      m.assertEqual(evt.position, 600)
+    end function
+
+    @it("omits position on a seekto with no ticks")
+    function _()
+      evt = remoteDispatch.toTransportEvt({ command: "seekto" })
+      m.assertEqual(evt.command, "seekto")
+      m.assertInvalid(evt.position)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dispatchTransport() — active-view gate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("yields error.no-media when no view is active")
+    function _()
+      m.global.activeRoutedView = invalid
+      ret = remoteDispatch.dispatchTransport({ command: "pause" })
+      m.assertEqual(ret.status, "error.no-media")
+      m.assertInvalid(ret.nowPlaying)
+    end function
+
+    @it("yields error.no-media when the active view is not a player")
+    function _()
+      ' A plain Group is a valid node whose subtype is not in the player gate.
+      m.global.activeRoutedView = createObject("roSGNode", "Group")
+      ret = remoteDispatch.dispatchTransport({ command: "pause" })
+      m.assertEqual(ret.status, "error.no-media")
+      m.global.activeRoutedView = invalid
+    end function
+
+  end class
+
+end namespace

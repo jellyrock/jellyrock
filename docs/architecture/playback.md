@@ -13,7 +13,8 @@ related-files:
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
-last-reviewed: 2026-06-14
+  - source/remotecontrol/remoteDispatch.bs
+last-reviewed: 2026-07-09
 ---
 
 # Video & Audio Playback
@@ -342,13 +343,19 @@ The current selection persists in user settings (`globalCaptionMode`) so it's re
 
 Track *language names* (the labels shown in the `TrackDropdown` and OSD menus) are localized via `source/utils/languages.bs` — see `translations.md` for the 3-tier resolver (alias → `translationKey` → English fallback) and the `lint:language-coverage` CI script that catches silent localization gaps.
 
-## Voice transport (Roku voice remote)
+## Transport control (Roku voice remote + "Cast to JellyRock")
 
-Roku voice transport commands (`play`, `pause`, `seek`, `next`, `startover`, `replay`, `skip`, `nowplaying`, `shuffle`, `loop`, `like`, `dislike`, …) arrive on a **separate API surface** from `onKeyEvent` — they're delivered as `roInputEvent` with `info.type = "transport"`. Three pieces wire this up:
+The players' `handleTransport()` serves **two** command sources that share one dispatch adapter:
+Roku **voice** transport (`roInputEvent`, `info.type = "transport"`) and the **`ws://` remote-control
+receiver** (another Jellyfin client casting — see [remote-control.md](./remote-control.md)). Voice
+commands are `play`, `pause`, `seek`, `next`, `startover`, `replay`, `skip`, `nowplaying`, `shuffle`,
+`loop`, `like`, `dislike`, …; the cast path adds `previous`, `seekto` (ABSOLUTE seek, vs voice's
+relative `seek`), and `playpause` (toggle). Four pieces wire this up:
 
 1. **Manifest gates** (in `manifest`): `supports_voice_roinput=1`, `supports_etc_seek=1`, `supports_etc_next=1`. Without these, Roku OS shows a "command not available" HUD even if the app would have handled it.
-2. **Main-loop dispatch** (`source/main.bs`): `input.EnableTransportEvents()` opts in. The `roInputEvent` branch checks `info.type = "transport"` and resolves the active view via `getActiveView()` (= `m.global.activeRoutedView`). It dispatches `handleTransport(info)` via `callFunc` when that view is `PlayerHostView`, `VideoPlayerView`, or `AudioPlayerView`. For routed video the active view is the `PlayerHostView` wrapper, which forwards `handleTransport` to its child `VideoPlayerView`. The return value's `status` is fed back via `input.EventResponse({id, status})` — the status code controls Roku's HUD message (`success` / `success.seek-start` / `success.seek-end` / `error.live` / `error.no-media` / `error.redundant` / `error.generic` / `unhandled`).
-3. **Per-player handlers** — `VideoPlayerView.handleTransport()` and `AudioPlayerView.handleTransport()`, each owning its own command map (`PlayerHostView.handleTransport` is a thin forwarder to the child player). Pure logic (setting fallback for instant-replay duration, voice `seek` payload parsing, bounds-checked seek math) lives in `source/utils/voiceTransport.bs` so it's unit-testable without instantiating a player.
+2. **Shared dispatch adapter** (`source/remotecontrol/remoteDispatch.bs`): `dispatchTransport(evt)` resolves the active view via `getActiveView()` (= `m.global.activeRoutedView`) and calls `handleTransport(evt)` via `callFunc` when that view is `PlayerHostView`, `VideoPlayerView`, or `AudioPlayerView`, returning `{ status, nowPlaying }`. For routed video the active view is the `PlayerHostView` wrapper, which forwards to its child `VideoPlayerView`.
+3. **Voice main-loop branch** (`source/main.bs`): `input.EnableTransportEvents()` opts in; the `roInputEvent` branch calls the shared `dispatchTransport(info)`, then feeds the `status` back via `input.EventResponse({id, status})` (the status code controls Roku's HUD message — `success` / `success.seek-start` / `success.seek-end` / `error.live` / `error.no-media` / `error.redundant` / `error.generic` / `unhandled`) and reports `nowPlaying` to `roAppManager` (both `roInput`/`roAppManager` are main-thread-only). The cast path calls the same `dispatchTransport` but ignores the return (Jellyfin doesn't expect a per-command acknowledgment).
+4. **Per-player handlers** — `VideoPlayerView.handleTransport()` and `AudioPlayerView.handleTransport()`, each owning its own command map (`PlayerHostView.handleTransport` is a thin forwarder to the child player). Pure logic (setting fallback for instant-replay duration, voice `seek` payload parsing, bounds-checked seek math) lives in `source/utils/voiceTransport.bs` so it's unit-testable without instantiating a player.
 
 One deliberate per-player UX deviation from the Roku-doc default:
 

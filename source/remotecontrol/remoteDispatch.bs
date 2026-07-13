@@ -1,0 +1,148 @@
+' Main-thread dispatch adapter for the remote-control receiver. THE single place any
+' deep-link / player seam is called for a normalized remote-control command — whether it arrives
+' from the Roku voice roInput path (main.bs) or the ws:// receiver (RemoteControlTask). Runs on the
+' MAIN thread (shares Main()'s m): stashDeepLink / onRuntimeDeepLink / getActiveView / callFunc all
+' resolve there and must never be called from a Task. All sgRouter-era coupling is quarantined here.
+'
+' source/ auto-scope reaches the seams without imports: stashDeepLink + onRuntimeDeepLink live in
+' source/replayRoute.bs, getActiveView in source/utils/misc.bs, remoteCommand.ticksToSeconds in
+' source/remotecontrol/remoteCommand.bs.
+namespace remoteDispatch
+
+  ' Entry point: route a normalized command (remoteCommand.parseMessage output, marshalled from the
+  ' RemoteControlTask) to the right seam. Transport goes through the shared dispatchTransport below
+  ' (also used by main.bs's voice path); play/navigate ride the deep-link seam. keepalive/ignore
+  ' never reach the main thread (the task answers keepalive itself and drops ignores).
+  sub dispatch(command as object)
+    if not isValid(command) or not isValidAndNotEmpty(command.kind) then return
+    if command.kind = "play"
+      dispatchPlay(command)
+    else if command.kind = "navigate"
+      dispatchNavigate(command)
+    else if command.kind = "transport"
+      dispatchTransport(toTransportEvt(command))
+    else if command.kind = "route"
+      dispatchRoute(command.route)
+    else if command.kind = "goback"
+      dispatchGoBack()
+    else if command.kind = "message"
+      dispatchMessage(command)
+    end if
+  end sub
+
+  ' route (GeneralCommand GoHome / GoToSearch / GoToSettings) -> navigate the router to a fixed path.
+  ' GoHome's "/" clears the stack (clearStackOnResolve) so Home is the back-stack root. An active
+  ' player is torn down by routing away (its onDestroy stops playback); from an idle screen this
+  ' shares the render-thread-wake caveat noted in remote-control.md, but going home from playback
+  ' wakes the render thread as the player unmounts.
+  sub dispatchRoute(route as string)
+    if not isValidAndNotEmpty(route) then return
+    m.scene.callFunc("routerNavigate", route)
+  end sub
+
+  ' goback (GeneralCommand Back) -> pop the router one step. sgRouter.goBack is a no-op at the
+  ' history root, so a remote Back never triggers the exit-confirmation / app exit.
+  sub dispatchGoBack()
+    m.scene.callFunc("routerGoBack")
+  end sub
+
+  ' message (GeneralCommand DisplayMessage) -> surface the sender's notification. TimeoutMs is the
+  ' sender's intent: present -> transient (a toast); absent -> persistent (a dialog the user
+  ' dismisses). Header is the title, Text the body — either may be empty. This is a trusted-LAN,
+  ' authenticated sender (see remote-control.md), so interrupting with a dialog is acceptable.
+  sub dispatchMessage(command as object)
+    header = command.header
+    text = command.text
+    if not isValidAndNotEmpty(header) and not isValidAndNotEmpty(text) then return
+
+    if command.hasTimeout
+      ' Transient -> toast. Our toast is single-line, so combine title + body.
+      line = text
+      if isValidAndNotEmpty(header)
+        if isValidAndNotEmpty(text) then line = header + " — " + text else line = header
+      end if
+      displayToast(line, "info")
+    else
+      ' Persistent -> a dialog the user must dismiss. JR supplies a provenance TITLE (LabelCastMessage)
+      ' so the message reads as an incoming cast message, not a JR system prompt — otherwise a bare
+      ' "<header>/<text>" has no context. The sender's Header + Text are the body lines. An unflagged
+      ' dialog is a no-op in main.bs's isDataReturned handler, so the sole OK button just closes it.
+      lines = []
+      if isValidAndNotEmpty(header) then lines.push(header)
+      if isValidAndNotEmpty(text) then lines.push(text)
+      m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelCastMessage), lines, [translate(translationKeys.ButtonOk)])
+    end if
+  end sub
+
+  ' play -> the deep-link play seam. Casts a SINGLE item (itemIds[startIndex]); the socket is already
+  ' bound to the active server's session, so no serverId is minted (an empty guid resolves to the active
+  ' server in onRuntimeDeepLink -> replayDeepLinkRuntime). Multi-item queue casting is a deferred follow-up.
+  sub dispatchPlay(command as object)
+    contentId = playContentId(command)
+    if contentId = "" then return
+    stashDeepLink(contentId, "", "")
+    onRuntimeDeepLink()
+  end sub
+
+  ' navigate (DisplayContent) -> springboard the item with action "open" (no autoplay). itemType is
+  ' only a display hint that lands in the route path; ItemDetails resolves the real type.
+  sub dispatchNavigate(command as object)
+    if not isValid(command) or not isValidAndNotEmpty(command.itemId) then return
+    stashDeepLink(command.itemId + "|action=open", command.itemType, "")
+    onRuntimeDeepLink()
+  end sub
+
+  ' Shared transport adapter, extracted from main.bs's roInputEvent branch so the voice path and the
+  ' ws:// receiver dispatch transport identically. Returns { status, nowPlaying }: main.bs's voice
+  ' branch keeps the roInput.EventResponse + roAppManager.SetNowPlayingContentMetaData (both are
+  ' main-thread-only) around this call; the ws:// path just fires it. A non-player active view (or
+  ' none) yields "error.no-media"; a player that returns no status yields "unhandled".
+  function dispatchTransport(evt as object) as object
+    activeScene = getActiveView()
+    status = "error.no-media"
+    nowPlaying = invalid
+    if isValid(activeScene)
+      sceneType = activeScene.subtype()
+      ' Routed video playback's active view is the PlayerHostView wrapper; it forwards
+      ' handleTransport to the child player.
+      if sceneType = "PlayerHostView" or sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
+        ret = activeScene.callFunc("handleTransport", evt)
+        if isValid(ret) and isValid(ret.status)
+          status = ret.status
+        else
+          status = "unhandled"
+        end if
+        if isValid(ret) and isValid(ret.nowPlaying) then nowPlaying = ret.nowPlaying
+      end if
+    end if
+    return { status: status, nowPlaying: nowPlaying }
+  end function
+
+  ' --- pure marshalling (unit-tested) ---
+
+  ' Mint the deep-link contentId for a play command: "<itemId>|action=<action>". Uses the single
+  ' cast item itemIds[startIndex] (out-of-range index falls back to 0); returns "" when the command
+  ' carries no usable item. The bare-id form is exactly what parseDeepLinkContentId consumes.
+  function playContentId(command as object) as string
+    if not isValid(command) or not isValid(command.itemIds) or command.itemIds.count() = 0 then return ""
+    index = command.startIndex
+    if not isValid(index) or index < 0 or index >= command.itemIds.count() then index = 0
+    itemId = command.itemIds[index]
+    if not isValidAndNotEmpty(itemId) then return ""
+    action = command.action
+    if not isValidAndNotEmpty(action) then action = "play"
+    return itemId + "|action=" + action
+  end function
+
+  ' Build the evt a player's handleTransport consumes from a transport command. Only "seekto" carries
+  ' a position (absolute seconds, converted from Jellyfin ticks); every other verb passes the command
+  ' alone, matching the voice path's { command } shape.
+  function toTransportEvt(command as object) as object
+    evt = { command: command.command }
+    if command.command = "seekto" and isValid(command.positionTicks)
+      evt.position = remoteCommand.ticksToSeconds(command.positionTicks)
+    end if
+    return evt
+  end function
+
+end namespace

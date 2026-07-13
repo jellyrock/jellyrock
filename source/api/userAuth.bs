@@ -29,6 +29,11 @@ function AboutMe(id = "" as string)
 end function
 
 sub SignOut(deleteSavedEntry = true as boolean)
+  ' #666: stop the ws:// remote-control receiver — ends the listener thread and drops its socket.
+  ' This is the single logout + server-switch chokepoint (a server switch runs SignOut(false) via
+  ' replayRoute.performServerSwitch), so the socket never survives a session teardown.
+  if isValid(m.global.remoteControlTask) then m.global.remoteControlTask.control = "STOP"
+
   if deleteSavedEntry
     unsetUserSetting("authToken")
     unsetUserSetting("username")

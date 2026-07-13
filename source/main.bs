@@ -54,6 +54,12 @@ sub Main (args as dynamic) as void
   ' API calls and drives the next navigation. Registered once here.
   m.scene.observeField("preLoginIntent", m.port)
 
+  ' Observe the ws:// receiver's marshalled commands; dispatched on the MAIN thread via remoteDispatch
+  ' (shared with the voice path). The field lives on the task node, not m.global — a task-node field +
+  ' port delivers, an m.global field + port does not (the delivery defect noted above). See
+  ' remote-control.md.
+  m.global.remoteControlTask.observeField("dispatchCommand", m.port)
+
   ' Cold-start deep link. Stash it (structured intent on
   ' m.global.AuthManager.stashedDeepLink) BEFORE entering the login flow so it replays
   ' uniformly — the fast path lands straight on the deep-linked content, while a deferred
@@ -218,29 +224,14 @@ sub Main (args as dynamic) as void
           onRuntimeDeepLink()
         else if isValid(info.type) and info.type = "transport"
           ' Voice transport command (play, pause, seek, next, startover, skip, ...).
-          ' Dispatch to the active player; otherwise ack as no-media so Roku OS shows
-          ' "Nothing is playing" rather than the default "Command not available".
-          ' roAppManager calls happen here (MAIN thread) — it can't be created on the
-          ' render thread where the player's callFunc executes.
-          activeScene = getActiveView()
-          transportStatus = "error.no-media"
-          transportNowPlaying = invalid
-          if isValid(activeScene)
-            sceneType = activeScene.subtype()
-            ' Routed video playback's active view is the PlayerHostView wrapper; it forwards
-            ' handleTransport to the child player.
-            if sceneType = "PlayerHostView" or sceneType = "VideoPlayerView" or sceneType = "AudioPlayerView"
-              transportRet = activeScene.callFunc("handleTransport", info)
-              if isValid(transportRet) and isValid(transportRet.status)
-                transportStatus = transportRet.status
-              else
-                transportStatus = "unhandled"
-              end if
-              if isValid(transportRet) and isValid(transportRet.nowPlaying)
-                transportNowPlaying = transportRet.nowPlaying
-              end if
-            end if
-          end if
+          ' remoteDispatch.dispatchTransport is the SHARED adapter (voice + ws:// receiver):
+          ' active-view gate + handleTransport -> { status, nowPlaying }. The voice-specific
+          ' ack + roAppManager stay here on the MAIN thread (roInput/roAppManager can't be
+          ' created on the render thread where the player's callFunc executes); a non-player
+          ' active view yields "error.no-media" so Roku OS shows "Nothing is playing".
+          transportRet = remoteDispatch.dispatchTransport(info)
+          transportStatus = transportRet.status
+          transportNowPlaying = transportRet.nowPlaying
           if isValid(transportNowPlaying)
             appMgr = CreateObject("roAppManager")
             appMgr.SetNowPlayingContentMetaData(transportNowPlaying)
@@ -315,6 +306,10 @@ sub Main (args as dynamic) as void
           end if
         end if
       end if
+    else if isNodeEvent(msg, "dispatchCommand")
+      ' A ws:// remote-control command marshalled from RemoteControlTask. Dispatch on the MAIN thread —
+      ' remoteDispatch reuses the deep-link (play/navigate) and shared transport seams.
+      remoteDispatch.dispatch(msg.getData())
     else if isNodeEvent(msg, "reloadHomeRequested")
       ' Theme/locale changed — re-navigate the router to "/" for a fresh Home (picks up new
       ' theme constants / reloaded translations).

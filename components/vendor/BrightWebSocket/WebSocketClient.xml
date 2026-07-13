@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WebSocketClient.xml
+  Copyright (c) 2018 Rolado Islas
+  Released under the MIT license
+
+  WebSocket client following RFC 6455
+
+  VENDORED into JellyRock (see ./README.md). Modifications vs the pinned upstream SHA:
+    - <script> uris repointed to the vendored path.
+    - Removed TLS/wss:// support: dropped the `secure` field and the TlsUtil.brs script
+      (upstream TLS was an unimplemented skeleton; Roku can't do socket TLS; ws:// only).
+-->
+<component name="WebSocketClient" extends="Task">
+
+    <interface>
+        <!-- Fields -->
+        <field id="on_open" type="assocarray" alwaysNotify="true" />
+        <field id="on_close" type="string" alwaysNotify="true" />
+        <field id="on_message" type="assocarray" alwaysNotify="true" />
+        <field id="on_error" type="assocarray" alwaysNotify="true" />
+        <field id="STATE_CONNECTING" type="integer" />
+        <field id="STATE_OPEN" type="integer" />
+        <field id="STATE_CLOSING" type="integer" />
+        <field id="STATE_CLOSED" type="integer" />
+        <field id="ready_state" type="integer" alwaysNotify="true" />
+        <field id="protocols" type="array" alwaysNotify="true" />
+        <field id="headers" type="array" alwaysNotify="true" />
+        <field id="buffer_size" type="integer" alwaysNotify="true" />
+        <field id="log_level" type="string" alwaysNotify="true" />
+        <!-- Functions -->
+        <field id="open" type="string" alwaysNotify="true" />
+        <field id="send" type="array" alwaysNotify="true" />
+        <field id="close" type="array" alwaysNotify="true" />
+    </interface>
+
+    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs" />
+    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs" />
+    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/Logger.brs" />
+    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/ByteUtil.brs" />
+</component>

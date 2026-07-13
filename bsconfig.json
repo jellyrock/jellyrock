@@ -25,7 +25,14 @@
     "insertPkgPath": true,
     "removeComments": false
   },
-  "diagnosticFilters": [{ "files": "node_modules/**/*" }, { "files": "**/roku_modules/**/*" }],
+  "diagnosticFilters": [
+    {
+      "files": "node_modules/**/*"
+    },
+    {
+      "files": "**/roku_modules/**/*"
+    }
+  ],
   "sourceMap": true,
   "autoImportComponentScript": true,
   "outDir": "build"

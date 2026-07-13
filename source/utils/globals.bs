@@ -141,6 +141,11 @@ sub setGlobalNodes()
   m.global.addFields({ queueManager: CreateObject("roSGNode", "QueueManager") })
   m.global.addFields({ audioPlayer: CreateObject("roSGNode", "AudioPlayer") })
 
+  ' Remote-control receiver — the ws:// "Cast to JellyRock" listener. Created here as a stable m.global
+  ' node but NOT started: it needs the session token, so Home starts it (control="RUN") post-login. See
+  ' remote-control.md.
+  m.global.addFields({ remoteControlTask: CreateObject("roSGNode", "RemoteControlTask") })
+
   ' Debug-only error injection flags — compiled out in production (bs_const=debug=false)
   ' See docs/dev/debug-flags.md for the full developer contract.
   #if debug

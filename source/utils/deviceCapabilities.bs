@@ -43,15 +43,25 @@ end function
 ' Returns the Device Capabilities for Roku.
 ' Also prints out the device profile for debugging
 function getDeviceCapabilities() as object
+  ' Advertise media control only on http:// servers, where we can open the ws:// session socket —
+  ' Roku can't wss://, so don't advertise control we can't deliver. Mirrors remoteProtocol.isHttpServer
+  ' (kept inline to avoid pulling the remotecontrol namespace into every capabilities reader). See
+  ' remote-control.md.
+  supportsMediaControl = false
+  globalServer = m.global.server
+  if isValid(globalServer) and isValidAndNotEmpty(globalServer.serverUrl)
+    supportsMediaControl = LCase(Left(globalServer.serverUrl, 7)) = "http://"
+  end if
+
   deviceProfile = {
     "PlayableMediaTypes": [
       "Audio",
       "Video",
       "Photo"
     ],
-    "SupportedCommands": [],
+    "SupportedCommands": getSupportedRemoteCommands(),
     "SupportsPersistentIdentifier": true,
-    "SupportsMediaControl": false,
+    "SupportsMediaControl": supportsMediaControl,
     "SupportsContentUploading": false,
     "SupportsSync": false,
     "DeviceProfile": getDeviceProfile(),
@@ -59,6 +69,24 @@ function getDeviceCapabilities() as object
   }
 
   return deviceProfile
+end function
+
+' GeneralCommand-type actions JellyRock can enact. This capability is a GeneralCommandType[] and
+' Jellyfin deserializes it STRICTLY — any value outside the GeneralCommandType enum 400s the whole
+' /Sessions/Capabilities/Full POST. So it must NOT contain PlaystateCommands (Pause/Stop/Seek/…) or
+' PlayCommands: those transport verbs are governed by SupportsMediaControl:true, not advertised here.
+function getSupportedRemoteCommands() as object
+  ' The web only SENDS a GeneralCommand it sees advertised here, so this is the enactable navigation +
+  ' messaging set. Volume, directional D-pad, SendKey/String, and screenshot are deliberately omitted
+  ' (not enactable from an app on Roku today — see remote-control.md).
+  return [
+    "DisplayContent", ' springboard an item
+    "GoHome", ' return to Home
+    "GoToSearch", ' open Search
+    "GoToSettings", ' open Settings
+    "Back", ' pop one screen
+    "DisplayMessage" ' show a toast on the TV
+  ]
 end function
 
 function getDeviceProfile() as object

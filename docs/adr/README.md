@@ -31,3 +31,5 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0017](0017-rta-functional-tests-vitest.md) | RTA functional tests in Node/Vitest, not Rooibos | Accepted | 2026-06-08 |
 | [0018](0018-deep-link-cast-contract.md) | Deep-link / cast contract + validate-before-navigate resolution | Accepted | 2026-06-20 |
 | [0019](0019-jrscreen-lifecycle-bridge.md) | Keep the `JRScreen` lifecycle bridge, not raw `sgRouter` View overrides | Accepted | 2026-06-23 |
+| [0020](0020-router-settle-primitive.md) | Replace an active player off `navigateTo`'s promise, not a `routerState` settle observer | Accepted | 2026-06-23 |
+| [0021](0021-remote-control-ws-receiver.md) | Native "Cast to JellyRock" — `ws://` remote-control receiver (Option-B threading) | Accepted | 2026-07-09 |
