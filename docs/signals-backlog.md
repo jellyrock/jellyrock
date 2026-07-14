@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-06-28
+last-updated: 2026-07-13
 ---
 
 # Signals backlog
@@ -80,4 +80,14 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **latest_acknowledged**: 1.7.28
 - **last_checked**: 2026-06-28
 - **action_when_moves**: when a release after 1.7.28 ships, format the multi-line-AA reproduction snippet under it (`npx bsfmt --write` on a `fn("x", { k: v })`-across-lines snippet followed by a top-level function); if indentation is correct, merge the Renovate bump and drop the 1.7.27 pin in `package.json`. Link the upstream issue once filed
+- **status**: watching
+
+### jellyrock-plugin-server-abi: companion plugin's Jellyfin server ABI pin (#667)
+
+- **watching**: new Jellyfin **server** lines (esp. the **12.0 RC**) against the out-of-tree companion plugin `jellyfin-plugin-jellyrock`, whose `Jellyfin.Controller` / `Jellyfin.Model` package refs + `targetAbi` track the server line, not a stable SDK
+- **current**: pinned to 10.11.11. The plugin's session-controller + long-poll endpoint use `ISessionManager` / `SessionInfo` / `ISessionController` surfaces that can shift between server minors (e.g. `EnsureController`, `SessionInfo.SupportsRemoteControl`); the plugin's own CI matrix is the primary breakage signal, this row is the cross-repo reminder
+- **latest_upstream**: 10.11.11
+- **latest_acknowledged**: 10.11.11
+- **last_checked**: 2026-07-13
+- **action_when_moves**: re-pin the plugin's `Jellyfin.Controller`/`Jellyfin.Model` + `build.yaml` `targetAbi` to the new line, rebuild in the SDK container, and re-verify the cast and closed app liveness gate on a test server (12.0 RC restructures the API — check `ISessionController` / `SessionInfo` shapes)
 - **status**: watching

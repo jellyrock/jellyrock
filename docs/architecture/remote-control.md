@@ -12,7 +12,8 @@ related-files:
   - source/utils/globals.bs
   - source/api/userAuth.bs
   - components/home/Home.bs
-last-reviewed: 2026-07-12
+  - docs/architecture/remote-control-longpoll-contract.md
+last-reviewed: 2026-07-13
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -30,17 +31,30 @@ report `SupportsMediaControl == true` **and** it has an active controller.
 
 That gives two transports, one normalized command stream:
 
-1. **`ws://` (this doc, #666)** — against a plain-**HTTP** server, JellyRock opens Jellyfin's
+1. **`ws://` (#666)** — against a plain-**HTTP** server, JellyRock opens Jellyfin's
    native session socket directly. **No server changes.** This is the shipped half.
-2. **HTTPS long-poll (#667, future)** — Roku has **no socket TLS** (`ifSocketOption` exposes no
-   TLS; there is no `wss://` on Roku), so a secure server can't use transport #1. The plan is a
-   server plugin exposing an HTTP long-poll command channel JellyRock consumes over TLS
-   (`roUrlTransfer`), sidestepping `wss://` entirely. Not built yet.
+2. **HTTPS long-poll (#667)** — Roku has **no socket TLS** (`ifSocketOption` exposes no
+   TLS; there is no `wss://` on Roku), so a secure server can't use transport #1. Instead the
+   companion **JellyRock Companion** server plugin (repo `jellyfin-plugin-jellyrock`) queues the
+   same commands and JellyRock pulls them with an authenticated HTTP **long-poll** over TLS
+   (`roUrlTransfer`), sidestepping `wss://` entirely. The wire contract is frozen + versioned in
+   [`remote-control-longpoll-contract.md`](remote-control-longpoll-contract.md).
 
-Because Roku can't `wss://`, the receiver **only** opens a socket when the server base URL is
-`http://` — it never downgrades an `https://` session's token onto cleartext `ws://`. Both the
-advertised capability and the receiver gate on the same predicate (`remoteProtocol.isHttpServer`)
-so they can't disagree.
+**Transport selection** happens in `RemoteControlTask.runReceiver`, gating on the server scheme
+(`remoteProtocol.isHttpServer`):
+
+- `http://` → the `ws://` socket, unconditionally (no probe; the #666 path is untouched). The
+  receiver never downgrades an `https://` session's token onto cleartext `ws://`.
+- `https://` → probe the plugin (`GET /JellyRock/RemoteControl/info`): `200` → run the long-poll
+  loop; anything else → stay dark (no cast target advertised — unchanged from before #667).
+
+On `https` the **plugin owns the `SupportsMediaControl` capability**: JellyRock keeps advertising it
+`false` (`deviceCapabilities.bs` is scheme-gated and unchanged), and the plugin forces it `true`
+while a poll is live, revoking it when polling stops. That revocation — driven by the plugin
+controller's **poll-freshness**, not `LastActivityDate` — is what drops a closed JellyRock from the
+cast list (the `ws://` path gets this free from a socket disconnect). Verified on device: with the app
+closed, `SupportsRemoteControl` flips false within the grace window even though other traffic keeps
+`LastActivityDate` warm.
 
 ## Threading — Option B (Task owns the socket, main thread dispatches)
 
@@ -149,7 +163,8 @@ acceptable; a user opt-out setting is deferred until there's evidence it's wante
   path Roku's own runtime deep links use. Device-checked (2026-07-12): with JellyRock sitting idle on
   Home, a web-client cast to a movie opens it immediately, with no delay and no dropped first action. An
   earlier hypothesis about a render-thread-wake lag on idle screens did **not** reproduce.
-- **HTTPS / remote servers.** Out of scope here — that's the #667 plugin long-poll transport.
+- **HTTPS / remote servers.** Handled by the #667 plugin long-poll transport (see the two-transport
+  section above and [`remote-control-longpoll-contract.md`](remote-control-longpoll-contract.md)).
 - **More `GeneralCommand` types (deferred, not impossible).** The advertised set is navigation + messaging.
   The rest are followups with a concrete mechanism, NOT platform dead-ends:
   - *Track selection* (`SetAudioStreamIndex` / `SetSubtitleStreamIndex`) — feasible via the player's

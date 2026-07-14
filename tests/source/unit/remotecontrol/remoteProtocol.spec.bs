@@ -45,6 +45,47 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildLongPollUrl() — HTTPS long-poll channel (no token in URL)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the poll URL with the requested waitMs and carries no token")
+    function _()
+      url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com", 25000)
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000")
+    end function
+
+    @it("trims a single trailing slash so it never emits //")
+    function _()
+      url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com/", 25000)
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000")
+    end function
+
+    @it("returns empty for a missing/blank server URL")
+    @params("", 25000)
+    @params(invalid, 25000)
+    function _(serverUrl, waitMs)
+      m.assertEqual(remoteProtocol.buildLongPollUrl(serverUrl, waitMs), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildProbeUrl() — plugin presence / version probe")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the info URL under the plugin route prefix")
+    @params("https://jellyfin.example.com", "https://jellyfin.example.com/JellyRock/RemoteControl/info")
+    @params("https://jellyfin.example.com/", "https://jellyfin.example.com/JellyRock/RemoteControl/info")
+    function _(serverUrl, expected)
+      m.assertEqual(remoteProtocol.buildProbeUrl(serverUrl), expected)
+    end function
+
+    @it("returns empty for a missing/blank server URL")
+    @params("", "")
+    @params(invalid, "")
+    function _(serverUrl, expected)
+      m.assertEqual(remoteProtocol.buildProbeUrl(serverUrl), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("nextBackoffMs() — exponential, capped at 30s")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

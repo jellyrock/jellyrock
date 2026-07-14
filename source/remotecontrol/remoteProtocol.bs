@@ -23,6 +23,41 @@ namespace remoteProtocol
     return "ws://" + hostPort + "/socket?api_key=" + authToken + "&deviceId=" + deviceId
   end function
 
+  ' --- HTTPS long-poll transport (#667) ---
+  ' The plugin route prefix. JellyRock consumes the long-poll over TLS (roUrlTransfer) because Roku
+  ' can't wss://. Unlike buildSocketUrl, these carry NO token in the URL — the caller attaches the
+  ' standard Authorization header (baseRequest.buildAuthHeader), which already binds the session by
+  ' DeviceId. See docs/architecture/remote-control-longpoll-contract.md.
+  const PLUGIN_ROUTE = "/JellyRock/RemoteControl"
+
+  ' Build the plugin's long-poll command-channel URL for a server base URL. Returns "" for a blank
+  ' server URL. waitMs is JellyRock's requested hold ceiling; the client-side transfer timeout is set
+  ' longer so a 204 (empty hold) always arrives before the transfer itself times out.
+  '   https://host  ->  https://host/JellyRock/RemoteControl/poll?waitMs=<n>
+  function buildLongPollUrl(serverUrl as dynamic, waitMs as integer) as string
+    base = pluginBaseUrl(serverUrl)
+    if base = "" then return ""
+    return base + "/poll?waitMs=" + waitMs.ToStr()
+  end function
+
+  ' Build the plugin presence/version probe URL (200 = plugin present, 404 = absent). Returns "" for a
+  ' blank server URL. No token in the URL (auth is header-based).
+  '   https://host  ->  https://host/JellyRock/RemoteControl/info
+  function buildProbeUrl(serverUrl as dynamic) as string
+    base = pluginBaseUrl(serverUrl)
+    if base = "" then return ""
+    return base + "/info"
+  end function
+
+  ' Shared plugin route-prefix builder. Trims a single trailing slash on the server URL so we never
+  ' emit "//". Returns "" for a missing/blank server URL.
+  function pluginBaseUrl(serverUrl as dynamic) as string
+    if not isValidAndNotEmpty(serverUrl) then return ""
+    base = serverUrl
+    if Right(base, 1) = "/" then base = Left(base, Len(base) - 1)
+    return base + PLUGIN_ROUTE
+  end function
+
   ' Exponential reconnect backoff, 0-based attempt: 1s, 2s, 4s, 8s, 16s, then capped at 30s.
   function nextBackoffMs(attempt as integer) as integer
     ms = 1000
