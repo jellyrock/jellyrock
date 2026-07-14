@@ -179,6 +179,15 @@ sub runLongPollReceiver(serverUrl as string)
     m.log.info("long-poll receiver disabled: plugin probe returned", probe.code)
     return
   end if
+
+  ' Contract-version gate. The plugin advertises its wire-contract version in the probe body; we run
+  ' the loop only for a version we implement, else stay dark rather than risk acting on a command
+  ' shape we might misread. See remote-control-longpoll-contract.md (Versioning).
+  version = remoteProtocol.parseContractVersion(probe.body)
+  if version <> remoteProtocol.CONTRACT_VERSION
+    m.log.info("long-poll receiver disabled: unsupported contract version", version)
+    return
+  end if
   m.log.info("long-poll plugin present; starting poll loop")
 
   pollUrl = remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS)
@@ -197,14 +206,22 @@ sub runLongPollReceiver(serverUrl as string)
       return
     end if
 
+    ' Time the poll so an abnormally fast EMPTY response (a plugin that doesn't honor the hold) can be
+    ' floored below — a compliant plugin holds ~POLL_WAIT_MS, so the floor never fires on it.
+    pollTimer = CreateObject("roTimespan")
     resp = httpGet(pollUrl, POLL_TIMEOUT_MS)
     if resp.code = 200
-      ' Queued command(s). Dispatch in order, then re-poll immediately (no backoff on success).
+      ' Queued command(s). Dispatch in order, then re-poll immediately (no backoff on success). A 200
+      ' that dispatched nothing (empty array / garbled body) is abnormal — floor it like a fast 204 so
+      ' a misbehaving plugin can't spin this loop with no backoff. A real command 200 returns fast and
+      ' is NOT floored, so command latency is untouched.
       attempt = 0
-      dispatchBatch(resp.body)
+      if dispatchBatch(resp.body) = 0 then throttleEmptyPoll(pollTimer)
     else if resp.code = 204
-      ' Healthy empty hold — re-poll immediately.
+      ' Healthy empty hold — re-poll immediately (floored only if the server returned it near-instantly
+      ' instead of holding, which a compliant plugin never does).
       attempt = 0
+      throttleEmptyPoll(pollTimer)
     else if resp.code = 401 or resp.code = 404
       ' 401 = token no longer valid; 404 = plugin uninstalled mid-session. Either way, stop.
       m.log.info("long-poll receiver stopping; response", resp.code)
@@ -242,23 +259,39 @@ function httpGet(url as string, timeoutMs as integer) as object
 end function
 
 ' Parse a long-poll 200 body (a JSON array of { MessageType, Data, MessageId } envelopes) and marshal
-' each dispatchable command to the main thread, in array order.
-sub dispatchBatch(body as string)
-  if not isValidAndNotEmpty(body) then return
+' each dispatchable command to the main thread, in array order. Returns how many commands were actually
+' dispatched (0 for an empty array, a garbled body, or an all-ignore batch) so the caller can floor a
+' pointless fast 200 against a hot-loop.
+function dispatchBatch(body as string) as integer
+  if not isValidAndNotEmpty(body) then return 0
   envelopes = parseJson(body)
-  if not isValid(envelopes) or type(envelopes) <> "roArray" then return
+  if not isValid(envelopes) or type(envelopes) <> "roArray" then return 0
+  dispatched = 0
   for each envelope in envelopes
-    dispatchEnvelope(envelope)
+    if dispatchEnvelope(envelope) then dispatched++
   end for
-end sub
+  return dispatched
+end function
 
-' Normalize one long-poll envelope and marshal it if dispatchable. The long-poll contract never
-' carries KeepAlive/ForceKeepAlive (the poll request is the keepalive), so keepalive is treated like
-' ignore here — there's no socket to answer on. Reuses the same pure parseMessage as the ws path.
-sub dispatchEnvelope(envelope as object)
-  if not isValid(envelope) then return
+' Normalize one long-poll envelope and marshal it if dispatchable; returns true iff it was dispatched.
+' The long-poll contract never carries KeepAlive/ForceKeepAlive (the poll request is the keepalive), so
+' keepalive is treated like ignore here — there's no socket to answer on. Reuses the same pure
+' parseMessage as the ws path.
+function dispatchEnvelope(envelope as object) as boolean
+  if not isValid(envelope) then return false
   command = remoteCommand.parseMessage(envelope)
   kind = command.kind
-  if kind = "ignore" or kind = "keepalive" then return
+  if kind = "ignore" or kind = "keepalive" then return false
   marshalCommand(command)
+  return true
+end function
+
+' Hot-loop floor for an abnormally fast EMPTY poll. A compliant plugin holds an empty poll for
+' ~POLL_WAIT_MS, so this never fires against it; a misbehaving plugin that returns an empty 200/204
+' near-instantly would otherwise spin the poll loop with no backoff. Sleep out the remainder of a
+' minimum interval. Only ever called on the empty path, so it never delays a real command.
+sub throttleEmptyPoll(pollTimer as object)
+  POLL_MIN_EMPTY_MS = 1000
+  elapsed = pollTimer.TotalMilliseconds()
+  if elapsed < POLL_MIN_EMPTY_MS then sleep(POLL_MIN_EMPTY_MS - elapsed)
 end sub

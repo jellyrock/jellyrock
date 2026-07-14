@@ -11,7 +11,7 @@ last-reviewed: 2026-07-13
 # Long-poll wire contract — HTTPS "Cast to JellyRock" (#667)
 
 The **frozen** HTTP contract between JellyRock and the companion Jellyfin server plugin
-(`jellyfin-plugin-jellyrock-cast`). It is the HTTPS counterpart to the `ws://` receiver
+(`jellyfin-plugin-jellyrock`). It is the HTTPS counterpart to the `ws://` receiver
 ([remote-control.md](remote-control.md), ADR 0021): Roku has no socket TLS, so a secure server can't push
 commands over `wss://`. Instead the plugin **queues** the same remote-control commands Jellyfin would push
 over the session socket, and JellyRock **pulls** them with a long-poll `GET` loop over TLS (`roUrlTransfer`).

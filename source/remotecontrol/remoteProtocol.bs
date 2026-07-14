@@ -30,6 +30,11 @@ namespace remoteProtocol
   ' DeviceId. See docs/architecture/remote-control-longpoll-contract.md.
   const PLUGIN_ROUTE = "/JellyRock/RemoteControl"
 
+  ' The long-poll wire-contract version this client implements. The plugin advertises its own
+  ' contractVersion in the /info probe body; JellyRock refuses a mismatch and stays dark rather than
+  ' risk acting on a command shape it might misread. See remote-control-longpoll-contract.md (Versioning).
+  const CONTRACT_VERSION = 1
+
   ' Build the plugin's long-poll command-channel URL for a server base URL. Returns "" for a blank
   ' server URL. waitMs is JellyRock's requested hold ceiling; the client-side transfer timeout is set
   ' longer so a 204 (empty hold) always arrives before the transfer itself times out.
@@ -56,6 +61,20 @@ namespace remoteProtocol
     base = serverUrl
     if Right(base, 1) = "/" then base = Left(base, Len(base) - 1)
     return base + PLUGIN_ROUTE
+  end function
+
+  ' Extract the contractVersion from a /info probe body. Returns 0 for a blank/unparseable body, a
+  ' non-object body, a missing key, or a non-numeric value — callers treat anything <> CONTRACT_VERSION
+  ' as "no usable plugin". NEVER throws on a hostile/garbled body (it's network-controlled input): a
+  ' string/object/bool contractVersion is rejected before any coercion that could raise at runtime.
+  function parseContractVersion(body as dynamic) as integer
+    if not isValidAndNotEmpty(body) then return 0
+    parsed = parseJson(body)
+    if not isValid(parsed) or type(parsed) <> "roAssociativeArray" then return 0
+    version = parsed.contractVersion
+    if not isValid(version) then return 0
+    if getInterface(version, "ifInt") <> invalid or getInterface(version, "ifFloat") <> invalid then return cint(version)
+    return 0
   end function
 
   ' Exponential reconnect backoff, 0-based attempt: 1s, 2s, 4s, 8s, 16s, then capped at 30s.
