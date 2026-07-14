@@ -84,6 +84,14 @@ socket**, so [`remoteCommand.parseMessage`](../../source/remotecontrol/remoteCom
 - `MessageType` / `Data` — verbatim from the server's `ISessionController.SendMessage(name, messageId, data)`
   fan-out. The full `Play` / `Playstate` / `GeneralCommand` mapping is documented once in
   [remote-control.md](remote-control.md#command-mapping-jellyfin--jellyrock) and applies identically here.
+- **Enum values MUST serialize as their string names**, exactly as the `WebSocket` frames do —
+  `Playstate.Command` as `"Pause"` / `"NextTrack"` / `"Seek"`, `GeneralCommand.Name` as
+  `"DisplayContent"` / `"GoHome"`, `Play.PlayCommand` as `"PlayNow"` — **never as integers.** The client
+  matches these by string; numeric enums (the .NET `System.Text.Json` *default*) silently no-op every
+  command whose meaning rides on the `enum` value. `Play` is the misleading exception — it still plays
+  because its action defaults and the payload is `ItemIds` — so test a `Playstate` verb, not `Play`, when
+  validating serialization. (A plugin serializing `Data` with `System.Text.Json` needs a `JsonStringEnumConverter`.)
+  Field-name casing is free (the client reads case-insensitively); only the enum *values* are load-bearing.
 - `MessageId` — the server-assigned message GUID; carried for future ack/idempotency. JellyRock does not
   ack in Phase 1 (commands are idempotent enough at this scope), but the field is reserved so an at-least-once
   guarantee can be layered on without a contract break.
