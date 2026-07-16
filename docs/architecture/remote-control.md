@@ -13,7 +13,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-07-13
+last-reviewed: 2026-07-15
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -123,7 +123,7 @@ which the receiver sends a `KeepAlive` so the session isn't reaped.
 | Jellyfin frame | Normalized | JellyRock seam |
 |---|---|---|
 | `Play` (`PlayNow`/Shuffle/`InstantMix`) | `play` | mint `contentId` `<itemIds[startIndex]>\|action=<verb>` → `stashDeepLink` + `onRuntimeDeepLink` (the deep-link play path) |
-| `GeneralCommand{DisplayContent}` | `navigate` | springboard the item (action `open`) via the same deep-link seam |
+| `GeneralCommand{DisplayContent}` | `navigate` | springboard the item (action `open`) via the same deep-link seam — **suppressed over active playback** (see the display-mirroring note below) |
 | `GeneralCommand{GoHome/GoToSearch/GoToSettings}` | `route` | `routerNavigate(<path>)` (`/`, `/search`, `/settings`); `/`'s `clearStackOnResolve` makes Home the back-stack root |
 | `GeneralCommand{Back}` | `goback` | `routerGoBack` (`sgRouter.goBack`; no-op at root, so it never exits the app) |
 | `GeneralCommand{DisplayMessage}` | `message` | `TimeoutMs` present → **toast** (`Header` + `Text`); absent → **dialog** (persistent, dismiss with OK) |
@@ -133,6 +133,18 @@ which the receiver sends a `KeepAlive` so the session isn't reaped.
 
 `Seek` carries an **absolute** `SeekPositionTicks` → `seekto` (distinct from voice's relative
 `seek`). Both players gained `previous` / `seekto` / `playpause` cases for the cast verbs.
+
+Note on `DisplayContent` vs active playback: jellyfin web's **Display Mirroring** feature
+(`enableDisplayMirroring`, `displayMirrorManager.ts`) fires a `DisplayContent` on **every** item-detail
+browse while JellyRock is the selected cast target — it does **not** check whether the target is
+already playing. Enacting each one would stack an `ItemDetails` screen on top of live playback (and
+browsing several items would stack several). So `navigate`/`open` is **dropped when the active routed
+view is a media player** — the controller's incidental browsing never yanks the cast target off the
+video (matches the standard cast model: the receiver only changes on an explicit *play*). This guard
+lives at the shared runtime deep-link seam (`replayRoute.suppressesActivePlayer`, gating
+`replayDeepLinkRuntime`), so it equally covers a **Roku OS** `open` deep link arriving mid-playback,
+not just the cast path. A **playback** action (`play`/`shuffle`/`trailer`/`instantmix`) is exempt — it
+legitimately *replaces* the player. Idle mirroring (no player up) still opens the item as before.
 
 Note on seek: jellyfin web sends an absolute `Seek` from its **±N s jump buttons** (handled here as
 `seekto`, verified on device — the video jumps), but it sends **nothing** when the progress bar is
