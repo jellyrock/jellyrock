@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add HTTPS long-poll transport for "Cast to JellyRock" ([#714](https://github.com/jellyrock/jellyrock/pull/714))
 - Add native `ws://` remote-control receiver (Cast to JellyRock) ([#707](https://github.com/jellyrock/jellyrock/pull/707))
 
 ### Dependencies
