@@ -21,11 +21,15 @@
 
 1080p
 14d
+24s
 480p
+50s
 720p
 AAC
 AAs
+ABI
 Accessors
+ack
 ADR
 ADR-flavored
 ADR-grade
@@ -128,6 +132,7 @@ coords
 crash-backtrace
 crash-report
 CRLF
+cross-repo
 crossfade
 crowdsourced
 CSV
@@ -216,6 +221,7 @@ four-pillar-journal-reshape
 framebuffer
 frontmatter
 fullscreen
+getter
 getters
 GH
 .github
@@ -247,6 +253,7 @@ how-tos
 HTTPS
 i18n
 idempotence
+idempotency
 ImageMagick
 ing
 init
@@ -281,6 +288,7 @@ lowercased
 lifecycle
 lifecycle.
 Lifecycle
+liveness
 linter
 Linter
 linters
@@ -301,6 +309,7 @@ MKV
 multicast
 multiline
 musicvideo
+MVC
 namespace
 namespaced
 nav

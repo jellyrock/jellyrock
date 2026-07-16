@@ -45,6 +45,86 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildLongPollUrl() — HTTPS long-poll channel (no token in URL)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the poll URL with the requested waitMs and carries no token")
+    function _()
+      url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com", 25000)
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000")
+    end function
+
+    @it("trims a single trailing slash so it never emits //")
+    function _()
+      url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com/", 25000)
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000")
+    end function
+
+    @it("returns empty for a missing/blank server URL")
+    @params("", 25000)
+    @params(invalid, 25000)
+    function _(serverUrl, waitMs)
+      m.assertEqual(remoteProtocol.buildLongPollUrl(serverUrl, waitMs), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildProbeUrl() — plugin presence / version probe")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the info URL under the plugin route prefix")
+    @params("https://jellyfin.example.com", "https://jellyfin.example.com/JellyRock/RemoteControl/info")
+    @params("https://jellyfin.example.com/", "https://jellyfin.example.com/JellyRock/RemoteControl/info")
+    function _(serverUrl, expected)
+      m.assertEqual(remoteProtocol.buildProbeUrl(serverUrl), expected)
+    end function
+
+    @it("returns empty for a missing/blank server URL")
+    @params("", "")
+    @params(invalid, "")
+    function _(serverUrl, expected)
+      m.assertEqual(remoteProtocol.buildProbeUrl(serverUrl), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseContractVersion() — /info probe body gate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the integer contractVersion from a well-formed probe body")
+    function _()
+      body = FormatJson({ contractVersion: 1, pluginVersion: "0.1.0" })
+      m.assertEqual(remoteProtocol.parseContractVersion(body), 1)
+    end function
+
+    @it("reads a higher version so the caller can refuse a mismatch")
+    function _()
+      body = FormatJson({ contractVersion: 2 })
+      m.assertEqual(remoteProtocol.parseContractVersion(body), 2)
+    end function
+
+    @it("returns 0 for a body missing contractVersion")
+    function _()
+      m.assertEqual(remoteProtocol.parseContractVersion(FormatJson({ pluginVersion: "0.1.0" })), 0)
+    end function
+
+    @it("returns 0 for a non-numeric contractVersion (never throws on a hostile body)")
+    function _()
+      ' JSON bodies built via FormatJson rather than @params string literals — an embedded-quote
+      ' string in a @params annotation transpiles to a broken expression.
+      m.assertEqual(remoteProtocol.parseContractVersion(FormatJson({ contractVersion: "two" })), 0)
+      m.assertEqual(remoteProtocol.parseContractVersion(FormatJson({ contractVersion: true })), 0)
+      m.assertEqual(remoteProtocol.parseContractVersion(FormatJson({ contractVersion: {} })), 0)
+    end function
+
+    @it("returns 0 for a blank, non-JSON, or non-object body")
+    @params("", 0)
+    @params(invalid, 0)
+    @params("not json", 0)
+    @params("[1,2,3]", 0)
+    function _(body, expected)
+      m.assertEqual(remoteProtocol.parseContractVersion(body), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("nextBackoffMs() — exponential, capped at 30s")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

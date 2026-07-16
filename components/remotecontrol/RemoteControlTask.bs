@@ -1,3 +1,4 @@
+import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -13,14 +14,26 @@ sub init()
   m.top.functionName = "runReceiver"
 end sub
 
-' Started (control="RUN") post-login from Home.isFirstRun once the session token exists. Builds the
-' session-socket url and runs the connect/reconnect loop until the session ends (token rotated, or
-' SignOut sets control="STOP" which terminates this thread outright).
+' Post-login entry point (control="RUN" from Home.isFirstRun, once the session token exists). Selects
+' the transport by server scheme: an http:// server uses the ws:// session socket (#666); an https://
+' server can't ws:// (Roku has no socket TLS) so it probes for the companion plugin and, if present,
+' runs the long-poll command channel (#667). SignOut sets control="STOP", terminating this thread.
 sub runReceiver()
-  url = remoteProtocol.buildSocketUrl(m.global.server.serverUrl, m.global.user.authToken, m.global.device.serverDeviceName)
+  serverUrl = m.global.server.serverUrl
+  if remoteProtocol.isHttpServer(serverUrl)
+    runWsReceiver(serverUrl)
+  else
+    runLongPollReceiver(serverUrl)
+  end if
+end sub
+
+' ws:// transport (#666): build the session-socket url and run the connect/reconnect loop until the
+' session ends (token rotated, or control="STOP" kills the thread).
+sub runWsReceiver(serverUrl as string)
+  url = remoteProtocol.buildSocketUrl(serverUrl, m.global.user.authToken, m.global.device.serverDeviceName)
   if url = ""
-    ' Non-http server (Roku can't ws:// a secure server) or a missing credential -> stay dark.
-    m.log.info("receiver disabled: non-http server or missing session")
+    ' Missing credential (scheme already gated by runReceiver) -> stay dark.
+    m.log.info("ws receiver disabled: missing session")
     return
   end if
 
@@ -120,12 +133,17 @@ sub handleFrame(data as object)
   ' "ignore" is dropped here — so a new dispatchable kind (route/goback/message/…) is forwarded
   ' without needing this gate updated again.
   if kind <> "ignore"
-    ' 'raw' is the original Data (a whole ItemIds list for a series/album can be large) — the
-    ' normalized fields carry everything the main thread needs, so drop it before marshalling.
-    command.delete("raw")
-    m.top.dispatchCommand = command
+    marshalCommand(command)
   end if
   ' kind = "ignore" -> dropped (KeepAlive echo, Sessions, volume, unknown types).
+end sub
+
+' Marshal a normalized command to the main thread. Drops the bulky original 'raw' Data first (a whole
+' ItemIds list for a series/album can be large) — the normalized fields carry everything the main
+' thread needs. Shared by both transports; callers gate out keepalive/ignore before calling.
+sub marshalCommand(command as object)
+  command.delete("raw")
+  m.top.dispatchCommand = command
 end sub
 
 ' Best-effort teardown of the socket child + its observers.
@@ -137,4 +155,143 @@ sub closeSocket()
   m.ws.unobserveField("on_error")
   m.ws.close = [1000] ' normal closure
   m.ws = invalid
+end sub
+
+' HTTPS long-poll transport (#667). Roku can't ws:// a secure server, so on https we consume the
+' companion plugin's authenticated long-poll command channel over TLS (roUrlTransfer). The poll
+' request ITSELF is the keepalive (it refreshes server-side session activity), so — unlike the ws
+' path — there's no client KeepAlive to send. See docs/architecture/remote-control-longpoll-contract.md.
+sub runLongPollReceiver(serverUrl as string)
+  PROBE_TIMEOUT_MS = 8000 ' presence probe (matches ServerReachableTask's pre-flight budget)
+  POLL_WAIT_MS = 25000 ' server holds each poll up to this before returning 204
+  POLL_TIMEOUT_MS = 35000 ' client transfer timeout — longer than POLL_WAIT_MS so a 204 always lands first
+
+  probeUrl = remoteProtocol.buildProbeUrl(serverUrl)
+  if probeUrl = ""
+    m.log.info("long-poll receiver disabled: no server url")
+    return
+  end if
+
+  ' Presence probe: 200 => the plugin is installed (long-poll available); anything else => the
+  ' secure server has no cast plugin, so JellyRock stays dark (unchanged pre-#667 https behavior).
+  probe = httpGet(probeUrl, PROBE_TIMEOUT_MS)
+  if probe.code <> 200
+    m.log.info("long-poll receiver disabled: plugin probe returned", probe.code)
+    return
+  end if
+
+  ' Contract-version gate. The plugin advertises its wire-contract version in the probe body; we run
+  ' the loop only for a version we implement, else stay dark rather than risk acting on a command
+  ' shape we might misread. See remote-control-longpoll-contract.md (Versioning).
+  version = remoteProtocol.parseContractVersion(probe.body)
+  if version <> remoteProtocol.CONTRACT_VERSION
+    m.log.info("long-poll receiver disabled: unsupported contract version", version)
+    return
+  end if
+  m.log.info("long-poll plugin present; starting poll loop")
+
+  pollUrl = remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS)
+  if pollUrl = "" then return
+
+  ' Snapshot the token so a poll can detect a server-side rotation and stop cleanly (mirrors the ws path).
+  m.openedWithToken = m.global.user.authToken
+
+  attempt = 0
+  while true
+    ' Token rotation / logout guard. control="STOP" (SignOut / server switch) terminates this thread
+    ' outright; this catches a server-side token rotation between polls.
+    currentToken = m.global.user.authToken
+    if not isValidAndNotEmpty(currentToken) or currentToken <> m.openedWithToken
+      m.log.info("session ended; long-poll receiver stopping")
+      return
+    end if
+
+    ' Time the poll so an abnormally fast EMPTY response (a plugin that doesn't honor the hold) can be
+    ' floored below — a compliant plugin holds ~POLL_WAIT_MS, so the floor never fires on it.
+    pollTimer = CreateObject("roTimespan")
+    resp = httpGet(pollUrl, POLL_TIMEOUT_MS)
+    if resp.code = 200
+      ' Queued command(s). Dispatch in order, then re-poll immediately (no backoff on success). A 200
+      ' that dispatched nothing (empty array / garbled body) is abnormal — floor it like a fast 204 so
+      ' a misbehaving plugin can't spin this loop with no backoff. A real command 200 returns fast and
+      ' is NOT floored, so command latency is untouched.
+      attempt = 0
+      if dispatchBatch(resp.body) = 0 then throttleEmptyPoll(pollTimer)
+    else if resp.code = 204
+      ' Healthy empty hold — re-poll immediately (floored only if the server returned it near-instantly
+      ' instead of holding, which a compliant plugin never does).
+      attempt = 0
+      throttleEmptyPoll(pollTimer)
+    else if resp.code = 401 or resp.code = 404
+      ' 401 = token no longer valid; 404 = plugin uninstalled mid-session. Either way, stop.
+      m.log.info("long-poll receiver stopping; response", resp.code)
+      return
+    else
+      ' Transient error / timeout (code 0) -> exponential backoff (1s..30s), then retry. A persistently
+      ' unreachable server keeps the counter climbing so it can't hot-loop.
+      backoffMs = remoteProtocol.nextBackoffMs(attempt)
+      m.log.info("long-poll error; retrying", "code", resp.code, "inMs", backoffMs)
+      sleep(backoffMs)
+      attempt++
+    end if
+  end while
+end sub
+
+' Authenticated async GET on this Task thread. Blocks up to timeoutMs for the response. Returns
+' { code, body }; code = 0 on a failed initiation or a timeout. A fresh roUrlTransfer + roMessagePort
+' per call avoids cross-call event bleed. NEVER logs the url — the Authorization header carries the
+' token. Mirrors the raw-transfer pattern in captionTask.bs / ServerReachableTask.bs.
+function httpGet(url as string, timeoutMs as integer) as object
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.SetMessagePort(port)
+  req.SetUrl(url)
+  if LCase(url).Left(8) = "https://" then req.SetCertificatesFile("common:/certs/ca-bundle.crt")
+  req.AddHeader("Authorization", buildAuthHeader())
+  if not req.AsyncGetToString() then return { code: 0, body: "" }
+
+  event = wait(timeoutMs, port)
+  if type(event) = "roUrlEvent"
+    return { code: event.GetResponseCode(), body: event.GetString() }
+  end if
+  req.AsyncCancel() ' timed out -> abandon this transfer
+  return { code: 0, body: "" }
+end function
+
+' Parse a long-poll 200 body (a JSON array of { MessageType, Data, MessageId } envelopes) and marshal
+' each dispatchable command to the main thread, in array order. Returns how many commands were actually
+' dispatched (0 for an empty array, a garbled body, or an all-ignore batch) so the caller can floor a
+' pointless fast 200 against a hot-loop.
+function dispatchBatch(body as string) as integer
+  if not isValidAndNotEmpty(body) then return 0
+  envelopes = parseJson(body)
+  if not isValid(envelopes) or type(envelopes) <> "roArray" then return 0
+  dispatched = 0
+  for each envelope in envelopes
+    if dispatchEnvelope(envelope) then dispatched++
+  end for
+  return dispatched
+end function
+
+' Normalize one long-poll envelope and marshal it if dispatchable; returns true iff it was dispatched.
+' The long-poll contract never carries KeepAlive/ForceKeepAlive (the poll request is the keepalive), so
+' keepalive is treated like ignore here — there's no socket to answer on. Reuses the same pure
+' parseMessage as the ws path.
+function dispatchEnvelope(envelope as object) as boolean
+  if not isValid(envelope) then return false
+  command = remoteCommand.parseMessage(envelope)
+  kind = command.kind
+  if kind = "ignore" or kind = "keepalive" then return false
+  marshalCommand(command)
+  return true
+end function
+
+' Hot-loop floor for an abnormally fast EMPTY poll. A compliant plugin holds an empty poll for
+' ~POLL_WAIT_MS, so this never fires against it; a misbehaving plugin that returns an empty 200/204
+' near-instantly would otherwise spin the poll loop with no backoff. Sleep out the remainder of a
+' minimum interval. Only ever called on the empty path, so it never delays a real command.
+sub throttleEmptyPoll(pollTimer as object)
+  POLL_MIN_EMPTY_MS = 1000
+  elapsed = pollTimer.TotalMilliseconds()
+  if elapsed < POLL_MIN_EMPTY_MS then sleep(POLL_MIN_EMPTY_MS - elapsed)
 end sub
