@@ -11,7 +11,7 @@ related-files:
   - components/data/SceneManager.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-07-03
+last-reviewed: 2026-07-15
 ---
 
 # Navigation (sgRouter)
@@ -217,6 +217,8 @@ A playback cast can arrive while a media player is already active (`replayDeepLi
 2. `navigateChainStep(["/", targetRoute], 0)` — navigate **Home first**, then the target. Navigating `"/"` tears the player host down (Home is `clearStackOnResolve`, so the whole stack — player host included — clears and Home re-mounts) and its `navigateTo` promise resolves at `NavigationEnd`; the chain then mounts the target, which auto-launches. Back lands Player → Details → Home — the intended deep-link shape — with no stale prior item left behind.
 
 This rides `navigateTo`'s **promise** (via the shared `navigateChainStep`, exactly as post-login deep-link replay does). The promise resolves reliably through the router's internal chain — **not** the coalescing `routerState` field observer — so the navigation can't strand. An earlier design (ADR 0020) instead `goBack()`-popped the player and waited for a `routerState`-observer "settle" event before navigating; that was proven on device to strand every cast, because the observer coalesces and drops the terminal `NavigationEnd` it waited on (`goBack` also returns a bare Boolean, with no promise to chain). See [ADR 0020](../adr/0020-router-settle-primitive.md) for the full postmortem.
+
+**The complement — a non-playback `open` over an active player is *dropped*, not stacked.** Only a *playback* cast replaces the player (above). A `navigate`/`open` deep link arriving while a player is active — e.g. jellyfin web's Display Mirroring emitting a `DisplayContent` on every item-detail browse while JellyRock is the cast target — would otherwise plain-push `ItemDetails` on top of live playback. `replayDeepLinkRuntime` guards this via `suppressesActivePlayer` (drop when `activeRoutedView` is a media player), so the controller's incidental browsing never yanks the cast target off the video. The same guard covers a Roku OS `open` deep link arriving mid-playback. See [remote-control.md](remote-control.md).
 
 ## Focus management
 
