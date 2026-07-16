@@ -175,6 +175,11 @@ sub replayDeepLinkRuntime()
     return
   end if
 
+  ' Drop an incidental "open" that would stack details on top of live playback (jellyfin-web
+  ' display-mirroring, or a Roku OS deep link arriving mid-playback). Silent — mirroring fires on
+  ' every browse, so a toast would spam. Playback actions fall through to replacePlayer below.
+  if isValid(active) and wouldStackOverActivePlayer(deepLink.action, active.subtype()) then return
+
   replacePlayer = isPlayback and isValid(active) and isDeepLinkPlayerView(active.subtype())
   m.scene.callFunc("resolveDeepLink", {
     itemId: deepLink.itemId,
@@ -190,6 +195,20 @@ end sub
 ' before launching the next, not stack on top).
 function isDeepLinkPlayerView(subtype as string) as boolean
   return subtype = "PlayerHostView" or subtype = "AudioPlayerView" or subtype = "VideoPlayerView"
+end function
+
+' True when a non-playback ("open") deep link would stack a details screen on TOP of an active media
+' player, and so must be dropped rather than enacted. jellyfin-web's display-mirroring fires a
+' DisplayContent ("open") on EVERY item-detail browse while JellyRock is the cast target, and the Roku
+' OS can hand us an "open" deep link mid-playback — neither is an intent to interrupt playback, so the
+' controller's browsing must never yank the cast target off the video. A PLAYBACK action
+' (play/shuffle/trailer/instantmix) is exempt: it legitimately REPLACES the player (replacePlayer
+' below). activeSubtype is the active routed view's subtype ("" / invalid when there's no active view).
+' Pure so the rule is unit-testable without a live node.
+function wouldStackOverActivePlayer(action as string, activeSubtype as dynamic) as boolean
+  if isDeepLinkPlaybackAction(action) then return false
+  if not isValidAndNotEmpty(activeSubtype) then return false
+  return isDeepLinkPlayerView(activeSubtype)
 end function
 
 ' Build the /details route for a deep link. The :type is just a display hint (ItemDetails
