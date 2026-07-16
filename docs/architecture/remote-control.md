@@ -141,7 +141,7 @@ already playing. Enacting each one would stack an `ItemDetails` screen on top of
 browsing several items would stack several). So `navigate`/`open` is **dropped when the active routed
 view is a media player** — the controller's incidental browsing never yanks the cast target off the
 video (matches the standard cast model: the receiver only changes on an explicit *play*). This guard
-lives at the shared runtime deep-link seam (`replayRoute.suppressesActivePlayer`, gating
+lives at the shared runtime deep-link seam (`replayRoute.wouldStackOverActivePlayer`, gating
 `replayDeepLinkRuntime`), so it equally covers a **Roku OS** `open` deep link arriving mid-playback,
 not just the cast path. A **playback** action (`play`/`shuffle`/`trailer`/`instantmix`) is exempt — it
 legitimately *replaces* the player. Idle mirroring (no player up) still opens the item as before.

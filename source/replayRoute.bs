@@ -178,7 +178,7 @@ sub replayDeepLinkRuntime()
   ' Drop an incidental "open" that would stack details on top of live playback (jellyfin-web
   ' display-mirroring, or a Roku OS deep link arriving mid-playback). Silent — mirroring fires on
   ' every browse, so a toast would spam. Playback actions fall through to replacePlayer below.
-  if isValid(active) and suppressesActivePlayer(deepLink.action, active.subtype()) then return
+  if isValid(active) and wouldStackOverActivePlayer(deepLink.action, active.subtype()) then return
 
   replacePlayer = isPlayback and isValid(active) and isDeepLinkPlayerView(active.subtype())
   m.scene.callFunc("resolveDeepLink", {
@@ -205,7 +205,7 @@ end function
 ' (play/shuffle/trailer/instantmix) is exempt: it legitimately REPLACES the player (replacePlayer
 ' below). activeSubtype is the active routed view's subtype ("" / invalid when there's no active view).
 ' Pure so the rule is unit-testable without a live node.
-function suppressesActivePlayer(action as string, activeSubtype as dynamic) as boolean
+function wouldStackOverActivePlayer(action as string, activeSubtype as dynamic) as boolean
   if isDeepLinkPlaybackAction(action) then return false
   if not isValidAndNotEmpty(activeSubtype) then return false
   return isDeepLinkPlayerView(activeSubtype)

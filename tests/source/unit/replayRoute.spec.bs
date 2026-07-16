@@ -204,7 +204,7 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("suppressesActivePlayer() — don't stack 'open' over live playback")
+    @describe("wouldStackOverActivePlayer() — don't stack 'open' over live playback")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("suppresses an 'open' (or unknown action) while a media player is active")
@@ -213,7 +213,7 @@ namespace tests
     @params("open", "AudioPlayerView")
     @params("browse", "VideoPlayerView")
     function _(action, activeSubtype)
-      m.assertTrue(suppressesActivePlayer(action, activeSubtype))
+      m.assertTrue(wouldStackOverActivePlayer(action, activeSubtype))
     end function
 
     @it("does NOT suppress a playback action — it legitimately replaces the player")
@@ -222,7 +222,7 @@ namespace tests
     @params("trailer", "VideoPlayerView")
     @params("instantmix", "AudioPlayerView")
     function _(action, activeSubtype)
-      m.assertFalse(suppressesActivePlayer(action, activeSubtype))
+      m.assertFalse(wouldStackOverActivePlayer(action, activeSubtype))
     end function
 
     @it("does NOT suppress an 'open' when the active view is not a player (idle mirroring still opens)")
@@ -231,7 +231,7 @@ namespace tests
     @params("")
     @params(invalid)
     function _(activeSubtype)
-      m.assertFalse(suppressesActivePlayer("open", activeSubtype))
+      m.assertFalse(wouldStackOverActivePlayer("open", activeSubtype))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
