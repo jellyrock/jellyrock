@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update eslint from v10.6.0 to v10.7.0 ([#709](https://github.com/jellyrock/jellyrock/pull/709))
 - Update adm-zip from v0.5.18 to v0.6.0 ([#708](https://github.com/jellyrock/jellyrock/pull/708))
 - Update eslint-plugin-n from v18.2.1 to v18.2.2 ([#710](https://github.com/jellyrock/jellyrock/pull/710))
 - Update prettier from v3.9.4 to v3.9.5 ([#706](https://github.com/jellyrock/jellyrock/pull/706))
