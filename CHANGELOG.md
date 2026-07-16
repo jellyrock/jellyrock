@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add HTTPS long-poll transport for "Cast to JellyRock" ([#714](https://github.com/jellyrock/jellyrock/pull/714))
 - Add native `ws://` remote-control receiver (Cast to JellyRock) ([#707](https://github.com/jellyrock/jellyrock/pull/707))
 
+### Changed
+
+- Stop cast `DisplayContent` mirroring from covering active playback ([#716](https://github.com/jellyrock/jellyrock/pull/716))
+
 ### Dependencies
 
 - Update eslint from v10.6.0 to v10.7.0 ([#709](https://github.com/jellyrock/jellyrock/pull/709))
