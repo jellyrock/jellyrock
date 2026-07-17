@@ -22,6 +22,8 @@
 1080p
 14d
 24s
+30s
+3rd-party-ECP
 480p
 50s
 720p
@@ -31,9 +33,11 @@ ABI
 Accessors
 ack
 ADR
+ADR's
 ADR-flavored
 ADR-grade
 ADRs
+advertisable
 agent-collaborative
 antialiases
 api
@@ -49,6 +53,10 @@ Async
 auditable
 auth
 Auth
+auth-claim
+auth-deferral
+Auth-deferral
+auth-header
 autocomplete
 auto-prepends
 autoscale
@@ -184,6 +192,7 @@ e2e
 E2E
 ECP
 .editorconfig
+ECP-disabled
 editorconfig
 enrichment
 Enrichment
@@ -262,6 +271,7 @@ in-repo
 instantiation
 interpolators
 invariants
+IPs
 JavaScript
 jellyfin
 Jellyfin
@@ -270,6 +280,7 @@ jellyfin-roku-legacy
 Jellyfin-pool
 Jellyfin's
 jellyfin-server-versioning
+jellyfin-web
 jellyrock
 JellyRock
 jellyrock-bot
@@ -284,6 +295,7 @@ JSONL
 Keep-a-Changelog
 last-checked
 last-updated
+Liveness
 lowercased
 lifecycle
 lifecycle.
@@ -362,6 +374,8 @@ Plex
 PNG
 PNGs
 portal-UI
+post-auth
+pre-auth
 pre-commit
 Pre-commit
 pre-commit's
@@ -398,6 +412,8 @@ Quickplay
 RALE
 rasterizes
 RCs
+re-inits
+Reachability
 README
 READMEs
 read-only
@@ -426,6 +442,7 @@ repo-size
 repo-wide
 retry-with-backoff
 revalidation
+reverse-proxied
 reviewable
 RGB
 roadmap
@@ -495,6 +512,7 @@ tmpdir
 tokenizer
 tomatometer
 Tooltip
+tradeoff
 transcode
 Transcode
 transcoded
@@ -514,6 +532,7 @@ transpile-time
 Transpile-time
 transpiler
 Transpiler
+transport-agnostically
 triaging
 trickplay
 Trickplay
@@ -523,6 +542,7 @@ tvchannel
 UI
 UIs
 Unfavorite
+ungated
 unit-tests-tdd
 unlinked
 unobserve

@@ -55,6 +55,46 @@ namespace tests
       m.assertEqual("user_name-test", result)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("user.ComputeServerDeviceName() - version-gated DeviceId (deviceid-suffix-gate-10.11)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("server >= 10.11: bare device.id, no username suffix (stable identity for cold-cast)")
+    function _()
+      result = user.ComputeServerDeviceName("ABC123", "JaneDoe", "10.11.11")
+      m.assertEqual("ABC123", result)
+    end function
+
+    @it("server >= 10.11: exactly 10.11.0 is on the bare side of the gate")
+    function _()
+      result = user.ComputeServerDeviceName("ABC123", "JaneDoe", "10.11.0")
+      m.assertEqual("ABC123", result)
+    end function
+
+    @it("server < 10.11: keeps device.id + username suffix (unchanged legacy behavior)")
+    function _()
+      result = user.ComputeServerDeviceName("ABC123", "JaneDoe", "10.10.7")
+      m.assertEqual("ABC123JaneDoe", result)
+    end function
+
+    @it("server < 10.11 with no user: bare device.id (no trailing suffix)")
+    function _()
+      result = user.ComputeServerDeviceName("ABC123", "", "10.10.7")
+      m.assertEqual("ABC123", result)
+    end function
+
+    @it("empty/unknown server version: falls through to the conservative suffixed path")
+    function _()
+      result = user.ComputeServerDeviceName("ABC123", "JaneDoe", "")
+      m.assertEqual("ABC123JaneDoe", result)
+    end function
+
+    @it("server >= 10.11 with no user: bare device.id")
+    function _()
+      result = user.ComputeServerDeviceName("ABC123", "", "10.11.11")
+      m.assertEqual("ABC123", result)
+    end function
+
   end class
 
 end namespace
