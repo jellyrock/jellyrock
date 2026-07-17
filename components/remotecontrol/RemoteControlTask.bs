@@ -20,10 +20,50 @@ end sub
 ' runs the long-poll command channel (#667). SignOut sets control="STOP", terminating this thread.
 sub runReceiver()
   serverUrl = m.global.server.serverUrl
+
+  ' Cold-launch cast pairing (#668 P1): tell the companion plugin our wake identity so a CLOSED app
+  ' can be woken via ECP /launch. Independent of the command transport below (the wake is ECP, not the
+  ' command channel), so it fires on BOTH http and https servers. Fire-and-forget — a missing producer
+  ' (404) or any failure must never block the command receiver.
+  reportPairing(serverUrl)
+
   if remoteProtocol.isHttpServer(serverUrl)
     runWsReceiver(serverUrl)
   else
     runLongPollReceiver(serverUrl)
+  end if
+end sub
+
+' Post the cold-launch pairing report once per receiver start (each app open, which is how lastSeen
+' stays fresh — no in-session timer needed). Reports the device's LAN addresses + ECP app identity;
+' DeviceId/UserId ride the Authorization header, never the body. Best-effort: logs the outcome and
+' returns regardless, so pairing can never stall the command channel.
+sub reportPairing(serverUrl as string)
+  PAIR_TIMEOUT_MS = 8000
+
+  url = remoteProtocol.buildPairUrl(serverUrl)
+  if url = "" then return ' no server url
+
+  ' roDeviceInfo.GetIPAddrs() -> { <interface>: <ip> }; report the addresses, sanitized by the builder.
+  ips = []
+  for each iface in CreateObject("roDeviceInfo").GetIPAddrs().items()
+    ips.push(iface.value)
+  end for
+
+  body = remoteProtocol.buildPairPayload(ips, m.global.app.appId, m.global.app.isDev)
+  if body = "" ' no usable IPs, or no appId -> nothing the plugin could wake
+    m.log.info("cold-cast pairing skipped: no reportable wake address")
+    return
+  end if
+
+  resp = httpPost(url, body, PAIR_TIMEOUT_MS)
+  if resp.code = 200
+    m.log.info("cold-cast pairing reported")
+  else if resp.code = 404
+    ' Companion cold-cast producer not installed on this server -> expected, stay quiet-ish.
+    m.log.info("cold-cast pairing skipped: producer absent (404)")
+  else
+    m.log.info("cold-cast pairing failed; response", resp.code)
   end if
 end sub
 
@@ -249,6 +289,28 @@ function httpGet(url as string, timeoutMs as integer) as object
   if LCase(url).Left(8) = "https://" then req.SetCertificatesFile("common:/certs/ca-bundle.crt")
   req.AddHeader("Authorization", buildAuthHeader())
   if not req.AsyncGetToString() then return { code: 0, body: "" }
+
+  event = wait(timeoutMs, port)
+  if type(event) = "roUrlEvent"
+    return { code: event.GetResponseCode(), body: event.GetString() }
+  end if
+  req.AsyncCancel() ' timed out -> abandon this transfer
+  return { code: 0, body: "" }
+end function
+
+' Authenticated async JSON POST on this Task thread. Blocks up to timeoutMs for the response. Returns
+' { code, body }; code = 0 on a failed initiation or a timeout. Mirrors httpGet (fresh transfer + port
+' per call, never logs the url — the Authorization header carries the token). Used by the cold-cast
+' pairing report; the plugin binds identity from the auth header, so the body carries no credentials.
+function httpPost(url as string, body as string, timeoutMs as integer) as object
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.SetMessagePort(port)
+  req.SetUrl(url)
+  if LCase(url).Left(8) = "https://" then req.SetCertificatesFile("common:/certs/ca-bundle.crt")
+  req.AddHeader("Authorization", buildAuthHeader())
+  req.AddHeader("Content-Type", "application/json")
+  if not req.AsyncPostFromString(body) then return { code: 0, body: "" }
 
   event = wait(timeoutMs, port)
   if type(event) = "roUrlEvent"

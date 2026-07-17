@@ -150,5 +150,96 @@ namespace tests
       m.assertEqual(parsed.MessageType, "KeepAlive")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildPairUrl() — cold-cast pairing report (#668)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds the pair URL under the plugin route prefix (trimming a trailing slash)")
+    @params("http://192.168.1.2:8096", "http://192.168.1.2:8096/JellyRock/RemoteControl/pair")
+    @params("https://jellyfin.example.com", "https://jellyfin.example.com/JellyRock/RemoteControl/pair")
+    @params("https://jellyfin.example.com/", "https://jellyfin.example.com/JellyRock/RemoteControl/pair")
+    function _(serverUrl, expected)
+      m.assertEqual(remoteProtocol.buildPairUrl(serverUrl), expected)
+    end function
+
+    @it("returns empty for a missing/blank server URL")
+    @params("", "")
+    @params(invalid, "")
+    function _(serverUrl, expected)
+      m.assertEqual(remoteProtocol.buildPairUrl(serverUrl), expected)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sanitizeIps() — the reportable wake addresses")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps routable addresses in order")
+    function _()
+      m.assertEqual(remoteProtocol.sanitizeIps(["192.168.1.5", "10.0.0.2"]), ["192.168.1.5", "10.0.0.2"])
+    end function
+
+    @it("drops blanks, loopback (127.x) and the unspecified address (0.0.0.0)")
+    function _()
+      m.assertEqual(remoteProtocol.sanitizeIps(["", "127.0.0.1", "0.0.0.0", "192.168.1.5"]), ["192.168.1.5"])
+    end function
+
+    @it("dedupes an address reported on more than one interface, preserving first-seen order")
+    function _()
+      m.assertEqual(remoteProtocol.sanitizeIps(["192.168.1.5", "192.168.1.5", "10.0.0.2"]), ["192.168.1.5", "10.0.0.2"])
+    end function
+
+    @it("trims surrounding whitespace before comparing/deduping")
+    function _()
+      m.assertEqual(remoteProtocol.sanitizeIps([" 192.168.1.5 ", "192.168.1.5"]), ["192.168.1.5"])
+    end function
+
+    @it("returns an empty array (never invalid) for a non-array or empty input")
+    @params(invalid)
+    @params("192.168.1.5")
+    function _(bad)
+      m.assertEqual(remoteProtocol.sanitizeIps(bad), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildPairPayload() — the report body")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("serializes sanitized IPs + app identity; carries NO device/user id (auth header binds those)")
+    function _()
+      parsed = ParseJson(remoteProtocol.buildPairPayload(["192.168.1.5", "127.0.0.1"], "dev", true))
+      m.assertEqual(parsed.rokuIps, ["192.168.1.5"])
+      m.assertEqual(parsed.appId, "dev")
+      m.assertEqual(parsed.isDev, true)
+      m.assertInvalid(parsed.deviceId)
+      m.assertInvalid(parsed.userId)
+    end function
+
+    @it("reports a published channel id with isDev false")
+    function _()
+      parsed = ParseJson(remoteProtocol.buildPairPayload(["192.168.1.5"], "781054", false))
+      m.assertEqual(parsed.appId, "781054")
+      m.assertEqual(parsed.isDev, false)
+    end function
+
+    @it("coerces a missing/invalid isDev to false rather than emitting null")
+    function _()
+      parsed = ParseJson(remoteProtocol.buildPairPayload(["192.168.1.5"], "dev", invalid))
+      m.assertEqual(parsed.isDev, false)
+    end function
+
+    @it("returns empty when no usable IPs remain after sanitizing (nothing to wake)")
+    @params(["127.0.0.1", "0.0.0.0", ""])
+    @params([])
+    @params(invalid)
+    function _(ips)
+      m.assertEqual(remoteProtocol.buildPairPayload(ips, "dev", true), "")
+    end function
+
+    @it("returns empty when appId is blank (can't target /launch)")
+    function _()
+      m.assertEqual(remoteProtocol.buildPairPayload(["192.168.1.5"], "", true), "")
+      m.assertEqual(remoteProtocol.buildPairPayload(["192.168.1.5"], invalid, true), "")
+    end function
+
   end class
 end namespace
