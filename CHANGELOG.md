@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Stop `Home` from clobbering the foreground backdrop when opening deep-link ([#719](https://github.com/jellyrock/jellyrock/pull/719))
+
 ## [2.23.0](https://github.com/jellyrock/jellyrock/compare/v2.22.0...v2.23.0) - 2026-07-16
 
 ### Added
