@@ -85,6 +85,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: Settings change → `applyThemeColorOverrides` (writes to `m.global.constants`) → `sceneManager.callFunc("refreshThemeColors")` (re-applies styles) → `sceneManager.callFunc("reloadHome")` (rebuilds home rows) is a 3-step manual chain that every theme-changing call site must invoke in order. Components that cache theme colors at construction time miss updates entirely unless the home is rebuilt.
 - **direction**: Either (a) all components read from `m.global.constants` in event handlers (not `init`), or (b) define a "theme observable" — a node on `m.global` whose updates fire observers — that components opt into instead of relying on `reloadHome` as a blunt rebuild.
 
+#### `backdrop-ownership-guard`
+
+- **area**: `components/JRScene.bs` (`setBackgroundImage`, `imageFader`), `components/ui/BackdropFader.*`, and every backdrop writer (`components/home/HomeRows.bs`, `components/ItemGrid/BaseGridView.bs`, `components/ItemDetails.bs`, search / favorites / player views).
+- **issue**: The app has a SINGLE global backdrop node (`JRScene.imageFader`) and `setBackgroundImage` is last-writer-wins with no notion of which routed view owns the screen. Any view whose async data lands *after* it is no longer the active routed view can clobber the foreground view's backdrop. Surfaced as the cold-launch bug where Home's late row load blanked a deep-linked `ItemDetails` backdrop — fixed narrowly in `HomeRows.updateBackdropForFocusedItem` via `backgroundWriteIsStale` (`source/utils/backdrop.bs`), but every other async backdrop writer has the same latent hazard. Also `forceBackdrop` (login clear) resets `imageFader.uri` without resetting `m.lastBackdropUri`, so cross-phase dedup state can go stale.
+- **direction**: Move the ownership guard INTO `JRScene.setBackgroundImage`, keyed to `m.global.activeRoutedView` — reject a write from any view that is not the active routed view — then drop the now-redundant per-caller `backgroundWriteIsStale` guard from `HomeRows`. Reset `m.lastBackdropUri` on the `forceBackdrop` clear.
+
 ### Low
 
 #### `screenshot-osd-frame-quality`

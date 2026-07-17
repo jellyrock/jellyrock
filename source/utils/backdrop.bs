@@ -31,3 +31,29 @@ function resolveShowBackdrop(userSettings as object, userConfig as object) as bo
 
   return defaultValue
 end function
+
+' backgroundWriteIsStale: true when a global-backdrop write should be SUPPRESSED because the writing
+' screen is no longer the active routed view.
+'
+' The app has a SINGLE global backdrop node (JRScene.imageFader, last-writer-wins, no ownership guard).
+' A view whose async data lands AFTER it has been backgrounded can otherwise clobber the foreground
+' view's backdrop. The concrete case: on a cold deep-link launch the app routes Home -> ItemDetails,
+' but Home's row Tasks finish loading LATE and its rowItemFocused observer fires a backdrop write after
+' ItemDetails is already showing — blanking the item the user was deep-linked to. Warm navigation
+' doesn't hit this because Home's rows are already loaded before it is backgrounded.
+'
+' Suppress only when a DIFFERENT valid view owns the screen. An unset/empty active subtype (early
+' mount, before m.global.activeRoutedView is assigned) is allowed through, so a legitimate first paint
+' is never dropped. Pure so the rule is unit-testable.
+'
+' NOTE (tech-debt: backdrop-ownership-guard): the durable fix is to move this check INTO
+' JRScene.setBackgroundImage keyed to m.global.activeRoutedView, so EVERY late writer (not just Home)
+' is guarded. This helper is the isolated fix for the observed HomeRows cold-launch clobber.
+'
+' @param {dynamic} activeSubtype - m.global.activeRoutedView.subtype() (or invalid when none/unset)
+' @param {string} owningSubtype - the subtype of the screen attempting the write (e.g. "Home")
+' @returns {boolean} - true to SUPPRESS the write (a different view is active)
+function backgroundWriteIsStale(activeSubtype as dynamic, owningSubtype as string) as boolean
+  if not isValidAndNotEmpty(activeSubtype) then return false
+  return activeSubtype <> owningSubtype
+end function
