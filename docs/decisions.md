@@ -66,6 +66,16 @@ The RTA screen registry originally conflated "captured" with "ships in the Roku 
 
 Ruled out: keeping one flat `eligible` set and curating the store bundle by hand (or by locale only) — that re-introduces the silent-overflow risk every time a screen is added. Adding a 7th store screen is now a deliberate Developer-Portal decision (flip `store: true` on one screen), not a code default. Extends `rta-functional-tests-vitest`; landed alongside the first website-gallery-only screens (Server Select, Settings), with more gallery screens (library views, the grid options dialog, per-item-type detail screens) following on the same branch. This supersedes the earlier intent (the #642 progress followup) to make capture-the-default turn *every* covered screen into a store image — the split deliberately decouples gallery breadth from the frozen store 6.
 
+## decision-id: companion-net9-floor
+
+**date**: 2026-07-17
+**status**: accepted
+**related-files**: (`jellyfin-plugin-jellyrock` repo) Jellyfin.Plugin.JellyRock/Jellyfin.Plugin.JellyRock.csproj, Jellyfin.Plugin.JellyRock/build.yaml
+
+For the cold-launch producer (#668, phase `P2`) the JellyRock companion plugin floor-bumps from `net8` / Jellyfin.Controller 10.9 to **`net9` / 10.11**, dropping 10.9/10.10 support for all *future* companion releases — existing 10.9/10.10 servers stay on the last 10.9-`ABI` release, gated by the plugin-manifest `targetAbi`, and simply stop being offered newer versions. The phantom cast session must name the `User` entity (`ISessionManager.LogSessionActivity(User)` + `IUserManager.GetUserById`), which moved to `Jellyfin.Database.Implementations` in the 10.11 DB refactor, so a 10.9-floor build throws `TypeLoadException` the moment the phantom `JIT`-compiles on a 10.11 server. `jprm` ships **one `DLL` per manifest entry** and Jellyfin does no target-framework probing, so a single assembly cannot both carry the phantom and load on 10.9/10.10 — cold-cast is 10.11-only under every option.
+
+Ruled out: (a) a **two-track `net8;net9` release** — keeps 10.9/10.10 receiving future *non*-cold-cast updates, but needs real release-pipeline surgery (two `jprm` invocations at different `targetAbi`, merged into one manifest) on the current single-track pipeline; deferred as revisit-if-demand. (b) a **reflection-based phantom in a single `net8` build** — fragile on exactly the version-sensitive surface that changed, unverified on 10.9, low reward. The floor-bump was chosen for simplicity given a young plugin (v0.2.0) whose install base skews to current-stable 10.11; the project's deliberate 10.9 compile-floor is the evidence weighed against it. Empirically confirmed: the `net9`/10.11 build loads and runs on a real 10.11.11 server with no `TypeLoadException`. To be absorbed into the forthcoming cold-launch **producer ADR** (which will cover the phantom architecture, the device-validation gate, and the `3rd-party-ECP` policy caveat); promote to a numbered ADR there.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
