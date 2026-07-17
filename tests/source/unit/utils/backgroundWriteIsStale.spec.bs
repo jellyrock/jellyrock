@@ -1,0 +1,53 @@
+import "pkg:/source/utils/backdrop.bs"
+
+namespace tests
+
+  @suite("backdrop - backgroundWriteIsStale()")
+  class BackgroundWriteIsStaleTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("suppresses a write when a DIFFERENT view is active")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The cold deep-link race: Home routes on to ItemDetails, then Home's late row load fires a backdrop
+    ' write while ItemDetails (or a player) is the active routed view — that write must be dropped.
+    @it("suppresses Home's write when the active view is not Home")
+    @params("ItemDetails")
+    @params("VideoPlayerView")
+    @params("PlayerHostView")
+    @params("Search")
+    function _(activeSubtype)
+      m.assertTrue(backgroundWriteIsStale(activeSubtype, "Home"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("allows a write when the owning view is (or may be) active")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("allows the write when the active view IS the owning view")
+    function _()
+      m.assertFalse(backgroundWriteIsStale("Home", "Home"))
+    end function
+
+    ' An unset/empty active subtype means the router hasn't assigned activeRoutedView yet (early mount).
+    ' A legitimate first paint must not be dropped, so these pass through.
+    @it("allows the write when the active subtype is unset/empty (early mount)")
+    @params(invalid)
+    @params("")
+    function _(activeSubtype)
+      m.assertFalse(backgroundWriteIsStale(activeSubtype, "Home"))
+    end function
+
+    @it("is owner-agnostic: matches any owning subtype against the active view")
+    function _()
+      m.assertFalse(backgroundWriteIsStale("ItemDetails", "ItemDetails"))
+      m.assertTrue(backgroundWriteIsStale("Home", "ItemDetails"))
+    end function
+
+  end class
+
+end namespace

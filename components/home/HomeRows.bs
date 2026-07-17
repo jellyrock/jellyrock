@@ -1,6 +1,7 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
@@ -789,6 +790,15 @@ end sub
 ' Handles all validation and edge cases
 ' Used by: onItemFocused observer and row update functions after replaceChild
 sub updateBackdropForFocusedItem()
+  ' Don't clobber the foreground view's backdrop when Home is no longer the active routed view. On a
+  ' cold deep-link launch (Home -> ItemDetails), Home's rows finish loading LATE and this observer can
+  ' fire after ItemDetails is showing; without this guard the shared global backdrop (last-writer-wins)
+  ' gets blanked out under the deep-linked item. See backgroundWriteIsStale (source/utils/backdrop.bs).
+  active = m.global.activeRoutedView
+  activeSubtype = invalid
+  if isValid(active) then activeSubtype = active.subtype()
+  if backgroundWriteIsStale(activeSubtype, "Home") then return
+
   focusedItem = getItemAtIndices(m.top.rowItemFocused)
 
   ' Always call setBackgroundImage so the backdrop clears when the focused item has none.
