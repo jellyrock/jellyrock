@@ -154,6 +154,7 @@ Dedup
 deduplicated
 dep
 deps
+deserialize
 dev
 Dev
 devguide
