@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update softprops/action-gh-release action to v3.0.2 ([#723](https://github.com/jellyrock/jellyrock/pull/723))
 - Update markdownlint-cli2 from v0.23.0 to v0.23.1 ([#720](https://github.com/jellyrock/jellyrock/pull/720))
 
 ## [2.23.0](https://github.com/jellyrock/jellyrock/compare/v2.22.0...v2.23.0) - 2026-07-16
