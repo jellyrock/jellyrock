@@ -241,5 +241,42 @@ namespace tests
       m.assertEqual(remoteProtocol.buildPairPayload(["192.168.1.5"], invalid, true), "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildPairRequest() — the fire-and-forget SideEffect AA")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("composes a POST request AA (url + JSON body); carries NO auth — SideEffectTask adds it")
+    function _()
+      req = remoteProtocol.buildPairRequest("https://jellyfin.example.com", ["192.168.1.5"], "dev", true)
+      m.assertEqual(req.method, "POST")
+      m.assertEqual(req.url, "https://jellyfin.example.com/JellyRock/RemoteControl/pair")
+      m.assertInvalid(req.headers)
+      parsed = ParseJson(req.body)
+      m.assertEqual(parsed.rokuIps, ["192.168.1.5"])
+      m.assertEqual(parsed.appId, "dev")
+      m.assertInvalid(parsed.deviceId)
+      m.assertInvalid(parsed.userId)
+    end function
+
+    @it("returns invalid for a blank server URL (nothing to POST to)")
+    @params("")
+    @params(invalid)
+    function _(serverUrl)
+      m.assertInvalid(remoteProtocol.buildPairRequest(serverUrl, ["192.168.1.5"], "dev", true))
+    end function
+
+    @it("returns invalid when there's no reportable wake address (no usable IPs)")
+    @params(["127.0.0.1", "0.0.0.0"])
+    @params([])
+    @params(invalid)
+    function _(ips)
+      m.assertInvalid(remoteProtocol.buildPairRequest("https://jellyfin.example.com", ips, "dev", true))
+    end function
+
+    @it("returns invalid when appId is blank (can't target /launch)")
+    function _()
+      m.assertInvalid(remoteProtocol.buildPairRequest("https://jellyfin.example.com", ["192.168.1.5"], "", true))
+    end function
+
   end class
 end namespace

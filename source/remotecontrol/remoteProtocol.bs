@@ -84,6 +84,14 @@ namespace remoteProtocol
   ' as well as an https one). The report carries NO DeviceId/UserId: the caller attaches the standard
   ' Authorization header and the plugin binds identity from the auth claim (body-untrusted, exactly like
   ' the /poll endpoint), so a hostile body can't spoof another device's pairing.
+  '
+  ' Contract note — /pair is intentionally version-FREE (unlike /info+/poll, which carry CONTRACT_VERSION).
+  ' It's a registration, not a command, so its skew-safety is the plugin's HTTP status contract, not a
+  ' version field: an old plugin without the route 404s (-> producer-absent); a future BREAKING change
+  ' MUST 400 old clients (or move the route so they 404) — never silently reinterpret a field. The body is
+  ' additive-only (the plugin ignores unknown fields), and identity is auth-claim-bound. The client is
+  ' fire-and-forget (SubmitSideEffect from Home.isFirstRun) and never reads the response, so it cannot be
+  ' version-confused by construction. See docs/architecture/remote-control.md (Cold-launch pairing report).
 
   ' Build the pairing-report URL for a server base URL. Returns "" for a blank server url.
   '   https://host  ->  https://host/JellyRock/RemoteControl/pair
@@ -127,6 +135,19 @@ namespace remoteProtocol
       end if
     end for
     return result
+  end function
+
+  ' Compose the pairing report as a fire-and-forget SideEffect request AA (for SubmitSideEffect). Returns
+  ' invalid when there's nothing worth reporting — no server url, or no usable wake address / appId (see
+  ' buildPairPayload) — so the caller can skip a pointless POST. NO auth in the AA: the SideEffectTask
+  ' attaches the Authorization header (which binds device/user identity) and Content-Type. rokuIps comes
+  ' from the caller's roDeviceInfo.GetIPAddrs() (a device call — kept out of this pure module).
+  function buildPairRequest(serverUrl as dynamic, rokuIps as dynamic, appId as dynamic, isDev as dynamic) as dynamic
+    url = buildPairUrl(serverUrl)
+    if url = "" then return invalid
+    body = buildPairPayload(rokuIps, appId, isDev)
+    if body = "" then return invalid
+    return { method: "POST", url: url, body: body }
   end function
 
   ' Exponential reconnect backoff, 0-based attempt: 1s, 2s, 4s, 8s, 16s, then capped at 30s.

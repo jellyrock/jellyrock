@@ -13,7 +13,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-07-15
+last-reviewed: 2026-07-20
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -92,8 +92,9 @@ by the main loop — a task-node field + port delivers, but an `m.global` field 
 The task node is created on `m.global` in `setGlobalNodes` (Phase 2), but **not** started there —
 it needs the session token. It is:
 
-- **Started** (`control="RUN"`) post-login from `Home.isFirstRun` (alongside the capabilities POST).
-  `isFirstRun` is per-Home-instance, so it restarts on each fresh login (including after a server switch).
+- **Started** (`control="RUN"`) post-login from `Home.isFirstRun` (alongside the capabilities POST and
+  the cold-launch pairing report — see below). `isFirstRun` is per-Home-instance, so it restarts on each
+  fresh login (including after a server switch).
 - **Stopped** (`control="STOP"`) in `SignOut` (`source/api/userAuth.bs`) — the single logout +
   server-switch chokepoint (a server switch runs `SignOut(false)` via `performServerSwitch`), so the
   socket never survives a session teardown.
@@ -101,6 +102,32 @@ it needs the session token. It is:
 Reconnect is exponential backoff (`1s`→`30s` cap); it stops on a token rotation (re-read before each
 reconnect). `ForceKeepAlive` from the server sets a send interval (half the requested seconds), on
 which the receiver sends a `KeepAlive` so the session isn't reaped.
+
+## Cold-launch pairing report (#668)
+
+So the companion plugin can wake a **closed** app via ECP `/launch` (the cast *producer*, ADR 0023),
+JellyRock reports its wake identity — `POST /JellyRock/RemoteControl/pair {rokuIps, appId, isDev}` —
+once per app open. This is **not** part of the receiver: it fires as a fire-and-forget `SubmitSideEffect`
+from `Home.isFirstRun` (next to the capabilities POST), composed by `remoteProtocol.buildPairRequest`.
+Firing it there — not from `RemoteControlTask` — keeps it **off the command channel's critical path**
+(a slow/stalled `/pair` can never delay the live receiver) and off the receiver Task thread (so it can't
+race the capabilities POST on the shared side-effect node). It's **transport-agnostic** (fires on
+`http` *and* `https` — the ECP wake is independent of the command transport). The body carries **no**
+`DeviceId`/`UserId`; identity is bound from the auth header the `SideEffectTask` attaches, so a hostile
+body can't spoof another device's pairing. (This depends on a **stable** `DeviceId` — see the
+`deviceid-suffix-gate-10.11` decision; on the `ws://` path an unstable `serverDeviceName` would split
+the phantom and the live socket into two sessions.)
+
+**`/pair` is intentionally version-free** — unlike `/info`+`/poll`, which carry `CONTRACT_VERSION` and
+refuse a mismatch. It's a *registration*, not a *command*, so a misread is bounded (wrong/failed wake),
+and its skew-safety is the plugin's **HTTP status contract**, not a version field:
+
+- Old plugin without the route → **404** → treated as producer-absent. Fail-safe.
+- A future **breaking** `/pair` change **must** `400` old clients (or move the route so they `404`) —
+  **never silently reinterpret a field**. The RESTful move is to version the *route*, not add a body field.
+- The body is **additive-only** (the plugin ignores unknown fields); identity is bound from the auth claim.
+- The client is fire-and-forget and **never reads the response**, so it cannot be version-confused by
+  construction. A `contractVersion` field would only duplicate what `400`/`404` already express.
 
 ## Capabilities — the gotcha
 
