@@ -5,7 +5,7 @@ related-files:
   - components/remotecontrol/RemoteControlTask.bs
   - source/remotecontrol/remoteCommand.bs
   - source/api/baseRequest.bs
-last-reviewed: 2026-07-13
+last-reviewed: 2026-07-21
 ---
 
 # Long-poll wire contract — HTTPS "Cast to JellyRock" (#667)
@@ -52,7 +52,7 @@ trusted over the authenticated identity.
 JellyRock treats any non-200 as "no usable plugin" and stays dark on `https` (no cast target advertised).
 `contractVersion` lets JellyRock refuse a plugin that speaks a newer/older contract it can't handle.
 
-### `GET /JellyRock/RemoteControl/poll?waitMs=<n>` — the long-poll command channel
+### `GET /JellyRock/RemoteControl/poll?waitMs=<n>[&ack=1][&ackId=<guid>]` — the long-poll command channel
 
 Long-holds the request until a command is queued **or** `waitMs` elapses.
 
@@ -66,6 +66,17 @@ Long-holds the request until a command is queued **or** `waitMs` elapses.
 `waitMs` is JellyRock's requested hold ceiling (e.g. `25000`). The server MAY cap it. JellyRock's own
 client-side timeout is set **longer** than `waitMs` (plus margin) so a `204` always arrives before the
 transfer times out.
+
+`ack=1` and `ackId` are the **at-least-once acknowledgment** (see [At-least-once delivery](#at-least-once-delivery)),
+an additive, opt-in extension that does **not** bump `contractVersion`:
+
+- `ack=1` — the client's capability flag, present on **every** poll from an ack-aware client (including the
+  first). It tells the plugin "retain delivered commands until I confirm them." A plugin that predates this
+  ignores the flag and stays at-most-once; a client that omits it (an older build) likewise gets at-most-once.
+  So a new/old mix on either side degrades cleanly — neither regresses.
+- `ackId=<guid>` — the client's **cumulative** ack: the last `MessageId` it durably received. Omitted until
+  the client has received a command. The plugin drops every retained command up to and including this id and
+  **redelivers the rest** on this poll. An absent or unrecognized `ackId` acks nothing.
 
 ## Command envelope
 
@@ -92,13 +103,46 @@ socket**, so [`remoteCommand.parseMessage`](../../source/remotecontrol/remoteCom
   because its action defaults and the payload is `ItemIds` — so test a `Playstate` verb, not `Play`, when
   validating serialization. (A plugin serializing `Data` with `System.Text.Json` needs a `JsonStringEnumConverter`.)
   Field-name casing is free (the client reads case-insensitively); only the enum *values* are load-bearing.
-- `MessageId` — the server-assigned message GUID; carried for future ack/idempotency. JellyRock does not
-  ack in Phase 1 (commands are idempotent enough at this scope), but the field is reserved so an at-least-once
-  guarantee can be layered on without a contract break.
+- `MessageId` — the server-assigned message GUID; the **ack key** for [at-least-once delivery](#at-least-once-delivery).
+  The client echoes the last id it received back as the next poll's cumulative `ackId`, and dedupes by it. A
+  client that doesn't ack simply ignores it (at-most-once). Always present on this channel.
 - **Batch semantics:** the queue drains **FIFO** into the array; commands that pile up between polls are
   delivered in order in a single `200`. JellyRock dispatches them in array order.
 - **`KeepAlive` / `ForceKeepAlive` are not sent** on this channel — the poll request itself is the
   keepalive (see liveness). A plugin MUST NOT enqueue them.
+
+## At-least-once delivery
+
+The plugin removes a batch from its queue to write it into the `200` response. HTTP gives the server no
+signal that the client actually received those bytes, so a client that disconnects between *drain* and
+*delivery* would lose that batch. `ack=1` + `ackId` close that gap; it is **opt-in and additive** (contract
+still `1`), realizing the hook the `MessageId` field was reserved for.
+
+**Mechanism (cumulative ack + redelivery):**
+
+1. An ack-aware client sends `ack=1` on every poll. The plugin then **retains** each delivered command
+   (delivered-but-unacked) instead of dropping it.
+2. When the client's poll response arrives, it records the last `MessageId` and sends it as `ackId` on the
+   **next** poll. The plugin drops everything up to and including that id.
+3. Anything still unacked is **redelivered** ahead of new commands. So a lost response self-heals on the next
+   poll: the commands the client never saw come back, keyed off an `ackId` that didn't advance past them.
+
+**The client MUST dedupe by `MessageId`.** At-least-once means a redelivered batch can contain a command the
+client already enacted (e.g. its ack was lost, or two polls briefly overlapped). Most commands are idempotent,
+but the **relative** transport verbs — `NextTrack`, `PreviousTrack`, `Rewind`, `FastForward` — are not:
+replaying one double-applies. JellyRock keeps a small ring of recently-dispatched ids and skips a repeat.
+
+**Ordering & bounds:** redelivery preserves FIFO order. The retained buffer is bounded like the queue
+(oldest-dropped past a cap): a client that receives but never acks is buggy or gone — it is about to lapse
+out of the cast list anyway — so the plugin favors the newest commands rather than growing without limit.
+
+**Cumulative, not per-message:** the client acks the newest id it received, which implicitly acks everything
+before it. This is sufficient because the transport is whole-response-or-nothing (`roUrlTransfer` yields the
+full body or a timeout, never a partial array) and the client dispatches the array in strict order.
+
+> A plugin or client that implements neither side of this stays at **at-most-once**, exactly as contract v1
+> shipped — the tiny drain→deliver window remains, and the user re-issues the rare lost command. Mixed
+> versions are safe in every direction.
 
 ## Liveness — the closed-app requirement
 
@@ -136,3 +180,9 @@ Consulted in [`RemoteControlTask.runReceiver`](../../components/remotecontrol/Re
 `contractVersion` starts at **1**. A backward-compatible addition (new optional field, new `MessageType`
 JellyRock already ignores) does not bump it. A breaking change (renamed field, changed status semantics)
 bumps it; JellyRock refuses a `contractVersion` it doesn't implement and stays dark rather than risk acting on a command it might misread.
+
+The [at-least-once ack](#at-least-once-delivery) (`ack=1` / `ackId`) is a deliberate example of a
+version-**free** addition: the request params are optional, an unrecognized side just ignores them, and the
+guarantee degrades to the v1 at-most-once behavior on any mismatch. Both sides could therefore ship
+independently. Bumping to `2` would instead force a hard cutover — a client hard-gates on an exact version
+match and goes dark on a mismatch — which is unwarranted for a change this additive.

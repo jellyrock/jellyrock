@@ -194,11 +194,19 @@ sub runLongPollReceiver(serverUrl as string)
   end if
   m.log.info("long-poll plugin present; starting poll loop")
 
-  pollUrl = remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS)
-  if pollUrl = "" then return
+  if remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS) = "" then return
 
   ' Snapshot the token so a poll can detect a server-side rotation and stop cleanly (mirrors the ws path).
   m.openedWithToken = m.global.user.authToken
+
+  ' At-least-once delivery state (contract v1). m.lastAckId is our cumulative ack — the newest MessageId
+  ' we've received — sent on every poll so the plugin can drop confirmed commands and redeliver the rest.
+  ' m.dispatchedIds/order is a small dedupe ring so a REDELIVERED command (a poll whose response we lost,
+  ' resent by the plugin) can't double-apply a relative verb like NextTrack. Both reset per receiver start;
+  ' a fresh receiver pairs with a fresh server-side session, so there's nothing to carry over.
+  m.lastAckId = ""
+  m.dispatchedIds = {}
+  m.dispatchedOrder = []
 
   attempt = 0
   while true
@@ -209,6 +217,9 @@ sub runLongPollReceiver(serverUrl as string)
       m.log.info("session ended; long-poll receiver stopping")
       return
     end if
+
+    ' Rebuilt each poll: the URL carries our current cumulative ackId, which advances as we receive.
+    pollUrl = remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS, m.lastAckId)
 
     ' Time the poll so an abnormally fast EMPTY response (a plugin that doesn't honor the hold) can be
     ' floored below — a compliant plugin holds ~POLL_WAIT_MS, so the floor never fires on it.
@@ -284,11 +295,43 @@ end function
 function dispatchEnvelope(envelope as object) as boolean
   if not isValid(envelope) then return false
   command = remoteCommand.parseMessage(envelope)
+
+  ' Advance the cumulative ack to the newest id we've received — of ANY kind, including ignore/keepalive —
+  ' so the plugin can drop it too. The body arrived atomically (roUrlTransfer is all-or-nothing), so the
+  ' last id in the array acks the whole batch on our next poll.
+  if isValidAndNotEmpty(command.messageId) then m.lastAckId = command.messageId
+
   kind = command.kind
   if kind = "ignore" or kind = "keepalive" then return false
+
+  ' Dedupe: at-least-once redelivers a batch whose response we lost, so a command we've ALREADY enacted
+  ' can arrive again — drop it, or a relative verb (NextTrack/Rewind/FastForward) would double-apply.
+  if hasDispatched(command.messageId) then return false
+
   marshalCommand(command)
+  recordDispatched(command.messageId)
   return true
 end function
+
+' Dedupe ring for at-least-once redelivery. Records ids we've actually dispatched and evicts the oldest
+' past a bounded window — a duplicate only ever arrives back-to-back (a redelivery on the very next poll),
+' so a small window is ample. An empty id (the ws path, or a malformed envelope) is never tracked, so it's
+' never deduped — those transports/paths don't redeliver.
+function hasDispatched(messageId as dynamic) as boolean
+  if not isValidAndNotEmpty(messageId) then return false
+  return m.dispatchedIds.doesExist(messageId)
+end function
+
+sub recordDispatched(messageId as dynamic)
+  DEDUPE_WINDOW = 64
+  if not isValidAndNotEmpty(messageId) or m.dispatchedIds.doesExist(messageId) then return
+  m.dispatchedIds[messageId] = true
+  m.dispatchedOrder.push(messageId)
+  if m.dispatchedOrder.count() > DEDUPE_WINDOW
+    oldest = m.dispatchedOrder.shift()
+    m.dispatchedIds.delete(oldest)
+  end if
+end sub
 
 ' Hot-loop floor for an abnormally fast EMPTY poll. A compliant plugin holds an empty poll for
 ' ~POLL_WAIT_MS, so this never fires against it; a misbehaving plugin that returns an empty 200/204
