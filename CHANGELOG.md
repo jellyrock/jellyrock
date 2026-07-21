@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Report cold-launch pairing and stabilize `DeviceId` on 10.11+ ([#721](https://github.com/jellyrock/jellyrock/pull/721))
+
 ### Fixed
 
 - Stop `Home` from clobbering the foreground backdrop when opening deep-link ([#719](https://github.com/jellyrock/jellyrock/pull/719))
