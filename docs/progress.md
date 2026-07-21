@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-07-17
+last-updated: 2026-07-21
 ---
 
 # Progress
@@ -26,11 +26,10 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-07-21 — Report cold-launch pairing and stabilize `DeviceId` on 10.11+
 - 2026-07-13 — Fix #667 cast transport/nav verbs (pause/seek/next/stop, message dialog) no-op over the long-poll — companion plugin serialized enum `Data` fields as integers (`System.Text.Json` default) instead of strings; added `JsonStringEnumConverter` so `Playstate.Command`/`GeneralCommand.Name` match the `ws://` frames. Only `Play` limped through (safe action default). Proven on `BATCAVE`.
 - 2026-07-13 — Add native `ws://` remote-control receiver (Cast to JellyRock)
 - 2026-07-12 — Cast navigation lag (render-thread wake, remote control #666): investigated and device-verified NOT an issue — idle Home → web-cast to a movie opens immediately, no delay or dropped first action. Cast nav bottoms out in `m.scene.callFunc` (render thread), the same path Roku's own deep links use. Followup closed; `remote-control.md` updated to record the verification.
-- 2026-07-06 — Restore navigation loading spinners lost in the `sgRouter` migration
-- 2026-07-06 — Investigating issue #573 (surround audio fails to play; the server emits a bad ffmpeg audio argument). Reworked PR #574 so the playback audio logic prefers the user's chosen surround format setting instead of falling back to stereo — fixing the crash and keeping surround output intact. Verified against a live Jellyfin 10.11 server and on Roku hardware (50 of 50 audio specs); next is the PR description update and asking the reporter to retest.
 
 ## Open followups
 
