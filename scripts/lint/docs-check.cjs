@@ -56,7 +56,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
@@ -71,11 +70,16 @@ const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
 const JSON_MODE = process.argv.includes('--json');
 const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 
-// Journal-staleness gate: progress.md is the live state cursor; FAIL when
-// it's gone >7 days without an update AND the repo has had commits since.
-// `last-updated` semantics differ from architecture-docs' `last-reviewed`
-// (see scripts/lib/frontmatter.cjs comments) — this gate uses the former.
-const PROGRESS_STALE_DAYS = 7;
+// NOTE: progress.md `last-updated` *temporal staleness* (too many days old) is
+// deliberately NOT checked here. That's a property of the shared journal on
+// main, not of any one PR, so blocking a PR on it punished the wrong
+// contributor. The staleness signal now lives non-blocking in
+// scripts/lint/progress-cursor-nudge.cjs (Stop hook + pre-push) and
+// .github/workflows/docs-stale-tracker.yml (weekly main-branch tracking issue).
+// What DOES stay here is the *structural* frontmatter check below
+// (checkProgressFrontmatter): a well-formed `last-updated` is a per-PR property
+// — a PR that malforms it is at fault, and that field is load-bearing for the
+// tracker, /catchup, and journal-sync.
 
 // Signals-backlog row schema. Required bullets, valid status values,
 // optional `staleness_days` override (must be a positive integer when
@@ -242,74 +246,24 @@ function checkBodyLinks(docPath, content) {
 // because they're whole-file validations, not link / anchor checks.
 // ────────────────────────────────────────────────────────────────────
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysBetween(isoStart, isoEnd) {
-  const a = new Date(isoStart + 'T00:00:00Z');
-  const b = new Date(isoEnd + 'T00:00:00Z');
-  return Math.floor((b - a) / (1000 * 60 * 60 * 24));
-}
-
-function checkProgressStaleness() {
+// Structural (not temporal) validation of progress.md frontmatter. A
+// well-formed `last-updated: YYYY-MM-DD` is a per-PR property — it's the field
+// the tracker, /catchup, and journal-sync all parse, so a malformed one
+// silently breaks them. Temporal staleness (how OLD the date is) is handled
+// non-blocking elsewhere (see the note near the top).
+function checkProgressFrontmatter() {
   if (!fs.existsSync(PROGRESS_PATH)) return; // silent when absent
   const content = fs.readFileSync(PROGRESS_PATH, 'utf8');
-  const fm = readFrontmatter(content);
-  const lastUpdated = getLastUpdated(fm);
+  const lastUpdated = getLastUpdated(readFrontmatter(content));
   if (!lastUpdated) {
     pushError({
-      category: 'progress-stale',
+      category: 'progress-frontmatter',
       file: PROGRESS_PATH,
       message:
-        'progress.md is missing or has malformed `last-updated:` frontmatter (expected ISO YYYY-MM-DD)',
+        'progress.md is missing or has a malformed `last-updated:` frontmatter field (expected ISO YYYY-MM-DD)',
       target: 'last-updated',
     });
-    return;
   }
-  const today = todayIso();
-  const days = daysBetween(lastUpdated, today);
-  if (days <= PROGRESS_STALE_DAYS) return;
-
-  // Stale by date alone; only block if FEATURE-shaped commits have happened
-  // since. Routine maintenance — dependency bumps, docs/ci/chore/build commits,
-  // releases, merges, and bot commits — does NOT reset the staleness clock: it's
-  // the same set the post-merge journal-sync skips, and a state cursor doesn't go
-  // stale because Renovate bumped a dependency. Without this filter the gate
-  // false-fails every dependency/docs PR. Skips silently on git failure (test
-  // fixtures without a git repo, etc.) — gate real CI runs, don't flake on tempdirs.
-  let commitsSince;
-  try {
-    const out = execSync(
-      `git log --no-merges --since="${lastUpdated}T00:00:00" --format=%an%x09%s HEAD`,
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT_DIR },
-    );
-    const BOT_AUTHOR = /(renovate|dependabot|github-actions|\[bot\])/i;
-    const MAINTENANCE =
-      /^(chore|docs|ci|build|test|style|refactor|perf)[(:]|^Update (dependency|.+ to v?\d)|^Merge /i;
-    commitsSince = out
-      .split('\n')
-      .filter(Boolean)
-      .filter((line) => {
-        const tab = line.indexOf('\t');
-        const author = tab >= 0 ? line.slice(0, tab) : '';
-        const subject = tab >= 0 ? line.slice(tab + 1) : line;
-        return !BOT_AUTHOR.test(author) && !MAINTENANCE.test(subject);
-      }).length;
-  } catch {
-    return;
-  }
-  if (commitsSince === 0) return;
-
-  pushError({
-    category: 'progress-stale',
-    file: PROGRESS_PATH,
-    message:
-      `progress.md is ${days} days stale (last-updated: ${lastUpdated}) with ` +
-      `${commitsSince} commit(s) since. Bump it via /log followup or /done, ` +
-      `or update last-updated to today after a manual review.`,
-    target: lastUpdated,
-  });
 }
 
 function checkSignalsSchema() {
@@ -453,8 +407,8 @@ if (fs.existsSync(DECISIONS_PATH)) {
   }
 }
 
-// Progress journal — body links + tech-debt anchor refs. Schema gate runs
-// post-loop in checkProgressStaleness().
+// Progress journal — body links + tech-debt anchor refs only. `last-updated`
+// staleness is intentionally not gated here (see the note near the top).
 if (fs.existsSync(PROGRESS_PATH)) {
   const content = fs.readFileSync(PROGRESS_PATH, 'utf8');
   const linkCount = checkBodyLinks(PROGRESS_PATH, content);
@@ -550,7 +504,7 @@ for (const file of findPluginScripts()) {
 // Post-loop journal-system checks. These don't iterate files (they target
 // specific paths) so they run after the per-file scan so their errors
 // participate in the same accumulator.
-checkProgressStaleness();
+checkProgressFrontmatter();
 checkSignalsSchema();
 
 if (JSON_MODE) {

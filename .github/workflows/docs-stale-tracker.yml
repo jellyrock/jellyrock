@@ -1,23 +1,32 @@
 name: docs-stale tracker
 
-# Weekly cadence enforcement for the architecture-doc + dev-guide review
-# cycle. `last-reviewed` frontmatter is honor-system; this workflow makes
-# the staleness visible so the cadence actually happens.
+# Weekly cadence enforcement for two freshness signals that are otherwise
+# honor-system:
+#
+#   1. Architecture-doc + dev-guide review cycle (`last-reviewed` frontmatter,
+#      via docs:stale --json).
+#   2. The live journal cursor docs/progress.md (`last-updated` frontmatter,
+#      via progress-cursor-nudge.cjs --json). This USED to be a hard per-PR
+#      gate in lint:docs, but progress.md staleness is a property of main —
+#      not of any one contributor's PR — so it false-failed unrelated PRs
+#      (e.g. Renovate dep bumps) that couldn't legitimately fix it. It now
+#      lives here as a non-blocking weekly signal + the local pre-push /
+#      session-start nudges. See docs/architecture/system-shape.md.
 #
 # Behavior:
-#   - Runs `docs:stale --json` against current repo state
 #   - Maintains a single canonical issue labeled `docs:stale`:
-#       - opens it when stale docs exist and no issue is open yet
-#       - edits its body in place when the list changes
-#       - closes it when the list becomes empty
-#   - Splits the body into "Architecture (PR-gated at 120 days)" and
-#     "Dev guides (informational)" so contributors understand which
-#     entries block PRs and which don't
+#       - opens it when EITHER signal has something to report
+#       - edits its body in place when the lists change
+#       - closes it when BOTH signals are clean
+#   - Body sections:
+#       - "Live journal cursor (progress.md)" — the highest-frequency,
+#         most-actionable signal (7-day threshold), shown first.
+#       - "Architecture (PR-gated at 120 days)" / "Dev guides (informational)".
 #
-# One canonical issue (not per-doc) keeps noise low for solo + occasional-
-# fork-PR maintenance. Bulk audits of 3+ docs in the same session are
-# token-efficient and catch cross-doc contradictions; the issue body
-# nudges that batching with a single checkbox list.
+# One canonical issue (not per-signal) keeps noise low for solo + occasional-
+# fork-PR maintenance. The active developer already gets the progress.md
+# signal locally (Stop hook + pre-push); this weekly job is the backstop for
+# "nobody's touched the cursor in a while".
 
 on:
   schedule:
@@ -43,16 +52,18 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0  # progress-cursor-nudge counts non-maintenance commits since last-updated
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "lts/*"
 
       - name: Ensure docs:stale label exists
-        run: gh label create docs:stale --color B60205 --description "Architecture/dev docs past their last-reviewed threshold" --force
+        run: gh label create docs:stale --color B60205 --description "Architecture/dev docs or the progress.md journal cursor past their freshness threshold" --force
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Compute stale list
+      - name: Compute stale doc list
         id: stale
         run: |
           set -euo pipefail
@@ -64,19 +75,51 @@ jobs:
           echo "stale_count=$STALE_COUNT" >> "$GITHUB_OUTPUT"
           echo "Stale doc count: $STALE_COUNT"
 
+      - name: Compute progress.md cursor freshness
+        id: progress
+        run: |
+          set -euo pipefail
+          # progress-cursor-nudge always exits 0; .stale is null when fresh,
+          # or { days, commitsSince, lastUpdated } when stale (>7d + non-
+          # maintenance commits since). This is the single source of that
+          # computation — the local nudges use the same code path.
+          node scripts/lint/progress-cursor-nudge.cjs --json > /tmp/progress.json
+          if [ "$(jq -c '.stale' /tmp/progress.json)" = "null" ]; then
+            echo "progress_stale=0" >> "$GITHUB_OUTPUT"
+            echo "progress.md cursor is fresh."
+          else
+            echo "progress_stale=1" >> "$GITHUB_OUTPUT"
+            DAYS=$(jq -r '.stale.days' /tmp/progress.json)
+            COMMITS=$(jq -r '.stale.commitsSince' /tmp/progress.json)
+            LAST=$(jq -r '.stale.lastUpdated' /tmp/progress.json)
+            {
+              echo "## Live journal cursor (progress.md)"
+              echo ""
+              echo "\`docs/progress.md\` \`last-updated\` is **${LAST}** (${DAYS} days ago) with **${COMMITS}** non-maintenance commit(s) since — the live state cursor has drifted from what's actually shipped."
+              echo ""
+              echo "**How to address:** run \`/done running\` if the in-flight work already shipped, or \`/log followup\` / \`/done <slug>\` to record or close open items — the sanctioned skills bump \`last-updated\` for you. Never hand-edit \`progress.md\`. (This is a non-blocking signal; it never fails a PR.)"
+              echo ""
+            } > /tmp/progress-section.md
+            cat /tmp/progress-section.md
+          fi
+
       - name: Build issue body
-        if: steps.stale.outputs.stale_count != '0'
-        id: body
+        if: steps.stale.outputs.stale_count != '0' || steps.progress.outputs.progress_stale == '1'
         run: |
           set -euo pipefail
           {
-            echo "Weekly snapshot of architecture and dev docs whose \`last-reviewed\` is past threshold."
+            echo "Weekly freshness snapshot for the JellyRock docs + journal system. This issue is regenerated every Monday and closes automatically once every section below is clear."
             echo ""
-            echo "**How to address an entry:** re-read the doc against current code, fix any drift, and bump \`last-reviewed\` in the frontmatter. Then check off the line below in your PR — this issue is regenerated weekly and will close automatically once empty."
+            if [ -f /tmp/progress-section.md ]; then
+              cat /tmp/progress-section.md
+            fi
+            echo "## Architecture & dev docs"
+            echo ""
+            echo "**How to address an entry:** re-read the doc against current code, fix any drift, and bump \`last-reviewed\` in the frontmatter. Then check off the line below in your PR."
             echo ""
             echo "**Threshold:** 90 days for the soft signal here. Architecture docs are additionally PR-gated at 120 days via \`scripts/lint/docs-stale-blocking.cjs\` — at 120+ days, any PR that touches a file in the doc's \`related-files\` will block until the doc is updated alongside."
             echo ""
-            echo "## Architecture (PR-gated at 120 days)"
+            echo "### Architecture (PR-gated at 120 days)"
             echo ""
             ARCH=$(jq -r '[.findings[] | select((.status == "stale" or .status == "no-date") and (.file | startswith("docs/architecture/")))] | .[] | "- [ ] [\(.file)](../blob/main/\(.file)) — \(if .days != null then "\(.days)d stale" else "no last-reviewed" end)"' /tmp/stale.json)
             if [ -z "$ARCH" ]; then
@@ -85,7 +128,7 @@ jobs:
               echo "$ARCH"
             fi
             echo ""
-            echo "## Dev guides (informational)"
+            echo "### Dev guides (informational)"
             echo ""
             DEV=$(jq -r '[.findings[] | select((.status == "stale" or .status == "no-date") and (.file | startswith("docs/dev/")))] | .[] | "- [ ] [\(.file)](../blob/main/\(.file)) — \(if .days != null then "\(.days)d stale" else "no last-reviewed" end)"' /tmp/stale.json)
             if [ -z "$DEV" ]; then
@@ -109,22 +152,22 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Open or update tracker issue
-        if: steps.stale.outputs.stale_count != '0'
+        if: steps.stale.outputs.stale_count != '0' || steps.progress.outputs.progress_stale == '1'
         run: |
           set -euo pipefail
           if [ -n "${{ steps.existing.outputs.issue_number }}" ]; then
             echo "Updating existing issue #${{ steps.existing.outputs.issue_number }}"
-            gh issue edit "${{ steps.existing.outputs.issue_number }}" --body-file /tmp/issue-body.md
+            gh issue edit "${{ steps.existing.outputs.issue_number }}" --title "📚 Docs & journal freshness tracker" --body-file /tmp/issue-body.md
           else
             echo "Opening new tracker issue"
-            gh issue create --title "📚 Stale docs tracker" --body-file /tmp/issue-body.md --label docs:stale
+            gh issue create --title "📚 Docs & journal freshness tracker" --body-file /tmp/issue-body.md --label docs:stale
           fi
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Close tracker issue when no stale docs
-        if: steps.stale.outputs.stale_count == '0' && steps.existing.outputs.issue_number != ''
+      - name: Close tracker issue when everything is fresh
+        if: steps.stale.outputs.stale_count == '0' && steps.progress.outputs.progress_stale == '0' && steps.existing.outputs.issue_number != ''
         run: |
-          gh issue close "${{ steps.existing.outputs.issue_number }}" --comment "All architecture + dev docs are within their review threshold. Closing automatically — this issue will reopen if any go stale again."
+          gh issue close "${{ steps.existing.outputs.issue_number }}" --comment "All architecture + dev docs are within their review threshold and the progress.md cursor is fresh. Closing automatically — this issue will reopen if either goes stale again."
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

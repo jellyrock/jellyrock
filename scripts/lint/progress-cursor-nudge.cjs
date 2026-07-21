@@ -1,25 +1,31 @@
-// scripts/lint/progress-cursor-nudge.cjs — Advisory nudge for stale
+// scripts/lint/progress-cursor-nudge.cjs — Advisory signal for stale
 // docs/progress.md state. Two checks, both informational:
 //
-//   1. last-updated staleness — same threshold as docs-check.cjs's
-//      `progress-stale` category (>7 days AND commits since).
+//   1. last-updated staleness — >7 days AND non-maintenance commits since.
 //   2. Currently-running cursor likely-shipped — when the cursor's
 //      content tokens appear in 2+ recent commit subjects on the current
 //      branch, the work it tracks probably already merged.
 //
-// Always exits 0. Hard enforcement is the lint:docs progress-stale rule
-// that fails CI on stale + commits-since. This nudge fires earlier
-// (Stop hook + pre-push) so the user can fix it before push time.
+// Always exits 0 — progress.md freshness is NEVER a PR-blocking gate.
+// `last-updated` staleness is a property of the shared journal on main,
+// not of any one contributor's PR, so blocking a PR on it punished the
+// wrong person (see docs/adr/0002 + the relocation note in
+// docs/architecture/system-shape.md). This script is the single source of
+// the staleness computation, consumed by three non-blocking surfaces:
+//   - Stop hook + pre-push  — prose nudge for the active developer.
+//   - .github/workflows/docs-stale-tracker.yml — weekly main-branch
+//     backstop that renders the `--json` output into a tracking issue.
 //
 // Why a separate script and not in docs-check.cjs:
-//   - docs-check.cjs is a pure validator (returns categorized findings).
-//     This one prints prose advisories with action hints. Different shape.
-//   - The cursor-shipped heuristic is fuzzy (token overlap); appropriate
-//     for advisory but inappropriate for a CI gate.
+//   - docs-check.cjs is a per-PR validator (broken refs, signals schema —
+//     all properties of the PR under review). Journal *freshness* is not a
+//     per-PR property, so it deliberately does NOT live there.
+//   - The cursor-shipped heuristic is fuzzy (token overlap); advisory-only.
 //
 // Usage:
-//   node scripts/lint/progress-cursor-nudge.cjs            # full output
+//   node scripts/lint/progress-cursor-nudge.cjs            # full prose output
 //   node scripts/lint/progress-cursor-nudge.cjs --quiet    # suppress when nothing to nudge
+//   node scripts/lint/progress-cursor-nudge.cjs --json     # machine-readable findings (for the tracker)
 
 'use strict';
 
@@ -166,9 +172,27 @@ function checkStale(lastUpdated) {
   if (!lastUpdated) return null;
   const days = daysBetween(lastUpdated, todayIso());
   if (days <= 7) return null;
-  const commitsSince =
-    parseInt(safeExec(`git rev-list --count --since="${lastUpdated}T00:00:00" HEAD`).trim(), 10) ||
-    0;
+
+  // Only NON-maintenance commits reset the staleness clock. Dependency bumps,
+  // docs/ci/chore/build commits, releases, merges, and bot commits don't mean
+  // the state cursor went stale — this is the same set journal-sync.yml skips.
+  // Without this filter the signal false-fires every dependency/docs week.
+  // Skips silently on git failure (test fixtures without a repo, tempdirs).
+  const out = safeExec(
+    `git log --no-merges --since="${lastUpdated}T00:00:00" --format=%an%x09%s HEAD`,
+  );
+  const BOT_AUTHOR = /(renovate|dependabot|github-actions|\[bot\])/i;
+  const MAINTENANCE =
+    /^(chore|docs|ci|build|test|style|refactor|perf)[(:]|^Update (dependency|.+ to v?\d)|^Merge /i;
+  const commitsSince = out
+    .split('\n')
+    .filter(Boolean)
+    .filter((line) => {
+      const tab = line.indexOf('\t');
+      const author = tab >= 0 ? line.slice(0, tab) : '';
+      const subject = tab >= 0 ? line.slice(tab + 1) : line;
+      return !BOT_AUTHOR.test(author) && !MAINTENANCE.test(subject);
+    }).length;
   if (commitsSince === 0) return null;
   return { days, commitsSince, lastUpdated };
 }
@@ -229,15 +253,24 @@ function checkBranchReference(cursor) {
 
 function main() {
   const quiet = process.argv.includes('--quiet');
+  const json = process.argv.includes('--json');
 
   const progress = readProgress();
   if (!progress) {
+    if (json) console.log(JSON.stringify({ stale: null, cursorShipped: null, branchRef: null }));
     process.exit(0);
   }
 
   const stale = checkStale(progress.lastUpdated);
   const cursorShipped = checkCursorShipped(progress.cursor);
   const branchRef = checkBranchReference(progress.cursor);
+
+  // Machine-readable mode for the scheduled tracker (docs-stale-tracker.yml).
+  // Always exits 0; the tracker decides whether to open/update its issue.
+  if (json) {
+    console.log(JSON.stringify({ stale, cursorShipped, branchRef }));
+    process.exit(0);
+  }
 
   const findings = [stale, cursorShipped, branchRef].filter(Boolean);
   if (findings.length === 0) {

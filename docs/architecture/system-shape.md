@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/progress-cursor-nudge.cjs
   - scripts/lint/session-start-nudge.cjs
   - .github/workflows/journal-sync.yml
-last-reviewed: 2026-05-13
+last-reviewed: 2026-07-21
 ---
 
 # System shape — how this repo's dev-process is structured and why
@@ -82,13 +82,14 @@ The full skill index is at [`.claude/skills/README.md`](../../.claude/skills/REA
 
 ### 4. Enforcement (so rules don't depend on memory)
 
-Five layers, fastest feedback first:
+Six layers, fastest feedback first:
 
 - **Session-start (`SessionStart` hook)**: [`session-start-nudge.sh`](../../.claude/hooks/session-start-nudge.sh) (calls [`scripts/lint/session-start-nudge.cjs`](../../scripts/lint/session-start-nudge.cjs)) prints a single advisory line at session start when local state is actionable (pending handoffs, stale `progress.md`, schema-broken journals); silent on clean state. Local-only — no network calls so it stays cheap and offline-tolerant. Surfaces the catchup-discipline rule at the one moment it applies.
 - **Edit-time (Stop hook)**: three sibling hooks fire at end-of-turn — [`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) (architecture-doc reminder), [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) (file-scoped lint surface), and [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh) (stale `progress.md` + Currently-running cursor that overlaps with shipped commits). All three are advisory; never block.
 - **Pre-push (husky)**: [`.husky/pre-push`](../../.husky/pre-push) runs the full validate / lint suite scoped to the push range PLUS two advisory nudges — [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (decision-shape commits without a `docs/adr/` or `decisions.md` change) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the Stop hook). Check steps abort the push; nudges never do.
 - **Post-merge (GitHub Action)**: [`journal-sync.yml`](../../.github/workflows/journal-sync.yml) fires on PR merge to main and runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) — the *mechanical* close-loop side. Prepends a Recently shipped bullet, conditionally clears the Currently-running cursor (token-overlap heuristic), bumps `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate/Dependabot/bot authors. This layer is what turns the four-pillar pattern from "remember to invoke `/done running`" into automatic — judgment-bearing entries (decisions, tech-debt, followups) still flow through `/pr` → `/log`.
-- **CI**: [`.github/workflows/lint-docs.yml`](../../.github/workflows/_lint-docs.yml) re-runs [`docs-check.cjs`](../../scripts/lint/docs-check.cjs) (broken refs + `progress-stale` + `signals-schema-invalid`) and [`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) (architecture-doc territory gate). Hard pressure at PR time.
+- **CI**: [`.github/workflows/lint-docs.yml`](../../.github/workflows/_lint-docs.yml) re-runs [`docs-check.cjs`](../../scripts/lint/docs-check.cjs) (broken refs + `progress-frontmatter` *structural* check + `signals-schema-invalid`) and [`docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) (architecture-doc territory gate). Hard pressure at PR time. **`progress.md` temporal staleness is intentionally NOT gated here** — it's a property of `main`, not of the PR under review, so it moved to the weekly tracker below (the old blocking `progress-stale` gate false-failed unrelated dependency/docs PRs).
+- **Weekly (GitHub Action)**: [`docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml) runs Mondays on `main` and maintains a single `docs:stale`-labeled issue covering both the architecture/dev-doc review cadence and `docs/progress.md` cursor freshness (>7 days + non-maintenance commits since, via [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) `--json` — the same computation the local nudges use). Non-blocking backstop for "nobody's touched the cursor in a while"; the active developer already gets it at edit/pre-push time.
 
 Specifically for the journal layer:
 

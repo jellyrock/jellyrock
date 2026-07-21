@@ -157,7 +157,12 @@ describe('docs-check', () => {
   });
 });
 
-describe('docs-check — progress.md staleness', () => {
+describe('docs-check — progress.md frontmatter (structural, not temporal)', () => {
+  // Temporal staleness (how OLD last-updated is) is intentionally NOT gated
+  // here — it moved to the non-blocking progress-cursor-nudge.cjs + the weekly
+  // docs-stale-tracker.yml. docs-check only validates the *structure* of the
+  // frontmatter, which is a per-PR property. See progress-cursor-nudge.test.js
+  // for the temporal-staleness + maintenance-filter coverage.
   let fixture;
 
   afterEach(() => {
@@ -174,52 +179,38 @@ describe('docs-check — progress.md staleness', () => {
     return fix;
   }
 
-  it('passes when last-updated is today', () => {
+  it('passes when last-updated is well-formed', () => {
     fixture = withDocsDir(createGitFixture());
-    const today = new Date().toISOString().slice(0, 10);
-    fixture.commit('seed', { 'docs/progress.md': makeProgress(today) });
-    const { exitCode } = spawnScript(SCRIPT, [fixture.dir, '--json']);
+    fixture.commit('seed', { 'docs/progress.md': makeProgress('2020-01-01') });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [fixture.dir, '--json']);
+    const fm = JSON.parse(stdout).errors.filter((e) => e.category === 'progress-frontmatter');
+    expect(fm.length).toBe(0);
     expect(exitCode).toBe(0);
   });
 
-  it('FAILs when last-updated is stale AND commits have happened since', () => {
+  it('does NOT fail on an OLD-but-well-formed date, even with commits since', () => {
+    // Regression guard: the relocated behavior — an ancient last-updated with a
+    // pile of feature commits must NOT block a PR from docs-check anymore.
     fixture = withDocsDir(createGitFixture());
     fixture.commit('seed: progress.md from 2020', {
       'docs/progress.md': makeProgress('2020-01-01'),
     });
-    fixture.commit('subsequent code change');
+    fixture.commit('feat: a real feature commit long after the cursor date');
     const { exitCode, stdout } = spawnScript(SCRIPT, [fixture.dir, '--json']);
-    expect(exitCode).toBe(1);
-    const parsed = JSON.parse(stdout);
-    const stale = parsed.errors.filter((e) => e.category === 'progress-stale');
-    expect(stale.length).toBe(1);
-    expect(stale[0].message).toMatch(/days stale/);
-    expect(stale[0].message).toMatch(/commit\(s\) since/);
-  });
-
-  it('does NOT fail on stale date when the only commits since are maintenance/deps', () => {
-    fixture = withDocsDir(createGitFixture());
-    fixture.commit('chore: seed progress.md from 2020', {
-      'docs/progress.md': makeProgress('2020-01-01'),
-    });
-    fixture.commit('chore(deps): update dependency sharp to v0.35.1');
-    fixture.commit('docs(user): add playback troubleshooting guide');
-    fixture.commit('Update vitest monorepo to v4.1.9');
-    const { exitCode, stdout } = spawnScript(SCRIPT, [fixture.dir, '--json']);
-    const stale = JSON.parse(stdout).errors.filter((e) => e.category === 'progress-stale');
-    expect(stale.length).toBe(0);
+    const errs = JSON.parse(stdout).errors;
+    expect(errs.filter((e) => e.category === 'progress-frontmatter').length).toBe(0);
+    expect(errs.filter((e) => e.category === 'progress-stale').length).toBe(0);
     expect(exitCode).toBe(0);
   });
 
-  it('FAILs when frontmatter is missing or malformed', () => {
+  it('FAILs when last-updated frontmatter is missing or malformed', () => {
     fixture = withDocsDir(createGitFixture());
     fixture.commit('seed', { 'docs/progress.md': '# Progress\n\nno frontmatter\n' });
     const { exitCode, stdout } = spawnScript(SCRIPT, [fixture.dir, '--json']);
     expect(exitCode).toBe(1);
-    const parsed = JSON.parse(stdout);
-    const stale = parsed.errors.filter((e) => e.category === 'progress-stale');
-    expect(stale.length).toBe(1);
-    expect(stale[0].message).toMatch(/missing or has malformed/);
+    const fm = JSON.parse(stdout).errors.filter((e) => e.category === 'progress-frontmatter');
+    expect(fm.length).toBe(1);
+    expect(fm[0].message).toMatch(/missing or has a malformed/);
   });
 
   it('passes silently when progress.md does not exist (pre-foundation builds)', () => {
