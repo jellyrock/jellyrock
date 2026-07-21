@@ -14,6 +14,10 @@ name: Device Unit Tests
 # `check-skip` short-circuits internally when no test-relevant files changed,
 # so both `check-skip` and `all-tests` always report a status and can be wired
 # as required checks without stalling PRs that don't touch source / tests.
+# This applies to PRs AND direct pushes to main: changed-paths resolves a
+# push's file list via the compare API (before...after), so a push that
+# touches only docs / lint scripts / workflows / tests/scripts skips the
+# ~10-min device run instead of spinning the physical Roku for nothing.
 
 on:
   push:

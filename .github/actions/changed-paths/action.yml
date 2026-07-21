@@ -13,11 +13,16 @@ description: |
   queue (and always report a status) while still skipping work when nothing
   relevant changed.
 
-  Falls back to `relevant=true` outside PR contexts (workflow_dispatch,
-  push, etc.) so manual / scheduled runs always execute the work.
+  Computes the changed-file list per event: `pull_request*` via
+  `gh pr diff --name-only`, `push` via the compare API over the
+  before...after range. Other contexts (workflow_dispatch, schedule) can't
+  produce a diff and fall back to `relevant=true` so manual / scheduled runs
+  always execute the work. A push with no resolvable base (branch creation,
+  all-zero before SHA), a failed compare call, or a truncated (>300-file)
+  compare response also falls back to `relevant=true` — never a false skip.
 
   The pattern is passed to `grep -E` (extended regex) and matched against
-  one path per line as returned by `gh pr diff --name-only`.
+  one path per line.
 
 inputs:
   pattern:
@@ -49,25 +54,53 @@ runs:
         PATTERN: ${{ inputs.pattern }}
         FORCE: ${{ inputs.force }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        EVENT_NAME: ${{ github.event_name }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PUSH_AFTER: ${{ github.sha }}
+        REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
+
+        run_all() {  # fall back to running the work; never a false skip
+          echo "::notice::$1"
+          echo "relevant=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        }
+
         if [ "$FORCE" = "true" ]; then
-          echo "::notice::force=true — skipping path detection, running unconditionally."
-          echo "relevant=true" >> "$GITHUB_OUTPUT"
-          exit 0
+          run_all "force=true — skipping path detection, running unconditionally."
         fi
-        if [ -z "${PR_NUMBER:-}" ]; then
-          echo "::notice::Not a pull_request context — running unconditionally."
-          echo "relevant=true" >> "$GITHUB_OUTPUT"
-          exit 0
+
+        # Resolve the changed-file list for this event.
+        if [ -n "${PR_NUMBER:-}" ]; then
+          # gh pr diff --name-only lists files changed by the PR (one per line).
+          # No git history needed; works with the default shallow checkout.
+          CHANGED=$(gh pr diff "$PR_NUMBER" --name-only)
+        elif [ "$EVENT_NAME" = "push" ]; then
+          # Branch creation / rewritten base has an all-zero or missing before
+          # SHA — no computable range, so run rather than risk a false skip.
+          if [ -z "${PUSH_BEFORE:-}" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            run_all "push with no resolvable base — running unconditionally."
+          fi
+          # compare API returns files changed between the two commits; no local
+          # git history needed (mirrors the gh pr diff approach). Any failure
+          # (e.g. a force-pushed-away base) falls back to running.
+          RESP=$(gh api "repos/${REPO}/compare/${PUSH_BEFORE}...${PUSH_AFTER}" 2>/dev/null) \
+            || run_all "compare API failed — running unconditionally."
+          # The compare endpoint caps `files` at 300; a capped list can't prove
+          # a "no match" (a relevant file may be beyond the cap), so run.
+          if [ "$(printf '%s' "$RESP" | jq '.files | length')" -ge 300 ]; then
+            run_all "push touched 300+ files (compare truncated) — running unconditionally."
+          fi
+          CHANGED=$(printf '%s' "$RESP" | jq -r '.files[].filename')
+        else
+          run_all "no diff available for event '$EVENT_NAME' — running unconditionally."
         fi
-        # gh pr diff --name-only lists files changed by the PR (one per line).
-        # No git history needed; works with the default shallow checkout.
-        CHANGED=$(gh pr diff "$PR_NUMBER" --name-only)
+
         if printf '%s\n' "$CHANGED" | grep -qE -- "$PATTERN"; then
           echo "relevant=true" >> "$GITHUB_OUTPUT"
           echo "::notice::Pattern matched — proceeding."
         else
           echo "relevant=false" >> "$GITHUB_OUTPUT"
-          echo "::notice::No PR files matched pattern '$PATTERN'; subsequent steps will be skipped (reports success)."
+          echo "::notice::No changed files matched pattern '$PATTERN'; subsequent steps will be skipped (reports success)."
         fi
