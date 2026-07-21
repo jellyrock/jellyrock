@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update actions/setup-node action to v7 ([#724](https://github.com/jellyrock/jellyrock/pull/724))
 - Update softprops/action-gh-release action to v3.0.2 ([#723](https://github.com/jellyrock/jellyrock/pull/723))
 - Update markdownlint-cli2 from v0.23.0 to v0.23.1 ([#720](https://github.com/jellyrock/jellyrock/pull/720))
 - GitHub Actions ([#713](https://github.com/jellyrock/jellyrock/pull/713))
