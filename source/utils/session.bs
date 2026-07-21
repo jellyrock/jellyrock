@@ -494,11 +494,12 @@ namespace user
   sub SetServerDeviceName()
     localGlobal = m.global
 
-    ' default device name is the unique id for the device
-    deviceName = localGlobal.device.id
+    friendlyName = ""
     if isValid(localGlobal.user) and isValidAndNotEmpty(localGlobal.user.friendlyName)
-      deviceName = deviceName + localGlobal.user.friendlyName
+      friendlyName = localGlobal.user.friendlyName
     end if
+
+    deviceName = user.ComputeServerDeviceName(localGlobal.device.id, friendlyName, localGlobal.server.version)
 
     ' update global if needed
     if localGlobal.device.serverDeviceName <> deviceName
@@ -507,6 +508,34 @@ namespace user
       m.global.setFields({ device: tmpDevice })
     end if
   end sub
+
+  ' Compute the Jellyfin DeviceId this device advertises. Every session-creating channel
+  ' (auth header at baseRequest.bs, the ws:// socket URL via remoteProtocol.buildSocketUrl,
+  ' and the /pair report) reads it from device.serverDeviceName, so it MUST be stable across
+  ' the app lifecycle or the device splits into two Jellyfin sessions.
+  '
+  ' Appending the sanitized username was a workaround for OLD Jellyfin servers that revoked a
+  ' device's sibling auth tokens on re-authentication, letting multiple users' saved tokens
+  ' coexist on one Roku for fast user-switching. But the suffix is set post-login, making the
+  ' DeviceId unstable across startup (bare before login, suffixed after) — which on the HTTP
+  ' (ws://) path splits one device+user into two sessions and breaks the #668 cold-launch cast
+  ' producer (the phantom keys on one DeviceId, the live socket lands on the other).
+  '
+  ' Servers >= 10.11 tolerate multiple auth tokens per DeviceId (proven on 10.11.11), so the
+  ' suffix is unneeded there — keep the DeviceId bare + stable. Older servers keep the suffix
+  ' (unchanged behavior; those servers have no cold-cast producer anyway — it is net9/10.11
+  ' floored). An empty/unknown server version falls through to the suffixed path, matching the
+  ' conservative pre-10.11 behavior. See decision deviceid-suffix-gate-10.11 + ADR 0023.
+  '
+  ' @param deviceId - the stable per-device id (roDeviceInfo GetChannelClientId)
+  ' @param friendlyName - URL-safe username, or "" when no user is resolved
+  ' @param serverVersion - connected Jellyfin server version string (e.g. "10.11.11")
+  ' @returns the DeviceId to advertise on the auth header, ws:// socket, and /pair report
+  function ComputeServerDeviceName(deviceId as string, friendlyName as string, serverVersion as string) as string
+    if versionChecker(serverVersion, "10.11.0") then return deviceId
+    if isValidAndNotEmpty(friendlyName) then return deviceId + friendlyName
+    return deviceId
+  end function
 
   ' Sanitize username to be URL-safe (removes spaces and special characters)
   ' Used for friendlyName which appears in serverDeviceName URLs and HTTP headers

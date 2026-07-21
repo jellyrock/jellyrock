@@ -34,3 +34,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0020](0020-router-settle-primitive.md) | Replace an active player off `navigateTo`'s promise, not a `routerState` settle observer | Accepted | 2026-06-23 |
 | [0021](0021-remote-control-ws-receiver.md) | Native "Cast to JellyRock" — `ws://` remote-control receiver (Option-B threading) | Accepted | 2026-07-09 |
 | [0022](0022-remote-control-https-longpoll.md) | HTTPS "Cast to JellyRock" — companion-plugin HTTP long-poll transport | Accepted | 2026-07-13 |
+| [0023](0023-cold-launch-cast-producer.md) | Cold-launch cast producer — phantom session, device-validation gate, `net9`/10.11 floor | Accepted | 2026-07-17 |

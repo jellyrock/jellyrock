@@ -20,6 +20,10 @@ end sub
 ' runs the long-poll command channel (#667). SignOut sets control="STOP", terminating this thread.
 sub runReceiver()
   serverUrl = m.global.server.serverUrl
+
+  ' NOTE: the cold-launch cast pairing report (#668) is NOT sent here — it fires as a fire-and-forget
+  ' SubmitSideEffect from Home.isFirstRun (alongside the capabilities POST), so it can never delay this
+  ' command channel. See remoteProtocol.buildPairRequest + docs/architecture/remote-control.md.
   if remoteProtocol.isHttpServer(serverUrl)
     runWsReceiver(serverUrl)
   else

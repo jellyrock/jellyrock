@@ -77,6 +77,79 @@ namespace remoteProtocol
     return 0
   end function
 
+  ' --- Cold-launch cast pairing (#668 P1) ---
+  ' JellyRock reports its wake identity to the companion plugin so a CLOSED app can be cold-woken via
+  ' ECP /launch. Sent to the SAME companion plugin as the long-poll channel, but works on http OR https
+  ' (the wake is ECP, independent of the command-channel transport — an http server can wake a Roku just
+  ' as well as an https one). The report carries NO DeviceId/UserId: the caller attaches the standard
+  ' Authorization header and the plugin binds identity from the auth claim (body-untrusted, exactly like
+  ' the /poll endpoint), so a hostile body can't spoof another device's pairing.
+  '
+  ' Contract note — /pair is intentionally version-FREE (unlike /info+/poll, which carry CONTRACT_VERSION).
+  ' It's a registration, not a command, so its skew-safety is the plugin's HTTP status contract, not a
+  ' version field: an old plugin without the route 404s (-> producer-absent); a future BREAKING change
+  ' MUST 400 old clients (or move the route so they 404) — never silently reinterpret a field. The body is
+  ' additive-only (the plugin ignores unknown fields), and identity is auth-claim-bound. The client is
+  ' fire-and-forget (SubmitSideEffect from Home.isFirstRun) and never reads the response, so it cannot be
+  ' version-confused by construction. See docs/architecture/remote-control.md (Cold-launch pairing report).
+
+  ' Build the pairing-report URL for a server base URL. Returns "" for a blank server url.
+  '   https://host  ->  https://host/JellyRock/RemoteControl/pair
+  function buildPairUrl(serverUrl as dynamic) as string
+    base = pluginBaseUrl(serverUrl)
+    if base = "" then return ""
+    return base + "/pair"
+  end function
+
+  ' Build the pairing-report JSON body from a device's LAN addresses + app identity. rokuIps is an array
+  ' of IP strings (the values of roDeviceInfo.GetIPAddrs()); appId is roAppInfo.GetID() ("dev" when
+  ' sideloaded, else the published channel id); isDev is roAppInfo.IsDev() (lets the plugin name a dev
+  ' target distinctly). Returns "" when there are no usable IPs (nothing the plugin could wake) OR appId
+  ' is blank, so the caller can skip a pointless report. The IPs are sanitized (see sanitizeIps).
+  function buildPairPayload(rokuIps as dynamic, appId as dynamic, isDev as dynamic) as string
+    ips = sanitizeIps(rokuIps)
+    if ips.count() = 0 then return ""
+    if not isValidAndNotEmpty(appId) then return ""
+    return FormatJson({
+      rokuIps: ips,
+      appId: appId,
+      isDev: (isValid(isDev) and isDev = true)
+    })
+  end function
+
+  ' Sanitize a raw IP list into the addresses worth reporting: trim, drop blanks, drop loopback
+  ' (127.x) and the unspecified address (0.0.0.0 — GetIPAddrs can surface a not-yet-configured
+  ' interface as that), and dedupe (a Roku with both wired + wifi up can report the same address on
+  ' more than one interface). Order-preserving. Always returns an array (never invalid), possibly empty.
+  function sanitizeIps(rokuIps as dynamic) as object
+    result = []
+    if not isValid(rokuIps) or type(rokuIps) <> "roArray" then return result
+    seen = {}
+    for each ip in rokuIps
+      if isValidAndNotEmpty(ip)
+        clean = ip.trim()
+        if clean <> "" and clean <> "0.0.0.0" and Left(clean, 4) <> "127." and not seen.doesExist(clean)
+          seen[clean] = true
+          result.push(clean)
+        end if
+      end if
+    end for
+    return result
+  end function
+
+  ' Compose the pairing report as a fire-and-forget SideEffect request AA (for SubmitSideEffect). Returns
+  ' invalid when there's nothing worth reporting — no server url, or no usable wake address / appId (see
+  ' buildPairPayload) — so the caller can skip a pointless POST. NO auth in the AA: the SideEffectTask
+  ' attaches the Authorization header (which binds device/user identity) and Content-Type. rokuIps comes
+  ' from the caller's roDeviceInfo.GetIPAddrs() (a device call — kept out of this pure module).
+  function buildPairRequest(serverUrl as dynamic, rokuIps as dynamic, appId as dynamic, isDev as dynamic) as dynamic
+    url = buildPairUrl(serverUrl)
+    if url = "" then return invalid
+    body = buildPairPayload(rokuIps, appId, isDev)
+    if body = "" then return invalid
+    return { method: "POST", url: url, body: body }
+  end function
+
   ' Exponential reconnect backoff, 0-based attempt: 1s, 2s, 4s, 8s, 16s, then capped at 30s.
   function nextBackoffMs(attempt as integer) as integer
     ms = 1000

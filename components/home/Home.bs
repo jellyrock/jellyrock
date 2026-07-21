@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/enums/HomeAction.bs"
+import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
@@ -220,6 +221,12 @@ sub onScreenShown()
     m.isFirstRun = false
     loadLibraries()
     SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
+    ' Report cold-launch cast pairing to the companion plugin (#668) so a CLOSED app can be ECP-woken.
+    ' Fire-and-forget and transport-agnostic (fires on http + https), kept off the receiver's critical
+    ' path so it can never delay the command channel. Skipped when there's no reportable wake address.
+    ' See ADR 0023 + docs/architecture/remote-control.md (Cold-launch pairing report).
+    pairReq = remoteProtocol.buildPairRequest(m.global.server.serverUrl, getRokuIps(), m.global.app.appId, m.global.app.isDev)
+    if isValid(pairReq) then SubmitSideEffect(pairReq)
     ' Start the ws:// remote-control receiver now that we're authed (it needs the session token).
     ' isFirstRun is per Home instance, so this restarts the receiver after a server switch too.
     m.global.remoteControlTask.control = "RUN"
@@ -237,6 +244,17 @@ sub onScreenShown()
   ' Re-evaluate backdrop setting visibility (updates when user changes setting from Settings screen)
   scene.callFunc("refreshBackdropSetting")
 end sub
+
+' Collect this device's LAN IP addresses for the cold-launch pairing report (#668): the values of
+' roDeviceInfo.GetIPAddrs() ({ <interface>: <ip> }). The device call is kept here (out of the pure
+' remoteProtocol module); remoteProtocol.buildPairRequest sanitizes/dedupes the list.
+function getRokuIps() as object
+  ips = []
+  for each iface in CreateObject("roDeviceInfo").GetIPAddrs().items()
+    ips.push(iface.value)
+  end for
+  return ips
+end function
 
 ' Restore Home's focus, OVERHANG-ICON-AWARE. Priority:
 '   1. The overhang element that triggered the last navigation (gear / search / dropdown). These
