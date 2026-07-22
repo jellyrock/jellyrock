@@ -245,6 +245,28 @@ function dashboardHeaderIndex(headers, name) {
 }
 
 /**
+ * Pull the crash date from a dashboard TSV's first data row (the `Date`
+ * column), or null if the text isn't a dashboard TSV. `normalizeBacktraceText`
+ * extracts only the backtrace cell and drops the date, so the enrich path uses
+ * this to recover the date for the locals-snapshot label.
+ */
+export function extractDashboardDate(text) {
+  if (typeof text !== 'string') return null;
+  const firstNL = text.indexOf('\n');
+  if (firstNL <= 0 || !validateDashboardCsv(text.slice(0, firstNL))) return null;
+  try {
+    const rows = splitCsvRows(text);
+    if (rows.length < 2) return null;
+    const headers = parseCsvLine(rows[0], '\t').map((h) => h.trim());
+    const dateIdx = dashboardHeaderIndex(headers, 'Date');
+    if (dateIdx < 0) return null;
+    return (parseCsvLine(rows[1], '\t')[dateIdx] ?? '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parse the `Backtrace Text Formatted` cell into structured pieces. Returns
  * null when the cell can't be recognized as a backtrace. The cell uses `~~`
  * as an in-cell line separator; we split on it and walk three sections —
@@ -1253,13 +1275,13 @@ export function classifyBacktraceForEnrichment(backtrace, { occurrenceCount } = 
     if (occurrenceCount === 1) {
       return {
         kind: 'timeout-one-off',
-        reason: `Execution timeout (${backtrace.errorCode}) with exactly 1 occurrence — often transient (server disconnect, network blip). Routes to the server-timeout epic (disposition: aggregate) as evidence, not a standalone issue.`,
+        reason: `Execution timeout (${backtrace.errorCode}) with exactly 1 occurrence — often transient (server disconnect, network blip). Routes to the render-thread-execution-timeout epic (disposition: aggregate) as evidence, not a standalone issue.`,
         recommendedAction: 'aggregate-to-epic',
       };
     }
     return {
       kind: 'timeout-recurring',
-      reason: `Execution timeout (${backtrace.errorCode}) with ${occurrenceCount ?? 'unknown'} occurrence(s) — the server-timeout architectural class. Routes to the server-timeout epic (disposition: aggregate).`,
+      reason: `Execution timeout (${backtrace.errorCode}) with ${occurrenceCount ?? 'unknown'} occurrence(s) — the render-thread execution-timeout class. Routes to that epic (disposition: aggregate).`,
       recommendedAction: 'aggregate-to-epic',
     };
   }
@@ -1659,9 +1681,10 @@ function backtraceSection(backtrace, resolvedFrames) {
   const errorLine = backtrace.errorCode
     ? `**Runtime error**: \`${backtrace.errorCode}\` — ${backtrace.errorMessage}\n\n`
     : `**Runtime error**: ${backtrace.errorMessage}\n\n`;
+  const snapshotWhen = backtrace.date ? ` (snapshot from ${backtrace.date})` : '';
   const localsBlock =
     backtrace.locals && backtrace.locals.length > 0
-      ? `\n**Local variables at crash time** (snapshot from ${backtrace.date}):\n\n\`\`\`text\n${backtrace.locals.map((l) => l.raw).join('\n')}\n\`\`\`\n`
+      ? `\n**Local variables at crash time**${snapshotWhen}:\n\n\`\`\`text\n${backtrace.locals.map((l) => l.raw).join('\n')}\n\`\`\`\n`
       : '';
   return `${errorLine}**Backtrace** (innermost frame first):\n\n${backtraceTable(resolvedFrames)}\n${localsBlock}`;
 }
@@ -2126,6 +2149,9 @@ export async function enrichWorksheet(
       logger(`[crash-report] enrich: unparseable backtrace (${err.message})`);
       continue;
     }
+    // normalizeBacktraceText drops the TSV date column — recover it for the
+    // locals-snapshot label so filed issues don't read "snapshot from undefined".
+    if (bt && !bt.date) bt.date = extractDashboardDate(text);
     const innermost = bt && innermostFrame(bt);
     if (!innermost) {
       logger('[crash-report] enrich: backtrace had no resolvable innermost frame');

@@ -9,7 +9,7 @@
 #   disposition: aggregate
 #     The crash belongs to a KNOWN ARCHITECTURAL CLASS we intend to fix but
 #     that has no small-scoped fix (big libraries → too-many-task-threads,
-#     server timeouts, the themed-component init race). Nothing is ignored:
+#     render-thread timeouts, the themed-component init race). Nothing is ignored:
 #     the skill UPSERTS one flat comment per unique crash record
 #     (file · function · line · version) onto `tracker_issue` (the epic),
 #     keyed by a hidden marker so a later run edits the existing record
@@ -81,17 +81,21 @@ patterns:
     match:
       exception_code: '&h29'
 
-  # ── Architectural epic: user-controlled server times out ────────────
-  - id: server-execution-timeout
+  # ── Architectural epic: render thread runs too long (&h23) ──────────
+  - id: render-thread-execution-timeout
     disposition: aggregate
     notes: |
-      JellyRock talks to user-controlled Jellyfin servers. A slow/unreachable
-      server gets a long-running op killed by Roku OS with "Execution
-      timeout" (&h23), crashing the app. The server is outside our control,
-      but the CRASH is ours to prevent: no server timeout should ever take
-      down the app regardless of screen/feature. Architectural timeout
-      resilience, not a per-site fix. DISTINCT from "unexpected / malformed
-      server response" crashes — do NOT route those here.
+      Roku kills a render-thread callback that runs too long with "Execution
+      timeout" (&h23). It is always OUR thread taking too long — trigger is
+      either a blocking call on the render thread (a non-pool roUrlTransfer,
+      an inferServerUrl-style probe loop) OR heavy synchronous compute (a
+      large data cascade, an observer re-entrancy storm). Same exception, same
+      symptom, same fix pattern: get slow/blocking work off the render thread.
+      Reframed from "server timeouts" per real crash evidence — JellyRock runs
+      API on the task pool, so the common case is compute-bound, not
+      server-caused (see ADR 0024). All &h23 route here; humans triage the
+      specific fix per site during /issue-triage. DISTINCT from "unexpected /
+      malformed server response" (&h18 etc.) — those are scoped bugs.
     tracker_issue: 729
     match:
       exception_code: '&h23'

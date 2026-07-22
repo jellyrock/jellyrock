@@ -64,6 +64,7 @@ import {
   mechanismHint,
   buildEpicRecordForAction,
   executeWorksheet,
+  extractDashboardDate,
 } from '../../../scripts/crash-report.js';
 
 // ────────────────────────────────────────────────────────────────────
@@ -1601,6 +1602,22 @@ describe('epic record upsert', () => {
     const results = upsertEpicRecords(900, [baseRecord], { ghExec });
     expect(results[0].action).toBe('error');
     expect(results[0].error).toMatch(/boom/);
+  });
+});
+
+describe('extractDashboardDate (recover the crash date the enrich path drops)', () => {
+  it('pulls the Date column from a real prefixed 2-column dashboard export', () => {
+    const real =
+      'Agg Channel Brightscript Error Daily Error Key Date\t' +
+      'Agg Channel Brightscript Error Backtrace Formatted Backtrace Text Formatted\n' +
+      '2026-07-19\t~~Execution timeout (runtime error &h23) in pkg:/x.brs(1) ~~Backtrace: ~~#0  Function f() As $1 file/line: pkg:/x.brs(1) ~~';
+    expect(extractDashboardDate(real)).toBe('2026-07-19');
+  });
+
+  it('returns null for non-dashboard / plaintext input (no undefined leaks into the label)', () => {
+    expect(extractDashboardDate('just some plaintext backtrace')).toBeNull();
+    expect(extractDashboardDate('')).toBeNull();
+    expect(extractDashboardDate(null)).toBeNull();
   });
 });
 
