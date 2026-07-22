@@ -182,6 +182,29 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseMessage() — MessageId (the at-least-once ack key)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("captures the long-poll MessageId on the normalized command, of any kind")
+    function _()
+      ' A dispatchable command carries it...
+      play = remoteCommand.parseMessage({ MessageType: "Play", Data: { ItemIds: ["x"] }, MessageId: "id-play" })
+      m.assertEqual(play.messageId, "id-play")
+
+      ' ...and so does an ignored one, so the receiver can still ack (let the plugin drop) past it.
+      ignored = remoteCommand.parseMessage({ MessageType: "Sessions", Data: {}, MessageId: "id-ignore" })
+      m.assertEqual(ignored.kind, "ignore")
+      m.assertEqual(ignored.messageId, "id-ignore")
+    end function
+
+    @it("defaults messageId to empty when absent (the ws:// path omits it) — never invalid")
+    function _()
+      cmd = remoteCommand.parseMessage({ MessageType: "Playstate", Data: { Command: "Pause" } })
+      m.assertEqual(cmd.messageId, "")
+      m.assertEqual(remoteCommand.parseMessage(invalid).messageId, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("ticksToSeconds()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

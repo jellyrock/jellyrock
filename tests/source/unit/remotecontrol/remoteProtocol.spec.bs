@@ -48,16 +48,30 @@ namespace tests
     @describe("buildLongPollUrl() — HTTPS long-poll channel (no token in URL)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("builds the poll URL with the requested waitMs and carries no token")
+    @it("builds the poll URL with waitMs + the ack=1 opt-in flag, and carries no token")
     function _()
       url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com", 25000)
-      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000")
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000&ack=1")
     end function
 
     @it("trims a single trailing slash so it never emits //")
     function _()
       url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com/", 25000)
-      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000")
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000&ack=1")
+    end function
+
+    @it("appends the cumulative ackId when we have one to acknowledge")
+    function _()
+      url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com", 25000, "abc-123-guid")
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000&ack=1&ackId=abc-123-guid")
+    end function
+
+    @it("omits ackId when it is blank/invalid (e.g. the first poll, nothing received yet)")
+    @params("")
+    @params(invalid)
+    function _(ackId)
+      url = remoteProtocol.buildLongPollUrl("https://jellyfin.example.com", 25000, ackId)
+      m.assertEqual(url, "https://jellyfin.example.com/JellyRock/RemoteControl/poll?waitMs=25000&ack=1")
     end function
 
     @it("returns empty for a missing/blank server URL")

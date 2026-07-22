@@ -32,6 +32,8 @@ AAs
 ABI
 Accessors
 ack
+ack-aware
+acks
 ADR
 ADR's
 ADR-flavored
@@ -145,12 +147,15 @@ crossfade
 crowdsourced
 CSV
 CSVs
+cutover
 Daniele
 datagram
 decision-shape
 decrypting
 dedup
 Dedup
+dedupe
+dedupes
 deduplicated
 dep
 deps
@@ -424,6 +429,7 @@ recurse
 Reddit
 re-derive
 re-derived
+redelivery
 refetching
 regen
 Re-init
@@ -542,6 +548,7 @@ TTL
 tvchannel
 UI
 UIs
+unacked
 Unfavorite
 ungated
 unit-tests-tdd

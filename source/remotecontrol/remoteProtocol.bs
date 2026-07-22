@@ -38,11 +38,19 @@ namespace remoteProtocol
   ' Build the plugin's long-poll command-channel URL for a server base URL. Returns "" for a blank
   ' server URL. waitMs is JellyRock's requested hold ceiling; the client-side transfer timeout is set
   ' longer so a 204 (empty hold) always arrives before the transfer itself times out.
-  '   https://host  ->  https://host/JellyRock/RemoteControl/poll?waitMs=<n>
-  function buildLongPollUrl(serverUrl as dynamic, waitMs as integer) as string
+  '
+  ' ack=1 is the at-least-once opt-in flag (contract v1, additive): it tells the plugin this client will
+  ' acknowledge receipt, so the plugin retains delivered commands and redelivers any we didn't confirm.
+  ' It is present on EVERY poll (including the first) — a plugin that doesn't understand it just ignores
+  ' it and stays at-most-once. ackId is our cumulative ack: the last MessageId we durably received (""
+  ' until we've received one, and omitted then). GUIDs are URL-safe, so no encoding is needed.
+  '   https://host  ->  https://host/JellyRock/RemoteControl/poll?waitMs=<n>&ack=1[&ackId=<guid>]
+  function buildLongPollUrl(serverUrl as dynamic, waitMs as integer, ackId = "" as dynamic) as string
     base = pluginBaseUrl(serverUrl)
     if base = "" then return ""
-    return base + "/poll?waitMs=" + waitMs.ToStr()
+    url = base + "/poll?waitMs=" + waitMs.ToStr() + "&ack=1"
+    if isValidAndNotEmpty(ackId) then url = url + "&ackId=" + ackId
+    return url
   end function
 
   ' Build the plugin presence/version probe URL (200 = plugin present, 404 = absent). Returns "" for a

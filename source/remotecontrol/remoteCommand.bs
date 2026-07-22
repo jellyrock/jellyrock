@@ -17,9 +17,14 @@ namespace remoteCommand
   '   keepalive -> intervalSeconds
   '   ignore    -> KeepAlive / Sessions / volume / directional / unknown — parsed but not enacted
   function parseMessage(envelope as object) as object
-    result = { kind: "ignore", raw: invalid }
+    result = { kind: "ignore", raw: invalid, messageId: "" }
     if not isValid(envelope) or not isValidAndNotEmpty(envelope.MessageType) then return result
     result.raw = envelope.Data
+    ' The server-assigned id, present on the long-poll transport ({ MessageType, Data, MessageId }) and
+    ' the ack key for at-least-once delivery. Captured for EVERY kind — even "ignore"/"keepalive" — so the
+    ' long-poll receiver can ack past them (letting the plugin drop them) and dedupe a redelivered command.
+    ' The ws:// transport omits it; it stays "" there and is simply unused. See remote-control-longpoll-contract.md.
+    if isValidAndNotEmpty(envelope.MessageId) then result.messageId = envelope.MessageId
 
     messageType = envelope.MessageType
     if messageType = "Play" then return parsePlay(envelope.Data, result)
