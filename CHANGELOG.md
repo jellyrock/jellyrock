@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (remote-control) ack long-poll commands for at-least-once delivery ([#727](https://github.com/jellyrock/jellyrock/pull/727))
+
 ### Changed
 
 - Report cold-launch pairing and stabilize `DeviceId` on 10.11+ ([#721](https://github.com/jellyrock/jellyrock/pull/721))
