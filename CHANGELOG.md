@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Redesign `/crash-report` to enrich-before-file with disposition routing to epics ([#730](https://github.com/jellyrock/jellyrock/pull/730))
 - Report cold-launch pairing and stabilize `DeviceId` on 10.11+ ([#721](https://github.com/jellyrock/jellyrock/pull/721))
 
 ### Fixed
