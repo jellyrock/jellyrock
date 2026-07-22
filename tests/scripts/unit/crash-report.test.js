@@ -53,8 +53,17 @@ import {
   loadNoiseConfig,
   matchNoisePattern,
   classifyAgainstNoise,
+  routeCrash,
   evaluateSpikes,
   draftSpikeComment,
+  epicRecordKey,
+  renderEpicRecord,
+  parseEpicRecord,
+  mergeEpicRecord,
+  upsertEpicRecords,
+  mechanismHint,
+  buildEpicRecordForAction,
+  executeWorksheet,
 } from '../../../scripts/crash-report.js';
 
 // ────────────────────────────────────────────────────────────────────
@@ -209,6 +218,33 @@ describe('validateDashboardCsv', () => {
     expect(
       validateDashboardCsv('Daily Error Key,Date,Backtrace Formatted,Backtrace Text Formatted'),
     ).toBe(false);
+  });
+
+  it('accepts the REAL Roku export header (columns prefixed, matched by suffix)', () => {
+    // Roku's actual 2-column export — the logical names are SUFFIXES of longer
+    // prefixed column titles, not standalone columns. Regression for the bug
+    // where exact-match validation rejected every real dashboard export.
+    const realHeader =
+      'Agg Channel Brightscript Error Daily Error Key Date\t' +
+      'Agg Channel Brightscript Error Backtrace Formatted Backtrace Text Formatted';
+    expect(validateDashboardCsv(realHeader)).toBe(true);
+  });
+
+  it('normalizeBacktraceText extracts the cell from the real 2-column export', () => {
+    const real =
+      'Agg Channel Brightscript Error Daily Error Key Date\t' +
+      'Agg Channel Brightscript Error Backtrace Formatted Backtrace Text Formatted\n' +
+      '2026-07-20\t~~Too many task threads (runtime error &h29) in pkg:/x.brs(14) ' +
+      '~~Backtrace: ~~#0  Function init() As $1 file/line: pkg:/x.brs(15) ' +
+      '~~Local Variables: ~~m roAssociativeArray refcnt=2 count:2 ~~';
+    const cell = normalizeBacktraceText(real);
+    // Must be the backtrace cell only — NOT the header text joined with ~~.
+    expect(cell).not.toMatch(/Agg Channel/);
+    expect(cell).toMatch(/Too many task threads/);
+    const bt = parseBacktraceCell(cell);
+    expect(bt).not.toBeNull();
+    expect(bt.errorCode).toBe('&h29');
+    expect(innermostFrame(bt).function).toBe('init');
   });
 
   it('rejects empty or non-string input', () => {
@@ -722,14 +758,14 @@ describe('classifyBacktraceForEnrichment (pre-enrichment noise check)', () => {
     const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 1 });
     expect(c).not.toBeNull();
     expect(c.kind).toBe('timeout-one-off');
-    expect(c.recommendedAction).toBe('close-as-not-actionable');
+    expect(c.recommendedAction).toBe('aggregate-to-epic');
   });
 
-  it('flags Execution timeout with 2+ occurrences as timeout-recurring (enrich + escalate)', () => {
+  it('flags Execution timeout with 2+ occurrences as timeout-recurring (aggregate to epic)', () => {
     const bt = makeBacktrace({ errorCode: TIMEOUT_ERROR_CODE, errorMessage: 'Execution timeout' });
     const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 3 });
     expect(c.kind).toBe('timeout-recurring');
-    expect(c.recommendedAction).toBe('enrich-and-escalate');
+    expect(c.recommendedAction).toBe('aggregate-to-epic');
   });
 
   it('matches timeout by error-message substring too (case-insensitive)', () => {
@@ -749,7 +785,18 @@ describe('classifyBacktraceForEnrichment (pre-enrichment noise check)', () => {
     const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 5 });
     expect(c.kind).toBe('global-constants-init-race-suspect');
     expect(c.tracker).toBe(103);
-    expect(c.recommendedAction).toBe('close-as-duplicate-of-103');
+    expect(c.recommendedAction).toBe('aggregate-to-epic');
+  });
+
+  it('flags Too many task threads (&h29) as too-many-tasks (aggregate to big-library epic)', () => {
+    const bt = makeBacktrace({
+      errorCode: '&h29',
+      errorMessage: 'Too many task threads',
+      innermostFn: 'init',
+    });
+    const c = classifyBacktraceForEnrichment(bt, { occurrenceCount: 13 });
+    expect(c.kind).toBe('too-many-tasks');
+    expect(c.recommendedAction).toBe('aggregate-to-epic');
   });
 
   it('returns null for a backtrace that is neither timeout nor #103-shape', () => {
@@ -1285,6 +1332,427 @@ describe('matchNoisePattern', () => {
   it('matches with no predicates (empty match = wildcard)', () => {
     expect(matchNoisePattern(group, source, { match: {} })).toBe(true);
   });
+
+  it('matches exception_code case-insensitively when the crash carries a code', () => {
+    const enriched = { ...group, errorCode: '&H29' };
+    expect(matchNoisePattern(enriched, source, { match: { exception_code: '&h29' } })).toBe(true);
+  });
+
+  it('accepts a list of exception codes', () => {
+    const enriched = { ...group, errorCode: '&h23' };
+    const pattern = { match: { exception_code: ['&h29', '&h23'] } };
+    expect(matchNoisePattern(enriched, source, pattern)).toBe(true);
+  });
+
+  it('does not match exception_code when the code differs', () => {
+    const enriched = { ...group, errorCode: '&hec' };
+    expect(matchNoisePattern(enriched, source, { match: { exception_code: '&h29' } })).toBe(false);
+  });
+
+  it('cannot match a code-gated pattern during stage (no errorCode yet)', () => {
+    // group has no errorCode — the two-phase invariant: code-gated patterns
+    // stay unmatched until the enrich phase populates it.
+    expect(matchNoisePattern(group, source, { match: { exception_code: '&h29' } })).toBe(false);
+  });
+
+  it('combines exception_code with function + snippet (init-race shape)', () => {
+    const enriched = { ...group, errorCode: '&hec' };
+    const pattern = {
+      match: {
+        exception_code: '&hec',
+        function: '^init$',
+        snippet_regex: 'm\\.global\\.constants',
+      },
+    };
+    expect(matchNoisePattern(enriched, source, pattern)).toBe(true);
+    // Same code + snippet but a different function → not the init race.
+    expect(matchNoisePattern({ ...enriched, function: 'toms' }, source, pattern)).toBe(false);
+  });
+});
+
+describe('loadNoiseConfig — disposition + tracker validation', () => {
+  function withConfig(yaml, fn) {
+    const root = mkdtempSync(join(tmpdir(), 'crash-noise-disp-'));
+    try {
+      const cfgDir = join(root, '.crash-report');
+      mkdirSync(cfgDir);
+      writeFileSync(join(cfgDir, 'known-noise.yml'), yaml);
+      return fn(root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it('defaults disposition to watch', () => {
+    const cfg = withConfig(
+      `patterns:\n  - id: w\n    tracker_issue: 42\n    baseline_crashes_per_week: 5\n    match: { function: x }\n`,
+      loadNoiseConfig,
+    );
+    expect(cfg.patterns[0].disposition).toBe('watch');
+  });
+
+  it('accepts an aggregate pattern with no baseline (defaults to 0)', () => {
+    const cfg = withConfig(
+      `patterns:\n  - id: a\n    disposition: aggregate\n    tracker_issue: 7\n    match: { exception_code: '&h29' }\n`,
+      loadNoiseConfig,
+    );
+    expect(cfg.patterns[0].disposition).toBe('aggregate');
+    expect(cfg.patterns[0].baseline_crashes_per_week).toBe(0);
+  });
+
+  it('throws on an invalid disposition', () => {
+    expect(() =>
+      withConfig(
+        `patterns:\n  - id: bad\n    disposition: nuke\n    tracker_issue: 1\n    match: { function: x }\n`,
+        loadNoiseConfig,
+      ),
+    ).toThrow(/invalid `disposition`/);
+  });
+
+  it('throws when tracker_issue is not a positive integer (e.g. placeholder 0)', () => {
+    expect(() =>
+      withConfig(
+        `patterns:\n  - id: unseeded\n    disposition: aggregate\n    tracker_issue: 0\n    match: { exception_code: '&h29' }\n`,
+        loadNoiseConfig,
+      ),
+    ).toThrow(/tracker_issue/);
+  });
+
+  it('still requires a baseline for watch patterns', () => {
+    expect(() =>
+      withConfig(
+        `patterns:\n  - id: w\n    disposition: watch\n    tracker_issue: 3\n    match: { function: x }\n`,
+        loadNoiseConfig,
+      ),
+    ).toThrow(/baseline_crashes_per_week/);
+  });
+});
+
+describe('routeCrash', () => {
+  const source = {
+    bsFile: 'components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.bs',
+    codeSnippet: 'm.top.control = "RUN"',
+  };
+  const config = {
+    patterns: [
+      {
+        id: 'too-many-tasks',
+        disposition: 'aggregate',
+        tracker_issue: 900,
+        match: { exception_code: '&h29' },
+      },
+      {
+        id: 'timeout',
+        disposition: 'aggregate',
+        tracker_issue: 901,
+        match: { exception_code: '&h23' },
+      },
+      {
+        id: 'init-race',
+        disposition: 'aggregate',
+        tracker_issue: 103,
+        match: {
+          exception_code: '&hec',
+          function: '^init$',
+          snippet_regex: 'm\\.global\\.constants',
+        },
+      },
+    ],
+  };
+
+  it('routes &h29 to the big-library epic (aggregate)', () => {
+    const group = { function: 'init', errorCode: '&h29' };
+    expect(routeCrash(group, source, config)).toEqual({
+      disposition: 'aggregate',
+      pattern: config.patterns[0],
+    });
+  });
+
+  it('routes an unmatched crash to file', () => {
+    const group = { function: 'isnotificationvisible', errorCode: '&hec' };
+    // &hec but NOT the init-race shape (function/snippet miss) → scoped bug.
+    expect(routeCrash(group, { codeSnippet: 'return notification.state' }, config)).toEqual({
+      disposition: 'file',
+      pattern: null,
+    });
+  });
+
+  it('an unenriched crash (no code) never routes to a code-gated epic', () => {
+    const group = { function: 'init' }; // stage phase — no errorCode
+    expect(routeCrash(group, source, config).disposition).toBe('file');
+  });
+});
+
+describe('epic record upsert', () => {
+  const baseRecord = {
+    file: 'components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs',
+    function: 'init',
+    line: 15,
+    version: '2.23.0',
+    code: '&h29',
+    message: 'Too many task threads',
+    brsPath: 'pkg:/components/vendor/.../WebSocketClientTask.brs',
+    occurrences: [{ date: '2026-07-20', os: 'G2', crashes: 10, devices: 1 }],
+    backtraceMarkdown: '**Backtrace**: #0 init()',
+  };
+
+  it('key is stable across line/version dimensions', () => {
+    expect(epicRecordKey(baseRecord)).toContain('|init|15|2.23.0');
+    // Different line → different key (never auto-merged).
+    expect(epicRecordKey({ ...baseRecord, line: 17 })).not.toBe(epicRecordKey(baseRecord));
+    // Different version → different key.
+    expect(epicRecordKey({ ...baseRecord, version: '2.22.0' })).not.toBe(epicRecordKey(baseRecord));
+  });
+
+  it('render → parse round-trips the record data', () => {
+    const body = renderEpicRecord(baseRecord);
+    const parsed = parseEpicRecord(body);
+    expect(parsed.key).toBe(epicRecordKey(baseRecord));
+    expect(parsed.data.code).toBe('&h29');
+    expect(parsed.data.occurrences).toEqual(baseRecord.occurrences);
+  });
+
+  it('renders a human-visible occurrence total', () => {
+    const body = renderEpicRecord(baseRecord);
+    expect(body).toContain('Total: 10 crashes across 1 date(s)');
+    expect(body).toContain('first seen 2026-07-20');
+  });
+
+  it('merge accumulates occurrences by date+os, unions distinct dates', () => {
+    const incoming = {
+      ...baseRecord,
+      occurrences: [{ date: '2026-07-21', os: 'G2', crashes: 3, devices: 1 }],
+    };
+    const merged = mergeEpicRecord(baseRecord, incoming);
+    expect(merged.occurrences).toHaveLength(2);
+    const total = merged.occurrences.reduce((s, o) => s + o.crashes, 0);
+    expect(total).toBe(13);
+  });
+
+  it('merge overwrites a colliding date+os with the latest count', () => {
+    const incoming = {
+      ...baseRecord,
+      occurrences: [{ date: '2026-07-20', os: 'G2', crashes: 12, devices: 2 }],
+    };
+    const merged = mergeEpicRecord(baseRecord, incoming);
+    expect(merged.occurrences).toHaveLength(1);
+    expect(merged.occurrences[0].crashes).toBe(12);
+  });
+
+  it('upsert CREATES a comment when no matching record exists', () => {
+    const calls = [];
+    const ghExec = (args) => {
+      calls.push(args);
+      if (args[0] === 'api' && args[1].endsWith('/comments')) return '[]';
+      return '';
+    };
+    const results = upsertEpicRecords(900, [baseRecord], { ghExec });
+    expect(results[0].action).toBe('created');
+    const createCall = calls.find((a) => a[0] === 'issue' && a[1] === 'comment');
+    expect(createCall).toBeTruthy();
+    expect(createCall[2]).toBe('900');
+  });
+
+  it('upsert EDITS the existing comment (merged) when the key matches', () => {
+    const existingBody = renderEpicRecord(baseRecord);
+    const calls = [];
+    const ghExec = (args) => {
+      calls.push(args);
+      if (args[0] === 'api' && args[1].endsWith('/comments')) {
+        return JSON.stringify([{ id: 555, body: existingBody }]);
+      }
+      return '';
+    };
+    const incoming = {
+      ...baseRecord,
+      occurrences: [{ date: '2026-07-21', os: 'G2', crashes: 3, devices: 1 }],
+    };
+    const results = upsertEpicRecords(900, [incoming], { ghExec });
+    expect(results[0].action).toBe('updated');
+    expect(results[0].id).toBe(555);
+    const patch = calls.find((a) => a.includes('PATCH'));
+    expect(patch).toBeTruthy();
+    expect(patch[3]).toContain('issues/comments/555');
+    // The PATCH body carries BOTH dates (accumulated).
+    expect(patch[5]).toContain('2026-07-20');
+    expect(patch[5]).toContain('2026-07-21');
+  });
+
+  it('upsert SKIPS a no-op edit when the rendered body is unchanged', () => {
+    const existingBody = renderEpicRecord(baseRecord);
+    const calls = [];
+    const ghExec = (args) => {
+      calls.push(args);
+      if (args[0] === 'api' && args[1].endsWith('/comments')) {
+        return JSON.stringify([{ id: 555, body: existingBody }]);
+      }
+      return '';
+    };
+    const results = upsertEpicRecords(900, [baseRecord], { ghExec });
+    expect(results[0].action).toBe('unchanged');
+    expect(calls.some((a) => a.includes('PATCH'))).toBe(false);
+  });
+
+  it('upsert captures a gh failure per-record instead of throwing', () => {
+    const ghExec = (args) => {
+      if (args[0] === 'api' && args[1].endsWith('/comments')) return '[]';
+      throw new Error('gh boom');
+    };
+    const results = upsertEpicRecords(900, [baseRecord], { ghExec });
+    expect(results[0].action).toBe('error');
+    expect(results[0].error).toMatch(/boom/);
+  });
+});
+
+describe('mechanismHint (stage-time triage signal)', () => {
+  it('flags a .control = "RUN" site as task-launch', () => {
+    expect(mechanismHint({ codeSnippet: '  loadLatest.control = "RUN"' })).toBe('task-launch');
+  });
+
+  it('flags server/HTTP/socket code as network', () => {
+    expect(mechanismHint({ codeSnippet: 'req.AsyncGetToString()' })).toBe('network');
+    expect(
+      mechanismHint({ bsFile: 'components/vendor/BrightWebSocket/x.bs', codeSnippet: 'foo()' }),
+    ).toBe('network');
+    expect(mechanismHint({ codeSnippet: 'saved = getSetting("saved_servers")' })).toBe('network');
+  });
+
+  it('flags an ordinary deref as other (ordering hint only — never authorizes a file)', () => {
+    expect(mechanismHint({ codeSnippet: 'return notification.state = "showing"' })).toBe('other');
+  });
+});
+
+describe('executeWorksheet (file phase — disposition routing)', () => {
+  it('files a file-disposition action and upserts an aggregate action onto its epic', () => {
+    const calls = [];
+    const ghExec = (args) => {
+      calls.push(args);
+      if (args[0] === 'issue' && args[1] === 'create') return 'https://github.com/o/r/issues/742';
+      if (args[0] === 'api' && args[1].endsWith('/comments')) return '[]';
+      return '';
+    };
+    const plan = {
+      createdAt: 'x',
+      input: { kind: 'zip', sourcePath: 'p', csvCount: 1, ignoredFiles: [] },
+      csvWindow: { start: '2026-07-15', end: '2026-07-21' },
+      totalRows: 2,
+      uniqueSignatures: 2,
+      threshold: { minDevices: 2, minDates: 2 },
+      aboveThreshold: 2,
+      belowThreshold: 0,
+      noiseSuppressed: [],
+      spikeAlerts: [],
+      buildErrors: [],
+      actions: [
+        {
+          signature: 'pkg:/components/video/VideoPlayerView.brs(894)',
+          pkgPath: 'pkg:/components/video/VideoPlayerView.brs',
+          line: 894,
+          function: 'isnotificationvisible',
+          versions: ['2.23.0'],
+          totalCrashes: 8,
+          maxDevicesPerRow: 1,
+          action: 'create',
+          disposition: 'file',
+          title: '[crash] isnotificationvisible() in VideoPlayerView.brs:894 (v2.23.0)',
+          body: 'body',
+          labels: ['bug', 'crash'],
+          commentBody: null,
+          existingIssue: null,
+        },
+        {
+          signature: 'pkg:/components/vendor/.../WebSocketClientTask.brs(15)',
+          pkgPath: 'pkg:/components/vendor/.../WebSocketClientTask.brs',
+          line: 15,
+          function: 'init',
+          versions: ['2.23.0'],
+          action: 'aggregate',
+          disposition: 'aggregate',
+          trackerIssue: 900,
+          errorCode: '&h29',
+          errorMessage: 'Too many task threads',
+          backtraceMarkdown: '**Backtrace**: #0 init()',
+          occurrences: [{ date: '2026-07-20', os: 'G2', crashes: 10, devices: 1 }],
+          source: { bsFile: 'components/vendor/.../WebSocketClientTask.brs', bsLine: 15 },
+        },
+      ],
+    };
+    const results = executeWorksheet(plan, { ghExec, logger: () => {} });
+    const created = results.find((r) => r.action === 'create');
+    expect(created.issueNumber).toBe(742);
+    const agg = results.find((r) => r.action === 'aggregate');
+    expect(agg.trackerIssue).toBe(900);
+    expect(agg.upsert.action).toBe('created');
+    // The aggregate crash was NOT filed as a standalone issue.
+    const createCalls = calls.filter((a) => a[0] === 'issue' && a[1] === 'create');
+    expect(createCalls).toHaveLength(1);
+  });
+
+  it('HOLDS a pending (un-enriched) crash — never files without a backtrace', () => {
+    const calls = [];
+    const ghExec = (args) => {
+      calls.push(args);
+      if (args[0] === 'api' && args[1].endsWith('/comments')) return '[]';
+      if (args[0] === 'issue' && args[1] === 'create') return 'https://github.com/o/r/issues/999';
+      return '';
+    };
+    const plan = {
+      createdAt: 'x',
+      input: { kind: 'zip', sourcePath: 'p', csvCount: 1, ignoredFiles: [] },
+      csvWindow: { start: '2026-07-15', end: '2026-07-21' },
+      totalRows: 1,
+      uniqueSignatures: 1,
+      threshold: { minDevices: 2, minDates: 2 },
+      aboveThreshold: 1,
+      belowThreshold: 0,
+      noiseSuppressed: [],
+      spikeAlerts: [],
+      buildErrors: [],
+      actions: [
+        {
+          signature: 'pkg:/source/api/apiPool.brs(143)',
+          pkgPath: 'pkg:/source/api/apiPool.brs',
+          line: 143,
+          function: 'submitsideeffect',
+          versions: ['2.23.0'],
+          totalCrashes: 17,
+          maxDevicesPerRow: 4,
+          action: 'create', // dedup action, but NOT yet enriched
+          disposition: 'pending',
+          mechanismHint: 'task-launch',
+          verdict: 'needs-backtrace',
+          errorCode: null,
+          title: '[crash] submitsideeffect() in apiPool.brs:143 (v2.23.0)',
+          body: 'body',
+          labels: ['bug', 'crash'],
+          commentBody: null,
+          existingIssue: null,
+        },
+      ],
+    };
+    const results = executeWorksheet(plan, { ghExec, logger: () => {} });
+    expect(results[0].action).toBe('held');
+    // No issue was created for the un-enriched crash.
+    expect(calls.some((a) => a[0] === 'issue' && a[1] === 'create')).toBe(false);
+  });
+
+  it('buildEpicRecordForAction pulls occurrences + resolved source line', () => {
+    const rec = buildEpicRecordForAction(
+      {
+        function: 'init',
+        line: 15,
+        pkgPath: 'pkg:/x.brs',
+        versions: ['2.23.0'],
+        occurrences: [{ date: '2026-07-20', os: 'G2', crashes: 10, devices: 1 }],
+        source: { bsFile: 'x.bs', bsLine: 12 },
+      },
+      { errorCode: '&h29', errorMessage: 'Too many task threads', backtraceMarkdown: 'bt' },
+    );
+    expect(rec.file).toBe('x.bs');
+    expect(rec.line).toBe(12);
+    expect(rec.version).toBe('2.23.0');
+    expect(rec.occurrences).toHaveLength(1);
+  });
 });
 
 describe('classifyAgainstNoise', () => {
@@ -1778,10 +2246,11 @@ describe('CLI: plan subcommand', () => {
   it('emits help text when invoked with no subcommand', () => {
     const r = spawnScript('scripts/crash-report.js', []);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toMatch(/Usage:/);
-    expect(r.stdout).toMatch(/plan --input/);
+    expect(r.stdout).toMatch(/Usage/);
+    expect(r.stdout).toMatch(/stage --input/);
     expect(r.stdout).toMatch(/--dashboard-csv/);
-    expect(r.stdout).toMatch(/execute --plan/);
+    expect(r.stdout).toMatch(/enrich --worksheet/);
+    expect(r.stdout).toMatch(/file --worksheet/);
   });
 
   it('accepts --dashboard-csv without error and merges into the plan', () => {

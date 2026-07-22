@@ -1,7 +1,9 @@
 # ADR 0006: Crash workflow split — per-issue enrichment, not bulk
 
-**Status:** Accepted
+**Status:** Superseded by [ADR 0024](0024-crash-report-enrich-before-file.md)
 **Date:** 2026-05-20
+
+> **Superseded 2026-07-22 by [ADR 0024](0024-crash-report-enrich-before-file.md).** The file-first / enrich-after model this ADR established was reordered to enrich-before-file (`stage → enrich → file`) with disposition routing to architectural epics, because filing before the exception code is known files architectural-class noise as standalone issues. `/crash-backtrace` (this ADR's per-issue enrichment skill) is deprecated, folded into the new `enrich` phase.
 
 **related-files**: scripts/crash-report.js, .claude/skills/crash-backtrace/SKILL.md, .claude/skills/crash-report/SKILL.md, .claude/skills/README.md, docs/dev/crash-reports.md, .crash-report/known-noise.yml, tests/scripts/unit/crash-report.test.js
 

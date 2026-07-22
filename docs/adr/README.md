@@ -17,7 +17,7 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0003](0003-icons-material-rounded-house-style.md) | Icon house style — Material Symbols Rounded, weight 500, `24px` | Accepted | 2026-05-09 |
 | [0004](0004-icons-outlined-by-default.md) | Icons default to outlined (fill 0), with documented fill-1 exceptions | Accepted | 2026-05-09 |
 | [0005](0005-jrplaceholder-themed-composition.md) | Placeholder cards as runtime themed SceneGraph composition | Accepted | 2026-05-09 |
-| [0006](0006-per-issue-crash-enrichment.md) | Crash workflow split — per-issue enrichment, not bulk | Accepted | 2026-05-20 |
+| [0006](0006-per-issue-crash-enrichment.md) | Crash workflow split — per-issue enrichment, not bulk | Superseded by [0024](0024-crash-report-enrich-before-file.md) | 2026-05-20 |
 | [0007](0007-server-upgrade-anchor-strategy.md) | Server-upgrade join diffs committed spec fingerprints, never a live fetch | Accepted | 2026-05-29 |
 | [0008](0008-server-upgrade-issue-filing.md) | Server-upgrade issue filing — version-independent dedup, script-owned template, all human-gated | Accepted | 2026-05-29 |
 | [0009](0009-server-upgrade-proactive-ci.md) | Server-upgrade proactive-CI tracker — one announce-only digest issue | Accepted | 2026-05-30 |
@@ -35,3 +35,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0021](0021-remote-control-ws-receiver.md) | Native "Cast to JellyRock" — `ws://` remote-control receiver (Option-B threading) | Accepted | 2026-07-09 |
 | [0022](0022-remote-control-https-longpoll.md) | HTTPS "Cast to JellyRock" — companion-plugin HTTP long-poll transport | Accepted | 2026-07-13 |
 | [0023](0023-cold-launch-cast-producer.md) | Cold-launch cast producer — phantom session, device-validation gate, `net9`/10.11 floor | Accepted | 2026-07-17 |
+| [0024](0024-crash-report-enrich-before-file.md) | Crash workflow — enrich before file, disposition routing to epics (supersedes 0006) | Accepted | 2026-07-22 |

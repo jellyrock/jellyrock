@@ -228,7 +228,20 @@ const ERROR_HEADER_RE = /\(runtime error\s+(&h[0-9a-f]+)\)\s+in\s+(pkg:\/[^()\s]
 export function validateDashboardCsv(headerLine) {
   if (typeof headerLine !== 'string' || headerLine.length === 0) return false;
   const headers = parseCsvLine(headerLine, '\t').map((h) => h.trim());
-  return DASHBOARD_REQUIRED_HEADERS.every((req) => headers.includes(req));
+  // Roku's real export PREFIXES the logical column name (e.g.
+  // `Agg Channel Brightscript Error Daily Error Key Date`,
+  // `Agg Channel Brightscript Error Backtrace Formatted Backtrace Text Formatted`),
+  // so match by suffix, not exact equality. (The idealized `Date` /
+  // `Backtrace Text Formatted` headers still match — endsWith(self) is true.)
+  return DASHBOARD_REQUIRED_HEADERS.every((req) =>
+    headers.some((h) => h === req || h.endsWith(req)),
+  );
+}
+
+/** Index of the dashboard column whose header equals or ends with `name`. */
+function dashboardHeaderIndex(headers, name) {
+  const exact = headers.indexOf(name);
+  return exact !== -1 ? exact : headers.findIndex((h) => h.endsWith(name));
 }
 
 /**
@@ -330,8 +343,8 @@ export function parseDashboardCsv(text) {
     );
   }
   const headers = parseCsvLine(rows[0], '\t').map((h) => h.trim());
-  const dateIdx = headers.indexOf('Date');
-  const textIdx = headers.indexOf('Backtrace Text Formatted');
+  const dateIdx = dashboardHeaderIndex(headers, 'Date');
+  const textIdx = dashboardHeaderIndex(headers, 'Backtrace Text Formatted');
   for (let r = 1; r < rows.length; r++) {
     const fields = parseCsvLine(rows[r], '\t');
     const date = (fields[dateIdx] ?? '').trim();
@@ -509,15 +522,33 @@ export function loadNoiseConfig(repoRoot = REPO_ROOT) {
     if (typeof p.id !== 'string' || !p.id) {
       throw new Error(`${NOISE_CONFIG_PATH}: pattern missing required string \`id\``);
     }
-    if (typeof p.tracker_issue !== 'number') {
+    // disposition governs what happens to matches: `aggregate` upserts a
+    // per-record crashlog comment onto the epic tracker; `watch` (default)
+    // stays silent until a spike. `file` is the absence of a pattern.
+    const disposition = p.disposition ?? 'watch';
+    if (disposition !== 'watch' && disposition !== 'aggregate') {
       throw new Error(
-        `${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing numeric \`tracker_issue\``,
+        `${NOISE_CONFIG_PATH}: pattern \`${p.id}\` has invalid \`disposition\` \`${disposition}\` (expected 'watch' | 'aggregate')`,
       );
     }
-    if (typeof p.baseline_crashes_per_week !== 'number') {
+    p.disposition = disposition;
+    // A pattern that routed to issue #0 would try to comment on a
+    // non-existent issue — reject non-positive/non-integer trackers loud.
+    if (!Number.isInteger(p.tracker_issue) || p.tracker_issue <= 0) {
       throw new Error(
-        `${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing numeric \`baseline_crashes_per_week\``,
+        `${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing/invalid \`tracker_issue\` (expected a positive integer)`,
       );
+    }
+    // baseline is only consumed by `watch` spike detection; `aggregate`
+    // patterns append unconditionally, so a baseline is optional there.
+    if (p.disposition === 'watch') {
+      if (typeof p.baseline_crashes_per_week !== 'number') {
+        throw new Error(
+          `${NOISE_CONFIG_PATH}: watch pattern \`${p.id}\` missing numeric \`baseline_crashes_per_week\``,
+        );
+      }
+    } else {
+      p.baseline_crashes_per_week ??= 0;
     }
     if (!p.match || typeof p.match !== 'object') {
       throw new Error(`${NOISE_CONFIG_PATH}: pattern \`${p.id}\` missing \`match\` mapping`);
@@ -535,6 +566,17 @@ export function loadNoiseConfig(repoRoot = REPO_ROOT) {
  */
 export function matchNoisePattern(group, sourceInfo, pattern) {
   const m = pattern.match ?? {};
+  if (m.exception_code) {
+    // The exception code comes from the backtrace, which only exists after
+    // the `enrich` phase. During `stage` (CSV-only) group.errorCode is unset,
+    // so a code-gated pattern correctly can't match yet — the crash stays
+    // `needs-backtrace` until enriched. Case-insensitive; accepts str or list.
+    const codes = (Array.isArray(m.exception_code) ? m.exception_code : [m.exception_code]).map(
+      (c) => String(c).toLowerCase(),
+    );
+    const code = String(group.errorCode ?? sourceInfo?.errorCode ?? '').toLowerCase();
+    if (!code || !codes.includes(code)) return false;
+  }
   if (m.function) {
     if (!new RegExp(m.function).test(group.function)) return false;
   }
@@ -608,6 +650,25 @@ export function classifyAgainstNoise(groups, sourceBySig, config) {
     }
   }
   return { byPattern, novel };
+}
+
+/**
+ * Route a single crash to its disposition using the routing table.
+ *
+ * For `exception_code`-gated patterns to fire, `group.errorCode` must be
+ * populated from the enriched backtrace — so this is an ENRICH-phase call.
+ * Returns:
+ *   { disposition: 'aggregate' | 'watch', pattern }  when a pattern matches
+ *   { disposition: 'file',               pattern: null }  when none match
+ * First-match wins, mirroring classifyAgainstNoise.
+ */
+export function routeCrash(group, sourceInfo, config) {
+  for (const pattern of config.patterns) {
+    if (matchNoisePattern(group, sourceInfo, pattern)) {
+      return { disposition: pattern.disposition, pattern };
+    }
+  }
+  return { disposition: 'file', pattern: null };
 }
 
 /**
@@ -1155,6 +1216,7 @@ export function draftIssueTitle(group) {
 // Returns null when the backtrace looks unique enough to enrich without prompting.
 export const TIMEOUT_ERROR_CODE = '&h23';
 export const NULL_DOT_ERROR_CODE = '&hec';
+export const TOO_MANY_TASKS_ERROR_CODE = '&h29';
 
 export function classifyBacktraceForEnrichment(backtrace, { occurrenceCount } = {}) {
   if (!backtrace) return null;
@@ -1167,9 +1229,20 @@ export function classifyBacktraceForEnrichment(backtrace, { occurrenceCount } = 
   ) {
     return {
       kind: 'global-constants-init-race-suspect',
-      reason: `Backtrace shape matches the #103 (m-global-constants-init-race) pattern: errorCode=${backtrace.errorCode}, innermost=init(). The /crash-report noise filter should have suppressed this at filing time — either the YAML pattern missed a variant or this is a new init-time bug class.`,
-      recommendedAction: 'close-as-duplicate-of-103',
+      reason: `Backtrace shape matches the #103 (m-global-constants-init-race) pattern: errorCode=${backtrace.errorCode}, innermost=init(). Routes to the init-race epic (disposition: aggregate), not a standalone issue.`,
+      recommendedAction: 'aggregate-to-epic',
       tracker: 103,
+    };
+  }
+
+  if (
+    backtrace.errorCode === TOO_MANY_TASKS_ERROR_CODE ||
+    /too many task/i.test(backtrace.errorMessage ?? '')
+  ) {
+    return {
+      kind: 'too-many-tasks',
+      reason: `Too many task threads (${backtrace.errorCode}). Surfaces at whichever \`.control = "RUN"\` tips Roku's Task-thread limit — typically a very large library saturating the pool. This is the big-library architectural class: it routes to the too-many-task-threads epic (disposition: aggregate), not a standalone issue.`,
+      recommendedAction: 'aggregate-to-epic',
     };
   }
 
@@ -1180,14 +1253,14 @@ export function classifyBacktraceForEnrichment(backtrace, { occurrenceCount } = 
     if (occurrenceCount === 1) {
       return {
         kind: 'timeout-one-off',
-        reason: `Execution timeout (${backtrace.errorCode}) with exactly 1 occurrence. Roku OS killed our thread for running too long. One-offs are usually transient — server disconnect, network blip, or device-specific stall — and not actionable as a per-issue investigation.`,
-        recommendedAction: 'close-as-not-actionable',
+        reason: `Execution timeout (${backtrace.errorCode}) with exactly 1 occurrence — often transient (server disconnect, network blip). Routes to the server-timeout epic (disposition: aggregate) as evidence, not a standalone issue.`,
+        recommendedAction: 'aggregate-to-epic',
       };
     }
     return {
       kind: 'timeout-recurring',
-      reason: `Execution timeout (${backtrace.errorCode}) with ${occurrenceCount ?? 'unknown'} occurrence(s). Timeouts at this frequency are the class of bug worth investigating — app code ran too long, Roku killed the thread.`,
-      recommendedAction: 'enrich-and-escalate',
+      reason: `Execution timeout (${backtrace.errorCode}) with ${occurrenceCount ?? 'unknown'} occurrence(s) — the server-timeout architectural class. Routes to the server-timeout epic (disposition: aggregate).`,
+      recommendedAction: 'aggregate-to-epic',
     };
   }
 
@@ -1255,7 +1328,7 @@ export function normalizeBacktraceText(text) {
       throw new Error('Dashboard TSV has a header but no data rows.');
     }
     const headers = parseCsvLine(rows[0], '\t').map((h) => h.trim());
-    const textIdx = headers.indexOf('Backtrace Text Formatted');
+    const textIdx = dashboardHeaderIndex(headers, 'Backtrace Text Formatted');
     const fields = parseCsvLine(rows[1], '\t');
     const cell = (fields[textIdx] ?? '').trim();
     if (!cell) {
@@ -1325,6 +1398,224 @@ export function searchExistingIssues(groups, { ghExec = defaultGhExec } = {}) {
 
 function defaultGhExec(args) {
   return execFileSync('gh', args, { cwd: REPO_ROOT, encoding: 'utf8' });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Epic aggregation — flat per-record crashlog upsert
+//
+// Architectural-class crashes (disposition: aggregate) don't get their own
+// issue; each unique crash RECORD becomes one flat comment on the class epic,
+// keyed by a hidden marker so a later run edits the existing record instead of
+// duplicating it. A record's identity is file · function · line · version —
+// distinct lines/versions are NEVER auto-merged (deciding two are "the same
+// crash whose line just moved" is a human call after investigation). Only the
+// occurrence stats accumulate over time.
+//
+// Each comment embeds a JSON data block (the source of truth) plus rendered
+// markdown derived from it. Merge reads/writes the JSON — we never parse our
+// own rendered prose, so a human editing the markdown can't corrupt state (and
+// the machine only ever rewrites comments it owns, never the epic body).
+// ────────────────────────────────────────────────────────────────────
+
+export const RECORD_MARKER_VERSION = 1;
+const RECORD_MARKER_RE = /<!--\s*crashlog-record:\s*v(\d+)\s+key=(\S+)\s*-->/;
+const RECORD_DATA_RE = /<!--\s*crashlog-data:\s*([\s\S]*?)\s*-->/;
+
+/**
+ * Stable identity for a crash record. Line + version are part of identity —
+ * two different lines (or the same line in two versions) are distinct records.
+ */
+export function epicRecordKey(rec) {
+  return [rec.file ?? rec.brsPath, rec.function, rec.line, rec.version]
+    .map((x) => String(x ?? ''))
+    .join('|');
+}
+
+/** Render a record (the data object) to a full epic comment body. */
+export function renderEpicRecord(rec) {
+  const key = epicRecordKey(rec);
+  const occ = [...(rec.occurrences ?? [])].sort((a, b) =>
+    String(a.date ?? '').localeCompare(String(b.date ?? '')),
+  );
+  const totalCrashes = occ.reduce((s, o) => s + (Number(o.crashes) || 0), 0);
+  const dates = [...new Set(occ.map((o) => o.date).filter(Boolean))];
+  const firstSeen = dates.length ? dates[0] : '';
+  const lastSeen = dates.length ? dates[dates.length - 1] : '';
+  const sourceLink = rec.file
+    ? `[\`${rec.file}:${rec.line}\`](${rec.file}#L${rec.line})`
+    : `\`${rec.brsPath}(${rec.line})\``;
+  const transpiled =
+    rec.brsPath && rec.file ? `  (transpiled \`${rec.brsPath}(${rec.brsLine ?? rec.line})\`)` : '';
+  const excLine = rec.code
+    ? `**Exception:** ${rec.message ?? ''} (\`${rec.code}\`)`
+    : '**Exception:** _unknown (not yet enriched)_';
+  const occRows = occ.length
+    ? occ
+        .map((o) => `| ${o.date ?? ''} | ${o.os ?? ''} | ${o.crashes ?? ''} | ${o.devices ?? ''} |`)
+        .join('\n')
+    : '| — | — | — | — |';
+  const btSection = rec.backtraceMarkdown ? `\n\n${rec.backtraceMarkdown}` : '';
+  // The JSON data block is the source of truth. Our content never contains the
+  // HTML-comment terminator, so a plain embed is safe and human-legible.
+  const dataJson = JSON.stringify({ ...rec, v: RECORD_MARKER_VERSION });
+  return `<!-- crashlog-record: v${RECORD_MARKER_VERSION} key=${key} -->
+<!-- crashlog-data:
+${dataJson}
+-->
+### \`${rec.function}()\` — ${rec.file ?? rec.brsPath}:${rec.line} · v${rec.version}
+${excLine}
+**Source:** ${sourceLink}${transpiled}
+
+**Occurrences** (accumulating):
+
+| Date | Roku OS | Crashes | Devices |
+|---|---|---|---|
+${occRows}
+
+_Total: ${totalCrashes} crashes across ${dates.length} date(s)${firstSeen ? ` · first seen ${firstSeen} · last seen ${lastSeen}` : ''}_${btSection}
+
+<sub>Maintained by \`/crash-report\`. Distinct line/version records are never auto-merged.</sub>`;
+}
+
+/** Parse the marker + JSON data out of an existing epic comment body. */
+export function parseEpicRecord(commentBody) {
+  const marker = RECORD_MARKER_RE.exec(commentBody ?? '');
+  if (!marker) return null;
+  const dataMatch = RECORD_DATA_RE.exec(commentBody);
+  let data = null;
+  if (dataMatch) {
+    try {
+      data = JSON.parse(dataMatch[1]);
+    } catch {
+      data = null;
+    }
+  }
+  return { key: marker[2], data };
+}
+
+/**
+ * Merge an incoming record into a prior one with the same key. Only the
+ * occurrence stats accumulate (union by date+os); the exception / backtrace /
+ * source-line fields refresh to the latest observation.
+ */
+export function mergeEpicRecord(prior, incoming) {
+  const byDateOs = new Map();
+  for (const o of prior.occurrences ?? []) byDateOs.set(`${o.date}|${o.os}`, { ...o });
+  for (const o of incoming.occurrences ?? []) byDateOs.set(`${o.date}|${o.os}`, { ...o });
+  const occurrences = [...byDateOs.values()].sort((a, b) =>
+    String(a.date ?? '').localeCompare(String(b.date ?? '')),
+  );
+  return { ...prior, ...incoming, occurrences };
+}
+
+/**
+ * Upsert a set of crash records onto an epic issue. For each record: edit the
+ * existing comment (merged) if its key is already present, else create one.
+ * A no-op edit (rendered body unchanged) is skipped so re-runs stay silent.
+ *
+ * gh helpers are injectable for testing. Individual failures are captured, not
+ * thrown, so one bad comment doesn't abort the batch.
+ */
+export function upsertEpicRecords(
+  epicIssue,
+  records,
+  { ghExec = defaultGhExec, logger = () => {} } = {},
+) {
+  const results = [];
+  let existing;
+  try {
+    const raw = ghExec(['api', `repos/{owner}/{repo}/issues/${epicIssue}/comments`, '--paginate']);
+    existing = JSON.parse(raw || '[]');
+  } catch (err) {
+    logger(`[crash-report] failed to list comments on epic #${epicIssue}: ${err.message}`);
+    return records.map((rec) => ({ key: epicRecordKey(rec), action: 'error', error: err.message }));
+  }
+  const byKey = new Map();
+  for (const c of existing) {
+    const parsed = parseEpicRecord(c.body ?? '');
+    if (parsed) byKey.set(parsed.key, { id: c.id, body: c.body, data: parsed.data });
+  }
+  for (const rec of records) {
+    const key = epicRecordKey(rec);
+    const prior = byKey.get(key);
+    try {
+      if (prior) {
+        const merged = prior.data ? mergeEpicRecord(prior.data, rec) : rec;
+        const body = renderEpicRecord(merged);
+        if (body.trim() === (prior.body ?? '').trim()) {
+          results.push({ key, action: 'unchanged', id: prior.id });
+          continue;
+        }
+        ghExec([
+          'api',
+          '--method',
+          'PATCH',
+          `repos/{owner}/{repo}/issues/comments/${prior.id}`,
+          '-f',
+          `body=${body}`,
+        ]);
+        results.push({ key, action: 'updated', id: prior.id });
+      } else {
+        ghExec(['issue', 'comment', String(epicIssue), '--body', renderEpicRecord(rec)]);
+        results.push({ key, action: 'created' });
+      }
+    } catch (err) {
+      logger(`[crash-report] epic upsert FAILED for ${key} on #${epicIssue}: ${err.message}`);
+      results.push({ key, action: 'error', error: err.message });
+    }
+  }
+  return results;
+}
+
+/**
+ * Cheap, deterministic stage-time triage hint from a crash's source. The
+ * exception code that actually decides disposition only arrives with a
+ * backtrace — so this NEVER authorizes a file; it only ORDERS which crashes to
+ * pull a backtrace for first:
+ *   - 'task-launch' — a `.control = "RUN"` site (could be the &h29 big-library
+ *     class regardless of which site tipped the limit).
+ *   - 'network'     — server/HTTP/socket code (could be the &h23 timeout class).
+ *   - 'other'       — no architectural-class smell; likely a scoped bug, but
+ *     still needs a backtrace to confirm (an ordinary line can be a compute-
+ *     bound &h23 timeout).
+ * Every above-threshold crash is `pending` until enriched; the hint is purely
+ * a pull-ordering signal.
+ */
+export function mechanismHint(source) {
+  const snippet = source?.codeSnippet ?? '';
+  const file = source?.bsFile ?? '';
+  if (/control\s*=\s*"RUN"/i.test(snippet)) return 'task-launch';
+  if (
+    /roUrlTransfer|AsyncGetToString|roStreamSocket|WebSocket|https?:\/\/|setUrl|getToString/i.test(
+      snippet,
+    ) ||
+    /\/(api|socket|vendor\/BrightWebSocket)\//i.test(file) ||
+    /timeout|inferserverurl|server/i.test(snippet)
+  ) {
+    return 'network';
+  }
+  return 'other';
+}
+
+/**
+ * Build an epic crash record (the upsert data shape) from an enriched file-
+ * eligible action + its parsed backtrace. Occurrences come from the action's
+ * per-row stats; the source line prefers the resolved `.bs` location.
+ */
+export function buildEpicRecordForAction(action, { errorCode, errorMessage, backtraceMarkdown }) {
+  const source = action.source ?? null;
+  return {
+    file: source?.bsFile ?? null,
+    function: action.function,
+    line: source?.bsLine ?? action.line,
+    version: (action.versions && action.versions[0]) ?? null,
+    code: errorCode ?? null,
+    message: errorMessage ?? null,
+    brsPath: action.pkgPath,
+    brsLine: action.line,
+    occurrences: action.occurrences ?? [],
+    backtraceMarkdown: backtraceMarkdown ?? null,
+  };
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -1624,6 +1915,14 @@ export async function buildPlan({
       maxDevicesPerRow: group.maxDevicesPerRow,
       dates: [...group.dates].sort(),
       osReleases: [...group.osReleases].sort(),
+      // Per-row occurrences — the epic record's accumulating stats table is
+      // built from these when a crash routes to `aggregate` during enrich.
+      occurrences: group.rows.map((r) => ({
+        date: r.date,
+        os: r.osRelease,
+        crashes: r.crashes,
+        devices: r.devices,
+      })),
       category,
       source,
       action,
@@ -1632,6 +1931,18 @@ export async function buildPlan({
       labels: ['bug', DEFAULT_LABEL],
       commentBody,
       existingIssue: existing,
+      // Enrichment fields — populated by the `enrich` phase. Every
+      // above-threshold crash is `pending` until a pasted backtrace confirms
+      // its exception code: the code decides the disposition (file vs
+      // aggregate) and lives ONLY in the backtrace, so nothing files or
+      // aggregates without one. `mechanismHint` does NOT authorize a file — it
+      // only ORDERS which crashes to pull first (architectural-suspect sites,
+      // i.e. task-launch / network, before ordinary ones).
+      mechanismHint: mechanismHint(source),
+      verdict: 'needs-backtrace',
+      disposition: 'pending',
+      errorCode: null,
+      backtraceMarkdown: null,
     });
   }
 
@@ -1785,6 +2096,169 @@ export function executePlan(plan, { ghExec = defaultGhExec, logger = console.err
   return results;
 }
 
+// ────────────────────────────────────────────────────────────────────
+// stage → enrich → file (enrich-before-file flow)
+//
+// `enrichWorksheet` folds pasted dashboard backtraces into the staged
+// worksheet: it extracts the exception code, source-maps the frames, and
+// routes each crash to its disposition (file / aggregate / watch). Crashes
+// that route to `aggregate` are marked so `file` upserts them onto the epic
+// instead of creating a standalone issue.
+// ────────────────────────────────────────────────────────────────────
+
+export async function enrichWorksheet(
+  plan,
+  backtraceTexts,
+  {
+    noiseConfig = null,
+    gitExec = defaultGitExec,
+    logger = console.error,
+    noBuild = false,
+    buildDirOverride = null,
+  } = {},
+) {
+  const config = noiseConfig ?? loadNoiseConfig();
+  for (const text of backtraceTexts) {
+    let bt;
+    try {
+      bt = parseBacktraceCell(normalizeBacktraceText(text));
+    } catch (err) {
+      logger(`[crash-report] enrich: unparseable backtrace (${err.message})`);
+      continue;
+    }
+    const innermost = bt && innermostFrame(bt);
+    if (!innermost) {
+      logger('[crash-report] enrich: backtrace had no resolvable innermost frame');
+      continue;
+    }
+    const sig = `${innermost.pkgPath}(${innermost.line})`;
+    const action =
+      plan.actions.find((a) => a.signature === sig) ??
+      plan.actions.find(
+        (a) =>
+          basename(a.pkgPath ?? '') === basename(innermost.pkgPath ?? '') &&
+          a.line === innermost.line,
+      );
+    if (!action) {
+      logger(`[crash-report] enrich: no worksheet action matches ${sig} — skipped`);
+      continue;
+    }
+
+    // Source-map the backtrace frames (worktree build, cached per version).
+    const version = (action.versions && action.versions[0]) ?? null;
+    let backtraceMarkdown = null;
+    let build = null;
+    try {
+      if (noBuild && buildDirOverride) {
+        build = {
+          buildDir: buildDirOverride,
+          worktreePath: dirname(buildDirOverride),
+          cleanup() {},
+        };
+      } else {
+        build = getOrBuildAnalysis(version, { logger, gitExec });
+      }
+      const frames = await resolveBacktraceFrames(bt.frames, build.buildDir, build.worktreePath);
+      backtraceMarkdown = backtraceSection(bt, frames);
+    } catch (err) {
+      logger(`[crash-report] enrich: frame resolution failed for ${sig} (${err.message})`);
+    } finally {
+      build?.cleanup?.();
+    }
+
+    // Route by exception code + context.
+    const group = { function: action.function, errorCode: bt.errorCode };
+    const { disposition, pattern } = routeCrash(group, action.source ?? {}, config);
+    action.errorCode = bt.errorCode;
+    action.errorMessage = bt.errorMessage;
+    action.backtraceMarkdown = backtraceMarkdown;
+    action.disposition = disposition;
+    action.verdict = 'enriched';
+
+    if (disposition === 'aggregate') {
+      action.action = 'aggregate'; // do NOT also file a standalone issue
+      action.trackerIssue = pattern.tracker_issue;
+      action.noisePatternId = pattern.id;
+      action.epicRecord = buildEpicRecordForAction(action, {
+        errorCode: bt.errorCode,
+        errorMessage: bt.errorMessage,
+        backtraceMarkdown,
+      });
+    } else if (backtraceMarkdown) {
+      // file disposition — enrich the issue body/comment so it's born complete.
+      if (action.action === 'create') {
+        action.body = `${action.body}\n\n${backtraceMarkdown}`;
+      } else if (action.commentBody) {
+        action.commentBody = `${action.commentBody}\n\n${backtraceMarkdown}`;
+      }
+    }
+  }
+  return plan;
+}
+
+/**
+ * File phase: perform GitHub writes for an enriched worksheet. `file`-
+ * disposition actions create/comment/reopen issues (reusing executePlan);
+ * `aggregate` actions upsert one flat record per crash onto their epic.
+ */
+export function executeWorksheet(plan, { ghExec = defaultGhExec, logger = console.error } = {}) {
+  const aggregateActions = [];
+  const passthroughActions = []; // enriched `file` crashes + info-only suppress
+  const heldResults = []; // un-enriched crashes — NEVER filed without a backtrace
+  for (const a of plan.actions) {
+    if (a.action === 'aggregate' || a.disposition === 'aggregate') {
+      aggregateActions.push(a);
+    } else if (a.disposition === 'file' || a.action === 'suppress-noise') {
+      passthroughActions.push(a);
+    } else {
+      // `pending` (or any non-enriched) — the exception code is unknown, so we
+      // cannot know whether this is a scoped bug or an architectural class.
+      // Hold it; surface in the summary. This is the enrich-before-file rule.
+      logger(`[crash-report] HELD (needs backtrace, not filed): ${a.signature}`);
+      heldResults.push({ ...a, action: 'held', issueNumber: null, error: null });
+    }
+  }
+
+  // File + suppress + spike handling is exactly the old execute path.
+  const fileResults = executePlan({ ...plan, actions: passthroughActions }, { ghExec, logger });
+  fileResults.push(...heldResults);
+
+  // Aggregate: group records by epic tracker, upsert each epic once.
+  const byTracker = new Map();
+  for (const a of aggregateActions) {
+    if (!a.trackerIssue) {
+      logger(`[crash-report] aggregate action ${a.signature} has no trackerIssue — skipped`);
+      fileResults.push({ ...a, error: 'missing trackerIssue' });
+      continue;
+    }
+    const record =
+      a.epicRecord ??
+      buildEpicRecordForAction(a, {
+        errorCode: a.errorCode,
+        errorMessage: a.errorMessage,
+        backtraceMarkdown: a.backtraceMarkdown,
+      });
+    if (!byTracker.has(a.trackerIssue)) byTracker.set(a.trackerIssue, []);
+    byTracker.get(a.trackerIssue).push({ action: a, record });
+  }
+  for (const [tracker, items] of byTracker) {
+    const upserts = upsertEpicRecords(
+      tracker,
+      items.map((i) => i.record),
+      { ghExec, logger },
+    );
+    upserts.forEach((u, idx) => {
+      fileResults.push({
+        ...items[idx].action,
+        action: 'aggregate',
+        trackerIssue: tracker,
+        upsert: u,
+      });
+    });
+  }
+  return fileResults;
+}
+
 function extractIssueNumber(ghCreateOutput) {
   // `gh issue create` prints the issue URL. Extract the trailing number.
   const m = /\/issues\/(\d+)/.exec(ghCreateOutput);
@@ -1801,6 +2275,8 @@ export function renderRunSummary(plan, results) {
   const reopened = results.filter((r) => r.action === 'reopen' && r.issueNumber);
   const suppressed = results.filter((r) => r.action === 'suppress-noise');
   const spikeResults = results.filter((r) => r.action === 'spike-alert');
+  const aggregated = results.filter((r) => r.action === 'aggregate' && !r.error);
+  const held = results.filter((r) => r.action === 'held');
   const errors = results.filter((r) => r.error);
   const totalNoiseSuppressed = (plan.noiseSuppressed ?? []).reduce(
     (n, p) => n + p.signatures.length,
@@ -1829,6 +2305,8 @@ export function renderRunSummary(plan, results) {
     `- **Created**: ${created.length}\n` +
       `- **Commented (open)**: ${commented.length}\n` +
       `- **Reopened (regression)**: ${reopened.length}\n` +
+      `- **Aggregated to epics**: ${aggregated.length}\n` +
+      `- **Held (needs backtrace)**: ${held.length}\n` +
       `- **Suppressed (known noise)**: ${totalNoiseSuppressed} signature(s) across ${(plan.noiseSuppressed ?? []).length} pattern(s)\n` +
       `- **Spike alerts**: ${spikeResults.filter((s) => !s.error).length}\n` +
       `- **Skipped below threshold**: ${plan.belowThreshold}\n` +
@@ -1857,6 +2335,28 @@ export function renderRunSummary(plan, results) {
   if (reopened.length) {
     sections.push(`## Reopened (closed → open, regression)`);
     sections.push(reopened.map((r) => `- #${r.issueNumber} — ${r.title}`).join('\n'));
+  }
+  if (aggregated.length) {
+    sections.push(`## Aggregated to epics (architectural classes)`);
+    sections.push(
+      aggregated
+        .map(
+          (r) =>
+            `- epic #${r.trackerIssue} — ${r.signature} (${r.errorCode ?? '?'}) → ${r.upsert?.action ?? 'upserted'}`,
+        )
+        .join('\n'),
+    );
+  }
+  if (held.length) {
+    sections.push(`## Held — needs a backtrace before filing`);
+    sections.push(
+      held
+        .map(
+          (r) =>
+            `- ${r.signature} (${r.function}(), ${r.mechanismHint ?? '?'}) — pull the dashboard backtrace, re-run \`enrich\`, then \`file\``,
+        )
+        .join('\n'),
+    );
   }
   if ((plan.noiseSuppressed ?? []).length) {
     sections.push(`## Suppressed (known noise)`);
@@ -2202,12 +2702,25 @@ async function cmdEnrichIssue(args) {
   await enrichIssue({ issueNumber, backtraceText });
 }
 
-function cmdExecute(args) {
-  const planPath = args.flags.plan ?? args._[1];
-  if (!planPath) throw new Error('Missing --plan <plan.json>.');
-  const handoffDir = args.flags['handoff-dir'] ?? join(REPO_ROOT, '.claude', 'handoffs');
-  const plan = JSON.parse(readFileSync(planPath, 'utf8'));
-  const results = executePlan(plan, {});
+// `enrich` — fold pasted dashboard backtraces into a staged worksheet.
+// Backtrace files are positional args after the subcommand; the worksheet is
+// --worksheet (alias --plan). Mutates the worksheet in place.
+async function cmdEnrich(args) {
+  const wsPath = args.flags.worksheet ?? args.flags.plan;
+  if (!wsPath) throw new Error('Missing --worksheet <worksheet.json>.');
+  const files = [...args._.slice(1)];
+  if (args.flags['backtrace-file']) files.push(args.flags['backtrace-file']);
+  if (files.length === 0) {
+    throw new Error('Provide one or more backtrace files (positional) or --backtrace-file <path>.');
+  }
+  const plan = JSON.parse(readFileSync(wsPath, 'utf8'));
+  const texts = files.map((f) => readFileSync(f, 'utf8'));
+  await enrichWorksheet(plan, texts, {});
+  writeFileSync(wsPath, JSON.stringify(plan, null, 2));
+  console.error(`[crash-report] worksheet enriched (${files.length} backtrace(s)): ${wsPath}`);
+}
+
+function writeRunSummary(plan, results, handoffDir) {
   const summary = renderRunSummary(plan, results);
   const stamp = new Date()
     .toISOString()
@@ -2224,10 +2737,34 @@ function cmdExecute(args) {
   }
 }
 
+// `file` — perform GitHub writes for an enriched worksheet (files novel
+// crashes, upserts aggregate crashes onto their epics).
+function cmdFile(args) {
+  const wsPath = args.flags.worksheet ?? args.flags.plan ?? args._[1];
+  if (!wsPath) throw new Error('Missing --worksheet <worksheet.json>.');
+  const handoffDir = args.flags['handoff-dir'] ?? join(REPO_ROOT, '.claude', 'handoffs');
+  const plan = JSON.parse(readFileSync(wsPath, 'utf8'));
+  const results = executeWorksheet(plan, {});
+  writeRunSummary(plan, results, handoffDir);
+}
+
+function cmdExecute(args) {
+  const planPath = args.flags.plan ?? args._[1];
+  if (!planPath) throw new Error('Missing --plan <plan.json>.');
+  const handoffDir = args.flags['handoff-dir'] ?? join(REPO_ROOT, '.claude', 'handoffs');
+  const plan = JSON.parse(readFileSync(planPath, 'utf8'));
+  const results = executePlan(plan, {});
+  writeRunSummary(plan, results, handoffDir);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const sub = args._[0];
-  if (sub === 'plan') return cmdPlan(args);
+  // Reordered flow (enrich-before-file). `stage` is `plan` (the worksheet
+  // annotations ride along in buildPlan); `file` replaces `execute`.
+  if (sub === 'stage' || sub === 'plan') return cmdPlan(args);
+  if (sub === 'enrich') return cmdEnrich(args);
+  if (sub === 'file') return cmdFile(args);
   if (sub === 'execute') return cmdExecute(args);
   if (sub === 'enrich-issue') return cmdEnrichIssue(args);
   if (sub === 'classify-backtrace') return cmdClassifyBacktrace(args);
@@ -2237,17 +2774,21 @@ async function main() {
     return;
   }
   if (sub === '--help' || sub === 'help' || !sub) {
-    process.stdout.write(`Usage:
-  node scripts/crash-report.js plan --input <csv|zip|-> [--min-devices N]
-    [--min-dates N] [--no-build] [--dashboard-csv <path>] [--plan-out <path>]
-  node scripts/crash-report.js execute --plan <plan.json> [--handoff-dir <path>]
-  node scripts/crash-report.js enrich-issue --issue <N>
-    [--backtrace-file <path>]    # else read backtrace text from stdin
-  node scripts/crash-report.js classify-backtrace --issue <N>
-    [--backtrace-file <path>]    # JSON output; flags noise-like patterns
-  node scripts/crash-report.js resolve-issue
-    [--backtrace-file <path>]    # JSON output; finds [crash] issues matching the backtrace
+    process.stdout.write(`Usage — reordered enrich-before-file flow (stage → enrich → file):
+  node scripts/crash-report.js stage --input <csv|zip|-> [--min-devices N]
+    [--min-dates N] [--no-build] [--dashboard-csv <path>] [--plan-out <worksheet.json>]
+  node scripts/crash-report.js enrich --worksheet <worksheet.json> <backtrace1.txt> [<backtrace2.txt> ...]
+    # folds pasted dashboard backtraces in, routes each to file/aggregate/watch
+  node scripts/crash-report.js file --worksheet <worksheet.json> [--handoff-dir <path>]
+    # files novel crashes; upserts aggregate crashes onto their epics
+
+  # Legacy per-issue enrichment (deprecated — the new flow enriches before filing):
+  node scripts/crash-report.js enrich-issue --issue <N> [--backtrace-file <path>]
+  node scripts/crash-report.js classify-backtrace --issue <N> [--backtrace-file <path>]
+  node scripts/crash-report.js resolve-issue [--backtrace-file <path>]
   node scripts/crash-report.js clean-cache    # remove all cached worktrees
+
+  # Aliases: 'plan' → 'stage', 'execute' (file-first, pre-reorder) still works.
 `);
     return;
   }

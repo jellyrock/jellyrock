@@ -1,63 +1,118 @@
-# /crash-report — known-noise patterns
+# /crash-report — crash routing table (dispositions + known patterns)
 #
 # The /crash-report skill consumes this file when processing Roku's weekly
-# crash CSV. Each entry describes a class of crashes the team has accepted as
-# ongoing noise (race conditions, hardware-specific bugs, environmental
-# flakiness we can't or won't defensively code around). For crashes matching
-# a pattern here:
+# crash CSV + the per-crash backtraces you paste during the `enrich` phase.
+# It is the routing table for every crash that should NOT become its own new
+# `[crash]` issue. Each pattern binds matching crashes to a tracker issue and
+# a `disposition`:
 #
-#   - normal path: skill SUPPRESSES new-issue creation + dedup commenting,
-#     surfaces the count in the run summary's "Suppressed (known noise)"
-#     section, and moves on.
-#   - spike path: if the combined occurrence count across ALL matched
-#     signatures exceeds `baseline_crashes_per_week * spike_multiplier`,
-#     skill posts ONE comment to `tracker_issue` flagging the spike. Tracker
-#     is not reopened (per design — keeps the human in the loop on the
-#     reopen-vs-leave-open call).
+#   disposition: aggregate
+#     The crash belongs to a KNOWN ARCHITECTURAL CLASS we intend to fix but
+#     that has no small-scoped fix (big libraries → too-many-task-threads,
+#     server timeouts, the themed-component init race). Nothing is ignored:
+#     the skill UPSERTS one flat comment per unique crash record
+#     (file · function · line · version) onto `tracker_issue` (the epic),
+#     keyed by a hidden marker so a later run edits the existing record
+#     instead of duplicating it. Distinct line/version records are NEVER
+#     auto-merged — deciding two are "the same crash whose line moved" is a
+#     human call after investigation, so the tool only lays the evidence out.
 #
-# Schema per pattern:
-#   id                          — kebab-case slug, used in run summary +
-#                                 spike-comment subject.
-#   notes                       — multi-line description for humans.
-#   tracker_issue               — GH issue number this pattern tracks. Should
-#                                 ideally be OPEN with a `known-issue` label
-#                                 so future contributors land on it instead
-#                                 of getting confused by a closed "fixed-ish"
-#                                 issue.
-#   baseline_crashes_per_week   — integer. Eyeball estimate from observed
-#                                 history; re-tune as needed.
-#   spike_multiplier            — float. Combined count beyond
-#                                 baseline × this triggers a spike comment.
-#                                 Defaults to 2.0 in code if omitted.
-#   match                       — predicates. ALL provided fields must match
-#                                 for a crash to bind to this pattern:
-#       function     — regex string. Function name from the crash signature.
-#       category     — exact-match string. One of: global-state-race,
-#                      null-node-ref, array-bounds, callback-exception,
-#                      event-handler-nil-arg, unknown.
-#       file_glob    — list of globs against the source .bs path. Any-match.
-#       snippet_regex — regex against the code-context snippet around the
-#                      crash line.
+#   disposition: watch
+#     Accepted noise we've decided NOT to fix (e.g. a Roku-side race). The
+#     skill counts matches but stays silent UNLESS the combined occurrence
+#     count crosses `baseline_crashes_per_week × spike_multiplier`, in which
+#     case it posts ONE spike comment to `tracker_issue`. The tracker is not
+#     reopened (humans decide).
 #
-# First-match wins when a crash binds to multiple patterns.
+# Crashes that match NO pattern are `file` — a new per-signature `[crash]`
+# issue, born enriched (backtrace + exception + source frames).
 #
-# Editing this file: write directly. The skill re-reads it every run. No
-# code regeneration required.
+# ── Two-phase matching ────────────────────────────────────────────────
+# The weekly CSV carries only the crashing function signature — NOT the
+# exception code. So a pattern gated on `exception_code` cannot match during
+# the `stage` phase (CSV-only); such crashes are marked `needs-backtrace` and
+# only route once you paste the backtrace in `enrich`. Patterns matchable from
+# the CSV alone (function / file_glob / snippet) can route at stage time.
+#
+# ── Why routing needs code + CONTEXT, not code alone ──────────────────
+# `&hec` ('Dot' operator on invalid reference) is the themed-init race in
+# `init()` accessing `m.global.constants` (issue #103) — but the SAME `&hec`
+# is an ordinary null-deref bug elsewhere (e.g. caption VTT parsing, #584).
+# So the init-race pattern gates on `exception_code` + `function` + `snippet`
+# together. `&h29` / `&h23`, by contrast, ARE the class regardless of site,
+# so those patterns gate on `exception_code` alone.
+#
+# ── Schema per pattern ────────────────────────────────────────────────
+#   id                        — kebab-case slug; used in run summary + marker.
+#   notes                     — multi-line human description.
+#   disposition               — `aggregate` | `watch`. Defaults to `watch`.
+#   tracker_issue             — GH issue number this pattern routes to. For
+#                               `aggregate` this is the architectural EPIC
+#                               (ideally `epic`-labelled); for `watch` the
+#                               accepted-noise tracker (ideally `known-issue`).
+#   baseline_crashes_per_week — integer. Only used by `watch` spike detection.
+#   spike_multiplier          — float, default 2.0. Only used by `watch`.
+#   match                     — predicates. ALL provided fields must match
+#                               (AND) for a crash to bind. Missing = wildcard:
+#       exception_code — string or list of `&hNN` codes (from the backtrace;
+#                        needs the `enrich` phase). Case-insensitive.
+#       function       — regex against the crash signature's function name.
+#       category       — exact match: global-state-race | null-node-ref |
+#                        array-bounds | callback-exception |
+#                        event-handler-nil-arg | unknown.
+#       file_glob      — list of globs against the source `.bs` path (any-match).
+#       snippet_regex  — regex against the code snippet around the crash line.
+#
+# First-match wins. Edit this file directly; the skill re-reads it every run.
 
 patterns:
-  - id: m-global-constants-init-race
+  # ── Architectural epic: big libraries saturate the Task thread pool ──
+  - id: too-many-task-threads
+    disposition: aggregate
     notes: |
-      `m.global.constants` access in themed component `init()` occasionally
-      throws "Dot operator with invalid BrightScript component" — the global
-      AA is not yet populated when the component's init runs. Believed to be
-      a Roku-side bootstrap race; PR #116 reduced frequency by converting
-      `m.global.constants` to a ContentNode but didn't eliminate. Appears
-      hardware-specific (Roku TV / Express 4K observed; Ultra / Streaming
-      Stick 4K not). See #103 for full history. We've decided not to
-      defensively-code around it.
+      Roku caps concurrent SceneGraph Task threads. Users with very large
+      libraries saturate the pool; the next `.control = "RUN"` at ANY of the
+      ~25 task-launch sites then throws "Too many task threads" (&h29). It is
+      not a bug at the site that tips the limit — it surfaces at whichever
+      launch runs when the pool is full. No small-scoped fix: the answer is a
+      task budget / pool with back-pressure. Each unique crash SITE lands as
+      its own flat record on the epic; the epic body holds the problem.
+    tracker_issue: 728
+    match:
+      exception_code: '&h29'
+
+  # ── Architectural epic: user-controlled server times out ────────────
+  - id: server-execution-timeout
+    disposition: aggregate
+    notes: |
+      JellyRock talks to user-controlled Jellyfin servers. A slow/unreachable
+      server gets a long-running op killed by Roku OS with "Execution
+      timeout" (&h23), crashing the app. The server is outside our control,
+      but the CRASH is ours to prevent: no server timeout should ever take
+      down the app regardless of screen/feature. Architectural timeout
+      resilience, not a per-site fix. DISTINCT from "unexpected / malformed
+      server response" crashes — do NOT route those here.
+    tracker_issue: 729
+    match:
+      exception_code: '&h23'
+
+  # ── Architectural epic: themed-component init race (was #103) ────────
+  - id: m-global-constants-init-race
+    disposition: aggregate
+    notes: |
+      `m.global.constants` access in a themed component `init()` occasionally
+      throws "'Dot' Operator with invalid BrightScript component" (&hec) — the
+      global AA is not yet populated when the component's init runs. Believed
+      a Roku-side bootstrap race; PR #116 reduced frequency (constants → a
+      ContentNode) but didn't eliminate it. Appears hardware-specific (Roku
+      TV / Express 4K observed; Ultra / Streaming Stick 4K not). See #103 for
+      full history. Promoted from a `watch` tracker to an `aggregate` epic:
+      each distinct themed-component crash site accumulates as its own record.
+      Gated on code + function + snippet because bare `&hec` elsewhere is an
+      ordinary null-deref bug, not this race (e.g. #584 caption parsing).
     tracker_issue: 103
     baseline_crashes_per_week: 10
-    spike_multiplier: 2.0
     match:
+      exception_code: '&hec'
       function: ^init$
-      category: global-state-race
+      snippet_regex: m\.global\.constants
