@@ -1,111 +1,95 @@
 ---
 name: crash-report
-description: Process a Roku weekly crash-report CSV (or a zip containing one or more CSVs) and turn each above-threshold unique crash into a tracked GitHub issue. Parses the CSV, groups crashes by pkg-path signature, builds the cited app version in a temporary git worktree, resolves the transpiled `.brs:line` back to source `.bs:line` via source maps from a generated bsconfig-analysis.json (using Mozilla's `source-map` library directly). Multi-frame backtrace enrichment is per-error (Roku's dashboard only exposes backtraces one click at a time) — pull a plaintext backtrace per issue from the analytics dashboard, then run `node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path>` to attach a resolved-frame table + locals snapshot to that one issue. The `--dashboard-csv` flag on `plan`/`execute` is a forward-compatible bulk path for a TSV that doesn't currently exist as a one-click export. Dedup-aware: comments on already-open matches, reopens closed matches as regressions. Known-noise-aware: crashes matching patterns in `.crash-report/known-noise.yml` are suppressed (no issue, no comment) unless their combined count exceeds `baseline × spike_multiplier`, in which case ONE spike-alert comment lands on the configured tracker issue. Use when a fresh Roku crash CSV arrives (typically once a week — Roku emails them on a weekly cadence with the last 7 days). Per-crash investigation is offloaded — after filing, anyone on the team can run `/issue-triage <N>` to dig in.
+description: Process a Roku weekly crash-report CSV (or a zip containing one or more CSVs) into tracked GitHub issues + architectural-epic evidence, using an enrich-before-file flow (stage → enrich → file). STAGE parses/filters the CSV, groups by pkg-path signature, builds each cited app version in a temporary git worktree, source-maps the transpiled `.brs:line` back to source `.bs:line`, runs the GH dedup search, and writes a local worksheet where every crash starts pending — a mechanism hint (task-launch/network/other) orders which to pull first but never authorizes a file. ENRICH folds in the per-crash backtraces you paste from Roku's dashboard (7-day window, one click per crash — no bulk export), extracts each `&hNN` exception code, and routes every crash to a disposition (nothing files or aggregates without a backtrace): `file` (a scoped bug → a new per-signature [crash] issue, born enriched), `aggregate` (a known architectural class — `&h29` big-library too-many-task-threads, `&h23` server timeouts, `&hec`+init `m.global.constants` race — upserted as one flat record comment per `file·function·line·version` onto the class epic, never a standalone issue), or `watch` (accepted noise, spike-comment only). FILE performs the GitHub writes (create/comment/reopen for scoped bugs; epic record upsert for architectural classes) and writes a run-summary handoff. Dedup-aware and idempotent. Use when a fresh Roku crash CSV arrives (weekly). Per-crash deep dive is offloaded to `/issue-triage <N>` after filing.
 model: opus
 effort: high
-user-invocable: true
-allowed-tools: Bash(node scripts/crash-report.js:*), Bash(gh issue create:*), Bash(gh issue comment:*), Bash(gh issue reopen:*), Bash(gh issue view:*), Bash(gh label create:*), Bash(gh label list:*), Bash(gh issue list:*), Bash(git tag:*), Bash(git worktree:*), Bash(git rev-parse:*), Bash(date:*), Bash(ls:*), Bash(npm:*), Read, Write
 ---
 
-# /crash-report — turn the weekly Roku crash CSV into tracked GH issues
+# /crash-report — weekly Roku crash CSV → tracked issues + epic evidence
 
-Single-file workflow. The mechanical work — CSV parse, ZIP extraction + filtering, version-to-tag resolution, isolated build, source-map lookup, optional dashboard-CSV backtrace ingestion, GH dedup search, known-noise classification + spike detection, body drafting, GH writes, run-summary handoff — lives in [`scripts/crash-report.js`](../../../scripts/crash-report.js). This skill orchestrates that helper across a two-phase plan/execute split so the user gets to see (and override) the action plan before any GitHub writes happen.
+**Enrich-before-file flow: `stage → enrich → file`.** The data that decides whether a crash is a scoped bug, a big-library too-many-tasks crash, or a server timeout is the exception code — and that lives only behind Roku's per-crash dashboard backtrace, not in the CSV. So this skill stages a local worksheet first, folds in the backtraces you paste, and only *then* files. Issues are born complete, and architectural-class noise never becomes a standalone issue.
 
-Unlike `/issue-triage`, `/runtime-triage`, `/ci-triage`, and `/pr-review`, this skill has **no sibling `INVESTIGATION.md`** — each created issue IS the team-shared handoff, and per-crash deep-dive investigation is offloaded to `/issue-triage <N>`. The run-summary file in `.claude/handoffs/` exists purely as a resume-on-crash + local audit log for the person running the report; teammates rely on the GH issues, not the local file.
+The mechanical work — CSV parse, ZIP extraction + filtering, version→tag resolution, isolated build, source-map lookup, backtrace parsing + exception-code routing, epic-comment upsert, GH dedup search, body drafting, GH writes, run-summary handoff — lives in [`scripts/crash-report.js`](../../../scripts/crash-report.js) (subcommands `stage` / `enrich` / `file`). This skill orchestrates it across the three phases with human gates before any GitHub write.
 
-## Known-noise classification
+## The three dispositions
 
-Some crashes are long-running race conditions or hardware-specific bugs the team has accepted as ongoing noise (e.g. issue #103 — `m.global.constants` invalid during themed-component `init()`). Filing per-signature issues for these is pure noise. The skill consults [`.crash-report/known-noise.yml`](../../../.crash-report/known-noise.yml) — each entry binds matching crashes to a tracker issue and a baseline. For matched crashes:
+Every above-threshold crash routes to exactly one disposition. The routing table is [`.crash-report/known-noise.yml`](../../../.crash-report/known-noise.yml):
 
-- **Normal path**: no issue created, no comment posted. The signatures show up under "Suppressed (known noise)" in the run summary so they're auditable.
-- **Spike path**: when the combined occurrence count across all matched signatures exceeds `baseline_crashes_per_week × spike_multiplier`, the skill posts ONE comment to the tracker issue flagging the spike. Per the design, the tracker is NOT reopened automatically — humans decide whether the spike warrants reopening / investigation / tuning.
+- **`file`** — a real, small-scoped bug → a new per-signature `[crash]` issue, born enriched (backtrace + exception + source frames).
+- **`aggregate`** — a known architectural class you intend to fix but that has no small-scoped fix (`&h29` big libraries / too-many-task-threads; `&h23` server timeouts; `&hec`+`init()`+`m.global.constants` themed-init race). Each unique crash record (`file·function·line·version`) is **upserted** as one flat comment onto the class **epic**. Distinct lines are never auto-merged; occurrence stats accumulate. Nothing is ignored — the evidence lands on the epic.
+- **`watch`** — accepted noise we've decided *not* to fix. Counted, silent unless a spike crosses `baseline × multiplier`, then one comment on the tracker.
 
-The config schema is documented in [`docs/dev/crash-reports.md`](../../../docs/dev/crash-reports.md). Edit the YAML directly when a new class of "known and accepted" crashes emerges; the skill re-reads it every run.
+Routing is by exception code **+ context**: `&h29`/`&h23` are the class regardless of site (code alone routes them); `&hec` is the init-race epic only when it's `init()` + `m.global.constants` — bare `&hec` elsewhere is an ordinary scoped null-deref (that asymmetry is why the config gates `&hec` on function + snippet too).
+
+## ⚠️ The 7-day dashboard window
+
+Roku's analytics dashboard retains only **7 days** of crash backtraces, one click per crash line-item, no bulk export. Enrichment must happen **within the report's window**. Whenever you ask the user to pull a backtrace, give the exact `<basename>.brs:<line>` **and** `date`, and only for crashes inside the current report window — anything older can never be enriched (file it unenriched, or hold it).
 
 ## Inputs
 
-`$ARGUMENTS`: either a path to the CSV (e.g. `tasks/sample-crash-report.csv`), a path to a zip archive Roku emailed you (which may contain multiple CSVs interleaved with unrelated files like release notes — header-based filtering ignores those), or pasted CSV text in the conversation if no path given. Optional override flags accepted in `$ARGUMENTS`: `--min-devices N` (default 2), `--min-dates N` (default 2). Either threshold being met causes a crash to be filed; both must fail for it to be skipped.
-
-**Backtrace enrichment** is per-issue and runs as a follow-up via [`/crash-backtrace <N>`](../crash-backtrace/SKILL.md). Roku's analytics dashboard only exposes the full multi-frame backtrace + locals snapshot one click at a time — there's no bulk export — so enrichment is one-issue-at-a-time after this skill has filed the issues. Step 5 of this skill points the user at `/crash-backtrace` and lists the new issue numbers.
-
-The `--dashboard-csv <path>` flag on `plan`/`execute` is a forward-compatible bulk path for an as-yet-unavailable Roku bulk export. Not the daily workflow today; leave it documented but don't expect to use it.
-
-See [`docs/dev/crash-reports.md`](../../../docs/dev/crash-reports.md) for the dashboard click-through and plaintext-backtrace format.
+`$ARGUMENTS`: a path to the CSV, a path to a Roku zip (multiple CSVs + unrelated files tolerated via header filtering), or pasted CSV text. Threshold overrides: `--min-devices N` (default 2), `--min-dates N` (default 2). Either threshold met files the crash; both must fail to skip it.
 
 ## Step 0 — Preflight
 
-Before doing real work, confirm three things:
+1. **Labels exist**: `gh label list --search crash`, `--search known-issue`, `--search epic`. Create any missing:
+   - `gh label create crash --color e11d48 --description "Filed by /crash-report from Roku's weekly crash report"`
+   - `gh label create known-issue --color cccccc --description "Long-running known bug — tracked but deprioritized"`
+   - `gh label create epic --color 5319e7 --description "Architectural class tracker — /crash-report aggregates crashlog evidence here"`
+2. **Deps**: `ls node_modules/source-map/source-map.js && ls node_modules/adm-zip/package.json`; `npm install` if missing.
+3. **Epics seeded**: the `aggregate` patterns in `known-noise.yml` must reference real epic issues. If the two architectural-class patterns are still commented out (unseeded), seed them first (see [`docs/dev/crash-reports.md`](../../../docs/dev/crash-reports.md) → "Seeding the epics"), then uncomment them and fill each `tracker_issue`.
+4. **Working tree**: dirty is fine (the build uses `git worktree`); mention uncommitted changes as a courtesy — don't block.
 
-1. **The `crash` and `known-issue` labels exist in the repo**. Check with `gh label list --search crash` and `gh label list --search known-issue`. If `crash` is missing, surface `gh label create crash --color e11d48 --description "Filed automatically by /crash-report from Roku's weekly crash report"`. If `known-issue` is missing, surface `gh label create known-issue --color cccccc --description "Long-running known bug — tracked but deprioritized; /crash-report uses these as noise dampeners"`. One-time setup per repo.
-2. **`source-map` and `adm-zip` are installed**. Quick check: `ls node_modules/source-map/source-map.js && ls node_modules/adm-zip/package.json`. If either is missing, run `npm install` to pick them up from `package.json`'s devDependencies.
-3. **Working tree state**. The skill uses `git worktree add` for the build (which is non-destructive to the main checkout), so a dirty working tree is FINE. But if any unstaged changes exist that the user may want to commit first, mention them as a courtesy — don't block.
-
-## Step 1 — Plan
-
-Invoke the helper in `plan` mode, writing the plan JSON to a temp file:
-
-```bash
-PLAN_FILE=$(mktemp --suffix=.json /tmp/crash-report-plan.XXXXXX.json)
-node scripts/crash-report.js plan --input <user-arg> [--dashboard-csv <path>] --plan-out "$PLAN_FILE"
-```
-
-The helper does the heavy lifting: parses the CSV (or unzips + filters), groups by signature, applies the threshold, resolves the app version to a git tag, creates a temporary worktree with `git worktree add --detach`, generates `bsconfig-analysis.json` from the worktree's own `bsconfig-prod.json` (so the build always uses the plugin list that existed at the tagged commit), runs `npm ci` + `npx bsc --project bsconfig-analysis.json` in the worktree, walks the resulting `build-analysis/` source maps to resolve `pkg:/path.brs:N` back to source `.bs:N` via Mozilla's `source-map` library, optionally enriches each above-threshold signature with the matching backtrace + locals from the dashboard CSV (if `--dashboard-csv` was passed), classifies each crash against `.crash-report/known-noise.yml` (suppressing matches + flagging spikes), then searches GitHub for existing issues among the remaining novel signatures with the stable `<basename>.brs:<line>` substring + `[crash]` prefix.
-
-Expected wall-clock: ~30-90 seconds total per unique app version in the report (most reports cite a single version). Worktree is cleaned up before the helper returns.
-
-## Step 2 — Render plan to user
-
-Read the plan JSON. Render it as four short blocks:
-
-1. **Input summary**: kind (csv / zip / stdin), source path, CSVs found, ignored files (for zips), window dates, total rows, unique signatures.
-2. **Action table** — one row per above-threshold novel signature (noise-matched signatures appear in block 3):
-
-   | # | Signature | Action | Existing | Function | Category | Devices | Dates |
-   |---|---|---|---|---|---|---|---|
-   | 1 | FontDownloadTask.brs:29 | create | — | downloadFallbackFont() | unknown | max 2 | 1 |
-   | 2 | SceneManager.brs:83 | reopen #501 | CLOSED | popScene() | callback-exception | max 1 | 1 |
-
-3. **Suppressed (known noise)** — for each pattern in `plan.noiseSuppressed`: pattern id, tracker issue, combined count, baseline, whether the spike threshold was crossed. Each suppressed signature listed underneath. If `plan.spikeAlerts[i].isSpike` is true, this section also notes the spike comment that will be posted to the tracker on execute.
-4. **Filtered-out signatures** (below threshold) — one line each with the reason (`1 device, 1 date`). User can override with `--min-devices 1` / `--min-dates 1` and re-run from Step 1.
-
-If the plan has `buildErrors` entries, surface them prominently — the source-resolution column will show "—" for affected signatures and the issue body will note the lookup failed. The user may still want to proceed (issues will be filed without resolved source locations) or abort and investigate the build failure.
-
-## Step 3 — Confirm
-
-Ask the user one of: (a) proceed with the plan as-is, (b) adjust thresholds and re-plan, (c) abort. Use AskUserQuestion. If proceeding, move to Step 4. If adjusting, loop back to Step 1 with the new flags.
-
-## Step 4 — Execute
+## Step 1 — Stage (no GitHub writes)
 
 ```bash
-node scripts/crash-report.js execute --plan "$PLAN_FILE"
+WS=$(mktemp /tmp/crash-report-worksheet.XXXXXX.json)   # NOTE: no --suffix — mktemp rejects --suffix unless the template ends in X
+node scripts/crash-report.js stage --input "$ARGUMENTS" --plan-out "$WS"
 ```
 
-The helper performs the GH writes (`gh issue create` / `gh issue comment` / `gh issue reopen` for novel signatures + ONE `gh issue comment` per spike-alert pattern targeting the tracker issue), captures each result (issue number assigned, errors), then writes a run-summary handoff to `.claude/handoffs/crash-report-<YYYYMMDD-HHMMSS>.md` with the input summary, action results, suppressed-noise + spike-alert sections, and any errors.
+The helper parses/filters the CSV, groups by signature, applies the threshold, builds each cited version in a temporary worktree, source-maps `pkg:/…brs:N` back to `.bs:N`, runs the GH dedup search, and annotates each above-threshold crash with a `mechanismHint` (`task-launch` / `network` / `other`). Every crash starts `pending` / `needs-backtrace` — nothing files or aggregates without a pasted backtrace (the exception code decides the disposition and lives only in the backtrace). The `mechanismHint` does **not** authorize a file; it only **orders** which crashes to pull first. Expect ~30–90s per unique cited version.
 
-## Step 5 — Surface the summary
+## Step 2 — Render the worksheet
 
-Read the run-summary file from `.claude/handoffs/`. Output a brief recap to the user:
+Read `$WS`. Render: (1) an **input summary** (kind, source, CSVs found, ignored files, window dates, total rows, unique signatures, above/below threshold); (2) an **action table**, one row per above-threshold crash with signature → source, function, mechanism, crashes, devices, dates, dedup match — **ordered by `mechanismHint`** (task-launch / network first, then other); (3) the **filtered-out** rows (below threshold) with the reason; (4) any **build errors**, surfaced prominently (affected rows resolve to `—`).
 
-> Filed 2 new issues (#742, #743), commented on 1 open (#618), reopened 1 closed regression (#501). Skipped 5 below threshold. Full summary: `.claude/handoffs/crash-report-<timestamp>.md`. **Next**: enrich each new issue with a multi-frame backtrace via `/crash-backtrace <N>` (pull each from Roku's analytics dashboard). Per-crash deep dive: `/issue-triage <N>`.
+Every above-threshold crash needs a pasted backtrace before it can be filed or aggregated — you can't know from the CSV + code alone whether a crash is a scoped bug or an architectural class (even an ordinary-looking line can be a compute-bound `&h23` timeout). The `mechanismHint` only tells you what to pull *first*: `task-launch` / `network` sites are the likeliest architectural classes (`&h29` / `&h23`); `other` sites are likeliest scoped bugs — but all of them get confirmed by a backtrace, never a guess.
 
-If any actions failed (the helper continues on individual GH failures and records them in the results), call those out separately so the user can retry manually.
+## Step 3 — Enrich (no GitHub writes)
 
-Clean up the temp plan file: `rm "$PLAN_FILE"`.
+For every `needs-backtrace` row, tell the user the exact `<basename>.brs:<line>` on `<date>` to open in Roku's dashboard ("View report → Backtrace") and paste back — remind them of the 7-day window. Batch is fine: collect the pastes (as `@file` refs or inline), save each to a temp file, then:
 
-## Cron / weekly cadence
+```bash
+node scripts/crash-report.js enrich --worksheet "$WS" <backtrace1.txt> [<backtrace2.txt> ...]
+```
 
-Roku's reports are weekly. Two ways to run on cadence:
+`enrich` extracts each `&hNN`, source-maps the frames, and routes each crash: `&h29`/`&h23`/`&hec`-init → `aggregate` (marked for its epic, will NOT be filed standalone); anything else → `file` (its issue body gets the backtrace appended so it's born complete). One representative backtrace per signature is enough — the code is stable per site; you don't need one per date. Re-read `$WS` and re-render the table with the now-known `disposition` + exception code.
 
-- **Manual**: keep this skill explicit — you invoke `/crash-report <path-to-fresh-zip>` whenever the email lands.
-- **Scheduled via Claude harness**: the cron primitive can schedule `/crash-report --input <path>` on a fixed interval. The skill is idempotent — re-running against the same CSV is a no-op because the GH dedup search matches the just-created issues and short-circuits to comment-on-open (which adds an identical "new occurrences" comment, harmless but noisy). Prefer one weekly run on the freshest report.
+## Step 4 — Confirm dispositions (human gate)
+
+Present the final plan: which enriched crashes will **file** (new issues), which will **aggregate** (→ which epic), which are still un-enriched and will therefore be **held** (never filed without a backtrace — the `file` phase skips them), and any below-threshold skips. Use AskUserQuestion: proceed / adjust thresholds & re-stage / hold specific rows. Nothing has hit GitHub yet.
+
+## Step 5 — File (GitHub writes)
+
+```bash
+node scripts/crash-report.js file --worksheet "$WS"
+```
+
+`file` creates/comments/reopens the `file` crashes, and for each `aggregate` crash upserts one flat record comment onto its epic — creating a new comment, or editing the existing record when its `file·function·line·version` key is already present (accumulating occurrences, never duplicating; a no-op edit is skipped). It writes a run-summary handoff to `.claude/handoffs/crash-report-<timestamp>.md`.
+
+## Step 6 — Surface the summary
+
+Read the handoff and recap: N filed (#…), N commented, N reopened, N aggregated to epics (#…), N suppressed, N skipped. Call out any per-action errors for manual retry. **Next**: per-crash deep dive on a filed issue → `/issue-triage <N>`. Clean up the worksheet: `rm "$WS"`.
 
 ## When NOT to use
 
-- The input is a single `.text` crashlog (stack trace from a developer's device, not Roku's aggregate CSV) → use `/runtime-triage` with the pasted log.
-- The input is a single GitHub issue someone filed manually about a crash → use `/issue-triage <N>`.
-- You want to investigate a specific crash that's already a GH issue → use `/issue-triage <N>`.
-- The input is a CI failure log → use `/ci-triage <run-id>`.
+- A single developer-device `.text` crashlog → `/runtime-triage`.
+- A single manually-filed GH crash issue → `/issue-triage <N>`.
+- A CI failure log → `/ci-triage <run-id>`.
+
+## Cron / weekly cadence
+
+Idempotent: re-running the whole flow on the same report re-files nothing (dedup short-circuits) and re-upserts epic records to the same comments (no-op edits skipped). Prefer one run per fresh weekly report — and run it promptly, because the 7-day backtrace window closes.
 
 ## Sub-agent invocation
 
-To invoke from a parent sub-agent (rare; this is a slash-command-shaped skill): parent passes `Read .claude/skills/crash-report/SKILL.md and follow Steps 0-4 for $ARGUMENTS=<input-path>; write the plan + execute it; surface the summary path` in the Task prompt.
+To invoke from a parent sub-agent: parent passes `Read .claude/skills/crash-report/SKILL.md and run the stage → enrich → file flow for input <path>; render the worksheet, gather pasted backtraces for the needs-backtrace rows, confirm dispositions, file, and surface the summary path` in the Task prompt.
