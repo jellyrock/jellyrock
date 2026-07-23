@@ -17,7 +17,7 @@ This page documents the workflow for human contributors. The skill documents the
 
 ## The core shape: enrich before file (`stage → enrich → file`)
 
-The weekly CSV carries only the crashing function signature — **not the exception code**. But the exception code is exactly what decides whether a crash is a scoped bug, a big-library "too many task threads" crash, or a server timeout. That code lives only behind Roku's per-crash dashboard backtrace (7-day window, one click each, no bulk export). So filing straight off the CSV means filing *before* you know what a crash is — and walking back the architectural-class noise afterward.
+The weekly CSV carries only the crashing function signature — **not the exception code**. But the exception code is exactly what decides whether a crash is a scoped bug, a big-library "too many task threads" crash, or a render-thread execution timeout. That code lives only behind Roku's per-crash dashboard backtrace (7-day window, one click each, no bulk export). So filing straight off the CSV means filing *before* you know what a crash is — and walking back the architectural-class noise afterward.
 
 The workflow reorders around that reality:
 
@@ -48,7 +48,7 @@ An epic is a GitHub issue labeled `epic` that holds the **problem statement** (h
 Current epics:
 
 - **`&h29` — big libraries / too-many-task-threads.** Roku caps concurrent SceneGraph Task threads; a very large library saturates the pool and the next `.control = "RUN"` (any of ~25 sites) throws. The fix is architectural (a task budget / back-pressure), not per-site.
-- **`&h23` — server timeouts.** A slow/unreachable user-controlled Jellyfin server gets a long op killed by Roku OS. Distinct from "unexpected / malformed server response" crashes — those are **not** grouped here.
+- **`&h23` — render-thread execution timeouts.** Roku kills a render-thread callback that runs too long. Always our thread taking too long — trigger is a blocking call *or* heavy synchronous compute (the common case here, since API runs on the task pool) — reframed from "server timeouts" per real crash evidence (ADR 0024). Distinct from "unexpected / malformed server response" crashes (`&h18` etc.) — those are scoped bugs.
 - **`&hec` + `init()` + `m.global.constants` — themed-component init race** (issue #103, promoted from a `watch` tracker to an `aggregate` epic).
 
 ### Seeding the epics
@@ -58,7 +58,7 @@ The two architectural-class patterns ship **commented out** in `known-noise.yml`
 ```bash
 gh label create epic --color 5319e7 --description "Architectural class tracker — /crash-report aggregates crashlog evidence here"
 gh issue create --label epic,bug,crash --title '[epic] Large libraries crash the app — "Too many task threads" (&h29)' --body-file <problem-statement.md>
-gh issue create --label epic,bug,crash --title '[epic] Server timeouts crash the app — "Execution timeout" (&h23)' --body-file <problem-statement.md>
+gh issue create --label epic,bug,crash --title '[epic] Render-thread execution timeouts crash the app — `Execution timeout` (&h23)' --body-file <problem-statement.md>
 ```
 
 Then uncomment the two patterns in `known-noise.yml` and fill each `tracker_issue` with the new issue number. The `&hec` init-race pattern is already active (tracker #103).
