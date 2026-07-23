@@ -1,0 +1,102 @@
+import "pkg:/source/enums/MediaSegmentAction.bs"
+import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/utils/mediaSegments.bs"
+
+namespace tests
+
+  @suite("mediaSegments.bs - resolveEffectiveSegmentAction()")
+  class ResolveEffectiveSegmentActionTests extends tests.BaseTestSuite
+
+    ' Helper to create mock user settings
+    private function createMockSettings(overrides = {} as object) as object
+      return overrides
+    end function
+
+    ' Helper to create mock user config
+    private function createMockConfig(overrides = {} as object) as object
+      return overrides
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("first pass — not yet skipped — passes the resolved action through")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns Skip for a Skip-configured segment on its first pass")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "skip" })
+      result = resolveEffectiveSegmentAction(MediaSegmentType.INTRO, settings, m.createMockConfig(), false)
+      m.assertEqual(result, MediaSegmentAction.SKIP)
+    end function
+
+    @it("returns AskToSkip for an AskToSkip-configured segment on its first pass")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "askToSkip" })
+      result = resolveEffectiveSegmentAction(MediaSegmentType.INTRO, settings, m.createMockConfig(), false)
+      m.assertEqual(result, MediaSegmentAction.ASK_TO_SKIP)
+    end function
+
+    @it("returns None for a None-configured segment on its first pass")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "none" })
+      result = resolveEffectiveSegmentAction(MediaSegmentType.INTRO, settings, m.createMockConfig(), false)
+      m.assertEqual(result, MediaSegmentAction.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("replay — already skipped — a Skip segment degrades to AskToSkip")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("degrades a Skip-configured segment to AskToSkip once already skipped (issue #737)")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "skip" })
+      result = resolveEffectiveSegmentAction(MediaSegmentType.INTRO, settings, m.createMockConfig(), true)
+      m.assertEqual(result, MediaSegmentAction.ASK_TO_SKIP)
+    end function
+
+    @it("degrades a web-client-resolved Skip to AskToSkip once already skipped")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionOutro: "webclient" })
+      config = m.createMockConfig({ segmentActionOutro: MediaSegmentAction.SKIP })
+      result = resolveEffectiveSegmentAction(MediaSegmentType.OUTRO, settings, config, true)
+      m.assertEqual(result, MediaSegmentAction.ASK_TO_SKIP)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("alreadySkipped only affects Skip — other actions pass through unchanged")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves an AskToSkip-configured segment unchanged even when already skipped")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "askToSkip" })
+      result = resolveEffectiveSegmentAction(MediaSegmentType.INTRO, settings, m.createMockConfig(), true)
+      m.assertEqual(result, MediaSegmentAction.ASK_TO_SKIP)
+    end function
+
+    @it("leaves a None-configured segment unchanged even when already skipped")
+    function _()
+      settings = m.createMockSettings({ playbackSegmentActionIntro: "none" })
+      result = resolveEffectiveSegmentAction(MediaSegmentType.INTRO, settings, m.createMockConfig(), true)
+      m.assertEqual(result, MediaSegmentAction.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("all 6 segment types degrade Skip -> AskToSkip on replay")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("degrades Skip to AskToSkip on replay for each segment type")
+    @params("Intro", "playbackSegmentActionIntro")
+    @params("Outro", "playbackSegmentActionOutro")
+    @params("Commercial", "playbackSegmentActionCommercial")
+    @params("Preview", "playbackSegmentActionPreview")
+    @params("Recap", "playbackSegmentActionRecap")
+    @params("Unknown", "playbackSegmentActionUnknown")
+    function _(segmentType, settingKey)
+      settings = {}
+      settings[settingKey] = "skip"
+      result = resolveEffectiveSegmentAction(segmentType, settings, m.createMockConfig(), true)
+      m.assertEqual(result, MediaSegmentAction.ASK_TO_SKIP)
+    end function
+
+  end class
+
+end namespace

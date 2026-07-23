@@ -49,6 +49,25 @@ function resolveSegmentAction(segmentType as string, userSettings as object, use
   return defaultValue
 end function
 
+' resolveEffectiveSegmentAction: Resolves the action for a segment, accounting for
+' whether it has already been auto-skipped this playback session.
+'
+' A Skip-configured segment auto-seeks only on its first pass. Once skipped, rewinding
+' back into it must NOT re-skip (that would trap the user in a rewind loop) — but the
+' user should still get the *manual* Skip button. So an already-skipped Skip segment
+' degrades to AskToSkip; all other actions pass through unchanged.
+'
+' @param {string} segmentType - MediaSegmentType value ("Intro", "Outro", etc.)
+' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
+' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
+' @param {boolean} alreadySkipped - true if this segment already auto-skipped this session
+' @returns {string} - MediaSegmentAction value ("None", "AskToSkip", "Skip")
+function resolveEffectiveSegmentAction(segmentType as string, userSettings as object, userConfig as object, alreadySkipped as boolean) as string
+  action = resolveSegmentAction(segmentType, userSettings, userConfig)
+  if action = MediaSegmentAction.SKIP and alreadySkipped then return MediaSegmentAction.ASK_TO_SKIP
+  return action
+end function
+
 ' findActiveSegment: Finds the media segment containing the current playback position.
 '
 ' Linear scan over the segments array (typically 2-5 items).

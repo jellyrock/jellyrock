@@ -1098,13 +1098,12 @@ sub checkMediaSegments()
     if segmentId = "" then return
 
     segmentType = segment.Type ?? ""
-    action = resolveSegmentAction(segmentType, userSession.settings, userSession.config)
+    ' Already-skipped Skip segments degrade to AskToSkip so replay still offers the
+    ' manual button without re-triggering the one-shot auto-skip (see resolveEffectiveSegmentAction).
+    action = resolveEffectiveSegmentAction(segmentType, userSession.settings, userSession.config, m.skippedSegments.DoesExist(segmentId))
     m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
 
     if action = MediaSegmentAction.SKIP
-      ' Auto-skip only fires once per segment
-      if m.skippedSegments.DoesExist(segmentId) then return
-
       ' Auto-skip: seek to end of segment immediately
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
 
@@ -1123,6 +1122,11 @@ sub checkMediaSegments()
       m.top.seek = seekPosition
       m.skippedSegments[segmentId] = true
       m.activeSegmentId = ""
+      ' Treat the skip as a dismissal: suppress the manual button until the user
+      ' leaves this segment and returns. Without this, the post-seek buffering window
+      ' (position still lagging inside the segment) would flash the manual button now
+      ' that an already-skipped Skip segment degrades to AskToSkip.
+      m.dismissedSegmentId = segmentId
     else if action = MediaSegmentAction.ASK_TO_SKIP
       ' Dismissed this visit — don't re-show until user leaves and re-enters the segment
       if segmentId = m.dismissedSegmentId then return
@@ -1197,6 +1201,10 @@ sub onSegmentNotificationAction()
 
       m.top.seek = seekPosition
       m.skippedSegments[m.activeSegmentId] = true
+      ' Treat the skip as a dismissal so the button doesn't re-flash during the
+      ' post-seek buffering (position still lags inside the segment); the button
+      ' returns only if the user leaves this segment and re-enters it.
+      m.dismissedSegmentId = m.activeSegmentId
     else
       m.log.warn("Active segment not found for skip", m.activeSegmentId)
     end if
