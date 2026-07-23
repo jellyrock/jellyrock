@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-07-21
+last-updated: 2026-07-23
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-07-23 — chore(ci): improve the `/crash-report` skill workflow
 - 2026-07-21 — Report cold-launch pairing and stabilize `DeviceId` on 10.11+
 - 2026-07-13 — Fix #667 cast transport/nav verbs (pause/seek/next/stop, message dialog) no-op over the long-poll — companion plugin serialized enum `Data` fields as integers (`System.Text.Json` default) instead of strings; added `JsonStringEnumConverter` so `Playstate.Command`/`GeneralCommand.Name` match the `ws://` frames. Only `Play` limped through (safe action default). Proven on `BATCAVE`.
 - 2026-07-13 — Add native `ws://` remote-control receiver (Cast to JellyRock)
