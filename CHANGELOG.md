@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix `inferServerUrl` crash from stale pre-login intents ([#736](https://github.com/jellyrock/jellyrock/pull/736))
+
 ### Dependencies
 
 - Update prettier from v3.9.5 to v3.9.6 ([#726](https://github.com/jellyrock/jellyrock/pull/726))
