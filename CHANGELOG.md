@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Guard `VideoPlayerView` notifications against teardown race crash ([#738](https://github.com/jellyrock/jellyrock/pull/738))
 - Fix `inferServerUrl` crash from stale pre-login intents ([#736](https://github.com/jellyrock/jellyrock/pull/736))
 
 ### Dependencies
