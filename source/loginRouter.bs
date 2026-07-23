@@ -193,15 +193,18 @@ end sub
 
 ' Bring the router up on (or navigate it to) the route the decision names. Shared by
 ' cold start, session reset, and the post-server-connect step.
-sub enterDecision(decision as object)
+' clearSpinner: pass true when navigating here with a blocking spinner up, so it stays up across the
+' async nav and clears at NavigationEnd instead of being stopped early (which re-shows the outgoing
+' view for a frame). The success branch defers to finishLogin, which carries the spinner to Home.
+sub enterDecision(decision as object, clearSpinner = false as boolean)
   if decision.status = "success"
     finishLogin()
   else if decision.status = "server"
-    routerNav("/server", {})
+    routerNav("/server", {}, clearSpinner)
   else if decision.status = "users"
-    routerNav("/users", { users: decision.users })
+    routerNav("/users", { users: decision.users }, clearSpinner)
   else if decision.status = "login"
-    routerNav("/login", { username: decision.username })
+    routerNav("/login", { username: decision.username }, clearSpinner)
   end if
 end sub
 
@@ -236,12 +239,19 @@ sub onServerSubmitted()
   view = getActiveView()
   if not isValid(view) then return
   originalUrl = view.enteredUrl
+  ' enteredUrl reads invalid when the active view isn't SetServerScreen — a stale preLoginIntent that
+  ' drained after activeRoutedView advanced (e.g. a duplicate submit landing post-navigation). Ignore
+  ' it: passing invalid to inferServerUrl(as string) crashes, and coercing to "" would run a bogus
+  ' connect whose failure path signs the user out.
+  if not isValid(originalUrl) then return
 
   ' previousServerUrl: the canonical URL before this connect attempt, used to detect a
   ' server change and reset stale username/password (CreateServerGroup line 333/398).
   previousServerUrl = m.global.server.serverUrl
 
-  m.scene.isLoading = true
+  ' Disable the remote across the blocking connect (inferServerUrl waits up to 15s, ServerInfo() is
+  ' sync) so repeat Submit presses can't queue duplicate serverSubmitted intents. Matches onUserSelected.
+  startLoadingSpinner()
   serverUrl = inferServerUrl(originalUrl)
   isConnected = server.UpdateURL(serverUrl, originalUrl)
   serverInfoResult = invalid
@@ -253,18 +263,21 @@ sub onServerSubmitted()
       setSetting("password", "")
     end if
   end if
-  m.scene.isLoading = false
 
   if isConnected = false or not isValid(serverInfoResult) or (isValid(serverInfoResult.Error) and serverInfoResult.Error)
+    ' Failure stays here — stop the spinner so SetServerScreen re-shows with the error.
+    stopLoadingSpinner()
     print "Server not found, is it online?"
     view.errorMessage = translate(translationKeys.MessageServerNotFoundIsItOnline)
     SignOut(false)
     return
   end if
 
-  ' Connected — persist to the picker list, then resolve the user step and navigate.
+  ' Connected — persist, resolve the user step, navigate. Keep the spinner up across the async nav
+  ' (clearSpinner=true, cleared at NavigationEnd) so the hidden SetServerScreen isn't re-shown for a
+  ' frame before the destination mounts.
   SaveServerList()
-  enterDecision(resolveUser())
+  enterDecision(resolveUser(), true)
 end sub
 
 ' A public/saved user was picked in UserSelect. Mirrors LoginFlow 120-163.
@@ -364,6 +377,9 @@ sub onCredentialsSubmitted()
   username = view.enteredUsername
   password = view.enteredPassword
   saveCreds = view.saveCredentials
+  ' Stale-intent guard (as in onServerSubmitted): if the active view isn't LoginScene when this drains,
+  ' these fields read invalid and getToken(as string) would crash. Ignore the superseded intent.
+  if not isValid(username) or not isValid(password) then return
 
   startLoadingSpinner()
   activeUser = getToken(username, password)
