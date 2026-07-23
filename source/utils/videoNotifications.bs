@@ -1,0 +1,15 @@
+import "pkg:/source/utils/misc.bs"
+
+' Whether a VideoNotification is visually present (including during its fade-out
+' animation). Lives as a free function — not a method on VideoNotification —
+' precisely so it can guard a possibly-invalid reference: callers pass
+' m.segmentNotification / m.nextEpisodeNotification, which can be cleared during
+' player teardown (VideoPlayerView.onDestroy) while an observer such as
+' onPositionChanged still fires. A method (`node.callFunc(...)`) could not guard
+' its own non-existence and would crash the same way the caller does.
+'
+' A notification that doesn't exist is, by definition, not visible → false.
+function isNotificationVisible(notification as object) as boolean
+  if not isValid(notification) then return false
+  return notification.state = "showing" or notification.state = "dismissing"
+end function

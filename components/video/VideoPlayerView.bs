@@ -18,6 +18,7 @@ import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
+import "pkg:/source/utils/videoNotifications.bs"
 import "pkg:/source/utils/voiceTransport.bs"
 
 ' Child index for position label in Roku's built-in trickPlayBar component.
@@ -29,6 +30,10 @@ const TRICKPLAYBAR_POSITION_LABEL_INDEX = 8
 
 sub init()
   m.log = new log.Logger("VideoPlayerView")
+  ' Guard against observer callbacks (notably onPositionChanged, driven by the
+  ' native playback engine) that can still fire while onDestroy is tearing down
+  ' this component's node references.
+  m.isDestroyed = false
   ' Hide the overhang on init to prevent showing 2 clocks
   m.top.getScene().findNode("overhang").visible = false
   m.forceFinished = false
@@ -968,11 +973,6 @@ sub onNextEpisodeFetchFailed()
   m.checkedForNextEpisode = false
 end sub
 
-' Check if a VideoNotification is visually present (including during fade-out animation)
-function isNotificationVisible(notification as object) as boolean
-  return notification.state = "showing" or notification.state = "dismissing"
-end function
-
 ' Show the Next Episode notification with countdown text
 sub showNextEpisodeButton()
   if m.osd.visible then return
@@ -1227,6 +1227,12 @@ end sub
 
 ' When Video Player state changes
 sub onPositionChanged()
+  ' The native playback engine can emit a final position update as it stops
+  ' (destroyPlayer sets control="stop" before onDestroy unobserves position),
+  ' so this observer can fire mid-teardown when m.osd / m.*Notification refs are
+  ' being cleared. Bail out rather than dot into a torn-down reference.
+  if m.isDestroyed then return
+
   ' Fall back to content.length (which Jellyfin populates from mediaSource.RunTimeTicks)
   ' when Roku's own duration probe returns 0. This happens with live-transcoded progressive
   ' MKV: ffmpeg can't know the final duration while encoding, so it writes 0 into the
@@ -1834,6 +1840,9 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called by SceneManager when popping this scene
 sub onDestroy()
+  ' Mark torn-down first so any observer that still fires during teardown
+  ' (e.g. onPositionChanged from a final engine position update) bails early.
+  m.isDestroyed = true
   ' Unobserve all fields first to prevent callbacks during teardown
   m.top.unobserveField("state")
   m.top.unobserveField("content")

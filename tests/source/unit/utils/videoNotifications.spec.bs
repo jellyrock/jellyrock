@@ -1,0 +1,65 @@
+import "pkg:/source/utils/videoNotifications.bs"
+
+namespace tests
+
+  @suite("videoNotifications.bs")
+  class VideoNotificationsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isNotificationVisible()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Regression for issue #733: onPositionChanged -> checkTimeToDisplayNextEpisode
+    ' -> isNotificationVisible fired during player teardown with m.segmentNotification
+    ' already cleared (roInvalid), crashing with &hec ('Dot' on invalid). An absent
+    ' notification must read as "not visible" rather than dot into invalid.
+    @it("returns false for invalid (the #733 crash input)")
+    function _()
+      m.assertFalse(isNotificationVisible(invalid))
+    end function
+
+    @it("returns false when passed an empty AA (no state field)")
+    function _()
+      m.assertFalse(isNotificationVisible({}))
+    end function
+
+    @it("returns true when state is showing")
+    function _()
+      m.assertTrue(isNotificationVisible({ state: "showing" }))
+    end function
+
+    @it("returns true when state is dismissing (fade-out still visible)")
+    function _()
+      m.assertTrue(isNotificationVisible({ state: "dismissing" }))
+    end function
+
+    @it("returns false when state is hidden")
+    function _()
+      m.assertFalse(isNotificationVisible({ state: "hidden" }))
+    end function
+
+    @it("returns false when state is paused")
+    function _()
+      m.assertFalse(isNotificationVisible({ state: "paused" }))
+    end function
+
+    @it("returns false for a freshly created VideoNotification node (defaults to hidden)")
+    function _()
+      notification = CreateObject("roSGNode", "VideoNotification")
+      m.assertFalse(isNotificationVisible(notification))
+    end function
+
+    @it("returns true for a VideoNotification node whose state is showing")
+    function _()
+      notification = CreateObject("roSGNode", "VideoNotification")
+      notification.state = "showing"
+      m.assertTrue(isNotificationVisible(notification))
+    end function
+
+  end class
+
+end namespace
