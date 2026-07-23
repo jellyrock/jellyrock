@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Dependencies
+
+- Update prettier from v3.9.5 to v3.9.6 ([#726](https://github.com/jellyrock/jellyrock/pull/726))
+
 ## [2.24.0](https://github.com/jellyrock/jellyrock/compare/v2.23.0...v2.24.0) - 2026-07-22
 
 ### Added
