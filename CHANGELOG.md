@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (osd) Offer manual segment-skip button on replay after one-time auto-skip ([#739](https://github.com/jellyrock/jellyrock/pull/739))
 - Guard `VideoPlayerView` notifications against teardown race crash ([#738](https://github.com/jellyrock/jellyrock/pull/738))
 - Fix `inferServerUrl` crash from stale pre-login intents ([#736](https://github.com/jellyrock/jellyrock/pull/736))
 
