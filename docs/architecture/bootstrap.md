@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-06-14
+last-reviewed: 2026-07-24
 ---
 
 # Bootstrap & Lifecycle
@@ -100,7 +100,7 @@ Defined in `source/utils/globals.bs` (`setGlobalNodes` function). Creates and st
 
 - `m.global.apiPool0`, `apiPool1`, `apiPool2` — three `ApiTask` Task nodes, each `control = "RUN"` to enter their infinite work loop
 - `m.global.apiQueue` — `ApiQueueTask`, the FIFO coordinator that dispatches into the pool
-- `m.global.sideEffectTask` — `SideEffectTask` for fire-and-forget POST/DELETE
+- `m.global.sideEffectTask` — `SideEffectTask`, `control = "RUN"` to enter its FIFO children-as-vehicle loop for fire-and-forget POST/DELETE
 - `m.global.sceneManager` — now a shared **service node** (dialogs, backdrop, theme, overhang passthrough fields — the scene-stack was removed in #550, see `navigation.md`); observed by `main.bs` for `isDataReturned` and `reloadHomeRequested` events
 - `m.global.AuthManager` — the sgRouter `canActivate` auth guard, created **before** the router's `addRoutes` and registered by node reference on every post-login route (see `navigation.md`)
 - `m.global.activeRoutedView` — node field (default invalid); the currently-mounted router view. Published by `JRScreen`'s lifecycle bridge; read by `getActiveView()`, the overhang controller, and the playback/options/device branches of the event loop

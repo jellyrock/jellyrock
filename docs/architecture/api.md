@@ -10,7 +10,7 @@ related-files:
   - components/api/ApiQueueTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-05-03
+last-reviewed: 2026-07-24
 ---
 
 # API Layer & Task Pool
@@ -280,7 +280,7 @@ sub reportPlayback(state as string)
 end sub
 ```
 
-Goes through the single `m.global.sideEffectTask` (not the pool). Calls are serialized — a slow side-effect can delay the next one. Don't use this for cancellable UI requests.
+Goes through the single `m.global.sideEffectTask` (not the pool). Like the pool, it uses the children-as-vehicle FIFO — a fresh `ApiResultNode` per request, drained in append order on its one thread — so back-to-back submits can't coalesce. (The earlier single shared `request` field could: two rapid writes merged and silently dropped one — #744.) Calls are serialized — a slow side-effect can delay the next one. Don't use this for cancellable UI requests.
 
 ### Pattern 4 — Dedicated Task with raw `roUrlTransfer`
 
