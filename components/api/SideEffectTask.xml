@@ -1,7 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 
+<!--
+  SideEffectTask — Tier 2 fire-and-forget writer (POST/DELETE).
+
+  FIFO children-as-vehicle queue (mirrors ApiQueueTask, minus the pool and response
+  routing). SubmitSideEffect() appends a fresh ApiResultNode child carrying the request
+  AA, then pulses 'enqueue'. The task reads ALL unprocessed children on each wake and
+  executes them in order on its single thread — serialised, and immune to SceneGraph
+  event coalescing (which the old single shared 'request' field was NOT: two back-to-back
+  writes could merge and drop a request — see issue #744).
+-->
 <component name="SideEffectTask" extends="Task">
   <interface>
-    <field id="request" type="assocarray" />
+    <!--
+      Wake-up signal. SubmitSideEffect() writes here after appending a child node.
+      The task ignores the value — it reads children instead. alwaysNotify ensures the
+      observer fires even when consecutive writes carry the same string (without it,
+      SceneGraph silently drops no-change writes, stalling the queue).
+    -->
+    <field id="enqueue" type="string" alwaysNotify="true" />
   </interface>
 </component>

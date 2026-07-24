@@ -1,4 +1,5 @@
 import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/roku_modules/rr/Requests.brs"
 
 ' Functions for making requests to the API
 function buildParams(params = {} as object) as string
@@ -163,4 +164,57 @@ function buildAuthHeader() as string
   end if
 
   return auth
+end function
+
+' Shared HTTP execution for the API task tiers. Builds the request args (auth header,
+' timeout, Content-Type default) from a request AA and performs the roku-requests call.
+' Returns the raw roku-requests result object, or invalid when the URL is missing/empty
+' (the caller decides how to surface that — Tier 1 maps it to an error response AA, the
+' fire-and-forget SideEffectTask ignores it).
+'
+' Centralizes what previously lived duplicated in ApiTask.executeRequest() and
+' SideEffectTask.executeSideEffect(); that copy drifted across three separate historical
+' fixes (Content-Type default, URL validation, timeout centralization), each of which had
+' to patch both copies in lockstep. Runs on whichever Task thread invokes it — free
+' functions share the caller's `m`, so auth/global reads resolve exactly as before.
+'
+' @param req           - request AA: { method, url, headers?, body?, timeout? }
+' @param defaultMethod - HTTP method when req.method is absent ("GET" for the pool, "POST" for side effects)
+' @param logLabel      - tag prefixed to the invalid-URL log line (e.g. "[ApiTask]")
+' @return roku-requests result (.ok / .statusCode / .json / .text), or invalid on bad URL
+function executeHttpRequest(req as object, defaultMethod as string, logLabel as string) as object
+  method = req.method
+  if not isValid(method) or method = "" then method = defaultMethod
+
+  ' Auth header first; merge in any caller-provided extras
+  headers = { Authorization: buildAuthHeader() }
+  if isValid(req.headers) and type(req.headers) = "roAssociativeArray"
+    headers.append(req.headers)
+  end if
+
+  ' timeout in request AA is seconds; rr_Requests expects milliseconds
+  timeout = timeouts.HTTP_MS
+  if isValid(req.timeout) then timeout = req.timeout * 1000
+
+  args = {
+    headers: headers,
+    timeout: timeout,
+    useCache: false
+  }
+
+  if isValid(req.body) and req.body <> ""
+    args.data = req.body
+    ' POST/PUT/PATCH with a body requires Content-Type so the server knows the format.
+    ' Only set if not already provided by caller-supplied headers.
+    if not isValid(headers["Content-Type"])
+      headers["Content-Type"] = "application/json"
+    end if
+  end if
+
+  if not isValid(req.url) or req.url = ""
+    print logLabel; " request rejected: url is invalid or empty"
+    return invalid
+  end if
+
+  return rr_Requests().request(method, req.url, args)
 end function

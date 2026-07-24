@@ -1,50 +1,61 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/api/baseRequest.bs"
-import "pkg:/source/constants/timeouts.bs"
-import "pkg:/source/roku_modules/rr/Requests.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
-  m.top.functionName = "executeSideEffect"
+  m.top.functionName = "runSideEffectLoop"
 end sub
 
-' Architecture B: re-triggered by setting request + control = "RUN".
-' Fire-and-forget — no output. Serialises must-complete calls (mark watched, playback state, etc.)
-sub executeSideEffect()
-  req = m.top.request
-  if not isValid(req) then return
+' Tier 2 fire-and-forget writer — FIFO children-as-vehicle queue (Architecture C,
+' continuous-server). Mirrors ApiQueueTask, minus the 3-slot pool and response routing:
+' side effects have no response to deliver, so each request executes inline on this single
+' thread in append order (serialised, must-complete: mark watched, playstate, favorite, …).
+'
+' Why children instead of the old shared 'request' field:
+'   SceneGraph coalesces port events when a field is written rapidly from the render thread.
+'   Two back-to-back SubmitSideEffect() calls could merge into one event, and the second
+'   'request' write clobbered the first before this thread read it — silently dropping a POST
+'   (issue #744: the capabilities POST lost behind the cold-launch /pair POST). Children are
+'   immune: even if wake-up events coalesce, we read ALL pending children from the node tree,
+'   so no request is ever lost regardless of timing.
+sub runSideEffectLoop()
+  ' Index of the next unprocessed child (children accumulate, never re-processed).
+  m.processedIndex = 0
 
-  method = req.method
-  if not isValid(method) or method = "" then method = "POST"
+  port = CreateObject("roMessagePort")
+  m.top.observeField("enqueue", port)
 
-  ' Auth header first; merge in any caller-provided extras
-  headers = { Authorization: buildAuthHeader() }
-  if isValid(req.headers) and type(req.headers) = "roAssociativeArray"
-    headers.append(req.headers)
-  end if
+  ' Process any children appended before the observer was registered (SubmitSideEffect
+  ' may have appended + pulsed 'enqueue' while this thread was still starting up — that
+  ' wake-up was lost, but the child is in the tree). The node tree is the source of truth.
+  processNewChildren()
 
-  ' timeout in request AA is seconds; rr_Requests expects milliseconds
-  timeout = timeouts.HTTP_MS
-  if isValid(req.timeout) then timeout = req.timeout * 1000
+  while true
+    msg = wait(0, port)
+    ' Any wake (even coalesced enqueue events) drains the full backlog: read ALL
+    ' unprocessed children from the tree, not the event payload.
+    if type(msg) = "roSGNodeEvent" then processNewChildren()
+  end while
+end sub
 
-  args = {
-    headers: headers,
-    timeout: timeout,
-    useCache: false
-  }
-
-  if isValid(req.body) and req.body <> ""
-    args.data = req.body
-    ' POST/PUT/PATCH with a body requires Content-Type so the server knows the format.
-    if not isValid(headers["Content-Type"])
-      headers["Content-Type"] = "application/json"
+' Execute every unprocessed child's request AA in FIFO order, then prune processed
+' children so the tree doesn't grow unbounded over a long session.
+sub processNewChildren()
+  childCount = m.top.getChildCount()
+  while m.processedIndex < childCount
+    child = m.top.getChild(m.processedIndex)
+    m.processedIndex++
+    if isValid(child) and isValid(child.request)
+      ' Blocking HTTP on this task thread — serialises back-to-back side effects.
+      ' Fire-and-forget: the result is intentionally discarded.
+      executeHttpRequest(child.request, "POST", "[SideEffectTask]")
     end if
-  end if
+  end while
 
-  if not isValid(req.url) or req.url = ""
-    print "[SideEffectTask] request rejected: url is invalid or empty"
-    return
+  ' Prune processed children. Safe: side effects hold no post-execution references to
+  ' these nodes (unlike ApiQueueTask, where callers await a result), so detaching them
+  ' from the tree is a clean drop.
+  if m.processedIndex >= 50
+    m.top.removeChildrenIndex(m.processedIndex, 0)
+    m.processedIndex = 0
   end if
-
-  rr_Requests().request(method, req.url, args)
 end sub
