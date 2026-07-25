@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (api) route `SubmitSideEffect` through a children-as-vehicle FIFO ([#745](https://github.com/jellyrock/jellyrock/pull/745))
+
 ## [2.24.1](https://github.com/jellyrock/jellyrock/compare/v2.24.0...v2.24.1) - 2026-07-24
 
 ### Fixed
