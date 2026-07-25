@@ -1,7 +1,9 @@
 import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = new log.Logger("SideEffectTask")
   m.top.functionName = "runSideEffectLoop"
 end sub
 
@@ -47,7 +49,17 @@ sub processNewChildren()
     if isValid(child) and isValid(child.request)
       ' Blocking HTTP on this task thread — serialises back-to-back side effects.
       ' Fire-and-forget: the result is intentionally discarded.
-      executeHttpRequest(child.request, "POST", "[SideEffectTask]")
+      '
+      ' Per-request try/catch: this is a continuous-server loop, so an uncaught error
+      ' would kill the thread and silently drop EVERY later side effect for the session.
+      ' The pre-#744 task re-ran per call (control="RUN" each submit), so a crash
+      ' self-healed on the next submit; the persistent loop has no such reset, which makes
+      ' per-request isolation load-bearing rather than defensive nicety.
+      try
+        executeHttpRequest(child.request, "POST", "[SideEffectTask]")
+      catch error
+        m.log.error("side-effect request threw; continuing drain", { message: error.message })
+      end try
     end if
   end while
 

@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <!--
-  ApiResultNode — per-request vehicle for the API queue system.
-  Created by fetchRes() and appended as a child of ApiQueueTask.
+  ApiResultNode — per-request vehicle for the API task tiers.
 
-  Inbound:  'request' carries the request AA to execute.
-  Outbound: 'result' carries the response AA; 'done' signals completion.
-  The waiting orchestrator Task observes 'done' via a port and reads 'result'.
+  Tier 1 (fetchRes / submitApiRequest → ApiQueueTask): full request/response routing.
+    Inbound:  'request' carries the request AA to execute.
+    Outbound: 'result' carries the response AA; 'isDone' signals completion.
+    The waiting orchestrator Task observes 'isDone' via a port and reads 'result'.
+
+  Tier 2 (SubmitSideEffect → SideEffectTask): reused as a bare request-carrier —
+    only 'request' is read; 'result'/'isDone' are unused, since side effects are
+    fire-and-forget and deliver no response.
 -->
 <component name="ApiResultNode" extends="Node">
   <interface>

@@ -142,6 +142,9 @@ sub SubmitSideEffect(req as dynamic)
   sideEffectTask = m.global.sideEffectTask
   if not isValid(sideEffectTask) then return
 
+  ' Reuse ApiResultNode purely as a request-carrier vehicle: only its 'request' field is
+  ' read on this path — 'result'/'isDone' stay untouched, since side effects are
+  ' fire-and-forget and deliver no response. (Tier 1 uses all three; see ApiResultNode.xml.)
   resultNode = CreateObject("roSGNode", "ApiResultNode")
   resultNode.request = req
 
