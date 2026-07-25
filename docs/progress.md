@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-07-24
+last-updated: 2026-07-25
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-07-25 — fix(api): route `SubmitSideEffect` through a children-as-vehicle FIFO
 - 2026-07-23 — Fix `inferServerUrl` crash from stale pre-login intents
 - 2026-07-23 — chore(ci): improve the `/crash-report` skill workflow
 - 2026-07-21 — Report cold-launch pairing and stabilize `DeviceId` on 10.11+
