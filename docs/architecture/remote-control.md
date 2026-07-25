@@ -13,7 +13,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-07-20
+last-reviewed: 2026-07-25
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -117,6 +117,33 @@ race the capabilities POST on the shared side-effect node). It's **transport-agn
 body can't spoof another device's pairing. (This depends on a **stable** `DeviceId` — see the
 `deviceid-suffix-gate-10.11` decision; on the `ws://` path an unstable `serverDeviceName` would split
 the phantom and the live socket into two sessions.)
+
+### How the `DeviceId` is actually bound (#743)
+
+**Jellyfin resolves `DeviceId` from the `Authorization` header and nowhere else.** It never reads it
+from a query string, and when the header omits it the server silently substitutes the `DeviceId` the
+auth **token was minted under** (`AuthorizationContext.GetAuthorizationInfoFromDictionary`; identical
+in 10.7 → 10.11). A token's device row is fixed at mint time and is never rewritten afterwards — only
+`DeviceName` / `AppVersion` are.
+
+Two consequences the original `ws://` receiver got wrong:
+
+- The `&deviceId=` query parameter on the socket URL is **inert**. It looks like it binds the
+  socket, but the server ignores it.
+- A header-less upgrade therefore lands on the **token's** `DeviceId`, not the app's. On an install
+  upgraded from a build older than #721 that is the old suffixed id, so the socket sat on a
+  different session than the REST API, the capabilities POST and `/pair` — the cast target resolved
+  but commands were delivered where the app wasn't listening.
+
+`RemoteControlTask` therefore sends `buildAuthHeader(false)` as an `Authorization` header on the
+upgrade handshake, which pins the socket to the same `DeviceId` everything else advertises. The
+device name is omitted (`false`) because the handshake is written as a raw string with no
+header-encoding layer and the server already has the name on the token's device row. `api_key` stays
+on the URL so a proxy that strips `Authorization` degrades to the old behavior instead of failing to
+connect.
+
+Session identity is keyed `GetSessionKey(client, deviceId)`, so "same `Client` + same `DeviceId`" is
+the whole invariant. Any future channel that opens a Jellyfin session must send this header.
 
 **`/pair` is intentionally version-free** — unlike `/info`+`/poll`, which carry `CONTRACT_VERSION` and
 refuse a mismatch. It's a *registration*, not a *command*, so a misread is bounded (wrong/failed wake),

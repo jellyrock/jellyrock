@@ -87,6 +87,20 @@ function connectAndPump(url as string) as boolean
   m.ws.observeField("on_message", m.port)
   m.ws.observeField("on_close", m.port)
   m.ws.observeField("on_error", m.port)
+
+  ' Bind this socket to the SAME Jellyfin DeviceId the REST API advertises. Jellyfin parses DeviceId
+  ' from the Authorization header ONLY — the `deviceId` query param buildSocketUrl puts on the url is
+  ' never read — so a header-less upgrade falls back to the DeviceId the auth TOKEN was minted under.
+  ' On an install upgraded from a pre-#721 build that is the old suffixed id, which puts the command
+  ' channel on a DIFFERENT session than the REST API, the capabilities POST and the /pair report all
+  ' use: the cast target resolves but commands are delivered to a session this socket isn't on (#743).
+  ' Verified against Jellyfin 10.11.11: header absent -> session keyed on the token binding; header
+  ' present -> session keyed on the header, and a command addressed to it arrives here.
+  ' The api_key query param stays on the url as the auth carrier: if a reverse proxy strips
+  ' Authorization on the upgrade we still connect, degrading to the old behavior instead of failing.
+  ' Must be set BEFORE `open` — the client reads its headers when it builds the handshake.
+  m.ws.headers = ["Authorization", buildAuthHeader(false)]
+
   m.log.info("opening session socket") ' NEVER log url — it carries the auth token
   m.ws.open = url
 

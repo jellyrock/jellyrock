@@ -30,7 +30,6 @@ sub runSocketLoop()
   m.top.STATE_CLOSED = m.ws.STATE.CLOSED
   m.top.ready_state = m.ws.get_ready_state()
   m.top.protocols = m.ws.get_protocols()
-  m.top.headers = m.ws.get_headers()
   m.top.buffer_size = m.ws.get_buffer_size()
   ' Event listeners
   m.top.observeField("open", m.port)
@@ -40,6 +39,17 @@ sub runSocketLoop()
   m.top.observeField("protocols", m.port)
   m.top.observeField("headers", m.port)
   m.top.observeField("log_level", m.port)
+
+  ' JellyRock modification: seed the client FROM the node instead of overwriting the node with the
+  ' client's empty defaults (upstream did `m.top.headers = m.ws.get_headers()` above). init() sets
+  ' control="RUN", so a caller that sets `headers` right after CreateObject races this thread's
+  ' startup and upstream silently discarded the value. Seeding AFTER the observers are registered
+  ' closes the window in both directions: a write that landed earlier is picked up here, a later one
+  ' arrives as a field event. Load-bearing — the remote-control receiver sets the Authorization
+  ' header that binds the socket's Jellyfin DeviceId, and losing it re-splits the session (#743).
+  if m.top.headers <> invalid and m.top.headers.count() > 0
+    m.ws.set_headers(m.top.headers)
+  end if
 
   if len(m.top.open) > 0
     m.ws.open(m.top.open)
@@ -79,18 +89,22 @@ sub runSocketLoop()
         m.top.on_error = msg.data
       else if msg.id = "ready_state"
         m.top.ready_state = msg.data
+        ' JellyRock modification: `m.task_port` -> `m.port`. m.task_port is never assigned anywhere in
+        ' this component (3 reads, 0 writes), so these re-observes silently rebound the field to an
+        ' invalid port. Upstream never tripped it because nothing called set_buffer_size/protocols/
+        ' headers; the remote-control receiver now sets `headers`, which makes this path live.
       else if msg.id = "buffer_size"
         m.top.unobserveField("buffer_size")
         m.top.buffer_size = msg.data
-        m.top.observeField("buffer_size", m.task_port)
+        m.top.observeField("buffer_size", m.port)
       else if msg.id = "protocols"
         m.top.unobserveField("protocols")
         m.top.protocols = msg.data
-        m.top.observeField("protocols", m.task_port)
+        m.top.observeField("protocols", m.port)
       else if msg.id = "headers"
         m.top.unobserveField("headers")
         m.top.headers = msg.data
-        m.top.observeField("headers", m.task_port)
+        m.top.observeField("headers", m.port)
       end if
     end if
     m.ws.run()
