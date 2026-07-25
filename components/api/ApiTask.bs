@@ -1,7 +1,4 @@
-' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/api/baseRequest.bs"
-import "pkg:/source/constants/timeouts.bs"
-import "pkg:/source/roku_modules/rr/Requests.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -34,40 +31,14 @@ sub runApiLoop()
   end while
 end sub
 
-' Executes a single HTTP request via roku-requests.
+' Executes a single HTTP request via the shared executeHttpRequest() helper and shapes
+' the roku-requests result into the pool's response AA (invalid URL → an error AA so the
+' waiting orchestrator still unblocks). Auth/timeout/Content-Type live in the helper.
 ' @param req - request AA: { requestId, method, url, headers?, body?, timeout? }
 ' @return response AA: { requestId, ok, statusCode, json, text }
 function executeRequest(req as object) as object
-  method = req.method
-  if not isValid(method) or method = "" then method = "GET"
-
-  ' Auth header first; merge in any caller-provided extras
-  headers = { Authorization: buildAuthHeader() }
-  if isValid(req.headers) and type(req.headers) = "roAssociativeArray"
-    headers.append(req.headers)
-  end if
-
-  ' timeout in request AA is seconds; rr_Requests expects milliseconds
-  timeout = timeouts.HTTP_MS
-  if isValid(req.timeout) then timeout = req.timeout * 1000
-
-  args = {
-    headers: headers,
-    timeout: timeout,
-    useCache: false
-  }
-
-  if isValid(req.body) and req.body <> ""
-    args.data = req.body
-    ' POST/PUT/PATCH with a body requires Content-Type so the server knows the format.
-    ' Only set if not already provided by caller-supplied headers.
-    if not isValid(headers["Content-Type"])
-      headers["Content-Type"] = "application/json"
-    end if
-  end if
-
-  if not isValid(req.url) or req.url = ""
-    print "[ApiTask] request rejected: url is invalid or empty"
+  r = executeHttpRequest(req, "GET", "[ApiTask]")
+  if not isValid(r)
     return {
       requestId: req.requestId,
       ok: false,
@@ -76,8 +47,6 @@ function executeRequest(req as object) as object
       text: ""
     }
   end if
-
-  r = rr_Requests().request(method, req.url, args)
 
   return {
     requestId: req.requestId,

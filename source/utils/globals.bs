@@ -100,8 +100,14 @@ sub setGlobalNodes()
   apiQueue.control = "RUN"
   m.global.addFields({ apiQueue: apiQueue })
 
-  ' Tier 2 side-effect task — single persistent SideEffectTask (Architecture B re-triggered)
-  m.global.addFields({ sideEffectTask: CreateObject("roSGNode", "SideEffectTask") })
+  ' Tier 2 side-effect task — single persistent SideEffectTask (Architecture C continuous-
+  ' server). Runs a FIFO children-as-vehicle loop; control = "RUN" starts that loop. Early
+  ' submits are safe even if they land before the enqueue observer registers: the loop drains
+  ' all pre-existing children once at startup (the node tree is the source of truth), so no
+  ' side effect is lost to startup ordering.
+  sideEffectTask = CreateObject("roSGNode", "SideEffectTask")
+  sideEffectTask.control = "RUN"
+  m.global.addFields({ sideEffectTask: sideEffectTask })
 
   sceneManager = CreateObject("roSGNode", "SceneManager")
   sceneManager.observeField("isDataReturned", m.port)

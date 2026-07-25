@@ -130,11 +130,25 @@ end function
 ' Submits a fire-and-forget request to the global SideEffectTask.
 ' No response is observed. Calls are serialised — do not use for cancellable UI requests.
 '
+' Uses the children-as-vehicle pattern (like submitApiRequest / fetchRes): a FRESH
+' ApiResultNode per request means back-to-back submits can never clobber one another.
+' The previous single shared 'request' field could — two rapid writes coalesced and a
+' POST was silently dropped (issue #744). The 'enqueue' write is only a wake signal; the
+' task reads the appended children, not the value.
+'
 ' @param req - request AA: { method, url, headers?, body?, timeout? }
 sub SubmitSideEffect(req as dynamic)
   if not isValid(req) then return
   sideEffectTask = m.global.sideEffectTask
   if not isValid(sideEffectTask) then return
-  sideEffectTask.request = req
-  sideEffectTask.control = "RUN"
+
+  ' Reuse ApiResultNode purely as a request-carrier vehicle: only its 'request' field is
+  ' read on this path — 'result'/'isDone' stay untouched, since side effects are
+  ' fire-and-forget and deliver no response. (Tier 1 uses all three; see ApiResultNode.xml.)
+  resultNode = CreateObject("roSGNode", "ApiResultNode")
+  resultNode.request = req
+
+  sideEffectTask.appendChild(resultNode)
+  ' Wake-up only — value ignored (task reads children). alwaysNotify guarantees it fires.
+  sideEffectTask.enqueue = "submit"
 end sub

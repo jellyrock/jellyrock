@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-07-23
+last-updated: 2026-07-24
 ---
 
 # Progress
@@ -55,6 +55,10 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - **Cast command expansion — platform + ECP** (remote control #666 follow-up): (a) `SetVolume`/`VolumeUp`/`VolumeDown`/`Mute` — a streaming player has no system-volume API, but a **Roku TV** exposes more OS surface; investigate whether volume is controllable there before advertising it. (b) directional D-pad (`MoveUp/Down/Left/Right`, `Select`, `PageUp/Down`) + `SendKey`/`SendString`/`TakeScreenshot` — not injectable into the SceneGraph focus from inside the app, but doable via **ECP** (as the RTA tests do); would ride the planned #667 server plugin. Deferred to that effort. Also fold `SetShuffleQueue`/`SetRepeatMode` into the queue-aware casting followup above.
 - **Cast `DisplayMessage` — resolve the sender name** (remote control #666 follow-up): the persistent-message dialog uses a static provenance title (`LabelCastMessage` = "Message from another device"). Resolve the command's `ControllingUserId` → username for "Message from `<name>`" (e.g. "Message from Dad"). A regular user often can't `GET /Users/{otherId}`, so match against the public-users list (`GetPublicUsers`) instead, off the main thread (the `RemoteControlTask` receiver enriches the command before marshalling, or a cached id→name map). Short-circuit the self-cast case via `m.global.user`. Fall back to the static title when unresolved (hidden user / fetch fails). Needs `ControllingUserId` captured in `remoteCommand.parseGeneralCommand` + a `LabelCastMessageFrom` = "Message from {0}" key. Epic #669.
 - **Cast list shows the Roku MODEL name, not the friendly name** (cold-cast producer #668 follow-up): every JellyRock session (live receiver + closed-app phantom) surfaces in the web cast list as `getModelDisplayName()` + `(GetModel())` — e.g. "Roku Ultra (4800X)" — because that's the auth header's `Device=` field (`source/api/baseRequest.bs:152`, `globalDevice.name` = `getModelDisplayName()` at `source/utils/globals.bs:406,350`). Optional UX polish for multi-Roku households: prefer the user's friendly name ("Living Room"). The correct fix is **app-wide** — change the auth `Device=` header — so the open session and the phantom keep ONE continuous name; sending `friendlyName` only in the `/pair` payload would make the phantom's cast-list name flicker vs the open app across the open/closed swap. Out of scope for #668 (the `"JellyRock"` constant fallback at `PhantomSessionService.cs:255` essentially never shows — a session always carries the model name). Epic #669.
+
+### api
+
+- Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped.
 
 ### tests
 

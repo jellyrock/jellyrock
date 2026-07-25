@@ -3,11 +3,12 @@ topic: api-patterns
 related-files:
   - source/api/apiPool.bs
   - source/api/ApiClient.bs
+  - source/api/baseRequest.bs
   - components/api/ApiQueueTask.bs
   - components/api/ApiTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-07-24
 ---
 
 # API Request Patterns
@@ -19,9 +20,9 @@ All API calls must run on Task threads. The render thread and main thread (Main.
 JellyRock uses a two-tier API task pool:
 
 - **Tier 1 (`ApiTask` pool)**: 3 persistent workers (`apiPool0/1/2`) coordinated by `ApiQueueTask` FIFO coordinator. Handles all GET/query requests.
-- **Tier 2 (`SideEffectTask`)**: Single persistent node for fire-and-forget write operations (POST/DELETE).
+- **Tier 2 (`SideEffectTask`)**: Single persistent worker running a FIFO children-as-vehicle queue for fire-and-forget writes (POST/DELETE). Requests execute serially on its one thread.
 
-All pool communication uses `ApiResultNode` per-request routing, immune to SceneGraph event coalescing.
+**Both tiers** use `ApiResultNode` per-request routing (a fresh child node per request), immune to SceneGraph event coalescing. Tier 2 adopted this in #744 — the earlier single shared `request` field could coalesce two back-to-back submits and silently drop one. The shared HTTP execution (auth header, timeout, Content-Type) lives once in `baseRequest.bs`'s `executeHttpRequest()`, called by both `ApiTask` and `SideEffectTask`.
 
 ## Patterns
 
