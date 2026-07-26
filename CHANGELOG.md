@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update js-yaml from v5.2.1 to v5.2.2 ([#740](https://github.com/jellyrock/jellyrock/pull/740))
 - Update roku-deploy from v3.17.7 to v3.18.2 ([#715](https://github.com/jellyrock/jellyrock/pull/715))
 
 ## [2.24.1](https://github.com/jellyrock/jellyrock/compare/v2.24.0...v2.24.1) - 2026-07-24
