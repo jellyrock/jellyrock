@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update lint-staged from v17.0.8 to v17.2.0 ([#722](https://github.com/jellyrock/jellyrock/pull/722))
 - Update actions/checkout action to v7.0.1 ([#748](https://github.com/jellyrock/jellyrock/pull/748))
 - Update js-yaml from v5.2.1 to v5.2.2 ([#740](https://github.com/jellyrock/jellyrock/pull/740))
 - Update roku-deploy from v3.17.7 to v3.18.2 ([#715](https://github.com/jellyrock/jellyrock/pull/715))
