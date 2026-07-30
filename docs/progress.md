@@ -26,13 +26,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-07-30 — fix(remote-control): bind `ws://` socket to the advertised `DeviceId`
 - 2026-07-25 — fix(api): route `SubmitSideEffect` through a children-as-vehicle FIFO
 - 2026-07-23 — Fix `inferServerUrl` crash from stale pre-login intents
 - 2026-07-23 — chore(ci): improve the `/crash-report` skill workflow
 - 2026-07-21 — Report cold-launch pairing and stabilize `DeviceId` on 10.11+
-- 2026-07-13 — Fix #667 cast transport/nav verbs (pause/seek/next/stop, message dialog) no-op over the long-poll — companion plugin serialized enum `Data` fields as integers (`System.Text.Json` default) instead of strings; added `JsonStringEnumConverter` so `Playstate.Command`/`GeneralCommand.Name` match the `ws://` frames. Only `Play` limped through (safe action default). Proven on `BATCAVE`.
-- 2026-07-13 — Add native `ws://` remote-control receiver (Cast to JellyRock)
-- 2026-07-12 — Cast navigation lag (render-thread wake, remote control #666): investigated and device-verified NOT an issue — idle Home → web-cast to a movie opens immediately, no delay or dropped first action. Cast nav bottoms out in `m.scene.callFunc` (render thread), the same path Roku's own deep links use. Followup closed; `remote-control.md` updated to record the verification.
 
 ## Open followups
 
