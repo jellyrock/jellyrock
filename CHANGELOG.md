@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (remote-control) bind `ws://` socket to the advertised `DeviceId` ([#747](https://github.com/jellyrock/jellyrock/pull/747))
 - (api) route `SubmitSideEffect` through a children-as-vehicle FIFO ([#745](https://github.com/jellyrock/jellyrock/pull/745))
 
 ### Dependencies
