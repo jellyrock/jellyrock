@@ -32,6 +32,16 @@ The sources are **not** byte-for-byte upstream — trimmed + hardened when vendo
 - **`run` → `runSocketLoop`** (`WebSocketClientTask.brs`) — the top-level task worker was renamed off
   the reserved `run` (collides with the global `Run()`). It only ever worked because the Task
   dispatches it by the `functionName` string, never a scope call; renamed so we don't rely on that.
+- **Caller-set `headers` survive task startup** (`WebSocketClientTask.brs`) — upstream's init did
+  `m.top.headers = m.ws.get_headers()`, overwriting the node field with the client's empty default.
+  Since `init()` sets `control="RUN"`, a caller setting `headers` right after `CreateObject` races
+  that write and lost it silently. Now the client is seeded FROM the node, after the observers are
+  registered, so an earlier write is picked up and a later one still arrives as a field event.
+  Load-bearing for the remote-control receiver's Authorization header (see issue #743).
+- **`m.task_port` → `m.port`** (`WebSocketClientTask.brs`) — `m.task_port` is never assigned (3
+  reads, 0 writes), so the re-observe after a `set_buffer_size`/`set_protocols`/`set_headers`
+  round-trip rebound the field to an invalid port. Dead upstream because nothing called those
+  setters; live for us now that the receiver sets `headers`.
 - **Linted + formatted as owned code** — since upstream is dead, the sources were brought up to the
   project's BrighterScript lint: `function`→`sub` for void functions, an explicit all-paths return in
   `Logger._level_to_string`, and removal of the dead `mask`/`scheme` locals — plus Prettier formatting.
@@ -55,7 +65,8 @@ hardened for shipping to untrusted servers):
 - **Keep `log_level` at default** — `VERBOSE` logs the token-bearing handshake
   request (`WebSocketClient.brs:332`). Never log the socket URL from JellyRock.
 - Quality: ~1 kHz busy-poll in `WebSocketClientTask.run` (`wait(1)`); `bytes_to_long`
-  64-bit length bug (unreachable for small frames); `m.task_port` typo (dead path);
+  64-bit length bug (unreachable for small frames); `m.task_port` typo (fixed — see local
+  modifications; it stopped being a dead path once the receiver began setting `headers`);
   `TlsUtil.brs` (661 lines) is dead code on `ws://`; ASCII-only strings (fine for
   our hex/numeric command frames).
 

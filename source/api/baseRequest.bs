@@ -144,13 +144,26 @@ function authRequest(req as object) as object
   return req
 end function
 
-' Returns a string containing the "Authorization" header payload
-function buildAuthHeader() as string
+' Returns a string containing the "Authorization" header payload.
+'
+' DeviceId is the one field here that is load-bearing for session identity: Jellyfin resolves it
+' from THIS header only (never from a query string), and falls back to the DeviceId the auth token
+' was minted under when the header omits it. Every channel that opens a Jellyfin session must
+' therefore send this header, or it silently lands on a different session — see the ws:// receiver
+' in RemoteControlTask and issue #743.
+'
+' @param shouldIncludeDeviceName - false omits the free-text `Device=` field. The ws:// handshake is
+'        written as a raw string with no header-encoding layer, and a user-set Roku name may carry
+'        non-ASCII; the server already holds the device name on the token's device row, and omitting
+'        it also avoids a device-row rewrite on every reconnect. HTTP callers keep the default.
+function buildAuthHeader(shouldIncludeDeviceName = true as boolean) as string
   globalDevice = m.global.device
   globalUser = m.global.user
   QUOTE = Chr(34)
   auth = "MediaBrowser" + " Client=" + QUOTE + "JellyRock" + QUOTE
-  auth = auth + ", Device=" + QUOTE + globalDevice.name + " (" + globalDevice.model + ")" + QUOTE
+  if shouldIncludeDeviceName
+    auth = auth + ", Device=" + QUOTE + globalDevice.name + " (" + globalDevice.model + ")" + QUOTE
+  end if
   auth = auth + ", Version=" + QUOTE + m.global.app.version + QUOTE
 
   if isValid(globalUser.id)

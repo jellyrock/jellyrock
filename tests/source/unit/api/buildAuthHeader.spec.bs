@@ -1,0 +1,85 @@
+namespace tests
+
+  ' buildAuthHeader() is the ONLY place JellyRock advertises its Jellyfin DeviceId. Jellyfin resolves
+  ' DeviceId from this header exclusively — never from a query string — and silently falls back to the
+  ' DeviceId the auth token was minted under when the header omits it. A channel that opens a session
+  ' without this header therefore lands on a DIFFERENT session than the rest of the app, which is the
+  ' #743 cold-launch cast failure: /pair resolves the REST session while the ws:// command channel sits
+  ' on the token's stale binding, so commands are delivered somewhere the app isn't listening.
+  '
+  ' These are regression gates on that invariant, not coverage padding: the ws:// receiver passes
+  ' shouldIncludeDeviceName=false, so the omit-path must keep DeviceId while dropping only Device.
+  @suite("baseRequest — buildAuthHeader DeviceId invariant")
+  class BuildAuthHeaderTests extends tests.BaseTestSuite
+
+    ' Pre-fixture values of the three m.global.device fields this suite overwrites.
+    private originalDeviceFields as object
+
+    protected override function setup()
+      super.setup()
+
+      ' m.global.device is a DeviceInfo NODE (globals.bs), not an assocarray — so it's mutated
+      ' by field assignment and shared by reference. Snapshot the three fields we overwrite and
+      ' put them back in teardown(): `serverDeviceName` is the device's Jellyfin identity, and
+      ' `test:all` builds unit + integration into ONE channel run, so an unrestored fixture
+      ' value would follow this suite into every later one.
+      device = m.global.device
+      m.originalDeviceFields = {
+        serverDeviceName: device.serverDeviceName,
+        name: device.name,
+        model: device.model
+      }
+
+      device.serverDeviceName = "test-device-id-743"
+      device.name = "Living Room"
+      device.model = "3820X"
+    end function
+
+    protected override sub teardown()
+      ' Restore the real device identity so no later suite inherits the fixture values.
+      device = m.global.device
+      device.serverDeviceName = m.originalDeviceFields.serverDeviceName
+      device.name = m.originalDeviceFields.name
+      device.model = m.originalDeviceFields.model
+      super.teardown()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("DeviceId is present on every variant")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("carries DeviceId whether or not the device name is included")
+    @params(true)
+    @params(false)
+    function _(shouldIncludeDeviceName)
+      header = buildAuthHeader(shouldIncludeDeviceName)
+      m.assertTrue(header.instr(0, `DeviceId="test-device-id-743"`) > -1, "DeviceId must always be advertised — omitting it makes Jellyfin fall back to the token's binding (#743)")
+    end function
+
+    @it("always identifies the client as JellyRock")
+    @params(true)
+    @params(false)
+    function _(shouldIncludeDeviceName)
+      header = buildAuthHeader(shouldIncludeDeviceName)
+      m.assertTrue(header.instr(0, `Client="JellyRock"`) > -1, "session lookup keys on Client + DeviceId")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldIncludeDeviceName gates ONLY the Device field")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("includes the free-text device name by default (HTTP callers)")
+    function _()
+      header = buildAuthHeader()
+      m.assertTrue(header.instr(0, `Device="Living Room (3820X)"`) > -1, "default must stay byte-compatible with the pre-#743 header")
+    end function
+
+    @it("omits the free-text device name when asked (ws:// raw handshake)")
+    function _()
+      header = buildAuthHeader(false)
+      m.assertEqual(header.instr(0, ", Device="), -1, "the raw ws handshake has no header-encoding layer, so the user-set Roku name is left off")
+    end function
+
+  end class
+
+end namespace
