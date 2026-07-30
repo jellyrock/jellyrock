@@ -12,14 +12,37 @@ namespace tests
   @suite("baseRequest — buildAuthHeader DeviceId invariant")
   class BuildAuthHeaderTests extends tests.BaseTestSuite
 
+    ' Pre-fixture values of the three m.global.device fields this suite overwrites.
+    private originalDeviceFields as object
+
     protected override function setup()
       super.setup()
-      tmpDevice = m.global.device
-      tmpDevice.AddReplace("serverDeviceName", "test-device-id-743")
-      tmpDevice.AddReplace("name", "Living Room")
-      tmpDevice.AddReplace("model", "3820X")
-      m.global.setFields({ device: tmpDevice })
+
+      ' m.global.device is a DeviceInfo NODE (globals.bs), not an assocarray — so it's mutated
+      ' by field assignment and shared by reference. Snapshot the three fields we overwrite and
+      ' put them back in teardown(): `serverDeviceName` is the device's Jellyfin identity, and
+      ' `test:all` builds unit + integration into ONE channel run, so an unrestored fixture
+      ' value would follow this suite into every later one.
+      device = m.global.device
+      m.originalDeviceFields = {
+        serverDeviceName: device.serverDeviceName,
+        name: device.name,
+        model: device.model
+      }
+
+      device.serverDeviceName = "test-device-id-743"
+      device.name = "Living Room"
+      device.model = "3820X"
     end function
+
+    protected override sub teardown()
+      ' Restore the real device identity so no later suite inherits the fixture values.
+      device = m.global.device
+      device.serverDeviceName = m.originalDeviceFields.serverDeviceName
+      device.name = m.originalDeviceFields.name
+      device.model = m.originalDeviceFields.model
+      super.teardown()
+    end sub
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("DeviceId is present on every variant")

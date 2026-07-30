@@ -10,7 +10,7 @@ related-files:
   - components/api/ApiQueueTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-07-24
+last-reviewed: 2026-07-30
 ---
 
 # API Layer & Task Pool
@@ -294,21 +294,20 @@ Examples in the codebase: `FontDownloadTask`, `ServerDiscoveryTask`, `LoadPhotoT
 
 - **`buildURL(path, params)`** — concatenates `m.global.server.serverUrl` + `path` + `?<encoded params>`
 - **`buildParams(params)`** — converts an AA into a URL-encoded query string with type-aware encoding (string/integer/float/longinteger/array/boolean/null)
-- **`buildAuthHeader()`** — returns the `Authorization` header value: `MediaBrowser Token="..."`, includes Token, Client, Device, DeviceId, Version
+- **`buildAuthHeader(shouldIncludeDeviceName = true)`** — returns the `Authorization` header value: `MediaBrowser Client="...", Version="...", UserId="...", DeviceId="...", Token="..."`, plus a free-text `Device="<name> (<model>)"` unless `shouldIncludeDeviceName` is `false`. **`DeviceId` is the session-identity field**: Jellyfin resolves it from this header and nowhere else (never from a query string), falling back to the id the auth *token* was minted under when the header omits it — so every channel that opens a Jellyfin session must send this header, or it silently lands on a different session. The only caller passing `false` is the `ws://` remote-control handshake; see [remote-control.md](remote-control.md) and decision `deviceid-header-authoritative`.
+- **`executeHttpRequest(req, defaultMethod, logLabel)`** — the shared executor behind both task tiers. Attaches the auth header, resolves the timeout (`req.timeout` seconds → milliseconds, else `timeouts.HTTP_MS`), defaults `Content-Type` to `application/json` when a body is present, and performs the `roku-requests` call. Returns `invalid` on a missing/empty URL, leaving the caller to decide how to surface that.
 
-Every `ApiTask` execution prepends the auth header automatically:
+Both task tiers prepend the auth header automatically, because both route through `executeHttpRequest()`:
 
 ```brightscript
-function executeRequest(req as object) as object
-  headers = { Authorization: buildAuthHeader() }
-  if isValid(req.headers) and type(req.headers) = "roAssociativeArray"
-    headers.append(req.headers)
-  end if
-  ' ...HTTP via roku-requests with these headers
-end function
+' components/api/ApiTask.bs — Tier 1 (pool); maps `invalid` to an error response AA
+r = executeHttpRequest(req, "GET", "[ApiTask]")
+
+' components/api/SideEffectTask.bs — Tier 2 (fire-and-forget); result discarded
+executeHttpRequest(child.request, "POST", "[SideEffectTask]")
 ```
 
-So callers building requests don't need to remember to attach auth — it's automatic at the pool level.
+So callers building requests don't need to remember to attach auth — it's automatic at the pool level. Centralizing it also removed a duplicated copy that had drifted across three separate fixes (see `tech-debt.md`).
 
 ## `V1` vs `V2` dispatch
 

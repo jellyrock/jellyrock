@@ -4,6 +4,7 @@ related-files:
   - components/remotecontrol/RemoteControlTask.bs
   - components/remotecontrol/RemoteControlTask.xml
   - components/vendor/BrightWebSocket/WebSocketClient.xml
+  - components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs
   - source/remotecontrol/remoteCommand.bs
   - source/remotecontrol/remoteProtocol.bs
   - source/remotecontrol/remoteDispatch.bs
