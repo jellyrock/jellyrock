@@ -49,3 +49,10 @@ jobs:
       - name: Check ws:// DeviceId binding is intact
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:socket-auth-binding
+      # #551 anti-backslide ratchet: FAILs when net-new raw `observeField("isDone")`
+      # observer-spaghetti lands against the committed baseline. Advisory at pre-push
+      # (`|| true`) so a local push isn't blocked — this is where it actually blocks.
+      # It scans .bs sources, which this job's path filter already matches.
+      - name: Check promise-adoption ratchet
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:promise-ratchet

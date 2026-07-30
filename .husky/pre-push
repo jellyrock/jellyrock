@@ -33,6 +33,11 @@
 #  9b. npm run lint:ci-workflow-sync — ALWAYS. Verifies every _lint-*.yml /
 #                                    _test-*.yml / _smoke-test-*.yml reusable
 #                                    workflow is listed in _validate-dependencies.yml.
+#  9c. npm run lint:ci-parity     — ALWAYS. Verifies every check in the
+#                                    `npm run lint` aggregate is actually run by
+#                                    some workflow. CI does NOT run the aggregate
+#                                    (it runs the per-domain reusables), so without
+#                                    this a check added locally gates nothing.
 #  10. npm run docs:dev-index:check — ALWAYS. Drift check on the auto-generated
 #                                     dev-guides table.
 #  11. node scripts/lint/decision-shape-nudge.cjs — ALWAYS. Advisory only
@@ -185,6 +190,9 @@ fi
 echo "🔄 Validating CI workflow sync..."
 npm run lint:ci-workflow-sync
 
+echo "🔗 Validating CI/local lint parity..."
+npm run lint:ci-parity
+
 echo "📑 Checking dev-index drift..."
 npm run docs:dev-index:check
 
@@ -201,11 +209,17 @@ if [ -n "$HAS_DICTIONARY" ]; then
   npm run lint:dictionary
 fi
 
-# Promise-ratchet — advisory at pre-push; BLOCKING in CI (it's in `npm run lint`).
-# Flags net-new observer-spaghetti (a raw `observeField("isDone", ...)` on a
-# submitApiRequest result) introduced against the committed baseline, as part of
-# the #551 promises adoption. Advisory here so a local push isn't blocked; CI's
-# `npm run lint` enforces it. Scoped to .bs changes.
+# Promise-ratchet — advisory at pre-push; BLOCKING in CI via the `lint-brightscript`
+# workflow. Flags net-new observer-spaghetti (a raw `observeField("isDone", ...)` on
+# a submitApiRequest result) introduced against the committed baseline, as part of
+# the #551 promises adoption. Advisory here so a local push isn't blocked. Scoped to
+# .bs changes.
+#
+# NOTE: this comment used to claim CI enforced it "because it's in `npm run lint`".
+# That was false — CI never runs the aggregate, it runs the per-domain reusable
+# workflows, so the ratchet blocked nowhere for as long as it existed. The step is
+# now wired into _lint-brightscript.yml, and `lint:ci-parity` (above) fails if any
+# aggregate member ever loses its CI home again.
 if [ -n "$HAS_BS" ]; then
   npm run lint:promise-ratchet || true
 fi

@@ -1,0 +1,177 @@
+// scripts/lint/ci-parity-check.js — reconciles the `npm run lint` aggregate
+// against what CI actually runs.
+//
+// WHY THIS EXISTS
+// ---------------
+// `npm run lint` is the de-facto "run everything" surface, but CI is assembled
+// from ~11 hand-maintained per-domain reusable workflows and never invokes the
+// aggregate. Nothing reconciled the two, so a check could be added locally and
+// silently never gate a PR.
+//
+// That is not hypothetical. When this script was written, three aggregate
+// members had no CI home at all:
+//
+//   - lint:promise-ratchet     the #551 anti-backslide ratchet. Its own FAIL
+//                              POLICY promises `exit 1`, and .husky/pre-push ran
+//                              it as `|| true` with the comment "BLOCKING in CI
+//                              (it's in `npm run lint`)". CI does not run
+//                              `npm run lint`, so it blocked nowhere.
+//   - docs:api-manifest:check  drift gate on docs/architecture/api-usage-manifest.json,
+//                              which is itself an INPUT to the floor-system
+//                              lint's path filter. Pre-push regenerates it as an
+//                              auto-fix, but that is skipped on a dirty tree and
+//                              bypassed by --no-verify or a GitHub-UI edit, so
+//                              drift could land green and downstream floor
+//                              analysis would reason over a stale map.
+//   - lint:dictionary          dictionary.txt hygiene.
+//
+// This is the same failure `validate-deps-workflow-sync.cjs` guards one level
+// down ("if a new reusable is added without a matching entry here, dep bumps
+// that break it will silently land green") — applied to the layer above it.
+//
+// WHAT IT CHECKS
+// --------------
+// Expands `npm run lint` recursively to its leaf scripts, then asserts each
+// leaf is invoked by some workflow under .github/workflows/ — either as
+// `npm run <name>` or, for node-based scripts, as a direct `node scripts/...`
+// call (several workflows invoke the script path rather than the npm alias).
+//
+// Deliberate local-only entries live in LOCAL_ONLY below, each with a REASON.
+// An allowlist entry is a decision on the record, not a silent exemption.
+//
+// Only Node stdlib — no npm ci needed.
+
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+// Aggregate members deliberately NOT run in CI. Key = npm script name,
+// value = why. Anything not listed here MUST have a CI home.
+export const LOCAL_ONLY = {
+  'lint:bs':
+    'bslint is declared as a BSC plugin in bsconfig.json, and CI runs `npm run validate` ' +
+    "(`bsc --noEmit`) with that config — so bslint's diagnostics DO gate in CI, via validate. " +
+    'The standalone `bslint` CLI in the aggregate is redundancy, not a gap.',
+};
+
+const WORKFLOW_DIR = '.github/workflows';
+const AGGREGATE = 'lint';
+
+// Expand an npm script to the leaves it ultimately runs. A leaf is a script
+// whose command contains no further `npm run` reference.
+export function expandAggregate(scripts, entry = AGGREGATE) {
+  const leaves = [];
+  const seen = new Set();
+  const walk = (name) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    const cmd = scripts[name];
+    if (cmd === undefined) {
+      leaves.push({ name, cmd: null });
+      return;
+    }
+    const refs = [...cmd.matchAll(/npm run ([a-zA-Z0-9:_-]+)/g)].map((m) => m[1]);
+    if (refs.length === 0) {
+      leaves.push({ name, cmd });
+      return;
+    }
+    refs.forEach(walk);
+  };
+  const top = [...(scripts[entry] ?? '').matchAll(/npm run ([a-zA-Z0-9:_-]+)/g)].map((m) => m[1]);
+  top.forEach(walk);
+  return leaves;
+}
+
+// The `node scripts/...` path a leaf ultimately shells out to, if any. Used so
+// a workflow that calls the script directly still counts as covering the leaf.
+function scriptPathOf(cmd) {
+  const m = /node\s+(scripts\/[\w./-]+)/.exec(cmd ?? '');
+  return m ? m[1] : null;
+}
+
+/**
+ * @param {{scripts: object, workflows: {name: string, text: string}[]}} input
+ * @returns {{missing: object[], staleAllowlist: string[]}}
+ */
+export function check({ scripts, workflows }) {
+  const leaves = expandAggregate(scripts);
+  const blob = workflows.map((w) => w.text).join('\n');
+
+  const covers = (leaf) => {
+    // Trailing guard so `lint:docs` isn't satisfied by a `lint:docs-extra` step.
+    // Script names are [a-zA-Z0-9:_-] only, so none of them need regex escaping.
+    if (new RegExp(`npm run ${leaf.name}(?![\\w:-])`).test(blob)) return true;
+    const p = scriptPathOf(leaf.cmd);
+    return p ? blob.includes(p) : false;
+  };
+
+  const missing = leaves
+    .filter((leaf) => !covers(leaf) && !(leaf.name in LOCAL_ONLY))
+    .map((leaf) => ({ name: leaf.name, cmd: leaf.cmd }));
+
+  // An allowlist entry for a script that IS now in CI (or no longer in the
+  // aggregate) is stale — drop it so the list stays a real decision record.
+  const leafNames = new Set(leaves.map((l) => l.name));
+  const staleAllowlist = Object.keys(LOCAL_ONLY).filter(
+    (n) => !leafNames.has(n) || covers(leaves.find((l) => l.name === n)),
+  );
+
+  return { missing, staleAllowlist };
+}
+
+// ── CLI ────────────────────────────────────────────────────────────────────────
+
+function main() {
+  const argv = process.argv.slice(2);
+  const rootIdx = argv.indexOf('--root');
+  const rootDir = rootIdx >= 0 ? argv[rootIdx + 1] : '.';
+
+  let scripts, workflows;
+  try {
+    scripts = JSON.parse(readFileSync(path.join(rootDir, 'package.json'), 'utf8')).scripts ?? {};
+    const dir = path.join(rootDir, WORKFLOW_DIR);
+    workflows = readdirSync(dir)
+      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+      .map((f) => ({ name: f, text: readFileSync(path.join(dir, f), 'utf8') }));
+  } catch (err) {
+    console.error(`ci-parity: ${err.message}`);
+    process.exit(2);
+  }
+
+  const { missing, staleAllowlist } = check({ scripts, workflows });
+
+  if (staleAllowlist.length > 0) {
+    console.error(
+      'ci-parity: LOCAL_ONLY has stale entries (now covered by CI, or gone from the aggregate):',
+    );
+    for (const n of staleAllowlist) console.error(`  - ${n}`);
+    console.error(
+      '\nRemove them from LOCAL_ONLY so the allowlist stays an accurate decision record.',
+    );
+    process.exit(1);
+  }
+
+  if (missing.length > 0) {
+    console.error(`ci-parity: ${missing.length} check(s) in \`npm run lint\` never run in CI:`);
+    for (const m of missing) console.error(`  - ${m.name}  (${m.cmd ?? '<undefined script>'})`);
+    console.error(
+      '\nCI does NOT run the `npm run lint` aggregate — it is assembled from the per-domain\n' +
+        `reusable workflows under ${WORKFLOW_DIR}/. A check that is only in the aggregate gates\n` +
+        'nothing on a PR.\n\n' +
+        'Fix: add a step to the workflow whose path filter already matches what the check reads\n' +
+        '(a new workflow pair is rarely needed), or — if it is deliberately local-only — add it to\n' +
+        'LOCAL_ONLY in this file WITH a reason.',
+    );
+    process.exit(1);
+  }
+
+  const n = expandAggregate(scripts).length;
+  const allow = Object.keys(LOCAL_ONLY).length;
+  console.log(
+    `ci-parity: all ${n - allow} of ${n} \`npm run lint\` checks have a CI home ` +
+      `(${allow} deliberately local-only) ✓`,
+  );
+}
+
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) main();

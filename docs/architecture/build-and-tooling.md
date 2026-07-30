@@ -375,7 +375,7 @@ Rule for new scripts: net-new top-level CLI scripts go ESM `.js`; plugins and sh
 Notes:
 
 - **`lint:json` (jshint) and Prettier are complementary, not redundant.** jshint catches semantic issues Prettier doesn't (notably duplicate keys in JSON). Prettier catches formatting drift jshint doesn't.
-- **Pre-push runs the project-wide checks**; pre-commit handles file-scoped auto-fix. CI mirrors pre-push.
+- **Pre-push runs the project-wide checks**; pre-commit handles file-scoped auto-fix. **CI does not mirror pre-push** — and it never runs the `npm run lint` aggregate. CI is assembled from the per-domain reusable workflows (`_lint-*.yml`), each with its own path filter, so the two surfaces are wired independently and a check must be added to both. That independence is deliberate (path-filtered parallel jobs keep a docs-only PR from paying a full BrighterScript compile), but it silently cost three checks their CI gate — including the #551 promise ratchet, which blocked nowhere while its own comments claimed otherwise. [`npm run lint:ci-parity`](../../scripts/lint/ci-parity-check.js) now fails when any aggregate member has no CI home, with an explicit `LOCAL_ONLY` allowlist for the deliberate exceptions.
 - **The Prettier ignore list is canonical** — pre-commit and pre-push both invoke `prettier --write` / `--check` and trust `.prettierignore` to filter.
 
 ### Test surface
