@@ -129,8 +129,13 @@ Worst case for any migration batch: revert it; the pool keeps working.
 
 While the two paradigms coexist, the danger is *net-new* spaghetti. [`scripts/lint/promise-ratchet.cjs`](../../scripts/lint/promise-ratchet.cjs)
 counts the banned signature — a raw `.observeField("isDone", …)` on a `submitApiRequest` result, in
-app code, excluding the pool engine + adapter — and fails (in `npm run lint`, so CI-blocking; advisory
-at pre-push) when the count rises above the committed integer in
+app code, excluding the pool engine + adapter — and fails (blocking in the `lint-brightscript` CI
+workflow; advisory at pre-push) when the count rises above the committed integer in
 [`.promise-ratchet-baseline`](../../.promise-ratchet-baseline). The count only moves **down**: each
 migration batch lowers the baseline. When it reaches `0` the ratchet is automatically a hard
 grep-zero guard. The baseline never names which files are "done" — it's a pure count.
+
+> **Historical note.** This paragraph used to read "fails in `npm run lint`, so CI-blocking." That
+> inference was wrong — CI never runs the `npm run lint` aggregate — so the ratchet blocked nothing
+> from the day it landed until it was wired into `lint-brightscript`. `npm run lint:ci-parity` now
+> fails the build if any aggregate member loses its CI home again.
