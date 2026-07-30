@@ -350,3 +350,118 @@ describe('docs-check — signals-backlog schema', () => {
     expect(exitCode).toBe(0);
   });
 });
+
+describe('docs-check — decisions.md supersede chain', () => {
+  let dir;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = null;
+  });
+
+  // A decisions.md note. Pass null for a field to omit it.
+  function note(slug, { status = 'accepted', supersedes = null, supersededBy = null } = {}) {
+    let out = `## decision-id: ${slug}\n\n**date**: 2026-07-30\n`;
+    if (status !== null) out += `**status**: ${status}\n`;
+    if (supersedes) out += `**supersedes**: \`${supersedes}\`\n`;
+    if (supersededBy) out += `**superseded-by**: \`${supersededBy}\`\n`;
+    return out + '\nBody prose.\n\n';
+  }
+
+  const write = (body) => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-decisions-'));
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    writeFileSync(join(dir, 'docs/decisions.md'), `# Decision notes\n\n${body}`);
+    return spawnScript(SCRIPT, [dir, '--json']);
+  };
+
+  const chainErrors = (stdout) =>
+    (JSON.parse(stdout).errors || []).filter((e) => e.category === 'decisions-supersede-chain');
+
+  it('passes on a fully-formed supersede pair', () => {
+    const { exitCode } = write(
+      note('old-one', { status: 'superseded', supersededBy: 'new-one' }) +
+        note('new-one', { supersedes: 'old-one' }),
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it('passes on notes with no supersede relationship at all', () => {
+    const { exitCode } = write(note('a') + note('b'));
+    expect(exitCode).toBe(0);
+  });
+
+  // The failure this gate exists for: the ritual is a three-part edit, and
+  // forgetting the status flip leaves a note claiming to be live when it isn't.
+  it('FAILs when the superseded note still reads `accepted`', () => {
+    const { exitCode, stdout } = write(
+      note('old-one', { status: 'accepted', supersededBy: 'new-one' }) +
+        note('new-one', { supersedes: 'old-one' }),
+    );
+    expect(exitCode).toBe(1);
+    expect(
+      chainErrors(stdout)
+        .map((e) => e.message)
+        .join('\n'),
+    ).toMatch(/flip it to/);
+  });
+
+  it('FAILs when the back-pointer is missing (asymmetric chain)', () => {
+    const { exitCode, stdout } = write(
+      note('old-one', { status: 'superseded' }) + note('new-one', { supersedes: 'old-one' }),
+    );
+    expect(exitCode).toBe(1);
+    expect(
+      chainErrors(stdout)
+        .map((e) => e.message)
+        .join('\n'),
+    ).toMatch(/superseded-by.*is missing/);
+  });
+
+  it('FAILs when `supersedes` points at a slug that does not exist', () => {
+    const { exitCode, stdout } = write(note('new-one', { supersedes: 'ghost-slug' }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/not a decision note in this file/);
+  });
+
+  it('FAILs when `superseded-by` points at a slug that does not exist', () => {
+    const { exitCode, stdout } = write(
+      note('old-one', { status: 'superseded', supersededBy: 'ghost-slug' }),
+    );
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/not a decision note in this file/);
+  });
+
+  it('FAILs on an invalid status enum value', () => {
+    const { exitCode, stdout } = write(note('a', { status: 'kinda-accepted' }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/invalid status "kinda-accepted"/);
+  });
+
+  it('FAILs on a missing status field', () => {
+    const { exitCode, stdout } = write(note('a', { status: null }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/missing a `\*\*status\*\*:` field/);
+  });
+
+  it('FAILs on a self-supersede', () => {
+    const { exitCode, stdout } = write(note('a', { supersedes: 'a' }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/supersedes itself/);
+  });
+
+  // The Format section of decisions.md shows the schema inside a fence.
+  it('ignores note-shaped lines inside code fences', () => {
+    const { exitCode } = write(
+      '```markdown\n## decision-id: example\n\n**status**: not-a-real-status\n```\n\n' + note('a'),
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it('passes silently when decisions.md does not exist', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-decisions-'));
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    const { exitCode } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(exitCode).toBe(0);
+  });
+});

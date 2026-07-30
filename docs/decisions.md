@@ -23,8 +23,25 @@ Don't add an entry for routine bug fixes, obvious choices, or time-bound state.
 Each note is its own `H2` section: `## decision-id: <stable-kebab-slug>`, then
 `**date**` / `**status**` (`accepted` | `superseded` | `withdrawn`), optional
 `**supersedes**` / `**superseded-by**` / `**related-files**`, then 1-2 short
-paragraphs. **Notes are append-only** — a superseded note gets a new note that
-references it; the old one is never mutated.
+paragraphs.
+
+**Notes are append-only in their prose** — a superseded note gets a *new* note
+that references it; you never rewrite the old note's body, and you never insert
+mid-file. The one exception is the **supersede ritual**, which is a three-part
+edit (the same convention [`docs/adr/README.md`](adr/README.md) states for ADRs,
+where a later ADR "supersedes — and flips the status of — the one it supersedes"):
+
+1. the new note declares `**supersedes**: <old-slug>`;
+2. the old note's `**status**` flips `accepted` → `superseded`;
+3. the old note gains `**superseded-by**: <new-slug>`.
+
+Miss any part and the chain lies — a note still reading `accepted` while a
+successor exists is worse than no record at all, since `/catchup` and every
+future reader treat these journals as authoritative. `npm run lint:docs`
+validates the chain (status enum, both pointers resolve, symmetry, no
+self-supersede), so a half-applied ritual fails at push time rather than
+silently. Use [`/log decision`](../.claude/skills/log/SKILL.md), which applies
+all three parts; raw markdown edits to this file are not the sanctioned path.
 
 ## decision-id: signals-backlog-scope
 

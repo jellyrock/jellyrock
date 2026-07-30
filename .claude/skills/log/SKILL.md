@@ -137,7 +137,9 @@ Surface the proposed **routing** (ADR / note / decline) plus the drafted content
 npm run lint:docs
 ```
 
-This validates: every `tech-debt.md#anchor` ref resolves, every relative markdown link in the touched record (`docs/adr/*.md` and `docs/decisions.md`) resolves, the supersede chain is consistent. Exit 0 = clean.
+This validates: every `tech-debt.md#anchor` ref resolves, every relative markdown link in the touched record (`docs/adr/*.md` and `docs/decisions.md`) resolves, and — for `docs/decisions.md` notes — the supersede chain is consistent (valid `status` enum, both `supersedes` / `superseded-by` targets resolve to real slugs, the pointers are symmetric, the superseded note actually reads `superseded`, no self-supersede). Exit 0 = clean.
+
+**ADR supersede chains are NOT machine-checked.** ADRs express supersession as prose in a `**Status:**` line (`Superseded by [ADR 0024](…)`, and the `**Partially superseded by:** ADR 0011 (per-finding-default output only)` variant), which has no field to validate. Get the ADR side right by hand.
 
 ### Step 2-F — Followup
 

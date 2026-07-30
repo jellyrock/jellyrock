@@ -32,6 +32,13 @@
 //     Catches the failure mode where a slug gets removed from
 //     tech-debt.md but anchor refs elsewhere go stale. Surfaced when 4
 //     such refs slipped through the v2.15.0 doc audit.
+//   - The docs/decisions.md supersede chain (see
+//     checkDecisionsSupersedeChain): valid `status` enum, both
+//     `supersedes` / `superseded-by` targets resolve, pointers are
+//     symmetric, no self-supersede. The supersede ritual is a
+//     three-part hand edit, so a half-applied one used to leave the
+//     chain silently lying — and `/log`'s SKILL.md claimed this was
+//     already validated when no such logic existed.
 //
 // What it doesn't check (yet):
 //   - Inline backtick-quoted paths in prose (noise-prone; many false
@@ -45,7 +52,9 @@
 //   --verbose  per-file counts on stdout
 //   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
 //              errors: [{category, file, message, target}]} where category is
-//              one of "broken-related-file", "broken-link", or "stale-anchor".
+//              one of "broken-related-file", "broken-link", "stale-anchor",
+//              "progress-frontmatter", "signals-schema-invalid", or
+//              "decisions-supersede-chain".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
 //
@@ -95,6 +104,9 @@ const SIGNALS_REQUIRED_BULLETS = [
 ];
 const SIGNALS_VALID_STATUSES = ['watching', 'action_pending', 'completed'];
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// docs/decisions.md note statuses, per that file's own Format section.
+const DECISION_VALID_STATUSES = ['accepted', 'superseded', 'withdrawn'];
 
 // ────────────────────────────────────────────────────────────────────
 // Markdown link extraction — relative path links only.
@@ -263,6 +275,124 @@ function checkProgressFrontmatter() {
         'progress.md is missing or has a malformed `last-updated:` frontmatter field (expected ISO YYYY-MM-DD)',
       target: 'last-updated',
     });
+  }
+}
+
+// Supersede-chain integrity for docs/decisions.md.
+//
+// The supersede ritual is a THREE-part edit, applied by hand (or by /log
+// decision): the new note gets `**supersedes**: <old>`, and the old note's
+// `**status**` flips to `superseded` and gains `**superseded-by**: <new>`.
+// Miss any part and the chain lies — a note still reading `accepted` while a
+// successor exists is worse than no record, because /catchup and every future
+// reader treat these journals as authoritative.
+//
+// This was previously claimed to be validated and was not: `/log`'s SKILL.md
+// asserted `npm run lint:docs` checked "the supersede chain is consistent",
+// but no such logic existed anywhere in scripts/.
+//
+// Checks, per note: a valid `status` enum value; every `supersedes` /
+// `superseded-by` target resolves to a real slug; the pointers are symmetric
+// (A supersedes B ⟺ B superseded-by A); a note pointed at by `superseded-by`
+// actually says `superseded`; and no note supersedes itself.
+function checkDecisionsSupersedeChain() {
+  if (!fs.existsSync(DECISIONS_PATH)) return;
+  const lines = fs.readFileSync(DECISIONS_PATH, 'utf8').split(/\r?\n/);
+
+  // Slug order is preserved so errors read top-to-bottom like the file.
+  const notes = new Map();
+  let current = null;
+  let inCodeFence = false;
+
+  const unwrap = (s) => s.trim().replace(/^`|`$/g, '').trim();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) inCodeFence = !inCodeFence;
+    if (inCodeFence) continue;
+
+    const heading = /^##\s+decision-id:\s*(\S+)\s*$/.exec(line);
+    if (heading) {
+      current = {
+        slug: unwrap(heading[1]),
+        line: i + 1,
+        status: null,
+        supersedes: null,
+        supersededBy: null,
+      };
+      notes.set(current.slug, current);
+      continue;
+    }
+    if (!current) continue;
+
+    const field = /^\*\*(status|supersedes|superseded-by)\*\*:\s*(.+)$/.exec(line);
+    if (!field) continue;
+    const value = unwrap(field[2]);
+    if (field[1] === 'status') current.status = value;
+    else if (field[1] === 'supersedes') current.supersedes = value;
+    else current.supersededBy = value;
+  }
+
+  const err = (note, message) =>
+    pushError({
+      category: 'decisions-supersede-chain',
+      file: DECISIONS_PATH,
+      message: `decision note "${note.slug}" (line ${note.line}) ${message}`,
+      target: note.slug,
+    });
+
+  for (const note of notes.values()) {
+    if (note.status === null) {
+      err(note, 'is missing a `**status**:` field');
+    } else if (!DECISION_VALID_STATUSES.includes(note.status)) {
+      err(
+        note,
+        `has invalid status "${note.status}" — must be one of: ${DECISION_VALID_STATUSES.join(', ')}`,
+      );
+    }
+
+    if (note.supersedes) {
+      const target = notes.get(note.supersedes);
+      if (note.supersedes === note.slug) {
+        err(note, 'supersedes itself');
+      } else if (!target) {
+        err(note, `supersedes "${note.supersedes}", which is not a decision note in this file`);
+      } else {
+        if (target.supersededBy !== note.slug) {
+          err(
+            note,
+            `supersedes "${target.slug}", but that note's \`**superseded-by**\` is ` +
+              `${target.supersededBy ? `"${target.supersededBy}"` : 'missing'} — the supersede ` +
+              'ritual is a three-part edit (see docs/decisions.md Format)',
+          );
+        }
+        if (target.status !== 'superseded') {
+          err(
+            note,
+            `supersedes "${target.slug}", but that note still reads \`**status**: ` +
+              `${target.status ?? '(none)'}\` — flip it to \`superseded\``,
+          );
+        }
+      }
+    }
+
+    if (note.supersededBy) {
+      const target = notes.get(note.supersededBy);
+      if (note.supersededBy === note.slug) {
+        err(note, 'is superseded by itself');
+      } else if (!target) {
+        err(
+          note,
+          `is superseded-by "${note.supersededBy}", which is not a decision note in this file`,
+        );
+      } else if (target.supersedes !== note.slug) {
+        err(
+          note,
+          `is superseded-by "${target.slug}", but that note does not declare ` +
+            '`**supersedes**` back — the pointers must be symmetric',
+        );
+      }
+    }
   }
 }
 
@@ -506,6 +636,7 @@ for (const file of findPluginScripts()) {
 // participate in the same accumulator.
 checkProgressFrontmatter();
 checkSignalsSchema();
+checkDecisionsSupersedeChain();
 
 if (JSON_MODE) {
   // Single-line JSON to stdout regardless of pass/fail. Exit code carries
