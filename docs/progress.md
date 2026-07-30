@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-07-25
+last-updated: 2026-07-30
 ---
 
 # Progress
@@ -67,6 +67,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - Expand RTA functional-test screen coverage beyond the current 6 (`userSelect`/`home`/`libraryGrid`/`movieDetails`/`osd`/`trickplay`) to more screens, and make screenshot capture the default for RTA runs (currently `RTA_CAPTURE=1` opt-in) so every covered screen yields a store image. From #642. *(Largely addressed by #621: coverage grew 6→23 website-gallery screens; the "every screen → store image" clause is superseded by `rta-screenshot-store-website-split`.)*
 - Remaining RTA gallery screens after #621 (`personDetails`/`seasonDetails`/`episodeDetails`/`audioDetails` are now done via the `openChildDetailByRowType` content-based row helper). Content-blocked on the richer custom server (zero demo content): `BoxSet`, `Photo`/`PhotoAlbum`, `MusicVideo`, Live TV, OSD per-button dialogs, the non-cast extras rows (trailers/special features/similar), and the `Networks` TV view (the demo's single series has no network — captured as its empty "No Items" state for now).
 - RTA screens `playlistsLibrary` + `playlistDetails` are content-FLAKY: the demo server (`demo.jellyfin.org/stable`) resets hourly and its playlists may be absent/changed, so `findHomeLibraryTile('playlists')` can time out (only `movies`/`tvshows`/`music` guaranteed). Guard/skip these two when no playlists library is present (or seed a playlist), like the other demo-content-dependent screens. Surfaced by the #550 sgRouter PR-hardening RTA run.
+- **The `ws://` `DeviceId` session binding has no end-to-end gate** (#743 follow-up): RTA drives the `https://` demo server (`tests/rta/config.js`), but the `ws://` receiver only runs against an `http://` server (`remoteProtocol.isHttpServer`), so RTA takes the long-poll branch and never exercises the socket at all. The real binding was verified manually against a local 10.11.11 server using a token deliberately minted under a mismatched `DeviceId` (PR #747); `scripts/lint/socket-auth-binding-check.js` now gates only the SOURCE SHAPE those runs validated. Closing the gap needs RTA to target a local `http://` Jellyfin, which conflicts with the demo server's license-clear screenshot role — so the open question is whether a second RTA target is worth standing up.
 
 ### docs
 
