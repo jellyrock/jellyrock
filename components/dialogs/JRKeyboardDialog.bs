@@ -1,0 +1,64 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+sub init()
+  constants = m.global.constants
+
+  ' Theme the built-in dialog chrome from the app palette (replaces the ad-hoc
+  ' hardcoded palettes previously duplicated at each StandardKeyboardDialog site)
+  dlgPalette = createObject("roSGNode", "RSGPalette")
+  dlgPalette.colors = {
+    DialogBackgroundColor: constants.colorBackgroundPrimary,
+    DialogFocusColor: constants.colorPrimary,
+    DialogFocusItemColor: constants.colorTextPrimary,
+    DialogSecondaryTextColor: constants.colorTextSecondary,
+    DialogSecondaryItemColor: constants.colorSecondary,
+    DialogTextColor: constants.colorTextPrimary
+  }
+  m.top.palette = dlgPalette
+
+  m.top.setField("buttons", [translate(translationKeys.ButtonOk), translate(translationKeys.ButtonCancel)])
+
+  m.resolved = false
+  m.top.observeFieldScoped("buttonSelected", "onButtonSelected")
+  m.top.observeFieldScoped("wasClosed", "onWasClosed")
+end sub
+
+sub onSecureChanged()
+  ' setField: BSC cannot resolve fields of the internal node on built-in dialog subtypes
+  editBox = m.top.getField("textEditBox")
+  if isValid(editBox) then editBox.secureMode = m.top.secure
+end sub
+
+sub onButtonSelected()
+  if m.top.getField("buttonSelected") = 0
+    resolveDialog(false)
+  else
+    resolveDialog(true)
+  end if
+  m.top.close = true
+end sub
+
+' Back button (or any close without a button press) — resolve as cancelled so the
+' caller's observer always fires exactly once.
+sub onWasClosed()
+  resolveDialog(true)
+end sub
+
+sub resolveDialog(cancelled as boolean)
+  if m.resolved then return
+  m.resolved = true
+
+  enteredText = ""
+  if not cancelled then enteredText = m.top.getField("text")
+
+  m.top.result = {
+    cancelled: cancelled,
+    confirmed: not cancelled,
+    buttonIndex: -1,
+    optionIndex: -1,
+    buttonText: "",
+    value: enteredText
+  }
+end sub

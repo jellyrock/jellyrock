@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JRListDialog: the JellyRock modal for selecting one item from a longer list
+     (audio tracks, subtitles, video sources — anything past JRDialog's 3-button
+     cap). Same "PC look" chrome as JRDialog: dimmed backdrop, centered panel with
+     title + separator, a scrollable themed list in the body, and a Cancel button
+     BELOW the panel. Appended to the scene by dialogs.bs; per-instance `result`
+     field, same contract as JRDialog (selection lands in result.optionIndex). -->
+<component name="JRListDialog" extends="JRGroup" focusable="true">
+  <children>
+    <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />
+    <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
+    <Rectangle id="separator" height="6" />
+    <JRLabelList id="optionList">
+      <ContentNode id="content" role="content" />
+    </JRLabelList>
+    <TextButton id="cancelButton" />
+  </children>
+  <interface>
+    <!-- Array of option label strings -->
+    <field id="items" type="array" onChange="onItemsChanged" />
+    <field id="title" type="string" onChange="onTitleChanged" />
+    <!-- Item focused when the dialog opens (e.g. the currently active track) -->
+    <field id="defaultIndex" type="integer" value="0" />
+    <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
+    <field id="result" type="assocarray" alwaysNotify="true" />
+    <field id="returnFocusTo" type="node" />
+  </interface>
+</component>

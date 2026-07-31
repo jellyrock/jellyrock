@@ -1,0 +1,159 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Layout constants (shared chrome metrics with JRDialog / OverviewDialog)
+const PANEL_WIDTH = 900
+const PANEL_PADDING = 40
+const TITLE_HEIGHT = 50
+const SEPARATOR_Y = 80
+const LIST_TOP = 115
+const BUTTON_TOP_MARGIN = 20
+const BUTTON_MIN_WIDTH = 200
+const ITEM_HEIGHT = 60
+const ITEM_SPACING = 20
+const MAX_VISIBLE_ROWS = 8
+
+sub init()
+  m.log = new log.Logger("JRListDialog")
+  constants = m.global.constants
+
+  m.panel = m.top.findNode("dialogBackground")
+  m.panel.blendColor = constants.colorBackgroundPrimary
+  m.panel.width = PANEL_WIDTH
+
+  m.titleLabel = m.top.findNode("titleLabel")
+  m.separator = m.top.findNode("separator")
+  m.separator.color = constants.colorBackgroundSecondary
+
+  m.optionList = m.top.findNode("optionList")
+  m.optionList.observeField("itemSelected", "onItemSelected")
+
+  m.cancelButton = m.top.findNode("cancelButton")
+  m.cancelButton.text = translate(translationKeys.ButtonCancel)
+  m.cancelButton.minWidth = BUTTON_MIN_WIDTH
+
+  m.resolved = false
+end sub
+
+sub onTitleChanged()
+  m.titleLabel.text = m.top.title
+end sub
+
+sub onItemsChanged()
+  items = m.top.items
+  if not isValid(items) then return
+
+  content = m.top.findNode("content")
+  ' Rebuild on repeat assignment
+  while content.getChildCount() > 0
+    content.removeChildIndex(0)
+  end while
+  for each item in items
+    row = CreateObject("roSGNode", "ContentNode")
+    row.title = toString(item)
+    content.appendChild(row)
+  end for
+
+  layout()
+
+  if m.top.defaultIndex > 0 and m.top.defaultIndex < items.count()
+    m.optionList.jumpToItem = m.top.defaultIndex
+  end if
+  m.optionList.setFocus(true)
+end sub
+
+sub layout()
+  itemCount = m.top.items.count()
+  visibleRows = itemCount
+  if visibleRows > MAX_VISIBLE_ROWS then visibleRows = MAX_VISIBLE_ROWS
+
+  m.optionList.itemSize = [PANEL_WIDTH - (PANEL_PADDING * 2), ITEM_HEIGHT]
+  m.optionList.itemSpacing = [0, ITEM_SPACING]
+  m.optionList.numRows = visibleRows
+  if itemCount > MAX_VISIBLE_ROWS
+    m.optionList.vertFocusAnimationStyle = "fixedFocusWrap"
+    m.optionList.wrapDividerHeight = 0
+  end if
+
+  listHeight = (visibleRows * ITEM_HEIGHT) + ((visibleRows - 1) * ITEM_SPACING)
+  panelHeight = LIST_TOP + listHeight + PANEL_PADDING
+  panelX = (1920 - PANEL_WIDTH) / 2
+  panelY = (1080 - panelHeight) / 2
+
+  m.panel.translation = [panelX, panelY]
+  m.panel.height = panelHeight
+
+  m.titleLabel.translation = [panelX + PANEL_PADDING, panelY + 25]
+  m.titleLabel.width = PANEL_WIDTH - (PANEL_PADDING * 2)
+  m.titleLabel.height = TITLE_HEIGHT
+  m.separator.translation = [panelX + PANEL_PADDING, panelY + SEPARATOR_Y]
+  m.separator.width = PANEL_WIDTH - (PANEL_PADDING * 2)
+
+  m.optionList.translation = [panelX + PANEL_PADDING, panelY + LIST_TOP]
+
+  m.cancelButton.translation = [(1920 - BUTTON_MIN_WIDTH) / 2, panelY + panelHeight + BUTTON_TOP_MARGIN]
+end sub
+
+sub onItemSelected()
+  resolveDialog(m.optionList.itemSelected)
+end sub
+
+' Resolve exactly once, then close. index = -1 means cancelled (back / Cancel button).
+sub resolveDialog(index as integer)
+  if m.resolved then return
+  m.resolved = true
+
+  buttonText = ""
+  if index < 0 then buttonText = translate(translationKeys.ButtonCancel)
+
+  m.top.result = {
+    cancelled: index < 0,
+    confirmed: false,
+    buttonIndex: -1,
+    optionIndex: index,
+    buttonText: buttonText,
+    value: ""
+  }
+
+  closeDialog()
+end sub
+
+' Same close mechanics as JRDialog / OverviewDialog: removeChild + returnFocusTo.
+sub closeDialog()
+  returnFocusTo = m.top.returnFocusTo
+  parent = m.top.getParent()
+  if isValid(parent) then parent.removeChild(m.top)
+  if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  if key = "back"
+    resolveDialog(-1)
+    return true
+  end if
+
+  if key = "OK" and m.cancelButton.hasFocus()
+    resolveDialog(-1)
+    return true
+  end if
+
+  ' DOWN from the last list item moves to the Cancel button (the list consumes
+  ' downs while it can still move; only the bubbled-out ones land here)
+  if key = "down"
+    if not m.cancelButton.hasFocus() then m.cancelButton.setFocus(true)
+    return true
+  end if
+
+  ' UP from the Cancel button returns to the list
+  if key = "up"
+    if m.cancelButton.hasFocus() then m.optionList.setFocus(true)
+    return true
+  end if
+
+  ' Modal containment: nothing else escapes to the scene behind us
+  return true
+end function

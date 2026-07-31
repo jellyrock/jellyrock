@@ -4,6 +4,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -98,7 +99,7 @@ sub onHexKeyGridSubmit()
 
   ' Validate hex color input
   if not isValidHexColor(newValue)
-    m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ErrorInvalidColor), translate(translationKeys.LabelPleaseEnterExactly6HexCharacters09A))
+    showAlertDialog(translate(translationKeys.ErrorInvalidColor), translate(translationKeys.LabelPleaseEnterExactly6HexCharacters09A))
     return
   end if
 
@@ -181,7 +182,7 @@ sub onAlphaKeyGridSubmit()
   end if
 
   if not isValidCode
-    m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ErrorInvalidLanguageCode), translate(translationKeys.MessagePleaseEnterExactly3LettersEG))
+    showAlertDialog(translate(translationKeys.ErrorInvalidLanguageCode), translate(translationKeys.MessagePleaseEnterExactly3LettersEG))
     return
   end if
 

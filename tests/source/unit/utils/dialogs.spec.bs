@@ -1,0 +1,45 @@
+import "pkg:/source/utils/dialogs.bs"
+
+namespace tests
+
+  @suite("dialogs.bs helpers - choice routing heuristic")
+  class DialogsUtilTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("choicesFitAsButtons")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts 2 short choices")
+    function _()
+      m.assertTrue(choicesFitAsButtons(["Resume", "Start Over"]))
+    end function
+
+    @it("accepts 3 short choices")
+    function _()
+      m.assertTrue(choicesFitAsButtons(["Resume", "Start Over", "Cancel"]))
+    end function
+
+    @it("rejects 4+ choices regardless of width")
+    function _()
+      m.assertFalse(choicesFitAsButtons(["A", "B", "C", "D"]))
+    end function
+
+    @it("rejects an empty choice set")
+    function _()
+      m.assertFalse(choicesFitAsButtons([]))
+    end function
+
+    @it("rejects invalid input")
+    function _()
+      m.assertFalse(choicesFitAsButtons(invalid))
+    end function
+
+    @it("rejects 3 very wide labels (measured overflow falls back to list)")
+    function _()
+      wide = "This is an extremely long translated button label that cannot possibly fit"
+      m.assertFalse(choicesFitAsButtons([wide, wide, wide]))
+    end function
+
+  end class
+
+end namespace

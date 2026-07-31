@@ -1,0 +1,203 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+' Layout constants (mirrors OverviewDialog's chrome metrics)
+const PANEL_WIDTH = 900
+const PANEL_PADDING = 40
+const TITLE_HEIGHT = 50
+const SEPARATOR_Y = 80
+const TEXT_TOP = 115
+const BUTTON_TOP_MARGIN = 20
+const BUTTON_MIN_WIDTH = 200
+const MAX_BUTTONS = 3
+
+sub init()
+  m.log = new log.Logger("JRDialog")
+  constants = m.global.constants
+
+  m.panel = m.top.findNode("dialogBackground")
+  m.panel.blendColor = constants.colorBackgroundPrimary
+  m.panel.width = PANEL_WIDTH
+
+  m.titleLabel = m.top.findNode("titleLabel")
+  m.separator = m.top.findNode("separator")
+  m.separator.color = constants.colorBackgroundSecondary
+
+  m.messageText = m.top.findNode("messageText")
+  m.messageText.width = PANEL_WIDTH - (PANEL_PADDING * 2)
+  m.messageText.maxLines = 20
+  ' Layout depends on the rendered message height — recompute when it settles
+  m.messageText.enableRenderTracking = true
+  m.messageText.observeField("renderTracking", "onMessageRendered")
+
+  m.buttonRow = m.top.findNode("buttonRow")
+  ' The row's width settles asynchronously as TextButtons size to their labels —
+  ' recenter it whenever the rendered bounds change
+  m.buttonRow.enableRenderTracking = true
+  m.buttonRow.observeField("renderTracking", "onButtonRowRendered")
+
+  m.buttonNodes = []
+  m.focusIndex = 0
+  m.resolved = false
+
+  layout()
+end sub
+
+sub onTitleChanged()
+  m.titleLabel.text = m.top.title
+  layout()
+end sub
+
+sub onMessageChanged()
+  m.messageText.text = m.top.message
+  ' renderTracking fires once the new text lays out; layout() runs then
+end sub
+
+sub onMessageRendered()
+  layout()
+end sub
+
+sub onButtonsChanged()
+  labels = m.top.buttons
+  if not isValid(labels) then return
+  if labels.count() > MAX_BUTTONS
+    m.log.warn("JRDialog given", labels.count(), "buttons; design cap is", MAX_BUTTONS, "- use JRListDialog (showListDialog) for longer option sets")
+  end if
+
+  ' Rebuild the row
+  while m.buttonRow.getChildCount() > 0
+    m.buttonRow.removeChildIndex(0)
+  end while
+  m.buttonNodes = []
+
+  for each label in labels
+    btn = CreateObject("roSGNode", "TextButton")
+    btn.text = label
+    btn.minWidth = BUTTON_MIN_WIDTH
+    m.buttonRow.appendChild(btn)
+    m.buttonNodes.push(btn)
+  end for
+
+  m.focusIndex = m.top.defaultButtonIndex
+  if m.focusIndex < 0 or m.focusIndex >= m.buttonNodes.count() then m.focusIndex = 0
+  layout()
+end sub
+
+sub onButtonRowRendered()
+  centerButtonRow()
+end sub
+
+' Position the chrome. Called on any content change; safe to run repeatedly.
+sub layout()
+  hasTitle = m.top.title.len() > 0
+  textTop = TEXT_TOP
+  if not hasTitle then textTop = PANEL_PADDING
+
+  textHeight = 0
+  if m.top.message.len() > 0
+    rect = m.messageText.localBoundingRect()
+    textHeight = rect.height
+    ' Not rendered yet — renderTracking will re-run layout() when it settles
+    if textHeight = 0 then return
+  end if
+
+  panelHeight = textTop + textHeight + PANEL_PADDING
+  panelX = (1920 - PANEL_WIDTH) / 2
+  panelY = (1080 - panelHeight) / 2
+
+  m.panel.translation = [panelX, panelY]
+  m.panel.height = panelHeight
+
+  m.titleLabel.visible = hasTitle
+  m.separator.visible = hasTitle
+  if hasTitle
+    m.titleLabel.translation = [panelX + PANEL_PADDING, panelY + 25]
+    m.titleLabel.width = PANEL_WIDTH - (PANEL_PADDING * 2)
+    m.titleLabel.height = TITLE_HEIGHT
+    m.separator.translation = [panelX + PANEL_PADDING, panelY + SEPARATOR_Y]
+    m.separator.width = PANEL_WIDTH - (PANEL_PADDING * 2)
+  end if
+
+  m.messageText.translation = [panelX + PANEL_PADDING, panelY + textTop]
+
+  m.buttonRowY = panelY + panelHeight + BUTTON_TOP_MARGIN
+  centerButtonRow()
+  focusButton(m.focusIndex)
+end sub
+
+' Horizontally center the button row under the panel. Runs again whenever the
+' row's rendered width changes (TextButtons size themselves to their labels).
+sub centerButtonRow()
+  if not isValid(m.buttonRowY) then return
+  rect = m.buttonRow.localBoundingRect()
+  rowWidth = rect.width
+  if rowWidth = 0 then return
+  m.buttonRow.translation = [(1920 - rowWidth) / 2, m.buttonRowY]
+end sub
+
+sub focusButton(index as integer)
+  if m.buttonNodes.count() = 0 then return
+  if index < 0 then index = 0
+  if index >= m.buttonNodes.count() then index = m.buttonNodes.count() - 1
+  m.focusIndex = index
+  m.buttonNodes[index].setFocus(true)
+end sub
+
+' Resolve the dialog exactly once, then close. index = -1 means cancelled (back).
+sub resolveDialog(index as integer)
+  if m.resolved then return
+  m.resolved = true
+
+  buttonText = ""
+  if index >= 0 and index < m.top.buttons.count() then buttonText = m.top.buttons[index]
+
+  ' optionIndex mirrors buttonIndex: for choice dialogs the buttons ARE the
+  ' options, so showChoiceDialog callers read result.optionIndex on both routes
+  m.top.result = {
+    cancelled: index < 0,
+    confirmed: index >= 0 and index = m.top.confirmIndex,
+    buttonIndex: index,
+    optionIndex: index,
+    buttonText: buttonText,
+    value: ""
+  }
+
+  closeDialog()
+end sub
+
+' Dismiss this overlay. Appended directly to the scene by dialogs.bs, so closing is a
+' removeChild from our parent + restoring focus to the opener (returnFocusTo).
+' Mirrors OverviewDialog.closeDialog().
+sub closeDialog()
+  returnFocusTo = m.top.returnFocusTo
+  parent = m.top.getParent()
+  if isValid(parent) then parent.removeChild(m.top)
+  if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  if key = "back"
+    resolveDialog(-1)
+    return true
+  end if
+
+  if key = "left"
+    focusButton(m.focusIndex - 1)
+    return true
+  end if
+
+  if key = "right"
+    focusButton(m.focusIndex + 1)
+    return true
+  end if
+
+  if key = "OK"
+    resolveDialog(m.focusIndex)
+    return true
+  end if
+
+  ' Modal containment: nothing else escapes to the scene behind us
+  return true
+end function

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JRKeyboardDialog: text-entry dialog with the standard JellyRock result contract.
+     Wraps Roku's StandardKeyboardDialog (the OS on-screen keyboard with voice entry —
+     certification requires Roku's keyboard components for password/email entry), themed
+     via RSGPalette from the global constants. Unlike JRDialog/JRListDialog this is a
+     Roku MODAL: dialogs.bs shows it via m.scene.dialog, not a scene-appended overlay.
+     Entered text lands in result.value; cancel/back yields result.cancelled = true.
+     A later phase may swap the internals for a DynamicKeyboard embedded in the
+     JRDialog chrome — the helper API and result contract stay the same. -->
+<component name="JRKeyboardDialog" extends="StandardKeyboardDialog">
+  <interface>
+    <!-- Set exactly once when the dialog resolves (OK / Cancel / back).
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
+    <field id="result" type="assocarray" alwaysNotify="true" />
+    <!-- Mask input (passwords). Sets the internal VoiceTextEditBox secureMode. -->
+    <field id="secure" type="boolean" value="false" onChange="onSecureChanged" />
+  </interface>
+</component>
