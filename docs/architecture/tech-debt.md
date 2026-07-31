@@ -253,8 +253,9 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `components/data/SceneManager.bs`
 - **issue**: All dialogs write to the same `returnData` field. Risk of cross-dialog observers firing on stale data.
-- **mitigation (partial, #550)**: `main.bs`'s `returnData` handler is now gated on the `isPendingServerSwitch` / `isPendingExitConfirmation` / `isPendingPlaybackOptions` flags, so it no longer cross-fires on dialogs owned by routed views. The structural risk (a single shared field) remains.
-- **direction**: Make every `returnData` observer check a dialog-identity discriminator before acting (`PlayerHostView` already does via `returnData.type` — make it universal), or give each dialog its own return field. Touches `SceneManager` + ~6 consumers (`PlayerHostView`, `ItemDetails`, `settings`, `RadioDialog`, `main.bs`, `replayRoute`). A focused follow-up PR, not folded into nav work.
+- **mitigation (partial, #550)**: `main.bs`'s `returnData` handler is gated on the `isPendingServerSwitch` / `isPendingExitConfirmation` / `isPendingPlaybackOptions` flags, so it no longer cross-fires on dialogs owned by routed views.
+- **mitigation (partial, `standard-dialogs` PR)**: The standardized dialog system (`components/dialogs/` `JRDialog` / `JRListDialog` / `JRKeyboardDialog` + `source/utils/dialogs.bs` helpers) delivers results through a per-dialog-instance `result` field, decoupled from `SceneManager.returnData`. `ItemDetails.bs` and `components/settings/settings.bs` are migrated; the shared field remains for `PlayerHostView`, `loginRouter`, `replayRoute`, `remoteDispatch`, `main.bs`'s pending-flag flows, the `ConfigList` / `SetServerScreen` keyboard sites, QuickConnect, and `OverviewDialog` — deliberately deferred to phases 2-3 tracked on #288.
+- **direction**: Continue the #288 phase 2-3 migration — move the remaining consumers onto the `JRDialog` family, then delete the shared `returnData` / `isDataReturned` machinery (and the `SceneManager` dialog methods) from `SceneManager`.
 
 #### `bsconfig-files-duplicated`
 
