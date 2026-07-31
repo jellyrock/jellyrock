@@ -38,7 +38,7 @@ jobs:
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
-          pattern: '^source/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/lint/apiversion-consistency-check\.js$|^scripts/generate/findings-candidates\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
+          pattern: '^source/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/lint/apiversion-consistency-check\.js$|^scripts/generate/findings-candidates\.js$|^scripts/generate/api-usage-manifest\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
           force: ${{ inputs.force }}
       - name: Setup Node.js
         if: steps.detect.outputs.relevant == 'true'
@@ -58,3 +58,10 @@ jobs:
       - name: Check apiVersion twin consistency (boundaries ↔ resolveApiVersion)
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:apiversion-consistency
+      # The API usage manifest is an INPUT to this job's own path filter — floor
+      # analysis reasons over it — so stale drift here corrupts the checks above.
+      # Pre-push regenerates it as an auto-fix, but that is skipped on a dirty tree
+      # and bypassed by --no-verify or a GitHub-UI edit; this is the real gate.
+      - name: Check API usage manifest drift
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run docs:api-manifest:check

@@ -17,8 +17,11 @@ jobs:
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
-          # Mirrors the previous event-time paths filter (**/*.brs, **/*.bs).
-          pattern: '\.(brs|bs)$'
+          # Mirrors the previous event-time paths filter (**/*.brs, **/*.bs), plus
+          # the two non-source inputs the checks below read: the promise-ratchet's
+          # committed baseline (a PR that only edits the integer must re-run the
+          # ratchet) and the ratchet script itself.
+          pattern: '\.(brs|bs)$|^\.promise-ratchet-baseline$|^scripts/lint/promise-ratchet\.cjs$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'
@@ -49,3 +52,10 @@ jobs:
       - name: Check ws:// DeviceId binding is intact
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:socket-auth-binding
+      # #551 anti-backslide ratchet: FAILs when net-new raw `observeField("isDone")`
+      # observer-spaghetti lands against the committed baseline. Advisory at pre-push
+      # (`|| true`) so a local push isn't blocked — this is where it actually blocks.
+      # It scans .bs sources, which this job's path filter already matches.
+      - name: Check promise-adoption ratchet
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:promise-ratchet

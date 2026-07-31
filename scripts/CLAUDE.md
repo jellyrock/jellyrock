@@ -77,7 +77,14 @@ needs to come first.
 - **jshint** (kept) catches duplicate-key bugs and validates JSON syntax on the
   broader set.
 - Pre-commit (`lint-staged`) auto-fixes file-scoped issues; pre-push runs the
-  project-wide checks; CI mirrors pre-push.
+  project-wide checks. **CI does not mirror pre-push, and does not run
+  `npm run lint`** — it is assembled from the per-domain reusable workflows under
+  `.github/workflows/_lint-*.yml`, each with its own path filter. A new check
+  therefore needs wiring in BOTH places. `npm run lint:ci-parity`
+  ([`scripts/lint/ci-parity-check.js`](lint/ci-parity-check.js)) fails the build
+  when a member of the `lint` aggregate has no CI home, so this can't silently
+  drift — but it can't tell you *which* workflow is the right home. Pick the one
+  whose path filter already matches what your check reads.
 
 ## Tests
 

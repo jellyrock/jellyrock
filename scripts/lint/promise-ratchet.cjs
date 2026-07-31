@@ -47,6 +47,17 @@
 //   baseline == 0     → the ratchet has automatically become a hard grep-zero
 //                       guard: any reintroduction trips `count > baseline`.
 //
+// WHERE IT RUNS (the exit codes above only matter where something reads them)
+// ---------------------------------------------------------------------------
+//   CI       → the `lint-brightscript` workflow, BLOCKING. This is the real gate.
+//   pre-push → advisory (`|| true`) so a local push isn't blocked.
+//
+// Historical note: this ratchet spent its early life blocking NOTHING. It was in
+// the `npm run lint` aggregate and run `|| true` at pre-push, and .husky/pre-push
+// asserted CI enforced it "because it's in `npm run lint`" — but CI never runs the
+// aggregate; it runs the per-domain reusable workflows. `scripts/lint/ci-parity-check.js`
+// now fails the build if any aggregate member loses its CI home like this again.
+//
 // USAGE
 //   node scripts/lint/promise-ratchet.cjs [--root <dir>]
 //   --root defaults to the current working directory (the repo root in CI / hooks).
