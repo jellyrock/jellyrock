@@ -1,7 +1,7 @@
 {
   "name": "jellyrock",
   "type": "module",
-  "version": "2.24.1",
+  "version": "2.24.2",
   "description": "Roku client for Jellyfin media server",
   "dependencies": {
     "@rokucommunity/bslib": "0.1.1",
