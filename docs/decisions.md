@@ -22,14 +22,18 @@ Don't add an entry for routine bug fixes, obvious choices, or time-bound state.
 
 Each note is its own `H2` section: `## decision-id: <stable-kebab-slug>`, then
 `**date**` / `**status**` (`accepted` | `superseded` | `withdrawn`), optional
-`**supersedes**` / `**superseded-by**` / `**related-files**`, then 1-2 short
-paragraphs.
+`**supersedes**` / `**superseded-by**` / `**partially-supersedes**` /
+`**partially-superseded-by**` / `**related-files**`, then 1-2 short paragraphs.
+Slugs are unique, each field appears at most once, and **fields must sit in the
+contiguous block directly under the heading** — the linter stops reading at the
+first line of prose.
 
 **Notes are append-only in their prose** — a superseded note gets a *new* note
 that references it; you never rewrite the old note's body, and you never insert
 mid-file. The one exception is the **supersede ritual**, which is a three-part
-edit (the same convention [`docs/adr/README.md`](adr/README.md) states for ADRs,
-where a later ADR "supersedes — and flips the status of — the one it supersedes"):
+edit. [`docs/adr/README.md`](adr/README.md) states the same convention for ADRs:
+a later decision "is written as a new ADR that references (and flips the status
+of) the one it supersedes."
 
 1. the new note declares `**supersedes**: <old-slug>`;
 2. the old note's `**status**` flips `accepted` → `superseded`;
@@ -37,11 +41,45 @@ where a later ADR "supersedes — and flips the status of — the one it superse
 
 Miss any part and the chain lies — a note still reading `accepted` while a
 successor exists is worse than no record at all, since `/catchup` and every
-future reader treat these journals as authoritative. `npm run lint:docs`
-validates the chain (status enum, both pointers resolve, symmetry, no
-self-supersede), so a half-applied ritual fails at push time rather than
-silently. Use [`/log decision`](../.claude/skills/log/SKILL.md), which applies
-all three parts; raw markdown edits to this file are not the sanctioned path.
+future reader treat these journals as authoritative. The same holds in reverse:
+a note reading `superseded` that names no successor leaves a reader no way to
+find what replaced it.
+
+### Partial supersedes, and the two statuses that aren't `accepted`
+
+When only *part* of a note is replaced, the full ritual would be a lie — the
+rest of it is still live. Use the partial pair instead, and leave **both notes
+`accepted`**. This mirrors what the ADR tier already does ([ADR 0003](adr/0003-icons-material-rounded-house-style.md)
+/ [0004](adr/0004-icons-outlined-by-default.md), [ADR 0008](adr/0008-server-upgrade-issue-filing.md)
+/ [0011](adr/0011-server-upgrade-phase6.md)), where the partially-superseded
+record keeps `**Status:** Accepted`:
+
+- the successor declares `**partially-supersedes**: <old-slug> (<what moved>)`;
+- the predecessor gains `**partially-superseded-by**: <new-slug> (<what moved>)`.
+
+The scope annotation is **required** — a partial supersede that doesn't say
+which part moved isn't a usable record. A note can be partially superseded by
+one record and later fully superseded by another; both relationships coexist.
+
+`**status**: withdrawn` is **terminal**: the decision was abandoned rather than
+replaced, so a withdrawn note has no successor. It can neither be superseded nor
+supersede anything — those are different fates, and collapsing them loses the
+distinction between "we changed our minds" and "we replaced this."
+
+Every pointer resolves **within this file**. A note superseded by an *ADR* has
+no field for it — cross-tier relationships are written as prose markdown links
+(`Refines [ADR 0023](adr/0023-cold-launch-cast-producer.md)`), which the link
+checker already validates. If a note has grown ADR-grade, that promotion is a
+judgment call for [`/log decision`](../.claude/skills/log/SKILL.md), not a
+field.
+
+`npm run lint:docs` validates all of the above — unique slugs, one value per
+field, the status enum, both pairs resolving and symmetric, `superseded` naming
+its successor, `withdrawn` staying terminal, and nothing pointing at itself — so
+a half-applied ritual fails at push time rather than silently. ADR supersede
+chains are prose and are **not** machine-checked. Use
+[`/log decision`](../.claude/skills/log/SKILL.md), which applies all three
+parts; raw markdown edits to this file are not the sanctioned path.
 
 ## decision-id: signals-backlog-scope
 
@@ -146,6 +184,16 @@ Decision: **the advertised `DeviceId` is authoritative, and every channel that o
 CI does **not** run the `npm run lint` aggregate and will not be changed to. It stays assembled from ~11 path-filtered per-domain reusable workflows (`_lint-*.yml`), and the two surfaces are kept honest by a meta-gate — [`scripts/lint/ci-parity-check.js`](../scripts/lint/ci-parity-check.js) fails when any aggregate member has no CI home, with a `LOCAL_ONLY` allowlist that requires a written reason per entry and treats a stale entry as a failure. The problem this solves was real and had been live for a long time: three checks (`lint:promise-ratchet`, `docs:api-manifest:check`, `lint:dictionary`) were in the aggregate and in no workflow, so they gated nothing — and `.husky/pre-push`, `promise-ratchet.cjs`, `scripts/CLAUDE.md`, `build-and-tooling.md` and `async.md` all asserted the opposite, four of them by inferring "it's in `npm run lint`, therefore CI-blocking." The #551 anti-backslide ratchet in particular blocked nothing from the day it landed.
 
 Ruled out: **making CI run `npm run lint` in one job**, which is the obvious fix and genuinely tempting ("CI runs exactly what you run", and the whole class disappears). Rejected on cost: the aggregate includes `validate` (a full BrighterScript compile) plus Prettier and spellcheck over the whole tree, which today run as parallel path-filtered jobs. Collapsing them means a docs-only PR pays a full BSC compile, CI wall-clock rises materially, and 11 granular job results become one opaque red "lint" — a real DX regression traded for conceptual tidiness. The meta-gate buys the same guarantee at the cost of one small script that uses only the Node standard library — no new dependency, and no `npm ci` added to the job that runs it. Also ruled out: fixing the three gaps without the gate (leaves the class intact — the next check added to the aggregate silently repeats it). Accepted trade-off: a new check must still be wired in **both** places by hand; the gate catches the omission but can't pick the right workflow, so the docs now say so explicitly. Two known residual gaps, both filed as [`ci-path-filters-unverified`](architecture/tech-debt.md#ci-path-filters-unverified): the gate proves a check has *a* CI home, but not that that home's path filter actually matches the files the check reads, nor that its status-check context is **required** on `main` (a non-required context runs and reports red without blocking a merge — `floor-system` and `issue-templates` were both in that state, and were added to branch protection alongside this change). Directly mirrors [`validate-deps-workflow-sync.cjs`](../scripts/lint/validate-deps-workflow-sync.cjs), which guards the same class one layer down, and is wired beside it in `_lint-docs.yml`.
+
+## decision-id: decisions-supersede-schema
+
+**date**: 2026-07-31
+**status**: accepted
+**related-files**: `docs/decisions.md`, `scripts/lint/docs-check.cjs`, `.claude/skills/log/SKILL.md`, `.claude/skills/docs-lint/SKILL.md`, `docs/architecture/build-and-tooling.md`
+
+`docs/decisions.md` recognizes **two** validated supersede shapes rather than one. The **full** ritual is the three-part edit it always was — the successor declares `**supersedes**`, and the predecessor flips to `**status**: superseded` and gains `**superseded-by**`. The **partial** shape is new: when only part of a note is replaced, both records stay `accepted` because both are still live, and the relationship is carried by `**partially-supersedes**` / `**partially-superseded-by**`, each requiring a `(scope)` annotation naming what moved. That mirrors the ADR tier, where [ADR 0003](adr/0003-icons-material-rounded-house-style.md)/[0004](adr/0004-icons-outlined-by-default.md) and [ADR 0008](adr/0008-server-upgrade-issue-filing.md)/[0011](adr/0011-server-upgrade-phase6.md) both keep `**Status:** Accepted` on the partially-superseded record. `withdrawn` is terminal — abandoned, not replaced — so a withdrawn note can neither be superseded nor supersede anything; collapsing the two would lose the distinction between "we changed our minds" and "we replaced this." Every pointer resolves to a slug **within this file**; note↔ADR relationships stay prose markdown links, which the link checker already validates. [`docs-check.cjs`](../scripts/lint/docs-check.cjs) enforces all of it under category `decisions-supersede-chain`.
+
+Ruled out: **forbidding partial supersede in notes and routing it to an ADR.** Cheaper — a message string instead of two fields — and defensible on evidence, since no note has ever needed one. Rejected on the shape of the bad path: an author who genuinely has a partly-replaced note hits a hard push failure whose only sanctioned remedies are promoting a two-paragraph note to a numbered ADR (wrong-sized) or marking it fully `superseded` — and the second passes the gate silently while destroying the "still partly live" truth. A gate that makes the journal-corrupting move the path of least resistance re-introduces exactly the harm it was built to prevent. The ADR tier's base rate pointed the same way: of its three supersede events, two are partial. Also ruled out: **letting `**superseded-by**` accept an ADR target.** It would invent a second cross-tier mechanism beside the prose-link convention already in constant use in both directions, for a lifecycle with zero instances — no note has ever been promoted out of this file, and `/log`'s one-tap "promote to an ADR" is capture-time routing of a *new* record, not a lifecycle on an existing one. Accepted trade-off: the partial fields may go unused; that cost is two fields in a validator, against a failure mode that corrupts the journal.
 
 ## Migrated to ADRs
 
