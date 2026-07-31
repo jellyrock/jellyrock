@@ -213,10 +213,12 @@ end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
   ' Debug-only: up-up-down-down cheat code on key UP events to cycle test toasts.
-  ' Key UP (press=false) always bubbles to JRScene because all child components
-  ' return false for press=false. This guarantees the sequence is tracked regardless
-  ' of which screen has focus. Compiled out in production (bs_const=debug=false).
-  ' See docs/dev/debug-flags.md.
+  ' KNOWN LIMITATION (verified on-device 2026-07): key-up events from routed views no
+  ' longer reach JRScene — Roku built-ins (RowList) consume releases for keys they
+  ' handle, and the sgRouter Outlet consumes every release that bubbles out of a routed
+  ' view. The sequence only registers while focus is OUTSIDE the outlet subtree (e.g.
+  ' the overhang), so treat this cheat as unreliable; prefer the testToast field
+  ' (see docs/dev/debug-flags.md). Compiled out in production (bs_const=debug=false).
   #if debug
     if not press
       now = CreateObject("roDateTime").asSeconds()

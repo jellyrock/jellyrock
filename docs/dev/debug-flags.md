@@ -28,9 +28,11 @@ JellyRock includes a compile-time debug system for testing error paths, toast no
 
 ## Quick Start
 
-### Test a Toast Visually (Cheat Code)
+### Test a Toast Visually (Cheat Code — currently unreliable)
 
 Enter **up, up, down, down** on the d-pad within 2 seconds. Each activation cycles through error → success → warning → info toast types. This requires a debug build (`bs_const=debug=true`).
+
+> **Known limitation (verified on-device 2026-07):** the sequence no longer registers on routed screens — Roku built-ins (`RowList`) consume key-releases for keys they handle, and the sgRouter `Outlet` consumes every release that bubbles out of a routed view, so the key-ups never reach `JRScene`. It only fires while focus is outside the outlet subtree (e.g. the overhang). Prefer the `testToast` paths below.
 
 ### Test a Toast Visually (Console)
 
@@ -64,11 +66,19 @@ m.global.debug.shouldForceFiltersFail = false
 
 ## Toast Testing
 
-### Cheat Code (Recommended)
+### Cheat Code (currently unreliable — see Quick Start note)
 
-In a debug build, enter **up, up, down, down** on the d-pad within 2 seconds to trigger a test toast. Each activation cycles through error → success → warning → info. This works while the app is running normally — no console or breakpoint needed.
+In a debug build, enter **up, up, down, down** on the d-pad within 2 seconds to trigger a test toast. Each activation cycles through error → success → warning → info. **Currently only fires while focus is outside the router outlet subtree** (e.g. the overhang) — key-releases from routed content are consumed before they reach `JRScene` (`RowList` + sgRouter `Outlet`; see the comment above `onKeyEvent` in `components/JRScene.bs`).
 
 **Compiled out in production** via `#if debug`.
+
+### RTA / ODC (live, no breakpoint)
+
+With an RTA build deployed (`npm run test:rta` family), the on-device component can set the `testToast` scene field while the app runs normally:
+
+```js
+await odc.setValue({ base: 'scene', keyPath: 'testToast', value: 'success|Item saved' });
+```
 
 ### `testToast` Field (Console Fallback)
 

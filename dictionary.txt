@@ -520,6 +520,8 @@ subfolder
 subfolders
 Subfolders
 substring
+subtree
+subtrees
 subtype
 subtypes
 supersampling

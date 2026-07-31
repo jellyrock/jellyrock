@@ -44,7 +44,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - Signature: `function onKeyEvent(key as string, press as boolean) as boolean`.
 - `return true` consumes the event; no further bubbling.
 - `return false` (or no return) bubbles to the parent.
-- Convention: child components return `false` for `press = false` so UP-key events reliably bubble up to `JRScene` (used by the up-up-down-down debug cheat code).
+- Convention: child components return `false` for `press = false` so key-release events can bubble. **Do not build features on key-ups reaching `JRScene`, though** — verified on-device (2026-07): Roku built-ins (e.g. `RowList`) consume releases for keys they handle, and the vendored sgRouter `Outlet` consumes every release that bubbles out of a routed view. This is why the up-up-down-down debug cheat code no longer fires on routed screens; see `docs/dev/debug-flags.md` for working toast-test paths.
 
 ## Common patterns
 
