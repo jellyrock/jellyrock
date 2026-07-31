@@ -668,6 +668,103 @@ class ApiClient
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
+  ' SUBTITLE ENDPOINTS
+  '
+  ' Server-side subtitle search / download / delete (issue #750). All three
+  ' routes exist unchanged at the 10.7.0 floor, so there is NO V1/V2 branching
+  ' here — verified against the spec fingerprints for both 10.7.0 and 10.11.8.
+  '
+  ' The PERMISSION model, however, IS version-dependent, and that gate lives in
+  ' remoteSubtitles.bs (canSearchSubtitles / canDeleteSubtitles) rather than
+  ' here, because it is pure and unit-testable. Summary of what the server
+  ' enforces (measured on a live 10.11.11 server, see remoteSubtitles.bs):
+  '   * search + download: DefaultAuthorization on 10.7-10.8 (any user);
+  '     Policies.SubtitleManagement on 10.9+ (admins bypass it).
+  '   * delete: Policies.RequiresElevation (admin) on EVERY version.
+  '
+  ' Search is only meaningful for Movie and Episode — the server returns an
+  ' empty array for any other Video type, and 404 for a non-Video item (e.g. a
+  ' BoxSet), because the controller resolves the item as GetItemById<Video>.
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA to search a server's configured subtitle providers, for
+  ' use with fetchRes() or fetchJson(). Returns an array of RemoteSubtitleInfo.
+  '
+  ' `language` is passed straight through to the server, which resolves it via
+  ' LocalizationManager.FindLanguageInfo() — that matches case-insensitively on
+  ' DisplayName, Name, TwoLetterISOLanguageName, OR either ISO 639-2 variant
+  ' (/T and /B both live in ThreeLetterISOLanguageNames). So "fra", "fre", "fr"
+  ' and "French" are all accepted. Prefer the TWO-letter form from
+  ' /Localization/Cultures: it is what reaches the provider, and it preserves
+  ' regional variants that the 3-letter form collapses (zh-tw / zh-cn / zh-hk
+  ' all share "zho"; es-419 shares "spa" with Castilian).
+  '
+  ' @param itemId - The Movie or Episode ID
+  ' @param language - Language code (see above; 2-letter or regional preferred)
+  ' @param isPerfectMatch - Restrict to file-hash matches only. Defaults false;
+  '                         a true value returns ONLY results whose IsHashMatch
+  '                         is set, which is frequently an empty list.
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildSearchRemoteSubtitlesRequest(itemId as string, language as string, isPerfectMatch = false as boolean) as dynamic
+    params = {}
+    if isPerfectMatch then params.isPerfectMatch = "true"
+    return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/RemoteSearch/Subtitles/{1}", itemId, language), params))
+  end function
+
+  ' Build a request AA to have the SERVER download a remote subtitle onto the
+  ' item, for use with fetchRes() (not SubmitSideEffect — see below).
+  '
+  ' The response carries NO success information: the controller wraps the
+  ' download in try/catch, logs any failure, and returns 204 either way, then
+  ' queues the metadata refresh ASYNCHRONOUSLY (QueueRefresh). A missing
+  ' provider, absent credentials, and an exhausted daily quota all yield the
+  ' same 204 as a success. The ONLY honest completion signal is re-fetching the
+  ' item and diffing its subtitle MediaStreams — see newSubtitleStreams().
+  '
+  ' @param itemId - The Movie or Episode ID
+  ' @param subtitleId - RemoteSubtitleInfo.Id from a search result
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildDownloadRemoteSubtitleRequest(itemId as string, subtitleId as string) as dynamic
+    return m.validatedReq("POST", buildURL(Substitute("/Items/{0}/RemoteSearch/Subtitles/{1}", itemId, subtitleId)))
+  end function
+
+  ' Build a request AA to delete an EXTERNAL subtitle file from an item, for
+  ' use with fetchRes().
+  '
+  ' Two hazards the caller must guard, because the server does not:
+  '   1. Only ever pass the index of a stream whose IsExternal is true. The
+  '      server deletes MediaStream.Path unconditionally; for an EMBEDDED
+  '      stream that path is the media container itself.
+  '   2. A stale index yields a server-side error (observed as HTTP 400), so
+  '      the index must come from a fresh item fetch.
+  '
+  ' Unlike download, delete is SYNCHRONOUS end-to-end — the controller awaits
+  ' RefreshMetadata, so the next GET /Items/{id} already reflects the new
+  ' stream list (verified: correct at t+0s).
+  '
+  ' @param itemId - The video item ID
+  ' @param streamIndex - MediaStream.Index of the external subtitle to delete
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildDeleteSubtitleRequest(itemId as string, streamIndex as integer) as dynamic
+    return m.validatedReq("DELETE", buildURL(Substitute("/Videos/{0}/Subtitles/{1}", itemId, streamIndex.toStr())))
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
+  ' LOCALIZATION ENDPOINTS
+  ' ═══════════════════════════════════════════════════════════════════════════
+
+  ' Build a request AA for the server's culture list, for use with fetchRes() or
+  ' fetchJson(). Returns an array of CultureDto.
+  '
+  ' Worth caching for the session: it is static per server (192 entries on
+  ' 10.11.11) and is only needed to populate a language picker.
+  '
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetCulturesRequest() as dynamic
+    return m.validatedReq("GET", buildURL("/Localization/Cultures"))
+  end function
+
+  ' ═══════════════════════════════════════════════════════════════════════════
   ' FILTERS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════
 
