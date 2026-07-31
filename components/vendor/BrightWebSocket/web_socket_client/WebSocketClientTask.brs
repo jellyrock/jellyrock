@@ -51,8 +51,13 @@ sub runSocketLoop()
     m.ws.set_headers(m.top.headers)
   end if
 
+  ' JellyRock modification: ready_state is CLOSED before open() is ever called, so the loop-exit
+  ' check below must only fire once a connection was actually requested.
+  m.connect_requested = false
+
   if len(m.top.open) > 0
     m.ws.open(m.top.open)
+    m.connect_requested = true
   end if
 
   while true
@@ -64,6 +69,7 @@ sub runSocketLoop()
     if type(msg) = "roSGNodeEvent"
       if msg.getField() = "open"
         m.ws.open(msg.getData())
+        m.connect_requested = true
       else if msg.getField() = "send"
         m.ws.send(msg.getData())
       else if msg.getField() = "close"
@@ -108,5 +114,13 @@ sub runSocketLoop()
       end if
     end if
     m.ws.run()
+
+    ' JellyRock modification: exit once a requested connection has closed AND the port is drained
+    ' (msg = invalid), so the final on_close/ready_state events reach m.top before the thread is
+    ' released. Upstream looped forever, leaking the thread. Single-connection contract now:
+    ' reopening after close needs a fresh node.
+    if m.connect_requested and msg = invalid and m.ws.get_ready_state() = m.ws.STATE.CLOSED
+      exit while
+    end if
   end while
 end sub

@@ -28,6 +28,12 @@ The sources are **not** byte-for-byte upstream — trimmed + hardened when vendo
 - **OOM guard** — the frame decoder now caps the server-declared inbound `payload_size`
   (`WebSocketClient.brs` `_read_socket_data`) — the must-fix from the review below.
 - **100ms poll** — the task loop polls every 100ms instead of the upstream 1ms busy-loop.
+- **Task thread self-exits after close** (`WebSocketClientTask.brs`) — upstream's task loop ran
+  forever, holding one Task thread per socket for the app's lifetime (one *leaked* thread per
+  reconnect against RokuOS's 100-concurrent-threads cap — the #728 `&h29` crash class). The loop
+  now exits once a requested connection reaches CLOSED and the event port is drained. Contract
+  narrowed vs upstream: the node is single-connection — reopen after close needs a fresh node
+  (the only consumer, `RemoteControlTask`, already creates one per connect attempt).
 - **Logger silenced** — the missing-config Logger noise was quieted.
 - **`run` → `runSocketLoop`** (`WebSocketClientTask.brs`) — the top-level task worker was renamed off
   the reserved `run` (collides with the global `Run()`). It only ever worked because the Task
