@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-07-30
+last-updated: 2026-07-31
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-07-31 — ci(lint): gate that every `npm run lint` check actually runs in CI
 - 2026-07-30 — fix(remote-control): bind `ws://` socket to the advertised `DeviceId`
 - 2026-07-25 — fix(api): route `SubmitSideEffect` through a children-as-vehicle FIFO
 - 2026-07-23 — Fix `inferServerUrl` crash from stale pre-login intents
