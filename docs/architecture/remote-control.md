@@ -14,7 +14,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-07-25
+last-reviewed: 2026-07-31
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -98,7 +98,15 @@ it needs the session token. It is:
   fresh login (including after a server switch).
 - **Stopped** (`control="STOP"`) in `SignOut` (`source/api/userAuth.bs`) — the single logout +
   server-switch chokepoint (a server switch runs `SignOut(false)` via `performServerSwitch`), so the
-  socket never survives a session teardown.
+  socket never survives a session teardown. Sign-out stops the receiver first, then the live
+  `WebSocketClient` child it publishes via the `socketNode` field — the external STOP kills the
+  receiver thread before its own `closeSocket()` cleanup can run, so the child needs its own stop.
+
+**Socket-thread release** (the #728 leak class): each connect attempt creates a fresh
+`WebSocketClient` node whose Task thread must be released when that connection ends — a Task thread
+survives reference drops. Two mechanisms guarantee it: `closeSocket()` STOPs the child after
+`on_close`/`on_error`, and the vendored socket loop self-exits once its connection reaches CLOSED
+(single-connection contract; see the modification list in the vendor README).
 
 Reconnect is exponential backoff (`1s`→`30s` cap); it stops on a token rotation (re-read before each
 reconnect). `ForceKeepAlive` from the server sets a send interval (half the requested seconds), on
