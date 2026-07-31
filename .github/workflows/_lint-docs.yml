@@ -41,6 +41,19 @@ jobs:
           # Mirrors the previous event-time paths filter (**/*.md, docs/**,
           # the four docs-related scripts, **/CLAUDE.md, AGENTS.md). The
           # \.md$ alternative covers **/CLAUDE.md and AGENTS.md by extension.
+          #
+          # `^package\.json$` is here for TWO reasons, the first being the one
+          # that makes it a docs concern rather than an odd exception:
+          #   1. build-and-tooling.md declares package.json in its related-files,
+          #      so the `docs:stale:blocking` step below must see package.json
+          #      edits. Without this, that doc's most-frequently-touched related
+          #      file was a blind spot for the stale gate on every non-dependency
+          #      PR (dependency PRs already reach here via force: true).
+          #   2. package.json IS the `npm run lint` aggregate that ci-parity
+          #      reconciles, so a PR adding a check to it must re-run that check.
+          #      (`_test-scripts.yml` also matches package.json and its vitest
+          #      suite asserts the same invariant — belt and braces, not the
+          #      primary reason.)
           pattern: '\.md$|^docs/|^scripts/lint/(docs-check|docs-stale|docs-stale-blocking|validate-deps-workflow-sync)\.cjs$|^scripts/lint/ci-parity-check\.js$|^scripts/generate/dev-index\.cjs$|^\.github/workflows/_.*\.yml$|^package\.json$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

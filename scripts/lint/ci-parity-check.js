@@ -35,6 +35,19 @@
 // leaf is invoked by some workflow under .github/workflows/ — either as
 // `npm run <name>` or, for node-based scripts, as a direct `node scripts/...`
 // call (several workflows invoke the script path rather than the npm alias).
+// Comment lines are stripped first, so a mention of a check never counts as a
+// run of it — see executableText() below.
+//
+// SCOPE — what this does NOT prove
+// --------------------------------
+//   - That the hosting workflow's `paths` filter matches the files the check
+//     reads. A too-narrow filter passes here and never fires on the PR that
+//     needed it. Tracked as `ci-path-filters-unverified` in tech-debt.md.
+//   - That the hosting workflow's status-check context is a REQUIRED check on
+//     main. A check in a non-required context runs but does not block a merge.
+//     Branch protection lives outside the repo and needs admin scope to read,
+//     so it can't be gated here — the invariant is documented in
+//     build-and-tooling.md's "adding a new reusable workflow" note instead.
 //
 // Deliberate local-only entries live in LOCAL_ONLY below, each with a REASON.
 // An allowlist entry is a decision on the record, not a silent exemption.
@@ -89,20 +102,45 @@ function scriptPathOf(cmd) {
   return m ? m[1] : null;
 }
 
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Workflow text with comment lines removed — a MENTION of a check must never
+// count as a RUN of it. That distinction is the whole point: the bug this
+// script was written to catch was `npm run lint` appearing in .github/workflows/
+// exactly once, inside a comment. Dropping `#` lines is correct in both
+// contexts a match can occur — at step level it is a YAML comment, and inside a
+// `run: |` block it is a shell comment. Neither executes.
+//
+// Deliberately line-based rather than YAML-parsed: _lint-docs.yml runs this
+// script with no `npm ci` step, so it must stay Node-stdlib-only (no js-yaml).
+// Line-based also survives multi-line `run: |` blocks, which this repo uses
+// heavily — a stricter "only lines carrying a run: key" filter would silently
+// report a false MISSING for any check invoked inside a block scalar.
+function executableText(workflows) {
+  return workflows
+    .flatMap((w) => w.text.split('\n'))
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+}
+
 /**
  * @param {{scripts: object, workflows: {name: string, text: string}[]}} input
  * @returns {{missing: object[], staleAllowlist: string[]}}
  */
 export function check({ scripts, workflows }) {
   const leaves = expandAggregate(scripts);
-  const blob = workflows.map((w) => w.text).join('\n');
+  const blob = executableText(workflows);
 
   const covers = (leaf) => {
     // Trailing guard so `lint:docs` isn't satisfied by a `lint:docs-extra` step.
     // Script names are [a-zA-Z0-9:_-] only, so none of them need regex escaping.
     if (new RegExp(`npm run ${leaf.name}(?![\\w:-])`).test(blob)) return true;
     const p = scriptPathOf(leaf.cmd);
-    return p ? blob.includes(p) : false;
+    // Match the INVOCATION (`node <path>`), not the bare path. Workflows also
+    // name script paths inside their hand-authored `paths` filters; one written
+    // with an unescaped dot (`docs-check.cjs` rather than `docs-check\.cjs`)
+    // would otherwise satisfy its own coverage requirement.
+    return p ? new RegExp(`node\\s+${escapeRe(p)}`).test(blob) : false;
   };
 
   const missing = leaves

@@ -68,6 +68,40 @@ describe('coverage detection', () => {
     expect(missing.map((m) => m.name)).toEqual(['lint:docs']);
   });
 
+  // A MENTION is not a RUN. Each of these was a real false-positive before the
+  // comment-stripping pass — the same "it's referenced somewhere, so it must be
+  // wired" confusion that let three checks sit uncovered in the first place.
+  it.each([
+    ['a YAML comment mentioning the check', '      # TODO: wire up npm run lint:docs someday'],
+    ['a commented-out step', '      # - run: npm run lint:docs'],
+    ['a shell comment inside a `run: |` block', '      run: |\n        # npm run lint:docs'],
+  ])('does not accept %s as coverage', (_label, text) => {
+    expect(check({ scripts, workflows: wf(text) }).missing.map((m) => m.name)).toEqual([
+      'lint:docs',
+    ]);
+  });
+
+  // Path coverage matches the INVOCATION, not the bare path. Workflows name
+  // script paths in their `paths` filters too; one with an unescaped dot must
+  // not satisfy its own coverage requirement.
+  it('does not let a `paths` filter regex satisfy coverage for the script it names', () => {
+    const { missing } = check({
+      scripts,
+      workflows: wf("          pattern: '^scripts/lint/docs-check.cjs$'"),
+    });
+    expect(missing.map((m) => m.name)).toEqual(['lint:docs']);
+  });
+
+  // Regression guard: comment stripping must stay LINE-based. This repo wires
+  // plenty of commands inside multi-line `run: |` blocks, where the command
+  // line carries no `run:` key — a matcher scoped to `run:` lines would report
+  // a false MISSING here and red-fail CI for a check that is correctly wired.
+  it('accepts a check invoked inside a multi-line `run: |` block', () => {
+    expect(
+      check({ scripts, workflows: wf('      - run: |\n          npm run lint:docs') }).missing,
+    ).toEqual([]);
+  });
+
   it('does not let a prefix match satisfy a longer script name', () => {
     const s = { lint: 'npm run lint:docs', 'lint:docs': 'echo x' };
     const { missing } = check({ scripts: s, workflows: wf('run: npm run lint:docs-extra') });
