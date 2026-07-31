@@ -229,6 +229,16 @@ class SocketClientModel {
   //                    fires. Real value: _CLOSING_DELAY is 30s at a ~100ms
   //                    loop cadence (:37, :161), i.e. hundreds — which is
   //                    exactly why the port is always drained by then.
+  //
+  // The server-closes-first sequence this models is MEASURED, not assumed:
+  // probing a real Jellyfin 10.11.11 with the same raw upgrade the vendored
+  // client builds, ending the session server-side produced a WebSocket CLOSE
+  // frame (code 1000, "System Shutdown") — not a TCP drop — and the connection
+  // then stayed up rather than being FIN'd early. That matters because a CLOSE
+  // frame posts NO on_error (:737-740), so on_close emitted at the later CLOSED
+  // transition is the only terminal event the parent ever gets. The TCP-drop
+  // path, by contrast, posts on_error (:334-335) and would have notified the
+  // parent even under the pre-fix ordering. The common path is the failing one.
   constructor({ runsBeforeClose = 3, runsInClosing = 5, initialState = STATE.OPEN } = {}) {
     this.readyState = initialState;
     this.port = [];

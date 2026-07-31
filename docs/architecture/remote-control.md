@@ -116,7 +116,14 @@ survives reference drops. Two complementary mechanisms cover it:
   drained (single-connection contract; see the modification list in the vendor README) — this is
   what reclaims a child orphaned by a receiver that died without running `closeSocket()`.
 
-Both are keyed on a connection that *ends*. A connect that never completes is a weaker spot: Roku's
+Jellyfin ends a session by sending a `WebSocket` **CLOSE frame** (code `1000`, reason `System
+Shutdown`) rather than dropping the connection — measured against 10.11.11 with a raw upgrade
+mirroring the vendored client's. That is why `on_close`, not `on_error`, is the terminal event:
+a CLOSE frame raises no error, so the socket goes `OPEN → CLOSING` and only reaches CLOSED (emitting
+`on_close`) after `_CLOSING_DELAY`, by which point the event port is long idle. The vendored loop's
+exit test has to be ordered against that, or the receiver never learns the socket died.
+
+Both mechanisms are keyed on a connection that *ends*. A connect that never completes is a weaker spot: Roku's
 `connect()` reports only that the attempt was initiated when the socket is non-blocking, and the
 vendored client never re-checks `isConnected()` / `eConnRefused()`, so it sits in CONNECTING until
 the handshake write fails. The receiver blocks on the same socket, so that costs one thread rather
