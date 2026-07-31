@@ -19,6 +19,13 @@ Every test suite extends `tests.BaseTestSuite` (which extends `rooibos.BaseTestS
 - Registry teardown between tests (only when `m.needsRegistrySetup = true` — opt-in per suite).
 - Test-mode marker: registry section names start with `test-` so production migration code skips real user data.
 
+### One `@suite` per file
+
+**Put exactly one `@suite` class in a `.spec.bs` file.** Every spec file in the repo follows this, and deviating breaks the runner rather than just looking untidy: a file carrying three `@suite` classes built and validated cleanly, then crashed the Rooibos runner on device at `TestRunner.brs` — `'Dot' Operator attempted with invalid ... reference (runtime error &hec)` reading `testSuite.stats.hasFailures` for the third suite — and left the Roku hung until an ECP `Home` keypress. Splitting the identical 35 tests into three files, one suite each, passed. (Observed with three suites; two was not tested, so treat one-per-file as the rule rather than probing where the limit is.)
+
+To split a growing suite, keep the base name and add the aspect — `remoteSubtitles.spec.bs`, `remoteSubtitlesStreams.spec.bs`, `remoteSubtitlesResults.spec.bs` — matching the existing `misc.spec.bs` / `miscAudioStreams.spec.bs` pair.
+
+> A green `npm run validate` says nothing about this: the crash is a runtime fault in the generated runner, so it only surfaces on hardware.
 ## Lifecycle hooks — `setup()` is per SUITE, `beforeEach()` is per TEST
 
 rooibos gives `BaseTestSuite` four distinct hooks, and the two pairs run at different frequencies:
