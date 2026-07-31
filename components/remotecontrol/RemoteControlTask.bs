@@ -83,6 +83,9 @@ function connectAndPump(url as string) as boolean
   STABLE_SESSION_MS = 30000
 
   m.ws = CreateObject("roSGNode", "WebSocketClient")
+  ' Publish the child so SignOut can stop it — an external STOP on this task kills the thread
+  ' before closeSocket() can run.
+  m.top.socketNode = m.ws
   m.ws.observeField("on_open", m.port)
   m.ws.observeField("on_message", m.port)
   m.ws.observeField("on_close", m.port)
@@ -172,6 +175,10 @@ sub closeSocket()
   m.ws.unobserveField("on_close")
   m.ws.unobserveField("on_error")
   m.ws.close = [1000] ' normal closure
+  ' STOP releases the child's thread — dropping the reference alone leaves its loop running.
+  ' Safe here: only called after on_close/on_error, so no close handshake is left to preserve.
+  m.ws.control = "STOP"
+  m.top.socketNode = invalid
   m.ws = invalid
 end sub
 

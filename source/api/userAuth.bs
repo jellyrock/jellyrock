@@ -32,7 +32,14 @@ sub SignOut(deleteSavedEntry = true as boolean)
   ' #666: stop the ws:// remote-control receiver — ends the listener thread and drops its socket.
   ' This is the single logout + server-switch chokepoint (a server switch runs SignOut(false) via
   ' replayRoute.performServerSwitch), so the socket never survives a session teardown.
-  if isValid(m.global.remoteControlTask) then m.global.remoteControlTask.control = "STOP"
+  ' Parent first (a stopped receiver can't spawn a replacement socket), then the published child —
+  ' STOP kills the receiver mid-loop, so its own closeSocket() teardown never runs.
+  remoteControlTask = m.global.remoteControlTask
+  if isValid(remoteControlTask)
+    remoteControlTask.control = "STOP"
+    if isValid(remoteControlTask.socketNode) then remoteControlTask.socketNode.control = "STOP"
+    remoteControlTask.socketNode = invalid
+  end if
 
   if deleteSavedEntry
     unsetUserSetting("authToken")
