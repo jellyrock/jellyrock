@@ -101,12 +101,27 @@ it needs the session token. It is:
   socket never survives a session teardown. Sign-out stops the receiver first, then the live
   `WebSocketClient` child it publishes via the `socketNode` field — the external STOP kills the
   receiver thread before its own `closeSocket()` cleanup can run, so the child needs its own stop.
+  `STOP` is not a join, so the child is read into a local before it is stopped (the receiver can
+  still be inside `closeSocket()` clearing that field, and a dot on `invalid` would crash the
+  caller mid-sign-out).
 
 **Socket-thread release** (the #728 leak class): each connect attempt creates a fresh
 `WebSocketClient` node whose Task thread must be released when that connection ends — a Task thread
-survives reference drops. Two mechanisms guarantee it: `closeSocket()` STOPs the child after
-`on_close`/`on_error`, and the vendored socket loop self-exits once its connection reaches CLOSED
-(single-connection contract; see the modification list in the vendor README).
+survives reference drops. Two complementary mechanisms cover it:
+
+- `closeSocket()` STOPs the child after `on_close`/`on_error` — this is the one that fires on every
+  reconnect, and it also covers an error raised while the socket is still OPEN, which the loop's own
+  exit never sees.
+- the vendored socket loop self-exits once its connection reaches CLOSED and its event port is
+  drained (single-connection contract; see the modification list in the vendor README) — this is
+  what reclaims a child orphaned by a receiver that died without running `closeSocket()`.
+
+Both are keyed on a connection that *ends*. A connect that never completes is a weaker spot: Roku's
+`connect()` reports only that the attempt was initiated when the socket is non-blocking, and the
+vendored client never re-checks `isConnected()` / `eConnRefused()`, so it sits in CONNECTING until
+the handshake write fails. The receiver blocks on the same socket, so that costs one thread rather
+than accumulating. The ordering inside the vendored loop is load-bearing and unreachable by any test
+— `npm run lint:socket-thread-release` gates it.
 
 Reconnect is exponential backoff (`1s`→`30s` cap); it stops on a token rotation (re-read before each
 reconnect). `ForceKeepAlive` from the server sets a send interval (half the requested seconds), on
