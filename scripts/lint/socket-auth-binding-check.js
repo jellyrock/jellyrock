@@ -64,7 +64,9 @@ export const WS_TASK_REL =
 // Strip whole-line BrightScript comments so a rule can't be satisfied — or
 // tripped — by prose. The banned-pattern rules especially: every one of these
 // patterns is quoted in an explanatory comment in the very files we scan.
-function stripComments(src) {
+// Exported for socket-thread-release-check.js, which guards the other
+// load-bearing invariant of the same two files.
+export function stripComments(src) {
   return src
     .split('\n')
     .map((line) => (/^\s*'/.test(line) ? '' : line))
@@ -73,7 +75,7 @@ function stripComments(src) {
 
 // Index of the first match, or -1. Regex so we tolerate whitespace variation
 // (`m.ws.headers=` vs `m.ws.headers  =`) without tolerating a different target.
-function indexOf(src, re) {
+export function indexOf(src, re) {
   const m = re.exec(src);
   return m ? m.index : -1;
 }
