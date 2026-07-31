@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SubtitleResultRow: one remote subtitle search result inside SubtitlePanel's
+  results MarkupList.
+
+  Three stacked lines, the first of which is conditional:
+
+    [ Perfect match ]  [ Hearing impaired ]      <- badge strip, hidden when empty
+    Sintel.2010.1080p.BluRay.x264-CtrlHD          <- release name, marquees on focus
+    561,277 downloads . pirosasz . 2012           <- meta line
+
+  The shape is driven by what the API actually returns, measured across 9 films
+  and 6 episodes on a real server (see source/utils/remoteSubtitles.bs):
+
+    * DownloadCount is populated on 100% of results and spans 130..561,277, so
+      it leads the meta line — it is the only broadly-available quality signal.
+    * CommunityRating is deliberately ABSENT from this row: it was 0 on 44 of 50
+      results in the sample, so a rating column would read "0" almost always.
+    * IsHashMatch is a badge, never the sort key or the layout's organising
+      principle — hit rate swings from 0/50 to 6/20 depending on the title.
+    * Format and ProviderName are omitted unless the result set actually mixes
+      them (a single-provider install reports the same two values on every row).
+
+  Release names run long — 85 characters was the longest in the sample — so the
+  name line is a ScrollingLabel that marquees only while the row has focus.
+-->
+<component name="SubtitleResultRow" extends="Group">
+  <children>
+    <!-- Focus chrome, same 9-patch pair as TrackDropdownRow / JRDropdownItem -->
+    <Poster id="rowBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+    <Poster id="rowBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+
+    <!-- Badge strip. Populated by SubtitleResultRow.bs; the whole group is
+         hidden (and the lines below shift up) when a result has no badges. -->
+    <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[12]" visible="false" />
+
+    <ScrollingLabelPrimarySmaller id="nameLabel" repeatCount="0" />
+    <LabelSecondarySmallest id="metaLabel" />
+  </children>
+
+  <interface>
+    <!-- The RemoteSubtitleInfo AA for this row, set by the MarkupList content node -->
+    <field id="itemContent" type="node" onChange="onItemContentChanged" />
+    <field id="itemHasFocus" type="boolean" value="false" onChange="onFocusChanged" />
+    <field id="rowWidth" type="integer" value="1120" onChange="onSizeChanged" />
+  </interface>
+</component>

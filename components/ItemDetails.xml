@@ -65,6 +65,15 @@
     <!-- "Cast and Crew" row -->
     <extrasSlider id="itemExtras" />
 
+    <!-- Subtitle management (#750). Shares the extras pane's slide geometry and
+         the same itemDetailsSlider that lifts the metadata block, so the two
+         read as one gesture; they are mutually exclusive at runtime. Declared
+         AFTER extrasSlider so it draws above the extras backdrop and the button
+         group, but BEFORE trackCluster — the cluster is hidden while this panel
+         is open, and keeping it last preserves the open-dropdown z-order that
+         its own comment below depends on. -->
+    <SubtitlePanel id="subtitlePanel" visible="false" />
+
     <!-- dropdownDimmer: vertical gradient dim shown only while one of the track
          dropdowns has its menu open. Fades from fully clear at y=707 (just below the
          description bottom y=701, just above the trackCluster titles top y=713) to

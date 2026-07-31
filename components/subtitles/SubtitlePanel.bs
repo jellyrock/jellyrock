@@ -1,0 +1,666 @@
+' SubtitlePanel: search for and download subtitles for one item (#750).
+'
+' See SubtitlePanel.xml for why this is a panel rather than a routed screen and
+' for the layout rationale. This file owns the state machine, the API calls and
+' the focus model.
+'
+' The server behaviours this compensates for were all measured against a live
+' 10.11.11 server with the Open Subtitles plugin installed; the reasoning lives
+' next to the code that depends on it, and the pure parts are tested in
+' tests/source/unit/utils/remoteSubtitles*.spec.bs.
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/constants/extrasLayout.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/remoteSubtitles.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Poll schedule for confirming a download, in milliseconds between attempts.
+'
+' A download cannot be confirmed from its own response: the controller swallows
+' provider errors and returns 204 either way, then queues the metadata refresh
+' ASYNCHRONOUSLY. So the only honest signal is re-fetching the item and diffing
+' its subtitle streams. A local sidecar refresh completed in 0.59s when measured
+' directly, but a real download adds the provider round-trip ahead of that, so
+' the schedule backs off rather than hammering. Total ceiling ~15s, after which
+' the user is told it is still processing instead of being told it failed —
+' because we genuinely cannot tell those apart.
+const SUBTITLE_POLL_DELAYS_MS = [1000, 2000, 4000, 8000]
+
+sub init()
+  m.log = new log.Logger("SubtitlePanel")
+
+  m.panelSurface = m.top.findNode("panelSurface")
+  m.headerGroup = m.top.findNode("headerGroup")
+  m.fileLabel = m.top.findNode("fileLabel")
+  m.languageButton = m.top.findNode("languageButton")
+  m.searchButton = m.top.findNode("searchButton")
+  m.perfectMatchButton = m.top.findNode("perfectMatchButton")
+  m.resultsHeading = m.top.findNode("resultsHeading")
+  m.resultsList = m.top.findNode("resultsList")
+  m.statusLabel = m.top.findNode("statusLabel")
+  m.existingHeading = m.top.findNode("existingHeading")
+  m.existingList = m.top.findNode("existingList")
+  m.existingEmptyLabel = m.top.findNode("existingEmptyLabel")
+  m.languageOverlay = m.top.findNode("languageOverlay")
+  m.languagePicker = m.top.findNode("languagePicker")
+
+  constants = m.global.constants
+  m.panelSurface.color = constants.colorBlack + constants.alpha60
+  m.panelSurface.translation = [0, extrasLayout.PANEL_CLOSED_Y]
+
+  ' Slide + tint keyValues come from the same constants the extras pane uses, so
+  ' the two panels cannot drift apart visually.
+  m.top.findNode("panelSlide").keyValue = [[0, extrasLayout.PANEL_CLOSED_Y], [0, extrasLayout.PANEL_OPEN_Y]]
+  m.top.findNode("panelTint").keyValue = [constants.colorBlack + constants.alpha60, constants.colorBackgroundPrimary]
+  m.panelAnime = m.top.findNode("panelAnime")
+
+  m.resultsHeading.text = translate(translationKeys.LabelSearchForSubtitles)
+  m.existingHeading.text = translate(translationKeys.LabelOnThisItem)
+  m.searchButton.text = translate(translationKeys.ButtonSearch)
+  m.existingEmptyLabel.text = translate(translationKeys.LabelNoSubtitlesOnItem)
+
+  ' Row heights are computed by SubtitleResultRow from the live font metrics, so
+  ' the list asks the same helper rather than duplicating the arithmetic.
+  sizeLists()
+
+  m.languageOverlay.color = constants.colorBackgroundPrimary
+  m.top.findNode("languageOverlayHeading").text = translate(translationKeys.LabelSearchLanguages)
+  m.languagePicker.observeField("selectedCode", "onLanguageSelected")
+
+  m.resultsList.observeField("itemSelected", "onResultSelected")
+
+  ' Poll timer for confirming a download. One timer reused across attempts; the
+  ' attempt counter drives the backoff.
+  m.pollTimer = createObject("roSGNode", "Timer")
+  m.pollTimer.repeat = false
+  m.pollTimer.observeField("fire", "onPollTimerFired")
+
+  m.cultures = invalid
+  m.selectedLanguageCode = ""
+  m.results = []
+  m.perfectMatchOnly = false
+  m.pollAttempt = 0
+  m.pendingDownloadName = ""
+  m.streamsBeforeDownload = []
+  m.focusTarget = "search"
+end sub
+
+' ── Inputs ───────────────────────────────────────────────────────────────────
+
+' onFilePathChanged: Show the file name, not the full path.
+'
+' Sync depends on which RELEASE the subtitle was timed against, so the filename
+' is the thing worth keeping on screen while scanning results. The directory is
+' noise at this width, and on some deployments it leaks server-side layout.
+sub onFilePathChanged()
+  path = m.top.filePath
+  if not isValidAndNotEmpty(path)
+    m.fileLabel.text = ""
+    return
+  end if
+
+  filePath = createObject("roPath", path)
+  parts = filePath.split()
+  if isValid(parts) and isValidAndNotEmpty(parts.filename)
+    m.fileLabel.text = parts.filename
+  else
+    m.fileLabel.text = path
+  end if
+end sub
+
+sub onExistingStreamsChanged()
+  renderExistingList()
+end sub
+
+' ── Open / close ─────────────────────────────────────────────────────────────
+
+sub onIsOpenChanged()
+  if m.top.isOpen
+    openPanel()
+  else
+    closePanel()
+  end if
+end sub
+
+sub openPanel()
+  m.top.visible = true
+  seedDefaultLanguage()
+  ensureCulturesLoaded()
+  renderExistingList()
+
+  m.panelSlideReverse = false
+  m.top.findNode("panelSlide").reverse = false
+  m.top.findNode("panelTint").reverse = false
+  m.panelAnime.control = "start"
+
+  m.focusTarget = "search"
+  applyFocus()
+end sub
+
+sub closePanel()
+  m.languageOverlay.visible = false
+  m.pollTimer.control = "stop"
+
+  m.top.findNode("panelSlide").reverse = true
+  m.top.findNode("panelTint").reverse = true
+  m.panelAnime.control = "start"
+end sub
+
+' onDestroy: Cleanup hook. The auto-abandon-promises BSC plugin injects
+' abandonApiPromises() here, which detaches every in-flight pool response so a
+' late reply can't fire into a node that no longer exists.
+sub onDestroy()
+  m.pollTimer.control = "stop"
+end sub
+
+' teardown: The host's explicit hand-off, called from ItemDetails.onDestroy.
+' SceneGraph does not invoke onDestroy on a plain child component, so the host
+' drives it rather than trusting the lifecycle.
+sub teardown() as void
+  onDestroy()
+end sub
+
+' ── Language ─────────────────────────────────────────────────────────────────
+
+' seedDefaultLanguage: Start from the user's subtitle-language preference rather
+' than making them pick every time. Their preference is stored as a 3-letter
+' code (it matches MediaStream.Language), so it is resolved against the culture
+' list to the 2-letter form the search actually wants.
+sub seedDefaultLanguage()
+  if isValidAndNotEmpty(m.selectedLanguageCode) then return
+
+  preferred = ""
+  if isChainValid(m.global.user, "config.subtitleLanguagePreference")
+    preferred = m.global.user.config.subtitleLanguagePreference
+  end if
+  if not isValidAndNotEmpty(preferred) then preferred = "eng"
+
+  m.preferredThreeLetter = LCase(preferred)
+  applyLanguageFromCultures()
+end sub
+
+' ensureCulturesLoaded: Fetch /Localization/Cultures once per panel lifetime.
+' It is static per server (192 entries) and only feeds the picker.
+sub ensureCulturesLoaded()
+  if isValid(m.cultures) then return
+
+  req = GetApi().BuildGetCulturesRequest()
+  if not isValid(req) then return
+
+  promises.chain(fetchAsync(req, "subtitleCultures"), { serverUrl: m.global.server.url }).then(sub(res as object, ctx as object)
+    ' Guard a reply that outlived a server switch — the culture list is
+    ' server-specific and a stale one would mislabel every language.
+    if ctx.serverUrl <> m.global.server.url then return
+    if not res.ok
+      m.log.warn("cultures fetch failed", res.statusCode)
+      return
+    end if
+    m.cultures = res.json
+    m.languagePicker.languages = remoteSubtitles.cultureOptions(m.cultures)
+    applyLanguageFromCultures()
+  end sub).catch(sub(err as object, ctx as object)
+    ' Not fatal: the language button keeps whatever it already had, and the
+    ' next open retries because m.cultures stays invalid.
+    m.log.warn("cultures fetch error", err.reason, "server", ctx.serverUrl)
+  end sub)
+end sub
+
+' applyLanguageFromCultures: Resolve the seeded 3-letter preference to a culture
+' once the list is available, and label the button.
+sub applyLanguageFromCultures()
+  if not isValid(m.cultures) then return
+  if isValidAndNotEmpty(m.selectedLanguageCode) then return
+  if not isValidAndNotEmpty(m.preferredThreeLetter) then return
+
+  for each culture in m.cultures
+    if isValid(culture) and isValidAndNotEmpty(culture.ThreeLetterISOLanguageName)
+      if LCase(culture.ThreeLetterISOLanguageName) = m.preferredThreeLetter
+        setSelectedLanguage(culture.TwoLetterISOLanguageName)
+        return
+      end if
+    end if
+  end for
+end sub
+
+sub setSelectedLanguage(code as string)
+  if not isValidAndNotEmpty(code) then return
+
+  m.selectedLanguageCode = code
+  m.languageButton.text = languageLabelFor(code)
+end sub
+
+function languageLabelFor(code as string) as string
+  options = m.languagePicker.languages
+  if isValid(options)
+    for each option in options
+      if option.code = code then return option.nativeName
+    end for
+  end if
+  return code
+end function
+
+sub onLanguageSelected()
+  selected = m.languagePicker.selectedCode
+  if not isValidAndNotEmpty(selected) then return
+
+  setSelectedLanguage(selected)
+  m.languageOverlay.visible = false
+  m.focusTarget = "search"
+  applyFocus()
+end sub
+
+sub showLanguageOverlay()
+  if not isValid(m.languagePicker.languages) or m.languagePicker.languages.count() = 0
+    displayToast(translate(translationKeys.MessageNoSubtitlesFound), "error")
+    return
+  end if
+
+  m.languagePicker.selectedCode = m.selectedLanguageCode
+  m.languageOverlay.visible = true
+  m.languagePicker.findNode("keyboard").setFocus(true)
+end sub
+
+' ── Search ───────────────────────────────────────────────────────────────────
+
+sub runSearch()
+  if not isValidAndNotEmpty(m.top.itemId) then return
+  if not isValidAndNotEmpty(m.selectedLanguageCode) then return
+
+  setStatus(translate(translationKeys.LabelSearchNow))
+  m.searchButton.isEnabled = false
+
+  req = GetApi().BuildSearchRemoteSubtitlesRequest(m.top.itemId, m.selectedLanguageCode, m.perfectMatchOnly)
+  if not isValid(req)
+    m.searchButton.isEnabled = true
+    return
+  end if
+
+  promises.chain(fetchAsync(req, "subtitleSearch-" + m.top.itemId), { itemId: m.top.itemId, language: m.selectedLanguageCode }).then(sub(res as object, ctx as object)
+    ' A search takes real time (a provider round-trip through the server), so
+    ' the user can change language — or the host can swap items — before it
+    ' lands. Render only the reply that matches what is on screen now.
+    if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
+    m.searchButton.isEnabled = true
+    if not res.ok
+      ' A non-Video item 404s here rather than returning an empty list; the
+      ' entry point is type-gated, so this is a genuine failure.
+      m.log.warn("subtitle search failed", res.statusCode)
+      setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+      renderResults([])
+      return
+    end if
+    results = res.json
+    if not isValid(results) then results = []
+    renderResults(results)
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    m.searchButton.isEnabled = true
+    m.log.warn("subtitle search error", err.reason)
+    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+    renderResults([])
+  end sub)
+end sub
+
+' renderResults: Build the results list.
+'
+' Deliberately preserves the server's ordering. The provider already returns
+' results sorted by download count descending (verified across the sample), and
+' the alternative sort keys are worse: CommunityRating was 0 on 44 of 50 results
+' in the same sample, so sorting by it would be close to sorting by noise.
+sub renderResults(results as object)
+  m.results = results
+
+  ' Provider and format earn a place on each row only if they actually vary —
+  ' a single-provider install repeats the same two values on every row.
+  showProvider = remoteSubtitles.hasMixedProviders(results)
+  showFormat = remoteSubtitles.hasMixedFormats(results)
+
+  content = createObject("roSGNode", "ContentNode")
+  for each info in results
+    row = content.createChild("ContentNode")
+    row.addFields({
+      name: valueOrEmpty(info.Name),
+      author: valueOrEmpty(info.Author),
+      format: valueOrEmpty(info.Format),
+      providerName: valueOrEmpty(info.ProviderName),
+      dateCreated: valueOrEmpty(info.DateCreated),
+      threeLetterIsoLanguageName: valueOrEmpty(info.ThreeLetterISOLanguageName),
+      downloadCount: intOrZero(info.DownloadCount),
+      isHashMatch: info.IsHashMatch = true,
+      hearingImpaired: info.HearingImpaired = true,
+      forced: info.Forced = true,
+      aiTranslated: info.AiTranslated = true,
+      machineTranslated: info.MachineTranslated = true,
+      showProvider: showProvider,
+      showFormat: showFormat
+    })
+  end for
+
+  m.resultsList.content = content
+  m.resultsList.visible = results.count() > 0
+
+  if results.count() = 0
+    ' Names the provider-configuration possibility on purpose: an unconfigured
+    ' provider, absent credentials and a genuine no-match all return 200 [], so
+    ' a bare "no results" would send people looking in the wrong place.
+    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+  else
+    setStatus("")
+  end if
+
+  ' The perfect-match filter is offered only when it would actually do
+  ' something. Its hit rate swings wildly by title (0 of 50 for some films,
+  ' 6 of 20 for others), and against a set with no hash matches the control's
+  ' only effect is to empty the screen.
+  showPerfect = m.perfectMatchOnly or remoteSubtitles.hasAnyHashMatch(results)
+  m.perfectMatchButton.visible = showPerfect
+  m.perfectMatchButton.text = perfectMatchLabel()
+end sub
+
+function perfectMatchLabel() as string
+  label = translate(translationKeys.LabelPerfectMatchesOnly)
+  if m.perfectMatchOnly then return "* " + label
+  return label
+end function
+
+sub togglePerfectMatch()
+  m.perfectMatchOnly = not m.perfectMatchOnly
+  m.perfectMatchButton.text = perfectMatchLabel()
+  runSearch()
+end sub
+
+sub setStatus(text as string)
+  m.statusLabel.text = text
+  m.statusLabel.visible = text <> ""
+end sub
+
+' ── Existing subtitles ───────────────────────────────────────────────────────
+
+' renderExistingList: Show the subtitles already on the item.
+'
+' Only EXTERNAL streams are listed. That is a safety guard, not a filter: the
+' server's delete resolves a stream by index and unconditionally deletes its
+' Path, and for an embedded stream that path is the media container itself.
+sub renderExistingList()
+  external = remoteSubtitles.externalSubtitleStreams(m.top.existingStreams)
+
+  content = createObject("roSGNode", "ContentNode")
+  for each stream in external
+    row = content.createChild("ContentNode")
+    row.addFields({
+      name: displayTitleFor(stream),
+      author: "",
+      format: valueOrEmpty(stream.Codec),
+      providerName: "",
+      dateCreated: "",
+      threeLetterIsoLanguageName: valueOrEmpty(stream.Language),
+      downloadCount: 0,
+      isHashMatch: false,
+      hearingImpaired: false,
+      forced: stream.IsForced = true,
+      aiTranslated: false,
+      machineTranslated: false,
+      showProvider: false,
+      showFormat: true
+    })
+  end for
+
+  m.existingList.content = content
+  m.existingList.visible = external.count() > 0
+  m.existingEmptyLabel.visible = external.count() = 0
+end sub
+
+function displayTitleFor(stream as object) as string
+  if isValidAndNotEmpty(stream.DisplayTitle) then return stream.DisplayTitle
+  if isValidAndNotEmpty(stream.Language) then return stream.Language
+  return translate(translationKeys.LabelSubtitles)
+end function
+
+' ── Download + confirmation ──────────────────────────────────────────────────
+
+sub onResultSelected()
+  index = m.resultsList.itemSelected
+  if index < 0 or index >= m.results.count() then return
+
+  info = m.results[index]
+  if not isValid(info) or not isValidAndNotEmpty(info.Id) then return
+
+  startDownload(info)
+end sub
+
+' startDownload: Ask the server to fetch this subtitle, then begin confirming.
+'
+' The POST's own response is not evidence of anything — a missing provider, bad
+' credentials and an exhausted quota all return 204 exactly like a success — so
+' the baseline stream set is captured here and diffed against later fetches.
+sub startDownload(info as object)
+  req = GetApi().BuildDownloadRemoteSubtitleRequest(m.top.itemId, info.Id)
+  if not isValid(req) then return
+
+  m.pendingDownloadName = valueOrEmpty(info.Name)
+  m.streamsBeforeDownload = m.top.existingStreams
+  m.pollAttempt = 0
+
+  displayToast(translate(translationKeys.MessageSubtitleDownloading), "info")
+
+  promises.chain(fetchAsync(req, "subtitleDownload-" + m.top.itemId), { itemId: m.top.itemId }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    ' res.ok is 204 whether or not the download actually worked, so it is only
+    ' checked to catch a rejected REQUEST (403, 404) — not a failed download.
+    if not res.ok
+      m.log.warn("subtitle download rejected", res.statusCode)
+      displayToast(translate(translationKeys.MessageSubtitleDownloadFailed), "error")
+      return
+    end if
+    schedulePoll()
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle download error", err.reason)
+    displayToast(translate(translationKeys.MessageSubtitleDownloadFailed), "error")
+  end sub)
+end sub
+
+sub schedulePoll()
+  if m.pollAttempt >= SUBTITLE_POLL_DELAYS_MS.count()
+    ' Out of attempts. The server may still be refreshing, and we cannot
+    ' distinguish "slow" from "failed", so say the true thing.
+    displayToast(translate(translationKeys.MessageSubtitleStillProcessing), "info")
+    return
+  end if
+
+  m.pollTimer.control = "stop"
+  m.pollTimer.duration = SUBTITLE_POLL_DELAYS_MS[m.pollAttempt] / 1000.0
+  m.pollAttempt++
+  m.pollTimer.control = "start"
+end sub
+
+sub onPollTimerFired()
+  req = GetApi().BuildGetItemRequest(m.top.itemId)
+  if not isValid(req) then return
+
+  promises.chain(fetchAsync(req, "subtitlePoll-" + m.top.itemId), { itemId: m.top.itemId }).then(sub(res as object, ctx as object)
+    ' Abandon the confirmation entirely if the host moved to another item;
+    ' rescheduling would poll the wrong item forever.
+    if ctx.itemId <> m.top.itemId then return
+    if not res.ok
+      schedulePoll()
+      return
+    end if
+
+    item = res.json
+    streams = invalid
+    if isValid(item) then streams = item.MediaStreams
+
+    added = remoteSubtitles.newSubtitleStreams(m.streamsBeforeDownload, streams)
+    if added.count() = 0
+      schedulePoll()
+      return
+    end if
+
+    ' Confirmed. Adopt the fresh stream list — note this also means every
+    ' stream index the host is holding is now stale, which is exactly what
+    ' subtitlesChanged tells it to go fix.
+    m.top.existingStreams = streams
+    displayToast(translate(translationKeys.MessageSubtitleAdded, [m.pendingDownloadName]), "success")
+    m.top.subtitlesChanged = true
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle poll error", err.reason)
+    schedulePoll()
+  end sub)
+end sub
+
+' ── Focus + keys ─────────────────────────────────────────────────────────────
+
+sub sizeLists()
+  ' Both lists size their rows for the WITH-badges height so rows never jump as
+  ' focus moves between a badged and an unbadged result.
+  rowHeight = 96
+  m.resultsList.itemSize = [1120, rowHeight]
+  m.resultsList.numRows = 6
+  m.existingList.itemSize = [570, rowHeight]
+  m.existingList.numRows = 6
+end sub
+
+sub applyFocus()
+  if m.focusTarget = "language"
+    m.languageButton.setFocus(true)
+  else if m.focusTarget = "perfect"
+    m.perfectMatchButton.setFocus(true)
+  else if m.focusTarget = "results"
+    m.resultsList.setFocus(true)
+  else if m.focusTarget = "existing"
+    m.existingList.setFocus(true)
+  else
+    m.searchButton.setFocus(true)
+  end if
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+  if not m.top.isOpen then return false
+
+  ' The language overlay owns every key while it is up, except BACK.
+  if m.languageOverlay.visible
+    if key = "back"
+      m.languageOverlay.visible = false
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    return false
+  end if
+
+  if key = "back"
+    m.top.requestClose = true
+    return true
+  end if
+
+  if key = "OK"
+    if m.languageButton.hasFocus()
+      showLanguageOverlay()
+      return true
+    end if
+    if m.searchButton.hasFocus()
+      runSearch()
+      return true
+    end if
+    if m.perfectMatchButton.hasFocus()
+      togglePerfectMatch()
+      return true
+    end if
+    ' The results list raises itemSelected itself; deletion from the existing
+    ' list is not wired yet (tracked as the next slice of #750).
+    return false
+  end if
+
+  if key = "right"
+    if m.languageButton.hasFocus()
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    if m.searchButton.hasFocus() and m.perfectMatchButton.visible
+      m.focusTarget = "perfect"
+      applyFocus()
+      return true
+    end if
+    if m.resultsList.hasFocus() and m.existingList.visible
+      m.focusTarget = "existing"
+      applyFocus()
+      return true
+    end if
+    return true
+  end if
+
+  if key = "left"
+    if m.perfectMatchButton.hasFocus()
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    if m.searchButton.hasFocus()
+      m.focusTarget = "language"
+      applyFocus()
+      return true
+    end if
+    if m.existingList.hasFocus()
+      m.focusTarget = "results"
+      applyFocus()
+      return true
+    end if
+    return true
+  end if
+
+  if key = "down"
+    if inHeader()
+      if m.resultsList.visible
+        m.focusTarget = "results"
+        applyFocus()
+        return true
+      end if
+      if m.existingList.visible
+        m.focusTarget = "existing"
+        applyFocus()
+        return true
+      end if
+      return true
+    end if
+    return false
+  end if
+
+  if key = "up"
+    if m.resultsList.hasFocus() and m.resultsList.itemFocused = 0
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    if m.existingList.hasFocus() and m.existingList.itemFocused = 0
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    return false
+  end if
+
+  return false
+end function
+
+function inHeader() as boolean
+  return m.languageButton.hasFocus() or m.searchButton.hasFocus() or m.perfectMatchButton.hasFocus()
+end function
+
+' ── Small helpers ────────────────────────────────────────────────────────────
+
+function valueOrEmpty(value as dynamic) as string
+  if isValidAndNotEmpty(value) then return value
+  return ""
+end function
+
+function intOrZero(value as dynamic) as integer
+  if isValid(value) then return value
+  return 0
+end function

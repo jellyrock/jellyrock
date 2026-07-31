@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SubtitlePanel: search for, download and remove subtitles for one item (#750).
+
+  A bottom panel rather than a routed screen, and that is a correctness choice
+  rather than a stylistic one. Downloading a subtitle makes the server insert it
+  at stream index 0 and RENUMBER every other stream, so the item's audio/video
+  stream indices shift underneath whatever launched this. ItemDetails holds
+  those indices in selectedAudioStreamIndex / selectedSubtitleStreamIndex and
+  hands them to playback, so they must be re-synced from a fresh fetch the
+  moment a download lands. Staying mounted on the same screen makes that a call
+  to the populateTrackDropdowns() that already exists; a separate route would
+  have to plumb the result back through a pop.
+
+  It also means the loop closes where the user is looking: download, confirm,
+  close, and the new track is already selectable in the subtitle dropdown that
+  sits directly beneath this panel.
+
+  Geometry mirrors the extras pane exactly (see source/constants/extrasLayout.bs)
+  so the two read as the same gesture: the panel slides up to y=306 while
+  ItemDetails slides its metadata block up above it, leaving the title/year/
+  director rows visible as grounding. Everything below y=306 belongs to us,
+  down to the 5% action-safe bottom at y=1026.
+
+  SELF-CONTAINED BY DESIGN. This component owns its own API calls, focus model
+  and state; ItemDetails only sets inputs and observes two outbound fields. That
+  boundary is what makes the deferred OSD variant cheap — the player can mount
+  this same component — and it is a deliberate departure from ExtrasSlider,
+  which is a dumb container whose logic all lives in ItemDetails and is a
+  meaningful part of why that file is the repo's largest.
+-->
+<component name="SubtitlePanel" extends="JRGroup">
+  <children>
+    <!-- Panel surface. Starts off-screen at extrasLayout.PANEL_CLOSED_Y; the
+         slide is driven by panelAnime, set up in init() from the same constants
+         the extras pane uses. -->
+    <Rectangle id="panelSurface" width="1920" height="900">
+      <Group id="panelClip" clippingRect="[0, 0, 1920, 720]">
+
+        <!-- ── Header ─────────────────────────────────────────────────────
+             File name first: subtitle sync depends on the RELEASE, not the
+             title, so the filename is the single most useful thing to keep in
+             front of the user while they scan results. The title/year stay
+             visible above the panel, so this line adds what they can't see. -->
+        <LayoutGroup id="headerGroup" layoutDirection="vert" itemSpacings="[6]" translation="[96, 24]">
+          <LabelSecondarySmallest id="fileLabel" width="1728" />
+          <LayoutGroup id="controlRow" layoutDirection="horiz" itemSpacings="[24]">
+            <TextButton id="languageButton" padding="24" minWidth="420" minHeight="60" />
+            <TextButton id="searchButton" padding="24" minWidth="220" minHeight="60" />
+            <TextButton id="perfectMatchButton" padding="24" minWidth="360" minHeight="60" visible="false" />
+          </LayoutGroup>
+        </LayoutGroup>
+
+        <!-- ── Results (left) ─────────────────────────────────────────────
+             1120px wide. Release names ran to 85 characters in the sampled
+             results, so width here directly buys fewer marquees. -->
+        <LayoutGroup id="resultsGroup" layoutDirection="vert" itemSpacings="[10]" translation="[96, 150]">
+          <LabelPrimaryMedium id="resultsHeading" />
+          <MarkupList id="resultsList"
+            itemComponentName="SubtitleResultRow"
+            vertFocusAnimationStyle="fixedFocusWrap"
+            drawFocusFeedback="false" />
+        </LayoutGroup>
+
+        <!-- Empty / status line, shown in place of the results list. Covers
+             both real emptiness and the several server states that are
+             indistinguishable from it (no provider plugin, missing provider
+             credentials, exhausted download quota all return 200 []). -->
+        <LabelSecondarySmall id="statusLabel" width="1120" wrap="true" translation="[96, 200]" visible="false" />
+
+        <!-- ── On this item (right) ───────────────────────────────────────
+             The subtitles already present, and where deletion happens. Sitting
+             beside the results rather than behind a tab is the one piece of the
+             official client's information architecture worth keeping: it lets
+             you see whether you already have what you're searching for. -->
+        <LayoutGroup id="existingGroup" layoutDirection="vert" itemSpacings="[10]" translation="[1256, 150]">
+          <LabelPrimaryMedium id="existingHeading" />
+          <MarkupList id="existingList"
+            itemComponentName="SubtitleResultRow"
+            vertFocusAnimationStyle="fixedFocusWrap"
+            drawFocusFeedback="false" />
+          <LabelSecondarySmallest id="existingEmptyLabel" width="570" wrap="true" visible="false" />
+        </LayoutGroup>
+
+      </Group>
+
+      <!-- Slide, mirroring ExtrasSlider's pplAnime: position plus a background
+           colour ramp so the panel darkens as it arrives. keyValues are set in
+           init() from extrasLayout so the two panels can never drift apart. -->
+      <Animation id="panelAnime" duration="0.4" repeat="false">
+        <Vector2DFieldInterpolator id="panelSlide" key="[0.0, 1.0]" fieldToInterp="panelSurface.translation" />
+        <ColorFieldInterpolator id="panelTint" key="[0.0, 1.0]" fieldToInterp="panelSurface.color" />
+      </Animation>
+    </Rectangle>
+
+    <!-- Language picker overlay. Reuses components/settings/LanguagePicker
+         UNCHANGED — it already pairs a type-to-filter mini keyboard with an
+         8-row RadioButtonList, which is the only sane way to pick from 192
+         cultures on a remote. Reusing it also means the language picker here
+         behaves identically to the one in Settings. -->
+    <Rectangle id="languageOverlay" width="1920" height="1080" translation="[0, 0]" visible="false">
+      <LabelPrimaryLarge id="languageOverlayHeading" translation="[96, 120]" />
+      <LanguagePicker id="languagePicker" translation="[96, 200]" />
+    </Rectangle>
+  </children>
+
+  <interface>
+    <!-- ── Inputs, set by the host screen ── -->
+    <field id="itemId" type="string" />
+    <field id="itemType" type="string" />
+    <field id="filePath" type="string" onChange="onFilePathChanged" />
+    <!-- MediaStreams from the host's most recent item fetch. Also the baseline
+         the download-completion diff is taken against. -->
+    <field id="existingStreams" type="array" onChange="onExistingStreamsChanged" />
+    <!-- Whether this user may delete (admin only, every server version). The
+         host resolves it so the panel needs no policy knowledge. -->
+    <field id="canDelete" type="boolean" value="false" />
+
+    <!-- ── Control ── -->
+    <field id="isOpen" type="boolean" value="false" onChange="onIsOpenChanged" />
+
+    <!-- ── Outputs, observed by the host ── -->
+    <!-- Fires when the item's subtitle streams changed on the server. The host
+         MUST re-fetch the item and repopulate any stream-index-bearing UI. -->
+    <field id="subtitlesChanged" type="boolean" alwaysNotify="true" />
+    <!-- Fires when the panel wants to hand focus back (BACK from the root). -->
+    <field id="requestClose" type="boolean" alwaysNotify="true" />
+
+    <!-- Host calls this from its own onDestroy so in-flight pool responses
+         can't fire into a torn-down node. -->
+    <function name="teardown" />
+  </interface>
+</component>

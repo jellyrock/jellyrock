@@ -1,0 +1,212 @@
+' SubtitleResultRow: one remote subtitle search result inside SubtitlePanel.
+'
+' See SubtitleResultRow.xml for the layout rationale and the measurements the
+' row shape is derived from. This file owns the content -> visuals mapping and
+' the focus chrome; it holds no API or selection logic.
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Horizontal inset, matched to TrackDropdownRow's ROW_H_PADDING so a focused
+' subtitle row and a focused track-dropdown row read as the same control family.
+const RESULT_ROW_H_PADDING = 12
+
+' Vertical rhythm. The badge strip is optional, so the two text lines are laid
+' out from a base Y that shifts down only when badges are present.
+const RESULT_ROW_V_PADDING = 10
+const RESULT_ROW_BADGE_HEIGHT = 26
+const RESULT_ROW_LINE_GAP = 6
+
+sub init()
+  m.rowBackground = m.top.findNode("rowBackground")
+  m.rowBorder = m.top.findNode("rowBorder")
+  m.badgeRow = m.top.findNode("badgeRow")
+  m.nameLabel = m.top.findNode("nameLabel")
+  m.metaLabel = m.top.findNode("metaLabel")
+
+  m.nameLabel.color = m.global.constants.colorTextPrimary
+  m.nameLabel.repeatCount = 0
+
+  onSizeChanged()
+end sub
+
+' onItemContentChanged: Render one RemoteSubtitleInfo.
+'
+' The MarkupList content node carries the raw server fields plus two flags the
+' panel computes once per result SET (not per row) — showProvider / showFormat —
+' because "is this column informative?" is a property of the whole set, and
+' asking it per row would render the provider on every row of a single-provider
+' install.
+sub onItemContentChanged()
+  content = m.top.itemContent
+  if not isValid(content) then return
+
+  m.nameLabel.text = titleFor(content)
+  m.metaLabel.text = metaLineFor(content)
+
+  rebuildBadges(content)
+  onSizeChanged()
+end sub
+
+' titleFor: The release name, which is what a user actually matches against
+' their file. Falls back to the language when a provider returns no Name.
+function titleFor(content as object) as string
+  if isValidAndNotEmpty(content.name) then return content.name
+  if isValidAndNotEmpty(content.threeLetterIsoLanguageName) then return content.threeLetterIsoLanguageName
+  return translate(translationKeys.LabelSubtitles)
+end function
+
+' metaLineFor: "561,277 downloads . pirosasz . 2012", dropping any segment whose
+' value is missing rather than rendering an empty gap.
+'
+' Provider and format join the line only when the panel flagged them as varying
+' across the result set.
+function metaLineFor(content as object) as string
+  parts = []
+
+  downloads = 0
+  if isValid(content.downloadCount) then downloads = content.downloadCount
+  parts.push(translatePlural(translationKeys.LabelDownloadsCount, downloads, [groupThousands(downloads)]))
+
+  if isValidAndNotEmpty(content.author) then parts.push(content.author)
+
+  year = yearFrom(content.dateCreated)
+  if year <> "" then parts.push(year)
+
+  if content.showFormat = true and isValidAndNotEmpty(content.format) then parts.push(UCase(content.format))
+  if content.showProvider = true and isValidAndNotEmpty(content.providerName) then parts.push(content.providerName)
+
+  line = ""
+  for each part in parts
+    if line <> "" then line = line + "  ·  "
+    line = line + part
+  end for
+  return line
+end function
+
+' yearFrom: The year out of an ISO-8601 timestamp, or "" when absent/malformed.
+' Upload year is a useful staleness cue (sampled results ranged 2012..2015) and
+' is cheaper to read at a glance than a full date.
+function yearFrom(dateCreated as dynamic) as string
+  if not isValidAndNotEmpty(dateCreated) then return ""
+  if Len(dateCreated) < 4 then return ""
+
+  year = Left(dateCreated, 4)
+  if year.toInt() <= 0 then return ""
+  return year
+end function
+
+' groupThousands: 561277 -> "561,277". Download counts span four orders of
+' magnitude in real result sets, and unpunctuated six-digit numbers are hard to
+' size up at 10 feet.
+function groupThousands(value as integer) as string
+  digits = stri(value).trim()
+  if Len(digits) <= 3 then return digits
+
+  grouped = ""
+  count = 0
+  for i = Len(digits) to 1 step -1
+    grouped = Mid(digits, i, 1) + grouped
+    count++
+    if count = 3 and i > 1
+      grouped = "," + grouped
+      count = 0
+    end if
+  end for
+  return grouped
+end function
+
+' rebuildBadges: The optional first line.
+'
+' Only truths worth acting on get a badge. "Perfect match" leads because a
+' hash-matched subtitle is the one signal that reliably predicts sync; the
+' translation/impairment flags follow because they change whether the file is
+' the right KIND of subtitle, not just whether it fits.
+sub rebuildBadges(content as object)
+  while m.badgeRow.getChildCount() > 0
+    m.badgeRow.removeChild(m.badgeRow.getChild(0))
+  end while
+
+  constants = m.global.constants
+
+  if content.isHashMatch = true
+    appendBadge(translate(translationKeys.LabelPerfectMatch), constants.colorPrimary)
+  end if
+  if content.hearingImpaired = true
+    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary)
+  end if
+  if content.forced = true
+    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary)
+  end if
+  if content.aiTranslated = true
+    appendBadge(translate(translationKeys.LabelAiTranslated), constants.colorTextSecondary)
+  else if content.machineTranslated = true
+    appendBadge(translate(translationKeys.LabelMachineTranslated), constants.colorTextSecondary)
+  end if
+
+  m.badgeRow.visible = m.badgeRow.getChildCount() > 0
+end sub
+
+' appendBadge: One small coloured caption. Deliberately text-only (no pill
+' background) — at this row height a filled chip competes with the focus
+' background for attention.
+sub appendBadge(text as string, color as string)
+  badge = m.badgeRow.createChild("LabelSecondarySmallest")
+  badge.text = text
+  badge.color = color
+end sub
+
+sub onSizeChanged()
+  rowWidth = m.top.rowWidth
+  rowHeight = rowHeightFor(m.badgeRow.visible)
+
+  m.rowBackground.width = rowWidth
+  m.rowBackground.height = rowHeight
+  m.rowBorder.width = rowWidth
+  m.rowBorder.height = rowHeight
+
+  constants = m.global.constants
+  textWidth = rowWidth - (RESULT_ROW_H_PADDING * 2)
+
+  y = RESULT_ROW_V_PADDING
+  if m.badgeRow.visible
+    m.badgeRow.translation = [RESULT_ROW_H_PADDING, y]
+    y += RESULT_ROW_BADGE_HEIGHT
+  end if
+
+  ' ScrollingLabel viewports are driven by maxWidth, not width.
+  m.nameLabel.maxWidth = textWidth
+  m.nameLabel.translation = [RESULT_ROW_H_PADDING, y]
+  y += constants.fontSizeSmaller + RESULT_ROW_LINE_GAP
+
+  m.metaLabel.width = textWidth
+  m.metaLabel.translation = [RESULT_ROW_H_PADDING, y]
+end sub
+
+' rowHeightFor: Rows are a fixed height per badge-state so the MarkupList's
+' itemSize stays honest. The panel sizes its list for the WITH-badges height —
+' a taller uniform row is preferable to rows that visibly jump as focus moves.
+function rowHeightFor(hasBadges as boolean) as integer
+  constants = m.global.constants
+  height = (RESULT_ROW_V_PADDING * 2) + constants.fontSizeSmaller + RESULT_ROW_LINE_GAP + constants.fontSizeSmallest
+  if hasBadges then height += RESULT_ROW_BADGE_HEIGHT
+  return height
+end function
+
+sub onFocusChanged()
+  constants = m.global.constants
+  hasFocus = m.top.itemHasFocus
+
+  m.rowBorder.visible = hasFocus
+  m.rowBackground.visible = hasFocus
+
+  if hasFocus
+    m.rowBorder.blendColor = constants.colorPrimary
+    m.rowBackground.blendColor = constants.colorBackgroundSecondary
+    m.nameLabel.repeatCount = -1
+    m.nameLabel.color = constants.colorTextPrimary
+  else
+    m.nameLabel.repeatCount = 0
+    m.nameLabel.color = constants.colorTextPrimary
+  end if
+end sub
