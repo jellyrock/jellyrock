@@ -112,6 +112,8 @@ The sub-ADR note schema (`docs/decisions.md`):
 [optional, in this order, only when applicable:]
 **supersedes**: <other-slug>
 **superseded-by**: <other-slug>
+**partially-supersedes**: <other-slug> (<what moved>)
+**partially-superseded-by**: <other-slug> (<what moved>)
 **related-files**: <comma-or-list of repo-relative paths>
 
 [body: 1-2 short paragraphs. Why; what we considered; what we ruled out;
@@ -129,7 +131,11 @@ If it collides, surface the existing record and ask: (a) pick a different slug, 
 
 #### 5. Diff-and-confirm, then apply
 
-Surface the proposed **routing** (ADR / note / decline) plus the drafted content as a diff. The user confirms, or **overrides the routing in one tap** (promote a note to an ADR, demote an ADR to a note, redirect). No file is written before confirmation — this is the one `/log` path with a gate, and it gates the agent's *judgment*, not a mechanical append. Then apply the confirmed write via `Edit` (the note and/or the README index row) or by writing the new ADR file. For a sub-ADR note that uses `**supersedes**`, ALSO flip the older note's `**status**: accepted` → `superseded` and add `**superseded-by**: <this-slug>` below its status line — the older note stays in place.
+Surface the proposed **routing** (ADR / note / decline) plus the drafted content as a diff. The user confirms, or **overrides the routing in one tap** (promote a note to an ADR, demote an ADR to a note, redirect). No file is written before confirmation — this is the one `/log` path with a gate, and it gates the agent's *judgment*, not a mechanical append. Then apply the confirmed write via `Edit` (the note and/or the README index row) or by writing the new ADR file. For a sub-ADR note that uses `**supersedes**`, ALSO flip the older note's `**status**: accepted` → `superseded` and add `**superseded-by**: <this-slug>` below its status line — the older note stays in place. Note fields must land in the contiguous block directly under the heading; the linter stops reading at the first line of prose.
+
+**Before writing a full supersede, ask whether it's actually a PARTIAL one.** If only part of the older note was replaced and the rest is still live, the full ritual would be a lie — use `**partially-supersedes**: <old-slug> (<what moved>)` on the new note and `**partially-superseded-by**: <this-slug> (<what moved>)` on the old one, and leave BOTH `accepted`. The scope annotation is required. This mirrors the ADR tier (0003/0004, 0008/0011), where the partially-superseded record keeps `**Status:** Accepted`. A note can be partially superseded by one record and later fully superseded by another.
+
+**`withdrawn` is terminal** — the decision was abandoned, not replaced, so a withdrawn note has no successor: never supersede one, and never let a withdrawn note declare `**supersedes**`. If a note has grown ADR-grade, that's a promotion judgment (route it as an ADR), not a `**superseded-by**` pointer — every pointer must resolve to a slug in `docs/decisions.md`, and cross-tier references are prose markdown links instead.
 
 #### 6. Verify
 
@@ -137,7 +143,9 @@ Surface the proposed **routing** (ADR / note / decline) plus the drafted content
 npm run lint:docs
 ```
 
-This validates: every `tech-debt.md#anchor` ref resolves, every relative markdown link in the touched record (`docs/adr/*.md` and `docs/decisions.md`) resolves, the supersede chain is consistent. Exit 0 = clean.
+This validates: every `tech-debt.md#anchor` ref resolves, every relative markdown link in the touched record (`docs/adr/*.md` and `docs/decisions.md`) resolves, and — for `docs/decisions.md` notes — the supersede chain is consistent: unique slugs, one value per field, a valid `status` enum, every pointer resolving to a real slug **in that file**, both the full and the partial pair symmetric, a superseded note actually reading `superseded` *and* naming its successor, `withdrawn` staying terminal, and nothing pointing at itself. Exit 0 = clean.
+
+**ADR supersede chains are NOT machine-checked.** ADRs express supersession as prose in a `**Status:**` line (`Superseded by [ADR 0024](…)`, and the `**Partially superseded by:** ADR 0011 (per-finding-default output only)` variant), which has no field to validate. Get the ADR side right by hand.
 
 ### Step 2-F — Followup
 

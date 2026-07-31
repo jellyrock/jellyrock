@@ -32,6 +32,15 @@
 //     Catches the failure mode where a slug gets removed from
 //     tech-debt.md but anchor refs elsewhere go stale. Surfaced when 4
 //     such refs slipped through the v2.15.0 doc audit.
+//   - The docs/decisions.md supersede chain (see
+//     checkDecisionsSupersedeChain): unique slugs, one value per
+//     field, a valid `status` enum, every pointer resolves within the
+//     file, both the full and the partial supersede pair are
+//     symmetric, `superseded` records its successor, `withdrawn` is
+//     terminal, and nothing points at itself. The supersede ritual is
+//     a three-part hand edit, so a half-applied one used to leave the
+//     chain silently lying — and `/log`'s SKILL.md claimed this was
+//     already validated when no such logic existed.
 //
 // What it doesn't check (yet):
 //   - Inline backtick-quoted paths in prose (noise-prone; many false
@@ -45,7 +54,9 @@
 //   --verbose  per-file counts on stdout
 //   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
 //              errors: [{category, file, message, target}]} where category is
-//              one of "broken-related-file", "broken-link", or "stale-anchor".
+//              one of "broken-related-file", "broken-link", "stale-anchor",
+//              "progress-frontmatter", "signals-schema-invalid", or
+//              "decisions-supersede-chain".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
 //
@@ -95,6 +106,9 @@ const SIGNALS_REQUIRED_BULLETS = [
 ];
 const SIGNALS_VALID_STATUSES = ['watching', 'action_pending', 'completed'];
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// docs/decisions.md note statuses, per that file's own Format section.
+const DECISION_VALID_STATUSES = ['accepted', 'superseded', 'withdrawn'];
 
 // ────────────────────────────────────────────────────────────────────
 // Markdown link extraction — relative path links only.
@@ -263,6 +277,292 @@ function checkProgressFrontmatter() {
         'progress.md is missing or has a malformed `last-updated:` frontmatter field (expected ISO YYYY-MM-DD)',
       target: 'last-updated',
     });
+  }
+}
+
+// Supersede-chain integrity for docs/decisions.md.
+//
+// The supersede ritual is a THREE-part edit, applied by hand (or by /log
+// decision): the new note gets `**supersedes**: <old>`, and the old note's
+// `**status**` flips to `superseded` and gains `**superseded-by**: <new>`.
+// Miss any part and the chain lies — a note still reading `accepted` while a
+// successor exists is worse than no record, because /catchup and every future
+// reader treat these journals as authoritative.
+//
+// This was previously claimed to be validated and was not: `/log`'s SKILL.md
+// asserted `npm run lint:docs` checked "the supersede chain is consistent",
+// but no such logic existed anywhere in scripts/.
+//
+// Two shapes are validated, mirroring what docs/adr/README.md and the ADR
+// records already do:
+//
+//   FULL     — the predecessor flips to `**status**: superseded` and gains
+//              `**superseded-by**`; the successor declares `**supersedes**`.
+//   PARTIAL  — only some of the predecessor was replaced, so BOTH notes stay
+//              `accepted` (both are still live) and the relationship is carried
+//              by `**partially-supersedes**` / `**partially-superseded-by**`,
+//              each annotated with the scope that moved. This mirrors ADR
+//              0003/0004 and 0008/0011, where the partially-superseded record
+//              keeps `**Status:** Accepted`.
+//
+// Both shapes are symmetric, every target must resolve, and no note may point
+// at itself. `withdrawn` is terminal: a withdrawn decision has no successor, so
+// it can neither be superseded nor supersede anything.
+//
+// Pointers resolve within this file only. Cross-tier (note <-> ADR) references
+// are deliberately NOT fields — the house convention is a prose markdown link,
+// which checkBodyLinks already validates.
+function checkDecisionsSupersedeChain() {
+  if (!fs.existsSync(DECISIONS_PATH)) return;
+  const lines = fs.readFileSync(DECISIONS_PATH, 'utf8').split(/\r?\n/);
+
+  // Matches ANY `**field**:` line. Used only to find where a note's header
+  // block ends, so it is deliberately wider than the set of fields we read.
+  const FIELD_LINE_RE = /^\*\*[a-z-]+\*\*:/;
+  const CHAIN_FIELD_RE =
+    /^\*\*(status|supersedes|superseded-by|partially-supersedes|partially-superseded-by)\*\*:\s*(.+)$/;
+
+  const unwrap = (s) => s.trim().replace(/^`|`$/g, '').trim();
+
+  // `<slug> (<what was replaced>)`, slug optionally backticked. The scope
+  // annotation is required — a partial supersede that doesn't say WHICH part
+  // moved isn't a usable record, and both ADR precedents carry one.
+  const parsePartial = (raw) => {
+    const m = /^`?([^`\s]+)`?\s+\((.+)\)$/.exec(raw.trim());
+    return m ? { slug: m[1], scope: m[2].trim() } : null;
+  };
+
+  // File order, duplicates kept so they can be reported rather than shadowed.
+  const notes = [];
+  let current = null;
+  let inCodeFence = false;
+  let inHeaderBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*(```|~~~)/.test(line)) {
+      inCodeFence = !inCodeFence;
+      inHeaderBlock = false;
+      continue;
+    }
+    if (inCodeFence) continue;
+
+    const heading = /^##\s+decision-id:\s*(\S+)\s*$/.exec(line);
+    if (heading) {
+      current = { slug: unwrap(heading[1]), line: i + 1, fields: new Map(), dupeFields: [] };
+      notes.push(current);
+      inHeaderBlock = true;
+      continue;
+    }
+    if (!current || !inHeaderBlock) continue;
+
+    // A note's fields are the contiguous run of `**field**:` lines following
+    // its heading (blank lines allowed). The first line that is neither blank
+    // nor a field line closes the block — so body prose that happens to begin
+    // with `**status**:` can never be read as a field.
+    if (line.trim() === '') continue;
+    if (!FIELD_LINE_RE.test(line)) {
+      inHeaderBlock = false;
+      continue;
+    }
+
+    const field = CHAIN_FIELD_RE.exec(line);
+    if (!field) continue; // a field we don't validate (**date**, **related-files**)
+    const [, name, raw] = field;
+    if (current.fields.has(name)) current.dupeFields.push({ name, line: i + 1 });
+    else current.fields.set(name, { value: unwrap(raw), raw: raw.trim(), line: i + 1 });
+  }
+
+  const err = (note, message, line) =>
+    pushError({
+      category: 'decisions-supersede-chain',
+      file: DECISIONS_PATH,
+      message: `decision note "${note.slug}" (line ${line ?? note.line}) ${message}`,
+      target: note.slug,
+    });
+
+  // Duplicate slugs are reported, then the shadowed copy is skipped — carrying
+  // both would misattribute every downstream pointer error to the wrong record.
+  const bySlug = new Map();
+  for (const note of notes) {
+    const first = bySlug.get(note.slug);
+    if (first) {
+      err(
+        note,
+        `duplicates the decision-id first defined at line ${first.line} — slugs are ` +
+          'stable references and must be unique',
+      );
+    } else {
+      bySlug.set(note.slug, note);
+    }
+  }
+
+  const get = (note, name) => note.fields.get(name) ?? null;
+
+  for (const note of bySlug.values()) {
+    for (const dupe of note.dupeFields) {
+      err(
+        note,
+        `declares \`**${dupe.name}**:\` more than once — one value per field; a note ` +
+          'supersedes at most one predecessor',
+        dupe.line,
+      );
+    }
+
+    const status = get(note, 'status');
+    if (status === null) {
+      err(note, 'is missing a `**status**:` field');
+    } else if (!DECISION_VALID_STATUSES.includes(status.value)) {
+      err(
+        note,
+        `has invalid status "${status.value}" — must be one of: ${DECISION_VALID_STATUSES.join(', ')}`,
+        status.line,
+      );
+    }
+
+    const supersedes = get(note, 'supersedes');
+    const supersededBy = get(note, 'superseded-by');
+
+    // A `superseded` status with no successor recorded is the half-applied
+    // ritual in its other direction: the note says it was replaced, but not by
+    // what — leaving a reader no way to find the record that supplanted it.
+    if (status?.value === 'superseded' && !supersededBy) {
+      err(
+        note,
+        'reads `**status**: superseded` but records no `**superseded-by**:` pointer — name ' +
+          'the successor slug (a note superseded by an ADR is not expressible as a field; ' +
+          'see docs/decisions.md Format)',
+        status.line,
+      );
+    }
+
+    if (status?.value === 'withdrawn') {
+      for (const name of ['supersedes', 'partially-supersedes']) {
+        const field = get(note, name);
+        if (field) {
+          err(
+            note,
+            `is \`withdrawn\` but declares \`**${name}**:\` — a withdrawn note cannot be ` +
+              "anyone's successor, or the record it replaced would point at a dead one",
+            field.line,
+          );
+        }
+      }
+    }
+
+    if (supersedes) {
+      const target = bySlug.get(supersedes.value);
+      if (supersedes.value === note.slug) {
+        err(note, 'supersedes itself', supersedes.line);
+      } else if (!target) {
+        err(
+          note,
+          `supersedes "${supersedes.value}", which is not a decision note in this file`,
+          supersedes.line,
+        );
+      } else {
+        const backPtr = get(target, 'superseded-by');
+        const targetStatus = get(target, 'status');
+        if (backPtr?.value !== note.slug) {
+          err(
+            note,
+            `supersedes "${target.slug}", but that note's \`**superseded-by**\` is ` +
+              `${backPtr ? `"${backPtr.value}"` : 'missing'} — the supersede ` +
+              'ritual is a three-part edit (see docs/decisions.md Format)',
+            supersedes.line,
+          );
+        }
+        if (targetStatus?.value === 'withdrawn') {
+          err(
+            note,
+            `supersedes "${target.slug}", but that note is \`withdrawn\` — withdrawn and ` +
+              'superseded are different fates, and a withdrawn note has no successor',
+            supersedes.line,
+          );
+        } else if (targetStatus?.value !== 'superseded') {
+          err(
+            note,
+            `supersedes "${target.slug}", but that note still reads \`**status**: ` +
+              `${targetStatus?.value ?? '(none)'}\` — flip it to \`superseded\`. If only PART ` +
+              'of it was replaced, use `**partially-supersedes**` / `**partially-superseded-by**` ' +
+              'instead and leave both notes `accepted`',
+            supersedes.line,
+          );
+        }
+      }
+    }
+
+    if (supersededBy) {
+      const target = bySlug.get(supersededBy.value);
+      if (supersededBy.value === note.slug) {
+        err(note, 'is superseded by itself', supersededBy.line);
+      } else if (!target) {
+        err(
+          note,
+          `is superseded-by "${supersededBy.value}", which is not a decision note in this file`,
+          supersededBy.line,
+        );
+      } else if (get(target, 'supersedes')?.value !== note.slug) {
+        err(
+          note,
+          `is superseded-by "${target.slug}", but that note does not declare ` +
+            '`**supersedes**` back — the pointers must be symmetric',
+          supersededBy.line,
+        );
+      }
+    }
+
+    // Partial supersede. Both notes stay `accepted` because both are still
+    // live, so this pair is deliberately exempt from the status-flip rule.
+    for (const [name, mirrorName] of [
+      ['partially-supersedes', 'partially-superseded-by'],
+      ['partially-superseded-by', 'partially-supersedes'],
+    ]) {
+      const field = get(note, name);
+      if (!field) continue;
+
+      const parsed = parsePartial(field.raw);
+      if (!parsed) {
+        err(
+          note,
+          `has a malformed \`**${name}**:\` value "${field.raw}" — expected ` +
+            '`<slug> (<what was replaced>)`; the scope annotation is required',
+          field.line,
+        );
+        continue;
+      }
+      if (parsed.slug === note.slug) {
+        err(note, `\`**${name}**\` points at itself`, field.line);
+        continue;
+      }
+      const target = bySlug.get(parsed.slug);
+      if (!target) {
+        err(
+          note,
+          `\`**${name}**\` names "${parsed.slug}", which is not a decision note in this file`,
+          field.line,
+        );
+        continue;
+      }
+
+      const mirror = get(target, mirrorName);
+      if (parsePartial(mirror?.raw ?? '')?.slug !== note.slug) {
+        err(
+          note,
+          `\`**${name}**\` names "${target.slug}", but that note's \`**${mirrorName}**\` is ` +
+            `${mirror ? `"${mirror.raw}"` : 'missing'} — partial supersedes are symmetric too`,
+          field.line,
+        );
+      }
+      if (name === 'partially-supersedes' && get(target, 'status')?.value === 'withdrawn') {
+        err(
+          note,
+          `\`**${name}**\` names "${target.slug}", which is \`withdrawn\` — a withdrawn note ` +
+            'has no successor',
+          field.line,
+        );
+      }
+    }
   }
 }
 
@@ -506,6 +806,7 @@ for (const file of findPluginScripts()) {
 // participate in the same accumulator.
 checkProgressFrontmatter();
 checkSignalsSchema();
+checkDecisionsSupersedeChain();
 
 if (JSON_MODE) {
   // Single-line JSON to stdout regardless of pass/fail. Exit code carries

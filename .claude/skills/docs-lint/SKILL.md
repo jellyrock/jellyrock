@@ -1,6 +1,6 @@
 ---
 name: docs-lint
-description: Run JellyRock's docs governance checks (broken markdown links, broken related-files frontmatter paths, stale tech-debt anchor references, stale-doc detection) and surface a structured fix list grouped by category. Consumes the --json output of scripts/lint/docs-check.cjs and the human-readable output of scripts/lint/docs-stale.cjs. Use when a commit hits the docs-lint pre-push hook, before pushing a PR that touched docs/ or any CLAUDE.md, or when you want a one-shot pass over doc references.
+description: Run JellyRock's docs governance checks (broken markdown links, broken related-files frontmatter paths, stale tech-debt anchor references, journal-schema gates for progress.md / signals-backlog.md / the decisions.md supersede chain, stale-doc detection) and surface a structured fix list grouped by category. Consumes the --json output of scripts/lint/docs-check.cjs and the human-readable output of scripts/lint/docs-stale.cjs. Use when a commit hits the docs-lint pre-push hook, before pushing a PR that touched docs/ or any CLAUDE.md, or when you want a one-shot pass over doc references.
 model: sonnet
 effort: low
 ---
@@ -9,7 +9,7 @@ effort: low
 
 Wraps the JellyRock doc validators with structured parsing and Edit-based fix suggestions. Two layers:
 
-1. **Reference integrity** — [`scripts/lint/docs-check.cjs`](../../../scripts/lint/docs-check.cjs) (`--json` mode). Catches: broken `related-files:` frontmatter paths, broken inline markdown links, stale `tech-debt.md#anchor` references.
+1. **Reference integrity + journal schema** — [`scripts/lint/docs-check.cjs`](../../../scripts/lint/docs-check.cjs) (`--json` mode). Catches: broken `related-files:` frontmatter paths, broken inline markdown links, stale `tech-debt.md#anchor` references, and three journal-schema gates (`docs/progress.md` frontmatter, `docs/signals-backlog.md` rows, the `docs/decisions.md` supersede chain).
 2. **Staleness** — [`scripts/lint/docs-stale.cjs`](../../../scripts/lint/docs-stale.cjs). Soft signal — informational list of architecture docs whose `last-reviewed:` is past the threshold (default 90 days). The blocking variant ([`docs-stale-blocking.cjs`](../../../scripts/lint/docs-stale-blocking.cjs)) is what CI runs at PR time and is more conservative — it only blocks if the PR touched a stale doc's territory without updating the doc.
 
 ## Step 1 — Run the validators
@@ -27,7 +27,9 @@ npm run docs:stale --silent
   "errorsCount": 0,
   "errors": [
     {
-      "category": "broken-related-file" | "broken-link" | "stale-anchor",
+      "category": "broken-related-file" | "broken-link" | "stale-anchor"
+                | "progress-frontmatter" | "signals-schema-invalid"
+                | "decisions-supersede-chain",
       "file": "<repo-relative path>",
       "message": "<full diagnostic>",
       "target": "<the broken path or anchor>"
@@ -59,6 +61,26 @@ A `tech-debt.md#<slug>` citation references an anchor that no longer exists in [
 
 - **Slug renamed** → grep `docs/architecture/tech-debt.md` for the new slug. **Fix**: substitute the new slug in the citation.
 - **Entry removed** (work completed) → no replacement exists. **Fix**: remove the citation, or rewrite the surrounding sentence to drop the now-irrelevant reference. Per `tech-debt.md`'s preamble, completed entries are removed entirely (no "recently fixed" section), so the citation site is now stale by design.
+
+### `progress-frontmatter`
+
+[`docs/progress.md`](../../../docs/progress.md) is missing a well-formed `last-updated:` frontmatter field. **Structural** check only — *temporal* staleness of that field is deliberately not gated here (it's a property of `main`, not of any one PR). **Fix**: restore the field with today's date via `/log running` or `/done running` rather than hand-editing — those are the sanctioned write paths for that journal.
+
+### `signals-schema-invalid`
+
+A [`docs/signals-backlog.md`](../../../docs/signals-backlog.md) row is missing a required bullet, has an invalid `status` enum, or a malformed ISO date. **Fix**: `/log signal <slug>` (create/update) or `/done <slug>` (close) — again, not a raw edit.
+
+### `decisions-supersede-chain`
+
+A [`docs/decisions.md`](../../../docs/decisions.md) note breaks the supersede schema. The message names the note and the offending field's line. Shapes, and what each actually means:
+
+- **"still reads `**status**: accepted` — flip it to `superseded`"** → the ritual is a three-part edit and only part of it landed. **But read the note first**: if only *part* of the old decision was replaced, the fix is not the flip — it's the partial pair (`**partially-supersedes**` / `**partially-superseded-by**`, each with a `(scope)` annotation, both notes staying `accepted`). Flipping a partially-replaced note to `superseded` passes the gate while making the record lie, which is the failure this category exists to prevent.
+- **"records no `**superseded-by**:` pointer"** → the status flip landed but neither pointer did. **Fix**: name the successor slug.
+- **asymmetry / dangling target** → one side of the pair is missing or points at a slug that doesn't exist in the file. **Fix**: add the mirror field, or correct the slug. Pointers resolve *within* `decisions.md` only — a note superseded by an ADR has no field for it; that relationship is a prose markdown link.
+- **`withdrawn` involved** → withdrawn is terminal (abandoned, not replaced). **Fix**: don't supersede it, and don't let it supersede anything. If the decision really was *replaced*, the status should have been `superseded` all along.
+- **duplicate slug / duplicate field** → **Fix**: rename one slug (they're stable cross-reference keys), or drop the extra field line. A note supersedes at most one predecessor.
+
+All fixes here should go through [`/log decision`](../log/SKILL.md) where possible — it applies all three parts of the ritual. Raw edits to this file are not the sanctioned path.
 
 ### Stale architecture docs (`docs:stale` output)
 

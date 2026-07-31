@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/progress-cursor-nudge.cjs
   - scripts/lint/session-start-nudge.cjs
   - .github/workflows/journal-sync.yml
-last-reviewed: 2026-07-21
+last-reviewed: 2026-07-31
 ---
 
 # System shape — how this repo's dev-process is structured and why
@@ -53,8 +53,8 @@ This is **Diátaxis-lite**, not strict Diátaxis: there's no `docs/tutorial/` bu
 | File | Job | Decay rate | Update via |
 |---|---|---|---|
 | [`docs/progress.md`](../progress.md) | Live state cursor — currently running, recently shipped, open followups | Hours / days | `/log followup` (auto-bumps), `/done` (auto-prepends shipped) |
-| [`docs/adr/`](../adr/README.md) | Numbered, immutable Architecture Decision Records — architectural / hard-to-reverse / cross-component decisions (Context / Decision / Consequences / Status) | Never (superseded, not edited) | `/log decision` (ADR-grade) |
-| [`docs/decisions.md`](../decisions.md) | Append-only **sub-ADR notes** — narrow / single-component / implementation-level decisions below the ADR bar | Never (forward-only) | `/log decision` (sub-threshold) |
+| [`docs/adr/`](../adr/README.md) | Numbered, immutable Architecture Decision Records — architectural / hard-to-reverse / cross-component decisions (Context / Decision / Consequences / Status) | Never — the body is superseded, not edited; the supersede ritual flips the predecessor's `**Status:**` | `/log decision` (ADR-grade) |
+| [`docs/decisions.md`](../decisions.md) | Append-only **sub-ADR notes** — narrow / single-component / implementation-level decisions below the ADR bar | Never for note *prose*; the supersede ritual is the one sanctioned field edit to an older note | `/log decision` (sub-threshold) |
 | [`docs/signals-backlog.md`](../signals-backlog.md) | External version-watching (Jellyfin, Roku OS, BrighterScript, deps) — slow-decay, one row per upstream | Slow | `/log signal`, `/done <slug>` |
 | [`docs/architecture/tech-debt.md`](tech-debt.md) | Internal refactor candidates (severity-classified, slug-based) | Slow | [`/tech-debt-scan`](../../.claude/skills/tech-debt-scan/SKILL.md) (handles both add + remove) |
 
@@ -96,6 +96,7 @@ Specifically for the journal layer:
 - `progress.md` staleness gate — `docs-check.cjs` FAILs when `last-updated` is >7 days old AND there are commits since (the territory-touched logic is implicit: any commit means the cursor moved). The post-merge auto-sync layer is what keeps this gate quiet — without it, `last-updated:` only moves when the user remembers to invoke `/log` or `/done`.
 - `signals-backlog.md` schema validator — `docs-check.cjs` FAILs on missing required bullets, invalid `status` enum, malformed `last_checked` ISO date, or non-positive `staleness_days`.
 - `docs/adr/` and `decisions.md` don't get a staleness gate (immutable / append-only — staleness is meaningless), but their body links + tech-debt anchors are validated by `docs-check.cjs`.
+- `decisions.md` supersede-chain validator — `docs-check.cjs` FAILs on a duplicate slug, a field declared twice, an invalid `status` enum, a pointer that doesn't resolve within the file, an asymmetric full **or** partial supersede pair, a `superseded` note naming no successor, a `withdrawn` note used at either end of a supersede, or a self-pointer. The ritual is a multi-part hand edit, so a half-applied one would otherwise leave the chain quietly lying. The ADR tier expresses the same relationship as prose and is deliberately **not** machine-checked.
 
 ## The principles
 
@@ -106,7 +107,7 @@ Distilled from the source-project's audit + reshape that preceded JellyRock's ad
 - **One job per file** — multi-job files accumulate update-friction and silently rot.
 - **Group by decay rate** — fast-decay sections in slow-decay files don't get updated; slow-decay in fast-decay get accidentally rewritten.
 - **Single source of truth per concept** — duplication = drift.
-- **Forward-only journals** — append-only history with `superseded by` linkage; don't retro-edit.
+- **Forward-only journals** — append-only history with `superseded by` linkage; don't retro-edit the prose. The supersede ritual is the one sanctioned exception, and it's machine-checked precisely because a half-applied edit is worse than none.
 
 **UX (how you interact):**
 

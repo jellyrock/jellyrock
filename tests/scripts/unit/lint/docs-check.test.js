@@ -350,3 +350,306 @@ describe('docs-check — signals-backlog schema', () => {
     expect(exitCode).toBe(0);
   });
 });
+
+describe('docs-check — decisions.md supersede chain', () => {
+  let dir;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = null;
+  });
+
+  // A decisions.md note. Pass null for a field to omit it. The partial fields
+  // take a RAW value (e.g. '`old` (fill axis only)') so malformed ones can be
+  // exercised too.
+  function note(
+    slug,
+    {
+      status = 'accepted',
+      supersedes = null,
+      supersededBy = null,
+      partiallySupersedes = null,
+      partiallySupersededBy = null,
+      body = 'Body prose.',
+    } = {},
+  ) {
+    let out = `## decision-id: ${slug}\n\n**date**: 2026-07-30\n`;
+    if (status !== null) out += `**status**: ${status}\n`;
+    if (supersedes) out += `**supersedes**: \`${supersedes}\`\n`;
+    if (supersededBy) out += `**superseded-by**: \`${supersededBy}\`\n`;
+    if (partiallySupersedes) out += `**partially-supersedes**: ${partiallySupersedes}\n`;
+    if (partiallySupersededBy) out += `**partially-superseded-by**: ${partiallySupersededBy}\n`;
+    return `${out}\n${body}\n\n`;
+  }
+
+  const write = (body) => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-decisions-'));
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    writeFileSync(join(dir, 'docs/decisions.md'), `# Decision notes\n\n${body}`);
+    return spawnScript(SCRIPT, [dir, '--json']);
+  };
+
+  const chainErrors = (stdout) =>
+    (JSON.parse(stdout).errors || []).filter((e) => e.category === 'decisions-supersede-chain');
+
+  it('passes on a fully-formed supersede pair', () => {
+    const { exitCode } = write(
+      note('old-one', { status: 'superseded', supersededBy: 'new-one' }) +
+        note('new-one', { supersedes: 'old-one' }),
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it('passes on notes with no supersede relationship at all', () => {
+    const { exitCode } = write(note('a') + note('b'));
+    expect(exitCode).toBe(0);
+  });
+
+  // The failure this gate exists for: the ritual is a three-part edit, and
+  // forgetting the status flip leaves a note claiming to be live when it isn't.
+  it('FAILs when the superseded note still reads `accepted`', () => {
+    const { exitCode, stdout } = write(
+      note('old-one', { status: 'accepted', supersededBy: 'new-one' }) +
+        note('new-one', { supersedes: 'old-one' }),
+    );
+    expect(exitCode).toBe(1);
+    const messages = chainErrors(stdout)
+      .map((e) => e.message)
+      .join('\n');
+    expect(messages).toMatch(/flip it to/);
+    // ...and routes the author to the partial fields, since "only part of it
+    // was replaced" is the other thing this shape can mean.
+    expect(messages).toMatch(/partially-supersedes/);
+  });
+
+  it('FAILs when the back-pointer is missing (asymmetric chain)', () => {
+    const { exitCode, stdout } = write(
+      note('old-one', { status: 'superseded' }) + note('new-one', { supersedes: 'old-one' }),
+    );
+    expect(exitCode).toBe(1);
+    expect(
+      chainErrors(stdout)
+        .map((e) => e.message)
+        .join('\n'),
+    ).toMatch(/superseded-by.*is missing/);
+  });
+
+  it('FAILs when `supersedes` points at a slug that does not exist', () => {
+    const { exitCode, stdout } = write(note('new-one', { supersedes: 'ghost-slug' }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/not a decision note in this file/);
+  });
+
+  it('FAILs when `superseded-by` points at a slug that does not exist', () => {
+    const { exitCode, stdout } = write(
+      note('old-one', { status: 'superseded', supersededBy: 'ghost-slug' }),
+    );
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/not a decision note in this file/);
+  });
+
+  it('FAILs on an invalid status enum value', () => {
+    const { exitCode, stdout } = write(note('a', { status: 'kinda-accepted' }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/invalid status "kinda-accepted"/);
+  });
+
+  it('FAILs on a missing status field', () => {
+    const { exitCode, stdout } = write(note('a', { status: null }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/missing a `\*\*status\*\*:` field/);
+  });
+
+  it('FAILs on a self-supersede', () => {
+    const { exitCode, stdout } = write(note('a', { supersedes: 'a' }));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/supersedes itself/);
+  });
+
+  // The Format section of decisions.md shows the schema inside a fence.
+  it('ignores note-shaped lines inside code fences', () => {
+    const { exitCode } = write(
+      '```markdown\n## decision-id: example\n\n**status**: not-a-real-status\n```\n\n' + note('a'),
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it('ignores note-shaped lines inside tilde fences', () => {
+    const { exitCode } = write(
+      '~~~markdown\n## decision-id: example\n\n**status**: not-a-real-status\n~~~\n\n' + note('a'),
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  // Fields live in the header block only. Body prose that happens to begin
+  // with `**status**:` used to be read as a field — and, last-write-wins,
+  // silently override the real one.
+  it('does not read body prose beginning with `**status**:` as a field', () => {
+    const { exitCode } = write(
+      note('a', { body: 'Prose about the rule:\n**status**: one of accepted, superseded.' }),
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it('passes silently when decisions.md does not exist', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-decisions-'));
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    const { exitCode } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(exitCode).toBe(0);
+  });
+
+  // Slugs are stable references. A duplicate used to silently shadow the first
+  // note, which then misattributed every downstream pointer error.
+  it('FAILs on a duplicate decision-id', () => {
+    const { exitCode, stdout } = write(note('dup') + note('dup'));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/duplicates the decision-id/);
+  });
+
+  // Two `**supersedes**:` lines used to mean "last one wins", so the first
+  // predecessor went entirely unvalidated.
+  it('FAILs when a field is declared twice', () => {
+    const { exitCode, stdout } = write(
+      note('old-one') +
+        note('new-one', { supersedes: 'old-one' }).replace(
+          '**supersedes**: `old-one`',
+          '**supersedes**: `old-one`\n**supersedes**: `other`',
+        ),
+    );
+    expect(exitCode).toBe(1);
+    expect(
+      chainErrors(stdout)
+        .map((e) => e.message)
+        .join('\n'),
+    ).toMatch(/declares `\*\*supersedes\*\*:` more than once/);
+  });
+
+  // The mirror image of the "still reads accepted" break: the status flip was
+  // applied but neither pointer was, so the note says it was replaced without
+  // saying by what.
+  it('FAILs when a `superseded` note records no successor', () => {
+    const { exitCode, stdout } = write(note('a', { status: 'superseded' }) + note('b'));
+    expect(exitCode).toBe(1);
+    expect(chainErrors(stdout)[0].message).toMatch(/records no `\*\*superseded-by\*\*:` pointer/);
+  });
+
+  // Errors point at the offending field, not the note heading. The body is
+  // "# Decision notes" + blank, so the note starts on line 3 and its
+  // `**status**:` lands on line 6.
+  it('reports the offending field line, not the heading line', () => {
+    const { stdout } = write(note('a', { status: 'bogus' }));
+    expect(chainErrors(stdout)[0].message).toMatch(/\(line 6\)/);
+  });
+
+  describe('withdrawn is terminal', () => {
+    it('passes for a withdrawn note with no pointers', () => {
+      const { exitCode } = write(note('a', { status: 'withdrawn' }));
+      expect(exitCode).toBe(0);
+    });
+
+    // Withdrawn and superseded are different fates — so the advice here must
+    // NOT be the usual "flip it to `superseded`".
+    it('FAILs when a supersede target is withdrawn', () => {
+      const { exitCode, stdout } = write(
+        note('old-one', { status: 'withdrawn', supersededBy: 'new-one' }) +
+          note('new-one', { supersedes: 'old-one' }),
+      );
+      expect(exitCode).toBe(1);
+      const messages = chainErrors(stdout)
+        .map((e) => e.message)
+        .join('\n');
+      expect(messages).toMatch(/is `withdrawn` — withdrawn and superseded are different fates/);
+      expect(messages).not.toMatch(/flip it to/);
+    });
+
+    it('FAILs when a withdrawn note declares `supersedes`', () => {
+      const { exitCode, stdout } = write(
+        note('old-one', { status: 'superseded', supersededBy: 'new-one' }) +
+          note('new-one', { status: 'withdrawn', supersedes: 'old-one' }),
+      );
+      expect(exitCode).toBe(1);
+      expect(
+        chainErrors(stdout)
+          .map((e) => e.message)
+          .join('\n'),
+      ).toMatch(/is `withdrawn` but declares `\*\*supersedes\*\*:`/);
+    });
+  });
+
+  // Mirrors the ADR convention (0003/0004, 0008/0011): when only part of a
+  // record is replaced, BOTH stay `accepted` because both are still live.
+  describe('partial supersede', () => {
+    it('passes on a symmetric, scoped pair with both notes accepted', () => {
+      const { exitCode } = write(
+        note('old-one', { partiallySupersededBy: '`new-one` (fill axis only)' }) +
+          note('new-one', { partiallySupersedes: '`old-one` (fill axis only)' }),
+      );
+      expect(exitCode).toBe(0);
+    });
+
+    it('coexists with a later full supersede of the same note', () => {
+      const { exitCode } = write(
+        note('old-one', {
+          status: 'superseded',
+          supersededBy: 'newest',
+          partiallySupersededBy: '`mid` (logging only)',
+        }) +
+          note('mid', { partiallySupersedes: '`old-one` (logging only)' }) +
+          note('newest', { supersedes: 'old-one' }),
+      );
+      expect(exitCode).toBe(0);
+    });
+
+    it('FAILs when the pair is asymmetric', () => {
+      const { exitCode, stdout } = write(
+        note('old-one', { partiallySupersededBy: '`new-one` (fill axis only)' }) + note('new-one'),
+      );
+      expect(exitCode).toBe(1);
+      expect(chainErrors(stdout)[0].message).toMatch(/partial supersedes are symmetric too/);
+    });
+
+    // A partial supersede that doesn't say WHICH part moved isn't a usable
+    // record — both ADR precedents carry the annotation.
+    it('FAILs when the scope annotation is missing', () => {
+      const { exitCode, stdout } = write(
+        note('old-one', { partiallySupersededBy: '`new-one`' }) +
+          note('new-one', { partiallySupersedes: '`old-one` (fill axis only)' }),
+      );
+      expect(exitCode).toBe(1);
+      expect(
+        chainErrors(stdout)
+          .map((e) => e.message)
+          .join('\n'),
+      ).toMatch(/the scope annotation is required/);
+    });
+
+    it('FAILs when the target does not exist', () => {
+      const { exitCode, stdout } = write(
+        note('a', { partiallySupersedes: '`ghost-slug` (some scope)' }),
+      );
+      expect(exitCode).toBe(1);
+      expect(chainErrors(stdout)[0].message).toMatch(/not a decision note in this file/);
+    });
+
+    it('FAILs on a self-pointer', () => {
+      const { exitCode, stdout } = write(note('a', { partiallySupersedes: '`a` (some scope)' }));
+      expect(exitCode).toBe(1);
+      expect(chainErrors(stdout)[0].message).toMatch(/points at itself/);
+    });
+
+    it('FAILs when the partially-superseded target is withdrawn', () => {
+      const { exitCode, stdout } = write(
+        note('old-one', {
+          status: 'withdrawn',
+          partiallySupersededBy: '`new-one` (scope)',
+        }) + note('new-one', { partiallySupersedes: '`old-one` (scope)' }),
+      );
+      expect(exitCode).toBe(1);
+      expect(
+        chainErrors(stdout)
+          .map((e) => e.message)
+          .join('\n'),
+      ).toMatch(/is `withdrawn` — a withdrawn note has no successor/);
+    });
+  });
+});
