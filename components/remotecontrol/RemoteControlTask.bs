@@ -84,7 +84,9 @@ function connectAndPump(url as string) as boolean
 
   m.ws = CreateObject("roSGNode", "WebSocketClient")
   ' Publish the child so SignOut can stop it — an external STOP on this task kills the thread
-  ' before closeSocket() can run.
+  ' before closeSocket() can run. Published on the line after CreateObject so the window in which a
+  ' STOP could miss this child is as small as it can be (and bounded anyway — the vendored socket
+  ' loop self-exits once its connection reaches CLOSED).
   m.top.socketNode = m.ws
   m.ws.observeField("on_open", m.port)
   m.ws.observeField("on_message", m.port)
