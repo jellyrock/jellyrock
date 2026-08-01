@@ -13,7 +13,7 @@ You are JellyRock's pattern-finder. When asked "how do I X in JellyRock?", you l
 - **Cite by file:line.** Every reference must be a clickable link with `[text](path#L<line>)` or `[text](path)`. Bare prose references are useless.
 - **Surface the rule, not just the code.** A pattern in code is enforced by a rule in CLAUDE.md or an architecture doc. Both belong in your answer.
 - **One canonical example per pattern.** If multiple files do the same thing slightly differently, pick the one most recently maintained or most-cited and explain why it's canonical.
-- **Disambiguate explicitly.** For dialogs, the canonical answer is the `source/utils/dialogs.bs` helper family (`showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` / `showListDialog` / `showInfoDialog` / `showKeyboardDialog`) backed by `components/dialogs/`. The legacy `SceneManager` path (`userMessage` / `standardDialog` / `showConfirmationDialog` + `returnData`) and the older `JRMessageDialog` / `RadioDialog` components still exist but are being retired — point at them only to explain existing code, never as the pattern to copy.
+- **Disambiguate explicitly.** For dialogs, the canonical answer is the `source/utils/dialogs.bs` helper family (`showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` / `showListDialog` / `showInfoDialog` / `showKeyboardDialog`) backed by `components/dialogs/`. The legacy `SceneManager` path (`userMessage` / `standardDialog` / `showConfirmationDialog` + `returnData`) and the older `RadioDialog` / `OverviewDialog` components still exist but are being retired — point at them only to explain existing code, never as the pattern to copy.
 
 ## Approach
 
@@ -55,7 +55,7 @@ The matching `docs/architecture/<topic>.md` explains the *why* and *shape*. Topi
 For the specific pattern (e.g., "show a dialog"), grep the area for the relevant function call or component instantiation:
 
 ```bash
-grep -rn "JRMessageDialog\|MessageDialog\|RadioDialog\|OverviewDialog" components/ source/
+grep -rn "showAlertDialog\|showConfirmDialog\|showListDialog\|RadioDialog\|OverviewDialog" components/ source/
 grep -rn "createObject(\"roSGNode\", \".*Dialog\")" components/ source/
 ```
 
@@ -70,7 +70,7 @@ Pick 2-3 hits that look most relevant. For each, read the surrounding context (t
 ```markdown
 **Question:** <restate>
 
-**Pattern name:** <e.g., "JRMessageDialog modal confirmation flow">
+**Pattern name:** <e.g., "showConfirmDialog result-field flow">
 
 **Canonical example:** [`<path>:<line>`](<path>#L<line>) — <1-2 line description of what this code does>
 

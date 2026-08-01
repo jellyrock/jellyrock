@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   JRGroup is the common base for BOTH full-screen routed views (via JRScreen)
-  and non-routed sub-panels / dialogs (ExtrasSlider, section, sectionScroller,
-  OverviewDialog, ProgramDetails).
+  and non-routed sub-panels / dialogs (ExtrasSlider, JRDialog, section,
+  sectionScroller, OverviewDialog, ProgramDetails).
 
   It extends sgrouter_View so JRScreen-derived screens are routable by
   sgRouter without per-screen changes and without duplicating the overhang
