@@ -1,0 +1,50 @@
+' @fileoverview Layout constants for the subtitle management panel (#750).
+'
+' Mirrors extrasLayout.bs: the panel's geometry lives in one place so the
+' component that RENDERS a row and the component that SIZES the list slot can
+' never disagree about how tall a row is. The first draft hardcoded the slot
+' height in SubtitlePanel while SubtitleResultRow derived its own from live font
+' metrics; the two differed, and rows visibly drifted out of their slots while
+' the search and "current subtitles" columns failed to line up.
+'
+' The panel's vertical extent is inherited from extrasLayout — it uses the same
+' open/closed positions as the extras pane on purpose, so the two panels read as
+' the same gesture.
+
+namespace subtitleLayout
+
+  ' Horizontal inset inside a row. Matched to TrackDropdownRow's ROW_H_PADDING so
+  ' a focused subtitle row and a focused track-dropdown row read as one control
+  ' family.
+  const ROW_H_PADDING = 12
+
+  ' Vertical breathing room above the badge line and below the meta line.
+  const ROW_V_PADDING = 10
+
+  ' Reserved height of the badge strip. Always reserved, even for rows with no
+  ' badges, so every row in both columns is identical in height.
+  const ROW_BADGE_HEIGHT = 26
+
+  ' Gap between the release-name line and the meta line.
+  const ROW_LINE_GAP = 6
+
+  ' Column widths. The results column is wide because release names run long —
+  ' 85 characters was the longest observed in a real result set — and width here
+  ' directly buys fewer marquees.
+  const RESULTS_WIDTH = 1120
+  const EXISTING_WIDTH = 570
+
+  ' rowHeight: Total height of one subtitle row.
+  '
+  ' Pure by construction — the font sizes are passed in rather than read off
+  ' m.global — so it is unit-testable and callable from either component's
+  ' scope.
+  '
+  ' @param {integer} fontSmaller - constants.fontSizeSmaller (release-name line)
+  ' @param {integer} fontSmallest - constants.fontSizeSmallest (meta line)
+  ' @return {integer} row height in pixels
+  function rowHeight(fontSmaller as integer, fontSmallest as integer) as integer
+    return (subtitleLayout.ROW_V_PADDING * 2) + subtitleLayout.ROW_BADGE_HEIGHT + fontSmaller + subtitleLayout.ROW_LINE_GAP + fontSmallest
+  end function
+
+end namespace

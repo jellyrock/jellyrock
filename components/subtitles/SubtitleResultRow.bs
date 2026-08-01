@@ -3,19 +3,15 @@
 ' See SubtitleResultRow.xml for the layout rationale and the measurements the
 ' row shape is derived from. This file owns the content -> visuals mapping and
 ' the focus chrome; it holds no API or selection logic.
+import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Horizontal inset, matched to TrackDropdownRow's ROW_H_PADDING so a focused
-' subtitle row and a focused track-dropdown row read as the same control family.
-const RESULT_ROW_H_PADDING = 12
 
-' Vertical rhythm. The badge strip is optional, so the two text lines are laid
-' out from a base Y that shifts down only when badges are present.
-const RESULT_ROW_V_PADDING = 10
-const RESULT_ROW_BADGE_HEIGHT = 26
-const RESULT_ROW_LINE_GAP = 6
+' Badge icons render at the badge line's cap height so they optically match the
+' label beside them rather than towering over it.
+const BADGE_ICON_SIZE = 22
 
 sub init()
   m.rowBackground = m.top.findNode("rowBackground")
@@ -40,6 +36,8 @@ end sub
 sub onItemContentChanged()
   content = m.top.itemContent
   if not isValid(content) then return
+
+  if isValid(content.rowWidth) and content.rowWidth > 0 then m.top.rowWidth = content.rowWidth
 
   m.nameLabel.text = titleFor(content)
   m.metaLabel.text = metaLineFor(content)
@@ -116,12 +114,18 @@ function groupThousands(value as integer) as string
   return grouped
 end function
 
-' rebuildBadges: The optional first line.
+' rebuildBadges: The first line.
 '
 ' Only truths worth acting on get a badge. "Perfect match" leads because a
 ' hash-matched subtitle is the one signal that reliably predicts sync; the
 ' translation/impairment flags follow because they change whether the file is
 ' the right KIND of subtitle, not just whether it fits.
+'
+' Each badge is an icon plus its label. The icons carry the meaning at a glance
+' and the words disambiguate them, which matters because "perfect match" is not
+' self-evident from a star alone. Colour does the ranking: the star takes
+' colorPrimary because it is the signal worth acting on, everything else takes
+' colorTextSecondary so it reads as a qualifier rather than a recommendation.
 sub rebuildBadges(content as object)
   while m.badgeRow.getChildCount() > 0
     m.badgeRow.removeChild(m.badgeRow.getChild(0))
@@ -130,68 +134,73 @@ sub rebuildBadges(content as object)
   constants = m.global.constants
 
   if content.isHashMatch = true
-    appendBadge(translate(translationKeys.LabelPerfectMatch), constants.colorPrimary)
+    appendBadge(translate(translationKeys.LabelPerfectMatch), constants.colorPrimary, "pkg:/images/icons/star_$$RES$$.png")
   end if
   if content.hearingImpaired = true
-    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary)
+    ' Closed-captioning mark for hearing-impaired subtitles: broadcast CC has
+    ' always meant SDH, so it is the icon viewers already know for this.
+    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, "pkg:/images/icons/closedCaptions_$$RES$$.png")
   end if
   if content.forced = true
-    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary)
+    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, "")
   end if
   if content.aiTranslated = true
-    appendBadge(translate(translationKeys.LabelAiTranslated), constants.colorTextSecondary)
+    appendBadge(translate(translationKeys.LabelAiTranslated), constants.colorTextSecondary, "")
   else if content.machineTranslated = true
-    appendBadge(translate(translationKeys.LabelMachineTranslated), constants.colorTextSecondary)
+    appendBadge(translate(translationKeys.LabelMachineTranslated), constants.colorTextSecondary, "")
   end if
 
-  m.badgeRow.visible = m.badgeRow.getChildCount() > 0
 end sub
 
-' appendBadge: One small coloured caption. Deliberately text-only (no pill
-' background) — at this row height a filled chip competes with the focus
-' background for attention.
-sub appendBadge(text as string, color as string)
-  badge = m.badgeRow.createChild("LabelSecondarySmallest")
-  badge.text = text
-  badge.color = color
+' appendBadge: One icon-and-label pair.
+'
+' Deliberately no pill background — at this row height a filled chip competes
+' with the focus background for attention. The icon is tinted to match its
+' label so each badge reads as one object.
+sub appendBadge(text as string, color as string, iconUri as string)
+  badge = m.badgeRow.createChild("LayoutGroup")
+  badge.layoutDirection = "horiz"
+  badge.itemSpacings = [6]
+  badge.vertAlignment = "center"
+
+  if iconUri <> ""
+    icon = badge.createChild("Poster")
+    icon.uri = iconUri
+    icon.width = BADGE_ICON_SIZE
+    icon.height = BADGE_ICON_SIZE
+    icon.blendColor = color
+  end if
+
+  label = badge.createChild("LabelSecondarySmallest")
+  label.text = text
+  label.color = color
 end sub
 
 sub onSizeChanged()
   rowWidth = m.top.rowWidth
-  rowHeight = rowHeightFor(m.badgeRow.visible)
+  constants = m.global.constants
+  rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
 
   m.rowBackground.width = rowWidth
   m.rowBackground.height = rowHeight
   m.rowBorder.width = rowWidth
   m.rowBorder.height = rowHeight
 
-  constants = m.global.constants
-  textWidth = rowWidth - (RESULT_ROW_H_PADDING * 2)
+  textWidth = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
 
-  y = RESULT_ROW_V_PADDING
-  if m.badgeRow.visible
-    m.badgeRow.translation = [RESULT_ROW_H_PADDING, y]
-    y += RESULT_ROW_BADGE_HEIGHT
-  end if
+  y = subtitleLayout.ROW_V_PADDING
+  m.badgeRow.translation = [subtitleLayout.ROW_H_PADDING, y]
+  y += subtitleLayout.ROW_BADGE_HEIGHT
 
   ' ScrollingLabel viewports are driven by maxWidth, not width.
   m.nameLabel.maxWidth = textWidth
-  m.nameLabel.translation = [RESULT_ROW_H_PADDING, y]
-  y += constants.fontSizeSmaller + RESULT_ROW_LINE_GAP
+  m.nameLabel.translation = [subtitleLayout.ROW_H_PADDING, y]
+  y += constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
 
   m.metaLabel.width = textWidth
-  m.metaLabel.translation = [RESULT_ROW_H_PADDING, y]
+  m.metaLabel.translation = [subtitleLayout.ROW_H_PADDING, y]
 end sub
 
-' rowHeightFor: Rows are a fixed height per badge-state so the MarkupList's
-' itemSize stays honest. The panel sizes its list for the WITH-badges height —
-' a taller uniform row is preferable to rows that visibly jump as focus moves.
-function rowHeightFor(hasBadges as boolean) as integer
-  constants = m.global.constants
-  height = (RESULT_ROW_V_PADDING * 2) + constants.fontSizeSmaller + RESULT_ROW_LINE_GAP + constants.fontSizeSmallest
-  if hasBadges then height += RESULT_ROW_BADGE_HEIGHT
-  return height
-end function
 
 sub onFocusChanged()
   constants = m.global.constants

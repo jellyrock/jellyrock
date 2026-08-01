@@ -58,7 +58,7 @@
           <LabelPrimaryMedium id="resultsHeading" />
           <MarkupList id="resultsList"
             itemComponentName="SubtitleResultRow"
-            vertFocusAnimationStyle="fixedFocusWrap"
+            vertFocusAnimationStyle="floatingFocus"
             drawFocusFeedback="false" />
         </LayoutGroup>
 
@@ -77,7 +77,7 @@
           <LabelPrimaryMedium id="existingHeading" />
           <MarkupList id="existingList"
             itemComponentName="SubtitleResultRow"
-            vertFocusAnimationStyle="fixedFocusWrap"
+            vertFocusAnimationStyle="floatingFocus"
             drawFocusFeedback="false" />
           <LabelSecondarySmallest id="existingEmptyLabel" width="570" wrap="true" visible="false" />
         </LayoutGroup>

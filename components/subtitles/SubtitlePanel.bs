@@ -11,6 +11,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/constants/extrasLayout.bs"
+import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
@@ -56,9 +57,14 @@ sub init()
   m.top.findNode("panelSlide").keyValue = [[0, extrasLayout.PANEL_CLOSED_Y], [0, extrasLayout.PANEL_OPEN_Y]]
   m.top.findNode("panelTint").keyValue = [constants.colorBlack + constants.alpha60, constants.colorBackgroundPrimary]
   m.panelAnime = m.top.findNode("panelAnime")
+  ' The panel must stop being drawn once it has slid away, not merely be
+  ' off-screen: its language overlay is a full-screen child, so a still-visible
+  ' panel keeps painting over the detail screen's lower half. Visibility is
+  ' therefore tied to the END of the close animation, not to isOpen.
+  m.panelAnime.observeField("state", "onPanelAnimeStateChanged")
 
   m.resultsHeading.text = translate(translationKeys.LabelSearchForSubtitles)
-  m.existingHeading.text = translate(translationKeys.LabelOnThisItem)
+  m.existingHeading.text = translate(translationKeys.LabelCurrentSubtitles)
   m.searchButton.text = translate(translationKeys.ButtonSearch)
   m.existingEmptyLabel.text = translate(translationKeys.LabelNoSubtitlesOnItem)
 
@@ -69,6 +75,22 @@ sub init()
   m.languageOverlay.color = constants.colorBackgroundPrimary
   m.top.findNode("languageOverlayHeading").text = translate(translationKeys.LabelSearchLanguages)
   m.languagePicker.observeField("selectedCode", "onLanguageSelected")
+
+  ' Active-state affordance for the filter toggle. IconButtons show "on" by
+  ' tinting the icon colorSecondary; the equivalent for a TextButton is the
+  ' 6px colorSecondary underline JRTab already uses for the selected overhang
+  ' tab, so the same signal means the same thing in both places. Built here
+  ' rather than by extending JRTab because JRTab also forces the overhang's
+  ' Large font and a transparent background, which would make this button
+  ' inconsistent with the two filled TextButtons beside it.
+  m.perfectMatchIndicator = createObject("roSGNode", "Rectangle")
+  m.perfectMatchIndicator.height = 6
+  m.perfectMatchIndicator.color = constants.colorSecondary
+  m.perfectMatchIndicator.visible = false
+  m.perfectMatchButton.appendChild(m.perfectMatchIndicator)
+  m.perfectMatchButton.observeField("isReady", "onPerfectMatchButtonReady")
+  m.perfectMatchButton.observeField("isButtonSelected", "onPerfectMatchStateChanged")
+  m.perfectMatchButton.text = translate(translationKeys.LabelPerfectMatchesOnly)
 
   m.resultsList.observeField("itemSelected", "onResultSelected")
 
@@ -81,8 +103,10 @@ sub init()
   m.cultures = invalid
   m.selectedLanguageCode = ""
   m.results = []
+  m.allResults = []
   m.perfectMatchOnly = false
   m.pollAttempt = 0
+  m.closing = false
   m.pendingDownloadName = ""
   m.streamsBeforeDownload = []
   m.focusTarget = "search"
@@ -136,13 +160,23 @@ sub openPanel()
   m.top.findNode("panelTint").reverse = false
   m.panelAnime.control = "start"
 
+  m.closing = false
   m.focusTarget = "search"
   applyFocus()
+end sub
+
+' onPanelAnimeStateChanged: Stop drawing once the outbound slide has finished.
+sub onPanelAnimeStateChanged()
+  if m.panelAnime.state = "stopped" and m.closing
+    m.top.visible = false
+    m.closing = false
+  end if
 end sub
 
 sub closePanel()
   m.languageOverlay.visible = false
   m.pollTimer.control = "stop"
+  m.closing = true
 
   m.top.findNode("panelSlide").reverse = true
   m.top.findNode("panelTint").reverse = true
@@ -258,9 +292,15 @@ sub showLanguageOverlay()
     return
   end if
 
+  ' Clear the previous query. A retained filter means reopening the picker shows
+  ' whatever was typed last time, so changing your mind costs a manual delete
+  ' before you can even see the full list again.
+  keyboard = m.languagePicker.findNode("keyboard")
+  if isValid(keyboard) then keyboard.text = ""
+
   m.languagePicker.selectedCode = m.selectedLanguageCode
   m.languageOverlay.visible = true
-  m.languagePicker.findNode("keyboard").setFocus(true)
+  if isValid(keyboard) then keyboard.setFocus(true)
 end sub
 
 ' ── Search ───────────────────────────────────────────────────────────────────
@@ -272,7 +312,14 @@ sub runSearch()
   setStatus(translate(translationKeys.LabelSearchNow))
   m.searchButton.isEnabled = false
 
-  req = GetApi().BuildSearchRemoteSubtitlesRequest(m.top.itemId, m.selectedLanguageCode, m.perfectMatchOnly)
+  ' isPerfectMatch is deliberately NOT sent to the server. The Open Subtitles
+  ' plugin forwards it upstream as moviehash_match=only, and that filter is
+  ' inconsistent with the IsHashMatch flag the same query returns: measured on a
+  ' real episode, the unfiltered search returned two results BOTH reporting
+  ' IsHashMatch=true while isPerfectMatch=true returned zero. Filtering here
+  ' instead keeps the toggle consistent with the badges the user can see, and
+  ' makes it instant rather than a network round-trip.
+  req = GetApi().BuildSearchRemoteSubtitlesRequest(m.top.itemId, m.selectedLanguageCode, false)
   if not isValid(req)
     m.searchButton.isEnabled = true
     return
@@ -289,17 +336,20 @@ sub runSearch()
       ' entry point is type-gated, so this is a genuine failure.
       m.log.warn("subtitle search failed", res.statusCode)
       setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+      m.allResults = []
       renderResults([])
       return
     end if
     results = res.json
     if not isValid(results) then results = []
-    renderResults(results)
+    m.allResults = results
+    renderResults(applyPerfectMatchFilter(results))
   end sub).catch(sub(err as object, ctx as object)
     if ctx.itemId <> m.top.itemId then return
     m.searchButton.isEnabled = true
     m.log.warn("subtitle search error", err.reason)
     setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+    m.allResults = []
     renderResults([])
   end sub)
 end sub
@@ -335,7 +385,8 @@ sub renderResults(results as object)
       aiTranslated: info.AiTranslated = true,
       machineTranslated: info.MachineTranslated = true,
       showProvider: showProvider,
-      showFormat: showFormat
+      showFormat: showFormat,
+      rowWidth: subtitleLayout.RESULTS_WIDTH
     })
   end for
 
@@ -355,26 +406,50 @@ sub renderResults(results as object)
   ' something. Its hit rate swings wildly by title (0 of 50 for some films,
   ' 6 of 20 for others), and against a set with no hash matches the control's
   ' only effect is to empty the screen.
-  showPerfect = m.perfectMatchOnly or remoteSubtitles.hasAnyHashMatch(results)
+  showPerfect = m.perfectMatchOnly or remoteSubtitles.hasAnyHashMatch(m.allResults)
   m.perfectMatchButton.visible = showPerfect
-  m.perfectMatchButton.text = perfectMatchLabel()
 end sub
 
-function perfectMatchLabel() as string
-  label = translate(translationKeys.LabelPerfectMatchesOnly)
-  if m.perfectMatchOnly then return "* " + label
-  return label
-end function
-
+' togglePerfectMatch: Re-filter the results already in hand. No re-search — the
+' flag every row's badge is drawn from is right here, so the toggle is instant
+' and can never disagree with what is on screen.
 sub togglePerfectMatch()
   m.perfectMatchOnly = not m.perfectMatchOnly
-  m.perfectMatchButton.text = perfectMatchLabel()
-  runSearch()
+  m.perfectMatchButton.isButtonSelected = m.perfectMatchOnly
+  renderResults(applyPerfectMatchFilter(m.allResults))
 end sub
+
+function applyPerfectMatchFilter(results as object) as object
+  if not m.perfectMatchOnly then return results
+  if not isValid(results) then return []
+
+  filtered = []
+  for each info in results
+    if isValid(info) and info.IsHashMatch = true then filtered.push(info)
+  end for
+  return filtered
+end function
 
 sub setStatus(text as string)
   m.statusLabel.text = text
   m.statusLabel.visible = text <> ""
+end sub
+
+' onPerfectMatchButtonReady / onPerfectMatchStateChanged: Position and toggle the
+' underline. TextButton sizes itself from its text, so the indicator can only be
+' placed once it reports ready (the JRTab pattern).
+sub onPerfectMatchButtonReady()
+  buttonText = m.perfectMatchButton.findNode("buttonText")
+  if not isValid(buttonText) then return
+
+  textRect = buttonText.boundingRect()
+  m.perfectMatchIndicator.width = textRect.width
+  m.perfectMatchIndicator.translation = [m.perfectMatchButton.padding, textRect.height + 12]
+  onPerfectMatchStateChanged()
+end sub
+
+sub onPerfectMatchStateChanged()
+  m.perfectMatchIndicator.visible = m.perfectMatchButton.isButtonSelected
 end sub
 
 ' ── Existing subtitles ───────────────────────────────────────────────────────
@@ -404,7 +479,8 @@ sub renderExistingList()
       aiTranslated: false,
       machineTranslated: false,
       showProvider: false,
-      showFormat: true
+      showFormat: true,
+      rowWidth: subtitleLayout.EXISTING_WIDTH
     })
   end for
 
@@ -516,12 +592,15 @@ end sub
 ' ── Focus + keys ─────────────────────────────────────────────────────────────
 
 sub sizeLists()
-  ' Both lists size their rows for the WITH-badges height so rows never jump as
-  ' focus moves between a badged and an unbadged result.
-  rowHeight = 96
-  m.resultsList.itemSize = [1120, rowHeight]
+  ' Ask the row component for its height rather than restating it. The first
+  ' draft hardcoded 96 here while the row derived its own height from live font
+  ' metrics; the two disagreed, which is what pushed rows out of their slots and
+  ' left the two columns unaligned.
+  constants = m.global.constants
+  rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
+  m.resultsList.itemSize = [subtitleLayout.RESULTS_WIDTH, rowHeight]
   m.resultsList.numRows = 6
-  m.existingList.itemSize = [570, rowHeight]
+  m.existingList.itemSize = [subtitleLayout.EXISTING_WIDTH, rowHeight]
   m.existingList.numRows = 6
 end sub
 
@@ -555,6 +634,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   if key = "back"
+    ' BACK is a step BACK through the panel, not an exit from it. Closing the
+    ' whole panel from deep in the results list loses the user's search and is
+    ' the opposite of what BACK means everywhere else in the app.
+    if not inHeader()
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
     m.top.requestClose = true
     return true
   end if
@@ -633,6 +720,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   if key = "up"
+    ' floatingFocus (not fixedFocusWrap) is what makes this reachable: a
+    ' wrapping list swallows UP at the top and traps the user in the results.
     if m.resultsList.hasFocus() and m.resultsList.itemFocused = 0
       m.focusTarget = "search"
       applyFocus()

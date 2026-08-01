@@ -30,9 +30,11 @@
     <Poster id="rowBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="rowBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
 
-    <!-- Badge strip. Populated by SubtitleResultRow.bs; the whole group is
-         hidden (and the lines below shift up) when a result has no badges. -->
-    <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[12]" visible="false" />
+    <!-- Badge strip. Always occupies its line even when empty: rows must be a
+         UNIFORM height or the MarkupList's fixed itemSize disagrees with the
+         rendered content, which shows up as rows drifting out of their slots
+         and as the left and right columns failing to line up with each other. -->
+    <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[16]" />
 
     <ScrollingLabelPrimarySmaller id="nameLabel" repeatCount="0" />
     <LabelSecondarySmallest id="metaLabel" />
