@@ -1,0 +1,89 @@
+' Screen-reader narration for the scene-appended dialog overlays.
+'
+' WHY THIS EXISTS — measured on-device (Roku Ultra 4850X, Roku OS 15.2.4, screen
+' reader on, 2026-08-01), comparing the two dialog channels back to back:
+'
+'   StandardMessageDialog on m.scene.dialog  -> speaks the title, the message,
+'     "a list of two options", and each button with its position as focus moves
+'     ("exit, button 2 of 2").
+'   JRDialog appended to the scene           -> speaks ONLY the focused button
+'     ("Cancel"). The title and message are never announced.
+'
+' The gap is structural, not a bug in our layout. Scene's screen-reader rule
+' speaks `dialog` when one is set and otherwise falls back to RenderableNode,
+' which speaks only the FOCUSED DESCENDANT. Roku wrote dedicated narration rules
+' for Dialog / KeyboardDialog / PinDialog / ProgressDialog precisely because that
+' fallback is not enough for a modal — a scene-appended Group gets the fallback
+' and nothing else. See docs/DEVELOPER/media-playback/text-to-speech.md in
+' rokudev/dev-doc for the per-node table.
+'
+' So the overlay announces its own title + message, and deliberately does NOT
+' repeat the focused button: the platform already speaks that, and duplicating it
+' would make every dialog say the button name twice.
+import "pkg:/source/utils/misc.bs"
+
+' Compose the opening announcement. Pure, so the wording is unit-testable without
+' a device. Periods between the blocks make the reader pause between them,
+' matching the cadence of the built-in dialog.
+'
+' focusedText is what the dialog's focused element is (a button label), included
+' so the whole announcement is ONE utterance — see narrateDialogOpening for why
+' it can't be left to the platform.
+function composeDialogAnnouncement(title as string, message as string, focusedText = "" as string) as string
+  announcement = ""
+  for each part in [title.trim(), message.trim(), focusedText.trim()]
+    if part <> ""
+      if announcement <> "" then announcement += ". "
+      announcement += part
+    end if
+  end for
+  return announcement
+end function
+
+' Announce a dialog that has just opened, as a single utterance.
+'
+' TIMING — measured on-device, and counter-intuitive. The platform announces the
+' focused element as soon as focus lands, and that announcement does NOT queue
+' behind ours: it FLUSHES it. Speaking before handing over focus produced about
+' three words of the title and then "Cancel", which is worse than saying nothing.
+'
+' So the caller waits for focus to settle and speaks LAST, with the focused
+' button's label folded into our own text. Ours is then the utterance that wins,
+' and it comes out in the built-in order: title, message, focused button.
+sub narrateDialogOpening(title as string, message as string, focusedText = "" as string)
+  announcement = composeDialogAnnouncement(title, message, focusedText)
+  if announcement = "" then return
+
+  ' roAudioGuide self-gates — it speaks only while the screen reader is enabled,
+  ' and uses the reader's own voice, language, rate and volume, so there is no
+  ' isAudioGuideEnabled check to keep in sync here. It is absent on pre-OS-7.5
+  ' hardware, hence the guard.
+  guide = CreateObject("roAudioGuide")
+  if not isValid(guide) then return
+
+  ' flushSpeech = true: whatever was being read (the screen behind, or the
+  ' platform's own announcement of the button we just focused) is stale or
+  ' redundant with what we are about to say. dontRepeat = false so re-opening the
+  ' same dialog announces again.
+  guide.Say(announcement, true, false)
+end sub
+
+' Announce the element focus just moved to.
+'
+' Needed because the platform does NOT narrate focus moves between the buttons in
+' a dialog's row — measured on-device: after the opening announcement, arrowing
+' between Cancel and Confirm was completely silent. `TextButton` extends `Group`,
+' not Roku's `Button`, so the documented "text of button is spoken only if
+' focused" rule never applies to it.
+'
+' Flushes rather than queues, so arrowing quickly through options announces the
+' one you landed on instead of reading a backlog of the ones you passed.
+sub narrateFocusedElement(text as string)
+  spoken = text.trim()
+  if spoken = "" then return
+
+  guide = CreateObject("roAudioGuide")
+  if not isValid(guide) then return
+
+  guide.Say(spoken, true, false)
+end sub

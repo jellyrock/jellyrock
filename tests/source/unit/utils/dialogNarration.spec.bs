@@ -1,0 +1,79 @@
+import "pkg:/source/utils/dialogNarration.bs"
+
+namespace tests
+
+  @suite("dialogNarration.bs - screen-reader announcement wording")
+  class DialogNarrationTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("composeDialogAnnouncement")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the title then the message, separated by a pause")
+    function _()
+      ' The period is what makes the reader pause between the two blocks,
+      ' matching the built-in dialog's cadence
+      m.assertEqual(composeDialogAnnouncement("Watched", "Mark all episodes?"), "Watched. Mark all episodes?")
+    end function
+
+    @it("announces the message alone when there is no title")
+    function _()
+      ' Alert dialogs opened with an empty title (e.g. the unsupported-image error)
+      m.assertEqual(composeDialogAnnouncement("", "Image type not supported"), "Image type not supported")
+    end function
+
+    @it("announces the title alone when there is no message")
+    function _()
+      ' JRListDialog / OverviewDialog have a title but no message field
+      m.assertEqual(composeDialogAnnouncement("Select audio", ""), "Select audio")
+    end function
+
+    @it("returns empty when there is nothing to say")
+    function _()
+      ' Callers skip the Say() entirely on empty, rather than speaking silence
+      m.assertEqual(composeDialogAnnouncement("", ""), "")
+    end function
+
+    @it("treats whitespace-only text as absent")
+    function _()
+      m.assertEqual(composeDialogAnnouncement("   ", "  "), "")
+      m.assertEqual(composeDialogAnnouncement("  Delete  ", "   "), "Delete")
+    end function
+
+    @it("keeps the message's own punctuation intact")
+    function _()
+      ' The reader uses punctuation for phrasing, so it must survive composition
+      m.assertEqual(composeDialogAnnouncement("Delete", "Are you sure?"), "Delete. Are you sure?")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("focused element")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the focused element last, after the title and message")
+    function _()
+      ' The focused button is folded into OUR utterance rather than left to the
+      ' platform, whose own announcement would flush ours mid-sentence
+      m.assertEqual(composeDialogAnnouncement("Watched", "Mark all episodes?", "Cancel"), "Watched. Mark all episodes?. Cancel")
+    end function
+
+    @it("reads title then focused row when there is no message")
+    function _()
+      ' JRListDialog's shape: a title and a focused list row, no message
+      m.assertEqual(composeDialogAnnouncement("Select audio", "", "English 5.1"), "Select audio. English 5.1")
+    end function
+
+    @it("reads the focused element alone when nothing else is set")
+    function _()
+      m.assertEqual(composeDialogAnnouncement("", "", "OK"), "OK")
+    end function
+
+    @it("omits the focused element when it is blank")
+    function _()
+      ' A dialog whose focus has not landed yet must not trail a stray separator
+      m.assertEqual(composeDialogAnnouncement("Delete", "Are you sure?", "  "), "Delete. Are you sure?")
+    end function
+
+  end class
+
+end namespace

@@ -23,6 +23,7 @@
 ' showKeyboardDialog uses Roku's modal channel (m.scene.dialog) because it wraps
 ' the OS keyboard. Callers don't need to care — the result contract is identical.
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -167,6 +168,9 @@ function presentOverlayDialog(dialog as object, onResult as string) as object
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   scene.appendChild(dialog)
   dialog.setFocus(true)
+  ' Screen-reader narration is NOT done here: it has to happen after focus
+  ' settles or the platform's own announcement flushes it, so each dialog
+  ' component owns its own announcement. See source/utils/dialogNarration.bs.
   return dialog
 end function
 

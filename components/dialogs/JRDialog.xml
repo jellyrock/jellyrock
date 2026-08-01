@@ -24,6 +24,10 @@
 
     <!-- Horizontal button row BELOW the panel -->
     <LayoutGroup id="buttonRow" layoutDirection="horiz" itemSpacings="[24]" />
+
+    <!-- Lets focus settle before the screen-reader announcement; the platform's
+         own focus announcement would otherwise flush ours mid-sentence. -->
+    <Timer id="narrationTimer" duration="0.6" repeat="false" />
   </children>
   <interface>
     <field id="title" type="string" onChange="onTitleChanged" />

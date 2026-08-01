@@ -1,5 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -40,6 +41,12 @@ sub init()
   m.cancelButton.minWidth = BUTTON_MIN_WIDTH
 
   m.resolved = false
+
+  ' Screen-reader announcement, fired once focus has settled. See
+  ' source/utils/dialogNarration.bs for why it can't be spoken any earlier.
+  m.narrationTimer = m.top.findNode("narrationTimer")
+  m.narrationTimer.observeField("fire", "onNarrationDue")
+  m.hasNarrated = false
 end sub
 
 sub onTitleChanged()
@@ -67,6 +74,26 @@ sub onItemsChanged()
     m.optionList.jumpToItem = m.top.defaultIndex
   end if
   m.optionList.setFocus(true)
+
+  if not m.hasNarrated then m.narrationTimer.control = "start"
+end sub
+
+' Announce the dialog as one utterance once focus has settled. The focused ROW is
+' folded in for the same reason JRDialog folds in the focused button: the
+' platform announces it on focus and would flush ours mid-sentence.
+sub onNarrationDue()
+  if m.hasNarrated then return
+  m.hasNarrated = true
+
+  focusedText = ""
+  items = m.top.items
+  index = m.top.defaultIndex
+  if isValid(items) and index >= 0 and index < items.count()
+    focusedText = toString(items[index])
+  end if
+
+  ' No `message` field on this dialog — the title carries the whole prompt
+  narrateDialogOpening(m.top.title, "", focusedText)
 end sub
 
 sub layout()
@@ -139,7 +166,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' DOWN from the last list item moves to the Cancel button (the list consumes
   ' downs while it can still move; only the bubbled-out ones land here)
   if key = "down"
-    if not m.cancelButton.hasFocus() then m.cancelButton.setFocus(true)
+    if not m.cancelButton.hasFocus()
+      m.cancelButton.setFocus(true)
+      ' The list's own rows are narrated by the platform (LabelList has a
+      ' documented rule), but the Cancel button is a TextButton — a Group, not a
+      ' Roku Button — so nothing announces it unless we do.
+      narrateFocusedElement(toString(m.cancelButton.text))
+    end if
     return true
   end if
 

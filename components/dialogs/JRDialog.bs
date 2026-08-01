@@ -1,4 +1,5 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -45,6 +46,12 @@ sub init()
   m.focusIndex = 0
   m.resolved = false
 
+  ' Screen-reader announcement, fired once focus has settled. See
+  ' source/utils/dialogNarration.bs for why it can't be spoken any earlier.
+  m.narrationTimer = m.top.findNode("narrationTimer")
+  m.narrationTimer.observeField("fire", "onNarrationDue")
+  m.hasNarrated = false
+
   layout()
 end sub
 
@@ -86,6 +93,25 @@ sub onButtonsChanged()
   m.focusIndex = m.top.defaultButtonIndex
   if m.focusIndex < 0 or m.focusIndex >= m.buttonNodes.count() then m.focusIndex = 0
   layout()
+
+  ' The helpers set `buttons` last, so by here title/message/buttons are all
+  ' present and the announcement has everything it needs.
+  if not m.hasNarrated then m.narrationTimer.control = "start"
+end sub
+
+' Announce the whole dialog as one utterance, once focus has settled. Includes
+' the focused button because the platform's own announcement of it would
+' otherwise flush ours mid-sentence (see dialogNarration.bs).
+sub onNarrationDue()
+  if m.hasNarrated then return
+  m.hasNarrated = true
+
+  focusedText = ""
+  if m.focusIndex >= 0 and m.focusIndex < m.buttonNodes.count()
+    focusedText = toString(m.buttonNodes[m.focusIndex].text)
+  end if
+
+  narrateDialogOpening(m.top.title, m.top.message, focusedText)
 end sub
 
 sub onButtonRowRendered()
@@ -148,6 +174,23 @@ sub focusButton(index as integer)
   m.buttonNodes[index].setFocus(true)
 end sub
 
+' Step button focus, WRAPPING at the ends to match JRButtonGroup — the app's other
+' horizontal button row wraps, so a dialog that dead-ends feels broken.
+'
+' Announces the newly focused button: the platform does not narrate focus moves
+' between TextButtons (they extend Group, not Roku's Button), so without this the
+' dialog goes silent after its opening announcement.
+sub moveButtonFocus(delta as integer)
+  count = m.buttonNodes.count()
+  if count = 0 then return
+
+  ' + count before MOD so a leftward move from index 0 wraps to the end rather
+  ' than going negative
+  nextIndex = (m.focusIndex + delta + count) mod count
+  focusButton(nextIndex)
+  narrateFocusedElement(toString(m.buttonNodes[nextIndex].text))
+end sub
+
 ' Resolve the dialog exactly once, then close. index = -1 means cancelled (back).
 sub resolveDialog(index as integer)
   if m.resolved then return
@@ -177,12 +220,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   if key = "left"
-    focusButton(m.focusIndex - 1)
+    moveButtonFocus(-1)
     return true
   end if
 
   if key = "right"
-    focusButton(m.focusIndex + 1)
+    moveButtonFocus(1)
     return true
   end if
 

@@ -15,6 +15,10 @@
       <ContentNode id="content" role="content" />
     </JRLabelList>
     <TextButton id="cancelButton" />
+
+    <!-- Lets focus settle before the screen-reader announcement; the platform's
+         own focus announcement would otherwise flush ours mid-sentence. -->
+    <Timer id="narrationTimer" duration="0.6" repeat="false" />
   </children>
   <interface>
     <!-- Array of option label strings -->
