@@ -34,6 +34,12 @@ namespace subtitleLayout
   const RESULTS_WIDTH = 1120
   const EXISTING_WIDTH = 570
 
+  ' Rows visible in either column without scrolling. Drives the MarkupList's
+  ' numRows AND the perfect-match filter's visibility threshold — the filter is
+  ' pointless when the whole result set already fits on screen, so the two must
+  ' be the same number by construction.
+  const VISIBLE_ROWS = 6
+
   ' rowHeight: Total height of one subtitle row.
   '
   ' Pure by construction — the font sizes are passed in rather than read off

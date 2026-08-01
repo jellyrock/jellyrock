@@ -113,6 +113,7 @@ sub init()
   m.allResults = []
   m.perfectMatchOnly = false
   m.pollAttempt = 0
+  m.autoSearchPending = false
   m.closing = false
   m.pendingDownloadName = ""
   m.streamsBeforeDownload = []
@@ -161,6 +162,21 @@ sub openPanel()
   seedDefaultLanguage()
   ensureCulturesLoaded()
   renderExistingList()
+
+  ' Search the seeded language straight away rather than making the user press
+  ' Search to see the obvious default — they have already told us their subtitle
+  ' language via their Jellyfin preference. Only on a FIRST open: results are
+  ' kept for the panel's lifetime, so reopening shows what was already found
+  ' instead of spending another provider round-trip.
+  if m.allResults.count() = 0
+    if isValidAndNotEmpty(m.selectedLanguageCode)
+      runSearch()
+    else
+      ' Language not resolved yet — /Localization/Cultures is still in flight.
+      ' applyLanguageFromCultures() picks this up when it lands.
+      m.autoSearchPending = true
+    end if
+  end if
 
   m.panelSlideReverse = false
   m.top.findNode("panelSlide").reverse = false
@@ -291,6 +307,10 @@ sub onLanguageSelected()
   m.languageOverlay.visible = false
   m.focusTarget = "search"
   applyFocus()
+
+  ' Picking a language IS the request to search it — the alternative is
+  ' choosing a language and then being shown the previous one's results.
+  runSearch()
 end sub
 
 sub showLanguageOverlay()
@@ -409,12 +429,7 @@ sub renderResults(results as object)
     setStatus("")
   end if
 
-  ' The perfect-match filter is offered only when it would actually do
-  ' something. Its hit rate swings wildly by title (0 of 50 for some films,
-  ' 6 of 20 for others), and against a set with no hash matches the control's
-  ' only effect is to empty the screen.
-  showPerfect = m.perfectMatchOnly or remoteSubtitles.hasAnyHashMatch(m.allResults)
-  m.perfectMatchButton.visible = showPerfect
+  m.perfectMatchButton.visible = shouldOfferPerfectMatchFilter()
 end sub
 
 ' togglePerfectMatch: Re-filter the results already in hand. No re-search — the
@@ -425,6 +440,36 @@ sub togglePerfectMatch()
   m.perfectMatchButton.isButtonSelected = m.perfectMatchOnly
   renderResults(applyPerfectMatchFilter(m.allResults))
 end sub
+
+' shouldOfferPerfectMatchFilter: Whether the toggle earns its place in the header.
+'
+' Offered only when using it would CHANGE what the user sees, and when they
+' cannot already see everything:
+'
+'   * no hash matches      -> filtering empties the screen
+'   * every result matches -> filtering removes nothing
+'   * whole set fits       -> nothing to narrow; scrolling is not required
+'
+' The middle case matters more than it looks: the provider plugin already sorts
+' hash matches to the top, so for a set the user can see at once the filter adds
+' nothing the ordering has not already done.
+'
+' Kept visible while the filter is ON regardless, so the control that produced
+' the current view can always be switched back off.
+function shouldOfferPerfectMatchFilter() as boolean
+  if m.perfectMatchOnly then return true
+  if not isValid(m.allResults) then return false
+
+  total = m.allResults.count()
+  if total <= subtitleLayout.VISIBLE_ROWS then return false
+
+  matches = 0
+  for each info in m.allResults
+    if isValid(info) and info.IsHashMatch = true then matches++
+  end for
+
+  return matches > 0 and matches < total
+end function
 
 function applyPerfectMatchFilter(results as object) as object
   if not m.perfectMatchOnly then return results
@@ -597,9 +642,9 @@ sub sizeLists()
   constants = m.global.constants
   rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
   m.resultsList.itemSize = [subtitleLayout.RESULTS_WIDTH, rowHeight]
-  m.resultsList.numRows = 6
+  m.resultsList.numRows = subtitleLayout.VISIBLE_ROWS
   m.existingList.itemSize = [subtitleLayout.EXISTING_WIDTH, rowHeight]
-  m.existingList.numRows = 6
+  m.existingList.numRows = subtitleLayout.VISIBLE_ROWS
 end sub
 
 ' hasRows: A list is only a focus target when it actually has rows. Guarding on
