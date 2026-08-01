@@ -204,17 +204,10 @@ export function check({ receiver, wsTask, signOut }) {
         'window STOPs a dead node and — worse — the stale handle outlives the socket it named.',
     );
   }
-  const wsStop = indexOf(rx, /m\.ws\.control\s*=\s*"STOP"/);
-  const wsClose = indexOf(rx, /m\.ws\.close\s*=/);
-  if (wsStop < 0) {
+  if (indexOf(rx, /m\.ws\.control\s*=\s*"STOP"/) < 0) {
     problems.push(
       `${RECEIVER_REL}: closeSocket() does not set \`m.ws.control = "STOP"\`. Dropping the node ` +
         'reference does not release its Task thread; every reconnect would strand one (#728).',
-    );
-  } else if (wsClose >= 0 && wsStop < wsClose) {
-    problems.push(
-      `${RECEIVER_REL}: closeSocket() STOPs the child BEFORE requesting \`close = [1000]\`. The ` +
-        'STOP kills the thread that would deliver the close, so the frame is never sent.',
     );
   }
 

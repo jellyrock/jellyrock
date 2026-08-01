@@ -109,12 +109,26 @@ it needs the session token. It is:
 `WebSocketClient` node whose Task thread must be released when that connection ends — a Task thread
 survives reference drops. Two complementary mechanisms cover it:
 
-- `closeSocket()` STOPs the child after `on_close`/`on_error` — this is the one that fires on every
-  reconnect, and it also covers an error raised while the socket is still OPEN, which the loop's own
-  exit never sees.
+- `closeSocket()` STOPs the child after the connection goes terminal — this is the one that fires on
+  every reconnect, and it also covers an error raised while the socket is still OPEN, which the
+  loop's own exit never sees. It requests **no close frame**: by the time it runs the client has
+  already left `OPEN` on every path that reaches it, so there was nothing to send, and the `STOP`
+  would kill the delivering thread regardless. The teardown is abrupt by design — see
+  [`remotecontrol-socket-abrupt-teardown`](tech-debt.md#remotecontrol-socket-abrupt-teardown).
 - the vendored socket loop self-exits once its connection reaches CLOSED and its event port is
   drained (single-connection contract; see the modification list in the vendor README) — this is
   what reclaims a child orphaned by a receiver that died without running `closeSocket()`.
+
+The receiver wakes on `on_close` / `on_error`, but the vendored loop releases its thread on
+`ready_state = CLOSED`. Those are **different signals**, and they coincide only because every
+`_close()` path in the client happens to post one of the two — nothing enforces it, and no lint can
+see it (it is a property of the vendored *client*, not of the three files the guard reads). So the
+receiver also observes `ready_state` and treats `CLOSED` as terminal, gated on a socket that
+actually opened: `ready_state` is `CLOSED` before `open()` is ever called and the task seeds
+`m.top.ready_state` from it at startup, so an ungated test would race that seed and tear down every
+connection before it opened. `on_close`/`on_error` stays the fast path — an error raised while the
+socket is still `OPEN`/`CLOSING` lands ~30s before `_CLOSING_DELAY` would force it to `CLOSED`.
+Whichever signal arrives first wins; the outcome is identical.
 
 Jellyfin ends a session by sending a `WebSocket` **CLOSE frame** (code `1000`, reason `System
 Shutdown`) rather than dropping the connection — measured against 10.11.11 with a raw upgrade

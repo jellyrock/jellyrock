@@ -63,7 +63,6 @@ function connectAndPump(url as string) as boolean
 end function
 
 sub closeSocket()
-  m.ws.close = [1000]
   m.ws.control = "STOP"
   m.top.socketNode = invalid
 end sub
@@ -170,18 +169,11 @@ describe('rule 5 — the receiver publishes and STOPs its child', () => {
     );
   });
 
-  it('flags a STOP issued before the close request — the frame would never be sent', () => {
-    const receiver = `
-sub closeSocket()
-  m.ws.control = "STOP"
-  m.ws.close = [1000]
-end sub
-sub publish()
-  m.top.socketNode = m.ws
-end sub
-`;
-    expect(check({ ...good(), receiver }).join('\n')).toMatch(/STOPs the child BEFORE/);
-  });
+  // There is deliberately no rule about ordering `close = [1000]` against the STOP:
+  // closeSocket() only runs once the client has already left OPEN, so the close frame
+  // had nothing to send even before the STOP, and the request was dropped rather than
+  // kept as scaffolding. A guard over a no-op would read as load-bearing as rules 2-4,
+  // which are.
 });
 
 describe('rule 6 — SignOut stops both threads, and snapshots before dotting', () => {

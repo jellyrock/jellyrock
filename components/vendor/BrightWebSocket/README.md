@@ -43,6 +43,14 @@ The sources are **not** byte-for-byte upstream — trimmed + hardened when vendo
   of reconnecting. `npm run lint:socket-thread-release` gates the ordering, since no test on
   hardware or in CI can reach this loop.
 
+  **The consumer must not depend on `on_close` alone.** This exit is keyed on `ready_state`, while
+  `RemoteControlTask` wakes on `on_close`/`on_error`; those coincide today only because every
+  `_close()` path in `WebSocketClient.brs` posts one of the two. Nothing in the client enforces it,
+  and `lint:socket-thread-release` cannot check it (it reads the task and the receiver, not the
+  client). The receiver therefore also observes `ready_state` and treats `CLOSED` as terminal. If a
+  re-sync changes when the client posts terminal events, that observer is what keeps the receiver
+  from blocking forever on a socket whose thread has already been released.
+
   Two limits worth knowing. The exit only covers a connection that *reaches* CLOSED, and upstream
   has no connect-completion check — `connect()` reports only that the attempt was initiated on a
   non-blocking socket (Roku `ifSocketConnection`), and the client never consults `isConnected()` /

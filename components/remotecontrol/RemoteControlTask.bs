@@ -92,6 +92,8 @@ function connectAndPump(url as string) as boolean
   m.ws.observeField("on_message", m.port)
   m.ws.observeField("on_close", m.port)
   m.ws.observeField("on_error", m.port)
+  ' Terminal backstop (#728) — see the ready_state arm of the pump loop below.
+  m.ws.observeField("ready_state", m.port)
 
   ' Bind this socket to the SAME Jellyfin DeviceId the REST API advertises. Jellyfin parses DeviceId
   ' from the Authorization header ONLY — the `deviceId` query param buildSocketUrl puts on the url is
@@ -120,7 +122,7 @@ function connectAndPump(url as string) as boolean
       else if field = "on_open"
         m.log.info("socket open")
         sessionTimer = CreateObject("roTimespan")
-      else if field = "on_close" or field = "on_error"
+      else if isTerminalSocketEvent(field, msg, isValid(sessionTimer))
         m.log.info("socket", field)
         closeSocket()
         return isValid(sessionTimer) and sessionTimer.TotalMilliseconds() >= STABLE_SESSION_MS
@@ -131,6 +133,31 @@ function connectAndPump(url as string) as boolean
     end if
   end while
   return false ' unreachable (the loop only exits via the on_close/on_error return) — satisfies the analyzer
+end function
+
+' True when this event means the connection is over, so the pump loop should tear down and let
+' runWsReceiver reconnect. Two signals, because the receiver and the vendored socket loop key off
+' DIFFERENT ones:
+'
+' - on_close / on_error — the fast path, and the only one that fires for an error raised while the
+'   socket is still OPEN or CLOSING (a failed read, a rejected handshake). That lands here at once,
+'   ~30s before _CLOSING_DELAY would force the client to CLOSED.
+' - ready_state = CLOSED — the backstop. The vendored task loop releases its Task thread on that
+'   transition (#728), but the receiver would otherwise only ever wake on on_close/on_error. Those
+'   coincide in the client today — every _close() path in WebSocketClient.brs posts one of the two —
+'   yet nothing enforces it, and no lint can see it (it is a property of the vendored CLIENT, not of
+'   the files lint:socket-thread-release reads). Without this arm, an upstream re-sync that broke the
+'   coincidence would leave the pump blocked forever on a socket whose thread is already gone: no
+'   crash, no failing test, cast silently dead.
+'
+' `opened` is load-bearing on the second arm. ready_state is CLOSED before open() is ever called AND
+' the task seeds m.top.ready_state from it at startup, so an ungated test would race that seed and
+' tear down every connection before it could open. Whichever signal arrives first wins; because
+' _close() posts ready_state before on_close, the backstop usually wins the normal server-close path
+' — the outcome is identical either way.
+function isTerminalSocketEvent(field as string, msg as object, opened as boolean) as boolean
+  if field = "on_close" or field = "on_error" then return true
+  return field = "ready_state" and opened and msg.getData() = m.ws.STATE_CLOSED
 end function
 
 ' Parse one inbound frame and either answer a keepalive or marshal a dispatchable command.
@@ -176,9 +203,13 @@ sub closeSocket()
   m.ws.unobserveField("on_message")
   m.ws.unobserveField("on_close")
   m.ws.unobserveField("on_error")
-  m.ws.close = [1000] ' normal closure
+  m.ws.unobserveField("ready_state")
   ' STOP releases the child's thread — dropping the reference alone leaves its loop running.
-  ' Safe here: only called after on_close/on_error, so no close handshake is left to preserve.
+  ' No close frame is requested here. This only runs after the connection is already terminal (the
+  ' client has left OPEN in every path that gets us here), so `close = [1000]` had nothing to send
+  ' even before the STOP — and a STOP on the next line kills the thread that would deliver it
+  ' anyway. Teardown is abrupt by design; see `remotecontrol-socket-abrupt-teardown` in tech-debt.md
+  ' for the graceful-close direction and why it is not worth the sequencing today.
   m.ws.control = "STOP"
   m.top.socketNode = invalid
   m.ws = invalid
