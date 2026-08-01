@@ -4,6 +4,14 @@
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
     <LabelPrimaryMedium id="buttonText" horizAlign="center" vertAlign="center" visible="false" />
+    <!-- Optional trailing/leading affordance (e.g. the dropdown chevron). Sized
+         and positioned by setSizeAndCenterText; hidden until `icon` is set. -->
+    <Poster id="buttonIcon" visible="false" />
+    <!-- Optional selected-state underline, opted into via showSelectedIndicator.
+         Owned here so every button that needs one draws it identically — the
+         overhang tab and the subtitle panel's filter toggle previously each
+         hand-rolled this, and the copy drifted. -->
+    <Rectangle id="buttonIndicator" visible="false" />
   </children>
   <interface>
     <field id="background" type="color" value="" />
@@ -21,6 +29,22 @@
     <field id="isEnabled" type="boolean" value="true" />
     <field id="minWidth" type="integer" value="60" />
     <field id="minHeight" type="integer" value="0" />
+    <!-- Icon URI (blank = no icon). Tinted to track the text color across focus
+         states, so use a white-on-transparent source bitmap. -->
+    <field id="icon" type="string" value="" />
+    <!-- Which ROLE the icon plays, which is what its side actually encodes:
+           "left"  (default) — a leading icon that belongs to the label. Centered
+                               with the text as one unit, so "icon + phrase"
+                               stays together however wide the button is forced.
+           "right"           — a trailing disclosure affordance that belongs to
+                               the button. Pinned to the right padding edge, like
+                               TrackDropdown's chevron.
+         They coincide until minWidth forces the button wider than its content;
+         after that the difference is the whole point. -->
+    <field id="iconSide" type="string" value="left" />
+    <!-- Draw the 6px colorSecondary underline under the label while
+         isButtonSelected is true. Off by default: most buttons are momentary. -->
+    <field id="showSelectedIndicator" type="boolean" value="false" />
     <field id="isReady" type="boolean" value="false" alwaysNotify="true" />
   </interface>
 </component>

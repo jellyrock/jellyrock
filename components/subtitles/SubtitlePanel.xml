@@ -45,9 +45,16 @@
         <LayoutGroup id="headerGroup" layoutDirection="vert" itemSpacings="[6]" translation="[96, 24]">
           <LabelSecondarySmallest id="fileLabel" width="1728" />
           <LayoutGroup id="controlRow" layoutDirection="horiz" itemSpacings="[24]">
-            <TextButton id="languageButton" padding="24" minWidth="420" />
+            <!-- The chevron is the same affordance TrackDropdown uses, and for
+                 the same reason: nothing else about this button says its value
+                 is changeable rather than an action to trigger. iconSide="right"
+                 makes it a trailing disclosure marker pinned to the button's
+                 edge, not a leading icon that reads as part of the language name. -->
+            <TextButton id="languageButton" padding="24" minWidth="420" icon="pkg:/images/icons/expand_$$RES$$.png" iconSide="right" />
             <TextButton id="searchButton" padding="24" minWidth="220" />
-            <TextButton id="perfectMatchButton" padding="24" minWidth="360" visible="false" />
+            <!-- A toggle, not a momentary action: TextButton draws the selected
+                 underline while isButtonSelected is on. -->
+            <TextButton id="perfectMatchButton" padding="24" minWidth="360" showSelectedIndicator="true" visible="false" />
           </LayoutGroup>
         </LayoutGroup>
 

@@ -1,9 +1,29 @@
 import "pkg:/source/utils/misc.bs"
 
+' Selected-state underline. 6px is the same weight the overhang has always used
+' for the selected tab, so the signal reads the same wherever it appears.
+'
+' The bar is CENTERED in the gap between the label's bottom edge and the button's
+' bottom edge rather than sitting at a fixed offset, and that is the whole reason
+' this lives in one place now. JRTab's original version hard-coded `+12` below a
+' padding-derived text bottom — correct only at JRTab's padding of 30 and only
+' while no minHeight is in play. Hand-copied into the subtitle panel at padding 24
+' it drew the bar 6px from the button's bottom edge and read as colliding with it.
+' Centering makes the geometry correct at any padding and any minHeight, and
+' reproduces JRTab's existing pixels exactly at padding 30.
+const TEXT_BUTTON_INDICATOR_HEIGHT = 6
+' Affordance icon, sized 1:1 with the source bitmaps exactly as TrackDropdown does
+' with the same 24x24 chevron, so the two dropdown affordances match.
+const TEXT_BUTTON_ICON_SIZE = 24
+' Gap between the label's right edge and the icon.
+const TEXT_BUTTON_ICON_GUTTER = 12
+
 sub init()
   m.buttonBackground = m.top.findNode("buttonBackground")
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.buttonText = m.top.findNode("buttonText")
+  m.buttonIcon = m.top.findNode("buttonIcon")
+  m.buttonIndicator = m.top.findNode("buttonIndicator")
 
   m.top.observeField("isEnabled", "onEnabledChanged")
   m.top.observeField("background", "onBackgroundChanged")
@@ -14,16 +34,28 @@ sub init()
   m.top.observeField("focusedChild", "onFocusChanged")
   m.top.observeField("minWidth", "onSizeChanged")
   m.top.observeField("minHeight", "onSizeChanged")
+  m.top.observeField("icon", "onIconChanged")
+  m.top.observeField("iconSide", "onSizeChanged")
+  m.top.observeField("showSelectedIndicator", "onSizeChanged")
+  ' Named distinctly from JRTab's own isButtonSelected observer so a subclass can
+  ' still react to the same field without displacing the indicator's own toggle.
+  m.top.observeField("isButtonSelected", "onSelectedIndicatorChanged")
 
   ' Enable render tracking on parent to know when component has rendered
   m.top.enableRenderTracking = true
   m.top.observeField("renderTracking", "onRenderComplete")
 
   applyTheme()
+
+  ' An icon set as an XML attribute lands before init() runs, so the observer
+  ' above never sees it. Apply whatever is already there.
+  applyIconState()
 end sub
 
 sub applyTheme()
   constants = m.global.constants
+
+  m.buttonIndicator.color = constants.colorSecondary
 
   ' Set default colors
   m.top.background = constants.colorBackgroundSecondary
@@ -43,6 +75,7 @@ sub onFocusChanged()
     end if
     m.buttonBackground.blendColor = m.top.focusBackground
     m.buttonText.color = m.top.textFocusColor
+    m.buttonIcon.blendColor = m.top.textFocusColor
   else
     if m.top.enableBorder
       m.buttonBorder.blendColor = m.top.border
@@ -51,6 +84,7 @@ sub onFocusChanged()
     end if
     m.buttonBackground.blendColor = m.top.background
     m.buttonText.color = m.top.textColor
+    m.buttonIcon.blendColor = m.top.textColor
   end if
 end sub
 
@@ -73,6 +107,9 @@ end sub
 
 sub onTextColorChanged()
   m.buttonText.color = m.top.textColor
+  ' The icon tracks the text so a disabled or themed button doesn't leave a
+  ' stale-coloured affordance behind.
+  if not m.top.hasFocus() then m.buttonIcon.blendColor = m.top.textColor
 end sub
 
 sub onTextChanged()
@@ -109,8 +146,15 @@ sub setSizeAndCenterText()
   fontSize = m.buttonText.font.size
   visibleTextHeight = fontSize * 0.7
 
+  ' An icon reserves its own width plus a gutter, so the label gets what's left
+  ' rather than overlapping it.
+  iconSpace = 0
+  if isValidAndNotEmpty(m.top.icon)
+    iconSpace = TEXT_BUTTON_ICON_SIZE + TEXT_BUTTON_ICON_GUTTER
+  end if
+
   ' Calculate button dimensions with padding
-  buttonWidth = textWidth + (m.top.padding * 2)
+  buttonWidth = textWidth + iconSpace + (m.top.padding * 2)
   buttonHeight = visibleTextHeight + (m.top.padding * 2)
 
   ' Ensure minimum dimensions (this is the ONLY place minWidth should be enforced)
@@ -125,10 +169,18 @@ sub setSizeAndCenterText()
   m.buttonBackground.width = buttonWidth
   m.buttonBackground.height = buttonHeight
 
-  ' Center the text in the button
-  m.buttonText.width = buttonWidth
   m.buttonText.height = buttonHeight
-  m.buttonText.translation = [0, 0]
+  ' The label is width-full and horizAlign="center", so its text center is the
+  ' button's center shifted by whatever translation we give it.
+  m.buttonText.width = buttonWidth
+  m.buttonText.translation = [textCenterOffset(iconSpace), 0]
+
+  layoutIcon(buttonWidth, buttonHeight, textWidth, iconSpace)
+  ' The underline has to be derived from where the text ACTUALLY landed, not
+  ' assumed to start at `padding` — that only holds with no icon and no binding
+  ' minWidth. Getting this wrong is the bug that motivated centralising it here.
+  textLeft = int((buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2))
+  layoutSelectedIndicator(buttonHeight, textLeft, textWidth, visibleTextHeight)
 
   setFocusBorderSize()
 
@@ -141,6 +193,87 @@ sub setSizeAndCenterText()
 
   ' Signal that the button is ready (sized and visible)
   m.top.isReady = true
+end sub
+
+' ── Icon ─────────────────────────────────────────────────────────────────────
+
+sub onIconChanged()
+  applyIconState()
+  setSizeAndCenterText()
+end sub
+
+' applyIconState: URI, size and visibility only — placement needs the button's
+' measured size and therefore belongs to setSizeAndCenterText.
+sub applyIconState()
+  hasIcon = isValidAndNotEmpty(m.top.icon)
+
+  m.buttonIcon.uri = m.top.icon
+  m.buttonIcon.width = TEXT_BUTTON_ICON_SIZE
+  m.buttonIcon.height = TEXT_BUTTON_ICON_SIZE
+  m.buttonIcon.loadWidth = TEXT_BUTTON_ICON_SIZE
+  m.buttonIcon.loadHeight = TEXT_BUTTON_ICON_SIZE
+  m.buttonIcon.visible = hasIcon
+end sub
+
+' textCenterOffset: How far the label's centre shifts from the button's centre.
+'
+' A LEADING icon is part of the label — "▶ Play" is one phrase — so the pair is
+' centred as a unit and the text gives up half the icon's space to its left.
+' A TRAILING icon is a disclosure affordance belonging to the button rather than
+' the phrase, so it is pinned to the right edge and the text centres in what's
+' left, shifting the same distance the other way.
+function textCenterOffset(iconSpace as float) as float
+  if iconSpace = 0 then return 0
+  if m.top.iconSide = "left" then return iconSpace / 2
+  return - (iconSpace / 2)
+end function
+
+' layoutIcon: Place the icon for whichever role its side implies.
+'
+' The two roles genuinely differ once minWidth binds the button wider than its
+' content — which is the common case here, not the exception. A leading icon
+' stays glued to the text as it centres; a trailing chevron stays glued to the
+' button's right edge, matching TrackDropdown's trigger.
+sub layoutIcon(buttonWidth as float, buttonHeight as float, textWidth as float, iconSpace as float)
+  if iconSpace = 0 then return
+
+  iconY = int((buttonHeight - TEXT_BUTTON_ICON_SIZE) / 2)
+  if m.top.iconSide = "left"
+    ' Sits immediately left of the centred text, one gutter away.
+    textLeft = (buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2)
+    m.buttonIcon.translation = [int(textLeft - iconSpace), iconY]
+  else
+    m.buttonIcon.translation = [int(buttonWidth - m.top.padding - TEXT_BUTTON_ICON_SIZE), iconY]
+  end if
+end sub
+
+' ── Selected indicator ───────────────────────────────────────────────────────
+
+' layoutSelectedIndicator: Place the underline under the label's visible box.
+'
+' The label is vertically centered across the FULL button height, so its bottom
+' edge follows from that centering — deriving it from the padding instead is what
+' broke once a minHeight (or a smaller padding) was in play.
+sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth as float, visibleTextHeight as float)
+  if not m.top.showSelectedIndicator
+    m.buttonIndicator.visible = false
+    return
+  end if
+
+  textBottom = (buttonHeight + visibleTextHeight) / 2
+  gapBelowText = buttonHeight - textBottom
+
+  m.buttonIndicator.width = textWidth
+  m.buttonIndicator.height = TEXT_BUTTON_INDICATOR_HEIGHT
+  ' Not rounded: the previous implementation passed the raw float here, and
+  ' keeping it makes the overhang tab bar's underline bit-identical to what it
+  ' rendered before this moved into TextButton.
+  m.buttonIndicator.translation = [textLeft, textBottom + ((gapBelowText - TEXT_BUTTON_INDICATOR_HEIGHT) / 2)]
+  m.buttonIndicator.visible = m.top.isButtonSelected
+end sub
+
+sub onSelectedIndicatorChanged()
+  m.buttonIndicator.visible = m.top.showSelectedIndicator and m.top.isButtonSelected
 end sub
 
 sub onPaddingChanged()

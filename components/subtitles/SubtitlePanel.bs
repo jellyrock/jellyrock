@@ -77,20 +77,12 @@ sub init()
   m.top.findNode("languageOverlayHeading").text = translate(translationKeys.LabelSearchLanguages)
   m.languagePicker.observeField("selectedCode", "onLanguageSelected")
 
-  ' Active-state affordance for the filter toggle. IconButtons show "on" by
-  ' tinting the icon colorSecondary; the equivalent for a TextButton is the
-  ' 6px colorSecondary underline JRTab already uses for the selected overhang
-  ' tab, so the same signal means the same thing in both places. Built here
-  ' rather than by extending JRTab because JRTab also forces the overhang's
-  ' Large font and a transparent background, which would make this button
-  ' inconsistent with the two filled TextButtons beside it.
-  m.perfectMatchIndicator = createObject("roSGNode", "Rectangle")
-  m.perfectMatchIndicator.height = 6
-  m.perfectMatchIndicator.color = constants.colorSecondary
-  m.perfectMatchIndicator.visible = false
-  m.perfectMatchButton.appendChild(m.perfectMatchIndicator)
-  m.perfectMatchButton.observeField("isReady", "onPerfectMatchButtonReady")
-  m.perfectMatchButton.observeField("isButtonSelected", "onPerfectMatchStateChanged")
+  ' Active-state affordance for the filter toggle is the 6px colorSecondary
+  ' underline TextButton draws for any button with showSelectedIndicator on (set
+  ' in the XML) — the same signal the overhang uses for the selected tab, so it
+  ' means the same thing in both places. The panel used to hand-build and
+  ' position that bar itself, copying JRTab's arithmetic; the copy was wrong at
+  ' this button's padding, which is why the geometry now lives in one component.
   m.perfectMatchButton.text = translate(translationKeys.LabelPerfectMatchesOnly)
 
   ' Nothing has been searched yet, so the results list is not a focus target.
@@ -485,29 +477,6 @@ end function
 sub setStatus(text as string)
   m.statusLabel.text = text
   m.statusLabel.visible = text <> ""
-end sub
-
-' onPerfectMatchButtonReady / onPerfectMatchStateChanged: Position and toggle the
-' underline. TextButton sizes itself from its text, so the indicator can only be
-' placed once it reports ready (the JRTab pattern).
-sub onPerfectMatchButtonReady()
-  if not m.perfectMatchButton.isReady then return
-
-  ' Measure off the sized BACKGROUND, exactly as JRTab does. The first draft
-  ' measured the label's boundingRect instead, which is neither the button's
-  ' width nor positioned in its coordinate space — hence an underline that sat
-  ' outside the button and to the right of the text.
-  background = m.perfectMatchButton.findNode("buttonBackground")
-  if not isValid(background) then return
-
-  padding = m.perfectMatchButton.padding
-  m.perfectMatchIndicator.width = background.width - (padding * 2)
-  m.perfectMatchIndicator.translation = [padding, background.height - padding + 12]
-  onPerfectMatchStateChanged()
-end sub
-
-sub onPerfectMatchStateChanged()
-  m.perfectMatchIndicator.visible = m.perfectMatchButton.isButtonSelected
 end sub
 
 ' ── Existing subtitles ───────────────────────────────────────────────────────
