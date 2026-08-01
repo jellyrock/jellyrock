@@ -173,7 +173,13 @@ end function
 ' Mirrors JRDialog's MAX_BUTTONS design cap. Kept as its own constant because
 ' BrighterScript consts are file-scoped and the component's is not visible here.
 const MAX_BUTTON_ROW_CHOICES = 3
-const BUTTON_ROW_MAX_WIDTH = 1600
+' The row is centered UNDER the panel, so it should never be wider than the panel
+' it belongs to — a row spilling past both panel edges reads as detached chrome.
+' Mirrors JRDialog's PANEL_WIDTH (consts are file-scoped, so it can't be shared).
+' Three buttons at TextButton's 200 minWidth plus spacing is 648, so the cap only
+' bites on genuinely long labels — which is exactly when the list is the better
+' presentation anyway.
+const BUTTON_ROW_MAX_WIDTH = 900
 
 ' A choice set renders as JRDialog's horizontal button row only if it's short
 ' (<= 3) AND the measured row fits the screen with comfortable margins.

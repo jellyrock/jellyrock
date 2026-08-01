@@ -13,7 +13,11 @@ const LIST_TOP = 115
 const BUTTON_TOP_MARGIN = 20
 const BUTTON_MIN_WIDTH = 200
 const ITEM_HEIGHT = 60
-const ITEM_SPACING = 20
+' Matches JRLabelList's own default spacing so the dialog's list has the same
+' visual rhythm as every other list in the app. 24 (not 20) also survives the
+' Roku OS downscale to 720p cleanly: it is divisible by 3, so x2/3 stays an
+' integer and the rows don't pick up sub-pixel drift.
+const ITEM_SPACING = 24
 const MAX_VISIBLE_ROWS = 8
 
 sub init()
