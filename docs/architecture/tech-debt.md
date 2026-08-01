@@ -215,8 +215,9 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `jrscreen-init-initializes-log-manager`
 
-- **area**: `components/JRScreen.bs`
-- **issue**: Unusual coupling — global resource initialized in a screen lifecycle hook. Re-init is no-op so it works, but design assumes `JRScreen.init` runs before any other component's `init`.
+- **area**: `components/JRScene.bs`, `components/JRScreen.bs`
+- **issue**: Unusual coupling — a global resource initialized in a component lifecycle hook. The assumption that `JRScreen.init` runs before any other component's `init` was **false and load-bearing**: `log.Logger.new()` resolves `m.global.rLog` once and caches it, and every level method then hits `if m.rLog = invalid then return`, so a component built before the manager exists logs **nothing, forever, at any level, on any build**. `setGlobalNodes()` (`main.bs`) runs before the first `JRScreen`, so `JRScene` itself plus `RemoteControlTask`, `SceneManager`, `QueueManager` and `SideEffectTask` were all silent — found while trying to observe the `ws://` receiver on-device, where `print` emitted and `m.log.info` did not. Primary init now happens in `JRScene.init` (the earliest component init, before `setGlobalNodes`), verified on device: `RemoteControlTask` log lines appear.
+- **residual**: `JRScreen.init` keeps a fallback call for contexts that mount a screen without `JRScene` (Rooibos suites), and initialization still lives in a component hook rather than bootstrap. The silent-dead-logger failure mode is gone, but the coupling — and the fact that the failure is invisible rather than loud — remains.
 
 #### `testtoast-in-production-builds`
 

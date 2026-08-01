@@ -14,6 +14,19 @@ import "pkg:/source/roku_modules/sgrouter/RouterState.brs"
 import "pkg:/source/roku_modules/tkss_rodash_v0/rodash.brs"
 
 sub init()
+  ' Initialize the log manager HERE — before any other component constructs a Logger.
+  ' `log.Logger.new()` resolves `m.global.rLog` ONCE and caches it; when the manager does not
+  ' exist yet, every level method (`info`/`warn`/`error`/…) hits an `if m.rLog = invalid then
+  ' return` and silently no-ops for the life of that instance — no output, no error, forever.
+  ' JRScene is the earliest component init (CreateScene, before main.bs calls setGlobalNodes),
+  ' so doing it here is what gives the global singletons working loggers. Until this moved,
+  ' JRScene itself plus RemoteControlTask / SceneManager / QueueManager / SideEffectTask logged
+  ' NOTHING on any build, at any log level.
+  #if debug
+    log.initializeLogManager(["log_PrintTransport"], 5) ' Debug: info + verbose + debug
+  #else
+    log.initializeLogManager(["log_PrintTransport"], 2) ' Production
+  #end if
   m.log = new log.Logger("JRScene")
   m.top.backgroundColor = m.global.constants.colorBackgroundPrimary
   m.top.backgroundURI = ""
