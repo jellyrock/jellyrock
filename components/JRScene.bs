@@ -22,10 +22,11 @@ sub init()
   ' so doing it here is what gives the global singletons working loggers. Until this moved,
   ' JRScene itself plus RemoteControlTask / SceneManager / QueueManager / SideEffectTask logged
   ' NOTHING on any build, at any log level.
+  ' Second param is the max level emitted: 0 error, 1 warn, 2 info, 3 verbose, 4 debug.
   #if debug
-    log.initializeLogManager(["log_PrintTransport"], 5) ' Debug: info + verbose + debug
+    log.initializeLogManager(["log_PrintTransport"], 5) ' Debug: everything
   #else
-    log.initializeLogManager(["log_PrintTransport"], 2) ' Production
+    log.initializeLogManager(["log_PrintTransport"], 2) ' Production: error + warn + info
   #end if
   m.log = new log.Logger("JRScene")
   m.top.backgroundColor = m.global.constants.colorBackgroundPrimary

@@ -7,11 +7,11 @@ sub init()
   ' `addFields` ignores an existing field, so this is a no-op in the app. It stays for contexts
   ' that mount a JRScreen without JRScene (Rooibos suites), which would otherwise get the
   ' silent dead-logger behavior described in JRScene.init.
-  ' Second param sets log output: 0 error, 1 warn, 2 info, 3 verbose, 4 debug
+  ' Second param is the max level emitted: 0 error, 1 warn, 2 info, 3 verbose, 4 debug.
   #if debug
-    log.initializeLogManager(["log_PrintTransport"], 5) ' Debug mode: show all logs (info + verbose + debug)
+    log.initializeLogManager(["log_PrintTransport"], 5) ' Debug: everything
   #else
-    log.initializeLogManager(["log_PrintTransport"], 2) ' Production mode: show warn and error only
+    log.initializeLogManager(["log_PrintTransport"], 2) ' Production: error + warn + info
   #end if
 end sub
 ' Function called when the screen is displayed by the screen manager
