@@ -21,6 +21,8 @@ const ITEM_HEIGHT = 60
 const ITEM_SPACING = 24
 const MAX_VISIBLE_ROWS = 8
 
+
+
 sub init()
   m.log = new log.Logger("JRListDialog")
   constants = m.global.constants
@@ -42,10 +44,13 @@ sub init()
 
   m.resolved = false
 
-  ' Screen-reader announcement, fired once focus has settled. See
-  ' source/utils/dialogNarration.bs for why it can't be spoken any earlier.
+  ' Screen-reader announcement — mirrors JRDialog: focus changes drive it, and
+  ' the opening announcement additionally needs the timer (see
+  ' OPENING_ANNOUNCEMENT_DELAY in JRDialog.bs for why it cannot be event-driven).
+  m.top.observeField("focusedChild", "onDialogFocusChanged")
   m.narrationTimer = m.top.findNode("narrationTimer")
-  m.narrationTimer.observeField("fire", "onNarrationDue")
+  m.narrationTimer.duration = 0.15
+  m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
   m.hasNarrated = false
 end sub
 
@@ -74,14 +79,26 @@ sub onItemsChanged()
     m.optionList.jumpToItem = m.top.defaultIndex
   end if
   m.optionList.setFocus(true)
-
-  if not m.hasNarrated then m.narrationTimer.control = "start"
 end sub
 
-' Announce the dialog as one utterance once focus has settled. The focused ROW is
-' folded in for the same reason JRDialog folds in the focused button: the
-' platform announces it on focus and would flush ours mid-sentence.
-sub onNarrationDue()
+' Screen-reader announcement, driven by the focus event itself rather than a
+' guessed delay (see JRDialog.onButtonFocusChanged for the full reasoning).
+'
+' On open, announce the title plus the row focus starts on. Afterwards, only the
+' Cancel button needs announcing: the list is a real LabelList, which the
+' platform narrates itself (focused row title plus a navigation hint), whereas
+' the Cancel TextButton is a Group and gets nothing.
+sub onDialogFocusChanged()
+  if not m.hasNarrated
+    m.narrationTimer.control = "start"
+    return
+  end if
+
+  if m.cancelButton.hasFocus() then narrateFocusedElement(toString(m.cancelButton.text))
+end sub
+
+' Announce the dialog once the platform's own focus announcement is out of the way.
+sub onOpeningAnnouncementDue()
   if m.hasNarrated then return
   m.hasNarrated = true
 
@@ -166,13 +183,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' DOWN from the last list item moves to the Cancel button (the list consumes
   ' downs while it can still move; only the bubbled-out ones land here)
   if key = "down"
-    if not m.cancelButton.hasFocus()
-      m.cancelButton.setFocus(true)
-      ' The list's own rows are narrated by the platform (LabelList has a
-      ' documented rule), but the Cancel button is a TextButton — a Group, not a
-      ' Roku Button — so nothing announces it unless we do.
-      narrateFocusedElement(toString(m.cancelButton.text))
-    end if
+    ' The focusedChild observer announces the Cancel button; the list's own rows
+    ' are narrated by the platform (LabelList has a documented rule).
+    if not m.cancelButton.hasFocus() then m.cancelButton.setFocus(true)
     return true
   end if
 

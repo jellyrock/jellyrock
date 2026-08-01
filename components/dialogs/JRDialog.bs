@@ -13,6 +13,29 @@ const BUTTON_TOP_MARGIN = 20
 const BUTTON_MIN_WIDTH = 200
 const MAX_BUTTONS = 3
 
+' The ONE piece of narration timing that cannot be event-driven.
+'
+' Established on-device, one behavior at a time:
+'   - The platform announces the focused button ONLY when focus first enters the
+'     dialog. Moving between buttons afterwards is silent (TextButton extends
+'     Group, not Roku's Button, so the "text of button is spoken only if focused"
+'     rule never applies). Those moves are ours alone, and need no timing.
+'   - That one initial announcement FLUSHES ours. Speaking from the focus
+'     observer, which is as early as any event lets us react, still loses: the
+'     platform speaks after us and we are cut off. Speaking before focus loses
+'     the same way.
+' To survive we must speak AFTER the platform's announcement, and SceneGraph
+' exposes no event for "the platform has finished dispatching speech" — the only
+' observable speech events are for utterances the app itself starts. So the
+' opening announcement is the one place a delay is unavoidable.
+'
+' Keep it short: long enough to land second, short enough to flush the platform's
+' word before it is audible. At 0.6s the clipped word was clearly audible.
+' Changing this needs an ear, not reasoning — there is no test that can catch it.
+const OPENING_ANNOUNCEMENT_DELAY = 0.15
+
+
+
 sub init()
   m.log = new log.Logger("JRDialog")
   constants = m.global.constants
@@ -46,10 +69,13 @@ sub init()
   m.focusIndex = 0
   m.resolved = false
 
-  ' Screen-reader announcement, fired once focus has settled. See
-  ' source/utils/dialogNarration.bs for why it can't be spoken any earlier.
+  ' Screen-reader announcement. Focus changes drive it (see
+  ' onButtonFocusChanged); the opening announcement additionally needs the timer
+  ' below, for the reason documented on OPENING_ANNOUNCEMENT_DELAY.
+  m.buttonRow.observeField("focusedChild", "onButtonFocusChanged")
   m.narrationTimer = m.top.findNode("narrationTimer")
-  m.narrationTimer.observeField("fire", "onNarrationDue")
+  m.narrationTimer.duration = OPENING_ANNOUNCEMENT_DELAY
+  m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
   m.hasNarrated = false
 
   layout()
@@ -93,23 +119,44 @@ sub onButtonsChanged()
   m.focusIndex = m.top.defaultButtonIndex
   if m.focusIndex < 0 or m.focusIndex >= m.buttonNodes.count() then m.focusIndex = 0
   layout()
-
-  ' The helpers set `buttons` last, so by here title/message/buttons are all
-  ' present and the announcement has everything it needs.
-  if not m.hasNarrated then m.narrationTimer.control = "start"
 end sub
 
-' Announce the whole dialog as one utterance, once focus has settled. Includes
-' the focused button because the platform's own announcement of it would
-' otherwise flush ours mid-sentence (see dialogNarration.bs).
-sub onNarrationDue()
+' Screen-reader announcement, driven by the focus event itself.
+'
+' The platform announces the focused button the moment focus lands, and app
+' speech and platform speech interrupt each other rather than queueing — so we
+' have to speak second to be the one that survives. The focus change IS that
+' moment, so reacting to it needs no guess about timing (an earlier version used
+' a tuned delay; the value was a guess that would rot on different hardware).
+'
+' First focus = the dialog opening: announce the whole thing, folding in the
+' button so it is one utterance in the built-in order. Later focus changes
+' announce just the button the user moved to — nothing else has changed.
+sub onButtonFocusChanged()
+  focused = m.buttonRow.focusedChild
+  if not isValid(focused) then return
+
+  ' The opening announcement is the timer's job — it has to land after the
+  ' platform's own. Starting the timer here (rather than when the buttons are
+  ' built) means it is anchored to focus actually landing.
+  if not m.hasNarrated
+    m.narrationTimer.control = "start"
+    return
+  end if
+
+  narrateFocusedElement(toString(focused.text))
+end sub
+
+' Announce the whole dialog, once the platform's own focus announcement is out of
+' the way. Folds in the focused button so this is a single utterance in the
+' built-in order: title, message, button.
+sub onOpeningAnnouncementDue()
   if m.hasNarrated then return
   m.hasNarrated = true
 
   focusedText = ""
-  if m.focusIndex >= 0 and m.focusIndex < m.buttonNodes.count()
-    focusedText = toString(m.buttonNodes[m.focusIndex].text)
-  end if
+  focused = m.buttonRow.focusedChild
+  if isValid(focused) then focusedText = toString(focused.text)
 
   narrateDialogOpening(m.top.title, m.top.message, focusedText)
 end sub
@@ -177,9 +224,8 @@ end sub
 ' Step button focus, WRAPPING at the ends to match JRButtonGroup — the app's other
 ' horizontal button row wraps, so a dialog that dead-ends feels broken.
 '
-' Announces the newly focused button: the platform does not narrate focus moves
-' between TextButtons (they extend Group, not Roku's Button), so without this the
-' dialog goes silent after its opening announcement.
+' Narration of the newly focused button is handled by the focusedChild observer,
+' so it covers remote-driven moves and programmatic ones alike.
 sub moveButtonFocus(delta as integer)
   count = m.buttonNodes.count()
   if count = 0 then return
@@ -188,7 +234,6 @@ sub moveButtonFocus(delta as integer)
   ' than going negative
   nextIndex = (m.focusIndex + delta + count) mod count
   focusButton(nextIndex)
-  narrateFocusedElement(toString(m.buttonNodes[nextIndex].text))
 end sub
 
 ' Resolve the dialog exactly once, then close. index = -1 means cancelled (back).
