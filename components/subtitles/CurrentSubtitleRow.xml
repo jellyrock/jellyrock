@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CurrentSubtitleRow: one subtitle file already attached to the item, in
+  SubtitlePanel's "Current subtitles" column.
+
+  Deliberately NOT the same component as SubtitleResultRow. The first draft
+  reused that row for both columns and the mismatch showed immediately: an
+  installed subtitle has no download count, so every entry read "no downloads";
+  it has no upload date or uploader, so the meta line was mostly empty; and it
+  can never be a provider "perfect match", so the badge line sat blank while
+  still reserving its height. The two things genuinely carry different
+  information, so they get different rows.
+
+  What an installed subtitle actually has that's worth showing:
+
+    English  ·  SRT  ·  Forced          <- language, codec, and the flags that
+    Hearing impaired                       change what the track IS
+
+  Language leads because it is the thing you scan this column for. The server's
+  DisplayTitle ("English - Hearing Impaired - SUBRIP - External") is NOT used
+  verbatim: it repeats information the badges carry, restates "External" which
+  is true of every row here by construction, and is not localized.
+-->
+<component name="CurrentSubtitleRow" extends="Group">
+  <children>
+    <!-- Focus chrome, same 9-patch pair as SubtitleResultRow so both columns
+         read as one control family. -->
+    <Poster id="rowBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+    <Poster id="rowBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
+
+    <ScrollingLabelPrimarySmaller id="titleLabel" repeatCount="0" />
+    <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[16]" />
+  </children>
+
+  <interface>
+    <field id="itemContent" type="node" onChange="onItemContentChanged" />
+    <field id="itemHasFocus" type="boolean" value="false" onChange="onFocusChanged" />
+    <field id="rowWidth" type="integer" value="570" onChange="onSizeChanged" />
+  </interface>
+</component>

@@ -14,6 +14,7 @@ import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/translate.bs"
@@ -439,12 +440,18 @@ end sub
 ' underline. TextButton sizes itself from its text, so the indicator can only be
 ' placed once it reports ready (the JRTab pattern).
 sub onPerfectMatchButtonReady()
-  buttonText = m.perfectMatchButton.findNode("buttonText")
-  if not isValid(buttonText) then return
+  if not m.perfectMatchButton.isReady then return
 
-  textRect = buttonText.boundingRect()
-  m.perfectMatchIndicator.width = textRect.width
-  m.perfectMatchIndicator.translation = [m.perfectMatchButton.padding, textRect.height + 12]
+  ' Measure off the sized BACKGROUND, exactly as JRTab does. The first draft
+  ' measured the label's boundingRect instead, which is neither the button's
+  ' width nor positioned in its coordinate space — hence an underline that sat
+  ' outside the button and to the right of the text.
+  background = m.perfectMatchButton.findNode("buttonBackground")
+  if not isValid(background) then return
+
+  padding = m.perfectMatchButton.padding
+  m.perfectMatchIndicator.width = background.width - (padding * 2)
+  m.perfectMatchIndicator.translation = [padding, background.height - padding + 12]
   onPerfectMatchStateChanged()
 end sub
 
@@ -466,20 +473,11 @@ sub renderExistingList()
   for each stream in external
     row = content.createChild("ContentNode")
     row.addFields({
-      name: displayTitleFor(stream),
-      author: "",
-      format: valueOrEmpty(stream.Codec),
-      providerName: "",
-      dateCreated: "",
-      threeLetterIsoLanguageName: valueOrEmpty(stream.Language),
-      downloadCount: 0,
-      isHashMatch: false,
-      hearingImpaired: false,
+      language: resolveLanguageName(valueOrEmpty(stream.Language)),
+      codec: valueOrEmpty(stream.Codec),
+      hearingImpaired: stream.IsHearingImpaired = true,
       forced: stream.IsForced = true,
-      aiTranslated: false,
-      machineTranslated: false,
-      showProvider: false,
-      showFormat: true,
+      streamIndex: intOrZero(stream.Index),
       rowWidth: subtitleLayout.EXISTING_WIDTH
     })
   end for
@@ -488,12 +486,6 @@ sub renderExistingList()
   m.existingList.visible = external.count() > 0
   m.existingEmptyLabel.visible = external.count() = 0
 end sub
-
-function displayTitleFor(stream as object) as string
-  if isValidAndNotEmpty(stream.DisplayTitle) then return stream.DisplayTitle
-  if isValidAndNotEmpty(stream.Language) then return stream.Language
-  return translate(translationKeys.LabelSubtitles)
-end function
 
 ' ── Download + confirmation ──────────────────────────────────────────────────
 

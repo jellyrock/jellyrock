@@ -54,13 +54,21 @@
         <!-- ── Results (left) ─────────────────────────────────────────────
              1120px wide. Release names ran to 85 characters in the sampled
              results, so width here directly buys fewer marquees. -->
-        <LayoutGroup id="resultsGroup" layoutDirection="vert" itemSpacings="[10]" translation="[96, 150]">
-          <LabelPrimaryMedium id="resultsHeading" />
+        <!-- Plain Groups with hard-coded child translations, NOT LayoutGroups.
+             A LayoutGroup aligns children by their boundingRect, and a
+             MarkupList's rect is offset by its focus-footprint margins even
+             with drawFocusFeedback off — so the list gets nudged right and the
+             rows stop lining up with the heading above them. ItemDetails hit
+             the same class of drift on the vertical axis with its trackCluster
+             and resolved it the same way; see the comment there. -->
+        <Group id="resultsGroup" translation="[96, 150]">
+          <LabelPrimaryMedium id="resultsHeading" translation="[0, 0]" />
           <MarkupList id="resultsList"
+            translation="[0, 44]"
             itemComponentName="SubtitleResultRow"
             vertFocusAnimationStyle="floatingFocus"
             drawFocusFeedback="false" />
-        </LayoutGroup>
+        </Group>
 
         <!-- Empty / status line, shown in place of the results list. Covers
              both real emptiness and the several server states that are
@@ -73,14 +81,15 @@
              beside the results rather than behind a tab is the one piece of the
              official client's information architecture worth keeping: it lets
              you see whether you already have what you're searching for. -->
-        <LayoutGroup id="existingGroup" layoutDirection="vert" itemSpacings="[10]" translation="[1256, 150]">
-          <LabelPrimaryMedium id="existingHeading" />
+        <Group id="existingGroup" translation="[1256, 150]">
+          <LabelPrimaryMedium id="existingHeading" translation="[0, 0]" />
           <MarkupList id="existingList"
-            itemComponentName="SubtitleResultRow"
+            translation="[0, 44]"
+            itemComponentName="CurrentSubtitleRow"
             vertFocusAnimationStyle="floatingFocus"
             drawFocusFeedback="false" />
-          <LabelSecondarySmallest id="existingEmptyLabel" width="570" wrap="true" visible="false" />
-        </LayoutGroup>
+          <LabelSecondarySmallest id="existingEmptyLabel" width="570" wrap="true" translation="[0, 44]" visible="false" />
+        </Group>
 
       </Group>
 

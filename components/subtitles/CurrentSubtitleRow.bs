@@ -1,0 +1,135 @@
+' CurrentSubtitleRow: one subtitle already attached to the item.
+'
+' See CurrentSubtitleRow.xml for why this is separate from SubtitleResultRow.
+import "pkg:/source/constants/subtitleLayout.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+const CURRENT_BADGE_ICON_SIZE = 22
+
+sub init()
+  m.rowBackground = m.top.findNode("rowBackground")
+  m.rowBorder = m.top.findNode("rowBorder")
+  m.titleLabel = m.top.findNode("titleLabel")
+  m.badgeRow = m.top.findNode("badgeRow")
+
+  m.titleLabel.color = m.global.constants.colorTextPrimary
+  m.titleLabel.repeatCount = 0
+
+  onSizeChanged()
+end sub
+
+sub onItemContentChanged()
+  content = m.top.itemContent
+  if not isValid(content) then return
+
+  if isValid(content.rowWidth) and content.rowWidth > 0 then m.top.rowWidth = content.rowWidth
+
+  m.titleLabel.text = titleLineFor(content)
+  rebuildBadges(content)
+  onSizeChanged()
+end sub
+
+' titleLineFor: "English  ·  SRT".
+'
+' Language first because that is what this column is scanned for. The codec
+' follows because it is the one remaining property that changes how the track
+' behaves (an image-based format forces transcoding where a text one does not).
+function titleLineFor(content as object) as string
+  parts = []
+
+  if isValidAndNotEmpty(content.language)
+    parts.push(content.language)
+  else
+    parts.push(translate(translationKeys.LabelUnknown))
+  end if
+
+  if isValidAndNotEmpty(content.codec) then parts.push(UCase(content.codec))
+
+  line = ""
+  for each part in parts
+    if line <> "" then line = line + "  ·  "
+    line = line + part
+  end for
+  return line
+end function
+
+' rebuildBadges: Only the flags that change what the track IS.
+'
+' No "perfect match" here — that is a property of a provider search result, not
+' of a file already on disk — and no download count, which an installed subtitle
+' does not have. Rendering those was what made the first draft's right-hand
+' column read as broken.
+sub rebuildBadges(content as object)
+  while m.badgeRow.getChildCount() > 0
+    m.badgeRow.removeChild(m.badgeRow.getChild(0))
+  end while
+
+  constants = m.global.constants
+
+  if content.hearingImpaired = true
+    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, "pkg:/images/icons/closedCaptions_$$RES$$.png")
+  end if
+  if content.forced = true
+    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, "")
+  end if
+end sub
+
+sub appendBadge(text as string, color as string, iconUri as string)
+  badge = m.badgeRow.createChild("LayoutGroup")
+  badge.layoutDirection = "horiz"
+  badge.itemSpacings = [6]
+  badge.vertAlignment = "center"
+
+  if iconUri <> ""
+    icon = badge.createChild("Poster")
+    icon.uri = iconUri
+    icon.width = CURRENT_BADGE_ICON_SIZE
+    icon.height = CURRENT_BADGE_ICON_SIZE
+    icon.blendColor = color
+  end if
+
+  label = badge.createChild("LabelSecondarySmallest")
+  label.text = text
+  label.color = color
+end sub
+
+sub onSizeChanged()
+  rowWidth = m.top.rowWidth
+  constants = m.global.constants
+
+  ' Same total height as a search-result row so the two columns stay in step
+  ' line-for-line, even though this row's internals are arranged differently.
+  rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
+
+  m.rowBackground.width = rowWidth
+  m.rowBackground.height = rowHeight
+  m.rowBorder.width = rowWidth
+  m.rowBorder.height = rowHeight
+
+  textWidth = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
+
+  y = subtitleLayout.ROW_V_PADDING
+  m.titleLabel.maxWidth = textWidth
+  m.titleLabel.translation = [subtitleLayout.ROW_H_PADDING, y]
+  y += constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
+
+  m.badgeRow.translation = [subtitleLayout.ROW_H_PADDING, y]
+end sub
+
+sub onFocusChanged()
+  constants = m.global.constants
+  hasFocus = m.top.itemHasFocus
+
+  m.rowBorder.visible = hasFocus
+  m.rowBackground.visible = hasFocus
+
+  if hasFocus
+    m.rowBorder.blendColor = constants.colorPrimary
+    m.rowBackground.blendColor = constants.colorBackgroundSecondary
+    m.titleLabel.repeatCount = -1
+  else
+    m.titleLabel.repeatCount = 0
+  end if
+end sub
