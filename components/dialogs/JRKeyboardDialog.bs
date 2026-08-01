@@ -1,4 +1,5 @@
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -50,15 +51,6 @@ sub resolveDialog(cancelled as boolean)
   if m.resolved then return
   m.resolved = true
 
-  enteredText = ""
-  if not cancelled then enteredText = m.top.getField("text")
-
-  m.top.result = {
-    cancelled: cancelled,
-    confirmed: not cancelled,
-    buttonIndex: -1,
-    optionIndex: -1,
-    buttonText: "",
-    value: enteredText
-  }
+  ' getField: BSC cannot resolve fields of the internal node on built-in dialog subtypes
+  m.top.result = textDialogResult(cancelled, toString(m.top.getField("text")))
 end sub

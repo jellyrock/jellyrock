@@ -1,0 +1,64 @@
+' The ONE definition of the standard dialog result shape.
+'
+' Every dialog in the JRDialog family resolves by writing this assoc array to its
+' own per-instance `result` field. Callers read the same six keys no matter which
+' dialog ran, which is what lets a call site swap presentation (button row <->
+' scrollable list, as showChoiceDialog does) without touching its handler.
+'
+' These builders exist so the shape has exactly one producer. Hand-building the
+' assoc array in each component is how the three copies drifted apart before
+' (JRListDialog hardcoding `confirmed: false`, JRKeyboardDialog hardcoding
+' `buttonIndex: -1`) — and the mapping from "what the user did" to
+' cancelled/confirmed is the part every call site depends on, so it belongs in
+' pure functions that can be unit-tested without a scene.
+'
+' Keys:
+'   cancelled   - user backed out (back / Cancel); no selection was made
+'   confirmed   - user chose the affirmative action
+'   buttonIndex - index into `buttons`, or -1 when the dialog has no button row
+'   optionIndex - index of the chosen option, or -1 when nothing was chosen
+'   buttonText  - label of the chosen button ("" when none)
+'   value       - entered text (keyboard dialogs only; "" otherwise)
+import "pkg:/source/utils/misc.bs"
+
+' Result for a button-row dialog (JRDialog). index = -1 means cancelled.
+' confirmIndex is the button that counts as the affirmative action (-1 = none),
+' which is what `showConfirmDialog` sets so callers can read result.confirmed.
+function buttonDialogResult(index as integer, confirmIndex as integer, buttons as object) as object
+  buttonText = ""
+  if index >= 0 and isValid(buttons) and index < buttons.count()
+    buttonText = toString(buttons[index])
+  end if
+
+  ' optionIndex mirrors buttonIndex: for choice dialogs the buttons ARE the
+  ' options, so showChoiceDialog callers read result.optionIndex on both routes.
+  return makeDialogResult(index < 0, index >= 0 and index = confirmIndex, index, index, buttonText, "")
+end function
+
+' Result for a selection-list dialog (JRListDialog). index = -1 means cancelled.
+' A list has no affirmative button, so `confirmed` is always false — callers
+' branch on optionIndex / cancelled.
+function listDialogResult(index as integer, cancelText as string) as object
+  buttonText = ""
+  if index < 0 then buttonText = cancelText
+  return makeDialogResult(index < 0, false, -1, index, buttonText, "")
+end function
+
+' Result for a text-entry dialog (JRKeyboardDialog). `cancelled` distinguishes a
+' cancel/back from an intentionally empty entry, so callers can tell them apart.
+function textDialogResult(cancelled as boolean, enteredText as string) as object
+  value = ""
+  if not cancelled then value = enteredText
+  return makeDialogResult(cancelled, not cancelled, -1, -1, "", value)
+end function
+
+function makeDialogResult(cancelled as boolean, confirmed as boolean, buttonIndex as integer, optionIndex as integer, buttonText as string, value as string) as object
+  return {
+    cancelled: cancelled,
+    confirmed: confirmed,
+    buttonIndex: buttonIndex,
+    optionIndex: optionIndex,
+    buttonText: buttonText,
+    value: value
+  }
+end function

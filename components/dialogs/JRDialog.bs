@@ -1,4 +1,5 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Layout constants (mirrors OverviewDialog's chrome metrics)
@@ -31,8 +32,12 @@ sub init()
   m.messageText.observeField("renderTracking", "onMessageRendered")
 
   m.buttonRow = m.top.findNode("buttonRow")
-  ' The row's width settles asynchronously as TextButtons size to their labels —
-  ' recenter it whenever the rendered bounds change
+  ' `renderTracking` reports RENDER VISIBILITY ("none" / "partial" / "full"), not
+  ' bounds. We lean on it because a dialog only renders once appended to the
+  ' scene, so the none -> full transition is a reliable "the TextButtons have now
+  ' sized themselves to their labels" signal — which is when the row can be
+  ' centered. It is NOT a general resize notification; a later width change
+  ' without a visibility change would not fire it.
   m.buttonRow.enableRenderTracking = true
   m.buttonRow.observeField("renderTracking", "onButtonRowRendered")
 
@@ -148,19 +153,7 @@ sub resolveDialog(index as integer)
   if m.resolved then return
   m.resolved = true
 
-  buttonText = ""
-  if index >= 0 and index < m.top.buttons.count() then buttonText = m.top.buttons[index]
-
-  ' optionIndex mirrors buttonIndex: for choice dialogs the buttons ARE the
-  ' options, so showChoiceDialog callers read result.optionIndex on both routes
-  m.top.result = {
-    cancelled: index < 0,
-    confirmed: index >= 0 and index = m.top.confirmIndex,
-    buttonIndex: index,
-    optionIndex: index,
-    buttonText: buttonText,
-    value: ""
-  }
+  m.top.result = buttonDialogResult(index, m.top.confirmIndex, m.top.buttons)
 
   closeDialog()
 end sub

@@ -1,0 +1,152 @@
+import "pkg:/source/utils/dialogResult.bs"
+
+namespace tests
+
+  @suite("dialogResult.bs - the standard dialog result contract")
+  class DialogResultTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shape")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("every builder produces the same six keys")
+    function _()
+      results = [
+        buttonDialogResult(0, 1, ["Cancel", "Delete"]),
+        listDialogResult(2, "Cancel"),
+        textDialogResult(false, "hello")
+      ]
+      for each result in results
+        m.assertTrue(result.doesExist("cancelled"))
+        m.assertTrue(result.doesExist("confirmed"))
+        m.assertTrue(result.doesExist("buttonIndex"))
+        m.assertTrue(result.doesExist("optionIndex"))
+        m.assertTrue(result.doesExist("buttonText"))
+        m.assertTrue(result.doesExist("value"))
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buttonDialogResult - confirm semantics")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("confirmed only when the chosen index IS the confirm index")
+    function _()
+      ' showConfirmDialog builds [cancel, confirm] with confirmIndex = 1
+      confirm = buttonDialogResult(1, 1, ["Cancel", "Delete"])
+      m.assertTrue(confirm.confirmed)
+      m.assertFalse(confirm.cancelled)
+      m.assertEqual(confirm.buttonText, "Delete")
+    end function
+
+    @it("choosing the cancel button is NOT confirmed and NOT cancelled")
+    function _()
+      ' Pressing "Cancel" is a deliberate choice, distinct from backing out
+      cancelBtn = buttonDialogResult(0, 1, ["Cancel", "Delete"])
+      m.assertFalse(cancelBtn.confirmed)
+      m.assertFalse(cancelBtn.cancelled)
+      m.assertEqual(cancelBtn.buttonIndex, 0)
+    end function
+
+    @it("index -1 (back) is cancelled and never confirmed")
+    function _()
+      back = buttonDialogResult(-1, 1, ["Cancel", "Delete"])
+      m.assertTrue(back.cancelled)
+      m.assertFalse(back.confirmed)
+      m.assertEqual(back.buttonText, "")
+    end function
+
+    @it("never confirmed when no confirm index was set (alert dialogs)")
+    function _()
+      ' showAlertDialog leaves confirmIndex at its -1 default
+      alert = buttonDialogResult(0, -1, ["OK"])
+      m.assertFalse(alert.confirmed)
+      m.assertFalse(alert.cancelled)
+    end function
+
+    @it("back is not miscounted as confirmed when confirmIndex is -1")
+    function _()
+      ' Guards the -1 = -1 trap: cancelling an alert must not read as confirmed
+      back = buttonDialogResult(-1, -1, ["OK"])
+      m.assertTrue(back.cancelled)
+      m.assertFalse(back.confirmed)
+    end function
+
+    @it("optionIndex mirrors buttonIndex so choice callers work on both routes")
+    function _()
+      choice = buttonDialogResult(2, -1, ["A", "B", "C"])
+      m.assertEqual(choice.optionIndex, choice.buttonIndex)
+      m.assertEqual(choice.optionIndex, 2)
+    end function
+
+    @it("tolerates an index past the end of the button array")
+    function _()
+      out = buttonDialogResult(5, -1, ["OK"])
+      m.assertEqual(out.buttonText, "")
+    end function
+
+    @it("tolerates an invalid button array")
+    function _()
+      out = buttonDialogResult(0, -1, invalid)
+      m.assertEqual(out.buttonText, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("listDialogResult")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a selection reports optionIndex and no button")
+    function _()
+      picked = listDialogResult(3, "Cancel")
+      m.assertFalse(picked.cancelled)
+      m.assertEqual(picked.optionIndex, 3)
+      m.assertEqual(picked.buttonIndex, -1)
+    end function
+
+    @it("selecting the first row is a selection, not a cancel")
+    function _()
+      first = listDialogResult(0, "Cancel")
+      m.assertFalse(first.cancelled)
+      m.assertEqual(first.optionIndex, 0)
+    end function
+
+    @it("cancelling reports the cancel label")
+    function _()
+      cancelled = listDialogResult(-1, "Cancel")
+      m.assertTrue(cancelled.cancelled)
+      m.assertEqual(cancelled.optionIndex, -1)
+      m.assertEqual(cancelled.buttonText, "Cancel")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("textDialogResult")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("entered text lands in value")
+    function _()
+      entered = textDialogResult(false, "jellyfin.example.com")
+      m.assertTrue(entered.confirmed)
+      m.assertFalse(entered.cancelled)
+      m.assertEqual(entered.value, "jellyfin.example.com")
+    end function
+
+    @it("an intentionally empty entry is confirmed, not cancelled")
+    function _()
+      ' The distinction callers rely on: clearing a field vs. backing out
+      empty = textDialogResult(false, "")
+      m.assertTrue(empty.confirmed)
+      m.assertFalse(empty.cancelled)
+      m.assertEqual(empty.value, "")
+    end function
+
+    @it("cancelling discards whatever was typed")
+    function _()
+      cancelled = textDialogResult(true, "half-typed")
+      m.assertTrue(cancelled.cancelled)
+      m.assertFalse(cancelled.confirmed)
+      m.assertEqual(cancelled.value, "")
+    end function
+
+  end class
+
+end namespace
