@@ -36,4 +36,4 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 | `source/constants/` | Shared constants (timeouts, sizes, …). |
 | `source/migrations.bs` | Registry-schema migrations. See [docs/architecture/migrations.md](../docs/architecture/migrations.md). |
 | `source/main.bs` | Entry point; bootstrap; main event loop. See [docs/architecture/bootstrap.md](../docs/architecture/bootstrap.md). |
-| `source/showScenes.bs` | Two router-agnostic helpers (perf beacon, resume/start-over playback dialog). `LoginFlow` + the scene factories were removed in the #550 sgRouter migration. |
+| `source/showScenes.bs` | One router-agnostic helper (perf beacon). `LoginFlow` + the scene factories were removed in the #550 sgRouter migration; the dead resume/start-over dialog followed. |

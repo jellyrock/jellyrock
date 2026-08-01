@@ -17,6 +17,5 @@
     <field id="isDataReturned" type="boolean" />
     <field id="isPendingExitConfirmation" type="boolean" value="false" />
     <field id="isPendingServerSwitch" type="boolean" value="false" />
-    <field id="isPendingPlaybackOptions" type="boolean" value="false" />
   </interface>
 </component>
