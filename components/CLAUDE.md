@@ -46,6 +46,14 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - `return false` (or no return) bubbles to the parent.
 - Convention: child components return `false` for `press = false` so key-release events can bubble. **Do not build features on key-ups reaching `JRScene`, though** — verified on-device (2026-07): Roku built-ins (e.g. `RowList`) consume releases for keys they handle, and the vendored sgRouter `Outlet` consumes every release that bubbles out of a routed view. This is why the up-up-down-down debug cheat code no longer fires on routed screens; see `docs/dev/debug-flags.md` for working toast-test paths.
 
+## Showing a dialog
+
+- **Always go through `source/utils/dialogs.bs`** — `showAlertDialog`, `showConfirmDialog`, `showChoiceDialog`, `showListDialog`, `showInfoDialog`, `showKeyboardDialog`. `import "pkg:/source/utils/dialogs.bs"` and call one. Canonical call sites: `ItemDetails.onWatchedButtonPressed` / `onDeleteButtonPressed`.
+- The result arrives on the **dialog node's own `result` field**, shape `{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }`. Pass `onResult` (a function name in *your* scope) and the helper wires the scoped observer; keep the returned node so the callback can read `.result`.
+- **Do NOT add new `m.global.sceneManager` dialog calls** (`userMessage` / `standardDialog` / `showConfirmationDialog` + the shared `returnData` / `isDataReturned` fields). That path is being retired — remaining consumers are tracked by [`dialog-returndata-shared-global`](../docs/architecture/tech-debt.md#dialog-returndata-shared-global).
+- Overlay dialogs are appended to the **scene**, not to your screen, so they survive your `onDestroy`. A screen that opens one owns tearing it down.
+- Full contract: [navigation.md → The standard dialog system](../docs/architecture/navigation.md).
+
 ## Common patterns
 
 - **`isValid(x)`** for nil/invalid checks — never compare to `invalid` directly with `=`.
