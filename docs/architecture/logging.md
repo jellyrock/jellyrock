@@ -1,9 +1,10 @@
 ---
 topic: logging
 related-files:
+  - components/JRScene.bs
   - components/JRScreen.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-08-01
 ---
 
 # Logging
@@ -16,31 +17,45 @@ JellyRock uses **roku-log** (`log` ropm package) for all logging. It supports mu
 
 ### Initialization
 
-`JRScreen.bs:init()` initializes the log manager **once**, with different default log levels per build:
+`JRScene.bs:init()` initializes the log manager **once**, with different default log levels per build:
 
 ```brightscript
 sub init()
   #if debug
-    log.initializeLogManager(["log_PrintTransport"], 5)   ' debug: error+warn+info+verbose+debug
+    log.initializeLogManager(["log_PrintTransport"], 5)   ' debug: everything
   #else
-    log.initializeLogManager(["log_PrintTransport"], 2)   ' prod: error+warn only
+    log.initializeLogManager(["log_PrintTransport"], 2)   ' prod: error+warn+info
   #end if
 end sub
 ```
 
-Because every screen extends `JRScreen` (and `JRScreen.init()` runs first), the log manager is up before any screen needs to log.
+**Initialization order is load-bearing, and it must happen before `setGlobalNodes()`.** `log.Logger.new()`
+resolves `m.global.rLog` **once** and caches it; every level method then opens with
+`if m.rLog = invalid then return`. A component whose `init()` runs before the manager exists therefore
+logs **nothing, forever, at any level, on any build** — silently, with no error (the `NO LOGGER FOUND`
+fallback lives on `m.log`, which the level methods never reach). `JRScene` is the earliest component
+init (`CreateScene`, ahead of `setGlobalNodes()` in `main.bs`), which is why it owns this.
 
-Levels:
+This used to live in `JRScreen.init()` on the assumption that a screen always initializes first. That
+assumption was false: `setGlobalNodes()` runs before the first screen mounts, so `JRScene` itself plus
+`RemoteControlTask`, `SceneManager`, `QueueManager` and `SideEffectTask` never emitted a single log
+line. `JRScreen.init()` keeps a fallback call for Rooibos suites that mount a screen without `JRScene`
+(`addFields` ignores an existing field, so it is a no-op in the app). If you add a component that logs
+from a global node, verify its output on-device — a silent logger looks identical to a quiet one.
+
+Levels — the number is the value passed to `initializeLogManager`, and a call emits when
+`levelNum <= logLevel`:
 
 | Level | Number | When to use |
 |---|---|---|
-| `error` | 1 | Crashes, critical failures (auth fail, server unreachable, playback error) |
-| `warn` | 2 | Issues with fallbacks (missing data, retry attempts) |
-| `info` | 3 | Important user events (login, video start/stop, major state transitions) |
-| `verbose` | 4 | Detailed operations (function entry/exit, API calls, data flow) |
-| `debug` | 5 | Variable values, loop bodies, conditional branches |
+| `error` | 0 | Crashes, critical failures (auth fail, server unreachable, playback error) |
+| `warn` | 1 | Issues with fallbacks (missing data, retry attempts) |
+| `info` | 2 | Important user events (login, video start/stop, major state transitions) |
+| `verbose` | 3 | Detailed operations (function entry/exit, API calls, data flow) |
+| `debug` | 4 | Variable values, loop bodies, conditional branches |
 
-Production builds suppress info/verbose/debug to keep telnet output readable on real devices.
+So the production default (`2`) emits error, warn **and info**; it suppresses only verbose and debug,
+keeping telnet output readable on real devices without losing the important user events.
 
 ### Per-component pattern
 
