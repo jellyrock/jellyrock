@@ -13,7 +13,7 @@ import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, snapshotSession, restoreSession } from '../lib/seed.js';
 import { relaunch, ecp, odc } from '../lib/driver.js';
 import { navSeriesDetails } from '../lib/nav.js';
-import { waitFor, getVal, press, sleep } from '../lib/steps.js';
+import { waitFor, waitFocused, getVal, press, sleep } from '../lib/steps.js';
 import { captureRawUI } from '../capture.js';
 
 const CAPTURE = process.env.RTA_CAPTURE === '1';
@@ -74,6 +74,32 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   });
 
   if (CAPTURE) await captureRawUI('confirmDialog');
+
+  // Identify the buttons by their rendered labels rather than hardcoding the
+  // translated strings. ODC can read a field off an indexed child, but not call a
+  // method on one, so focus is asserted via the focused NODE (waitFocused).
+  const cancelLabel = await getVal('#buttonRow.0.text');
+  const confirmLabel = await getVal('#buttonRow.1.text');
+
+  // showConfirmDialog focuses the SAFE side first
+  await waitFocused((f) => f.node?.text === cancelLabel, {
+    label: 'cancel focused on open',
+    timeout: 5000,
+  });
+
+  // Focus WRAPS at the ends, matching JRButtonGroup — the app's other horizontal
+  // button row. Two Rights on a two-button dialog must land back on Cancel; a
+  // dialog that dead-ends at the last button would stay on the confirm side.
+  await press(ecp.Key.Right);
+  await waitFocused((f) => f.node?.text === confirmLabel, {
+    label: 'confirm focused after right',
+    timeout: 5000,
+  });
+  await press(ecp.Key.Right);
+  await waitFocused((f) => f.node?.text === cancelLabel, {
+    label: 'focus wrapped back to cancel',
+    timeout: 5000,
+  });
 
   // Back cancels: the overlay removes itself from the scene
   await press(ecp.Key.Back);
