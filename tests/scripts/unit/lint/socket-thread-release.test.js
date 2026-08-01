@@ -184,7 +184,31 @@ end sub
   });
 });
 
-describe('rule 6 — SignOut snapshots the child before dotting into it', () => {
+describe('rule 6 — SignOut stops both threads, and snapshots before dotting', () => {
+  // These three mutations all passed an earlier draft of the guard, because the
+  // rules tested for the PRESENCE of an identifier rather than for a STOP on a
+  // resolved binding. Each one is a real regression the guard is meant to own, so
+  // each stays pinned here rather than living only in the rule's prose.
+  it('flags a SignOut that clears the field but never stops the child', () => {
+    const signOut = GOOD_SIGNOUT.replace(
+      '    if isValid(socketNode) then socketNode.control = "STOP"\n',
+      '',
+    );
+    expect(check({ ...good(), signOut }).join('\n')).toMatch(/does not STOP the published/);
+  });
+
+  it('flags a SignOut that stops the child but not the receiver itself', () => {
+    const signOut = GOOD_SIGNOUT.replace('    remoteControlTask.control = "STOP"\n', '');
+    expect(check({ ...good(), signOut }).join('\n')).toMatch(
+      /does not set `control = "STOP"` on the remote-control receiver/,
+    );
+  });
+
+  it('flags a closeSocket() that leaves a stale handle in the published field', () => {
+    const receiver = GOOD_RECEIVER.replace('  m.top.socketNode = invalid\n', '');
+    expect(check({ ...good(), receiver }).join('\n')).toMatch(/never clears `m\.top\.socketNode`/);
+  });
+
   it('flags the double dot-read that can crash sign-out', () => {
     const signOut = GOOD_SIGNOUT.replace(
       'socketNode = remoteControlTask.socketNode\n' +
@@ -198,7 +222,7 @@ describe('rule 6 — SignOut snapshots the child before dotting into it', () => 
 
   it('flags a SignOut that never stops the child at all', () => {
     const signOut = GOOD_SIGNOUT.replace(/.*socketNode.*\n/g, '');
-    expect(check({ ...good(), signOut }).join('\n')).toMatch(/does not stop the published/);
+    expect(check({ ...good(), signOut }).join('\n')).toMatch(/does not STOP the published/);
   });
 });
 

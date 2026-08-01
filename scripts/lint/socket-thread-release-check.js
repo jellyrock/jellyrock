@@ -44,16 +44,24 @@
 //      `m.connect_requested` — ready_state is CLOSED before open() is ever
 //      called, so an un-opened node must keep waiting for its `open` event
 //      instead of releasing the thread immediately.
-//   5. RemoteControlTask publishes the child (`m.top.socketNode`) and STOPs it in
-//      closeSocket(). The publish is what lets SignOut reach a child whose owner
-//      thread is about to be killed; the STOP is what covers the case where
-//      `control = "STOP"` — not the loop's own exit — is the thing that has to
-//      release it.
-//   6. SignOut stops the published child through a LOCAL SNAPSHOT, never by
-//      dotting through the field twice. `control = "STOP"` does not join the
-//      receiver thread, so it can still be inside closeSocket() clearing that
-//      field between the test and the use — and a dot on invalid crashes the
-//      calling thread mid-sign-out.
+//   5. RemoteControlTask publishes the child (`m.top.socketNode`), STOPs it in
+//      closeSocket(), and clears the field there. The publish is what lets SignOut
+//      reach a child whose owner thread is about to be killed; the STOP is what
+//      covers the case where `control = "STOP"` — not the loop's own exit — is the
+//      thing that has to release it; the clear is what stops the field naming a
+//      node that is already dead across the reconnect backoff.
+//   6. SignOut STOPs BOTH threads — the receiver and the published child — and
+//      reaches the child through a LOCAL SNAPSHOT, never by dotting through the
+//      field twice. `control = "STOP"` does not join the receiver thread, so it
+//      can still be inside closeSocket() clearing that field between the test and
+//      the use, and a dot on invalid crashes the calling thread mid-sign-out.
+//
+//      Rules 5 and 6 are deliberately written against the RESOLVED LOCALS rather
+//      than against the presence of an identifier. An earlier draft asked only
+//      whether the string `socketNode` appeared in SignOut, which passed a SignOut
+//      that cleared the field without ever stopping the child — i.e. it passed the
+//      precise regression it was written to catch. A guard nobody can test at
+//      runtime has to be adversarial about its own false-passes.
 //
 // 1-4 live in vendored BrightWebSocket code, whose local modifications are
 // documented in components/vendor/BrightWebSocket/README.md. A future upstream
@@ -109,6 +117,13 @@ export function extractLoopShape(wsTask) {
     exitGuardHasReadyState: RE_READY_CLOSED.test(guardText),
     armAfterRun: armIdx >= 0 && runIdx >= 0 && armIdx > runIdx,
   };
+}
+
+// True when `<name>.control = "STOP"` appears — the only form that actually
+// releases a Task thread. `name` is a local the caller resolved from the source,
+// so this asks "is THIS binding stopped", not "does a STOP appear somewhere".
+function stopsControlOf(src, name) {
+  return new RegExp(`\\b${name}\\s*\\.\\s*control\\s*=\\s*"STOP"`).test(src);
 }
 
 /**
@@ -182,6 +197,13 @@ export function check({ receiver, wsTask, signOut }) {
         "the child's thread survives sign-out and server-switch (#728).",
     );
   }
+  if (!/m\.top\.socketNode\s*=\s*invalid/.test(rx)) {
+    problems.push(
+      `${RECEIVER_REL}: closeSocket() never clears \`m.top.socketNode\`. The field would keep ` +
+        'pointing at a STOPped child across the reconnect backoff, so a SignOut landing in that ' +
+        'window STOPs a dead node and — worse — the stale handle outlives the socket it named.',
+    );
+  }
   const wsStop = indexOf(rx, /m\.ws\.control\s*=\s*"STOP"/);
   const wsClose = indexOf(rx, /m\.ws\.close\s*=/);
   if (wsStop < 0) {
@@ -196,20 +218,43 @@ export function check({ receiver, wsTask, signOut }) {
     );
   }
 
-  // ── 6. SignOut snapshots before dotting ─────────────────────────────────────
-  if (!/socketNode/.test(sx)) {
+  // ── 6. SignOut stops BOTH threads, and snapshots before dotting ─────────────
+  //
+  // Presence of the identifier is NOT the rule — the rule is that each of the two
+  // threads is actually STOPped. Testing only for the word `socketNode` would let a
+  // SignOut that merely clears the field pass, which is the exact regression this
+  // rule exists to name. So resolve the locals the code binds and demand a STOP on
+  // each of them.
+  const rcLocal = /(\w+)\s*=\s*m\.global\.remoteControlTask/.exec(sx)?.[1];
+  const receiverStopped = rcLocal
+    ? stopsControlOf(sx, rcLocal)
+    : /m\.global\.remoteControlTask\s*\.\s*control\s*=\s*"STOP"/.test(sx);
+  if (!receiverStopped) {
     problems.push(
-      `${SIGNOUT_REL}: SignOut does not stop the published \`socketNode\`. It is the single ` +
-        'logout + server-switch chokepoint; without this the socket thread outlives the session ' +
-        '(#728).',
+      `${SIGNOUT_REL}: SignOut does not set \`control = "STOP"\` on the remote-control receiver. ` +
+        'It is the single logout + server-switch chokepoint, so without it the receiver keeps its ' +
+        'thread — and its socket — across a logout or a server switch (#666, #728).',
     );
-  } else if (/\.socketNode\s*\.\s*control/.test(sx)) {
+  }
+
+  // Order matters: the dots-through form DOES stop the child, just unsafely, and it
+  // leaves no local to resolve. Diagnosing it as "you never stopped the child" would
+  // send the author looking for the wrong thing, so the anti-pattern is named first.
+  const childLocal = /(\w+)\s*=\s*\w+\.socketNode\b/.exec(sx)?.[1];
+  if (/\.socketNode\s*\.\s*control/.test(sx)) {
     problems.push(
       `${SIGNOUT_REL}: SignOut dots through \`.socketNode.control\` instead of snapshotting the ` +
         'child into a local first. `control = "STOP"` does not join the receiver thread, so it ' +
         'can clear that field (closeSocket) between the isValid() test and this write — a dot on ' +
         'invalid crashes the calling thread during sign-out. Read it into a local, then test and ' +
         'use the local.',
+    );
+  } else if (!childLocal || !stopsControlOf(sx, childLocal)) {
+    problems.push(
+      `${SIGNOUT_REL}: SignOut does not STOP the published \`socketNode\` child through a local ` +
+        'snapshot. Clearing the field is not enough: the external STOP on the receiver kills it ' +
+        "before its own closeSocket() can run, so nothing else releases the child's thread and it " +
+        'outlives the session (#728). Bind the child to a local, then `<local>.control = "STOP"`.',
     );
   }
 
