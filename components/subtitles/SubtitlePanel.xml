@@ -45,9 +45,9 @@
         <LayoutGroup id="headerGroup" layoutDirection="vert" itemSpacings="[6]" translation="[96, 24]">
           <LabelSecondarySmallest id="fileLabel" width="1728" />
           <LayoutGroup id="controlRow" layoutDirection="horiz" itemSpacings="[24]">
-            <TextButton id="languageButton" padding="24" minWidth="420" minHeight="60" />
-            <TextButton id="searchButton" padding="24" minWidth="220" minHeight="60" />
-            <TextButton id="perfectMatchButton" padding="24" minWidth="360" minHeight="60" visible="false" />
+            <TextButton id="languageButton" padding="24" minWidth="420" />
+            <TextButton id="searchButton" padding="24" minWidth="220" />
+            <TextButton id="perfectMatchButton" padding="24" minWidth="360" visible="false" />
           </LayoutGroup>
         </LayoutGroup>
 

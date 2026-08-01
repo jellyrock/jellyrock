@@ -93,6 +93,12 @@ sub init()
   m.perfectMatchButton.observeField("isButtonSelected", "onPerfectMatchStateChanged")
   m.perfectMatchButton.text = translate(translationKeys.LabelPerfectMatchesOnly)
 
+  ' Nothing has been searched yet, so the results list is not a focus target.
+  ' A MarkupList is visible by default, so without this DOWN on first open moves
+  ' focus into an empty list and strands the remote until BACK.
+  m.resultsList.visible = false
+  m.existingList.visible = false
+
   m.resultsList.observeField("itemSelected", "onResultSelected")
 
   ' Poll timer for confirming a download. One timer reused across attempts; the
@@ -596,7 +602,19 @@ sub sizeLists()
   m.existingList.numRows = 6
 end sub
 
+' hasRows: A list is only a focus target when it actually has rows. Guarding on
+' `visible` alone is not enough — the flag and the content are set from
+' different paths, so they can disagree for a frame.
+function hasRows(list as object) as boolean
+  if not isValid(list) or not list.visible then return false
+  if not isValid(list.content) then return false
+  return list.content.getChildCount() > 0
+end function
+
 sub applyFocus()
+  if m.focusTarget = "results" and not hasRows(m.resultsList) then m.focusTarget = "search"
+  if m.focusTarget = "existing" and not hasRows(m.existingList) then m.focusTarget = "search"
+
   if m.focusTarget = "language"
     m.languageButton.setFocus(true)
   else if m.focusTarget = "perfect"
@@ -667,7 +685,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    if m.resultsList.hasFocus() and m.existingList.visible
+    if m.resultsList.hasFocus() and hasRows(m.existingList)
       m.focusTarget = "existing"
       applyFocus()
       return true
@@ -696,12 +714,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   if key = "down"
     if inHeader()
-      if m.resultsList.visible
+      if hasRows(m.resultsList)
         m.focusTarget = "results"
         applyFocus()
         return true
       end if
-      if m.existingList.visible
+      if hasRows(m.existingList)
         m.focusTarget = "existing"
         applyFocus()
         return true

@@ -13,6 +13,10 @@ import "pkg:/source/utils/translate.bs"
 ' label beside them rather than towering over it.
 const BADGE_ICON_SIZE = 22
 
+' Badge slots pre-allocated per row, sized to the most badges a single
+' row of this type can carry so the pool never grows mid-scroll.
+const BADGE_POOL_SIZE = 4
+
 sub init()
   m.rowBackground = m.top.findNode("rowBackground")
   m.rowBorder = m.top.findNode("rowBorder")
@@ -23,7 +27,36 @@ sub init()
   m.nameLabel.color = m.global.constants.colorTextPrimary
   m.nameLabel.repeatCount = 0
 
+  buildBadgePool()
   onSizeChanged()
+end sub
+
+' buildBadgePool: Create the badge nodes ONCE.
+'
+' MarkupList recycles a small set of row components as the list scrolls, writing
+' a new itemContent into each. The first draft tore down and rebuilt every badge
+' child on each of those writes, so a single scroll step cost a burst of node
+' create/destroy per visible row -- which is what made scrolling feel heavy.
+' Nodes are now created once; only their text, colour and visibility change.
+sub buildBadgePool()
+  m.badges = []
+  m.badgeCount = 0
+  for i = 0 to BADGE_POOL_SIZE - 1
+    badge = m.badgeRow.createChild("LayoutGroup")
+    badge.layoutDirection = "horiz"
+    badge.itemSpacings = [6]
+    badge.vertAlignment = "center"
+    badge.visible = false
+
+    icon = badge.createChild("Poster")
+    icon.width = BADGE_ICON_SIZE
+    icon.height = BADGE_ICON_SIZE
+    icon.visible = false
+
+    label = badge.createChild("LabelSecondarySmallest")
+
+    m.badges.push({ group: badge, icon: icon, label: label })
+  end for
 end sub
 
 ' onItemContentChanged: Render one RemoteSubtitleInfo.
@@ -43,7 +76,7 @@ sub onItemContentChanged()
   m.metaLabel.text = metaLineFor(content)
 
   rebuildBadges(content)
-  onSizeChanged()
+  hideUnusedBadges()
 end sub
 
 ' titleFor: The release name, which is what a user actually matches against
@@ -127,10 +160,7 @@ end function
 ' colorPrimary because it is the signal worth acting on, everything else takes
 ' colorTextSecondary so it reads as a qualifier rather than a recommendation.
 sub rebuildBadges(content as object)
-  while m.badgeRow.getChildCount() > 0
-    m.badgeRow.removeChild(m.badgeRow.getChild(0))
-  end while
-
+  m.badgeCount = 0
   constants = m.global.constants
 
   if content.isHashMatch = true
@@ -158,22 +188,27 @@ end sub
 ' with the focus background for attention. The icon is tinted to match its
 ' label so each badge reads as one object.
 sub appendBadge(text as string, color as string, iconUri as string)
-  badge = m.badgeRow.createChild("LayoutGroup")
-  badge.layoutDirection = "horiz"
-  badge.itemSpacings = [6]
-  badge.vertAlignment = "center"
+  if m.badgeCount >= m.badges.count() then return
 
+  slot = m.badges[m.badgeCount]
+  slot.label.text = text
+  slot.label.color = color
+
+  slot.icon.visible = iconUri <> ""
   if iconUri <> ""
-    icon = badge.createChild("Poster")
-    icon.uri = iconUri
-    icon.width = BADGE_ICON_SIZE
-    icon.height = BADGE_ICON_SIZE
-    icon.blendColor = color
+    if slot.icon.uri <> iconUri then slot.icon.uri = iconUri
+    slot.icon.blendColor = color
   end if
 
-  label = badge.createChild("LabelSecondarySmallest")
-  label.text = text
-  label.color = color
+  slot.group.visible = true
+  m.badgeCount++
+end sub
+
+' hideUnusedBadges: Blank the tail of the pool this row did not need.
+sub hideUnusedBadges()
+  for i = m.badgeCount to m.badges.count() - 1
+    m.badges[i].group.visible = false
+  end for
 end sub
 
 sub onSizeChanged()
