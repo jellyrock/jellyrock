@@ -83,18 +83,24 @@ function showInfoDialog(title as string, overview as string, tagline = "" as str
   if title <> "" then dialog.title = title
   if tagline <> "" then dialog.tagline = tagline
   dialog.overview = overview
-
-  scene = dialogScene()
-  dialog.returnFocusTo = lastFocusedChild(scene)
-  scene.appendChild(dialog)
-  dialog.setFocus(true)
-  return dialog
+  ' OverviewDialog has no `result` field — it self-closes on OK/back, so there is
+  ' nothing to observe. Present it through the same path as the other overlays.
+  return presentOverlayDialog(dialog, "")
 end function
 
 ' Text entry via the OS keyboard (voice-capable, certification-compliant).
 ' Entered text lands in result.value; result.cancelled distinguishes cancel from
 ' an intentionally empty entry. secure = true masks input for passwords.
-function showKeyboardDialog(title as string, onResult = "" as string, defaultText = "" as string, secure = false as boolean, keyboardDomain = "generic" as string) as object
+'
+' keyboardDomain drives the keyboard's VOICE dictation mode, so it must match the
+' kind of text being entered ("email" / "numeric" / "alphanumeric" / "password" /
+' "generic"). secure = true implies "password" unless the caller names a domain —
+' otherwise a masked field would still dictate as free-form words.
+function showKeyboardDialog(title as string, onResult = "" as string, defaultText = "" as string, secure = false as boolean, keyboardDomain = "" as string) as object
+  if keyboardDomain = ""
+    if secure then keyboardDomain = "password" else keyboardDomain = "generic"
+  end if
+
   dialog = createObject("roSGNode", "JRKeyboardDialog")
   dialog.setField("title", title)
   dialog.setField("keyboardDomain", keyboardDomain)
