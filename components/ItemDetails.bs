@@ -4281,6 +4281,13 @@ sub onDestroy()
     m.recordTask = invalid
   end if
 
+  ' Drop any confirmation still on screen — it is a scene child, so it would
+  ' otherwise outlive this view (see abandonDialog in source/utils/dialogs.bs)
+  abandonDialog(m.watchedConfirmDialog)
+  abandonDialog(m.deleteConfirmDialog)
+  m.watchedConfirmDialog = invalid
+  m.deleteConfirmDialog = invalid
+
   ' Clear node references
   m.extrasGrp = invalid
   m.extrasGrid = invalid

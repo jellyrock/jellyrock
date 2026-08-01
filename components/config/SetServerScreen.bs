@@ -281,11 +281,9 @@ sub onDestroy()
     end for
   end if
 
-  ' Dialog may or may not be open — unobserve and release if present
-  if isValid(m.dialog)
-    m.dialog.unobserveFieldScoped("result")
-    m.dialog = invalid
-  end if
+  ' Keyboard may or may not be open — unobserve and dismiss if present
+  abandonDialog(m.dialog)
+  m.dialog = invalid
 
   ' Stop and release task node (created by ScanForServers on init)
   if isValid(m.ssdpScanner)

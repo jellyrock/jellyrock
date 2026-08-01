@@ -114,6 +114,30 @@ function showKeyboardDialog(title as string, onResult = "" as string, defaultTex
   return dialog
 end function
 
+' Abandon a dialog this screen opened, delivering no result. Call from onDestroy
+' for any dialog node you are still holding.
+'
+' Overlay dialogs are appended to the SCENE, not to the screen that opened them,
+' so they outlive their opener: a routed view destroyed while one is open (deep
+' link, session expiry, server switch — anything that navigates without the user
+' pressing back) would leave a modal stranded over the incoming screen, with a
+' scoped observer pointing at a torn-down scope and returnFocusTo pointing at a
+' dead node. Safe to call with invalid / an already-closed dialog.
+sub abandonDialog(dialog as object)
+  if not isValid(dialog) then return
+
+  dialog.unobserveFieldScoped("result")
+
+  if dialog.isSubtype("StandardKeyboardDialog")
+    ' Roku modal channel — the OS owns presentation; writing `close` dismisses it
+    dialog.close = true
+    return
+  end if
+
+  parent = dialog.getParent()
+  if isValid(parent) then parent.removeChild(dialog)
+end sub
+
 ' ---- internals ----
 
 function dialogScene() as object
