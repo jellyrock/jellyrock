@@ -4272,15 +4272,13 @@ sub onDestroy()
   m.loadDetailsTask.control = "STOP"
   m.loadDetailsTask = invalid
 
-  ' Tear down the record task + drop any pending confirmation observer this screen owns
-  ' (record / delete / series-watched).
+  ' Tear down the record task. The delete / series-watched confirmations no longer
+  ' route through SceneManager.isDataReturned — they use the standard dialog helpers,
+  ' which deliver results on the dialog node's own `result` field.
   if isValid(m.recordTask)
     m.recordTask.unobserveField("result")
     m.recordTask.control = "STOP"
     m.recordTask = invalid
-  end if
-  if isValid(m.global.sceneManager)
-    m.global.sceneManager.unobserveFieldScoped("isDataReturned")
   end if
 
   ' Clear node references
