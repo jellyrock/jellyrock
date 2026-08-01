@@ -64,6 +64,39 @@ namespace tests
       m.assertEqual(optionList.numRows, 8)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Focus on open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the option list holds focus after the present sequence")
+    function _()
+      ' Reproduces exactly what source/utils/dialogs.bs presentOverlayDialog does.
+      ' The list takes focus in onItemsChanged, i.e. BEFORE the node is in the
+      ' scene, and the helper's dialog.setFocus(true) runs after appendChild.
+      ' That ordering is load-bearing: `focusable` is only a HINT (see
+      ' REFERENCES/scenegraph/node.md), so RSG leaves focus on the already-focused
+      ' descendant instead of hoisting it to the group. If a future refactor sets
+      ' `items` after appending, or makes the group genuinely take focus, the list
+      ' becomes unreachable (OK does nothing, down skips straight to Cancel) —
+      ' which is exactly what this test exists to catch.
+      scene = m.top.getScene()
+      m.assertNotInvalid(scene)
+
+      m.dialog.title = "Select audio"
+      m.dialog.items = ["English 5.1", "English Stereo", "Spanish"]
+
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      optionList = m.dialog.findNode("optionList")
+      listHasFocus = optionList.hasFocus()
+      inChain = m.dialog.isInFocusChain()
+      scene.removeChild(m.dialog)
+
+      m.assertTrue(listHasFocus)
+      m.assertTrue(inChain)
+    end function
+
   end class
 
 end namespace

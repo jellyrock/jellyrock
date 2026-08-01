@@ -65,6 +65,50 @@ namespace tests
       m.assertEqual(row.getChild(0).text, "OK")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Focus on open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a button holds focus after the present sequence")
+    function _()
+      ' Mirrors source/utils/dialogs.bs presentOverlayDialog. A dialog whose
+      ' buttons are unfocused swallows OK, so this is the contract that makes the
+      ' button row usable at all.
+      scene = m.top.getScene()
+      m.assertNotInvalid(scene)
+
+      m.dialog.title = "Delete"
+      m.dialog.message = "Are you sure?"
+      m.dialog.buttons = ["Cancel", "Delete"]
+
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      row = m.dialog.findNode("buttonRow")
+      anyFocused = row.getChild(0).hasFocus() or row.getChild(1).hasFocus()
+      scene.removeChild(m.dialog)
+
+      m.assertTrue(anyFocused)
+    end function
+
+    @it("defaultButtonIndex decides which button opens focused")
+    function _()
+      ' showConfirmDialog relies on this to focus the SAFE side by default
+      scene = m.top.getScene()
+      m.dialog.message = "Are you sure?"
+      m.dialog.defaultButtonIndex = 1
+      m.dialog.buttons = ["Cancel", "Delete"]
+
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      row = m.dialog.findNode("buttonRow")
+      secondFocused = row.getChild(1).hasFocus()
+      scene.removeChild(m.dialog)
+
+      m.assertTrue(secondFocused)
+    end function
+
   end class
 
 end namespace
