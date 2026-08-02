@@ -10,7 +10,7 @@ related-files:
   - components/api/ApiQueueTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-07-30
+last-reviewed: 2026-08-02
 ---
 
 # API Layer & Task Pool
@@ -263,6 +263,12 @@ else if isNodeEvent(msg, "isDone")
 The render thread does microseconds of work (create node, append, set wakeup field) and returns. The actual HTTP runs on a pool slot. The callback fires on the render thread when done.
 
 **Don't use this when the callback needs data transforms or array processing** — those belong on a Task thread (use Pattern 1 from an orchestrator).
+
+> **Task threads with several requests in flight** pass their own `roMessagePort` as the optional
+> third argument — `submitApiRequest(req, id, port)` — which observes `isDone` *before* the request
+> enters the queue (no missed-event race) and waits on the port. Canonical example:
+> `LoadLatestRowsTask`. Promises don't run on Task threads, so this is the sanctioned non-blocking
+> shape there.
 
 > **Prefer a promise for new render-thread call sites.** `fetchAsync(req, id).then(...)` wraps this
 > same `submitApiRequest` bridge and removes the manual observe/unobserve plumbing (and auto-abandons

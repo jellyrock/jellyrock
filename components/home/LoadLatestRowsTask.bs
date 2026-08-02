@@ -38,13 +38,9 @@ sub loadLatestRows()
         "ImageTypeLimit": 1,
         "EnableTotalRecordCount": false
       }
-      resultNode = submitApiRequest(GetApi().BuildGetLatestMediaRequest(params), requestId)
+      resultNode = submitApiRequest(GetApi().BuildGetLatestMediaRequest(params), requestId, port)
       if isValid(resultNode)
-        resultNode.observeField("isDone", port)
         pending[requestId] = { node: resultNode, libId: lib.id }
-        ' The request was queued before the observer registered; a response landing in that
-        ' window fired no event, so check directly.
-        if resultNode.isDone then deliverResult(pending, requestId)
       else
         ' Pool unavailable (no session) — empty row rather than a stall
         emitRow(lib.id, [])
@@ -70,7 +66,7 @@ sub loadLatestRows()
 end sub
 
 ' Transform one finished request's response and emit its row. Idempotent per requestId — a
-' response can be seen both by the direct isDone check and a port event.
+' late event for an entry already cleared by the timeout path is a no-op.
 sub deliverResult(pending as object, requestId as dynamic)
   if not isValidAndNotEmpty(requestId) or not pending.doesExist(requestId) then return
   entry = pending[requestId]
