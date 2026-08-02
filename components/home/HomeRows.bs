@@ -46,6 +46,10 @@ sub init()
   ' Single orchestrator services all latest-media rows — one Task thread at any library count
   m.latestRowsTask = createObject("roSGNode", "LoadLatestRowsTask")
   m.latestRowsProcessedIndex = 0
+  ' Entries handed to the current run — the run is finished once the cursor reaches it
+  m.latestRowsExpectedCount = 0
+  ' Wall clock for the current run, read only to detect a run that outlived its own budget
+  m.latestRowsRunClock = CreateObject("roTimespan")
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
   m.isLoadingLibraries = false
@@ -53,6 +57,7 @@ sub init()
   m.isLoadingNextUp = false
   m.isLoadingOnNow = false
   m.isLoadingActiveRecordings = false
+  m.isLoadingLatestRows = false
 
   ' Refetch the On Now and Active Recordings rows when the base class's progress
   ' tick detects that at least one Program or Recording has ended. Without this,
@@ -352,11 +357,26 @@ function findLatestMediaInsertIndex() as integer
 end function
 
 ' startLatestMediaLoads: Hands the eligible libraries (in row order) to the orchestrator task.
+'
+' Skips outright while a run is in flight, matching the isLoading* rule updateHomeRows()
+' already applies to the other persistent tasks: the running orchestrator is about to deliver
+' fresh data, so restarting buys nothing and costs a cancel. It also keeps this off the one
+' path nobody has measured — Home is SUSPENDED rather than destroyed on navigation
+' (onScreenHidden stops no tasks), so a Home revisit lands here mid-run routinely, and
+' restarting would mean setting control = "RUN" on a thread that may still be unwinding.
 sub startLatestMediaLoads()
   if not isValidAndNotEmpty(m.filteredLatest) then return
 
+  if m.isLoadingLatestRows
+    if not latestRows.runIsStalled(m.latestRowsRunClock.totalMilliseconds()) then return
+    ' Past its own budget the orchestrator thread is gone or wedged, so the flag would
+    ' otherwise freeze these rows for the life of this Home. Reclaiming it is safe for the
+    ' same reason: STOP here can only reach a thread that has already stopped running.
+    m.log.warn("latest-rows run outlived its budget; reclaiming", m.latestRowsRunClock.totalMilliseconds())
+  end if
+
   ' Ensure any previous run is stopped and its delivered results cleared
-  cleanupLatestMediaTasks()
+  resetLatestRowsRun()
 
   libs = []
   for each lib in m.filteredLatest
@@ -368,6 +388,9 @@ sub startLatestMediaLoads()
 
   m.latestRowsTask.libraries = libs
   m.latestRowsTask.observeField("rowReady", "onLatestRowsReady")
+  m.latestRowsExpectedCount = libs.count()
+  m.isLoadingLatestRows = true
+  m.latestRowsRunClock.mark()
   m.latestRowsTask.control = "RUN"
 end sub
 
@@ -391,6 +414,11 @@ sub onLatestRowsReady()
   for each child in drained.failed
     discardEmptyLatestRow("latest_" + child.libId)
   end for
+
+  ' apiPipeline yields every entry exactly once and emitRow appends one child per yield, so
+  ' the cursor reaching the entry count means the run is over. Frees the guard without a
+  ' second interface field or a read of the firmware-managed `state` transitions.
+  if m.latestRowsProcessedIndex >= m.latestRowsExpectedCount then m.isLoadingLatestRows = false
 end sub
 
 ' discardEmptyLatestRow: Clears a latest row whose request never answered — but ONLY while it
@@ -408,14 +436,21 @@ sub discardEmptyLatestRow(sectionId as string)
   if isValid(result) and result.row.getChildCount() = 0 then removeRowAtIndex(result.index)
 end sub
 
-' cleanupLatestMediaTasks: Stop the orchestrator and clear its delivered result children.
-sub cleanupLatestMediaTasks()
+' resetLatestRowsRun: Return the orchestrator to a clean pre-run state — unobserved, stopped,
+' its delivered result children dropped and the drain cursor rewound.
+'
+' Called before starting a run and from onDestroy. Named for the run rather than the task
+' (the old cleanupLatestMediaTasks) because there is exactly one task now; what gets reset is
+' the run's state around it.
+sub resetLatestRowsRun()
   if not isValid(m.latestRowsTask) then return
 
   m.latestRowsTask.unobserveField("rowReady")
   m.latestRowsTask.control = "STOP"
   m.latestRowsTask.removeChildrenIndex(m.latestRowsTask.getChildCount(), 0)
   m.latestRowsProcessedIndex = 0
+  m.latestRowsExpectedCount = 0
+  m.isLoadingLatestRows = false
 end sub
 
 ' ============================================
@@ -880,7 +915,7 @@ sub onDestroy()
   m.LoadActiveRecordingsTask = invalid
 
   ' Stop and release the latest-media orchestrator
-  cleanupLatestMediaTasks()
+  resetLatestRowsRun()
   m.latestRowsTask = invalid
 
   ' Clear data caches

@@ -1,3 +1,4 @@
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Decision layer for Home's latest-media rows — which of the orchestrator's delivered
@@ -45,6 +46,25 @@ namespace latestRows
     end while
 
     return { ready: ready, failed: failed, nextIndex: index }
+  end function
+
+  ' Has a run been in flight long enough that its orchestrator thread must be gone?
+  '
+  ' HomeRows skips a refresh while a run is in flight, which is only safe if the in-flight
+  ' state can never get stuck: a Task thread that crashes never delivers its last child, so
+  ' the completion check never fires and the guard would freeze Home's latest rows for the
+  ' life of that Home instance. This is the backstop, and epic #728 is precisely a history of
+  ' Task threads dying.
+  '
+  ' The threshold is derived, not tuned: apiPipeline bounds a whole run at PIPELINE_RUN_MS,
+  ' and API_WAIT_MS is one request's own deadline — the largest overshoot a live run can post
+  ' between its last wait returning and the loop exiting. Anything past the two combined is
+  ' not a slow run, it is a dead one.
+  '
+  ' @param elapsedMs - milliseconds since the run was started
+  ' @return true when the run has outlived any legitimate duration
+  function runIsStalled(elapsedMs as integer) as boolean
+    return elapsedMs > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
   end function
 
 end namespace
