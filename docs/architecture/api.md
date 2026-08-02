@@ -3,6 +3,7 @@ topic: api
 related-files:
   - source/api/ApiClient.bs
   - source/api/apiPool.bs
+  - source/api/apiPipeline.bs
   - source/api/baseRequest.bs
   - source/api/image.bs
   - source/api/imageHelpers.bs
@@ -10,12 +11,13 @@ related-files:
   - components/api/ApiQueueTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
+  - components/home/LoadLatestRowsTask.bs
 last-reviewed: 2026-08-02
 ---
 
 # API Layer & Task Pool
 
-How JellyRock talks to Jellyfin: the layered API model, the persistent task pool, and the four call patterns.
+How JellyRock talks to Jellyfin: the layered API model, the persistent task pool, and the five call patterns.
 
 ## Why this is harder than it sounds
 
@@ -221,7 +223,7 @@ A trivial component with three fields:
 
 One per request. Created by `fetchRes()`, appended to the queue, written to by the coordinator, observed by the caller, then garbage-collected.
 
-## The 4 API call patterns
+## The 5 API call patterns
 
 ### Pattern 1 — `fetchRes` / `fetchJson` (blocking, from a Task thread)
 
@@ -266,9 +268,9 @@ The render thread does microseconds of work (create node, append, set wakeup fie
 
 > **Task threads with several requests in flight** pass their own `roMessagePort` as the optional
 > third argument — `submitApiRequest(req, id, port)` — which observes `isDone` *before* the request
-> enters the queue (no missed-event race) and waits on the port. Canonical example:
-> `LoadLatestRowsTask`. Promises don't run on Task threads, so this is the sanctioned non-blocking
-> shape there.
+> enters the queue (no missed-event race) and waits on the port. Promises don't run on Task threads,
+> so this is the sanctioned non-blocking shape there. Don't hand-roll the scheduling around it —
+> that's Pattern 5.
 
 > **Prefer a promise for new render-thread call sites.** `fetchAsync(req, id).then(...)` wraps this
 > same `submitApiRequest` bridge and removes the manual observe/unobserve plumbing (and auto-abandons
@@ -293,6 +295,34 @@ Goes through the single `m.global.sideEffectTask` (not the pool). Like the pool,
 For non-Jellyfin HTTP (e.g., font downloads, image fetches that need special handling, or the SSDP server discovery during login). Write a dedicated `Task` component, do the request inline with `wait(port)`, write to the output field.
 
 Examples in the codebase: `FontDownloadTask`, `ServerDiscoveryTask`, `LoadPhotoTask` (for some flows).
+
+### Pattern 5 — `apiPipeline` (N independent requests, still one Task thread)
+
+Pattern 1 with several requests in flight instead of one at a time. When an orchestrator has **N independent** requests — one per library, per season, per whatever the server returns — Pattern 1 in a loop pays the full round trip N times, and spawning a Task per request is the fan-out that produced the `&h29` "too many task threads" crashes on big libraries (epic #728). [`source/api/apiPipeline.bs`](../../source/api/apiPipeline.bs) is the third option: one thread, up to `apiPool.SLOT_COUNT` requests riding the pool at once.
+
+```brightscript
+entries = []
+for each lib in libs
+  entries.push({ requestId: "latestRow-" + lib.id, req: GetApi().BuildGetLatestMediaRequest(params), libId: lib.id })
+end for
+
+pipe = apiPipelineBegin(entries)
+result = apiPipelineNext(pipe)
+while isValid(result)
+  ' result.entry is the caller's own AA, echoed back — result.libId needs no side table.
+  ' result.res is the pool response AA, or invalid if this entry never got an answer.
+  emitRow(result.entry.libId, result.res)
+  result = apiPipelineNext(pipe)
+end while
+```
+
+Three things worth knowing before you use it:
+
+- **Results arrive in completion order**, not entry order. Requests are *submitted* in entry order, so on-screen-first work still starts first.
+- **`budgetMs` is a whole-run deadline** (`timeouts.PIPELINE_RUN_MS`), not a per-request timeout — a per-request wait lets N slow requests stack into N × `API_WAIT_MS`. On expiry the run stops submitting and yields every remaining entry with `res = invalid`, so expiry needs no special case at the call site.
+- **`res = invalid` means "no answer", not "the server said no."** An HTTP error is a valid `res` with `ok = false`. A caller that removes UI on an empty result must branch on the difference, or a timeout will delete good content — see `LoadLatestRowsTask` / `HomeRows`, where a failed row is left standing.
+
+Canonical example: `LoadLatestRowsTask` (Home's latest-media rows). Its state machine is split pure-core / I/O-shell for the same reason `apiPromise.bs` is — see [async.md](./async.md).
 
 ## Authentication & request building — `source/api/baseRequest.bs`
 

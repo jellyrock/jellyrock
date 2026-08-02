@@ -111,10 +111,17 @@ end function
 ' `port`: isDone is then observed BEFORE the request enters the queue, so a response can never
 ' land ahead of the observer. Render-thread callers omit it (and should prefer fetchAsync).
 '
+' ORDERING DEPENDENCY — this function does NOT wait for the pipeline to come up. Where fetchRes
+' blocks up to ~10s on apiQueue.isReady, this returns invalid on the spot, which callers
+' reasonably read as "no answer" and degrade on. That is only safe when something that DOES
+' wait has already run: LoadLatestRowsTask, for instance, is reached from Home only after the
+' libraries fetch (a blocking fetchRes) has returned, so the pool is provably up by then. A new
+' caller that can run before any blocking request must not assume the same.
+'
 ' @param req       - request AA from a Build*Request() method; returns invalid if invalid
 ' @param requestId - unique string identifying this request
 ' @param port      - optional roMessagePort to observe isDone on before enqueueing
-' @return ApiResultNode to observe, or invalid if the pool is not ready
+' @return ApiResultNode to observe, or invalid if req is invalid or the pipeline is not up yet
 function submitApiRequest(req as dynamic, requestId as string, port = invalid as dynamic) as dynamic
   if not isValid(req) then return invalid
 

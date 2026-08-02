@@ -2,13 +2,14 @@
 topic: api-patterns
 related-files:
   - source/api/apiPool.bs
+  - source/api/apiPipeline.bs
   - source/api/ApiClient.bs
   - source/api/baseRequest.bs
   - components/api/ApiQueueTask.bs
   - components/api/ApiTask.bs
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
-last-reviewed: 2026-07-24
+last-reviewed: 2026-08-02
 ---
 
 # API Request Patterns
@@ -85,12 +86,37 @@ Use `roUrlTransfer` + `port.WaitMessage()` for the HTTP request. **Do NOT use `r
 
 Examples: `captionTask` (`roUrlTransfer` + `WaitMessage`), `FontDownloadTask` (rr_Requests), `ServerDiscoveryTask` (`roUrlTransfer` + wait)
 
+### Pattern 5: `apiPipeline` (N independent requests, one thread)
+
+Inside an orchestrator Task (Pattern 2), when the calls are independent of each other rather than sequential. Keeps up to `apiPool.SLOT_COUNT` requests in flight without adding a thread per request.
+
+```brighterscript
+entries = []
+for each lib in libs
+  entries.push({ requestId: "latestRow-" + lib.id, req: GetApi().BuildGetLatestMediaRequest(params), libId: lib.id })
+end for
+
+pipe = apiPipelineBegin(entries)
+result = apiPipelineNext(pipe)
+while isValid(result)
+  emitRow(result.entry.libId, result.res)   ' entry = your AA, echoed back
+  result = apiPipelineNext(pipe)
+end while
+```
+
+**Use when**: an orchestrator has N independent requests where N scales with server data (per library, per season). Never spawn a Task per request for this — that's the fan-out behind the `&h29` crashes (#728).
+
+Results arrive in completion order. `budgetMs` is a whole-run deadline, so a dead server can't cost N × `API_WAIT_MS`. `res = invalid` means **no answer** (never submitted, or the budget ran out) — an HTTP error is a valid `res` with `ok = false`, so don't treat the two the same when deciding whether to clear UI.
+
+Example: `LoadLatestRowsTask`
+
 ## Decision Tree
 
 1. Write operation, don't need response? --> **Pattern 3** (SubmitSideEffect)
 2. Single GET, callback just sets a field? --> **Pattern 1** (submitApiRequest)
 3. Multiple calls, branching logic, or data transforms? --> **Pattern 2** (Orchestrator Task)
 4. Non-API HTTP or binary download? --> **Pattern 4** (Dedicated Task)
+5. Inside an orchestrator, N *independent* calls that scale with server data? --> **Pattern 5** (apiPipeline)
 
 ## Rules
 
@@ -105,6 +131,7 @@ Examples: `captionTask` (`roUrlTransfer` + `WaitMessage`), `FontDownloadTask` (r
 | File | Purpose |
 | ------ | ------- |
 | `source/api/apiPool.bs` | `fetchRes()`, `fetchJson()`, `submitApiRequest()`, `SubmitSideEffect()` |
+| `source/api/apiPipeline.bs` | `apiPipelineBegin()` / `apiPipelineNext()` — N independent requests on one Task thread |
 | `source/api/ApiClient.bs` | `Build*Request()` methods that create request AAs |
 | `components/api/ApiQueueTask.bs` | FIFO coordinator for the pool |
 | `components/api/ApiTask.bs` | Pool worker that executes HTTP requests |
