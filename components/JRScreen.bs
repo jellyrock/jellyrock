@@ -1,19 +1,12 @@
 import "pkg:/source/api/apiPromise.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
-sub init()
-  ' Fallback only — JRScene.init already initialized the manager before setGlobalNodes ran, and
-  ' `addFields` ignores an existing field, so this is a no-op in the app. It stays for contexts
-  ' that mount a JRScreen without JRScene (Rooibos suites), which would otherwise get the
-  ' silent dead-logger behavior described in JRScene.init.
-  ' Second param is the max level emitted: 0 error, 1 warn, 2 info, 3 verbose, 4 debug.
-  #if debug
-    log.initializeLogManager(["log_PrintTransport"], 5) ' Debug: everything
-  #else
-    log.initializeLogManager(["log_PrintTransport"], 2) ' Production: error + warn + info
-  #end if
-end sub
+' NOTE: JRScreen deliberately has no init(). The roku-log manager is owned by JRScene.init()
+' — see docs/architecture/logging.md. A duplicate call here was a no-op in the app
+' (`addFields` ignores an existing field) and in Rooibos (BaseTestSuite provisions `rLog`
+' before any screen mounts), while allocating a throwaway log_Log + Timer node on every
+' screen mount.
+
 ' Function called when the screen is displayed by the screen manager
 ' It is expected that screens override this function to handle focus
 ' managmenet and any other actions required on screen shown
