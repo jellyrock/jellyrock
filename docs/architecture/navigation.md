@@ -83,7 +83,7 @@ The base implementations are minimal:
 - `onScreenHidden()` is a no-op
 - `onDestroy()` calls `abandonApiPromises()` so a late pool response can't fire into a destroyed node (this is the floor for screens that *don't* override `onDestroy`; screens that do get `abandonApiPromises()` injected by the `auto-abandon-promises` BSC plugin — `SG-component` `onDestroy` does not chain to this base, so each override must carry its own cleanup)
 
-The `roku-log` log manager is initialized in `JRScene.bs:init()` (debug builds: level 5; prod: level 2), so every component has logging available without each one having to call `initializeLogManager`. `JRScreen.bs:init()` keeps a fallback call for suites that mount a screen without `JRScene`; it must not be the primary, because global nodes are constructed before the first screen. See [logging.md](logging.md).
+The `roku-log` log manager is initialized in `JRScene.bs:init()` (debug builds: level 4; prod: level 2), so every component has logging available without each one having to call `initializeLogManager`. `JRScreen.bs` deliberately has no `init()` — it must not initialize the manager, because global nodes are constructed before the first screen, and `JRScene.init()` is already the earliest point the manager can exist. See [logging.md](logging.md).
 
 #### `JRScreen` lifecycle bridge
 

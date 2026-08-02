@@ -4,7 +4,7 @@ related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-08-01
+last-reviewed: 2026-08-02
 ---
 
 # Logging Guide (roku-log)
@@ -13,15 +13,18 @@ JellyRock uses roku-log for structured, flexible logging. Follow these steps to 
 
 ## 1. Initialization — already done; don't add your own call
 
-`JRScene.bs:init()` initializes the log manager for the whole app, and it must stay the only
-primary call. **Do not add `log.initializeLogManager` to your component.** It has to run before
-`setGlobalNodes()` in `main.bs`, and `JRScene` is the earliest component init — anything that
-initializes later is too late for the global nodes, and the failure is silent (a component built
-before the manager exists logs nothing, forever, at any level). Full mechanism in
+`JRScene.bs:init()` initializes the log manager for the whole app, and it must stay the **only**
+call. **Do not add `log.initializeLogManager` to your component** — `npm run lint:log-manager-init`
+fails the build if you do. A second call is at best a no-op (`addFields` ignores an existing field)
+and at worst a silent break, and the failure mode is invisible: a component built before the manager
+exists logs nothing, forever, at any level. Full mechanism in
 [architecture/logging.md](../architecture/logging.md).
 
-`JRScreen.bs:init()` keeps a second call as a fallback for Rooibos suites that mount a screen
-without `JRScene`. It's a no-op in the app (`addFields` ignores an existing field).
+**`JRScene.init()` is as early as the manager can possibly exist** — it's a platform constraint,
+not a style choice. `log_Log`'s own init creates a `Timer`, and Timer creation fails on the main
+thread before `m.screen.show()`. So there is a bootstrap window (everything in `setGlobals()`, plus
+`main.bs` up to `show()`) where **no logger works**. Use `print` there, as `main.bs` does. Details
+and the device measurements are in [architecture/logging.md](../architecture/logging.md).
 
 For reference, the arguments the manager takes:
 
@@ -104,8 +107,10 @@ m.log.resetIndent()
 
 ## Best Practices
 
-- **Don't initialize the manager yourself** — `JRScene.init()` owns it. A second primary call is
-  either a no-op or, if it lands earlier, a silent break.
+- **Don't initialize the manager yourself** — `JRScene.init()` owns it, and `lint:log-manager-init`
+  enforces that. A second call is either a no-op or, if it lands earlier, a silent break.
+- **Don't create a `log.Logger` in anything constructed before the scene exists** (`setGlobals()`,
+  early `main.bs`). It will cache `invalid` and no-op forever. Use `print`.
 - **Import the mixin** in every file that logs.
 - **Create a logger per component/class** for clear log sources.
 - **Use appropriate log levels** for filtering.

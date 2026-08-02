@@ -213,12 +213,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: `buildParams` skips `roArray` values silently — there's a `' TODO handle array params` placeholder branch with no implementation. Callers that need to pass arrays as query parameters (e.g., comma-separated `Fields=` lists) join the array into a string before calling.
 - **direction**: Implement array handling per the actual server-side conventions used by Jellyfin (most array params are comma-separated; some use repeated keys). Then audit callers to remove the workarounds where each call site joins arrays into strings before invoking.
 
-#### `jrscreen-init-initializes-log-manager`
-
-- **area**: `components/JRScene.bs`, `components/JRScreen.bs`
-- **issue**: Unusual coupling — a global resource initialized in a component lifecycle hook. The assumption that `JRScreen.init` runs before any other component's `init` was **false and load-bearing**: `log.Logger.new()` resolves `m.global.rLog` once and caches it, and every level method then hits `if m.rLog = invalid then return`, so a component built before the manager exists logs **nothing, forever, at any level, on any build**. `setGlobalNodes()` (`main.bs`) runs before the first `JRScreen`, so `JRScene` itself plus `RemoteControlTask`, `SceneManager`, `QueueManager` and `SideEffectTask` were all silent — found while trying to observe the `ws://` receiver on-device, where `print` emitted and `m.log.info` did not. Primary init now happens in `JRScene.init` (the earliest component init, before `setGlobalNodes`), verified on device: `RemoteControlTask` log lines appear.
-- **residual**: `JRScreen.init` keeps a fallback call for contexts that mount a screen without `JRScene` (Rooibos suites), and initialization still lives in a component hook rather than bootstrap. The silent-dead-logger failure mode is gone, but the coupling — and the fact that the failure is invisible rather than loud — remains.
-
 #### `testtoast-in-production-builds`
 
 - **area**: `components/JRScene.xml`
