@@ -90,8 +90,16 @@ Add one entry to [`tests/rta/screens.js`](../../tests/rta/screens.js):
   set (see split below), `backdrop: true` to composite the in-film frame behind the OSD,
   `scope: 'shared'` for language-agnostic screens (captured once, copied to all locales).
 
-The new screen is automatically a functional test (`it.each(SCREENS)`) and, if
+The new screen is automatically a functional test (the spec loops over `SCREENS`) and, if
 `capture.eligible`, a captured screenshot.
+
+A screen that declares a `view` is **content-dependent**: if the server has no library of
+that `collectionType`, the test skips itself at runtime with a printed reason rather than
+failing. The demo server's content is not a fixed contract — it resets and its libraries
+come and go — so a missing library says something about the fixture, not about the app.
+This is why the spec is a plain `for` loop instead of `it.each`: `it.each` passes only the
+case object, with no Vitest `TestContext`, so a case has no way to skip itself once
+`beforeAll` has learned what the server actually holds.
 
 ## Store set vs website gallery (the `store` flag)
 

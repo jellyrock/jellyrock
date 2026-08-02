@@ -48,20 +48,37 @@ afterAll(async () => {
   await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 });
 
-it.each(SCREENS)('screen "$name" loads', async (screen) => {
-  if (screen.state === 'home') await seedHome(session, LOCALE);
-  else if (screen.state === 'userSelect') await seedUserSelect(session, LOCALE);
-  else if (screen.state === 'serverSelect') await seedServerSelect(session, LOCALE);
-  // Deterministic landing view for library-dependent screens (resolve id at runtime).
-  if (screen.view) {
-    await seedLibraryLanding(
-      session,
-      libraryIdFor(libraries, screen.view.collectionType),
-      screen.view.landing,
-    );
-  }
-  await relaunch();
-  if (screen.nav) await screen.nav(ctx); // nav's waitFor gates assert "loaded"
-  if (screen.assert) await screen.assert(ctx); // explicit assert for seed-to-land screens
-  if (CAPTURE && screen.capture?.eligible) await captureRawUI(screen.name);
-});
+// A plain loop rather than `it.each` — `it.each` passes ONLY the case object, no
+// TestContext, so a case cannot skip itself at runtime. That matters because whether
+// a screen is testable depends on server content we only learn in beforeAll.
+for (const screen of SCREENS) {
+  // `testCtx` is Vitest's per-test context (for .skip); `ctx` remains the shared nav context.
+  it(`screen "${screen.name}" loads`, async (testCtx) => {
+    // A `view` screen needs its library to exist on the server. The demo server's
+    // content is not a fixed contract — it resets and its libraries come and go (the
+    // playlists library was present when RTA was set up and has not been since), so a
+    // missing library is a statement about the fixture, not a regression in the app.
+    // Skipping (visibly, with a reason) beats a red run nobody reads. Deliberately
+    // generic: any content-dependent screen self-skips, no per-screen allowlist to
+    // maintain.
+    if (screen.view && !libraryIdFor(libraries, screen.view.collectionType)) {
+      testCtx.skip(`server has no "${screen.view.collectionType}" library`);
+    }
+
+    if (screen.state === 'home') await seedHome(session, LOCALE);
+    else if (screen.state === 'userSelect') await seedUserSelect(session, LOCALE);
+    else if (screen.state === 'serverSelect') await seedServerSelect(session, LOCALE);
+    // Deterministic landing view for library-dependent screens (resolve id at runtime).
+    if (screen.view) {
+      await seedLibraryLanding(
+        session,
+        libraryIdFor(libraries, screen.view.collectionType),
+        screen.view.landing,
+      );
+    }
+    await relaunch();
+    if (screen.nav) await screen.nav(ctx); // nav's waitFor gates assert "loaded"
+    if (screen.assert) await screen.assert(ctx); // explicit assert for seed-to-land screens
+    if (CAPTURE && screen.capture?.eligible) await captureRawUI(screen.name);
+  });
+}
