@@ -1,0 +1,99 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.log = new log.Logger("LoadLatestRowsTask")
+  m.top.functionName = "loadLatestRows"
+end sub
+
+' One thread services every latest-media row. Up to MAX_IN_FLIGHT requests ride the API pool
+' concurrently (the pool's slot count bounds real parallelism anyway), submitted in row order so
+' on-screen rows resolve first. Each response is delivered as an appended result child — a shared
+' result field could coalesce under rapid writes and silently drop rows.
+sub loadLatestRows()
+  libs = m.top.libraries
+  if not isValidAndNotEmpty(libs) then return
+
+  m.transformer = JellyfinDataTransformer()
+  port = CreateObject("roMessagePort")
+
+  MAX_IN_FLIGHT = 3 ' matches the pool width — more adds queue depth, not throughput
+
+  pending = {} ' requestId -> { node: ApiResultNode, libId: string }
+  nextIndex = 0
+
+  while nextIndex < libs.count() or pending.count() > 0
+    while pending.count() < MAX_IN_FLIGHT and nextIndex < libs.count()
+      lib = libs[nextIndex]
+      nextIndex++
+      requestId = "latestRow-" + lib.id
+      params = {
+        "Limit": 16,
+        "ParentId": lib.id,
+        "EnableImageTypes": "Primary,Backdrop,Thumb",
+        "ImageTypeLimit": 1,
+        "EnableTotalRecordCount": false
+      }
+      resultNode = submitApiRequest(GetApi().BuildGetLatestMediaRequest(params), requestId)
+      if isValid(resultNode)
+        resultNode.observeField("isDone", port)
+        pending[requestId] = { node: resultNode, libId: lib.id }
+        ' The request was queued before the observer registered; a response landing in that
+        ' window fired no event, so check directly.
+        if resultNode.isDone then deliverResult(pending, requestId)
+      else
+        ' Pool unavailable (no session) — empty row rather than a stall
+        emitRow(lib.id, [])
+      end if
+    end while
+
+    if pending.count() > 0
+      msg = wait(timeouts.API_WAIT_MS, port)
+      if type(msg) = "roSGNodeEvent"
+        deliverResult(pending, msg.getRoSGNode().request.requestId)
+      else
+        ' Nothing answered within the window — deliver empty rows for everything in flight
+        ' (same outcome as the old per-library task's fetchJson timeout) and move on.
+        for each requestId in pending
+          entry = pending[requestId]
+          entry.node.unobserveField("isDone")
+          emitRow(entry.libId, [])
+        end for
+        pending = {}
+      end if
+    end if
+  end while
+end sub
+
+' Transform one finished request's response and emit its row. Idempotent per requestId — a
+' response can be seen both by the direct isDone check and a port event.
+sub deliverResult(pending as object, requestId as dynamic)
+  if not isValidAndNotEmpty(requestId) or not pending.doesExist(requestId) then return
+  entry = pending[requestId]
+  entry.node.unobserveField("isDone")
+
+  items = []
+  res = entry.node.result
+  if isValid(res) and res.ok and isValid(res.json)
+    for each item in res.json
+      ' Skip Books as we don't support them (issue #525)
+      if item.Type <> "Book"
+        items.push(m.transformer.transformBaseItem(item))
+      end if
+    end for
+  end if
+
+  emitRow(entry.libId, items)
+  pending.delete(requestId)
+end sub
+
+sub emitRow(libId as string, items as object)
+  child = CreateObject("roSGNode", "ContentNode")
+  child.addFields({ libId: libId, items: items })
+  m.top.appendChild(child)
+  m.top.rowReady = libId
+end sub
