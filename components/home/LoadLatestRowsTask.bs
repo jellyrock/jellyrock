@@ -49,9 +49,12 @@ end sub
 ' Transforms one response and emits its row.
 '
 ' `res` is invalid when the request never got an answer — the pool was down, or the run
-' budget expired. That says nothing about what the library holds, so the row is marked
-' "failed" and HomeRows leaves any existing row alone. Only an authoritative "ok" carries
-' a list the UI may act on, including an empty one (which legitimately removes the row).
+' budget expired. An HTTP error (`res.ok = false`) is deliberately folded into the same
+' "failed" status: apiPipeline distinguishes the two, but neither is authoritative about what
+' the library HOLDS, which is the only question this row's contents answer. Only an "ok"
+' carries a list the UI may act on, including an empty one (which legitimately removes the
+' row). HomeRows leaves a populated row standing on "failed", and clears it only while it is
+' still an unpopulated skeleton — see HomeRows.discardEmptyLatestRow.
 sub emitRow(libId as string, res as dynamic)
   items = []
   status = "failed"

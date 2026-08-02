@@ -378,7 +378,7 @@ sub onLatestRowsReady()
 
   ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
   ' so they can be unit-tested without a callFunc seam on this component.
-  drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex)
+  drained = latestRows.drain(m.latestRowsTask, m.latestRowsProcessedIndex)
   m.latestRowsProcessedIndex = drained.nextIndex
 
   for each child in drained.ready
@@ -387,6 +387,25 @@ sub onLatestRowsReady()
     ' Home session doesn't retain every batch it has ever delivered.
     child.items = []
   end for
+
+  for each child in drained.failed
+    discardEmptyLatestRow("latest_" + child.libId)
+  end for
+end sub
+
+' discardEmptyLatestRow: Clears a latest row whose request never answered — but ONLY while it
+' is still an unpopulated skeleton.
+'
+' A failure says nothing about what the library holds, so a row that already has content must
+' stand; that is the whole point of the status split. A row that has NEVER been populated is a
+' different case: insertLatestMediaSkeletons creates one per library on the initial load, and
+' leaving it costs the user a titled, blank row on Home until a later refresh fills it.
+' populateRowFromData re-inserts the row when data eventually arrives.
+'
+' @param {string} sectionId - the "latest_<libId>" section to clear
+sub discardEmptyLatestRow(sectionId as string)
+  result = findRowBySectionId(sectionId)
+  if isValid(result) and result.row.getChildCount() = 0 then removeRowAtIndex(result.index)
 end sub
 
 ' cleanupLatestMediaTasks: Stop the orchestrator and clear its delivered result children.

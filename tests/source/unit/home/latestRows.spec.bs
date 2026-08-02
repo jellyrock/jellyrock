@@ -4,11 +4,12 @@ namespace tests
 
   ' Contract tests for Home's latest-media drain (source/home/latestRows.bs).
   '
-  ' What it decides is load-bearing in both directions: treating a failed request as
+  ' What it decides is load-bearing in three directions: treating a failed request as
   ' authoritative deletes a populated row (populateRowFromData removes a row when handed an
-  ' empty list), while wrong cursor arithmetic either re-delivers a row or silently drops
-  ' one. Both are driven here against a hand-built ContentNode tree — no orchestrator, no
-  ' pool, no callFunc seam on HomeRows.xml.
+  ' empty list); dropping a failed request instead of returning it strands the never-populated
+  ' skeleton as a titled, blank row; and wrong cursor arithmetic either re-delivers a row or
+  ' silently drops one. All are driven here against a hand-built ContentNode tree — no
+  ' orchestrator, no pool, no callFunc seam on HomeRows.xml.
   @suite("latestRows - Home latest-media drain contract")
   class LatestRowsDrainTests extends tests.BaseTestSuite
 
@@ -37,7 +38,7 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("failed rows are skipped, never populated")
+    @describe("failed rows are never populated")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("returns only the rows whose request answered")
@@ -48,34 +49,35 @@ namespace tests
         { libId: "c", items: [], status: "ok" }
       ])
 
-      drained = latestRows.drainReady(task, 0)
+      drained = latestRows.drain(task, 0)
 
       m.assertEqual(m.libIdsOf(drained.ready), ["a", "c"])
     end function
 
-    @it("advances the cursor past skipped rows so they aren't revisited")
+    @it("advances the cursor past failed rows so they aren't revisited")
     function _()
       task = m.makeResults([
         { libId: "a", items: [], status: "failed" }
         { libId: "b", items: [], status: "failed" }
       ])
 
-      drained = latestRows.drainReady(task, 0)
+      drained = latestRows.drain(task, 0)
 
       m.assertEqual(drained.ready.count(), 0)
       m.assertEqual(drained.nextIndex, 2)
     end function
 
-    @it("skips a child missing its status rather than treating it as authoritative")
+    @it("treats a child missing its status as unanswered, not authoritative")
     function _()
       task = CreateObject("roSGNode", "ContentNode")
       child = CreateObject("roSGNode", "ContentNode")
       child.addFields({ libId: "a", items: [] })
       task.appendChild(child)
 
-      drained = latestRows.drainReady(task, 0)
+      drained = latestRows.drain(task, 0)
 
       m.assertEqual(drained.ready.count(), 0)
+      m.assertEqual(m.libIdsOf(drained.failed), ["a"])
       m.assertEqual(drained.nextIndex, 1)
     end function
 
@@ -85,10 +87,72 @@ namespace tests
       ' the caller must still see it.
       task = m.makeResults([{ libId: "a", items: [], status: "ok" }])
 
-      drained = latestRows.drainReady(task, 0)
+      drained = latestRows.drain(task, 0)
 
       m.assertEqual(drained.ready.count(), 1)
       m.assertEqual(drained.ready[0].items.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("unanswered rows are handed back, not dropped")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hands back every child whose request did not answer")
+    function _()
+      ' The caller needs these to clear rows that were never populated — a skeleton left
+      ' standing is a titled, blank row on Home.
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "failed" }
+        { libId: "c", items: [], status: "failed" }
+      ])
+
+      drained = latestRows.drain(task, 0)
+
+      m.assertEqual(m.libIdsOf(drained.failed), ["b", "c"])
+    end function
+
+    @it("puts every drained child in exactly one of the two lists")
+    function _()
+      ' The caller acts on both: a child in neither silently strands its row, a child in
+      ' both populates and then clears the same row.
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "failed" }
+        { libId: "c", items: [], status: "ok" }
+        { libId: "d", items: [], status: "failed" }
+      ])
+
+      drained = latestRows.drain(task, 0)
+
+      m.assertEqual(drained.ready.count() + drained.failed.count(), 4)
+      m.assertEqual(m.libIdsOf(drained.ready), ["a", "c"])
+      m.assertEqual(m.libIdsOf(drained.failed), ["b", "d"])
+    end function
+
+    @it("returns an empty failed list when every request answered")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "ok" }
+      ])
+
+      drained = latestRows.drain(task, 0)
+
+      m.assertEqual(drained.failed.count(), 0)
+    end function
+
+    @it("classifies by each child's own status when resuming from a cursor")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "failed" }
+      ])
+
+      drained = latestRows.drain(task, 1)
+
+      m.assertEqual(drained.ready.count(), 0)
+      m.assertEqual(m.libIdsOf(drained.failed), ["b"])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -103,7 +167,7 @@ namespace tests
         { libId: "c", items: [], status: "ok" }
       ])
 
-      drained = latestRows.drainReady(task, 0)
+      drained = latestRows.drain(task, 0)
 
       m.assertEqual(m.libIdsOf(drained.ready), ["a", "b", "c"])
       m.assertEqual(drained.nextIndex, 3)
@@ -116,11 +180,11 @@ namespace tests
         { libId: "b", items: [], status: "ok" }
       ])
 
-      first = latestRows.drainReady(task, 0)
+      first = latestRows.drain(task, 0)
       m.assertEqual(first.nextIndex, 2)
 
       ' A later wake with nothing new appended.
-      second = latestRows.drainReady(task, first.nextIndex)
+      second = latestRows.drain(task, first.nextIndex)
 
       m.assertEqual(second.ready.count(), 0)
       m.assertEqual(second.nextIndex, 2)
@@ -129,13 +193,13 @@ namespace tests
     @it("picks up only the children appended since the last drain")
     function _()
       task = m.makeResults([{ libId: "a", items: [], status: "ok" }])
-      first = latestRows.drainReady(task, 0)
+      first = latestRows.drain(task, 0)
 
       late = CreateObject("roSGNode", "ContentNode")
       late.addFields({ libId: "b", items: [], status: "ok" })
       task.appendChild(late)
 
-      second = latestRows.drainReady(task, first.nextIndex)
+      second = latestRows.drain(task, first.nextIndex)
 
       m.assertEqual(m.libIdsOf(second.ready), ["b"])
       m.assertEqual(second.nextIndex, 2)
@@ -145,7 +209,7 @@ namespace tests
     function _()
       task = CreateObject("roSGNode", "ContentNode")
 
-      drained = latestRows.drainReady(task, 0)
+      drained = latestRows.drain(task, 0)
 
       m.assertEqual(drained.ready.count(), 0)
       m.assertEqual(drained.nextIndex, 0)
