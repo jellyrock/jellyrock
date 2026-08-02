@@ -18,5 +18,8 @@
   <interface>
     <!-- Normalized command marshalled to the main thread (remoteCommand.parseMessage output). -->
     <field id="dispatchCommand" type="assocarray" alwaysNotify="true" />
+    <!-- Live WebSocketClient child (ws:// path only). Lets SignOut stop the socket thread — an
+         external STOP on this task skips closeSocket(). -->
+    <field id="socketNode" type="node" />
   </interface>
 </component>

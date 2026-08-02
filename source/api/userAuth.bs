@@ -28,11 +28,34 @@ function AboutMe(id = "" as string)
   return GetApi().GetUser(id)
 end function
 
+' #666/#728: stop the ws:// remote-control receiver AND the socket child it published — ends the
+' listener thread and releases the socket's Task thread. Split out of SignOut so it can be unit
+' tested: SignOut's remaining body writes real (non-`test-`) registry sections and reaches for the
+' router and the session, none of which a Rooibos suite can stand up, but this block is pure node
+' manipulation. See tests/source/unit/api/stopRemoteControlReceiver.spec.bs.
+'
+' Parent first (so a receiver still winding down can't spawn a replacement socket), then the
+' published child — STOP kills the receiver mid-loop, so its own closeSocket() teardown never runs.
+' STOP is not a join: the receiver can still be mid-connectAndPump here, so a child created but not
+' yet published to socketNode is missed. That window is bounded, not permanent — the vendored socket
+' loop self-exits once its connection reaches CLOSED.
+sub StopRemoteControlReceiver()
+  remoteControlTask = m.global.remoteControlTask
+  if not isValid(remoteControlTask) then return
+
+  remoteControlTask.control = "STOP"
+  ' Snapshot before dotting into it. Re-reading the field for the test and again for the write
+  ' would race the receiver's own closeSocket(), which clears it — a dot on invalid crashes the
+  ' caller. (Each dot on a render-thread-owned node is a separate rendezvous, too.)
+  socketNode = remoteControlTask.socketNode
+  if isValid(socketNode) then socketNode.control = "STOP"
+  remoteControlTask.socketNode = invalid
+end sub
+
 sub SignOut(deleteSavedEntry = true as boolean)
-  ' #666: stop the ws:// remote-control receiver — ends the listener thread and drops its socket.
   ' This is the single logout + server-switch chokepoint (a server switch runs SignOut(false) via
   ' replayRoute.performServerSwitch), so the socket never survives a session teardown.
-  if isValid(m.global.remoteControlTask) then m.global.remoteControlTask.control = "STOP"
+  StopRemoteControlReceiver()
 
   if deleteSavedEntry
     unsetUserSetting("authToken")

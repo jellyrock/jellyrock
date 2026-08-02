@@ -28,6 +28,35 @@ The sources are **not** byte-for-byte upstream — trimmed + hardened when vendo
 - **OOM guard** — the frame decoder now caps the server-declared inbound `payload_size`
   (`WebSocketClient.brs` `_read_socket_data`) — the must-fix from the review below.
 - **100ms poll** — the task loop polls every 100ms instead of the upstream 1ms busy-loop.
+- **Task thread self-exits after close** (`WebSocketClientTask.brs`) — upstream's task loop ran
+  forever, holding one Task thread per socket for the app's lifetime (one *leaked* thread per
+  reconnect against RokuOS's 100-concurrent-threads cap — the #728 `&h29` crash class). The loop
+  now exits once a requested connection reaches CLOSED and the event port is drained. Contract
+  narrowed vs upstream: the node is single-connection — reopen after close needs a fresh node
+  (the only consumer, `RemoteControlTask`, already creates one per connect attempt).
+
+  **The exit test must stay at the head of the loop body, before `m.ws.run()`.** `run()` is what
+  performs the CLOSED transition *and* posts the final `ready_state`/`on_close`/`on_error`
+  messages to the port, so a drained-port observation taken before it says nothing about what it
+  then enqueued — testing after `run()` releases the thread with the terminal events still queued,
+  `m.top.on_close` is never written, and `RemoteControlTask.connectAndPump` blocks forever instead
+  of reconnecting. `npm run lint:socket-thread-release` gates the ordering, since no test on
+  hardware or in CI can reach this loop.
+
+  **The consumer must not depend on `on_close` alone.** This exit is keyed on `ready_state`, while
+  `RemoteControlTask` wakes on `on_close`/`on_error`; those coincide today only because every
+  `_close()` path in `WebSocketClient.brs` posts one of the two. Nothing in the client enforces it,
+  and `lint:socket-thread-release` cannot check it (it reads the task and the receiver, not the
+  client). The receiver therefore also observes `ready_state` and treats `CLOSED` as terminal. If a
+  re-sync changes when the client posts terminal events, that observer is what keeps the receiver
+  from blocking forever on a socket whose thread has already been released.
+
+  Two limits worth knowing. The exit only covers a connection that *reaches* CLOSED, and upstream
+  has no connect-completion check — `connect()` reports only that the attempt was initiated on a
+  non-blocking socket (Roku `ifSocketConnection`), and the client never consults `isConnected()` /
+  `eConnRefused()` / `isException()`, so a connect that stalls holds the node in CONNECTING until
+  the handshake write fails. And `_CLOSING_DELAY` is 30s, so a server-initiated close takes up to
+  that long to reach CLOSED unless a socket read errors first.
 - **Logger silenced** — the missing-config Logger noise was quieted.
 - **`run` → `runSocketLoop`** (`WebSocketClientTask.brs`) — the top-level task worker was renamed off
   the reserved `run` (collides with the global `Run()`). It only ever worked because the Task

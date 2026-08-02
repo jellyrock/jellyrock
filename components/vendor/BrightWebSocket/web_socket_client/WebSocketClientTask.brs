@@ -51,8 +51,16 @@ sub runSocketLoop()
     m.ws.set_headers(m.top.headers)
   end if
 
+  ' JellyRock modification: ready_state is CLOSED before open() is ever called, so the loop-exit
+  ' check below must only fire once a connection was actually requested.
+  m.connect_requested = false
+  ' Set at the END of the iteration in which a requested connection reached CLOSED. The exit test
+  ' at the head of the loop then waits for the NEXT drained wait() before releasing the thread.
+  m.connection_closed = false
+
   if len(m.top.open) > 0
     m.ws.open(m.top.open)
+    m.connect_requested = true
   end if
 
   while true
@@ -60,10 +68,29 @@ sub runSocketLoop()
     ' 1ms busy-loop — this is a latency-tolerant remote-control channel (commands seconds
     ' apart), so ~100ms adds no perceptible latency but cuts idle CPU ~100x.
     msg = wait(100, m.port)
+
+    ' JellyRock modification: release the Task thread once the connection is over. Upstream looped
+    ' forever, holding one thread per connect attempt against RokuOS's 100-thread cap (the #728
+    ' &h29 crash class). Single-connection contract now: reopening after close needs a fresh node.
+    '
+    ' This test MUST sit at the HEAD of an iteration, not after m.ws.run() below. run() is what
+    ' performs the CLOSED transition AND posts the final ready_state/on_close/on_error messages to
+    ' m.port (WebSocketClient.brs `_state` / `_close` / `_error`), so a drained-port observation
+    ' taken BEFORE run() says nothing about what run() then enqueued — exiting on it strands those
+    ' events in the queue, m.top.on_close is never written, and RemoteControlTask.connectAndPump
+    ' blocks forever instead of reconnecting. Reaching here with msg = invalid means a wait() taken
+    ' AFTER the CLOSED transition found the port empty, so every terminal event has been forwarded.
+    ' The queue cannot refill afterwards: once CLOSED, _read_socket_data early-returns,
+    ' _try_force_close only fires on CLOSING, and send() bails before posting.
+    if m.connection_closed and msg = invalid
+      exit while
+    end if
+
     ' Field event
     if type(msg) = "roSGNodeEvent"
       if msg.getField() = "open"
         m.ws.open(msg.getData())
+        m.connect_requested = true
       else if msg.getField() = "send"
         m.ws.send(msg.getData())
       else if msg.getField() = "close"
@@ -108,5 +135,12 @@ sub runSocketLoop()
       end if
     end if
     m.ws.run()
+
+    ' JellyRock modification: arm the loop-exit test above. Gated on connect_requested because
+    ' ready_state is CLOSED before open() is ever called — an un-opened node must keep waiting for
+    ' its `open` field event rather than releasing the thread immediately.
+    if m.connect_requested and m.ws.get_ready_state() = m.ws.STATE.CLOSED
+      m.connection_closed = true
+    end if
   end while
 end sub
