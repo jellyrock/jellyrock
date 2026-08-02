@@ -1,6 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/apiPool.bs"
-import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
@@ -10,86 +9,75 @@ sub init()
   m.top.functionName = "loadLatestRows"
 end sub
 
-' One thread services every latest-media row. Up to MAX_IN_FLIGHT requests ride the API pool
-' concurrently (the pool's slot count bounds real parallelism anyway), submitted in row order so
-' on-screen rows resolve first. Each response is delivered as an appended result child — a shared
-' result field could coalesce under rapid writes and silently drop rows.
+' One thread services every latest-media row, at any library count. apiPipeline keeps the
+' API pool busy — several requests in flight, one per free slot — while this task stays a
+' single thread; the per-library task fan-out it replaced was a `&h29` "too many threads"
+' source on large servers (epic #728). See source/api/apiPipeline.bs.
+'
+' Results ride out as appended children rather than a shared field: rapid writes to one
+' field can coalesce and silently drop a row.
 sub loadLatestRows()
   libs = m.top.libraries
   if not isValidAndNotEmpty(libs) then return
 
   m.transformer = JellyfinDataTransformer()
-  port = CreateObject("roMessagePort")
 
-  MAX_IN_FLIGHT = 3 ' matches the pool width — more adds queue depth, not throughput
-
-  pending = {} ' requestId -> { node: ApiResultNode, libId: string }
-  nextIndex = 0
-
-  while nextIndex < libs.count() or pending.count() > 0
-    while pending.count() < MAX_IN_FLIGHT and nextIndex < libs.count()
-      lib = libs[nextIndex]
-      nextIndex++
-      requestId = "latestRow-" + lib.id
-      params = {
+  ' Entry order is row order, so on-screen-first rows are submitted first.
+  entries = []
+  for each lib in libs
+    entries.push({
+      requestId: "latestRow-" + lib.id,
+      req: GetApi().BuildGetLatestMediaRequest({
         "Limit": 16,
         "ParentId": lib.id,
         "EnableImageTypes": "Primary,Backdrop,Thumb",
         "ImageTypeLimit": 1,
         "EnableTotalRecordCount": false
-      }
-      resultNode = submitApiRequest(GetApi().BuildGetLatestMediaRequest(params), requestId, port)
-      if isValid(resultNode)
-        pending[requestId] = { node: resultNode, libId: lib.id }
-      else
-        ' Pool unavailable (no session) — empty row rather than a stall
-        emitRow(lib.id, [])
-      end if
-    end while
+      }),
+      libId: lib.id
+    })
+  end for
 
-    if pending.count() > 0
-      msg = wait(timeouts.API_WAIT_MS, port)
-      if type(msg) = "roSGNodeEvent"
-        deliverResult(pending, msg.getRoSGNode().request.requestId)
-      else
-        ' Nothing answered within the window — deliver empty rows for everything in flight
-        ' (same outcome as the old per-library task's fetchJson timeout) and move on.
-        for each requestId in pending
-          entry = pending[requestId]
-          entry.node.unobserveField("isDone")
-          emitRow(entry.libId, [])
-        end for
-        pending = {}
-      end if
-    end if
+  pipe = apiPipelineBegin(entries)
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    emitRow(result.entry.libId, result.res)
+    result = apiPipelineNext(pipe)
   end while
 end sub
 
-' Transform one finished request's response and emit its row. Idempotent per requestId — a
-' late event for an entry already cleared by the timeout path is a no-op.
-sub deliverResult(pending as object, requestId as dynamic)
-  if not isValidAndNotEmpty(requestId) or not pending.doesExist(requestId) then return
-  entry = pending[requestId]
-  entry.node.unobserveField("isDone")
-
+' Transforms one response and emits its row.
+'
+' `res` is invalid when the request never got an answer — the pool was down, or the run
+' budget expired. That says nothing about what the library holds, so the row is marked
+' "failed" and HomeRows leaves any existing row alone. Only an authoritative "ok" carries
+' a list the UI may act on, including an empty one (which legitimately removes the row).
+sub emitRow(libId as string, res as dynamic)
   items = []
-  res = entry.node.result
-  if isValid(res) and res.ok and isValid(res.json)
-    for each item in res.json
-      ' Skip Books as we don't support them (issue #525)
-      if item.Type <> "Book"
-        items.push(m.transformer.transformBaseItem(item))
-      end if
-    end for
+  status = "failed"
+
+  if isValid(res) and res.ok
+    status = "ok"
+    if isValid(res.json)
+      ' transformBaseItemArray resolves the server version once for the whole batch;
+      ' the per-item call re-reads it (a rendezvous) for every one of the 16 items.
+      items.append(m.transformer.transformBaseItemArray(supportedItems(res.json)))
+    end if
+  else
+    m.log.warn("latest-media row failed; leaving any existing row in place", libId)
   end if
 
-  emitRow(entry.libId, items)
-  pending.delete(requestId)
-end sub
-
-sub emitRow(libId as string, items as object)
   child = CreateObject("roSGNode", "ContentNode")
-  child.addFields({ libId: libId, items: items })
+  child.addFields({ libId: libId, items: items, status: status })
   m.top.appendChild(child)
   m.top.rowReady = libId
 end sub
+
+' Drops item types the app can't present — Books (issue #525).
+function supportedItems(apiItems as object) as object
+  kept = []
+  for each item in apiItems
+    if item.Type <> "Book" then kept.push(item)
+  end for
+  return kept
+end function

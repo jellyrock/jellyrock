@@ -1,5 +1,6 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
@@ -375,12 +376,17 @@ end sub
 sub onLatestRowsReady()
   if not isValid(m.latestRowsTask) then return
 
-  childCount = m.latestRowsTask.getChildCount()
-  while m.latestRowsProcessedIndex < childCount
-    child = m.latestRowsTask.getChild(m.latestRowsProcessedIndex)
-    m.latestRowsProcessedIndex++
-    if isValid(child) then populateRowFromData("latest_" + child.libId, child.items)
-  end while
+  ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
+  ' so they can be unit-tested without a callFunc seam on this component.
+  drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex)
+  m.latestRowsProcessedIndex = drained.nextIndex
+
+  for each child in drained.ready
+    populateRowFromData("latest_" + child.libId, child.items)
+    ' The row owns the item nodes now — drop the orchestrator's reference so a long
+    ' Home session doesn't retain every batch it has ever delivered.
+    child.items = []
+  end for
 end sub
 
 ' cleanupLatestMediaTasks: Stop the orchestrator and clear its delivered result children.

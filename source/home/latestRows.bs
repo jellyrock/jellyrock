@@ -1,0 +1,39 @@
+import "pkg:/source/utils/misc.bs"
+
+' Decision layer for Home's latest-media rows — which of the orchestrator's delivered
+' results the UI may act on, and where the drain cursor lands.
+'
+' It lives in source/ rather than in HomeRows.bs because a component codebehind's functions
+' are scoped to that component: a Rooibos suite (which runs in the source scope) cannot call
+' them without a callFunc seam on the XML. Extracting the judgment instead keeps the seam off
+' the component and the rules under test. Same move as source/remotecontrol/remoteCommand.bs.
+namespace latestRows
+
+  ' Walks LoadLatestRowsTask's result children from `startIndex` and returns the ones the UI
+  ' should populate, plus the new cursor. One wake can cover several results — wake events
+  ' coalesce, appended children don't — so the caller always drains to the end.
+  '
+  ' A "failed" child is SKIPPED, not returned. A timeout or transport failure says nothing
+  ' about what the library holds, and populateRowFromData removes a row when handed an empty
+  ' list — so acting on a failure would delete good content on a flaky refresh. The cursor
+  ' still advances past it; the row self-heals on the next Home.refresh(), which fires on
+  ' every onScreenShown.
+  '
+  ' @param task - the LoadLatestRowsTask node holding { libId, items, status } children
+  ' @param startIndex - first unprocessed child index
+  ' @return an AA { ready, nextIndex } - the children to populate, and the new cursor
+  function drainReady(task as object, startIndex as integer) as object
+    ready = []
+    index = startIndex
+    childCount = task.getChildCount()
+
+    while index < childCount
+      child = task.getChild(index)
+      index++
+      if isValid(child) and child.status = "ok" then ready.push(child)
+    end while
+
+    return { ready: ready, nextIndex: index }
+  end function
+
+end namespace

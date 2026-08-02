@@ -5,8 +5,10 @@
     <!-- Libraries to load, in on-screen row order: [{ id: string }] -->
     <field id="libraries" type="array" />
     <!-- Wake signal only — the value is ignored. Results ride as appended children
-         ({ libId, items } ContentNodes); the observer drains all unprocessed children,
-         so coalesced wake events can't drop a row. -->
+         ({ libId, items, status } ContentNodes); the observer drains all unprocessed
+         children, so coalesced wake events can't drop a row.
+         status "ok" = authoritative (an empty items list means the library really is
+         empty); status "failed" = no answer, so the row's current contents must stand. -->
     <field id="rowReady" type="string" alwaysNotify="true" />
   </interface>
 </component>
