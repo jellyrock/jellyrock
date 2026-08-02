@@ -205,6 +205,16 @@ A Roku OS Task thread is not released by dropping the node reference, so the ven
 
 Ruled out: **reverting the vendored change and relying only on `closeSocket()`'s `control = "STOP"`.** It does cover every reconnect — `connectAndPump` returns only through that path — and it avoids narrowing an upstream contract. Rejected because it leaves a child orphaned by an abnormal receiver exit running forever, and because it rests on `STOP` reliably killing a thread parked in `wait()`, which is asserted throughout this codebase but never measured; keeping both mechanisms is correct under either answer. Also ruled out: **keying the exit on having forwarded `on_close`/`on_error` rather than on a drained port** — a benign mid-session `on_error` (a failed send while still OPEN) would arm it early, and the invalid-URL path posts no `on_close` at all. Accepted constraint: this is vendored code no test can reach (RTA drives `https://`, the receiver only runs on `http://`, and Rooibos cannot hold a real socket open and drop it), so the ordering is gated statically by `npm run lint:socket-thread-release` and exercised by a Vitest model whose loop ordering is read back out of the real file. Re-evaluate on any upstream `BrightWebSocket` re-sync.
 
+## decision-id: latest-rows-failure-vs-empty
+
+**date**: 2026-08-02
+**status**: accepted
+**related-files**: `components/home/LoadLatestRowsTask.bs`, `source/home/latestRows.bs`, `components/home/HomeRows.bs`, `source/api/apiPipeline.bs`
+
+A request that never answered says nothing about what a library holds, so Home's latest-media rows distinguish it from an authoritative empty result. Result children carry a status: `ok` may act on the list (an empty one still removes the row — that is how a genuinely empty library clears), while a timeout or transport failure is skipped and the existing row stands untouched. Before this, any empty result removed the row, so a flaky network deleted good content on refresh — the failing path emitted an empty row and `populateRowFromData` removes a row it is handed an empty list for.
+
+Ruled out: retry-in-place, which adds a second timeout budget to a path that already recovers. The safety rests on `Home.refresh()` firing from `onScreenShown` on every return to Home, so a failed row self-heals on the next navigation instead of sticking — re-evaluate this note if that trigger ever becomes conditional. Note the asymmetry this introduces: the other five Home rows still feed `populateRowFromData` directly and DO clear on failure; only the latest rows carry the status. Verified on device by pointing the server URL at a closed port mid-load — 11 injected failures left all 9 rows intact with unchanged item counts.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
