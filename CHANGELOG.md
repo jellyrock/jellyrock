@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- move log-manager init to `JRScene` so global nodes can log ([#761](https://github.com/jellyrock/jellyrock/pull/761))
+
 ## [2.24.2](https://github.com/jellyrock/jellyrock/compare/v2.24.1...v2.24.2) - 2026-07-31
 
 ### Fixed
