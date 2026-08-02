@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-07-24
+last-reviewed: 2026-08-02
 ---
 
 # Bootstrap & Lifecycle
@@ -149,6 +149,7 @@ Interface fields exposed for global control:
 
 `components/JRScene.bs` adds the controller logic:
 
+- **Initializes the `roku-log` log manager** — first statement in `init()`, and the ordering is load-bearing: a `log.Logger` built before the manager exists caches `invalid` and silently no-ops forever. Doing it here is what gives the global singletons (`RemoteControlTask`, `SceneManager`, `QueueManager`, `SideEffectTask`) working loggers. It also cannot be done any earlier — `log_Log` creates a `Timer`, and Timer creation fails on the main thread before `m.screen.show()`, so `main.bs` can't stand the manager up itself. The corollary is a **bootstrap window with no logging**: everything created in `setGlobals()`, plus `main.bs` up to `show()`, must use `print`. See [logging.md](logging.md)
 - Initializes the loading spinner, toast, backdrop fader, and overhang references
 - Lazily resolves the user's "show backdrop" setting on first backdrop request (so the very first backdrop assignment after login picks up the user preference)
 - Implements `setBackgroundImage(uri, isAnimated, forceBackdrop)` with `forceBackdrop=true` used during the login splashscreen

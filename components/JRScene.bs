@@ -14,6 +14,28 @@ import "pkg:/source/roku_modules/sgrouter/RouterState.brs"
 import "pkg:/source/roku_modules/tkss_rodash_v0/rodash.brs"
 
 sub init()
+  ' Initialize the log manager HERE — this is the EARLIEST point in the app that can.
+  ' `log.Logger.new()` resolves `m.global.rLog` ONCE and caches it; when the manager does not
+  ' exist yet, every level method (`info`/`warn`/`error`/…) hits an `if m.rLog = invalid then
+  ' return` and silently no-ops for the life of that instance — no output, no error, forever.
+  ' Until this moved out of JRScreen.init, JRScene itself plus RemoteControlTask / SceneManager
+  ' / QueueManager / SideEffectTask logged NOTHING on any build, at any log level.
+  '
+  ' It cannot move any earlier — this is a platform constraint, not a preference. Verified on
+  ' device (Streaming Stick 4K, OS 15.2.4): `initializeLogManager` creates a `log_Log` node
+  ' whose own init() creates a `Timer` (roku_modules/log/Log.brs), and creating a Timer on the
+  ' MAIN thread before `m.screen.show()` fails — it returns invalid and the library then faults
+  ' with &he4. So main.bs cannot stand the manager up before `setGlobals()`. JRScene.init runs
+  ' on the render thread, where node creation is unrestricted, which is why it works here.
+  ' Consequence: nodes created in `setGlobals()` (main.bs:9) build their Logger before any
+  ' manager exists and stay silent — see docs/architecture/logging.md.
+  '
+  ' Second param is the max level emitted: 0 error, 1 warn, 2 info, 3 verbose, 4 debug.
+  #if debug
+    log.initializeLogManager(["log_PrintTransport"], 4) ' Debug: everything
+  #else
+    log.initializeLogManager(["log_PrintTransport"], 2) ' Production: error + warn + info
+  #end if
   m.log = new log.Logger("JRScene")
   m.top.backgroundColor = m.global.constants.colorBackgroundPrimary
   m.top.backgroundURI = ""

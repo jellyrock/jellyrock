@@ -213,11 +213,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: `buildParams` skips `roArray` values silently — there's a `' TODO handle array params` placeholder branch with no implementation. Callers that need to pass arrays as query parameters (e.g., comma-separated `Fields=` lists) join the array into a string before calling.
 - **direction**: Implement array handling per the actual server-side conventions used by Jellyfin (most array params are comma-separated; some use repeated keys). Then audit callers to remove the workarounds where each call site joins arrays into strings before invoking.
 
-#### `jrscreen-init-initializes-log-manager`
-
-- **area**: `components/JRScreen.bs`
-- **issue**: Unusual coupling — global resource initialized in a screen lifecycle hook. Re-init is no-op so it works, but design assumes `JRScreen.init` runs before any other component's `init`.
-
 #### `testtoast-in-production-builds`
 
 - **area**: `components/JRScene.xml`

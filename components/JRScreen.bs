@@ -1,16 +1,12 @@
 import "pkg:/source/api/apiPromise.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
-sub init()
-  ' initialize the log manager. second param sets log output:
-  ' 1 error, 2 warn, 3 info, 4 verbose, 5 debug
-  #if debug
-    log.initializeLogManager(["log_PrintTransport"], 5) ' Debug mode: show all logs (info + verbose + debug)
-  #else
-    log.initializeLogManager(["log_PrintTransport"], 2) ' Production mode: show warn and error only
-  #end if
-end sub
+' NOTE: JRScreen deliberately has no init(). The roku-log manager is owned by JRScene.init()
+' — see docs/architecture/logging.md. A duplicate call here was a no-op in the app
+' (`addFields` ignores an existing field) and in Rooibos (BaseTestSuite provisions `rLog`
+' before any screen mounts), while allocating a throwaway log_Log + Timer node on every
+' screen mount.
+
 ' Function called when the screen is displayed by the screen manager
 ' It is expected that screens override this function to handle focus
 ' managmenet and any other actions required on screen shown

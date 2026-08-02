@@ -52,6 +52,14 @@ jobs:
       - name: Check ws:// DeviceId binding is intact
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:socket-auth-binding
+      # Guards the roku-log manager's single init site. A Logger built before the
+      # manager exists caches `invalid` and silently no-ops forever — no output, no
+      # error, on any build. Rooibos can't catch it (bsconfig-tests-unit excludes
+      # source/Main.bs and BaseTestSuite provisions its own rLog), so this static
+      # gate is the only automated cover. Scans .bs sources — same filter as above.
+      - name: Check roku-log manager init contract
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:log-manager-init
       # #551 anti-backslide ratchet: FAILs when net-new raw `observeField("isDone")`
       # observer-spaghetti lands against the committed baseline. Advisory at pre-push
       # (`|| true`) so a local push isn't blocked — this is where it actually blocks.
