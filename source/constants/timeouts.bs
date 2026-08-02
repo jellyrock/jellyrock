@@ -12,6 +12,13 @@ namespace timeouts
   ' preventing orphaned pool slots when the wait expires before the HTTP call.
   const API_WAIT_MS = 12000
 
+  ' Whole-run budget for one apiPipeline run (source/api/apiPipeline.bs).
+  ' ONE deadline across every request in the run, not a fresh one per request:
+  ' a per-request wait lets N slow requests stack into N * API_WAIT_MS, so a
+  ' dead server made a 10-library Home churn for ~48s. Must exceed API_WAIT_MS
+  ' or a single slow-but-successful request gets cut short.
+  const PIPELINE_RUN_MS = 20000
+
   ' Session connection check timeout.
   ' Intentionally higher to accommodate slow/remote servers
   ' and redirect chains during initial connection.

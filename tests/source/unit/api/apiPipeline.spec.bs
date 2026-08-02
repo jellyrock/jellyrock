@@ -1,0 +1,348 @@
+import "pkg:/source/api/apiPipeline.bs"
+import "pkg:/source/constants/apiPool.bs"
+import "pkg:/source/constants/timeouts.bs"
+
+namespace tests
+
+  ' Contract tests for the request-pipelining primitive (source/api/apiPipeline.bs).
+  '
+  ' These drive the PURE CORE directly — the slot accounting, take, drain and
+  ' done predicates — the same way apiPromise.spec.bs drives settleApiPromiseIn.
+  ' The core takes the pipe state AA explicitly and touches no node, port or
+  ' clock, so a test can build a pipe by hand and step the state machine without
+  ' a live pool.
+  '
+  ' What this canNOT cover: apiPipelineNext's I/O shell (submit / wait /
+  ' unobserve), which needs a running pool and a Task thread. `submitPending()`
+  ' below mirrors that shell's top-up loop with the I/O removed — so a drift
+  ' between the two is a real (if narrow) blind spot, the price of the split.
+  ' The shell's end-to-end behaviour is covered on device by the Home rows it
+  ' drives, not here.
+  @suite("apiPipeline - bounded request pipelining contract")
+  class ApiPipelineTests extends tests.BaseTestSuite
+
+    ' Builds a pipe with `count` entries, exactly as apiPipelineBegin would minus
+    ' the port + clock (the pure core never reads either). Entry payloads carry a
+    ' `tag` so tests can assert the caller's own keys survive a round trip.
+    private function makePipe(count as integer, slotCount = 3 as integer) as object
+      entries = []
+      for i = 0 to count - 1
+        entries.push({
+          requestId: "r" + i.toStr().trim(),
+          req: { url: "/Items" },
+          tag: "lib" + i.toStr().trim()
+        })
+      end for
+      return {
+        entries: entries,
+        nextIndex: 0,
+        pending: {},
+        slotCount: slotCount,
+        budgetMs: timeouts.PIPELINE_RUN_MS,
+        expired: false
+      }
+    end function
+
+    ' Mirrors apiPipelineNext's top-up loop with the submit call removed: claim
+    ' while a slot is free, record the claim as in flight. Returns the ids
+    ' submitted, in submission order.
+    private function submitPending(pipe as object) as object
+      submitted = []
+      while apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
+        claim = apiPipelineClaimNext(pipe)
+        apiPipelineAddPending(pipe, claim.entry.requestId, claim.index, invalid)
+        submitted.push(claim.entry.requestId)
+      end while
+      return submitted
+    end function
+
+    ' Drains a pipe to exhaustion, returning the entry tags in yield order.
+    private function drainAll(pipe as object) as object
+      tags = []
+      record = apiPipelineDrainOne(pipe)
+      while isValid(record)
+        tags.push(record.entry.tag)
+        record = apiPipelineDrainOne(pipe)
+      end while
+      return tags
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineBegin - run setup")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for an empty or invalid entry list")
+    function _()
+      m.assertInvalid(apiPipelineBegin([]))
+      m.assertInvalid(apiPipelineBegin(invalid))
+    end function
+
+    @it("seeds the slot count from apiPool.SLOT_COUNT")
+    function _()
+      pipe = apiPipelineBegin([{ requestId: "a", req: {} }])
+      m.assertEqual(pipe.slotCount, apiPool.SLOT_COUNT)
+    end function
+
+    @it("defaults the budget to the whole-run deadline, and honours an override")
+    function _()
+      entries = [{ requestId: "a", req: {} }]
+      m.assertEqual(apiPipelineBegin(entries).budgetMs, timeouts.PIPELINE_RUN_MS)
+      m.assertEqual(apiPipelineBegin(entries, 500).budgetMs, 500)
+    end function
+
+    @it("starts with nothing in flight and nothing delivered")
+    function _()
+      pipe = apiPipelineBegin([{ requestId: "a", req: {} }])
+      m.assertEqual(pipe.nextIndex, 0)
+      m.assertEqual(pipe.pending.count(), 0)
+      m.assertFalse(pipe.expired)
+      m.assertFalse(apiPipelineIsDone(pipe))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("slot accounting - never over- or under-submits")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts at most slotCount requests in flight, in entry order")
+    function _()
+      pipe = m.makePipe(10)
+
+      submitted = m.submitPending(pipe)
+
+      m.assertEqual(submitted.count(), 3)
+      m.assertEqual(submitted, ["r0", "r1", "r2"])
+      m.assertEqual(pipe.pending.count(), 3)
+      m.assertEqual(apiPipelineSlotsFree(pipe), 0)
+    end function
+
+    @it("refills exactly one slot per completion")
+    function _()
+      pipe = m.makePipe(10)
+      m.submitPending(pipe)
+
+      apiPipelineTake(pipe, "r1")
+      m.assertEqual(apiPipelineSlotsFree(pipe), 1)
+
+      refilled = m.submitPending(pipe)
+      m.assertEqual(refilled, ["r3"])
+      m.assertEqual(pipe.pending.count(), 3)
+    end function
+
+    @it("never claims past the end of the entry list")
+    function _()
+      pipe = m.makePipe(2)
+
+      ' Two entries, three slots: the queue runs out before the slots do.
+      m.assertEqual(m.submitPending(pipe).count(), 2)
+      m.assertFalse(apiPipelineHasQueued(pipe))
+      m.assertInvalid(apiPipelineClaimNext(pipe))
+      m.assertEqual(pipe.nextIndex, 2)
+    end function
+
+    @it("submits every entry exactly once across the whole run")
+    function _()
+      pipe = m.makePipe(7)
+      seen = {}
+      inFlight = []
+
+      while not apiPipelineIsDone(pipe)
+        for each requestId in m.submitPending(pipe)
+          m.assertFalse(seen.doesExist(requestId))
+          seen[requestId] = true
+          inFlight.push(requestId)
+        end for
+        ' Complete the oldest in-flight request, freeing exactly one slot.
+        m.assertNotInvalid(apiPipelineTake(pipe, inFlight.shift()))
+      end while
+
+      m.assertEqual(seen.count(), 7)
+    end function
+
+    @it("reports zero free slots rather than a negative count")
+    function _()
+      pipe = m.makePipe(5, 1)
+      ' Force an over-filled state (the shell can't produce this; the guard is
+      ' what keeps a miscount from turning into an unbounded top-up loop).
+      apiPipelineAddPending(pipe, "r0", 0, invalid)
+      apiPipelineAddPending(pipe, "r1", 1, invalid)
+
+      m.assertEqual(apiPipelineSlotsFree(pipe), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineTake - stale / duplicate event idempotency")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the in-flight record and frees its slot")
+    function _()
+      pipe = m.makePipe(3)
+      m.submitPending(pipe)
+
+      record = apiPipelineTake(pipe, "r1")
+
+      m.assertNotInvalid(record)
+      m.assertEqual(record.index, 1)
+      m.assertEqual(pipe.pending.count(), 2)
+    end function
+
+    @it("hands the caller's own entry keys back untouched")
+    function _()
+      pipe = m.makePipe(3)
+      m.submitPending(pipe)
+
+      record = apiPipelineTake(pipe, "r2")
+
+      m.assertEqual(record.entry.tag, "lib2")
+      m.assertEqual(record.entry.requestId, "r2")
+    end function
+
+    @it("is a no-op for an unknown id")
+    function _()
+      pipe = m.makePipe(3)
+      m.submitPending(pipe)
+
+      m.assertInvalid(apiPipelineTake(pipe, "not-a-request"))
+      m.assertEqual(pipe.pending.count(), 3)
+    end function
+
+    @it("is a no-op the second time (a late event after delivery)")
+    function _()
+      pipe = m.makePipe(3)
+      m.submitPending(pipe)
+
+      m.assertNotInvalid(apiPipelineTake(pipe, "r0"))
+      m.assertInvalid(apiPipelineTake(pipe, "r0"))
+      m.assertEqual(pipe.pending.count(), 2)
+    end function
+
+    @it("is a no-op for an invalid or empty id")
+    function _()
+      pipe = m.makePipe(3)
+      m.submitPending(pipe)
+
+      m.assertInvalid(apiPipelineTake(pipe, invalid))
+      m.assertInvalid(apiPipelineTake(pipe, ""))
+      m.assertEqual(pipe.pending.count(), 3)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineIsDone - queue drained AND nothing in flight")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is not done while requests are still in flight")
+    function _()
+      pipe = m.makePipe(2)
+      m.submitPending(pipe)
+
+      m.assertFalse(apiPipelineHasQueued(pipe))
+      m.assertFalse(apiPipelineIsDone(pipe))
+    end function
+
+    @it("is not done while entries are still queued")
+    function _()
+      pipe = m.makePipe(5)
+      m.submitPending(pipe)
+      apiPipelineTake(pipe, "r0")
+      apiPipelineTake(pipe, "r1")
+      apiPipelineTake(pipe, "r2")
+
+      m.assertEqual(pipe.pending.count(), 0)
+      m.assertFalse(apiPipelineIsDone(pipe))
+    end function
+
+    @it("is done only once both are empty")
+    function _()
+      pipe = m.makePipe(2)
+      m.submitPending(pipe)
+      apiPipelineTake(pipe, "r0")
+      apiPipelineTake(pipe, "r1")
+
+      m.assertTrue(apiPipelineIsDone(pipe))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineDrainOne - budget expiry hands back the undelivered")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("yields in-flight entries oldest-first, then the unsubmitted in order")
+    function _()
+      pipe = m.makePipe(5)
+      m.submitPending(pipe) ' r0, r1, r2 in flight; r3, r4 still queued
+
+      m.assertEqual(m.drainAll(pipe), ["lib0", "lib1", "lib2", "lib3", "lib4"])
+      m.assertTrue(apiPipelineIsDone(pipe))
+    end function
+
+    @it("yields exactly the entries not already delivered")
+    function _()
+      pipe = m.makePipe(5)
+      m.submitPending(pipe)
+      ' r1 came back before the budget ran out — it must not be yielded again.
+      apiPipelineTake(pipe, "r1")
+
+      m.assertEqual(m.drainAll(pipe), ["lib0", "lib2", "lib3", "lib4"])
+    end function
+
+    @it("returns invalid once nothing is left")
+    function _()
+      pipe = m.makePipe(1)
+      m.submitPending(pipe)
+
+      m.assertNotInvalid(apiPipelineDrainOne(pipe))
+      m.assertInvalid(apiPipelineDrainOne(pipe))
+    end function
+
+    @it("carries no node for an entry that was never submitted")
+    function _()
+      pipe = m.makePipe(4, 1) ' one slot: r0 in flight, r1-r3 never submitted
+      m.submitPending(pipe)
+
+      apiPipelineDrainOne(pipe) ' r0
+      record = apiPipelineDrainOne(pipe)
+
+      m.assertEqual(record.entry.tag, "lib1")
+      m.assertInvalid(record.node)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineWaitMs - one wait never outlives the run budget")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("caps a single wait at one request's own deadline")
+    function _()
+      m.assertEqual(apiPipelineWaitMs(timeouts.PIPELINE_RUN_MS), timeouts.API_WAIT_MS)
+    end function
+
+    @it("waits only the remaining budget when that is shorter")
+    function _()
+      m.assertEqual(apiPipelineWaitMs(1500), 1500)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineEnd - abandoning a run early")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("clears in-flight requests and the queue, leaving the run done")
+    function _()
+      pipe = m.makePipe(6)
+      m.submitPending(pipe)
+
+      apiPipelineEnd(pipe)
+
+      m.assertEqual(pipe.pending.count(), 0)
+      m.assertTrue(apiPipelineIsDone(pipe))
+      m.assertInvalid(apiPipelineDrainOne(pipe))
+    end function
+
+    @it("is a no-op on an invalid or already-finished pipe")
+    function _()
+      apiPipelineEnd(invalid)
+
+      pipe = m.makePipe(1)
+      apiPipelineEnd(pipe)
+      apiPipelineEnd(pipe)
+      m.assertTrue(apiPipelineIsDone(pipe))
+    end function
+
+  end class
+end namespace

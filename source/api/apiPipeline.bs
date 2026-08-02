@@ -1,0 +1,261 @@
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/constants/apiPool.bs"
+import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/utils/misc.bs"
+
+' ============================================================================
+' apiPipeline.bs — bounded request pipelining on ONE Task thread (call pattern 5)
+' ============================================================================
+'
+' The problem this solves: an orchestrator Task with N independent requests has
+' had two bad options. Serial `fetchJson` in a loop pays the full round trip N
+' times. One Task per request is a thread fan-out — the mechanism behind the
+' `&h29` "too many threads" crashes on large libraries (epic #728).
+'
+' This is the third option: keep ONE thread, and keep up to `apiPool.SLOT_COUNT`
+' requests riding the pool concurrently. The pool's own width bounds the real
+' parallelism either way, so pipelining costs nothing extra and adds no threads.
+'
+' ── Shape: an iterator, not a callback ─────────────────────────────────────
+'
+'   entries = [{ requestId: "row-" + lib.id, req: <request AA>, libId: lib.id }, ...]
+'   pipe = apiPipelineBegin(entries)
+'   result = apiPipelineNext(pipe)
+'   while isValid(result)
+'     ' result.entry is the caller's AA, echoed back (payload keys survive).
+'     ' result.res is the pool response AA, or invalid if it never answered.
+'     result = apiPipelineNext(pipe)
+'   end while
+'
+' Each entry needs exactly two keys — `requestId` (unique per run) and `req` (a
+' Build*Request() AA). Everything else on the entry is caller payload, returned
+' untouched so the caller can recover its context without a side table.
+'
+' Results arrive in COMPLETION order, not entry order. Requests are SUBMITTED in
+' entry order, so on-screen-first work still starts first.
+'
+' Chosen over a `runApiPipeline(entries, onResult)` callback form: no inversion
+' of control, it reads like the `fetchRes` loop the team already knows, and it
+' avoids depending on BrighterScript function-pointer params.
+'
+' ── The budget: one deadline for the whole run ─────────────────────────────
+'
+' `budgetMs` (default `timeouts.PIPELINE_RUN_MS`) is a WHOLE-RUN deadline, not a
+' per-request timeout. A per-request wait lets N slow requests stack into
+' N * API_WAIT_MS. When the budget expires the pipeline stops submitting and
+' yields every remaining entry — in-flight first, then unsubmitted — with
+' `res = invalid`. So budget expiry needs no special case at the call site: the
+' loop just sees undelivered entries and ends.
+'
+' `res = invalid` means "no answer" (never submitted, pool unavailable, or the
+' budget ran out). It does NOT mean "the server said no" — an HTTP error is a
+' valid `res` with `ok = false`. Callers that must distinguish a transient
+' failure from an authoritative empty result branch on that difference.
+'
+' ── Pure core / I/O shell split ────────────────────────────────────────────
+'
+' The state machine (slot accounting, take, drain, done) is pure: it takes the
+' pipe AA explicitly and touches no nodes, no ports, no clock. Only the shell
+' (`apiPipelineNext`) submits, waits, and unobserves. This mirrors
+' `apiPromise.bs`'s `settleApiPromiseIn` split, and for the same reason —
+' bare global calls from a Rooibos class method don't share the instance `m`,
+' so an explicitly-passed state AA is what a unit test can drive.
+' See docs/architecture/async.md.
+'
+' ── Thread rules ───────────────────────────────────────────────────────────
+'
+' Task threads only — `apiPipelineNext` blocks on `wait()`. Never call it from
+' the render thread. Render-thread callers want `fetchAsync` (apiPromise.bs).
+'
+' Every observe goes through `submitApiRequest`'s `port` parameter, so the pool
+' layer registers `isDone` BEFORE the request is enqueued (a response can never
+' land ahead of its observer) and this file never calls `observeField` itself.
+' ============================================================================
+
+' Starts a pipeline run over `entries`.
+'
+' @param entries  - array of AAs, each { requestId: string, req: AA, ...payload }
+' @param budgetMs - whole-run deadline in ms; defaults to timeouts.PIPELINE_RUN_MS
+' @return an opaque pipe state AA to pass to apiPipelineNext(), or invalid if
+'         `entries` is empty / invalid
+function apiPipelineBegin(entries as dynamic, budgetMs = timeouts.PIPELINE_RUN_MS as integer) as dynamic
+  if not isValidAndNotEmpty(entries) then return invalid
+
+  return {
+    entries: entries,
+    ' Index of the next entry to submit — entries before it are in flight,
+    ' delivered, or drained.
+    nextIndex: 0,
+    ' requestId -> { entry, index, node } for every request currently in flight.
+    pending: {},
+    slotCount: apiPool.SLOT_COUNT,
+    budgetMs: budgetMs,
+    expired: false,
+    port: CreateObject("roMessagePort"),
+    clock: CreateObject("roTimespan")
+  }
+end function
+
+' Advances the pipeline: tops the pool up to its slot count, then blocks until
+' one request completes.
+'
+' @param pipe - the AA from apiPipelineBegin()
+' @return an AA { entry, res } for one entry — `res` is the pool response AA, or
+'         invalid if that entry never got an answer — or invalid when the run
+'         is exhausted (every entry has been yielded exactly once).
+function apiPipelineNext(pipe as dynamic) as dynamic
+  if not isValid(pipe) then return invalid
+
+  while true
+    remainingMs = pipe.budgetMs - pipe.clock.totalMilliseconds()
+    if remainingMs <= 0 then pipe.expired = true
+
+    ' ── Top up: keep the pool busy, in entry order ──
+    if not pipe.expired
+      while apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
+        claim = apiPipelineClaimNext(pipe)
+        node = submitApiRequest(claim.entry.req, claim.entry.requestId, pipe.port)
+        if isValid(node)
+          apiPipelineAddPending(pipe, claim.entry.requestId, claim.index, node)
+        else
+          ' submitApiRequest returns invalid only when the request is malformed or
+          ' the pool pipeline isn't up yet. Neither resolves by waiting, so yield
+          ' the entry as undelivered instead of stalling the run.
+          return { entry: claim.entry, res: invalid }
+        end if
+      end while
+    end if
+
+    if apiPipelineIsDone(pipe) then return invalid
+
+    ' ── Budget spent: hand back what's left, oldest first ──
+    if pipe.expired
+      record = apiPipelineDrainOne(pipe)
+      if not isValid(record) then return invalid
+      apiPipelineRelease(record)
+      return { entry: record.entry, res: invalid }
+    end if
+
+    msg = wait(apiPipelineWaitMs(remainingMs), pipe.port)
+    if type(msg) = "roSGNodeEvent"
+      record = apiPipelineTake(pipe, apiPipelineEventRequestId(msg))
+      if isValid(record)
+        apiPipelineRelease(record)
+        return { entry: record.entry, res: record.node.result }
+      end if
+      ' Unknown id — a late event for an entry already drained. Fall through and
+      ' keep waiting; the budget check at the top of the loop bounds this.
+    end if
+  end while
+
+  ' Unreachable — every exit above returns. Present so the loop's only exits stay
+  ' the explicit ones.
+  return invalid
+end function
+
+' Releases every still-in-flight request without waiting for it. Only needed by a
+' caller that abandons the run early (breaking out of the loop before
+' apiPipelineNext returns invalid) — a run driven to exhaustion has already
+' released everything. Idempotent; safe on a finished pipe.
+'
+' A late pool response after this writes to an abandoned result node and is
+' ignored, exactly as fetchRes's timeout path leaves its node behind.
+sub apiPipelineEnd(pipe as dynamic)
+  if not isValid(pipe) then return
+  for each requestId in pipe.pending
+    apiPipelineRelease(pipe.pending[requestId])
+  end for
+  pipe.pending.clear()
+  pipe.nextIndex = pipe.entries.count()
+end sub
+
+' ── Pure core — no nodes, no ports, no clock; driven directly by unit tests ──
+
+' How many more requests may be put in flight right now.
+function apiPipelineSlotsFree(pipe as object) as integer
+  free = pipe.slotCount - pipe.pending.count()
+  if free < 0 then return 0
+  return free
+end function
+
+' Are there entries that have not been submitted yet?
+function apiPipelineHasQueued(pipe as object) as boolean
+  return pipe.nextIndex < pipe.entries.count()
+end function
+
+' A run is finished only when nothing is queued AND nothing is in flight —
+' an empty queue with requests still outstanding is not done.
+function apiPipelineIsDone(pipe as object) as boolean
+  return pipe.pending.count() = 0 and not apiPipelineHasQueued(pipe)
+end function
+
+' Claims the next queued entry for submission and advances the cursor, so an
+' entry can never be submitted twice.
+'
+' @return an AA { entry, index, node: invalid }, or invalid when the queue is empty
+function apiPipelineClaimNext(pipe as object) as dynamic
+  if not apiPipelineHasQueued(pipe) then return invalid
+  index = pipe.nextIndex
+  pipe.nextIndex = index + 1
+  return { entry: pipe.entries[index], index: index, node: invalid }
+end function
+
+' Records a submitted request as in flight.
+sub apiPipelineAddPending(pipe as object, requestId as string, index as integer, node as dynamic)
+  pipe.pending[requestId] = { entry: pipe.entries[index], index: index, node: node }
+end sub
+
+' Removes and returns the in-flight record for `requestId`, freeing its slot.
+' Idempotent by design: an unknown or already-taken id returns invalid, so a
+' duplicate or late event is a no-op rather than a double delivery.
+function apiPipelineTake(pipe as object, requestId as dynamic) as dynamic
+  if not isValidAndNotEmpty(requestId) then return invalid
+  if not pipe.pending.doesExist(requestId) then return invalid
+  record = pipe.pending[requestId]
+  pipe.pending.delete(requestId)
+  return record
+end function
+
+' Yields the next entry that will never be delivered, once the budget is spent:
+' in-flight requests first (lowest entry index first), then unsubmitted ones in
+' entry order. Returns invalid when nothing is left.
+function apiPipelineDrainOne(pipe as object) as dynamic
+  oldestId = invalid
+  oldestIndex = 0
+  for each requestId in pipe.pending
+    index = cint(pipe.pending[requestId].index)
+    if not isValid(oldestId) or index < oldestIndex
+      oldestId = requestId
+      oldestIndex = index
+    end if
+  end for
+
+  if isValid(oldestId) then return apiPipelineTake(pipe, oldestId)
+  return apiPipelineClaimNext(pipe)
+end function
+
+' How long to block on one wait: never past the run budget, never longer than a
+' single request's own deadline.
+function apiPipelineWaitMs(remainingMs as integer) as integer
+  if remainingMs < timeouts.API_WAIT_MS then return remainingMs
+  return timeouts.API_WAIT_MS
+end function
+
+' ── I/O helpers ──
+
+' Drops the pool observer for a finished record. Records claimed but never
+' submitted carry no node, so this is a no-op for them.
+sub apiPipelineRelease(record as dynamic)
+  if not isValid(record) then return
+  if isValid(record.node) then record.node.unobserveField("isDone")
+end sub
+
+' Recovers the requestId from an isDone event. submitApiRequest stamps it onto
+' the request AA the result node carries; the node's own id is left unset.
+function apiPipelineEventRequestId(msg as object) as dynamic
+  node = msg.getRoSGNode()
+  if not isValid(node) then return invalid
+  req = node.request
+  if not isValid(req) then return invalid
+  return req.requestId
+end function
