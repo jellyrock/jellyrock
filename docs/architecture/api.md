@@ -321,6 +321,9 @@ Three things worth knowing before you use it:
 - **Results arrive in completion order**, not entry order. Requests are *submitted* in entry order, so on-screen-first work still starts first.
 - **`budgetMs` is a whole-run deadline** (`timeouts.PIPELINE_RUN_MS`), not a per-request timeout — a per-request wait lets N slow requests stack into N × `API_WAIT_MS`. On expiry the run stops submitting and yields every remaining entry with `res = invalid`, so expiry needs no special case at the call site.
 - **`res = invalid` means "no answer", not "the server said no."** An HTTP error is a valid `res` with `ok = false`. A caller that removes UI on an empty result must branch on the difference, or a timeout will delete good content — see `LoadLatestRowsTask` / `HomeRows`, where a failed row is left standing.
+- **"Leave the UI alone on a failure" has an exception: UI that was never populated.** A placeholder the caller drew *before* the run (a skeleton row, an empty shelf) is not content worth protecting — protecting it strands it on screen, titled and blank, until some later run succeeds. So the rule is *don't destroy populated UI on a failure*, and a failed entry still has to be handed to whatever decides that. `latestRows.drain` returns its unanswered children for exactly this reason, and `HomeRows.discardEmptyLatestRow` clears a row only while it still has no children.
+
+A run is also a *budget*, not a promise of coverage: it services roughly `PIPELINE_RUN_MS ÷ per-request-latency × apiPool.SLOT_COUNT` requests before expiring, so on a large, distant server the tail of a run legitimately comes back undelivered. Design the call site for that, don't tune the constant for it.
 
 Canonical example: `LoadLatestRowsTask` (Home's latest-media rows). Its state machine is split pure-core / I/O-shell for the same reason `apiPromise.bs` is — see [async.md](./async.md).
 

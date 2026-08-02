@@ -17,6 +17,15 @@ namespace timeouts
   ' a per-request wait lets N slow requests stack into N * API_WAIT_MS, so a
   ' dead server made a 10-library Home churn for ~48s. Must exceed API_WAIT_MS
   ' or a single slow-but-successful request gets cut short.
+  '
+  ' This is a budget, not a guarantee of coverage. A run services roughly
+  '   PIPELINE_RUN_MS / per-request-latency * apiPool.SLOT_COUNT
+  ' requests before it expires, and every entry past that is yielded undelivered.
+  ' At the 11-library Home's measured ~132ms/request that is far more headroom
+  ' than needed; at ~5s/request on a slow link it is about 12. So on a large,
+  ' distant server the tail of a run legitimately fails, and callers must treat
+  ' an undelivered entry as "no answer" rather than as data — see
+  ' components/home/LoadLatestRowsTask.bs and HomeRows.discardEmptyLatestRow.
   const PIPELINE_RUN_MS = 20000
 
   ' Session connection check timeout.

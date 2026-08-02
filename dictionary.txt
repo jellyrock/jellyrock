@@ -122,6 +122,7 @@ CLDR
 CLI
 CLI-driven
 CLIs
+cloneable
 codebase
 codebase.
 codebehind
@@ -338,6 +339,7 @@ natively
 Niklas
 nodearray
 nominatively
+non-cloneable
 non-Jellyfin
 Non-Jellyfin
 npm

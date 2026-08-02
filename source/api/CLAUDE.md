@@ -31,7 +31,7 @@ Decision flow:
 | Dedicated `Task` + `roUrlTransfer` | Non-Jellyfin HTTP (font downloads, SSDP, …) | a Task component |
 | `apiPipelineBegin` / `apiPipelineNext` | N *independent* requests that scale with server data (per library, per season) | a Task thread |
 
-**Never spawn a Task per request** to parallelize N calls — that fan-out is what produced the `&h29` "too many task threads" crashes (#728). Use `apiPipeline`: one thread, up to `apiPool.SLOT_COUNT` requests in flight. Note `res = invalid` from it means *no answer*, not an error response — don't clear UI on it.
+**Never spawn a Task per request** to parallelize N calls — that fan-out is what produced the `&h29` "too many task threads" crashes (#728). Use `apiPipeline`: one thread, up to `apiPool.SLOT_COUNT` requests in flight. Note `res = invalid` from it means *no answer*, not an error response — don't clear **populated** UI on it. UI the caller drew before the run (a skeleton / placeholder) is the exception: protecting that strands it on screen blank, so clear it. See `HomeRows.discardEmptyLatestRow`.
 
 ## `V1` vs `V2` dispatch
 
