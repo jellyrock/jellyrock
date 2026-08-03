@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Tighten Task-node hygiene and remove stranded dialog helpers ([#765](https://github.com/jellyrock/jellyrock/pull/765))
 - Remove invalid `focusable` attribute from `<component>` elements ([#767](https://github.com/jellyrock/jellyrock/pull/767))
 - `ws://` remote-control socket task-thread leak ([#756](https://github.com/jellyrock/jellyrock/pull/756))
 - move log-manager init to `JRScene` so global nodes can log ([#761](https://github.com/jellyrock/jellyrock/pull/761))
