@@ -423,22 +423,25 @@ sub calculateFontScaleFactor()
     return
   end if
 
-  ' Create and run global font scaling task
+  ' Dedicated port, not m.port: this runs inside the main message loop, so waiting on m.port
+  ' here would consume events the loop still needs to dispatch.
   fontTask = CreateObject("roSGNode", "FontScalingTask")
+  port = CreateObject("roMessagePort")
+  fontTask.observeField("scaleFactor", port)
   fontTask.control = "RUN"
 
-  ' Wait for the task to complete (with timeout) - don't use observeField
-  timeout = CreateObject("roTimespan")
-  timeout.mark()
+  msg = wait(timeouts.FONT_SCALE_MS, port)
 
-  while fontTask.scaleFactor = 0 and timeout.TotalMilliseconds() < 10000
-    sleep(10)
-  end while
+  scaleFactor = 0
+  if isValid(msg) then scaleFactor = fontTask.scaleFactor
 
-  if fontTask.scaleFactor > 0
+  fontTask.unobserveField("scaleFactor")
+  fontTask.control = "STOP"
+
+  if scaleFactor > 0
     ' Update font scale factor in global user session
-    m.global.user.fontScaleFactor = fontTask.scaleFactor
-    print "INFO - calculateFontScaleFactor: Set global font scale factor to " + fontTask.scaleFactor.toStr()
+    m.global.user.fontScaleFactor = scaleFactor
+    print "INFO - calculateFontScaleFactor: Set global font scale factor to "; scaleFactor
   else
     print "WARNING - calculateFontScaleFactor: Failed to calculate scale factor, using default"
   end if
