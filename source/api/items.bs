@@ -1,6 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/image.bs"
-import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
@@ -233,28 +232,6 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   end if
 
   return fetchJson(GetApi().BuildPostPlaybackInfoRequest(id, postData), "playbackInfo")
-end function
-
-' Render-thread wrapper: delegates search to SearchTask (task thread) and blocks until complete.
-' Used by Main.bs SearchBox flow which shows a ProgressDialog while waiting.
-function searchMedia(query as string) as object
-  if query = "" then return { Items: [], TotalRecordCount: 0 }
-
-  searchTask = CreateObject("roSGNode", "SearchTask")
-  port = CreateObject("roMessagePort")
-  searchTask.observeField("results", port)
-  searchTask.query = query
-  searchTask.control = "RUN"
-
-  ' Block until SearchTask completes (timeouts.HTTP_MS)
-  msg = wait(timeouts.HTTP_MS, port)
-  searchTask.unobserveField("results")
-  searchTask.control = "STOP"
-
-  if isValid(msg) and isValid(searchTask.results)
-    return searchTask.results
-  end if
-  return { Items: [], TotalRecordCount: 0 }
 end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.
