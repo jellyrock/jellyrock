@@ -22,6 +22,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
+Phase 1 of the task-thread budget (epic #728): `launchTask()` is now the one accounted chokepoint for starting a Task thread, all 99 raw `control = "RUN"` sites are migrated, and the `no-raw-run` BSC plugin makes a bare launch a build error — so the thread bound holds by construction rather than by convention. Ships with a `printTaskThreads()` debug readout so the live count is measurable on device rather than argued about. Branch `feat/728-phase1-launch-chokepoint` is pushed; the PR is not yet opened.
+
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
