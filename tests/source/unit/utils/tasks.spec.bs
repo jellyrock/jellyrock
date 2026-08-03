@@ -1,0 +1,208 @@
+import "pkg:/source/utils/tasks.bs"
+
+namespace tests
+
+  ' Covers the accounted launch chokepoint and the ledger arithmetic behind the
+  ' derived thread count (epic #728, Phase 1).
+  '
+  ' Only the PURE core is reachable here: the ledger's `m.global` shell is inside
+  ' `#if debug`, and test builds compile against the same `manifest`, where
+  ' `bs_const=debug=false`. So `launchTask()` under test does NOT record into the
+  ' ledger — the arithmetic is driven directly, which is the point of the split.
+  '
+  ' `ServerReachableTask` is the fixture because its `init()` only sets
+  ' `functionName` — creating one starts no thread and touches no server.
+  @suite("tasks.bs - launchTask() + the derived thread ledger")
+  class TaskLedgerTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' A Task node that has never been launched. Its thread does not exist yet,
+    ' but SceneGraph already reports a state — which is exactly what the
+    ' liveness rule has to be correct about.
+    protected function freshTask() as object
+      return CreateObject("roSGNode", "ServerReachableTask")
+    end function
+
+    ' A Task node driven to a terminated state. Session-2 measurement on device
+    ' established that `control = "STOP"` lands synchronously, so the state is
+    ' readable on the very next line with no polling.
+    protected function stoppedTask() as object
+      node = m.freshTask()
+      launchTask(node)
+      node.control = "STOP" ' bsc-disable-line no-raw-run
+      return node
+    end function
+
+    ' A Task node whose thread genuinely stays running for the length of a test.
+    '
+    ' Pointed at RFC 5737 TEST-NET-1, which is unroutable, so the probe's connect
+    ' hangs rather than being refused — the same trick session 3 used to force
+    ' `apiPipeline`'s budget to expire on device. Without this the probe against
+    ' an empty URL returns in microseconds and any assertion about a "running"
+    ' task is a race the test loses as soon as it does anything else first.
+    protected function runningTask() as object
+      node = m.freshTask()
+      node.baseUrl = "http://192.0.2.1:8096"
+      launchTask(node)
+      return node
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("launchTask() — the chokepoint")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Callers guard on the return exactly as the raw `if isValid(x)` launch
+    ' sites did, so an invalid node must be a quiet false rather than a crash.
+    '
+    ' The contract is a Task node or `invalid` — the same one the 99 raw launch
+    ' sites had. Handing it a string or a number is a caller bug and crashes on
+    ' the field read, exactly as `"".control = "RUN"` did before.
+    @it("returns false and starts nothing for an invalid node")
+    function _()
+      m.assertFalse(launchTask(invalid))
+    end function
+
+    @it("starts the thread and reports success for a real Task node")
+    function _()
+      node = m.freshTask()
+      node.baseUrl = "http://192.0.2.1:8096"
+      m.assertTrue(launchTask(node))
+      m.assertTrue(taskThreadIsLive(node))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("taskThreadIsLive() — the liveness rule")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false for an invalid node")
+    function _()
+      m.assertFalse(taskThreadIsLive(invalid))
+    end function
+
+    ' Measured ground truth, recorded here so the liveness rule is not folklore:
+    ' a Task node reports "init" from the moment it is created, before anything
+    ' has told it to run. That is why only nodes the ledger recorded (i.e. nodes
+    ' `launchTask` was called on) are ever passed to the liveness check — a
+    ' never-launched node would otherwise be counted as a thread it does not own.
+    @it("reports init for a freshly created, never-launched node")
+    function _()
+      m.assertEqual(LCase(m.freshTask().state), "init")
+    end function
+
+    ' Roku's rule is that a terminated thread stops counting toward the cap
+    ' "even if the task object itself is still valid". A stopped node is
+    ' therefore not a thread, and this is what makes `control = "STOP"` need no
+    ' accounting call of its own.
+    @it("is false once the task has been stopped")
+    function _()
+      m.assertFalse(taskThreadIsLive(m.stoppedTask()))
+    end function
+
+    @it("is true for a running task")
+    function _()
+      m.assertTrue(taskThreadIsLive(m.runningTask()))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("countLiveTaskThreads() — the derived count")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is 0 for an absent or empty ledger")
+    @params(invalid)
+    @params([])
+    function _(ledger)
+      m.assertEqual(countLiveTaskThreads(ledger), 0)
+    end function
+
+    @it("counts only the entries whose thread is still running")
+    function _()
+      m.assertEqual(countLiveTaskThreads([m.runningTask(), m.stoppedTask(), m.stoppedTask()]), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pruneTaskLedger() — bounding the ledger")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("records the launched node when the ledger is absent or empty")
+    @params(invalid)
+    @params([])
+    function _(ledger)
+      node = m.freshTask()
+      kept = pruneTaskLedger(ledger, node)
+      m.assertEqual(kept.count(), 1)
+      m.assertTrue(kept[0].isSameNode(node))
+    end function
+
+    @it("drops entries whose thread has ended")
+    function _()
+      node = m.freshTask()
+      kept = pruneTaskLedger([m.stoppedTask(), m.stoppedTask()], node)
+      m.assertEqual(kept.count(), 1)
+      m.assertTrue(kept[0].isSameNode(node))
+    end function
+
+    @it("keeps entries that are still running")
+    function _()
+      m.assertEqual(pruneTaskLedger([m.runningTask()], m.freshTask()).count(), 2)
+    end function
+
+    ' A persistent Task node is relaunched over and over — `ExtrasRowList` alone
+    ' relaunches its nodes 38 times. Without de-duplication the ledger would
+    ' grow one entry per relaunch and over-report the thread count.
+    @it("does not record the same node twice when it is relaunched")
+    function _()
+      node = m.runningTask()
+      kept = pruneTaskLedger([node], node)
+      m.assertEqual(kept.count(), 1)
+      m.assertEqual(countLiveTaskThreads(kept), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("SceneGraph round-trip — the ledger's storage assumption")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The whole derived-count design rests on this: an `array` field must hand
+    ' back usable node REFERENCES, not copies or husks. If a round-trip lost
+    ' identity or the live `state`, the ledger would silently report nonsense
+    ' and the debug readout would be worse than having none.
+    @it("preserves node identity and live state through an array field")
+    function _()
+      running = m.runningTask()
+      stopped = m.stoppedTask()
+
+      holder = CreateObject("roSGNode", "Node")
+      holder.addField("taskLedger", "array", false)
+      ' Bracket access: a dynamically-added field is invisible to the typed
+      ' `roSGNodeNode` interface, so dotted access is a compile error.
+      holder["taskLedger"] = [running, stopped]
+
+      readBack = holder["taskLedger"]
+      m.assertEqual(readBack.count(), 2)
+      m.assertTrue(readBack[0].isSameNode(running))
+      m.assertTrue(readBack[1].isSameNode(stopped))
+      m.assertEqual(countLiveTaskThreads(readBack), 1)
+    end function
+
+    ' The ledger actually lives on `m.global`, which is shared across threads —
+    ' a stronger case than a plain node, and the one the shell depends on.
+    @it("preserves node identity and live state through an m.global array field")
+    function _()
+      running = m.runningTask()
+
+      if not isValid(m.global.taskLedgerProbe)
+        m.global.addField("taskLedgerProbe", "array", false)
+      end if
+      m.global.taskLedgerProbe = [running, m.stoppedTask()]
+
+      readBack = m.global.taskLedgerProbe
+      m.assertEqual(readBack.count(), 2)
+      m.assertTrue(readBack[0].isSameNode(running))
+      m.assertEqual(countLiveTaskThreads(readBack), 1)
+    end function
+
+  end class
+
+end namespace
