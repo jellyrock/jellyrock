@@ -245,7 +245,15 @@ end sub
 ' QuickPlayTask finished — build the queue from its output and play (ported from main.bs's
 ' handleQuickPlayOutput). Photo output still pushes a PhotoDetails scene; that moves to the
 ' /photo route in a later step.
-sub onQuickPlayTaskOutput()
+sub onQuickPlayTaskOutput(msg as object)
+  ' Identity guard, not paranoia: a task can write its output and have the change event queued
+  ' to this thread just before a re-press runs cancelActiveQuickPlayTask() and swaps in a
+  ' replacement. Roku documents unobserveField only as "removes the previously established
+  ' connections" — it says nothing about events already in flight. Without this we would read
+  ' the NEW task's still-empty output, take the empty branch, and tear the new task down.
+  if not isValid(m.activeQuickPlayTask) then return
+  if not m.activeQuickPlayTask.isSameNode(msg.getRoSGNode()) then return
+
   task = m.activeQuickPlayTask
   output = task.output
   cancelActiveQuickPlayTask()
@@ -313,7 +321,13 @@ end sub
 ' GetShuffleItemsTask finished — set the resolved items as the queue and play. The task
 ' already randomizes server-side; toggleShuffle applies the Fisher-Yates client shuffle on
 ' top when there's more than one item.
-sub onShuffleItemsLoaded()
+sub onShuffleItemsLoaded(msg as object)
+  ' Same in-flight-event guard as onQuickPlayTaskOutput — see the rationale there. This is the
+  ' residual half of the shuffle double-press bug: cancelActiveShuffleTask() in launchShuffle
+  ' closes the common case, this closes the already-queued-event case.
+  if not isValid(m.shuffleTask) then return
+  if not m.shuffleTask.isSameNode(msg.getRoSGNode()) then return
+
   shuffleItems = m.shuffleTask.shuffleItems
   cancelActiveShuffleTask()
 
