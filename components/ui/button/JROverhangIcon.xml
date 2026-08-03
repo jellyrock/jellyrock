@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="JROverhangIcon" extends="Group" focusable="true">
+<component name="JROverhangIcon" extends="Group">
   <children>
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />

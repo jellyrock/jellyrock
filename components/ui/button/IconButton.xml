@@ -5,7 +5,7 @@
   Example: If aligning to x=90, the button will actually appear at x=96 (90 + 6px offset).
   For RIGHT-aligned components: add 6px to account for text extension.
 -->
-<component name="IconButton" extends="Group" focusable="true">
+<component name="IconButton" extends="Group">
   <children>
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" />

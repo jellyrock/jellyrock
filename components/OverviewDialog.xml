@@ -2,7 +2,7 @@
 <!-- OverviewDialog: Custom full-screen overlay for reading long overview text.
      Appended directly to the scene by FocusableOverview; dismisses itself via removeChild +
      returnFocusTo. Supports vertical scrolling. -->
-<component name="OverviewDialog" extends="JRGroup" focusable="true">
+<component name="OverviewDialog" extends="JRGroup">
   <children>
     <!-- Dimmed background overlay -->
     <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />

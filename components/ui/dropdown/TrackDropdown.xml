@@ -19,7 +19,7 @@
     - LEFT/RIGHT          -> close menu, fires requestFocusExit
     - BACK                -> close menu
 -->
-<component name="TrackDropdown" extends="Group" focusable="true">
+<component name="TrackDropdown" extends="Group">
   <children>
     <!-- Trigger background: always visible (unfocused filled with colorBackgroundSecondary
          so the dropdown affords interactivity). Border toggles on focus. -->
