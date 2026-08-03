@@ -3,7 +3,7 @@
      Shows overview/description text with ellipsis. Supports an optional tagline
      displayed above the description. When focused, displays a themed border.
      Pressing OK opens an OverviewDialog to read the full text. -->
-<component name="FocusableOverview" extends="Group" focusable="true">
+<component name="FocusableOverview" extends="Group">
   <children>
     <RectangleBackgroundSecondary id="background" />
     <Poster id="focusBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />

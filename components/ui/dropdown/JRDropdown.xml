@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<component name="JRDropdown" extends="Group" focusable="true">
+<component name="JRDropdown" extends="Group">
   <children>
     <!-- Trigger button area -->
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
