@@ -19,7 +19,10 @@ sub init()
   m.buttonCount = 0
   m.selectedFocusedIndex = 0
 
+  ' Observed here, not in updateButtons: that runs on every `buttons` set and observeField
+  ' stacks registrations rather than replacing them.
   m.textSizeTask = createObject("roSGNode", "TextSizeTask")
+  m.textSizeTask.observeField("width", "showButtons")
 
   m.top.observeField("focusedChild", "focusChanged")
   m.top.enableRenderTracking = true
@@ -53,7 +56,6 @@ sub updateButtons()
   m.textSizeTask.fontsize = 40
   m.textSizeTask.text = m.top.buttons
   m.textSizeTask.name = m.buttonCount
-  m.textSizeTask.observeField("width", "showButtons")
   m.textSizeTask.control = "RUN"
 end sub
 
