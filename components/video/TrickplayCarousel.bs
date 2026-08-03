@@ -1,5 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/trickplay.bs"
 
 ' Trickplay carousel component - displays 5 thumbnails above the trickPlayBar
@@ -920,7 +921,7 @@ sub startTileLoader(tileIndexes as dynamic)
   m.tileLoader.videoID = m.config.videoID
   m.tileLoader.width = m.config.width
   m.tileLoader.tileIndexes = tileIndexes
-  m.tileLoader.control = "RUN"
+  launchTask(m.tileLoader)
 end sub
 
 ' Called when tile loader task state changes

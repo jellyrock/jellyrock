@@ -6,6 +6,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/voiceTransport.bs"
 
@@ -38,7 +39,7 @@ sub init()
   m.screenSaverTimeout = 0
 
   m.LoadScreenSaverTimeoutTask.observeField("content", "onScreensaverTimeoutLoaded")
-  m.LoadScreenSaverTimeoutTask.control = "RUN"
+  launchTask(m.LoadScreenSaverTimeoutTask)
 
   loadButtons()
   pageContentChanged()
@@ -545,7 +546,7 @@ sub pageContentChanged()
 
   m.LoadAudioStreamTask.itemId = currentItem.id
   m.LoadAudioStreamTask.observeField("content", "onAudioStreamLoaded")
-  m.LoadAudioStreamTask.control = "RUN"
+  launchTask(m.LoadAudioStreamTask)
 end sub
 
 ' If we have more than 1 song to play, set initial button states
@@ -603,7 +604,7 @@ sub onAudioStreamLoaded()
     if shouldUseMetaTask
       m.LoadMetaDataTask.itemId = currentItem.id
       m.LoadMetaDataTask.observeField("content", "onMetaDataLoaded")
-      m.LoadMetaDataTask.control = "RUN"
+      launchTask(m.LoadMetaDataTask)
     else
 
       ' poster image — prefer album art, fall back to song primary. When neither is

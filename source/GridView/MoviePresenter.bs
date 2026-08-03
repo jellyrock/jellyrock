@@ -10,6 +10,7 @@
 import "pkg:/source/GridView/GridPresenterBase.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
 
 class MoviePresenter extends GridPresenterBase
 
@@ -315,7 +316,7 @@ class MoviePresenter extends GridPresenterBase
     m.view.loadLogoTask.itemType = "LogoImage"
     ' Use "onPresenterLogoLoaded" - bridge function in BaseGridView that forwards to presenter
     m.view.loadLogoTask.observeField("content", "onPresenterLogoLoaded")
-    m.view.loadLogoTask.control = "RUN"
+    launchTask(m.view.loadLogoTask)
   end sub
 
   ' Called when logo is loaded (via onPresenterLogoLoaded bridge in BaseGridView)

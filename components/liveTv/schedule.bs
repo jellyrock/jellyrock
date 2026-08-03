@@ -5,6 +5,7 @@ import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -62,7 +63,7 @@ sub startLoading()
   m.LoadChannelsTask.startIndex = 0
   m.loadingInitialized = true
   startLoadingSpinner()
-  m.LoadChannelsTask.control = "RUN"
+  launchTask(m.LoadChannelsTask)
 end sub
 
 sub onScreenShown()
@@ -95,7 +96,7 @@ sub channelFilterSet()
 
     m.LoadChannelsTask.filter = m.top.filter
     startLoadingSpinner()
-    m.LoadChannelsTask.control = "RUN"
+    launchTask(m.LoadChannelsTask)
   end if
 end sub
 
@@ -122,7 +123,7 @@ sub channelsearchTermSet()
     m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
 
     startLoadingSpinner()
-    m.LoadChannelsTask.control = "RUN"
+    launchTask(m.LoadChannelsTask)
     'filter if the searterm is not invalid
   else if isValid(m.top.searchTerm) and LCase(m.LoadChannelsTask.searchTerm) <> LCase(m.top.searchTerm)
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
@@ -140,7 +141,7 @@ sub channelsearchTermSet()
 
     m.LoadChannelsTask.searchTerm = m.top.searchTerm
     startLoadingSpinner()
-    m.LoadChannelsTask.control = "RUN"
+    launchTask(m.LoadChannelsTask)
   end if
 end sub
 
@@ -206,7 +207,7 @@ sub onChannelsLoaded()
   loadedSoFar = m.LoadChannelsTask.startIndex + channels.count()
   if loadedSoFar < m.LoadChannelsTask.totalRecordCount
     m.LoadChannelsTask.startIndex = loadedSoFar
-    m.LoadChannelsTask.control = "RUN"
+    launchTask(m.LoadChannelsTask)
   end if
 end sub
 
@@ -222,7 +223,7 @@ sub tryLoadNextScheduleBatch()
   m.LoadScheduleTask.startTime = m.gridStartDate.ToISOString()
   m.LoadScheduleTask.endTime = m.gridEndDate.ToISOString()
   m.LoadScheduleTask.channelIds = channelIds
-  m.LoadScheduleTask.control = "RUN"
+  launchTask(m.LoadScheduleTask)
 end sub
 
 ' When LoadScheduleTask completes (initial or more data) and we have a schedule to display
@@ -395,7 +396,7 @@ sub onGridScrolled()
       m.gridEndDate.FromSeconds(m.gridEndDate.AsSeconds() + (24 * 60 * 60))
       m.LoadScheduleTask.endTime = m.gridEndDate.ToISOString()
       m.LoadScheduleTask.channelIds = allChannelIds
-      m.LoadScheduleTask.control = "RUN"
+      launchTask(m.LoadScheduleTask)
     end if
   end if
 end sub
@@ -413,7 +414,7 @@ sub onRecordChannelSelected()
   m.RecordProgramTask.programDetails = m.detailsPane.programDetails
   m.RecordProgramTask.shouldRecordSeries = false
   m.RecordProgramTask.observeField("recordOperationDone", "onRecordOperationDone")
-  m.RecordProgramTask.control = "RUN"
+  launchTask(m.RecordProgramTask)
 end sub
 
 ' Handle user selecting "Record Series" from Program Details
@@ -429,12 +430,12 @@ sub onRecordSeriesChannelSelected()
   m.RecordProgramTask.programDetails = m.detailsPane.programDetails
   m.RecordProgramTask.shouldRecordSeries = true
   m.RecordProgramTask.observeField("recordOperationDone", "onRecordOperationDone")
-  m.RecordProgramTask.control = "RUN"
+  launchTask(m.RecordProgramTask)
 end sub
 
 sub onRecordOperationDone()
   if m.RecordProgramTask.shouldRecordSeries = true and m.LoadScheduleTask.state <> "run"
-    m.LoadScheduleTask.control = "RUN"
+    launchTask(m.LoadScheduleTask)
   else
     ' This reloads just the details for the currently selected program, so that we don't have to
     ' reload the entire grid...

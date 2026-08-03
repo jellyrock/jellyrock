@@ -16,6 +16,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
 import "pkg:/source/utils/videoNotifications.bs"
@@ -64,7 +65,7 @@ sub init()
     m.LoadMetaDataTask.mediaSourceId = m.currentItem.mediaSourceId
   end if
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  m.LoadMetaDataTask.control = "RUN"
+  launchTask(m.LoadMetaDataTask)
 
   m.chapterList = m.top.findNode("chapterList")
   m.chapterMenu = m.top.findNode("chapterMenu")
@@ -524,7 +525,7 @@ sub loadCaption()
     m.log.debug("Setting captionTask.url", m.top.subtitleTrack)
     m.captionTask.control = "STOP"
     m.captionTask.url = m.top.subtitleTrack
-    m.captionTask.control = "RUN"
+    launchTask(m.captionTask)
   end if
 end sub
 
@@ -575,7 +576,7 @@ sub onSubtitleChange()
         if isValid(m.captionTask) and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
           m.captionTask.control = "STOP"
           m.captionTask.url = m.top.subtitleTrack
-          m.captionTask.control = "RUN"
+          launchTask(m.captionTask)
         end if
         toggleCaption()
       else
@@ -605,7 +606,7 @@ sub onSubtitleChange()
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  m.LoadMetaDataTask.control = "RUN"
+  launchTask(m.LoadMetaDataTask)
 end sub
 
 ' Event handler for when audioIndex changes.
@@ -641,7 +642,7 @@ sub onAudioIndexChange()
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  m.LoadMetaDataTask.control = "RUN"
+  launchTask(m.LoadMetaDataTask)
 end sub
 
 ' onVideoSourceChange: Handles video source switching from OSD
@@ -674,7 +675,7 @@ sub onVideoSourceChange()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.mediaSourceId = newSourceId
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  m.LoadMetaDataTask.control = "RUN"
+  launchTask(m.LoadMetaDataTask)
 end sub
 
 sub onPlaybackErrorDialogClosed(msg)
@@ -1380,7 +1381,7 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
-  m.LoadMetaDataTask.control = "RUN"
+  launchTask(m.LoadMetaDataTask)
 end sub
 
 '
@@ -1605,7 +1606,7 @@ sub triggerLiveTvMetadataRefresh()
   end if
 
   m.liveTvRefreshTask.channelId = m.top.id
-  m.liveTvRefreshTask.control = "RUN"
+  launchTask(m.liveTvRefreshTask)
 end sub
 
 sub onLiveTvMetadataRefreshed()

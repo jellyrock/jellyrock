@@ -9,6 +9,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/quickplay.bs"
+import "pkg:/source/utils/tasks.bs"
 
 sub init()
   m.log = new log.Logger("QueueManager")
@@ -229,7 +230,7 @@ sub launchQuickPlayAction(input as object)
   m.activeQuickPlayTask = CreateObject("roSGNode", "QuickPlayTask")
   m.activeQuickPlayTask.input = input
   m.activeQuickPlayTask.observeField("output", "onQuickPlayTaskOutput")
-  m.activeQuickPlayTask.control = "RUN"
+  launchTask(m.activeQuickPlayTask)
 end sub
 
 ' Stop, unobserve, and drop the in-flight QuickPlayTask if one exists. Safe to call when none is
@@ -306,7 +307,7 @@ sub launchShuffle(input as object)
   m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
   m.shuffleTask.shuffleInput = input
   m.shuffleTask.observeField("shuffleItems", "onShuffleItemsLoaded")
-  m.shuffleTask.control = "RUN"
+  launchTask(m.shuffleTask)
 end sub
 
 ' The single teardown path for m.shuffleTask. Safe to call when none is active.

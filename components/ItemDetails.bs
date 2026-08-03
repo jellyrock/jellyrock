@@ -14,6 +14,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/trackClusterFocus.bs"
 import "pkg:/source/utils/translate.bs"
@@ -569,7 +570,7 @@ sub onRecordButtonPressed(item as object)
   m.recordTask = CreateObject("roSGNode", "RecordProgramTask")
   m.recordTask.programDetails = programToRecord
   m.recordTask.observeField("result", "onRecordResult")
-  m.recordTask.control = "RUN"
+  launchTask(m.recordTask)
 end sub
 
 sub onRecordResult()
@@ -738,7 +739,7 @@ sub onItemIdChanged()
   m.loadDetailsTask.itemId = itemId
   m.loadDetailsTask.shouldForceRefresh = false
   m.loadDetailsTask.observeField("content", "onDetailsLoaded")
-  m.loadDetailsTask.control = "RUN"
+  launchTask(m.loadDetailsTask)
 end sub
 
 ' Callback when initial item details metadata arrives from the task
@@ -980,7 +981,7 @@ sub onRefreshResumeData()
   m.loadSeriesResumeTask.control = "STOP"
   m.loadSeriesResumeTask.itemId = item.id
   m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
-  m.loadSeriesResumeTask.control = "RUN"
+  launchTask(m.loadSeriesResumeTask)
 end sub
 
 ' Triggered by refreshItemDetailsData field toggle (return from playback, refresh button).
@@ -1019,7 +1020,7 @@ sub onRefreshItemDetailsData()
   m.loadDetailsTask.itemId = itemId
   m.loadDetailsTask.shouldForceRefresh = true
   m.loadDetailsTask.observeField("content", "onRefreshDetailsLoaded")
-  m.loadDetailsTask.control = "RUN"
+  launchTask(m.loadDetailsTask)
 end sub
 
 ' Callback when refreshed item details metadata arrives
@@ -1439,7 +1440,7 @@ sub populateDescriptionGroup()
       m.loadLyricsTask.control = "STOP"
       m.loadLyricsTask.itemId = item.id
       m.loadLyricsTask.observeField("content", "onLyricsLoaded")
-      m.loadLyricsTask.control = "RUN"
+      launchTask(m.loadLyricsTask)
     end if
     return
   end if
@@ -2535,7 +2536,7 @@ sub onItemContentChanged()
       m.loadSeriesResumeTask.control = "STOP"
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
-      m.loadSeriesResumeTask.control = "RUN"
+      launchTask(m.loadSeriesResumeTask)
     end if
 
     ' Trailer availability check — re-run on every content change so refreshes get fresh data.
@@ -2550,7 +2551,7 @@ sub onItemContentChanged()
       m.loadSeasonSeriesTask.unobserveField("content")
       m.loadSeasonSeriesTask.itemId = item.seriesId
       m.loadSeasonSeriesTask.observeField("content", "onSeasonSeriesDataLoaded")
-      m.loadSeasonSeriesTask.control = "RUN"
+      launchTask(m.loadSeasonSeriesTask)
     end if
 
     ' Load extras rows on first content load only; explicit refresh via onRefreshExtrasData.
@@ -4062,7 +4063,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
         ' Load first episode and set quickPlayNode
         m.loadFirstEpisodeTask.itemId = item.id
         m.loadFirstEpisodeTask.observeField("content", "onFirstEpisodeLoaded")
-        m.loadFirstEpisodeTask.control = "RUN"
+        launchTask(m.loadFirstEpisodeTask)
         return true
       else if focusedButton.id = "resumeButton" and isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
         m.top.quickPlayNode = m.top.nextUpEpisode

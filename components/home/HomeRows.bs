@@ -6,6 +6,7 @@ import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -86,7 +87,7 @@ sub loadLibraries()
   m.isLoadingLibraries = true
   m.LoadLibrariesTask.unobserveField("content")
   m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
-  m.LoadLibrariesTask.control = "RUN"
+  launchTask(m.LoadLibrariesTask)
 
   ' Start loading data for sections that don't depend on library data
   startParallelLoads()
@@ -211,25 +212,25 @@ sub startParallelLoads()
       m.isLoadingResume = true
       m.LoadContinueWatchingTask.unobserveField("content")
       m.LoadContinueWatchingTask.observeField("content", "updateContinueWatchingItems")
-      m.LoadContinueWatchingTask.control = "RUN"
+      launchTask(m.LoadContinueWatchingTask)
     else if section.type = "nextup"
       if m.isLoadingNextUp then continue for
       m.isLoadingNextUp = true
       m.LoadNextUpTask.unobserveField("content")
       m.LoadNextUpTask.observeField("content", "updateNextUpItems")
-      m.LoadNextUpTask.control = "RUN"
+      launchTask(m.LoadNextUpTask)
     else if section.type = "livetv"
       if m.isLoadingOnNow then continue for
       m.isLoadingOnNow = true
       m.LoadOnNowTask.unobserveField("content")
       m.LoadOnNowTask.observeField("content", "updateOnNowItems")
-      m.LoadOnNowTask.control = "RUN"
+      launchTask(m.LoadOnNowTask)
     else if section.type = "activerecordings"
       if m.isLoadingActiveRecordings then continue for
       m.isLoadingActiveRecordings = true
       m.LoadActiveRecordingsTask.unobserveField("content")
       m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
-      m.LoadActiveRecordingsTask.control = "RUN"
+      launchTask(m.LoadActiveRecordingsTask)
     end if
   end for
 end sub
@@ -391,7 +392,7 @@ sub startLatestMediaLoads()
   m.latestRowsExpectedCount = libs.count()
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
-  m.latestRowsTask.control = "RUN"
+  launchTask(m.latestRowsTask)
 end sub
 
 ' onLatestRowsReady: Drains all unprocessed result children from the orchestrator.
@@ -621,12 +622,12 @@ sub onProgramsExpired()
       m.isLoadingOnNow = true
       m.LoadOnNowTask.unobserveField("content")
       m.LoadOnNowTask.observeField("content", "updateOnNowItems")
-      m.LoadOnNowTask.control = "RUN"
+      launchTask(m.LoadOnNowTask)
     else if section.type = "activerecordings" and not m.isLoadingActiveRecordings
       m.isLoadingActiveRecordings = true
       m.LoadActiveRecordingsTask.unobserveField("content")
       m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
-      m.LoadActiveRecordingsTask.control = "RUN"
+      launchTask(m.LoadActiveRecordingsTask)
     end if
   end for
 end sub
@@ -763,7 +764,7 @@ sub updateHomeRows()
     m.isLoadingLibraries = true
     m.LoadLibrariesTask.unobserveField("content")
     m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
-    m.LoadLibrariesTask.control = "RUN"
+    launchTask(m.LoadLibrariesTask)
   end if
 
   ' Re-fire non-library-dependent tasks

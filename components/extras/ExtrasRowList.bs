@@ -5,6 +5,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/chapterItems.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -202,13 +203,13 @@ sub loadParts(data as object)
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     m.LoadSeasonsTask.observeField("content", "onSeasonsLoaded")
     m.LoadSeasonsTask.itemId = m.top.parentId
-    m.LoadSeasonsTask.control = "RUN"
+    launchTask(m.LoadSeasonsTask)
   else if itemType = "Season"
     m.top.rowItemSize = [rowSlotSize.WIDE]
     m.LoadSeasonAllEpisodesTask.observeField("content", "onSeasonAllEpisodesLoaded")
     m.LoadSeasonAllEpisodesTask.itemId = data.seriesId
     m.LoadSeasonAllEpisodesTask.metadata = { seasonId: data.id }
-    m.LoadSeasonAllEpisodesTask.control = "RUN"
+    launchTask(m.LoadSeasonAllEpisodesTask)
   else if itemType = "Episode"
     m.currentEpisodeId = data.id
     m.currentEpisodeSeasonNumber = data.parentIndexNumber
@@ -230,23 +231,23 @@ sub loadParts(data as object)
     m.LoadSeasonEpisodesTask.observeField("content", "onSeasonEpisodesLoaded")
     m.LoadSeasonEpisodesTask.itemId = data.seriesId
     m.LoadSeasonEpisodesTask.metadata = { seasonId: data.seasonId }
-    m.LoadSeasonEpisodesTask.control = "RUN"
+    launchTask(m.LoadSeasonEpisodesTask)
   else if itemType = "MusicVideo"
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
     m.LoadPeopleTask.peopleList = m.people
-    m.LoadPeopleTask.control = "RUN"
+    launchTask(m.LoadPeopleTask)
   else if itemType = "BoxSet"
     m.top.rowItemSize = [rowSlotSize.PORTRAIT]
     m.LoadBoxSetItemsTask.itemId = m.top.parentId
     m.LoadBoxSetItemsTask.observeField("content", "onBoxSetItemsLoaded")
-    m.LoadBoxSetItemsTask.control = "RUN"
+    launchTask(m.LoadBoxSetItemsTask)
   else if itemType = "MusicArtist"
     ' Chain: Albums → Appears On → Songs → More Like This
     m.top.rowItemSize = [rowSlotSize.SQUARE]
     m.LoadArtistAlbumsTask.itemId = m.top.parentId
     m.LoadArtistAlbumsTask.observeField("content", "onArtistAlbumsLoaded")
-    m.LoadArtistAlbumsTask.control = "RUN"
+    launchTask(m.LoadArtistAlbumsTask)
   else if itemType = "MusicAlbum"
     ' Chain: Songs → More Albums by Artist → More Like This
     ' Store current album ID so we can exclude it from the "More Albums by Artist" row
@@ -261,7 +262,7 @@ sub loadParts(data as object)
     m.top.rowItemSize = [rowSlotSize.SQUARE]
     m.LoadAlbumSongsTask.itemId = m.top.parentId
     m.LoadAlbumSongsTask.observeField("content", "onAlbumSongsLoaded")
-    m.LoadAlbumSongsTask.control = "RUN"
+    launchTask(m.LoadAlbumSongsTask)
   else if itemType = "Playlist"
     m.top.playlistContentKind = "unknown" ' Reset before chain — prevents stale kind from a prior run
     ' Chain: Playlist Items → More Like This
@@ -271,7 +272,7 @@ sub loadParts(data as object)
     m.top.rowItemSize = []
     m.LoadPlaylistItemsTask.itemId = m.top.parentId
     m.LoadPlaylistItemsTask.observeField("content", "onPlaylistItemsLoaded")
-    m.LoadPlaylistItemsTask.control = "RUN"
+    launchTask(m.LoadPlaylistItemsTask)
   else if itemType = "Audio"
     ' Chain: Album Tracklist (current track first) → More Like This
     m.currentAudioId = data.id
@@ -280,31 +281,31 @@ sub loadParts(data as object)
     if isValidAndNotEmpty(data.albumId)
       m.LoadAlbumSongsTask.itemId = data.albumId
       m.LoadAlbumSongsTask.observeField("content", "onAudioAlbumTracksLoaded")
-      m.LoadAlbumSongsTask.control = "RUN"
+      launchTask(m.LoadAlbumSongsTask)
     else
       ' No album — skip tracklist row and go straight to More Like This
       m.LikeThisTask.itemId = m.top.parentId
       m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-      m.LikeThisTask.control = "RUN"
+      launchTask(m.LikeThisTask)
     end if
   else if itemType = "Photo"
     ' Chain: More Like This
     m.top.rowItemSize = [rowSlotSize.WIDE]
     m.LikeThisTask.itemId = m.top.parentId
     m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-    m.LikeThisTask.control = "RUN"
+    launchTask(m.LikeThisTask)
   else if itemType = "PhotoAlbum"
     ' Chain: Album Photos → More Like This
     m.top.rowItemSize = [rowSlotSize.WIDE]
     m.LoadPhotoAlbumItemsTask.itemId = m.top.parentId
     m.LoadPhotoAlbumItemsTask.observeField("content", "onPhotoAlbumItemsLoaded")
-    m.LoadPhotoAlbumItemsTask.control = "RUN"
+    launchTask(m.LoadPhotoAlbumItemsTask)
   else if itemType = "TvChannel"
     ' Chain: Upcoming Programs → More Like This
     m.top.rowItemSize = [rowSlotSize.SQUARE]
     m.LoadChannelProgramsTask.itemId = m.top.parentId
     m.LoadChannelProgramsTask.observeField("content", "onChannelProgramsLoaded")
-    m.LoadChannelProgramsTask.control = "RUN"
+    launchTask(m.LoadChannelProgramsTask)
   else if itemType = "Program"
     ' Chain: More on this Channel → More Like This
     m.programChannelId = data.channelId
@@ -312,12 +313,12 @@ sub loadParts(data as object)
     if isValidAndNotEmpty(data.channelId)
       m.LoadChannelProgramsTask.itemId = data.channelId
       m.LoadChannelProgramsTask.observeField("content", "onProgramChannelProgramsLoaded")
-      m.LoadChannelProgramsTask.control = "RUN"
+      launchTask(m.LoadChannelProgramsTask)
     else
       ' No channel — skip to More Like This
       m.LikeThisTask.itemId = m.top.parentId
       m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-      m.LikeThisTask.control = "RUN"
+      launchTask(m.LikeThisTask)
     end if
   else
     ' Movie, Video, Recording: Chapters (sync) → AdditionalParts → People → LikeThis → SpecialFeatures
@@ -332,7 +333,7 @@ sub loadParts(data as object)
 
     m.LoadAdditionalPartsTask.observeField("content", "onAdditionalPartsLoaded")
     m.LoadAdditionalPartsTask.itemId = m.top.parentId
-    m.LoadAdditionalPartsTask.control = "RUN"
+    launchTask(m.LoadAdditionalPartsTask)
   end if
 end sub
 
@@ -345,7 +346,7 @@ sub loadPersonVideos(personId)
   m.top.personHasMedia = false ' Reset before new chain — prevents stale true from a prior run
   m.LoadMoviesTask.itemId = m.personId
   m.LoadMoviesTask.observeField("content", "onMoviesLoaded")
-  m.LoadMoviesTask.control = "RUN"
+  launchTask(m.LoadMoviesTask)
 end sub
 
 ' onSeasonsLoaded: Build "Seasons" row then chain to People (Series only)
@@ -362,7 +363,7 @@ sub onSeasonsLoaded()
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
   m.LoadPeopleTask.peopleList = m.people
-  m.LoadPeopleTask.control = "RUN"
+  launchTask(m.LoadPeopleTask)
 end sub
 
 ' onSeasonEpisodesLoaded: Build "More from Season X" row with current episode first,
@@ -421,7 +422,7 @@ sub onSeasonEpisodesLoaded()
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
   m.LoadPeopleTask.peopleList = m.people
-  m.LoadPeopleTask.control = "RUN"
+  launchTask(m.LoadPeopleTask)
 end sub
 
 ' onSeasonAllEpisodesLoaded: Build "Episodes" row then chain to People (Season only)
@@ -439,7 +440,7 @@ sub onSeasonAllEpisodesLoaded()
 
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
   m.LoadPeopleTask.peopleList = m.people
-  m.LoadPeopleTask.control = "RUN"
+  launchTask(m.LoadPeopleTask)
 end sub
 
 ' onBoxSetItemsLoaded: Build "Movies" row then chain to People → LikeThis (BoxSet only)
@@ -458,7 +459,7 @@ sub onBoxSetItemsLoaded()
   ' Continue chain: People → LikeThis
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
   m.LoadPeopleTask.peopleList = m.people
-  m.LoadPeopleTask.control = "RUN"
+  launchTask(m.LoadPeopleTask)
 end sub
 
 sub onAdditionalPartsLoaded()
@@ -482,7 +483,7 @@ sub onAdditionalPartsLoaded()
   ' Load Cast and Crew and everything else...
   m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
   m.LoadPeopleTask.peopleList = m.people
-  m.LoadPeopleTask.control = "RUN"
+  launchTask(m.LoadPeopleTask)
 end sub
 
 ' onPlaylistItemsLoaded: Build "Playlist Items" row then chain to More Like This (Playlist only).
@@ -539,7 +540,7 @@ sub onPlaylistItemsLoaded()
 
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  m.LikeThisTask.control = "RUN"
+  launchTask(m.LikeThisTask)
 end sub
 
 sub onPeopleLoaded()
@@ -560,7 +561,7 @@ sub onPeopleLoaded()
   else
     m.LikeThisTask.itemId = m.top.parentId
   end if
-  m.LikeThisTask.control = "RUN"
+  launchTask(m.LikeThisTask)
 end sub
 
 sub onLikeThisLoaded()
@@ -615,7 +616,7 @@ sub onLikeThisLoaded()
   if not inArray(itemTypeOrder.NO_SPECIAL_FEATURES, itemType)
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
-    m.SpecialFeaturesTask.control = "RUN"
+    launchTask(m.SpecialFeaturesTask)
   end if
 end sub
 
@@ -648,7 +649,7 @@ sub onMoviesLoaded()
   end if
   m.LoadShowsTask.itemId = m.personId
   m.LoadShowsTask.observeField("content", "onShowsLoaded")
-  m.LoadShowsTask.control = "RUN"
+  launchTask(m.LoadShowsTask)
 end sub
 
 sub onShowsLoaded()
@@ -666,7 +667,7 @@ sub onShowsLoaded()
   end if
   m.LoadSeriesTask.itemId = m.personId
   m.LoadSeriesTask.observeField("content", "onSeriesLoaded")
-  m.LoadSeriesTask.control = "RUN"
+  launchTask(m.LoadSeriesTask)
 end sub
 
 sub onSeriesLoaded()
@@ -701,7 +702,7 @@ sub onArtistAlbumsLoaded()
 
   m.LoadArtistAppearsOnTask.itemId = m.top.parentId
   m.LoadArtistAppearsOnTask.observeField("content", "onArtistAppearsOnLoaded")
-  m.LoadArtistAppearsOnTask.control = "RUN"
+  launchTask(m.LoadArtistAppearsOnTask)
 end sub
 
 ' onArtistAppearsOnLoaded: Build "Appears On" row then chain to Songs (MusicArtist only)
@@ -720,7 +721,7 @@ sub onArtistAppearsOnLoaded()
 
   m.LoadArtistSongsTask.itemId = m.top.parentId
   m.LoadArtistSongsTask.observeField("content", "onArtistSongsLoaded")
-  m.LoadArtistSongsTask.control = "RUN"
+  launchTask(m.LoadArtistSongsTask)
 end sub
 
 ' onArtistSongsLoaded: Build "Songs" row then chain to ArtistSimilar (MusicArtist only).
@@ -741,7 +742,7 @@ sub onArtistSongsLoaded()
 
   m.LoadArtistSimilarTask.itemId = m.top.parentId
   m.LoadArtistSimilarTask.observeField("content", "onArtistSimilarLoaded")
-  m.LoadArtistSimilarTask.control = "RUN"
+  launchTask(m.LoadArtistSimilarTask)
 end sub
 
 ' onArtistSimilarLoaded: Build "More Like This" row (MusicArtist only, end of chain).
@@ -776,11 +777,11 @@ sub onAlbumSongsLoaded()
   if isValidAndNotEmpty(m.currentAlbumArtistId)
     m.LoadArtistAlbumsTask.itemId = m.currentAlbumArtistId
     m.LoadArtistAlbumsTask.observeField("content", "onAlbumArtistAlbumsLoaded")
-    m.LoadArtistAlbumsTask.control = "RUN"
+    launchTask(m.LoadArtistAlbumsTask)
   else
     m.LikeThisTask.itemId = m.top.parentId
     m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-    m.LikeThisTask.control = "RUN"
+    launchTask(m.LikeThisTask)
   end if
 end sub
 
@@ -810,7 +811,7 @@ sub onAlbumArtistAlbumsLoaded()
 
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  m.LikeThisTask.control = "RUN"
+  launchTask(m.LikeThisTask)
 end sub
 
 ' onAudioAlbumTracksLoaded: Build "More from {Album}" row with current track first,
@@ -865,7 +866,7 @@ sub onAudioAlbumTracksLoaded()
 
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  m.LikeThisTask.control = "RUN"
+  launchTask(m.LikeThisTask)
 end sub
 
 ' onPhotoAlbumItemsLoaded: Build "Photos" row then chain to More Like This (PhotoAlbum only)
@@ -884,7 +885,7 @@ sub onPhotoAlbumItemsLoaded()
   ' Chain to More Like This
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  m.LikeThisTask.control = "RUN"
+  launchTask(m.LikeThisTask)
 end sub
 
 ' onChannelProgramsLoaded: Build "Up Next" row then chain to More Like This (TvChannel only)
@@ -903,7 +904,7 @@ sub onChannelProgramsLoaded()
   ' Chain to More Like This
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  m.LikeThisTask.control = "RUN"
+  launchTask(m.LikeThisTask)
 end sub
 
 ' onProgramChannelProgramsLoaded: Build "More on this Channel" row then chain to More Like This (Program only)
@@ -923,7 +924,7 @@ sub onProgramChannelProgramsLoaded()
   ' Chain to More Like This
   m.LikeThisTask.itemId = m.top.parentId
   m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  m.LikeThisTask.control = "RUN"
+  launchTask(m.LikeThisTask)
 end sub
 
 ' Fires when JRRowList's progress tick detects at least one expired Program
@@ -957,7 +958,7 @@ sub onProgramsExpired()
   m.LoadChannelProgramsTask.unobserveField("content")
   m.LoadChannelProgramsTask.itemId = channelId
   m.LoadChannelProgramsTask.observeField("content", handlerName)
-  m.LoadChannelProgramsTask.control = "RUN"
+  launchTask(m.LoadChannelProgramsTask)
 end sub
 
 ' Refetch handler for TvChannel "Up Next". Replaces the row content in place
