@@ -30,30 +30,6 @@ sub loadItems()
       end for
     end if
 
-    ' Load Latest Additions to Libraries
-  else if m.top.itemsToLoad = "latest"
-    activeUser = globalUser.id
-    if isValid(activeUser)
-      params = {}
-      params["Limit"] = 16
-      params["ParentId"] = m.top.itemId
-      params["EnableImageTypes"] = "Primary,Backdrop,Thumb"
-      params["ImageTypeLimit"] = 1
-      params["EnableTotalRecordCount"] = false
-
-      data = fetchJson(GetApi().BuildGetLatestMediaRequest(params), "latest")
-
-      ' /Items/Latest returns a bare array of BaseItemDto (not paginated).
-      if isValid(data)
-        for each item in data
-          ' Skip Books for now as we don't support it (issue #525)
-          if item.Type <> "Book"
-            results.push(m.transformer.transformBaseItem(item))
-          end if
-        end for
-      end if
-    end if
-
     ' Load Next Up
   else if m.top.itemsToLoad = "nextUp"
     userSettings = globalUser.settings

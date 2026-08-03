@@ -1,5 +1,6 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
@@ -42,8 +43,13 @@ sub init()
   m.populatedSectionCount = 0
   m.initialLoadComplete = false
 
-  ' Track per-library latest media tasks so they can be cleaned up
-  m.latestMediaTasks = []
+  ' Single orchestrator services all latest-media rows — one Task thread at any library count
+  m.latestRowsTask = createObject("roSGNode", "LoadLatestRowsTask")
+  m.latestRowsProcessedIndex = 0
+  ' Entries handed to the current run — the run is finished once the cursor reaches it
+  m.latestRowsExpectedCount = 0
+  ' Wall clock for the current run, read only to detect a run that outlived its own budget
+  m.latestRowsRunClock = CreateObject("roTimespan")
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
   m.isLoadingLibraries = false
@@ -51,6 +57,7 @@ sub init()
   m.isLoadingNextUp = false
   m.isLoadingOnNow = false
   m.isLoadingActiveRecordings = false
+  m.isLoadingLatestRows = false
 
   ' Refetch the On Now and Active Recordings rows when the base class's progress
   ' tick detects that at least one Program or Recording has ended. Without this,
@@ -259,7 +266,7 @@ sub onLibrariesLoaded()
     activateTextureManager(m.top.content)
   end if
 
-  ' Fire off latestmedia data tasks
+  ' Fire off the latest-media orchestrator
   startLatestMediaLoads()
 end sub
 
@@ -349,49 +356,86 @@ function findLatestMediaInsertIndex() as integer
   return 0
 end function
 
-' startLatestMediaLoads: Fires LoadItemsTask for each latestmedia library
+' startLatestMediaLoads: Hands the eligible libraries (in row order) to the orchestrator task.
+'
+' Skips outright while a run is in flight, matching the isLoading* rule updateHomeRows()
+' already applies to the other persistent tasks: the running orchestrator is about to deliver
+' fresh data, so restarting buys nothing and costs a cancel. It also keeps this off the one
+' path nobody has measured — Home is SUSPENDED rather than destroyed on navigation
+' (onScreenHidden stops no tasks), so a Home revisit lands here mid-run routinely, and
+' restarting would mean setting control = "RUN" on a thread that may still be unwinding.
 sub startLatestMediaLoads()
   if not isValidAndNotEmpty(m.filteredLatest) then return
 
-  ' Ensure any previous latest-media tasks are stopped and unobserved
-  cleanupLatestMediaTasks()
+  if m.isLoadingLatestRows
+    if not latestRows.runIsStalled(m.latestRowsRunClock.totalMilliseconds()) then return
+    ' Past its own budget the orchestrator thread is gone or wedged, so the flag would
+    ' otherwise freeze these rows for the life of this Home. Reclaiming it is safe for the
+    ' same reason: STOP here can only reach a thread that has already stopped running.
+    m.log.warn("latest-rows run outlived its budget; reclaiming", m.latestRowsRunClock.totalMilliseconds())
+  end if
 
+  ' Ensure any previous run is stopped and its delivered results cleared
+  resetLatestRowsRun()
+
+  libs = []
   for each lib in m.filteredLatest
     if lib.collectionType <> "boxsets" and lib.collectionType <> "livetv" and lib.collectionType <> "Program"
-      loadLatest = createObject("roSGNode", "LoadItemsTask")
-      loadLatest.itemsToLoad = "latest"
-      loadLatest.itemId = lib.id
-
-      metadata = { "title": lib.name, "contentType": lib.collectionType }
-      loadLatest.metadata = metadata
-
-      loadLatest.observeField("content", "updateLatestItems")
-
-      ' Track the task so it can be cleaned up later
-      m.latestMediaTasks.push(loadLatest)
-
-      loadLatest.control = "RUN"
+      libs.push({ id: lib.id })
     end if
   end for
+  if libs.count() = 0 then return
+
+  m.latestRowsTask.libraries = libs
+  m.latestRowsTask.observeField("rowReady", "onLatestRowsReady")
+  m.latestRowsExpectedCount = libs.count()
+  m.isLoadingLatestRows = true
+  m.latestRowsRunClock.mark()
+  m.latestRowsTask.control = "RUN"
 end sub
 
-' cleanupLatestMediaTasks: Stop and unobserve any in-flight latest media tasks
-sub cleanupLatestMediaTasks()
-  if not isValid(m.latestMediaTasks) then return
+' onLatestRowsReady: Drains all unprocessed result children from the orchestrator.
+' Each wake may cover several results — wake events can coalesce, the children can't.
+sub onLatestRowsReady()
+  if not isValid(m.latestRowsTask) then return
 
-  for each task in m.latestMediaTasks
-    if isValid(task)
-      ' Remove all observers on the content field to prevent callbacks after teardown
-      task.unobserveField("content")
+  ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
+  ' so they can be unit-tested without a callFunc seam on this component.
+  drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex)
+  m.latestRowsProcessedIndex = drained.nextIndex
 
-      ' Stop the task if it is still running
-      if lcase(task.control) = "run"
-        task.control = "stop"
-      end if
-    end if
+  for each child in drained.ready
+    populateRowFromData("latest_" + child.libId, child.items)
+    ' The row owns the item nodes now — drop the orchestrator's reference so a long
+    ' Home session doesn't retain every batch it has ever delivered.
+    child.items = []
   end for
 
-  m.latestMediaTasks = []
+  ' A failed row is deliberately left alone — it keeps the skeleton placeholder
+  ' insertLatestMediaSkeletons gave it and fills in place on the next refresh, so nothing
+  ' shifts. See latestRows.drainReady for why clearing it would be worse.
+  '
+  ' apiPipeline yields every entry exactly once and emitRow appends one child per yield, so
+  ' the cursor reaching the entry count means the run is over. Frees the guard without a
+  ' second interface field or a read of the firmware-managed `state` transitions.
+  if m.latestRowsProcessedIndex >= m.latestRowsExpectedCount then m.isLoadingLatestRows = false
+end sub
+
+' resetLatestRowsRun: Return the orchestrator to a clean pre-run state — unobserved, stopped,
+' its delivered result children dropped and the drain cursor rewound.
+'
+' Called before starting a run and from onDestroy. Named for the run rather than the task
+' (the old cleanupLatestMediaTasks) because there is exactly one task now; what gets reset is
+' the run's state around it.
+sub resetLatestRowsRun()
+  if not isValid(m.latestRowsTask) then return
+
+  m.latestRowsTask.unobserveField("rowReady")
+  m.latestRowsTask.control = "STOP"
+  m.latestRowsTask.removeChildrenIndex(m.latestRowsTask.getChildCount(), 0)
+  m.latestRowsProcessedIndex = 0
+  m.latestRowsExpectedCount = 0
+  m.isLoadingLatestRows = false
 end sub
 
 ' ============================================
@@ -585,19 +629,6 @@ sub onProgramsExpired()
       m.LoadActiveRecordingsTask.control = "RUN"
     end if
   end for
-end sub
-
-' updateLatestItems: Processes LoadItemsTask content for a latest-in-library row.
-' Uses msg parameter because each library has its own dynamically created task.
-'
-' @param {dynamic} msg - roSGNodeEvent from the LoadItemsTask
-sub updateLatestItems(msg)
-  itemData = msg.GetData()
-  node = msg.getRoSGNode()
-  node.unobserveField("content")
-  node.content = []
-
-  populateRowFromData("latest_" + node.itemId, itemData)
 end sub
 
 ' populateRowFromData: Unified row population logic used by all update callbacks.
@@ -868,8 +899,9 @@ sub onDestroy()
   m.LoadActiveRecordingsTask.control = "STOP"
   m.LoadActiveRecordingsTask = invalid
 
-  ' Stop and release any per-library latest media tasks
-  cleanupLatestMediaTasks()
+  ' Stop and release the latest-media orchestrator
+  resetLatestRowsRun()
+  m.latestRowsTask = invalid
 
   ' Clear data caches
   m.libraryData = invalid

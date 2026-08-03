@@ -1,0 +1,86 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.log = new log.Logger("LoadLatestRowsTask")
+  m.top.functionName = "loadLatestRows"
+end sub
+
+' One thread services every latest-media row, at any library count. apiPipeline keeps the
+' API pool busy — several requests in flight, one per free slot — while this task stays a
+' single thread; the per-library task fan-out it replaced was a `&h29` "too many threads"
+' source on large servers (epic #728). See source/api/apiPipeline.bs.
+'
+' Results ride out as appended children rather than a shared field: rapid writes to one
+' field can coalesce and silently drop a row.
+sub loadLatestRows()
+  libs = m.top.libraries
+  if not isValidAndNotEmpty(libs) then return
+
+  m.transformer = JellyfinDataTransformer()
+
+  ' Entry order is row order, so on-screen-first rows are submitted first.
+  entries = []
+  for each lib in libs
+    entries.push({
+      requestId: "latestRow-" + lib.id,
+      req: GetApi().BuildGetLatestMediaRequest({
+        "Limit": 16,
+        "ParentId": lib.id,
+        "EnableImageTypes": "Primary,Backdrop,Thumb",
+        "ImageTypeLimit": 1,
+        "EnableTotalRecordCount": false
+      }),
+      libId: lib.id
+    })
+  end for
+
+  pipe = apiPipelineBegin(entries)
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    emitRow(result.entry.libId, result.res)
+    result = apiPipelineNext(pipe)
+  end while
+end sub
+
+' Transforms one response and emits its row.
+'
+' `res` is invalid when the request never got an answer — the pool was down, or the run
+' budget expired. An HTTP error (`res.ok = false`) is deliberately folded into the same
+' "failed" status: apiPipeline distinguishes the two, but neither is authoritative about what
+' the library HOLDS, which is the only question this row's contents answer. Only an "ok"
+' carries a list the UI may act on, including an empty one (which legitimately removes the
+' row). HomeRows leaves any existing row alone on "failed" — a populated one keeps its
+' content, an unpopulated one keeps its loading placeholder.
+sub emitRow(libId as string, res as dynamic)
+  items = []
+  status = "failed"
+
+  if isValid(res) and res.ok
+    status = "ok"
+    if isValid(res.json)
+      ' transformBaseItemArray resolves the server version once for the whole batch;
+      ' the per-item call re-reads it (a rendezvous) for every one of the 16 items.
+      items.append(m.transformer.transformBaseItemArray(supportedItems(res.json)))
+    end if
+  else
+    m.log.warn("latest-media row failed; leaving any existing row in place", libId)
+  end if
+
+  child = CreateObject("roSGNode", "ContentNode")
+  child.addFields({ libId: libId, items: items, status: status })
+  m.top.appendChild(child)
+  m.top.rowReady = libId
+end sub
+
+' Drops item types the app can't present — Books (issue #525).
+function supportedItems(apiItems as object) as object
+  kept = []
+  for each item in apiItems
+    if item.Type <> "Book" then kept.push(item)
+  end for
+  return kept
+end function

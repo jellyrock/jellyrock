@@ -14,7 +14,7 @@ here.
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.
 - `screens.js` — the **screen registry**, the single source of truth for both the tests and the screenshots. Add a screen here.
 - `lib/` — `driver` (env + deploy + relaunch), `steps` (press/getVal/waitFor/waitFocused), `seed` (registry seeds + snapshot/restore), `jellyfin` (demo REST), `nav` (per-screen navigation).
-- `specs/` — the Vitest specs (`it.each(SCREENS)`).
+- `specs/` — the Vitest specs (a `for` loop over `SCREENS`, not `it.each`: `it.each` passes only the case object, so a case can't skip itself at runtime, and content-dependent screens need exactly that).
 - `capture.js`, `setup/` — the `RTA_CAPTURE` raw-capture helper and Vitest global/per-worker setup.
 - `demos/` — hands-free **video-capture** takes (`npm run demo`). `run.mjs` owns the privacy-safe lifecycle (snapshot → record gates → restore + relaunch); each `takes/*.js` declares only its choreography. NOT tests — these drive the device for marketing/PR demos against the public demo server only (the runner refuses any non-demo host).
 

@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
-last-reviewed: 2026-06-06
+last-reviewed: 2026-08-02
 ---
 
 # Async & Promises
@@ -58,7 +58,9 @@ The registry-mutating logic is split into `settleApiPromiseIn(pending, id)` /
 `abandonApiPromisesIn(pending)` cores that take the registry explicitly, with thin `m`-bound
 wrappers (`settleApiPromise` / `abandonApiPromises`) for the production handlers. The split exists
 because bare global calls from a Rooibos **class method** don't share the instance `m`, so the
-explicit-registry cores are what the unit tests drive.
+explicit-registry cores are what the unit tests drive. [`apiPipeline.bs`](../../source/api/apiPipeline.bs)
+is split the same way and for the same reason — its slot accounting, take and drain are pure over an
+explicitly-passed state AA, with only submit / wait / unobserve in the shell.
 
 ## Cancellation — auto-abandon
 
@@ -116,8 +118,12 @@ only dispatches inside a SceneGraph component (the render thread). So:
   router calling `group.callFunc("toggleFavorite")` → `ItemDetails.toggleFavorite` (issue #551,
   Phase `3c`). This is preferred over wiring `promises.setMessagePort`/`wait2` into the main loop —
   delegation needs no foundation change and keeps the one async vocabulary.
-- **Task threads** — don't use promises; use blocking `fetchRes` (above). If you ever must, that's
-  the `setMessagePort` + `wait2` path.
+- **Task threads** — don't use promises. Blocking `fetchRes` (above) is the default; when a Task has
+  N *independent* requests, [`apiPipeline`](../../source/api/apiPipeline.bs) keeps several in flight
+  on that one thread without spawning a Task per request (call pattern 5 — see
+  [api.md](./api.md)). Both are blocking-shaped from the caller's point of view, which is why
+  neither needs promises. If you genuinely must consume a promise on a Task thread, that's the
+  `setMessagePort` + `wait2` path.
 
 ## Risk & coexistence
 

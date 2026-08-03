@@ -1,0 +1,187 @@
+import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/home/latestRows.bs"
+
+namespace tests
+
+  ' Contract tests for Home's latest-media drain (source/home/latestRows.bs).
+  '
+  ' What it decides is load-bearing in both directions: treating a failed request as
+  ' authoritative deletes a populated row (populateRowFromData removes a row when handed an
+  ' empty list), while wrong cursor arithmetic either re-delivers a row or silently drops
+  ' one. Both are driven here against a hand-built ContentNode tree — no orchestrator, no
+  ' pool, no callFunc seam on HomeRows.xml.
+  @suite("latestRows - Home latest-media drain contract")
+  class LatestRowsDrainTests extends tests.BaseTestSuite
+
+    ' Builds a stand-in for the orchestrator task: a node whose children carry the same
+    ' { libId, items, status } fields LoadLatestRowsTask appends.
+    private function makeResults(specs as object) as object
+      task = CreateObject("roSGNode", "ContentNode")
+      for each spec in specs
+        child = CreateObject("roSGNode", "ContentNode")
+        child.addFields({
+          libId: spec.libId,
+          items: spec.items,
+          status: spec.status
+        })
+        task.appendChild(child)
+      end for
+      return task
+    end function
+
+    private function libIdsOf(children as object) as object
+      ids = []
+      for each child in children
+        ids.push(child.libId)
+      end for
+      return ids
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("failed rows are skipped, never populated")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns only the rows whose request answered")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "failed" }
+        { libId: "c", items: [], status: "ok" }
+      ])
+
+      drained = latestRows.drainReady(task, 0)
+
+      m.assertEqual(m.libIdsOf(drained.ready), ["a", "c"])
+    end function
+
+    @it("advances the cursor past skipped rows so they aren't revisited")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "failed" }
+        { libId: "b", items: [], status: "failed" }
+      ])
+
+      drained = latestRows.drainReady(task, 0)
+
+      m.assertEqual(drained.ready.count(), 0)
+      m.assertEqual(drained.nextIndex, 2)
+    end function
+
+    @it("skips a child missing its status rather than treating it as authoritative")
+    function _()
+      task = CreateObject("roSGNode", "ContentNode")
+      child = CreateObject("roSGNode", "ContentNode")
+      child.addFields({ libId: "a", items: [] })
+      task.appendChild(child)
+
+      drained = latestRows.drainReady(task, 0)
+
+      m.assertEqual(drained.ready.count(), 0)
+      m.assertEqual(drained.nextIndex, 1)
+    end function
+
+    @it("passes an ok row through even when its item list is empty")
+    function _()
+      ' An authoritative empty result is how a genuinely empty library removes its row —
+      ' the caller must still see it.
+      task = m.makeResults([{ libId: "a", items: [], status: "ok" }])
+
+      drained = latestRows.drainReady(task, 0)
+
+      m.assertEqual(drained.ready.count(), 1)
+      m.assertEqual(drained.ready[0].items.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("runIsStalled - the in-flight guard can never wedge")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not call a run stalled inside its own whole-run budget")
+    function _()
+      m.assertFalse(latestRows.runIsStalled(0))
+      m.assertFalse(latestRows.runIsStalled(timeouts.PIPELINE_RUN_MS - 1))
+    end function
+
+    @it("tolerates one request's deadline of overshoot past the budget")
+    function _()
+      ' A live run can post this much between its last wait returning and the loop exiting;
+      ' reclaiming there would cancel a run that was about to deliver.
+      m.assertFalse(latestRows.runIsStalled(timeouts.PIPELINE_RUN_MS))
+      m.assertFalse(latestRows.runIsStalled(timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS))
+    end function
+
+    @it("calls a run stalled once it outlives budget plus that grace")
+    function _()
+      m.assertTrue(latestRows.runIsStalled(timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS + 1))
+    end function
+
+    @it("stays stalled for an arbitrarily old run")
+    function _()
+      ' The guard must reclaim a dead thread no matter how long ago it died — otherwise a
+      ' single crashed orchestrator freezes Home's latest rows for this Home's lifetime.
+      m.assertTrue(latestRows.runIsStalled(600000))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cursor arithmetic across coalesced wake events")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("delivers every child when several results arrive on one wake")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "ok" }
+        { libId: "c", items: [], status: "ok" }
+      ])
+
+      drained = latestRows.drainReady(task, 0)
+
+      m.assertEqual(m.libIdsOf(drained.ready), ["a", "b", "c"])
+      m.assertEqual(drained.nextIndex, 3)
+    end function
+
+    @it("resumes from the cursor and never re-delivers a processed child")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "ok" }
+      ])
+
+      first = latestRows.drainReady(task, 0)
+      m.assertEqual(first.nextIndex, 2)
+
+      ' A later wake with nothing new appended.
+      second = latestRows.drainReady(task, first.nextIndex)
+
+      m.assertEqual(second.ready.count(), 0)
+      m.assertEqual(second.nextIndex, 2)
+    end function
+
+    @it("picks up only the children appended since the last drain")
+    function _()
+      task = m.makeResults([{ libId: "a", items: [], status: "ok" }])
+      first = latestRows.drainReady(task, 0)
+
+      late = CreateObject("roSGNode", "ContentNode")
+      late.addFields({ libId: "b", items: [], status: "ok" })
+      task.appendChild(late)
+
+      second = latestRows.drainReady(task, first.nextIndex)
+
+      m.assertEqual(m.libIdsOf(second.ready), ["b"])
+      m.assertEqual(second.nextIndex, 2)
+    end function
+
+    @it("returns nothing for an orchestrator that has delivered nothing yet")
+    function _()
+      task = CreateObject("roSGNode", "ContentNode")
+
+      drained = latestRows.drainReady(task, 0)
+
+      m.assertEqual(drained.ready.count(), 0)
+      m.assertEqual(drained.nextIndex, 0)
+    end function
+
+  end class
+
+end namespace

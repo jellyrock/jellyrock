@@ -1,0 +1,69 @@
+import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Decision layer for Home's latest-media rows — which of the orchestrator's delivered
+' results the UI may act on, and where the drain cursor lands.
+'
+' It lives in source/ rather than in HomeRows.bs because a component codebehind's functions
+' are scoped to that component: a Rooibos suite (which runs in the source scope) cannot call
+' them without a callFunc seam on the XML. Extracting the judgment instead keeps the seam off
+' the component and the rules under test. Same move as source/remotecontrol/remoteCommand.bs.
+namespace latestRows
+
+  ' Walks LoadLatestRowsTask's result children from `startIndex` and returns the ones the UI
+  ' should populate, plus the new cursor. One wake can cover several results — wake events
+  ' coalesce, appended children don't — so the caller always drains to the end.
+  '
+  ' A "failed" child is SKIPPED, not returned. A timeout, a transport failure or an HTTP error
+  ' says nothing about what the library holds, and populateRowFromData removes a row when handed
+  ' an empty list — so acting on a failure would delete good content on a flaky refresh. The
+  ' cursor still advances past it; the row self-heals on the next Home.refresh(), which fires on
+  ' every onScreenShown.
+  '
+  ' DELIBERATELY does not hand failures back for the caller to clear the row. A latest row that
+  ' has not been populated yet is not empty — insertLatestMediaSkeletons gives it one
+  ' `type: "Loading"` placeholder child so the RowList renders it at the right slot size — so a
+  ' failed row keeps that skeleton, and the next successful refresh fills it via
+  ' populateRowFromData's "update children in place" branch: items appended, placeholder dropped,
+  ' no insert. Removing the row instead would send that refresh down the else-branch, which
+  ' CreateObject+insertChild's a fresh row — the row visibly pops in and shifts every row below
+  ' it. Measured on device (8 libraries, HTTP 500 forced on five): the skipped rows sat at their
+  ' single placeholder child and nothing shifted. Keep it that way.
+  '
+  ' @param task - the LoadLatestRowsTask node holding { libId, items, status } children
+  ' @param startIndex - first unprocessed child index
+  ' @return an AA { ready, nextIndex } - the children to populate, and the new cursor
+  function drainReady(task as object, startIndex as integer) as object
+    ready = []
+    index = startIndex
+    childCount = task.getChildCount()
+
+    while index < childCount
+      child = task.getChild(index)
+      index++
+      if isValid(child) and child.status = "ok" then ready.push(child)
+    end while
+
+    return { ready: ready, nextIndex: index }
+  end function
+
+  ' Has a run been in flight long enough that its orchestrator thread must be gone?
+  '
+  ' HomeRows skips a refresh while a run is in flight, which is only safe if the in-flight
+  ' state can never get stuck: a Task thread that crashes never delivers its last child, so
+  ' the completion check never fires and the guard would freeze Home's latest rows for the
+  ' life of that Home instance. This is the backstop, and epic #728 is precisely a history of
+  ' Task threads dying.
+  '
+  ' The threshold is derived, not tuned: apiPipeline bounds a whole run at PIPELINE_RUN_MS,
+  ' and API_WAIT_MS is one request's own deadline — the largest overshoot a live run can post
+  ' between its last wait returning and the loop exiting. Anything past the two combined is
+  ' not a slow run, it is a dead one.
+  '
+  ' @param elapsedMs - milliseconds since the run was started
+  ' @return true when the run has outlived any legitimate duration
+  function runIsStalled(elapsedMs as integer) as boolean
+    return elapsedMs > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
+  end function
+
+end namespace

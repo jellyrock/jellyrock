@@ -1,6 +1,6 @@
 # Rules for `source/api/`
 
-Jellyfin API layer + task pool dispatcher. See [docs/architecture/api.md](../../docs/architecture/api.md) for the full design (3-layer model, persistent task pool, `V1/V2` dispatch, the four call patterns, the children-as-vehicle trick to dodge SceneGraph event coalescing).
+Jellyfin API layer + task pool dispatcher. See [docs/architecture/api.md](../../docs/architecture/api.md) for the full design (3-layer model, persistent task pool, `V1/V2` dispatch, the five call patterns, the children-as-vehicle trick to dodge SceneGraph event coalescing).
 
 ## The 3-layer model
 
@@ -21,7 +21,7 @@ Decision flow:
 
 `docs/dev/api-layering-guide.md` is the canonical decision-tree how-to.
 
-## Task pool — the four call patterns
+## Task pool — the five call patterns
 
 | Pattern | Use case | From |
 |---|---|---|
@@ -29,6 +29,9 @@ Decision flow:
 | `submitApiRequest(req, id)` | Non-blocking; user clicks → fire → toggle UI on response | render thread |
 | `SubmitSideEffect(req)` | Fire-and-forget POST/DELETE (telemetry, mark-watched) | anywhere |
 | Dedicated `Task` + `roUrlTransfer` | Non-Jellyfin HTTP (font downloads, SSDP, …) | a Task component |
+| `apiPipelineBegin` / `apiPipelineNext` | N *independent* requests that scale with server data (per library, per season) | a Task thread |
+
+**Never spawn a Task per request** to parallelize N calls — that fan-out is what produced the `&h29` "too many task threads" crashes (#728). Use `apiPipeline`: one thread, up to `apiPool.SLOT_COUNT` requests in flight. Note `res = invalid` from it means *no answer*, not an error response — don't clear UI on it, including a skeleton/placeholder the caller drew before the run (clearing that makes the next success re-insert the element, which pops in and shifts the rows after it).
 
 ## `V1` vs `V2` dispatch
 

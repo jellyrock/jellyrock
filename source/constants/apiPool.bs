@@ -1,0 +1,21 @@
+' @fileoverview Shape constants for the API request pool.
+'
+' The pool's width (how many ApiTask slots the coordinator can dispatch to at
+' once) is a number several layers need to agree on. Two of those layers encode
+' it STRUCTURALLY and cannot read this constant:
+'
+'   - source/utils/globals.bs      — three separately named globals (apiPool0/1/2)
+'   - components/api/ApiQueueTask.bs — the matching 3-element m.inFlight array
+'
+' Changing the pool width therefore still means editing those two sites by hand.
+' This constant exists so every OTHER consumer — code that only needs to know how
+' many requests can usefully be in flight — reads one number instead of
+' re-hardcoding it. See docs/architecture/api.md for why three slots.
+
+namespace apiPool
+
+  ' ApiTask slots served by the queue coordinator. Do not raise without
+  ' measuring — see source/api/CLAUDE.md ("Don't increase the pool size").
+  const SLOT_COUNT = 3
+
+end namespace
