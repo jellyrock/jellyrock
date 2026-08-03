@@ -45,7 +45,7 @@ sub calculateGlobalFontScale()
   ' validate localBoundingRect() results
   if fallbackHeight <= 0
     print "ERROR - calculateFontScale: Could not measure fallback font height"
-    m.top.scaledSize = 1.0
+    m.top.scaleFactor = 1.0
     return
   end if
 

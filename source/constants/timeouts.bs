@@ -28,6 +28,11 @@ namespace timeouts
   ' components/home/LoadLatestRowsTask.bs and source/home/latestRows.bs.
   const PIPELINE_RUN_MS = 20000
 
+  ' Fallback-font scale measurement wait (main.bs calculateFontScaleFactor).
+  ' A safety net for a task that never reports, not an expected duration — it measures two
+  ' labels. Blocks the main thread during bootstrap, so it is not larger.
+  const FONT_SCALE_MS = 10000
+
   ' Session connection check timeout.
   ' Intentionally higher to accommodate slow/remote servers
   ' and redirect chains during initial connection.

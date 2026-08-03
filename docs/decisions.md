@@ -227,6 +227,16 @@ The collision is reachable by construction, not by luck: sgRouter SUSPENDS Home 
 
 Ruled out: **cancel-and-restart with run-id stamping** (the `m.programDetailsSeq` idiom from `components/liveTv/schedule.bs`) — it fixes the stale-child replay but leaves the documented no-op above in place. Also ruled out: **a fresh Task node per run** — unambiguous, and thread count would still be one, but it trades the file's persistent-task convention for an allocation per refresh to solve what the guard solves for free. Accepted constraint: the guard must never wedge, so `latestRows.runIsStalled` reclaims a run past `PIPELINE_RUN_MS + API_WAIT_MS` — a crashed orchestrator never delivers its last child, and without the backstop one dead thread would freeze these rows for the life of that Home instance. One reuse trap checked and currently clear: the same doc section warns that non-cloneable references created in a Task's `init()` reach only the FIRST thread the node launches. `LoadLatestRowsTask.init()` holds only `m.log` (an AA of functions plus an `roSGNode` — all on the cloneable list), and `apiPipeline` creates its `roMessagePort` and `roTimespan` inside the task function, so each run gets its own. Keep it that way; an `roXxx` added to that `init()` would be `invalid` from the second run onward.
 
+## decision-id: photo-unresolvable-failure-policy
+
+**date**: 2026-08-03
+**status**: accepted
+**related-files**: `components/photos/PhotoDetails.bs`
+
+A photo whose URI won't resolve now raises a non-blocking toast and advances to the next slide, and after `MAX_CONSECUTIVE_PHOTO_FAILURES` (3) consecutive failures stops advancing rather than cycling. The reason skipping is the right default is a property of this screen specifically: `PhotoDetails.xml` draws exactly one full-bleed `Poster` plus a status label that is opacity-0 outside the slideshow-paused flash, and `init` sets `isOverhangVisible = false`. There is no title, date, or chrome — so a failed photo shows the user nothing new, and `photo.uri` is left untouched, meaning the previous frame stays up. Skipping therefore hides nothing, which is the usual argument against silently skipping.
+
+Ruled out: **a blocking modal** (the prior behavior), which was not merely worse but non-viable — `messageDialog` reached `showDialog`, which builds an `roFontRegistry` for text metrics, and that is a MAIN|TASK-only component Roku refuses to construct on the render thread, so a dialog raised from this render-thread component was a crash rather than a message. That path was almost certainly never exercised: the pre-existing guard tested `isValid()` on a SceneGraph `string` field, which never goes invalid. Also ruled out: **unbounded skipping**, because random mode has no end-of-list terminator, so a wholesale failure (an unset server URL fails every photo) would cycle a blank screen indefinitely; the bound converts that into a stop. Constraint worth re-evaluating: the bound of 3 is a judgment call with no measurement behind it, and once #757's render-thread-safe `JRDialog` lands the terminal case could become a real dialog instead of simply halting.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

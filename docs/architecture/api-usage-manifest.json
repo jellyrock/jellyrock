@@ -1069,12 +1069,6 @@
       ]
     },
     {
-      "name": "TotalRecordCount",
-      "sourceFiles": [
-        "source/api/items.bs"
-      ]
-    },
-    {
       "name": "Type",
       "sourceFiles": [
         "source/api/items.bs"
@@ -3064,14 +3058,14 @@
     },
     "counts": {
       "endpoints": 70,
-      "requestFields": 41,
+      "requestFields": 40,
       "responseFields": 214,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 446
+        "line": 423
       },
       {
         "sourceFile": "source/utils/subtitles.bs",

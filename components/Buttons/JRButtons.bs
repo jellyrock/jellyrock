@@ -1,6 +1,10 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/utils/misc.bs"
 
+' TextSizeTask measures at this size and showButtons renders at it. They must agree or the
+' labels are laid out to the wrong widths, so it is one constant rather than two literals.
+const BUTTON_FONT_SIZE = 40
+
 sub init()
 
   m.top.focusable = true
@@ -18,8 +22,6 @@ sub init()
 
   m.buttonCount = 0
   m.selectedFocusedIndex = 0
-
-  m.textSizeTask = createObject("roSGNode", "TextSizeTask")
 
   m.top.observeField("focusedChild", "focusChanged")
   m.top.enableRenderTracking = true
@@ -49,15 +51,40 @@ sub renderChanged()
 end sub
 
 
+' `buttons` onChange. The measurement has to happen on a Task: it needs roFontRegistry, which
+' Roku refuses to create on the render thread ("MAIN|TASK-only component"). The task is built
+' per write and released in showButtons, so nothing is retained between measurements.
 sub updateButtons()
-  m.textSizeTask.fontsize = 40
-  m.textSizeTask.text = m.top.buttons
-  m.textSizeTask.name = m.buttonCount
+  cancelTextSizeTask()
+
+  m.textSizeTask = createObject("roSGNode", "TextSizeTask")
   m.textSizeTask.observeField("width", "showButtons")
+  m.textSizeTask.fontsize = BUTTON_FONT_SIZE
+  m.textSizeTask.text = m.top.buttons
   m.textSizeTask.control = "RUN"
 end sub
 
+' Stop, unobserve, and drop the in-flight TextSizeTask if one exists. Safe to call when none is
+' active. The single teardown path for m.textSizeTask, mirroring QueueManager's cancelActive*.
+' JRButtons extends Group, so no onDestroy lifecycle hook runs on it — releasing the node as
+' soon as its one-shot measurement lands is what keeps it from outliving the screen.
+sub cancelTextSizeTask()
+  if isValid(m.textSizeTask)
+    m.textSizeTask.unobserveField("width")
+    m.textSizeTask.control = "STOP"
+    m.textSizeTask = invalid
+  end if
+end sub
+
+' Rebuilds the label row. Clears first so a second `buttons` write replaces the row instead of
+' appending a second copy of it — createChild appends, and buttonCount drives key nav.
 sub showButtons()
+
+  widths = m.textSizeTask.width
+  lineHeight = m.textSizeTask.height
+
+  m.buttonGroup.removeChildrenIndex(m.buttonGroup.getChildCount(), 0)
+  m.buttonCount = 0
 
   totalWidth = 110 ' track for menu background width - start with side padding
 
@@ -65,7 +92,7 @@ sub showButtons()
     m.buttonCount = m.buttonCount + 1
     l = m.buttonGroup.createChild("Label")
     l.text = m.top.buttons[i]
-    l.font.size = 40
+    l.font.size = BUTTON_FONT_SIZE
 
     ' Apply fallback font scaling if enabled
     if m.global.user.settings.uiFontFallback = true
@@ -74,15 +101,20 @@ sub showButtons()
     end if
 
     l.translation = [0, 10]
-    l.height = m.textSizeTask.height
-    l.width = m.textSizeTask.width[i] + 50
+    l.height = lineHeight
+    l.width = widths[i] + 50
     l.horizAlign = "center"
     l.vertAlign = "center"
     totalWidth = totalWidth + l.width + 45
   end for
 
   m.menubg.width = totalWidth
-  m.menubg.height = m.textSizeTask.height + 40
+  m.menubg.height = lineHeight + 40
+
+  ' Released only once the row is built. `widths` was read out of the task node, and Roku does
+  ' not document whether an array field read yields a copy or a view into the node's storage —
+  ' keeping the node alive across the loop means we never have to depend on the answer.
+  cancelTextSizeTask()
 
 end sub
 
