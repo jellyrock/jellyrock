@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `ws://` remote-control socket task-thread leak ([#756](https://github.com/jellyrock/jellyrock/pull/756))
 - move log-manager init to `JRScene` so global nodes can log ([#761](https://github.com/jellyrock/jellyrock/pull/761))
 
+### Dependencies
+
+- Update js-yaml from v5.2.2 to v5.2.3 ([#758](https://github.com/jellyrock/jellyrock/pull/758))
+
 ## [2.24.2](https://github.com/jellyrock/jellyrock/compare/v2.24.1...v2.24.2) - 2026-07-31
 
 ### Fixed
