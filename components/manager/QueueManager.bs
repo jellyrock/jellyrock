@@ -292,10 +292,22 @@ end sub
 ' randomized item set off the render thread). Owns the task on this node. PhotoAlbum shuffle
 ' does NOT come here — it launches a random slideshow through launchPhotoAlbum instead.
 sub launchShuffle(input as object)
+  ' A re-press before the first resolves would otherwise leave two tasks racing over the shared
+  ' queue. Last press wins, as in launchQuickPlayAction.
+  cancelActiveShuffleTask()
   m.shuffleTask = CreateObject("roSGNode", "GetShuffleItemsTask")
   m.shuffleTask.shuffleInput = input
   m.shuffleTask.observeField("shuffleItems", "onShuffleItemsLoaded")
   m.shuffleTask.control = "RUN"
+end sub
+
+' The single teardown path for m.shuffleTask. Safe to call when none is active.
+sub cancelActiveShuffleTask()
+  if isValid(m.shuffleTask)
+    m.shuffleTask.unobserveField("shuffleItems")
+    m.shuffleTask.control = "STOP"
+    m.shuffleTask = invalid
+  end if
 end sub
 
 ' GetShuffleItemsTask finished — set the resolved items as the queue and play. The task
@@ -303,9 +315,7 @@ end sub
 ' top when there's more than one item.
 sub onShuffleItemsLoaded()
   shuffleItems = m.shuffleTask.shuffleItems
-  m.shuffleTask.unobserveField("shuffleItems")
-  m.shuffleTask.control = "STOP"
-  m.shuffleTask = invalid
+  cancelActiveShuffleTask()
 
   if isValid(shuffleItems) and shuffleItems.count() > 0
     clear()
