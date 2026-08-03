@@ -12,7 +12,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-08-02
+last-reviewed: 2026-08-03
 ---
 
 # API Layer & Task Pool
@@ -294,7 +294,9 @@ Goes through the single `m.global.sideEffectTask` (not the pool). Like the pool,
 
 For non-Jellyfin HTTP (e.g., font downloads, image fetches that need special handling, or the SSDP server discovery during login). Write a dedicated `Task` component, do the request inline with `wait(port)`, write to the output field.
 
-Examples in the codebase: `FontDownloadTask`, `ServerDiscoveryTask`, `LoadPhotoTask` (for some flows).
+Examples in the codebase: `FontDownloadTask`, `ServerDiscoveryTask`.
+
+The bar is **actual I/O**. A Task that only computes — building a URL, transforming an AA — costs a thread to do work the render thread could do inline. `LoadPhotoTask` was such a case (its whole body was an `ImageURL()` call) and was removed; `PhotoDetails` now resolves the URL directly.
 
 ### Pattern 5 — `apiPipeline` (N independent requests, still one Task thread)
 

@@ -1,3 +1,4 @@
+import "pkg:/source/api/image.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
@@ -49,33 +50,38 @@ sub onScreenShown()
 end sub
 
 sub onItemContentChanged()
-  if isValidToContinue(m.top.itemIndex)
-    m.LoadLibrariesTask = createObject("roSGNode", "LoadPhotoTask")
-    if isValid(m.top.itemsNode)
-      ' itemsNode IS the ContentNode containing photo children
-      if m.top.itemsNode.getChildCount() > 0
-        m.LoadLibrariesTask.itemNodeContent = m.top.itemsNode.getChild(m.top.itemIndex)
-      else if isValidAndNotEmpty(m.top.itemsNode.id)
-        ' Single photo node passed directly
-        m.LoadLibrariesTask.itemNodeContent = m.top.itemsNode
-      end if
-    else if isValid(m.top.itemsArray)
-      itemContent = m.top.itemsArray[m.top.itemIndex]
-      m.LoadLibrariesTask.itemArrayContent = itemContent
-    else
-      return
-    end if
+  if not isValidToContinue(m.top.itemIndex) then return
 
-    m.LoadLibrariesTask.observeField("results", "onPhotoLoaded")
-    m.LoadLibrariesTask.control = "RUN"
+  item = invalid
+  if isValid(m.top.itemsNode)
+    ' itemsNode IS the ContentNode containing photo children
+    if m.top.itemsNode.getChildCount() > 0
+      item = m.top.itemsNode.getChild(m.top.itemIndex)
+    else if isValidAndNotEmpty(m.top.itemsNode.id)
+      ' Single photo node passed directly
+      item = m.top.itemsNode
+    end if
+  else if isValid(m.top.itemsArray)
+    item = m.top.itemsArray[m.top.itemIndex]
+  else
+    return
   end if
+
+  ' ImageURL does no I/O, so this resolves inline rather than in a Task per slideshow tick.
+  ' item can still be invalid when itemsNode has neither children nor an id — showPhoto's
+  ' empty-uri branch handles that.
+  uri = ""
+  if isValid(item)
+    uri = ImageURL(item.Id, "Primary", { maxHeight: 1080, maxWidth: 1920 })
+  end if
+  showPhoto(uri)
 end sub
 
-sub onPhotoLoaded()
+sub showPhoto(uri as string)
   stopLoadingSpinner()
-  if isValid(m.LoadLibrariesTask.results)
+  if isValidAndNotEmpty(uri)
     photo = m.top.findNode("photo")
-    photo.uri = m.LoadLibrariesTask.results
+    photo.uri = uri
 
     if m.slideshow = true or m.random = true
       ' user has requested either a slideshow or random...
@@ -202,13 +208,6 @@ sub onDestroy()
   ' Stop timers (may already be stopped by onScreenHidden or user interaction)
   m.slideshowTimer.control = "stop"
   m.statusTimer.control = "stop"
-
-  ' Stop and release task node (may be invalid if photo loading hadn't started)
-  if isValid(m.LoadLibrariesTask)
-    m.LoadLibrariesTask.unobserveField("results")
-    m.LoadLibrariesTask.control = "STOP"
-    m.LoadLibrariesTask = invalid
-  end if
 
   ' Clear node references
   m.slideshowTimer = invalid
