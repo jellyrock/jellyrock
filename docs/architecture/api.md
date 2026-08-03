@@ -296,7 +296,15 @@ For non-Jellyfin HTTP (e.g., font downloads, image fetches that need special han
 
 Examples in the codebase: `FontDownloadTask`, `ServerDiscoveryTask`.
 
-The bar is **actual I/O**. A Task that only computes — building a URL, transforming an AA — costs a thread to do work the render thread could do inline. `LoadPhotoTask` was such a case (its whole body was an `ImageURL()` call) and was removed; `PhotoDetails` now resolves the URL directly.
+The bar is **actual I/O** — *or* a component the render thread is not allowed to construct. A Task that only computes — building a URL, transforming an AA — costs a thread to do work the render thread could do inline. `LoadPhotoTask` was such a case (its whole body was an `ImageURL()` call) and was removed; `PhotoDetails` now resolves the URL directly.
+
+**Check the second half of that bar before deleting a "pointless" Task.** Some BrightScript components are MAIN|TASK-only and `CreateObject` returns `invalid` for them on the render thread — the next dot access then crashes. `roFontRegistry` is one, which is why `components/Buttons/TextSizeTask` measures label widths on a Task even though it does no I/O. Roku's docs for the component do **not** state the restriction; the device error does:
+
+```text
+BRIGHTSCRIPT: ERROR: roFontRegistry: creating MAIN|TASK-only component failed on RENDER thread
+```
+
+So the test for "does this need a Task?" is *I/O, or a thread-restricted component* — and the only reliable way to answer the second is to run it on hardware.
 
 ### Pattern 5 — `apiPipeline` (N independent requests, still one Task thread)
 
