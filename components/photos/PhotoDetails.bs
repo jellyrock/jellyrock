@@ -5,8 +5,14 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
+' How many photos in a row may fail before we stop skipping and make the user acknowledge it.
+' Bounds the wholesale-failure case (e.g. no server URL): random mode has no end-of-list stop,
+' so an unbounded skip would cycle silently forever.
+const MAX_CONSECUTIVE_PHOTO_FAILURES = 3
+
 sub init()
   m.log = new log.Logger("PhotoDetails")
+  m.consecutivePhotoFailures = 0
   m.top.isOptionsAvailable = true
   m.top.isOverhangVisible = false
   m.slideshowTimer = m.top.findNode("slideshowTimer")
@@ -68,18 +74,31 @@ sub onItemContentChanged()
   end if
 
   ' ImageURL does no I/O, so this resolves inline rather than in a Task per slideshow tick.
-  ' item can still be invalid when itemsNode has neither children nor an id — showPhoto's
-  ' empty-uri branch handles that.
+  ' The Id guard is not redundant: ImageURL feeds it to Substitute(), whose args are declared
+  ' String, and an itemsArray entry is a plain AA that can be missing the key. On the task
+  ' thread that throw was contained; on the render thread it would take the app down.
+  ' item itself can still be invalid when itemsNode has neither children nor an id.
   uri = ""
-  if isValid(item)
+  if isValid(item) and isValidAndNotEmpty(item.Id)
     uri = ImageURL(item.Id, "Primary", { maxHeight: 1080, maxWidth: 1920 })
   end if
   showPhoto(uri)
 end sub
 
+' Render the resolved photo, or handle an unresolvable one. Nothing else draws on this screen
+' — no title, no overhang (see PhotoDetails.xml) — so a failed photo shows the user nothing
+' new; the previous frame stays up, or black on the first one. During a slideshow we therefore
+' toast and advance rather than stalling on a frame they never chose, and after
+' MAX_CONSECUTIVE_PHOTO_FAILURES we stop advancing so a wholesale failure can't cycle silently.
+'
+' A toast rather than a blocking dialog, and not only for interruption reasons: a dialog needs
+' text metrics, and roFontRegistry is a MAIN|TASK-only component Roku refuses to create on the
+' render thread. Toast goes through the scene's showToast, which is just field writes.
 sub showPhoto(uri as string)
   stopLoadingSpinner()
+
   if isValidAndNotEmpty(uri)
+    m.consecutivePhotoFailures = 0
     photo = m.top.findNode("photo")
     photo.uri = uri
 
@@ -87,9 +106,19 @@ sub showPhoto(uri as string)
       ' user has requested either a slideshow or random...
       m.slideshowTimer.control = "start"
     end if
+    return
+  end if
+
+  m.consecutivePhotoFailures++
+  m.log.warn("photo uri unresolvable", m.top.itemIndex, m.consecutivePhotoFailures)
+  displayToast(translate(translationKeys.ErrorImageTypeNotSupported))
+
+  ' Keep advancing while failures look incidental; once they don't, stop the slideshow rather
+  ' than cycling a screen the user can't see anything on. Manual left/right still works.
+  if (m.slideshow = true or m.random = true) and m.consecutivePhotoFailures < MAX_CONSECUTIVE_PHOTO_FAILURES
+    m.slideshowTimer.control = "start"
   else
-    'Show user error here (for example if it's not a supported image type)
-    messageDialog(translate(translationKeys.ErrorImageTypeNotSupported))
+    m.slideshowTimer.control = "stop"
   end if
 end sub
 
