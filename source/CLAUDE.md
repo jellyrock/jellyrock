@@ -11,6 +11,7 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 ## Render thread protection
 
 - Anything that does I/O must run on a Task thread (network, registry I/O, large file reads).
+- **Start that Task with `launchTask(node)`** (`source/utils/tasks.bs`), never a raw `node.control = "RUN"` — the `no-raw-run` BSC plugin makes the raw form a build error so the thread count stays bounded and measurable (epic #728). Note `source/` files only auto-scope within the `source` scope: a `source/*.bs` file that calls `launchTask` and is also imported by a component must `import "pkg:/source/utils/tasks.bs"` explicitly, or that component's scope won't resolve it.
 - HTTP: route through `GetApi().Build*Request()` + `fetchRes()` / `submitApiRequest()` / `SubmitSideEffect()`. See [docs/architecture/api.md](../docs/architecture/api.md) for the four call patterns.
 - Synchronous `Get*()` methods on `ApiClient` exist for the bootstrap path only (login, server discovery before the pool is up). **Don't add new sync API calls.**
 

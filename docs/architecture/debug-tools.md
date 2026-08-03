@@ -5,12 +5,13 @@ related-files:
   - components/JRScene.bs
   - components/JRScene.xml
   - source/utils/globals.bs
-last-reviewed: 2026-05-01
+  - source/utils/tasks.bs
+last-reviewed: 2026-08-03
 ---
 
 # Debug Tools
 
-The debug-only error injection system, the toast cheat code, and the `testToast` field. Logging primitives live in `logging.md`. Test infrastructure lives in `testing.md`.
+The debug-only error injection system, the toast cheat code, the `testToast` field, and the Task-thread readout. Logging primitives live in `logging.md`. Test infrastructure lives in `testing.md`.
 
 ## Debug flags — `m.global.debug`
 
@@ -141,6 +142,29 @@ end function
 ```
 
 Why key UP events specifically: BrightScript convention is for child components to return `false` for `press=false`, so all key UP events bubble up to `JRScene`. This guarantees the sequence is tracked regardless of which screen has focus.
+
+## Task-thread readout — `printTaskThreads()`
+
+Roku OS caps an app instance at 100 concurrent threads and raises `&h29` past it — the crash class behind epic #728. The readout answers "how many Task threads are live right now?" on a real device, so that bound is measured rather than argued about.
+
+`launchTask()` (`source/utils/tasks.bs`) is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. In a debug build each launch is recorded into `m.global.taskLedger`, and the count is **derived** on demand by reading each tracked node's `state` — a terminated thread stops counting toward Roku's cap even though the node stays valid, so `state` is the authoritative signal and a `control = "STOP"` needs no bookkeeping call of its own.
+
+From the BrightScript console (port 8085), with the app paused at a breakpoint:
+
+```brightscript
+printTaskThreads()
+```
+
+```text
+[TASKS] live=2 tracked=2
+[TASKS]   ServerReachableTask id=probeA state=run
+[TASKS]   ServerReachableTask id=probeB state=run
+[TASKS] (app launches only — excludes main, render, and any thread not started via launchTask)
+```
+
+The caveat in that last line matters when comparing against Roku's cap: the ledger sees the app's own launches, not the main and render threads or the vendored `WebSocketClient` that `RemoteControlTask` starts on its own thread. Add roughly three to the reported number for a total.
+
+The ledger and the readout are both inside `#if debug`, so production pays nothing — the shell is excluded at load by the device's BrightScript compiler from `bs_const=debug=false`, exactly as the debug flags above are. The ledger *arithmetic* (`pruneTaskLedger`, `countLiveTaskThreads`, `taskThreadIsLive`) deliberately sits outside the gate as pure functions, because test builds compile with `debug=false` and anything inside the gate is unreachable from Rooibos.
 
 ## Known cruft
 

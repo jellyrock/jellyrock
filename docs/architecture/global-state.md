@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-07-09
+last-reviewed: 2026-08-03
 ---
 
 # Global State
@@ -76,10 +76,12 @@ m.global  (the global roSGNode)
 ├── audioPlayer       AudioPlayer node (extends Video)      ← phase 2 — the audio playback engine
 ├── remoteControlTask RemoteControlTask node                ← phase 2 (created, NOT started) — ws:// cast receiver, started post-login (see remote-control.md)
 │
-└── debug             DebugFlags node                       ← phase 2, ONLY in #if debug builds
-    ├── shouldForceFiltersFail   bool
-    ├── shouldForceFavoriteFail  bool
-    └── shouldForceWatchedFail   bool
+├── debug             DebugFlags node                       ← phase 2, ONLY in #if debug builds
+│   ├── shouldForceFiltersFail   bool
+│   ├── shouldForceFavoriteFail  bool
+│   └── shouldForceWatchedFail   bool
+│
+└── taskLedger        array of Task nodes                   ← phase 2, ONLY in #if debug builds — every node launchTask() started (see debug-tools.md)
 ```
 
 "Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `bootstrap.md`.
@@ -212,6 +214,12 @@ Compiled out in production builds via `bs_const=debug=false`. In debug builds, `
 ```
 
 Code paths that check these flags are wrapped in `#if debug` so they have zero runtime cost in production. See `debug-tools.md`.
+
+## Task-thread ledger — `m.global.taskLedger`
+
+Also debug-only. An `array` field holding a reference to every Task node `launchTask()` has started, so the live Task-thread count can be **derived** — by reading each node's `state` — instead of tracked with a counter that would need an `observeField("state")` per launch to decrement. Written only by `trackTaskLaunch()` (`source/utils/tasks.bs`), which prunes finished entries on each launch so the array stays bounded.
+
+It is the only `m.global` field holding node references in an array rather than a single node. That the round-trip preserves identity and live `state` is verified on device by `tests/source/unit/utils/tasks.spec.bs`, not assumed. Read it with `printTaskThreads()`; see `debug-tools.md`.
 
 ## Known cruft
 

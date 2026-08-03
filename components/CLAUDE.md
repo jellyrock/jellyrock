@@ -30,6 +30,14 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - Single `m.global.<child>` reads are fine (cheap). Multiple reads in a hot path: cache locally first (`globalUser = m.global.user; globalUser.foo; globalUser.bar`).
 - Bulk field updates: `node.setFields({ a: 1, b: 2 })` over individual assignments.
 
+## Starting a Task thread
+
+- **Start every Task through `launchTask(node)`** (`source/utils/tasks.bs`; add `import "pkg:/source/utils/tasks.bs"`). A raw `node.control = "RUN"` is a **build error** — the `no-raw-run` BSC plugin enforces it.
+- Why: Roku OS caps the app at 100 concurrent threads and raises `&h29` past it (epic #728). `launchTask()` is the one place a thread starts, so in debug builds the live count is measurable — see [`printTaskThreads()`](../docs/architecture/debug-tools.md).
+- It returns `false` for an invalid node, so `if launchTask(m.someTask)` guards exactly like the `if isValid(...)` check it replaces.
+- **Stopping needs no wrapper.** `node.control = "STOP"` stays as-is: the count is derived from each node's `state`, so a stop is picked up for free.
+- `control` is not Task-only — `Animation` (`"start"` / `"pause"`) and `Video` (`"play"` / `"rewind"`) use the same field name and are untouched by the rule.
+
 ## Input handling — `onKeyEvent`
 
 - Signature: `function onKeyEvent(key as string, press as boolean) as boolean`.
