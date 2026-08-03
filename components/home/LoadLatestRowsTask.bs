@@ -53,8 +53,8 @@ end sub
 ' "failed" status: apiPipeline distinguishes the two, but neither is authoritative about what
 ' the library HOLDS, which is the only question this row's contents answer. Only an "ok"
 ' carries a list the UI may act on, including an empty one (which legitimately removes the
-' row). HomeRows leaves a populated row standing on "failed", and clears it only while it is
-' still an unpopulated skeleton — see HomeRows.discardEmptyLatestRow.
+' row). HomeRows leaves any existing row alone on "failed" — a populated one keeps its
+' content, an unpopulated one keeps its loading placeholder.
 sub emitRow(libId as string, res as dynamic)
   items = []
   status = "failed"

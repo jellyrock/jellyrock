@@ -401,7 +401,7 @@ sub onLatestRowsReady()
 
   ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
   ' so they can be unit-tested without a callFunc seam on this component.
-  drained = latestRows.drain(m.latestRowsTask, m.latestRowsProcessedIndex)
+  drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex)
   m.latestRowsProcessedIndex = drained.nextIndex
 
   for each child in drained.ready
@@ -411,29 +411,14 @@ sub onLatestRowsReady()
     child.items = []
   end for
 
-  for each child in drained.failed
-    discardEmptyLatestRow("latest_" + child.libId)
-  end for
-
+  ' A failed row is deliberately left alone — it keeps the skeleton placeholder
+  ' insertLatestMediaSkeletons gave it and fills in place on the next refresh, so nothing
+  ' shifts. See latestRows.drainReady for why clearing it would be worse.
+  '
   ' apiPipeline yields every entry exactly once and emitRow appends one child per yield, so
   ' the cursor reaching the entry count means the run is over. Frees the guard without a
   ' second interface field or a read of the firmware-managed `state` transitions.
   if m.latestRowsProcessedIndex >= m.latestRowsExpectedCount then m.isLoadingLatestRows = false
-end sub
-
-' discardEmptyLatestRow: Clears a latest row whose request never answered — but ONLY while it
-' is still an unpopulated skeleton.
-'
-' A failure says nothing about what the library holds, so a row that already has content must
-' stand; that is the whole point of the status split. A row that has NEVER been populated is a
-' different case: insertLatestMediaSkeletons creates one per library on the initial load, and
-' leaving it costs the user a titled, blank row on Home until a later refresh fills it.
-' populateRowFromData re-inserts the row when data eventually arrives.
-'
-' @param {string} sectionId - the "latest_<libId>" section to clear
-sub discardEmptyLatestRow(sectionId as string)
-  result = findRowBySectionId(sectionId)
-  if isValid(result) and result.row.getChildCount() = 0 then removeRowAtIndex(result.index)
 end sub
 
 ' resetLatestRowsRun: Return the orchestrator to a clean pre-run state — unobserved, stopped,

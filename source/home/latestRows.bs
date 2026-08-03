@@ -10,42 +10,41 @@ import "pkg:/source/utils/misc.bs"
 ' the component and the rules under test. Same move as source/remotecontrol/remoteCommand.bs.
 namespace latestRows
 
-  ' Walks LoadLatestRowsTask's result children from `startIndex`, splits them by whether the
-  ' request answered, and returns the new cursor. One wake can cover several results — wake
-  ' events coalesce, appended children don't — so the caller always drains to the end.
+  ' Walks LoadLatestRowsTask's result children from `startIndex` and returns the ones the UI
+  ' should populate, plus the new cursor. One wake can cover several results — wake events
+  ' coalesce, appended children don't — so the caller always drains to the end.
   '
-  ' Only status "ok" is authoritative about what a library holds, so only `ready` may feed
-  ' populateRowFromData (an empty ok list still removes the row — that is how a genuinely
-  ' empty library clears). Everything else lands in `failed`: a timeout, a transport failure
-  ' or an HTTP error says nothing about the library, so the caller must not act on it as data.
+  ' A "failed" child is SKIPPED, not returned. A timeout, a transport failure or an HTTP error
+  ' says nothing about what the library holds, and populateRowFromData removes a row when handed
+  ' an empty list — so acting on a failure would delete good content on a flaky refresh. The
+  ' cursor still advances past it; the row self-heals on the next Home.refresh(), which fires on
+  ' every onScreenShown.
   '
-  ' `failed` is returned rather than dropped because the caller still has one decision left on
-  ' it — a row that has never been populated is a skeleton, and leaving it there costs the user
-  ' a titled, blank row until the next successful refresh. See HomeRows.discardEmptyLatestRow.
+  ' DELIBERATELY does not hand failures back for the caller to clear the row. A latest row that
+  ' has not been populated yet is not empty — insertLatestMediaSkeletons gives it one
+  ' `type: "Loading"` placeholder child so the RowList renders it at the right slot size — so a
+  ' failed row keeps that skeleton, and the next successful refresh fills it via
+  ' populateRowFromData's "update children in place" branch: items appended, placeholder dropped,
+  ' no insert. Removing the row instead would send that refresh down the else-branch, which
+  ' CreateObject+insertChild's a fresh row — the row visibly pops in and shifts every row below
+  ' it. Measured on device (8 libraries, HTTP 500 forced on five): the skipped rows sat at their
+  ' single placeholder child and nothing shifted. Keep it that way.
   '
   ' @param task - the LoadLatestRowsTask node holding { libId, items, status } children
   ' @param startIndex - first unprocessed child index
-  ' @return an AA { ready, failed, nextIndex } - the authoritative children, the unanswered
-  '         children, and the new cursor
-  function drain(task as object, startIndex as integer) as object
+  ' @return an AA { ready, nextIndex } - the children to populate, and the new cursor
+  function drainReady(task as object, startIndex as integer) as object
     ready = []
-    failed = []
     index = startIndex
     childCount = task.getChildCount()
 
     while index < childCount
       child = task.getChild(index)
       index++
-      if isValid(child)
-        if child.status = "ok"
-          ready.push(child)
-        else
-          failed.push(child)
-        end if
-      end if
+      if isValid(child) and child.status = "ok" then ready.push(child)
     end while
 
-    return { ready: ready, failed: failed, nextIndex: index }
+    return { ready: ready, nextIndex: index }
   end function
 
   ' Has a run been in flight long enough that its orchestrator thread must be gone?

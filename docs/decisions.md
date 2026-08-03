@@ -209,23 +209,11 @@ Ruled out: **reverting the vendored change and relying only on `closeSocket()`'s
 
 **date**: 2026-08-02
 **status**: accepted
-**partially-superseded-by**: latest-rows-skeleton-cleanup (what happens to a never-populated row)
 **related-files**: `components/home/LoadLatestRowsTask.bs`, `source/home/latestRows.bs`, `components/home/HomeRows.bs`, `source/api/apiPipeline.bs`
 
 A request that never answered says nothing about what a library holds, so Home's latest-media rows distinguish it from an authoritative empty result. Result children carry a status: `ok` may act on the list (an empty one still removes the row — that is how a genuinely empty library clears), while a timeout or transport failure is skipped and the existing row stands untouched. Before this, any empty result removed the row, so a flaky network deleted good content on refresh — the failing path emitted an empty row and `populateRowFromData` removes a row it is handed an empty list for.
 
 Ruled out: retry-in-place, which adds a second timeout budget to a path that already recovers. The safety rests on `Home.refresh()` firing from `onScreenShown` on every return to Home, so a failed row self-heals on the next navigation instead of sticking — re-evaluate this note if that trigger ever becomes conditional. Note the asymmetry this introduces: the other five Home rows still feed `populateRowFromData` directly and DO clear on failure; only the latest rows carry the status. Verified on device by pointing the server URL at a closed port mid-load — 11 injected failures left all 9 rows intact with unchanged item counts.
-
-## decision-id: latest-rows-skeleton-cleanup
-
-**date**: 2026-08-02
-**status**: accepted
-**partially-supersedes**: latest-rows-failure-vs-empty (what happens to a never-populated row)
-**related-files**: `source/home/latestRows.bs`, `components/home/HomeRows.bs`, `components/home/LoadLatestRowsTask.bs`
-
-"Leave the row alone on a failure" was too broad in one direction: it also protected rows that had never held anything. `insertLatestMediaSkeletons` creates one skeleton per library on the initial load, and `populateRowFromData` is the only caller of `removeRowAtIndex` — so a row the drain skipped could never be removed, and a cold start with a failing request left a titled, blank row on Home until some later refresh happened to fill it. The rule is now what it always meant: don't destroy POPULATED content on a failure. `latestRows.drain` returns its unanswered children instead of dropping them, and `HomeRows.discardEmptyLatestRow` clears a row only while it still has no children.
-
-Also settles that an HTTP error (`res.ok = false`) is treated the same as no answer, even though `apiPipeline` distinguishes them: neither is authoritative about what the library HOLDS, which is the only question the row's contents answer. Ruled out: tracking a per-section "ever populated" flag on `HomeRows` — `getChildCount() = 0` already IS that fact, and a parallel flag could disagree with the tree. Reachable on a cold start three ways, all after the blocking libraries fetch has proven the server up: a per-library HTTP error, a transport failure, or `PIPELINE_RUN_MS` expiring on a slow link.
 
 ## decision-id: latest-rows-no-mid-run-restart
 
