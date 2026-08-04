@@ -1,6 +1,7 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/home/latestRows.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
@@ -11,6 +12,10 @@ import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
+  ' Every m.log.* call in this file faulted with &hf3 without this — the component
+  ' assumed a logger it never created. The one pre-existing caller sits on the
+  ' stall-reclaim path, so it had simply never run.
+  m.log = new log.Logger("HomeRows")
   m.top.itemComponentName = "JRRowItem"
   m.top.numRows = 3
   m.top.vertFocusAnimationStyle = "fixedFocus"
@@ -419,7 +424,13 @@ sub onLatestRowsReady()
   ' apiPipeline yields every entry exactly once and emitRow appends one child per yield, so
   ' the cursor reaching the entry count means the run is over. Frees the guard without a
   ' second interface field or a read of the firmware-managed `state` transitions.
-  if m.latestRowsProcessedIndex >= m.latestRowsExpectedCount then m.isLoadingLatestRows = false
+  if m.latestRowsProcessedIndex >= m.latestRowsExpectedCount
+    m.isLoadingLatestRows = false
+    ' "No slower first paint than today" is a success criterion of the task-thread work,
+    ' and this run IS Home's first paint for latest media. Log the wall clock so a
+    ' regression is a number someone can compare, not a feeling. Stripped in prod builds.
+    m.log.info("latest-rows run complete", m.latestRowsExpectedCount, "rows", m.latestRowsRunClock.totalMilliseconds(), "ms")
+  end if
 end sub
 
 ' resetLatestRowsRun: Return the orchestrator to a clean pre-run state — unobserved, stopped,
