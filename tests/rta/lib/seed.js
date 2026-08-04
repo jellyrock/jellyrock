@@ -10,6 +10,7 @@
  * afterAll so the device is left as found.
  */
 import { odc } from 'roku-test-automation';
+import { hardRelaunch } from './driver.js';
 
 export const GLOBAL = 'JellyRock';
 
@@ -172,20 +173,71 @@ export async function seedLibraryLanding(session, libraryId, view) {
   });
 }
 
-/** Snapshot the device's current top-level session so it can be restored after. */
+/**
+ * Snapshot the device's current top-level session so it can be restored after.
+ *
+ * Every key any seed in this file writes to `GLOBAL` must be listed here, or the
+ * seeded value survives the restore. `globalRememberMe` is the one that bit:
+ * `seedHome` forces it to `'true'`, so without snapshotting it a device that had
+ * remember-me OFF silently came back with it ON.
+ */
 export async function snapshotSession() {
   const before = (await odc.readRegistry())?.values?.[GLOBAL] || {};
   return {
     server: before.server ?? null,
     active_user: before.active_user ?? null,
     globalTranslationLocale: before.globalTranslationLocale ?? null,
+    globalRememberMe: before.globalRememberMe ?? null,
     // seedServerSelect writes saved_servers, so it must be snapshotted+restored too,
     // else the seeded one-server list leaks onto the device (null restore deletes it).
     saved_servers: before.saved_servers ?? null,
   };
 }
 
-/** Restore a snapshot taken by snapshotSession (best-effort). Caller relaunches. */
-export async function restoreSession(saved) {
-  await odc.writeRegistry({ values: { [GLOBAL]: saved } }).catch(() => {});
+/**
+ * Restore a snapshot taken by `snapshotSession`, and PROVE it took.
+ *
+ * A best-effort write is not enough here, for two reasons:
+ *
+ *  1. The app is still RUNNING with the seeded session live in memory, and it
+ *     re-persists that session. A write that lands can therefore be clobbered
+ *     the moment the channel next exits — and an ECP `/launch/dev` against a
+ *     running channel only foregrounds it, so a plain `relaunch()` does not
+ *     clear the stale session either. Hence `hardRelaunch`.
+ *  2. The previous implementation swallowed every error (`.catch(() => {})`),
+ *     which made a failed restore completely invisible.
+ *
+ * Together those left devices signed into `demo.jellyfin.org` twice, each time
+ * silently invalidating a later on-device measurement — the row count was the
+ * only tell (3 libraries instead of the real server's) and it was noticed late
+ * both times. See the followup in docs/progress.md.
+ *
+ * So: write → cold restart → read back → compare. On failure this THROWS.
+ * A loud failure in an `afterAll` is much cheaper than a device that quietly
+ * lies to whatever runs next.
+ */
+export async function restoreSession(saved, { attempts = 3 } = {}) {
+  const keys = Object.keys(saved);
+  let observed = {};
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    await odc.writeRegistry({ values: { [GLOBAL]: saved } });
+    await hardRelaunch();
+    observed = (await odc.readRegistry().catch(() => null))?.values?.[GLOBAL] || {};
+
+    // `null` in the snapshot means "the key was absent"; a deleted key reads back
+    // as undefined, so normalise both sides before comparing.
+    const wrong = keys.filter((k) => (observed[k] ?? null) !== (saved[k] ?? null));
+    if (wrong.length === 0) return;
+
+    if (attempt === attempts) {
+      throw new Error(
+        `restoreSession failed after ${attempts} attempts — this device is NOT as we found it.\n` +
+          `  mismatched keys: ${wrong.join(', ')}\n` +
+          `  expected server: ${saved.server}\n` +
+          `  actual server:   ${observed.server}\n` +
+          `Do not trust any on-device measurement from this device until it is fixed.`,
+      );
+    }
+  }
 }

@@ -49,3 +49,22 @@ export async function relaunch() {
   await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
   await sleep(RTA_CONFIG.bootMs);
 }
+
+/**
+ * Restart the channel FOR REAL: exit to the Roku home screen first, then launch.
+ *
+ * An ECP `/launch/dev` against an ALREADY-RUNNING channel only foregrounds it —
+ * the app's in-memory session survives untouched. That is how a seeded demo
+ * session outlived a "relaunch" and re-persisted itself over a restored
+ * registry, leaving devices signed into `demo.jellyfin.org`. Exiting first
+ * forces a cold start that actually re-reads the registry.
+ *
+ * `relaunch()` is deliberately left alone: mid-test relaunches want the cheap
+ * foreground path, and only the restore needs to pay for a genuine cold start.
+ */
+export async function hardRelaunch() {
+  await ecp.sendKeypress('Home');
+  await sleep(RTA_CONFIG.exitMs);
+  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
+  await sleep(RTA_CONFIG.bootMs);
+}

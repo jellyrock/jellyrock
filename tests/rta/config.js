@@ -30,6 +30,10 @@ export const RTA_CONFIG = {
   // Time to let the app boot + the RTA on-device component come up after a
   // relaunch or a fresh deploy.
   bootMs: 10000,
+  // Time to let the channel fully EXIT after a Home keypress, before relaunching.
+  // Only `hardRelaunch` uses this — the restore path needs a genuine cold start
+  // so the app re-reads the registry instead of re-persisting its live session.
+  exitMs: 4000,
   // Full capture matrix — folder name == the exact translationLocale value.
   // Functional tests exercise the first entry (en_US); the store orchestrator
   // captures every entry. (Planned to grow to ALL locale files to map the
