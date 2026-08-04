@@ -29,25 +29,43 @@ latest-rows run complete 11 rows 2728 ms                      # HomeRows, render
 latest-rows orchestrator done - task 2106 wait 502 emit 1590  # LoadLatestRowsTask
 ```
 
-Four numbers come out of that pair:
+Four numbers come out of that pair. **Three of them are measurements; one is not.**
 
-| Value | Meaning | Where it runs |
+| Value | Meaning | Trust it? |
 |---|---|---|
-| `wait` | blocked on the API pool — network + server | orchestrator Task thread |
-| `emit` | transform items → `ContentNode`s → `appendChild` | orchestrator Task thread |
-| `task` | the orchestrator's whole run (`≈ wait + emit`) | orchestrator Task thread |
-| `drain` | `run complete` total − `task` — `populateRowFromData` | **render thread** |
+| `total` | `run complete` — what the user actually waits for | ✅ directly measured, ±10% over 30 runs |
+| `wait` | blocked on the API pool — network + server | ✅ directly measured |
+| `emit` | transform items → `ContentNode`s → `appendChild` | ✅ directly measured |
+| `drain` | `total − task` | ❌ **derived; do not compare it** |
 
 `wait + emit ≈ task`, and `task + drain ≈ total`. If they stop summing, something moved and
 the decomposition needs revisiting before the numbers are trusted.
 
+### Do not trust `drain`
+
+`drain` is a **remainder of two quantities measured on different threads that run
+concurrently**. It is not "render-thread row population" — it is however much render work
+happened to spill past the moment the orchestrator task finished. When the overlap between
+the two threads shifts, `drain` swings wildly while no real work has changed.
+
+Measured, n=10 per device: a 7–9× spread on every tier, and outright **bimodal** on the
+512 MB Stick. It has produced results that are not physically sensible — a Stick 4K
+"faster" than an Ultra — and an earlier published figure for one device (958 ms) did not
+reproduce at all (366 ms on re-measurement). It is excluded from the baselines below for
+that reason.
+
+If you genuinely need the render-thread cost, **instrument `populateRowFromData` directly**.
+Subtraction cannot produce it.
+
 **Why the split matters:** the total alone cannot separate a slow server from slow work of
-our own. Every decision in this area has turned on that distinction, and two plausible
+our own. Every decision in this area has turned on that distinction, and three plausible
 theories died on it (below).
 
 ## How to run it
 
 1. Sideload a **dev** build (`npm run build` + deploy). Production strips the logging.
+   **Leave `bs_const=debug=false`** — the committed manifest value, which `npm run build`
+   uses. See the warning below before you change it.
 2. Make sure the device has **"remember me"** enabled and is signed in. Without a persisted
    token every relaunch lands on `UserSelect`, Home never loads, and no run occurs.
 3. Watch the BrightScript console on port 8085, relaunch the channel, and read the two lines.
@@ -55,6 +73,18 @@ theories died on it (below).
 
 Nothing else is required for the device-side numbers: `emit` and `drain` are CPU work, so no
 proxy, no server changes, and no registry edits.
+
+### Trap: `bs_const=debug=true` is not a measurable build
+
+`debug=true` is what [`printTaskThreads()`](../architecture/debug-tools.md) needs, so it is
+easy to end up measuring in one. Don't — `JellyfinDataTransformer` attaches the **full raw API
+payload to every transformed item** under `#if debug`, which lands squarely inside `emit`, the
+largest component of the run on every device tier. A debug build also carries the Task-thread
+ledger, whose bookkeeping runs on the render thread.
+
+The thread readout and these baselines therefore cannot be taken from the same build. Measure
+at `debug=false`; turn the readout on separately, and don't compare its build's timings to
+anything here.
 
 ### Trap: Roku replays its console buffer
 
@@ -82,27 +112,55 @@ rebuild or redeploy.
 ## Baselines (2026-08-04)
 
 Same 11 eligible rows, same server, **same transport** (`http://<server>:8098` on all three —
-verified per device, not assumed), `SLOT_COUNT = 3`, no injected latency, n=5 per device,
-medians. Recorded **before** the job pool.
+read back off each device's own HTTP trace per run, not assumed), `SLOT_COUNT = 3`, no
+injected latency, `bs_const=debug=false`, **n=30 per device** across three separate
+build/deploy passes, medians. Measured against the committed artifact. Recorded **before**
+the job pool.
 
 | | Ultra (2 GB) | Stick 4K (1 GB) | Stick (512 MB) | 512 MB vs Ultra |
 |---|---|---|---|---|
-| `emit` | 942 ms | 1359 ms | 2583 ms | 2.7× |
-| `drain` | 412 ms | 958 ms | 1490 ms | 3.6× |
-| `wait` | 317 ms | 414 ms | 831 ms | 2.6× |
-| **total** | **1667 ms** | **2739 ms** | **4953 ms** | **3.0×** |
+| `wait` | 380 ms | 511 ms | 864 ms | 2.3× |
+| `emit` | 814 ms | 1342 ms | 2615 ms | 3.2× |
+| **total** | **1679 ms** | **2626 ms** | **5010 ms** | **3.0×** |
 
-**`emit` is the largest component on every tier — 57% / 50% / 52%.** No device class inverts
-it. Device scaling is ~3× end-to-end with no cliff.
+Run-to-run spread of `total` (`p25`–`p75` / min–max), so a future comparison knows what counts
+as a real change:
 
-Note `wait` also scales ~2.6× with device class even though the network is identical — a
+| | `p25`–`p75` | min–max |
+|---|---|---|
+| Ultra | 1592–1751 | 1428–1944 |
+| Stick 4K | 2520–2734 | 2154–3008 |
+| Stick (512 MB) | 4925–5072 | 4635–5621 |
+
+**`emit` is the largest single component on every tier — 48% / 51% / 52% of the run**, and
+larger than everything outside the orchestrator combined. No device class inverts it. Device
+scaling is ~3× end-to-end with no cliff.
+
+`drain` is deliberately absent — see [above](#do-not-trust-drain).
+
+Note `wait` also scales ~2.3× with device class even though the network is identical — a
 weak CPU is slower at issuing and parsing requests, not just at transforming them.
 
 HTTP vs HTTPS is not worth controlling for: the same device measured 812 ms of `wait` over
 HTTPS and 831 ms over HTTP. Still, keep the transport consistent across devices so the
 comparison is like-for-like.
 
-## Two theories this method killed
+### What a real regression looks like
+
+At n=30 per arm this method resolves differences of roughly **120 ms and up**; smaller
+effects sit inside run-to-run variation and cannot be called either way. Two worked examples
+from the run that produced this table:
+
+- A `debug=true` build is **+178 ms** on the 512 MB Stick and **+121 ms** on the Stick 4K
+  (Mann-Whitney p=0.007 and p=0.021) — detectable.
+- The Task-thread ledger on its own, and `rawApiData` on its own, are each **not
+  distinguishable** at n=10. That bounds them below the floor; it does not make them free.
+
+Use a rank test, not a median difference. A median gap that looks decisive can sit well
+inside the spread — and the per-column split (`wait` / `emit`) is noisy enough at n=10 to
+reverse sign between samples, so decide on `total`.
+
+## Three theories this method killed
 
 **"The request pool (3 slots) is too small."** Widening it to 8 slots changed nothing on a
 LAN (2660 ms vs 2586 ms). Under injected latency it helps only past a threshold: +150 ms of
@@ -112,9 +170,28 @@ while the thread transforms, so added latency is nearly free until it exceeds th
 shadow. The naive "requests ÷ slots × round-trip" arithmetic badly overstates the cost
 of a distant server.
 
-**"The render-thread drain dominates on weak hardware."** It doesn't — at n=5 the drain is
-1490 ms and `emit` is larger on every device. The drain is a real secondary cost, and it
-grows fastest across device tiers, but it does not displace `emit`.
+**"The render-thread drain dominates on weak hardware."** It doesn't — `emit` is the largest
+directly-measured component on every tier. This one survives only in that weakened form: it
+was originally argued from `drain` figures, and `drain` has since been shown to be an
+unreliable derived quantity (above), so "how big is the render-side cost" remains genuinely
+unanswered. What is solid is that `emit` is large and real.
+
+**"Refilling the pool the instant a slot frees will speed up the run."** It doesn't. The
+pipeline used to top the pool up again immediately after taking a completion — before handing
+the result back — so the freed slot would not idle for the caller's per-result work. At
+`SLOT_COUNT = 3` that reasoning says a third of the pool is parked for the length of the run,
+which sounds compelling.
+
+Measured across six independent device/pass comparisons (n=30 on the 512 MB Stick over four
+separate build/deploy passes, n=10 each on the other two tiers), it was **slower every single
+time** — never faster — by roughly 1–3%. Sign test p=0.031; per-device Mann-Whitney was not
+significant, so this is evidence of *no benefit* rather than proof of harm. The original
+justification for it (a 2673 → 2586 ms median at n=4) did not reproduce.
+
+Worth recording as a method lesson too: at n=10 the `wait` column appeared to drop with the
+refill, which read as the mechanism working exactly as designed. At n=30 that reversed. The
+per-column split is noise-dominated at these sample sizes and will happily supply a mechanism
+story for whichever conclusion you already hold. Only `total` was stable enough to decide on.
 
 ## What this does NOT do
 

@@ -80,8 +80,9 @@
 ' Starts `node`'s Task thread through the accounted chokepoint.
 '
 ' @param node - the Task node to start
-' @return true when the node was valid and RUN was issued; false otherwise, so a
-'         caller can guard exactly as the raw `if isValid(x)` launch sites did
+' @return true when the node was valid and RUN was issued, false otherwise. No
+'         call site checks this today; see the invalid-node note below before
+'         deciding you want to.
 function launchTask(node as object) as boolean
   if not isValid(node)
     ' Behaviour change worth stating: a raw `m.someTask.control = "RUN"` on an

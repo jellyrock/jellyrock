@@ -81,7 +81,7 @@ m.global  (the global roSGNode)
 │   ├── shouldForceFavoriteFail  bool
 │   └── shouldForceWatchedFail   bool
 │
-└── taskLedger        array of Task nodes                   ← phase 2, ONLY in #if debug builds — every node launchTask() started (see debug-tools.md)
+└── taskLedger        array of Task nodes                   ← ONLY in #if debug builds — every node launchTask() started; created on FIRST launch, not declared in setGlobalNodes (see debug-tools.md)
 ```
 
 "Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `bootstrap.md`.
@@ -217,7 +217,9 @@ Code paths that check these flags are wrapped in `#if debug` so they have zero r
 
 ## Task-thread ledger — `m.global.taskLedger`
 
-Also debug-only. An `array` field holding a reference to every Task node `launchTask()` has started, so the live Task-thread count can be **derived** — by reading each node's `state` — instead of tracked with a counter that would need an `observeField("state")` per launch to decrement. Written only by `trackTaskLaunch()` (`source/utils/tasks.bs`), which prunes finished entries on each launch so the array stays bounded.
+Also debug-only. An `array` field holding a reference to every Task node `launchTask()` has started, so the live Task-thread count can be **derived** — by reading each node's `state` — instead of tracked with a counter that would need an `observeField("state")` per launch to decrement. Written only by `recordTaskLaunch()` (`source/utils/tasks.bs`), which prunes finished entries on each launch so the array stays bounded.
+
+Unlike every other field above, it is **not declared in `setGlobalNodes()`** — `recordTaskLaunch()` creates it on first use. That is required, not stylistic: `setGlobalNodes()` starts five Task threads (the three `ApiTask`s, `ApiQueueTask`, `SideEffectTask`) before it reaches its own `#if debug` block, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost all five. Creating on demand also means the ordering cannot be broken again by adding a launch earlier in bootstrap.
 
 It is the only `m.global` field holding node references in an array rather than a single node. That the round-trip preserves identity and live `state` is verified on device by `tests/source/unit/utils/tasks.spec.bs`, not assumed. Read it with `printTaskThreads()`; see `debug-tools.md`.
 

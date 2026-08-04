@@ -157,7 +157,7 @@ Six plugins encode unwritten conventions documented in `components/CLAUDE.md` / 
 | `bsc-plugin-print-locations.cjs` | Raw `print` calls outside the allowed sites | Allows `source/main.bs` (whole file) and `#if debug` blocks in `source/utils/globals.bs`; auto-skips top-level functions in any `source/*.bs` file (no `m` context, so no `m.log` available) |
 | `bsc-plugin-observe-without-on-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on `JRScreen` subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
 | `bsc-plugin-no-direct-sdk.cjs` | `sdk.<ns>.<fn>(...)` calls outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | None — the only allowed callers are explicitly listed |
-| `bsc-plugin-no-raw-run.cjs` **(error)** | A `control` field written with `"RUN"` (either `node.control = ...` or `node["control"] = ...`), or with a value that cannot be resolved statically, outside `source/utils/tasks.bs` — i.e. a Task thread started without going through `launchTask()`, so it cannot be counted | Only `"RUN"` is a thread start: `control` is also Animation's `"start"/"pause"/"resume"` and Video's `"play"/"rewind"/"none"`, and ~95 such writes are left alone. `components/vendor/**` is excluded (the vendored `WebSocketClientTask` self-starts) |
+| `bsc-plugin-no-raw-run.cjs` **(error)** | A `control` field written with `"RUN"` — `node.control = ...`, `node["control"] = ...`, or `node.setField("control", ...)` — or written with a value that cannot be resolved statically, outside `source/utils/tasks.bs`. I.e. a Task thread started without going through `launchTask()`, so it cannot be counted | Only `"RUN"` is a thread start: `control` is also Animation's `"start"/"pause"/"resume"` and Video's `"play"/"rewind"/"none"`, and ~95 such writes are left alone. `components/vendor/**` is excluded (the vendored `WebSocketClientTask` self-starts). `setField` is keyed on a **literal** `"control"` first argument, so a generic `setField(name, value)` helper never trips it. Known gap: `setFields({ control: "RUN" })` is deliberately not flagged — its argument is usually a variable, so catching the literal case soundly would mean flagging every non-literal `setFields` |
 | `bsc-plugin-callfunc-interface.cjs` **(error)** | `callFunc("X")` where `X` is a method DEFINED in one of our component codebehinds but declared in NO component `<interface><function>` anywhere — the silent-no-op bug | Program-wide, case-insensitive membership: if ANY component exposes `X`, no site is flagged (errs toward false-negatives, away from false-positives). Skips `roku_modules`; ignores non-literal `callFunc` args |
 
 **Suppressing a false positive.** Each plugin honors these comment markers (case-insensitive, regex match against the source text):
@@ -168,7 +168,19 @@ Six plugins encode unwritten conventions documented in `components/CLAUDE.md` / 
 ' bsc-disable-file <plugin-id>           ← anywhere in the file (whole-file opt-out)
 ```
 
-Valid `<plugin-id>` values: `jrscreen-on-destroy`, `print-locations`, `observe-without-on-destroy`, `no-direct-sdk`, `no-raw-run`, `callfunc-interface`. (Note: `jrscreen-on-destroy` only honors `bsc-disable-file` since the diagnostic is reported on the XML component declaration, not a specific source line. Suppressing `callfunc-interface` should be extremely rare — an undeclared target is normally a real bug, not a false positive.) Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
+Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should reference a tech-debt slug in a trailing comment so future readers know why.
+
+**Not every plugin honors all three markers.** Reaching for one a plugin doesn't implement fails silently — the comment sits there looking like a suppression while the diagnostic keeps firing:
+
+| `<plugin-id>` | line | next-line | file | |
+|---|---|---|---|---|
+| `print-locations` | ✅ | ✅ | ✅ | |
+| `observe-without-on-destroy` | ✅ | ✅ | ✅ | |
+| `callfunc-interface` | ✅ | ✅ | ✅ | Suppressing should be extremely rare — an undeclared target is normally a real bug |
+| `no-direct-sdk` | ✅ | ✅ | ❌ | |
+| `no-raw-run` | ✅ | ✅ | ❌ | **Deliberate.** A whole-file opt-out on an error-severity thread-budget guard would silently remove the bound from a whole file; suppress the one line and say why |
+| `jrscreen-on-destroy` | ❌ | ❌ | ✅ | The diagnostic lands on the XML component declaration, not a source line |
+| `auto-abandon-promises` | ❌ | ❌ | ✅ | |
 
 ### Other plugins
 

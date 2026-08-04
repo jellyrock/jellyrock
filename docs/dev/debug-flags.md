@@ -5,7 +5,10 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.bs
   - components/JRScene.xml
-last-reviewed: 2026-05-01
+  - source/data/JellyfinDataTransformer.bs
+  - components/data/jellyfin/JellyfinBaseItem.xml
+  - source/utils/tasks.bs
+last-reviewed: 2026-08-04
 ---
 
 # Debug Flags & Toast Testing
@@ -167,6 +170,34 @@ m.global.debug.shouldForceMyNewThingFail = true
 ' Navigate to the feature, verify the error path fires
 m.global.debug.shouldForceMyNewThingFail = false
 ```
+
+---
+
+## Other things a debug build gives you
+
+`#if debug` carries more than the flags above. These are not toggles — they are simply present in any build compiled with `bs_const=debug=true`.
+
+### `rawApiData` — the server's payload, attached to the item
+
+Every node `JellyfinDataTransformer` produces carries the **raw `BaseItemDto` the server sent**, on the `rawApiData` field ([`JellyfinBaseItem.xml`](../../components/data/jellyfin/JellyfinBaseItem.xml)). Nothing in the app reads it; it exists purely for a human at a breakpoint asking *"why is this tile rendering wrong — is our transform wrong, or did the server send that?"*
+
+```brightscript
+' From a paused BrightScript console, with an item node in hand:
+print node.rawApiData
+print node.rawApiData.UserData
+```
+
+**When to prefer `curl` instead.** For most questions the payload is easier to get from outside the app: the firmware's `[http]` console trace prints the full request URL *and* the auth token, so re-fetching any response is a one-liner and the result is diffable and repeatable. `rawApiData`'s advantage is narrow but real — it is the payload bound to *this specific node*, so you skip working out which request produced which tile.
+
+**Not reachable from RTA.** ODC can read node fields, but `npm run test:rta` flips `ENABLE_RTA` only — the committed manifest keeps `debug=false`, so `rawApiData` reads `invalid` in any normal RTA run. Automated/agent-driven inspection wants `curl`.
+
+**Cost.** Measured on three device tiers (n=10 each, `debug=true` with and without the assignment): no difference in Home's first paint distinguishable at that sample size, and available-memory differences under 700 `kB`, inside the noise of the reading itself. That bounds it below roughly 120 ms — the smallest effect that experiment could resolve — rather than proving it free.
+
+### The Task-thread ledger
+
+`printTaskThreads()` and `m.global.taskLedger` — see [`debug-tools.md`](../architecture/debug-tools.md).
+
+> ⚠️ **A debug build is not a performance-representative build.** The two items above measurably slow Home's first paint on weaker hardware (+178 ms on a 512 MB Stick, +121 ms on a Stick 4K; both significant at n=10). Never take a perf baseline from one — see [`home-first-paint-performance.md`](home-first-paint-performance.md).
 
 ---
 
