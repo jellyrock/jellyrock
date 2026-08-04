@@ -100,13 +100,46 @@ describe('no-raw-run', () => {
     ).toHaveLength(0);
   });
 
-  it('does not flag setFields — the documented residual gap', () => {
-    // Catching the literal case soundly would mean flagging every non-literal
-    // setFields, and the codebase has many legitimate ones.
+  it('flags a literal setFields({ control: "RUN" })', () => {
     expect(
       check(`
         sub go()
           m.loadTask.setFields({ control: "RUN" })
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('flags a literal setFields carrying control alongside other fields', () => {
+    expect(
+      check(`
+        sub go()
+          m.loadTask.setFields({ itemId: "abc", control: "run", startIndex: 0 })
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('does not flag a literal setFields without a thread-starting control', () => {
+    expect(
+      check(`
+        sub go()
+          m.loadTask.setFields({ itemId: "abc", startIndex: 0 })
+          m.fadeIn.setFields({ control: "start" })
+          m.loadTask.setFields({ control: "STOP" })
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('does not flag a NON-literal setFields — the documented residual gap', () => {
+    // Only a literal AA can be inspected statically. Flagging every non-literal
+    // setFields to chase soundness would false-positive across the codebase
+    // (source/utils/nodeUtils.bs and friends build these dynamically).
+    expect(
+      check(`
+        sub go(fields as object)
+          m.loadTask.setFields(fields)
         end sub
       `),
     ).toHaveLength(0);

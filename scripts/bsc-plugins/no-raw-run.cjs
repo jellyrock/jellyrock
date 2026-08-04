@@ -26,13 +26,12 @@
  *     takes "start"/"pause"/"resume" and `Video` takes "play"/"rewind"/"none",
  *     and the codebase has ~95 such writes. Only "RUN" starts a thread.
  *
- * Known residual gap — `node.setFields({ control: "RUN" })`. Deliberately not
- * covered: the argument is usually a variable or a built-up AA, so catching the
- * literal case would mean flagging EVERY non-literal `setFields` to stay sound,
- * and the codebase has many legitimate ones (see `source/utils/nodeUtils.bs`).
- * That trade lands on the wrong side of the false-positive line. No site in the
- * codebase starts a Task this way; if one ever does, the fix is to write it as a
- * `launchTask()` call, not to widen the rule.
+ * Known residual gap — `node.setFields(someVariable)` where the AA is not a
+ * literal. Only a literal AA can be inspected statically, and flagging every
+ * non-literal `setFields` to chase soundness would false-positive broadly
+ * (`setFields` is common and legitimate — see `source/utils/nodeUtils.bs`). The
+ * literal form IS covered, since that is the shape someone would actually
+ * write.
  *
  * Allowed call sites:
  *  - `source/utils/tasks.bs`   (the wrapper itself)
@@ -53,6 +52,7 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-raw-run\b/i;
 const CONTROL_FIELD = 'control';
 const RUN_VALUE = 'run';
 const SET_FIELD = 'setfield';
+const SET_FIELDS = 'setfields';
 
 /** Strips the surrounding quotes BrighterScript keeps on string literal tokens. */
 function stringLiteralValue(expression) {
@@ -128,18 +128,43 @@ class NoRawRunPlugin {
           if (!startsAThread(statement.value)) return;
           report(statement);
         },
-        // node.setField("control", <value>) — the same write through ifSGNodeField.
-        // Keyed on a LITERAL "control" first argument, so a `setField(name, v)`
-        // with a computed field name is never flagged.
+        // node.setField("control", <value>) and node.setFields({ control: <value> })
+        // — the same write through ifSGNodeField.
         CallExpression: (call) => {
           const callee = call?.callee;
           if (!brighterscript.isDottedGetExpression(callee)) return;
-          if (callee.tokens?.name?.text?.toLowerCase() !== SET_FIELD) return;
+          const method = callee.tokens?.name?.text?.toLowerCase();
           const args = call.args || [];
-          if (args.length < 2) return;
-          if (!isControlLiteral(args[0])) return;
-          if (!startsAThread(args[1])) return;
-          report(call);
+
+          // Keyed on a LITERAL "control" first argument, so a `setField(name, v)`
+          // with a computed field name is never flagged.
+          if (method === SET_FIELD) {
+            if (args.length < 2) return;
+            if (!isControlLiteral(args[0])) return;
+            if (!startsAThread(args[1])) return;
+            report(call);
+            return;
+          }
+
+          // setFields takes ONE associative-array argument. Only a literal AA can
+          // be inspected; a variable or a built-up AA is left alone rather than
+          // flagged, because `setFields` is common and legitimate throughout the
+          // codebase (see source/utils/nodeUtils.bs) and flagging every
+          // non-literal one to chase soundness would false-positive broadly.
+          // Catching the literal form is still strictly better than catching
+          // nothing: it is the shape someone would actually write.
+          if (method === SET_FIELDS) {
+            if (args.length !== 1) return;
+            if (!brighterscript.isAALiteralExpression(args[0])) return;
+            for (const element of args[0].elements || []) {
+              const key = element?.tokens?.key?.text ?? element?.key?.text;
+              if (typeof key !== 'string') continue;
+              if (key.replace(/^"|"$/g, '').toLowerCase() !== CONTROL_FIELD) continue;
+              if (!startsAThread(element.value)) continue;
+              report(call);
+              return;
+            }
+          }
         },
       });
 
