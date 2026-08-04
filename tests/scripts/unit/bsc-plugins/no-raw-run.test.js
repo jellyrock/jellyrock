@@ -56,6 +56,62 @@ describe('no-raw-run', () => {
     ).toHaveLength(1);
   });
 
+  it('flags the ifSGNodeField form node.setField("control", "RUN")', () => {
+    expect(
+      check(`
+        sub init()
+          m.loadTask.setField("control", "RUN")
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('flags setField with an RHS it cannot resolve statically', () => {
+    expect(
+      check(`
+        sub init()
+          m.loadTask.setField("control", verb)
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('does not flag setField for other fields or other verbs', () => {
+    expect(
+      check(`
+        sub go()
+          m.loadTask.setField("itemId", "RUN")
+          m.fadeIn.setField("control", "start")
+          m.loadTask.setField("control", "STOP")
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('does not flag setField with a computed field name', () => {
+    // Keyed on a literal "control" first arg, so a dynamic field name is never
+    // flagged — otherwise every generic setField(name, value) helper trips it.
+    expect(
+      check(`
+        sub go(fieldName as string)
+          m.loadTask.setField(fieldName, "RUN")
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('does not flag setFields — the documented residual gap', () => {
+    // Catching the literal case soundly would mean flagging every non-literal
+    // setFields, and the codebase has many legitimate ones.
+    expect(
+      check(`
+        sub go()
+          m.loadTask.setFields({ control: "RUN" })
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
   it('flags an RHS it cannot resolve statically', () => {
     // A variable could hold "RUN" at runtime, so the plugin assumes the worst
     // rather than letting a dynamic write slip the chokepoint.

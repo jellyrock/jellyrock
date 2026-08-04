@@ -11,9 +11,10 @@
  * See `docs/architecture/tech-debt.md#task-thread-budget` and
  * `docs/projects/2026-08-task-thread-budget/PLAN.md`.
  *
- * What is flagged — an assignment to a `control` member, either form:
+ * What is flagged — a write to a `control` member, in any of these forms:
  *   - `node.control = "RUN"`
  *   - `node["control"] = "RUN"`
+ *   - `node.setField("control", "RUN")`
  *   - `node.control = someVariable`   (RHS not statically resolvable, so it
  *                                      may be "RUN" — flagged rather than
  *                                      assumed safe)
@@ -24,6 +25,14 @@
  *   - Any other string literal. `control` is not a Task-only field: `Animation`
  *     takes "start"/"pause"/"resume" and `Video` takes "play"/"rewind"/"none",
  *     and the codebase has ~95 such writes. Only "RUN" starts a thread.
+ *
+ * Known residual gap — `node.setFields({ control: "RUN" })`. Deliberately not
+ * covered: the argument is usually a variable or a built-up AA, so catching the
+ * literal case would mean flagging EVERY non-literal `setFields` to stay sound,
+ * and the codebase has many legitimate ones (see `source/utils/nodeUtils.bs`).
+ * That trade lands on the wrong side of the false-positive line. No site in the
+ * codebase starts a Task this way; if one ever does, the fix is to write it as a
+ * `launchTask()` call, not to widen the rule.
  *
  * Allowed call sites:
  *  - `source/utils/tasks.bs`   (the wrapper itself)
@@ -43,6 +52,7 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-raw-run\b/i;
 
 const CONTROL_FIELD = 'control';
 const RUN_VALUE = 'run';
+const SET_FIELD = 'setfield';
 
 /** Strips the surrounding quotes BrighterScript keeps on string literal tokens. */
 function stringLiteralValue(expression) {
@@ -117,6 +127,19 @@ class NoRawRunPlugin {
           if (!isControlLiteral(indexes[0])) return;
           if (!startsAThread(statement.value)) return;
           report(statement);
+        },
+        // node.setField("control", <value>) — the same write through ifSGNodeField.
+        // Keyed on a LITERAL "control" first argument, so a `setField(name, v)`
+        // with a computed field name is never flagged.
+        CallExpression: (call) => {
+          const callee = call?.callee;
+          if (!brighterscript.isDottedGetExpression(callee)) return;
+          if (callee.tokens?.name?.text?.toLowerCase() !== SET_FIELD) return;
+          const args = call.args || [];
+          if (args.length < 2) return;
+          if (!isControlLiteral(args[0])) return;
+          if (!startsAThread(args[1])) return;
+          report(call);
         },
       });
 
