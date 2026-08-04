@@ -34,7 +34,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 - **Start every Task through `launchTask(node)`** (`source/utils/tasks.bs`; add `import "pkg:/source/utils/tasks.bs"`). A raw `node.control = "RUN"` is a **build error** — the `no-raw-run` BSC plugin enforces it.
 - Why: Roku OS caps the app at 100 concurrent threads and raises `&h29` past it (epic #728). `launchTask()` is the one place a thread starts, so in debug builds the live count is measurable — see [`printTaskThreads()`](../docs/architecture/debug-tools.md).
-- It returns `false` for an invalid node, so `if launchTask(m.someTask)` guards exactly like the `if isValid(...)` check it replaces.
+- **An invalid node is a silent no-op, not a crash.** A raw `m.someTask.control = "RUN"` faulted when `m.someTask` was invalid; `launchTask` returns `false` instead. Better for users (a row that doesn't load beats an app that dies), worse for diagnosis — so debug builds print `[TASKS] launchTask() called with an invalid node`. Check the return only where you have something useful to do with a failed launch; no call site does today.
 - **Stopping needs no wrapper.** `node.control = "STOP"` stays as-is: the count is derived from each node's `state`, so a stop is picked up for free.
 - `control` is not Task-only — `Animation` (`"start"` / `"pause"`) and `Video` (`"play"` / `"rewind"`) use the same field name and are untouched by the rule.
 

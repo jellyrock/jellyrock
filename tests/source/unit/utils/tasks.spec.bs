@@ -32,7 +32,28 @@ namespace tests
     protected function stoppedTask() as object
       node = m.freshTask()
       launchTask(node)
-      node.control = "STOP" ' bsc-disable-line no-raw-run
+      node.control = "STOP"
+      return node
+    end function
+
+    ' A Task driven to a NATURAL end — its function ran and returned, rather than
+    ' being stopped. `isServerReachable` returns immediately on an empty baseUrl,
+    ' so a short settle is enough; the poll keeps it from being a fixed-sleep race.
+    protected function finishedTask() as object
+      node = m.freshTask()
+      node.baseUrl = ""
+      launchTask(node)
+      ' Poll on the RAW state, not on taskThreadIsLive() — the assertion under
+      ' test is about that function, so gating the wait on it would make a broken
+      ' implementation exit the loop instantly and pass trivially. A node fresh
+      ' off launchTask can still read "init" for a moment, so both non-terminal
+      ' states have to be waited through.
+      settle = CreateObject("roTimespan")
+      while settle.totalMilliseconds() < 3000
+        state = LCase(node.state)
+        if state <> "run" and state <> "init" then exit while
+        sleep(50)
+      end while
       return node
     end function
 
@@ -106,6 +127,17 @@ namespace tests
       m.assertTrue(taskThreadIsLive(m.runningTask()))
     end function
 
+    ' The one way the derived count could be silently wrong: `"init"` counts as
+    ' live, so if a Task that ran to completion reverted to `"init"` every
+    ' finished thread would be counted forever. Device measurement says it
+    ' reports `"stop"`; this pins that, because the whole count rests on it.
+    @it("is false once the task function has returned on its own")
+    function _()
+      node = m.finishedTask()
+      m.assertNotEqual(LCase(node.state), "init", "a finished task must not report init")
+      m.assertFalse(taskThreadIsLive(node))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("countLiveTaskThreads() — the derived count")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -158,6 +190,78 @@ namespace tests
       kept = pruneTaskLedger([node], node)
       m.assertEqual(kept.count(), 1)
       m.assertEqual(countLiveTaskThreads(kept), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("recordTaskLaunch() — the ledger's storage")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' REGRESSION (#768 review): the ledger field used to be declared at the END of
+    ' setGlobalNodes(), after that sub had already started five Task threads. A
+    ' write to a field an roSGNode does not have is a SILENT no-op, so all five —
+    ' the three ApiTasks, ApiQueueTask and SideEffectTask — vanished, and
+    ' printTaskThreads() under-reported by a permanent five on every run. Device
+    ' probe at the time: `hasField=false type=Invalid` after all five launches,
+    ' then `live=0 tracked=0`. Creating the field on first use is what fixes it,
+    ' and this is the test that keeps it fixed.
+    @it("creates the ledger field on a store that does not have one yet")
+    function _()
+      store = CreateObject("roSGNode", "Node")
+      node = m.freshTask()
+
+      m.assertFalse(store.hasField("taskLedger"), "precondition: store starts with no ledger field")
+      recordTaskLaunch(store, node)
+
+      m.assertTrue(store.hasField("taskLedger"), "the launch must create the field, not write into the void")
+      m.assertEqual(store["taskLedger"].count(), 1)
+      m.assertTrue(store["taskLedger"][0].isSameNode(node))
+    end function
+
+    @it("records into an existing ledger without recreating it")
+    function _()
+      store = CreateObject("roSGNode", "Node")
+      first = m.runningTask()
+      second = m.runningTask()
+
+      recordTaskLaunch(store, first)
+      recordTaskLaunch(store, second)
+
+      m.assertEqual(store["taskLedger"].count(), 2)
+      m.assertEqual(countLiveTaskThreads(store["taskLedger"]), 2)
+    end function
+
+    ' A persistent Task node is relaunched many times; the ledger must not grow.
+    @it("keeps a relaunched node to a single entry")
+    function _()
+      store = CreateObject("roSGNode", "Node")
+      node = m.runningTask()
+
+      recordTaskLaunch(store, node)
+      recordTaskLaunch(store, node)
+      recordTaskLaunch(store, node)
+
+      m.assertEqual(store["taskLedger"].count(), 1)
+    end function
+
+    @it("drops finished entries as later launches come through")
+    function _()
+      store = CreateObject("roSGNode", "Node")
+
+      recordTaskLaunch(store, m.stoppedTask())
+      recordTaskLaunch(store, m.stoppedTask())
+      recordTaskLaunch(store, m.runningTask())
+
+      ' Each call prunes the dead entries recorded before it, so only the two
+      ' most recent survive: the live one, plus the stopped one added last (which
+      ' was still being appended when it was recorded).
+      m.assertEqual(countLiveTaskThreads(store["taskLedger"]), 1)
+      m.assertTrue(store["taskLedger"].count() <= 2, "dead entries must not accumulate")
+    end function
+
+    @it("is a no-op for an invalid store rather than a crash")
+    function _()
+      recordTaskLaunch(invalid, m.freshTask())
+      m.assertTrue(true, "reaching here without a fault is the assertion")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

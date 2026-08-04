@@ -167,8 +167,13 @@ sub setGlobalNodes()
     ' Task-thread ledger — every node launchTask() has started, so the live
     ' thread count can be derived from each node's `state`. Debug builds only;
     ' see source/utils/tasks.bs and docs/dev/debug-flags.md.
-    m.global.addField("taskLedger", "array", false)
-    print "[DEBUG] Task ledger initialized — printTaskThreads() for the live count"
+    '
+    ' The `taskLedger` field is deliberately NOT declared here. `recordTaskLaunch`
+    ' creates it on first use, which is the only ordering that can be right: the
+    ' five Task threads this sub starts above run BEFORE this point, and a write
+    ' to an undeclared roSGNode field is a silent no-op — declaring it here lost
+    ' all five from the readout.
+    print "[DEBUG] Task ledger active — printTaskThreads() for the live count"
   #end if
 end sub
 

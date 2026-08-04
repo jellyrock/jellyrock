@@ -26,10 +26,29 @@
 ' still valid". So a stopped or done node is not a thread, and a `control =
 ' "STOP"` needs no accounting call at all — the next read simply sees it.
 '
-' It also means no read-modify-write, so there is no cross-thread counter race
-' to reason about. (A sweep of every launch site found all 99 of them on the
-' render thread; the only Task node started from a Task thread is the vendored
-' `WebSocketClient` that `RemoteControlTask` owns.)
+' Measured on device rather than reasoned about: a Task whose function returns
+' NATURALLY reports `state = "stop"`, and never reverts to `"init"`. That is the
+' one way the derived count could have been silently wrong — `taskThreadIsLive`
+' treats `"init"` as live — so `tests/source/unit/utils/tasks.spec.bs` pins it.
+'
+' ── The ledger is best-effort; the COUNT is exact ──────────────────────────
+'
+' Recording a launch IS a read-modify-write of `m.global.taskLedger`, and the
+' launch sites are not all on one thread. Most are on the render thread, but
+' `setGlobalNodes()` (the API pool, the queue, the side-effect task), `main.bs`'s
+' two font tasks and `replayRoute.performServerSwitch` all run on the MAIN
+' thread. Two launches racing across those threads can lose an entry, and the
+' readout would then under-report by one.
+'
+' That is accepted rather than fixed: there is no atomic read-modify-write on a
+' shared node field, the window is a few instructions wide, and the cost is a
+' debug-only readout that is low by one. What the ledger DOES guarantee is that
+' whatever it recorded is counted exactly — the count is a pure read of each
+' node's `state`, with no counter to drift out of sync.
+'
+' The one Task node started from a Task thread is the vendored `WebSocketClient`
+' that `RemoteControlTask` owns; `components/vendor/**` is outside the plugin's
+' reach and outside the ledger's.
 '
 ' ── Pure core / debug shell split ──────────────────────────────────────────
 '
@@ -64,7 +83,17 @@
 ' @return true when the node was valid and RUN was issued; false otherwise, so a
 '         caller can guard exactly as the raw `if isValid(x)` launch sites did
 function launchTask(node as object) as boolean
-  if not isValid(node) then return false
+  if not isValid(node)
+    ' Behaviour change worth stating: a raw `m.someTask.control = "RUN"` on an
+    ' invalid node FAULTED. This returns false instead, so a missing Task node is
+    ' a screen that never loads rather than an app that dies — better for the
+    ' user, worse for whoever has to find it. Debug builds say it out loud so the
+    ' signal the fault used to provide is not simply gone.
+    #if debug
+      print "[TASKS] launchTask() called with an invalid node — nothing started"
+    #end if
+    return false
+  end if
 
   #if debug
     trackTaskLaunch(node)
@@ -126,14 +155,36 @@ function pruneTaskLedger(ledger as object, node as object) as object
   return kept
 end function
 
+' Records `node` into `store`'s ledger, creating the field on first use.
+'
+' The field is CREATED here rather than assumed to exist, because a write to a
+' field an roSGNode does not have is a silent no-op. Measured on device: with the
+' field declared at the end of `setGlobalNodes()`, the five Task threads that
+' `setGlobalNodes()` starts before that line — the three `ApiTask`s, `ApiQueueTask`
+' and `SideEffectTask` — were dropped without a trace, and `printTaskThreads()`
+' under-reported by a permanent five. Creating on first use makes the ledger
+' correct whatever order bootstrap and launches happen in, so the bug cannot come
+' back by someone adding a launch earlier.
+'
+' `store` is passed in rather than read from `m.global` so this stays outside the
+' `#if debug` shell and a Rooibos test can drive it — test builds compile with
+' `debug=false`, so anything inside the gate is unreachable from Rooibos.
+sub recordTaskLaunch(store as object, node as object)
+  if not isValid(store) then return
+  if not store.hasField("taskLedger") then store.addField("taskLedger", "array", false)
+  ' Bracket access: a dynamically-added field is invisible to the typed node
+  ' interface, so dotted access would be a compile error.
+  store["taskLedger"] = pruneTaskLedger(store["taskLedger"], node)
+end sub
+
 ' ── Debug shell ─────────────────────────────────────────────────────────────
 
 #if debug
 
-  ' Records `node` in the ledger and drops entries whose thread has ended.
+  ' Records `node` in the ledger on m.global. All the logic lives in
+  ' `recordTaskLaunch` so that none of it is stranded behind this gate.
   sub trackTaskLaunch(node as object)
-    if not isValid(m.global) then return
-    m.global.taskLedger = pruneTaskLedger(m.global.taskLedger, node)
+    recordTaskLaunch(m.global, node)
   end sub
 
   ' Prints the ledger to the BrightScript console (telnet port 8085).
