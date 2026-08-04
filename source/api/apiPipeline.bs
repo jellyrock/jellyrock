@@ -152,6 +152,14 @@ function apiPipelineNext(pipe as dynamic) as dynamic
         ' building ContentNodes — and it does that work on THIS thread, between
         ' calls. Topping up only on re-entry would leave the freed slot idle for
         ' the whole of that work, once per entry, for the length of the run.
+        '
+        ' Re-read the clock first. `pipe.expired` was computed at the top of this
+        ' iteration, BEFORE a wait() that may have consumed the whole remaining
+        ' budget — submitting on that stale flag would put up to SLOT_COUNT
+        ' requests in flight that the next iteration immediately drains as
+        ' undelivered, spending pool slots and server round trips on a run that
+        ' is already past its deadline.
+        if pipe.budgetMs - pipe.clock.totalMilliseconds() <= 0 then pipe.expired = true
         if not pipe.expired then apiPipelineRefill(pipe)
 
         return { entry: record.entry, res: record.node.result }
