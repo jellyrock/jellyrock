@@ -237,6 +237,16 @@ A photo whose URI won't resolve now raises a non-blocking toast and advances to 
 
 Ruled out: **a blocking modal** (the prior behavior), which was not merely worse but non-viable — `messageDialog` reached `showDialog`, which builds an `roFontRegistry` for text metrics, and that is a MAIN|TASK-only component Roku refuses to construct on the render thread, so a dialog raised from this render-thread component was a crash rather than a message. That path was almost certainly never exercised: the pre-existing guard tested `isValid()` on a SceneGraph `string` field, which never goes invalid. Also ruled out: **unbounded skipping**, because random mode has no end-of-list terminator, so a wholesale failure (an unset server URL fails every photo) would cycle a blank screen indefinitely; the bound converts that into a stop. Constraint worth re-evaluating: the bound of 3 is a judgment call with no measurement behind it, and once #757's render-thread-safe `JRDialog` lands the terminal case could become a real dialog instead of simply halting.
 
+## decision-id: no-refill-on-completion
+
+**date**: 2026-08-04
+**status**: accepted
+**related-files**: `source/api/apiPipeline.bs`, `docs/dev/home-first-paint-performance.md`
+
+`apiPipelineNext` tops the pool up ONCE per call, at the top of its loop, and deliberately does not refill again immediately after taking a completion. The rejected design is intuitive and will be re-proposed by anyone reading the slot accounting: the caller does real per-result work (transform, build `ContentNode`s, `appendChild`) on the same thread between calls, so the slot a completion just freed sits idle for all of it — at `SLOT_COUNT = 3` that reads as a third of the pool parked for the length of the run.
+
+It was implemented, measured and reverted. Across six independent comparisons on three device tiers (n=30 on a 512 MB Stick over four separate build/deploy passes, n=10 each on a Stick 4K and an Ultra, same server, 11 libraries) it was slower every time and never faster — roughly 1-3%, sign test p=0.031. Per-device Mann-Whitney was not significant, so this is evidence of NO BENEFIT rather than proof of harm, and the original justification (a 2673 to 2586 ms median at n=4) did not reproduce. Two things worth knowing before re-opening it: the per-column split is noise-dominated at these sample sizes — at n=10 `wait` appeared to confirm the mechanism and at n=30 it reversed — and the method resolves only ~120 ms and up, so a genuine sub-1% win would be invisible either way. Re-propose it only with a measurement that clears that floor.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
