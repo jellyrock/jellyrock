@@ -8,8 +8,7 @@
  * chokepoint; this plugin makes bypassing it a build error, so the bound holds
  * by construction rather than by convention.
  *
- * See `docs/architecture/tech-debt.md#task-thread-budget` and
- * `docs/projects/2026-08-task-thread-budget/PLAN.md`.
+ * See `docs/architecture/tech-debt.md#task-thread-budget`.
  *
  * What is flagged — a write to a `control` member, in any of these forms:
  *   - `node.control = "RUN"`
