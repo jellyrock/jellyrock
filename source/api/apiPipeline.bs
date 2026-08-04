@@ -34,6 +34,13 @@ import "pkg:/source/utils/misc.bs"
 ' Results arrive in COMPLETION order, not entry order. Requests are SUBMITTED in
 ' entry order, so on-screen-first work still starts first.
 '
+' The caller's per-result work runs on THIS thread, between calls — so the pool
+' is topped up immediately after a completion is taken, BEFORE the result is
+' handed back. Otherwise the slot that completion freed would sit idle for the
+' whole of the caller's work (transforming items, building ContentNodes), once
+' per entry. At `SLOT_COUNT = 3` that is a third of the pool parked for the
+' length of the run.
+'
 ' Chosen over a `runApiPipeline(entries, onResult)` callback form: no inversion
 ' of control, it reads like the `fetchRes` loop the team already knows, and it
 ' avoids depending on BrighterScript function-pointer params.
@@ -112,18 +119,16 @@ function apiPipelineNext(pipe as dynamic) as dynamic
 
     ' ── Top up: keep the pool busy, in entry order ──
     if not pipe.expired
-      while apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
+      apiPipelineRefill(pipe)
+
+      ' A free slot with entries still queued means a submit failed outright:
+      ' submitApiRequest returns invalid only when the request is malformed or
+      ' the pool pipeline isn't up yet. Neither resolves by waiting, so yield the
+      ' entry as undelivered instead of stalling the run.
+      if apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
         claim = apiPipelineClaimNext(pipe)
-        node = submitApiRequest(claim.entry.req, claim.entry.requestId, pipe.port)
-        if isValid(node)
-          apiPipelineAddPending(pipe, claim.entry.requestId, claim.index, node)
-        else
-          ' submitApiRequest returns invalid only when the request is malformed or
-          ' the pool pipeline isn't up yet. Neither resolves by waiting, so yield
-          ' the entry as undelivered instead of stalling the run.
-          return { entry: claim.entry, res: invalid }
-        end if
-      end while
+        return { entry: claim.entry, res: invalid }
+      end if
     end if
 
     if apiPipelineIsDone(pipe) then return invalid
@@ -141,6 +146,14 @@ function apiPipelineNext(pipe as dynamic) as dynamic
       record = apiPipelineTake(pipe, apiPipelineEventRequestId(msg))
       if isValid(record)
         apiPipelineRelease(record)
+
+        ' Refill the slot this completion just freed BEFORE handing the result
+        ' back. The caller does real work per result — transforming items,
+        ' building ContentNodes — and it does that work on THIS thread, between
+        ' calls. Topping up only on re-entry would leave the freed slot idle for
+        ' the whole of that work, once per entry, for the length of the run.
+        if not pipe.expired then apiPipelineRefill(pipe)
+
         return { entry: record.entry, res: record.node.result }
       end if
       ' Unknown id — a late event for an entry already drained. Fall through and
@@ -242,6 +255,25 @@ function apiPipelineWaitMs(remainingMs as integer) as integer
 end function
 
 ' ── I/O helpers ──
+
+' Submits queued entries until the pool is full or the queue is empty.
+'
+' Best-effort by contract: an entry it cannot submit is put BACK on the queue
+' (the claim is reverted) rather than consumed. That keeps the undeliverable
+' path in one place — apiPipelineNext's top-up, which yields the entry to the
+' caller with `res = invalid`. Without the revert, an entry claimed here and
+' dropped would never be yielded at all, breaking the exactly-once guarantee.
+sub apiPipelineRefill(pipe as dynamic)
+  while apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
+    claim = apiPipelineClaimNext(pipe)
+    node = submitApiRequest(claim.entry.req, claim.entry.requestId, pipe.port)
+    if not isValid(node)
+      pipe.nextIndex = claim.index
+      return
+    end if
+    apiPipelineAddPending(pipe, claim.entry.requestId, claim.index, node)
+  end while
+end sub
 
 ' Drops the pool observer for a finished record. Records claimed but never
 ' submitted carry no node, so this is a no-op for them.
