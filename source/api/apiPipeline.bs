@@ -114,8 +114,9 @@ function apiPipelineNext(pipe as dynamic) as dynamic
   if not isValid(pipe) then return invalid
 
   while true
-    remainingMs = pipe.budgetMs - pipe.clock.totalMilliseconds()
-    if remainingMs <= 0 then pipe.expired = true
+    elapsedMs = pipe.clock.totalMilliseconds()
+    remainingMs = pipe.budgetMs - elapsedMs
+    if apiPipelineBudgetSpent(pipe.budgetMs, elapsedMs) then pipe.expired = true
 
     ' ── Top up: keep the pool busy, in entry order ──
     if not pipe.expired
@@ -159,7 +160,7 @@ function apiPipelineNext(pipe as dynamic) as dynamic
         ' requests in flight that the next iteration immediately drains as
         ' undelivered, spending pool slots and server round trips on a run that
         ' is already past its deadline.
-        if pipe.budgetMs - pipe.clock.totalMilliseconds() <= 0 then pipe.expired = true
+        if apiPipelineBudgetSpent(pipe.budgetMs, pipe.clock.totalMilliseconds()) then pipe.expired = true
         if not pipe.expired then apiPipelineRefill(pipe)
 
         return { entry: record.entry, res: record.node.result }
@@ -253,6 +254,19 @@ function apiPipelineDrainOne(pipe as object) as dynamic
 
   if isValid(oldestId) then return apiPipelineTake(pipe, oldestId)
   return apiPipelineClaimNext(pipe)
+end function
+
+' Has the whole-run deadline passed?
+'
+' Small enough to inline, but it is ONE function on purpose: the budget is checked
+' in two places — at the top of apiPipelineNext's loop, and again after a
+' completion before the pool is topped up — and the bug this replaced was exactly
+' those two disagreeing. The second check read a `pipe.expired` computed before a
+' wait() that could consume the entire remaining budget, so a run past its
+' deadline still submitted. One shared predicate means they cannot drift apart
+' again, and unlike the clock itself it is unit-testable.
+function apiPipelineBudgetSpent(budgetMs as integer, elapsedMs as integer) as boolean
+  return budgetMs - elapsedMs <= 0
 end function
 
 ' How long to block on one wait: never past the run budget, never longer than a
