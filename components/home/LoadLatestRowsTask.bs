@@ -38,12 +38,42 @@ sub loadLatestRows()
     })
   end for
 
+  ' Split the run into time spent WAITING on the pool versus time spent EMITTING
+  ' (transform + ContentNode + appendChild) on this thread.
+  '
+  ' "No slower first paint than today" is a success criterion of the task-thread
+  ' work (epic #728), and this run is Home's first paint for latest media. The
+  ' TOTAL alone cannot tell a slow server from slow work of our own, which is the
+  ' distinction every decision here has turned on: measurement showed emit is
+  ' ~50-57% of the run on every device tier, while widening the request pool
+  ' bought nothing below ~150 ms of added latency.
+  '
+  ' Kept in the source rather than added by hand when needed, because a
+  ' re-instrumented probe measures subtly different things and is therefore not
+  ' comparable to the recorded baselines — which defeats the point of having them.
+  ' Costs two roTimespans and two adds per row; roku-log strips it from prod.
+  ' See docs/dev/home-first-paint-performance.md.
+  runClock = CreateObject("roTimespan")
+  stepClock = CreateObject("roTimespan")
+  waitMs = 0
+  emitMs = 0
+
   pipe = apiPipelineBegin(entries)
+  stepClock.mark()
   result = apiPipelineNext(pipe)
+  waitMs += stepClock.totalMilliseconds()
+
   while isValid(result)
+    stepClock.mark()
     emitRow(result.entry.libId, result.res)
+    emitMs += stepClock.totalMilliseconds()
+
+    stepClock.mark()
     result = apiPipelineNext(pipe)
+    waitMs += stepClock.totalMilliseconds()
   end while
+
+  m.log.info("latest-rows orchestrator done - task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
 end sub
 
 ' Transforms one response and emits its row.

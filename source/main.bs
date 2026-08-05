@@ -1,3 +1,4 @@
+import "pkg:/source/utils/tasks.bs"
 sub Main (args as dynamic) as void
   printRegistry()
   ' The main function that runs when the application is launched.
@@ -337,7 +338,7 @@ sub initializeFallbackFont()
   ' Create and start font download task
   fontDownloadTask = CreateObject("roSGNode", "FontDownloadTask")
   fontDownloadTask.observeField("isFontDownloadCompleted", m.port)
-  fontDownloadTask.control = "RUN"
+  launchTask(fontDownloadTask)
 
   ' Store whether we need to wait for completion (UI fonts enabled)
   m.waitForFontDownload = (m.global.user.settings.uiFontFallback = true)
@@ -428,7 +429,7 @@ sub calculateFontScaleFactor()
   fontTask = CreateObject("roSGNode", "FontScalingTask")
   port = CreateObject("roMessagePort")
   fontTask.observeField("scaleFactor", port)
-  fontTask.control = "RUN"
+  launchTask(fontTask)
 
   msg = wait(timeouts.FONT_SCALE_MS, port)
 

@@ -1,0 +1,206 @@
+' ============================================================================
+' tasks.bs — the one accounted chokepoint for starting a Task thread
+' ============================================================================
+'
+' RokuOS caps an app instance at 100 concurrent threads (main + render + every
+' Task thread); the port-8085 console warns past 50 and a `&h29` "too many task
+' threads" exception is raised past 100. Epic #728 is that crash, produced by
+' launch sites that scaled with server data while nothing in the app could see
+' the total.
+'
+' `launchTask()` is the single place a Task thread starts. The `no-raw-run` BSC
+' plugin makes a bare `control = "RUN"` anywhere else a build error, so the
+' chokepoint holds by construction rather than by convention.
+'
+' ── The count is DERIVED, never tracked ────────────────────────────────────
+'
+' A counter would need a decrement when the thread exits — i.e. an
+' `observeField("state")` per launch, which is the unpaired-observer leak shape
+' PR #765 spent a whole pass removing, and which neither teardown plugin can see
+' on a component that isn't a `JRScreen`.
+'
+' Instead the ledger holds node references and the count is derived on demand by
+' reading each node's `state`. That is exact rather than approximate, because
+' Roku's own rule is stated in terms of `state`: a Task thread that has
+' terminated does not count toward the cap "even if the task object itself is
+' still valid". So a stopped or done node is not a thread, and a `control =
+' "STOP"` needs no accounting call at all — the next read simply sees it.
+'
+' Measured on device rather than reasoned about: a Task whose function returns
+' NATURALLY reports `state = "stop"`, and never reverts to `"init"`. That is the
+' one way the derived count could have been silently wrong — `taskThreadIsLive`
+' treats `"init"` as live — so `tests/source/unit/utils/tasks.spec.bs` pins it.
+'
+' ── The ledger is best-effort; the COUNT is exact ──────────────────────────
+'
+' Recording a launch IS a read-modify-write of `m.global.taskLedger`, and the
+' launch sites are not all on one thread. Most are on the render thread, but
+' `setGlobalNodes()` (the API pool, the queue, the side-effect task), `main.bs`'s
+' two font tasks and `replayRoute.performServerSwitch` all run on the MAIN
+' thread. Two launches racing across those threads can lose an entry, and the
+' readout would then under-report by one.
+'
+' That is accepted rather than fixed: there is no atomic read-modify-write on a
+' shared node field, the window is a few instructions wide, and the cost is a
+' debug-only readout that is low by one. What the ledger DOES guarantee is that
+' whatever it recorded is counted exactly — the count is a pure read of each
+' node's `state`, with no counter to drift out of sync.
+'
+' The one Task node started from a Task thread is the vendored `WebSocketClient`
+' that `RemoteControlTask` owns; `components/vendor/**` is outside the plugin's
+' reach and outside the ledger's.
+'
+' ── Pure core / debug shell split ──────────────────────────────────────────
+'
+' The ledger arithmetic (`pruneTaskLedger`, `countLiveTaskThreads`,
+' `taskThreadIsLive`) is pure: it takes the ledger array explicitly and touches
+' no `m`, no globals, no console. Only the shell reads and writes
+' `m.global.taskLedger` or prints, and the shell is `#if debug`.
+'
+' The split is not stylistic. Test builds compile against the same `manifest`,
+' where `bs_const=debug=false`, so anything inside `#if debug` is stripped
+' before Rooibos ever sees it — a fully-gated ledger would be untestable. Same
+' reason `apiPipeline.bs` and `apiPromise.bs` are split this way; see
+' docs/architecture/async.md.
+'
+' A production build pays nothing at runtime. `#if debug` survives transpile as a
+' BrightScript conditional-compilation directive and is resolved on the device
+' from the manifest's `bs_const=debug=false`, so the shell — and `launchTask()`'s
+' call into it — is excluded at load rather than merely skipped. Same mechanism
+' as the DebugFlags precedent in globals.bs. The pure functions remain, but with
+' nothing calling them they cost only their own bytes.
+'
+' ── What the readout is for ────────────────────────────────────────────────
+'
+' Measuring on a sideloaded dev build, in the same port-8085 console workflow as
+' `m.global.debug.*` — see docs/dev/debug-flags.md. Phase 1's worker count K is
+' meant to come from these numbers rather than from a guess.
+' ============================================================================
+
+' Starts `node`'s Task thread through the accounted chokepoint.
+'
+' @param node - the Task node to start
+' @return true when the node was valid and RUN was issued, false otherwise. No
+'         call site checks this today; see the invalid-node note below before
+'         deciding you want to.
+function launchTask(node as object) as boolean
+  if not isValid(node)
+    ' Behaviour change worth stating: a raw `m.someTask.control = "RUN"` on an
+    ' invalid node FAULTED. This returns false instead, so a missing Task node is
+    ' a screen that never loads rather than an app that dies — better for the
+    ' user, worse for whoever has to find it. Debug builds say it out loud so the
+    ' signal the fault used to provide is not simply gone.
+    #if debug
+      print "[TASKS] launchTask() called with an invalid node — nothing started"
+    #end if
+    return false
+  end if
+
+  #if debug
+    trackTaskLaunch(node)
+  #end if
+
+  node.control = "RUN"
+  return true
+end function
+
+' ── Pure core ───────────────────────────────────────────────────────────────
+
+' True while `node`'s Task thread is running.
+'
+' "init" counts: a node told to RUN has not necessarily entered its function
+' yet, but it is already holding a thread. A node that has never been launched
+' also reports "init", which is why only nodes the ledger has recorded are ever
+' passed here.
+function taskThreadIsLive(node as object) as boolean
+  if not isValid(node) then return false
+  state = LCase(node.state)
+  return state = "run" or state = "init"
+end function
+
+' Counts the tracked nodes whose Task thread is still running.
+'
+' This is the app's own launches only — it excludes the main and render threads
+' and anything started outside `launchTask()`.
+function countLiveTaskThreads(ledger as object) as integer
+  if not isValid(ledger) then return 0
+  live = 0
+  for each tracked in ledger
+    if taskThreadIsLive(tracked) then live++
+  end for
+  return live
+end function
+
+' Returns `ledger` with finished threads dropped and `node` recorded.
+'
+' Pruning at launch (rather than at read) keeps the ledger bounded without
+' depending on anyone calling the readout: it holds the tasks live right now
+' plus any that finished since the previous launch.
+'
+' `node` is appended unconditionally and de-duplicated against the existing
+' entries, because a persistent Task node gets relaunched many times over its
+' life (`ExtrasRowList` alone relaunches its nodes 38 times).
+function pruneTaskLedger(ledger as object, node as object) as object
+  kept = []
+  if isValid(ledger)
+    for each tracked in ledger
+      if not taskThreadIsLive(tracked) then continue for
+      if isValid(node) and tracked.isSameNode(node) then continue for
+      kept.push(tracked)
+    end for
+  end if
+
+  ' Appended after the liveness filter on purpose: at this point `node.state`
+  ' still reflects its PREVIOUS run, since control = "RUN" has not been issued.
+  if isValid(node) then kept.push(node)
+  return kept
+end function
+
+' Records `node` into `store`'s ledger, creating the field on first use.
+'
+' The field is CREATED here rather than assumed to exist, because a write to a
+' field an roSGNode does not have is a silent no-op. Measured on device: with the
+' field declared at the end of `setGlobalNodes()`, the five Task threads that
+' `setGlobalNodes()` starts before that line — the three `ApiTask`s, `ApiQueueTask`
+' and `SideEffectTask` — were dropped without a trace, and `printTaskThreads()`
+' under-reported by a permanent five. Creating on first use makes the ledger
+' correct whatever order bootstrap and launches happen in, so the bug cannot come
+' back by someone adding a launch earlier.
+'
+' `store` is passed in rather than read from `m.global` so this stays outside the
+' `#if debug` shell and a Rooibos test can drive it — test builds compile with
+' `debug=false`, so anything inside the gate is unreachable from Rooibos.
+sub recordTaskLaunch(store as object, node as object)
+  if not isValid(store) then return
+  if not store.hasField("taskLedger") then store.addField("taskLedger", "array", false)
+  ' Bracket access: a dynamically-added field is invisible to the typed node
+  ' interface, so dotted access would be a compile error.
+  store["taskLedger"] = pruneTaskLedger(store["taskLedger"], node)
+end sub
+
+' ── Debug shell ─────────────────────────────────────────────────────────────
+
+#if debug
+
+  ' Records `node` in the ledger on m.global. All the logic lives in
+  ' `recordTaskLaunch` so that none of it is stranded behind this gate.
+  sub trackTaskLaunch(node as object)
+    recordTaskLaunch(m.global, node)
+  end sub
+
+  ' Prints the ledger to the BrightScript console (telnet port 8085).
+  '
+  ' Callable from a paused console the same way as the debug flags:
+  '   printTaskThreads()
+  sub printTaskThreads()
+    ledger = []
+    if isValid(m.global) and isValid(m.global.taskLedger) then ledger = m.global.taskLedger
+
+    print "[TASKS] live="; countLiveTaskThreads(ledger); " tracked="; ledger.count()
+    for each tracked in ledger
+      print "[TASKS]   "; tracked.subtype(); " id="; tracked.id; " state="; tracked.state
+    end for
+    print "[TASKS] (app launches only — excludes main, render, and any thread not started via launchTask)"
+  end sub
+
+#end if

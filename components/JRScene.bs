@@ -12,6 +12,7 @@ import "pkg:/source/roku_modules/sgrouter/interfaces.brs"
 import "pkg:/source/roku_modules/sgrouter/router.brs"
 import "pkg:/source/roku_modules/sgrouter/RouterState.brs"
 import "pkg:/source/roku_modules/tkss_rodash_v0/rodash.brs"
+import "pkg:/source/utils/tasks.bs"
 
 sub init()
   ' Initialize the log manager HERE — this is the EARLIEST point in the app that can.
@@ -505,7 +506,7 @@ sub resolveDeepLink(args as object)
   m.deepLinkResolveTask.itemsToLoad = "metaDataDetails"
   m.deepLinkResolveTask.itemId = args.itemId
   m.deepLinkResolveTask.observeField("content", "onDeepLinkResolved")
-  m.deepLinkResolveTask.control = "RUN"
+  launchTask(m.deepLinkResolveTask)
 end sub
 
 ' Abort an in-flight deep-link/cast resolve (the metadata fetch that runs BEFORE navigation):

@@ -34,6 +34,15 @@ import "pkg:/source/utils/misc.bs"
 ' Results arrive in COMPLETION order, not entry order. Requests are SUBMITTED in
 ' entry order, so on-screen-first work still starts first.
 '
+' The pool is topped up once per call, at the TOP of apiPipelineNext. Refilling
+' again right after a completion — before handing the result back, so the freed
+' slot is not idle for the caller's per-result work — was tried and measured:
+' across six independent device/pass comparisons it was consistently ~1-3%
+' SLOWER, never faster (sign test p=0.031), and the per-column split showed no
+' mechanism holding up under n=30. The idle-slot argument sounds right and does
+' not survive measurement, so the simpler shape stays. See
+' docs/dev/home-first-paint-performance.md.
+'
 ' Chosen over a `runApiPipeline(entries, onResult)` callback form: no inversion
 ' of control, it reads like the `fetchRes` loop the team already knows, and it
 ' avoids depending on BrighterScript function-pointer params.
@@ -107,23 +116,22 @@ function apiPipelineNext(pipe as dynamic) as dynamic
   if not isValid(pipe) then return invalid
 
   while true
-    remainingMs = pipe.budgetMs - pipe.clock.totalMilliseconds()
-    if remainingMs <= 0 then pipe.expired = true
+    elapsedMs = pipe.clock.totalMilliseconds()
+    remainingMs = pipe.budgetMs - elapsedMs
+    if apiPipelineBudgetSpent(pipe.budgetMs, elapsedMs) then pipe.expired = true
 
     ' ── Top up: keep the pool busy, in entry order ──
     if not pipe.expired
-      while apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
+      apiPipelineRefill(pipe)
+
+      ' A free slot with entries still queued means a submit failed outright:
+      ' submitApiRequest returns invalid only when the request is malformed or
+      ' the pool pipeline isn't up yet. Neither resolves by waiting, so yield the
+      ' entry as undelivered instead of stalling the run.
+      if apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
         claim = apiPipelineClaimNext(pipe)
-        node = submitApiRequest(claim.entry.req, claim.entry.requestId, pipe.port)
-        if isValid(node)
-          apiPipelineAddPending(pipe, claim.entry.requestId, claim.index, node)
-        else
-          ' submitApiRequest returns invalid only when the request is malformed or
-          ' the pool pipeline isn't up yet. Neither resolves by waiting, so yield
-          ' the entry as undelivered instead of stalling the run.
-          return { entry: claim.entry, res: invalid }
-        end if
-      end while
+        return { entry: claim.entry, res: invalid }
+      end if
     end if
 
     if apiPipelineIsDone(pipe) then return invalid
@@ -141,6 +149,7 @@ function apiPipelineNext(pipe as dynamic) as dynamic
       record = apiPipelineTake(pipe, apiPipelineEventRequestId(msg))
       if isValid(record)
         apiPipelineRelease(record)
+
         return { entry: record.entry, res: record.node.result }
       end if
       ' Unknown id — a late event for an entry already drained. Fall through and
@@ -234,6 +243,18 @@ function apiPipelineDrainOne(pipe as object) as dynamic
   return apiPipelineClaimNext(pipe)
 end function
 
+' Has the whole-run deadline passed?
+'
+' Small enough to inline, but named and separate on purpose: the clock lives in
+' the shell and is therefore untestable, whereas this predicate is pinned by unit
+' tests — including that the deadline counts as spent AT zero rather than one
+' tick later. Any second budget check added later must call this rather than
+' re-derive the comparison; two hand-written checks disagreeing is precisely the
+' bug that a post-completion refill introduced here once.
+function apiPipelineBudgetSpent(budgetMs as integer, elapsedMs as integer) as boolean
+  return budgetMs - elapsedMs <= 0
+end function
+
 ' How long to block on one wait: never past the run budget, never longer than a
 ' single request's own deadline.
 function apiPipelineWaitMs(remainingMs as integer) as integer
@@ -242,6 +263,25 @@ function apiPipelineWaitMs(remainingMs as integer) as integer
 end function
 
 ' ── I/O helpers ──
+
+' Submits queued entries until the pool is full or the queue is empty.
+'
+' Best-effort by contract: an entry it cannot submit is put BACK on the queue
+' (the claim is reverted) rather than consumed. That keeps the undeliverable
+' path in one place — apiPipelineNext's top-up, which yields the entry to the
+' caller with `res = invalid`. Without the revert, an entry claimed here and
+' dropped would never be yielded at all, breaking the exactly-once guarantee.
+sub apiPipelineRefill(pipe as dynamic)
+  while apiPipelineSlotsFree(pipe) > 0 and apiPipelineHasQueued(pipe)
+    claim = apiPipelineClaimNext(pipe)
+    node = submitApiRequest(claim.entry.req, claim.entry.requestId, pipe.port)
+    if not isValid(node)
+      pipe.nextIndex = claim.index
+      return
+    end if
+    apiPipelineAddPending(pipe, claim.entry.requestId, claim.index, node)
+  end while
+end sub
 
 ' Drops the pool observer for a finished record. Records claimed but never
 ' submitted carry no node, so this is a no-op for them.

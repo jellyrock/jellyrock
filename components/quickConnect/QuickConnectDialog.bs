@@ -5,6 +5,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/session.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Dialog has two phases:
@@ -24,7 +25,7 @@ sub quickConnectStatus()
   m.checkTask = CreateObject("roSGNode", "QuickConnect")
   m.checkTask.secret = m.top.quickConnectJson.secret
   m.checkTask.observeField("authenticated", "onAuthenticated")
-  m.checkTask.control = "run"
+  launchTask(m.checkTask)
 end sub
 
 sub onAuthenticated()

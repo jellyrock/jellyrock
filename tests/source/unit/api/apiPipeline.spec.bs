@@ -319,6 +319,31 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineBudgetSpent - one deadline test, used in both places")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The budget is checked twice per iteration — at the top of the loop, and
+    ' again after a completion before the pool is topped up. Those two used to be
+    ' separate expressions, and the second one read a flag computed BEFORE a
+    ' wait() that could consume the entire remaining budget, so a run past its
+    ' deadline still submitted requests the next iteration threw away. One shared
+    ' predicate is what stops them drifting apart again.
+    @it("is false while budget remains")
+    function _()
+      m.assertFalse(apiPipelineBudgetSpent(5000, 4999))
+    end function
+
+    @it("is true exactly at the deadline, not one tick after")
+    function _()
+      m.assertTrue(apiPipelineBudgetSpent(5000, 5000))
+    end function
+
+    @it("is true once the deadline has passed")
+    function _()
+      m.assertTrue(apiPipelineBudgetSpent(5000, 7500))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("apiPipelineEnd - abandoning a run early")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

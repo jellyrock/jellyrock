@@ -1,5 +1,6 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
 
 ' TextSizeTask measures at this size and showButtons renders at it. They must agree or the
 ' labels are laid out to the wrong widths, so it is one constant rather than two literals.
@@ -61,7 +62,7 @@ sub updateButtons()
   m.textSizeTask.observeField("width", "showButtons")
   m.textSizeTask.fontsize = BUTTON_FONT_SIZE
   m.textSizeTask.text = m.top.buttons
-  m.textSizeTask.control = "RUN"
+  launchTask(m.textSizeTask)
 end sub
 
 ' Stop, unobserve, and drop the in-flight TextSizeTask if one exists. Safe to call when none is

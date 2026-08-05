@@ -11,6 +11,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -196,7 +197,7 @@ sub searchMedias()
   m.searchTask.observeField("results", "loadResults")
   m.searchTask.query = query
   m.top.overhangTitle = translate(translationKeys.ButtonSearch) + ": " + query
-  m.searchTask.control = "RUN"
+  launchTask(m.searchTask)
 
 end sub
 

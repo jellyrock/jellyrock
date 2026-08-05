@@ -26,6 +26,7 @@ export default [
       'out/',
       'locale/',
       'tasks/',
+      '.claude/',
       'roku_modules/',
       '**/roku_modules/',
     ],

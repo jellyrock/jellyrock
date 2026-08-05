@@ -1,3 +1,4 @@
+import "pkg:/source/utils/tasks.bs"
 ' Low memory device model prefixes (512MB RAM, ~50MB texture memory)
 ' These devices cannot load large textures (e.g., default trickplay 10x10 320 tiles) into memory
 ' See: https://github.com/jellyrock/jellyrock/issues/299
@@ -81,13 +82,13 @@ sub setGlobalNodes()
   ' Each task runs an infinite while loop; control = "RUN" must be set once to start it.
   apiPool0 = CreateObject("roSGNode", "ApiTask")
   apiPool0.id = "apiPool0"
-  apiPool0.control = "RUN"
+  launchTask(apiPool0)
   apiPool1 = CreateObject("roSGNode", "ApiTask")
   apiPool1.id = "apiPool1"
-  apiPool1.control = "RUN"
+  launchTask(apiPool1)
   apiPool2 = CreateObject("roSGNode", "ApiTask")
   apiPool2.id = "apiPool2"
-  apiPool2.control = "RUN"
+  launchTask(apiPool2)
   m.global.addFields({
     apiPool0: apiPool0,
     apiPool1: apiPool1,
@@ -97,7 +98,7 @@ sub setGlobalNodes()
   ' FIFO queue coordinator — dispatches queued requests to free pool slots.
   ' Must start after the pool nodes are on m.global so it can read them in runQueueLoop.
   apiQueue = CreateObject("roSGNode", "ApiQueueTask")
-  apiQueue.control = "RUN"
+  launchTask(apiQueue)
   m.global.addFields({ apiQueue: apiQueue })
 
   ' Tier 2 side-effect task — single persistent SideEffectTask (Architecture C continuous-
@@ -106,7 +107,7 @@ sub setGlobalNodes()
   ' all pre-existing children once at startup (the node tree is the source of truth), so no
   ' side effect is lost to startup ordering.
   sideEffectTask = CreateObject("roSGNode", "SideEffectTask")
-  sideEffectTask.control = "RUN"
+  launchTask(sideEffectTask)
   m.global.addFields({ sideEffectTask: sideEffectTask })
 
   sceneManager = CreateObject("roSGNode", "SceneManager")
@@ -162,6 +163,17 @@ sub setGlobalNodes()
     print "[DEBUG]   m.global.debug.shouldForceFiltersFail = true"
     print "[DEBUG]   m.global.debug.shouldForceFavoriteFail = true"
     print "[DEBUG]   m.global.debug.shouldForceWatchedFail = true"
+
+    ' Task-thread ledger — every node launchTask() has started, so the live
+    ' thread count can be derived from each node's `state`. Debug builds only;
+    ' see source/utils/tasks.bs and docs/dev/debug-flags.md.
+    '
+    ' The `taskLedger` field is deliberately NOT declared here. `recordTaskLaunch`
+    ' creates it on first use, which is the only ordering that can be right: the
+    ' five Task threads this sub starts above run BEFORE this point, and a write
+    ' to an undeclared roSGNode field is a silent no-op — declaring it here lost
+    ' all five from the readout.
+    print "[DEBUG] Task ledger active — printTaskThreads() for the live count"
   #end if
 end sub
 

@@ -1,3 +1,4 @@
+import "pkg:/source/utils/tasks.bs"
 ' ===========================================================================
 ' Deep-link resolution + deferred replay
 '
@@ -349,7 +350,7 @@ sub performServerSwitch(entry as object)
   task.baseUrl = entry.baseUrl
   task.observeField("reachable", m.port)
   m.serverReachableTask = task
-  task.control = "RUN"
+  launchTask(task)
 end sub
 
 ' Continuation of performServerSwitch once the off-thread reachability probe returns. On an

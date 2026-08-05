@@ -3,6 +3,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -94,7 +95,7 @@ sub ScanForServers()
   m.ssdpScanner = CreateObject("roSGNode", "ServerDiscoveryTask")
   'run the task
   m.ssdpScanner.observeField("content", "onScanForServersComplete")
-  m.ssdpScanner.control = "RUN"
+  launchTask(m.ssdpScanner)
 end sub
 
 sub onScanForServersComplete(event)

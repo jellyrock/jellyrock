@@ -4,6 +4,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Routed host for video playback. See PlayerHostView.xml header.
@@ -424,7 +425,7 @@ sub onSelectPlaybackInfoPressed()
 
   ' Set cached playback info right before running (when it's actually available)
   m.getPlaybackInfoTask.cachedPlaybackInfo = m.view.cachedPlaybackInfo
-  m.getPlaybackInfoTask.control = "RUN"
+  launchTask(m.getPlaybackInfoTask)
 end sub
 
 ' The playback info task has returned data
