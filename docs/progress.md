@@ -50,7 +50,6 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 ### scripts
 
 - Expand automated store screenshots from the 5 marketing languages to ALL ~99 locale files, to surface the default Roku OS font's blast radius — boxes/tofu for scripts the system font doesn't cover are EXPECTED and the point of capturing them. From #642.
-- **Add a BSC lint for `m.log.*` argument count.** `roku-log`'s `Logger` methods are `function(message, value..value9)` — 10 params — and the roku-log plugin spends the first slot on the injected pkg path, so a call site may pass at most **nine**. Exceeding it is **not** a compile error: `npm run validate` passes clean and it faults at runtime with `Wrong number of function parameters` (&hf1), which drops the app into the BrightScript debugger and hangs it mid-load. The hang then presents as broken *tooling* rather than a bad log call — ODC requests time out, every ODC node read returns `undefined` so RTA nav helpers report "screen never loaded", and the UI sits on a spinner — which is what makes it expensive: it cost most of a session (2026-08-04) before the device console, which names the file and line directly, was read. Evidence: `components/ItemGrid/LoadItemsTask2.bs` shipped a ten-argument call that validated clean and faulted on device (fixed in `457763c9`). Sibling to the existing tech-debt entry that nothing lints `m.log.*` used without a Logger (`1ae0b789`) — same plugin could carry both checks.
 
 ### components
 
