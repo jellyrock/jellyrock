@@ -29,13 +29,18 @@ network-bound. Measure per orchestrator; do not carry one result to another.
 ## What is being measured
 
 Opening Home fires one `LoadLatestRowsTask` run that fetches the latest items for every
-eligible library. Two log lines describe it, and both are permanent (roku-log strips them
-from production builds, so they exist only in dev builds):
+eligible library. Two log lines describe it, and both are permanent — they exist in dev
+builds only (see [Why this costs production nothing](#why-this-costs-production-nothing)):
 
 ```text
-latest-rows run complete 11 rows 2728 ms                      # HomeRows, render thread
-latest-rows orchestrator done - task 2106 wait 502 emit 1590  # LoadLatestRowsTask
+latest-rows run complete 11 rows 2728 ms                                              # HomeRows, render thread
+latest-rows orchestrator done - [debug=false perfTiming=true] task 2106 wait 502 emit 1590   # LoadLatestRowsTask
 ```
+
+**Read the bracketed build flags before you trust a sample.** Every line carries the
+compile-time state it was taken under, so a number can never be silently compared against
+one measured in a distorting build. `debug=true` is not comparable to `debug=false` (see
+the trap below); a line with no bracket predates this and its build state is unknown.
 
 Four numbers come out of that pair. **Three of them are measurements; one is not.**
 
@@ -167,6 +172,60 @@ from the run that produced this table:
 Use a rank test, not a median difference. A median gap that looks decisive can sit well
 inside the spread — and the per-column split (`wait` / `emit`) is noisy enough at n=10 to
 reverse sign between samples, so decide on `total`.
+
+## Why this costs production nothing
+
+The instrumentation is gated on a dedicated `bs_const`, **`perfTiming`**, which defaults to
+`true` in the committed manifest and is forced to `false` for every release artifact.
+
+**It is deliberately NOT gated on `debug`.** A `debug=true` build attaches `rawApiData` to
+every transformed item, which lands inside `emit` — the quantity being measured. Riding
+`debug` would mean the only build able to read these numbers is one that inflates them.
+Separate flags keep "measure the app" and "test the app's error paths" independent.
+
+**It also cannot rely on `roku-log` stripping alone.** `roku-log` removes the log *call*
+from production, but not the `roTimespan`s and per-item `mark()` / `totalMilliseconds()`
+calls feeding it — so before `perfTiming` existed, production ran the whole measurement and
+threw the result away, on every Home load and every grid load (up to `m.top.limit`, default
+100 items).
+
+### `#if` is evaluated on the device, not by `bsc`
+
+This is the part that makes the enforcement non-obvious, and it invalidates the intuitive
+way to check it:
+
+- `bsc` does **not** evaluate `#if`. The directives are passed straight through and appear
+  verbatim in the emitted `.brs`. **Grepping the build output for `roTimespan` proves
+  nothing** — it is always there.
+- Roku's on-device compiler evaluates `#if` at load time using the `bs_const` line in the
+  **shipped manifest**. The manifest is the only thing that decides what production runs.
+- `bsconfig.json` accepts `manifest.bs_const`, and BrighterScript applies it — but only to
+  its own in-memory manifest. The `manifest` file is copied to `build/` verbatim, so a
+  `bsconfig` override never reaches the device. **Do not use it to enforce this.**
+
+Enforcement therefore lives in
+[`scripts/harden-prod-manifest.cjs`](../../scripts/harden-prod-manifest.cjs),
+the final step of `npm run build:prod`, which forces `debug`, `perfTiming`, and
+`ENABLE_RTA` to `false` in `build/manifest` and prints what it flipped. It covers every
+route to a release, including `npm run package:signed`.
+
+**To verify, read `build/manifest` — not the `.brs`:**
+
+```bash
+npm run build:prod && grep bs_const build/manifest
+# bs_const=debug=false;ENABLE_RTA=false;perfTiming=false
+```
+
+That hardening also closes a standing hazard independent of timing: flipping `debug=true`
+locally to investigate something is routine, and forgetting to revert it before a release
+would ship raw API payloads on every item plus the failure-injection hooks. It has been
+committed as `true` once already (`dc05db8d`, reverted the same day).
+
+### Turning the numbers off
+
+Set `perfTiming=false` in the manifest and rebuild — useful when profiling something else
+and you want the clocks out of the way. Note that the lines then disappear entirely, which
+is also why the default is `true`: instrumentation nobody runs stops being a baseline.
 
 ## The grid's genre loop — the same method, the opposite answer
 

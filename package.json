@@ -49,7 +49,7 @@
   },
   "scripts": {
     "build": "npx rimraf build/ out/ && npx bsc --project bsconfig.json",
-    "build:prod": "npx rimraf build/ out/ && npx bsc --project bsconfig-prod.json",
+    "build:prod": "npx rimraf build/ out/ && npx bsc --project bsconfig-prod.json && node scripts/harden-prod-manifest.cjs",
     "build:tdd": "npx rimraf build/ out/ && npx bsc --project bsconfig-tdd.json",
     "build:tests": "npx rimraf build/ out/ && npx bsc --project bsconfig-tests.json",
     "build:tests-unit": "npx rimraf build/ out/ && npx bsc --project bsconfig-tests-unit.json",
