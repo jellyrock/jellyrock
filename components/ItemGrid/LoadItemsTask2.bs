@@ -23,6 +23,27 @@ sub loadItems()
   globalUser = m.global.user
   results = []
 
+  ' Split the run into time spent WAITING on the pool versus time spent EMITTING
+  ' (transform + ContentNode + appendChild) on this thread — the same decomposition
+  ' LoadLatestRowsTask records, so the two orchestrators are directly comparable.
+  '
+  ' This task has two very different shapes behind one function. A plain grid load is
+  ' ONE query plus a transform loop. A Genres load is one query plus a SEQUENTIAL
+  ' blocking fetch per genre, and epic #728's Phase 1 has to pick a mechanism for it:
+  ' apiPipeline (which attacks wait) or the orchestration job pool (which attacks
+  ' emit). Only the split says which, so `genreFetches` is logged alongside it to keep
+  ' the two regimes apart in the log.
+  '
+  ' Kept in the source rather than added by hand when needed, for the reason recorded
+  ' in LoadLatestRowsTask: a re-instrumented probe measures subtly different things and
+  ' is therefore not comparable to the recorded baselines. Costs two roTimespans per
+  ' run; roku-log strips it from prod. See docs/dev/home-first-paint-performance.md.
+  runClock = CreateObject("roTimespan")
+  stepClock = CreateObject("roTimespan")
+  waitMs = 0
+  emitMs = 0
+  genreFetches = 0
+
   sortField = m.top.sortField
 
   if m.top.sortAscending = true
@@ -157,7 +178,9 @@ sub loadItems()
   end if
   ' MusicAlbum and the generic else both use queryType = "usersItems" (default)
 
+  stepClock.mark()
   data = executeItemQuery(queryType, params)
+  waitMs += stepClock.totalMilliseconds()
 
   ' If user has filtered by #, include special characters sorted after Z as well
   if isValid(params.NameLessThan)
@@ -167,7 +190,9 @@ sub loadItems()
       params.NameStartsWithOrGreater = "z"
 
       ' Perform 2nd API lookup for items starting with Z or greater
+      stepClock.mark()
       startsWithZAndGreaterData = executeItemQuery(queryType, params)
+      waitMs += stepClock.totalMilliseconds()
 
       if isValidAndNotEmpty(startsWithZAndGreaterData)
         specialCharacterItems = []
@@ -193,6 +218,7 @@ sub loadItems()
 
     for each item in data.Items
       tmp = invalid
+      stepClock.mark()
 
       if item.Type = "Genre"
         ' Genre view: build row container with sampled items beneath it
@@ -214,7 +240,12 @@ sub loadItems()
         })
         genreData = invalid
         if isValid(genreReq)
+          emitMs += stepClock.totalMilliseconds()
+          stepClock.mark()
           genreData = fetchJson(genreReq, "genreItems_" + item.id)
+          waitMs += stepClock.totalMilliseconds()
+          genreFetches += 1
+          stepClock.mark()
         end if
 
         if isValid(genreData) and genreData.Items.Count() > 5
@@ -269,9 +300,21 @@ sub loadItems()
       if isValid(tmp)
         results.push(tmp)
       end if
+      emitMs += stepClock.totalMilliseconds()
     end for
   end if
+
+  ' The handoff is emit work too — a grid can carry hundreds of nodes across it.
+  stepClock.mark()
   m.top.content = results
+  emitMs += stepClock.totalMilliseconds()
+
+  ' NOTE: roku-log's Logger.info takes at most 10 params (message + value..value9),
+  ' and the roku-log BSC plugin spends the first on the injected pkg path — so at
+  ' most NINE args may be passed here. Exceeding it is not a compile error: it
+  ' faults at runtime with "Wrong number of function parameters" (&hf1), which
+  ' drops the app into the BrightScript debugger and hangs it mid-load.
+  m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr(), "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
 end sub
 
 ' Routes an item query through Build*Request() + pool based on queryType.

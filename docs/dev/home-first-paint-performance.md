@@ -3,16 +3,24 @@ topic: home-first-paint-performance
 related-files:
   - components/home/LoadLatestRowsTask.bs
   - components/home/HomeRows.bs
+  - components/ItemGrid/LoadItemsTask2.bs
   - source/api/apiPipeline.bs
   - source/constants/apiPool.bs
 last-reviewed: 2026-08-04
 ---
 
-# Measuring Home's first paint
+# Measuring orchestrator wait-vs-emit on device
 
-How to measure the latest-media row load on a real device, what the numbers mean, and the
+How to split an orchestrator's run into time spent **waiting on the network** versus time
+spent **working on its own thread**, on a real device — what the numbers mean, and the
 baselines recorded so far. Epic #728's charter carries the criterion **"no slower first
-paint than today"** — this is how that gets checked rather than argued about.
+paint than today"**, and Phase 1 has to pick a mechanism per orchestrator; this is how both
+get decided by measurement rather than argument.
+
+Two orchestrators carry the instrumentation today, and they answer **oppositely** — Home's
+[`LoadLatestRowsTask`](#baselines-2026-08-04) is work-bound, the grid's
+[`LoadItemsTask2` genre loop](#the-grids-genre-loop--the-same-method-the-opposite-answer) is
+network-bound. Measure per orchestrator; do not carry one result to another.
 
 > ⚠️ **The baselines below are snapshots, not constants.** They were taken before the
 > orchestration job pool existed and will be wrong once it lands. Re-measure and replace
@@ -159,6 +167,62 @@ from the run that produced this table:
 Use a rank test, not a median difference. A median gap that looks decisive can sit well
 inside the spread — and the per-column split (`wait` / `emit`) is noisy enough at n=10 to
 reverse sign between samples, so decide on `total`.
+
+## The grid's genre loop — the same method, the opposite answer
+
+The decomposition is not Home-specific. `LoadItemsTask2` carries the same two clocks and
+emits the same shape of line, because epic #728's Phase 1 had to choose a mechanism for the
+Genres view and only the split could say which:
+
+```text
+item-grid load done - items 8 genreFetches 8 task 1060 wait 827 emit 211
+```
+
+`genreFetches` is logged alongside the split because one function serves two very different
+shapes. A plain grid load is a single query plus a transform loop (`genreFetches 0`). A
+**Genres** load is one query plus a *sequential blocking fetch per genre* — so the genre count
+is what makes the run serial, and a line without it can't be interpreted.
+
+**Baseline** — Stick 4K (`.177`), one movie library, 8 genres, `bs_const=debug=false`, n=4,
+medians. Reaching it needs `display.<libraryId>.landing` seeded to `Genres` (see
+`seedLibraryLanding`); it is not the default view:
+
+| | median | share |
+|---|---|---|
+| `wait` | 757 ms | **78%** |
+| `emit` | 211 ms | 22% |
+| **task** | **1016 ms** | |
+
+Per genre that is ~95 ms of fetch against ~26 ms of transform. Run-to-run spread was tight
+(975–1060 ms).
+
+**This inverts Home's result.** On the same device Home is `wait` 511 / `emit` 1342 — emit
+51% and dominant. The grid's genre loop is 78% network. The two orchestrators therefore need
+**different mechanisms**, which is the whole reason the split is worth measuring per
+orchestrator rather than generalizing one number:
+
+- Home's `emit` is the target → a worker pool that owns the *transform*.
+- The genre loop's `wait` is the target → **`apiPipeline`**, which already exists, needs no
+  new threads, and costs nothing against the 100-thread cap. A worker pool would attack the
+  22% and leave the 757 ms serial.
+
+⚠️ n=4, one device, one library, fast LAN (~95 ms/request). The *direction* is what
+generalizes, and it strengthens rather than weakens off this bench: genre count sets the
+number of serial fetches, so a library with 25 genres is worse, and a distant server is worse
+again. Re-measure before sizing anything.
+
+### Trap: `m.log` silently caps at 10 arguments
+
+`Logger.info` is `function(message, value, value2 … value9)` — **ten parameters**, and the
+roku-log BSC plugin spends the first on the injected pkg path, leaving **nine** for the call
+site. Passing more is **not a compile error**. It faults at runtime with `Wrong number of
+function parameters (&hf1)`, which drops the app into the BrightScript debugger and *hangs
+it mid-load*.
+
+A hung app then fails in ways that look like anything but a log call: ODC requests time out,
+`getValue` returns `undefined` for every node so navigation helpers report "screen never
+loaded", and the UI sits on a spinner. The device console names the offending file and line
+directly — read it first. This cost most of a session during the measurement above.
 
 ## Three theories this method killed
 
