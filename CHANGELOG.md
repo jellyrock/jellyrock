@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Bound Task threads behind an accounted `launchTask()` chokepoint ([#768](https://github.com/jellyrock/jellyrock/pull/768))
 - Collapse `HomeRows` latest-media fan-out onto a bounded `apiPipeline` ([#762](https://github.com/jellyrock/jellyrock/pull/762))
 
 ### Fixed
