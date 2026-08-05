@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update actions/setup-java action to v5.7.0 ([#763](https://github.com/jellyrock/jellyrock/pull/763))
 - Update lint-staged from v17.2.0 to v17.3.0 ([#755](https://github.com/jellyrock/jellyrock/pull/755))
 - Update actions/stale action to v11 ([#764](https://github.com/jellyrock/jellyrock/pull/764))
 - Update js-yaml from v5.2.2 to v5.2.3 ([#758](https://github.com/jellyrock/jellyrock/pull/758))
