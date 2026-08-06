@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (ci) Run the RTA suite in CI on the release-prep branch ([#772](https://github.com/jellyrock/jellyrock/pull/772))
 - Bound Task threads behind an accounted `launchTask()` chokepoint ([#768](https://github.com/jellyrock/jellyrock/pull/768))
 - Collapse `HomeRows` latest-media fan-out onto a bounded `apiPipeline` ([#762](https://github.com/jellyrock/jellyrock/pull/762))
 
@@ -19,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (lint) stop the cursor nudge reading Recently-shipped as the cursor ([#771](https://github.com/jellyrock/jellyrock/pull/771))
 - Tighten Task-node hygiene and remove stranded dialog helpers ([#765](https://github.com/jellyrock/jellyrock/pull/765))
 - Remove invalid `focusable` attribute from `<component>` elements ([#767](https://github.com/jellyrock/jellyrock/pull/767))
 - `ws://` remote-control socket task-thread leak ([#756](https://github.com/jellyrock/jellyrock/pull/756))
