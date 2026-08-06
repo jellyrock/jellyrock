@@ -206,6 +206,24 @@ describe('applyShipEdit', () => {
     expect(extractCurrentlyRunning(r.content)).toBe('');
   });
 
+  // Regression: the clear used to append its own newline on top of the one the
+  // lookahead already preserves, leaving TWO blank lines between the headings.
+  // That trips markdownlint MD012, which fails `lint:markdown` in the pre-push
+  // hook — and journal-sync's own workflow pushes to main, so it broke itself.
+  // Asserting the cursor is empty is not enough; the surrounding shape matters.
+  it('leaves exactly one blank line between the headings after clearing', () => {
+    const before = progressTemplate({
+      running: 'Reshaping the journal pillar system into four-pillar pattern.',
+    });
+    const r = applyShipEdit(before, {
+      prTitle: 'feat(journal): reshape into four-pillar pattern',
+      today: '2026-05-10',
+    });
+    expect(r.cursorCleared).toBe(true);
+    expect(r.content).toContain('## Currently running\n\n## Recently shipped');
+    expect(r.content).not.toMatch(/\n{3,}/);
+  });
+
   it('leaves Currently running alone when cursor and title are unrelated', () => {
     const before = progressTemplate({
       running: 'Working on the video player chapter scrubber.',

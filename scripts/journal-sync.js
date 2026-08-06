@@ -294,9 +294,14 @@ export function applyShipEdit(content, { prTitle, today }) {
   //    avoids the `\s*\n` greedy-swallow trap (which would consume the
   //    body's leading newlines and leave the body unmatched).
   if (clearCursor) {
+    // Replacement is `header` alone, NOT `header + '\n'`. The lookahead
+    // `(?=\n##\s)` leaves the newline before the next heading in place, so
+    // appending one here yields TWO blank lines between the headings —
+    // markdownlint MD012, which fails `lint:markdown` in the pre-push hook and
+    // therefore breaks this workflow's own `git push origin main`.
     next = next.replace(
       /(##\s+Currently running[^\n]*\n)([\s\S]*?)(?=\n##\s)/,
-      (_match, header) => `${header}\n`,
+      (_match, header) => header,
     );
   }
 
