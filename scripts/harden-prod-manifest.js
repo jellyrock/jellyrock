@@ -22,24 +22,50 @@
  *     it, so an unhardened release does the whole measurement and discards the result.
  *   - `debug=true` shipping: attaches `rawApiData` to every transformed item, enables
  *     failure injection (`shouldForceFiltersFail` and friends), the toast cheat code,
- *     and the Task-thread ledger. Flipping this locally while debugging is a normal
- *     habit; forgetting to revert it before a release is the hazard. It has been
- *     committed as `true` once before (dc05db8d, reverted same day).
+ *     and raises the log level from 2 to 4. Flipping it locally is a routine part of
+ *     manual testing — it is the only way to surface `m.log.debug` / `.verbose` output
+ *     today — so it reaches the working tree often. It has been committed as `true`
+ *     TWICE (27d99141 on 2025-10-24, dc05db8d on 2026-03-12), each caught and reverted
+ *     the same day, i.e. after landing rather than before.
  *   - `ENABLE_RTA=true` shipping: RTA's deploy rewrites this in the build dir, so a
  *     release built after a test run could otherwise inherit it.
+ *   - An UNREGISTERED dev const shipping: see the default-deny check below.
+ *
+ * WHAT THIS DOES NOT NEED TO PREVENT
+ *
+ * A manifest that DROPS a const cannot reach this script. `bsc` raises
+ * `hash-const-does-not-exist` (error, exit 1) for every `#if` referencing an undeclared
+ * const, and `build:prod` is `bsc … && node scripts/harden-prod-manifest.js`. All three
+ * consts below are referenced in source, so all three are gated there — earlier, and
+ * with a file:line per use site.
  *
  * Runs as the last step of `npm run build:prod`, so every path to a release artifact
  * (including `npm run package:signed`, which composes it) is covered.
  */
-'use strict';
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-/** Consts that must be false in any production artifact. */
+/**
+ * Consts expected to be TRUE in a dev manifest and forced false for production.
+ *
+ * This is a denylist, so it only knows what someone remembered to add — which is why
+ * the default-deny check below backstops it. The two say different things: this list
+ * means "expected true in dev, turn it off"; the check means "anything else true is a
+ * mistake."
+ */
 const FORCED_OFF = ['debug', 'perfTiming', 'ENABLE_RTA'];
 
-const manifestPath = path.join(__dirname, '..', 'build', 'manifest');
+/**
+ * Consts allowed to remain TRUE in a production artifact.
+ *
+ * Deliberately empty: no const legitimately ships on today. If one ever does, the
+ * default-deny check fails the build and adding it here is the deliberate, reviewable
+ * act of saying so. Do not pre-populate it.
+ */
+const ALLOWED_TRUE = [];
+
+const manifestPath = path.join(process.cwd(), 'build', 'manifest');
 
 if (!fs.existsSync(manifestPath)) {
   console.error(`❌ harden-prod-manifest: no manifest at ${manifestPath}`);
@@ -58,6 +84,10 @@ if (index === -1) {
   process.exit(1);
 }
 
+// Preserve the line's own terminator: splitting on '\n' leaves '\r' on the end of every
+// line in a CRLF file, and rebuilding without it would emit one lone LF line into an
+// otherwise CRLF manifest.
+const eol = lines[index].endsWith('\r') ? '\r' : '';
 const before = lines[index].slice('bs_const='.length);
 const consts = new Map();
 for (const pair of before.split(';')) {
@@ -69,13 +99,28 @@ for (const pair of before.split(';')) {
 const flipped = [];
 for (const key of FORCED_OFF) {
   if (consts.get(key) === 'true') flipped.push(key);
-  // Set rather than only-flip: a const the manifest never declared would otherwise be
-  // undefined on device, and `#if <undefined>` is a compile error there.
-  if (consts.has(key)) consts.set(key, 'false');
+  consts.set(key, 'false');
+}
+
+// Default-deny backstop. The manifest's const set turns over every few months
+// (printReg → debug → ENABLE_RTA → perfTiming), and `perfTiming` established the first
+// const that is TRUE by default — the pattern the next dev flag will copy. A const
+// added to the manifest but never registered in FORCED_OFF above would otherwise ship
+// on, silently: bsc is happy (it IS declared), roku-log does not touch `#if` blocks,
+// and nothing else reads the built manifest.
+const stillTrue = [...consts].filter(([k, v]) => v === 'true' && !ALLOWED_TRUE.includes(k));
+
+if (stillTrue.length) {
+  const names = stillTrue.map(([k]) => k).join(', ');
+  console.error(`❌ harden-prod-manifest: unregistered const(s) still TRUE → ${names}`);
+  console.error('   A production artifact must not ship a dev flag on.');
+  console.error('   Fix: add it to FORCED_OFF in scripts/harden-prod-manifest.js,');
+  console.error('   or to ALLOWED_TRUE if it genuinely must ship enabled.');
+  process.exit(1);
 }
 
 const after = [...consts].map(([k, v]) => `${k}=${v}`).join(';');
-lines[index] = `bs_const=${after}`;
+lines[index] = `bs_const=${after}${eol}`;
 fs.writeFileSync(manifestPath, lines.join('\n'));
 
 if (flipped.length) {

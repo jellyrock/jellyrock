@@ -8,7 +8,7 @@ related-files:
   - Makefile
   - scripts/create-package.cjs
   - scripts/create-signed-package.cjs
-  - scripts/harden-prod-manifest.cjs
+  - scripts/harden-prod-manifest.js
   - manifest
   - scripts/bsc-plugins/roku-log.cjs
   - scripts/bsc-plugins/translation-keys.cjs
@@ -156,7 +156,7 @@ flag would mean the only build that can read the numbers is one that distorts th
 
 ### Production hardening
 
-[`scripts/harden-prod-manifest.cjs`](../../scripts/harden-prod-manifest.cjs) is the
+[`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) is the
 final step of `npm run build:prod`. It rewrites `build/manifest` to force `debug`, `perfTiming`,
 and `ENABLE_RTA` to `false`, prints what it flipped, and fails loudly if the manifest is missing
 or has no `bs_const` line. Every route to a release artifact composes `build:prod`, so
@@ -164,8 +164,21 @@ or has no `bs_const` line. Every route to a release artifact composes `build:pro
 
 This exists because `roku-log`'s `strip` removes log *calls* from production but not the code
 feeding them — the timing clocks would otherwise run in production and have their results
-discarded. It also means a `debug=true` flip left in the working tree (a routine thing to do
-while investigating, and committed as `true` once before in `dc05db8d`) cannot reach a release.
+discarded. It also means a `debug=true` flip left in the working tree cannot reach a release —
+and that flip is routine, because the log level is welded to the same const, so raising
+verbosity means flipping `debug`. It has landed on `main` as `true` **twice** (`27d99141`,
+`dc05db8d`), each reverted the same day.
+
+The script also **denies by default**: after forcing the known dev `bs_const` values off, any const still
+`true` fails the build by name. `FORCED_OFF` is a deny-list and only knows what someone
+remembered to add, while the const set turns over every few months (`printReg` → `debug` →
+`ENABLE_RTA` → `perfTiming`) — and `perfTiming` is the first one to default `true`, which is
+the pattern the next dev flag will copy. A const that legitimately must ship enabled opts into
+`ALLOWED_TRUE` explicitly.
+
+A manifest that *drops* a const never reaches the script: `bsc` raises
+`hash-const-does-not-exist` (error, exit 1) for every `#if` referencing an undeclared const,
+and `build:prod` chains the two with `&&`.
 
 Verify with:
 

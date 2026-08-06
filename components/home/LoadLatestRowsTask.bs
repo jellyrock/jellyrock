@@ -59,7 +59,9 @@ sub loadLatestRows()
   ' landing inside `emit` — the quantity measured here — so the only build able to
   ' read the numbers would be one that distorts them (+121 ms on a Stick 4K).
   ' `perfTiming` defaults TRUE in the manifest so dev builds keep printing the split;
-  ' bsconfig-prod.json forces it false. See docs/dev/home-first-paint-performance.md.
+  ' scripts/harden-prod-manifest.js forces it false in every release artifact. A
+  ' bsconfig setting CANNOT do that job — see the script's header for why.
+  ' See docs/dev/home-first-paint-performance.md.
   '
   ' Declared unconditionally so bslint (LINT1003) sees every path assign them — it
   ' does not correlate assignments across `#if` blocks.

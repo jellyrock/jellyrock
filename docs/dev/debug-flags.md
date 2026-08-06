@@ -8,7 +8,9 @@ related-files:
   - source/data/JellyfinDataTransformer.bs
   - components/data/jellyfin/JellyfinBaseItem.xml
   - source/utils/tasks.bs
-last-reviewed: 2026-08-04
+  - manifest
+  - scripts/harden-prod-manifest.js
+last-reviewed: 2026-08-05
 ---
 
 # Debug Flags & Toast Testing
@@ -109,11 +111,14 @@ Simulated failure --> toast
 
 ### Production Safety
 
-The system uses BrighterScript's `#if debug` conditional compilation:
+The system uses `#if debug` conditional compilation:
 
-- `bs_const=debug=false` (manifest default) — the compiler **removes all `#if debug` blocks entirely**. No dead code, no runtime checks, no node creation. The `DebugFlags` XML component exists in the package but is never instantiated.
+- `bs_const=debug=false` (manifest default) — the `#if debug` blocks are **compiled out**. No dead code, no runtime checks, no node creation. The `DebugFlags` XML component exists in the package but is never instantiated.
 - `bs_const=debug=true` (set during development) — all debug code is active.
-- The commit skill enforces `bs_const=debug=false` before commits land.
+
+**Which compiler does that matters, and it is not `bsc`.** BrighterScript passes `#if` through untouched — the directives appear verbatim in the emitted `.brs`, and **Roku's on-device compiler** evaluates them at load time against the `bs_const` line in the *shipped manifest*. Two consequences: grepping `build/**/*.brs` to confirm a flag is off proves nothing (the block is always there — read `build/manifest` instead), and `bsconfig.json`'s `manifest.bs_const` cannot enforce it (it only rewrites BrighterScript's in-memory copy). See [build-and-tooling.md → Compile-time flags](../architecture/build-and-tooling.md#compile-time-flags-bs_const).
+
+Enforcement is therefore a build step: [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) forces `debug` off in `build/manifest` as the final step of `npm run build:prod`, so no release artifact can carry it. That is the guarantee to rely on — a `debug=true` flip has reached `main` twice (`27d99141`, `dc05db8d`), each reverted the same day, so commit-time convention alone has not held.
 
 ### Available Flags
 

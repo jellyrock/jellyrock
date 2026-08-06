@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-04
+last-updated: 2026-08-05
 ---
 
 # Progress
@@ -22,7 +22,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Epic #728 Phase 1's last design blocker is **closed by measurement**: the grid's genre loop (`LoadItemsTask2`) is **78% network wait / 22% emit** — the inverse of Home, which is 51% emit — so it gets `apiPipeline` and NOT the orchestration job pool. Branch `perf/728-genre-loop-split` is pushed with the permanent wait/emit instrumentation and the performance-doc section, but **no PR is open yet**. Next: `/pr` for that branch, then the two independent builds — migrate the genre loop onto `apiPipeline` (projected 1016 → ~400 ms, re-measurable with the shipped instrumentation), and build the job pool for Home's emit. Mechanism is now chosen **per orchestrator, from a measured split** — do not carry one orchestrator's result to another.
+**PR #769 is open** (branch `perf/728-genre-loop-split`) and through a full review pass; review fixes are committed locally and not yet pushed. It closes epic #728 Phase 1's last design blocker by measurement: the grid's genre loop (`LoadItemsTask2`) is **78% network wait / 22% emit** — the inverse of Home, which is 51% emit — so it gets `apiPipeline` and NOT the orchestration job pool. Mechanism is now chosen **per orchestrator, from a measured split**; do not carry one orchestrator's result to another. The review fixes: two source comments credited `bsconfig-prod.json` with forcing `perfTiming` off when a bsconfig setting provably *cannot* do that job; `harden-prod-manifest` gained a **default-deny** check (any const still `true` after the forced-off pass fails the build by name) after the const set turned out to churn every few months and `perfTiming` became the first one to default `true`; the script moved to ESM `.js` per `scripts/CLAUDE.md` and got the 8-case test the repo's other 54 script tests set the bar for; and a build-flag bracket that had been stamped retroactively onto a sample recorded before stamping existed was reverted. Next: push, then the two independent builds — migrate the genre loop onto `apiPipeline` (projected 1016 → ~400 ms, re-measurable with the shipped instrumentation), and build the job pool for Home's emit.
 
 ## Recently shipped
 
@@ -90,3 +90,4 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 ### claude
 
 - Exercise `/dep-major` end-to-end on the next real Renovate major PR — validate the changelog→call-site mapping and the on-device `test:unit`+`test:rta` gate run inside the skill flow (mechanics validated at build time, but the full orchestration on a real major bump is not yet exercised).
+- **Audit the `.claude/` rules + `CLAUDE.md` files against what is actually ENFORCED, not just documented.** Two independent instances of the same failure: agents repeatedly blow the roku-log 9-argument cap even though it is written down (it recurs whenever a session logs heavily), and `bs_const=debug=true` has landed on `main` twice (`27d99141`, `dc05db8d`) despite `debug-flags.md` claiming the commit skill prevents it. Both are documented-but-unenforced rules, and the pattern is that prose alone does not hold. **Sequence matters**: land the enforcement first (the roku-log argument-count diagnostic — see the `m.log` call-site entry in [`tech-debt.md`](architecture/tech-debt.md)), then tighten the docs against what the gate actually catches. Auditing the prose first just rewrites text that will keep being ignored.

@@ -24,35 +24,25 @@ sub loadItems()
   results = []
 
   ' Split the run into time spent WAITING on the pool versus time spent EMITTING
-  ' (transform + ContentNode + appendChild) on this thread — the same decomposition
-  ' LoadLatestRowsTask records, so the two orchestrators are directly comparable.
+  ' (transform + ContentNode + appendChild) on this thread. Same decomposition
+  ' LoadLatestRowsTask records — see there and docs/dev/home-first-paint-performance.md
+  ' for WHY it is permanent, and why it rides `perfTiming` rather than `debug`. The
+  ' shared rationale lives in those two places on purpose; a third copy here drifted
+  ' once already.
   '
-  ' This task has two very different shapes behind one function. A plain grid load is
-  ' ONE query plus a transform loop. A Genres load is one query plus a SEQUENTIAL
-  ' blocking fetch per genre, and epic #728's Phase 1 has to pick a mechanism for it:
-  ' apiPipeline (which attacks wait) or the orchestration job pool (which attacks
-  ' emit). Only the split says which, so `genreFetches` is logged alongside it to keep
-  ' the two regimes apart in the log.
+  ' What IS specific to this task: two very different shapes behind one function. A
+  ' plain grid load is ONE query plus a transform loop. A Genres load is one query plus
+  ' a SEQUENTIAL blocking fetch per genre, and epic #728's Phase 1 had to pick a
+  ' mechanism for it — apiPipeline (which attacks wait) or the orchestration job pool
+  ' (which attacks emit). Only the split says which, so `genreFetches` is logged
+  ' alongside it: a line without it cannot be interpreted, because the genre count is
+  ' what makes the run serial.
   '
-  ' Kept in the source rather than added by hand when needed, for the reason recorded
-  ' in LoadLatestRowsTask: a re-instrumented probe measures subtly different things and
-  ' is therefore not comparable to the recorded baselines.
+  ' The gate also matters more here than on Home: the per-item mark/read calls sit in
+  ' the hottest loop the grid has, running up to `m.top.limit` times (default 100).
   '
-  ' Gated on `perfTiming`, NOT on `debug`. Two separate reasons:
-  '   - `roku-log` strips the log CALL from prod but not the clocks feeding it, so
-  '     without a gate production runs the whole measurement and discards the result —
-  '     dead work in the hottest loop the grid has (up to `m.top.limit`, default 100).
-  '   - It cannot ride `debug`, because a debug build attaches `rawApiData` to every
-  '     transformed item (JellyfinDataTransformer), landing inside `emit` — the very
-  '     quantity measured here. Gating on `debug` would mean the only build able to
-  '     read these numbers is one that distorts them.
-  ' `perfTiming` defaults TRUE in the manifest so dev builds keep printing the split
-  ' without ceremony; bsconfig-prod.json forces it false. See
-  ' docs/dev/home-first-paint-performance.md.
-  ' Declared unconditionally so bslint's flow analysis (LINT1003) can see every path
-  ' assign them — it does not correlate assignments across `#if` blocks. Five scalar
-  ' assignments once per run is not the cost being removed; the roTimespan objects and
-  ' the per-item mark/read calls are, and those stay gated.
+  ' Timing vars are declared unconditionally so bslint's flow analysis (LINT1003) sees
+  ' every path assign them — it does not correlate assignments across `#if` blocks.
   runClock = invalid
   stepClock = invalid
   waitMs = 0

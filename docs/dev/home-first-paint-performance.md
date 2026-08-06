@@ -6,7 +6,9 @@ related-files:
   - components/ItemGrid/LoadItemsTask2.bs
   - source/api/apiPipeline.bs
   - source/constants/apiPool.bs
-last-reviewed: 2026-08-04
+  - scripts/harden-prod-manifest.js
+  - manifest
+last-reviewed: 2026-08-05
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -32,15 +34,30 @@ Opening Home fires one `LoadLatestRowsTask` run that fetches the latest items fo
 eligible library. Two log lines describe it, and both are permanent — they exist in dev
 builds only (see [Why this costs production nothing](#why-this-costs-production-nothing)):
 
+The **format** they emit today:
+
 ```text
-latest-rows run complete 11 rows 2728 ms                                              # HomeRows, render thread
-latest-rows orchestrator done - [debug=false perfTiming=true] task 2106 wait 502 emit 1590   # LoadLatestRowsTask
+latest-rows run complete <n> rows <total> ms                                          # HomeRows, render thread
+latest-rows orchestrator done - [debug=? perfTiming=true] task <t> wait <w> emit <e>  # LoadLatestRowsTask
 ```
 
 **Read the bracketed build flags before you trust a sample.** Every line carries the
 compile-time state it was taken under, so a number can never be silently compared against
 one measured in a distorting build. `debug=true` is not comparable to `debug=false` (see
-the trap below); a line with no bracket predates this and its build state is unknown.
+the trap below).
+
+A **recorded sample** — note it has no bracket, because it predates the flag stamping.
+Its build state is known only from the commit that recorded it (`debug=false`), which is
+exactly the fragility the bracket exists to remove:
+
+```text
+latest-rows run complete 11 rows 2728 ms
+latest-rows orchestrator done - task 2106 wait 502 emit 1590
+```
+
+Any line you find without a bracket is in the same position: treat its build state as
+unverified unless a commit says otherwise. Do not add a bracket to an old sample — a
+stamp is only meaningful if the build actually emitted it.
 
 Four numbers come out of that pair. **Three of them are measurements; one is not.**
 
@@ -204,7 +221,7 @@ way to check it:
   `bsconfig` override never reaches the device. **Do not use it to enforce this.**
 
 Enforcement therefore lives in
-[`scripts/harden-prod-manifest.cjs`](../../scripts/harden-prod-manifest.cjs),
+[`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js),
 the final step of `npm run build:prod`, which forces `debug`, `perfTiming`, and
 `ENABLE_RTA` to `false` in `build/manifest` and prints what it flipped. It covers every
 route to a release, including `npm run package:signed`.
@@ -216,10 +233,14 @@ npm run build:prod && grep bs_const build/manifest
 # bs_const=debug=false;ENABLE_RTA=false;perfTiming=false
 ```
 
-That hardening also closes a standing hazard independent of timing: flipping `debug=true`
-locally to investigate something is routine, and forgetting to revert it before a release
-would ship raw API payloads on every item plus the failure-injection hooks. It has been
-committed as `true` once already (`dc05db8d`, reverted the same day).
+That hardening also closes a standing hazard independent of timing. Flipping `debug=true`
+locally is not an occasional thing — it is currently the **only** way to surface
+`m.log.debug` / `.verbose` output, since the log level is welded to the same const
+([`JRScene.bs`](../../components/JRScene.bs) sets level 4 vs 2 under `#if debug`), so it
+reaches the working tree routinely. Forgetting to revert it before a release would ship
+raw API payloads on every item plus the failure-injection hooks. It has been committed as
+`true` **twice** — `27d99141` (2025-10-24) and `dc05db8d` (2026-03-12) — each caught and
+reverted the same day, i.e. after landing rather than before.
 
 ### Turning the numbers off
 
@@ -233,9 +254,16 @@ The decomposition is not Home-specific. `LoadItemsTask2` carries the same two cl
 emits the same shape of line, because epic #728's Phase 1 had to choose a mechanism for the
 Genres view and only the split could say which:
 
+The format it emits today, then the sample that produced the baseline below (recorded
+before the flag stamping landed, hence no bracket — see [What is being measured](#what-is-being-measured)):
+
 ```text
+item-grid load done - items <n> genreFetches <g> [debug=? perfTiming=true] task <t> wait <w> emit <e>
 item-grid load done - items 8 genreFetches 8 task 1060 wait 827 emit 211
 ```
+
+That sample is one run, and it is the slow end of the spread — the baseline table below
+reports the n=4 **median** (1016 ms), not this line.
 
 `genreFetches` is logged alongside the split because one function serves two very different
 shapes. A plain grid load is a single query plus a transform loop (`genreFetches 0`). A
