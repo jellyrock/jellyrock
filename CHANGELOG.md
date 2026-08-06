@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Run the Genres view's per-genre fetches through `apiPipeline` ([#770](https://github.com/jellyrock/jellyrock/pull/770))
 - Measure the item-grid wait/emit split, pick `apiPipeline` for the genre loop, and keep the timers out of prod ([#769](https://github.com/jellyrock/jellyrock/pull/769))
 
 ### Fixed
