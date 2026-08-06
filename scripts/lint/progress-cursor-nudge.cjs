@@ -162,7 +162,15 @@ function readProgress() {
   const lastUpdatedMatch = fmMatch && fmMatch[1].match(/^last-updated:\s*(\d{4}-\d{2}-\d{2})/m);
   const lastUpdated = lastUpdatedMatch ? lastUpdatedMatch[1] : null;
 
-  const runningMatch = content.match(/##\s+Currently running\s*\n([\s\S]*?)(?=\n##\s|$)/);
+  // `[^\S\n]*\n` — trailing spaces then EXACTLY ONE newline, deliberately not
+  // `\s*\n`. `\s` matches newlines, so on an EMPTY cursor (`## Currently running`
+  // immediately followed by a blank line and the next `##`) the greedy form ate
+  // the blank line, leaving the lookahead with no `\n` to anchor on. The lazy
+  // group then ran past `## Recently shipped` to the section after it, and the
+  // whole recently-shipped list was returned as "the cursor" — so
+  // checkCursorShipped compared recent commits against recently-shipped bullets
+  // and reported a token overlap on an empty cursor, every time.
+  const runningMatch = content.match(/##\s+Currently running[^\S\n]*\n([\s\S]*?)(?=\n##\s|$)/);
   const cursor = runningMatch ? runningMatch[1].trim().replace(/\s+/g, ' ') : '';
 
   return { lastUpdated, cursor };
