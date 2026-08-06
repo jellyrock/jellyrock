@@ -314,7 +314,9 @@ sub loadItems()
   ' apiPool.bs's ORDERING DEPENDENCY note requires: executeItemQuery above is a
   ' blocking fetchJson, so the pool is provably up by the time this runs.
   if genreEntries.count() > 0
-    genreFetches = genreEntries.count()
+    #if perfTiming
+      genreFetches = genreEntries.count()
+    #end if
     pipe = apiPipelineBegin(genreEntries)
 
     #if perfTiming
@@ -345,9 +347,12 @@ sub loadItems()
   #if perfTiming
     stepClock.mark()
   #end if
-  ' Pass 3 — flatten back to source order, dropping the items that transformed to
-  ' invalid (transformBaseItem can return invalid; slots kept their places so the
-  ' genre write-back indices stayed valid).
+  ' Pass 3 — flatten back to source order. `slots` held a place for every source item,
+  ' which is what kept the genre write-back indices valid; this drops the placeholders
+  ' again. The isValid guard is defensive only: both branches of pass 1 assign `tmp`
+  ' and immediately dereference it, so a slot that reached here invalid would already
+  ' have faulted upstream. Kept because it costs nothing and `results` must never
+  ' carry an invalid entry across the handoff.
   for each slot in slots
     if isValid(slot) then results.push(slot)
   end for
