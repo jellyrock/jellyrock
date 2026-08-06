@@ -71,11 +71,32 @@ jobs:
     # behaviour RTA can observe.
     if: needs.check-skip.outputs.relevant == 'true' && github.actor != 'jellyrock[bot]'
     runs-on: [self-hosted, roku-device]
-    environment: roku-device
-    # Only one runner carries the roku-device label, so this job serialises against
-    # the Rooibos suite rather than racing it for the device — RTA's registry
-    # snapshot/restore and the unit run can never overlap. The cap matters anyway: a
-    # hung RTA holding the single shared device is worse than a missing gate.
+    #
+    # NO `environment:` — deliberate, do not add one.
+    #
+    # This workflow exists so RTA cannot be forgotten before a release. An
+    # environment carrying a required-reviewer rule would put a manual approval
+    # click back in front of it, which is the same "someone has to remember"
+    # failure mode, just relocated. `device-unit-tests.yml` names the
+    # `roku-device` environment because it runs FORK code under
+    # pull_request_target and needs that gate; this workflow only triggers on
+    # push-to-release-branch and workflow_dispatch, both of which already
+    # require write access, so there is no untrusted code to gate.
+    #
+    # It is also not needed for secrets: ROKU_DEVICE_IP / ROKU_DEVICE_PASSWORD
+    # are ORGANISATION-level secrets, available to any job in the repo, not
+    # environment-scoped ones.
+    #
+    # Device contention is handled by the runner, not by an approval gate:
+    # exactly one runner carries the `roku-device` label, and a self-hosted
+    # runner takes one job at a time, so this queues behind the Rooibos suite
+    # instead of racing it — RTA's registry snapshot/restore can never overlap a
+    # unit run. Nor can it cancel one: GitHub concurrency only acts within a
+    # single group, this workflow's group is `rta-<ref>`, and
+    # device-unit-tests.yml declares no group at all.
+    #
+    # The timeout is the real safety net — a hung RTA holding the one shared
+    # device is worse than a missing gate.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
