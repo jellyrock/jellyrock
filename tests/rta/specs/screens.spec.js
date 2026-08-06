@@ -40,7 +40,15 @@ beforeAll(async () => {
   libraries = await getLibraries(session); // runtime collectionType -> id (no hardcoded GUIDs)
   // Functional tests assert each screen LOADS; the hero movie exercises every nav
   // (incl. trickplay). The trickplay-specific film is a store-screenshot concern.
-  ctx = { heroIndex: hero.index, heroId: hero.id, seekSeconds: RTA_CONFIG.seekSeconds };
+  // `session` + `libraries` ride along for asserts that check rendered content
+  // against the server (assertGenreRowsOwnTheirItems), rather than only that it rendered.
+  ctx = {
+    heroIndex: hero.index,
+    heroId: hero.id,
+    seekSeconds: RTA_CONFIG.seekSeconds,
+    session,
+    libraries,
+  };
 });
 
 afterAll(async () => {
