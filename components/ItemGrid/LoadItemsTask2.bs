@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -32,11 +33,12 @@ sub loadItems()
   '
   ' What IS specific to this task: two very different shapes behind one function. A
   ' plain grid load is ONE query plus a transform loop. A Genres load is one query plus
-  ' a SEQUENTIAL blocking fetch per genre, and epic #728's Phase 1 had to pick a
-  ' mechanism for it — apiPipeline (which attacks wait) or the orchestration job pool
-  ' (which attacks emit). Only the split says which, so `genreFetches` is logged
-  ' alongside it: a line without it cannot be interpreted, because the genre count is
-  ' what makes the run serial.
+  ' a fetch per genre — and the split is what chose that path's mechanism. Measured at
+  ' 78% wait / 22% emit (the INVERSE of Home's latest rows), so the genre fetches were
+  ' pipelined rather than handed to the orchestration job pool; see the two-pass loop
+  ' below. `genreFetches` is logged alongside the split because a line without it
+  ' cannot be interpreted: the genre count is what makes that path I/O-heavy, and a
+  ' run that never reached a Genres view reports zero.
   '
   ' The gate also matters more here than on Home: the per-item mark/read calls sit in
   ' the hottest loop the grid has, running up to `m.top.limit` times (default 100).
@@ -229,10 +231,20 @@ sub loadItems()
     end if
   end if
 
+  ' `slots` holds one entry per source item, INCLUDING the ones that transform to
+  ' invalid, so a genre's sampled items can be written back into its original
+  ' position after the pipeline hands them over in completion order. The server
+  ' sorted these (SortBy/SortOrder) and the grid shows them in that order, so the
+  ' emit order must not become the arrival order. Flattened once at the end.
+  slots = []
+  genreEntries = []
+
   if isValid(data)
 
     if isValid(data.TotalRecordCount) then m.top.totalRecordCount = data.TotalRecordCount
 
+    ' Pass 1 — emit everything that needs no further I/O, and collect the genre
+    ' requests instead of issuing them one at a time.
     for each item in data.Items
       tmp = invalid
       #if perfTiming
@@ -240,7 +252,7 @@ sub loadItems()
       #end if
 
       if item.Type = "Genre"
-        ' Genre view: build row container with sampled items beneath it
+        ' Genre view: the row container now, its sampled items after pass 2.
         tmp = CreateObject("roSGNode", "ContentNode")
         tmp.title = item.name
 
@@ -257,48 +269,14 @@ sub loadItems()
           EnableTotalRecordCount: false,
           ParentId: m.top.itemId
         })
-        genreData = invalid
         if isValid(genreReq)
-          #if perfTiming
-            emitMs += stepClock.totalMilliseconds()
-            stepClock.mark()
-          #end if
-          genreData = fetchJson(genreReq, "genreItems_" + item.id)
-          #if perfTiming
-            waitMs += stepClock.totalMilliseconds()
-            genreFetches += 1
-            stepClock.mark()
-          #end if
+          genreEntries.push({
+            requestId: "genreItems_" + item.id,
+            req: genreReq,
+            slotIndex: slots.count(),
+            item: item
+          })
         end if
-
-        if isValid(genreData) and genreData.Items.Count() > 5
-          ' Add View All item to the start of the row — transform the genre item itself
-          viewAllNode = m.transformer.transformBaseItem(item)
-          viewAllNode.title = translate(translationKeys.LabelViewAll) + " " + item.name
-          ' Set library context for genre navigation (genre items have no parentId from API)
-          if not isValidAndNotEmpty(viewAllNode.parentId)
-            viewAllNode.parentId = m.top.itemId
-          end if
-          ' Infer collection type from sampled items so DeterminePresenterType can route
-          ' music genres to MusicPresenter instead of GenericPresenter
-          firstItemType = LCase(genreData.Items[0].Type ?? "")
-          if firstItemType = "audio" or firstItemType = "musicalbum" or firstItemType = "musicartist"
-            viewAllNode.collectionType = "music"
-          else if firstItemType = "movie"
-            viewAllNode.collectionType = "movies"
-          else if firstItemType = "series" or firstItemType = "episode"
-            viewAllNode.collectionType = "tvshows"
-          end if
-          tmp.appendChild(viewAllNode)
-        end if
-
-        if isValid(genreData)
-          for each genreItem in genreData.Items
-            row = m.transformer.transformBaseItem(genreItem)
-            tmp.appendChild(row)
-          end for
-        end if
-
       else
         ' All other item types: transform to JellyfinBaseItem
         tmp = m.transformer.transformBaseItem(item)
@@ -320,19 +298,59 @@ sub loadItems()
         end if
       end if
 
-      if isValid(tmp)
-        results.push(tmp)
-      end if
+      slots.push(tmp)
       #if perfTiming
         emitMs += stepClock.totalMilliseconds()
       #end if
     end for
   end if
 
+  ' Pass 2 — the genre sample fetches, pipelined onto THIS thread rather than run
+  ' back to back. Measured 78% wait / 22% emit, so the win is overlapping the round
+  ' trips: apiPipeline keeps up to apiPool.SLOT_COUNT of them in flight without
+  ' adding a thread, which a task-per-genre fan-out would (epic #728).
+  '
+  ' Safe to use submitApiRequest's non-blocking path here for the reason
+  ' apiPool.bs's ORDERING DEPENDENCY note requires: executeItemQuery above is a
+  ' blocking fetchJson, so the pool is provably up by the time this runs.
+  if genreEntries.count() > 0
+    genreFetches = genreEntries.count()
+    pipe = apiPipelineBegin(genreEntries)
+
+    #if perfTiming
+      stepClock.mark()
+    #end if
+    result = apiPipelineNext(pipe)
+    #if perfTiming
+      waitMs += stepClock.totalMilliseconds()
+    #end if
+
+    while isValid(result)
+      #if perfTiming
+        stepClock.mark()
+      #end if
+      populateGenreRow(slots[result.entry.slotIndex], result.entry.item, result.res)
+      #if perfTiming
+        emitMs += stepClock.totalMilliseconds()
+        stepClock.mark()
+      #end if
+      result = apiPipelineNext(pipe)
+      #if perfTiming
+        waitMs += stepClock.totalMilliseconds()
+      #end if
+    end while
+  end if
+
   ' The handoff is emit work too — a grid can carry hundreds of nodes across it.
   #if perfTiming
     stepClock.mark()
   #end if
+  ' Pass 3 — flatten back to source order, dropping the items that transformed to
+  ' invalid (transformBaseItem can return invalid; slots kept their places so the
+  ' genre write-back indices stayed valid).
+  for each slot in slots
+    if isValid(slot) then results.push(slot)
+  end for
   m.top.content = results
 
   ' NOTE: roku-log's Logger.info takes at most 10 params (message + value..value9),
@@ -354,6 +372,47 @@ sub loadItems()
     #end if
     m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
   #end if
+end sub
+
+' Fills one genre row with the sampled items its request returned.
+'
+' `res` is the pool response AA, or invalid when the request never got an answer —
+' the pool was down, or the whole-run budget expired. An HTTP error arrives as a
+' valid `res` with `ok = false`. Both leave the row in place with its title and no
+' children, which is exactly what the blocking `fetchJson` this replaced did when it
+' returned invalid: a genre that can't be sampled still belongs in the list, and
+' removing it would renumber the grid around a transient failure.
+sub populateGenreRow(row as dynamic, item as object, res as dynamic)
+  if not isValid(row) then return
+
+  genreData = invalid
+  if isValid(res) and res.ok then genreData = res.json
+  if not isValid(genreData) then return
+
+  if genreData.Items.Count() > 5
+    ' Add View All item to the start of the row — transform the genre item itself
+    viewAllNode = m.transformer.transformBaseItem(item)
+    viewAllNode.title = translate(translationKeys.LabelViewAll) + " " + item.name
+    ' Set library context for genre navigation (genre items have no parentId from API)
+    if not isValidAndNotEmpty(viewAllNode.parentId)
+      viewAllNode.parentId = m.top.itemId
+    end if
+    ' Infer collection type from sampled items so DeterminePresenterType can route
+    ' music genres to MusicPresenter instead of GenericPresenter
+    firstItemType = LCase(genreData.Items[0].Type ?? "")
+    if firstItemType = "audio" or firstItemType = "musicalbum" or firstItemType = "musicartist"
+      viewAllNode.collectionType = "music"
+    else if firstItemType = "movie"
+      viewAllNode.collectionType = "movies"
+    else if firstItemType = "series" or firstItemType = "episode"
+      viewAllNode.collectionType = "tvshows"
+    end if
+    row.appendChild(viewAllNode)
+  end if
+
+  for each genreItem in genreData.Items
+    row.appendChild(m.transformer.transformBaseItem(genreItem))
+  end for
 end sub
 
 ' Routes an item query through Build*Request() + pool based on queryType.
