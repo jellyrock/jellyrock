@@ -64,11 +64,13 @@ related-files:
   - .github/workflows/_validate-dependencies.yml
   - .github/workflows/docs-stale-tracker.yml
   - .github/workflows/journal-sync.yml
+  - .github/workflows/device-unit-tests.yml
+  - .github/workflows/rta-functional-tests.yml
   - eslint.config.js
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-05
+last-reviewed: 2026-08-06
 ---
 
 # Build & Tooling
@@ -496,7 +498,9 @@ make launch        # launches the channel
 
 ## Verification surfaces (defense in depth)
 
-JellyRock layers six verification + automation surfaces, each owning checks or sync work the others can't do well. The principle: **every check runs at the cheapest surface that can do it correctly.** No surface duplicates another's responsibility.
+JellyRock layers nine verification + automation surfaces, each owning checks or sync work the others can't do well. The principle: **every check runs at the cheapest surface that can do it correctly.** No surface duplicates another's responsibility.
+
+Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest place it still works. Surfaces **8 and 9 are different in kind**: their cost floor is a *physical resource*, not compute. They need the one Roku, so no amount of optimization moves them earlier, and surface 9 can't run per-PR at all. Read the table as ending at 9, not at 7 — treating CI as the last line of defense is the mistake this row set exists to prevent.
 
 | # | Surface | Trigger | What it owns | Latency |
 |---|---|---|---|---|
@@ -507,6 +511,8 @@ JellyRock layers six verification + automation surfaces, each owning checks or s
 | 5 | **Pre-push hook** ([`.husky/pre-push`](../../.husky/pre-push)) | `git push` | Project-wide checks that aren't file-scoped + decision/cursor advisory nudges | 10–30 s |
 | 6 | **Post-merge journal-sync** ([`journal-sync.yml`](../../.github/workflows/journal-sync.yml)) | PR merges to main | Mechanical close-loop on `progress.md` (running → shipped, last-updated bump) via [`scripts/journal-sync.js`](../../scripts/journal-sync.js) | seconds |
 | 7 | **CI** (`.github/workflows/lint-*.yml`) | PR open / sync | Same as pre-push, can't bypass | minutes (parallel) |
+| 8 | **Device unit tests** ([`device-unit-tests.yml`](../../.github/workflows/device-unit-tests.yml)) | PR open / sync; push to `main` | Rooibos unit + integration suites on the physical Roku — the only surface that runs BrightScript *inside* the app. Maintainer-approval gated (`environment: roku-device`) | ~8–15 min |
+| 9 | **RTA functional tests** ([`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml)) | push to `release-*.*.*`; manual dispatch | Screen-level navigation + rendered-content assertions, driving the device from *outside*. Release-only, not per-PR | ~10–15 min |
 
 ### Why each surface exists
 
@@ -516,7 +522,9 @@ JellyRock layers six verification + automation surfaces, each owning checks or s
 - **Pre-commit** (`lint-staged`) — the universal gate for both humans and agents. File-scoped: `bsfmt --write`, `markdownlint --fix`, `spellchecker`, `jshint`. Auto-fix steps re-stage their output so the formatted version lands in the same commit (no "auto-fix commit" ceremony). The `lint-staged` runner handles the staged-files plumbing.
 - **Pre-push** — what couldn't run per-commit: full BSC project compile (`bsc --noEmit`), `bslint` (needs full project context, can't be file-scoped), cross-doc reference check (`lint:docs`), drift check on the auto-generated dev-guides index, language-coverage. Plus project-wide regen tasks (`update-translations`, `docs:dev-index`) that mutate one output from many inputs. Also runs two advisory nudges (always exit 0): [`decision-shape-nudge.cjs`](../../scripts/lint/decision-shape-nudge.cjs) (pattern-matches commit messages for decision-shaped language and nudges toward `/log decision` when the range doesn't touch `docs/adr/` or `docs/decisions.md`) and [`progress-cursor-nudge.cjs`](../../scripts/lint/progress-cursor-nudge.cjs) (same checks as the end-of-turn hook, doubled here so the prompt fires before push regardless of whether the IDE / agent is running). Both are human-facing complements to the agent-facing Capture-discipline rule in `CLAUDE.md`.
 - **Post-merge journal-sync** — fires on PR merge to main. Reads PR title / labels / author from the event payload, then runs [`scripts/journal-sync.js`](../../scripts/journal-sync.js) to perform the *mechanical* close-loop on [`docs/progress.md`](../progress.md): prepend "- YYYY-MM-DD — \<pr-title\>" to `## Recently shipped`, conditionally clear `## Currently running` (token-overlap heuristic), bump `last-updated:`. Skips on `dependencies` / `documentation` / `ci` / `automated` labels and Renovate / Dependabot / bot authors. Concurrency-grouped with the existing `jellyrock-bot-main` group so it queues against the changelog-sync workflow rather than racing it. This surface is what keeps the four-pillar journal flow from depending on the user remembering `/done running` after every merge.
-- **CI** — final backstop; can't be bypassed. Mirrors pre-push so the local hook isn't a load-bearing source of truth.
+- **CI** — can't be bypassed. Mirrors pre-push so the local hook isn't a load-bearing source of truth. Note it is *not* the final backstop: it is the last surface that runs on commodity runners, which is a different claim.
+- **Device unit tests** — the only surface that executes BrightScript in the app on real hardware, so it owns everything no static check or Node-side test can reach (Roku OS behavior, registry I/O, Task threading). `check-skip` short-circuits it when nothing test-relevant changed, so docs and tooling PRs don't spin the device.
+- **RTA functional tests** — drives the app from outside via ECP + ODC, so it owns the class Rooibos structurally cannot see: whether a *screen* renders the right thing. Deliberately release-only. There is one physical Roku, shared with surface 8 and with manual runs, and `vitest.rta.config.js` pins single-fork, so a pass is ~10–15 min of exclusive device time — too expensive per-PR. The accepted cost is that an RTA regression surfaces at release, after N merged PRs; the mitigation is running `npm run test:rta` locally when a change touches navigation or screens. See [rta-tests.md](../dev/rta-tests.md#when-ci-runs-it).
 
 ### Surface ownership of each lint command
 

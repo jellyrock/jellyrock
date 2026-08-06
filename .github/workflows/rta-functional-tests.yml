@@ -1,0 +1,133 @@
+name: RTA Functional Tests
+
+# Drives the real Roku through every screen in tests/rta/screens.js. Unlike the
+# Rooibos device suite, this is NOT a per-PR gate: there is exactly ONE physical
+# device, it is shared with the Rooibos runs and with ad-hoc manual RTA work, and
+# vitest.rta.config.js pins single-fork by design, so a full pass is ~10-15 min of
+# exclusive device time. The trigger surface is therefore deliberately narrow.
+#
+# Why this exists as a gate at all: some RTA assertions cover failure modes that
+# render as a completely correct-looking screen and that Rooibos cannot reach —
+# assertGenreRowsOwnTheirItems (PR #770) is the motivating case, where a crossed
+# slot index leaves every row present, titled, and in order, with only the pairing
+# wrong. Nothing else in CI can catch that class.
+#
+# No event-time `paths:` filter — see .github/actions/changed-paths/action.yml for
+# why (a path-filtered required check never reports a status and wedges the PR).
+# The relevance check lives inside check-skip instead, so the workflow always
+# queues and always reports.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "release-*.*.*" # the release-prep branch, same trigger release-management.yml uses
+
+# cancel-in-progress MUST stay false. Concurrency is evaluated BEFORE any job runs,
+# so with `true` a docs-only push would cancel an in-flight RTA run started by an
+# earlier source push, then evaluate check-skip and skip — leaving that source
+# change ungated. A skipped run is a ~20s ubuntu-latest no-op, so letting runs queue
+# costs nothing. (release-management.yml uses false for the same class of reason.)
+concurrency:
+  group: rta-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-skip:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.paths.outputs.relevant }}
+    steps:
+      # Needed so the ./.github/actions/changed-paths composite action can load.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Detect RTA-relevant changes
+        id: paths
+        uses: ./.github/actions/changed-paths
+        with:
+          # Paths whose changes can alter what RTA observes:
+          #   source/**, components/**   app behaviour + every screen it drives
+          #   tests/rta/**               the suite, the nav steps, the screen registry
+          #   locale/**                  the functional run asserts en_US label text,
+          #                              so a translation edit can legitimately turn it red
+          #   settings/settings.json     defaults that decide which screen renders
+          #   manifest, bsconfig*.json,
+          #   package(-lock).json        the build RTA runs against
+          #   this workflow file         so edits to the gate exercise the gate
+          #
+          # Deliberately EXCLUDED: docs/**, docs/screenshots/**, *.md, CHANGELOG.md,
+          # scripts/**, and every other workflow — a screenshot or docs push to the
+          # release branch must never spin the shared device. That exclusion is the
+          # whole reason this job exists.
+          pattern: '^(source/|components/|tests/rta/|locale/|settings/settings\.json$|manifest$|bsconfig[^/]*\.json$|package(-lock)?\.json$|\.github/workflows/rta-functional-tests\.yml$)'
+
+  rta:
+    needs: check-skip
+    # The bot guard mirrors device-unit-tests.yml: release-management.yml pushes the
+    # version bump to this same branch as jellyrock[bot], and that commit changes no
+    # behaviour RTA can observe.
+    if: needs.check-skip.outputs.relevant == 'true' && github.actor != 'jellyrock[bot]'
+    runs-on: [self-hosted, roku-device]
+    #
+    # NO `environment:` — deliberate, do not add one.
+    #
+    # This workflow exists so RTA cannot be forgotten before a release. An
+    # environment carrying a required-reviewer rule would put a manual approval
+    # click back in front of it, which is the same "someone has to remember"
+    # failure mode, just relocated. `device-unit-tests.yml` names the
+    # `roku-device` environment because it runs FORK code under
+    # pull_request_target and needs that gate; this workflow only triggers on
+    # push-to-release-branch and workflow_dispatch, both of which already
+    # require write access, so there is no untrusted code to gate.
+    #
+    # It is also not needed for secrets: ROKU_DEVICE_IP / ROKU_DEVICE_PASSWORD
+    # are ORGANISATION-level secrets, available to any job in the repo, not
+    # environment-scoped ones.
+    #
+    # Device contention is handled by the runner, not by an approval gate:
+    # exactly one runner carries the `roku-device` label, and a self-hosted
+    # runner takes one job at a time, so this queues behind the Rooibos suite
+    # instead of racing it — RTA's registry snapshot/restore can never overlap a
+    # unit run. Nor can it cancel one: GitHub concurrency only acts within a
+    # single group, this workflow's group is `rta-<ref>`, and
+    # device-unit-tests.yml declares no group at all.
+    #
+    # The timeout is the real safety net — a hung RTA holding the one shared
+    # device is worse than a missing gate.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "lts/*" # matches device-unit-tests.yml; there is no .nvmrc
+          cache: "npm"
+
+      # Plain `npm ci` here, unlike device-unit-tests.yml's --ignore-scripts dance:
+      # that hardening exists because that workflow runs on pull_request_target and
+      # must never execute fork-controlled install hooks. This workflow only fires on
+      # push-to-release-branch and workflow_dispatch, so the code is already trusted,
+      # and package.json's postinstall (ropm + patches:apply) needs to run.
+      - run: npm ci
+
+      # test:rta runs `npm run build` itself, then drives vitest against the device.
+      - name: Run RTA functional tests
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+          ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
+        run: npm run test:rta
+
+      # RTA's snapshot/restore is the safety net for the shared device's real
+      # registry; if a run dies mid-suite the log is how you tell whether restore
+      # completed. Mirrors device-unit-tests.yml's artifact upload.
+      - name: Upload RTA captures on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rta-captures
+          path: out/rta-captures/
+          retention-days: 7
+          if-no-files-found: ignore

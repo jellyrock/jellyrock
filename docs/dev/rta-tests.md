@@ -7,7 +7,8 @@ related-files:
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
-last-reviewed: 2026-06-21
+  - .github/workflows/rta-functional-tests.yml
+last-reviewed: 2026-08-06
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -35,6 +36,29 @@ RTA tests live in `tests/rta/` (Node/ESM, like `tests/scripts/`), NOT under
 
 Credentials: `ROKU_IP` / `ROKU_PASSWORD` from a gitignored `.env` (same as the
 Rooibos device tests). If no device is reachable, **say so** — don't claim a pass.
+
+## When CI runs it
+
+[`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml) runs the
+suite on the **release-prep branch** (`push` to `release-*.*.*`) and on
+`workflow_dispatch`. It is deliberately **not** a per-PR gate: there is one physical
+device, shared with the Rooibos device suite and with ad-hoc manual runs, and
+[`vitest.rta.config.js`](../../vitest.rta.config.js) pins single-fork by design, so a
+full pass is ~10–15 min of exclusive device time.
+
+Three guards keep it from firing on pushes that can't change what RTA observes:
+
+| Guard | Why |
+|---|---|
+| [`changed-paths`](../../.github/actions/changed-paths/action.yml) | A screenshot / docs / `CHANGELOG` push to the release branch never spins the device. It resolves a `push`'s file list via the compare API over `before...after`; branch creation and `workflow_dispatch` fall back to running, so it can never *falsely* skip. |
+| `github.actor != 'jellyrock[bot]'` | [`release-management.yml`](../../.github/workflows/release-management.yml) pushes the version bump to this same branch as the bot, and that commit changes no observable behavior. Same guard [`device-unit-tests.yml`](../../.github/workflows/device-unit-tests.yml) uses. |
+| `concurrency` with `cancel-in-progress: **false**` | Not a typo, and not the usual choice. Concurrency is evaluated **before any job runs**, so with `true` a docs-only push would cancel an in-flight run started by an earlier *source* push and then skip — leaving that source change with no gate at all. A skipped run is a ~20-second `ubuntu-latest` no-op, so letting runs queue costs nothing. |
+
+**The trade-off, stated plainly:** a release-only gate surfaces a regression after N
+merged PRs, so bisecting is harder than it would be with a per-PR gate. That is the
+price of one device. When a PR genuinely touches navigation, screens, or
+`tests/rta/**`, run `npm run test:rta` locally rather than waiting for the release
+branch to find it.
 
 ## How it works
 
