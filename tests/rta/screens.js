@@ -21,7 +21,7 @@
  *      - backdrop: inject the in-film frame behind the OSD (store only)
  *      - scope: 'shared' => language-agnostic; captured once, copied to all locales
  */
-import { waitFor, waitHome, hasChildren, getVal } from './lib/steps.js';
+import { waitFor, waitHome, hasChildren, getActiveVal } from './lib/steps.js';
 import { genreItemNames, libraryIdFor } from './lib/jellyfin.js';
 import {
   navLibraryGrid,
@@ -76,9 +76,17 @@ async function assertServerSelect() {
  *
  * Throws when it verified nothing, so a fixture that stops producing genre rows (or
  * a keyPath that silently reads `undefined`) fails loudly rather than passing empty.
+ *
+ * Reads via `getActiveVal`, not `getVal`: `BaseGridView` is registered keepAlive
+ * (`/library/:id` in JRScene.bs), so a recursive scene-root `#genreList` lookup can
+ * resolve to a SUSPENDED grid the moment anything navigates twice. Today's spec
+ * relaunches before every screen so only one exists — a property of the harness, not
+ * of the app. Anchoring to the active routed view also fails the right way: an
+ * unresolvable node reads `undefined` and trips the guard below, where the scene-root
+ * form would quietly assert against the wrong screen.
  */
 async function assertGenreRowsOwnTheirItems(ctx) {
-  const rowCount = await getVal('#genreList.content.getChildCount()');
+  const rowCount = await getActiveVal('#genreList.content.getChildCount()');
   if (typeof rowCount !== 'number' || rowCount < 1) {
     throw new Error(`genre rows: expected at least one row, read ${JSON.stringify(rowCount)}`);
   }
@@ -88,7 +96,7 @@ async function assertGenreRowsOwnTheirItems(ctx) {
   let verified = 0;
 
   for (let row = 0; row < rowCount; row++) {
-    const genre = await getVal(`#genreList.content.${row}.title`);
+    const genre = await getActiveVal(`#genreList.content.${row}.title`);
     if (typeof genre !== 'string' || !genre) {
       throw new Error(`genre row ${row} has no title (read ${JSON.stringify(genre)})`);
     }
@@ -96,9 +104,9 @@ async function assertGenreRowsOwnTheirItems(ctx) {
     const expected = byGenre.get(genre);
     if (!expected) continue;
 
-    const itemCount = await getVal(`#genreList.content.${row}.getChildCount()`);
+    const itemCount = await getActiveVal(`#genreList.content.${row}.getChildCount()`);
     for (let i = 0; i < (typeof itemCount === 'number' ? itemCount : 0); i++) {
-      const title = await getVal(`#genreList.content.${row}.${i}.title`);
+      const title = await getActiveVal(`#genreList.content.${row}.${i}.title`);
       if (typeof title !== 'string' || !title) continue;
       if (expected.has(title)) {
         verified++;
