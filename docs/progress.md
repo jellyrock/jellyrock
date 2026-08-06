@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-05
+last-updated: 2026-08-06
 ---
 
 # Progress
@@ -22,12 +22,12 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-**PR #769 is open** (branch `perf/728-genre-loop-split`), through a full review pass, all 7 commits pushed, and **ready to squash merge**. It closes epic #728 Phase 1's last design blocker by measurement: the grid's genre loop (`LoadItemsTask2`) is **78% network wait / 22% emit** — the inverse of Home, which is 51% emit — so it gets `apiPipeline` and NOT the orchestration job pool. Mechanism is now chosen **per orchestrator, from a measured split**; do not carry one orchestrator's result to another. The review fixes: two source comments credited `bsconfig-prod.json` with forcing `perfTiming` off when a bsconfig setting provably *cannot* do that job; `harden-prod-manifest` gained a **default-deny** check (any const still `true` after the forced-off pass fails the build by name) after the const set turned out to churn every few months and `perfTiming` became the first one to default `true`; the script moved to ESM `.js` per `scripts/CLAUDE.md` and got the 8-case test the repo's other 54 script tests set the bar for; and a build-flag bracket that had been stamped retroactively onto a sample recorded before stamping existed was reverted. Next: squash merge, then the two independent builds — migrate the genre loop onto `apiPipeline` (projected 1016 → ~400 ms, re-measurable with the shipped instrumentation), and build the job pool for Home's emit.
 
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-06 — Measure the item-grid wait/emit split, pick `apiPipeline` for the genre loop, and keep the timers out of prod
 - 2026-08-04 — feat: PR #768 **merged** (`d1ec5683`) — epic #728 Phase 1's accounted `launchTask()` chokepoint, 99 launch sites migrated, `no-raw-run` making a bare launch a build error. The headline review fix: the debug thread ledger silently dropped the five Task threads `setGlobalNodes()` starts — it wrote to an `roSGNode` field that did not exist yet — so `printTaskThreads()` under-reported by a permanent five (device-verified either side of the fix, now a mutation-proven regression test). The post-completion pool refill was **reverted**: 190 measured runs across three device tiers found it slower in 6/6 independent comparisons (sign test p=0.031) and never faster, and its original n=4 justification did not reproduce. Home first-paint baselines were re-measured at n=30 per device against the committed artifact, with `drain` dropped from the published table as an unreliable derived quantity.
 - 2026-08-04 — fix(rta): `restoreSession` now proves the restore took — write → cold restart → read back → compare, retrying and THROWING on mismatch, plus `globalRememberMe` added to the snapshot and a `hardRelaunch` (an ECP `/launch/dev` on a running channel only foregrounds it, so the stale in-memory session used to survive and re-persist over the restore). Closes the "`npm run test:rta` can leave the device signed into the demo server" followup, which recurred and stranded two devices during the #768 measurement work before being fixed and dogfooded to recover them.
 - 2026-08-03 — fix: Tighten Task-node hygiene and remove stranded dialog helpers
@@ -41,7 +41,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-07-25 — fix(api): route `SubmitSideEffect` through a children-as-vehicle FIFO
 - 2026-07-23 — Fix `inferServerUrl` crash from stale pre-login intents
 - 2026-07-23 — chore(ci): improve the `/crash-report` skill workflow
-- 2026-07-21 — Report cold-launch pairing and stabilize `DeviceId` on 10.11+
 
 ## Open followups
 
