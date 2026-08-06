@@ -115,3 +115,74 @@ describe('progress-cursor-nudge --json — temporal staleness', () => {
     expect(runJson(fixture).json.stale).toBeNull();
   });
 });
+
+describe('progress-cursor-nudge --json — cursor extraction', () => {
+  let fixture;
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = undefined;
+  });
+
+  // The cursor-shipped heuristic compares the `## Currently running` paragraph
+  // against recent commit subjects. Extracting that paragraph is the load-bearing
+  // step: get it wrong and the heuristic fires on text that isn't the cursor.
+  // TWO recently-shipped bullets, each mirroring a commit made below. That is what
+  // makes the empty-cursor case actually reproduce the bug: checkCursorShipped only
+  // fires at `matchingSubjects.length >= 2`, so a fixture with one overlapping
+  // bullet returns null either way and the test passes for the wrong reason.
+  const withSections = (lastUpdated, cursorBody) =>
+    `---\nlast-updated: ${lastUpdated}\n---\n# Progress\n\n` +
+    `## Currently running\n${cursorBody}\n` +
+    `## Recently shipped\n\n` +
+    `- 2026-08-06 — pipeline the genre sample fetches\n` +
+    `- 2026-08-05 — assert each genre row holds its own items\n\n` +
+    `## Open followups\n\n- nothing\n`;
+
+  /** Two commits whose subjects overlap the recently-shipped bullets above. */
+  const commitTwoShippedLookalikes = (fix) => {
+    fix.commit('perf(grid): pipeline the genre sample fetches instead of back to back');
+    fix.commit('test(rta): assert each genre row holds its own items');
+  };
+
+  it('reports no cursor-shipped overlap when the cursor is EMPTY', () => {
+    // Regression: `\s*\n` after the heading greedily ate the blank line of an
+    // empty cursor, so the lookahead had no `\n##` to anchor on and the capture
+    // ran on through `## Recently shipped`. The recently-shipped bullets were then
+    // treated as the cursor and matched against recent commits — a permanent false
+    // positive on every repo whose cursor is empty (i.e. right after a merge).
+    // Mutation-checked: reverting the regex turns this red.
+    fixture = withDocsDir(createGitFixture());
+    fixture.commit('chore: seed', { 'docs/progress.md': withSections(todayIso(), '') });
+    commitTwoShippedLookalikes(fixture);
+    const { exitCode, json } = runJson(fixture);
+    expect(exitCode).toBe(0);
+    expect(json.cursorShipped).toBeNull();
+  });
+
+  it('still reports an overlap when a NON-empty cursor matches recent commits', () => {
+    // The other half of the fix: narrowing the newline match must not stop the
+    // heuristic working on a real cursor. Two matching subjects are required —
+    // checkCursorShipped only fires at `matchingSubjects.length >= 2`.
+    fixture = withDocsDir(createGitFixture());
+    fixture.commit('chore: seed', {
+      'docs/progress.md': withSections(todayIso(), '\npipeline the genre sample fetches\n'),
+    });
+    fixture.commit('perf(grid): pipeline the genre sample fetches instead of back to back');
+    fixture.commit('test(rta): assert each genre row holds its own genre sample');
+    const { json } = runJson(fixture);
+    expect(json.cursorShipped).not.toBeNull();
+    expect(json.cursorShipped.cursor).toBe('pipeline the genre sample fetches');
+  });
+
+  it('does not swallow the following section into a non-empty cursor', () => {
+    fixture = withDocsDir(createGitFixture());
+    fixture.commit('chore: seed', {
+      'docs/progress.md': withSections(todayIso(), '\nworking on the thing\n'),
+    });
+    fixture.commit('feat: unrelated subject with no shared words');
+    const { json } = runJson(fixture);
+    expect(json.cursorShipped).toBeNull();
+  });
+});
