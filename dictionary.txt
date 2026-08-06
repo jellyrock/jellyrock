@@ -374,6 +374,10 @@ per-worktree
 perf
 PGS
 PII
+pipelined
+Pipelined
+pipelining
+Pipelining
 PKM
 plaintext
 Plaintext
