@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Bound Task threads behind an accounted `launchTask()` chokepoint ([#768](https://github.com/jellyrock/jellyrock/pull/768))
 - Collapse `HomeRows` latest-media fan-out onto a bounded `apiPipeline` ([#762](https://github.com/jellyrock/jellyrock/pull/762))
 
+### Changed
+
+- Measure the item-grid wait/emit split, pick `apiPipeline` for the genre loop, and keep the timers out of prod ([#769](https://github.com/jellyrock/jellyrock/pull/769))
+
 ### Fixed
 
 - Tighten Task-node hygiene and remove stranded dialog helpers ([#765](https://github.com/jellyrock/jellyrock/pull/765))
