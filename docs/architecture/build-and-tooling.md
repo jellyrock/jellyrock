@@ -8,6 +8,8 @@ related-files:
   - Makefile
   - scripts/create-package.cjs
   - scripts/create-signed-package.cjs
+  - scripts/harden-prod-manifest.js
+  - manifest
   - scripts/bsc-plugins/roku-log.cjs
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/bsc-plugins/jrscreen-on-destroy.cjs
@@ -66,7 +68,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-03
+last-reviewed: 2026-08-05
 ---
 
 # Build & Tooling
@@ -125,6 +127,64 @@ The `bsconfig.json` (dev) entry shape:
   "autoImportComponentScript": true,
   "outDir": "build"
 }
+```
+
+## Compile-time flags (`bs_const`)
+
+The `manifest`'s `bs_const` line carries three compile-time constants. **Roku's on-device
+compiler evaluates `#if`, not `bsc`** — the directives are passed straight through and appear
+verbatim in the emitted `.brs`, then get compiled out at load time against the shipped
+manifest. Two consequences that are easy to get wrong:
+
+- **Grepping `build/**/*.brs` to check whether a flag is off proves nothing.** The `#if`
+  block is always present there. Read `build/manifest` instead.
+- **`bsconfig.json`'s `manifest.bs_const` cannot enforce anything.** BrighterScript applies
+  it to its own in-memory manifest only; the `manifest` file is copied to `build/` verbatim,
+  so the override never reaches the device.
+
+| Constant | Default | What it gates |
+|---|---|---|
+| `debug` | `false` | Failure injection (`DebugFlags`), the toast cheat code, the Task-thread ledger, `rawApiData`/`raw*` payload attachment, and log level 4 vs 2. See [debug-flags.md](../dev/debug-flags.md) |
+| `perfTiming` | **`true`** | Orchestrator wait/emit instrumentation in `LoadLatestRowsTask` + `LoadItemsTask2`. See [home-first-paint-performance.md](../dev/home-first-paint-performance.md) |
+| `ENABLE_RTA` | `false` | The RTA on-device component. Flipped to `true` in the build directory by the RTA deploy itself |
+
+`perfTiming` defaults **on** so dev builds print the numbers without ceremony — instrumentation
+behind a flag-flip-and-rebuild stops being looked at, and stops functioning as a baseline. It is
+deliberately separate from `debug` rather than folded into it: a `debug` build attaches
+`rawApiData` to every transformed item, which lands inside the `emit` measurement, so sharing the
+flag would mean the only build that can read the numbers is one that distorts them.
+
+### Production hardening
+
+[`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) is the
+final step of `npm run build:prod`. It rewrites `build/manifest` to force `debug`, `perfTiming`,
+and `ENABLE_RTA` to `false`, prints what it flipped, and fails loudly if the manifest is missing
+or has no `bs_const` line. Every route to a release artifact composes `build:prod`, so
+`npm run package:signed` is covered too.
+
+This exists because `roku-log`'s `strip` removes log *calls* from production but not the code
+feeding them — the timing clocks would otherwise run in production and have their results
+discarded. It also means a `debug=true` flip left in the working tree cannot reach a release —
+and that flip is routine, because the log level is welded to the same const, so raising
+verbosity means flipping `debug`. It has landed on `main` as `true` **twice** (`27d99141`,
+`dc05db8d`), each reverted the same day.
+
+The script also **denies by default**: after forcing the known dev `bs_const` values off, any const still
+`true` fails the build by name. `FORCED_OFF` is a deny-list and only knows what someone
+remembered to add, while the const set turns over every few months (`printReg` → `debug` →
+`ENABLE_RTA` → `perfTiming`) — and `perfTiming` is the first one to default `true`, which is
+the pattern the next dev flag will copy. A const that legitimately must ship enabled opts into
+`ALLOWED_TRUE` explicitly.
+
+A manifest that *drops* a const never reaches the script: `bsc` raises
+`hash-const-does-not-exist` (error, exit 1) for every `#if` referencing an undeclared const,
+and `build:prod` chains the two with `&&`.
+
+Verify with:
+
+```bash
+npm run build:prod && grep bs_const build/manifest
+# bs_const=debug=false;ENABLE_RTA=false;perfTiming=false
 ```
 
 ## Custom BSC plugins
@@ -194,7 +254,7 @@ Build:
 | Script | What it does |
 |---|---|
 | `npm run build` | Dev build (`bsc --project bsconfig.json`) |
-| `npm run build:prod` | Production build with log stripping |
+| `npm run build:prod` | Production build with log stripping, then [manifest hardening](#compile-time-flags-bs_const) — forces every dev `bs_const` off |
 | `npm run build:tests` | All test suites |
 | `npm run build:tests-unit` | Unit tests only |
 | `npm run build:tests-integration` | Integration tests only |

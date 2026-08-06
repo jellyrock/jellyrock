@@ -23,6 +23,36 @@ sub loadItems()
   globalUser = m.global.user
   results = []
 
+  ' Split the run into time spent WAITING on the pool versus time spent EMITTING
+  ' (transform + ContentNode + appendChild) on this thread. Same decomposition
+  ' LoadLatestRowsTask records — see there and docs/dev/home-first-paint-performance.md
+  ' for WHY it is permanent, and why it rides `perfTiming` rather than `debug`. The
+  ' shared rationale lives in those two places on purpose; a third copy here drifted
+  ' once already.
+  '
+  ' What IS specific to this task: two very different shapes behind one function. A
+  ' plain grid load is ONE query plus a transform loop. A Genres load is one query plus
+  ' a SEQUENTIAL blocking fetch per genre, and epic #728's Phase 1 had to pick a
+  ' mechanism for it — apiPipeline (which attacks wait) or the orchestration job pool
+  ' (which attacks emit). Only the split says which, so `genreFetches` is logged
+  ' alongside it: a line without it cannot be interpreted, because the genre count is
+  ' what makes the run serial.
+  '
+  ' The gate also matters more here than on Home: the per-item mark/read calls sit in
+  ' the hottest loop the grid has, running up to `m.top.limit` times (default 100).
+  '
+  ' Timing vars are declared unconditionally so bslint's flow analysis (LINT1003) sees
+  ' every path assign them — it does not correlate assignments across `#if` blocks.
+  runClock = invalid
+  stepClock = invalid
+  waitMs = 0
+  emitMs = 0
+  genreFetches = 0
+  #if perfTiming
+    runClock = CreateObject("roTimespan")
+    stepClock = CreateObject("roTimespan")
+  #end if
+
   sortField = m.top.sortField
 
   if m.top.sortAscending = true
@@ -157,7 +187,13 @@ sub loadItems()
   end if
   ' MusicAlbum and the generic else both use queryType = "usersItems" (default)
 
+  #if perfTiming
+    stepClock.mark()
+  #end if
   data = executeItemQuery(queryType, params)
+  #if perfTiming
+    waitMs += stepClock.totalMilliseconds()
+  #end if
 
   ' If user has filtered by #, include special characters sorted after Z as well
   if isValid(params.NameLessThan)
@@ -167,7 +203,13 @@ sub loadItems()
       params.NameStartsWithOrGreater = "z"
 
       ' Perform 2nd API lookup for items starting with Z or greater
+      #if perfTiming
+        stepClock.mark()
+      #end if
       startsWithZAndGreaterData = executeItemQuery(queryType, params)
+      #if perfTiming
+        waitMs += stepClock.totalMilliseconds()
+      #end if
 
       if isValidAndNotEmpty(startsWithZAndGreaterData)
         specialCharacterItems = []
@@ -193,6 +235,9 @@ sub loadItems()
 
     for each item in data.Items
       tmp = invalid
+      #if perfTiming
+        stepClock.mark()
+      #end if
 
       if item.Type = "Genre"
         ' Genre view: build row container with sampled items beneath it
@@ -214,7 +259,16 @@ sub loadItems()
         })
         genreData = invalid
         if isValid(genreReq)
+          #if perfTiming
+            emitMs += stepClock.totalMilliseconds()
+            stepClock.mark()
+          #end if
           genreData = fetchJson(genreReq, "genreItems_" + item.id)
+          #if perfTiming
+            waitMs += stepClock.totalMilliseconds()
+            genreFetches += 1
+            stepClock.mark()
+          #end if
         end if
 
         if isValid(genreData) and genreData.Items.Count() > 5
@@ -269,9 +323,37 @@ sub loadItems()
       if isValid(tmp)
         results.push(tmp)
       end if
+      #if perfTiming
+        emitMs += stepClock.totalMilliseconds()
+      #end if
     end for
   end if
+
+  ' The handoff is emit work too — a grid can carry hundreds of nodes across it.
+  #if perfTiming
+    stepClock.mark()
+  #end if
   m.top.content = results
+
+  ' NOTE: roku-log's Logger.info takes at most 10 params (message + value..value9),
+  ' and the roku-log BSC plugin spends the first on the injected pkg path — so at
+  ' most NINE args may be passed here. Exceeding it is not a compile error: it
+  ' faults at runtime with "Wrong number of function parameters" (&hf1), which
+  ' drops the app into the BrightScript debugger and hangs it mid-load.
+  '
+  ' The line carries its own build flags so a sample can never be silently compared
+  ' against one taken in a distorting build — a `debug=true` build attaches
+  ' `rawApiData` to every item and inflates `emit`. Provenance belongs in the sample,
+  ' not in someone's memory of which manifest was checked out at the time.
+  #if perfTiming
+    emitMs += stepClock.totalMilliseconds()
+    #if debug
+      buildFlags = " [debug=true perfTiming=true]"
+    #else
+      buildFlags = " [debug=false perfTiming=true]"
+    #end if
+    m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+  #end if
 end sub
 
 ' Routes an item query through Build*Request() + pool based on queryType.

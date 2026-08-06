@@ -51,29 +51,64 @@ sub loadLatestRows()
   ' Kept in the source rather than added by hand when needed, because a
   ' re-instrumented probe measures subtly different things and is therefore not
   ' comparable to the recorded baselines — which defeats the point of having them.
-  ' Costs two roTimespans and two adds per row; roku-log strips it from prod.
+  '
+  ' Gated on `perfTiming`, NOT on `debug`. `roku-log` strips the log CALL from prod
+  ' but not the clocks feeding it, so an ungated version has production run the whole
+  ' measurement and throw the result away. It cannot ride `debug` either: a debug
+  ' build attaches `rawApiData` to every transformed item (JellyfinDataTransformer),
+  ' landing inside `emit` — the quantity measured here — so the only build able to
+  ' read the numbers would be one that distorts them (+121 ms on a Stick 4K).
+  ' `perfTiming` defaults TRUE in the manifest so dev builds keep printing the split;
+  ' scripts/harden-prod-manifest.js forces it false in every release artifact. A
+  ' bsconfig setting CANNOT do that job — see the script's header for why.
   ' See docs/dev/home-first-paint-performance.md.
-  runClock = CreateObject("roTimespan")
-  stepClock = CreateObject("roTimespan")
+  '
+  ' Declared unconditionally so bslint (LINT1003) sees every path assign them — it
+  ' does not correlate assignments across `#if` blocks.
+  runClock = invalid
+  stepClock = invalid
   waitMs = 0
   emitMs = 0
+  #if perfTiming
+    runClock = CreateObject("roTimespan")
+    stepClock = CreateObject("roTimespan")
+  #end if
 
   pipe = apiPipelineBegin(entries)
-  stepClock.mark()
+  #if perfTiming
+    stepClock.mark()
+  #end if
   result = apiPipelineNext(pipe)
-  waitMs += stepClock.totalMilliseconds()
+  #if perfTiming
+    waitMs += stepClock.totalMilliseconds()
+  #end if
 
   while isValid(result)
-    stepClock.mark()
+    #if perfTiming
+      stepClock.mark()
+    #end if
     emitRow(result.entry.libId, result.res)
-    emitMs += stepClock.totalMilliseconds()
-
-    stepClock.mark()
+    #if perfTiming
+      emitMs += stepClock.totalMilliseconds()
+      stepClock.mark()
+    #end if
     result = apiPipelineNext(pipe)
-    waitMs += stepClock.totalMilliseconds()
+    #if perfTiming
+      waitMs += stepClock.totalMilliseconds()
+    #end if
   end while
 
-  m.log.info("latest-rows orchestrator done - task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+  ' The line carries its own build flags so a sample can never be silently compared
+  ' against one taken in a distorting build. Provenance belongs in the sample, not in
+  ' someone's memory of which manifest was checked out at the time.
+  #if perfTiming
+    #if debug
+      buildFlags = " [debug=true perfTiming=true]"
+    #else
+      buildFlags = " [debug=false perfTiming=true]"
+    #end if
+    m.log.info("latest-rows orchestrator done -" + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+  #end if
 end sub
 
 ' Transforms one response and emits its row.
