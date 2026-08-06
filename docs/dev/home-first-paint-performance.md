@@ -289,20 +289,30 @@ The genre fetches now ride `apiPipeline` instead of running back to back. Measur
 2026-08-05 on the same device and library, **both arms on the same day** — the recorded
 baseline above is from a different session, and a cross-session median is not a comparison:
 
-| n=6, `.177`, 8 genres, `debug=false` | before | after |
+| `.177`, 8 genres, `debug=false` | before (n=5) | after (n=6) |
 |---|---|---|
-| `wait` | 820.5 ms | **321 ms** |
-| `emit` | 220.5 ms | 223 ms |
-| **task** | **1081.5 ms** | **603.5 ms** |
+| `wait` | 815 ms | **321 ms** |
+| `emit` | 219 ms | 223 ms |
+| **task** | **1077 ms** | **603.5 ms** |
 
-The before arm reproduces the n=4 baseline (1081 vs 1016 ms; 79% vs 78% wait), which is what
-makes the pair trustworthy. Restricted to the 8-genre samples (one before run landed on a
-12-genre library), **every after sample is faster than every before sample** — complete
-separation, exact Mann-Whitney p≈0.004. `emit` is unchanged, as it must be: the transform
-work is identical, only the waiting overlaps.
+Six samples were taken per arm; **one before sample is excluded** because it opened a
+12-genre library instead of the 8-genre one that was seeded. Genre count is the independent
+variable of this measurement, so that run is a different workload, not a slow sample. (Cause:
+`navLibraryByType` resolves the first Home *tile* of a collection type while the seeding side
+resolves the first library from `/UserViews`; on a multi-library server those need not agree
+— see the open followup in [`docs/progress.md`](../progress.md).) Medians over all six would
+read `task` 1081.5 / `wait` 820.5 / `emit` 220.5 — the outlier was the *maximum*, so it moved
+each median by under 1% — but the table above and the statistics below are both computed on
+the 8-genre samples, so they describe one workload rather than two.
+
+The before arm reproduces the n=4 baseline (1077 vs 1016 ms; 79% vs 78% wait), which is what
+makes the pair trustworthy. **Every after sample is faster than every before sample** —
+complete separation, exact Mann-Whitney p≈0.004. `emit` is unchanged, as it must be: the
+transform work is identical, only the waiting overlaps.
 
 **The arithmetic checks out, which is the real confirmation.** Serial: 8 × ~95 ms + the
-library query ≈ 815 ms — measured 820. Pipelined 3-wide: ⌈8/3⌉ = 3 waves × ~95 ms + the same
+library query ≈ 815 ms — measured 815 (landing on the same integer is luck; agreeing to
+within a few percent is the point). Pipelined 3-wide: ⌈8/3⌉ = 3 waves × ~95 ms + the same
 query ≈ 340 ms — measured 321. The mechanism is doing what it says.
 
 ⚠️ **A prediction that did NOT hold, and why.** This migration was projected at
@@ -324,7 +334,8 @@ orchestrator rather than generalizing one number:
   new threads, and costs nothing against the 100-thread cap. A worker pool would attack the
   22% and leave the 757 ms serial.
 
-⚠️ n=4, one device, one library, fast LAN (~95 ms/request). The *direction* is what
+⚠️ Small n throughout (n=4 baseline, n=5/6 migration arms), one device, one library, fast
+LAN (~95 ms/request). The *direction* is what
 generalizes, and it strengthens rather than weakens off this bench: genre count sets the
 number of serial fetches, so a library with 25 genres is worse, and a distant server is worse
 again. Re-measure before sizing anything.
