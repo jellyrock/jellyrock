@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-06 — Stop `progress-cursor-nudge` reading Recently-shipped as the cursor
 - 2026-08-06 — Run the Genres view's per-genre fetches through `apiPipeline`
 - 2026-08-06 — Measure the item-grid wait/emit split, pick `apiPipeline` for the genre loop, and keep the timers out of prod
 - 2026-08-04 — feat: PR #768 **merged** (`d1ec5683`) — epic #728 Phase 1's accounted `launchTask()` chokepoint, 99 launch sites migrated, `no-raw-run` making a bare launch a build error. The headline review fix: the debug thread ledger silently dropped the five Task threads `setGlobalNodes()` starts — it wrote to an `roSGNode` field that did not exist yet — so `printTaskThreads()` under-reported by a permanent five (device-verified either side of the fix, now a mutation-proven regression test). The post-completion pool refill was **reverted**: 190 measured runs across three device tiers found it slower in 6/6 independent comparisons (sign test p=0.031) and never faster, and its original n=4 justification did not reproduce. Home first-paint baselines were re-measured at n=30 per device against the committed artifact, with `drain` dropped from the published table as an unreliable derived quantity.
