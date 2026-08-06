@@ -163,6 +163,36 @@ export async function getLibraries(session) {
   }));
 }
 
+/**
+ * Every genre in a library, mapped to the FULL set of item names the server files
+ * under it: `Map<genreName, Set<itemName>>`.
+ *
+ * Mirrors the query `LoadItemsTask2` makes per genre row (same parentId, same
+ * includeItemTypes, recursive) but without its `Limit: 6` / `SortBy: Random`, so
+ * the result is the complete membership a sampled row must draw from. Resolved at
+ * runtime — the demo server's content is not a fixed contract.
+ */
+export async function genreItemNames(session, libraryId, includeItemTypes) {
+  const headers = tokenHeader(session.token);
+  const base = `${session.serverUrl}/Items?userId=${session.userId}&parentId=${libraryId}`;
+  const genres = await getJson(
+    `${session.serverUrl}/Genres?userId=${session.userId}` +
+      `&parentId=${libraryId}&includeItemTypes=${includeItemTypes}`,
+    headers,
+  ).catch(() => null);
+
+  const byGenre = new Map();
+  for (const genre of genres?.Items || []) {
+    const items = await getJson(
+      `${base}&genreIds=${genre.Id}&recursive=true` +
+        `&includeItemTypes=${includeItemTypes}&enableTotalRecordCount=false`,
+      headers,
+    ).catch(() => null);
+    byGenre.set(genre.Name, new Set((items?.Items || []).map((i) => i.Name)));
+  }
+  return byGenre;
+}
+
 /** Resolve a stable collectionType to the current library id (or null). */
 export function libraryIdFor(libraries, collectionType) {
   const lib = (libraries || []).find((l) => l.collectionType === collectionType);

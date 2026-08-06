@@ -267,8 +267,8 @@ reports the n=4 **median** (1016 ms), not this line.
 
 `genreFetches` is logged alongside the split because one function serves two very different
 shapes. A plain grid load is a single query plus a transform loop (`genreFetches 0`). A
-**Genres** load is one query plus a *sequential blocking fetch per genre* — so the genre count
-is what makes the run serial, and a line without it can't be interpreted.
+**Genres** load is one query plus a fetch *per genre* — so the genre count is what makes that
+path I/O-heavy, and a line without it can't be interpreted.
 
 **Baseline** — Stick 4K (`.177`), one movie library, 8 genres, `bs_const=debug=false`, n=4,
 medians. Reaching it needs `display.<libraryId>.landing` seeded to `Genres` (see
@@ -282,6 +282,37 @@ medians. Reaching it needs `display.<libraryId>.landing` seeded to `Genres` (see
 
 Per genre that is ~95 ms of fetch against ~26 ms of transform. Run-to-run spread was tight
 (975–1060 ms).
+
+### What the migration to `apiPipeline` actually bought
+
+The genre fetches now ride `apiPipeline` instead of running back to back. Measured
+2026-08-05 on the same device and library, **both arms on the same day** — the recorded
+baseline above is from a different session, and a cross-session median is not a comparison:
+
+| n=6, `.177`, 8 genres, `debug=false` | before | after |
+|---|---|---|
+| `wait` | 820.5 ms | **321 ms** |
+| `emit` | 220.5 ms | 223 ms |
+| **task** | **1081.5 ms** | **603.5 ms** |
+
+The before arm reproduces the n=4 baseline (1081 vs 1016 ms; 79% vs 78% wait), which is what
+makes the pair trustworthy. Restricted to the 8-genre samples (one before run landed on a
+12-genre library), **every after sample is faster than every before sample** — complete
+separation, exact Mann-Whitney p≈0.004. `emit` is unchanged, as it must be: the transform
+work is identical, only the waiting overlaps.
+
+**The arithmetic checks out, which is the real confirmation.** Serial: 8 × ~95 ms + the
+library query ≈ 815 ms — measured 820. Pipelined 3-wide: ⌈8/3⌉ = 3 waves × ~95 ms + the same
+query ≈ 340 ms — measured 321. The mechanism is doing what it says.
+
+⚠️ **A prediction that did NOT hold, and why.** This migration was projected at
+1016 → **~400 ms**; it landed at ~604. The `wait` half of the projection was nearly exact
+(285 predicted vs 321 measured); the error was assuming `emit` would disappear into the
+in-flight shadow. It cannot: `wait` and `emit` are instrumented as **disjoint** intervals —
+`wait` is time inside `apiPipelineNext`, `emit` is time outside it — so `task ≈ wait + emit`
+by construction. The shadow makes the *measured wait* smaller (requests progress while the
+thread transforms); it never makes emit free. Project a pipelining change by shrinking `wait`
+and holding `emit` fixed.
 
 **This inverts Home's result.** On the same device Home is `wait` 511 / `emit` 1342 — emit
 51% and dominant. The grid's genre loop is 78% network. The two orchestrators therefore need
