@@ -259,6 +259,16 @@ Measured 2026-08-07 rather than assumed. Vitest 4 runs specs in forked child pro
 
 The fix that WOULD work is moving the session lifecycle out of the three per-spec `snapshotSession`/`restoreSession` pairs into `globalSetup`, which runs in Vitest's main process. Declined for now, and this is a closed decision rather than an open followup: the exposure is a Ctrl-C during an otherwise unattended 13-minute suite, and recovery is a two-minute registry rewrite that the handler's snapshot-print makes mechanical. **Tripwire:** re-open if a device is actually stranded by an interrupted spec run, or if the suite becomes something people routinely sit and watch.
 
+## decision-id: retire-hd-native-layout-refactor
+
+**date**: 2026-08-07
+**status**: accepted
+**related-files**: `manifest`, `docs/architecture/build-and-tooling.md`, `resources/icons/README.md`
+
+Retired the `hd-native-layout-refactor` tech-debt slug (and closed #419) instead of implementing it. Hardware verification on a device with a 720p UI (Roku Stick `3600X`) disproved its premise: the FHD design space + OS framebuffer downsample renders 720p correctly (it's supersampling, not "lossy autoscale"), and `$$RES$$` autosub selects per-resolution assets by *device* UI resolution even under `ui_resolutions=fhd` (`r2d2_bitmaps` showed the `_hd` triples loaded, decoded at physical output size) — so the #560 icon pipeline already delivers native-resolution bitmaps with no layout refactor. A second finding hardens the call: `GetUIResolution()` returns the *device's* resolution (1280×720) even when the manifest declares only `fhd`, which made the parked foundation branch's "no-op until the manifest flips" scaling actively wrong on 720p devices.
+
+Closes off: declaring `ui_resolutions=hd,fhd` and converting ~223 hardcoded `1920`/`1080` coordinates to runtime reads. Scope limit: this verdict covers 720p only — SD/480p output (CRT displays, non-square pixels) remains unverified on real hardware and may need a different strategy; that stays tracked as tech-debt slug `sd-resolution-native-support`. Re-open trigger for the HD side: concrete low-end-device perf/memory data implicating rendering in the FHD design space — and evaluate a root-scene `scale` field before any coordinate rewrite. The 720p `Gradient` banding found during the same verification is tracked separately as #777.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

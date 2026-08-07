@@ -24,17 +24,23 @@ splash_screen_sd=pkg:/images/branding/splash-screen_sd.png
 ### resources/icons/README.md.
 ###
 ### ui_resolutions=fhd: app is designed at 1920x1080 design coords; the OS
-### auto-downsamples the framebuffer to 720p / 480p on HD/SD devices. We
-### canNOT declare ui_resolutions=hd,fhd without first rewriting every
-### layout coordinate to be runtime-computed from m.global.device.uiResolution
-### — declaring both tells Roku NOT to autoscale and to use the device's
-### native coord space, which causes our 1920-wide elements to overflow on
-### HD devices. Tracked as tech-debt slug hd-native-layout-refactor.
+### auto-downsamples the framebuffer to 720p / 480p on HD/SD devices. For
+### 720p this is hardware-verified correct (2026-08-07, issue #419): the
+### downsample is supersampling. Declaring hd,fhd instead would disable it
+### and require every hardcoded 1920/1080 coordinate to be runtime-computed
+### (1920-wide elements overflow the 1280-wide native coord space) for no
+### measurable quality win at 720p — that refactor (former tech-debt slug
+### hd-native-layout-refactor) was retired; see docs/decisions.md
+### (retire-hd-native-layout-refactor). SD/480p output (e.g. CRT displays)
+### remains UNVERIFIED on real hardware and may need a different strategy —
+### tracked as tech-debt slug sd-resolution-native-support.
 ###
 ### uri_resolution_autosub rewrites $$RES$$ in any image URI to sd/hd/fhd at
-### load time. Currently of limited value because the OS holds rendering at
-### FHD coord space, but the per-resolution PNG assets are in place as
-### foundation work for the eventual layout refactor.
+### load time, keyed off the DEVICE's UI resolution — NOT this manifest's
+### design space. 720p devices load the _hd assets even under
+### ui_resolutions=fhd (verified via r2d2_bitmaps), decoded at physical
+### output size, so the per-resolution PNG triples deliver native-resolution
+### bitmaps on HD devices today. Do not remove the _hd assets as "unused".
 ui_resolutions=fhd
 uri_resolution_autosub=$$RES$$,sd,hd,fhd
 

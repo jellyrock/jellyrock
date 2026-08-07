@@ -11,17 +11,16 @@ The pipeline pairs with the manifest's [`uri_resolution_autosub`](../../manifest
 declaration so a Poster URI like `pkg:/images/icons/play_$$RES$$.png` is
 rewritten by the Roku OS at load time to the correct per-device asset.
 
-> **Current state — foundation only.** The asset pipeline is fully wired but
-> the manifest still declares `ui_resolutions=fhd`, so the OS holds rendering
-> at FHD design space and the per-resolution HD assets don't yet deliver a
-> measurable quality win. Realizing the full benefit requires a layout
-> refactor (every hardcoded `1920` / `1080` becomes a runtime read from
-> `m.global.device.uiResolution`) so we can safely declare
-> `ui_resolutions=hd,fhd`. Tracked as
-> [`hd-native-layout-refactor`](../../docs/architecture/tech-debt.md#hd-native-layout-refactor).
-> Until then, this directory and the build script are durable foundation
-> work — the assets will start delivering value immediately when that
-> refactor lands. See
+> **Current state — fully delivering.** `$$RES$$` substitution keys off the
+> *device's* UI resolution, not the manifest's `ui_resolutions=fhd` design
+> space: devices with a 720p UI load the `_hd` renders, decoded at the physical
+> output size, so HD devices get native-resolution bitmaps today
+> (hardware-verified via `r2d2_bitmaps` 2026-08-07 — see issue #419's
+> closing comment). The `_sd` slot remains reserved-but-empty (autosub falls
+> back to `hd`); shipping it needs NTSC pixel-aspect-ratio handling, tracked
+> as
+> [`sd-resolution-native-support`](../../docs/architecture/tech-debt.md#sd-resolution-native-support).
+> See
 > [`docs/architecture/build-and-tooling.md`](../../docs/architecture/build-and-tooling.md)
 > for the full pipeline shape.
 
