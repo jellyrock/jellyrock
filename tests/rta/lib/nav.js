@@ -7,8 +7,9 @@
  * `ctx` carries { heroIndex, heroId } (from getHero) and `libraries` (from
  * getLibraries) — the latter is what lets a library nav resolve the SAME library
  * the seeding side picked, rather than the first tile of a matching type. Pass
- * ctx through every chained nav; a missing ctx silently degrades to the
- * ambiguous collectionType match. The osd backdrop injection
+ * ctx through every chained nav — omitting it now THROWS on any server with
+ * several libraries of one type, rather than quietly picking the wrong one. The
+ * osd backdrop injection
  * is intentionally NOT here — it's a screenshot-only concern handled by the
  * store orchestrator after nav, so the functional test for osd stays free of
  * ffmpeg/backdrop logic.
@@ -111,10 +112,16 @@ export async function navSearch() {
  * 14-library server, four of them `movies`.
  *
  * The collectionType path stays as a fallback for callers with no id to hand
- * (`demos/`), and is exactly correct on a one-library-per-type server.
+ * (`demos/`) and is exactly correct on a one-library-per-type server — but it
+ * now THROWS when several libraries match, rather than silently picking the
+ * first. That guard is self-limiting: it can only fire where the ambiguity is
+ * real, so the demo server never trips it.
  */
 async function findHomeLibraryTile(collectionType, libraryId = null) {
   const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
+  // Collected rather than returned on first hit, so the no-id path can tell
+  // "one match" from "several" — see the ambiguity guard below.
+  const matches = [];
   for (let r = 0; r < rowCount; r++) {
     const sectionId = await getVal(`#homeRows.content.${r}.sectionId`);
     if (sectionId !== 'library') continue;
@@ -126,13 +133,38 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
         continue;
       }
       const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
-      if (ct === collectionType) return { row: r, col: c };
+      if (ct === collectionType) matches.push({ row: r, col: c });
     }
   }
+
+  if (libraryId) {
+    throw new Error(
+      `home library tile id="${libraryId}" (collectionType="${collectionType}") not found`,
+    );
+  }
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) {
+    throw new Error(`home library tile collectionType="${collectionType}" not found`);
+  }
+
+  // AMBIGUOUS — refuse rather than silently pick the first tile. The seeding side
+  // resolves via /UserViews order and this resolves via Home tile order, so "the
+  // first one" means DIFFERENT libraries on each side. A caller that omits
+  // libraryId has not chosen the first match, it has forgotten to pass one; a
+  // comment saying so was not enough, hence a throw. Self-limiting: it can only
+  // fire where the ambiguity is real, so a one-library-per-type server (the demo
+  // server, `demos/`) never trips it.
+  const named = [];
+  for (const m of matches) {
+    const id = await getVal(`#homeRows.content.${m.row}.${m.col}.id`);
+    const title = await getVal(`#homeRows.content.${m.row}.${m.col}.title`);
+    named.push(`${title} (${id})`);
+  }
   throw new Error(
-    libraryId
-      ? `home library tile id="${libraryId}" (collectionType="${collectionType}") not found`
-      : `home library tile collectionType="${collectionType}" not found`,
+    `home library tile collectionType="${collectionType}" is AMBIGUOUS — ` +
+      `${matches.length} libraries match: ${named.join(', ')}. ` +
+      'Pass a libraryId (libraryIdFor(ctx.libraries, collectionType)) so the nav ' +
+      'targets the same library the seed did.',
   );
 }
 
