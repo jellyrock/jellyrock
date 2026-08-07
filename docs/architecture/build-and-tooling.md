@@ -70,7 +70,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-06
+last-reviewed: 2026-08-07
 ---
 
 # Build & Tooling
@@ -343,7 +343,7 @@ uri_resolution_autosub=$$RES$$,sd,hd,fhd
 
 This is a Roku-blessed primitive: at image-load time, the OS rewrites the magic token `$$RES$$` in any image URI to `sd`, `hd`, or `fhd`. A Poster URI like `pkg:/images/icons/play_$$RES$$.png` then resolves to `play_fhd.png`, `play_hd.png`, or `play_sd.png`.
 
-> **Current limitation — read this before assuming the HD assets deliver native rendering.** With `ui_resolutions=fhd` set, the OS holds rendering at FHD design space and downsamples the whole framebuffer at the end. So even though the autosub mechanism + per-resolution PNGs are in place, the HD assets do not currently deliver a measurable quality win — they get loaded into Posters sized at FHD and scaled by the framebuffer downsample like everything else. Fully realizing this pipeline requires a layout refactor so every dimension is computed from `m.global.device.uiResolution` instead of hardcoded against `1920` / `1080`; only then can we declare `ui_resolutions=hd,fhd` and have Roku render natively per device. Tracked as [`hd-native-layout-refactor`](tech-debt.md#hd-native-layout-refactor). The current PR is foundation work — the asset pipeline is durable and the per-resolution PNGs will start delivering value immediately when the layout refactor lands.
+> **How this behaves under `ui_resolutions=fhd` (hardware-verified 2026-08-07 — see #419's closing comment).** `$$RES$$` substitution keys off the **device's** UI resolution, not the manifest's declared design space: a device with a 720p UI loads the `_hd` triples even with `ui_resolutions=fhd` set (verified via the debug console's `r2d2_bitmaps`, which showed `settings_hd.png` / `search_hd.png` as the loaded bitmaps, decoded at the physical output size). The OS decodes the asset to the final output dimensions, places it at FHD design coordinates, and the framebuffer downsample nets out to ~1:1 native-resolution rendering. So the per-resolution assets deliver their quality win **today** — no layout refactor required. An earlier revision of this callout claimed the opposite (assets "downsampled like everything else" pending a `hd-native-layout-refactor` slug); that premise was disproven by the verification above and the slug was retired — see the "Recently removed" list in [tech-debt.md](tech-debt.md#recently-removed-dont-go-searching-for-these) and the `retire-hd-native-layout-refactor` note in [`docs/decisions.md`](../decisions.md).
 
 ### Source-of-truth layout
 

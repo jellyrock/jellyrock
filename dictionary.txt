@@ -98,6 +98,7 @@ BSC-plugin-generated
 BSC's
 bsfmt
 bslint
+callout
 callouts
 Callouts
 callsite
@@ -179,6 +180,7 @@ Diátaxis
 Diátaxis-lite
 diff-and-wait
 diffable
+disproven
 DLNA
 docs-as-code
 docstring
@@ -520,6 +522,7 @@ Subfolders
 substring
 subtype
 subtypes
+supersampling
 superset
 SVG
 SVGs
