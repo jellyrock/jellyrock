@@ -15,6 +15,37 @@ import { hardRelaunch } from './driver.js';
 export const GLOBAL = 'JellyRock';
 
 /**
+ * Prove a seed actually survived the relaunch.
+ *
+ * The failure this exists to catch is silent and expensive. `relaunch()` only
+ * FOREGROUNDS an already-running channel, so the app keeps its in-memory session
+ * and re-persists it over whatever was just seeded. The suite then drives an app
+ * pointed at the wrong server using the seeded server's item ids: every
+ * content-dependent test fails with an unrelated-looking timeout, and a capture
+ * run would silently photograph the wrong library. It cost a full CI run and two
+ * device runs to trace once — hence a loud, specific assertion instead.
+ *
+ * Seeds return their own expected `server` value (a URL, or `null` for
+ * server-select, where the key is deliberately deleted), so this stays correct
+ * as seeds are added.
+ *
+ * @param {string|null} expectedServer - what the seed said it wrote
+ * @param {string} label - screen / test name, for the error message
+ */
+export async function assertSeedTookEffect(expectedServer, label) {
+  const values = (await odc.readRegistry({}))?.values || {};
+  const live = values[GLOBAL]?.server ?? null;
+  const want = expectedServer ?? null;
+  if (live === want) return;
+  throw new Error(
+    `seed did not take for "${label}": registry says server=${JSON.stringify(live)} ` +
+      `but the seed wrote ${JSON.stringify(want)}. The app re-persisted its in-memory ` +
+      'session over the seed — the relaunch after seeding must be hardRelaunch() ' +
+      '(a plain relaunch only foregrounds a running channel).',
+  );
+}
+
+/**
  * Clear all sticky per-library view settings (`display.<libraryId>.*` keys in the
  * user's registry section) so a screen starts from the presenter DEFAULT view.
  * Library views are sticky (set by the grid options dialog, persisted to registry),
@@ -56,6 +87,7 @@ export async function seedHome(session, locale) {
   });
   // Reset sticky library views to defaults; view-dependent screens re-seed after.
   await clearDisplaySettings(session);
+  return session.serverUrl;
 }
 
 /** A `saved_servers` list entry built from an authenticated session (mirrors SaveServerList's shape). */
@@ -99,6 +131,7 @@ export async function seedHomeWithSavedServers(primary, sessions, locale) {
     },
   });
   await clearDisplaySettings(primary);
+  return primary.serverUrl;
 }
 
 /**
@@ -138,6 +171,7 @@ export async function seedServerSelect(session, locale) {
       },
     },
   });
+  return null; // `server` is deliberately absent on this screen
 }
 
 /** Seed registry to land on the user-select screen (server known, no active user). */
@@ -156,6 +190,7 @@ export async function seedUserSelect(session, locale) {
       },
     },
   });
+  return session.serverUrl;
 }
 
 /**

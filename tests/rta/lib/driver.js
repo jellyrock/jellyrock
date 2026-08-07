@@ -44,7 +44,14 @@ export async function deployRtaBuild() {
   await sleep(RTA_CONFIG.bootMs);
 }
 
-/** Relaunch the dev channel and wait for boot + the RTA on-device component. */
+/**
+ * Foreground the dev channel and wait for boot + the RTA on-device component.
+ *
+ * ⚠️ NOT safe after writing the registry — use `hardRelaunch()` there. This only
+ * foregrounds an already-running channel, so the app keeps its in-memory session
+ * and re-persists it over anything just seeded. Use this only for relaunches that
+ * do NOT depend on registry state having changed.
+ */
 export async function relaunch() {
   await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
   await sleep(RTA_CONFIG.bootMs);
@@ -59,8 +66,17 @@ export async function relaunch() {
  * registry, leaving devices signed into `demo.jellyfin.org`. Exiting first
  * forces a cold start that actually re-reads the registry.
  *
- * `relaunch()` is deliberately left alone: mid-test relaunches want the cheap
- * foreground path, and only the restore needs to pay for a genuine cold start.
+ * **Every relaunch that follows a registry write must use this**, not `relaunch()`
+ * — restore AND all seeding. An earlier revision applied that rule to the restore
+ * path only, reasoning that mid-test relaunches wanted the cheap foreground path.
+ * That was wrong in a way that hid for weeks: seeds were silently re-persisted
+ * away, so the suite drove an app pointed at the operator's own server using
+ * demo-server ids. Fixing the restore leak is what exposed it — before that,
+ * devices were routinely left on the demo server, so the seed happened to agree
+ * with what was already there. See `assertSeedTookEffect` in seed.js, which now
+ * fails loudly instead.
+ *
+ * Cost is `exitMs` (~4s) per call. That is the price of the seed actually taking.
  */
 export async function hardRelaunch() {
   await ecp.sendKeypress('Home');
