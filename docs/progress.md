@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-07 — test(rta): hard-relaunch after seeding so the seed actually takes
 - 2026-08-07 — feat(ci): Run the RTA suite in CI on the release-prep branch
 - 2026-08-06 — Stop `progress-cursor-nudge` reading Recently-shipped as the cursor
 - 2026-08-06 — RTA functional tests now run in CI on the release-prep branch (`rta-functional-tests.yml`): path-scoped via `changed-paths` so a screenshot/docs push never spins the shared device, `jellyrock[bot]` version-bump commits skipped, and `concurrency` deliberately `cancel-in-progress: false` so a skipped run can't cancel a real one. Closes two duplicate followups that both asked for this.
