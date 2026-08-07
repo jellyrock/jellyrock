@@ -209,13 +209,21 @@ export async function navLibraryByType(collectionType, libraryId = null) {
 /**
  * A library grid is "loaded" once its load task has SETTLED — which means one of:
  *  - `#itemGrid` has items (most views), OR
- *  - `#genreList` has items (the GENRES view renders genre folders here, with
- *    `#itemGrid` hidden), OR
+ *  - `#genreList` has items AND they are real items rather than skeletons (see
+ *    below — the GENRES view renders genre folders here, with `#itemGrid` hidden), OR
  *  - `#emptyText.visible` is true (the load finished with zero items and the
  *    "No Items" empty-state is shown — a real, capture-worthy screen, e.g. the
  *    Networks view on a server whose shows have no network).
  * Accepting the empty-state lets the same nav capture empty views instead of
  * timing out on them.
+ *
+ * **The Genres view now paints in two stages**, so "has children" stopped meaning
+ * "loaded": `LoadItemsTask2` publishes titled rows carrying one `type: "Loading"`
+ * placeholder as soon as the genre list is known, then delivers the real items a few
+ * hundred ms later. Returning on the first stage made the genre-row assertion read
+ * placeholders (it caught this by refusing to pass having verified nothing) and would
+ * have quietly started capturing SKELETON rows into the store screenshots, which share
+ * this nav. So the genre branch waits for the placeholder to be gone.
  */
 async function waitGridLoaded(label, timeout = 20000) {
   const start = Date.now();
@@ -224,10 +232,15 @@ async function waitGridLoaded(label, timeout = 20000) {
     const grid = await getVal('#itemGrid.content.getChildCount()');
     const genres = await getVal('#genreList.content.getChildCount()');
     const empty = await getVal('#emptyText.visible');
-    last = `grid=${grid} genreList=${genres} empty=${empty}`;
+    // Only meaningful once rows exist; a filled row never leads with a Loading cell.
+    const firstCell =
+      typeof genres === 'number' && genres > 0
+        ? await getVal('#genreList.content.0.0.type')
+        : undefined;
+    last = `grid=${grid} genreList=${genres} firstCell=${firstCell} empty=${empty}`;
     if (
       (typeof grid === 'number' && grid > 0) ||
-      (typeof genres === 'number' && genres > 0) ||
+      (typeof genres === 'number' && genres > 0 && firstCell !== 'Loading') ||
       empty === true
     ) {
       return;
