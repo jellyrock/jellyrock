@@ -148,6 +148,7 @@ crossfade
 crowdsourced
 CSV
 CSVs
+Ctrl-C
 cutover
 Daniele
 datagram
@@ -277,6 +278,7 @@ injectable
 in-repo
 instantiation
 interpolators
+interruptible
 invariants
 IPs
 JavaScript
@@ -490,6 +492,7 @@ sideload
 Sideload
 sideloaded
 sideloads
+SIGINT
 signals-schema-invalid
 slow-decay
 socio-economic
@@ -591,6 +594,7 @@ viewport
 virtuals
 Vitest
 .vscode
+Vitest's
 vscode
 VSCode
 VTT

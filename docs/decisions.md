@@ -247,6 +247,18 @@ Ruled out: **a blocking modal** (the prior behavior), which was not merely worse
 
 It was implemented, measured and reverted. Across six independent comparisons on three device tiers (n=30 on a 512 MB Stick over four separate build/deploy passes, n=10 each on a Stick 4K and an Ultra, same server, 11 libraries) it was slower every time and never faster — roughly 1-3%, sign test p=0.031. Per-device Mann-Whitney was not significant, so this is evidence of NO BENEFIT rather than proof of harm, and the original justification (a 2673 to 2586 ms median at n=4) did not reproduce. Two things worth knowing before re-opening it: the per-column split is noise-dominated at these sample sizes — at n=10 `wait` appeared to confirm the mechanism and at n=30 it reversed — and the method resolves only ~120 ms and up, so a genuine sub-1% win would be invisible either way. Re-propose it only with a measurement that clears that floor.
 
+## decision-id: rta-interrupt-restore-scripts-only
+
+**date**: 2026-08-07
+**status**: accepted
+**related-files**: `tests/rta/lib/seed.js`, `scripts/capture-screenshots.js`, `tests/rta/demos/run.mjs`
+
+`armSessionRestoreOnInterrupt` is armed only from MAIN-PROCESS scripts — `scripts/capture-screenshots.js` and `tests/rta/demos/run.mjs` — and deliberately NOT from the Vitest specs, even though all five call `snapshotSession` and all five are interruptible. Without this note the omission looks like one someone should "finish".
+
+Measured 2026-08-07 rather than assumed. Vitest 4 runs specs in forked child processes (`isMainThread=true`, `ppid != pid`) that share the parent's process group, so a terminal Ctrl-C genuinely reaches them — the handler is not unreachable. It is simply too slow: Vitest tears the child down before a ~30s restore (cold restart plus verify) can complete. A deliberately interrupted run — SIGINT to the whole process group, matching Ctrl-C — produced no restore output and left the device signed into `demo.jellyfin.org`. Arming there would read as protection that does not exist, which is the failure mode this repo has already paid for twice (a code comment guarding the seed path in the `relaunch`/`hardRelaunch` split, and the same shape again in `findHomeLibraryTile`).
+
+The fix that WOULD work is moving the session lifecycle out of the three per-spec `snapshotSession`/`restoreSession` pairs into `globalSetup`, which runs in Vitest's main process. Declined for now, and this is a closed decision rather than an open followup: the exposure is a Ctrl-C during an otherwise unattended 13-minute suite, and recovery is a two-minute registry rewrite that the handler's snapshot-print makes mechanical. **Tripwire:** re-open if a device is actually stranded by an interrupted spec run, or if the suite becomes something people routinely sit and watch.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

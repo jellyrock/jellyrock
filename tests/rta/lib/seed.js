@@ -263,7 +263,10 @@ export async function restoreSession(saved, { attempts = 3 } = {}) {
     // `null` in the snapshot means "the key was absent"; a deleted key reads back
     // as undefined, so normalise both sides before comparing.
     const wrong = keys.filter((k) => (observed[k] ?? null) !== (saved[k] ?? null));
-    if (wrong.length === 0) return;
+    if (wrong.length === 0) {
+      armed = null; // nothing left for the interrupt handler to do
+      return;
+    }
 
     if (attempt === attempts) {
       throw new Error(
@@ -275,4 +278,78 @@ export async function restoreSession(saved, { attempts = 3 } = {}) {
       );
     }
   }
+}
+
+// ── Interrupt-safe restore ──────────────────────────────────────────────────
+//
+// `restoreSession` normally runs from a `finally` / `afterAll`. Neither is
+// reached when the process is KILLED — a Ctrl-C during a ~15-minute capture or
+// suite run terminates before the handler, and the device is left signed into
+// the seeded (demo) server. That is not hypothetical: it is how this repo has
+// stranded devices three times, most recently an interrupted screenshot matrix
+// that left `.177` on demo.jellyfin.org with no snapshot left in memory to
+// restore from.
+//
+// Arming registers signal handlers that run the SAME verified restore before
+// exiting. Idempotent, and self-disarming once a normal restore succeeds.
+let armed = null;
+let restoring = false;
+let handlersInstalled = false;
+
+/**
+ * Restore `saved` if this process is interrupted. Call right after
+ * `snapshotSession()`; a successful `restoreSession()` disarms it automatically.
+ *
+ * A second interrupt abandons the restore and exits immediately — so a wedged
+ * device can never trap someone in an un-killable process. If the restore
+ * fails, the snapshot is printed so it can be reapplied by hand (reconstructing
+ * it from a console log is what the incident that prompted this actually cost).
+ *
+ * ⚠️ MAIN-PROCESS SCRIPTS ONLY — do NOT arm this from a Vitest spec. Measured
+ * 2026-08-07: Vitest runs specs in forked children that DO share the parent's
+ * process group (so a terminal Ctrl-C does reach them), but Vitest tears the
+ * child down before a ~30s restore can finish. A real interrupted run produced
+ * no restore output and left the device on demo.jellyfin.org. Arming there is
+ * not merely useless, it reads as protection that does not exist.
+ *
+ * Making the specs safe needs the session lifecycle moved out of the three
+ * per-spec snapshot/restore pairs and into `globalSetup`, which runs in
+ * Vitest's MAIN process. Deliberately NOT done: the exposure is a Ctrl-C during
+ * an otherwise unattended 13-minute suite, and recovery is a two-minute
+ * registry rewrite (the snapshot print above covers it). Revisit only if
+ * someone is actually stranded that way.
+ */
+export function armSessionRestoreOnInterrupt(saved) {
+  armed = saved;
+  if (handlersInstalled) return;
+  handlersInstalled = true;
+
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, () => {
+      if (!armed) process.exit(130);
+      if (restoring) {
+        console.log(`\n[restore] second ${signal} — abandoning restore, exiting now.`);
+        console.log(`[restore] restore by hand from: ${JSON.stringify(armed)}`);
+        process.exit(130);
+      }
+      restoring = true;
+      const saving = armed;
+      console.log(
+        `\n[restore] ${signal} received — restoring the device session before exit.` +
+          ' This takes ~30s (cold restart + verify). Ctrl-C again to abandon.',
+      );
+      restoreSession(saving, { attempts: 2 })
+        .then(() => console.log('[restore] VERIFIED CLEAN — device left as found.'))
+        .catch((e) => {
+          console.error(`[restore] FAILED: ${e.message}`);
+          console.error(`[restore] restore by hand from: ${JSON.stringify(saving)}`);
+        })
+        .finally(() => process.exit(130));
+    });
+  }
+}
+
+/** Drop the interrupt-restore arming (e.g. after restoring by another path). */
+export function disarmSessionRestoreOnInterrupt() {
+  armed = null;
 }

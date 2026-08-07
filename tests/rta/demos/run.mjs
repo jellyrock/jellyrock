@@ -22,6 +22,7 @@ import {
   seedHomeWithSavedServers,
   snapshotSession,
   restoreSession,
+  armSessionRestoreOnInterrupt,
 } from '../lib/seed.js';
 import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
 import {
@@ -214,6 +215,7 @@ async function main() {
   // call — snapshotSession is an ODC call and would fail on a suspended/relaunched device.
   await relaunch();
   const saved = await snapshotSession(); // restore the real session afterward, no matter what
+  armSessionRestoreOnInterrupt(saved); // ...including when the operator Ctrl-Cs a recording
   let cleanlyRestored = false;
   try {
     const sessions = {};
