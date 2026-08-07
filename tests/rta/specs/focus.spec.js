@@ -12,7 +12,7 @@
  */
 import { beforeAll, afterAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate } from '../lib/jellyfin.js';
+import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, snapshotSession, restoreSession, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navLibraryByType } from '../lib/nav.js';
@@ -22,10 +22,12 @@ const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
 let saved;
 let session;
+let libraries;
 
 beforeAll(async () => {
   saved = await snapshotSession();
   session = await authenticate(RTA_CONFIG.server);
+  libraries = await getLibraries(session); // lets the nav below target a library BY ID
 });
 
 afterAll(async () => {
@@ -40,7 +42,7 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
   await waitHome();
 
   // Home -> Movies library grid. navLibraryByType lands focus on a grid tile.
-  await navLibraryByType('movies');
+  await navLibraryByType('movies', libraryIdFor(libraries, 'movies'));
   const gridFocus = await odc.getFocusedNode({ includeNode: true });
   expect(typeof gridFocus?.keyPath, 'a grid tile is focused after entering the library').toBe(
     'string',
