@@ -56,6 +56,20 @@ Two enforcement layers back this up:
 
 Soft prompt during work, hard gate before merge. The CI gate is architecture-only (dev guides under `docs/dev/` are informational — the soft signal in `npm run docs:stale` covers them)
 
+## Platform cost model — the one that keeps being rediscovered
+
+**Crossing a thread boundary on Roku costs a rendezvous, and the count of crossings dominates the size of each.** A Task thread writing a field on — or appending a child to — a render-thread-owned node parks until that thread reaches a safe point, then marshals the payload. The same operation done thread-locally is orders of magnitude cheaper.
+
+This is the *why* behind several rules that are otherwise easy to read as style: cache `m.global.user` in a local rather than re-reading per item, prefer `node.setFields({…})` to a run of assignments, use `transformBaseItemArray` over per-item `transformBaseItem`. They are all "make fewer crossings".
+
+When designing any Task → UI handoff:
+
+- **Batch.** Per-item or per-row delivery is the expensive shape. Measured on a Stick 4K: re-shaping one grid handoff into 8 per-row handoffs — *identical data* — took task-thread `emit` from 220 ms to 734 ms and total task time from 520 ms to 1403 ms. Batching it back restored ~235 ms.
+- **Send the cheapest representation.** Strings and small AAs marshal far more cheaply than node trees; prefer handing over ids/titles and letting the render thread build its own nodes (`HomeRows.createSkeletonRows()` is the reference).
+- **A busy render thread slows the Task down too** — in that same experiment the pipeline's network wait grew ~200 ms purely from rendering overlapping the run.
+
+Full cost model, evidence and worked example: [`docs/architecture/async.md`](docs/architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes). **Measure a handoff redesign before and after** — this cost is invisible in review and does not show up in a build.
+
 ## Where the rules actually live
 
 This file holds only cross-cutting / repo-wide rules. Per-area rules live in scoped `CLAUDE.md` files that auto-load when an agent reads files in that directory:
