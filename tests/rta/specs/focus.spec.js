@@ -13,8 +13,8 @@
 import { beforeAll, afterAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate } from '../lib/jellyfin.js';
-import { seedHome, snapshotSession, restoreSession } from '../lib/seed.js';
-import { relaunch, ecp, odc } from '../lib/driver.js';
+import { seedHome, snapshotSession, restoreSession, assertSeedTookEffect } from '../lib/seed.js';
+import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navLibraryByType } from '../lib/nav.js';
 import { press, waitFor, waitFocused, waitHome } from '../lib/steps.js';
 
@@ -34,8 +34,9 @@ afterAll(async () => {
 });
 
 it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
-  await seedHome(session, LOCALE);
-  await relaunch();
+  const expectedServer = await seedHome(session, LOCALE);
+  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await assertSeedTookEffect(expectedServer, 'focus restoration');
   await waitHome();
 
   // Home -> Movies library grid. navLibraryByType lands focus on a grid tile.

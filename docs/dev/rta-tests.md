@@ -7,8 +7,10 @@ related-files:
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
+  - tests/rta/lib/seed.js
+  - tests/rta/lib/driver.js
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-06
+last-reviewed: 2026-08-07
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -70,6 +72,18 @@ branch to find it.
   skips it.
 - **Per worker**: `tests/rta/setup/env-setup.js` (Vitest `setupFiles`) configures the
   RTA client singletons from `.env` in the test worker.
+- **Seeding, then `hardRelaunch()` — never `relaunch()`**: seeds write the device
+  registry, and a plain `relaunch()` (ECP `/launch/dev`) only *foregrounds* an
+  already-running channel. The app keeps its in-memory session and re-persists it
+  over everything just seeded. The suite then drives an app pointed at whatever
+  server it was already on, using the seeded server's item ids — which surfaces as
+  ~30 unrelated-looking timeouts, not as an obvious seeding error. `hardRelaunch()`
+  exits to the Roku home screen first, forcing a cold start that re-reads the
+  registry. `assertSeedTookEffect()` runs after each one and fails loudly if the
+  seed was discarded. Cost is `exitMs` (~4 s) per relaunch. **This applies to every
+  registry write, including `scripts/capture-screenshots.js`** — there the failure
+  is worse than a red test: it silently photographs the wrong server's library into
+  the store-listing set.
 - **Serial**: one real device, so `vitest.rta.config.js` pins single-fork, no
   parallelism, long timeouts (OSD playback waits can take ~90 seconds).
 - **Assertions**: the `waitFor` / `waitFocused` steps poll real node state and THROW

@@ -46,7 +46,7 @@ import {
   device,
   setupRtaEnv,
   deployRtaBuild,
-  relaunch,
+  hardRelaunch,
 } from '../tests/rta/lib/driver.js';
 import { sleep, waitFor } from '../tests/rta/lib/steps.js';
 import {
@@ -63,6 +63,7 @@ import {
   seedLibraryLanding,
   snapshotSession,
   restoreSession,
+  assertSeedTookEffect,
 } from '../tests/rta/lib/seed.js';
 import { SCREENS } from '../tests/rta/screens.js';
 import { generateIndex } from './screenshots-index.js';
@@ -311,9 +312,11 @@ async function main() {
   const sharedScreens = wanted.filter((s) => s.capture?.scope === 'shared');
   const seedAndNav = async (screen, locale, folder) => {
     const ctx = targetFor(screen);
-    if (screen.state === 'home') await seedHome(session, locale);
-    else if (screen.state === 'userSelect') await seedUserSelect(session, locale);
-    else if (screen.state === 'serverSelect') await seedServerSelect(session, locale);
+    let expectedServer;
+    if (screen.state === 'home') expectedServer = await seedHome(session, locale);
+    else if (screen.state === 'userSelect') expectedServer = await seedUserSelect(session, locale);
+    else if (screen.state === 'serverSelect')
+      expectedServer = await seedServerSelect(session, locale);
     // Deterministic landing view for library-dependent screens (resolve id at runtime).
     if (screen.view) {
       await seedLibraryLanding(
@@ -322,7 +325,11 @@ async function main() {
         screen.view.landing,
       );
     }
-    await relaunch();
+    // hardRelaunch, NOT relaunch — see assertSeedTookEffect. A soft relaunch lets
+    // the running app re-persist its own session over the seed, which here would
+    // silently photograph the WRONG server's library into the public store set.
+    await hardRelaunch();
+    await assertSeedTookEffect(expectedServer, screen.name);
     if (screen.nav) await screen.nav(ctx);
     // Store-only polish: fill the un-capturable black video plane with the real
     // in-film frame (osd's paused frame). trickplay deliberately has no backdrop —

@@ -20,8 +20,9 @@ import {
   seedLibraryLanding,
   snapshotSession,
   restoreSession,
+  assertSeedTookEffect,
 } from '../lib/seed.js';
-import { relaunch, ecp } from '../lib/driver.js';
+import { hardRelaunch, ecp } from '../lib/driver.js';
 import { SCREENS } from '../screens.js';
 import { captureRawUI } from '../capture.js';
 
@@ -73,9 +74,11 @@ for (const screen of SCREENS) {
       testCtx.skip(`server has no "${screen.view.collectionType}" library`);
     }
 
-    if (screen.state === 'home') await seedHome(session, LOCALE);
-    else if (screen.state === 'userSelect') await seedUserSelect(session, LOCALE);
-    else if (screen.state === 'serverSelect') await seedServerSelect(session, LOCALE);
+    let expectedServer;
+    if (screen.state === 'home') expectedServer = await seedHome(session, LOCALE);
+    else if (screen.state === 'userSelect') expectedServer = await seedUserSelect(session, LOCALE);
+    else if (screen.state === 'serverSelect')
+      expectedServer = await seedServerSelect(session, LOCALE);
     // Deterministic landing view for library-dependent screens (resolve id at runtime).
     if (screen.view) {
       await seedLibraryLanding(
@@ -84,7 +87,11 @@ for (const screen of SCREENS) {
         screen.view.landing,
       );
     }
-    await relaunch();
+    // hardRelaunch, NOT relaunch: a plain relaunch only foregrounds the running
+    // channel, which then re-persists its in-memory session over everything seeded
+    // above. See assertSeedTookEffect for what that failure looks like.
+    await hardRelaunch();
+    await assertSeedTookEffect(expectedServer, screen.name);
     if (screen.nav) await screen.nav(ctx); // nav's waitFor gates assert "loaded"
     if (screen.assert) await screen.assert(ctx); // explicit assert for seed-to-land screens
     if (CAPTURE && screen.capture?.eligible) await captureRawUI(screen.name);

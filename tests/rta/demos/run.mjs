@@ -23,7 +23,7 @@ import {
   snapshotSession,
   restoreSession,
 } from '../lib/seed.js';
-import { setupRtaEnv, relaunch, ecp, odc } from '../lib/driver.js';
+import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
 import {
   press,
   waitHome,
@@ -148,7 +148,7 @@ function makeContext(sessions, serversByName, primaryName) {
       if (screen !== 'home')
         throw new Error(`land(): unsupported screen "${screen}" (add a seed for it)`);
       await seedHome(session, LOCALE); // demo server only — the home server is never written
-      await relaunch();
+      await hardRelaunch(); // soft relaunch lets the running app re-persist over the seed
       await waitHome();
     },
 
@@ -158,7 +158,7 @@ function makeContext(sessions, serversByName, primaryName) {
      */
     async landWithSavedServers() {
       await seedHomeWithSavedServers(session, Object.values(sessions), LOCALE);
-      await relaunch();
+      await hardRelaunch(); // soft relaunch lets the running app re-persist over the seed
       await waitHome();
     },
 

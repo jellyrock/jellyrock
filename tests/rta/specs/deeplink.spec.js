@@ -14,8 +14,8 @@
 import { beforeAll, afterAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor, firstItemId } from '../lib/jellyfin.js';
-import { seedHome, snapshotSession, restoreSession } from '../lib/seed.js';
-import { relaunch, ecp } from '../lib/driver.js';
+import { seedHome, snapshotSession, restoreSession, assertSeedTookEffect } from '../lib/seed.js';
+import { hardRelaunch, ecp } from '../lib/driver.js';
 import { press, waitFor, getActiveVal, waitHome, sleep, hasChildren } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
@@ -50,8 +50,9 @@ afterAll(async () => {
 
 /** Land logged-in on Home, then fire a runtime cast (ECP /input?contentId=...). */
 async function castFromHome(contentId) {
-  await seedHome(session, LOCALE);
-  await relaunch();
+  const expectedServer = await seedHome(session, LOCALE);
+  await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
+  await assertSeedTookEffect(expectedServer, 'castFromHome');
   await waitHome();
   await ecp.sendInput({ params: { contentId } }); // querystring.build URL-encodes | and =
 }
