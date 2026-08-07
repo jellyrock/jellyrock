@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-07 — test(rta): navigate to a library by id, not by first matching tile
 - 2026-08-07 — RTA library navigation now targets a library BY ID instead of the first Home tile of a matching `collectionType`. Seed (`libraryIdFor`, `/UserViews` order) and nav (first Home tile) were unrelated orderings, so on a multi-library server a screen seeded for library A was navigated to library B with nothing flagging it — it had already corrupted a perf sample. Verified on a 14-library server: tile `.id` is the Jellyfin GUID (14/14 vs `/UserViews`), and targeting the LAST of four `movies` libraries opened it while the id-less call opened a different one. `ctx.libraries` is threaded through every nav including the chained ones.
 - 2026-08-07 — test(rta): hard-relaunch after seeding so the seed actually takes
 - 2026-08-07 — feat(ci): Run the RTA suite in CI on the release-prep branch
