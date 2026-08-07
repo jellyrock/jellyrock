@@ -3,10 +3,18 @@ name: Device Unit Tests
 # SECURITY NOTE: This workflow uses pull_request_target to allow fork PRs access to secrets.
 # This is required for external contributors to run tests on the physical Roku device.
 #
-# IMPORTANT: The `all-tests` job uses the `roku-device` environment which requires
-# manual approval from a maintainer before running. This is the correct gate for
-# pull_request_target — the standard "require approval for outside collaborators"
-# setting does NOT apply to pull_request_target events.
+# IMPORTANT: fork PRs are gated by the `fork-gate` job below, which sits behind the
+# `roku-device` environment's required-reviewer rule; `all-tests` needs it, so fork
+# code cannot reach the runner until a maintainer approves. Same-repo branches skip
+# the gate and run unattended.
+#
+# The repo-level "require approval for outside collaborators" setting does NOT cover
+# pull_request_target and must not be relied on here. That is not theoretical: this
+# repo took a malicious fork PR through this exact path while that setting was
+# enabled. An earlier revision put `environment: roku-device` directly on all-tests;
+# that gated OUR pushes too, so it was dropped once the hardening below landed —
+# which left forks ungated, because the hardening does not cover every path (see the
+# fork-gate comment). The split-job form restores the gate for forks only.
 #
 # See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk
 #
@@ -109,15 +117,67 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-  all-tests:
+  # ── The fork gate ────────────────────────────────────────────────────────
+  #
+  # Does nothing. Its ONLY job is to sit behind the `roku-device` environment's
+  # required-reviewer rule, so that `all-tests` (which needs it) cannot start on
+  # a fork PR until a maintainer has approved. Same-repo branches skip it and
+  # run unattended, exactly as before.
+  #
+  # Why a separate job rather than `environment:` on all-tests itself: an
+  # environment is job-level and unconditional, so putting it on all-tests would
+  # gate OUR pushes too. A conditional `environment: ${{ ... }}` expression was
+  # considered and rejected — whether an empty result means "no environment" is
+  # not documented, and this is the control standing between a stranger's code
+  # and a self-hosted runner on a home LAN. It should not rest on undocumented
+  # expression semantics.
+  #
+  # Why this gate exists at all: `pull_request_target` hands secrets to a
+  # workflow that then checks out FORK-authored code, and GitHub's
+  # "require approval for outside collaborators" setting does NOT cover
+  # pull_request_target. That was confirmed the hard way — this repo took a
+  # malicious fork PR through exactly this path while that setting was enabled.
+  # The hardening below (contents:read, persist-credentials:false,
+  # --ignore-scripts) closes the token and dependency-postinstall paths, but the
+  # explicitly-invoked npm scripts (`ropm`, `patches:apply`, `test:all`) still
+  # run the PR's OWN copies of package.json / scripts/ / patches/ with the Roku
+  # secrets in env. Human review of the diff is what covers that.
+  fork-gate:
     needs: check-skip
-    if: needs.check-skip.outputs.should_skip != 'true' && github.actor != 'jellyrock[bot]'
+    # Scoped to pull_request_target on purpose: on `push` / `workflow_dispatch`
+    # there is no pull_request payload, so head.repo.full_name would be empty,
+    # compare unequal, and demand approval for pushes to main.
+    if: >-
+      github.event_name == 'pull_request_target'
+      && needs.check-skip.outputs.should_skip != 'true'
+      && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    environment: roku-device
+    steps:
+      - run: echo "Maintainer approved device tests for fork PR #${{ github.event.pull_request.number }}."
+
+  all-tests:
+    needs: [check-skip, fork-gate]
+    # `!cancelled()` is required because a SKIPPED `needs` would otherwise skip
+    # this job too, and fork-gate is skipped on every same-repo run.
+    #
+    # fork-gate is checked as an ALLOWLIST of results, not a denylist, so it
+    # fails closed — anything unexpected blocks rather than falls through:
+    #   same-repo PR / push  → fork-gate 'skipped'  → run  (unattended, as before)
+    #   fork PR, approved    → fork-gate 'success'  → run
+    #   fork PR, pending     → fork-gate not done   → all-tests waits
+    #   fork PR, rejected    → fork-gate 'cancelled'→ blocked
+    # `check-skip.result == 'success'` matters for the same reason: without it a
+    # FAILED check-skip yields an empty `should_skip`, which would satisfy
+    # `!= 'true'` and let a fork run with fork-gate skipped.
+    if: >-
+      !cancelled()
+      && needs.check-skip.result == 'success'
+      && needs.check-skip.outputs.should_skip != 'true'
+      && github.actor != 'jellyrock[bot]'
+      && (needs.fork-gate.result == 'success' || needs.fork-gate.result == 'skipped')
     runs-on: [self-hosted, roku-device]
     timeout-minutes: 15
-    # Requires manual approval from a maintainer before this job runs.
-    # This is the correct protection for pull_request_target — environment protection
-    # rules gate at the job level regardless of who opened the PR.
-    environment: roku-device
     steps:
       # Explicitly checkout PR code - pull_request_target defaults to base branch.
       # persist-credentials: false prevents actions/checkout from writing the
@@ -127,10 +187,10 @@ jobs:
       #
       # allow-unsafe-pr-checkout: checkout v7 (actions/checkout#2454) refuses to
       # check out fork-PR head code under pull_request_target unless this opt-in
-      # is set. It's safe here because the fork code can't reach a write-token or
-      # secrets without first clearing the `environment: roku-device` manual
-      # maintainer-approval gate above (plus persist-credentials:false +
-      # contents:read). See https://gh.io/securely-using-pull_request_target.
+      # is set. Fork code can't reach a write-token (persist-credentials:false +
+      # contents:read), and can't reach the runner at all until the `fork-gate`
+      # job's maintainer approval clears.
+      # See https://gh.io/securely-using-pull_request_target.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}

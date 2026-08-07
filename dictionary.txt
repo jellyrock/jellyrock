@@ -449,6 +449,7 @@ regenerable
 repo
 Repo
 repo's
+repo-level
 repo-scoped
 reproducibility
 repo-size
@@ -473,6 +474,7 @@ RTA-based
 RTL
 runbook
 sandboxed
+Same-repo
 SAR
 SceneGraph
 schemas
