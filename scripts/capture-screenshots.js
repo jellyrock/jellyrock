@@ -286,7 +286,12 @@ async function main() {
     await findMovie(session, CONFIG.trickplayMovie),
     CONFIG.trickplaySeekSeconds,
   );
-  const targetFor = (screen) => (screen.name === 'trickplay' ? trickTarget : heroTarget);
+  // `libraries` rides along so library navs resolve the SAME library the seed
+  // picked (see findHomeLibraryTile) rather than the first tile of that type.
+  const targetFor = (screen) => ({
+    ...(screen.name === 'trickplay' ? trickTarget : heroTarget),
+    libraries,
+  });
   console.log(
     `  hero=${CONFIG.heroMovie} tile#${heroTarget.heroIndex}; ` +
       `trickplay=${CONFIG.trickplayMovie} tile#${trickTarget.heroIndex}`,

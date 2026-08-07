@@ -4,13 +4,19 @@
  * the moment the UI is actually ready. The `waitFor` gates inside each nav ARE
  * the "screen loaded" assertions — if a screen fails to render, the nav throws.
  *
- * `ctx` carries { heroIndex, heroId } (from getHero). The osd backdrop injection
+ * `ctx` carries { heroIndex, heroId } (from getHero) and `libraries` (from
+ * getLibraries) — the latter is what lets a library nav resolve the SAME library
+ * the seeding side picked, rather than the first tile of a matching type. Pass
+ * ctx through every chained nav — omitting it now THROWS on any server with
+ * several libraries of one type, rather than quietly picking the wrong one. The
+ * osd backdrop injection
  * is intentionally NOT here — it's a screenshot-only concern handled by the
  * store orchestrator after nav, so the functional test for osd stays free of
  * ffmpeg/backdrop logic.
  */
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
+import { libraryIdFor } from './jellyfin.js';
 import {
   press,
   getVal,
@@ -90,25 +96,76 @@ export async function navSearch() {
 }
 
 /**
- * Locate a library tile on the Home screen by its Jellyfin collectionType
- * ("movies" | "tvshows" | "music" | "playlists" | ...). The Home layout is
- * server-side user-configurable (the "My Media" row's position AND its tile order
- * can be changed from any Jellyfin web client on the demo account), so we resolve
- * the tile by CONTENT, never by a fixed index: find the row whose sectionId is
- * "library", then the tile whose collectionType matches. Returns { row, col }.
+ * Locate a library tile on the Home screen. The Home layout is server-side
+ * user-configurable (the "My Media" row's position AND its tile order can be
+ * changed from any Jellyfin web client), so we resolve the tile by CONTENT,
+ * never by a fixed index: find the row whose sectionId is "library", then match
+ * a tile within it. Returns { row, col }.
+ *
+ * **Pass `libraryId` whenever you have one.** Matching on `collectionType` alone
+ * is ambiguous the moment a server has more than one library of a type — and the
+ * seeding side (`libraryIdFor`, which reads `/UserViews`) orders them differently
+ * than Home does, so seed and nav silently disagree about WHICH library they mean.
+ * That produced a valid-looking but wrong perf measurement (a 12-genre library
+ * sampled where an 8-genre one was seeded). Verified on device: a Home tile's
+ * `.id` IS the Jellyfin library GUID — 14/14 tiles matched `/UserViews` on a
+ * 14-library server, four of them `movies`.
+ *
+ * The collectionType path stays as a fallback for callers with no id to hand
+ * (`demos/`) and is exactly correct on a one-library-per-type server — but it
+ * now THROWS when several libraries match, rather than silently picking the
+ * first. That guard is self-limiting: it can only fire where the ambiguity is
+ * real, so the demo server never trips it.
  */
-async function findHomeLibraryTile(collectionType) {
+async function findHomeLibraryTile(collectionType, libraryId = null) {
   const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
+  // Collected rather than returned on first hit, so the no-id path can tell
+  // "one match" from "several" — see the ambiguity guard below.
+  const matches = [];
   for (let r = 0; r < rowCount; r++) {
     const sectionId = await getVal(`#homeRows.content.${r}.sectionId`);
     if (sectionId !== 'library') continue;
     const tiles = (await getVal(`#homeRows.content.${r}.getChildCount()`)) || 0;
     for (let c = 0; c < tiles; c++) {
+      if (libraryId) {
+        if ((await getVal(`#homeRows.content.${r}.${c}.id`)) === libraryId)
+          return { row: r, col: c };
+        continue;
+      }
       const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
-      if (ct === collectionType) return { row: r, col: c };
+      if (ct === collectionType) matches.push({ row: r, col: c });
     }
   }
-  throw new Error(`home library tile collectionType="${collectionType}" not found`);
+
+  if (libraryId) {
+    throw new Error(
+      `home library tile id="${libraryId}" (collectionType="${collectionType}") not found`,
+    );
+  }
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) {
+    throw new Error(`home library tile collectionType="${collectionType}" not found`);
+  }
+
+  // AMBIGUOUS — refuse rather than silently pick the first tile. The seeding side
+  // resolves via /UserViews order and this resolves via Home tile order, so "the
+  // first one" means DIFFERENT libraries on each side. A caller that omits
+  // libraryId has not chosen the first match, it has forgotten to pass one; a
+  // comment saying so was not enough, hence a throw. Self-limiting: it can only
+  // fire where the ambiguity is real, so a one-library-per-type server (the demo
+  // server, `demos/`) never trips it.
+  const named = [];
+  for (const m of matches) {
+    const id = await getVal(`#homeRows.content.${m.row}.${m.col}.id`);
+    const title = await getVal(`#homeRows.content.${m.row}.${m.col}.title`);
+    named.push(`${title} (${id})`);
+  }
+  throw new Error(
+    `home library tile collectionType="${collectionType}" is AMBIGUOUS — ` +
+      `${matches.length} libraries match: ${named.join(', ')}. ` +
+      'Pass a libraryId (libraryIdFor(ctx.libraries, collectionType)) so the nav ' +
+      'targets the same library the seed did.',
+  );
 }
 
 /**
@@ -117,9 +174,9 @@ async function findHomeLibraryTile(collectionType) {
  * `rowItemFocused` and stepping Down/Up then Right/Left (guarded so it can't
  * overshoot), independent of how the demo account has arranged its Home screen.
  */
-export async function navLibraryByType(collectionType) {
+export async function navLibraryByType(collectionType, libraryId = null) {
   await waitHome();
-  const { row, col } = await findHomeLibraryTile(collectionType);
+  const { row, col } = await findHomeLibraryTile(collectionType, libraryId);
   // Vertical: step to the library row.
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
     timeout: 12000,
@@ -181,23 +238,23 @@ async function waitGridLoaded(label, timeout = 20000) {
 }
 
 /** home -> Movies library grid (hardened against Home-layout changes). */
-export async function navLibraryGrid() {
-  await navLibraryByType('movies');
+export async function navLibraryGrid(ctx) {
+  await navLibraryByType('movies', libraryIdFor(ctx?.libraries, 'movies'));
 }
 
 /** TV / Shows library grid. */
-export async function navTvLibrary() {
-  await navLibraryByType('tvshows');
+export async function navTvLibrary(ctx) {
+  await navLibraryByType('tvshows', libraryIdFor(ctx?.libraries, 'tvshows'));
 }
 
 /** Music library grid (default view). */
-export async function navMusicLibrary() {
-  await navLibraryByType('music');
+export async function navMusicLibrary(ctx) {
+  await navLibraryByType('music', libraryIdFor(ctx?.libraries, 'music'));
 }
 
 /** Playlists library grid. */
-export async function navPlaylistsLibrary() {
-  await navLibraryByType('playlists');
+export async function navPlaylistsLibrary(ctx) {
+  await navLibraryByType('playlists', libraryIdFor(ctx?.libraries, 'playlists'));
 }
 
 /**
@@ -216,8 +273,8 @@ async function openFirstGridTileDetail(label) {
 }
 
 /** Shows library -> first tile -> Series detail. */
-export async function navSeriesDetails() {
-  await navTvLibrary();
+export async function navSeriesDetails(ctx) {
+  await navTvLibrary(ctx);
   await openFirstGridTileDetail('series');
 }
 
@@ -227,14 +284,14 @@ export async function navSeriesDetails() {
  * opens a MusicAlbum; an Artists/AlbumArtists-view first tile opens a MusicArtist.
  * Both share this nav; the screen entry's `view` selects the type.
  */
-export async function navMusicDetail() {
-  await navMusicLibrary();
+export async function navMusicDetail(ctx) {
+  await navMusicLibrary(ctx);
   await openFirstGridTileDetail('music');
 }
 
 /** Playlists library -> first tile -> Playlist detail. */
-export async function navPlaylistDetails() {
-  await navPlaylistsLibrary();
+export async function navPlaylistDetails(ctx) {
+  await navPlaylistsLibrary(ctx);
   await openFirstGridTileDetail('playlist');
 }
 
@@ -243,8 +300,8 @@ export async function navPlaylistDetails() {
  * button (ECP "Info" -> BrightScript "options") toggles the `#options`
  * ItemGridOptions overlay; we wait on its `visible` field.
  */
-export async function navLibraryOptions() {
-  await navLibraryGrid();
+export async function navLibraryOptions(ctx) {
+  await navLibraryGrid(ctx);
   await press(ecp.Key.Option); // '*' opens the grid options dialog
   // The dialog is shown AND focused on open, so assert focus ENTERS it rather than
   // reading `#options.visible`: sgRouter keepAlive leaves a suspended Home in the tree
@@ -323,26 +380,26 @@ export async function navPersonDetails(ctx) {
 }
 
 /** Series detail -> Seasons row -> first season -> Season detail. */
-export async function navSeasonDetails() {
-  await navSeriesDetails();
+export async function navSeasonDetails(ctx) {
+  await navSeriesDetails(ctx);
   await openChildDetailByRowType('Season');
 }
 
 /** Series -> Season -> Episodes row -> first episode -> Episode detail. */
-export async function navEpisodeDetails() {
-  await navSeasonDetails();
+export async function navEpisodeDetails(ctx) {
+  await navSeasonDetails(ctx);
   await openChildDetailByRowType('Episode');
 }
 
 /** MusicAlbum detail -> Songs row -> first song -> Audio detail. */
-export async function navAudioDetails() {
-  await navMusicDetail();
+export async function navAudioDetails(ctx) {
+  await navMusicDetail(ctx);
   await openChildDetailByRowType('Audio');
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
 export async function navMovieDetails(ctx) {
-  await navLibraryGrid();
+  await navLibraryGrid(ctx);
   const target = ctx?.heroIndex || 0;
   if (target > 0) {
     // Press Right until the grid reports the hero tile focused (robust to a
