@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-06
+last-updated: 2026-08-07
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-07 — feat(ci): Run the RTA suite in CI on the release-prep branch
 - 2026-08-06 — Stop `progress-cursor-nudge` reading Recently-shipped as the cursor
 - 2026-08-06 — RTA functional tests now run in CI on the release-prep branch (`rta-functional-tests.yml`): path-scoped via `changed-paths` so a screenshot/docs push never spins the shared device, `jellyrock[bot]` version-bump commits skipped, and `concurrency` deliberately `cancel-in-progress: false` so a skipped run can't cancel a real one. Closes two duplicate followups that both asked for this.
 - 2026-08-06 — Run the Genres view's per-genre fetches through `apiPipeline`
@@ -41,8 +42,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-07-31 — ci(lint): gate that every `npm run lint` check actually runs in CI
 - 2026-07-30 — fix(remote-control): bind `ws://` socket to the advertised `DeviceId`
 - 2026-07-25 — fix(api): route `SubmitSideEffect` through a children-as-vehicle FIFO
-- 2026-07-23 — Fix `inferServerUrl` crash from stale pre-login intents
-- 2026-07-23 — chore(ci): improve the `/crash-report` skill workflow
 
 ## Open followups
 
