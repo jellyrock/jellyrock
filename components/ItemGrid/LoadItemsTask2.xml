@@ -21,5 +21,16 @@
     <!-- Total records available from server-->
     <field id="totalRecordCount" type="int" value="-1" />
     <field id="content" type="array" />
+    <!--
+      Early structure for the Genres view: `[{ id, title }, ...]` in server order, written
+      as soon as the genre list is known and before any sample has been fetched. The view
+      draws skeleton rows from it; `content` still delivers the real rows exactly as it
+      does for every other view.
+
+      STRINGS, not nodes, on purpose. A task-thread write to a render-thread-owned node is
+      a rendezvous priced by payload size, so the row nodes are built on the render thread
+      from these ids and titles rather than shipped across.
+    -->
+    <field id="genreSkeletons" type="array" />
   </interface>
 </component>

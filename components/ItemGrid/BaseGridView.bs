@@ -406,6 +406,11 @@ sub loadInitialItems()
   updateTitle()
 
   m.loadItemsTask.observeField("content", "onItemDataLoaded")
+  ' Only a Genres run writes this, and only before its samples are fetched — it is a
+  ' head start on drawing, not a second delivery channel. `content` still carries the
+  ' real rows for every view including this one.
+  m.loadItemsTask.unobserveField("genreSkeletons")
+  m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
   launchTask(m.loadItemsTask)
 
   SetUpOptions()
@@ -507,10 +512,52 @@ sub configureGrid()
   end if
 end sub
 
+' Draw the Genres view's rows before their artwork exists.
+'
+' The task knows every genre's name as soon as the genre LIST query returns, which is one
+' request rather than one-per-genre — so the list can be on screen long before the samples
+' land. Each row gets its title and a single `type: "Loading"` cell: a RowList does not lay
+' out a childless row at all, and that one cell is also what gives the row its slot height.
+'
+' `genreSkeletons` carries ids and titles, NOT nodes. Building the rows here rather than
+' shipping them from the task keeps the payload of that cross-thread write small — the
+' rendezvous is priced by what it carries. Same split of work as
+' HomeRows.createSkeletonRows().
+'
+' Nothing here is authoritative: `content` still arrives later with the real rows and
+' replaces these wholesale. If it never arrives, the skeletons are what the failure looks
+' like, which beats an empty screen.
+sub onGenreSkeletonsReady(msg)
+  genres = msg.getData()
+  if not isValidAndNotEmpty(genres) then return
+
+  m.genreData.removeChildren(m.genreData.getChildren(-1, 0))
+  for each genre in genres
+    row = CreateObject("roSGNode", "ContentNode")
+    row.title = genre.title
+    placeholder = CreateObject("roSGNode", "ContentNode")
+    placeholder.addFields({ type: "Loading" })
+    row.appendChild(placeholder)
+    m.genreData.appendChild(row)
+  end for
+
+  m.itemGrid.opacity = "0"
+  m.genreList.opacity = "1"
+  m.itemGrid.setFocus(false)
+  m.genreList.setFocus(true)
+
+  m.loading = false
+  stopLoadingSpinner()
+
+  ' Return focus to the options menu if it was opened while the library was loading
+  if m.options.visible then m.options.setFocus(true)
+end sub
+
 sub onItemDataLoaded(msg)
   m.log.debug("start onItemDataLoaded()")
   itemData = msg.GetData()
   m.loadItemsTask.unobserveField("content")
+  m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.content = []
 
   if not isValid(itemData)
@@ -743,7 +790,15 @@ sub onItemSelected()
 end sub
 
 sub onGenreItemSelected()
-  m.top.selectedItem = m.genreList.content.getChild(m.genreList.rowItemSelected[0]).getChild(m.genreList.rowItemSelected[1])
+  selected = m.genreList.content.getChild(m.genreList.rowItemSelected[0]).getChild(m.genreList.rowItemSelected[1])
+
+  ' Ignore a skeleton placeholder. The Genres view is interactive from the moment its rows
+  ' are drawn, which is BEFORE the samples land, so OK on a not-yet-filled row is reachable
+  ' for a few hundred ms — longer on a slow server. Routing on a bare `type: "Loading"`
+  ' ContentNode would navigate to nothing. Same guard, same reason, as HomeRows.itemSelected.
+  if not isValid(selected) or selected.type = "Loading" then return
+
+  m.top.selectedItem = selected
 end sub
 
 sub onGenreItemFocused()
@@ -757,6 +812,10 @@ sub onGenreItemFocused()
 
   focusedItem = rowNode.getChild(rowItemFocused[1])
   if not isValid(focusedItem) then return
+
+  ' A skeleton placeholder carries no image tags — asking it for a backdrop reads fields a
+  ' bare ContentNode does not have. Leave the current backdrop up until the row is filled.
+  if focusedItem.type = "Loading" then return
 
   ' Update backdrop with focused item's backdrop
   m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(focusedItem, m.backdropSize))
@@ -1277,6 +1336,7 @@ sub onDestroy()
 
   ' Stop and release task node
   m.loadItemsTask.unobserveField("content")
+  m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.control = "STOP"
   m.loadItemsTask.content = []
   m.loadItemsTask = invalid
