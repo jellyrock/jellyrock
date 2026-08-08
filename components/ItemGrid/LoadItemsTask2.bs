@@ -323,8 +323,11 @@ sub loadItems()
   '
   ' Only when EVERY item is a genre: this is a pure hint, and a mixed list would draw
   ' skeletons for rows the batch below never fills. A Genres query returns nothing but
-  ' genres, so the equality just makes that a checked precondition.
-  if genreEntries.count() > 0 and genreEntries.count() = slots.count()
+  ' genres, so the equality just makes that a checked precondition. startIndex = 0
+  ' encodes the other precondition the receiving handler assumes — "this publish is the
+  ' COMPLETE list" — in the gate itself, rather than leaving it to observer lifecycle in
+  ' another file (genre views never paginate today, so this is a tripwire, not a path).
+  if genreEntries.count() > 0 and genreEntries.count() = slots.count() and m.top.startIndex = 0
     skeletons = []
     for each entry in genreEntries
       skeletons.push({ id: entry.item.id, title: entry.item.name })
@@ -332,6 +335,14 @@ sub loadItems()
     m.top.genreSkeletons = skeletons
     #if perfTiming
       firstPaintMs = runClock.totalMilliseconds()
+    #end if
+    ' RTA-only: hold the skeleton stage open so specs can drive it deterministically.
+    ' Compiled out of dev and prod builds (see setGlobalNodes); sleeps THIS task thread
+    ' only, exactly like a slow server would.
+    #if ENABLE_RTA
+      if isValid(m.global.rtaSkeletonHoldMs) and m.global.rtaSkeletonHoldMs > 0
+        sleep(m.global.rtaSkeletonHoldMs)
+      end if
     #end if
   end if
 

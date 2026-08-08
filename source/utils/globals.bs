@@ -78,6 +78,15 @@ end sub
 ' Set all global variables that require an roSGNode
 ' NOTE: roSGNodes must be created after m.screen is shown
 sub setGlobalNodes()
+  ' RTA-only test hooks. ENABLE_RTA is false in the committed manifest and flipped true
+  ' ONLY by the roku-test-automation deploy (see source/main.bs), so these fields do not
+  ' exist in dev or prod builds. rtaSkeletonHoldMs: LoadItemsTask2 holds the Genres view
+  ' in its skeleton stage this long, so RTA specs can exercise the skeleton window
+  ' deterministically instead of racing the demo server's latency.
+  #if ENABLE_RTA
+    m.global.addFields({ rtaSkeletonHoldMs: 0 })
+  #end if
+
   ' Tier 1 API pool — 3 persistent ApiTask instances (Architecture C continuous-server)
   ' Each task runs an infinite while loop; control = "RUN" must be set once to start it.
   apiPool0 = CreateObject("roSGNode", "ApiTask")
