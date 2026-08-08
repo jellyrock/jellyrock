@@ -116,8 +116,29 @@ export async function navSearch() {
  * now THROWS when several libraries match, rather than silently picking the
  * first. That guard is self-limiting: it can only fire where the ambiguity is
  * real, so the demo server never trips it.
+ *
+ * **Polls rather than scanning once, because Home renders before its data arrives.**
+ * `waitHome()` gates on `#homeRows.content.getChildCount() > 0`, and
+ * `HomeRows.createSkeletonRows()` appends the `sectionId="library"` row — carrying a
+ * single bare `ContentNode` placeholder — BEFORE the real tiles load. A placeholder
+ * has no `.id` and no `.collectionType`, so a single scan landing in that window
+ * matches nothing and throws `tile id="..." not found` on a Home that is perfectly
+ * healthy a second later. Observed on device (Stick `3600X`, cold launch polled from
+ * t=0): the gate passed at +3795 ms with 4 skeleton rows, the library row held 1
+ * placeholder and 0 ids until +5141 ms — a **~1.35 s** window, twice reproduced. The
+ * normal flow usually clears it because `hardRelaunch()` sleeps `bootMs` first, which
+ * is why this surfaces as a rare flake rather than a constant failure: it only bites
+ * when Home's data is slower than that fixed sleep.
  */
-async function findHomeLibraryTile(collectionType, libraryId = null) {
+const HOME_TILE_WAIT_MS = 15000;
+const HOME_TILE_POLL_MS = 300;
+
+/**
+ * One pass over Home's library row. Returns `{ tile }` on an id hit, otherwise the
+ * `collectionType` matches collected so far. Never throws — the caller decides when
+ * an empty result is "not there yet" versus "not there".
+ */
+async function scanHomeLibraryTiles(collectionType, libraryId) {
   const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
   // Collected rather than returned on first hit, so the no-id path can tell
   // "one match" from "several" — see the ambiguity guard below.
@@ -129,22 +150,39 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
     for (let c = 0; c < tiles; c++) {
       if (libraryId) {
         if ((await getVal(`#homeRows.content.${r}.${c}.id`)) === libraryId)
-          return { row: r, col: c };
+          return { tile: { row: r, col: c }, matches };
         continue;
       }
       const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
       if (ct === collectionType) matches.push({ row: r, col: c });
     }
   }
+  return { tile: null, matches };
+}
 
+async function findHomeLibraryTile(collectionType, libraryId = null) {
+  const start = Date.now();
+  let matches;
+  for (;;) {
+    const scan = await scanHomeLibraryTiles(collectionType, libraryId);
+    if (scan.tile) return scan.tile;
+    matches = scan.matches;
+    // One match is the answer; several is a real ambiguity that more waiting cannot
+    // resolve (placeholders carry no collectionType, so a match means a real tile).
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) break;
+    if (Date.now() - start >= HOME_TILE_WAIT_MS) break;
+    await sleep(HOME_TILE_POLL_MS);
+  }
+
+  const waited = `after ${Math.round((Date.now() - start) / 1000)}s`;
   if (libraryId) {
     throw new Error(
-      `home library tile id="${libraryId}" (collectionType="${collectionType}") not found`,
+      `home library tile id="${libraryId}" (collectionType="${collectionType}") not found ${waited}`,
     );
   }
-  if (matches.length === 1) return matches[0];
   if (matches.length === 0) {
-    throw new Error(`home library tile collectionType="${collectionType}" not found`);
+    throw new Error(`home library tile collectionType="${collectionType}" not found ${waited}`);
   }
 
   // AMBIGUOUS — refuse rather than silently pick the first tile. The seeding side
