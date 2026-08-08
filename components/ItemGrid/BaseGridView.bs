@@ -599,6 +599,12 @@ sub onGenreSkeletonsReady(msg)
   end for
 
   revealGenreList(rowsRoot)
+  ' Roku's own RowList counter reports "focused item of items IN THIS ROW"
+  ' (JRRowList sets showRowCounter = [true]). A skeleton row holds exactly one
+  ' placeholder, so it would truthfully but uselessly read "1 of 1" and then jump to
+  ' "1 of 7" on fill. Hidden until the row can answer the question — restored beside
+  ' the "loaded" transition below, so the two can't drift apart.
+  m.genreList.showRowCounter = [false]
   m.top.loadState = "skeleton"
 end sub
 
@@ -639,6 +645,10 @@ sub onItemDataLoaded(msg)
       end for
 
       revealGenreList(rowsRoot)
+      ' Rows can answer "N of M" now — undo the suppression onGenreSkeletonsReady applied.
+      ' Unconditional: this path also runs when no skeletons preceded it, where the field
+      ' is already [true] and setting it again is a no-op.
+      m.genreList.showRowCounter = [true]
       if rowsRoot.getChildCount() > 0
         m.top.loadState = "loaded"
       else
