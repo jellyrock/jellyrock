@@ -175,6 +175,17 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
  * overshoot), independent of how the demo account has arranged its Home screen.
  */
 export async function navLibraryByType(collectionType, libraryId = null) {
+  await openLibraryByType(collectionType, libraryId);
+  await waitGridLoaded(`${collectionType} grid`);
+  await sleep(1200); // let posters paint before capture
+}
+
+/**
+ * The press-into-the-library half of navLibraryByType, WITHOUT the loaded wait.
+ * Exists for specs that must interact with a view's intermediate stages (the Genres
+ * skeleton window) — everything else should use navLibraryByType, which settles.
+ */
+export async function openLibraryByType(collectionType, libraryId = null) {
   await waitHome();
   const { row, col } = await findHomeLibraryTile(collectionType, libraryId);
   // Vertical: step to the library row.
@@ -202,52 +213,36 @@ export async function navLibraryByType(collectionType, libraryId = null) {
     label: `home library tile col ${col} (${collectionType})`,
   });
   await press(ecp.Key.Ok);
-  await waitGridLoaded(`${collectionType} grid`);
-  await sleep(1200); // let posters paint before capture
 }
 
 /**
- * A library grid is "loaded" once its load task has SETTLED — which means one of:
- *  - `#itemGrid` has items (most views), OR
- *  - `#genreList` has items AND they are real items rather than skeletons (see
- *    below — the GENRES view renders genre folders here, with `#itemGrid` hidden), OR
- *  - `#emptyText.visible` is true (the load finished with zero items and the
- *    "No Items" empty-state is shown — a real, capture-worthy screen, e.g. the
- *    Networks view on a server whose shows have no network).
- * Accepting the empty-state lets the same nav capture empty views instead of
- * timing out on them.
+ * A library grid is "loaded" once BaseGridView says so: its `loadState` interface
+ * field reaches "loaded" (usable content on screen) or "empty" (zero items, the
+ * "No Items" empty-state — a real, capture-worthy screen, e.g. the Networks view on
+ * a server whose shows have no network). Accepting the empty-state lets the same nav
+ * capture empty views instead of timing out on them.
  *
- * **The Genres view now paints in two stages**, so "has children" stopped meaning
- * "loaded": `LoadItemsTask2` publishes titled rows carrying one `type: "Loading"`
- * placeholder as soon as the genre list is known, then delivers the real items a few
- * hundred ms later. Returning on the first stage made the genre-row assertion read
- * placeholders (it caught this by refusing to pass having verified nothing) and would
- * have quietly started capturing SKELETON rows into the store screenshots, which share
- * this nav. So the genre branch waits for the placeholder to be gone.
+ * ONE atomic read of the app's own state, deliberately NOT inferred from content
+ * internals: the previous shape (child counts + sniffing row 0's first cell type)
+ * raced its two reads, re-declared the skeleton sentinel across the JS/BS boundary,
+ * and assumed "row 0 filled" implies "all rows filled" — which the decision record
+ * `genre-skeletons-batched-not-per-row` explicitly reserves the right to break
+ * (per-row fill tripwire). The Genres view's intermediate "skeleton" stage never
+ * satisfies this wait, so the genre-row assertion and the store screenshots (which
+ * share this nav) only ever see real rows.
+ *
+ * Scoped to the active routed view (getActiveVal): `loadState` recurs on every
+ * BaseGridView, and keepAlive routing leaves suspended views in the scene tree.
  */
 async function waitGridLoaded(label, timeout = 20000) {
   const start = Date.now();
   let last;
   while (Date.now() - start < timeout) {
-    const grid = await getVal('#itemGrid.content.getChildCount()');
-    const genres = await getVal('#genreList.content.getChildCount()');
-    const empty = await getVal('#emptyText.visible');
-    // Only meaningful once rows exist; a filled row never leads with a Loading cell.
-    const firstCell =
-      typeof genres === 'number' && genres > 0
-        ? await getVal('#genreList.content.0.0.type')
-        : undefined;
-    last = `grid=${grid} genreList=${genres} firstCell=${firstCell} empty=${empty}`;
-    if (
-      (typeof grid === 'number' && grid > 0) ||
-      (typeof genres === 'number' && genres > 0 && firstCell !== 'Loading') ||
-      empty === true
-    ) {
-      return;
-    }
+    last = await getActiveVal('loadState');
+    if (last === 'loaded' || last === 'empty') return;
     await sleep(500);
   }
-  throw new Error(`nav timed out waiting for ${label} (last ${last})`);
+  throw new Error(`nav timed out waiting for ${label} (last loadState=${JSON.stringify(last)})`);
 }
 
 /** home -> Movies library grid (hardened against Home-layout changes). */

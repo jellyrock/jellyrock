@@ -12,7 +12,7 @@ import { RTA_CONFIG } from '../config.js';
  * `Authorization: MediaBrowser ...` form is what current Jellyfin and JellyRock itself send, and
  * 10.x accepts it too — so this one header works across every demo server.
  */
-const tokenHeader = (token) => ({ Authorization: `MediaBrowser Token="${token}"` });
+export const tokenHeader = (token) => ({ Authorization: `MediaBrowser Token="${token}"` });
 
 /** JSON POST over node http/https (picks the module by URL scheme). */
 export function postJson(urlStr, headers, bodyObj) {

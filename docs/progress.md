@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-07
+last-updated: 2026-08-08
 ---
 
 # Progress
@@ -62,6 +62,8 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - Normalize audio queue items to one transformed (camelCase) shape at queue-build time — `QuickPlayTask.doAlbum/doArtist/doPlaylist/doInstantMix` + the `set()` paths store RAW Jellyfin items while single-song taps store transformed ones, so `createQueueItem` reads both shapes with raw-key fallbacks (`albumName`←`Album`, `primaryImageTag`←`ImageTags.Primary`). Transforming at queue-build kills the duality so every consumer reads one predictable shape (also removes the latent `albumName`-vs-`Album` mismatch class). Deferred from the #550 audio now-playing contract fix (A+C+D shipped: `createQueueItem` carries the now-playing display fields + `QueueItem` interface + spec gate). Bigger blast radius (video queue paths) → needs a hardware verification pass.
 - **A failed latest-media row keeps its `type: "Loading"` skeleton placeholder indefinitely**, so it reads as "still loading" when it has actually finished and failed. Deliberate as of PR #762: the alternative (removing the row) makes the next successful refresh re-insert it via `populateRowFromData`'s else-branch, which visibly pops the row in and shifts every row below it — measured on device with 8 libraries and five forced HTTP 500 responses, where the skipped rows held their single placeholder and nothing moved. Accepted cost: it only self-corrects on the next `Home.refresh()` (i.e. `onScreenShown`), so sitting on Home leaves the false loading state up. The better answer is a distinct failed/empty placeholder that keeps the row in place without lying — deferred because it needs a visual design, a translation key, and `JRRowItem` work to render a non-`Loading` placeholder type.
 - **Home never removes the row of a library newly added to `latestItemsExcludes`.** `HomeRows.onLibrariesLoaded` recomputes `m.filteredLatest` on every refresh, but that only decides which libraries get REQUESTED — nothing clears the row of a library that dropped OUT of the list, so its stale content sits on Home indefinitely. Note the setting has no JellyRock UI: it arrives from the Jellyfin server's user config (`SessionDataTransformer.bs` ← `configData.LatestItemsExcludes`), so it changes out from under the client and the app never sees an edit event. Fix shape: diff the previous `filteredLatest` against the new one in `onLibrariesLoaded` and remove the rows for dropped ids (`removeRowAtIndex` already exists). This is pre-existing and independent of the #728 orchestrator work — surfaced while reviewing PR #762, deliberately not folded in.
+- Genres view skeleton rows draw a single placeholder cell where the filled row shows up to 7 — cosmetic; flagged in PR #779 as deliberately not done.
+- Genres view item counter reads "1 of 1" during the skeleton window (each skeleton row carries one placeholder cell) — cosmetic; flagged in PR #779 as deliberately not done.
 
 ### source
 

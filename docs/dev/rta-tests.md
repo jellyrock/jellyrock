@@ -10,7 +10,7 @@ related-files:
   - tests/rta/lib/seed.js
   - tests/rta/lib/driver.js
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-07
+last-reviewed: 2026-08-08
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -89,6 +89,13 @@ branch to find it.
 - **Assertions**: the `waitFor` / `waitFocused` steps poll real node state and THROW
   on timeout — that throw IS the test failure (a descriptive message). Don't wrap them
   in `expect`; use `expect` only for value checks (title text, focus subtype).
+- **"Grid loaded" is the app's own signal, not an inference**: `waitGridLoaded` polls
+  the `loadState` interface field on `BaseGridView` (`loading -> [skeleton ->] loaded | empty`)
+  via `getActiveVal` — one atomic read of state the view maintains, instead of the old
+  child-count + first-cell-type sniffing (two racing ODC reads that also re-declared the
+  skeleton sentinel string on the JS side and assumed row 0 filled ⇒ all rows filled).
+  Anything that needs "is this grid settled?" should read `loadState`, not content
+  internals.
 - **Scoping `#id` reads under sgRouter `keepAlive`**: `getVal` resolves `#id` by a
   recursive `findNode` **from the scene root**, but `id` is not unique across components
   (every `ItemDetails` has `#extrasGrid`; several declare `#options`). sgRouter
@@ -99,6 +106,26 @@ branch to find it.
   getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
   user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there
   is only one focused node — so prefer them when "did this open/land?" is the question.
+
+## Driving intermediate load stages (`rtaSkeletonHoldMs`)
+
+The Genres view has an interactive **skeleton stage** (structure drawn, samples pending)
+that lasts only a few hundred ms against the demo server — too narrow to exercise
+reliably. RTA builds compile in one test hook: an `rtaSkeletonHoldMs` field on `m.global`
+(added under `#if ENABLE_RTA` in `setGlobalNodes()`; the field does not exist in dev or
+prod builds). `LoadItemsTask2` holds the skeleton stage open that long, mimicking a slow
+server on the task thread. A spec sets it after relaunch, before navigating:
+
+```js
+await odc.setValue({ base: 'global', keyPath: 'rtaSkeletonHoldMs', value: 5000 });
+await openLibraryByType('movies', moviesId); // navLibraryByType minus the loaded-wait
+```
+
+App-memory only — the next relaunch resets it, so no restore step. The consumer is
+`specs/genre-skeleton.spec.js`, which asserts the skeleton window's contracts (select is
+a no-op, scroll survives the fill, backdrop lands on the focused item). `openLibraryByType`
+is the press-into-the-library half of `navLibraryByType` for exactly this kind of spec —
+everything else should keep using `navLibraryByType`, which settles.
 
 ## Adding a screen
 
