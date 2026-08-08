@@ -38,9 +38,15 @@ export async function getActiveVal(keyPath) {
 
 /**
  * Poll `keyPath` until `predicate(value)` is true, optionally re-issuing
- * `action` (e.g. a keypress) each tick. Throws on timeout so a broken nav/test
+ * `action` (e.g. a key press) each tick. Throws on timeout so a broken nav/test
  * fails loudly instead of silently proceeding. `read` selects the reader (default
  * scene-rooted getVal); pass getActiveVal to scope the poll to the active routed view.
+ *
+ * A failing `action` is counted and named in the timeout message. It is still
+ * swallowed per-tick (one dropped press should not fail a nav that recovers), but
+ * it must not vanish: an action that never lands and a screen that never renders
+ * produce the same "timed out waiting for X" otherwise, and telling those apart
+ * after the fact costs hours.
  */
 export async function waitFor(
   keyPath,
@@ -49,13 +55,17 @@ export async function waitFor(
 ) {
   const start = Date.now();
   let last;
+  let actionErrors = 0;
   while (Date.now() - start < timeout) {
-    if (action) await action().catch(() => {});
+    if (action) await action().catch(() => actionErrors++);
     last = await read(keyPath);
     if (predicate(last)) return last;
     await sleep(interval);
   }
-  throw new Error(`nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})`);
+  throw new Error(
+    `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
+      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+  );
 }
 
 /**
@@ -70,14 +80,18 @@ export async function waitFocused(
 ) {
   const start = Date.now();
   let last;
+  let actionErrors = 0;
   while (Date.now() - start < timeout) {
-    if (action) await action().catch(() => {});
+    if (action) await action().catch(() => actionErrors++);
     const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     last = `${f?.node?.subtype}@${f?.keyPath}`;
     if (f && predicate(f)) return f;
     await sleep(interval);
   }
-  throw new Error(`nav timed out waiting for focus (${label || 'predicate'}); last=${last}`);
+  throw new Error(
+    `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
+      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+  );
 }
 
 /** Home is ready once HomeRows has rendered its content. */

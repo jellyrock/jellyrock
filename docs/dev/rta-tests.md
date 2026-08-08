@@ -249,6 +249,26 @@ through the full locale set. Adding a store language = add it to `storeLanguages
 re-run. `storeLocales` is also emitted into `screenshots.json` so the website can tell the
 store set from the full capture set.
 
+## Load windows, and testing on a second device
+
+A nav that presses a key immediately after triggering playback spends seconds pressing
+into a component designed to ignore input until it is ready. Measured on 2026-08-08, the
+press→playable window is **~5-7 s on every device tested** (Stick `3600X` 5.6/5.8 s,
+Ultra `4850X` 7.2 s) — it tracks stream start against the remote demo server, not device
+speed. So this is not a slow-device quirk to paper over with a longer timeout; it is a
+precondition every nav must respect. See the rule in
+[`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md).
+
+Two habits that came out of the same investigation:
+
+- **When a failure is device-specific, power-cycle first and re-run.** Device state is
+  transient and does drift: on the `3600X` the same suite passed 58 s and 157 s after a power cycle,
+  failed at 240 s, and later recovered on its own. Establishing whether the failure even
+  reproduces right now costs five minutes and saves chasing a defect that isn't there.
+- **Run against the slowest supported device before a release, not only the fast one.**
+  In a single afternoon the stick surfaced a rendering bug (#777), a render-thread cost
+  regression, and this harness gap. A device with headroom hides all three.
+
 ## Notes
 
 - Seeds write the **real** `JellyRock` registry (not a `test-*` section) because the
