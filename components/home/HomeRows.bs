@@ -7,6 +7,7 @@ import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
@@ -197,9 +198,7 @@ function createSkeletonRow(sectionType as string) as object
 
   ' Add single placeholder child so the RowList renders this row with correct slot size.
   ' JRRowItem will show its default RectangleBackgroundSecondary backdrop for this node.
-  placeholder = CreateObject("roSGNode", "ContentNode")
-  placeholder.addFields({ type: "Loading" })
-  row.appendChild(placeholder)
+  row.appendChild(skeleton.createPlaceholder())
 
   return row
 end function
@@ -316,9 +315,7 @@ sub insertLatestMediaSkeletons()
       row.cursorSize = slotSize
 
       ' Add placeholder child
-      placeholder = CreateObject("roSGNode", "ContentNode")
-      placeholder.addFields({ type: "Loading" })
-      row.appendChild(placeholder)
+      row.appendChild(skeleton.createPlaceholder())
 
       m.top.content.insertChild(row, insertIndex)
       insertIndex++
@@ -815,7 +812,7 @@ sub itemSelected()
   item = getItemAtIndices(m.top.rowItemSelected)
 
   ' Ignore skeleton placeholder items
-  if not isValid(item) or item.type = "Loading" then return
+  if not isValid(item) or skeleton.isPlaceholder(item) then return
 
   m.top.selectedItem = item
 
@@ -861,7 +858,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     if key = "play"
       print "play was pressed from homerow"
       itemToPlay = getItemAtIndices(m.top.rowItemFocused)
-      if isValid(itemToPlay) and itemToPlay.type <> "Loading"
+      if isValid(itemToPlay) and not skeleton.isPlaceholder(itemToPlay)
         m.top.quickPlayNode = itemToPlay
         ' Clear immediately — same pattern as selectedItem. Prevents stale
         ' value from re-firing when the screen is restored after playback.

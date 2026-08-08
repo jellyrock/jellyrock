@@ -1,9 +1,9 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/loadingSpinner.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
+import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
 
 ' Vertical gap between the bottom of the poster (= bottom of the RowList focus ring)
@@ -96,7 +96,7 @@ sub renderItem()
   m.placeholder.visible = true
 
   ' Skeleton placeholder — show backdrop + centered spinner, no poster or text
-  if item.type = "Loading"
+  if skeleton.isPlaceholder(item)
     m.cachedPosterUri = ""
     m.cachedIconUri = ""
     m.poster.uri = ""
@@ -844,13 +844,13 @@ sub onFocusChanged()
 end sub
 
 ' Shows the skeleton spinner over the backdrop for Loading placeholders. The sizing and
-' placement live in source/utils/loadingSpinner.bs so GridItem's skeleton cells draw the
+' placement live in source/utils/skeleton.bs so GridItem's skeleton cells draw the
 ' identical spinner rather than a second copy of it.
 sub showLoadingSpinner(slotWidth as float, posterHeight as float)
-  m.loadingSpinner = loadingSpinner.show(m.top, m.loadingSpinner, slotWidth, posterHeight)
+  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, slotWidth, posterHeight)
 end sub
 
 ' Hides and stops the loading spinner if it exists.
 sub hideLoadingSpinner()
-  loadingSpinner.hide(m.loadingSpinner)
+  skeleton.hideSpinner(m.loadingSpinner)
 end sub

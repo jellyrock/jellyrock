@@ -1,10 +1,10 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/itemImageUrl.bs"
-import "pkg:/source/utils/loadingSpinner.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
+import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
 
 ' Vertical offset of the poster/placeholder from the cell top. The title label sits
@@ -110,21 +110,21 @@ sub renderItem()
   itemType = LCase(itemData.type)
 
   ' Skeleton cell — a row that exists but whose items haven't landed yet. Same
-  ' `type: "Loading"` convention JRRowItem renders for Home's skeleton rows, so one
-  ' content shape covers both cell components.
+  ' skeleton convention JRRowItem renders for Home's rows (source/utils/skeleton.bs),
+  ' so one content shape covers both cell components.
   '
   ' This MUST come before anything reads a media field. A placeholder is a bare
   ' ContentNode, so renderMediaItem's `itemData.isWatched` reads `invalid`, and
   ' `if invalid` is a runtime type mismatch — not a falsy check. A skeleton reaching
   ' that branch crashes the render thread rather than drawing nothing.
-  if itemType = "loading"
+  if skeleton.isPlaceholder(itemData)
     renderLoadingCell()
     return
   end if
 
   ' A recycled cell may have been a skeleton a moment ago — stop that spinner and put
   ' the poster back before rendering real content.
-  loadingSpinner.hide(m.loadingSpinner)
+  skeleton.hideSpinner(m.loadingSpinner)
   m.itemPoster.visible = true
 
   ' Title text + default (always-on) visibility — recomputed every recycle.
@@ -194,13 +194,19 @@ end sub
 sub renderLoadingCell()
   m.itemPoster.uri = ""
   m.itemPoster.visible = false
+  ' Clear the text, not just visibility: a recycled cell keeps its previous item's
+  ' title, and under gridTitles="showonhover" onFocusChanged re-shows the label on
+  ' focus — the skeleton window is interactive, so a stale title would surface.
+  m.itemText.text = ""
   m.itemText.visible = false
   m.genreBackdrop.visible = false
   m.genreLabel.visible = false
   m.placeholder.itemType = ""
   m.placeholder.visible = true
   m.cachedPosterUri = ""
-  m.loadingSpinner = loadingSpinner.show(m.top, m.loadingSpinner, m.top.width, m.top.height)
+  ' POSTER_TOP_OFFSET: this cell's poster rect starts below the cell origin (see
+  ' setPosterRect), and the spinner centers within the POSTER area, not the slot.
+  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, m.top.width, m.top.height, POSTER_TOP_OFFSET)
 end sub
 
 ' Renders a "View All [Genre]" action tile: themed backdrop + centered genre label,
