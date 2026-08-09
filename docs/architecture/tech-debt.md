@@ -56,7 +56,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `mainbs-event-loop-fan-out`
 
 - **area**: `source/main.bs`
-- **issue**: 473-line file (down from 1,315 as of #677 — the #550 sgRouter migration removed the search, audio `playItem`, `optionSelected`, and `closeSidePanel` branches plus their inline logic). `Main()` spans the whole file (~328 lines, lines 1–328): bootstrap (~110 lines: Phase 1 globals → migrations → theme → login → Phase 2 globals) then the main event loop (12 dispatch branches: `roSGScreenEvent` screen-closed, `exit`, `preLoginIntent`, `isAuthenticated` + `close` quick-connect, `isFontDownloadCompleted`, `reachable` server-probe, `userMenuAction`, `roDeviceInfoEvent`, `roInputEvent` deep-link, `isDataReturned` dialog-return, `reloadHomeRequested`). Some heavy work is extracted into `handle*` helpers (font, menu, login); the `isDataReturned` branch still fans out three confirmation-dialog flows (server-switch / exit / resume-options, ~60 lines) inline.
+- **issue**: 444-line file (down from 1,315 as of #677 — the #550 sgRouter migration removed the search, audio `playItem`, `optionSelected`, and `closeSidePanel` branches plus their inline logic; the dead resume/start-over playback-options flow was deleted in #757). `Main()` spans the whole file: bootstrap (Phase 1 globals → migrations → theme → login → Phase 2 globals) then the main event loop (`roSGScreenEvent` screen-closed, `exit`, `preLoginIntent`, `isAuthenticated` + `close` quick-connect, `isFontDownloadCompleted`, `reachable` server-probe, `userMenuAction`, `roDeviceInfoEvent`, `roInputEvent` deep-link, `isDataReturned` dialog-return, `reloadHomeRequested`). Some heavy work is extracted into `handle*` helpers (font, menu, login); the `isDataReturned` branch still fans out two confirmation-dialog flows (server-switch / exit) inline.
 - **direction**: Continue the handler-extraction pattern — the `isDataReturned` branch is the largest remaining inline block and the clearest extraction candidate (`source/handlers/dialogs.bs`). Bootstrap extracts to `source/bootstrap.bs` so `Main()` becomes `bootstrap()` + a thin dispatch loop.
 
 #### `task-thread-budget`
@@ -104,12 +104,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: Weblate integration (`locale/custom/*.json`, the Weblate branch/config).
 - **issue**: The Weblate branch does not stay in sync with `main`. New `en_US` keys added on `main` don't reach Weblate for translators, and completed translations on the Weblate side don't flow back. Translation work drifts. NOTE: this is hygiene only — it is NOT the cause of the 216 untranslated keys in #641 (those strings exist in no source, Weblate included; syncing won't backfill them). See #641.
 - **direction**: Restore bidirectional Weblate ↔ `main` sync (the Weblate GitHub integration / a scheduled merge) so new keys flow out and translations flow back automatically.
-
-#### `showscenes-mixes-concerns`
-
-- **area**: `source/showScenes.bs`
-- **issue**: 702-line file with three concerns: a 230-line `LoginFlow()` state machine, 7 scene factories (`CreateServerGroup`, `CreateUserSelectGroup`, `CreateSigninGroup`, `CreateHomeGroup`, `CreateItemDetailsGroup`, `CreateSearchPage`, plus `playbackOptionDialog`), and three server-list registry utilities (`SaveServerList`, `DeleteFromServerList`, `SendPerformanceBeacon`).
-- **direction**: Split into `source/auth/LoginFlow.bs` (the login state machine), `source/screens/<Name>Page.bs` (one factory per scene), and `source/utils/serverList.bs` (registry helpers).
 
 #### `loginflow-error-boundaries`
 
