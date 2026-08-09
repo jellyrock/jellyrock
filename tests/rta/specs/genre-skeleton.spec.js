@@ -59,7 +59,16 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
     `${session.serverUrl}/Genres?userId=${session.userId}&parentId=${moviesId}&includeItemTypes=Movie`,
     tokenHeader(session.token),
   ).catch(() => null);
-  if (!genres?.Items?.length) testCtx.skip('server has no movie genres');
+  const genreCount = genres?.Items?.length ?? 0;
+  if (!genreCount) testCtx.skip('server has no movie genres');
+  // 3+ specifically, because `targetRow` below is 2. Under that the scroll loop's
+  // predicate is satisfied without pressing Down even once, and the post-fill check
+  // (`focusAfter[0] === rowBeforeFill`) then passes for free — a content swap lands on
+  // row 0 regardless. The spec would go GREEN while verifying nothing about position
+  // restore, which is the silent-no-op failure tests/rta/CLAUDE.md warns about. The demo
+  // server has 14 today, but its metadata is rebuilt hourly, so this is not a given.
+  if (genreCount < 3)
+    testCtx.skip(`needs 3+ movie genres to exercise scroll restore, has ${genreCount}`);
 
   const expectedServer = await seedHome(session, LOCALE);
   await seedLibraryLanding(session, moviesId, 'Genres');
@@ -80,7 +89,9 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
   });
 
   const skeletonRows = await getVal('#genreList.content.getChildCount()');
-  expect(skeletonRows).toBeGreaterThan(0);
+  // Re-assert the pre-check's 3+ against what the APP drew: its genre query carries a
+  // `limit` the pre-check's bare REST call does not, so a server count is only a proxy.
+  expect(skeletonRows).toBeGreaterThanOrEqual(3);
   const skeletonTitles = [];
   for (let r = 0; r < skeletonRows; r++) {
     skeletonTitles.push(await getVal(`#genreList.content.${r}.title`));

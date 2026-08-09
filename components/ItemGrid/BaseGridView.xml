@@ -49,7 +49,36 @@
       itemSize="[264, 396]"
       itemSpacing="[28, 72]" />
 
-    <!-- Genre list (alternative display for genres view) -->
+    <!-- Genre list (alternative display for genres view)
+
+      Vertical spacing — these three fields only make sense together, so change them
+      together. Measured on device (Ultra, 1080p UI), a row composes as:
+
+        rowHeights  =  row label  +  rowLabelOffset.y  +  the GridItem cell
+        cell        =  POSTER_TOP_OFFSET (22) + rowItemSize.y (320) + TITLE_GAP (18) + title
+        row pitch   =  rowHeights + itemSpacing.y  =  455 (measured)
+
+      The label and title heights are the RENDERED heights of MediumSystemFont at
+      fontSizeMedium (32) and of the smaller title font — estimated, not measured, so
+      treat this composition as ±a few px. The field values below are the measured ones;
+      don't recompute them from this sketch.
+
+      So rowHeights INCLUDES the label and its offset — verified by predicting where
+      rows 2 and 3 land. `rowLabelOffset.y` is a GAP, not a position (Roku: "the vertical
+      spacing between the label and the list items"), and it STACKS with the cell's own
+      POSTER_TOP_OFFSET, so the visible label-to-poster gap is the sum of the two.
+
+      itemSize.y mirrors the single rowHeights entry: Roku repeats that entry across all
+      rows, but its docs say unspecified rows fall back to itemSize.y. Equal is correct
+      either way — docs/architecture/list-grid-item-layout.md.
+
+      The offset is NEGATIVE on purpose, and the gaps above/below a heading are
+      deliberately NOT equal: a heading spaced evenly between two rows reads as belonging
+      to neither. -8 puts a heading 14px above its own posters — far closer to them than
+      to the previous row's titles above it. It is the only way under 22px, since the
+      cell's own POSTER_TOP_OFFSET floors the gap and that constant is shared with the
+      main library grid.
+    -->
     <JRRowList
       id="genreList"
       opacity="0"
@@ -58,11 +87,11 @@
       numColumns="1"
       numRows="3"
       vertFocusAnimationStyle="fixed"
-      itemSize="[1702, 400]"
+      itemSize="[1702, 415]"
       rowItemSize="[[213, 320]]"
-      rowHeights="[400]"
+      rowHeights="[415]"
       rowItemSpacing="[[20, 0]]"
-      rowLabelOffset="[[0, 0]]"
+      rowLabelOffset="[[0, -8]]"
       itemSpacing="[0, 40]" />
 
     <!-- Empty state message -->
@@ -95,6 +124,8 @@
       "skeleton" only occurs on the Genres view (structure drawn, samples pending).
       Pagination after the first page never regresses the state - "loaded" means
       "usable content is on screen", not "every chunk has arrived".
+      Both branches measure that in ITEMS: a Genres load that delivers rows whose
+      sample fetches all failed has nothing selectable on it, so it reports "empty".
     -->
     <field id="loadState" type="string" value="" />
     <function name="getItemFlatIndex" />

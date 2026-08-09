@@ -46,7 +46,8 @@ sub init()
 
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.focusXOffset = 0
-  m.genreList.rowLabelOffset = [0, 21]
+  ' rowLabelOffset is set in the XML, not here — it only makes sense alongside
+  ' rowHeights/itemSpacing, so all three live together. See the comment there.
   ' Override JRRowList's inherited "fixedFocusWrap": this is a browse view with an
   ' alpha menu to its left, so Left at the first item must exit to that menu (handled
   ' in onKeyEvent) rather than wrap to the end of the row. floatingFocus stops the row
@@ -649,7 +650,18 @@ sub onItemDataLoaded(msg)
       ' Unconditional: this path also runs when no skeletons preceded it, where the field
       ' is already [true] and setting it again is a no-op.
       m.genreList.showRowCounter = [true]
-      if rowsRoot.getChildCount() > 0
+      ' Count ITEMS, not rows: populateGenreRow leaves a row childless when its sample
+      ' fetch failed, so rows can all be present with nothing selectable under them. Same
+      ' question the grid path below asks (m.loadedItems = 0). One local write, so an
+      ' observer sees one transition rather than a spurious "empty" first.
+      hasItems = false
+      for i = 0 to rowsRoot.getChildCount() - 1
+        if rowsRoot.getChild(i).getChildCount() > 0
+          hasItems = true
+          exit for
+        end if
+      end for
+      if hasItems
         m.top.loadState = "loaded"
       else
         m.top.loadState = "empty"
