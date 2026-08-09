@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-09 — chore: Record evidence in commits and journals, not in code comments
 - 2026-08-09 — fix(ui): render `Gradient` as a stretched tinted ramp poster
 - 2026-08-09 — test(rta): establish preconditions before driving or scanning UI state
 - 2026-08-09 — Draw the Genres view before its artwork has loaded
