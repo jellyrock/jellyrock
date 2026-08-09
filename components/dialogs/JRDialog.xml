@@ -14,6 +14,8 @@
 
     <!-- Dialog panel -->
     <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <!-- Edge so the card reads as elevated against any backdrop -->
+    <Poster id="dialogBorder" uri="pkg:/images/9patch/border-6px.9.png" />
 
     <!-- Title + separator (hidden when title is empty) -->
     <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
