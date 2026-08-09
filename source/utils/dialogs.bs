@@ -110,7 +110,7 @@ function showKeyboardDialog(title as string, onResult = "" as string, defaultTex
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
 
   ' Roku modal channel — the OS owns presentation and focus for keyboard dialogs
-  scene = dialogScene()
+  scene = appScene()
   scene.dialog = dialog
   return dialog
 end function
@@ -141,18 +141,11 @@ end sub
 
 ' ---- internals ----
 
-function dialogScene() as object
-  if not isValid(m.scene)
-    m.scene = m.top.getScene()
-  end if
-  return m.scene
-end function
-
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
 ' helpers execute inside the importing component's script scope.
 function presentOverlayDialog(dialog as object, onResult as string) as object
-  scene = dialogScene()
+  scene = appScene()
 
   ' Stable id for RTA assertions / debugging. It assumes ONE overlay at a time,
   ' which every dialog enforces by consuming all key presses — but a main-thread
