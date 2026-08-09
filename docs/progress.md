@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-08
+last-updated: 2026-08-09
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-09 — Draw the Genres view before its artwork has loaded
 - 2026-08-08 — Genres view item counter no longer reads "1 of 1" during the skeleton window — Roku's `RowList` counter is suppressed while rows hold placeholders and restored on fill (PR #779)
 - 2026-08-07 — chore: Retire `hd-native-layout-refactor` after 720p hardware verification
 - 2026-08-07 — test(rta): restore the device session when a capture run is interrupted
@@ -47,7 +48,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-07-31 — ci(lint): validate the `docs/decisions.md` supersede chain
 - 2026-07-31 — ci(lint): gate that every `npm run lint` check actually runs in CI
 - 2026-07-30 — fix(remote-control): bind `ws://` socket to the advertised `DeviceId`
-- 2026-07-25 — fix(api): route `SubmitSideEffect` through a children-as-vehicle FIFO
 
 ## Open followups
 
