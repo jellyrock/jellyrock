@@ -14,10 +14,12 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 ' path is 0–2ms). A stretched ramp bitmap is scale-independent at every UI
 ' resolution and is the same technique Roku OS uses for its own player shade.
 '
-' Contract: supports a single-hue fade with one fully transparent end, in
-' either color order — startColor opaque → endColor alpha 0 (most call sites),
-' or startColor alpha 0 → endColor opaque (ItemDetails' dropdownDimmer). Both
-' colors must share the same RGB; a debug warning fires otherwise.
+' Contract: fades one color out to nothing, with the transparent end in either
+' position — startColor opaque → endColor alpha 0 (most call sites), or
+' startColor alpha 0 → endColor opaque (ItemDetails' dropdownDimmer). The
+' transparent end's RGB is ignored, since invisible is invisible. A fade
+' between two VISIBLE colors needs a second hue that one blendColor cannot
+' carry; that fires a debug warning.
 
 sub init()
   m.log = new log.Logger("Gradient")
@@ -77,13 +79,17 @@ sub createGradient()
     flipped = not flipped
   end if
 
-  ' A single tinted ramp can only express a same-hue fade with one fully
-  ' transparent end. Surface API misuse loudly in debug builds instead of
-  ' rendering the wrong colors silently.
-  sameRgb = (endColor and &hFFFFFF00) = (startColor and &hFFFFFF00)
-  oneEndTransparent = (endColor and &hFF) = 0 or (startColor and &hFF) = 0
-  if not sameRgb or not oneEndTransparent
-    m.log.warn("Gradient supports a same-RGB fade with one transparent end; got", startColor, endColor)
+  ' A single tinted ramp fades one color out to nothing, so a fade between two
+  ' VISIBLE ends is the shape it cannot express. Surface that loudly in debug
+  ' builds instead of rendering the wrong colors silently.
+  '
+  ' Deliberately does NOT compare the two RGBs: a fully transparent end has no
+  ' meaningful RGB, and callers set the two colors in separate statements, so
+  ' the observer sees the half-updated state (PresentationBackdrop assigns
+  ' endColor before startColor). An RGB comparison fired on that transient and
+  ' warned on correct usage — confirmed on device during #777 review.
+  if (startColor and &hFF) <> 0 and (endColor and &hFF) <> 0
+    m.log.warn("Gradient needs one fully transparent end; got", startColor, endColor)
   end if
 
   if actualDirection = "vertical"

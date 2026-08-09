@@ -14,11 +14,10 @@
 - width: Width in pixels (default 1920)
 - height: Height in pixels (default 300)
 - startColor: Fade start color + alpha in hex (default 0x000000FF)
-- endColor: Fade end color + alpha in hex (default 0x00000000). Both colors
-  must share one RGB and exactly one end must have alpha 0 — the gradient is a
-  single tinted alpha-ramp bitmap, so only a same-hue fade with one transparent
-  end is expressible (in either color order); other values trigger a debug
-  warning.
+- endColor: Fade end color + alpha in hex (default 0x00000000). One end must
+  have alpha 0 — the gradient is a single tinted alpha-ramp bitmap, so it fades
+  one color out to nothing (the transparent end may be either one; its RGB is
+  ignored). Two visible ends can't be expressed and trigger a debug warning.
 - direction: "vertical" or "horizontal" (default "vertical")
 - rotateDegrees: 0, 90, 180, or 270 degrees (default 0)
 
