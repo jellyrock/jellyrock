@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Fix Genres view spacing so each heading sits with its own posters ([#787](https://github.com/jellyrock/jellyrock/pull/787))
 - (ui) render `Gradient` as a stretched tinted ramp poster ([#781](https://github.com/jellyrock/jellyrock/pull/781))
 - (lint) stop the cursor nudge reading Recently-shipped as the cursor ([#771](https://github.com/jellyrock/jellyrock/pull/771))
 - Tighten Task-node hygiene and remove stranded dialog helpers ([#765](https://github.com/jellyrock/jellyrock/pull/765))
