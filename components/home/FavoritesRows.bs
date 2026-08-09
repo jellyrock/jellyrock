@@ -4,6 +4,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
@@ -100,9 +101,7 @@ sub createSkeletonRows()
     row.sectionId = itemType
     row.cursorSize = getSlotSizeForType(itemType)
 
-    placeholder = CreateObject("roSGNode", "ContentNode")
-    placeholder.addFields({ type: "Loading" })
-    row.appendChild(placeholder)
+    row.appendChild(skeleton.createPlaceholder())
 
     m.top.content.appendChild(row)
   end for
@@ -307,7 +306,7 @@ end function
 
 sub itemSelected()
   item = getItemAtIndices(m.top.rowItemSelected)
-  if not isValid(item) or item.type = "Loading" then return
+  if not isValid(item) or skeleton.isPlaceholder(item) then return
 
   m.top.selectedItem = item
   m.top.selectedItem = invalid
@@ -335,7 +334,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if press
     if key = "play"
       itemToPlay = getItemAtIndices(m.top.rowItemFocused)
-      if isValid(itemToPlay) and itemToPlay.type <> "Loading"
+      if isValid(itemToPlay) and not skeleton.isPlaceholder(itemToPlay)
         m.top.quickPlayNode = itemToPlay
         ' Clear immediately — same pattern as selectedItem. Prevents stale
         ' value from re-firing when the screen is restored after playback.

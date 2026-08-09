@@ -29,6 +29,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - For HTTP, use the API task pool via `GetApi().Build*Request()` + `fetchRes()` / `submitApiRequest()`. See [docs/architecture/api.md](../docs/architecture/api.md).
 - Single `m.global.<child>` reads are fine (cheap). Multiple reads in a hot path: cache locally first (`globalUser = m.global.user; globalUser.foo; globalUser.bar`).
 - Bulk field updates: `node.setFields({ a: 1, b: 2 })` over individual assignments.
+- **Crossing the thread boundary costs a rendezvous — count the CROSSINGS, not the bytes.** A Task writing a field on, or appending a child to, a render-thread-owned node parks until that thread is ready, then marshals the payload. Both bullets above are instances of the same rule. When handing data from a Task to the UI, **batch it** and **send the cheapest representation** — strings/AAs marshal far more cheaply than node trees, so prefer letting the render thread build its own nodes. Measured: re-shaping one grid handoff into 8 per-row handoffs (identical data) took `emit` from 220 ms to 734 ms. Full cost model + evidence in [async.md](../docs/architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes).
 
 ## Starting a Task thread
 

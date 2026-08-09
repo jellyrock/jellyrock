@@ -89,6 +89,14 @@
     <field id="jumpToItem" type="integer" value="" />
     <field id="gridTitles" type="string" />
     <field id="currentView" type="string" value="" />
+    <!--
+      Load lifecycle of this view's content, for tests/tooling to observe atomically:
+      "" (not started) -> "loading" -> ["skeleton" ->] "loaded" | "empty".
+      "skeleton" only occurs on the Genres view (structure drawn, samples pending).
+      Pagination after the first page never regresses the state - "loaded" means
+      "usable content is on screen", not "every chunk has arrived".
+    -->
+    <field id="loadState" type="string" value="" />
     <function name="getItemFlatIndex" />
     <function name="loadFilters" />
   </interface>

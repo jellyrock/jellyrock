@@ -22,6 +22,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
@@ -331,6 +332,7 @@ sub loadInitialItems()
   scene = m.top.getScene()
   if isValid(scene) then m.lastContentVersion = scene.contentVersion
   prepareDataLoad(false)
+  m.top.loadState = "loading"
 
   if m.top.parentItem.type = "CollectionFolder"
     m.top.HomeLibraryItem = m.top.parentItem.id
@@ -365,6 +367,8 @@ sub loadInitialItems()
       updateTitle()
       showTVGuide()
       stopLoadingSpinner()
+      ' The guide is this view's finished surface; the grid never loads on this path.
+      m.top.loadState = "loaded"
       return
     else
       ' Ensure TV Guide is hidden if switching away from it
@@ -406,6 +410,11 @@ sub loadInitialItems()
   updateTitle()
 
   m.loadItemsTask.observeField("content", "onItemDataLoaded")
+  ' Only a Genres run writes this, and only before its samples are fetched — it is a
+  ' head start on drawing, not a second delivery channel. `content` still carries the
+  ' real rows for every view including this one.
+  m.loadItemsTask.unobserveField("genreSkeletons")
+  m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
   launchTask(m.loadItemsTask)
 
   SetUpOptions()
@@ -507,10 +516,103 @@ sub configureGrid()
   end if
 end sub
 
+' Swaps the genre RowList to a new set of rows and reveals it, preserving the user's
+' position. ONE owner for both delivery stages — the skeleton rows and the real rows —
+' so the opacity/focus/spinner sequence cannot drift between them.
+'
+' `rowsRoot` is a DETACHED ContentNode root: building rows off-tree and assigning
+' `content` once is a single change notification instead of one per row (the same shape
+' onAlphaSelectedChanged already uses).
+'
+' Focus/scroll: the view is interactive from the moment skeletons draw, so the user may
+' have scrolled before the real rows land. Skeleton and real rows are 1:1 in server
+' order, so the previous [row, item] position is index-stable — restore it rather than
+' letting the content swap snap the list back to the top. The item index is clamped:
+' a skeleton row holds one cell, the filled row up to 7.
+sub revealGenreList(rowsRoot as object)
+  prevFocus = invalid
+  if m.genreList.isInFocusChain() then prevFocus = m.genreList.rowItemFocused
+
+  m.genreData = rowsRoot
+  m.genreList.content = rowsRoot
+
+  if type(prevFocus) = "roArray" and prevFocus.count() = 2
+    row = prevFocus[0]
+    if row >= 0 and row < rowsRoot.getChildCount()
+      itemIndex = prevFocus[1]
+      maxItem = rowsRoot.getChild(row).getChildCount() - 1
+      if itemIndex > maxItem then itemIndex = maxItem
+      if itemIndex < 0 then itemIndex = 0
+      m.genreList.jumpToRowItem = [row, itemIndex]
+    end if
+  end if
+
+  m.itemGrid.opacity = "0"
+  m.genreList.opacity = "1"
+
+  m.loading = false
+  stopLoadingSpinner()
+
+  ' Focus: the options dialog and the alpha menu keep it if the user is there (the grid
+  ' path guards isAlphaActive the same way); otherwise the list takes it.
+  if m.options.visible
+    m.options.setFocus(true)
+  else if m.top.isAlphaActive
+    m.alphaMenu.setFocus(true)
+  else
+    m.itemGrid.setFocus(false)
+    m.genreList.setFocus(true)
+  end if
+end sub
+
+' Draw the Genres view's rows before their artwork exists.
+'
+' The task knows every genre's name as soon as the genre LIST query returns, which is one
+' request rather than one-per-genre — so the list can be on screen long before the samples
+' land. Each row gets its title and a single skeleton placeholder cell: a RowList does not
+' lay out a childless row at all, and that one cell is also what gives the row its slot
+' height.
+'
+' `genreSkeletons` carries ids and titles, NOT nodes. Building the rows here rather than
+' shipping them from the task keeps the payload of that cross-thread write small — the
+' rendezvous is priced by what it carries. Same split of work as
+' HomeRows.createSkeletonRows().
+'
+' Nothing here is authoritative: `content` still arrives later with the real rows and
+' replaces these wholesale. If it never arrives, the skeletons are what the failure looks
+' like, which beats an empty screen.
+sub onGenreSkeletonsReady(msg)
+  ' A queued delivery from a just-stopped run must not repaint a non-Genres load — mirror
+  ' the view dispatch onItemDataLoaded performs. prepareDataLoad stops the task on every
+  ' reload, so this closes a narrow re-delivery window rather than a live path.
+  if m.loadItemsTask.view <> "Genres" then return
+
+  genres = msg.getData()
+  if not isValidAndNotEmpty(genres) then return
+
+  rowsRoot = CreateObject("roSGNode", "ContentNode")
+  for each genre in genres
+    row = CreateObject("roSGNode", "ContentNode")
+    row.title = genre.title
+    row.appendChild(skeleton.createPlaceholder())
+    rowsRoot.appendChild(row)
+  end for
+
+  revealGenreList(rowsRoot)
+  ' Roku's own RowList counter reports "focused item of items IN THIS ROW"
+  ' (JRRowList sets showRowCounter = [true]). A skeleton row holds exactly one
+  ' placeholder, so it would truthfully but uselessly read "1 of 1" and then jump to
+  ' "1 of 7" on fill. Hidden until the row can answer the question — restored beside
+  ' the "loaded" transition below, so the two can't drift apart.
+  m.genreList.showRowCounter = [false]
+  m.top.loadState = "skeleton"
+end sub
+
 sub onItemDataLoaded(msg)
   m.log.debug("start onItemDataLoaded()")
   itemData = msg.GetData()
   m.loadItemsTask.unobserveField("content")
+  m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.content = []
 
   if not isValid(itemData)
@@ -537,25 +639,20 @@ sub onItemDataLoaded(msg)
 
     ' Only use rowlist for movie/TV genres, not music
     if not isMusicGenre
-      ' Reset genre list data
-      m.genreData.removeChildren(m.genreData.getChildren(-1, 0))
-
+      rowsRoot = CreateObject("roSGNode", "ContentNode")
       for each item in itemData
-        m.genreData.appendChild(item)
+        rowsRoot.appendChild(item)
       end for
 
-      m.itemGrid.opacity = "0"
-      m.genreList.opacity = "1"
-
-      m.itemGrid.setFocus(false)
-      m.genreList.setFocus(true)
-
-      m.loading = false
-      stopLoadingSpinner()
-
-      ' Return focus to options menu if it was opened while library was loading
-      if m.options.visible
-        m.options.setFocus(true)
+      revealGenreList(rowsRoot)
+      ' Rows can answer "N of M" now — undo the suppression onGenreSkeletonsReady applied.
+      ' Unconditional: this path also runs when no skeletons preceded it, where the field
+      ' is already [true] and setting it again is a no-op.
+      m.genreList.showRowCounter = [true]
+      if rowsRoot.getChildCount() > 0
+        m.top.loadState = "loaded"
+      else
+        m.top.loadState = "empty"
       end if
       return
     end if
@@ -603,6 +700,9 @@ sub onItemDataLoaded(msg)
     m.presentationInfo.visible = false
     m.emptyText.text = translate(translationKeys.LabelNoItems, [m.top.parentItem.type])
     m.emptyText.visible = true
+    m.top.loadState = "empty"
+  else
+    m.top.loadState = "loaded"
   end if
 
   stopLoadingSpinner()
@@ -743,7 +843,21 @@ sub onItemSelected()
 end sub
 
 sub onGenreItemSelected()
-  m.top.selectedItem = m.genreList.content.getChild(m.genreList.rowItemSelected[0]).getChild(m.genreList.rowItemSelected[1])
+  ' The list is interactive while deliveries are pending, so rowItemSelected can be STALE
+  ' against freshly swapped content — an OK queued behind a swap can index a row the new
+  ' content no longer has. Walk the tree stepwise; a chained getChild().getChild() faults
+  ' on the invalid intermediate.
+  rowNode = m.genreList.content.getChild(m.genreList.rowItemSelected[0])
+  if not isValid(rowNode) then return
+  selected = rowNode.getChild(m.genreList.rowItemSelected[1])
+
+  ' Ignore a skeleton placeholder. The Genres view is interactive from the moment its rows
+  ' are drawn, which is BEFORE the samples land, so OK on a not-yet-filled row is reachable
+  ' for a few hundred ms — longer on a slow server. Routing on a bare placeholder would
+  ' navigate to nothing. Same guard, same reason, as HomeRows.itemSelected.
+  if not isValid(selected) or skeleton.isPlaceholder(selected) then return
+
+  m.top.selectedItem = selected
 end sub
 
 sub onGenreItemFocused()
@@ -758,6 +872,10 @@ sub onGenreItemFocused()
   focusedItem = rowNode.getChild(rowItemFocused[1])
   if not isValid(focusedItem) then return
 
+  ' A skeleton placeholder carries no image tags — asking it for a backdrop reads fields a
+  ' bare ContentNode does not have. Leave the current backdrop up until the row is filled.
+  if skeleton.isPlaceholder(focusedItem) then return
+
   ' Update backdrop with focused item's backdrop
   m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(focusedItem, m.backdropSize))
 end sub
@@ -765,8 +883,18 @@ end sub
 function getItemFocused()
   if m.itemGrid.isinFocusChain() and isValid(m.itemGrid.itemFocused)
     return m.itemGrid.content.getChild(m.itemGrid.itemFocused)
-  else if m.genreList.isinFocusChain() and isValid(m.genreList.rowItemFocused)
-    return m.genreList.content.getChild(m.genreList.rowItemFocused[0]).getChild(m.genreList.rowItemFocused[1])
+  else if m.genreList.isinFocusChain()
+    ' Same stale-index and skeleton exposure as onGenreItemSelected: rowItemFocused is -1
+    ' (an integer) when nothing is focused, the row index can outlive a content swap, and
+    ' a skeleton placeholder must not quick-play (HomeRows guards its play path the same
+    ' way — QueueManager would reject the bare node anyway, but not by design).
+    rowItemFocused = m.genreList.rowItemFocused
+    if type(rowItemFocused) <> "roArray" or rowItemFocused.count() < 2 then return invalid
+    rowNode = m.genreList.content.getChild(rowItemFocused[0])
+    if not isValid(rowNode) then return invalid
+    focusedItem = rowNode.getChild(rowItemFocused[1])
+    if skeleton.isPlaceholder(focusedItem) then return invalid
+    return focusedItem
   end if
   return invalid
 end function
@@ -1277,6 +1405,7 @@ sub onDestroy()
 
   ' Stop and release task node
   m.loadItemsTask.unobserveField("content")
+  m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.control = "STOP"
   m.loadItemsTask.content = []
   m.loadItemsTask = invalid

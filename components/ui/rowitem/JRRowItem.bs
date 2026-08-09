@@ -3,6 +3,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
+import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
 
 ' Vertical gap between the bottom of the poster (= bottom of the RowList focus ring)
@@ -95,7 +96,7 @@ sub renderItem()
   m.placeholder.visible = true
 
   ' Skeleton placeholder — show backdrop + centered spinner, no poster or text
-  if item.type = "Loading"
+  if skeleton.isPlaceholder(item)
     m.cachedPosterUri = ""
     m.cachedIconUri = ""
     m.poster.uri = ""
@@ -842,28 +843,14 @@ sub onFocusChanged()
   end if
 end sub
 
-' Lazy-creates and shows a small centered spinner over the backdrop for Loading placeholders.
+' Shows the skeleton spinner over the backdrop for Loading placeholders. The sizing and
+' placement live in source/utils/skeleton.bs so GridItem's skeleton cells draw the
+' identical spinner rather than a second copy of it.
 sub showLoadingSpinner(slotWidth as float, posterHeight as float)
-  if not isValid(m.loadingSpinner)
-    m.loadingSpinner = CreateObject("roSGNode", "Spinner")
-  end if
-
-  spinnerSize = 48
-  m.loadingSpinner.poster.width = spinnerSize
-  m.loadingSpinner.poster.height = spinnerSize
-  m.loadingSpinner.translation = [
-    (slotWidth - spinnerSize) / 2,
-    (posterHeight - spinnerSize) / 2
-  ]
-  m.loadingSpinner.visible = true
-  m.loadingSpinner.control = "start"
-  m.top.appendChild(m.loadingSpinner)
+  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, slotWidth, posterHeight)
 end sub
 
 ' Hides and stops the loading spinner if it exists.
 sub hideLoadingSpinner()
-  if isValid(m.loadingSpinner)
-    m.loadingSpinner.visible = false
-    m.loadingSpinner.control = "stop"
-  end if
+  skeleton.hideSpinner(m.loadingSpinner)
 end sub

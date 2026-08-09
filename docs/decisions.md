@@ -269,6 +269,18 @@ Retired the `hd-native-layout-refactor` tech-debt slug (and closed #419) instead
 
 Closes off: declaring `ui_resolutions=hd,fhd` and converting ~223 hardcoded `1920`/`1080` coordinates to runtime reads. Scope limit: this verdict covers 720p only — SD/480p output (CRT displays, non-square pixels) remains unverified on real hardware and may need a different strategy; that stays tracked as tech-debt slug `sd-resolution-native-support`. Re-open trigger for the HD side: concrete low-end-device perf/memory data implicating rendering in the FHD design space — and evaluate a root-scene `scale` field before any coordinate rewrite. The 720p `Gradient` banding found during the same verification is tracked separately as #777.
 
+## decision-id: genre-skeletons-batched-not-per-row
+
+**date**: 2026-08-07
+**status**: accepted
+**related-files**: `components/ItemGrid/LoadItemsTask2.bs`, `components/ItemGrid/BaseGridView.bs`, `docs/architecture/async.md`
+
+The Genres view paints its rows early by publishing genre ids and titles in ONE cheap write, then filling them from the single `content` batch it always used. It deliberately does NOT deliver each genre's items as that genre's fetch lands, even though the per-row shape is what "progressive" usually means and is what `LoadLatestRowsTask` does for Home.
+
+Per-row delivery was built and measured before being rejected, so this is a closed question rather than an untried idea. Same data, same nodes, 9 thread crossings instead of 1: task-thread `emit` went 220 → 734 ms and the whole run 520 → 1403 ms on a Streaming Stick 4K. Rendezvous cost is paid per crossing well before it is paid per byte, and the grid's per-genre transform (~26 ms) is far too small to hide a ~64 ms handoff — which is exactly why Home can afford the same shape and this screen cannot: Home's per-row transform is ~120 ms. Shipping built `ContentNode`s for the skeletons instead of `{ id, title }` AAs cost a further ~136 ms on that one crossing, hence the render thread building its own row nodes (`HomeRows.createSkeletonRows` does the same). The general cost model lives in [`async.md`](architecture/async.md); this note records the choice for this screen.
+
+Accepted trade-off: total load grows ~280 ms (520 → 844 ms at 8 genres, 802 → 1081 ms at 23) to buy first paint at ~210 ms regardless of genre count. That holds because first paint tracks the single genre-list query while the blank time it replaces scales with genre count and round-trip latency — measured flat at 206 ms / 221 ms across 8 and 23 genres, with the blank time removed nearly doubling. **Tripwire:** re-open if a measurement shows the added total time growing with genre count (it did not between 8 and 23), or if per-row fill becomes worth its crossings on a high-latency server, where the wait between samples is long enough to hide the handoff.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

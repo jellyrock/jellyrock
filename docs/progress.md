@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-07
+last-updated: 2026-08-08
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-08 — Genres view item counter no longer reads "1 of 1" during the skeleton window — Roku's `RowList` counter is suppressed while rows hold placeholders and restored on fill (PR #779)
 - 2026-08-07 — chore: Retire `hd-native-layout-refactor` after 720p hardware verification
 - 2026-08-07 — test(rta): restore the device session when a capture run is interrupted
 - 2026-08-07 — test(rta): navigate to a library by id, not by first matching tile
@@ -62,6 +63,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - Normalize audio queue items to one transformed (camelCase) shape at queue-build time — `QuickPlayTask.doAlbum/doArtist/doPlaylist/doInstantMix` + the `set()` paths store RAW Jellyfin items while single-song taps store transformed ones, so `createQueueItem` reads both shapes with raw-key fallbacks (`albumName`←`Album`, `primaryImageTag`←`ImageTags.Primary`). Transforming at queue-build kills the duality so every consumer reads one predictable shape (also removes the latent `albumName`-vs-`Album` mismatch class). Deferred from the #550 audio now-playing contract fix (A+C+D shipped: `createQueueItem` carries the now-playing display fields + `QueueItem` interface + spec gate). Bigger blast radius (video queue paths) → needs a hardware verification pass.
 - **A failed latest-media row keeps its `type: "Loading"` skeleton placeholder indefinitely**, so it reads as "still loading" when it has actually finished and failed. Deliberate as of PR #762: the alternative (removing the row) makes the next successful refresh re-insert it via `populateRowFromData`'s else-branch, which visibly pops the row in and shifts every row below it — measured on device with 8 libraries and five forced HTTP 500 responses, where the skipped rows held their single placeholder and nothing moved. Accepted cost: it only self-corrects on the next `Home.refresh()` (i.e. `onScreenShown`), so sitting on Home leaves the false loading state up. The better answer is a distinct failed/empty placeholder that keeps the row in place without lying — deferred because it needs a visual design, a translation key, and `JRRowItem` work to render a non-`Loading` placeholder type.
 - **Home never removes the row of a library newly added to `latestItemsExcludes`.** `HomeRows.onLibrariesLoaded` recomputes `m.filteredLatest` on every refresh, but that only decides which libraries get REQUESTED — nothing clears the row of a library that dropped OUT of the list, so its stale content sits on Home indefinitely. Note the setting has no JellyRock UI: it arrives from the Jellyfin server's user config (`SessionDataTransformer.bs` ← `configData.LatestItemsExcludes`), so it changes out from under the client and the app never sees an edit event. Fix shape: diff the previous `filteredLatest` against the new one in `onLibrariesLoaded` and remove the rows for dropped ids (`removeRowAtIndex` already exists). This is pre-existing and independent of the #728 orchestrator work — surfaced while reviewing PR #762, deliberately not folded in.
+- Genres view skeleton rows draw a single placeholder cell where the filled row shows up to 7 — cosmetic; flagged in PR #779 as deliberately not done.
 
 ### source
 
@@ -94,3 +96,4 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 - Exercise `/dep-major` end-to-end on the next real Renovate major PR — validate the changelog→call-site mapping and the on-device `test:unit`+`test:rta` gate run inside the skill flow (mechanics validated at build time, but the full orchestration on a real major bump is not yet exercised).
 - **Audit the `.claude/` rules + `CLAUDE.md` files against what is actually ENFORCED, not just documented.** Two independent instances of the same failure: agents repeatedly blow the roku-log 9-argument cap even though it is written down (it recurs whenever a session logs heavily), and `bs_const=debug=true` has landed on `main` twice (`27d99141`, `dc05db8d`) despite `debug-flags.md` claiming the commit skill prevents it. Both are documented-but-unenforced rules, and the pattern is that prose alone does not hold. **Sequence matters**: land the enforcement first (the roku-log argument-count diagnostic — see the `m.log` call-site entry in [`tech-debt.md`](architecture/tech-debt.md)), then tighten the docs against what the gate actually catches. Auditing the prose first just rewrites text that will keep being ignored.
+- Have `/pr` verify a created PR is `MERGEABLE` and that its check COUNT matches a recent PR's. GitHub runs no `pull_request`-triggered workflow on a PR that conflicts with `main`, so only the `pull_request_target` ones report — #779 showed 4 green checks that read as a pass while 18 lint/build jobs had never run. Color is not the gate; count is.

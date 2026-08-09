@@ -4,6 +4,7 @@ import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
+import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
 
 ' Vertical offset of the poster/placeholder from the cell top. The title label sits
@@ -106,11 +107,30 @@ sub renderItem()
   m.itemPoster.callFunc("resetBadge")
   m.isTextureUnloaded = false
 
+  itemType = LCase(itemData.type)
+
+  ' Skeleton cell — a row that exists but whose items haven't landed yet. Same
+  ' skeleton convention JRRowItem renders for Home's rows (source/utils/skeleton.bs),
+  ' so one content shape covers both cell components.
+  '
+  ' This MUST come before anything reads a media field. A placeholder is a bare
+  ' ContentNode, so renderMediaItem's `itemData.isWatched` reads `invalid`, and
+  ' `if invalid` is a runtime type mismatch — not a falsy check. A skeleton reaching
+  ' that branch crashes the render thread rather than drawing nothing.
+  if skeleton.isPlaceholder(itemData)
+    renderLoadingCell()
+    return
+  end if
+
+  ' A recycled cell may have been a skeleton a moment ago — stop that spinner and put
+  ' the poster back before rendering real content.
+  skeleton.hideSpinner(m.loadingSpinner)
+  m.itemPoster.visible = true
+
   ' Title text + default (always-on) visibility — recomputed every recycle.
   m.itemText.text = getRowItemTitle(itemData)
   m.itemText.visible = m.gridTitles = "showalways"
 
-  itemType = LCase(itemData.type)
   itemFolderType = ""
   if isValid(itemData.folderType) then itemFolderType = LCase(itemData.folderType)
 
@@ -157,6 +177,36 @@ sub setPosterRect(x as integer, y as integer, rw as float, rh as float)
   m.genreBackdrop.translation = [x, y]
   m.genreBackdrop.width = rw
   m.genreBackdrop.height = rh
+end sub
+
+' Renders a skeleton cell: themed backdrop only, no poster, title or tile.
+'
+' The poster is hidden rather than left with an empty uri so the cell reads as "waiting"
+' instead of as a failed image — JRPlaceholder's typed glyph is the *missing artwork*
+' signal, and a row that simply hasn't loaded yet has not failed at anything.
+' cachedPosterUri is cleared so texture management skips this cell.
+'
+' The spinner costs render-thread time (measured ~100 ms across an 8-genre load) but that
+' cost is bounded by the VIEWPORT, not by genre count — the RowList lays out ~3 rows and
+' recycles GridItem cells, so a 40-genre library has no more spinners on screen than an
+' 8-genre one. The wait it covers, by contrast, grows linearly with genre count and with
+' server latency. So it gets relatively cheaper exactly where it matters most.
+sub renderLoadingCell()
+  m.itemPoster.uri = ""
+  m.itemPoster.visible = false
+  ' Clear the text, not just visibility: a recycled cell keeps its previous item's
+  ' title, and under gridTitles="showonhover" onFocusChanged re-shows the label on
+  ' focus — the skeleton window is interactive, so a stale title would surface.
+  m.itemText.text = ""
+  m.itemText.visible = false
+  m.genreBackdrop.visible = false
+  m.genreLabel.visible = false
+  m.placeholder.itemType = ""
+  m.placeholder.visible = true
+  m.cachedPosterUri = ""
+  ' POSTER_TOP_OFFSET: this cell's poster rect starts below the cell origin (see
+  ' setPosterRect), and the spinner centers within the POSTER area, not the slot.
+  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, m.top.width, m.top.height, POSTER_TOP_OFFSET)
 end sub
 
 ' Renders a "View All [Genre]" action tile: themed backdrop + centered genre label,

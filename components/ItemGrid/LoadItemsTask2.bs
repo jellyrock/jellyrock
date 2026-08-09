@@ -50,6 +50,11 @@ sub loadItems()
   waitMs = 0
   emitMs = 0
   genreFetches = 0
+  ' When the Genres view got its rows on screen. That is NOT `task`: the skeletons ship
+  ' as soon as the genre LIST query returns, while `task` runs on until the last sample
+  ' lands. -1 means the run published no skeletons (a plain grid, or music genres), where
+  ' first paint and `task` are the same moment.
+  firstPaintMs = -1
   #if perfTiming
     runClock = CreateObject("roTimespan")
     stepClock = CreateObject("roTimespan")
@@ -305,6 +310,42 @@ sub loadItems()
     end for
   end if
 
+  ' Ship the row TITLES now, so the view can draw the list before a single sample has
+  ' landed. The whole genre list is already known at this point — only the per-genre
+  ' artwork is still outstanding — so making the user stare at a spinner until the
+  ' slowest of N fetches returns is wasted structure we already have.
+  '
+  ' What crosses is deliberately tiny: an array of `{ id, title }` AAs, no nodes. Every
+  ' write from this thread to a render-thread-owned node is a RENDEZVOUS, priced by how
+  ' much data it carries, so the view builds its own skeleton row nodes from these
+  ' strings — exactly as HomeRows.createSkeletonRows() does for Home. An earlier revision
+  ' shipped the built ContentNodes instead and paid ~136 ms for that one crossing.
+  '
+  ' Only when EVERY item is a genre: this is a pure hint, and a mixed list would draw
+  ' skeletons for rows the batch below never fills. A Genres query returns nothing but
+  ' genres, so the equality just makes that a checked precondition. startIndex = 0
+  ' encodes the other precondition the receiving handler assumes — "this publish is the
+  ' COMPLETE list" — in the gate itself, rather than leaving it to observer lifecycle in
+  ' another file (genre views never paginate today, so this is a tripwire, not a path).
+  if genreEntries.count() > 0 and genreEntries.count() = slots.count() and m.top.startIndex = 0
+    skeletons = []
+    for each entry in genreEntries
+      skeletons.push({ id: entry.item.id, title: entry.item.name })
+    end for
+    m.top.genreSkeletons = skeletons
+    #if perfTiming
+      firstPaintMs = runClock.totalMilliseconds()
+    #end if
+    ' RTA-only: hold the skeleton stage open so specs can drive it deterministically.
+    ' Compiled out of dev and prod builds (see setGlobalNodes); sleeps THIS task thread
+    ' only, exactly like a slow server would.
+    #if ENABLE_RTA
+      if isValid(m.global.rtaSkeletonHoldMs) and m.global.rtaSkeletonHoldMs > 0
+        sleep(m.global.rtaSkeletonHoldMs)
+      end if
+    #end if
+  end if
+
   ' Pass 2 — the genre sample fetches, pipelined onto THIS thread rather than run
   ' back to back. Measured 78% wait / 22% emit, so the win is overlapping the round
   ' trips: apiPipeline keeps up to apiPool.SLOT_COUNT of them in flight without
@@ -375,7 +416,9 @@ sub loadItems()
     #else
       buildFlags = " [debug=false perfTiming=true]"
     #end if
-    m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+    ' firstPaint rides in the MESSAGE rather than as a fourth value pair: message + three
+    ' pairs is seven args, and two more would sit exactly on the nine-arg ceiling above.
+    m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + " firstPaint " + firstPaintMs.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
   #end if
 end sub
 

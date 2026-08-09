@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
-last-reviewed: 2026-08-02
+last-reviewed: 2026-08-07
 ---
 
 # Async & Promises
@@ -124,6 +124,41 @@ only dispatches inside a SceneGraph component (the render thread). So:
   [api.md](./api.md)). Both are blocking-shaped from the caller's point of view, which is why
   neither needs promises. If you genuinely must consume a promise on a Task thread, that's the
   `setMessagePort` + `wait2` path.
+
+## Crossing the thread boundary costs a rendezvous — budget CROSSINGS, not bytes
+
+Every time one thread touches a node another thread owns — a Task writing a field on a
+render-thread node, appending a child to it, or `callFunc`-ing into a component — SceneGraph
+performs a **rendezvous**: the caller parks until the owning thread reaches a safe point, then the
+data is marshaled across. It is priced by **how often you cross** first and how much you carry
+second, and both are far more expensive than the same operation done thread-locally.
+
+That is the reason behind rules stated elsewhere without their price tag: cache `m.global.user`
+in a local instead of re-reading it per item ([components/CLAUDE.md](../../components/CLAUDE.md)),
+prefer `node.setFields({...})` to a run of individual assignments, and use
+`transformBaseItemArray` over a per-item `transformBaseItem` (which re-reads
+`m.global.server.version` — one rendezvous per item).
+
+**Worked example, measured on a Streaming Stick 4K.** The item grid's Genres view delivers N rows
+of ~7 item nodes. Delivered as ONE `m.top.content` write it costs ~220 ms of task-thread `emit`.
+Re-shaped to deliver each row as it arrived — same total data, same nodes, just **8 crossings
+instead of 1** — `emit` went to ~734 ms, and `task` from 520 ms to 1403 ms. Reverting to a single
+batched handoff put `emit` back to ~235 ms. The payload never changed; only the crossing count did.
+
+Practical consequences when designing a Task → UI handoff:
+
+- **Batch the delivery.** Per-item or per-row handoffs are the expensive shape. Accumulate and hand
+  over once, unless progressive display is worth a measured price.
+- **Send the cheapest thing that works.** Strings and small AAs marshal far more cheaply than node
+  trees. The grid ships `[{ id, title }]` and lets the render thread build its own skeleton
+  `ContentNode`s — shipping the built nodes instead cost ~136 ms for that single crossing.
+  `HomeRows.createSkeletonRows()` is the same split.
+- **Expect a busy render thread to slow the Task down**, not just the other way round. In the same
+  experiment the pipeline's *network* wait grew ~200 ms purely because the render thread was laying
+  out rows during the run instead of after it.
+- Where a handoff must be frequent, `apiQueue`'s children-as-vehicle pattern is the shape to copy —
+  it exists for correctness under coalescing (see [api.md](./api.md)), and it does **not** make the
+  crossings free.
 
 ## Risk & coexistence
 
