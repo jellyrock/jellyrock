@@ -72,6 +72,35 @@ sub loadLatestRows()
   #if perfTiming
     runClock = CreateObject("roTimespan")
     stepClock = CreateObject("roTimespan")
+    ' Second-level split of `emit`, accumulated inside emitRow. `emit` is the
+    ' largest component of this run on every device tier, so it is what any
+    ' optimisation here is aimed at — but the three columns behave completely
+    ' differently and the total hides that:
+    '
+    '   xform  - transform + the carrier node. Thread-LOCAL; the only column more
+    '            worker threads could divide, and the smallest of the three.
+    '   append - appendChild's rendezvous. Near-free.
+    '   notify - the `rowReady` write below. NOT the cost of the write: writing a
+    '            field that the render thread observes parks this thread until the
+    '            observer's callback RETURNS, so this column is HomeRows'
+    '            onLatestRowsReady (drainReady + populateRowFromData) measured from
+    '            the wrong side of the boundary. It is most of `emit`.
+    '
+    ' The consequence, and it is not the obvious one: `notify` is NOT a cost this
+    ' loop can win back. Only the render thread may serve a rendezvous, so making
+    ' the write non-blocking does not free the run — it just moves the queueing into
+    ' `wait` and `append`, which are rendezvous too. That was prototyped and
+    ' measured: emit fell by a third, every other column rose to match, and `total`
+    ' did not move (p=0.97). So the render thread's per-row work is the floor for
+    ' this run, and neither more worker threads nor a cheaper hand-off changes it.
+    ' Read these columns as a budget for where the run's time went, not as three
+    ' independent things to optimise.
+    ' On `m` rather than through emitRow's signature so the gate keeps the whole
+    ' thing out of a production build.
+    m.emitClock = CreateObject("roTimespan")
+    m.xformMs = 0
+    m.appendMs = 0
+    m.notifyMs = 0
   #end if
 
   pipe = apiPipelineBegin(entries)
@@ -108,6 +137,12 @@ sub loadLatestRows()
       buildFlags = " [debug=false perfTiming=true]"
     #end if
     m.log.info("latest-rows orchestrator done -" + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+    ' A SECOND line, not more arguments on the first: `m.log.*` accepts at most 9
+    ' args including the message, and exceeding it is a runtime fault (&hf1) that
+    ' drops the app into the BrightScript debugger rather than a compile error.
+    ' The three columns must sum to `emit` above — a large gap means the split is
+    ' missing work and none of it can be trusted.
+    m.log.info("latest-rows emit split -" + buildFlags, "xform", m.xformMs, "append", m.appendMs, "notify", m.notifyMs)
   #end if
 end sub
 
@@ -121,6 +156,10 @@ end sub
 ' row). HomeRows leaves any existing row alone on "failed" — a populated one keeps its
 ' content, an unpopulated one keeps its loading placeholder.
 sub emitRow(libId as string, res as dynamic)
+  #if perfTiming
+    m.emitClock.mark()
+  #end if
+
   items = []
   status = "failed"
 
@@ -137,8 +176,26 @@ sub emitRow(libId as string, res as dynamic)
 
   child = CreateObject("roSGNode", "ContentNode")
   child.addFields({ libId: libId, items: items, status: status })
+
+  ' Everything above this point is thread-local: the transform, and a carrier node
+  ' this thread owns until it is appended. Everything below crosses to the render
+  ' thread, once per call each.
+  #if perfTiming
+    m.xformMs += m.emitClock.totalMilliseconds()
+    m.emitClock.mark()
+  #end if
+
   m.top.appendChild(child)
+  #if perfTiming
+    m.appendMs += m.emitClock.totalMilliseconds()
+    m.emitClock.mark()
+  #end if
+
+
   m.top.rowReady = libId
+  #if perfTiming
+    m.notifyMs += m.emitClock.totalMilliseconds()
+  #end if
 end sub
 
 ' Drops item types the app can't present — Books (issue #525).
