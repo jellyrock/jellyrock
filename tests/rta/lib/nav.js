@@ -132,6 +132,8 @@ export async function navSearch() {
  */
 const HOME_TILE_WAIT_MS = 15000;
 const HOME_TILE_POLL_MS = 300;
+const DETAIL_ROW_WAIT_MS = 15000;
+const DETAIL_ROW_POLL_MS = 300;
 
 /**
  * One pass over Home's library row. Returns `{ tile }` on an id hit, otherwise the
@@ -226,6 +228,18 @@ export async function navLibraryByType(collectionType, libraryId = null) {
 export async function openLibraryByType(collectionType, libraryId = null) {
   await waitHome();
   const { row, col } = await findHomeLibraryTile(collectionType, libraryId);
+  // Focus must be INSIDE the row list before walking it. `rowItemFocused` RETAINS its
+  // last value when the RowList doesn't hold focus, so a walk started while focus is
+  // still elsewhere reads a stale [0,0] forever, sends its presses to whatever does
+  // hold focus, and then times out blaming the tile — which is what
+  // `home library tile col N (...) (last=[0,0])` actually means. No action here on
+  // purpose: focus lands in the rows on its own once Home is up, and pressing keys at
+  // a component we have not located yet is how the OSD navs got this wrong.
+  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#homeRows'), {
+    timeout: 12000,
+    interval: 300,
+    label: 'focus inside home rows',
+  });
   // Vertical: step to the library row.
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
     timeout: 12000,
@@ -388,16 +402,35 @@ async function openChildDetailByRowType(tileType) {
     timeout: 20000,
     read: getActiveVal,
   });
-  await sleep(1200); // let the rows load
-  const rowCount = (await getActiveVal('#extrasGrid.content.getChildCount()')) || 0;
+  // Poll for the row rather than scanning once, for the same reason `findHomeLibraryTile`
+  // does: `ExtrasRowList.populateRow` APPENDS rows as its async load chain progresses, so
+  // the count gate above can pass on the first row while the requested type has not landed
+  // yet. A single pass then throws about a screen that is fine a moment later. (Seen once
+  // during this work: `detail row with tile type "Season" not found` on a run whose other
+  // 35 screens passed.) The old fixed `sleep(1200)` was papering over exactly this — a
+  // bounded poll replaces it, and returns as soon as the row exists rather than always
+  // paying the full delay.
+  const rowsStart = Date.now();
   let targetRow = -1;
-  for (let r = 0; r < rowCount; r++) {
-    if ((await getActiveVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
-      targetRow = r;
-      break;
+  let rowCount;
+  for (;;) {
+    rowCount = (await getActiveVal('#extrasGrid.content.getChildCount()')) || 0;
+    for (let r = 0; r < rowCount; r++) {
+      if ((await getActiveVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
+        targetRow = r;
+        break;
+      }
     }
+    if (targetRow >= 0) break;
+    if (Date.now() - rowsStart >= DETAIL_ROW_WAIT_MS) break;
+    await sleep(DETAIL_ROW_POLL_MS);
   }
-  if (targetRow < 0) throw new Error(`detail row with tile type "${tileType}" not found`);
+  if (targetRow < 0) {
+    throw new Error(
+      `detail row with tile type "${tileType}" not found after ` +
+        `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present)`,
+    );
+  }
   // Walk down to the target row; confirm focus moved, then let the slide animation
   // settle so the OK isn't swallowed.
   for (let r = 0; r < targetRow; r++) {
