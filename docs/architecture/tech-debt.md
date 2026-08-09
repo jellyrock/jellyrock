@@ -107,8 +107,8 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `loginflow-error-boundaries`
 
-- **area**: `source/showScenes.bs` (`LoginFlow`) and elsewhere
-- **issue**: ~230-line `LoginFlow()` collapses every failure mode (server unreachable, server returned error, invalid/expired token, auth failed, password required) into `goto startLogin` / `goto userSelect`. No category-specific recovery — a transient network blip and a permanent auth failure both bounce the user back to server selection, losing their position in the flow.
+- **area**: `source/loginRouter.bs`
+- **issue**: Every failure mode (server unreachable, server returned error, invalid/expired token, auth failed, password required) collapses into the same recovery: `routerNav("/server")` or `routerNav("/login")`. No category-specific handling — a transient network blip and a permanent auth failure both bounce the user back to server selection, losing their position in the flow. (Was `LoginFlow()`'s `goto startLogin` / `goto userSelect` in `showScenes.bs`; #677 moved it to the router without changing the collapse.)
 - **direction**: Define a small set of error categories (network unreachable, server returned error, auth failed, token invalid) and a corresponding recovery flow per category. Network blips should retry-with-backoff; auth failures should drop into the user picker, not the server picker; token invalid should re-prompt for password without losing the server context.
 
 #### `prelogin-intent-payload-coupling`
@@ -154,11 +154,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `components/ItemDetails.bs`, `source/main.bs`
 - **issue**: Single-shot event idiom — unfamiliar to first-time readers. See `user-journey.md` for the canonical explanation.
 
-#### `loginflow-goto-retry`
-
-- **area**: `source/showScenes.bs`
-- **issue**: `goto startLogin` and `goto userSelect` for auth retry. Old-school but readable.
-
 #### `osd-inactivity-timeout-hardcoded`
 
 - **area**: `components/video/VideoPlayerView.xml`
@@ -178,11 +173,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `source/main.bs`
 - **issue**: `printRegistry()` runs unconditionally; noisy in prod logs unless filtered by level.
-
-#### `appstart-label-restart`
-
-- **area**: `source/main.bs`
-- **issue**: `goto appStart` for "log out and start over". Works fine, but unusual pattern today.
 
 #### `m-wasmigrated-global-flag`
 
