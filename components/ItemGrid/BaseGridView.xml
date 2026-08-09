@@ -51,7 +51,7 @@
 
     <!-- Genre list (alternative display for genres view)
 
-      Vertical rhythm — these three fields only make sense together, so change them
+      Vertical spacing — these three fields only make sense together, so change them
       together. Measured on device (Ultra, 1080p UI), a row composes as:
 
         rowHeights  =  label (~33)  +  rowLabelOffset.y  +  the GridItem cell

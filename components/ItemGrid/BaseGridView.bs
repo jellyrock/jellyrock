@@ -47,7 +47,7 @@ sub init()
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.focusXOffset = 0
   ' rowLabelOffset lives in the XML alongside rowHeights/itemSpacing — it used to be set
-  ' here too, silently overriding the markup, which meant the row's vertical rhythm was
+  ' here too, silently overriding the markup, which meant the row's vertical spacing was
   ' split across two files. The three fields have to be reasoned about together (see the
   ' XML comment), so they live together.
   ' Override JRRowList's inherited "fixedFocusWrap": this is a browse view with an
