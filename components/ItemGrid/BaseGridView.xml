@@ -54,9 +54,14 @@
       Vertical spacing — these three fields only make sense together, so change them
       together. Measured on device (Ultra, 1080p UI), a row composes as:
 
-        rowHeights  =  label (~33)  +  rowLabelOffset.y  +  the GridItem cell
-        cell        =  POSTER_TOP_OFFSET (22) + rowItemSize.y (320) + TITLE_GAP (18) + title (~28)
-        row pitch   =  rowHeights + itemSpacing.y
+        rowHeights  =  row label  +  rowLabelOffset.y  +  the GridItem cell
+        cell        =  POSTER_TOP_OFFSET (22) + rowItemSize.y (320) + TITLE_GAP (18) + title
+        row pitch   =  rowHeights + itemSpacing.y  =  455 (measured)
+
+      The label and title heights are the RENDERED heights of MediumSystemFont at
+      fontSizeMedium (32) and of the smaller title font — estimated, not measured, so
+      treat this composition as ±a few px. The field values below are the measured ones;
+      don't recompute them from this sketch.
 
       So rowHeights INCLUDES the label and its offset — verified by predicting where
       rows 2 and 3 land. `rowLabelOffset.y` is a GAP, not a position (Roku: "the vertical
@@ -69,9 +74,10 @@
 
       The offset is NEGATIVE on purpose, and the gaps above/below a heading are
       deliberately NOT equal: a heading spaced evenly between two rows reads as belonging
-      to neither. -8 puts it 14px above its own posters and 42px below the previous row's
-      titles. It is the only way under 22px, since the cell's own POSTER_TOP_OFFSET floors
-      the gap and that constant is shared with the main library grid.
+      to neither. -8 puts a heading 14px above its own posters — far closer to them than
+      to the previous row's titles above it. It is the only way under 22px, since the
+      cell's own POSTER_TOP_OFFSET floors the gap and that constant is shared with the
+      main library grid.
     -->
     <JRRowList
       id="genreList"
