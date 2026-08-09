@@ -22,12 +22,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Two PRs in review, both out of the verification pass on the 720p stick: #781 (#777 gradient renders as a stretched ramp poster) and #782 (RTA waits for a playable player before driving OSD input, plus harness error-surfacing and the precondition rule).
-
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-09 — test(rta): establish preconditions before driving or scanning UI state
 - 2026-08-09 — Draw the Genres view before its artwork has loaded
 - 2026-08-08 — Genres view item counter no longer reads "1 of 1" during the skeleton window — Roku's `RowList` counter is suppressed while rows hold placeholders and restored on fill (PR #779)
 - 2026-08-08 — **Pre-playback input window: closed, no app change needed.** A loading spinner IS shown during the window on both the 720p Stick `3600X` and the Ultra `4850X` (screenshots), so the player swallowing keys until `stateAllowsOSD()` passes is expected app behavior, not a defect. Measured press→playable at ~5-7 s on BOTH devices (stick 5.6/5.8 s, Ultra 7.2 s) — the window tracks stream start against the remote server, NOT device speed, which refuted the "slow devices stretch the window" theory that motivated the question. Deferring/replaying input was proposed and rejected (its benefit and its risk scale with the same variable).
