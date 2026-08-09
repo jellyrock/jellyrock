@@ -37,7 +37,10 @@ jobs:
           # We deliberately don't trigger on every JS/JSON change — the
           # tests focus on scripts/ and tests/scripts/, so other JS edits
           # (e.g. in .lintstagedrc.cjs) don't need re-running.
-          pattern: '^scripts/|^tests/scripts/|^vitest\.config\.js$|^package(-lock)?\.json$'
+          # images/gradients/ is here because gradient-assets.test.js asserts
+          # the COMMITTED assets still match the generator; without it a PR that
+          # hand-edits or reverts a ramp PNG skips the job and lands green.
+          pattern: '^scripts/|^tests/scripts/|^images/gradients/|^vitest\.config\.js$|^package(-lock)?\.json$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'

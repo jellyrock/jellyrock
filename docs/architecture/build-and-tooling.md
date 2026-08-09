@@ -33,6 +33,7 @@ related-files:
   - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
   - scripts/generate/icons-build.js
+  - scripts/generate/gradient-assets.js
   - scripts/generate/icons-add.js
   - resources/icons/
   - resources/placeholders/
@@ -70,7 +71,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-07
+last-reviewed: 2026-08-08
 ---
 
 # Build & Tooling
@@ -300,6 +301,7 @@ Lint and format:
 | `npm run agent-telemetry` | Aggregates `~/.claude/jellyrock-telemetry/tool-use.jsonl` (populated per-USER, not per-worktree, by the `PostToolUse` hook in `.claude/settings.json`) into a top-files-read / top-greps report. Signals where to expand subdir CLAUDE.md coverage |
 | `npm run docs:dev-index` / `:check` | Regenerates / checks the auto-generated dev-guides index inside `docs/architecture/README.md`. Pre-push runs the regen as an auto-fix when `docs/dev/*.md` changes; `:check` runs unconditionally as a check step (catches manual README edits that didn't go through the regen) |
 | `npm run icons:build` / `:check` | Regenerates / checks the per-resolution PNG triples (`<name>_fhd.png` + `<name>_hd.png`) under `images/icons/` (icon set) and `images/placeholders/` (placeholder set) from SVG sources in `resources/icons/`. Driven by `resources/icons/icons.json` (icon overrides) and `resources/placeholders/placeholders.json` (placeholder set). Powers the `uri_resolution_autosub` pipeline (see [Icon resolution pipeline](#icon-resolution-pipeline) below). Pre-push runs the regen as an auto-fix when `resources/icons/*.svg`, `resources/icons/icons.json`, `resources/placeholders/placeholders.json`, or [`scripts/generate/icons-build.js`](../../scripts/generate/icons-build.js) changes; `:check` runs as a check step in the same conditional |
+| `npm run gradients:build` / `:check` | Regenerates / checks the alpha-ramp PNGs under `images/gradients/` from [`scripts/generate/gradient-assets.js`](../../scripts/generate/gradient-assets.js) — four tiny white→transparent ramps (`4×270` vertical, `270×4` horizontal, each with a reversed `*180` variant) that the [`Gradient`](../../components/ui/Gradient.bs) component stretches and tints via `blendColor`. Same contract as `icons:build` — committed but generated, with locked sharp config — so `:check`'s byte comparison is a real drift gate. Pre-push runs the regen as an auto-fix when `images/gradients/*` or the generator changes; `:check` runs as a check step in the same conditional. Rationale + hardware measurements: [ADR 0025](../adr/0025-gradient-rendering-ramp-posters.md) |
 | `npm run icons:add -- <material_name> [--as <jellyrock_name>] [--filled]` | Adds a new icon by fetching the canonical Material Symbols SVG from `google/material-design-icons` (Rounded variant, weight 500, **outlined by default — `fill=0`**, `24px` — locked house style), injecting white fill for `blendColor` tinting, saving to `resources/icons/`, and appending a row to the [provenance table](../../resources/icons/README.md#provenance). The `--filled` flag fetches the filled variant for the documented exception cases (toggle on-states, pure shapes, avatars, placeholders — see [Fill convention](../../resources/icons/README.md#fill-convention)). Removes the manual `icons.google.com` browse step. After running, follow up with `npm run icons:build` and update the call-site URI |
 | `npm run check-formatting` | `bs` + `js` (project-wide). Aggregates `check-formatting:bs` (`bsfmt --check`) and `check-formatting:js` (`prettier --check .`) |
 | `npm run check-formatting:bs` / `:js` | Type-scoped formatting checks. CI per-type workflows call the scoped variant (`lint-brightscript` runs `:bs` only, `lint-js` runs `:js` only) |

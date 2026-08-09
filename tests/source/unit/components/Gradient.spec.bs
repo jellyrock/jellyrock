@@ -1,0 +1,179 @@
+namespace tests
+
+  ' Locks the ramp-asset selection matrix introduced in #777 (ADR 0025). The
+  ' component renders as ONE Poster whose uri picks the ramp orientation and
+  ' whose blendColor carries the tint, so "which asset + which tint" IS the
+  ' whole rendering contract — and a wrong pick is silent (a fade running the
+  ' wrong way reads as a design change, not a bug).
+  @suite("Gradient - ramp asset selection and tinting")
+  class GradientTests extends tests.BaseTestSuite
+
+    private gradient as object
+
+    ' beforeEach, NOT setup: rooibos runs setup() once per SUITE, so building the
+    ' node there leaks field state between tests (a stray rotateDegrees=270 from
+    ' one test silently retargets the next one's asset lookup).
+    protected override function beforeEach()
+      super.beforeEach()
+      m.gradient = CreateObject("roSGNode", "Gradient")
+    end function
+
+    protected override function afterEach()
+      m.gradient = invalid
+      super.afterEach()
+    end function
+
+    ' The rendered ramp is the component's only child.
+    private function ramp() as object
+      return m.gradient.getChild(0)
+    end function
+
+    private function uriFor(name as string) as string
+      return "pkg:/images/gradients/" + name + ".png"
+    end function
+
+    ' Mirror Roku's own coercion for color fields so we compare like for like
+    ' rather than raw Integer -> color field (same approach as JRPlaceholder.spec.bs).
+    private function asBlend(color as integer) as dynamic
+      p = CreateObject("roSGNode", "Poster")
+      p.blendColor = color
+      return p.blendColor
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Renders as a single stretched poster")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has exactly one child - the ramp poster, not a strip stack")
+    function _()
+      m.assertEqual(m.gradient.getChildCount(), 1)
+      m.assertEqual(m.ramp().subtype(), "Poster")
+    end function
+
+    @it("stretches the ramp to the node bounds, ignoring aspect ratio")
+    function _()
+      ' Roku normalizes Poster.loadDisplayMode to lowercase on read. scaleToFill
+      ' is load-bearing: the ramp is 4px on its non-fade axis and MUST distort to
+      ' fill, not letterbox or crop.
+      m.assertEqual(m.ramp().loadDisplayMode, "scaletofill")
+    end function
+
+    @it("rebuilding replaces the poster rather than accumulating children")
+    function _()
+      m.gradient.height = 640
+      m.gradient.width = 800
+      m.assertEqual(m.gradient.getChildCount(), 1)
+    end function
+
+    @it("sizes the poster to the node bounds")
+    function _()
+      m.gradient.width = 800
+      m.gradient.height = 640
+      ' Poster width/height are Float fields.
+      m.assertEqual(m.ramp().width, 800.0)
+      m.assertEqual(m.ramp().height, 640.0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Asset selection - direction and rotation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("defaults to the vertical ramp tinted with startColor")
+    function _()
+      ' Defaults: startColor 0x000000FF (opaque black) -> endColor 0x00000000.
+      ' Matches both OSD.xml gradients' top fade.
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-v"))
+      m.assertEqual(m.ramp().blendColor, m.asBlend(&h000000FF))
+    end function
+
+    @it("rotateDegrees=180 selects the flipped vertical ramp")
+    function _()
+      ' OSD.xml's bottom fade: opaque end moves to the far edge.
+      m.gradient.rotateDegrees = 180
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-v180"))
+      m.assertEqual(m.ramp().blendColor, m.asBlend(&h000000FF))
+    end function
+
+    @it("rotateDegrees=90 swaps a vertical fade to the horizontal ramp")
+    function _()
+      m.gradient.rotateDegrees = 90
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-h"))
+    end function
+
+    @it("rotateDegrees=270 swaps axis AND flips")
+    function _()
+      m.gradient.rotateDegrees = 270
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-h180"))
+    end function
+
+    @it("direction=horizontal selects the horizontal ramp and tints from the opaque end")
+    function _()
+      ' PresentationBackdrop's leftGradient shape. A literal color on purpose:
+      ' the theme constant differs per device, and what matters here is that the
+      ' tint is READ FROM the opaque end rather than hardcoded black.
+      m.gradient.direction = "horizontal"
+      m.gradient.startColor = &h0D1117FF
+      m.gradient.endColor = &h0D111700
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-h"))
+      m.assertEqual(m.ramp().blendColor, m.asBlend(&h0D1117FF))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Inverted color order - transparent start, opaque end")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("inverted color order flips the ramp and tints with endColor")
+    function _()
+      ' ItemDetails' dropdownDimmer: startColor transparent -> endColor opaque.
+      ' Expresses the same fade as rotateDegrees=180, via color order instead.
+      m.gradient.startColor = &h00000000
+      m.gradient.endColor = &h000000FF
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-v180"))
+      m.assertEqual(m.ramp().blendColor, m.asBlend(&h000000FF))
+    end function
+
+    @it("inverted color order AND rotateDegrees=180 cancel back to the unflipped ramp")
+    function _()
+      ' No call site combines the two today, so nothing else proves the flips
+      ' compose rather than one silently winning.
+      m.gradient.startColor = &h00000000
+      m.gradient.endColor = &h000000FF
+      m.gradient.rotateDegrees = 180
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-v"))
+      m.assertEqual(m.ramp().blendColor, m.asBlend(&h000000FF))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Partial-alpha tint")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("carries a partial alpha through to blendColor")
+    function _()
+      ' ItemDetails' itemTextGradient: a 60% black scrim, not a 100% one. The
+      ' ramp is white with a 255->0 alpha ramp, so the tint's alpha byte is the
+      ' ONLY thing that caps the scrim's opacity - if it were dropped the scrim
+      ' would render fully opaque. Verified on hardware (#777 review).
+      m.gradient.startColor = &h00000099
+      m.gradient.rotateDegrees = 180
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-v180"))
+      m.assertEqual(m.ramp().blendColor, m.asBlend(&h00000099))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Unexpressible input degrades instead of breaking")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("two visible ends still render a ramp tinted from startColor")
+    function _()
+      ' One blendColor can't carry a second hue, so this fires a debug warning
+      ' (stripped in prod). It must still render SOMETHING sane rather than
+      ' leaving a hole where the scrim should be.
+      m.gradient.startColor = &hFF0000FF
+      m.gradient.endColor = &h0000FFFF
+      m.assertEqual(m.gradient.getChildCount(), 1)
+      m.assertEqual(m.ramp().uri, m.uriFor("fade-v"))
+      m.assertEqual(m.ramp().blendColor, m.asBlend(&hFF0000FF))
+    end function
+
+  end class
+end namespace
