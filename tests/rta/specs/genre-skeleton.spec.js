@@ -89,7 +89,9 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
   });
 
   const skeletonRows = await getVal('#genreList.content.getChildCount()');
-  expect(skeletonRows).toBeGreaterThan(0);
+  // Re-assert the pre-check's 3+ against what the APP drew: its genre query carries a
+  // `limit` the pre-check's bare REST call does not, so a server count is only a proxy.
+  expect(skeletonRows).toBeGreaterThanOrEqual(3);
   const skeletonTitles = [];
   for (let r = 0; r < skeletonRows; r++) {
     skeletonTitles.push(await getVal(`#genreList.content.${r}.title`));
