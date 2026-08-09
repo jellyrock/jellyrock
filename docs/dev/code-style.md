@@ -436,17 +436,6 @@ sub setSetting(key, value)             ' side effect only
 end sub
 ```
 
-### `Goto` Labels
-
-Use `lowerCamelCase` for `goto` labels. These are control flow markers, not constants or types.
-
-```brighterscript
-startLogin:
-  serverUrl = getSetting("server")
-  ...
-  goto startLogin
-```
-
 ---
 
 ## Tooling
