@@ -67,7 +67,8 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
   // row 0 regardless. The spec would go GREEN while verifying nothing about position
   // restore, which is the silent-no-op failure tests/rta/CLAUDE.md warns about. The demo
   // server has 14 today, but its metadata is rebuilt hourly, so this is not a given.
-  if (genreCount < 3) testCtx.skip(`needs 3+ movie genres to exercise scroll restore, has ${genreCount}`);
+  if (genreCount < 3)
+    testCtx.skip(`needs 3+ movie genres to exercise scroll restore, has ${genreCount}`);
 
   const expectedServer = await seedHome(session, LOCALE);
   await seedLibraryLanding(session, moviesId, 'Genres');
