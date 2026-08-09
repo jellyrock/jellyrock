@@ -138,6 +138,7 @@ config
 Config
 configs
 const
+constructible
 ContentNode
 coord
 coords
@@ -571,6 +572,7 @@ unit-tests-tdd
 unlinked
 unobserve
 unprefixed
+unresolvable
 unreviewed
 un-shuffle
 unshuffled

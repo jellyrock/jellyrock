@@ -25,7 +25,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 ## Render thread protection
 
-- Roku's render thread runs the UI. Anything I/O — network, registry I/O, large file reads — **MUST run on a Task thread**.
+- Roku's render thread runs the UI. Anything I/O — network, registry I/O, large file reads — **MUST run on a Task thread**. Which thread is which (there are three, and main ≠ render), plus the measured list of what is actually constructible where: [threading.md](../docs/architecture/threading.md).
 - For HTTP, use the API task pool via `GetApi().Build*Request()` + `fetchRes()` / `submitApiRequest()`. See [docs/architecture/api.md](../docs/architecture/api.md).
 - Single `m.global.<child>` reads are fine (cheap). Multiple reads in a hot path: cache locally first (`globalUser = m.global.user; globalUser.foo; globalUser.bar`).
 - Bulk field updates: `node.setFields({ a: 1, b: 2 })` over individual assignments.
