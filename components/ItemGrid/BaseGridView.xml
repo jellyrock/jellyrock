@@ -63,17 +63,15 @@
       spacing between the label and the list items"), and it STACKS with the cell's own
       POSTER_TOP_OFFSET, so the visible label-to-poster gap is the sum of the two.
 
-      It previously read 400 / 21, which put ~442 of content in a 440 pitch: the item
-      title overflowed its row and ate the whole 40px itemSpacing, landing ~5px under the
-      NEXT genre's label, while the top gap was an oversized 48px.
+      itemSize.y mirrors the single rowHeights entry: Roku repeats that entry across all
+      rows, but its docs say unspecified rows fall back to itemSize.y. Equal is correct
+      either way — docs/architecture/list-grid-item-layout.md.
 
       The offset is NEGATIVE on purpose, and the gaps above/below a heading are
-      deliberately NOT equal. A heading spaced evenly between two rows reads as belonging
-      to neither; it has to sit closer to the row it labels. -8 puts it 14px above its own
-      posters and 42px below the previous row's titles (a 1:3 split). Verified on device
-      that Roku honours a negative value here — it is the only way under 22px, since the
-      cell's own POSTER_TOP_OFFSET floors the gap and that constant is shared with the
-      main library grid.
+      deliberately NOT equal: a heading spaced evenly between two rows reads as belonging
+      to neither. -8 puts it 14px above its own posters and 42px below the previous row's
+      titles. It is the only way under 22px, since the cell's own POSTER_TOP_OFFSET floors
+      the gap and that constant is shared with the main library grid.
     -->
     <JRRowList
       id="genreList"
@@ -83,7 +81,7 @@
       numColumns="1"
       numRows="3"
       vertFocusAnimationStyle="fixed"
-      itemSize="[1702, 400]"
+      itemSize="[1702, 415]"
       rowItemSize="[[213, 320]]"
       rowHeights="[415]"
       rowItemSpacing="[[20, 0]]"

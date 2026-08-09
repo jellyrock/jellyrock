@@ -6,7 +6,7 @@ related-files:
   - components/ItemGrid/GridItem.bs
   - components/ItemGrid/BaseGridView.xml
   - components/home/HomeRows.bs
-last-reviewed: 2026-06-03
+last-reviewed: 2026-08-09
 ---
 
 # `RowList` / grid item layout & the focus indicator
@@ -38,6 +38,15 @@ For an item component that shows a **poster with a title below it**:
    taller than `rowItemSize` is what pins the indicator to the slot and puts the title
    _outside_ the indicator. `MarkupGrid` gets the equivalent from its presenter's
    `rowHeights`/`itemSize`.
+
+   **A one-entry `rowHeights` covers every row — but keep `itemSize.y` equal to it
+   anyway.** Roku's [`RowList` reference](https://github.com/rokudev/dev-doc/blob/v2.0/docs/REFERENCES/scenegraph/list-and-grid-nodes/rowlist.md)
+   says rows past the end of the array fall back to `itemSize.y`, unlike `rowItemSize` /
+   `rowLabelOffset` / `rowItemSpacing`, which repeat their last value. Measured
+   2026-08-09 on an Ultra: it repeats like the others — `rowHeights="[415]"` with
+   `itemSize.y` forced to `200` left rows 2 and 3 at the 455-pixel pitch, not 240. So we
+   rely on undocumented behavior, and a second `rowHeights` entry would re-arm the
+   documented fallback. Keeping the two in step is correct under either reading.
 3. **Poster fills the slot at a top offset** (`POSTER_TOP_OFFSET`), so the poster
    overflows the slot bottom and the indicator (drawn behind) shows a clean top margin
    and does **not** overlap the image. Poster flush at `[0,0]` makes the indicator's
@@ -52,8 +61,9 @@ For an item component that shows a **poster with a title below it**:
   near `applyRowSizes`); `JRRowItem` fills the slot and places its title below.
 - [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre `RowList`
   ([`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml) `genreList`):
-  `rowItemSize="[[213,320]]"`, `rowHeights="[400]"`, poster filled at
-  `POSTER_TOP_OFFSET`, title below.
+  `rowItemSize="[[213,320]]"`, `rowHeights="[415]"` (and `itemSize="[1702,415]"` to
+  match), poster filled at `POSTER_TOP_OFFSET`, title below. Why those numbers: the
+  comment beside the fields in the markup.
 - Roku's official [`RowList` sample](https://github.com/rokudev/samples/tree/master/ux%20components/lists%20and%20grids/RowListExample)
   uses `rowItemSize=[536,308]` with the poster inset to `512×288` — another way to keep
   the indicator off the image.
