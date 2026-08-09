@@ -4,7 +4,8 @@
 // Why bitmaps at all: Rectangle-strip gradients alias into visible bars/gaps
 // under the FHD→HD autoscale on 720p-UI devices (#777). A single stretched
 // Poster is scale-independent and is the technique Roku OS itself uses for its
-// player shade (FixedTheme PauseGradient.9.png, a 3×722 bitmap). The assets
+// player shade (FixedTheme PauseGradient.9.png — 3×1082, measured in
+// r2d2_bitmaps on an Ultra 4850X). The assets
 // stay tiny on purpose: texture memory is the DECODED SOURCE dimensions × 4B
 // (verified with r2d2_bitmaps on hardware — a 4×270 asset allocates ~36KB
 // regardless of displayed size), so this does NOT reintroduce the full-screen
