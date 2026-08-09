@@ -56,12 +56,12 @@ sub positionResetButton(keyGridWidth as float, buttonY as float)
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
   if key = "back"
     m.top.escape = key
     return true
   end if
-
-  if not press then return false
 
   ' Handle reset button focus
   if m.resetButton.hasFocus()
