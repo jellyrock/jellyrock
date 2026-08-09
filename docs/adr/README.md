@@ -37,3 +37,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0023](0023-cold-launch-cast-producer.md) | Cold-launch cast producer — phantom session, device-validation gate, `net9`/10.11 floor | Accepted | 2026-07-17 |
 | [0024](0024-crash-report-enrich-before-file.md) | Crash workflow — enrich before file, disposition routing to epics (supersedes 0006) | Accepted | 2026-07-22 |
 | [0025](0025-gradient-rendering-ramp-posters.md) | Gradients render as stretched tinted ramp posters, not Rectangle stacks | Accepted | 2026-08-08 |
+| [0026](0026-no-worker-pool-for-task-ui-handoff.md) | No worker-pool tier for Task→UI handoffs; the render thread is the shared bottleneck | Accepted | 2026-08-09 |
