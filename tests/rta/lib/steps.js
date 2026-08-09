@@ -94,6 +94,26 @@ export async function waitFocused(
   );
 }
 
+/**
+ * Wait until focus is INSIDE the container with id `containerId` (e.g. `#itemGrid`).
+ *
+ * The precondition for walking any focus-driven list: `rowItemFocused` / `itemFocused`
+ * RETAIN their last value while the list does not hold focus, so a walk started too
+ * early reads a stale index forever and sends its presses to whatever does hold focus —
+ * then times out blaming the list. "Loaded" is not "focused". Named rather than
+ * hand-rolled at each call site so its ABSENCE is visible in review.
+ *
+ * No key presses on purpose: focus arrives on its own once the view settles, and
+ * pressing at a component we have not located yet is the mistake this guards against.
+ */
+export async function waitFocusInside(containerId, { timeout = 12000, interval = 300 } = {}) {
+  return waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes(containerId), {
+    timeout,
+    interval,
+    label: `focus inside ${containerId}`,
+  });
+}
+
 /** Home is ready once HomeRows has rendered its content. */
 export async function waitHome() {
   await waitFor('#homeRows.content.getChildCount()', hasChildren, {
