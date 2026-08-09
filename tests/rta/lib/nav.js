@@ -266,10 +266,18 @@ export async function openLibraryByType(collectionType, libraryId = null) {
 
 /**
  * A library grid is "loaded" once BaseGridView says so: its `loadState` interface
- * field reaches "loaded" (usable content on screen) or "empty" (zero items, the
- * "No Items" empty-state — a real, capture-worthy screen, e.g. the Networks view on
- * a server whose shows have no network). Accepting the empty-state lets the same nav
- * capture empty views instead of timing out on them.
+ * field reaches "loaded" (usable content on screen) or "empty" (zero ITEMS). Accepting
+ * the empty-state lets the same nav capture empty views instead of timing out on them.
+ *
+ * "empty" is two different screens, because both branches measure it in items:
+ *  - grid path — the "No Items" message, a real capture-worthy screen (e.g. the
+ *    Networks view on a server whose shows have no network);
+ *  - genre RowList path — titled rows are drawn but every one is childless (all the
+ *    per-genre sample fetches failed), so `emptyText` stays hidden and the screen
+ *    reads as broken. Tracked as an open followup in `docs/progress.md`.
+ * `assertGenreRowsOwnTheirItems` (screens.js) is what catches the second case for
+ * `moviesLibraryGenres`; this wait deliberately does not, so a genre capture without
+ * that assertion will pass through it.
  *
  * ONE atomic read of the app's own state, deliberately NOT inferred from content
  * internals: the previous shape (child counts + sniffing row 0's first cell type)
