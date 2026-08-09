@@ -19,6 +19,21 @@ Every test suite extends `tests.BaseTestSuite` (which extends `rooibos.BaseTestS
 - Registry teardown between tests (only when `m.needsRegistrySetup = true` — opt-in per suite).
 - Test-mode marker: registry section names start with `test-` so production migration code skips real user data.
 
+## Lifecycle hooks — `setup()` is per SUITE, `beforeEach()` is per TEST
+
+rooibos gives `BaseTestSuite` four distinct hooks, and the two pairs run at different frequencies:
+
+| Hook | Runs |
+|---|---|
+| `setup()` / `teardown()` | **once per suite** |
+| `beforeEach()` / `afterEach()` | **once per test** |
+
+- **Build anything a test MUTATES in `beforeEach()`, never `setup()`.** A node created in `setup()` is shared by every test in the suite, so each one inherits whatever the last left behind. Chain `super.beforeEach()` / `super.afterEach()` — the project base class overrides all four.
+- `setup()` is still right for genuinely immutable per-suite fixtures (read-only mock data, constants). The rule is about *mutated* state, not about relocating everything.
+- **This is not theoretical.** In #781 a `rotateDegrees = 270` set by one test leaked into the next one *in the same `@describe`* and made a correct component look broken — grouping by `@describe` does not re-run `setup()` either. The worse direction is silent: a test that never sets a field it reads can pass on a neighbor's leftovers, and stays green until someone reorders or deletes that neighbor.
+- **Cheap check:** reverse the order of the tests in a suite and re-run. A suite that only passes in declaration order is not isolated.
+- ~23 existing suites predate this rule — see [`rooibos-setup-not-per-test`](../docs/architecture/tech-debt.md#rooibos-setup-not-per-test) and epic [#786](https://github.com/jellyrock/jellyrock/issues/786). Fix them in passing when you touch one; don't copy their shape into a new spec.
+
 ## Registry isolation
 
 - **All test registry writes must use `test-*` section names.** This isolates tests from real user data, even on a dev build deployed to a personal device.
