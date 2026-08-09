@@ -23,6 +23,7 @@ import {
   getActiveVal,
   waitFor,
   waitFocused,
+  waitFocusInside,
   waitHome,
   hasChildren,
   sleep,
@@ -95,6 +96,11 @@ export async function navSearch() {
   await sleep(1500); // let the focus settle + result posters paint before capture
 }
 
+const HOME_TILE_WAIT_MS = 15000;
+const HOME_TILE_POLL_MS = 300;
+const DETAIL_ROW_WAIT_MS = 15000;
+const DETAIL_ROW_POLL_MS = 300;
+
 /**
  * Locate a library tile on the Home screen. The Home layout is server-side
  * user-configurable (the "My Media" row's position AND its tile order can be
@@ -116,8 +122,26 @@ export async function navSearch() {
  * now THROWS when several libraries match, rather than silently picking the
  * first. That guard is self-limiting: it can only fire where the ambiguity is
  * real, so the demo server never trips it.
+ *
+ * **Polls rather than scanning once, because Home renders before its data arrives.**
+ * `waitHome()` gates on `#homeRows.content.getChildCount() > 0`, and
+ * `HomeRows.createSkeletonRows()` appends the `sectionId="library"` row — carrying a
+ * single bare `ContentNode` placeholder — BEFORE the real tiles load. A placeholder
+ * has no `.id` and no `.collectionType`, so a single scan landing in that window
+ * matches nothing and throws `tile id="..." not found` on a Home that is perfectly
+ * healthy a second later. Observed on device (Stick `3600X`, cold launch polled from
+ * t=0): the gate passed at +3795 ms with 4 skeleton rows, the library row held 1
+ * placeholder and 0 ids until +5141 ms — a **~1.35 s** window, twice reproduced. The
+ * normal flow usually clears it because `hardRelaunch()` sleeps `bootMs` first, which
+ * is why this surfaces as a rare flake rather than a constant failure: it only bites
+ * when Home's data is slower than that fixed sleep.
  */
-async function findHomeLibraryTile(collectionType, libraryId = null) {
+/**
+ * One pass over Home's library row. Returns `{ tile }` on an id hit, otherwise the
+ * `collectionType` matches collected so far. Never throws — the caller decides when
+ * an empty result is "not there yet" versus "not there".
+ */
+async function scanHomeLibraryTiles(collectionType, libraryId) {
   const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
   // Collected rather than returned on first hit, so the no-id path can tell
   // "one match" from "several" — see the ambiguity guard below.
@@ -129,22 +153,39 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
     for (let c = 0; c < tiles; c++) {
       if (libraryId) {
         if ((await getVal(`#homeRows.content.${r}.${c}.id`)) === libraryId)
-          return { row: r, col: c };
+          return { tile: { row: r, col: c }, matches };
         continue;
       }
       const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
       if (ct === collectionType) matches.push({ row: r, col: c });
     }
   }
+  return { tile: null, matches };
+}
 
+async function findHomeLibraryTile(collectionType, libraryId = null) {
+  const start = Date.now();
+  let matches;
+  for (;;) {
+    const scan = await scanHomeLibraryTiles(collectionType, libraryId);
+    if (scan.tile) return scan.tile;
+    matches = scan.matches;
+    // One match is the answer; several is a real ambiguity that more waiting cannot
+    // resolve (placeholders carry no collectionType, so a match means a real tile).
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) break;
+    if (Date.now() - start >= HOME_TILE_WAIT_MS) break;
+    await sleep(HOME_TILE_POLL_MS);
+  }
+
+  const waited = `after ${Math.round((Date.now() - start) / 1000)}s`;
   if (libraryId) {
     throw new Error(
-      `home library tile id="${libraryId}" (collectionType="${collectionType}") not found`,
+      `home library tile id="${libraryId}" (collectionType="${collectionType}") not found ${waited}`,
     );
   }
-  if (matches.length === 1) return matches[0];
   if (matches.length === 0) {
-    throw new Error(`home library tile collectionType="${collectionType}" not found`);
+    throw new Error(`home library tile collectionType="${collectionType}" not found ${waited}`);
   }
 
   // AMBIGUOUS — refuse rather than silently pick the first tile. The seeding side
@@ -188,6 +229,14 @@ export async function navLibraryByType(collectionType, libraryId = null) {
 export async function openLibraryByType(collectionType, libraryId = null) {
   await waitHome();
   const { row, col } = await findHomeLibraryTile(collectionType, libraryId);
+  // Focus must be INSIDE the row list before walking it. `rowItemFocused` RETAINS its
+  // last value when the RowList doesn't hold focus, so a walk started while focus is
+  // still elsewhere reads a stale [0,0] forever, sends its presses to whatever does
+  // hold focus, and then times out blaming the tile — which is what
+  // `home library tile col N (...) (last=[0,0])` actually means. No action here on
+  // purpose: focus lands in the rows on its own once Home is up, and pressing keys at
+  // a component we have not located yet is how the OSD navs got this wrong.
+  await waitFocusInside('#homeRows');
   // Vertical: step to the library row.
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
     timeout: 12000,
@@ -350,16 +399,39 @@ async function openChildDetailByRowType(tileType) {
     timeout: 20000,
     read: getActiveVal,
   });
-  await sleep(1200); // let the rows load
-  const rowCount = (await getActiveVal('#extrasGrid.content.getChildCount()')) || 0;
+  // Poll for the row rather than scanning once, for the same reason `findHomeLibraryTile`
+  // does: `ExtrasRowList.populateRow` APPENDS rows as its async load chain progresses, so
+  // the count gate above can pass on the first row while the requested type has not landed
+  // yet. A single pass then throws about a screen that is fine a moment later. (Seen once
+  // during this work: `detail row with tile type "Season" not found` on a run whose other
+  // 35 screens passed.) The old fixed `sleep(1200)` was papering over exactly this — a
+  // bounded poll replaces it, and returns as soon as the row exists rather than always
+  // paying the full delay.
+  const rowsStart = Date.now();
   let targetRow = -1;
-  for (let r = 0; r < rowCount; r++) {
-    if ((await getActiveVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
-      targetRow = r;
-      break;
+  let rowCount;
+  for (;;) {
+    rowCount = (await getActiveVal('#extrasGrid.content.getChildCount()')) || 0;
+    for (let r = 0; r < rowCount; r++) {
+      if ((await getActiveVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
+        targetRow = r;
+        break;
+      }
     }
+    if (targetRow >= 0) break;
+    if (Date.now() - rowsStart >= DETAIL_ROW_WAIT_MS) break;
+    await sleep(DETAIL_ROW_POLL_MS);
   }
-  if (targetRow < 0) throw new Error(`detail row with tile type "${tileType}" not found`);
+  if (targetRow < 0) {
+    throw new Error(
+      `detail row with tile type "${tileType}" not found after ` +
+        `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present)`,
+    );
+  }
+  // Same precondition as the Home walk: `rowItemFocused` retains its last value when
+  // the grid is unfocused, so confirm the Down press above actually landed focus in
+  // the rows panel before stepping through it.
+  await waitFocusInside('#extrasGrid');
   // Walk down to the target row; confirm focus moved, then let the slide animation
   // settle so the OK isn't swallowed.
   for (let r = 0; r < targetRow; r++) {
@@ -410,6 +482,10 @@ export async function navMovieDetails(ctx) {
   await navLibraryGrid(ctx);
   const target = ctx?.heroIndex || 0;
   if (target > 0) {
+    // Grid LOADED is not grid FOCUSED, and `itemFocused` retains its last value while
+    // the grid is unfocused — so without this the walk can read a stale 0 forever and
+    // press Right at whatever actually holds focus. Same precondition as the Home walk.
+    await waitFocusInside('#itemGrid');
     // Press Right until the grid reports the hero tile focused (robust to a
     // dropped keypress — only presses while focus is still short of the target).
     await waitFor('#itemGrid.itemFocused', (v) => v === target, {
@@ -444,6 +520,65 @@ export async function startPlayback(ctx) {
 }
 
 /**
+ * Read a field on the player node. The player's `id` IS the item id (that is how
+ * `navOsd` addresses its `seek`), so read it by id rather than via `focusedNode`:
+ * focus is not guaranteed to be on the player at any given tick, and a focus-based
+ * read silently returns another node's field (or `state="none"`) when it isn't.
+ */
+const readPlayer = (itemId) => async (keyPath) =>
+  (
+    await odc
+      .getValue(
+        itemId
+          ? { base: 'scene', keyPath: `#${itemId}.${keyPath}` }
+          : { base: 'focusedNode', keyPath },
+      )
+      .catch(() => ({}))
+  ).value;
+
+/**
+ * Wait for the OSD to come up after playback starts.
+ *
+ * Found when `osd` + `trickplay` failed on a Roku Stick `3600X` (720p UI) while the
+ * same build passed on a Roku Ultra. The app was never at fault — its `onKeyEvent`
+ * behaved correctly on both:
+ *
+ * 1. **Don't send input while the player is still loading.** The app deliberately
+ *    swallows Up until the video is playable (`stateAllowsOSD` excludes
+ *    `buffering`), so the old loop spent that whole window pressing a player that
+ *    is designed not to answer. Measured, the window is ~5-7 s on BOTH devices
+ *    (stick 5.6/5.8 s, Ultra 7.2 s) — it is bound by stream start against a remote
+ *    server, NOT by device speed, so this was never a slow-device-only hazard; the
+ *    stick is just where it surfaced.
+ * 2. **Don't keep pressing into an OSD that is already up.** Up only OPENS the
+ *    OSD (it is not a toggle), and once open the key goes to the OSD itself,
+ *    where it moves focus between controls — so a stray press perturbs the state
+ *    the following steps assert on. Read first, press only while it is down —
+ *    the same guard the focus-walk navs above use.
+ * (A dropped key press masquerading as "the screen never loaded" was the third
+ * hazard here; that one is fixed for every nav in `waitFor`/`waitFocused`, which
+ * now count failing actions and name them in the timeout message.)
+ */
+async function waitOsdUp(label, ctx) {
+  await waitFor('state', (v) => v === 'playing' || v === 'paused', {
+    timeout: 90000,
+    interval: 1000,
+    label: 'player playable (pre-OSD)',
+    read: readPlayer(ctx?.heroId),
+  });
+  await sleep(1500); // let the just-started player settle before sending any input
+
+  await waitFor('#osd.visible', (v) => v === true, {
+    timeout: 30000,
+    interval: 2000,
+    action: async () => {
+      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
+    },
+    label,
+  });
+}
+
+/**
  * Playback -> paused OSD overlay at the exact target position. OSD only appears
  * once the player reaches a playable state (`stateAllowsOSD`), so we retry Up
  * until it shows, then Play to PAUSE + re-show it (matches the reference's
@@ -454,12 +589,7 @@ export async function startPlayback(ctx) {
 export async function navOsd(ctx) {
   await startPlayback(ctx);
   // Confirm the player reached a playable state (OSD only shows when it has).
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 90000,
-    interval: 2000,
-    action: () => press(ecp.Key.Up),
-    label: 'osd visible',
-  });
+  await waitOsdUp('osd visible', ctx);
   // Hide the OSD (focus -> player), then Play to PAUSE + re-show the OSD.
   await press(ecp.Key.Back);
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
@@ -490,12 +620,7 @@ export async function navOsd(ctx) {
  */
 export async function navTrickplay(ctx) {
   await startPlayback(ctx);
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 90000,
-    interval: 2000,
-    action: () => press(ecp.Key.Up),
-    label: 'playback ready (osd)',
-  });
+  await waitOsdUp('playback ready (osd)', ctx);
   await press(ecp.Key.Back); // hide OSD so the player (not the OSD) receives Right
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
   await odc

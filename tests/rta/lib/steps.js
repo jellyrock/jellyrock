@@ -38,9 +38,15 @@ export async function getActiveVal(keyPath) {
 
 /**
  * Poll `keyPath` until `predicate(value)` is true, optionally re-issuing
- * `action` (e.g. a keypress) each tick. Throws on timeout so a broken nav/test
+ * `action` (e.g. a key press) each tick. Throws on timeout so a broken nav/test
  * fails loudly instead of silently proceeding. `read` selects the reader (default
  * scene-rooted getVal); pass getActiveVal to scope the poll to the active routed view.
+ *
+ * A failing `action` is counted and named in the timeout message. It is still
+ * swallowed per-tick (one dropped press should not fail a nav that recovers), but
+ * it must not vanish: an action that never lands and a screen that never renders
+ * produce the same "timed out waiting for X" otherwise, and telling those apart
+ * after the fact costs hours.
  */
 export async function waitFor(
   keyPath,
@@ -49,13 +55,17 @@ export async function waitFor(
 ) {
   const start = Date.now();
   let last;
+  let actionErrors = 0;
   while (Date.now() - start < timeout) {
-    if (action) await action().catch(() => {});
+    if (action) await action().catch(() => actionErrors++);
     last = await read(keyPath);
     if (predicate(last)) return last;
     await sleep(interval);
   }
-  throw new Error(`nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})`);
+  throw new Error(
+    `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
+      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+  );
 }
 
 /**
@@ -70,14 +80,38 @@ export async function waitFocused(
 ) {
   const start = Date.now();
   let last;
+  let actionErrors = 0;
   while (Date.now() - start < timeout) {
-    if (action) await action().catch(() => {});
+    if (action) await action().catch(() => actionErrors++);
     const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     last = `${f?.node?.subtype}@${f?.keyPath}`;
     if (f && predicate(f)) return f;
     await sleep(interval);
   }
-  throw new Error(`nav timed out waiting for focus (${label || 'predicate'}); last=${last}`);
+  throw new Error(
+    `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
+      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+  );
+}
+
+/**
+ * Wait until focus is INSIDE the container with id `containerId` (e.g. `#itemGrid`).
+ *
+ * The precondition for walking any focus-driven list: `rowItemFocused` / `itemFocused`
+ * RETAIN their last value while the list does not hold focus, so a walk started too
+ * early reads a stale index forever and sends its presses to whatever does hold focus —
+ * then times out blaming the list. "Loaded" is not "focused". Named rather than
+ * hand-rolled at each call site so its ABSENCE is visible in review.
+ *
+ * No key presses on purpose: focus arrives on its own once the view settles, and
+ * pressing at a component we have not located yet is the mistake this guards against.
+ */
+export async function waitFocusInside(containerId, { timeout = 12000, interval = 300 } = {}) {
+  return waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes(containerId), {
+    timeout,
+    interval,
+    label: `focus inside ${containerId}`,
+  });
 }
 
 /** Home is ready once HomeRows has rendered its content. */
