@@ -14,6 +14,8 @@ The gate targets **speculative features** ("we might need this if we add a fourt
 
 Before proposing a change, answer: **Evidence** (which session/audit/friction event?) — **Cost** (machinery, files, maintenance, runtime?) — **Benefit** (which real problem?) — **Simpler alternative** (the convention-only version; if the heavier option wins, why isn't convention enough?). If "evidence" is "none, but it'd be cleaner" — and it isn't an existing defect or a standing-goal optimization — defer it.
 
+State that answer in the **PR body or commit message**, not in a code comment. Citing your evidence is how you justify a change to a reviewer; it is not something the next reader of the code needs in order to change it safely.
+
 ## The tell
 
 You catch yourself **naming a likely failure, then shrugging it off** — citing "no friction story yet" to defer a fix whose shape you can already describe, or a defect you can already point at. Default to act on a clearly-shaped or already-present problem; reserve "defer until friction" for genuinely speculative features. (Cosmetic cleanup riding along with a real change is fine — it just can't be the whole justification.)

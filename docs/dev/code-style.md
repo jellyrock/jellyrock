@@ -333,6 +333,20 @@ Use inline comments for complex logic, Roku-specific oddities, and non-obvious d
 if not isValid(serverUrl) or serverUrl = "" then return invalid
 ```
 
+### What doesn't belong in a comment
+
+**Length is not the defect.** Comment-line share runs 30–65% in the files carrying the most platform knowledge (`source/utils/tasks.bs`, `source/api/apiPipeline.bs`, `components/ItemGrid/GridItem.bs`), and that is deliberate — a long comment holding a measured Roku behavior you cannot derive from the code earns every line. The test is: **would the next person need this to change the code correctly?**
+
+Three things fail that test and belong elsewhere:
+
+- **Revision history** — "it used to be set here", "this previously read 400". `git blame` and the commit message already hold it, and unlike the comment they can't go stale.
+- **The reproduction or measurement that produced the fix** — the device, the stubbed sub, the run counts. That's commit-body or journal material (`docs/progress.md`, [`tech-debt.md`](../architecture/tech-debt.md), a decision record). Keep the *rule* the measurement produced; drop the narrative that got you there.
+- **Restating the code** — a comment that paraphrases the line under it.
+
+Two copies of the same evidence is not thoroughness. It's a drift hazard, and the comment is the copy nobody updates.
+
+Agent-facing counterpart: [`.claude/rules/prove-dont-dismiss.md`](../../.claude/rules/prove-dont-dismiss.md) ("Where the proof goes").
+
 ### Section Dividers
 
 Use decorated comment blocks for major logical sections within large files.
