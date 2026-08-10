@@ -24,6 +24,8 @@ related-files:
   - scripts/lint/docs-stale-blocking.cjs
   - scripts/lint/check-touched-related-files.cjs
   - dictionary.txt
+  - .spellcheckerrc.yaml
+  - .github/workflows/_lint-spelling.yml
   - scripts/lint/check-touched-lint.cjs
   - scripts/lint/decision-shape-nudge.cjs
   - scripts/lint/progress-cursor-nudge.cjs
@@ -546,7 +548,7 @@ Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest 
 | `bslint` (`lint:bs`) | — | ✓ | Needs full project context (cross-file scope resolution) |
 | `bsc --noEmit` (`validate`) | — | ✓ | Project-wide compile, ~10–30 s |
 | `markdownlint-cli2 --fix` (`lint:markdown`) | ✓ | ✓ | Pre-commit auto-fixes + re-stages; pre-push re-runs the read-only check (gated on `.md` changes) because rebase / cherry-pick / merge commits skip the pre-commit hook entirely |
-| `spellchecker` (`lint:spelling`) | ✓ | ✓ | Pre-commit checks (no auto-fix — correctness); pre-push re-runs it (gated on `.md` changes) as the same backstop for commits that bypass pre-commit |
+| `spellchecker` (`lint:spelling`) | ✓ | ✓ | Pre-commit checks (no auto-fix — correctness); pre-push re-runs it (gated on `.md` changes) as the same backstop for commits that bypass pre-commit. Dictionary / plugins / ignore rules come from [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml), NOT from per-invocation flags — see below |
 | `jshint` (`lint:json`) | ✓ | — | File-scoped; no auto-fix |
 | `docs-check.cjs` (`lint:docs`) | — | ✓ | Cross-doc reference check; needs all docs loaded |
 | `generate-dev-index.cjs --check` | — | ✓ | Drift check on auto-generated table |
@@ -555,6 +557,11 @@ Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest 
 | `lint:issue-templates` | — | ✓ | Conditional on `.github/ISSUE_TEMPLATE/` changes; validates against vendored GitHub schema (invalid forms otherwise hide silently) |
 
 Excludes mirror `package.json`'s `lint:*` scripts via shared helpers in [`scripts/lib/lint-excludes.cjs`](../../scripts/lib/lint-excludes.cjs) — the lint-staged config, the end-of-turn hook script, and the package.json scripts all consult the same source so excludes don't drift.
+
+**The spellchecker's other settings follow the same pattern, and that is load-bearing.** Four surfaces spawn `spellchecker-cli`: `lint:spelling` (CI + pre-push), [`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) (pre-commit), [`check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) (end-of-turn hook) and [`journal-sync.js`](../../scripts/journal-sync.js) (post-merge bullet check). They each used to carry their own copy of the dictionary path, plugin list and ignore regex, held together by a comment — and it drifted, leaving the hook reporting a word the others had stopped flagging. [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml) is auto-discovered at the package root and CLI args override it, so every surface inherits the same rules. Two things to know before editing an invocation site:
+
+- **Don't re-specify `-d` / `-p` / `-i`.** `tests/scripts/unit/lint/spellchecker-config.test.js` fails the build if a call site does. The one sanctioned exception is `journal-sync.js`'s absolute `-d`: config `dictionaries` entries resolve against the **`cwd` rather than the config file**, and that runner can be spawned from outside the repo root.
+- **The file globs deliberately stay OUT of the config**, for the reason above — `lint-excludes.cjs` already owns them, and a third copy in YAML would deepen the duplication rather than resolve it.
 
 ### Bypass discipline
 

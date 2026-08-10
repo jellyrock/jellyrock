@@ -58,7 +58,8 @@ For an item component that shows a **poster with a title below it**:
 
 - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) + [`HomeRows`](../../components/home/HomeRows.bs):
   `HomeRows` sets `rowHeights = rowItemSize + 90` (see the comment at `HomeRows.bs`
-  near `applyRowSizes`); `JRRowItem` fills the slot and places its title below.
+  near `setRowItemSize`); `JRRowItem` fills the slot and places its title below.
+  `applyRowSizes` is the equivalent in `SearchRow` / `FavoritesRows`, not here.
 - [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre `RowList`
   ([`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml) `genreList`):
   `rowItemSize="[[213,320]]"`, `rowHeights="[415]"` (and `itemSize="[1702,415]"` to
