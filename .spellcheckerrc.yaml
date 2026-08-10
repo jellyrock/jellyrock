@@ -1,0 +1,58 @@
+# Single source of truth for spellchecker-cli's dictionary, plugins and ignore rules.
+#
+# spellchecker-cli auto-discovers this file at the package root, and CLI arguments override
+# whatever it finds. Four surfaces invoke the tool and they MUST agree — a rule that lives on
+# only some of them means a commit passes locally and fails in CI, or (worse) an agent gets an
+# end-of-turn finding nobody else can reproduce:
+#
+#   package.json `lint:spelling`          repo-wide, CI + pre-push
+#   .lintstagedrc.cjs                     pre-commit, staged files only
+#   scripts/lint/check-touched-lint.cjs   end-of-turn hook, changed files only
+#   scripts/journal-sync.js               post-merge, one candidate progress.md bullet
+#
+# They previously each carried their own copy of the flags below, held together by a
+# "keep in sync" comment. That drifted the first time it was tested. `tests/scripts/unit/lint/
+# spellchecker-config.test.js` is the gate that keeps it from drifting again.
+#
+# NOT here on purpose: the file globs and their excludes. Those already have one owner in
+# `scripts/lib/lint-excludes.cjs`, mirrored into package.json's `lint:spelling` globs. A third
+# copy in YAML would make that worse, not better.
+
+# ⚠️ Resolved relative to the CWD of whatever spawns the tool, NOT to this file. Every surface
+# except journal-sync.js runs from the repo root, so a bare filename is right for them.
+# journal-sync.js can run with a different CWD and therefore passes its own absolute `-d`,
+# which overrides this. Do not "simplify" that away — it fails with ENOENT.
+dictionaries:
+  - dictionary.txt
+
+plugins:
+  - spell
+  - indefinite-article
+  - repeated-words
+  - syntax-mentions
+  - syntax-urls
+  - frontmatter
+
+# Ignore a word that arrived with its sentence-final period glued on.
+#
+# A heading whose first word is lowercase (`## decision-id: <slug>` — the schema every
+# docs/decisions.md note uses, and `### <slug>:` in docs/signals-backlog.md) stops retext
+# treating the PREVIOUS paragraph's final period as sentence-final. That paragraph's last word
+# is then looked up as `handoff.` rather than `handoff`. Base-dictionary words survive it;
+# words from our own dictionary.txt are matched exactly and fail — so appending a decision note
+# could break the build on the prose of the note above it, which is a trap sitting in the
+# sanctioned `/log decision` path.
+#
+# The regexes here are anchored with ^ and $ by the tool, so this only ever matches a whole
+# reported token. A token is reported WITH a trailing period only in the mis-tokenized case —
+# a typo at a normal sentence end is reported without one and still fails. The coverage lost is
+# a real typo that is BOTH paragraph-final AND directly above a lowercase heading.
+#
+# The apostrophe in the character class is load-bearing: dictionary.txt holds 15 possessives
+# (`orchestrator's`, `Jellyfin's`, `repo's`, …), each a live tripwire for a paragraph ending on
+# it. It could not be included while this regex lived in .lintstagedrc.cjs — lint-staged parses
+# that command string itself rather than handing it to a shell, so the `'\''` escaping the
+# config's `q()` helper emits split the arguments and left the tool with no --files at all.
+# Moving the rule here removed that constraint.
+ignore:
+  - "[A-Za-z][A-Za-z0-9'-]*\\."

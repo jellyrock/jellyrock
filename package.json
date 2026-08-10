@@ -106,7 +106,7 @@
     "lint:promise-ratchet": "node scripts/lint/promise-ratchet.cjs",
     "lint:socket-auth-binding": "node scripts/lint/socket-auth-binding-check.js",
     "lint:socket-thread-release": "node scripts/lint/socket-thread-release-check.js",
-    "lint:spelling": "spellchecker -d dictionary.txt -p spell indefinite-article repeated-words syntax-mentions syntax-urls frontmatter -i \"[A-Za-z][A-Za-z0-9-]*\\.\" --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!components/vendor/**/*.md\" \"!docs/user/app-settings.md\" \"!docs/screenshots/README.md\" \"!CHANGELOG.md\" \"!**/CLAUDE.md\" \"!**/AGENTS.md\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
+    "lint:spelling": "spellchecker --files \"**/*.md\" \"**/.*/**/*.md\" \"!node_modules/**/*.md\" \"!components/vendor/**/*.md\" \"!docs/user/app-settings.md\" \"!docs/screenshots/README.md\" \"!CHANGELOG.md\" \"!**/CLAUDE.md\" \"!**/AGENTS.md\" \"!**/copilot-instructions.md\" \"!.claude/**/*.md\" \"!.opencode/**/*.md\"",
     "lint:translations": "node scripts/lint/update-translations.cjs",
     "postinstall": "npm run ropm && npm run patches:apply",
     "patches:apply": "patch-package",

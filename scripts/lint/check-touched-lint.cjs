@@ -120,19 +120,10 @@ const findings = [];
 const spellTargets = mdFiles.filter((f) => !isSpellExcluded(f));
 
 if (spellTargets.length > 0 && binExists('spellchecker')) {
-  const { code, stdout, stderr } = runBin('spellchecker', [
-    '-d',
-    'dictionary.txt',
-    '-p',
-    'spell',
-    'indefinite-article',
-    'repeated-words',
-    'syntax-mentions',
-    'syntax-urls',
-    'frontmatter',
-    '--files',
-    ...spellTargets,
-  ]);
+  // Dictionary, plugins and ignore rules come from `.spellcheckerrc.yaml`, which the tool
+  // discovers at the package root. Re-specifying any of them here is what let this surface
+  // drift from CI and report an unknown word the other surfaces had already stopped flagging.
+  const { code, stdout, stderr } = runBin('spellchecker', ['--files', ...spellTargets]);
   if (code !== 0) {
     const output = (stdout + stderr).trim();
     findings.push({

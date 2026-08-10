@@ -363,17 +363,13 @@ export function pruneRecentlyShipped(content, today, maxAgeDays) {
 // runs `check`, and `ship` runs the same check as a safety net before write.
 // ──────────────────────────────────────────────────────────────────────────
 
-// Same plugin set and dictionary path as `npm run lint:spelling`. Keeping them
-// in sync is load-bearing — if the bullet passes here, it must pass the lint
-// on the next PR that touches a .md file.
-const SPELL_PLUGINS = [
-  'spell',
-  'indefinite-article',
-  'repeated-words',
-  'syntax-mentions',
-  'syntax-urls',
-  'frontmatter',
-];
+// Plugins and ignore rules come from `.spellcheckerrc.yaml` at the package root.
+// Inheriting them rather than restating them is load-bearing — if a bullet passes
+// here, it must pass the lint on the next PR that touches a .md file.
+//
+// The dictionary path is the ONE flag this caller still passes, because config
+// `dictionaries` entries resolve against the CWD rather than against the config
+// file, and this runner can be spawned from outside `repoRoot`.
 
 // Resolve spellchecker-cli's binary from THIS script's own node_modules so
 // runs against a fixture repo (test or CI checkout of a different working
@@ -410,7 +406,7 @@ export function defaultSpellRunner(content, repoRoot) {
     writeFileSync(tmpFile, content);
     const res = spawnSync(
       SPELLCHECKER_BIN,
-      ['-d', join(repoRoot, 'dictionary.txt'), '-p', ...SPELL_PLUGINS, '--files', tmpFile],
+      ['-d', join(repoRoot, 'dictionary.txt'), '--files', tmpFile],
       { encoding: 'utf8' },
     );
     return { ok: res.status === 0, output: (res.stdout || '') + (res.stderr || '') };
