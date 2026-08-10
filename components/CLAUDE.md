@@ -76,6 +76,10 @@ Users can re-theme every one of these (Settings → Theme → Custom), so a colo
 picked for its appearance in the default theme will be wrong in someone else's.
 Pick by meaning and it survives any palette.
 
+### Border weights — 3px static, 6px focusable
+
+Same principle for the 9-patch border assets: the weight encodes interaction state. `border-3px.9.png` is for **static panel edges** — the `components/dialogs/` family and `OverviewDialog`'s panel. `border-6px.9.png` is for **focusable things** — `TextButton`'s focus ring, `FocusableOverview`, grid focus indicators. The thick border is part of the "you can focus this" signal; keep the weights distinct so it stays readable.
+
 ## Common patterns
 
 - **`isValid(x)`** for nil/invalid checks — never compare to `invalid` directly with `=`.
