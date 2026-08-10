@@ -7,10 +7,10 @@
  * Cancel-only on purpose: the demo server is shared, so the test never confirms
  * the mark-all-episodes action.
  */
-import { beforeAll, afterAll, it } from 'vitest';
+import { beforeAll, it } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
-import { seedHome, seedLibraryLanding, snapshotSession, restoreSession } from '../lib/seed.js';
+import { seedHome, seedLibraryLanding } from '../lib/seed.js';
 import { relaunch, ecp, odc } from '../lib/driver.js';
 import { navSeriesDetails } from '../lib/nav.js';
 import { waitFor, waitFocused, getVal, press, sleep } from '../lib/steps.js';
@@ -19,19 +19,12 @@ import { captureRawUI } from '../capture.js';
 const CAPTURE = process.env.RTA_CAPTURE === '1';
 const LOCALE = RTA_CONFIG.languages[0];
 
-let saved;
 let session;
 let libraries;
 
 beforeAll(async () => {
-  saved = await snapshotSession();
   session = await authenticate(RTA_CONFIG.server);
   libraries = await getLibraries(session);
-});
-
-afterAll(async () => {
-  await restoreSession(saved);
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 });
 
 it('series watched button opens the standard confirm dialog; back cancels it', async () => {

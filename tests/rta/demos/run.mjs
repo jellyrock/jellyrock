@@ -17,13 +17,8 @@
  */
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, firstMovie } from '../lib/jellyfin.js';
-import {
-  seedHome,
-  seedHomeWithSavedServers,
-  snapshotSession,
-  restoreSession,
-  armSessionRestoreOnInterrupt,
-} from '../lib/seed.js';
+import { seedHome, seedHomeWithSavedServers } from '../lib/seed.js';
+import { snapshotRegistry, restoreRegistry, armRestoreOnInterrupt } from '../lib/registry.js';
 import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
 import {
   press,
@@ -212,10 +207,10 @@ async function main() {
   for (const name of serverNames) serversByName[name] = resolveServer(name); // throws early if not a demo host
   setupRtaEnv();
   // Wake the device + bring the RTA channel (and its ODC component) up BEFORE the first registry
-  // call — snapshotSession is an ODC call and would fail on a suspended/relaunched device.
+  // call — snapshotRegistry is an ODC call and would fail on a suspended/relaunched device.
   await relaunch();
-  const saved = await snapshotSession(); // restore the real session afterward, no matter what
-  armSessionRestoreOnInterrupt(saved); // ...including when the operator Ctrl-Cs a recording
+  const saved = await snapshotRegistry(); // restore the real session afterward, no matter what
+  armRestoreOnInterrupt(saved); // ...including when the operator Ctrl-Cs a recording
   let cleanlyRestored = false;
   try {
     const sessions = {};
@@ -247,7 +242,7 @@ async function main() {
     // state rather than a torn one (registry restored but the running app still on the demo token).
     await waitForEnter('\n⏹ Stop your capture card, then press ENTER to restore your session... ');
     await stopPlayback().catch(() => {});
-    await restoreSession(saved);
+    await restoreRegistry(saved);
     await relaunch();
     cleanlyRestored = true;
     console.log('· session restored — app relaunched into your real session.');
@@ -256,7 +251,7 @@ async function main() {
     // recording, so restore the registry (real session back in storage) but do NOT relaunch — a
     // relaunch could flash the real session on camera mid-take.
     if (!cleanlyRestored) {
-      await restoreSession(saved);
+      await restoreRegistry(saved);
       console.log('· session restored to the registry after an early exit (app not relaunched).');
     }
   }

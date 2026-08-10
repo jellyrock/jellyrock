@@ -8,9 +8,13 @@ related-files:
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
   - tests/rta/lib/seed.js
+  - tests/rta/lib/registry.js
   - tests/rta/lib/driver.js
+  - tests/rta/setup/global-setup.js
+  - scripts/rta-run.js
+  - scripts/rta-restore.js
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-08
+last-reviewed: 2026-08-10
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -68,8 +72,8 @@ branch to find it.
   flips the manifest `bs_const ENABLE_RTA=false`→`true`, and injects the on-device
   component. The `#if ENABLE_RTA` block in `source/main.bs` then creates
   `RTA_OnDeviceComponent` at boot. This passthrough works for **both** dev and prod
-  builds. Deploy runs once per test run (Vitest `globalSetup`); `RTA_NO_DEPLOY=1`
-  skips it.
+  builds. Deploy runs once per test run, from [`scripts/rta-run.js`](../../scripts/rta-run.js)
+  before Vitest starts; `RTA_NO_DEPLOY=1` skips it.
 - **Per worker**: `tests/rta/setup/env-setup.js` (Vitest `setupFiles`) configures the
   RTA client singletons from `.env` in the test worker.
 - **Seeding, then `hardRelaunch()` — never `relaunch()`**: seeds write the device
@@ -269,13 +273,42 @@ Two habits that came out of the same investigation:
   In a single afternoon the stick surfaced a rendering bug (#777), a render-thread cost
   regression, and this harness gap. A device with headroom hides all three.
 
+## Leaving the device as you found it
+
+Every RTA entry point drives a device someone actually uses, so the run owns the
+device's registry for its duration and is responsible for handing it back.
+[`scripts/rta-run.js`](../../scripts/rta-run.js) is that owner — it deploys, snapshots,
+runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast` /
+`:capture` / `:tdd`) all go through it.
+
+- **The snapshot covers the whole registry**, every section and key — not a list of keys.
+  A list only ever covers what the *seeds* write, never what the *app* writes while
+  running under a seeded session, and never a whole section the seeds create.
+- **The restore is a diff, and it is verified.** Keys the run added are deleted,
+  sections the run created are dropped, changed values are put back — then the channel
+  is cold-restarted and the entire registry is compared against the snapshot. A
+  mismatch retries, then **throws** and names the differing keys. The one exception is
+  `LastRunVersion`, which the app rewrites on boot by design.
+- **The snapshot is written to `out/rta/registry-<host>.json` before any seeding**, and
+  deleted only on a verified restore. So a file still sitting there means the last run
+  did not put the device back.
+  - `npm run rta:restore` reapplies it on demand.
+  - The next run repairs the device automatically — it restores from the leftover file
+    *before* taking its own snapshot, so a stranded run can't become the new baseline.
+- **Ctrl-C is safe.** The interrupt stops the child, and the parent restores before
+  exiting (~30 s; press Ctrl-C again to abandon and recover later with
+  `npm run rta:restore`). This is why the lifecycle cannot live in Vitest: `afterAll`
+  never runs on a killed process, and Vitest's own SIGINT handler exits the process on
+  a 1 ms timer, so nothing armed inside it can finish a ~30 s restore.
+- **Don't run `vitest --config vitest.rta.config.js` directly** — `globalSetup` refuses
+  it, because that path takes no snapshot and performs no restore.
+
 ## Notes
 
 - Seeds write the **real** `JellyRock` registry (not a `test-*` section) because the
-  app reads real keys to choose a screen — inherent to driving the real app. The
-  `snapshotSession`/`restoreSession` pair (in [`tests/rta/lib/seed.js`](../../tests/rta/lib/seed.js))
-  restores the device's prior session afterward. This is the accepted exception to the
-  `test-*` isolation rule, which governs in-process Rooibos tests.
+  app reads real keys to choose a screen — inherent to driving the real app. This is
+  the accepted exception to the `test-*` isolation rule, which governs in-process
+  Rooibos tests. See "Leaving the device as you found it" below for what puts it back.
 - Demo server: the public `demo.jellyfin.org/stable` (license-clear content). It
   resets hourly; navigation anchors on the `SortName` tile index, not the volatile Continue
   Watching row.

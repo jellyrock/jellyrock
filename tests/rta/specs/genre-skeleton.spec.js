@@ -16,17 +16,11 @@
  *     2026-08-07 with the child-mutation reveal; this guards the single-swap
  *     reveal against regressing that re-dispatch).
  */
-import { beforeAll, afterAll, it, expect } from 'vitest';
+import { beforeAll, it, expect } from 'vitest';
 import { odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getLibraries, libraryIdFor, getJson, tokenHeader } from '../lib/jellyfin.js';
-import {
-  seedHome,
-  seedLibraryLanding,
-  snapshotSession,
-  restoreSession,
-  assertSeedTookEffect,
-} from '../lib/seed.js';
+import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp } from '../lib/driver.js';
 import { openLibraryByType } from '../lib/nav.js';
 import { getVal, getActiveVal, waitFor, press, sleep } from '../lib/steps.js';
@@ -34,19 +28,12 @@ import { getVal, getActiveVal, waitFor, press, sleep } from '../lib/steps.js';
 const LOCALE = RTA_CONFIG.languages[0];
 const HOLD_MS = 5000;
 
-let saved;
 let session;
 let libraries;
 
 beforeAll(async () => {
-  saved = await snapshotSession();
   session = await authenticate(RTA_CONFIG.server);
   libraries = await getLibraries(session);
-});
-
-afterAll(async () => {
-  await restoreSession(saved);
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 });
 
 it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop lands', async (testCtx) => {
