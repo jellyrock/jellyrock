@@ -13,6 +13,7 @@ related-files:
   - tests/rta/setup/global-setup.js
   - scripts/rta-run.js
   - scripts/rta-restore.js
+  - scripts/device-lock.js
   - .github/workflows/rta-functional-tests.yml
 last-reviewed: 2026-08-10
 ---
@@ -302,6 +303,68 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
   a 1 ms timer, so nothing armed inside it can finish a ~30 s restore.
 - **Don't run `vitest --config vitest.rta.config.js` directly** — `globalSetup` refuses
   it, because that path takes no snapshot and performs no restore.
+
+## The device lock
+
+There are three Roku devices on this LAN, and **CI does not share one with a developer**
+— measured by an ECP sweep on 2026-08-10, not assumed:
+
+| Device | Model | Used by |
+|---|---|---|
+| `.177` | Streaming Stick 4K | local development (`.env` `ROKU_IP`) |
+| `.178` | Ultra | a personal device; occasional dev overflow |
+| `.200` | Streaming Stick 4K | **CI only** — the org-level `ROKU_DEVICE_IP` secret, read by both device workflows and by RTA |
+
+So the contention [`scripts/device-lock.js`](../../scripts/device-lock.js) closes
+is **local-vs-local**: `test:rta`, `test:unit`, `demo` and `screenshots:capture`
+can each grab the same device from a different terminal, and the Rooibos path has
+no registry snapshot to fall back on. Because the lock keys on the device's own
+identity rather than on a role, it also covers a local run pointed at CI's `.200`
+— the only way local and CI can contend at all.
+
+- **The lock is a git ref** — `refs/device-lock/<key>`, held in this repo, where
+  `POST /git/refs` returns 422 on conflict. That is a real compare-and-swap, with
+  no new infrastructure and no daemon to keep alive (verified against this repo:
+  201, then 422, then 204 on delete). Holder identity and the lease clock come
+  from a tag object the ref points at.
+- **The key is a hash of the device's identity, not its address and not the raw
+  id.** The ref name is world-readable on a public repo via `git ls-remote`, and a
+  Roku's ECP `device-id` partially encodes its serial — so the key is
+  `sha256(device-id)` truncated to 16 hex chars. Keying on the *address* would be
+  worse than useless: a DHCP lease change would make each side compute a different
+  ref, each would read "no lock", and both would run. A run that can't identify
+  the device over ECP degrades loudly rather than inventing an address-shaped key.
+- **There is no CI-yield check, deliberately.** An earlier revision polled the
+  Actions API and refused to start while any device workflow was in flight. Its
+  real behavior was "you may not use `.177` because CI is busy on `.200`" —
+  blocking you from your own hardware to protect a device nobody was touching. It
+  is gone, along with the hardcoded workflow-filename list it needed.
+- **A contended run fails immediately and names the holder.** No queuing: you
+  want the answer now, and another Roku on the LAN is usually free
+  (`ROKU_IP=<other-ip> npm run test:rta`).
+- **Reads are eventually consistent — writes are not.** Measured 2026-08-10: a
+  read of an aged ref came back stale 2/24 times, while the CAS returned 422
+  reliably every time. So a 422 followed by a read saying "free" means the *read*
+  is wrong. Never infer that the device is free from a read.
+- **The holder record names the run, not you** — `what`, a `pid`, and `local`/`ci`.
+  No hostname: the tag object is public for as long as the lock is held.
+- **A crashed holder's lease expires after 15 minutes.** It is a lease, not a
+  time limit — every holder heartbeats every 5 minutes, so a long
+  `screenshots:capture` renews and never self-expires.
+  `npm run device:status` names the holder; `npm run device:release` drops a stuck
+  one.
+- **`rta-restore.js` deliberately takes no lock.** It is the repair path for an
+  abandoned run, and requiring a lock would block the repair in exactly the case
+  where a previous run leaked one.
+
+When GitHub is unreachable or you're not logged in, a run **warns and proceeds
+unlocked** rather than blocking your device work — but it records `locked: false`
+in `out/rta/run-meta.json`, because a warning line scrolls past and an exit code
+of 0 can't tell you the run was unverified. Set `RTA_REQUIRE_LOCK=1` to make that
+a hard failure instead, or `RTA_SKIP_LOCK=1` to deliberately bypass. CI does not
+set `RTA_REQUIRE_LOCK`: it is alone on `.200`, so there is no contention for the
+flag to protect against, and setting it would only trade a genuine green run for
+an `api.github.com` blip.
 
 ## Notes
 

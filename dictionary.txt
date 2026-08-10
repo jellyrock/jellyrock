@@ -83,6 +83,7 @@ Backfilling
 bbox
 bitrate
 Bitrate
+blockquote
 bool
 Bool
 booleans
@@ -115,6 +116,7 @@ Changelog
 CHANGELOG
 checkboxes
 ci
+CAS
 CI
 ci-triage
 CJS
@@ -178,7 +180,9 @@ dev-mode
 dev-portal
 dev-process
 devs
+DHCP
 dialogs
+discoverable
 Diátaxis
 Diátaxis-lite
 diff-and-wait
@@ -272,6 +276,7 @@ HD
 HDR
 HK-specific
 HLS
+hostname
 hotfix
 how-tos
 HTTPS
@@ -580,6 +585,7 @@ Unfavorite
 ungated
 unit-tests-tdd
 unlinked
+unmerged
 unobserve
 unprefixed
 unresolvable

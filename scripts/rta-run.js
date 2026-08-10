@@ -38,12 +38,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
+import { acquireDeviceLock, writeRunMeta } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
 const passthrough = process.argv.slice(2).filter((a) => a !== '--watch');
 
 setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before touching anything
+
+// Claim the device BEFORE the deploy. Acquisition is one API call, the deploy is
+// minutes, so a contended run fails in about a second instead of after a build —
+// which is the difference between an agent being able to react and not.
+const lock = await acquireDeviceLock({ what: watch ? 'test:rta:tdd' : 'test:rta' });
+writeRunMeta(lock.meta, { run: watch ? 'test:rta:tdd' : 'test:rta' });
 
 if (process.env.RTA_NO_DEPLOY === '1') {
   console.log('[rta] RTA_NO_DEPLOY=1 — skipping deploy, using the already-sideloaded build');
@@ -72,7 +79,7 @@ const child = spawn(
 
 let interrupting = false;
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-  process.on(signal, () => {
+  process.on(signal, async () => {
     if (interrupting) {
       // Never trap someone in an un-killable process. The snapshot is on disk,
       // so abandoning here is recoverable rather than destructive. Kill the child
@@ -82,6 +89,10 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       // device left dirty, because it silently fights the recovery.
       console.log('\n[rta] second interrupt — abandoning restore. Recover: npm run rta:restore');
       child.kill('SIGKILL');
+      // Release even on the abandon path: the device is left dirty, but leaving
+      // the LOCK behind too would wedge every other contender until the TTL
+      // expires, for no benefit. `rta:restore` is the documented repair.
+      await lock.release();
       process.exit(130);
     }
     interrupting = true;
@@ -102,8 +113,12 @@ try {
   console.log('[rta] device registry restored — left as found.');
 } catch (e) {
   console.error(`\n[rta] ${e.message}`);
+  await lock.release();
   process.exit(1);
 }
 
 await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
+// Release only after the restore: the device is not actually free for the next
+// contender until it has been put back the way we found it.
+await lock.release();
 process.exit(interrupting ? 130 : exitCode);

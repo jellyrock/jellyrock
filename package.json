@@ -126,6 +126,8 @@
     "test:rta:capture": "npm run build && RTA_CAPTURE=1 node scripts/rta-run.js",
     "demo": "node tests/rta/demos/run.mjs",
     "rta:restore": "node scripts/rta-restore.js",
+    "device:status": "node scripts/device-lock.js status",
+    "device:release": "node scripts/device-lock.js release",
     "prepare": "husky",
     "screenshots:capture": "npm run build:prod && DEPLOY=1 node scripts/capture-screenshots.js",
     "screenshots:capture:dev": "npm run build && DEPLOY=1 node scripts/capture-screenshots.js",
