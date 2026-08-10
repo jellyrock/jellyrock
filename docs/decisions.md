@@ -297,6 +297,41 @@ Both of the designs this replaces were measured, not reasoned about. The five-ke
 
 The superseded note named `globalSetup` as the fix that WOULD work. It is not, and that is the load-bearing correction here: Vitest's reporter installs its own SIGINT handler that calls `process.exit()` on a 1 ms timer (`addCleanupListeners`, `vitest/dist/chunks/cli-api.*.js`), so a ~30 s restore armed anywhere inside the Vitest process is racing an exit it cannot win. Only a parent owning Vitest as a child escapes it; `globalSetup` now just refuses a bare `vitest` invocation, which would otherwise drive a device with no snapshot and no restore. Persisting the snapshot before seeding is what makes this recoverable rather than merely careful — a leftover file means the last run did not restore, so `npm run rta:restore` reapplies it and the next run repairs the device BEFORE taking its own snapshot, closing the compounding failure where a stranded run's dirty state silently becomes the next run's baseline. Verified on `.178` 2026-08-10: a mid-suite SIGINT restored the full registry to 0 differences, as did two full suites; dropping four redundant per-spec restores also took the suite 800 s → 728 s. **Tripwire:** re-open if Vitest ever exposes a teardown that survives its own interrupt handler, which would let the parent process go away.
 
+## decision-id: device-lock-scoped-to-local
+
+**date**: 2026-08-10
+**status**: accepted
+**related-files**: scripts/device-lock.js, docs/dev/rta-tests.md, docs/architecture/testing.md
+
+The shared-Roku lock serializes LOCAL device runs against each other, and does not
+try to serialize local work against CI. An ECP sweep of the LAN on 2026-08-10 found
+three Roku devices: CI drives `.200` (the org-level `ROKU_DEVICE_IP` secret,
+unmodified since 2026-03-18 and read by both device workflows and by RTA), while
+local development drives `.177`. The two parties cannot contend through the
+hardware at all, so a lock keyed on the device's own identity — which this one is
+— cannot detect a collision that never happens. What it does catch is a second
+terminal on the same device, and a local run deliberately pointed at `.200`.
+
+Ruled out: **polling the Actions API so a local run yields to any in-flight device
+workflow.** That was the original design and it shipped in an earlier revision of
+this work. Its observable behavior was "you may not use `.177` because CI is busy
+on `.200`" — blocking a developer from their own hardware to protect a device
+nobody was touching — and it carried a hardcoded workflow-filename list that rots
+silently on rename, a wait budget, and a poll loop whose anonymous-rate-limit
+workaround existed only to afford the polling. Also ruled out: a device-resident
+lock (ECP has no persistent write, and the ODC registry path is circular because
+the lock must be taken before the deploy that installs ODC), and a filesystem
+lockfile (the contending parties are different hosts).
+
+The justification originally offered for the CI-yield check was PR #800, whose CI
+run reddened while a local `npm run test:rta` was running. That reading is refuted
+by the sweep: a `hardRelaunch()` on `.177` cannot reach `.200`. What both parties
+genuinely shared was `demo.jellyfin.org`, so the live candidates are demo-account
+contention and plain flake. **Tripwire:** re-open if that investigation (tracked
+in `docs/progress.md`) shows real cross-host contention — but note the resource to
+lock would then be the demo server account rather than the device, so the answer
+still would not be to restore the Actions-API check.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

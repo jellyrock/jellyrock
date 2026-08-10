@@ -39,6 +39,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
+import { acquireDeviceLock, writeRunMeta } from './device-lock.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import {
   ecp,
@@ -245,6 +246,9 @@ function writeManifest() {
   console.log(`  wrote ${path.relative(repoRoot, dest)}`);
 }
 
+/** Module-scoped so the top-level catch can release a lock main() took. */
+let activeLock = null;
+
 async function main() {
   const { languages, screens, deploy, regen } = parseArgs();
 
@@ -258,6 +262,17 @@ async function main() {
   }
 
   setupRtaEnv(); // reads ROKU_IP / ROKU_PASSWORD from .env (throws if missing)
+
+  // Taken AFTER the --regen early-exit above, which touches no device at all.
+  const lock = await acquireDeviceLock({ what: 'screenshots:capture' });
+  activeLock = lock;
+  writeRunMeta(lock.meta, { run: 'capture-screenshots' });
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, async () => {
+      await lock.release();
+      process.exit(130);
+    });
+  }
 
   if (deploy) {
     console.log('Deploying screenshot build (ENABLE_RTA) ...');
@@ -403,10 +418,12 @@ async function main() {
   writeManifest();
   generateIndex(); // regenerate docs/screenshots/README.md (the by-language index)
   console.log('Done.');
+  await lock.release();
   process.exit(0); // RTA keeps the port-9000 socket open; exit explicitly
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error('capture failed:', e?.stack || e?.message || e);
+  await activeLock?.release();
   process.exit(1);
 });

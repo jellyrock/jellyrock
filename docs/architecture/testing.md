@@ -3,10 +3,11 @@ topic: testing
 related-files:
   - tests/source/BaseTestSuite.spec.bs
   - scripts/run-roku-tests.js
+  - scripts/device-lock.js
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-06-08
+last-reviewed: 2026-08-10
 ---
 
 # Testing
@@ -85,6 +86,20 @@ npm run build:tdd                 # watch mode build only (no run)
 The TDD workflow expects you to copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` (gitignored) and edit it to scope which suites/tests get built.
 
 The actual test execution is via `scripts/run-roku-tests.js` which deploys the test channel, captures rooibos output over telnet, and exits with the result.
+
+**The device is claimed before the sideload**, and `run-roku-tests.js` holds that
+claim ([`scripts/device-lock.js`](../../scripts/device-lock.js)) until the run
+ends. This matters more here than for RTA: the Rooibos path has
+no registry snapshot to fall back on, so an overlapping run is pure corruption —
+the deploy alone restarts whatever the other party was driving.
+
+The contention it prevents is **local-vs-local** — a second terminal running
+`test:rta`, `demo` or `screenshots:capture` against the same Roku. It is *not*
+protection against CI: CI drives its own device (`.200`), so the two cannot
+collide unless someone points `ROKU_IP` at CI's box, which the lock does cover
+because it keys on device identity. A contended run refuses immediately and names
+the holder. Full protocol — and why the lock lives on a git ref rather than on
+the device — in [`rta-tests.md`](../dev/rta-tests.md#the-device-lock).
 
 ### How agents run tests
 

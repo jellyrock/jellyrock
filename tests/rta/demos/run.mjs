@@ -20,6 +20,7 @@ import { authenticate, getHero, firstMovie } from '../lib/jellyfin.js';
 import { seedHome, seedHomeWithSavedServers } from '../lib/seed.js';
 import { snapshotRegistry, restoreRegistry, armRestoreOnInterrupt } from '../lib/registry.js';
 import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
+import { acquireDeviceLock, writeRunMeta } from '../../../scripts/device-lock.js';
 import {
   press,
   waitHome,
@@ -30,6 +31,9 @@ import {
   sleep,
 } from '../lib/steps.js';
 import { TAKES } from './takes/index.js';
+
+/** Module-scoped so every exit path can release a lock main() took. */
+let activeLock = null;
 
 const LOCALE = RTA_CONFIG.languages[0];
 const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-player active states
@@ -206,6 +210,19 @@ async function main() {
   const serversByName = {};
   for (const name of serverNames) serversByName[name] = resolveServer(name); // throws early if not a demo host
   setupRtaEnv();
+  // Claim the device before waking it. A demo take is a RECORDING — another
+  // party driving the device mid-take does not just fail, it silently ruins
+  // footage that looks fine until playback.
+  activeLock = await acquireDeviceLock({ what: `demo:${take.name}` });
+  writeRunMeta(activeLock.meta, { run: 'demo', take: take.name });
+  // Registered BEFORE armRestoreOnInterrupt() below, because that installs its
+  // own signal handlers which end in process.exit(). Node runs listeners in
+  // registration order, so this gets to start the release first. It is
+  // fire-and-forget by necessity — on the abandon path the process leaves
+  // before the DELETE lands, and the lock's TTL is what covers that.
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, () => void activeLock?.release());
+  }
   // Wake the device + bring the RTA channel (and its ODC component) up BEFORE the first registry
   // call — snapshotRegistry is an ODC call and would fail on a suspended/relaunched device.
   await relaunch();
@@ -258,8 +275,12 @@ async function main() {
 }
 
 main()
-  .then(() => process.exit(0))
-  .catch((err) => {
+  .then(async () => {
+    await activeLock?.release();
+    process.exit(0);
+  })
+  .catch(async (err) => {
     console.error(err);
+    await activeLock?.release();
     process.exit(1);
   });

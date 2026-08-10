@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 import dotenv from 'dotenv';
 import * as rokuDeploy from 'roku-deploy';
+import { acquireDeviceLock, writeRunMeta } from './device-lock.js';
 
 dotenv.config();
 
@@ -49,8 +50,12 @@ async function deployToRoku() {
     });
     console.log('✅ Deployment successful');
   } catch (error) {
-    console.error('❌ Deployment failed:', error.message);
-    process.exit(1);
+    // Throw rather than exit: main() owns the device lock and must get the
+    // chance to release it, or a failed deploy would wedge the device until the
+    // TTL expires. No `{ cause }` — the repo's ESLint targets Node >=16.0 and
+    // error-cause landed in 16.9; the message already carries the detail.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(`Deployment failed: ${error.message}`);
   }
 }
 
@@ -168,6 +173,19 @@ async function captureConsole() {
 }
 
 async function main() {
+  // Claim the shared device before the sideload. The Rooibos suite has no
+  // registry snapshot to protect it, so an overlapping run is pure corruption:
+  // the deploy alone restarts whatever the other party was driving.
+  const lock = await acquireDeviceLock({ what: 'roku device tests' });
+  writeRunMeta(lock.meta, { run: 'run-roku-tests' });
+  const done = async (code) => {
+    await lock.release();
+    process.exit(code);
+  };
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, () => done(130));
+  }
+
   try {
     await deployToRoku();
     console.log('⏳ Waiting for app to start...');
@@ -178,14 +196,14 @@ async function main() {
 
     if (result.passed) {
       console.log('✅ All tests passed!');
-      process.exit(0);
+      await done(0);
     } else {
       console.error('❌ Tests failed!');
-      process.exit(1);
+      await done(1);
     }
   } catch (error) {
     console.error('❌ Test execution failed:', error.message);
-    process.exit(1);
+    await done(1);
   }
 }
 
