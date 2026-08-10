@@ -182,6 +182,43 @@ namespace tests
       m.assertEqual(drained.nextIndex, 0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("removalIsDeferrable - only the run's own rows may be held")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("defers a latest-media row while the run is batching")
+    function _()
+      m.assertTrue(latestRows.removalIsDeferrable("latest_abc123", true))
+    end function
+
+    @it("removes a latest-media row immediately outside a run")
+    function _()
+      m.assertFalse(latestRows.removalIsDeferrable("latest_abc123", false))
+    end function
+
+    @it("never defers a section the run does not deliver, even mid-run")
+    function _()
+      ' The load-bearing case. These four are fired by startParallelLoads, which RACES the
+      ' orchestrator, and onProgramsExpired / Home.refresh() can re-fire them mid-run — so a
+      ' queued removal could outlive a repopulate and delete a row that had just been filled.
+      ' Batching them would also make the collapse race-dependent rather than deterministic.
+      for each sectionId in ["resume", "nextup", "livetv", "activeRecordings"]
+        m.assertFalse(latestRows.removalIsDeferrable(sectionId, true), sectionId + " must not defer")
+      end for
+    end function
+
+    @it("never defers the My Media row")
+    function _()
+      ' populateLibraryRow runs before the batch opens today, so this cannot be reached — but
+      ' the rule is the same one, and pinning it stops a reordering from changing the answer.
+      m.assertFalse(latestRows.removalIsDeferrable("library", true))
+    end function
+
+    @it("matches on the latest_ prefix, not on a section that merely contains it")
+    function _()
+      m.assertFalse(latestRows.removalIsDeferrable("mylatest_abc", true))
+    end function
+
   end class
 
 end namespace

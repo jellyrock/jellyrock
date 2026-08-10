@@ -438,18 +438,22 @@ sub startLatestMediaLoads()
     m.popSizeMs = 0
   #end if
   ' Hold the row-size recompute for the whole run. A run removes one row per library that
-  ' returned nothing, and each removal used to pay its own recompute; measured on a Stick
-  ' 4K a load with 9 structural changes spent 784 ms in setRowItemSize against 208 ms once
-  ' batched, first paint 3200 -> 2516 ms.
+  ' returned nothing, and each removal used to pay its own recompute — so the cost grows with
+  ' library count, which is exactly the shape epic #728 exists for. Numbers, arms and the
+  ' shapes already rejected on measurement live in the journal, not here:
+  ' tech-debt.md#home-row-size-recompute-per-row.
   '
-  ' The RUN is the boundary, not the drain loop, which looks like one and is not: the
-  ' orchestrator delivers one row per observer wake, so 11 rows arrive over 11 wakes and a
-  ' per-drain flush coalesces nothing. `drains` in the perfTiming line is what proves it.
+  ' Three things about the boundary that are not guessable from this line:
   '
-  ' Batching does NOT pay off on a server where only a row or two changes: the single
-  ' deferred recompute lands when the tree is fullest and costs more than an early one, so
-  ' the per-call price is not fixed. At 2 changes it is a wash (161 vs 161 ms, n=6/14) —
-  ' the win is in the count, and the count is what grows with library count.
+  '   - The RUN is it, NOT the drain loop, which looks like one and is not: the orchestrator
+  '     delivers one row per observer wake, so 11 rows arrive over 11 wakes and a per-drain
+  '     flush coalesces nothing. `drains` in the perfTiming line is what keeps that checkable.
+  '   - The batch owns only the rows this run delivers. latestRows.removalIsDeferrable is the
+  '     seam; every other Home section stays eager, and the reasoning is there.
+  '   - Batching does NOT pay off where only a row or two changes. The per-call price is not
+  '     fixed — a deferred recompute lands when the tree is fullest and costs more than an
+  '     early one — so at two structural changes it is a wash. The win is in the COUNT, and
+  '     the count is what grows with library count.
   m.rowSizesBatching = true
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
@@ -526,9 +530,13 @@ sub resetLatestRowsRun()
   m.isLoadingLatestRows = false
 
   ' Close the row-size batch too. A run that is stopped or reclaimed never reaches its
-  ' completion branch, so without this the batch flag would stay set for the life of the
-  ' screen and every later structural change (a Continue Watching row emptying, say) would
-  ' mark itself dirty and never be flushed — rows stuck at the previous row's geometry.
+  ' completion branch, so without this the batch flag would stay set and the latest rows it
+  ' still had queued would never be dropped.
+  '
+  ' Note WHEN this fires: the next startLatestMediaLoads (which is where runIsStalled is
+  ' consulted) or onDestroy. There is no timer. So an orchestrator that wedges while the user
+  ' sits on Home leaves the queue held until they navigate away or Home reloads — bounded to
+  ' this run's own rows, which are already unpopulated in that scenario.
   m.rowSizesBatching = false
   applyPendingRowRemovals()
   flushRowSizes()
@@ -570,10 +578,15 @@ end function
 
 ' removeRowAtIndex: Removes a row at the given index and recalculates sizes
 '
+' Recomputes IMMEDIATELY, batch or no batch. This path is only reached for a row the current
+' run does not own (latestRows.removalIsDeferrable said no), so nothing later is going to
+' flush on its behalf — and a removal without its recompute leaves the three geometry arrays
+' describing the old row list, which draws every row below it at its neighbour's size.
+'
 ' @param {integer} index - Content child index to remove
 sub removeRowAtIndex(index as integer)
   m.top.content.removeChildIndex(index)
-  rowStructureChanged()
+  rowStructureChanged(true)
 end sub
 
 ' getRowConfigForSection: Returns title and slotSize for a sectionId.
@@ -749,15 +762,17 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
   if not isValidAndNotEmpty(itemData)
     ' No data — remove the row if it exists.
     '
-    ' While a latest-rows run is batching, queue the removal instead of doing it now.
+    ' A row the current run delivers is QUEUED instead, and dropped once the run ends.
     ' Deferring only the SIZE recompute is not enough: the row list would shrink while the
     ' three geometry arrays still described the old one, so every row below the removal
-    ' rendered at its neighbour's size. Measured on a Stick 4K — a square row drawn at
-    ' portrait height and a wide row at square width, for ~1 s of first paint. Holding the
-    ' row keeps tree and arrays in step for the whole run, and it is what a FAILED row
-    ' already does: it keeps the skeleton insertLatestMediaSkeletons gave it.
+    ' rendered at its neighbour's size — measured through ODC, not reasoned. Holding the row
+    ' keeps tree and arrays in step for the whole run, and it is what a FAILED row already
+    ' does: it keeps the skeleton insertLatestMediaSkeletons gave it.
+    '
+    ' WHICH rows may be held is latestRows.removalIsDeferrable's call, not this branch's —
+    ' every other Home section removes and recomputes immediately, mid-run or not.
     if isValid(result)
-      if m.rowSizesBatching
+      if latestRows.removalIsDeferrable(sectionId, m.rowSizesBatching)
         m.pendingRowRemovals.push(sectionId)
       else
         removeRowAtIndex(result.index)
@@ -890,12 +905,22 @@ end sub
 sub applyPendingRowRemovals()
   if not isValidAndNotEmpty(m.pendingRowRemovals) then return
 
+  removed = 0
   for each sectionId in m.pendingRowRemovals
     result = findRowBySectionId(sectionId)
-    if isValid(result) then m.top.content.removeChildIndex(result.index)
+    if isValid(result)
+      m.top.content.removeChildIndex(result.index)
+      removed++
+    end if
   end for
   m.pendingRowRemovals = []
-  rowStructureChanged()
+
+  ' Only announce a structural change if one happened. Every queued id has a live row today
+  ' — the orchestrator yields each library once, so nothing can drop one out from under the
+  ' queue — but rowStructureChanged() costs a full recompute, and it should never be spent
+  ' claiming an edit that did not occur. The guard is what keeps that true if the queue is
+  ' ever widened past the run's own rows.
+  if removed > 0 then rowStructureChanged()
 end sub
 
 ' rowStructureChanged: Announce that a row was added to or removed from m.top.content.
