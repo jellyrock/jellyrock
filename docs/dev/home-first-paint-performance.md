@@ -231,7 +231,15 @@ ODC, not guessed: a square row drawn at portrait height and a wide row at square
 across a ~1.0 s window of first paint. Deferring the removals too keeps tree and arrays in
 step for the whole run — 0 wrong rows after, against 4 samples before. The **re-insert**
 branch is the mirror image (row list longer than the arrays) and flushes eagerly instead,
-which is affordable because it is rare. Probe: `tasks/probes/geometry-window.mjs`.
+which is affordable because it is rare.
+
+**How that was measured, since it is worth reaching for again.** Not a screenshot, and not a
+judgment call — an ODC probe polling a *structural invariant* through the transient:
+`rowItemSize.count()` against the live child count, and, whenever those disagree, each row's
+own `cursorSize` against the entry actually applied to it. That distinction is the point: a
+length mismatch alone is not a defect (the surplus entry may sit past the last row), so the
+oracle has to name which visible row is being drawn at a size that is not its own. Build with
+the RTA deploy path so ODC is injected, cold-start via ECP, and poll until the run settles.
 
 So read `calls` as the thing that grows with library count, and `ms` as what it cost this
 particular run. Full write-up:
