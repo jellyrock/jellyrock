@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Batch Home's latest-row item attach into one `appendChildren` call ([#792](https://github.com/jellyrock/jellyrock/pull/792))
 - Draw the Genres view before its artwork has loaded ([#779](https://github.com/jellyrock/jellyrock/pull/779))
 - Gate device tests behind maintainer approval for fork PRs only ([#773](https://github.com/jellyrock/jellyrock/pull/773))
 - Run the Genres view's per-genre fetches through `apiPipeline` ([#770](https://github.com/jellyrock/jellyrock/pull/770))
