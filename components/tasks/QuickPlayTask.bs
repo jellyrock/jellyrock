@@ -223,13 +223,16 @@ function doSeason(input as object, items as object) as longinteger
   }), "qp_seasonEps")
 
   if isValid(episodesData) and isValidAndNotEmpty(episodesData.Items)
-    ' find the first unwatched episode
+    ' Find the first unwatched episode, tracking its POSITION in Items rather than
+    ' deriving one from IndexNumber. The two only agree when a season holds episodes
+    ' numbered 1..N with none missing; Jellyfin guarantees neither.
     firstUnwatchedIndex = invalid
     resumePosition = 0&
-    for each item in episodesData.Items
+    for idx = 0 to episodesData.Items.count() - 1
+      item = episodesData.Items[idx]
       if isValid(item.UserData)
         if isValid(item.UserData.Played) and item.UserData.Played = false
-          firstUnwatchedIndex = isValid(item.IndexNumber) ? item.IndexNumber - 1 : 0
+          firstUnwatchedIndex = idx
           if isValid(item.UserData.PlaybackPositionTicks)
             resumePosition = item.UserData.PlaybackPositionTicks
           end if
