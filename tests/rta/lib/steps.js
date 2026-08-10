@@ -9,6 +9,7 @@
  * Node lookups use RTA's `#id` keyPath (a recursive findNode from the scene root).
  */
 import { ecp, odc } from 'roku-test-automation';
+import { diagnosedError } from './diagnostics.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
@@ -47,6 +48,10 @@ export async function getActiveVal(keyPath) {
  * it must not vanish: an action that never lands and a screen that never renders
  * produce the same "timed out waiting for X" otherwise, and telling those apart
  * after the fact costs hours.
+ *
+ * On timeout the throw carries a dump of what the device actually looked like
+ * (see [`diagnostics.js`](diagnostics.js)) — the poll loop itself is untouched,
+ * so this costs nothing on the success path.
  */
 export async function waitFor(
   keyPath,
@@ -62,9 +67,15 @@ export async function waitFor(
     if (predicate(last)) return last;
     await sleep(interval);
   }
-  throw new Error(
+  throw await diagnosedError(
     `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
       (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+    {
+      kind: 'wait-for-timeout',
+      label: label || keyPath,
+      waitedMs: Date.now() - start,
+      observed: { keyPath, last, actionErrors },
+    },
   );
 }
 
@@ -88,9 +99,15 @@ export async function waitFocused(
     if (f && predicate(f)) return f;
     await sleep(interval);
   }
-  throw new Error(
+  throw await diagnosedError(
     `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
       (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+    {
+      kind: 'wait-focused-timeout',
+      label: label || 'predicate',
+      waitedMs: Date.now() - start,
+      observed: { last, actionErrors },
+    },
   );
 }
 

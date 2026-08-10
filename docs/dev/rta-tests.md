@@ -4,6 +4,8 @@ related-files:
   - tests/rta/config.js
   - tests/rta/screens.js
   - tests/rta/lib/nav.js
+  - tests/rta/lib/steps.js
+  - tests/rta/lib/diagnostics.js
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
@@ -111,6 +113,63 @@ branch to find it.
   getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
   user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there
   is only one focused node — so prefer them when "did this open/land?" is the question.
+
+## When a wait times out, it reports what it SAW
+
+The waits are the assertions, so their messages are the only account of a failure
+anyone gets. Left to themselves they describe the **ask** — "nav timed out waiting
+for X" — which cannot be attributed to a cause afterwards. So every timeout in the
+harness throws through `diagnosedError`
+([`lib/diagnostics.js`](../../tests/rta/lib/diagnostics.js)), which attaches the
+state the device was actually in.
+
+```text
+detail row with tile type "Season" not found after 15s (2 row(s) present)
+        ↳ view=ItemDetails#a1b2… loadState=loaded · focus=RowList@#extrasGrid
+        ↳ home=5 · detail=2 · wanted="Season" · rowTypes=[Chapter, Person]
+        ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
+```
+
+- **It costs nothing on the success path.** The capture runs *after* a poll loop
+  has given up, at the throw site, never inside a tick — deliberately, because
+  [#785](https://github.com/jellyrock/jellyrock/issues/785) may replace those loops
+  with `onFieldChangeOnce` and diagnostics must not entrench a shape it might
+  delete. At the boundary it is two round-trips issued in parallel (`getFocusedNode`
+  has no batch form; everything else rides one `getValues`) — **measured at 26 ms**
+  on `.177`.
+- **The `observed` fields come free.** `rowTypes` / `rows` are retained from reads
+  the loop was already making, so "2 row(s) present" becomes "the two that landed
+  were Chapter and Person" — which is the difference between *Season is late* and
+  *Season is absent*, indistinguishable until now.
+- **Identity is read by named field**, never by dumping the node: `JellyfinUser`
+  carries `authToken`, and a whole-node read would put a live demo credential in an
+  artifact.
+- **New throw sites in `steps.js` / `nav.js` should use `diagnosedError`**, not a
+  bare `new Error` — otherwise that failure mode is the one nobody can attribute.
+
+Each failure also lands as a JSON line in `out/rta/failures.jsonl`, which
+[`scripts/rta-run.js`](../../scripts/rta-run.js) folds into `out/rta/run-meta.json`
+after the suite exits, then summarizes:
+
+```text
+[rta] 1 failure(s) captured with device state → out/rta/failures.jsonl
+[rta]   23:24 screen "seasonDetails" loads — detail-row-not-found; view=ItemDetails loadState=loaded focus=RowList
+```
+
+That fold is what finally gives `run-meta.json` a **reader** — it was written by
+four entry points and read by nothing, so lock provenance only ever lived in a
+terminal line that scrolls past. The parent stays the file's sole writer; the child appends to the
+JSONL and never touches run-meta.json.
+
+### The run's wall-clock window is part of the evidence
+
+The summary also reports the window, and flags a run that **crossed the top of the
+hour** — the demo server resets its seeded state then (watched data, playlists), so
+a ~12-minute suite starting after roughly `:48` can have that state wiped *mid-run*
+and fail as an unrelated-looking nav timeout. Individual failures carry
+`afterHourBoundary`, so a record says whether it landed on the far side of a reset.
+A green run that straddled `:00` is flagged too: its result was taken against a
+fixture that changed underneath it.
 
 ## Driving intermediate load stages (`rtaSkeletonHoldMs`)
 

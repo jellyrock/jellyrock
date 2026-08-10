@@ -38,19 +38,35 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
+import {
+  resetFailures,
+  readFailures,
+  summarizeRun,
+  formatRunSummary,
+} from '../tests/rta/lib/diagnostics.js';
 import { acquireDeviceLock, writeRunMeta } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
 const passthrough = process.argv.slice(2).filter((a) => a !== '--watch');
+const runName = watch ? 'test:rta:tdd' : 'test:rta';
 
 setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before touching anything
 
 // Claim the device BEFORE the deploy. Acquisition is one API call, the deploy is
 // minutes, so a contended run fails in about a second instead of after a build —
 // which is the difference between an agent being able to react and not.
-const lock = await acquireDeviceLock({ what: watch ? 'test:rta:tdd' : 'test:rta' });
-writeRunMeta(lock.meta, { run: watch ? 'test:rta:tdd' : 'test:rta' });
+const lock = await acquireDeviceLock({ what: runName });
+// `startedAt` is the run's wall-clock origin, and it is load-bearing rather than
+// decorative: the demo server resets its seeded state on the hour, so a ~12-minute
+// suite starting after roughly `:48` loses that state MID-RUN and fails as an
+// unrelated-looking nav timeout. The child reads this back to stamp each failure;
+// the summary below reports the window. Written BEFORE the suite so it survives a
+// run that never reaches the fold.
+const startedAt = new Date().toISOString();
+writeRunMeta(lock.meta, { run: runName, startedAt });
+// Records from a previous run would otherwise be folded in as this one's.
+resetFailures();
 
 if (process.env.RTA_NO_DEPLOY === '1') {
   console.log('[rta] RTA_NO_DEPLOY=1 — skipping deploy, using the already-sideloaded build');
@@ -107,6 +123,19 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 const exitCode = await new Promise((resolve) => {
   child.on('exit', (code, signal) => resolve(signal ? 130 : (code ?? 0)));
 });
+
+// Fold the child's failure records into the run record, and say what they show.
+// This is what `run-meta.json` has been missing: it was written by four entry
+// points and read by nothing, so a degraded run's provenance — and now a
+// failure's device state — only ever lived in a scrollback line. Done before the
+// restore, so the summary survives a restore that throws.
+const summary = summarizeRun({
+  startedAt,
+  endedAt: new Date().toISOString(),
+  failures: readFailures(),
+});
+writeRunMeta(lock.meta, { run: runName, startedAt, ...summary });
+for (const line of formatRunSummary(summary)) console.log(line);
 
 try {
   await restoreRegistry(saved);
