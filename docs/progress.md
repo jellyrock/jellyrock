@@ -63,6 +63,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### scripts
 
+- **`out/rta/run-meta.json` is written by four entry points and read by nothing.** `device-lock.js` stamps lock provenance there so a degraded or unlocked run stays identifiable after the fact, which is the right instinct — a warning line scrolls past and the exit code stays 0. But no code, test or workflow reads the file, `out/` is gitignored, and neither device workflow uploads it as an artifact, so in CI the provenance dies with the runner. Either give it a reader (surface it from `npm run device:status`, or assert on it in the RTA suite) or narrow the claim in the module header to local-only and stop implying CI benefits. Also: `run-roku-tests.js` is the Rooibos runner and writes to a path named `rta/` — `out/device/run-meta.json` would be the honest location.
 - Expand automated store screenshots from the 5 marketing languages to ALL ~99 locale files, to surface the default Roku OS font's blast radius — boxes/tofu for scripts the system font doesn't cover are EXPECTED and the point of capturing them. From #642.
 
 ### components
