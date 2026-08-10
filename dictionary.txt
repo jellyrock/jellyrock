@@ -466,6 +466,7 @@ repo-scoped
 reproducibility
 repo-size
 repo-wide
+resumable
 retry-with-backoff
 revalidation
 reverse-proxied

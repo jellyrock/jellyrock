@@ -323,8 +323,8 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `api-usage-manifest-no-per-endpoint-binding`
 
 - **area**: [`docs/architecture/api-usage-manifest.json`](api-usage-manifest.json), [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js)
-- **issue**: `requestFields` is flat and repo-wide (`{name, sourceFiles}`, no endpoint association) and scans `source/**` only, so it can't compare the params we send against the params an endpoint declares, or see `components/**` call sites. #784 hit both blind spots at once — see [Known limitations](server-upgrade-automation.md#known-limitations--what-this-pipeline-cannot-catch).
-- **direction**: Bind request fields to the endpoint they're sent to and widen the scan past `source/**`. One data point so far; revisit if the class recurs.
+- **issue**: `requestFields` is flat and repo-wide (`{name, sourceFiles}`, no endpoint association) and its `REQUEST_FIELD_GLOBS` scan covers `source/api/**/*.bs` only — narrower than the endpoint scan's `source/**` — so it can't compare the params we send against the params an endpoint declares, and can't see `components/**` (or `source/data/`, `source/utils/`) call sites. #784 hit both blind spots at once — see [Known limitations](server-upgrade-automation.md#known-limitations--what-this-pipeline-cannot-catch).
+- **direction**: Bind request fields to the endpoint they're sent to and widen the scan past `source/api/**`. One data point so far; revisit if the class recurs.
 
 #### `ci-path-filters-unverified`
 

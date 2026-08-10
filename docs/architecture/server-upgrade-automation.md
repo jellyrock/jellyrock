@@ -161,22 +161,29 @@ fingerprint sees nothing, the diff emits nothing, and CI reports the release as
 mechanically clean.
 
 The worked example is [#784](https://github.com/jellyrock/jellyrock/issues/784).
-`GET /UserItems/Resume` declares the same 15 parameters in 10.7.0, 10.11.8 and
-12.0-rc4 — no additions, no removals, no retypes. But the server-side `IsResumable`
-predicate changed from "this item has playback position > 0" to "…or this *folder*
-has an in-progress descendant", so Continue Watching went from 4 items to 253, and
-the series Resume button started targeting a Season instead of an episode. A clean
-spec diff was a true statement about the signature and a useless one about the app.
+`GET /UserItems/Resume` declares the same 15 parameters in 10.11.8 and 12.0-rc4 —
+no additions, no removals, no retypes across the release that broke us. (The floor
+is not identical: 10.7.0 serves the same endpoint at `/Users/{userId}/Items/Resume`
+with 14 parameters — no `excludeActiveSessions` — and types the three array params
+as `array<string>` rather than the `BaseItemKind` / `MediaType` enums. That is a
+signature change, and the pipeline does see it. The 12.0 break is the one it can't.)
+The server-side `IsResumable` predicate changed from "this item has playback position
+> 0" to "…or this *folder* has an in-progress descendant", so Continue Watching went
+from 4 items to 253, and the series Resume button started targeting a Season instead
+of an episode. A clean spec diff was a true statement about the signature and a
+useless one about the app.
 
 **2. How we call an endpoint, as opposed to which ones we call.**
 [`api-usage-manifest.json`](api-usage-manifest.json) does record a `requestFields`
 list, but two properties of it keep the obvious check out of reach. It is **flat and
 repo-wide** — `{name, sourceFiles}` with no endpoint association — so it can say
 "something, somewhere sends `MediaTypes`" but never "this endpoint is sent these
-params". And its scan scope is **`source/**` only**, so a param passed at a component
-call site is not in the manifest at all; all four of #784's call sites live under
-`components/`. Nothing in the pipeline can therefore compare the params we *send*
-against the params an endpoint *declares*, in either direction:
+params". And its scan scope is narrower than the endpoint scan's: `REQUEST_FIELD_GLOBS`
+is **`source/api/**/*.bs` only**, so a param set anywhere else — `source/data/`,
+`source/utils/`, or any `components/` call site — is not in the manifest at all. All
+four of #784's call sites live under `components/`. Nothing in the pipeline can
+therefore compare the params we *send* against the params an endpoint *declares*, in
+either direction:
 
 - **Params we send that don't exist.** The four call sites in #784 each sent
   `recursive`, `SortBy`, `SortOrder` and `Filters` to an endpoint that has never
@@ -187,9 +194,9 @@ against the params an endpoint *declares*, in either direction:
   a client controls there. Every other Jellyfin client passes it; we didn't, which
   is precisely what left us exposed when the default widened.
 
-Making both of these checks possible needs two changes together: bind request fields to the
-endpoint they're sent to, and widen the scan past `source/**` to the component call
-sites. That's the obvious next phase if this class recurs. It hasn't yet — #784 is
+Making both of these checks possible needs two changes together: bind request fields to
+the endpoint they're sent to, and widen the scan past `source/api/**` to the component
+call sites. That's the obvious next phase if this class recurs. It hasn't yet — #784 is
 one data point, so this is recorded rather than built.
 
 **What actually catches these:** running the app against a pre-release server. The
