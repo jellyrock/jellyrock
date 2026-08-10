@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-10 — ci: serialize local device runs with a `device-lock` git ref
 - 2026-08-10 — **Ran a one-shot device-lock self-test (PR #801, closed unmerged) and removed it.** It answered the two questions no developer machine can: the repo's GitHub App CAN create and delete a git ref (201 then 422 on the compare-and-swap), and `secrets.ROKU_DEVICE_IP` resolves to a **third** Roku — a dedicated CI Streaming Stick 4K (`.200`), not the local dev device (`.177`) or the personal one (`.178`). That secret is org-level and unmodified since 2026-03-18, and both device workflows plus RTA read it, so CI has always been isolated on its own device. **Consequence:** a lock keyed on the ECP `device-id` cannot detect local-vs-CI contention, because the two parties never share a device — the cross-host contention story needs re-deriving before any doc repeats it.
 - 2026-08-10 — ci(rta): Restore the whole device registry after an RTA run, and survive a Ctrl-C
 - 2026-08-10 — Batch Home's latest-row item attach into one `appendChildren` call
