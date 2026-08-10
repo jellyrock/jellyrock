@@ -926,10 +926,16 @@ end sub
 ' discardRowBatch: Drop pending row work without paying for it.
 '
 ' Teardown only. setRowItemSize() is the most expensive call in this file (~90-200 ms, nearly
-' all of it the RowList re-measuring every cell against the new rowItemSize), it runs on the
-' render thread, and onDestroy fires mid-navigation — so flushing a batch for a node that is
-' about to be released stalls the transition to update geometry nobody will see. Clearing the
-' state first makes resetLatestRowsRun's applyPendingRowRemovals + flushRowSizes no-op.
+' all of it the RowList re-measuring every cell against the new rowItemSize) and it runs on the
+' render thread — so flushing a batch for a node that is about to be released spends that on
+' geometry nobody will see. Clearing the state first makes resetLatestRowsRun's
+' applyPendingRowRemovals + flushRowSizes no-op.
+'
+' WHEN this is reached, because the obvious answer is wrong: NOT on navigating away from Home.
+' Home is SUSPENDED rather than destroyed by the router (see startLatestMediaLoads, which relies
+' on that). HomeRows.onDestroy comes from Home.destroyActiveContent() — a tab switch to
+' Favorites — and from Home.onDestroy when sgRouter permanently closes the view. So the way to
+' force a run in flight into this path is to switch tabs during a Home load.
 sub discardRowBatch()
   m.pendingRowRemovals = []
   m.rowSizesDirty = false
@@ -939,6 +945,13 @@ end sub
 ' rowStructureChanged: Announce that a row was added to or removed from m.top.content.
 '
 ' Outside a batch this recomputes immediately, so the single-row callers are unchanged.
+'
+' Don't go looking for the deferred path — there isn't one yet. No caller currently defers via
+' m.rowSizesDirty: every mid-run caller passes `immediate` (it MUST, or the geometry arrays stop
+' describing the row list), and the rest only run while m.rowSizesBatching is already false. So
+' the flag is false at both batch boundaries and flushRowSizes() there is a no-op; what actually
+' coalesces a run into one recompute is m.pendingRowRemovals. The dirty flag is kept as the seam
+' for a future structural change that CAN be deferred safely — a removal is only the first one.
 sub rowStructureChanged(immediate = false as boolean)
   m.rowSizesDirty = true
   if immediate or not m.rowSizesBatching then flushRowSizes()
