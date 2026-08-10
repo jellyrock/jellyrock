@@ -11,13 +11,26 @@
 # It prints the device MODEL (generic) and the HASHED lock key — never the raw
 # ECP device-id (which partially encodes the serial) and never the IP.
 #
-# workflow_dispatch only fires for workflow files that exist on the DEFAULT
-# BRANCH, so this must land on `main` before it can be dispatched.
+# Triggers, and why there are two:
+#
+#   push (this branch only) — `push` reads the workflow file from the PUSHED
+#     COMMIT, explicitly including workflows not merged to the default branch,
+#     so this runs WITHOUT being merged first. That is the point: a throwaway
+#     diagnostic should not have to land on `main` to answer its question.
+#   workflow_dispatch — kept only so it stays re-runnable by hand IF it is ever
+#     merged. It does nothing on a branch: dispatch only fires for workflow
+#     files that exist on the default branch.
+#
+# The branch filter is deliberate. Without it this would fire on every push to
+# every branch, spending self-hosted runner time on a question already answered.
 
 name: Device Lock Self-Test (diagnostic)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ci/device-lock-selftest
 
 permissions:
   contents: read
