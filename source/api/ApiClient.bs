@@ -101,7 +101,7 @@ class ApiClient
   ' SortBy / SortOrder / Filters, they are ignored. Since 12.0 a folder also matches
   ' IsResumable when a descendant is in progress, so an unfiltered query returns Seasons and
   ' Series (by design) mixed in with the episodes. Every JellyRock resume flow is video, so
-  ' default to Video; pass MediaTypes explicitly to widen it.
+  ' default to Video; pass MediaTypes as a comma-separated STRING to widen it.
   '
   ' @param params - Optional query parameters
   ' @returns Request AA: { method, url } or invalid if no userId
@@ -109,7 +109,14 @@ class ApiClient
     userId = m.getUserId()
     if userId = "" then return invalid
     mergedParams = m.injectDefaults(params)
-    if not mergedParams.DoesExist("MediaTypes") then mergedParams.MediaTypes = "Video"
+    ' MediaTypes has to come out a non-empty STRING, not merely present: buildParams()
+    ' silently skips roArray values (tech-debt `buildparams-no-array-support`), so an
+    ' array here would drop the only filter we control and send the query unnarrowed —
+    ' the exact #784 failure, reached through the documented way to widen it.
+    callerMediaTypes = mergedParams.MediaTypes
+    hasMediaTypes = (type(callerMediaTypes) = "String" or type(callerMediaTypes) = "roString")
+    if hasMediaTypes then hasMediaTypes = callerMediaTypes.trim() <> ""
+    if not hasMediaTypes then mergedParams.MediaTypes = "Video"
     if m.getApiVersion() >= 2
       queryParams = { userId: userId }
       queryParams.append(mergedParams)

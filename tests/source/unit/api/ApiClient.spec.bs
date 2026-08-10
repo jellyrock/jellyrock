@@ -719,6 +719,28 @@ namespace tests
       m.assertTrue(result.url.inStr("Video") = -1, "the Video default must not be appended alongside the override")
     end function
 
+    @it("falls back to the default when a caller passes an array buildParams would drop")
+    function _()
+      m.setApiVersion(2)
+
+      ' buildParams() silently skips roArray values, so honoring mere key presence here
+      ' would send the query with NO mediaTypes at all — the #784 bug, silently.
+      result = m.apiClient.BuildGetResumeItemsRequest({ MediaTypes: ["Video", "Audio"] })
+
+      m.assertNotInvalid(result)
+      m.assertTrue(result.url.inStr("mediatypes=Video") >= 0, "an unusable array must fall back to the Video default")
+    end function
+
+    @it("falls back to the default when a caller passes an empty MediaTypes")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetResumeItemsRequest({ MediaTypes: "" })
+
+      m.assertNotInvalid(result)
+      m.assertTrue(result.url.inStr("mediatypes=Video") >= 0, "an empty MediaTypes must fall back to the Video default")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("ApiClient Instantiation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
