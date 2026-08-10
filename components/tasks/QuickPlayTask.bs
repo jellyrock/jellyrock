@@ -171,11 +171,7 @@ function doSeries(input as object, items as object) as longinteger
   ' Check for a resumable (in-progress) episode first
   resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
     "parentId": input.id,
-    "Filters": "IsResumable",
-    "SortBy": "DatePlayed",
-    "SortOrder": "Descending",
     "Limit": 1,
-    "recursive": true,
     "ImageTypeLimit": 1,
     "EnableTotalRecordCount": false
   }), "qp_seriesResume")
@@ -251,10 +247,6 @@ function doSeason(input as object, items as object) as longinteger
       ' try to find a "continue watching" episode
       continueData = fetchJson(GetApi().BuildGetResumeItemsRequest({
         "parentId": input.id,
-        "SortBy": "DatePlayed",
-        "recursive": true,
-        "SortOrder": "Descending",
-        "Filters": "IsResumable",
         "EnableTotalRecordCount": false
       }), "qp_seasonContinue")
 

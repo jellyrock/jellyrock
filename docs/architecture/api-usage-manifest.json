@@ -991,6 +991,12 @@
       ]
     },
     {
+      "name": "MediaTypes",
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "name": "MinSegments",
       "sourceFiles": [
         "source/api/items.bs"
@@ -3058,7 +3064,7 @@
     },
     "counts": {
       "endpoints": 70,
-      "requestFields": 40,
+      "requestFields": 41,
       "responseFields": 214,
       "unresolvedEndpointSinks": 2
     },

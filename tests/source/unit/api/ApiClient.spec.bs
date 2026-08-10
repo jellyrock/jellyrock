@@ -665,6 +665,61 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Resume Items - media-type narrowing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The resume endpoint hardcodes Recursive/OrderBy/IsResumable server-side, so MediaTypes is
+    ' the only narrowing a client controls. Without it, Jellyfin 12.0 returns Seasons and Series
+    ' alongside the episodes, which floods Continue Watching and makes the series Resume button
+    ' target a folder. See issue #784.
+
+    @it("defaults MediaTypes to Video on the V2 resume endpoint")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetResumeItemsRequest({})
+
+      m.assertNotInvalid(result)
+      m.assertTrue(result.url.inStr("/UserItems/Resume") >= 0, "V2 should use /UserItems/Resume path")
+      ' BrightScript lowercases AA keys in URLs; the value keeps its case.
+      m.assertTrue(result.url.inStr("mediatypes=Video") >= 0, "V2 resume query must narrow to MediaTypes=Video")
+    end function
+
+    @it("defaults MediaTypes to Video on the V1 resume endpoint")
+    function _()
+      m.setApiVersion(1)
+
+      result = m.apiClient.BuildGetResumeItemsRequest({})
+
+      m.assertNotInvalid(result)
+      m.assertTrue(result.url.inStr("/items/resume") >= 0, "V1 should use /users/{id}/items/resume path")
+      m.assertTrue(result.url.inStr("mediatypes=Video") >= 0, "V1 resume query must narrow to MediaTypes=Video too")
+    end function
+
+    @it("lets a caller widen MediaTypes instead of forcing the default")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetResumeItemsRequest({ MediaTypes: "Video,Audio" })
+
+      m.assertNotInvalid(result)
+      m.assertTrue(result.url.inStr("Audio") >= 0, "a caller-supplied MediaTypes must win over the Video default")
+    end function
+
+    @it("treats a differently-cased caller key as the same override")
+    function _()
+      m.setApiVersion(2)
+
+      ' roAssociativeArray keys are case-insensitive, so the DoesExist guard must not
+      ' append a second, conflicting mediatypes param here.
+      result = m.apiClient.BuildGetResumeItemsRequest({ mediaTypes: "Audio" })
+
+      m.assertNotInvalid(result)
+      m.assertTrue(result.url.inStr("Audio") >= 0, "lowercase mediaTypes should override the default")
+      m.assertTrue(result.url.inStr("Video") = -1, "the Video default must not be appended alongside the override")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("ApiClient Instantiation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
