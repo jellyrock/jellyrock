@@ -71,7 +71,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-08
+last-reviewed: 2026-08-10
 ---
 
 # Build & Tooling
@@ -441,7 +441,7 @@ Rule for new scripts: net-new top-level CLI scripts go ESM `.js`; plugins and sh
 - **[`eslint.config.js`](../../eslint.config.js)** — flat config, `@eslint/js` recommended + `eslint-plugin-n` `mixed-esm-and-cjs` preset. Disables `n/no-unpublished-*` (false positive — JellyRock isn't an npm package). Enforces `n/hashbang` for CLI shebangs, `n/prefer-node-protocol` for ESM imports of built-ins, plus standard `no-unused-vars` / `no-var` / `prefer-const`. `eslint-config-prettier` runs LAST to disable formatting rules that would fight Prettier.
 - **[`.prettierrc.json`](../../.prettierrc.json)** — anchored to bsfmt style: 2-space indent, single quotes, semis, trailing commas (all), 100-col print width. JSONC parser for `.vscode/*.json` (they have comments).
 - **[`.prettierignore`](../../.prettierignore)** — excludes `package-lock.json` (npm-owned), `locale/` (translation tooling owns), `tasks/jellyfin-server-openapi/` (vendor), `CHANGELOG.md` (CI-controlled), and the formats other tools own (`.bs`/`.brs`/`.xml`/`.md`).
-- **[`vitest.config.js`](../../vitest.config.js)** — picks up `tests/scripts/**/*.test.js`. Test files are ESM regardless of source module system (Vitest handles cross-module-system imports).
+- **[`vitest.config.js`](../../vitest.config.js)** — picks up `tests/scripts/**/*.test.js` plus `tests/rta/**/*.test.js` (the RTA harness's hardware-free parts, e.g. the registry restore planner). The `.test.js` / `.spec.js` split is load-bearing: `tests/rta/specs/**/*.spec.js` drives a real device and belongs to `vitest.rta.config.js`, so it must never be picked up here. Test files are ESM regardless of source module system (Vitest handles cross-module-system imports).
 
 ### Surface ownership for JS/JSON
 
