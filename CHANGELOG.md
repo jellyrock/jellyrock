@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Scope resume queries to video items so Jellyfin 12.0 folders stay out of Continue Watching ([#794](https://github.com/jellyrock/jellyrock/pull/794))
 - Fix Genres view spacing so each heading sits with its own posters ([#787](https://github.com/jellyrock/jellyrock/pull/787))
 - (ui) render `Gradient` as a stretched tinted ramp poster ([#781](https://github.com/jellyrock/jellyrock/pull/781))
 - (lint) stop the cursor nudge reading Recently-shipped as the cursor ([#771](https://github.com/jellyrock/jellyrock/pull/771))
