@@ -71,6 +71,18 @@ const cmdWithFiles = (cmd, files) => {
 const SPELLCHECKER_PLUGINS =
   'spell indefinite-article repeated-words syntax-mentions syntax-urls frontmatter';
 
+// A heading whose first word is lowercase (`## decision-id: <slug>`, the schema every
+// docs/decisions.md note uses) stops retext treating the PREVIOUS paragraph's final period
+// as sentence-final, so that paragraph's last word is looked up with the period glued on —
+// `handoff.` rather than `handoff`. Base-dictionary words survive it; words from our own
+// dictionary.txt are matched exactly and fail. So appending any decision note could break
+// the build on the prose of the note above it, which is a trap for every future
+// `/log decision`. Ignore the glued shape: a token is only ever reported WITH a trailing
+// period in that mis-tokenized case, so this costs only a real typo that is both
+// paragraph-final and directly above a lowercase heading. Keep in sync with the
+// `lint:spelling` script in package.json — pre-commit and CI must agree.
+const SPELLCHECKER_IGNORE = String.raw`[A-Za-z][A-Za-z0-9'-]*\.`;
+
 module.exports = {
   // BrighterScript format — auto-fix; lint-staged re-stages the result.
   // bslint stays in pre-push (full project context required).
@@ -84,7 +96,7 @@ module.exports = {
   '*.md': (files) => {
     const mdLint = cmdWithFiles('npx markdownlint-cli2 --fix', keep(isMarkdownExcluded)(files));
     const spell = cmdWithFiles(
-      `npx spellchecker -d dictionary.txt -p ${SPELLCHECKER_PLUGINS} --files`,
+      `npx spellchecker -d dictionary.txt -p ${SPELLCHECKER_PLUGINS} -i ${q(SPELLCHECKER_IGNORE)} --files`,
       keep(isSpellExcluded)(files),
     );
     return [mdLint, spell].filter(Boolean);
