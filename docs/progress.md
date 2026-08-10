@@ -97,7 +97,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 
 ### docs
 
-(none)
+- **Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first.** That section prices a crossing by how often you cross and how much you carry. Measured on Home 2026-08-09 (`.177`, 11 rows, n=10): a crossing into a field the receiving thread OBSERVES also costs that observer's **entire callback body**. Proven with a dose-response, not a contrast — three writes in one build differing only in what observed them cost **0.8 ms/row** (unobserved), **1.8 ms/row** (observed, empty callback) and **40.1 ms/row** (observed, callback sleeping a known 40 ms); slope 1.00, intercept ~1 ms. Matches `rokudev/dev-doc` v2.0 `DEVELOPER/core-concepts/threads.md` ("the response appears synchronous to the invoking thread"; "all observer callbacks on the fields are executed in the Render thread"). This is an **ADDITION, not a correction** — the doc's existing framing is confirmed by the same session's `appendChildren` result (176 crossings → 11 cut attach 849→328 ms), and its "expect a busy render thread to slow the Task down" warning correctly predicted a failed prototype. **GATE before editing anything:** run the same `xform`/`append`/`notify` split on `LoadItemsTask2` first. `decisions.md`'s `genre-skeletons-batched-not-per-row` attributes #779's `emit` 220→734 ms purely to crossing count, and blocking-on-the-receiver's-callback fits that data equally well — the two explanations prescribe different fixes (fewer crossings vs. less work in the receiver). Do NOT edit `async.md`, `AGENTS.md`, `components/CLAUDE.md` or the decision record until the grid path is measured; the evidence today is Home only.
 
 ### claude
 

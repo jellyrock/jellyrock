@@ -148,7 +148,7 @@ manifest. Two consequences that are easy to get wrong:
 | Constant | Default | What it gates |
 |---|---|---|
 | `debug` | `false` | Failure injection (`DebugFlags`), the toast cheat code, the Task-thread ledger, `rawApiData`/`raw*` payload attachment, and log level 4 vs 2. See [debug-flags.md](../dev/debug-flags.md) |
-| `perfTiming` | **`true`** | Orchestrator wait/emit instrumentation in `LoadLatestRowsTask` + `LoadItemsTask2`. See [home-first-paint-performance.md](../dev/home-first-paint-performance.md) |
+| `perfTiming` | **`true`** | Orchestrator wait/emit instrumentation in `LoadLatestRowsTask` + `LoadItemsTask2`, the `xform`/`append`/`notify` split inside `LoadLatestRowsTask`, and the render-thread `attach`/`detach`/`other` split in `HomeRows`. See [home-first-paint-performance.md](../dev/home-first-paint-performance.md) |
 | `ENABLE_RTA` | `false` | The RTA on-device component. Flipped to `true` in the build directory by the RTA deploy itself |
 
 `perfTiming` defaults **on** so dev builds print the numbers without ceremony — instrumentation

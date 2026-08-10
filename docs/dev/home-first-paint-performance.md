@@ -8,7 +8,7 @@ related-files:
   - source/constants/apiPool.bs
   - scripts/harden-prod-manifest.js
   - manifest
-last-reviewed: 2026-08-05
+last-reviewed: 2026-08-09
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -24,27 +24,47 @@ Two orchestrators carry the instrumentation today, and they answer **oppositely*
 [`LoadItemsTask2` genre loop](#the-grids-genre-loop--the-same-method-the-opposite-answer) is
 network-bound. Measure per orchestrator; do not carry one result to another.
 
-> ⚠️ **The baselines below are snapshots, not constants.** They were taken before the
-> orchestration job pool existed and will be wrong once it lands. Re-measure and replace
-> them; do not design against them.
+> ⚠️ **The baselines below are snapshots, not constants.** Home's have already been
+> superseded once — see [What the batched attach changed](#what-the-batched-attach-changed).
+> Re-measure and replace them; do not design against them.
+>
+> An earlier version of this warning said they would go stale "once the orchestration job
+> pool lands." That pool was **rejected on measurement** and will not be built
+> ([ADR 0026](../adr/0026-no-worker-pool-for-task-ui-handoff.md)); the note is kept here
+> rather than deleted because the prediction it made is the one a reader is most likely to
+> carry in from an older copy.
 
 ## What is being measured
 
 Opening Home fires one `LoadLatestRowsTask` run that fetches the latest items for every
-eligible library. Two log lines describe it, and both are permanent — they exist in dev
+eligible library. Four log lines describe it, and all are permanent — they exist in dev
 builds only (see [Why this costs production nothing](#why-this-costs-production-nothing)):
 
-The **format** they emit today:
+The **format** they emit today. The first two are the top-level split; the second two break
+`emit` and the render-side work down a level, and are described under
+[The second-level splits](#the-second-level-splits):
 
 ```text
-latest-rows run complete <n> rows <total> ms                                          # HomeRows, render thread
-latest-rows orchestrator done - [debug=? perfTiming=true] task <t> wait <w> emit <e>  # LoadLatestRowsTask
+latest-rows run complete <n> rows <total> ms                                            # HomeRows, render thread
+latest-rows orchestrator done - [debug=? perfTiming=true] task <t> wait <w> emit <e>    # LoadLatestRowsTask
+latest-rows emit split - [debug=? perfTiming=true] xform <x> append <a> notify <no>     # LoadLatestRowsTask
+latest-rows populate split attach <at> detach <d> other <o>                             # HomeRows, render thread
 ```
 
-**Read the bracketed build flags before you trust a sample.** Every line carries the
-compile-time state it was taken under, so a number can never be silently compared against
-one measured in a distorting build. `debug=true` is not comparable to `debug=false` (see
-the trap below).
+The two split lines are emitted **once per run**, not per row — they report accumulators.
+`emit split` follows `orchestrator done` on the task thread; `populate split` follows
+`run complete` on the render thread.
+
+**Read the bracketed build flags before you trust a sample.** The two `LoadLatestRowsTask`
+lines carry the compile-time state the run was taken under, so a number can never be silently
+compared against one measured in a distorting build. `debug=true` is not comparable to
+`debug=false` (see the trap below).
+
+The two `HomeRows` lines are **not** stamped. They are read from the same console session as
+the task lines, so the bracket above them describes the same run — but if you quote a
+render-side number on its own, carry that bracket with it by hand. `run complete` is also the
+only one of the four **not** gated on `perfTiming`: seeing it with no split lines beneath it
+means the build has `perfTiming=false`, not that the run did no render work.
 
 A **recorded sample** — note it has no bracket, because it predates the flag stamping.
 Its build state is known only from the commit that recorded it (`debug=false`), which is
@@ -59,7 +79,7 @@ Any line you find without a bracket is in the same position: treat its build sta
 unverified unless a commit says otherwise. Do not add a bracket to an old sample — a
 stamp is only meaningful if the build actually emitted it.
 
-Four numbers come out of that pair. **Three of them are measurements; one is not.**
+Four numbers come out of the first two lines. **Three of them are measurements; one is not.**
 
 | Value | Meaning | Trust it? |
 |---|---|---|
@@ -84,12 +104,80 @@ Measured, n=10 per device: a 7–9× spread on every tier, and outright **bimoda
 reproduce at all (366 ms on re-measurement). It is excluded from the baselines below for
 that reason.
 
-If you genuinely need the render-thread cost, **instrument `populateRowFromData` directly**.
-Subtraction cannot produce it.
+If you genuinely need the render-thread cost, measure it directly — the `populate split` line
+below does exactly that. Subtraction cannot produce it.
 
 **Why the split matters:** the total alone cannot separate a slow server from slow work of
 our own. Every decision in this area has turned on that distinction, and three plausible
 theories died on it (below).
+
+## The second-level splits
+
+`wait`/`emit` located Home's cost on the task thread but could not say *what* the thread was
+doing, and the largest column turned out not to be task-thread work at all. Two further
+accumulators answer that, and both are permanent for the same reason the first pair is:
+instrumentation re-added later measures something subtly different and cannot be compared
+against anything recorded here.
+
+### `emit split` — inside the orchestrator's own loop
+
+| Column | What it covers | Thread |
+|---|---|---|
+| `xform` | `transformBaseItemArray` plus building the carrier `ContentNode` | **thread-local** |
+| `append` | `m.top.appendChild(child)` — one rendezvous per row | crossing |
+| `notify` | the `m.top.rowReady = libId` write | crossing |
+
+`xform + append + notify ≈ emit`. A large gap means the split is missing work and none of
+it can be trusted.
+
+**`notify` is not the cost of the write.** Writing a Task-node field that the render thread
+observes parks the writing thread until the observer's callback *returns*, so `notify` is
+`HomeRows.onLatestRowsReady` — `drainReady` plus `populateRowFromData` — measured from the
+wrong side of the boundary. It is normally most of `emit`.
+
+That was established with a dose-response rather than a single contrast: three writes in one
+build, differing only in what observed them, cost **0.8 ms/row** (unobserved), **1.8 ms/row**
+(observed, empty callback) and **40.1 ms/row** (observed, callback sleeping a known 40 ms) —
+slope 1.00, intercept ≈1 ms. It matches Roku's documented rendezvous semantics
+(`rokudev/dev-doc` v2.0, `DEVELOPER/core-concepts/threads.md`).
+
+**The consequence is not the obvious one.** `notify` is not time this loop can win back.
+Only the render thread may serve a rendezvous, so making the write non-blocking does not free
+the run — it relocates the queuing into `wait` and `append`, which are rendezvous too. That
+was built and measured, not argued: `notify` fell 1092 → 258 ms, `wait` (+633) and `append`
+(+351) absorbed all of it, and `total` did not move (2695 → 2733 ms, p = 0.97). Read these
+three as a budget for where the run went, not as three independent things to optimize.
+
+### `populate split` — the render thread's own work
+
+The same work `notify` is blocked inside, seen from the owning side — but they do **not**
+sum exactly. `notify` is the whole observer callback; the split covers only
+`populateRowFromData`, while `drainReady` and the per-row `child.items = []` sit inside the
+callback and outside the split. **Measured residual: 3–9% low, across n=12.** A gap much
+larger than that means work went missing and the columns can't be trusted; a gap of roughly
+that size is the decomposition working.
+
+For reference, the other two invariants are tight over the same samples: `wait + emit` is
+within 1.1% of `task`, and `xform + append + notify` within 2.0% of `emit`.
+
+| Column | What it covers |
+|---|---|
+| `attach` | the `row.appendChildren(itemData)` call, on **both** of `populateRowFromData`'s branches |
+| `detach` | dropping the superseded children. In-place branch only |
+| `other` | row lookup, row creation + insertion, backdrop, section bookkeeping, and the no-data exit |
+
+Only latest-media sections are timed — every other Home row shares `populateRowFromData` and
+would pollute the totals.
+
+⚠️ **`attach` is dominated by the in-place branch, and a low `attach` is not automatically
+good news.** The re-insert branch appends into a row that is not in `m.top.content` yet, and
+that measures **~0**. Verified by disabling skeleton insertion so every row took that branch
+(`detach = 0` proves it): same items, same session, **~315 ms live target vs ~0 ms detached**
+— while `total` went the wrong way (2083 → 3266 ms). Where the work goes in that arm is not
+established, so don't read the ~0 as free. Practically: `detach ≈ 0` in a sample means you
+are looking at a re-insert run whose `attach` is not comparable to a normal one. Decide on
+`total`. Full write-up:
+[`per-item-cross-thread-appends`](../architecture/tech-debt.md#per-item-cross-thread-appends).
 
 ## How to run it
 
@@ -153,6 +241,11 @@ the job pool.
 | `emit` | 814 ms | 1342 ms | 2615 ms | 3.2× |
 | **total** | **1679 ms** | **2626 ms** | **5010 ms** | **3.0×** |
 
+> ⚠️ **Superseded on the Stick 4K.** The batched attach (below) moved that column to
+> `emit` 981 / `total` 2129. The table is kept as recorded because the Ultra and 512 MB
+> columns were never re-measured after the change, so the row is no longer internally
+> comparable across devices — do not read the 3.0× scaling off it any more.
+
 Run-to-run spread of `total` (`p25`–`p75` / min–max), so a future comparison knows what counts
 as a real change:
 
@@ -174,6 +267,42 @@ weak CPU is slower at issuing and parsing requests, not just at transforming the
 HTTP vs HTTPS is not worth controlling for: the same device measured 812 ms of `wait` over
 HTTPS and 831 ms over HTTP. Still, keep the transport consistent across devices so the
 comparison is like-for-like.
+
+### What the batched attach changed
+
+The second-level splits above were added to find out what `emit` was made of, and the answer
+redirected the work: `notify` — the render thread's own row population, seen from the task
+side — was 1092 ms of a 1350 ms `emit`, against 224 ms of actual transform. Splitting the
+render side in turn put **849 ms of that into the per-item `row.appendChild(item)` loop**
+(~4.8 ms per item to attach a node the orchestrator's Task thread had built), against 30 ms
+for the removal loop. `appendChildren` does it in one call.
+
+Stick 4K (`.177`), 11 rows, `debug=false`, **n=10 per arm, both arms the same day on the same
+build lineage** — the recorded baseline above is a different session, and a cross-session
+median is not a comparison:
+
+| | before | after |
+|---|---|---|
+| `attach` | 849 ms | **328 ms** |
+| `notify` | 1083 ms | 673 ms |
+| `emit` | 1358 ms | 981 ms |
+| **`total`** | **2646 ms** | **2129 ms** |
+
+The before arm reproduces the n=30 baseline (2646 vs 2626 ms), which is what makes the pair
+trustworthy. **Every after sample beats every before sample** — complete separation,
+Mann-Whitney U = 0.0, p = 0.0002.
+
+**Verified non-vacuous.** A run that renders fewer items looks identical in these numbers, so
+the timings alone cannot tell a win from a regression that skipped work. Reading the live
+content tree off the device on both builds gave the same 13 rows, same 9 `latest_` rows, same
+96 items, and the same per-row tile counts in the same order. **Do this on any future claim
+here** — it is cheap and it is the only thing separating the two.
+
+What the remaining 328 ms *is* has not been established — resist the urge to name a mechanism
+for it. What is known: it scales with the number of append calls, and it disappears entirely
+when the target row is not yet in the live tree (see the ⚠️ under `populate split`). What it
+does **not** respond to is more task-thread parallelism:
+[ADR 0026](../adr/0026-no-worker-pool-for-task-ui-handoff.md).
 
 ### What a real regression looks like
 
@@ -329,7 +458,11 @@ and holding `emit` fixed.
 **different mechanisms**, which is the whole reason the split is worth measuring per
 orchestrator rather than generalizing one number:
 
-- Home's `emit` is the target → a worker pool that owns the *transform*.
+- Home's `emit` is the target — but **not** via a worker pool, which is what this line used
+  to say. Splitting `emit` a level deeper showed only ~224 ms of it is thread-local work
+  more workers could divide; the rest is the render thread's own row population, reached by
+  giving that thread *less to do*. Rejected on measurement in
+  [ADR 0026](../adr/0026-no-worker-pool-for-task-ui-handoff.md).
 - The genre loop's `wait` is the target → **`apiPipeline`**, which already exists, needs no
   new threads, and costs nothing against the 100-thread cap. A worker pool would attack the
   22% and leave the 757 ms serial.
@@ -393,7 +526,11 @@ library size and shape, network conditions, and device model — none of which C
 a threshold cannot distinguish a real regression from a busy server, and a flaky perf gate
 teaches people to ignore it.
 
-The durable regression protection is **structural, not temporal**: assert the *mechanism*
-(work is distributed across workers) in an ordinary deterministic test, the way the
-`no-raw-run` plugin guards the thread bound by construction. A timing number tells you
-something got slower; a structural test tells you what broke.
+The durable regression protection is **structural, not temporal**: assert the *mechanism* in
+an ordinary deterministic test, the way the `no-raw-run` plugin guards the thread bound by
+construction. A timing number tells you something got slower; a structural test tells you
+what broke.
+
+For the batching lever specifically, the mechanism worth asserting is **crossing count** —
+that a handoff attaches its items in one call rather than N. That is a property of the source,
+so a lint rule or a plugin can hold it; a timing threshold cannot. Nothing asserts it today.

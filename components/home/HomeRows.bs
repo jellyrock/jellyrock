@@ -57,6 +57,31 @@ sub init()
   m.latestRowsExpectedCount = 0
   ' Wall clock for the current run, read only to detect a run that outlived its own budget
   m.latestRowsRunClock = CreateObject("roTimespan")
+  ' The render-thread half of a latest-rows run. The orchestrator's `notify` column
+  ' is time IT spends parked inside a write this thread's observer is servicing, so
+  ' these three are the same work seen from the owning side and must roughly sum to
+  ' it. Kept permanent for the same reason the orchestrator's split is: a probe added
+  ' later measures something subtly different and cannot be compared to the recorded
+  ' baselines.
+  '
+  '   attach - the `appendChildren` call, on BOTH of populateRowFromData's branches. In
+  '            practice the in-place branch dominates it: an append into the re-insert
+  '            branch's still-detached row measures ~0. Where that work lands instead is
+  '            not established, so read `attach` next to `total`, never on its own.
+  '   detach - dropping the superseded children. In-place branch only, so detach ~= 0 is
+  '            the signal that a run went through the re-insert branch instead.
+  '   other  - row lookup, row creation + insertion, backdrop, section bookkeeping, and
+  '            the no-data exit that removes a row.
+  '
+  ' These do NOT sum to `notify` exactly: `notify` is the whole observer callback, and
+  ' drainReady plus the per-row `child.items = []` sit inside it but outside this function.
+  ' Measured residual is 3-9%; a much larger gap means something else went missing.
+  #if perfTiming
+    m.popClock = CreateObject("roTimespan")
+    m.popAttachMs = 0
+    m.popDetachMs = 0
+    m.popOtherMs = 0
+  #end if
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
   m.isLoadingLibraries = false
@@ -392,6 +417,11 @@ sub startLatestMediaLoads()
   m.latestRowsTask.libraries = libs
   m.latestRowsTask.observeField("rowReady", "onLatestRowsReady")
   m.latestRowsExpectedCount = libs.count()
+  #if perfTiming
+    m.popAttachMs = 0
+    m.popDetachMs = 0
+    m.popOtherMs = 0
+  #end if
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
   launchTask(m.latestRowsTask)
@@ -427,6 +457,11 @@ sub onLatestRowsReady()
     ' and this run IS Home's first paint for latest media. Log the wall clock so a
     ' regression is a number someone can compare, not a feeling. Stripped in prod builds.
     m.log.info("latest-rows run complete", m.latestRowsExpectedCount, "rows", m.latestRowsRunClock.totalMilliseconds(), "ms")
+    #if perfTiming
+      ' These three are the render-thread work the orchestrator's `notify` column is
+      ' blocked inside, so they must sum to roughly that figure.
+      m.log.info("latest-rows populate split", "attach", m.popAttachMs, "detach", m.popDetachMs, "other", m.popOtherMs)
+    #end if
   end if
 end sub
 
@@ -649,6 +684,14 @@ end sub
 ' @param {string} sectionId - The sectionId of the target row
 ' @param {dynamic} itemData - Array of content nodes from the task, or invalid/empty
 sub populateRowFromData(sectionId as string, itemData as dynamic)
+  ' Only the latest-media rows are timed; every other Home section shares this
+  ' function and would pollute the totals.
+  timed = false
+  #if perfTiming
+    timed = sectionId.startsWith("latest_")
+    if timed then m.popClock.mark()
+  #end if
+
   result = findRowBySectionId(sectionId)
 
   if not isValidAndNotEmpty(itemData)
@@ -656,6 +699,12 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
     if isValid(result)
       removeRowAtIndex(result.index)
     end if
+    ' Accumulate before returning, not just on the fall-through path. A library that
+    ' holds nothing takes this exit on every run, and the three columns are only
+    ' trustworthy while they still sum to the orchestrator's `notify`.
+    #if perfTiming
+      if timed then m.popOtherMs += m.popClock.totalMilliseconds()
+    #end if
     return
   end if
 
@@ -665,27 +714,78 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
     row = result.row
     oldCount = row.getChildCount()
 
-    for each item in itemData
-      row.appendChild(item)
-    end for
+    #if perfTiming
+      if timed
+        m.popOtherMs += m.popClock.totalMilliseconds()
+        m.popClock.mark()
+      end if
+    #end if
+
+    ' ONE call, not one per item. The loop this replaced paid ~4.8 ms per item on a Stick
+    ' 4K: 849 -> 328 ms of attach, Home first paint 2646 -> 2129 ms over 11 rows.
+    '
+    ' WHY it costs that is NOT established, so don't restate it as a thread rendezvous:
+    ' this function runs on the render thread, and Roku documents render-thread operations
+    ' as not rendezvousing (DEVELOPER/core-concepts/threads.md). What is measured is only
+    ' that the cost scales with the number of append CALLS, and that it appears only when
+    ' the target row is already in the live tree — see the else branch below.
+    row.appendChildren(itemData)
+
+    #if perfTiming
+      if timed
+        m.popAttachMs += m.popClock.totalMilliseconds()
+        m.popClock.mark()
+      end if
+    #end if
 
     ' Remove old items (now at indices 0..oldCount-1)
     for i = oldCount - 1 to 0 step -1
       row.removeChildIndex(i)
     end for
+
+    #if perfTiming
+      if timed
+        m.popDetachMs += m.popClock.totalMilliseconds()
+        m.popClock.mark()
+      end if
+    #end if
   else
     ' Row was previously removed (no data last time) — create and insert at correct position
     rowConfig = getRowConfigForSection(sectionId)
-    if not isValid(rowConfig) then return
+    if not isValid(rowConfig)
+      #if perfTiming
+        if timed then m.popOtherMs += m.popClock.totalMilliseconds()
+      #end if
+      return
+    end if
 
     row = CreateObject("roSGNode", "HomeRow")
     row.title = rowConfig.title
     row.sectionId = sectionId
     row.cursorSize = rowConfig.slotSize
 
-    for each item in itemData
-      row.appendChild(item)
-    end for
+    #if perfTiming
+      if timed
+        m.popOtherMs += m.popClock.totalMilliseconds()
+        m.popClock.mark()
+      end if
+    #end if
+
+    ' Same single call as the in-place branch above. Note this row is NOT in m.top.content
+    ' yet: appending into a still-detached row measured ~0 ms, against ~315 ms for the
+    ' identical items into a live row. So unlike the in-place branch this was never the hot
+    ' spot. Where that work goes instead is NOT established — forcing every row down this
+    ' branch made the whole load slower, so building detached is not a shortcut to copy.
+    ' Written the same way so the function has ONE attach mechanism to reason about.
+    ' Same build-then-attach shape as ConfigList.setData.
+    row.appendChildren(itemData)
+
+    #if perfTiming
+      if timed
+        m.popAttachMs += m.popClock.totalMilliseconds()
+        m.popClock.mark()
+      end if
+    #end if
 
     insertIndex = findInsertIndexForSection(sectionId)
     m.top.content.insertChild(row, insertIndex)
@@ -694,6 +794,10 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
 
   updateBackdropForFocusedItem()
   onSectionPopulated()
+
+  #if perfTiming
+    if timed then m.popOtherMs += m.popClock.totalMilliseconds()
+  #end if
 end sub
 
 ' onSectionPopulated: Called after each section is populated with data.
