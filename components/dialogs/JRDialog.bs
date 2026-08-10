@@ -1,0 +1,436 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogResult.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Layout is DERIVED, not a stack of fixed offsets: every block is measured and
+' the next one flows below it. Fixed offsets could not survive a title that
+' wraps to two lines, a message of any length, or a button row whose width
+' depends on the translation.
+'
+' Vertical flow:
+'   padding | title | TITLE_GAP | accent | BODY_GAP | message | BODY_GAP | buttons | padding
+'
+' The accent rule sits TIGHT under the title (TITLE_GAP) because the two are one
+' unit — it belongs to the title, it does not divide the card. Below it the
+' message is centred in its own space (BODY_GAP above and below), so the eye
+' reads title -> message -> options as three steps.
+'
+' Hierarchy comes from the accent, not from unequal gaps: an earlier version
+' used a 24/48 split to force the break, which left the message crowding the
+' rule above it.
+'
+' Every value is a multiple of 6, so it stays an integer through the Roku OS
+' downscale to 720p (x2/3). The previous 40 and 25 did not.
+const PANEL_PADDING = 48
+const TITLE_GAP = 24
+const BODY_GAP = 36
+const SEPARATOR_HEIGHT = 3
+
+' A short accent rule under the title, not a full-width divider: at content
+' width it competed with the message instead of supporting the title.
+'
+' colorSecondary, NOT colorPrimary — colorPrimary is the theme's FOCUSABLE
+' colour (it is the focus ring on the buttons in this same dialog), and this
+' rule can never take focus. Using it here would blur that distinction.
+const SEPARATOR_ACCENT_WIDTH = 120
+const BUTTON_MIN_WIDTH = 200
+const BUTTON_SPACING = 24
+const MAX_BUTTONS = 3
+
+' Width starts here and GROWS to fit the button row (long translations), up to
+' PANEL_MAX_WIDTH. Past that the row stacks vertically instead of overflowing.
+const PANEL_WIDTH = 760
+const PANEL_MAX_WIDTH = 1200
+
+' Ceiling so the panel can never exceed the screen — at 1080 this leaves 100px
+' top and bottom. Reaching it takes roughly 600 characters of message, which is
+' not a translation but a wrong-component mistake, so it warns (see layout()).
+
+' The ONE piece of narration timing that cannot be event-driven.
+'
+' Established on-device, one behavior at a time:
+'   - The platform announces the focused button ONLY when focus first enters the
+'     dialog. Moving between buttons afterwards is silent (TextButton extends
+'     Group, not Roku's Button, so the "text of button is spoken only if focused"
+'     rule never applies). Those moves are ours alone, and need no timing.
+'   - That one initial announcement FLUSHES ours. Speaking from the focus
+'     observer, which is as early as any event lets us react, still loses: the
+'     platform speaks after us and we are cut off. Speaking before focus loses
+'     the same way.
+' To survive we must speak AFTER the platform's announcement, and SceneGraph
+' exposes no event for "the platform has finished dispatching speech" — the only
+' observable speech events are for utterances the app itself starts. So the
+' opening announcement is the one place a delay is unavoidable.
+'
+' Keep it short: long enough to land second, short enough to flush the platform's
+' word before it is audible. At 0.6s the clipped word was clearly audible.
+' Changing this needs an ear, not reasoning — there is no test that can catch it.
+const OPENING_ANNOUNCEMENT_DELAY = 0.15
+
+
+
+sub init()
+  m.log = new log.Logger("JRDialog")
+  constants = m.global.constants
+
+  m.panel = m.top.findNode("dialogBackground")
+  m.panel.blendColor = constants.colorBackgroundPrimary
+  m.panelBorder = m.top.findNode("dialogBorder")
+  m.panelBorder.blendColor = constants.colorBackgroundSecondary
+
+  m.titleLabel = m.top.findNode("titleLabel")
+  m.separator = m.top.findNode("separator")
+  ' Height is applied HERE, not left to the XML: the XML hardcoded 6 while the
+  ' layout reserved SEPARATOR_HEIGHT, so it rendered at one size and was flowed
+  ' at another.
+  m.separator.height = SEPARATOR_HEIGHT
+  m.separator.color = constants.colorSecondary
+
+  m.messageText = m.top.findNode("messageText")
+  m.panelWidth = PANEL_WIDTH
+  ' Layout depends on the rendered message height — recompute when it settles
+  m.messageText.enableRenderTracking = true
+  m.messageText.observeField("renderTracking", "onMessageRendered")
+
+  m.buttonRow = m.top.findNode("buttonRow")
+  ' Button sizing is observed per-button via TextButton's `isReady` (see
+  ' onButtonsChanged), NOT via renderTracking. renderTracking reports render
+  ' VISIBILITY, so it fires once on none -> full and never again — it cannot see
+  ' the resize our own applyButtonLayout triggers when it switches the row to
+  ' stacked, which left the stacked row positioned from stale measurements.
+
+  m.buttonNodes = []
+  m.stackButtons = false
+  m.panelX = 0
+  m.focusIndex = 0
+  m.resolved = false
+
+  ' Screen-reader announcement. Focus changes drive it (see
+  ' onButtonFocusChanged); the opening announcement additionally needs the timer
+  ' below, for the reason documented on OPENING_ANNOUNCEMENT_DELAY.
+  m.buttonRow.observeField("focusedChild", "onButtonFocusChanged")
+  m.narrationTimer = m.top.findNode("narrationTimer")
+  m.narrationTimer.duration = OPENING_ANNOUNCEMENT_DELAY
+  m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
+  m.hasNarrated = false
+
+  layout()
+end sub
+
+sub onTitleChanged()
+  m.titleLabel.text = m.top.title
+  layout()
+end sub
+
+sub onMessageChanged()
+  m.messageText.text = m.top.message
+  ' renderTracking fires once the new text lays out; layout() runs then
+end sub
+
+sub onMessageRendered()
+  layout()
+end sub
+
+sub onButtonsChanged()
+  labels = m.top.buttons
+  if not isValid(labels) then return
+  if labels.count() > MAX_BUTTONS
+    m.log.warn("JRDialog given", labels.count(), "buttons; design cap is", MAX_BUTTONS, "- use JRListDialog (showListDialog) for longer option sets")
+  end if
+
+  ' Rebuild the row
+  while m.buttonRow.getChildCount() > 0
+    m.buttonRow.removeChildIndex(0)
+  end while
+  m.buttonNodes = []
+
+  for each label in labels
+    btn = CreateObject("roSGNode", "TextButton")
+    btn.text = label
+    btn.minWidth = BUTTON_MIN_WIDTH
+    ' Re-layout once this button knows its own size; the panel's width, height
+    ' and the row's position are all derived from it.
+    btn.observeField("isReady", "onButtonReady")
+    m.buttonRow.appendChild(btn)
+    m.buttonNodes.push(btn)
+  end for
+
+  m.focusIndex = m.top.defaultButtonIndex
+  if m.focusIndex < 0 or m.focusIndex >= m.buttonNodes.count() then m.focusIndex = 0
+  layout()
+end sub
+
+' Screen-reader announcement, driven by the focus event itself.
+'
+' The platform announces the focused button the moment focus lands, and app
+' speech and platform speech interrupt each other rather than queueing — so we
+' have to speak second to be the one that survives. The focus change IS that
+' moment, so reacting to it needs no guess about timing (an earlier version used
+' a tuned delay; the value was a guess that would rot on different hardware).
+'
+' First focus = the dialog opening: announce the whole thing, folding in the
+' button so it is one utterance in the built-in order. Later focus changes
+' announce just the button the user moved to — nothing else has changed.
+sub onButtonFocusChanged()
+  focused = m.buttonRow.focusedChild
+  if not isValid(focused) then return
+
+  ' The opening announcement is the timer's job — it has to land after the
+  ' platform's own. Starting the timer here (rather than when the buttons are
+  ' built) means it is anchored to focus actually landing.
+  if not m.hasNarrated
+    m.narrationTimer.control = "start"
+    return
+  end if
+
+  narrateFocusedElement(toString(focused.text))
+end sub
+
+' Announce the whole dialog, once the platform's own focus announcement is out of
+' the way. Folds in the focused button so this is a single utterance in the
+' built-in order: title, message, button.
+sub onOpeningAnnouncementDue()
+  if m.hasNarrated then return
+  m.hasNarrated = true
+
+  focusedText = ""
+  focused = m.buttonRow.focusedChild
+  if isValid(focused) then focusedText = toString(focused.text)
+
+  narrateDialogOpening(m.top.title, m.top.message, focusedText)
+end sub
+
+' A button finished sizing itself. Re-run the whole layout, not just the
+' centring: the panel's width and height and the row's position are all derived
+' from the buttons' real measurements. Laying out once from an estimate left the
+' bottom padding short, and left a stacked row positioned off the panel.
+sub onButtonReady()
+  layout()
+end sub
+
+' Position the chrome. Called on any content change; safe to run repeatedly.
+'
+' Everything is measured then flowed, so a two-line title, a long message and a
+' wide button row each push what follows instead of colliding with it.
+sub layout()
+  if not isValid(m.panelWidth) then m.panelWidth = PANEL_WIDTH
+  constants = m.global.constants
+
+  ' --- width: grow to fit the buttons, then stack ---------------------------
+  ' A single German confirm label can be wider than the default panel. Grow the
+  ' panel to hold the row; past PANEL_MAX_WIDTH stack the buttons vertically
+  ' instead, which stays readable where an overflowing row does not.
+  rowWidth = naturalButtonRowWidth()
+  wanted = PANEL_WIDTH
+  if rowWidth + (PANEL_PADDING * 2) > wanted then wanted = rowWidth + (PANEL_PADDING * 2)
+  m.stackButtons = wanted > PANEL_MAX_WIDTH
+  if m.stackButtons then wanted = PANEL_MAX_WIDTH
+  m.panelWidth = wanted
+
+  contentWidth = m.panelWidth - (PANEL_PADDING * 2)
+  applyButtonLayout(contentWidth)
+
+  m.panel.width = m.panelWidth
+  m.panelBorder.width = m.panelWidth
+  m.messageText.width = contentWidth
+  m.titleLabel.width = contentWidth
+
+  ' --- measure each block ---------------------------------------------------
+  hasTitle = m.top.title.len() > 0
+  titleHeight = 0
+  if hasTitle
+    titleHeight = m.titleLabel.localBoundingRect().height
+    ' Not rendered yet — renderTracking re-runs layout() once it settles
+    if titleHeight = 0 then return
+  end if
+
+  textHeight = 0
+  if m.top.message.len() > 0
+    textHeight = m.messageText.localBoundingRect().height
+    if textHeight = 0 then return
+  end if
+
+  buttonsHeight = buttonRowHeight()
+
+  ' --- flow ------------------------------------------------------------------
+  y = PANEL_PADDING
+  titleY = y
+  separatorY = y
+  if hasTitle
+    y += titleHeight + TITLE_GAP
+    separatorY = y
+    y += SEPARATOR_HEIGHT + BODY_GAP
+  end if
+  textY = y
+  if textHeight > 0 then y += textHeight + BODY_GAP
+  buttonsY = y
+  panelHeight = y + buttonsHeight + PANEL_PADDING
+
+  ' --- ceiling ---------------------------------------------------------------
+  ' Never exceed the screen. Reaching this needs ~600 characters of message,
+  ' which means the caller wants showInfoDialog, not a confirm — so say so
+  ' rather than silently swallowing the text.
+  maxHeight = 1080 - (PANEL_PADDING * 2) - 60
+  if panelHeight > maxHeight
+    overflow = panelHeight - maxHeight
+    lineHeight = int(constants.fontSizeMedium * 1.25)
+    if lineHeight < 1 then lineHeight = 1
+    keepLines = int((textHeight - overflow) / lineHeight)
+    if keepLines < 1 then keepLines = 1
+    m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
+    m.messageText.maxLines = keepLines
+    ' The clamp changes the rendered height; renderTracking re-runs layout()
+    return
+  end if
+
+  panelX = (1920 - m.panelWidth) / 2
+  panelY = (1080 - panelHeight) / 2
+
+  m.panel.translation = [panelX, panelY]
+  m.panel.height = panelHeight
+  m.panelBorder.translation = [panelX, panelY]
+  m.panelBorder.height = panelHeight
+
+  m.titleLabel.visible = hasTitle
+  m.separator.visible = hasTitle
+  if hasTitle
+    m.titleLabel.translation = [panelX + PANEL_PADDING, panelY + titleY]
+    m.titleLabel.height = titleHeight
+    m.separator.width = SEPARATOR_ACCENT_WIDTH
+    m.separator.translation = [panelX + ((m.panelWidth - SEPARATOR_ACCENT_WIDTH) / 2), panelY + separatorY]
+  end if
+
+  m.messageText.translation = [panelX + PANEL_PADDING, panelY + textY]
+
+  m.buttonRowY = panelY + buttonsY
+  m.panelX = panelX
+  centerButtonRow()
+  focusButton(m.focusIndex)
+end sub
+
+' Width the row wants at its natural size, before any panel growth.
+function naturalButtonRowWidth() as integer
+  if m.buttonNodes.count() = 0 then return 0
+  total = 0
+  for each btn in m.buttonNodes
+    w = btn.localBoundingRect().width
+    if w < BUTTON_MIN_WIDTH then w = BUTTON_MIN_WIDTH
+    total += w
+  end for
+  return total + (BUTTON_SPACING * (m.buttonNodes.count() - 1))
+end function
+
+' Horizontal row normally; vertical, full-width buttons when they cannot fit.
+sub applyButtonLayout(contentWidth as integer)
+  if m.stackButtons = true
+    m.buttonRow.layoutDirection = "vert"
+    ' LEFT, not center: a centered LayoutGroup positions children about the
+    ' group's origin rather than left-anchoring them, which put the stacked row
+    ' half its own width off the panel. All stacked buttons are the same width,
+    ' so left-anchored is visually identical and the row's rect stays honest.
+    m.buttonRow.horizAlignment = "left"
+    m.buttonRow.itemSpacings = [BUTTON_SPACING]
+    for each btn in m.buttonNodes
+      btn.minWidth = contentWidth
+    end for
+  else
+    m.buttonRow.layoutDirection = "horiz"
+    m.buttonRow.horizAlignment = "left"
+    m.buttonRow.itemSpacings = [BUTTON_SPACING]
+    for each btn in m.buttonNodes
+      btn.minWidth = BUTTON_MIN_WIDTH
+    end for
+  end if
+end sub
+
+' Rendered height of the button row, or a computed fallback before it lays out
+' (localBoundingRect is 0 until the TextButtons size themselves).
+function buttonRowHeight() as integer
+  if isValid(m.buttonRow)
+    rect = m.buttonRow.localBoundingRect()
+    if rect.height > 0 then return rect.height
+  end if
+  ' TextButton: fontSize * 0.7 + padding * 2
+  return int(m.global.constants.fontSizeMedium * 0.7) + 60
+end function
+
+' Centre the row on the PANEL, not the screen — they only coincided while the
+' panel was a fixed width centred on screen.
+sub centerButtonRow()
+  if not isValid(m.buttonRowY) then return
+  rect = m.buttonRow.localBoundingRect()
+  rowWidth = rect.width
+  if rowWidth = 0 then return
+  m.buttonRow.translation = [m.panelX + ((m.panelWidth - rowWidth) / 2), m.buttonRowY]
+end sub
+
+sub focusButton(index as integer)
+  if m.buttonNodes.count() = 0 then return
+  if index < 0 then index = 0
+  if index >= m.buttonNodes.count() then index = m.buttonNodes.count() - 1
+  m.focusIndex = index
+  m.buttonNodes[index].setFocus(true)
+end sub
+
+' Step button focus, WRAPPING at the ends to match JRButtonGroup — the app's other
+' horizontal button row wraps, so a dialog that dead-ends feels broken.
+'
+' Narration of the newly focused button is handled by the focusedChild observer,
+' so it covers remote-driven moves and programmatic ones alike.
+sub moveButtonFocus(delta as integer)
+  count = m.buttonNodes.count()
+  if count = 0 then return
+
+  ' + count before MOD so a leftward move from index 0 wraps to the end rather
+  ' than going negative
+  nextIndex = (m.focusIndex + delta + count) mod count
+  focusButton(nextIndex)
+end sub
+
+' Resolve the dialog exactly once, then close. index = -1 means cancelled (back).
+sub resolveDialog(index as integer)
+  if m.resolved then return
+  m.resolved = true
+
+  m.top.result = buttonDialogResult(index, m.top.confirmIndex, m.top.buttons)
+
+  closeDialog()
+end sub
+
+' Dismiss this overlay. Appended directly to the scene by dialogs.bs, so closing is a
+' removeChild from our parent + restoring focus to the opener (returnFocusTo).
+' Mirrors OverviewDialog.closeDialog().
+sub closeDialog()
+  returnFocusTo = m.top.returnFocusTo
+  parent = m.top.getParent()
+  if isValid(parent) then parent.removeChild(m.top)
+  if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  if key = "back"
+    resolveDialog(-1)
+    return true
+  end if
+
+  if key = "left"
+    moveButtonFocus(-1)
+    return true
+  end if
+
+  if key = "right"
+    moveButtonFocus(1)
+    return true
+  end if
+
+  if key = "OK"
+    resolveDialog(m.focusIndex)
+    return true
+  end if
+
+  ' Modal containment: nothing else escapes to the scene behind us
+  return true
+end function

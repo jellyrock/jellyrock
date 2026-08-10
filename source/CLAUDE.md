@@ -10,7 +10,7 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 
 ## Render thread protection
 
-- Anything that does I/O must run on a Task thread (network, registry I/O, large file reads).
+- Anything that does I/O must run on a Task thread (network, registry I/O, large file reads). Which thread is which (there are three, and main ≠ render): [threading.md](../docs/architecture/threading.md).
 - **Start that Task with `launchTask(node)`** (`source/utils/tasks.bs`), never a raw `node.control = "RUN"` (or `node["control"] = "RUN"`, or `node.setField("control", "RUN")`) — the `no-raw-run` BSC plugin makes all three a build error so the thread count stays bounded and measurable (epic #728). An invalid node is a silent `false` rather than the crash the raw form gave; debug builds print when that happens. Note `source/` files only auto-scope within the `source` scope: a `source/*.bs` file that calls `launchTask` and is also imported by a component must `import "pkg:/source/utils/tasks.bs"` explicitly, or that component's scope won't resolve it.
 - HTTP: route through `GetApi().Build*Request()` + `fetchRes()` / `submitApiRequest()` / `SubmitSideEffect()`. See [docs/architecture/api.md](../docs/architecture/api.md) for the four call patterns.
 - Synchronous `Get*()` methods on `ApiClient` exist for the bootstrap path only (login, server discovery before the pool is up). **Don't add new sync API calls.**
@@ -36,4 +36,4 @@ BrighterScript modules — shared utilities and orchestration that doesn't live 
 | `source/constants/` | Shared constants (timeouts, sizes, …). |
 | `source/migrations.bs` | Registry-schema migrations. See [docs/architecture/migrations.md](../docs/architecture/migrations.md). |
 | `source/main.bs` | Entry point; bootstrap; main event loop. See [docs/architecture/bootstrap.md](../docs/architecture/bootstrap.md). |
-| `source/showScenes.bs` | Two router-agnostic helpers (perf beacon, resume/start-over playback dialog). `LoginFlow` + the scene factories were removed in the #550 sgRouter migration. |
+| `source/showScenes.bs` | One router-agnostic helper (perf beacon). `LoginFlow` + the scene factories were removed in the #550 sgRouter migration; the dead resume/start-over dialog followed. |

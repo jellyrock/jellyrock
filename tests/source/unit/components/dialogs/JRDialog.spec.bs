@@ -1,0 +1,114 @@
+namespace tests
+
+  @suite("JRDialog - interface, button row construction, result contract surface")
+  class JRDialogTests extends tests.BaseTestSuite
+
+    private dialog as object
+
+    protected override function setup()
+      super.setup()
+      m.dialog = CreateObject("roSGNode", "JRDialog")
+    end function
+
+    protected override function teardown()
+      m.dialog = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("exposes the standard dialog fields")
+    function _()
+      m.assertTrue(m.dialog.doesExist("title"))
+      m.assertTrue(m.dialog.doesExist("message"))
+      m.assertTrue(m.dialog.doesExist("buttons"))
+      m.assertTrue(m.dialog.doesExist("result"))
+      m.assertTrue(m.dialog.doesExist("returnFocusTo"))
+    end function
+
+    @it("confirmIndex defaults to -1 (no confirm semantics unless a helper sets it)")
+    function _()
+      m.assertEqual(m.dialog.confirmIndex, -1)
+    end function
+
+    @it("defaultButtonIndex defaults to 0")
+    function _()
+      m.assertEqual(m.dialog.defaultButtonIndex, 0)
+    end function
+
+    @it("result starts unset")
+    function _()
+      m.assertInvalid(m.dialog.result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Button row construction")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates one TextButton per label")
+    function _()
+      m.dialog.buttons = ["Cancel", "Delete"]
+      row = m.dialog.findNode("buttonRow")
+      m.assertEqual(row.getChildCount(), 2)
+      m.assertEqual(row.getChild(0).subtype(), "TextButton")
+      m.assertEqual(row.getChild(0).text, "Cancel")
+      m.assertEqual(row.getChild(1).text, "Delete")
+    end function
+
+    @it("rebuilds the row on reassignment instead of appending")
+    function _()
+      m.dialog.buttons = ["A", "B", "C"]
+      m.dialog.buttons = ["OK"]
+      row = m.dialog.findNode("buttonRow")
+      m.assertEqual(row.getChildCount(), 1)
+      m.assertEqual(row.getChild(0).text, "OK")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Focus on open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a button holds focus after the present sequence")
+    function _()
+      ' Mirrors source/utils/dialogs.bs presentOverlayDialog. A dialog whose
+      ' buttons are unfocused swallows OK, so this is the contract that makes the
+      ' button row usable at all.
+      scene = m.top.getScene()
+      m.assertNotInvalid(scene)
+
+      m.dialog.title = "Delete"
+      m.dialog.message = "Are you sure?"
+      m.dialog.buttons = ["Cancel", "Delete"]
+
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      row = m.dialog.findNode("buttonRow")
+      anyFocused = row.getChild(0).hasFocus() or row.getChild(1).hasFocus()
+      scene.removeChild(m.dialog)
+
+      m.assertTrue(anyFocused)
+    end function
+
+    @it("defaultButtonIndex decides which button opens focused")
+    function _()
+      ' showConfirmDialog relies on this to focus the SAFE side by default
+      scene = m.top.getScene()
+      m.dialog.message = "Are you sure?"
+      m.dialog.defaultButtonIndex = 1
+      m.dialog.buttons = ["Cancel", "Delete"]
+
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      row = m.dialog.findNode("buttonRow")
+      secondFocused = row.getChild(1).hasFocus()
+      scene.removeChild(m.dialog)
+
+      m.assertTrue(secondFocused)
+    end function
+
+  end class
+
+end namespace

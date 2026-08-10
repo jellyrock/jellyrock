@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JRDialog: the standard JellyRock modal — dimmed backdrop, centered panel with
+     title + separator + message, and a HORIZONTAL TextButton row below the panel
+     (the "PC look" established by OverviewDialog). Appended directly to the scene
+     by the source/utils/dialogs.bs helpers; self-dismissing via removeChild +
+     returnFocusTo. Result delivery is per-instance through the `result` field —
+     observe it (observeFieldScoped from components, message port from main.bs).
+     Covers alert (1 button), confirm (2 buttons), and choice (2-3 buttons) shapes;
+     longer option sets belong in JRListDialog (the helpers route automatically). -->
+<component name="JRDialog" extends="JRGroup" focusable="true">
+  <children>
+    <!-- Dimmed background overlay -->
+    <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />
+
+    <!-- Dialog panel -->
+    <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <!-- Edge so the card reads as elevated against any backdrop -->
+    <Poster id="dialogBorder" uri="pkg:/images/9patch/border-3px.9.png" />
+
+    <!-- Title + separator (hidden when title is empty) -->
+    <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
+    <Rectangle id="separator" height="6" />
+
+    <!-- Message body -->
+    <LabelPrimaryMedium id="messageText" horizAlign="center" wrap="true" />
+
+    <!-- Horizontal button row BELOW the panel -->
+    <LayoutGroup id="buttonRow" layoutDirection="horiz" itemSpacings="[24]" />
+
+    <!-- Delays ONLY the opening announcement, so it lands after the platform's
+         own focus announcement instead of being flushed by it. See
+         OPENING_ANNOUNCEMENT_DELAY in JRDialog.bs. -->
+    <Timer id="narrationTimer" repeat="false" />
+
+  </children>
+  <interface>
+    <field id="title" type="string" onChange="onTitleChanged" />
+    <field id="message" type="string" onChange="onMessageChanged" />
+    <!-- Array of button label strings, left to right. Design cap is 3 — the helpers
+         route larger sets to JRListDialog; this component logs a warning beyond 3. -->
+    <field id="buttons" type="array" onChange="onButtonsChanged" />
+    <!-- Which button index counts as "confirmed" in the result (-1 = none; the
+         confirm helper sets this so callers can read result.confirmed). -->
+    <field id="confirmIndex" type="integer" value="-1" />
+    <!-- Button focused when the dialog opens -->
+    <field id="defaultButtonIndex" type="integer" value="0" />
+    <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
+    <field id="result" type="assocarray" alwaysNotify="true" />
+    <!-- Node to restore remote focus to on close. Set by the dialogs.bs helper. -->
+    <field id="returnFocusTo" type="node" />
+  </interface>
+</component>

@@ -2,11 +2,9 @@
 <component name="QueueManager" extends="ContentNode">
   <interface>
     <function name="clear" />
-    <function name="clearHold" />
     <function name="deleteAtIndex" />
     <function name="getCount" />
     <function name="getCurrentItem" />
-    <function name="getHold" />
     <function name="getIsShuffled" />
     <function name="getItemByIndex" />
     <function name="getItemType" />
@@ -15,7 +13,6 @@
     <function name="getQueueTypes" />
     <function name="getQueueUniqueTypes" />
     <function name="getUnshuffledQueue" />
-    <function name="hold" />
     <function name="isPrerollActive" />
     <function name="launchItem" />
     <function name="launchPhotoAlbum" />

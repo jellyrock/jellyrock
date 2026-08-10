@@ -1,0 +1,208 @@
+' Standard dialog helpers — the ONE way to show a dialog in JellyRock.
+'
+' All helpers create the dialog, present it, and return the dialog NODE. Result
+' delivery is per-dialog-instance through the node's `result` field (shape:
+' { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }), set
+' exactly once when the user resolves the dialog — there is no shared global
+' return field, so concurrent observers can never cross-fire.
+'
+' From a COMPONENT (render thread), pass onResult — the name of a function in
+' YOUR component scope — and the helper wires the scoped observer for you:
+'
+'   m.dialog = showConfirmDialog(tr("Delete"), tr("Are you sure?"), "onDeleteConfirm")
+'   sub onDeleteConfirm()
+'     result = m.dialog.result
+'     m.dialog = invalid
+'     if result.confirmed then deleteTheThing()
+'   end sub
+'
+' From MAIN THREAD code (main.bs), omit onResult and observe with your port
+' instead: dialog.observeField("result", m.port).
+'
+' JRDialog / JRListDialog are scene-appended overlays (OverviewDialog mechanics);
+' showKeyboardDialog uses Roku's modal channel (m.scene.dialog) because it wraps
+' the OS keyboard. Callers don't need to care — the result contract is identical.
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Simple message + OK button. result.buttonIndex = 0 (OK) or cancelled on back.
+function showAlertDialog(title as string, message as string, onResult = "" as string) as object
+  dialog = createObject("roSGNode", "JRDialog")
+  dialog.title = title
+  dialog.message = message
+  dialog.buttons = [translate(translationKeys.ButtonOk)]
+  return presentOverlayDialog(dialog, onResult)
+end function
+
+' Yes/No-style confirmation. Cancel is LEFT, confirm is RIGHT; back = cancelled.
+' Read result.confirmed — true only when the confirm button was selected.
+function showConfirmDialog(title as string, message as string, onResult = "" as string, confirmText = "" as string, cancelText = "" as string) as object
+  if confirmText = "" then confirmText = translate(translationKeys.ButtonYes)
+  if cancelText = "" then cancelText = translate(translationKeys.ButtonNo)
+
+  dialog = createObject("roSGNode", "JRDialog")
+  dialog.title = title
+  dialog.message = message
+  dialog.confirmIndex = 1
+  dialog.defaultButtonIndex = 0 ' focus the safe (cancel) side by default
+  dialog.buttons = [cancelText, confirmText]
+  return presentOverlayDialog(dialog, onResult)
+end function
+
+' 2+ mutually exclusive options. Up to 3 short options render as the horizontal
+' button row; more (or wider-than-panel labels, e.g. long translations) fall back
+' to the scrollable list dialog. Either way the selection lands in
+' result.optionIndex (-1 = cancelled), so callers don't care which route ran.
+function showChoiceDialog(title as string, message as string, choices as object, onResult = "" as string, defaultIndex = 0 as integer) as object
+  if choicesFitAsButtons(choices)
+    dialog = createObject("roSGNode", "JRDialog")
+    dialog.title = title
+    dialog.message = message
+    dialog.defaultButtonIndex = defaultIndex
+    dialog.buttons = choices
+    return presentOverlayDialog(dialog, onResult)
+  end if
+  return showListDialog(title, choices, onResult, defaultIndex)
+end function
+
+' Select one item from a longer list (audio/subtitle tracks, video sources).
+' result.optionIndex is the selected index, -1 on cancel.
+function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer) as object
+  dialog = createObject("roSGNode", "JRListDialog")
+  dialog.title = title
+  dialog.defaultIndex = defaultIndex
+  dialog.items = items
+  return presentOverlayDialog(dialog, onResult)
+end function
+
+' Read-only long-form text (descriptions, biographies). Self-closing on OK/back;
+' no result to observe. Wraps the existing OverviewDialog chrome.
+function showInfoDialog(title as string, overview as string, tagline = "" as string) as object
+  dialog = createObject("roSGNode", "OverviewDialog")
+  if title <> "" then dialog.title = title
+  if tagline <> "" then dialog.tagline = tagline
+  dialog.overview = overview
+  ' OverviewDialog has no `result` field — it self-closes on OK/back, so there is
+  ' nothing to observe. Present it through the same path as the other overlays.
+  return presentOverlayDialog(dialog, "")
+end function
+
+' Text entry via the OS keyboard (voice-capable, certification-compliant).
+' Entered text lands in result.value; result.cancelled distinguishes cancel from
+' an intentionally empty entry. secure = true masks input for passwords.
+'
+' keyboardDomain drives the keyboard's VOICE dictation mode, so it must match the
+' kind of text being entered ("email" / "numeric" / "alphanumeric" / "password" /
+' "generic"). secure = true implies "password" unless the caller names a domain —
+' otherwise a masked field would still dictate as free-form words.
+function showKeyboardDialog(title as string, onResult = "" as string, defaultText = "" as string, secure = false as boolean, keyboardDomain = "" as string) as object
+  if keyboardDomain = ""
+    if secure then keyboardDomain = "password" else keyboardDomain = "generic"
+  end if
+
+  dialog = createObject("roSGNode", "JRKeyboardDialog")
+  dialog.setField("title", title)
+  dialog.setField("keyboardDomain", keyboardDomain)
+  if secure then dialog.secure = true
+  if defaultText <> "" then dialog.setField("text", defaultText)
+  if onResult <> "" then dialog.observeFieldScoped("result", onResult)
+
+  ' Roku modal channel — the OS owns presentation and focus for keyboard dialogs
+  scene = appScene()
+  scene.dialog = dialog
+  return dialog
+end function
+
+' Abandon a dialog this screen opened, delivering no result. Call from onDestroy
+' for any dialog node you are still holding.
+'
+' Overlay dialogs are appended to the SCENE, not to the screen that opened them,
+' so they outlive their opener: a routed view destroyed while one is open (deep
+' link, session expiry, server switch — anything that navigates without the user
+' pressing back) would leave a modal stranded over the incoming screen, with a
+' scoped observer pointing at a torn-down scope and returnFocusTo pointing at a
+' dead node. Safe to call with invalid / an already-closed dialog.
+sub abandonDialog(dialog as object)
+  if not isValid(dialog) then return
+
+  dialog.unobserveFieldScoped("result")
+
+  if dialog.isSubtype("StandardKeyboardDialog")
+    ' Roku modal channel — the OS owns presentation; writing `close` dismisses it
+    dialog.close = true
+    return
+  end if
+
+  parent = dialog.getParent()
+  if isValid(parent) then parent.removeChild(dialog)
+end sub
+
+' ---- internals ----
+
+' Append an overlay dialog to the scene, capture focus, wire the caller's
+' result observer. onResult is resolved in the CALLER's scope because these
+' helpers execute inside the importing component's script scope.
+function presentOverlayDialog(dialog as object, onResult as string) as object
+  scene = appScene()
+
+  ' Stable id for RTA assertions / debugging. It assumes ONE overlay at a time,
+  ' which every dialog enforces by consuming all key presses — but a main-thread
+  ' flow (session expiry, server switch) can still open one over a screen's own.
+  ' Don't auto-dismiss the incumbent: its caller is waiting on a result that
+  ' would then never arrive. Surface it instead.
+  if isValid(scene.findNode("jrDialog"))
+    print "WARNING - presentOverlayDialog: a dialog is already open; two overlays will overlap and share the id 'jrDialog'"
+  end if
+
+  dialog.id = "jrDialog"
+  dialog.returnFocusTo = lastFocusedChild(scene)
+  if onResult <> "" then dialog.observeFieldScoped("result", onResult)
+  scene.appendChild(dialog)
+  dialog.setFocus(true)
+  ' Screen-reader narration is NOT done here: it has to happen after focus
+  ' settles or the platform's own announcement flushes it, so each dialog
+  ' component owns its own announcement. See source/utils/dialogNarration.bs.
+  return dialog
+end function
+
+' Mirrors JRDialog's MAX_BUTTONS design cap. Kept as its own constant because
+' BrighterScript consts are file-scoped and the component's is not visible here.
+const MAX_BUTTON_ROW_CHOICES = 3
+' The row is centered UNDER the panel, so it should never be wider than the panel
+' it belongs to — a row spilling past both panel edges reads as detached chrome.
+' Mirrors JRDialog's PANEL_WIDTH (consts are file-scoped, so it can't be shared).
+' Three buttons at TextButton's 200 minWidth plus spacing is 648, so the cap only
+' bites on genuinely long labels — which is exactly when the list is the better
+' presentation anyway.
+const BUTTON_ROW_MAX_WIDTH = 900
+
+' A choice set renders as JRDialog's horizontal button row only if it's short
+' (<= 3) AND the measured row fits the screen with comfortable margins.
+' Translations that overflow (e.g. long German labels) route to the list dialog.
+'
+' Measured with the system font at the size the button label actually renders at
+' (constants.fontSizeMedium, applied by LabelMedium), NOT roFontRegistry's
+' default size — those differ, so the old estimate was wrong for every label.
+' Still an estimate: a user on the downloaded fallback font (uiFontFallback) has
+' slightly different metrics, but fontScaleFactor normalizes those toward the
+' system font's, so the error stays small. Erring wide merely routes to the list
+' dialog, which is the safe direction.
+function choicesFitAsButtons(choices as object) as boolean
+  if not isValid(choices) or choices.count() < 1 or choices.count() > MAX_BUTTON_ROW_CHOICES then return false
+
+  reg = CreateObject("roFontRegistry")
+  font = reg.GetDefaultFont(m.global.constants.fontSizeMedium, false, false)
+  buttonPadding = 60 ' TextButton default padding (30) * 2
+  spacing = 24
+  totalWidth = 0
+  for each label in choices
+    labelWidth = font.GetOneLineWidth(toString(label), 9999) + buttonPadding
+    if labelWidth < 200 then labelWidth = 200 ' TextButton minWidth used by JRDialog
+    totalWidth += labelWidth
+  end for
+  totalWidth += spacing * (choices.count() - 1)
+
+  return totalWidth <= BUTTON_ROW_MAX_WIDTH
+end function

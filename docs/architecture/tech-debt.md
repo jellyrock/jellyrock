@@ -56,7 +56,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `mainbs-event-loop-fan-out`
 
 - **area**: `source/main.bs`
-- **issue**: 473-line file (down from 1,315 as of #677 — the #550 sgRouter migration removed the search, audio `playItem`, `optionSelected`, and `closeSidePanel` branches plus their inline logic). `Main()` spans the whole file (~328 lines, lines 1–328): bootstrap (~110 lines: Phase 1 globals → migrations → theme → login → Phase 2 globals) then the main event loop (12 dispatch branches: `roSGScreenEvent` screen-closed, `exit`, `preLoginIntent`, `isAuthenticated` + `close` quick-connect, `isFontDownloadCompleted`, `reachable` server-probe, `userMenuAction`, `roDeviceInfoEvent`, `roInputEvent` deep-link, `isDataReturned` dialog-return, `reloadHomeRequested`). Some heavy work is extracted into `handle*` helpers (font, menu, login); the `isDataReturned` branch still fans out three confirmation-dialog flows (server-switch / exit / resume-options, ~60 lines) inline.
+- **issue**: 444-line file (down from 1,315 as of #677 — the #550 sgRouter migration removed the search, audio `playItem`, `optionSelected`, and `closeSidePanel` branches plus their inline logic; the dead resume/start-over playback-options flow was deleted in #757). `Main()` spans the whole file: bootstrap (Phase 1 globals → migrations → theme → login → Phase 2 globals) then the main event loop (`roSGScreenEvent` screen-closed, `exit`, `preLoginIntent`, `isAuthenticated` + `close` quick-connect, `isFontDownloadCompleted`, `reachable` server-probe, `userMenuAction`, `roDeviceInfoEvent`, `roInputEvent` deep-link, `isDataReturned` dialog-return, `reloadHomeRequested`). Some heavy work is extracted into `handle*` helpers (font, menu, login); the `isDataReturned` branch still fans out two confirmation-dialog flows (server-switch / exit) inline.
 - **direction**: Continue the handler-extraction pattern — the `isDataReturned` branch is the largest remaining inline block and the clearest extraction candidate (`source/handlers/dialogs.bs`). Bootstrap extracts to `source/bootstrap.bs` so `Main()` becomes `bootstrap()` + a thin dispatch loop.
 
 #### `task-thread-budget`
@@ -87,6 +87,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 ### Medium
 
+#### `overviewdialog-diverged-style`
+
+- **area**: [`components/OverviewDialog.bs`](../../components/OverviewDialog.bs), [`components/OverviewDialog.xml`](../../components/OverviewDialog.xml)
+- **issue**: `JRDialog` was restyled in #757 — buttons moved INSIDE the panel, a derived layout that measures each block instead of stacking fixed offsets, a short `colorSecondary` accent rule under the title rather than a full-width divider, and a spacing scale in multiples of 6 (so nothing goes fractional through the Roku OS downscale to 720p). `OverviewDialog` still has the original arrangement: fixed offsets, a full-width `colorBackgroundSecondary` divider, and its OK button OUTSIDE the panel. So the app now has two dialog languages, which is the thing the standardization was meant to end.
+- **direction**: Bring `OverviewDialog` onto `JRDialog`'s vocabulary. Deliberately NOT folded into #757: outside-buttons is defensible for `OverviewDialog` specifically (its panel is 1600 x 760 and dominates the screen, so a button below still reads as attached, which is not true at `JRDialog`'s size), and its scrollable body plus scrollbar interact with any layout change — moving the button inside needs its own look at scroll bounds and focus. Shares the derived-layout helpers rather than re-deriving them.
+
 #### `log-level-welded-to-debug-const`
 
 - **area**: [`components/JRScene.bs`](../../components/JRScene.bs) (`initializeLogManager` call), the `manifest` `bs_const` line, [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js).
@@ -105,16 +111,10 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: The Weblate branch does not stay in sync with `main`. New `en_US` keys added on `main` don't reach Weblate for translators, and completed translations on the Weblate side don't flow back. Translation work drifts. NOTE: this is hygiene only — it is NOT the cause of the 216 untranslated keys in #641 (those strings exist in no source, Weblate included; syncing won't backfill them). See #641.
 - **direction**: Restore bidirectional Weblate ↔ `main` sync (the Weblate GitHub integration / a scheduled merge) so new keys flow out and translations flow back automatically.
 
-#### `showscenes-mixes-concerns`
-
-- **area**: `source/showScenes.bs`
-- **issue**: 702-line file with three concerns: a 230-line `LoginFlow()` state machine, 7 scene factories (`CreateServerGroup`, `CreateUserSelectGroup`, `CreateSigninGroup`, `CreateHomeGroup`, `CreateItemDetailsGroup`, `CreateSearchPage`, plus `playbackOptionDialog`), and three server-list registry utilities (`SaveServerList`, `DeleteFromServerList`, `SendPerformanceBeacon`).
-- **direction**: Split into `source/auth/LoginFlow.bs` (the login state machine), `source/screens/<Name>Page.bs` (one factory per scene), and `source/utils/serverList.bs` (registry helpers).
-
 #### `loginflow-error-boundaries`
 
-- **area**: `source/showScenes.bs` (`LoginFlow`) and elsewhere
-- **issue**: ~230-line `LoginFlow()` collapses every failure mode (server unreachable, server returned error, invalid/expired token, auth failed, password required) into `goto startLogin` / `goto userSelect`. No category-specific recovery — a transient network blip and a permanent auth failure both bounce the user back to server selection, losing their position in the flow.
+- **area**: `source/loginRouter.bs`
+- **issue**: Every failure mode (server unreachable, server returned error, invalid/expired token, auth failed, password required) collapses into the same recovery: `routerNav("/server")` or `routerNav("/login")`. No category-specific handling — a transient network blip and a permanent auth failure both bounce the user back to server selection, losing their position in the flow. (Was `LoginFlow()`'s `goto startLogin` / `goto userSelect` in `showScenes.bs`; #677 moved it to the router without changing the collapse.)
 - **direction**: Define a small set of error categories (network unreachable, server returned error, auth failed, token invalid) and a corresponding recovery flow per category. Network blips should retry-with-backoff; auth failures should drop into the user picker, not the server picker; token invalid should re-prompt for password without losing the server context.
 
 #### `prelogin-intent-payload-coupling`
@@ -160,11 +160,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `components/ItemDetails.bs`, `source/main.bs`
 - **issue**: Single-shot event idiom — unfamiliar to first-time readers. See `user-journey.md` for the canonical explanation.
 
-#### `loginflow-goto-retry`
-
-- **area**: `source/showScenes.bs`
-- **issue**: `goto startLogin` and `goto userSelect` for auth retry. Old-school but readable.
-
 #### `osd-inactivity-timeout-hardcoded`
 
 - **area**: `components/video/VideoPlayerView.xml`
@@ -184,11 +179,6 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `source/main.bs`
 - **issue**: `printRegistry()` runs unconditionally; noisy in prod logs unless filtered by level.
-
-#### `appstart-label-restart`
-
-- **area**: `source/main.bs`
-- **issue**: `goto appStart` for "log out and start over". Works fine, but unusual pattern today.
 
 #### `m-wasmigrated-global-flag`
 
@@ -253,8 +243,9 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 - **area**: `components/data/SceneManager.bs`
 - **issue**: All dialogs write to the same `returnData` field. Risk of cross-dialog observers firing on stale data.
-- **mitigation (partial, #550)**: `main.bs`'s `returnData` handler is now gated on the `isPendingServerSwitch` / `isPendingExitConfirmation` / `isPendingPlaybackOptions` flags, so it no longer cross-fires on dialogs owned by routed views. The structural risk (a single shared field) remains.
-- **direction**: Make every `returnData` observer check a dialog-identity discriminator before acting (`PlayerHostView` already does via `returnData.type` — make it universal), or give each dialog its own return field. Touches `SceneManager` + ~6 consumers (`PlayerHostView`, `ItemDetails`, `settings`, `RadioDialog`, `main.bs`, `replayRoute`). A focused follow-up PR, not folded into nav work.
+- **mitigation (partial, #550)**: `main.bs`'s `returnData` handler is gated on the `isPendingServerSwitch` / `isPendingExitConfirmation` / `isPendingPlaybackOptions` flags, so it no longer cross-fires on dialogs owned by routed views.
+- **mitigation (partial, `standard-dialogs` PR)**: The standardized dialog system (`components/dialogs/` `JRDialog` / `JRListDialog` / `JRKeyboardDialog` + `source/utils/dialogs.bs` helpers) delivers results through a per-dialog-instance `result` field, decoupled from `SceneManager.returnData`. Migrated: `ItemDetails.bs` (delete / series-watched / series-play error), all of `components/settings/settings.bs` (2 alerts + 4 confirms), and the `ConfigList` / `SetServerScreen` keyboard sites. The shared field remains for `PlayerHostView`, `loginRouter`, `replayRoute`, `remoteDispatch`, `main.bs`'s pending-flag flows, QuickConnect, and `OverviewDialog` — deferred to phases 2-3 tracked on #288.
+- **direction**: Continue the #288 phase 2-3 migration — move the remaining consumers onto the `JRDialog` family, then delete the shared `returnData` / `isDataReturned` machinery (and the `SceneManager` dialog methods) from `SceneManager`. `PlayerHostView`'s three `radioDialog` pickers (audio / subtitle / video source) are the only remaining consumer of `JRListDialog`, and the only ones using the `returnData.type` discriminator — they are the substantive part of phase 2.
 
 #### `bsconfig-files-duplicated`
 

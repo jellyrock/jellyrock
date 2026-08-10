@@ -249,13 +249,12 @@ sub Main (args as dynamic) as void
     else if isNodeEvent(msg, "isDataReturned")
       popupNode = msg.getRoSGNode()
       sm = m.global.sceneManager
-      ' main.bs owns exactly three confirmation dialogs, each claimed by a pending flag set when
-      ' it is shown: the deep-link server-switch prompt, the exit prompt, and the resume/start-over
-      ' prompt. The isDataReturned field is shared — routed views (ItemDetails delete / mark-watched)
-      ' observe the same field scoped. Without the flag gate this handler would also fire for THEIR
-      ' dialogs, cancelling the spinner they just started and replaying a stale queue hold. So we act
-      ' only when one of our flags is set, and leave routed-view-owned confirmations untouched.
-      if isValid(popupNode) and isValid(popupNode.returnData) and (sm.isPendingServerSwitch or sm.isPendingExitConfirmation or sm.isPendingPlaybackOptions)
+      ' main.bs owns exactly two confirmation dialogs, each claimed by a pending flag set when
+      ' it is shown: the deep-link server-switch prompt and the exit prompt. The isDataReturned
+      ' field is shared — routed views observe the same field scoped. Without the flag gate this
+      ' handler would also fire for THEIR dialogs, cancelling the spinner they just started. So we
+      ' act only when one of our flags is set, and leave routed-view-owned confirmations untouched.
+      if isValid(popupNode) and isValid(popupNode.returnData) and (sm.isPendingServerSwitch or sm.isPendingExitConfirmation)
         print "popupNode.returnData = ", popupNode.returnData
         stopLoadingSpinner()
         ' Deep-link server-switch confirmation. On "Switch", run the pre-flighted switch
@@ -275,35 +274,6 @@ sub Main (args as dynamic) as void
           if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate(translationKeys.ButtonExit)
             ' User confirmed exit
             m.scene.exit = true
-          end if
-          ' Resume / start-over playback prompt (shown by playbackOptionDialog)
-        else if sm.isPendingPlaybackOptions = true
-          sm.isPendingPlaybackOptions = false
-          selectedItem = m.global.queueManager.callFunc("getHold")
-          m.global.queueManager.callFunc("clearHold")
-
-          if isValidAndNotEmpty(selectedItem) and isValid(selectedItem[0])
-            if popupNode.returnData.indexselected = 0
-              'Resume video from resume point
-              startLoadingSpinner()
-              startingPoint = 0
-
-              if isValid(selectedItem[0].playbackPositionTicks) and selectedItem[0].playbackPositionTicks > 0
-                startingPoint = selectedItem[0].playbackPositionTicks
-              end if
-
-              selectedItem[0].startingPoint = startingPoint
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("push", selectedItem[0])
-              m.global.queueManager.callFunc("playQueue")
-            else if popupNode.returnData.indexselected = 1
-              'Start Over from beginning selected, set position to 0
-              startLoadingSpinner()
-              selectedItem[0].startingPoint = 0
-              m.global.queueManager.callFunc("clear")
-              m.global.queueManager.callFunc("push", selectedItem[0])
-              m.global.queueManager.callFunc("playQueue")
-            end if
           end if
         end if
       end if

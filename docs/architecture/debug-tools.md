@@ -103,14 +103,18 @@ Format is `"type|message"` where `type` is one of `error`, `success`, `warning`,
 
 The handler is in `JRScene.bs:onTestToast()`. It parses the format and calls the same `showToast` function that real toasts go through, so it's a faithful preview of what production looks like.
 
-## The up-up-down-down cheat code
+## The up-up-down-down cheat code (currently unreliable)
 
-In `#if debug` builds, pressing **up, up, down, down** on the d-pad within 2 seconds cycles through the four toast types (error → success → warning → info) without needing the telnet console. Implemented in `JRScene.bs:onKeyEvent()`:
+In `#if debug` builds, pressing **up, up, down, down** on the d-pad within 2 seconds cycles through the four toast types (error → success → warning → info) without needing the telnet console.
+
+> **Known limitation (verified on-device 2026-07):** the sequence relies on key-release events reaching `JRScene`, and on routed screens they no longer do — Roku built-ins (`RowList`) consume releases for keys they handle, and the sgRouter `Outlet` consumes every release that bubbles out of a routed view. The cheat only registers while focus is outside the outlet subtree (e.g. the overhang). Prefer `testToast` (console at a breakpoint, or live via RTA `odc.setValue` — see `docs/dev/debug-flags.md`).
+
+Implemented in `JRScene.bs:onKeyEvent()`:
 
 ```brightscript
 function onKeyEvent(key as string, press as boolean) as boolean
   #if debug
-    if not press                              ' UP events bubble to JRScene reliably
+    if not press                              ' key-release events (see limitation above)
       now = CreateObject("roDateTime").asSeconds()
       if now - m.debugLastKeyTime > 2
         m.debugCodeProgress = 0               ' 2-second timeout resets progress
@@ -141,7 +145,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
 end function
 ```
 
-Why key UP events specifically: BrightScript convention is for child components to return `false` for `press=false`, so all key UP events bubble up to `JRScene`. This guarantees the sequence is tracked regardless of which screen has focus.
+Why key UP events: the JellyRock convention is for child components to return `false` for `press=false` so releases can bubble. That once guaranteed the sequence was tracked regardless of focus, but Roku built-ins and the sgRouter `Outlet` now consume most releases from routed content (see the limitation above), which is why the cheat is unreliable there.
 
 ## Task-thread readout — `printTaskThreads()`
 

@@ -1,0 +1,102 @@
+namespace tests
+
+  @suite("JRListDialog - interface and list construction")
+  class JRListDialogTests extends tests.BaseTestSuite
+
+    private dialog as object
+
+    protected override function setup()
+      super.setup()
+      m.dialog = CreateObject("roSGNode", "JRListDialog")
+    end function
+
+    protected override function teardown()
+      m.dialog = invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Interface fields")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("exposes the standard dialog fields")
+    function _()
+      m.assertTrue(m.dialog.doesExist("items"))
+      m.assertTrue(m.dialog.doesExist("title"))
+      m.assertTrue(m.dialog.doesExist("defaultIndex"))
+      m.assertTrue(m.dialog.doesExist("result"))
+      m.assertTrue(m.dialog.doesExist("returnFocusTo"))
+    end function
+
+    @it("result starts unset")
+    function _()
+      m.assertInvalid(m.dialog.result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("List construction")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("creates one content row per item")
+    function _()
+      m.dialog.items = ["English 5.1", "English Stereo", "Spanish"]
+      content = m.dialog.findNode("content")
+      m.assertEqual(content.getChildCount(), 3)
+      m.assertEqual(content.getChild(0).title, "English 5.1")
+      m.assertEqual(content.getChild(2).title, "Spanish")
+    end function
+
+    @it("rebuilds rows on reassignment instead of appending")
+    function _()
+      m.dialog.items = ["A", "B", "C", "D"]
+      m.dialog.items = ["only"]
+      content = m.dialog.findNode("content")
+      m.assertEqual(content.getChildCount(), 1)
+    end function
+
+    @it("caps visible rows at 8 for long lists")
+    function _()
+      items = []
+      for i = 1 to 20
+        items.push("track " + i.toStr())
+      end for
+      m.dialog.items = items
+      optionList = m.dialog.findNode("optionList")
+      m.assertEqual(optionList.numRows, 8)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Focus on open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the option list holds focus after the present sequence")
+    function _()
+      ' Reproduces exactly what source/utils/dialogs.bs presentOverlayDialog does.
+      ' The list takes focus in onItemsChanged, i.e. BEFORE the node is in the
+      ' scene, and the helper's dialog.setFocus(true) runs after appendChild.
+      ' That ordering is load-bearing: `focusable` is only a HINT (see
+      ' REFERENCES/scenegraph/node.md), so RSG leaves focus on the already-focused
+      ' descendant instead of hoisting it to the group. If a future refactor sets
+      ' `items` after appending, or makes the group genuinely take focus, the list
+      ' becomes unreachable (OK does nothing, down skips straight to Cancel) —
+      ' which is exactly what this test exists to catch.
+      scene = m.top.getScene()
+      m.assertNotInvalid(scene)
+
+      m.dialog.title = "Select audio"
+      m.dialog.items = ["English 5.1", "English Stereo", "Spanish"]
+
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      optionList = m.dialog.findNode("optionList")
+      listHasFocus = optionList.hasFocus()
+      inChain = m.dialog.isInFocusChain()
+      scene.removeChild(m.dialog)
+
+      m.assertTrue(listHasFocus)
+      m.assertTrue(inChain)
+    end function
+
+  end class
+
+end namespace

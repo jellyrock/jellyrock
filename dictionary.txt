@@ -138,6 +138,7 @@ config
 Config
 configs
 const
+constructible
 ContentNode
 coord
 coords
@@ -484,6 +485,8 @@ SAR
 SceneGraph
 schemas
 schema-validated
+scrollable
+scrollbar
 sdk
 SDK
 selectable
@@ -521,6 +524,8 @@ subfolder
 subfolders
 Subfolders
 substring
+subtree
+subtrees
 subtype
 subtypes
 supersampling
@@ -570,6 +575,7 @@ unit-tests-tdd
 unlinked
 unobserve
 unprefixed
+unresolvable
 unreviewed
 un-shuffle
 unshuffled

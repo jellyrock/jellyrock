@@ -8,6 +8,7 @@ import "pkg:/source/deepLink.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
@@ -489,9 +490,9 @@ sub onDetailNavButton(msg)
 end sub
 
 ' Watched button. Movie/Episode toggle immediately; a Series confirms first (marking all
-' episodes can affect hundreds). The confirmation result is read off the SceneManager via a
-' SCOPED isDataReturned observer (the proven settings.bs pattern). On confirm we call
-' toggleWatched(), which re-reads the button state to pick mark vs unmark.
+' episodes can affect hundreds). Uses the standard showConfirmDialog helper — the result
+' arrives on the dialog node's own `result` field (no shared SceneManager state). On
+' confirm we call toggleWatched(), which re-reads the button state to pick mark vs unmark.
 sub onWatchedButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
 
@@ -506,8 +507,7 @@ sub onWatchedButtonPressed(item as object)
       confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries2)
       confirmBtn = translate(translationKeys.ButtonMarkWatched)
     end if
-    m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelWatched), [confirmMsg], [translate(translationKeys.ButtonCancel), confirmBtn])
-    m.global.sceneManager.observeFieldScoped("isDataReturned", "onWatchedConfirmResponse")
+    m.watchedConfirmDialog = showConfirmDialog(translate(translationKeys.LabelWatched), confirmMsg, "onWatchedConfirmResponse", confirmBtn, translate(translationKeys.ButtonCancel))
   else
     toggleWatched()
   end if
@@ -515,29 +515,28 @@ end sub
 
 ' Series mark-all-watched confirmation result.
 sub onWatchedConfirmResponse()
-  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
-  returnData = m.global.sceneManager.returnData
-  if isValid(returnData) and returnData.indexSelected = 1
+  dialog = m.watchedConfirmDialog
+  m.watchedConfirmDialog = invalid
+  if isValid(dialog) and isValid(dialog.result) and dialog.result.confirmed
     toggleWatched()
   end if
 end sub
 
 ' Delete button. Confirm, then delete and leave the now-gone routed detail via the router.
-' Scoped isDataReturned observer (see onWatchedButtonPressed).
+' Standard showConfirmDialog helper (see onWatchedButtonPressed).
 sub onDeleteButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
   m.pendingDeleteItemId = item.id
-  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.ButtonDelete), [translate(translationKeys.ErrorAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonDelete)])
-  m.global.sceneManager.observeFieldScoped("isDataReturned", "onDeleteConfirmResponse")
+  m.deleteConfirmDialog = showConfirmDialog(translate(translationKeys.ButtonDelete), translate(translationKeys.ErrorAreYouSureYouWantTo), "onDeleteConfirmResponse", translate(translationKeys.ButtonDelete), translate(translationKeys.ButtonCancel))
 end sub
 
 sub onDeleteConfirmResponse()
-  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
-  returnData = m.global.sceneManager.returnData
+  dialog = m.deleteConfirmDialog
+  m.deleteConfirmDialog = invalid
   deleteId = m.pendingDeleteItemId
   m.pendingDeleteItemId = invalid
-  if not isValid(returnData) or not isValidAndNotEmpty(deleteId) then return
-  if returnData.indexSelected = 1 and returnData.buttonSelected = translate(translationKeys.ButtonDelete)
+  if not isValid(dialog) or not isValid(dialog.result) or not isValidAndNotEmpty(deleteId) then return
+  if dialog.result.confirmed
     SubmitSideEffect(GetApi().BuildDeleteItemRequest(deleteId))
     ' The item is gone server-side, but a keepAlive library that contained it is suspended
     ' with stale content. Bump the scene's content-freshness
@@ -4042,7 +4041,7 @@ sub onFirstEpisodeLoaded()
     m.top.quickPlayNode = invalid
   else
     m.log.warn("Series Play: could not load first episode for series", m.top.itemContent.id)
-    m.global.sceneManager.callFunc("standardDialog", translate(translationKeys.ErrorPlaybackError), { data: ["<p>" + translate(translationKeys.ErrorCouldNotLoadTheFirstEpisode) + "</p>"] })
+    showAlertDialog(translate(translationKeys.ErrorPlaybackError), translate(translationKeys.ErrorCouldNotLoadTheFirstEpisode))
   end if
 end sub
 
@@ -4273,16 +4272,21 @@ sub onDestroy()
   m.loadDetailsTask.control = "STOP"
   m.loadDetailsTask = invalid
 
-  ' Tear down the record task + drop any pending confirmation observer this screen owns
-  ' (record / delete / series-watched).
+  ' Tear down the record task. The delete / series-watched confirmations no longer
+  ' route through SceneManager.isDataReturned — they use the standard dialog helpers,
+  ' which deliver results on the dialog node's own `result` field.
   if isValid(m.recordTask)
     m.recordTask.unobserveField("result")
     m.recordTask.control = "STOP"
     m.recordTask = invalid
   end if
-  if isValid(m.global.sceneManager)
-    m.global.sceneManager.unobserveFieldScoped("isDataReturned")
-  end if
+
+  ' Drop any confirmation still on screen — it is a scene child, so it would
+  ' otherwise outlive this view (see abandonDialog in source/utils/dialogs.bs)
+  abandonDialog(m.watchedConfirmDialog)
+  abandonDialog(m.deleteConfirmDialog)
+  m.watchedConfirmDialog = invalid
+  m.deleteConfirmDialog = invalid
 
   ' Clear node references
   m.extrasGrp = invalid

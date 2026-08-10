@@ -182,6 +182,23 @@ function divCeiling(a as integer, b as integer) as integer
   return a / b + 1
 end function
 
+' Walk to the deepest focused descendant. Dialog helpers capture this before
+' presenting, so closing can restore focus exactly where the user left it
+' (source/utils/dialogs.bs presentOverlayDialog -> returnFocusTo).
+function lastFocusedChild(obj as object) as object
+  if isValid(obj)
+    child = obj
+    for i = 0 to obj.getChildCount()
+      if isValid(obj.focusedChild)
+        child = child.focusedChild
+      end if
+    end for
+    return child
+  else
+    return invalid
+  end if
+end function
+
 ' Returns the full-screen view currently on top — the router-mounted view tracked on
 ' m.global.activeRoutedView. The whole app is routed: pre-login, content, and playback are all
 ' router views in JRScene's outlet. Used by main.bs's playback/dialog/device code and by
@@ -577,41 +594,48 @@ function toString(input) as string
   return str(input)
 end function
 
+' The app's Scene node, cached on first use.
+'
+' Reaching the scene means walking up from m.top, so every caller that needed it
+' had grown its own copy of this three-line cache. m is per-component-scope, so
+' the cache is per component — which is what we want: each component resolves the
+' scene once and reuses it.
+function appScene() as object
+  if not isValid(m.scene)
+    m.scene = m.top.getScene()
+  end if
+  return m.scene
+end function
+
 '
 ' startLoadingSpinner: Start a loading spinner and attach it to the main JRScene.
 ' Displays an invisible ProgressDialog node by default to disable keypresses while loading.
 '
 ' @param {boolean} [disableRemote=true]
 sub startLoadingSpinner(disableRemote = true as boolean, loadingText = "" as string)
-  if not isValid(m.scene)
-    m.scene = m.top.getScene()
-  end if
+  scene = appScene()
 
   ' disableRemote and loadingText must be set first
-  m.scene.isRemoteDisabled = disableRemote
-  m.scene.loadingText = loadingText
-  m.scene.isLoading = true
+  scene.isRemoteDisabled = disableRemote
+  scene.loadingText = loadingText
+  scene.isLoading = true
 end sub
 
 sub stopLoadingSpinner()
-  if not isValid(m.scene)
-    m.scene = m.top.getScene()
-  end if
+  scene = appScene()
 
-  m.scene.loadingText = ""
-  m.scene.isRemoteDisabled = false
-  m.scene.isLoading = false
+  scene.loadingText = ""
+  scene.isRemoteDisabled = false
+  scene.isLoading = false
 end sub
 
 ' displayToast: Display a transient toast notification via the scene-level Toast component.
 ' @param {string} message - The message to display
 ' @param {string} [toastType="error"] - "error", "success", or "info"
 sub displayToast(message as string, toastType = "error" as string)
-  if not isValid(m.scene)
-    m.scene = m.top.getScene()
-  end if
-  if isValid(m.scene)
-    m.scene.callFunc("showToast", message, toastType)
+  scene = appScene()
+  if isValid(scene)
+    scene.callFunc("showToast", message, toastType)
   end if
 end sub
 

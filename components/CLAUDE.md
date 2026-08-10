@@ -25,7 +25,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 ## Render thread protection
 
-- Roku's render thread runs the UI. Anything I/O — network, registry I/O, large file reads — **MUST run on a Task thread**.
+- Roku's render thread runs the UI. Anything I/O — network, registry I/O, large file reads — **MUST run on a Task thread**. Which thread is which (there are three, and main ≠ render), plus the measured list of what is actually constructible where: [threading.md](../docs/architecture/threading.md).
 - For HTTP, use the API task pool via `GetApi().Build*Request()` + `fetchRes()` / `submitApiRequest()`. See [docs/architecture/api.md](../docs/architecture/api.md).
 - Single `m.global.<child>` reads are fine (cheap). Multiple reads in a hot path: cache locally first (`globalUser = m.global.user; globalUser.foo; globalUser.bar`).
 - Bulk field updates: `node.setFields({ a: 1, b: 2 })` over individual assignments.
@@ -44,7 +44,37 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - Signature: `function onKeyEvent(key as string, press as boolean) as boolean`.
 - `return true` consumes the event; no further bubbling.
 - `return false` (or no return) bubbles to the parent.
-- Convention: child components return `false` for `press = false` so UP-key events reliably bubble up to `JRScene` (used by the up-up-down-down debug cheat code).
+- Convention: child components return `false` for `press = false` so key-release events can bubble. **Do not build features on key-ups reaching `JRScene`, though** — verified on-device (2026-07): Roku built-ins (e.g. `RowList`) consume releases for keys they handle, and the vendored sgRouter `Outlet` consumes every release that bubbles out of a routed view. This is why the up-up-down-down debug cheat code no longer fires on routed screens; see `docs/dev/debug-flags.md` for working toast-test paths.
+
+## Showing a dialog
+
+- **Always go through `source/utils/dialogs.bs`** — `showAlertDialog`, `showConfirmDialog`, `showChoiceDialog`, `showListDialog`, `showInfoDialog`, `showKeyboardDialog`. `import "pkg:/source/utils/dialogs.bs"` and call one. Canonical call sites: `ItemDetails.onWatchedButtonPressed` / `onDeleteButtonPressed`.
+- The result arrives on the **dialog node's own `result` field**, shape `{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }`. Pass `onResult` (a function name in *your* scope) and the helper wires the scoped observer; keep the returned node so the callback can read `.result`.
+- **Do NOT add new `m.global.sceneManager` dialog calls** (`userMessage` / `standardDialog` / `showConfirmationDialog` + the shared `returnData` / `isDataReturned` fields). That path is being retired — remaining consumers are tracked by [`dialog-returndata-shared-global`](../docs/architecture/tech-debt.md#dialog-returndata-shared-global).
+- Overlay dialogs are appended to the **scene**, not to your screen, so they survive your `onDestroy`. A screen that opens one owns tearing it down.
+- Full contract: [navigation.md → The standard dialog system](../docs/architecture/navigation.md).
+
+## Theme colors — which one means what
+
+The theme palette encodes **interaction state**, not just hue. Picking by "what
+looks right" is how the meaning drifts.
+
+| Constant | Use for | Never |
+|---|---|---|
+| `colorPrimary` | Things the user can **focus or act on** — focus rings, the selected item indicator, active-state chrome | Static decoration |
+| `colorSecondary` | **Non-focusable** visual highlights — accent rules, emphasis marks, decorative dividers | Anything focusable |
+| `colorBackgroundPrimary` | Panel / surface fills | — |
+| `colorBackgroundSecondary` | Structural separators, subtle borders, footprints behind focus | — |
+| `colorTextPrimary` / `colorTextSecondary` / `colorTextDisabled` | Text by emphasis level | — |
+
+The distinction matters most where both appear in one frame. `JRDialog` shows it:
+the button focus ring is `colorPrimary` (focusable) and the accent rule under the
+title is `colorSecondary` (not focusable). If the rule used `colorPrimary` it
+would read as something you could move focus to.
+
+Users can re-theme every one of these (Settings → Theme → Custom), so a color
+picked for its appearance in the default theme will be wrong in someone else's.
+Pick by meaning and it survives any palette.
 
 ## Common patterns
 

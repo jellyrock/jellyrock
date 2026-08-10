@@ -9,9 +9,13 @@ related-files:
   - components/auth/AuthManager.bs
   - components/auth/AuthManager.xml
   - components/data/SceneManager.bs
+  - components/dialogs/JRDialog.bs
+  - components/dialogs/JRListDialog.bs
+  - components/dialogs/JRKeyboardDialog.bs
+  - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-07-15
+last-reviewed: 2026-07-31
 ---
 
 # Navigation (sgRouter)
@@ -259,13 +263,35 @@ end sub
 
 `components/data/SceneManager.bs` no longer manages a navigation stack. The stack methods (`pushScene` / `popScene` / `getActiveScene` / `clearScenes` / `clearPreviousScene` / `deleteSceneAtIndex` / `settings`) and `SceneManager`'s own overhang-sync helpers were **deleted** in #550. It survives as a shared **service node** at `m.global.sceneManager`:
 
-- **Dialogs** — `userMessage`, `standardDialog`, `radioDialog`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`).
+- **Dialogs** — `userMessage`, `standardDialog`, `radioDialog`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`). **Do not add new call sites here.** New dialogs go through `source/utils/dialogs.bs` (see below); the remaining `SceneManager` consumers are tracked for migration by [`dialog-returndata-shared-global`](tech-debt.md#dialog-returndata-shared-global).
 - **Backdrop** — `setBackgroundImage` (passthrough to `JRScene.setBackgroundImage`).
 - **Theme** — `refreshThemeColors` (walks the overhang tree, re-applies `m.global.constants`).
 - **Overhang passthrough fields** — `updateUser`, `resetTime`.
 - **Reload-home signal** — `reloadHome` sets `reloadHomeRequested = true`; `main.bs` observes it and calls `JRScene.reloadRoutedHome`.
 
 > The long-overview overlay was the last `SceneManager.pushScene` user. It now appends directly to the scene: `FocusableOverview.openOverviewDialog` (`components/ui/label/FocusableOverview.bs:176`) sets `dialog.returnFocusTo = m.top` and `m.top.getScene().appendChild(dialog)`; `OverviewDialog` removes itself and restores focus on close (`OverviewDialog.bs:218-223`).
+
+### The standard dialog system (`source/utils/dialogs.bs`)
+
+The canonical way to show a dialog. Helpers create the node, present it, and return it;
+the result arrives on that **dialog instance's own `result` field**, so there is no shared
+global to cross-fire (the failure mode of `SceneManager.returnData`).
+
+| Helper | Component | Presentation |
+|---|---|---|
+| `showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` | `JRDialog` | Scene-appended overlay (`OverviewDialog` mechanics) |
+| `showListDialog` | `JRListDialog` | Scene-appended overlay |
+| `showInfoDialog` | `OverviewDialog` | Scene-appended overlay |
+| `showKeyboardDialog` | `JRKeyboardDialog` | Roku modal channel (`m.scene.dialog`) — the OS owns the keyboard |
+
+From a component, pass `onResult` (a function name in your scope) and the helper wires the
+scoped observer. From main-thread code, omit it and observe with your message port. The
+result shape is identical either way:
+`{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }`.
+
+Overlay dialogs are appended to the **scene**, not to the opening screen, so they outlive a
+routed view that is destroyed while one is open — a screen that opens a dialog is
+responsible for its own teardown.
 
 ## Deferred deep links
 

@@ -14,7 +14,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-07-09
+last-reviewed: 2026-08-09
 ---
 
 # Video & Audio Playback
@@ -76,7 +76,6 @@ m.global.queueManager.callFunc("playQueue")
 | `m.position` | Index of currently-playing item in `m.queue` |
 | `m.isPlaying` | Whether a player is currently active |
 | `m.shuffleEnabled` | Bool |
-| `m.hold` | Items "held" for later (separate from the active queue) |
 | `m.isPrerollActive` | Cached from `m.global.user.settings.playbackCinemaMode`; controls whether cinema-mode prerolls play before the next item |
 
 ### Public methods
@@ -85,8 +84,7 @@ Queue mutation:
 
 - `push(item)`, `pop()`, `peek()`, `top()` — array-style access
 - `set(items)` — replace the whole queue
-- `clear()`, `clearHold()`, `deleteAtIndex(i)`
-- `hold(item)` / `getHold()` — separate "held items" list
+- `clear()`, `deleteAtIndex(i)`
 
 Queue inspection:
 

@@ -2,6 +2,7 @@ import "pkg:/source/enums/ServerAction.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
@@ -177,35 +178,19 @@ sub onScanForServersComplete(event)
 
 end sub
 
+' Standard keyboard dialog (see source/utils/dialogs.bs). The helper owns the
+' themed chrome and the OK/Cancel buttons; the result arrives on the dialog
+' node's own `result` field.
 sub ShowKeyboard()
-  dialog = createObject("roSGNode", "StandardKeyboardDialog")
-  dialog.title = translate(translationKeys.LabelEnterTheServerNameOrIp)
-  dialog.buttons = [translate(translationKeys.ButtonOk), translate(translationKeys.ButtonCancel)]
-  dialog.text = m.serverUrlTextbox.text
-  greenPalette = createObject("roSGNode", "RSGPalette")
-  greenPalette.colors = { DialogBackgroundColor: "#2A2B2A" }
-  dialog.palette = greenPalette
-
-  m.top.getscene().dialog = dialog
-  m.dialog = dialog
-
-  dialog.observeField("buttonSelected", "onDialogButton")
+  m.dialog = showKeyboardDialog(translate(translationKeys.LabelEnterTheServerNameOrIp), "onServerUrlEntered", m.serverUrlTextbox.text)
 end sub
 
-function onDialogButton()
-  d = m.dialog
-
-  if d.buttonSelected = 0 ' OK
-    m.serverUrlTextbox.text = d.text
-    m.dialog.close = true
-    return true
-  else if d.buttonSelected = 1 ' Cancel
-    m.dialog.close = true
-    return true
-  end if
-
-  return false
-end function
+sub onServerUrlEntered()
+  dialog = m.dialog
+  m.dialog = invalid
+  if not isValid(dialog) then return
+  if dialog.result.confirmed then m.serverUrlTextbox.text = dialog.result.value
+end sub
 
 sub clearErrorMessage()
   m.top.errorMessage = ""
@@ -296,11 +281,9 @@ sub onDestroy()
     end for
   end if
 
-  ' Dialog may or may not be open — unobserve and release if present
-  if isValid(m.dialog)
-    m.dialog.unobserveField("buttonSelected")
-    m.dialog = invalid
-  end if
+  ' Keyboard may or may not be open — unobserve and dismiss if present
+  abandonDialog(m.dialog)
+  m.dialog = invalid
 
   ' Stop and release task node (created by ScanForServers on init)
   if isValid(m.ssdpScanner)

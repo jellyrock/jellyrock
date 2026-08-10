@@ -89,7 +89,8 @@ end sub
 
 ' Route a Home menu action. Navigation actions resolve through the router on the
 ' render thread; session-ending actions (change user/server, sign out) are emitted
-' as userMenuAction for main.bs (which owns the LoginFlow re-entry via goto appStart).
+' as userMenuAction for main.bs, which tears down the routed Home and re-enters the
+' login flow IN PLACE via reenterLogin (see handleMenuAction).
 sub handleHomeMenuAction(actionId as string)
   if actionId = HomeAction.OPEN_SEARCH
     sgrouter.navigateTo("/search")
