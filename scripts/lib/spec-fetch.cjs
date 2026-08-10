@@ -35,10 +35,20 @@ const CACHE_REL = '.api-watch/cache';
 // Specs are large; allow well beyond the signals-fetch 5s default.
 const SPEC_TIMEOUT_MS = 30000;
 
-// A stable-channel version: MAJOR.MINOR.PATCH with an optional pre-release suffix
+// A stable-channel version: MAJOR.MINOR(.PATCH) with an optional pre-release suffix
 // (-rcN / -betaN / -alphaN). RCs ship in the stable dir alongside finals.
+//
+// PATCH is optional because the archive does not always publish one: the 10.x line
+// used three segments (10.12.0-rc1), but the 12.0 line ships its RCs as `12.0-rc4`.
+// Requiring three segments made every 12.0 RC unfetchable, which blocked triaging the
+// whole next major. The `!isUnstableVersion` guard keeps the now-looser shape from
+// also swallowing the legacy datestamp form (20240207.2), which must route to unstable/.
 function isStableVersion(v) {
-  return typeof v === 'string' && /^\d+\.\d+\.\d+(?:-(?:rc|beta|alpha)\d+)?$/.test(v);
+  return (
+    typeof v === 'string' &&
+    /^\d+\.\d+(?:\.\d+)?(?:-(?:rc|beta|alpha)\d+)?$/.test(v) &&
+    !isUnstableVersion(v)
+  );
 }
 
 // An unstable-channel (master) build label: an 8-digit date, optionally followed
