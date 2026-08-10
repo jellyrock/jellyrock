@@ -201,6 +201,11 @@ because one that was empty now has data).
 `calls` and `drains` are counted from the moment the run starts, so the recompute that
 follows skeleton insertion is not in them.
 
+⚠️ **`ms` is a SUBSET of `populate split`'s `other`, not a fourth sibling of it.** Every
+recompute during a run happens inside a window `other` is already accumulating, which is what
+keeps `attach + detach + other ≈ notify` true. Summing all four against `notify` double-counts
+— in the after-arm below, `ms` 91 of `other` 95 is the same 91 ms seen twice.
+
 **`drains` is there to stop a specific wrong fix from being re-proposed.** `onLatestRowsReady`
 drains a list and looks like a batch boundary, so coalescing the recompute there is the
 obvious move. It buys nothing: measured on a Stick 4K, 11 rows arrive over **11 separate
@@ -232,6 +237,16 @@ across a ~1.0 s window of first paint. Deferring the removals too keeps tree and
 step for the whole run — 0 wrong rows after, against 4 samples before. The **re-insert**
 branch is the mirror image (row list longer than the arrays) and flushes eagerly instead,
 which is affordable because it is rare.
+
+**The batch holds back only the rows the run itself delivers.** Continue Watching, Next Up, On
+Now and Active Recordings share `populateRowFromData` but are fired by `startParallelLoads`,
+which races the orchestrator — batching them would make a visible row collapse depend on which
+HTTP response won, and their tasks can be re-fired mid-run (`onProgramsExpired`,
+`Home.refresh()`), so a queued removal could outlive a repopulate. They remove and recompute
+immediately, which is why `calls` can read above 1 on a load with empty non-library sections.
+The rule lives in `latestRows.removalIsDeferrable` and is unit-tested; the sizing of what that
+costs is in
+[`home-row-size-recompute-per-row`](../architecture/tech-debt.md#home-row-size-recompute-per-row).
 
 **How that was measured, since it is worth reaching for again.** Not a screenshot, and not a
 judgment call — an ODC probe polling a *structural invariant* through the transient:
