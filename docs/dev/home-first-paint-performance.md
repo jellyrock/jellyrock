@@ -209,12 +209,29 @@ works is the **whole run**.
 
 ⚠️ **The per-call price is not fixed, so `calls` alone does not predict `ms`.** It tracks how
 much content is in the tree when the write lands: ~85 ms for a call early in a load, ~200 ms
-for one after every row is populated. Consequences, both measured:
+for one after every row is populated. So batching is a **wash where few rows change** — at 2
+structural changes, `ms` was 161 vs 161 (n=6/14), one late recompute costing about what two
+early ones did. What grows with library count is `calls`, and that is where it pays:
 
-- Batching **is a wash when few rows change** — at 2 structural changes, `ms` was 161 vs 161
-  (n=6 / n=14) because one late recompute costs about what two early ones did.
-- Batching **is decisive when many do** — at 9 structural changes, `calls` 9 → 1, `ms`
-  784 → 208, and `total` 3200 → 2516 ms (−21%, complete separation, U=0.0, p=0.005).
+| 6 libraries returning nothing | before | after |
+|---|---|---|
+| `calls` | 6 | **1** |
+| `ms` | 408 | **91** |
+| `other` | 661 | **95** |
+| **`total`** | **2593.5** | **1669 ms (−36%)** |
+
+n=6/arm, back to back, same forced-empty probe on both, only the batching differing.
+Complete separation (U=0.0 against a null expectation of 18, p=0.005), and non-vacuous:
+both arms end at **9 rows**, so the deferred removals really happen.
+
+🚨 **Batching the recompute alone is a VISIBLE BUG — the removals have to be deferred with
+it.** Defer only the recompute and the row list shrinks while the three arrays still describe
+the old one, so every row below a removal renders at its neighbor's size. Measured through
+ODC, not guessed: a square row drawn at portrait height and a wide row at square width,
+across a ~1.0 s window of first paint. Deferring the removals too keeps tree and arrays in
+step for the whole run — 0 wrong rows after, against 4 samples before. The **re-insert**
+branch is the mirror image (row list longer than the arrays) and flushes eagerly instead,
+which is affordable because it is rare. Probe: `tasks/probes/geometry-window.mjs`.
 
 So read `calls` as the thing that grows with library count, and `ms` as what it cost this
 particular run. Full write-up:
