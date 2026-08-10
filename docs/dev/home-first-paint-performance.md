@@ -38,10 +38,10 @@ network-bound. Measure per orchestrator; do not carry one result to another.
 ## What is being measured
 
 Opening Home fires one `LoadLatestRowsTask` run that fetches the latest items for every
-eligible library. Four log lines describe it, and all are permanent — they exist in dev
+eligible library. Five log lines describe it, and all are permanent — they exist in dev
 builds only (see [Why this costs production nothing](#why-this-costs-production-nothing)):
 
-The **format** they emit today. The first two are the top-level split; the second two break
+The **format** they emit today. The first two are the top-level split; the rest break
 `emit` and the render-side work down a level, and are described under
 [The second-level splits](#the-second-level-splits):
 
@@ -50,11 +50,16 @@ latest-rows run complete <n> rows <total> ms                                    
 latest-rows orchestrator done - [debug=? perfTiming=true] task <t> wait <w> emit <e>    # LoadLatestRowsTask
 latest-rows emit split - [debug=? perfTiming=true] xform <x> append <a> notify <no>     # LoadLatestRowsTask
 latest-rows populate split attach <at> detach <d> other <o>                             # HomeRows, render thread
+latest-rows size recompute calls <c> drains <d> ms <ms>                                 # HomeRows, render thread
 ```
 
-The two split lines are emitted **once per run**, not per row — they report accumulators.
-`emit split` follows `orchestrator done` on the task thread; `populate split` follows
-`run complete` on the render thread.
+The split lines are emitted **once per run**, not per row — they report accumulators.
+`emit split` follows `orchestrator done` on the task thread; `populate split` and
+`size recompute` follow `run complete` on the render thread.
+
+`size recompute` is a **separate line rather than three more columns on `populate split`**:
+`m.log.*` takes at most nine call-site arguments and faults at runtime past that, dropping
+the app into the BrightScript debugger.
 
 **Read the bracketed build flags before you trust a sample.** The two `LoadLatestRowsTask`
 lines carry the compile-time state the run was taken under, so a number can never be silently
@@ -179,6 +184,41 @@ established, so don't read the ~0 as free. Practically: `detach ≈ 0` in a samp
 are looking at a re-insert run whose `attach` is not comparable to a normal one. Decide on
 `total`. Full write-up:
 [`per-item-cross-thread-appends`](../architecture/tech-debt.md#per-item-cross-thread-appends).
+
+### `size recompute` — how often the row geometry was rewritten
+
+`setRowItemSize()` rebuilds `rowItemSize` / `rowHeights` / `rowSpacings` and writes all three
+to the `RowList`. It is expensive out of proportion to the arrays it builds, and it runs once
+per **structural** change (a row removed because its library returned nothing, or re-inserted
+because one that was empty now has data).
+
+| Column | What it covers |
+|---|---|
+| `calls` | how many times the recompute actually ran during the run |
+| `drains` | how many `rowReady` observer wakes the run was delivered over |
+| `ms` | total time inside `setRowItemSize()` |
+
+`calls` and `drains` are counted from the moment the run starts, so the recompute that
+follows skeleton insertion is not in them.
+
+**`drains` is there to stop a specific wrong fix from being re-proposed.** `onLatestRowsReady`
+drains a list and looks like a batch boundary, so coalescing the recompute there is the
+obvious move. It buys nothing: measured on a Stick 4K, 11 rows arrive over **11 separate
+wakes**, one row each, so a per-drain flush has nothing to coalesce. The batch boundary that
+works is the **whole run**.
+
+⚠️ **The per-call price is not fixed, so `calls` alone does not predict `ms`.** It tracks how
+much content is in the tree when the write lands: ~85 ms for a call early in a load, ~200 ms
+for one after every row is populated. Consequences, both measured:
+
+- Batching **is a wash when few rows change** — at 2 structural changes, `ms` was 161 vs 161
+  (n=6 / n=14) because one late recompute costs about what two early ones did.
+- Batching **is decisive when many do** — at 9 structural changes, `calls` 9 → 1, `ms`
+  784 → 208, and `total` 3200 → 2516 ms (−21%, complete separation, U=0.0, p=0.005).
+
+So read `calls` as the thing that grows with library count, and `ms` as what it cost this
+particular run. Full write-up:
+[`home-row-size-recompute-per-row`](../architecture/tech-debt.md#home-row-size-recompute-per-row).
 
 ## How to run it
 
