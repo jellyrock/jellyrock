@@ -923,6 +923,19 @@ sub applyPendingRowRemovals()
   if removed > 0 then rowStructureChanged()
 end sub
 
+' discardRowBatch: Drop pending row work without paying for it.
+'
+' Teardown only. setRowItemSize() is the most expensive call in this file (~90-200 ms, nearly
+' all of it the RowList re-measuring every cell against the new rowItemSize), it runs on the
+' render thread, and onDestroy fires mid-navigation — so flushing a batch for a node that is
+' about to be released stalls the transition to update geometry nobody will see. Clearing the
+' state first makes resetLatestRowsRun's applyPendingRowRemovals + flushRowSizes no-op.
+sub discardRowBatch()
+  m.pendingRowRemovals = []
+  m.rowSizesDirty = false
+  m.rowSizesBatching = false
+end sub
+
 ' rowStructureChanged: Announce that a row was added to or removed from m.top.content.
 '
 ' Outside a batch this recomputes immediately, so the single-row callers are unchanged.
@@ -1148,6 +1161,11 @@ sub onDestroy()
   m.LoadActiveRecordingsTask.unobserveField("content")
   m.LoadActiveRecordingsTask.control = "STOP"
   m.LoadActiveRecordingsTask = invalid
+
+  ' Drop any held row work BEFORE the reset — see discardRowBatch for why a teardown must not
+  ' pay for a recompute. This makes the reset's own flush a no-op rather than a render stall
+  ' on the way out of Home.
+  discardRowBatch()
 
   ' Stop and release the latest-media orchestrator
   resetLatestRowsRun()
