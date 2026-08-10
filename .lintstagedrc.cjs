@@ -81,7 +81,13 @@ const SPELLCHECKER_PLUGINS =
 // period in that mis-tokenized case, so this costs only a real typo that is both
 // paragraph-final and directly above a lowercase heading. Keep in sync with the
 // `lint:spelling` script in package.json — pre-commit and CI must agree.
-const SPELLCHECKER_IGNORE = String.raw`[A-Za-z][A-Za-z0-9'-]*\.`;
+//
+// No apostrophe in the character class on purpose: lint-staged parses this command
+// string itself rather than handing it to a shell, so the `'\''` escaping that `q()`
+// emits for an embedded quote splits the arguments in the wrong places and the
+// spellchecker sees no --files at all. A sentence ending in a possessive keeps its
+// false positive; that is worth an argument list that parses.
+const SPELLCHECKER_IGNORE = String.raw`[A-Za-z][A-Za-z0-9-]*\.`;
 
 module.exports = {
   // BrighterScript format — auto-fix; lint-staged re-stages the result.

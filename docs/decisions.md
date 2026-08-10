@@ -1011,6 +1011,18 @@ stays filed as tech debt rather than becoming project work. Re-evaluate if a mat
 figure the ledger does not carry — that would be a reason to change what `measure` RECORDS, not
 a reason to move the report in-process.
 
+## decision-id: home-row-removals-deferred
+
+**date**: 2026-08-10
+**status**: accepted
+**related-files**: `components/home/HomeRows.bs`
+
+During a latest-rows run, a Home row whose library returned nothing is QUEUED for removal rather than removed on the spot, and the queue is drained — followed by a single `setRowItemSize()` — when the run ends. An empty library therefore keeps its skeleton for the rest of the run, which is already how a FAILED library's row behaves.
+
+Two cheaper-looking shapes were built and measured before this one, so both are closed questions rather than untried ideas. Flushing the recompute at `onLatestRowsReady`'s drain loop coalesces nothing — the orchestrator delivers one row per observer wake, so 11 rows arrive over 11 wakes. Deferring only the RECOMPUTE while removing rows immediately is a visible bug: the row list shrinks while the three geometry arrays still describe the old one, so rows below a removal draw at their neighbor's size for ~1 s of first paint. Keeping tree and arrays in step is what makes the batching safe. Evidence and numbers live in [`home-row-size-recompute-per-row`](architecture/tech-debt.md#home-row-size-recompute-per-row).
+
+Accepted trade-off: an empty library's skeleton persists to the end of the run instead of vanishing mid-load, in exchange for one row-size recompute per load instead of one per empty library. The re-insert branch is deliberately NOT batched — an insertion is the same defect mirrored (row list longer than the arrays), and it is rare where removals are one per empty library on every load. **Tripwire:** re-open if the lingering skeleton ever reads as a stall, or if a measurement shows the single recompute dominating on a large library set.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
