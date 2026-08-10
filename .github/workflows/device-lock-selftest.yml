@@ -1,0 +1,84 @@
+# TEMPORARY DIAGNOSTIC — answers the two open questions blocking the device-lock
+# CI design, then can be deleted.
+#
+#   1. Can the GitHub App create/delete a git ref? (the acquire/release jobs
+#      depend on it, and no local test can answer it — the App private key is a
+#      repo secret.)
+#   2. Which Roku is `secrets.ROKU_DEVICE_IP` bound to? (the value can't be read
+#      back from the GitHub UI once set.)
+#
+# Deliberately leaks nothing: this repo is PUBLIC, so Actions logs are public.
+# It prints the device MODEL (generic) and the HASHED lock key — never the raw
+# ECP device-id (which partially encodes the serial) and never the IP.
+#
+# workflow_dispatch only fires for workflow files that exist on the DEFAULT
+# BRANCH, so this must land on `main` before it can be dispatched.
+
+name: Device Lock Self-Test (diagnostic)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Q1 — the App token path. No checkout, no fork code, GitHub API only.
+  app-can-write-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create / read / delete a throwaway lock ref
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          probe() {
+            curl -s -o /tmp/out.json -w "%{http_code}" -X "$1" \
+              -H "authorization: Bearer $TOKEN" \
+              -H "accept: application/vnd.github+json" \
+              -H "x-github-api-version: 2022-11-28" \
+              -H "content-type: application/json" \
+              ${3:+-d "$3"} "https://api.github.com/repos/$REPO/$2"
+          }
+          SHA=$(curl -s -H "authorization: Bearer $TOKEN" \
+                "https://api.github.com/repos/$REPO/git/ref/heads/main" \
+                | sed -n 's/.*"sha": *"\([0-9a-f]*\)".*/\1/p' | head -1)
+          REF=refs/device-lock/ci-selftest
+          echo "create #1 (expect 201) : $(probe POST git/refs "{\"ref\":\"$REF\",\"sha\":\"$SHA\"}")"
+          echo "create #2 (expect 422) : $(probe POST git/refs "{\"ref\":\"$REF\",\"sha\":\"$SHA\"}")"
+          echo "delete    (expect 204) : $(probe DELETE git/refs/device-lock/ci-selftest)"
+
+      - name: Clean up if the run died mid-way
+        if: always()
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          curl -s -o /dev/null -X DELETE \
+            -H "authorization: Bearer $TOKEN" \
+            "https://api.github.com/repos/$REPO/git/refs/device-lock/ci-selftest" || true
+
+  # Q2 — which physical Roku CI drives. A read-only ECP query: no sideload, no
+  # channel restart, nothing interrupted on screen.
+  which-device:
+    runs-on: [self-hosted, roku-device]
+    steps:
+      - name: Report the bound device (model + hashed lock key only)
+        env:
+          ROKU_IP: ${{ secrets.ROKU_DEVICE_IP }}
+        run: |
+          set -euo pipefail
+          info=$(curl -s --max-time 5 "http://$ROKU_IP:8060/query/device-info" | tr -d '\n')
+          id=$(printf '%s' "$info" | sed -n 's/.*<device-id>\([^<]*\)<\/device-id>.*/\1/p')
+          model=$(printf '%s' "$info" | sed -n 's/.*<model-name>\([^<]*\)<\/model-name>.*/\1/p')
+          test -n "$id" || { echo "ECP returned no device-id"; exit 1; }
+          echo "model    : $model"
+          echo "lock key : $(printf '%s' "$id" | sha256sum | cut -c1-16)"
