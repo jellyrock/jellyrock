@@ -48,6 +48,7 @@ sub init()
 
   m.rowSizesDirty = false
   m.rowSizesBatching = false
+  m.pendingRowRemovals = []
 
   ' Track populated section count for AppLaunchComplete beacon
   m.populatedSectionCount = 0
@@ -488,6 +489,7 @@ sub onLatestRowsReady()
       m.popClock.mark()
     #end if
     m.rowSizesBatching = false
+    applyPendingRowRemovals()
     flushRowSizes()
     #if perfTiming
       m.popOtherMs += m.popClock.totalMilliseconds()
@@ -528,6 +530,7 @@ sub resetLatestRowsRun()
   ' screen and every later structural change (a Continue Watching row emptying, say) would
   ' mark itself dirty and never be flushed — rows stuck at the previous row's geometry.
   m.rowSizesBatching = false
+  applyPendingRowRemovals()
   flushRowSizes()
 end sub
 
@@ -744,9 +747,21 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
   result = findRowBySectionId(sectionId)
 
   if not isValidAndNotEmpty(itemData)
-    ' No data — remove the row if it exists
+    ' No data — remove the row if it exists.
+    '
+    ' While a latest-rows run is batching, queue the removal instead of doing it now.
+    ' Deferring only the SIZE recompute is not enough: the row list would shrink while the
+    ' three geometry arrays still described the old one, so every row below the removal
+    ' rendered at its neighbour's size. Measured on a Stick 4K — a square row drawn at
+    ' portrait height and a wide row at square width, for ~1 s of first paint. Holding the
+    ' row keeps tree and arrays in step for the whole run, and it is what a FAILED row
+    ' already does: it keeps the skeleton insertLatestMediaSkeletons gave it.
     if isValid(result)
-      removeRowAtIndex(result.index)
+      if m.rowSizesBatching
+        m.pendingRowRemovals.push(sectionId)
+      else
+        removeRowAtIndex(result.index)
+      end if
     end if
     ' Accumulate before returning, not just on the fall-through path. A library that
     ' holds nothing takes this exit on every run, and the three columns are only
@@ -838,7 +853,12 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
 
     insertIndex = findInsertIndexForSection(sectionId)
     m.top.content.insertChild(row, insertIndex)
-    rowStructureChanged()
+    ' Recompute NOW even mid-run. An insertion makes the row list longer than the geometry
+    ' arrays, which is the same wrong-size-per-row defect deferring removals avoids, only
+    ' in the other direction. Removals are what there are many of (one per empty library,
+    ' every load); this branch fires only when a library that was empty last load has data
+    ' again, so flushing it eagerly costs a recompute that is rare rather than N of them.
+    rowStructureChanged(true)
   end if
 
   updateBackdropForFocusedItem()
@@ -864,12 +884,26 @@ end sub
 ' ROW SIZE CALCULATION
 ' ============================================
 
+' applyPendingRowRemovals: Drop the rows whose libraries returned nothing, queued during a
+' run so the row list and the geometry arrays never disagree mid-load. Looked up by
+' sectionId rather than a stored index — each removal shifts the ones after it.
+sub applyPendingRowRemovals()
+  if not isValidAndNotEmpty(m.pendingRowRemovals) then return
+
+  for each sectionId in m.pendingRowRemovals
+    result = findRowBySectionId(sectionId)
+    if isValid(result) then m.top.content.removeChildIndex(result.index)
+  end for
+  m.pendingRowRemovals = []
+  rowStructureChanged()
+end sub
+
 ' rowStructureChanged: Announce that a row was added to or removed from m.top.content.
 '
 ' Outside a batch this recomputes immediately, so the single-row callers are unchanged.
-sub rowStructureChanged()
+sub rowStructureChanged(immediate = false as boolean)
   m.rowSizesDirty = true
-  if not m.rowSizesBatching then flushRowSizes()
+  if immediate or not m.rowSizesBatching then flushRowSizes()
 end sub
 
 ' flushRowSizes: Recompute if a structural change is still pending. No-op otherwise, so it
