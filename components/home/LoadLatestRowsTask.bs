@@ -191,7 +191,6 @@ sub emitRow(libId as string, res as dynamic)
     m.emitClock.mark()
   #end if
 
-
   m.top.rowReady = libId
   #if perfTiming
     m.notifyMs += m.emitClock.totalMilliseconds()
