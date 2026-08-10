@@ -484,6 +484,8 @@ SAR
 SceneGraph
 schemas
 schema-validated
+scrollable
+scrollbar
 sdk
 SDK
 selectable

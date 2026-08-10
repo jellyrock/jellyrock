@@ -54,6 +54,28 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - Overlay dialogs are appended to the **scene**, not to your screen, so they survive your `onDestroy`. A screen that opens one owns tearing it down.
 - Full contract: [navigation.md → The standard dialog system](../docs/architecture/navigation.md).
 
+## Theme colors — which one means what
+
+The theme palette encodes **interaction state**, not just hue. Picking by "what
+looks right" is how the meaning drifts.
+
+| Constant | Use for | Never |
+|---|---|---|
+| `colorPrimary` | Things the user can **focus or act on** — focus rings, the selected item indicator, active-state chrome | Static decoration |
+| `colorSecondary` | **Non-focusable** visual highlights — accent rules, emphasis marks, decorative dividers | Anything focusable |
+| `colorBackgroundPrimary` | Panel / surface fills | — |
+| `colorBackgroundSecondary` | Structural separators, subtle borders, footprints behind focus | — |
+| `colorTextPrimary` / `colorTextSecondary` / `colorTextDisabled` | Text by emphasis level | — |
+
+The distinction matters most where both appear in one frame. `JRDialog` shows it:
+the button focus ring is `colorPrimary` (focusable) and the accent rule under the
+title is `colorSecondary` (not focusable). If the rule used `colorPrimary` it
+would read as something you could move focus to.
+
+Users can re-theme every one of these (Settings → Theme → Custom), so a color
+picked for its appearance in the default theme will be wrong in someone else's.
+Pick by meaning and it survives any palette.
+
 ## Common patterns
 
 - **`isValid(x)`** for nil/invalid checks — never compare to `invalid` directly with `=`.

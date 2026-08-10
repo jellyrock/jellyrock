@@ -87,6 +87,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 ### Medium
 
+#### `overviewdialog-diverged-style`
+
+- **area**: [`components/OverviewDialog.bs`](../../components/OverviewDialog.bs), [`components/OverviewDialog.xml`](../../components/OverviewDialog.xml)
+- **issue**: `JRDialog` was restyled in #757 — buttons moved INSIDE the panel, a derived layout that measures each block instead of stacking fixed offsets, a short `colorSecondary` accent rule under the title rather than a full-width divider, and a spacing scale in multiples of 6 (so nothing goes fractional through the Roku OS downscale to 720p). `OverviewDialog` still has the original arrangement: fixed offsets, a full-width `colorBackgroundSecondary` divider, and its OK button OUTSIDE the panel. So the app now has two dialog languages, which is the thing the standardization was meant to end.
+- **direction**: Bring `OverviewDialog` onto `JRDialog`'s vocabulary. Deliberately NOT folded into #757: outside-buttons is defensible for `OverviewDialog` specifically (its panel is 1600 x 760 and dominates the screen, so a button below still reads as attached, which is not true at `JRDialog`'s size), and its scrollable body plus scrollbar interact with any layout change — moving the button inside needs its own look at scroll bounds and focus. Shares the derived-layout helpers rather than re-deriving them.
+
 #### `log-level-welded-to-debug-const`
 
 - **area**: [`components/JRScene.bs`](../../components/JRScene.bs) (`initializeLogManager` call), the `manifest` `bs_const` line, [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js).
