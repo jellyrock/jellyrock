@@ -320,6 +320,12 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **issue**: #733 fixed a teardown race in `onPositionChanged` by checking `m.isDestroyed` (set at the top of `onDestroy`) before dotting into notification refs. The same class of race — a native-engine or Task callback firing after `onDestroy` starts but before `unobserveField` actually detaches it — is structurally possible for the other observers `onDestroy` tears down (`state`, `content`, `selectedSubtitle`, `audioIndex`, `mediaSourceId`, `shouldAllowCaptions`, `subtitleTrack`, `globalCaptionMode`, the `playbackTimer`/`bufferCheckTimer` `fire` callbacks, and task `content`/`refreshedItem`/`currentCaption`). Only the proven crashing path was guarded (isolate-the-fix); the others are unguarded but unobserved.
 - **direction**: If another handler in this set turns up in a crash report with the same shape (a torn-down ref accessed during teardown), add an early `if m.isDestroyed then return` to that handler rather than re-diagnosing from scratch. A blanket guard on every handler is deliberately *not* applied up front — only proven crash sites warrant it.
 
+#### `api-usage-manifest-no-per-endpoint-binding`
+
+- **area**: [`docs/architecture/api-usage-manifest.json`](api-usage-manifest.json), [`scripts/generate/api-usage-manifest.js`](../../scripts/generate/api-usage-manifest.js)
+- **issue**: `requestFields` is flat and repo-wide (`{name, sourceFiles}`, no endpoint association) and scans `source/**` only, so it can't compare the params we send against the params an endpoint declares, or see `components/**` call sites. #784 hit both blind spots at once — see [Known limitations](server-upgrade-automation.md#known-limitations--what-this-pipeline-cannot-catch).
+- **direction**: Bind request fields to the endpoint they're sent to and widen the scan past `source/**`. One data point so far; revisit if the class recurs.
+
 #### `ci-path-filters-unverified`
 
 - **area**: the `paths` filter in each `.github/workflows/_lint-*.yml` / `_test-*.yml`, plus [`scripts/lint/ci-parity-check.js`](../../scripts/lint/ci-parity-check.js)
