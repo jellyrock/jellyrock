@@ -95,12 +95,28 @@ class ApiClient
 
   ' Build a request AA for GetResumeItems (Continue Watching), for use with fetchRes() or fetchJson().
   ' Mirrors GetResumeItems(): applies injectDefaults, version-aware endpoint.
+  '
+  ' The server hardcodes Recursive, OrderBy=DatePlayed and IsResumable on this endpoint, so
+  ' MediaTypes is the ONLY narrowing a client controls — don't bother sending recursive /
+  ' SortBy / SortOrder / Filters, they are ignored. Since 12.0 a folder also matches
+  ' IsResumable when a descendant is in progress, so an unfiltered query returns Seasons and
+  ' Series (by design) mixed in with the episodes. Every JellyRock resume flow is video, so
+  ' default to Video; pass MediaTypes as a comma-separated STRING to widen it.
+  '
   ' @param params - Optional query parameters
   ' @returns Request AA: { method, url } or invalid if no userId
   function BuildGetResumeItemsRequest(params = {} as object) as dynamic
     userId = m.getUserId()
     if userId = "" then return invalid
     mergedParams = m.injectDefaults(params)
+    ' MediaTypes has to come out a non-empty STRING, not merely present: buildParams()
+    ' silently skips roArray values (tech-debt `buildparams-no-array-support`), so an
+    ' array here would drop the only filter we control and send the query unnarrowed —
+    ' the exact #784 failure, reached through the documented way to widen it.
+    callerMediaTypes = mergedParams.MediaTypes
+    hasMediaTypes = (type(callerMediaTypes) = "String" or type(callerMediaTypes) = "roString")
+    if hasMediaTypes then hasMediaTypes = callerMediaTypes.trim() <> ""
+    if not hasMediaTypes then mergedParams.MediaTypes = "Video"
     if m.getApiVersion() >= 2
       queryParams = { userId: userId }
       queryParams.append(mergedParams)

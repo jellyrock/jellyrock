@@ -6,7 +6,7 @@ related-files:
   - source/api/imageHelpers.bs
   - source/api/items.bs
   - source/api/userAuth.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-08-09
 ---
 
 # API Architecture Layering Guide
@@ -65,6 +65,12 @@ The following defaults are automatically applied to item fetching endpoints:
 - `Trickplay` - Added for `V2`+ servers (10.9+)
 
 These injections ensure consistent item data across all supported server versions without manual parameter management.
+
+**Endpoint-scoped injection:**
+
+| Builder | Parameter | Default | Why |
+|---|---|---|---|
+| `BuildGetResumeItemsRequest` | `MediaTypes` | `"Video"` | `MediaTypes` is the only narrowing `/UserItems/Resume` accepts — it hardcodes `Recursive` / `OrderBy` / `IsResumable` server-side. Since Jellyfin 12.0 a folder also counts as resumable when a descendant is in progress, so an unfiltered query returns Seasons and Series alongside episodes ([#784](https://github.com/jellyrock/jellyrock/issues/784)). Override by passing a comma-separated **string**; an array is silently dropped by `buildParams` ([`buildparams-no-array-support`](../architecture/tech-debt.md#buildparams-no-array-support)) and falls back to the default. |
 
 ### When to Use Layer 1
 

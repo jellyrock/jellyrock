@@ -38,6 +38,12 @@ describe('URL + path construction', () => {
     );
   });
 
+  it('routes a patchless RC to the stable dir (the 12.0 line drops PATCH)', () => {
+    expect(specUrl('12.0-rc4')).toBe(
+      'https://api.jellyfin.org/openapi/stable/jellyfin-openapi-12.0-rc4.json',
+    );
+  });
+
   it('routes an unstable datestamp to the unstable dir', () => {
     expect(specUrl('20240402201942')).toBe(
       'https://api.jellyfin.org/openapi/unstable/jellyfin-openapi-20240402201942.json',
@@ -63,6 +69,15 @@ describe('version classification', () => {
     expect(isStableVersion('20240402201942')).toBe(false);
   });
 
+  it('recognizes the patchless MAJOR.MINOR labels the 12.0 line publishes', () => {
+    expect(isStableVersion('12.0-rc4')).toBe(true);
+    expect(isStableVersion('12.0-beta1')).toBe(true);
+    expect(isStableVersion('12.0')).toBe(true);
+    // The legacy unstable datestamp is also MAJOR.MINOR-shaped; it must stay unstable-only
+    // or archiveBaseFor would route it to the wrong dir.
+    expect(isStableVersion('20240207.2')).toBe(false);
+  });
+
   it('recognizes unstable datestamps (modern + legacy)', () => {
     expect(isUnstableVersion('20240402201942')).toBe(true); // YYYYMMDDHHMMSS
     expect(isUnstableVersion('20240207.2')).toBe(true); // legacy <YYYYMMDD>.<N>
@@ -74,6 +89,7 @@ describe('version classification', () => {
     expect(isSpecVersion('10.11.10')).toBe(true);
     expect(isSpecVersion('10.12.0-rc1')).toBe(true);
     expect(isSpecVersion('20240402201942')).toBe(true);
+    expect(isSpecVersion('12.0-rc4')).toBe(true);
     expect(isSpecVersion('unstable')).toBe(false);
     expect(isSpecVersion('latest')).toBe(false);
   });

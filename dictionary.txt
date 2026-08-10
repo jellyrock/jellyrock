@@ -266,6 +266,7 @@ hardcode
 Hardcode
 hardcoded
 Hardcoded
+hardcodes
 Hardcoding
 HD
 HDR
@@ -372,7 +373,9 @@ OSS-readability
 outro
 PARA
 parallelize
+param
 params
+Params
 PascalCase
 PD-textlogo
 PDF
@@ -463,6 +466,7 @@ repo-scoped
 reproducibility
 repo-size
 repo-wide
+resumable
 retry-with-backoff
 revalidation
 reverse-proxied

@@ -68,10 +68,6 @@ sub loadItems()
     activeUser = globalUser.id
     if isValid(activeUser)
       params = {}
-      params["recursive"] = true
-      params["SortBy"] = "DatePlayed"
-      params["SortOrder"] = "Descending"
-      params["Filters"] = "IsResumable"
       params["EnableTotalRecordCount"] = false
 
       data = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "continue")
@@ -238,11 +234,7 @@ sub loadItems()
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
     resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
       ParentId: m.top.itemId,
-      Filters: "IsResumable",
-      SortBy: "DatePlayed",
-      SortOrder: "Descending",
       Limit: 1,
-      recursive: true,
       Fields: "PrimaryImageAspectRatio",
       EnableTotalRecordCount: false
     }), "seriesResume")
